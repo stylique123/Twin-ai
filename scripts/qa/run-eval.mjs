@@ -368,7 +368,9 @@ function knowledgeBlock(k, aboutText = '', cap = KNOWLEDGE_CAP) {
 
 const pack = JSON.parse(readFileSync('scripts/qa/creator-pack.json', 'utf8'))
 
-async function gen({ creator, refNote, fidelity, tone, goal, withKnowledge = true, answers, cap = KNOWLEDGE_CAP }) {
+async function gen({ creator, refNote, fidelity, tone, goal, withKnowledge = true, answers, cap = KNOWLEDGE_CAP, knowledgeStore }) {
+  // Defaults to the creator's whole store; a `sources` arm passes the filtered one.
+  knowledgeStore = knowledgeStore ?? creator.knowledge
   const t = creator.truth ?? {}
   // ⚖️ THE ANSWERS ARE AN INPUT, NOT A PROPERTY OF THE PERSON. A run that can
   // only ever send one set of onboarding answers cannot tell whether the script
@@ -414,7 +416,7 @@ CREATOR'S ANSWERS
 - Audience: ${A.audience}
 - What they do: ${A.workKind}
 - Third-party products featured: ${A.promotes}${promotesLine(A.promotes)}
-${withKnowledge ? knowledgeBlock(creator.knowledge, `${refNote} ${A.idea ?? ''}`, cap) : ''}
+${withKnowledge ? knowledgeBlock(knowledgeStore, `${refNote} ${A.idea ?? ''}`, cap) : ''}
 
 REFERENCE (described, not transcribed)
 ${refNote}
@@ -459,7 +461,14 @@ for (const c of CASES) {
   const creator = [...pack.creators, ...(pack.cohort2?.creators ?? []), ...(pack.cohort3?.creators ?? [])]
     .find(x => x.key === c.creator)
   if (!creator) throw new Error(`unknown creator key ${c.creator} — is its cohort in the lookup above?`)
-  const bp = await gen({ creator, refNote: c.refNote, fidelity: c.fidelity, tone: c.tone, goal: c.goal, withKnowledge: c.withKnowledge !== false, answers: c.answers, cap: c.cap ?? KNOWLEDGE_CAP })
+  // ⚖️ THE PROMPT AND THE RECORD MUST SEE THE SAME STORE. Building the prompt
+  // from the full store while recording the filtered one would report an arm
+  // that never ran — the `supplied` block exists precisely so a citation cannot
+  // "trace" to something the writer never saw.
+  const armStore = c.sources
+    ? { ...creator.knowledge, items: (creator.knowledge?.items ?? []).filter((i) => c.sources.includes(i.source)) }
+    : creator.knowledge
+  const bp = await gen({ creator, refNote: c.refNote, fidelity: c.fidelity, tone: c.tone, goal: c.goal, withKnowledge: c.withKnowledge !== false, answers: c.answers, cap: c.cap ?? KNOWLEDGE_CAP, knowledgeStore: armStore })
   // ⚠️ RECORD WHAT THE PROMPT CARRIED, NOT JUST WHAT CAME BACK. Every result
   // file before this one stored `{case, blueprint}` and nothing else, so
   // `grounded` — did this beat trace to something we actually supplied? — was
@@ -472,9 +481,21 @@ for (const c of CASES) {
   // citation "trace" to an item the writer never saw, which is the precise
   // failure `substanceIssues` warns about: checking against a fuller set excuses
   // the fabrication the check exists to catch.
+  // ⚠️ THE ARM THAT COULD NOT BE EXPRESSED. `withKnowledge:false` removes
+  // knowledge entirely, which answers "does knowledge help at all" — a question
+  // already settled. The question NOW is what SPEECH adds over TITLES, and that
+  // needs the same creator with the same store filtered by SOURCE. Measured on
+  // real production rows: captions produced 0 stated items across 637 of them,
+  // transcripts produced 10 for this creator alone.
+  //
+  // ⚖️ FILTERED BEFORE SELECTION, NOT AFTER. `selectKnowledge` ranks and caps;
+  // filtering afterwards would let the caption arm be chosen from a pool that
+  // included transcript items and then have them removed, which is a different
+  // (and flattering) experiment.
+  const store = armStore
   const sel = c.withKnowledge === false
     ? { items: [], covered: [] }
-    : selectKnowledge(creator.knowledge, `${c.refNote ?? ''} ${c.idea ?? ''}`, c.cap ?? KNOWLEDGE_CAP)
+    : selectKnowledge(store, `${c.refNote ?? ''} ${c.idea ?? ''}`, c.cap ?? KNOWLEDGE_CAP)
   out.push({
     case: c,
     blueprint: bp,

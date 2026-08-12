@@ -1,0 +1,4043 @@
+[
+  {
+    "case": {
+      "creator": "AlexHormozi",
+      "label": "B-rehook-fixed",
+      "fidelity": "balanced",
+      "tone": "balanced",
+      "refNote": "A fast-cut list video: 5 things most people get wrong, each with a concrete payoff, escalating to the strongest last.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "true",
+            "count": "5",
+            "unit": "things"
+          },
+          "hook_promise": "5 things most people get wrong about building wealth",
+          "rehook_after_item": "3",
+          "beat_debts": [
+            "The first thing people get wrong is seeking shortcuts, which leads into the second mistake of not picking a path.",
+            "The second mistake is not picking a path, which leads into the third error of not sticking to it.",
+            "The third mistake is not sticking to a path for a decade, leading to the fourth misconception about needing to bootstrap.",
+            "The fourth misconception is that bootstrapping is the only way, contrasting with the fifth point about raising capital.",
+            "The fifth point is about raising capital for growth, leading to the final thought on sustained wealth building."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook - State the 5 things most people get wrong about building wealth.",
+          "target_sec": "5",
+          "scene_type": "direct_address",
+          "proof": "proven_reference_hook"
+        },
+        {
+          "beat": "Mistake 1: Seeking shortcuts keeps people poor.",
+          "target_sec": "10",
+          "scene_type": "direct_address",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "Mistake 2: Not picking a path.",
+          "target_sec": "8",
+          "scene_type": "direct_address",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "Mistake 3: Not sticking to a path for a decade.",
+          "target_sec": "12",
+          "scene_type": "direct_address",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "Rehook - Recap the first three and promise the remaining two.",
+          "target_sec": "5",
+          "scene_type": "direct_address",
+          "proof": "proven_reference_rehook"
+        },
+        {
+          "beat": "Mistake 4: Believing you must bootstrap everything.",
+          "target_sec": "15",
+          "scene_type": "direct_address",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "Mistake 5: Not understanding how to raise capital for growth.",
+          "target_sec": "15",
+          "scene_type": "direct_address",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "Outro - Call to action.",
+          "target_sec": "5",
+          "scene_type": "direct_address",
+          "proof": "proven_reference_outro"
+        }
+      ],
+      "concept": {
+        "premise": "There are 5 fundamental things most people misunderstand about how to build significant wealth, and correcting these can put you on the right track."
+      },
+      "hook_options": [
+        "Here are 5 things most people get wrong when they're trying to build wealth.",
+        "Stop making these 5 wealth-building mistakes that keep most people poor.",
+        "If you're trying to get rich, you're probably getting these 5 things wrong.",
+        "Want to build real wealth? Avoid these 5 common pitfalls.",
+        "Most people fail at building wealth because of these 5 misconceptions."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Here are the 5 things most people get wrong when they're trying to build real wealth.",
+          "location": "studio",
+          "broll_request": "text overlay: 5 wealth mistakes",
+          "wardrobe": "casual",
+          "action_posing": "energetic, direct address",
+          "substance": "none",
+          "substance_evidence": "Hook promise"
+        },
+        {
+          "section": "Mistake 1",
+          "line": "The first thing people get wrong is constantly seeking shortcuts. Wealthy people pick a path and commit to it, while seeking a quick win keeps you poor.",
+          "location": "studio",
+          "broll_request": "footage of someone looking for an easy button",
+          "wardrobe": "casual",
+          "action_posing": "emphatic hand gestures",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Seeking shortcuts keeps people poor, while the wealthiest pick a path and stick to it for a decade"
+        },
+        {
+          "section": "Mistake 2",
+          "line": "The second mistake is not even picking a clear path in the first place. You need to define your direction before you can commit to it.",
+          "location": "studio",
+          "broll_request": "footage of someone looking lost at a crossroads",
+          "wardrobe": "casual",
+          "action_posing": "thoughtful, then direct",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Seeking shortcuts keeps people poor, while the wealthiest pick a path and stick to it for a decade"
+        },
+        {
+          "section": "Mistake 3",
+          "line": "And the third thing people get wrong? They don't stick to that path for a decade. Amazon operated at a loss for over ten years to capture market share. That's commitment.",
+          "location": "studio",
+          "broll_request": "footage of a clock speeding up, then Amazon logo",
+          "wardrobe": "casual",
+          "action_posing": "emphasizing the 'decade' point",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Seeking shortcuts keeps people poor, while the wealthiest pick a path and stick to it for a decade; Amazon operated at a loss for over a decade before turning a profit in order to capture market share"
+        },
+        {
+          "section": "Rehook",
+          "line": "So we've covered seeking shortcuts, not picking a path, and not sticking to it. Now for the last two crucial mistakes people make.",
+          "location": "studio",
+          "broll_request": "text overlay: mistakes 4 & 5 coming",
+          "wardrobe": "casual",
+          "action_posing": "brief pause, then re-engage",
+          "substance": "none",
+          "substance_evidence": "Rehook after item 3"
+        },
+        {
+          "section": "Mistake 4",
+          "line": "The fourth mistake is believing you MUST bootstrap every single business. I bootstrapped my gym, Prestige Labs, and Allen, but I also raised venture capital for Skool. Both are valid.",
+          "location": "studio",
+          "broll_request": "footage of a bootstrapped business growing vs. a VC pitch meeting",
+          "wardrobe": "casual",
+          "action_posing": "balancing hands, illustrating two paths",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Bootstrapped his first brick-and-mortar business, which was a gym. Bootstrapped a supplement company called Prestige Labs using profits from his gym business. Bootstrapped a software company named Allen. Raised venture capital for his company Skool to fund its continued growth."
+        },
+        {
+          "section": "Mistake 5",
+          "line": "And finally, the fifth thing people get wrong: not understanding how to raise capital for growth. Many of the wealthiest, like Musk, Bezos, and Zuckerberg, built empires by raising capital, not just bootstrapping.",
+          "location": "studio",
+          "broll_request": "footage of famous entrepreneurs, then a venture capital firm logo",
+          "wardrobe": "casual",
+          "action_posing": "authoritative, gesturing to examples",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Elon Musk, Larry Ellison, Mark Zuckerberg, Jeff Bezos, Larry Page, Sergey Brin and Jensen Huang all built wealth by raising capital"
+        },
+        {
+          "section": "Outro",
+          "line": "If you've been making these mistakes, it's time to rethink your approach to wealth. What's one thing you're going to change?",
+          "location": "studio",
+          "broll_request": "thought bubble graphic",
+          "wardrobe": "casual",
+          "action_posing": "inviting, open hands",
+          "substance": "none",
+          "substance_evidence": "Call to action"
+        }
+      ],
+      "cta": "What's one thing you're going to change after hearing these 5 mistakes?"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "experience",
+          "text": "Uses his company Acquisition.com to invest his own capital into other people's businesses.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Seeking shortcuts keeps people poor, while the wealthiest pick a path and stick to it for a decade",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Prices Skool at $9 a month to provide affordable business-building tools to as many people as possible",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "example",
+          "text": "Amazon operated at a loss for over a decade before turning a profit in order to capture market share",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "example",
+          "text": "Elon Musk, Larry Ellison, Mark Zuckerberg, Jeff Bezos, Larry Page, Sergey Brin and Jensen Huang all built wealth by raising capital",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "example",
+          "text": "Michael Dell and the Waltons built their wealth through bootstrapped businesses like Walmart.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Raised venture capital for his company Skool to fund its continued growth.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Bootstrapped his first brick-and-mortar business, which was a gym.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Bootstrapped a supplement company called Prestige Labs using profits from his gym business.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Bootstrapped a software company named Allen.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "how to get clients to stay past 6 months",
+        "how to know when to hire your first employee",
+        "how to build a billion dollar restaurant chain",
+        "3 signs you're going to be a successful entrepreneur",
+        "4 paths to create wealth in 2026",
+        "the fix for when founders won't let you send DMs",
+        "how to sell like the top 1% in Scale or Fail Episode 1",
+        "why AI won't make you rich in 2026",
+        "how to close 90% of supplement sales",
+        "how to scale a business with a cash flow problem"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "AlexHormozi",
+      "label": "B-rehook-fixed",
+      "fidelity": "close",
+      "tone": "balanced",
+      "refNote": "A single-lesson explainer: one counterintuitive claim, why people believe the opposite, then how it actually works.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "false",
+            "count": "",
+            "unit": ""
+          },
+          "hook_promise": "The one counterintuitive claim that helps you build wealth.",
+          "rehook_after_item": "",
+          "beat_debts": [
+            "Why people believe the opposite",
+            "How the counterintuitive claim actually works in practice"
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook - Introduce counterintuitive claim",
+          "target_sec": "5",
+          "scene_type": "piece_to_camera",
+          "proof": "Creator's unique perspective on wealth building. "
+        },
+        {
+          "beat": "Why people believe the opposite",
+          "target_sec": "10",
+          "scene_type": "piece_to_camera",
+          "proof": "Common misconceptions about wealth building."
+        },
+        {
+          "beat": "The actual counterintuitive claim in action",
+          "target_sec": "15",
+          "scene_type": "piece_to_camera",
+          "proof": "Examples of successful wealth building strategies."
+        },
+        {
+          "beat": "Elaboration on how the claim works",
+          "target_sec": "15",
+          "scene_type": "piece_to_camera",
+          "proof": "Further explanation and supporting evidence."
+        },
+        {
+          "beat": "Call to action",
+          "target_sec": "5",
+          "scene_type": "piece_to_camera",
+          "proof": "None"
+        }
+      ],
+      "concept": {
+        "premise": "Seeking shortcuts keeps people poor, while the wealthiest pick a path and stick to it for a decade. This concept directly challenges the common belief that rapid, short-term strategies lead to wealth, instead advocating for sustained, long-term commitment. This premise provides a single, counterintuitive claim that can be explored in a short-form video, offering a clear 'why people believe the opposite' and 'how it actually works' structure."
+      },
+      "hook_options": [
+        "Stop chasing shortcuts to get rich.",
+        "If you want to build real wealth, you need to ignore what most people tell you.",
+        "The secret to becoming wealthy isn't a secret at all, it's just something most people refuse to do.",
+        "You're probably thinking about wealth creation all wrong.",
+        "What if the fastest way to get rich was actually the slowest?"
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Stop chasing shortcuts to get rich. The real way to build wealth is to pick one path and stick to it for a decade.",
+          "location": "studio",
+          "broll_request": "Quick cuts showing various 'get rich quick' schemes failing, then a visual of a long, steady path.",
+          "wardrobe": "business casual",
+          "action_posing": "direct address, confident",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Seeking shortcuts keeps people poor, while the wealthiest pick a path and stick to it for a decade"
+        },
+        {
+          "section": "Why people believe the opposite",
+          "line": "Most people are constantly looking for the next big thing, the quick flip, the instant success story. They jump from one idea to another, always hoping for a shortcut.",
+          "location": "studio",
+          "broll_request": "Fast-paced montage of different trending business ideas (crypto, dropshipping, etc.) flashing by quickly.",
+          "wardrobe": "business casual",
+          "action_posing": "slightly dismissive, then empathetic",
+          "substance": "general",
+          "substance_evidence": "Common human tendency to seek immediate gratification"
+        },
+        {
+          "section": "The actual counterintuitive claim in action",
+          "line": "But the wealthiest people I know, the ones who truly built empires, didn't do that. They committed.",
+          "location": "studio",
+          "broll_request": "Visuals of long-term growth, perhaps a time-lapse of a tree growing or a graph showing steady upward trend.",
+          "wardrobe": "business casual",
+          "action_posing": "authoritative, inspiring",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Seeking shortcuts keeps people poor, while the wealthiest pick a path and stick to it for a decade"
+        },
+        {
+          "section": "Elaboration on how the claim works",
+          "line": "Think about Amazon, they operated at a loss for over a decade just to capture market share. Or the giants like Musk, Bezos, Zuckerberg, who all raised capital and stuck with their vision for years. Even bootstrapped successes like Walmart or Michael Dell committed for the long haul.",
+          "location": "studio",
+          "broll_request": "Images or brief clips of Amazon, Elon Musk, Jeff Bezos, Mark Zuckerberg, Walmart, Michael Dell.",
+          "wardrobe": "business casual",
+          "action_posing": "gesturing to emphasize examples",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Amazon operated at a loss for over a decade before turning a profit in order to capture market share; Elon Musk, Larry Ellison, Mark Zuckerberg, Jeff Bezos, Larry Page, Sergey Brin and Jensen Huang all built wealth by raising capital; Michael Dell and the Waltons built their wealth through bootstrapped businesses like Walmart."
+        },
+        {
+          "section": "Call to action",
+          "line": "What's one thing you've stuck with for years that finally paid off? Share it in the comments below.",
+          "location": "studio",
+          "broll_request": "None",
+          "wardrobe": "business casual",
+          "action_posing": "open, inviting",
+          "substance": "none",
+          "substance_evidence": "None"
+        }
+      ],
+      "cta": "What's one thing you've stuck with for years that finally paid off? Share it in the comments below."
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "experience",
+          "text": "Uses his company Acquisition.com to invest his own capital into other people's businesses.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Seeking shortcuts keeps people poor, while the wealthiest pick a path and stick to it for a decade",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Prices Skool at $9 a month to provide affordable business-building tools to as many people as possible",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "you should make content first, then run it as ads",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "example",
+          "text": "Amazon operated at a loss for over a decade before turning a profit in order to capture market share",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "example",
+          "text": "Elon Musk, Larry Ellison, Mark Zuckerberg, Jeff Bezos, Larry Page, Sergey Brin and Jensen Huang all built wealth by raising capital",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "example",
+          "text": "Michael Dell and the Waltons built their wealth through bootstrapped businesses like Walmart.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Raised venture capital for his company Skool to fund its continued growth.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Bootstrapped his first brick-and-mortar business, which was a gym.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Bootstrapped a supplement company called Prestige Labs using profits from his gym business.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "how to get clients to stay past 6 months",
+        "how to know when to hire your first employee",
+        "how to build a billion dollar restaurant chain",
+        "3 signs you're going to be a successful entrepreneur",
+        "4 paths to create wealth in 2026",
+        "the fix for when founders won't let you send DMs",
+        "how to sell like the top 1% in Scale or Fail Episode 1",
+        "why AI won't make you rich in 2026",
+        "how to close 90% of supplement sales",
+        "how to scale a business with a cash flow problem"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "garyvee",
+      "label": "B-rehook-fixed",
+      "fidelity": "balanced",
+      "tone": "balanced",
+      "refNote": "A fast-cut list video: 5 things most people get wrong, each with a concrete payoff, escalating to the strongest last.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "true",
+            "count": "5",
+            "unit": "things"
+          },
+          "hook_promise": "5 things most people get wrong about success.",
+          "rehook_after_item": "3",
+          "beat_debts": [
+            "Each item will explain a common misconception and then offer a contrasting, more effective approach.",
+            "The second point will build on the idea of reputation as an asset.",
+            "The third point will challenge the idea of needing to step on others.",
+            "The fourth point will highlight the importance of understanding societal shifts.",
+            "The fifth and final point will offer a powerful perspective on current stressors."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook - Introduce the 5 misconceptions.",
+          "target_sec": "8",
+          "scene_type": "direct_address",
+          "proof": "creator_on_camera"
+        },
+        {
+          "beat": "Misconception 1: Success means climbing a traditional ladder.",
+          "target_sec": "12",
+          "scene_type": "direct_address",
+          "proof": "creator_on_camera"
+        },
+        {
+          "beat": "Misconception 2: Social media success relies on follower count.",
+          "target_sec": "12",
+          "scene_type": "direct_address",
+          "proof": "creator_on_camera"
+        },
+        {
+          "beat": "Misconception 3: You have to step on people to get ahead.",
+          "target_sec": "12",
+          "scene_type": "direct_address",
+          "proof": "creator_on_camera"
+        },
+        {
+          "beat": "Rehook - Emphasize the value of these insights.",
+          "target_sec": "6",
+          "scene_type": "direct_address",
+          "proof": "creator_on_camera"
+        },
+        {
+          "beat": "Misconception 4: Risk-takers are foolish.",
+          "target_sec": "12",
+          "scene_type": "direct_address",
+          "proof": "creator_on_camera"
+        },
+        {
+          "beat": "Misconception 5: Current struggles are unique and overwhelming.",
+          "target_sec": "12",
+          "scene_type": "direct_address",
+          "proof": "creator_on_camera"
+        },
+        {
+          "beat": "Call to Action",
+          "target_sec": "5",
+          "scene_type": "direct_address",
+          "proof": "creator_on_camera"
+        }
+      ],
+      "concept": {
+        "premise": "Here are 5 things most people get wrong about how to find success and fulfillment in today's world, offering a different perspective on common beliefs."
+      },
+      "hook_options": [
+        "Here are 5 things most people get wrong about success.",
+        "You're probably getting these 5 things wrong about building a great life.",
+        "Want to know the 5 biggest mistakes people make when chasing success?",
+        "Stop believing these 5 myths about what it takes to win.",
+        "If you're making these 5 common mistakes, you're hindering your own success."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Let's talk about 5 things most people get completely wrong when it comes to success and building a fulfilling life.",
+          "location": "studio",
+          "broll_request": "energetic, fast cuts",
+          "wardrobe": "casual, branded hoodie",
+          "action_posing": "direct eye contact, confident gestures",
+          "substance": "none",
+          "substance_evidence": "introduction"
+        },
+        {
+          "section": "Item 1",
+          "line": "The first thing: Many think success is about climbing some predetermined ladder. But in this era, your reputation is actually your most valuable asset. Being a good person gets rewarded like never before.",
+          "location": "studio",
+          "broll_request": "visual metaphor of a ladder vs. a network graph",
+          "wardrobe": "casual, branded hoodie",
+          "action_posing": "emphatic hand gestures",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Society is entering an era that heavily rewards good people, making reputation a person's most valuable asset"
+        },
+        {
+          "section": "Item 2",
+          "line": "The second thing people misunderstand is thinking social media success means having millions of followers. Three years ago, the internet became interest media, not social media. Algorithms now serve by interest, not follower count.",
+          "location": "studio",
+          "broll_request": "split screen showing follower count vs. diverse content feeds",
+          "wardrobe": "casual, branded hoodie",
+          "action_posing": "gesturing to illustrate the shift",
+          "substance": "creator_knowledge",
+          "substance_evidence": "The internet shifted from social media to interest media three years ago, so algorithms serve by interest not followers"
+        },
+        {
+          "section": "Item 3",
+          "line": "The third misconception is believing you have to step on others to achieve your goals. This idea is completely outdated. The world is abundant, and there's enough success for everyone without tearing others down.",
+          "location": "studio",
+          "broll_request": "visual of collaboration vs. competition",
+          "wardrobe": "casual, branded hoodie",
+          "action_posing": "open hand gestures, reassuring tone",
+          "substance": "creator_knowledge",
+          "substance_evidence": "The idea that success requires stepping on others is outdated because the world is abundant"
+        },
+        {
+          "section": "Rehook",
+          "line": "Are you ready for the last two? These next points might change how you see everything.",
+          "location": "studio",
+          "broll_request": "quick transition, focused shot",
+          "wardrobe": "casual, branded hoodie",
+          "action_posing": "leans in, engaging",
+          "substance": "none",
+          "substance_evidence": "rehook to maintain engagement"
+        },
+        {
+          "section": "Item 4",
+          "line": "The fourth thing people get wrong: they mock friends whose ventures fail, thinking those friends are foolish for taking risks. But those who refuse to take risks often live the most unfulfilling lives.",
+          "location": "studio",
+          "broll_request": "visual of a person trying something new vs. someone observing critically",
+          "wardrobe": "casual, branded hoodie",
+          "action_posing": "assertive, pointing finger",
+          "substance": "creator_knowledge",
+          "substance_evidence": "People who refuse to take risks and instead mock friends whose ventures fail are living unfulfilling lives"
+        },
+        {
+          "section": "Item 5",
+          "line": "And the fifth big mistake is believing your current stressors are overwhelming and unique. I spend time talking to 70 and 90-year-olds. They never focus on daily worries; it’s all about love and family. It proves our current struggles are manageable.",
+          "location": "studio",
+          "broll_request": "split screen showing daily stress vs. a serene older person",
+          "wardrobe": "casual, branded hoodie",
+          "action_posing": "calm, reflective, then a knowing smile",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Spends time talking with 70 to 90-year-old strangers to understand what they value in hindsight / Elderly people focus on love and family rather than daily worries, proving current stressors are manageable"
+        },
+        {
+          "section": "CTA",
+          "line": "Which of these resonated most with you? Let me know in the comments below!",
+          "location": "studio",
+          "broll_request": "text overlay of question",
+          "wardrobe": "casual, branded hoodie",
+          "action_posing": "open, inviting gesture",
+          "substance": "none",
+          "substance_evidence": "call to action to engage"
+        }
+      ],
+      "cta": "Which of these resonated most with you? Let me know in the comments below!"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "opinion",
+          "text": "Society is entering an era that heavily rewards good people, making reputation a person's most valuable asset",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "A brand new account with 9 followers on TikTok or 48 on Instagram can outperform established accounts",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Spends time talking with 70 to 90-year-old strangers to understand what they value in hindsight",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Observed the breakdown of high school cliques during the last 30 days of the school year across multiple classes",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "People who refuse to take risks and instead mock friends whose ventures fail are living unfulfilling lives",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Elderly people focus on love and family rather than daily worries, proving current stressors are manageable",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Wants to produce a movie titled The Last 30 Days about high school cliques dissolving at the end of senior year",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "the most important thing you can do for your kid as a parent is to build...",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "The internet shifted from social media to interest media three years ago, so algorithms serve by interest not followers",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "The idea that success requires stepping on others is outdated because the world is abundant",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "how to build a community",
+        "overthinking and the reasons behind it",
+        "the most important thing you can do for your kid as a parent"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "garyvee",
+      "label": "B-rehook-fixed",
+      "fidelity": "close",
+      "tone": "balanced",
+      "refNote": "A single-lesson explainer: one counterintuitive claim, why people believe the opposite, then how it actually works.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "false",
+            "count": "",
+            "unit": ""
+          },
+          "hook_promise": "The reality that society is entering an era that heavily rewards good people.",
+          "rehook_after_item": "",
+          "beat_debts": [
+            "Why people believe that success requires stepping on others.",
+            "The outdated nature of the belief that success requires stepping on others.",
+            "The abundance of the world that makes stepping on others unnecessary.",
+            "The shift in the internet from social media to interest media.",
+            "How a brand new account can outperform established ones.",
+            "The importance of good reputation in the new era."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook - The surprising truth about success",
+          "target_sec": "5",
+          "scene_type": "VOICEOVER",
+          "proof": "creator_opinion"
+        },
+        {
+          "beat": "Misconception - Why people believe success means stepping on others",
+          "target_sec": "8",
+          "scene_type": "VOICEOVER",
+          "proof": "general"
+        },
+        {
+          "beat": "Correction - The outdated idea of scarcity",
+          "target_sec": "7",
+          "scene_type": "VOICEOVER",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "Evidence - The shift to interest media",
+          "target_sec": "10",
+          "scene_type": "VOICEOVER",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "Proof - New accounts winning on algorithms",
+          "target_sec": "9",
+          "scene_type": "VOICEOVER",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "Conclusion - The reward for good people",
+          "target_sec": "8",
+          "scene_type": "VOICEOVER",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "CTA",
+          "target_sec": "3",
+          "scene_type": "DIRECT_TO_CAMERA",
+          "proof": "none"
+        }
+      ],
+      "concept": {
+        "premise": "Society is moving into an era that heavily rewards good people, making reputation the most valuable asset and challenging the old notion that success requires stepping on others."
+      },
+      "hook_options": [
+        "Stop believing success means stepping on others. The world has changed.",
+        "This old idea of success? It's completely wrong now.",
+        "What if I told you that being a good person is the ultimate cheat code for success?",
+        "The biggest lie you've been told about getting ahead.",
+        "Forget everything you thought you knew about building your empire."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Let me tell you, if you think you have to step on people to succeed, you are completely wrong.",
+          "location": "INDOOR",
+          "broll_request": "Quick cuts of people in competitive scenarios (e.g., foot race start, chess game)",
+          "wardrobe": "CASUAL",
+          "action_posing": "CONFIDENT, DIRECT",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(opinion) Society is entering an era that heavily rewards good people, making reputation a person's most valuable asset"
+        },
+        {
+          "section": "Misconception",
+          "line": "Too many of you still believe that success is a zero-sum game, that for one person to win, another has to lose.",
+          "location": "INDOOR",
+          "broll_request": "Overhead shot of a complex maze, then a single path opening up",
+          "wardrobe": "CASUAL",
+          "action_posing": "THOUGHTFUL",
+          "substance": "general",
+          "substance_evidence": "Common societal belief about competition"
+        },
+        {
+          "section": "Correction",
+          "line": "But the idea that success requires stepping on others is outdated. The world is abundant now, not scarce.",
+          "location": "INDOOR",
+          "broll_request": "Time-lapse of a garden growing, blooming",
+          "wardrobe": "CASUAL",
+          "action_posing": "EMPHATIC",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(opinion) The idea that success requires stepping on others is outdated because the world is abundant"
+        },
+        {
+          "section": "Evidence",
+          "line": "The internet shifted from social media to interest media three years ago. Algorithms now serve by interest, not just followers.",
+          "location": "OUTDOOR",
+          "broll_request": "Split screen showing old social media feeds vs. new personalized feeds with diverse content",
+          "wardrobe": "CASUAL",
+          "action_posing": "EXPLAINING",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(claim) The internet shifted from social media to interest media three years ago, so algorithms serve by interest not followers"
+        },
+        {
+          "section": "Proof",
+          "line": "I've seen brand new accounts with only 9 followers on TikTok or 48 on Instagram outperform established accounts because of this.",
+          "location": "OUTDOOR",
+          "broll_request": "Screenshots of successful viral posts from accounts with low follower counts",
+          "wardrobe": "CASUAL",
+          "action_posing": "GESTURING TO SCREEN",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(claim) A brand new account with 9 followers on TikTok or 48 on Instagram can outperform established accounts"
+        },
+        {
+          "section": "Conclusion",
+          "line": "Society is entering an era that heavily rewards good people. Your reputation is your most valuable asset.",
+          "location": "OUTDOOR",
+          "broll_request": "Diverse group of people smiling, collaborating",
+          "wardrobe": "CASUAL",
+          "action_posing": "INSPIRATIONAL",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(opinion) Society is entering an era that heavily rewards good people, making reputation a person's most valuable asset"
+        },
+        {
+          "section": "CTA",
+          "line": "So, what's one way you've seen being genuinely good pay off? Share it in the comments.",
+          "location": "DIRECT_TO_CAMERA",
+          "broll_request": "N/A",
+          "wardrobe": "CASUAL",
+          "action_posing": "INVITING ENGAGEMENT",
+          "substance": "none",
+          "substance_evidence": "Engagement prompt"
+        }
+      ],
+      "cta": "So, what's one way you've seen being genuinely good pay off? Share it in the comments."
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "opinion",
+          "text": "People who refuse to take risks and instead mock friends whose ventures fail are living unfulfilling lives",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Elderly people focus on love and family rather than daily worries, proving current stressors are manageable",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Society is entering an era that heavily rewards good people, making reputation a person's most valuable asset",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "The internet shifted from social media to interest media three years ago, so algorithms serve by interest not followers",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "A brand new account with 9 followers on TikTok or 48 on Instagram can outperform established accounts",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Spends time talking with 70 to 90-year-old strangers to understand what they value in hindsight",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Observed the breakdown of high school cliques during the last 30 days of the school year across multiple classes",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "The idea that success requires stepping on others is outdated because the world is abundant",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Wants to produce a movie titled The Last 30 Days about high school cliques dissolving at the end of senior year",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "too many of you are overthinking",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "how to build a community",
+        "overthinking and the reasons behind it",
+        "the most important thing you can do for your kid as a parent"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "hanushkaa",
+      "label": "B-rehook-fixed",
+      "fidelity": "balanced",
+      "tone": "balanced",
+      "refNote": "A fast-cut list video: 5 things most people get wrong, each with a concrete payoff, escalating to the strongest last.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "true",
+            "count": "5",
+            "unit": "things most people get wrong"
+          },
+          "hook_promise": "5 common mistakes people make that prevent them from achieving success, with concrete payoffs.",
+          "rehook_after_item": "3",
+          "beat_debts": [
+            "Each mistake needs to lead to a concrete payoff.",
+            "The second mistake needs to be distinct from the first.",
+            "The third mistake needs to be distinct and its payoff clear.",
+            "The fourth mistake should build on the previous ones.",
+            "The fifth mistake should be the strongest and most impactful."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook: Introduce 5 things most people get wrong.",
+          "target_sec": "5",
+          "scene_type": "direct_address",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "Mistake 1: Not starting with zero investment.",
+          "target_sec": "10",
+          "scene_type": "direct_address",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "Mistake 2: Relying on paid marketing from the start.",
+          "target_sec": "10",
+          "scene_type": "direct_address",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "Re-hook: Reiterate the promise and transition to the next mistakes.",
+          "target_sec": "5",
+          "scene_type": "direct_address",
+          "proof": "none"
+        },
+        {
+          "beat": "Mistake 3: Playing it safe and being boring.",
+          "target_sec": "10",
+          "scene_type": "direct_address",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "Mistake 4: Not recognizing unrealized motivations.",
+          "target_sec": "10",
+          "scene_type": "direct_address",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "Mistake 5: Underestimating the power of an instant connection.",
+          "target_sec": "10",
+          "scene_type": "direct_address",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "CTA: Encourage engagement.",
+          "target_sec": "5",
+          "scene_type": "direct_address",
+          "proof": "none"
+        }
+      ],
+      "concept": {
+        "premise": "Here are 5 critical errors people commonly make that hinder their path to success, offering actionable insights from a successful entrepreneur's perspective."
+      },
+      "hook_options": [
+        "Here are 5 things most people get wrong that stop them from achieving real success.",
+        "Want to know the 5 biggest mistakes holding you back? Stay tuned.",
+        "I'm sharing the 5 common pitfalls I see people make on their journey to success.",
+        "If you're making these 5 mistakes, you're leaving success on the table.",
+        "Unlock your potential: these are the 5 things you're probably doing wrong."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Here are 5 things most people get wrong that stop them from achieving real success.",
+          "location": "studio",
+          "broll_request": "fast cuts of successful individuals, luxury items",
+          "wardrobe": "chic, professional",
+          "action_posing": "confident, direct eye contact",
+          "substance": "none",
+          "substance_evidence": "none"
+        },
+        {
+          "section": "Mistake 1",
+          "line": "The first mistake is waiting for capital instead of starting with zero investment. I built my platform, Sellier, starting with nothing and grew it to millions.",
+          "location": "studio",
+          "broll_request": "footage of luxury bags, busy high-end store",
+          "wardrobe": "chic, professional",
+          "action_posing": "gesturing to emphasize points",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Built Sellier, a fast-growing UK resale platform for luxury brands, starting with zero investment"
+        },
+        {
+          "section": "Mistake 2",
+          "line": "The second thing people get wrong? Thinking they need to spend a fortune on marketing. I ran my fashion business for seven years, zero marketing spend, all virality.",
+          "location": "studio",
+          "broll_request": "social media feeds with high engagement, people sharing content",
+          "wardrobe": "chic, professional",
+          "action_posing": "emphatic hand gestures",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Has run her fashion business for seven years with zero marketing spend, relying entirely on virality"
+        },
+        {
+          "section": "Re-hook",
+          "line": "Still with me? We've covered two, but the next mistakes are where things get really interesting.",
+          "location": "studio",
+          "broll_request": "quick montage of aspirational imagery",
+          "wardrobe": "chic, professional",
+          "action_posing": "engaging, slight lean forward",
+          "substance": "none",
+          "substance_evidence": "none"
+        },
+        {
+          "section": "Mistake 3",
+          "line": "The third mistake is being boring or playing it too safe. The secret to viral marketing is to avoid that at all costs. You have to be bold, like leaving Birkin bags in charity shops.",
+          "location": "studio",
+          "broll_request": "viral marketing stunts, people reacting in surprise",
+          "wardrobe": "chic, professional",
+          "action_posing": "animated storytelling",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Believes the secret to viral marketing is to avoid being boring or safe; Ran a viral campaign leaving £10,000 Birkin bags in London charity shops to be sold for £3,000"
+        },
+        {
+          "section": "Mistake 4",
+          "line": "The fourth common pitfall is not reflecting on your unrealized motivations. These rule your life on autopilot until you understand them.",
+          "location": "studio",
+          "broll_request": "thoughtful imagery, person reflecting",
+          "wardrobe": "chic, professional",
+          "action_posing": "calm, reflective",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Believes unrealized motivations rule your life on autopilot until you reflect on them"
+        },
+        {
+          "section": "Mistake 5",
+          "line": "And finally, the fifth thing people miss: the power of an instant, authentic connection. I once sold a £13,500 Birkin in 40 seconds with just one Instagram story.",
+          "location": "studio",
+          "broll_request": "fast-paced social media interaction, luxury items selling quickly",
+          "wardrobe": "chic, professional",
+          "action_posing": "energetic, confident",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Sold a black Birkin bag for £13,500 in roughly 40 seconds by posting a single Instagram story."
+        },
+        {
+          "section": "CTA",
+          "line": "What's one thing you stopped doing that changed your life? Let me know in the comments and follow for more insights!",
+          "location": "studio",
+          "broll_request": "text overlay with question, smiling face",
+          "wardrobe": "chic, professional",
+          "action_posing": "open, inviting",
+          "substance": "none",
+          "substance_evidence": "none"
+        }
+      ],
+      "cta": "What's one thing you stopped doing that changed your life? Let me know in the comments and follow for more insights!"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "experience",
+          "text": "Built Sellier, a fast-growing UK resale platform for luxury brands, starting with zero investment",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "Has run her fashion business for seven years with zero marketing spend, relying entirely on virality",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "grew Sellier from an empty shop with 3 bags to $26M in annual revenue",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "Made her first million selling Birkin bags and has generated up to 26 million in a single year.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "example",
+          "text": "Hosted a drop at her Knightsbridge store selling authentic Chanel bags for under £2,500",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "example",
+          "text": "Ran a viral campaign leaving £10,000 Birkin bags in London charity shops to be sold for £3,000",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Sold a black Birkin bag for £13,500 in roughly 40 seconds by posting a single Instagram story.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Believes the secret to viral marketing is to avoid being boring or safe",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Believes unrealized motivations rule your life on autopilot until you reflect on them",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Would build an AI dating app that analyzes WhatsApp data to match compatible partners",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "hosting a glamorous evening event for Mytheresa in Monaco",
+        "hosting a one-day event at Sellier Brompton Road featuring over 100 luxury bags",
+        "introducing her dog Memphis",
+        "building Sellier Knightsbridge, a luxury resale brand, from an empty shop to $26M in annual revenue"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "hanushkaa",
+      "label": "B-rehook-fixed",
+      "fidelity": "close",
+      "tone": "balanced",
+      "refNote": "A single-lesson explainer: one counterintuitive claim, why people believe the opposite, then how it actually works.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "false",
+            "count": "",
+            "unit": ""
+          },
+          "hook_promise": "learn how something counterintuitive actually works",
+          "rehook_after_item": "",
+          "beat_debts": [
+            "Sets up the counterintuitive claim.",
+            "Explains the common, but wrong, belief.",
+            "Introduces the true mechanism.",
+            "Illustrates the mechanism with an example.",
+            "Reinforces the main idea."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook - Introduce counterintuitive claim",
+          "target_sec": "5",
+          "scene_type": "piece_to_camera",
+          "proof": "Creator's opinion on marketing."
+        },
+        {
+          "beat": "Problem - Why people believe the opposite",
+          "target_sec": "8",
+          "scene_type": "piece_to_camera",
+          "proof": "General knowledge about marketing."
+        },
+        {
+          "beat": "Solution - The actual mechanism",
+          "target_sec": "10",
+          "scene_type": "piece_to_camera",
+          "proof": "Creator's opinion on viral marketing."
+        },
+        {
+          "beat": "Proof - Example of mechanism in action",
+          "target_sec": "12",
+          "scene_type": "piece_to_camera",
+          "proof": "Creator's experience with Birkin bag sale."
+        },
+        {
+          "beat": "Reinforce - Reiterate the core idea",
+          "target_sec": "7",
+          "scene_type": "piece_to_camera",
+          "proof": "Creator's opinion on viral marketing."
+        }
+      ],
+      "concept": {
+        "premise": "Effective marketing doesn't require ad spend, but rather bold, engaging strategies that inherently go viral."
+      },
+      "hook_options": [
+        "Stop wasting money on marketing! Here’s why virality is the only ad spend you need.",
+        "What if I told you that you don't need a single penny for marketing?",
+        "Forget everything you think you know about marketing budgets.",
+        "The secret to my multi-million pound business? Zero marketing spend.",
+        "You're probably overcomplicating marketing. Let me show you the real way."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Stop wasting your money on marketing. For seven years, I've run a multi-million pound business with zero ad spend, relying entirely on virality.",
+          "location": "studio",
+          "broll_request": "B-roll of luxurious items or business assets, showcasing success",
+          "wardrobe": "chic, professional",
+          "action_posing": "confident, direct eye contact",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Has run her fashion business for seven years with zero marketing spend, relying entirely on virality."
+        },
+        {
+          "section": "Problem",
+          "line": "Most people think you need massive budgets, constant campaigns, and endless ads to get noticed. They play it safe, they're boring, and frankly, they just blend in.",
+          "location": "studio",
+          "broll_request": "B-roll depicting generic or uninspired marketing, showing a sea of sameness",
+          "wardrobe": "chic, professional",
+          "action_posing": "slightly dismissive, then authoritative",
+          "substance": "general",
+          "substance_evidence": "Common misconception about marketing."
+        },
+        {
+          "section": "Solution",
+          "line": "But the real secret to viral marketing is to do the complete opposite: avoid being boring or safe. You need to create moments that are so unexpected, so bold, they force people to talk about them.",
+          "location": "studio",
+          "broll_request": "B-roll of people reacting to something surprising or engaging on their phones",
+          "wardrobe": "chic, professional",
+          "action_posing": "energetic, making a clear point",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Believes the secret to viral marketing is to avoid being boring or safe."
+        },
+        {
+          "section": "Proof",
+          "line": "I once sold a black Birkin bag for £13,500 in 40 seconds, just from an Instagram story. That wasn't luck; it was understanding how to create immediate, irresistible buzz.",
+          "location": "studio",
+          "broll_request": "B-roll of a Birkin bag, or an Instagram story interface showing a quick sale",
+          "wardrobe": "chic, professional",
+          "action_posing": "recounting a success story, proud but not boastful",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Sold a black Birkin bag for £13,500 in roughly 40 seconds by posting a single Instagram story."
+        },
+        {
+          "section": "Reinforce",
+          "line": "If you want your business to explode, stop being cautious. Be memorable, be bold, and let your ideas do the marketing for you. That's the only ad spend you'll ever need.",
+          "location": "studio",
+          "broll_request": "B-roll of creator looking empowered, perhaps walking through a successful store",
+          "wardrobe": "chic, professional",
+          "action_posing": "concluding with strong conviction",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Believes the secret to viral marketing is to avoid being boring or safe."
+        }
+      ],
+      "cta": "What's the boldest marketing move you've ever seen? Tell me in the comments!"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "claim",
+          "text": "Made her first million selling Birkin bags and has generated up to 26 million in a single year.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Sold a black Birkin bag for £13,500 in roughly 40 seconds by posting a single Instagram story.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "Has run her fashion business for seven years with zero marketing spend, relying entirely on virality",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "example",
+          "text": "Hosted a drop at her Knightsbridge store selling authentic Chanel bags for under £2,500",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "example",
+          "text": "Ran a viral campaign leaving £10,000 Birkin bags in London charity shops to be sold for £3,000",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Built Sellier, a fast-growing UK resale platform for luxury brands, starting with zero investment",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Believes the secret to viral marketing is to avoid being boring or safe",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Believes unrealized motivations rule your life on autopilot until you reflect on them",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Would build an AI dating app that analyzes WhatsApp data to match compatible partners",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Launched Juice, an intimate self-care brand focused on beauty products for the genital area.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "hosting a glamorous evening event for Mytheresa in Monaco",
+        "hosting a one-day event at Sellier Brompton Road featuring over 100 luxury bags",
+        "introducing her dog Memphis",
+        "building Sellier Knightsbridge, a luxury resale brand, from an empty shop to $26M in annual revenue"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "matthew_berman",
+      "label": "B-rehook-fixed",
+      "fidelity": "balanced",
+      "tone": "balanced",
+      "refNote": "A fast-cut list video: 5 things most people get wrong, each with a concrete payoff, escalating to the strongest last.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "true",
+            "count": "5",
+            "unit": "things"
+          },
+          "hook_promise": "5 common misconceptions about AI.",
+          "rehook_after_item": "3",
+          "beat_debts": [
+            "Each item provides a concrete payoff or reframing.",
+            "The next item builds on the previous, escalating in impact.",
+            "The next item continues the escalation, leading to a re-hook.",
+            "The next item further challenges common understanding.",
+            "The final item reveals the strongest and most impactful misconception."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook: Introduce 5 AI misconceptions.",
+          "target_sec": "7",
+          "scene_type": "piece_to_camera",
+          "proof": "States the enumerated promise clearly."
+        },
+        {
+          "beat": "Misconception 1: Google's AI leadership.",
+          "target_sec": "12",
+          "scene_type": "piece_to_camera",
+          "proof": "Challenges the idea that Google is leading the AI frontier."
+        },
+        {
+          "beat": "Misconception 2: Google's internal competition.",
+          "target_sec": "12",
+          "scene_type": "piece_to_camera",
+          "proof": "Explains Google's internal chatbot and its delay."
+        },
+        {
+          "beat": "Misconception 3: Search engine disruption.",
+          "target_sec": "12",
+          "scene_type": "piece_to_camera",
+          "proof": "Addresses how AI is changing traditional search."
+        },
+        {
+          "beat": "Re-hook: Recap and build anticipation.",
+          "target_sec": "5",
+          "scene_type": "piece_to_camera",
+          "proof": "Reiterates the value proposition and encourages watching for remaining items."
+        },
+        {
+          "beat": "Misconception 4: Google's business model.",
+          "target_sec": "12",
+          "scene_type": "piece_to_camera",
+          "proof": "Explains the innovator's dilemma in relation to Google's AI strategy."
+        },
+        {
+          "beat": "Misconception 5: Google's sustained advantage.",
+          "target_sec": "12",
+          "scene_type": "piece_to_camera",
+          "proof": "Highlights Google's strengths despite missteps."
+        },
+        {
+          "beat": "CTA: Encourage engagement.",
+          "target_sec": "5",
+          "scene_type": "piece_to_camera",
+          "proof": "Prompt audience interaction."
+        }
+      ],
+      "concept": {
+        "premise": "5 things people get wrong about Google's position and strategy in the AI race, revealing the underlying truths and challenges facing the tech giant."
+      },
+      "hook_options": [
+        "Here are 5 things most people get wrong about Google and AI.",
+        "You're probably misunderstanding these 5 key things about Google's AI strategy.",
+        "Think you know where Google stands in AI? Here are 5 common misconceptions.",
+        "Let's debunk 5 popular myths about Google's role and future in artificial intelligence.",
+        "From search to internal projects, here are 5 things people consistently get wrong about Google and AI."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Here are 5 things most people get wrong about Google and AI, and why it matters for the future of tech.",
+          "location": "studio_chair",
+          "broll_request": "fast cuts of AI-related imagery, Google logos, graphs",
+          "wardrobe": "casual_professional",
+          "action_posing": "direct_address_energetic",
+          "substance": "none",
+          "substance_evidence": "None"
+        },
+        {
+          "section": "Item 1",
+          "line": "The first thing: Many believe Google is still at the absolute frontier of AI research. While they published \"Attention Is All You Need\" in 2017, the foundation for modern AI systems, key figures like Demis Hassabis and Jeff Dean have moved into different roles.",
+          "location": "studio_chair",
+          "broll_request": "text overlay: \"Attention Is All You Need\" paper, images of Demis Hassabis and Jeff Dean",
+          "wardrobe": "casual_professional",
+          "action_posing": "slight_lean_in_to_explain",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Google published the Attention Is All You Need paper in 2017, the foundation for modern AI systems; Demis Hassabis stepped down as CEO of Google DeepMind to become chair and chief scientist of Alphabet; Jeff Dean left Google to start a new AI company called Discovery Loop automating scientific discovery"
+        },
+        {
+          "section": "Item 2",
+          "line": "The second misconception is about their internal readiness. Google actually had an internal chatbot named LM Chat a year before ChatGPT launched, but they chose not to release it. This reveals a cautious internal culture.",
+          "location": "studio_chair",
+          "broll_request": "stylized graphic representing \"LM Chat\", comparison graphic of timelines",
+          "wardrobe": "casual_professional",
+          "action_posing": "expressive_hand_gestures",
+          "substance": "product_dna",
+          "substance_evidence": "Google had an internal chatbot named LM Chat a year before ChatGPT but did not release it"
+        },
+        {
+          "section": "Item 3",
+          "line": "The third thing people miss is how traditional ten-blue-link search is being disrupted. Users are increasingly going directly to AI tools for answers, fundamentally changing how we find information, which challenges Google's core business.",
+          "location": "studio_chair",
+          "broll_request": "side-by-side comparison: traditional search results vs. AI chat interface",
+          "wardrobe": "casual_professional",
+          "action_posing": "thoughtful_nod",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Traditional ten-blue-link search is being disrupted by users going directly to AI tools"
+        },
+        {
+          "section": "Re-hook",
+          "line": "So we've covered the shifting landscape, Google's internal caution, and the disruption of search. But the next two points reveal even deeper issues about their strategy and competitive edge.",
+          "location": "studio_chair",
+          "broll_request": "quick montage of previous points' broll",
+          "wardrobe": "casual_professional",
+          "action_posing": "direct_address_engaging",
+          "substance": "none",
+          "substance_evidence": "None"
+        },
+        {
+          "section": "Item 4",
+          "line": "The fourth misconception relates to the innovator's dilemma. Google protected its search and advertising cash cow, which meant middle management prioritized job security over frontier scientific research, slowing down innovation in key areas.",
+          "location": "studio_chair",
+          "broll_request": "graphic of \"innovator's dilemma\", abstract representation of cash flow vs. innovation",
+          "wardrobe": "casual_professional",
+          "action_posing": "explaining_complex_idea",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Google suffers the innovator's dilemma because they protected their search and advertising cash cow; Middle management at Google prioritized job security over frontier scientific research"
+        },
+        {
+          "section": "Item 5",
+          "line": "Finally, the fifth thing people get wrong is underestimating Google's foundational strengths. Despite these missteps, Google remains well-positioned due to its proprietary training data, custom TPU chips – now in their eighth generation – and the immense reach of Android.",
+          "location": "studio_chair",
+          "broll_request": "quick cuts of data centers, TPU chips, Android phone interfaces",
+          "wardrobe": "casual_professional",
+          "action_posing": "confident_summary",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Google remains well-positioned because of proprietary training data, custom TPU chips and Android reach; Google's TPUs are on their eighth generation and provide a competitive advantage"
+        },
+        {
+          "section": "CTA",
+          "line": "What do you think Google's biggest AI challenge is right now? Let me know in the comments below!",
+          "location": "studio_chair",
+          "broll_request": "animated text overlay: \"What do you think?\"",
+          "wardrobe": "casual_professional",
+          "action_posing": "open_and_inviting",
+          "substance": "none",
+          "substance_evidence": "None"
+        }
+      ],
+      "cta": "What do you think Google's biggest AI challenge is right now? Let me know in the comments below!"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "fact",
+          "text": "Google published the Attention Is All You Need paper in 2017, the foundation for modern AI systems",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "Demis Hassabis stepped down as CEO of Google DeepMind to become chair and chief scientist of Alphabet",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "Jeff Dean left Google to start a new AI company called Discovery Loop automating scientific discovery",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Google remains well-positioned because of proprietary training data, custom TPU chips and Android reach",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Google should stop pretending to compete at the frontier and focus on the best open-source model",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Middle management at Google prioritized job security over frontier scientific research",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Traditional ten-blue-link search is being disrupted by users going directly to AI tools",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Google suffers the innovator's dilemma because they protected their search and advertising cash cow",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Google had an internal chatbot named LM Chat a year before ChatGPT but did not release it",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Google's TPUs are on their eighth generation and provide a competitive advantage",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "GPT-5.6 making itself better",
+        "which business will win AI",
+        "15 insane Codex tips that everyone needs",
+        "the worst AI mistakes by companies",
+        "AI going rogue in real life",
+        "Google fumbling and questioning what they are doing",
+        "Mark Zuckerberg calling out Dario and Anthropic",
+        "a potential Deepseek ban"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "matthew_berman",
+      "label": "B-rehook-fixed",
+      "fidelity": "close",
+      "tone": "balanced",
+      "refNote": "A single-lesson explainer: one counterintuitive claim, why people believe the opposite, then how it actually works.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "false",
+            "count": "",
+            "unit": ""
+          },
+          "hook_promise": "an unexpected truth about a tech giant's AI strategy",
+          "rehook_after_item": "",
+          "beat_debts": [
+            "The hook promises a counterintuitive truth about Google's AI.",
+            "Explain why people believe the opposite of the claim.",
+            "Reveal the actual situation and supporting evidence.",
+            "Conclude with the broader implications of this truth."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook - Present the counterintuitive claim.",
+          "target_sec": "8",
+          "scene_type": "piece_to_camera",
+          "proof": "The hook sets up the premise of the video, preparing the audience for an unexpected truth about Google's AI strategy."
+        },
+        {
+          "beat": "Common belief - Explain why people think Google is failing in AI.",
+          "target_sec": "12",
+          "scene_type": "piece_to_camera",
+          "proof": "This beat addresses the prevailing public perception of Google's AI struggles, explaining why many hold this view."
+        },
+        {
+          "beat": "The truth - Reveal Google's actual strengths and strategic advantages.",
+          "target_sec": "15",
+          "scene_type": "piece_to_camera",
+          "proof": "This beat will present the core argument, backed by specific facts and opinions on Google's AI position."
+        },
+        {
+          "beat": "Evidence - Provide specific examples of Google's AI assets.",
+          "target_sec": "10",
+          "scene_type": "piece_to_camera",
+          "proof": "This beat will offer concrete examples, like TPUs and internal projects, to support the claim about Google's strength."
+        },
+        {
+          "beat": "Conclusion - Reiterate the claim and its implications.",
+          "target_sec": "7",
+          "scene_type": "piece_to_camera",
+          "proof": "This beat summarizes the main point and provides a final thought on the topic, leading into the CTA."
+        }
+      ],
+      "concept": {
+        "premise": "Google isn't failing in AI; they are strategically positioned with proprietary data, custom hardware, and significant market reach, despite public perception."
+      },
+      "hook_options": [
+        "Google's AI strategy isn't what you think it is, and they're quietly dominating.",
+        "Everyone says Google is fumbling AI, but here's why that's completely wrong.",
+        "You're hearing all the noise about Google falling behind in AI. Let's talk about the real picture.",
+        "The narrative around Google and AI is completely backwards. They're actually ahead.",
+        "Forget what the headlines say. Google's AI game is stronger than ever, and here's why."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Everyone thinks Google is fumbling AI, right? But what if I told you that narrative is completely backwards, and they're actually set to dominate?",
+          "location": "studio",
+          "broll_request": "Quick cuts of headlines about Google 'fumbling' AI, then transition to more positive, futuristic tech imagery.",
+          "wardrobe": "casual_top",
+          "action_posing": "direct_address_energetic",
+          "substance": "general",
+          "substance_evidence": "Common public perception vs. counter-narrative hook"
+        },
+        {
+          "section": "Common Belief",
+          "line": "It's easy to believe. We've seen their internal chatbot LM Chat a year before ChatGPT, not released. And the innovator's dilemma protecting their search cash cow. It feels like they're just... behind.",
+          "location": "studio",
+          "broll_request": "Shots of Google's search page, then abstract visuals representing missed opportunities or hesitant innovation.",
+          "wardrobe": "casual_top",
+          "action_posing": "thoughtful_nodding",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Google had an internal chatbot named LM Chat a year before ChatGPT but did not release it; Google suffers the innovator's dilemma because they protected their search and advertising cash cow"
+        },
+        {
+          "section": "The Truth",
+          "line": "But the truth is, Google is incredibly well-positioned for the AI future. They have advantages nobody else does.",
+          "location": "studio",
+          "broll_request": "Upbeat, positive b-roll of Google data centers, abstract representations of massive datasets, or high-tech facilities.",
+          "wardrobe": "casual_top",
+          "action_posing": "confident_gestures",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Google remains well-positioned because of proprietary training data, custom TPU chips and Android reach"
+        },
+        {
+          "section": "Evidence",
+          "line": "They've got proprietary training data, their custom TPU chips are on their eighth generation, and let's not forget the sheer reach of Android. These aren't small details; they're massive competitive advantages.",
+          "location": "studio",
+          "broll_request": "Visuals highlighting massive data, microchips, and Android phone interfaces.",
+          "wardrobe": "casual_top",
+          "action_posing": "emphatic_hand_movements",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Google remains well-positioned because of proprietary training data, custom TPU chips and Android reach; Google's TPUs are on their eighth generation and provide a competitive advantage"
+        },
+        {
+          "section": "Conclusion",
+          "line": "So next time you hear about Google 'fumbling' AI, remember: they've built a foundation that makes them a silent giant in this race.",
+          "location": "studio",
+          "broll_request": "Concluding shot: Google logo, then fade to a broader shot of the studio, reflective and confident.",
+          "wardrobe": "casual_top",
+          "action_posing": "thoughtful_and_resolute",
+          "substance": "none",
+          "substance_evidence": "Concluding thought on Google's strategic position"
+        }
+      ],
+      "cta": "What are your thoughts on Google's AI strategy? Let me know in the comments, and don't forget to follow for more tech insights!"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "fact",
+          "text": "Google published the Attention Is All You Need paper in 2017, the foundation for modern AI systems",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "Demis Hassabis stepped down as CEO of Google DeepMind to become chair and chief scientist of Alphabet",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "Jeff Dean left Google to start a new AI company called Discovery Loop automating scientific discovery",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Google remains well-positioned because of proprietary training data, custom TPU chips and Android reach",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Google should stop pretending to compete at the frontier and focus on the best open-source model",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Middle management at Google prioritized job security over frontier scientific research",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Traditional ten-blue-link search is being disrupted by users going directly to AI tools",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Google suffers the innovator's dilemma because they protected their search and advertising cash cow",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Google had an internal chatbot named LM Chat a year before ChatGPT but did not release it",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Google's TPUs are on their eighth generation and provide a competitive advantage",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "GPT-5.6 making itself better",
+        "which business will win AI",
+        "15 insane Codex tips that everyone needs",
+        "the worst AI mistakes by companies",
+        "AI going rogue in real life",
+        "Google fumbling and questioning what they are doing",
+        "Mark Zuckerberg calling out Dario and Anthropic",
+        "a potential Deepseek ban"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "mrbeast",
+      "label": "B-rehook-fixed",
+      "fidelity": "balanced",
+      "tone": "balanced",
+      "refNote": "A fast-cut list video: 5 things most people get wrong, each with a concrete payoff, escalating to the strongest last.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "true",
+            "count": "5",
+            "unit": "things"
+          },
+          "hook_promise": "5 things most people get wrong, each with a concrete payoff, escalating to the strongest last.",
+          "rehook_after_item": "3",
+          "beat_debts": [
+            "The hook promises 5 things most people get wrong.",
+            "This beat introduces the first thing most people get wrong.",
+            "This beat introduces the second thing most people get wrong.",
+            "This beat introduces the third thing most people get wrong, and then re-hooks.",
+            "This beat introduces the fourth thing most people get wrong.",
+            "This beat introduces the fifth and final thing most people get wrong, escalating to the strongest payoff.",
+            "This beat serves as a high-energy outro.",
+            "This beat delivers a call to action."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook",
+          "target_sec": "5",
+          "scene_type": "Explainer",
+          "proof": "Establishes the video's premise and enumeration."
+        },
+        {
+          "beat": "Thing 1",
+          "target_sec": "8",
+          "scene_type": "Explainer",
+          "proof": "Delivers the first enumerated item."
+        },
+        {
+          "beat": "Thing 2",
+          "target_sec": "8",
+          "scene_type": "Explainer",
+          "proof": "Delivers the second enumerated item."
+        },
+        {
+          "beat": "Thing 3 and Re-hook",
+          "target_sec": "10",
+          "scene_type": "Explainer",
+          "proof": "Delivers the third enumerated item and re-engages the viewer."
+        },
+        {
+          "beat": "Thing 4",
+          "target_sec": "8",
+          "scene_type": "Explainer",
+          "proof": "Delivers the fourth enumerated item."
+        },
+        {
+          "beat": "Thing 5",
+          "target_sec": "12",
+          "scene_type": "Explainer",
+          "proof": "Delivers the fifth and strongest enumerated item."
+        },
+        {
+          "beat": "Outro",
+          "target_sec": "3",
+          "scene_type": "Explainer",
+          "proof": "Summarizes the video's energy."
+        },
+        {
+          "beat": "CTA",
+          "target_sec": "3",
+          "scene_type": "Direct to camera",
+          "proof": "Encourages audience engagement."
+        }
+      ],
+      "concept": {
+        "premise": "I'm going to tell you 5 things people commonly misunderstand about epic challenges and how they actually work, culminating in the most surprising one."
+      },
+      "hook_options": [
+        "Here are 5 things you're probably getting wrong about how to win huge challenges!",
+        "You think you know how these massive challenges work? Think again. Here are 5 common mistakes.",
+        "Want to pull off something epic? Here are 5 secrets most people miss.",
+        "I've seen some wild stuff. Here are 5 misconceptions about what it takes to win big.",
+        "Stop messing up! Here are 5 things people always get wrong about extreme challenges."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Alright, I've done some crazy stuff, and in that time, I’ve learned 5 huge things most people get wrong about how these massive challenges actually work.",
+          "location": "Studio set",
+          "broll_request": "Fast montage of various challenge clips (e.g., island survival, large-scale games, money drops)",
+          "wardrobe": "Signature t-shirt",
+          "action_posing": "Energetic, direct to camera, gesturing for emphasis",
+          "substance": "general",
+          "substance_evidence": "Introduction to the topic and enumeration."
+        },
+        {
+          "section": "Thing 1",
+          "line": "The first thing people get wrong? They underestimate the sheer amount of planning. We spent months planning the 30-day tropical island challenge where someone eliminated their ex-boyfriends for $250,000.",
+          "location": "Studio set",
+          "broll_request": "Behind-the-scenes footage of planning, maps, team meetings, showing complexity.",
+          "wardrobe": "Signature t-shirt",
+          "action_posing": "Serious, leaning in slightly, using hands to illustrate scale",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Hosted a 30-day tropical island challenge where a woman eliminated her six ex-boyfriends for $250,000"
+        },
+        {
+          "section": "Thing 2",
+          "line": "Second, people think it’s all about brute strength or raw talent. But honestly, granting wishes for children? It's about empathy and knowing what truly matters to someone.",
+          "location": "Studio set",
+          "broll_request": "Footage of kids smiling, receiving gifts, or interacting with a team member.",
+          "wardrobe": "Signature t-shirt",
+          "action_posing": "Warm smile, open hand gestures, looking thoughtful",
+          "substance": "creator_knowledge",
+          "substance_evidence": "granting wishes for children"
+        },
+        {
+          "section": "Thing 3 and Re-hook",
+          "line": "Third, the biggest prize isn't always money. I visited YouTube headquarters to receive a custom 500 million subscriber award from the CEO. That's way cooler than cash! Stick around for the last two, they're the most surprising.",
+          "location": "Studio set",
+          "broll_request": "Clip of mrbeast at YouTube HQ, receiving award, or a close-up of the award itself.",
+          "wardrobe": "Signature t-shirt",
+          "action_posing": "Proud, holding up an imaginary award, then a playful wink for the re-hook",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Visited YouTube headquarters to receive a custom 500 million subscriber award from the CEO."
+        },
+        {
+          "section": "Thing 4",
+          "line": "Fourth, you might think you need a massive team for everything. But we once sent just one team member to India to find a random subscriber and give them $10,000. Sometimes, less is more.",
+          "location": "Studio set",
+          "broll_request": "Shot of a single team member traveling, or meeting a happy subscriber.",
+          "wardrobe": "Signature t-shirt",
+          "action_posing": "Illustrating with hands, as if describing a journey, then shrugging for 'less is more'",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Sent a team member to India to find a random subscriber and give them 10,000 dollars."
+        },
+        {
+          "section": "Thing 5",
+          "line": "And the fifth, most people assume that these large-scale creator tournaments for $1,000,000 are just for the biggest channels. But truly, anyone with a good idea and the drive can make a huge impact. It's about the creativity, not just the numbers.",
+          "location": "Studio set",
+          "broll_request": "Epic shots of large-scale tournaments, diverse creators participating, big crowds.",
+          "wardrobe": "Signature t-shirt",
+          "action_posing": "Very animated, gesturing broadly, emphasizing the 'anyone' aspect with an encouraging expression",
+          "substance": "creator_knowledge",
+          "substance_evidence": "large-scale creator tournaments for $1,000,000"
+        },
+        {
+          "section": "Outro",
+          "line": "See? There's always more to these challenges than meets the eye. Keep pushing boundaries!",
+          "location": "Studio set",
+          "broll_request": "Quick cuts of high-energy challenge moments.",
+          "wardrobe": "Signature t-shirt",
+          "action_posing": "High-energy, pointing to camera, confident smile",
+          "substance": "none",
+          "substance_evidence": "Concluding statement."
+        },
+        {
+          "section": "CTA",
+          "line": "What's the craziest challenge you've ever thought of? Let me know in the comments!",
+          "location": "Studio set",
+          "broll_request": "None",
+          "wardrobe": "Signature t-shirt",
+          "action_posing": "Direct eye contact, inviting, leaning slightly forward",
+          "substance": "none",
+          "substance_evidence": "Call to action for engagement."
+        }
+      ],
+      "cta": "What's the craziest challenge you've ever thought of? Let me know in the comments!"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "experience",
+          "text": "Visited YouTube headquarters to receive a custom 500 million subscriber award from the CEO.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Sent a team member to India to find a random subscriber and give them 10,000 dollars.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Hosted a 30-day tropical island challenge where a woman eliminated her six ex-boyfriends for $250,000",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "topic",
+          "text": "large-scale creator tournaments for $1,000,000",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "topic",
+          "text": "stranded survival challenges",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "topic",
+          "text": "granting wishes for children",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "racing the fastest man on earth",
+        "surprising a random subscriber with $10,000",
+        "building 10 schools around the world",
+        "a last to leave the grocery store challenge for $250,000",
+        "granting 100 kids their biggest wish",
+        "being trapped on an island until building a boat",
+        "stranding 100 people in the wilderness for $250,000",
+        "being stranded in the Arctic for 7 days",
+        "comparing a $1 cake to a $10,000 cake"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "mrbeast",
+      "label": "B-rehook-fixed",
+      "fidelity": "close",
+      "tone": "balanced",
+      "refNote": "A single-lesson explainer: one counterintuitive claim, why people believe the opposite, then how it actually works.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "false",
+            "count": "",
+            "unit": ""
+          },
+          "hook_promise": "An unexpected truth about success, challenging a common misconception.",
+          "rehook_after_item": "",
+          "beat_debts": [
+            "Beat 1 (Hook) promises a counterintuitive claim. Beat 2 (Misconception) owes the explanation of why people believe the opposite. Beat 3 (Truth) owes the actual explanation of the counterintuitive claim. Beat 4 (Proof) owes evidence for the truth. Beat 5 (Call to Action) owes a final thought and an engagement prompt."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook - Introduce the counterintuitive claim.",
+          "target_sec": "5",
+          "scene_type": "Explainer",
+          "proof": "Intrigue and a clear statement of the unexpected idea."
+        },
+        {
+          "beat": "Misconception - Explain why people commonly believe the opposite.",
+          "target_sec": "8",
+          "scene_type": "Explainer",
+          "proof": "A relatable setup of the common belief."
+        },
+        {
+          "beat": "Truth - Reveal the actual mechanism of the counterintuitive claim.",
+          "target_sec": "10",
+          "scene_type": "Explainer",
+          "proof": "A clear and concise explanation of the claim."
+        },
+        {
+          "beat": "Proof - Provide evidence or an example supporting the truth.",
+          "target_sec": "12",
+          "scene_type": "Explainer with b-roll",
+          "proof": "A concrete example or anecdote."
+        },
+        {
+          "beat": "Call to Action - Soft follow/engagement.",
+          "target_sec": "5",
+          "scene_type": "Explainer",
+          "proof": "A clear prompt for interaction."
+        }
+      ],
+      "concept": {
+        "premise": "Success isn't about doing one thing perfectly, but about consistently doing many things imperfectly, as evidenced by large-scale projects."
+      },
+      "hook_options": [
+        "You think you need to be perfect to succeed? Think again.",
+        "What if I told you that being *imperfect* is the secret to winning big?",
+        "Forget perfection. Here's why consistent imperfection is the key to massive projects.",
+        "Everyone aims for perfect. I've learned it's the wrong approach for huge success.",
+        "The biggest wins don't come from flawless execution. They come from THIS."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "You know what's really wild? The secret to success in huge, massive projects isn't about being perfect.",
+          "location": "Studio set",
+          "broll_request": "Quick cuts of various large-scale, complex projects failing then succeeding through iteration.",
+          "wardrobe": "Signature t-shirt",
+          "action_posing": "Engaged, direct to camera.",
+          "substance": "general",
+          "substance_evidence": "Common misconception vs. reality."
+        },
+        {
+          "section": "Misconception",
+          "line": "Most people think you need every single detail exactly right, every step flawless, especially when the stakes are high.",
+          "location": "Studio set",
+          "broll_request": "Visuals of intricate plans, blueprints, or a single, pristine, perfect object.",
+          "wardrobe": "Signature t-shirt",
+          "action_posing": "Slightly leaning in, conspiratorial tone.",
+          "substance": "general",
+          "substance_evidence": "Common belief about success."
+        },
+        {
+          "section": "Truth",
+          "line": "But for truly massive undertakings, like those million-dollar tournaments or stranded survival challenges, it’s about making a ton of attempts, learning from the chaos, and just keep moving forward.",
+          "location": "Studio set",
+          "broll_request": "Fast-paced montage of various large-scale challenges, showing some minor mishaps quickly overcome.",
+          "wardrobe": "Signature t-shirt",
+          "action_posing": "Emphatic gestures, confident.",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(topic) large-scale creator tournaments for $1,000,000; (topic) stranded survival challenges"
+        },
+        {
+          "section": "Proof",
+          "line": "When we sent a team to India to surprise a subscriber, or put people on a tropical island for 30 days, we knew things wouldn't go perfectly. We just kept adapting.",
+          "location": "Studio set",
+          "broll_request": "Short clips of the India trip and the tropical island challenge, showing both minor challenges and successful outcomes.",
+          "wardrobe": "Signature t-shirt",
+          "action_posing": "Illustrative hand movements, storytelling.",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(experience) Sent a team member to India to find a random subscriber and give them 10,000 dollars.; (experience) Hosted a 30-day tropical island challenge where a woman eliminated her six ex-boyfriends for $250,000"
+        },
+        {
+          "section": "Call to Action",
+          "line": "What's a big project you've worked on where things went wrong but you still pulled it off? Let me know in the comments.",
+          "location": "Studio set",
+          "broll_request": "Subtle graphic overlay prompting comments.",
+          "wardrobe": "Signature t-shirt",
+          "action_posing": "Open, inviting gesture.",
+          "substance": "none",
+          "substance_evidence": "Call to action for engagement."
+        }
+      ],
+      "cta": "What's a big project you've worked on where things went wrong but you still pulled it off? Let me know in the comments."
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "experience",
+          "text": "Visited YouTube headquarters to receive a custom 500 million subscriber award from the CEO.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Sent a team member to India to find a random subscriber and give them 10,000 dollars.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Hosted a 30-day tropical island challenge where a woman eliminated her six ex-boyfriends for $250,000",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "topic",
+          "text": "large-scale creator tournaments for $1,000,000",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "topic",
+          "text": "stranded survival challenges",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "topic",
+          "text": "granting wishes for children",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "racing the fastest man on earth",
+        "surprising a random subscriber with $10,000",
+        "building 10 schools around the world",
+        "a last to leave the grocery store challenge for $250,000",
+        "granting 100 kids their biggest wish",
+        "being trapped on an island until building a boat",
+        "stranding 100 people in the wilderness for $250,000",
+        "being stranded in the Arctic for 7 days",
+        "comparing a $1 cake to a $10,000 cake"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "real_techh",
+      "label": "B-rehook-fixed",
+      "fidelity": "balanced",
+      "tone": "balanced",
+      "refNote": "A fast-cut list video: 5 things most people get wrong, each with a concrete payoff, escalating to the strongest last.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "true",
+            "count": "5",
+            "unit": "things"
+          },
+          "hook_promise": "5 things most people get wrong about their Android phones that you can fix right now.",
+          "rehook_after_item": "3",
+          "beat_debts": [
+            "This beat needs to introduce the first common mistake people make with their Android phones and hint at a simple fix.",
+            "This beat needs to detail the second common Android mistake and explain how to correct it.",
+            "This beat needs to cover the third common Android mistake and its solution, leading into a re-hook.",
+            "This beat needs to introduce the fourth mistake and its clear solution.",
+            "This beat needs to explain the fifth, and strongest, common Android mistake and how to fix it."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook - Introduce 5 common Android mistakes",
+          "target_sec": "7",
+          "scene_type": "fast-cut",
+          "proof": "High energy, quick cuts to pique interest."
+        },
+        {
+          "beat": "Mistake 1: Not clearing residual files",
+          "target_sec": "10",
+          "scene_type": "demo",
+          "proof": "On-screen demonstration of clearing residual files."
+        },
+        {
+          "beat": "Mistake 2: Auto-updates slowing down the phone",
+          "target_sec": "10",
+          "scene_type": "demo",
+          "proof": "On-screen demonstration of disabling auto-updates."
+        },
+        {
+          "beat": "Re-hook",
+          "target_sec": "4",
+          "scene_type": "stand-up",
+          "proof": "Direct address to camera, re-engaging viewer."
+        },
+        {
+          "beat": "Mistake 3: Low-quality videos on social media",
+          "target_sec": "12",
+          "scene_type": "demo",
+          "proof": "On-screen demonstration of TikTok AI enhance feature."
+        },
+        {
+          "beat": "Mistake 4: Not knowing about CapCut Pro access",
+          "target_sec": "10",
+          "scene_type": "stand-up",
+          "proof": "Visual of CapCut logo, creator pointing to phone. "
+        },
+        {
+          "beat": "Mistake 5: Missing out on Nokia Launcher features",
+          "target_sec": "12",
+          "scene_type": "demo",
+          "proof": "On-screen demonstration of Nokia Launcher app features."
+        },
+        {
+          "beat": "CTA - Engagement",
+          "target_sec": "5",
+          "scene_type": "stand-up",
+          "proof": "Creator directly asks a question, encouraging comments."
+        }
+      ],
+      "concept": {
+        "premise": "Here are 5 common mistakes Android users make that can be easily fixed to improve phone performance and experience."
+      },
+      "hook_options": [
+        "Here are 5 common Android phone mistakes that most people get wrong, but you can fix right now for a better phone experience.",
+        "Stop making these 5 Android phone mistakes! I'll show you how to fix them for a faster, smoother device.",
+        "Is your Android acting up? It's probably one of these 5 common mistakes. Let's fix them together.",
+        "Unlock your Android's full potential by avoiding these 5 mistakes that almost everyone makes.",
+        "You're probably making at least one of these 5 Android phone mistakes. Watch to learn how to fix them instantly."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Here are 5 common Android phone mistakes that most people get wrong, but you can fix right now for a better phone experience.",
+          "location": "studio",
+          "broll_request": "Quick cuts of phone screens, UI elements, text overlays of common problems (e.g., \"LAGGING,\" \"SLOW\").",
+          "wardrobe": "casual",
+          "action_posing": "energetic, pointing to screen",
+          "substance": "general",
+          "substance_evidence": "introduction to common problems"
+        },
+        {
+          "section": "Mistake 1",
+          "line": "The first mistake: not clearing residual files from uninstalled apps. This junk really slows down your phone.",
+          "location": "studio",
+          "broll_request": "Screen recording of navigating Play Store > Manage apps and device > Not installed > selecting and deleting residual files.",
+          "wardrobe": "casual",
+          "action_posing": "demonstrating on phone",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Clear hidden Android storage via Play Store, Manage apps and device, Not installed, delete residual files"
+        },
+        {
+          "section": "Mistake 2",
+          "line": "The second mistake is leaving auto-updates on for all your apps. Disabling these for less-used apps can actually make your Android run way faster.",
+          "location": "studio",
+          "broll_request": "Screen recording showing how to disable auto-updates for specific apps in settings.",
+          "wardrobe": "casual",
+          "action_posing": "demonstrating on phone",
+          "substance": "creator_knowledge",
+          "substance_evidence": "disabling auto-updates makes an Android run fast"
+        },
+        {
+          "section": "Re-hook",
+          "line": "Are you making these mistakes? We're already halfway through, but stick around for two more game-changing tips!",
+          "location": "studio",
+          "broll_request": "Upbeat transition graphic, creator looking directly at camera.",
+          "wardrobe": "casual",
+          "action_posing": "engaging, encouraging",
+          "substance": "none",
+          "substance_evidence": "re-engagement point"
+        },
+        {
+          "section": "Mistake 3",
+          "line": "The third common mistake: posting low-quality videos to TikTok. You can actually upscale them natively using the AI enhance effect right before you post.",
+          "location": "studio",
+          "broll_request": "Screen recording of opening TikTok, selecting a video, applying the AI enhance effect before posting.",
+          "wardrobe": "casual",
+          "action_posing": "demonstrating on phone",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Upscale low-quality videos natively within TikTok using the AI enhance effect before posting."
+        },
+        {
+          "section": "Mistake 4",
+          "line": "The fourth mistake is not knowing how to get CapCut Pro for free! Just message the phone number in my bio, and I’ll give you access.",
+          "location": "studio",
+          "broll_request": "Quick cut to creator's bio showing the phone number, then back to creator.",
+          "wardrobe": "casual",
+          "action_posing": "pointing to bio, confident",
+          "substance": "product_dna",
+          "substance_evidence": "Provides access to CapCut Pro to viewers who message the phone number in the account bio."
+        },
+        {
+          "section": "Mistake 5",
+          "line": "And the fifth, and biggest, mistake: not using the Nokia Launcher app for a whole new level of customization and speed on your Android.",
+          "location": "studio",
+          "broll_request": "Screen recording showcasing various features and customizations within the Nokia Launcher app.",
+          "wardrobe": "casual",
+          "action_posing": "demonstrating on phone, enthusiastic",
+          "substance": "product_dna",
+          "substance_evidence": "Nokia Launcher app"
+        },
+        {
+          "section": "CTA",
+          "line": "Which of these mistakes were you making? Let me know in the comments, and don't forget to follow for more Android tips!",
+          "location": "studio",
+          "broll_request": "On-screen text: \"Which mistake were you making?\" and a call to action to follow.",
+          "wardrobe": "casual",
+          "action_posing": "open, inviting",
+          "substance": "none",
+          "substance_evidence": "engagement call to action"
+        }
+      ],
+      "cta": "Which of these mistakes were you making? Let me know in the comments, and don't forget to follow for more Android tips!"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "claim",
+          "text": "Deleting residual files from uninstalled apps and disabling auto-updates makes an Android run fast",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "Users can add an in-display fingerprint lock to phones without one using a third-party app",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "framework",
+          "text": "Clear hidden Android storage via Play Store, Manage apps and device, Not installed, delete residual files",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "framework",
+          "text": "Upscale low-quality videos natively within TikTok using the AI enhance effect before posting.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Provides access to CapCut Pro to viewers who message the phone number in the account bio.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Nokia Launcher app",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "topic",
+          "text": "mobile phone tricks and tips",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "managing or recovering deleted photos",
+        "what to do when your mobile phone storage is full",
+        "a water wallpaper trick",
+        "a Siri app trick",
+        "a phone charging trick",
+        "how to activate or convert a 4G phone to 5G internet",
+        "indisplay fingerprint settings",
+        "the new Nokia Launcher app",
+        "front camera light trick"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "real_techh",
+      "label": "B-rehook-fixed",
+      "fidelity": "close",
+      "tone": "balanced",
+      "refNote": "A single-lesson explainer: one counterintuitive claim, why people believe the opposite, then how it actually works.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "false",
+            "count": "",
+            "unit": ""
+          },
+          "hook_promise": "An unexpected phone trick or tip",
+          "rehook_after_item": "",
+          "beat_debts": [
+            "Why the common belief is wrong",
+            "How the trick actually works",
+            "Demonstration of the trick",
+            "The benefit of the trick for the user"
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook - Presenting the counter-intuitive claim",
+          "target_sec": "5",
+          "scene_type": "primary",
+          "proof": "Creator's direct address to camera, intriguing statement"
+        },
+        {
+          "beat": "Acknowledge the common misconception",
+          "target_sec": "7",
+          "scene_type": "primary",
+          "proof": "Creator's direct address, explaining why people might think otherwise"
+        },
+        {
+          "beat": "Introduce the actual method/solution",
+          "target_sec": "8",
+          "scene_type": "primary",
+          "proof": "Creator's direct address, clearly stating the trick"
+        },
+        {
+          "beat": "Demonstration of the trick",
+          "target_sec": "15",
+          "scene_type": "b-roll",
+          "proof": "Screen recording/visuals of the trick in action"
+        },
+        {
+          "beat": "Explain the benefits/impact",
+          "target_sec": "5",
+          "scene_type": "primary",
+          "proof": "Creator's direct address, highlighting the value to the user"
+        },
+        {
+          "beat": "Call to action",
+          "target_sec": "3",
+          "scene_type": "primary",
+          "proof": "Creator's direct address, soft ask for engagement"
+        }
+      ],
+      "concept": {
+        "premise": "You can make your Android phone run faster by deleting residual files from uninstalled apps and disabling auto-updates, contrary to common belief that just uninstalling or ignoring updates is enough."
+      },
+      "hook_options": [
+        "Thinking your Android is slow because it's old? Think again.",
+        "This one trick will make your Android feel brand new.",
+        "Is your Android lagging? You're probably making this mistake.",
+        "Stop buying new phones, fix your old one with this simple trick.",
+        "You're doing it wrong: the real way to speed up your Android."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Think your Android phone is slow because it's old? Wrong. The real culprit might be hidden in your settings.",
+          "location": "studio",
+          "broll_request": "slow phone UI animation",
+          "wardrobe": "casual",
+          "action_posing": "direct address, intrigued",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(claim) Deleting residual files from uninstalled apps and disabling auto-updates makes an Android run fast"
+        },
+        {
+          "section": "Common Misconception",
+          "line": "Most people just uninstall apps and forget about it, or let updates run automatically. But that leaves a ton of junk behind.",
+          "location": "studio",
+          "broll_request": "animation of app being uninstalled, then residual files remaining",
+          "wardrobe": "casual",
+          "action_posing": "direct address, slightly conspiratorial",
+          "substance": "general",
+          "substance_evidence": "common user behavior"
+        },
+        {
+          "section": "The Real Trick",
+          "line": "To actually speed up your Android, you need to clear those residual files AND disable auto-updates.",
+          "location": "studio",
+          "broll_request": "text overlay: 'Clear Residual Files & Disable Auto-Updates'",
+          "wardrobe": "casual",
+          "action_posing": "direct address, instructional",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(claim) Deleting residual files from uninstalled apps and disabling auto-updates makes an Android run fast"
+        },
+        {
+          "section": "Demonstration",
+          "line": "Head to the Play Store, then 'Manage apps and device,' and tap on 'Not installed.' Here, you can delete all those lingering files. And don't forget to turn off auto-updates in settings.",
+          "location": "studio",
+          "broll_request": "screen recording of navigating Play Store, selecting 'Not installed,' deleting files, and then disabling auto-updates",
+          "wardrobe": "casual",
+          "action_posing": "demonstrating on phone",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(framework) Clear hidden Android storage via Play Store, Manage apps and device, Not installed, delete residual files"
+        },
+        {
+          "section": "Benefits",
+          "line": "This cleans up your phone's memory, stops background processes, and actually makes your Android run faster and smoother.",
+          "location": "studio",
+          "broll_request": "fast and smooth phone UI animation",
+          "wardrobe": "casual",
+          "action_posing": "direct address, enthusiastic",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(claim) Deleting residual files from uninstalled apps and disabling auto-updates makes an Android run fast"
+        },
+        {
+          "section": "CTA",
+          "line": "Try this out and let me know if your phone feels faster! And follow for more tech tips.",
+          "location": "studio",
+          "broll_request": "none",
+          "wardrobe": "casual",
+          "action_posing": "direct address, friendly",
+          "substance": "none",
+          "substance_evidence": "none"
+        }
+      ],
+      "cta": "Follow for more tech tips."
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "claim",
+          "text": "Deleting residual files from uninstalled apps and disabling auto-updates makes an Android run fast",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "Users can add an in-display fingerprint lock to phones without one using a third-party app",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "framework",
+          "text": "Clear hidden Android storage via Play Store, Manage apps and device, Not installed, delete residual files",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "framework",
+          "text": "Upscale low-quality videos natively within TikTok using the AI enhance effect before posting.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Provides access to CapCut Pro to viewers who message the phone number in the account bio.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Nokia Launcher app",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "topic",
+          "text": "mobile phone tricks and tips",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "managing or recovering deleted photos",
+        "what to do when your mobile phone storage is full",
+        "a water wallpaper trick",
+        "a Siri app trick",
+        "a phone charging trick",
+        "how to activate or convert a 4G phone to 5G internet",
+        "indisplay fingerprint settings",
+        "the new Nokia Launcher app",
+        "front camera light trick"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "starterstory",
+      "label": "B-rehook-fixed",
+      "fidelity": "balanced",
+      "tone": "balanced",
+      "refNote": "A fast-cut list video: 5 things most people get wrong, each with a concrete payoff, escalating to the strongest last.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "true",
+            "count": "5",
+            "unit": "things most people get wrong"
+          },
+          "hook_promise": "5 things most people get wrong when trying to build a mobile app, each with a concrete payoff.",
+          "rehook_after_item": "3",
+          "beat_debts": [
+            "Each mistake sets up how to avoid it.",
+            "The first mistake's correction leads to the next mistake.",
+            "The explanation of a mistake leads to why it's a problem.",
+            "The problem leads to the solution.",
+            "The solution transitions to the next mistake to avoid."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook - introduce the 5 mistakes",
+          "target_sec": "5",
+          "scene_type": "Explainer",
+          "proof": "Hooking the audience with a clear enumeration."
+        },
+        {
+          "beat": "Mistake 1: Not solving a painful problem",
+          "target_sec": "8",
+          "scene_type": "Explainer",
+          "proof": "Highlighting a common pitfall that stops app ideas from gaining traction."
+        },
+        {
+          "beat": "Mistake 2: Overcomplicating the solution",
+          "target_sec": "8",
+          "scene_type": "Explainer",
+          "proof": "Addressing the tendency to add too many features, hindering simplicity."
+        },
+        {
+          "beat": "Mistake 3: Ignoring virality in the core idea",
+          "target_sec": "10",
+          "scene_type": "Explainer",
+          "proof": "Emphasizing the importance of inherent shareability for growth."
+        },
+        {
+          "beat": "Re-hook - reminding the audience of the promise",
+          "target_sec": "4",
+          "scene_type": "Explainer",
+          "proof": "Re-engaging viewers by restating the value proposition mid-video."
+        },
+        {
+          "beat": "Mistake 4: Focusing on building over marketing",
+          "target_sec": "9",
+          "scene_type": "Explainer",
+          "proof": "Addressing the misplacement of priorities between product development and promotion."
+        },
+        {
+          "beat": "Mistake 5: Believing you need a technical background",
+          "target_sec": "9",
+          "scene_type": "Explainer",
+          "proof": "Debunking the myth that only highly skilled developers can create successful apps."
+        },
+        {
+          "beat": "CTA - prompt engagement",
+          "target_sec": "3",
+          "scene_type": "Direct to camera",
+          "proof": "A direct call to action to encourage audience interaction."
+        }
+      ],
+      "concept": {
+        "premise": "Here are 5 common mistakes people make when developing mobile apps, and how to avoid them for success."
+      },
+      "hook_options": [
+        "Here are 5 things most people get wrong when trying to build a mobile app, and how you can get them right.",
+        "Stop making these 5 mistakes if you want to build a successful mobile app.",
+        "Want to build a profitable mobile app? Avoid these 5 common errors.",
+        "Most app ideas fail because of these 5 misconceptions. Let me show you what they are.",
+        "I've seen countless app ideas, and these are the 5 biggest mistakes I see people making."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Here are 5 things most people get wrong when trying to build a mobile app, and how you can get them right.",
+          "location": "Studio",
+          "broll_request": "Fast cuts of phone app interfaces, some failing, some successful.",
+          "wardrobe": "Casual, professional",
+          "action_posing": "Engaged, direct to camera",
+          "substance": "general",
+          "substance_evidence": "Introduction to enumerated list."
+        },
+        {
+          "section": "Mistake 1",
+          "line": "The first mistake is not solving a painful problem. The best app ideas fix a real, daily pain point with one killer feature.",
+          "location": "Studio",
+          "broll_request": "Split screen: someone looking frustrated, then a simple app solution.",
+          "wardrobe": "Casual, professional",
+          "action_posing": "Thoughtful, gesturing to emphasize points",
+          "substance": "creator_knowledge",
+          "substance_evidence": "The best mobile app ideas solve a painful problem with one main killer feature"
+        },
+        {
+          "section": "Mistake 2",
+          "line": "The second mistake is overcomplicating the solution. Don't build a Swiss Army knife. Simple is better. Take Early, for example: it's just an alarm clock that forces you to do push-ups.",
+          "location": "Studio",
+          "broll_request": "Montage of complex, cluttered app interfaces vs. a clean, simple one. Show Early app.",
+          "wardrobe": "Casual, professional",
+          "action_posing": "Animated, showing examples on an imaginary phone",
+          "substance": "product_dna",
+          "substance_evidence": "Early is an iOS alarm clock app requiring push-ups to turn off, priced at $29.99 a year"
+        },
+        {
+          "section": "Mistake 3",
+          "line": "The third mistake is ignoring virality in the core idea. Can your app inherently spread? Solve a painful problem simply, and ensure the core idea makes the app inherently viral.",
+          "location": "Studio",
+          "broll_request": "Visuals of a chain reaction or domino effect; people sharing content on phones.",
+          "wardrobe": "Casual, professional",
+          "action_posing": "Emphatic, using hands to illustrate virality",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Solve a painful daily problem simply and ensure the core idea makes the app inherently viral"
+        },
+        {
+          "section": "Re-hook",
+          "line": "We've covered the first three critical mistakes. Stick around for the last two, they're game-changers.",
+          "location": "Studio",
+          "broll_request": "Quick recap montage of the first three points.",
+          "wardrobe": "Casual, professional",
+          "action_posing": "Confident, direct to camera",
+          "substance": "none",
+          "substance_evidence": "Re-engagement for enumerated list."
+        },
+        {
+          "section": "Mistake 4",
+          "line": "The fourth mistake: thinking building the product is harder than marketing it. Getting views and marketing your app is actually more important and harder than the build.",
+          "location": "Studio",
+          "broll_request": "Contrasting images: someone coding vs. someone creating marketing content and engaging on social media.",
+          "wardrobe": "Casual, professional",
+          "action_posing": "Assertive, leaning forward",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Getting views and marketing an app is more important and harder than building the product"
+        },
+        {
+          "section": "Mistake 5",
+          "line": "And the fifth mistake? Believing you need a highly technical background. AI tools have made it possible to build software even if you don't have a technical background.",
+          "location": "Studio",
+          "broll_request": "AI interfaces, abstract coding visuals that resolve into a simple app, someone non-technical using a computer confidently.",
+          "wardrobe": "Casual, professional",
+          "action_posing": "Encouraging, reassuring",
+          "substance": "creator_knowledge",
+          "substance_evidence": "AI tools have made it possible to build software without a highly technical background"
+        },
+        {
+          "section": "CTA",
+          "line": "What's the biggest app development mistake you've seen? Let me know in the comments below!",
+          "location": "Studio",
+          "broll_request": "Text overlay: 'Comment below!'",
+          "wardrobe": "Casual, professional",
+          "action_posing": "Engaged, open gesture",
+          "substance": "none",
+          "substance_evidence": "Call to action for audience engagement."
+        }
+      ],
+      "cta": "What's the biggest app development mistake you've seen? Let me know in the comments below!"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "opinion",
+          "text": "The best mobile app ideas solve a painful problem with one main killer feature",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Created a free database of over 30 successful mobile app ideas with real revenue numbers",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "there are two types of people who will succeed",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "The Early app grew from zero to over $50,000 a month in revenue within its first four months.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Grew the Early app by paying TikTok and Instagram influencers to integrate it into day-in-the-life videos",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "The iOS 26 update introduced the AlarmKit API, letting third-party apps connect to the native alarm",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "framework",
+          "text": "Solve a painful daily problem simply and ensure the core idea makes the app inherently viral",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Getting views and marketing an app is more important and harder than building the product",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "AI tools have made it possible to build software without a highly technical background",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Early is an iOS alarm clock app requiring push-ups to turn off, priced at $29.99 a year",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "a $300K/month idea men would never think to build",
+        "the dead simple tech stack powering a $100K/month app",
+        "an alarm clock app where you do push-ups to turn it off that made $50K in 28 days",
+        "an app built in 60 days that makes $340K/month",
+        "quitting a job at Meta to build a $30K/month SaaS",
+        "making $50K per month working 5 hours a week",
+        "how Postiz went from $17K to $143K/month in 4 months",
+        "turning a spreadsheet into a $30K/month Micro-SaaS",
+        "cold-DMing thousands of influencers with one killer insight to grow an app"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "starterstory",
+      "label": "B-rehook-fixed",
+      "fidelity": "close",
+      "tone": "balanced",
+      "refNote": "A single-lesson explainer: one counterintuitive claim, why people believe the opposite, then how it actually works.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "false",
+            "count": "",
+            "unit": ""
+          },
+          "hook_promise": "A counterintuitive claim about success.",
+          "rehook_after_item": "",
+          "beat_debts": [
+            "Why people believe the opposite",
+            "How it actually works and why it's better"
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook: Counterintuitive claim",
+          "target_sec": "5",
+          "scene_type": "direct_address",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "Common belief / misconception",
+          "target_sec": "8",
+          "scene_type": "direct_address",
+          "proof": "general"
+        },
+        {
+          "beat": "The reality / how it works",
+          "target_sec": "12",
+          "scene_type": "direct_address",
+          "proof": "creator_knowledge"
+        },
+        {
+          "beat": "Specific example / proof",
+          "target_sec": "15",
+          "scene_type": "b-roll",
+          "proof": "product_dna"
+        },
+        {
+          "beat": "Reinforce the core idea",
+          "target_sec": "8",
+          "scene_type": "direct_address",
+          "proof": "creator_knowledge"
+        }
+      ],
+      "concept": {
+        "premise": "There are two types of people who will succeed, and it's not what most people think. Success in app development hinges more on marketing than building."
+      },
+      "hook_options": [
+        "Most people think success in app development is about building a great product. They're wrong.",
+        "You're probably thinking about app success all wrong. Here's why.",
+        "This is the secret to building a successful app that nobody talks about.",
+        "Forget what you know about successful app development. It's actually this.",
+        "Want to build an app that makes money? It's not about the code."
+      ],
+      "script": [
+        {
+          "section": "Hook: Counterintuitive Claim",
+          "line": "There are two types of people who will succeed, and it's not about having a technical background.",
+          "location": "studio",
+          "broll_request": "creator looking thoughtful, then confident",
+          "wardrobe": "casual",
+          "action_posing": "direct address, confident, slightly leaning in",
+          "substance": "creator_knowledge",
+          "substance_evidence": "there are two types of people who will succeed"
+        },
+        {
+          "section": "Common Belief / Misconception",
+          "line": "Most aspiring app developers spend all their time perfecting their product, thinking the best app wins.",
+          "location": "studio",
+          "broll_request": "quick cuts of people coding intensely",
+          "wardrobe": "casual",
+          "action_posing": "emphatic hand gestures",
+          "substance": "general",
+          "substance_evidence": "common misconception about app development"
+        },
+        {
+          "section": "The Reality / How It Works",
+          "line": "But the truth is, getting views and marketing an app is more important, and harder, than building the product itself.",
+          "location": "studio",
+          "broll_request": "split screen: code on one side, social media metrics on the other",
+          "wardrobe": "casual",
+          "action_posing": "serious, direct eye contact",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Getting views and marketing an app is more important and harder than building the product"
+        },
+        {
+          "section": "Specific Example / Proof",
+          "line": "My own app, Early, grew from zero to over $50,000 a month in revenue within its first four months, not because it was perfect, but because we focused on influencer marketing.",
+          "location": "studio",
+          "broll_request": "Early app UI, then a montage of day-in-the-life TikToks featuring the app",
+          "wardrobe": "casual",
+          "action_posing": "animated, pointing to screen",
+          "substance": "product_dna",
+          "substance_evidence": "The Early app grew from zero to over $50,000 a month in revenue within its first four months. Grew the Early app by paying TikTok and Instagram influencers to integrate it into day-in-the-life videos"
+        },
+        {
+          "section": "Reinforce the Core Idea",
+          "line": "AI tools have made building the software easier than ever, so your focus needs to shift to making your app inherently viral.",
+          "location": "studio",
+          "broll_request": "AI tools UI, then a graphic showing viral growth curve",
+          "wardrobe": "casual",
+          "action_posing": "final, strong statement",
+          "substance": "creator_knowledge",
+          "substance_evidence": "AI tools have made it possible to build software without a highly technical background; Solve a painful daily problem simply and ensure the core idea makes the app inherently viral"
+        }
+      ],
+      "cta": "Follow for more insights on building successful apps!"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "claim",
+          "text": "there are two types of people who will succeed",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "The Early app grew from zero to over $50,000 a month in revenue within its first four months.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Grew the Early app by paying TikTok and Instagram influencers to integrate it into day-in-the-life videos",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "The iOS 26 update introduced the AlarmKit API, letting third-party apps connect to the native alarm",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "framework",
+          "text": "Solve a painful daily problem simply and ensure the core idea makes the app inherently viral",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "The best mobile app ideas solve a painful problem with one main killer feature",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Getting views and marketing an app is more important and harder than building the product",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "AI tools have made it possible to build software without a highly technical background",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Early is an iOS alarm clock app requiring push-ups to turn off, priced at $29.99 a year",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "product",
+          "text": "Created a free database of over 30 successful mobile app ideas with real revenue numbers",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "a $300K/month idea men would never think to build",
+        "the dead simple tech stack powering a $100K/month app",
+        "an alarm clock app where you do push-ups to turn it off that made $50K in 28 days",
+        "an app built in 60 days that makes $340K/month",
+        "quitting a job at Meta to build a $30K/month SaaS",
+        "making $50K per month working 5 hours a week",
+        "how Postiz went from $17K to $143K/month in 4 months",
+        "turning a spreadsheet into a $30K/month Micro-SaaS",
+        "cold-DMing thousands of influencers with one killer insight to grow an app"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "thejoemoffett",
+      "label": "B-rehook-fixed",
+      "fidelity": "balanced",
+      "tone": "balanced",
+      "refNote": "A fast-cut list video: 5 things most people get wrong, each with a concrete payoff, escalating to the strongest last.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "true",
+            "count": "5",
+            "unit": "things"
+          },
+          "hook_promise": "5 things most people get wrong about real estate investing that are costing them thousands in cash flow.",
+          "rehook_after_item": "3",
+          "beat_debts": [
+            "Each item will reveal a common mistake and then set up the next, offering a clearer path to higher cash flow.",
+            "The next point will build on the idea of smart property utilization to maximize income.",
+            "This beat builds on the idea of maximizing space, leading to the financial benefits.",
+            "The following beat focuses on the financial gains from applying these strategies, especially in co-living.",
+            "The final point will present the biggest payoff, leaving the viewer with a strong, actionable insight."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook - Establish the problem and promise the solution.",
+          "target_sec": "8",
+          "scene_type": "piece_to_camera",
+          "proof": "Creator states the hook and the count."
+        },
+        {
+          "beat": "Mistake 1: Ignoring unused spaces for bedrooms.",
+          "target_sec": "12",
+          "scene_type": "piece_to_camera",
+          "proof": "Creator outlines the first mistake with a clear example."
+        },
+        {
+          "beat": "Mistake 2: Only considering traditional long-term rentals.",
+          "target_sec": "12",
+          "scene_type": "piece_to_camera",
+          "proof": "Creator introduces the second mistake and its implications."
+        },
+        {
+          "beat": "Re-hook - Reiterate value and encourage continued viewing.",
+          "target_sec": "5",
+          "scene_type": "piece_to_camera",
+          "proof": "Creator re-engages audience with the promise of more insights."
+        },
+        {
+          "beat": "Mistake 3: Fearing 'ugly' properties.",
+          "target_sec": "12",
+          "scene_type": "piece_to_camera",
+          "proof": "Creator describes the third mistake and offers a counterpoint."
+        },
+        {
+          "beat": "Mistake 4: Overlooking co-living as a win-win.",
+          "target_sec": "12",
+          "scene_type": "piece_to_camera",
+          "proof": "Creator details the fourth mistake, emphasizing the co-living benefit."
+        },
+        {
+          "beat": "Mistake 5: Believing small cash flow is enough.",
+          "target_sec": "12",
+          "scene_type": "piece_to_camera",
+          "proof": "Creator explains the final mistake and its financial impact."
+        },
+        {
+          "beat": "Outro - Call to action.",
+          "target_sec": "7",
+          "scene_type": "piece_to_camera",
+          "proof": "Creator delivers a soft CTA for engagement."
+        }
+      ],
+      "concept": {
+        "premise": "Here are 5 things most people get wrong about real estate investing that are costing them thousands in cash flow every single month. By avoiding these common mistakes, you can unlock significant financial freedom."
+      },
+      "hook_options": [
+        "Here are 5 things most people get wrong about real estate investing that are costing them thousands in cash flow.",
+        "Stop making these 5 real estate investing mistakes that are crushing your cash flow.",
+        "Want to generate $1,000+ a month in cash flow? Avoid these 5 common real estate errors.",
+        "Most investors are missing out on major cash flow because of these 5 misconceptions.",
+        "The 5 biggest real estate investing mistakes I see people make that are costing them serious money."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Here are 5 things most people get wrong about real estate investing that are costing them thousands in cash flow every single month.",
+          "location": "Home Office",
+          "broll_request": "Quick cuts of typical residential properties, then maybe a house with multiple bedrooms or a 'for rent' sign.",
+          "wardrobe": "Casual, approachable.",
+          "action_posing": "Direct eye contact, confident and engaging.",
+          "substance": "general",
+          "substance_evidence": "Introduction of common mistakes in real estate."
+        },
+        {
+          "section": "Mistake 1",
+          "line": "The first mistake: ignoring unused spaces. Most people overlook converting basements, living rooms, or garages into more bedrooms.",
+          "location": "Home Office",
+          "broll_request": "Split screen showing a typical living room/basement and then a diagram or graphic indicating potential new bedrooms.",
+          "wardrobe": "Casual, approachable.",
+          "action_posing": "Using hands to emphasize points, slightly leaning forward.",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(framework) Maximizes rental cash flow by converting unused spaces like basements and garages into bedrooms"
+        },
+        {
+          "section": "Mistake 2",
+          "line": "The second mistake I see is focusing only on traditional long-term rentals. The truth is, that $200 a month cash flow can be wiped out by one repair.",
+          "location": "Home Office",
+          "broll_request": "Graphic showing a small profit margin for traditional rental vs. a larger one. Maybe a quick shot of a leaky faucet or a broken appliance.",
+          "wardrobe": "Casual, approachable.",
+          "action_posing": "Slightly more emphatic, using a hand gesture to suggest something being ",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(opinion) Traditional long-term rentals are risky because $200 a month cash flow is wiped out by one repair"
+        },
+        {
+          "section": "Re-hook",
+          "line": "You're probably thinking, how can I actually make this work? Stick around, because the next three points will show you exactly how to boost your cash flow.",
+          "location": "Home Office",
+          "broll_request": "Quick montage of successful property transformations.",
+          "wardrobe": "Casual, approachable.",
+          "action_posing": "Engaging, a knowing smile.",
+          "substance": "none",
+          "substance_evidence": "Transition and re-engagement."
+        },
+        {
+          "section": "Mistake 3",
+          "line": "The third mistake: never buying an 'ugly' property. I’ve seen ugly houses print $2,000 a month in cash flow after smart conversions. Don't be afraid of a little renovation.",
+          "location": "Home Office",
+          "broll_request": "Before and after shots of an 'ugly' house becoming attractive, or a graphic showing cash flow increase from an initial investment.",
+          "wardrobe": "Casual, approachable.",
+          "action_posing": "Confident, pointing to an imaginary ",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(claim) a specific ugly house prints $2K a month; (opinion) never buy an ugly property"
+        },
+        {
+          "section": "Mistake 4",
+          "line": "The fourth mistake: overlooking co-living. This is a win-win! It creates necessary affordable housing and helps owners generate $1,000s in cash flow.",
+          "location": "Home Office",
+          "broll_request": "Graphic illustrating how a 4-bedroom becomes 8 bedrooms, with text about affordable housing.",
+          "wardrobe": "Casual, approachable.",
+          "action_posing": "Open hand gestures, emphasizing the ",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(claim) Co-Living is a win-win for real estate owners and tenants; (opinion) Subdividing houses into more bedrooms creates necessary affordable housing in expensive markets"
+        },
+        {
+          "section": "Mistake 5",
+          "line": "And the fifth mistake: believing a small cash flow is enough. Why settle for $200 when you can convert a 4-bedroom house into 8, generating over $1,000 a month?",
+          "location": "Home Office",
+          "broll_request": "Graphic showing $200 crossed out, replaced by $1000+. Text highlighting the difference.",
+          "wardrobe": "Casual, approachable.",
+          "action_posing": "Leaning in, speaking with conviction.",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(claim) Can generate $1,000 a month in cash flow by converting a 4-bedroom house into an 8-bedroom house"
+        },
+        {
+          "section": "Outro",
+          "line": "If you found these insights helpful for achieving financial freedom, give me a follow for more real estate investing tips!",
+          "location": "Home Office",
+          "broll_request": "A graphic with the creator's handle and a call to follow.",
+          "wardrobe": "Casual, approachable.",
+          "action_posing": "Smiling, gesturing to follow.",
+          "substance": "none",
+          "substance_evidence": "Call to action for social media engagement."
+        }
+      ],
+      "cta": "Follow for more real estate investing tips!"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "claim",
+          "text": "Can generate $1,000 a month in cash flow by converting a 4-bedroom house into an 8-bedroom house",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Purchased a 4-bed 3-bath house planning to convert basement, living room and garage into four bedrooms",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "framework",
+          "text": "Maximizes rental cash flow by converting unused spaces like basements and garages into bedrooms",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Subdividing houses into more bedrooms creates necessary affordable housing in expensive markets",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Traditional long-term rentals are risky because $200 a month cash flow is wiped out by one repair",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "a specific ugly house prints $2K a month",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "Co-Living is a win-win for real estate owners and tenants",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "never buy an ugly property",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "topic",
+          "text": "achieving financial freedom and independence",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "topic",
+          "text": "real estate investing tips, rules, and early mistakes",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "rehabbing a co-living property on the road to financial freedom",
+        "creative financing and what the seller is thinking",
+        "one mistake high-performing men keep making",
+        "five things broke people believe about money"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "thejoemoffett",
+      "label": "B-rehook-fixed",
+      "fidelity": "close",
+      "tone": "balanced",
+      "refNote": "A single-lesson explainer: one counterintuitive claim, why people believe the opposite, then how it actually works.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "false",
+            "count": "",
+            "unit": ""
+          },
+          "hook_promise": "A counterintuitive claim about real estate investing.",
+          "rehook_after_item": "",
+          "beat_debts": [
+            "Why people believe the opposite",
+            "How it actually works with this creator's strategy",
+            "Proof of concept for the strategy",
+            "The benefit of this strategy for owners and tenants."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook: Counterintuitive claim",
+          "target_sec": "5",
+          "scene_type": "Impactful Statement",
+          "proof": "Creator's opinion"
+        },
+        {
+          "beat": "Why people believe the opposite/common wisdom",
+          "target_sec": "7",
+          "scene_type": "Problem/Misconception",
+          "proof": "General knowledge"
+        },
+        {
+          "beat": "The actual strategy: Co-Living",
+          "target_sec": "8",
+          "scene_type": "Solution/Framework",
+          "proof": "Creator's framework"
+        },
+        {
+          "beat": "Specific example/proof",
+          "target_sec": "7",
+          "scene_type": "Case Study",
+          "proof": "Creator's claim"
+        },
+        {
+          "beat": "Win-win for owners and tenants",
+          "target_sec": "6",
+          "scene_type": "Benefit Statement",
+          "proof": "Creator's opinion"
+        },
+        {
+          "beat": "Call to Action",
+          "target_sec": "3",
+          "scene_type": "Direct Address",
+          "proof": "None"
+        }
+      ],
+      "concept": {
+        "premise": "Investing in 'ugly' properties and converting them to co-living spaces is a powerful strategy for high cash flow and creates affordable housing, contrary to common beliefs about traditional rentals and property aesthetics."
+      },
+      "hook_options": [
+        "This is why you SHOULD buy ugly houses.",
+        "Stop chasing pretty properties if you want real cash flow.",
+        "Everyone tells you to buy nice houses, but they're wrong.",
+        "Want $2,000 a month in cash flow? It's not what you think.",
+        "The secret to financial freedom in real estate is actually... ugly houses."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Everyone tells you to never buy an ugly house. But that's exactly how you can generate insane cash flow.",
+          "location": "Creator's home office",
+          "broll_request": "Quick cuts of typical 'ugly' house exteriors, then a modern, clean co-living interior.",
+          "wardrobe": "Casual, smart-casual top",
+          "action_posing": "Direct address, confident, slight head tilt on 'ugly'",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(opinion) never buy an ugly property"
+        },
+        {
+          "section": "Problem/Misconception",
+          "line": "Most people think traditional long-term rentals are the way to go. But a typical $200 a month cash flow can be wiped out by one single repair.",
+          "location": "Creator's home office",
+          "broll_request": "Animated graphic showing $200 cash flow, then a wrench icon wiping it out.",
+          "wardrobe": "Same",
+          "action_posing": "Slightly skeptical, then authoritative",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(opinion) Traditional long-term rentals are risky because $200 a month cash flow is wiped out by one repair"
+        },
+        {
+          "section": "Solution/Framework",
+          "line": "Instead, I maximize rental cash flow by converting unused spaces like basements and garages into extra bedrooms, creating co-living properties.",
+          "location": "Creator's home office",
+          "broll_request": "Before/After shots or animation of a basement/garage being converted into a bedroom.",
+          "wardrobe": "Same",
+          "action_posing": "Explaining with hand gestures, pointing to conceptual visuals",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(framework) Maximizes rental cash flow by converting unused spaces like basements and garages into bedrooms"
+        },
+        {
+          "section": "Proof of Concept",
+          "line": "I purchased a 4-bed 3-bath house and converted the basement, living room, and garage into four additional bedrooms. That specific ugly house now prints $2,000 a month.",
+          "location": "Creator's home office",
+          "broll_request": "Photos of the specific 'ugly' house mentioned, then a graphic showing a jump from 4 to 8 bedrooms and then to $2K/month cash flow.",
+          "wardrobe": "Same",
+          "action_posing": "Emphatic, holding up fingers to indicate numbers",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(experience) Purchased a 4-bed 3-bath house planning to convert basement, living room and garage into four bedrooms; (claim) a specific ugly house prints $2K a month"
+        },
+        {
+          "section": "Win-Win",
+          "line": "Co-living is a win-win: it creates necessary affordable housing in expensive markets and offers real estate owners significantly higher cash flow.",
+          "location": "Creator's home office",
+          "broll_request": "Split screen: happy tenants moving into a nice room on one side, cash flow graphic on the other.",
+          "wardrobe": "Same",
+          "action_posing": "Positive, open hand gestures",
+          "substance": "creator_knowledge",
+          "substance_evidence": "(opinion) Subdividing houses into more bedrooms creates necessary affordable housing in expensive markets; (claim) Co-Living is a win-win for real estate owners and tenants"
+        },
+        {
+          "section": "Call to Action",
+          "line": "What are your thoughts on co-living? Let me know in the comments!",
+          "location": "Creator's home office",
+          "broll_request": "None",
+          "wardrobe": "Same",
+          "action_posing": "Engaging, looking directly at camera",
+          "substance": "none",
+          "substance_evidence": "None"
+        }
+      ],
+      "cta": "What are your thoughts on co-living? Let me know in the comments!"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "claim",
+          "text": "Can generate $1,000 a month in cash flow by converting a 4-bedroom house into an 8-bedroom house",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "experience",
+          "text": "Purchased a 4-bed 3-bath house planning to convert basement, living room and garage into four bedrooms",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "framework",
+          "text": "Maximizes rental cash flow by converting unused spaces like basements and garages into bedrooms",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Subdividing houses into more bedrooms creates necessary affordable housing in expensive markets",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "Traditional long-term rentals are risky because $200 a month cash flow is wiped out by one repair",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "a specific ugly house prints $2K a month",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "claim",
+          "text": "Co-Living is a win-win for real estate owners and tenants",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "opinion",
+          "text": "never buy an ugly property",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "topic",
+          "text": "achieving financial freedom and independence",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "topic",
+          "text": "real estate investing tips, rules, and early mistakes",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "rehabbing a co-living property on the road to financial freedom",
+        "creative financing and what the seller is thinking",
+        "one mistake high-performing men keep making",
+        "five things broke people believe about money"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  }
+]

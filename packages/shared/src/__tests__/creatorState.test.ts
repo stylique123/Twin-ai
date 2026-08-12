@@ -271,3 +271,42 @@ describe('three modes, and the default is a product decision', () => {
     }
   })
 })
+
+// ── THE FALSE OWNERSHIP CLAIM A CREATOR PANEL CAUGHT ────────────────────────
+describe('a business claim in the plural is still a claim about the creator', () => {
+  it('catches "we grew it", which shipped in a real generated script', () => {
+    // ⚠️ Written for a channel that REPORTS on other founders' businesses:
+    // "Take Early, for example. We grew it from zero to over $50,000 a month."
+    // Early is somebody else's app. The detector missed it twice over — `we`
+    // was not a pronoun it looked for, and `grew` was not a verb it knew.
+    const c = creatorStateClaim('Take Early, for example. We grew it from zero to over $50,000 a month.')
+    expect(c).not.toBeNull()
+    expect(c?.kind).toBe('action')
+  })
+
+  it('catches the growth verbs a false ownership claim reaches for', () => {
+    for (const line of [
+      'We scaled it to seven figures in a year.',
+      'We founded the company in 2019.',
+      'I grew it from nothing.',
+      'We acquired the app last spring.',
+      'We ran that experiment for six months.',
+    ]) {
+      expect(creatorStateClaim(line), line).not.toBeNull()
+    }
+  })
+
+  it('leaves the RHETORICAL "we" alone, because the verb list gates it', () => {
+    // ⚖️ "We" meaning everyone is ordinary commentary and condemning it would
+    // fail half of every script. The pairing with a deliberate act is what makes
+    // the plural safe to detect at all — `we` alone would be a disaster.
+    for (const line of [
+      "We're switching from the attention economy to the trust economy.",
+      'We all know the algorithm changed.',
+      'We tend to overthink this.',
+      'We should be asking a different question.',
+    ]) {
+      expect(creatorStateClaim(line), line).toBeNull()
+    }
+  })
+})

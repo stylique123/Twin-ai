@@ -137,6 +137,13 @@ export const EXCLUDED = {
     + 'the deliberate ABSENCE of an INSERT policy are therefore unexercised on staging, '
     + 'which is the real cost of this exclusion and is worth saying out loud: nothing '
     + 'proves before production that a creator cannot insert claims about themselves. ⚠️ MANUAL APPLY: applied to production BY HAND on 2026-08-11, together with 0120 and in one transaction (verified: both tables exist with RLS on). The RLS policies still have no automated exercise anywhere — that cost stands.',
+  '0123_merge_creator_knowledge':
+    'Creates a function over `creator_knowledge`, the table 0121 above excludes — staging '
+    + 'does not have it, so CREATE FUNCTION would succeed and then reference a missing '
+    + 'table at first call, which is worse than failing outright. ⚠️ MANUAL APPLY '
+    + 'OUTSTANDING: until it is applied, insertKnowledge logs '
+    + '`creator_knowledge_merge_absent` and falls back to the plain insert that loses a '
+    + 'batch on the first duplicate — the defect this migration exists to fix.',
   '0122_creator_knowledge_source':
     'Adds a nullable `source` column plus a CHECK constraint and an index to '
     + '`creator_knowledge` — a table 0121 above excludes, so staging does not have it '

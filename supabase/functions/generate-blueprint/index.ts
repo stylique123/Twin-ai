@@ -314,11 +314,28 @@ const ASSERTED_RESULT = /\b(?:saved|earned|made|cost|took)\s+me\b|\bfor me,? (?:
 const ASSERTED_HISTORY = /\bI(?:'ve| have)\s+[\w ]{0,30}?\bfor\s+(?:\d+|a|an|several|many|one|two|three|four|five|six|seven|eight|nine|ten|twelve|eighteen)\b|\bI used to\b/i
 const ASSERTED_EXPERIENCE = /\bwhen I (?:tried|used|got|bought|switched|tested)\b/i
 const ASSERTED_RELATIONSHIP = /\bmy (?:team|company|clients?|students?|staff|agency)\b/i
-/** Something the creator DID: started, stopped, switched, quit, built.
+/** Something the creator DID: started, stopped, switched, quit, built, grew.
  *  ⚖️ Deliberately about deliberate acts. "I saw", "I thought" are not choices
- *  a creator can be held to, and condemning them would fail ordinary narration. */
+ *  a creator can be held to, and condemning them would fail ordinary narration.
+ *
+ *  ⚠️ "WE" COUNTS, AND MISSING IT LET A FALSE OWNERSHIP CLAIM SHIP. A creator
+ *  panel reading real generated scripts found this line, written for a channel
+ *  that REPORTS on other founders' businesses:
+ *
+ *      "Take Early, for example. We grew it from zero to over $50,000 a month."
+ *
+ *  Early is somebody else's app. The script claimed it as the creator's own, and
+ *  this detector missed it twice over: `we` was not in the pronoun set, and
+ *  `grew` was not in the verb set. A business claim in the first-person PLURAL
+ *  is still a claim about the creator's life — "we" is their company — and the
+ *  growth verbs are exactly the ones a false ownership claim reaches for.
+ *
+ *  ⚖️ "WE" IS NARROWER THAN IT LOOKS, BECAUSE THE VERB LIST GATES IT. Generic
+ *  "we all know", "we're switching to a trust economy" — the rhetorical `we`
+ *  that means everyone — takes none of these verbs and stays out. The pairing is
+ *  what makes it safe; `we` alone would have condemned ordinary commentary. */
 const ASSERTED_ACTION =
-  /\bI (?:\w+ly |just |recently |finally |once )*(?:stopped|started|switched|quit|ditched|dropped|cancelled|canceled|built|made|launched|deleted|swapped)\b/i
+  /\b(?:I|we) (?:\w+ly |just |recently |finally |once )*(?:stopped|started|switched|quit|ditched|dropped|cancelled|canceled|built|made|launched|deleted|swapped|grew|scaled|founded|acquired|ran)\b/i
 
 /** A possessive on something concrete: "my WHOOP", "my electric bike".
  *  The capture is the thing itself, so a caller can resolve it as an entity.
@@ -1452,7 +1469,9 @@ SCRIPT & HOOK INTEGRATION:
   * "substance_evidence": for creator_knowledge and product_dna, quote or closely paraphrase the specific supplied item you used. For the others, one short phrase naming what the beat rests on. Never leave it empty when substance is creator_knowledge.
 - A PLACEHOLDER IS A FAILED BEAT, NOT A DRAFT. Never write "[Phone Model]", "[product name]", "the new XYZ phone", "Brand X", or any other stand-in for a specific you do not have. If you cannot name the thing, you have three honest options and no fourth: state the general fact in neutral terms, write the beat around a specific you DO have from the lists above, or drop the claim. Filling the gap with a bracket hands the creator a script they cannot read aloud.
 - NEVER WRITE A PERSONAL HISTORY THE CREATOR IS NOT ON RECORD FOR. Lines like "I used it as my only phone for six months", "I bought three of these", "I switched last year" are claims about this person's life. Write one only when the knowledge list contains a first-person statement saying so. No amount of general knowledge licenses it — "most people find" is honest where "I found" is a fabrication.
-- KILL THE BORING MIDDLE. Short-form retention dies in the 40-60% stretch, not at the start. Place an explicit RE-HOOK beat around the 40% mark: a second open loop or escalation ("but here is the part nobody tells you", "and this is where it gets weird") that re-promises something new BEFORE the natural drop-off, so the middle never sags. Mark that beat's section as "Re-hook".
+- KILL THE BORING MIDDLE. Short-form retention dies in the 40-60% stretch, not at the start. Around the 40% mark, ESCALATE INTO the next real item rather than pausing to announce that you are about to. Mark that beat's section as "Re-hook".
+  * THE RE-HOOK CARRIES SUBSTANCE. It is the opening clause of the next substantive beat, not a beat of its own: "and this is where it gets weird — thigh bones are stronger than concrete" is a re-hook; "and this is where it gets weird" alone is a stall. If a beat's only job is to promise that content is coming, it is not a beat.
+  * NEVER WRITE A PROGRESS CHECK. "Still with me?", "You are halfway there", "Ready for the last two?", "If you are still watching" — these ask the viewer to notice how long they have been watching, which is the opposite of retention, and they consume a beat to say nothing. Real creators do not say them.
 - Front-load the payoff promise, keep delivering, and place ONE clear CTA near the end that fits the goal: prefer a save ("save this so you can do it later") or a comment-bait question over a generic "follow for more".
 
 SHOT LIST & ASSET SPECIFICATION (B-ROLL & TALKING HEADS):

@@ -1,0 +1,851 @@
+[
+  {
+    "case": {
+      "creator": "gnexplain3d",
+      "label": "A-caption",
+      "fidelity": "balanced",
+      "tone": "balanced",
+      "refNote": "A fast-cut list video: 5 surprising facts, each with a visual payoff, escalating to the most shocking last.",
+      "sources": [
+        "caption"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "true",
+            "count": "5",
+            "unit": "surprising facts"
+          },
+          "hook_promise": "5 surprising facts you won't believe.",
+          "rehook_after_item": "3",
+          "beat_debts": [
+            "Each fact must be more surprising than the last.",
+            "The visual payoff must escalate with each fact.",
+            "The previous fact's visual must be topped by the next.",
+            "The most shocking fact needs the most impactful visual.",
+            "The final fact must be the grandest reveal."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook - Introduce the 5 surprising facts",
+          "target_sec": "5",
+          "scene_type": "Explainer",
+          "proof": "Establishes enumeration and promise."
+        },
+        {
+          "beat": "Fact 1 - ASMR inflatable toy popping",
+          "target_sec": "10",
+          "scene_type": "Demonstration",
+          "proof": "First fact with visual payoff."
+        },
+        {
+          "beat": "Fact 2 - General surprising fact",
+          "target_sec": "10",
+          "scene_type": "Explainer",
+          "proof": "Second fact, more surprising."
+        },
+        {
+          "beat": "Fact 3 - General surprising fact (Re-hook after this)",
+          "target_sec": "10",
+          "scene_type": "Explainer",
+          "proof": "Third fact, escalating surprise, re-hook point."
+        },
+        {
+          "beat": "Re-hook - Remind viewer of the promise",
+          "target_sec": "5",
+          "scene_type": "Explainer",
+          "proof": "Re-engages audience for remaining facts."
+        },
+        {
+          "beat": "Fact 4 - General surprising fact",
+          "target_sec": "10",
+          "scene_type": "Explainer",
+          "proof": "Fourth fact, increasing shock."
+        },
+        {
+          "beat": "Fact 5 - Most shocking fact",
+          "target_sec": "10",
+          "scene_type": "Explainer",
+          "proof": "The most surprising fact, grand finale."
+        },
+        {
+          "beat": "CTA - Soft follow",
+          "target_sec": "5",
+          "scene_type": "Explainer",
+          "proof": "Engages audience for future content."
+        }
+      ],
+      "concept": {
+        "premise": "Here are 5 surprising facts, escalating in shock value, each with a powerful visual payoff."
+      },
+      "hook_options": [
+        "Here are 5 surprising facts that will absolutely blow your mind, especially the last one!",
+        "Get ready for 5 mind-bending facts you won't believe are true. Trust me, the fifth will get you.",
+        "You think you know everything? Think again! Here are 5 surprising facts you absolutely need to hear.",
+        "From the weird to the wild, I'm dropping 5 facts today that are genuinely shocking.",
+        "Can you handle the truth? I've got 5 surprising facts that will make you question everything."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Get ready to have your mind blown, because I'm about to drop 5 truly surprising facts that escalate in weirdness, all the way to the absolute craziest one at the end!",
+          "location": "Studio",
+          "broll_request": "Dynamic text animations highlighting '5 surprising facts'",
+          "wardrobe": "Casual, comfortable",
+          "action_posing": "Engaging, direct to camera",
+          "substance": "none",
+          "substance_evidence": "Introduction to enumerated list."
+        },
+        {
+          "section": "Fact 1",
+          "line": "First, did you know ASMR videos of inflating toys popping can actually reduce stress? It's the unexpected sensory delight that calms the mind.",
+          "location": "Studio",
+          "broll_request": "3D animation of a large, colorful inflatable toy slowly inflating and then gently popping with satisfying ASMR sound effects.",
+          "wardrobe": "Casual, comfortable",
+          "action_posing": "Curious, slightly amused",
+          "substance": "creator_knowledge",
+          "substance_evidence": "ASMR videos of inflating toys popping"
+        },
+        {
+          "section": "Fact 2",
+          "line": "Second, get this: a single bolt of lightning contains enough energy to toast 100,000 slices of bread. That's a lot of breakfast!",
+          "location": "Studio",
+          "broll_request": "3D animation showing a lightning bolt striking a toaster, then rapidly multiplying slices of toast.",
+          "wardrobe": "Casual, comfortable",
+          "action_posing": "Expressive, wide-eyed",
+          "substance": "general",
+          "substance_evidence": "Common science fact about lightning energy."
+        },
+        {
+          "section": "Fact 3",
+          "line": "Third, here's one for you: there are more possible iterations of a game of chess than there are atoms in the observable universe. Mind-boggling, right?",
+          "location": "Studio",
+          "broll_request": "3D animation representing a vast, expanding universe contrasted with an infinitely complex chess board.",
+          "wardrobe": "Casual, comfortable",
+          "action_posing": "Thoughtful, slightly amazed",
+          "substance": "general",
+          "substance_evidence": "Well-known fact about chess complexity."
+        },
+        {
+          "section": "Re-hook",
+          "line": "Still with me? Good, because the next two facts are where things get truly wild. You don't want to miss what's coming!",
+          "location": "Studio",
+          "broll_request": "Quick cuts of previous visuals, building anticipation.",
+          "wardrobe": "Casual, comfortable",
+          "action_posing": "Intense, drawing viewer in",
+          "substance": "none",
+          "substance_evidence": "Re-engaging the audience mid-list."
+        },
+        {
+          "section": "Fact 4",
+          "line": "Fourth, prepare yourself: a group of owls is called a parliament. Imagine a bunch of wise, feathery creatures debating important owl matters!",
+          "location": "Studio",
+          "broll_request": "3D animation of several anthropomorphic owls in tiny suits sitting around a miniature parliamentary chamber.",
+          "wardrobe": "Casual, comfortable",
+          "action_posing": "Playful, slightly conspiratorial",
+          "substance": "general",
+          "substance_evidence": "Collective noun for owls."
+        },
+        {
+          "section": "Fact 5",
+          "line": "And for the fifth, the most surprising fact: the total weight of all the ants on Earth is estimated to be greater than the total weight of all humans. Think about that for a second!",
+          "location": "Studio",
+          "broll_request": "3D animation depicting a giant scale, with one side piled high with tiny ants outweighing a single human figure on the other.",
+          "wardrobe": "Casual, comfortable",
+          "action_posing": "Shocked, emphasizing the weight of the claim",
+          "substance": "general",
+          "substance_evidence": "Estimates on total biomass of ants vs. humans."
+        },
+        {
+          "section": "CTA",
+          "line": "Which of these facts surprised you the most? Let me know in the comments below, and follow for more mind-bending explanations!",
+          "location": "Studio",
+          "broll_request": "Text overlay: 'Follow for more!'",
+          "wardrobe": "Casual, comfortable",
+          "action_posing": "Friendly, open",
+          "substance": "none",
+          "substance_evidence": "Call to action for engagement."
+        }
+      ],
+      "cta": "Which fact surprised you the most? Let me know in the comments, and follow for more!"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "topic",
+          "text": "ASMR videos of inflating toys popping",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "ASMR fridge restock",
+        "a story about a girl joining the Army Hostel where trouble begins",
+        "a story about a girl failing every test but winning every laugh",
+        "a story about a girl trying flyboarding just for one hug",
+        "a story about a big sister getting angry and then realizing the truth",
+        "a story about someone taking advantage of his tall height at his grandparents",
+        "a story about a grandma's smart tricks where the granddaughter pays the price every time",
+        "a story about a man who couldn't fix a door so he closed it forever"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "gnexplain3d",
+      "label": "B-caption+transcript",
+      "fidelity": "balanced",
+      "tone": "balanced",
+      "refNote": "A fast-cut list video: 5 surprising facts, each with a visual payoff, escalating to the most shocking last.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "true",
+            "count": "5",
+            "unit": "surprising facts"
+          },
+          "hook_promise": "5 surprising facts you won't believe are true",
+          "rehook_after_item": "3",
+          "beat_debts": [
+            "Each fact is more surprising than the last",
+            "The next fact will be even more unbelievable",
+            "Get ready for another mind-blowing revelation",
+            "Prepare for the most shocking fact of all",
+            "This final fact will leave you speechless"
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook - Introduce 5 facts",
+          "target_sec": "6",
+          "scene_type": "3D animation",
+          "proof": "Visuals for each fact being introduced quickly"
+        },
+        {
+          "beat": "Fact 1 - Human brain ignores nose",
+          "target_sec": "12",
+          "scene_type": "3D animation",
+          "proof": "Animated brain ignoring a nose in the field of vision"
+        },
+        {
+          "beat": "Fact 2 - Pinching elbow skin",
+          "target_sec": "12",
+          "scene_type": "3D animation",
+          "proof": "Animated person pinching their elbow with no visible pain"
+        },
+        {
+          "beat": "Fact 3 - Laptop battery charging",
+          "target_sec": "12",
+          "scene_type": "3D animation",
+          "proof": "Animated battery charging to 80% with a longer life indicator"
+        },
+        {
+          "beat": "Rehook - Tease remaining facts",
+          "target_sec": "6",
+          "scene_type": "3D animation",
+          "proof": "Quick cuts of upcoming fact visuals"
+        },
+        {
+          "beat": "Fact 4 - Human thigh bones",
+          "target_sec": "12",
+          "scene_type": "3D animation",
+          "proof": "Animated thigh bone compared to a concrete block"
+        },
+        {
+          "beat": "Fact 5 - Voice recording weirdness",
+          "target_sec": "12",
+          "scene_type": "3D animation",
+          "proof": "Animated sound waves showing internal vs. external voice perception"
+        },
+        {
+          "beat": "CTA - Engagement",
+          "target_sec": "5",
+          "scene_type": "3D animation",
+          "proof": "Text prompt for engagement"
+        }
+      ],
+      "concept": {
+        "premise": "Here are 5 surprising facts that your brain will struggle to comprehend, presented with captivating 3D animation."
+      },
+      "hook_options": [
+        "Here are 5 surprising facts that will blow your mind!",
+        "You won't believe these 5 facts are actually true.",
+        "Get ready for 5 shocking truths that defy common sense.",
+        "Can you handle these 5 unbelievable facts?",
+        "Prepare to have your perception shattered with these 5 surprising facts."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Prepare to have your mind blown with 5 surprising facts you won't believe are true!",
+          "location": "Studio",
+          "broll_request": "Fast cuts of visual representations of the upcoming facts.",
+          "wardrobe": "Casual",
+          "action_posing": "Engaged, confident",
+          "substance": "none",
+          "substance_evidence": "Introduction to the list"
+        },
+        {
+          "section": "Fact 1",
+          "line": "First, did you know your brain actually ignores your nose, even though it's always in your field of vision?",
+          "location": "Studio",
+          "broll_request": "3D animation of a brain ignoring a nose in its visual field.",
+          "wardrobe": "Casual",
+          "action_posing": "Curious, pointing",
+          "substance": "creator_knowledge",
+          "substance_evidence": "The human brain ignores the nose even though it is always in the field of vision."
+        },
+        {
+          "section": "Fact 2",
+          "line": "Second, you can pinch the skin on your elbow as hard as possible without feeling any pain. Try it!",
+          "location": "Studio",
+          "broll_request": "3D animation of a person pinching their elbow with no reaction.",
+          "wardrobe": "Casual",
+          "action_posing": "Demonstrative, inviting participation",
+          "substance": "creator_knowledge",
+          "substance_evidence": "You can pinch the skin on your elbow as hard as possible without feeling any pain."
+        },
+        {
+          "section": "Fact 3",
+          "line": "Third, laptop batteries last longer when charged only up to 80 percent instead of the full 100 percent.",
+          "location": "Studio",
+          "broll_request": "3D animation showing a laptop battery charging to 80% and a text overlay indicating extended lifespan.",
+          "wardrobe": "Casual",
+          "action_posing": "Informative, explanatory",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Laptop batteries last longer when charged only up to 80 percent instead of the full 100 percent."
+        },
+        {
+          "section": "Rehook",
+          "line": "Still with me? We've got two more mind-bending facts coming your way!",
+          "location": "Studio",
+          "broll_request": "Quick, energetic cuts teasing the next two facts.",
+          "wardrobe": "Casual",
+          "action_posing": "Energetic, building anticipation",
+          "substance": "none",
+          "substance_evidence": "Mid-video re-hook"
+        },
+        {
+          "section": "Fact 4",
+          "line": "Fourth, your human thigh bones are actually stronger than concrete! Imagine that incredible strength.",
+          "location": "Studio",
+          "broll_request": "3D animation comparing a human thigh bone to a block of concrete, highlighting its superior strength.",
+          "wardrobe": "Casual",
+          "action_posing": "Awe-inspired, emphasizing strength",
+          "substance": "creator_knowledge",
+          "substance_evidence": "Human thigh bones are stronger than concrete."
+        },
+        {
+          "section": "Fact 5",
+          "line": "And finally, fifth, you don't hear your real voice when you talk, which is why your own voice recordings sound so weird to you.",
+          "location": "Studio",
+          "broll_request": "3D animation illustrating sound waves and how our internal perception of our voice differs from external recordings.",
+          "wardrobe": "Casual",
+          "action_posing": "Thoughtful, reflective",
+          "substance": "creator_knowledge",
+          "substance_evidence": "People do not hear their real voice when they talk, making their own voice recordings sound weird to them."
+        },
+        {
+          "section": "CTA",
+          "line": "What was the most surprising fact to you? Let me know in the comments!",
+          "location": "Studio",
+          "broll_request": "Text overlay with the question, encouraging comments.",
+          "wardrobe": "Casual",
+          "action_posing": "Engaged, inviting interaction",
+          "substance": "none",
+          "substance_evidence": "Call to action for audience engagement"
+        }
+      ],
+      "cta": "What was the most surprising fact to you? Let me know in the comments!"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "fact",
+          "text": "Laptop batteries last longer when charged only up to 80 percent instead of the full 100 percent.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "topic",
+          "text": "ASMR videos of inflating toys popping",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "Human thigh bones are stronger than concrete.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "You can pinch the skin on your elbow as hard as possible without feeling any pain.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "The human brain ignores the nose even though it is always in the field of vision.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "The average person blinks 15 to 20 times per minute, totaling around 1200 times per hour.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "People do not hear their real voice when they talk, making their own voice recordings sound weird to them.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "framework",
+          "text": "To break a car window, one should aim for the edges and corners rather than the center where the glass is strongest.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "framework",
+          "text": "People should not eat snow for hydration unless absolutely necessary.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "framework",
+          "text": "Passengers should resist inflating their life jackets immediately during a plane water landing.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "ASMR fridge restock",
+        "a story about a girl joining the Army Hostel where trouble begins",
+        "a story about a girl failing every test but winning every laugh",
+        "a story about a girl trying flyboarding just for one hug",
+        "a story about a big sister getting angry and then realizing the truth",
+        "a story about someone taking advantage of his tall height at his grandparents",
+        "a story about a grandma's smart tricks where the granddaughter pays the price every time",
+        "a story about a man who couldn't fix a door so he closed it forever"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "gnexplain3d",
+      "label": "A-caption",
+      "fidelity": "close",
+      "tone": "balanced",
+      "refNote": "A survival-tips explainer: one counterintuitive rule, why people get it wrong, then the correct method.",
+      "sources": [
+        "caption"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "false",
+            "count": "",
+            "unit": ""
+          },
+          "hook_promise": "A counterintuitive survival rule and how to get it right.",
+          "rehook_after_item": "",
+          "beat_debts": [
+            "Sets up the counterintuitive rule.",
+            "Explains why people commonly misunderstand the rule.",
+            "Presents the correct, counterintuitive method for the rule.",
+            "Reinforces the correct method with a practical application or detail."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook - Present counterintuitive rule.",
+          "target_sec": "4",
+          "scene_type": "Explainer",
+          "proof": "Establishes the core topic immediately."
+        },
+        {
+          "beat": "Explain common mistake.",
+          "target_sec": "8",
+          "scene_type": "Explainer",
+          "proof": "Shows why the common understanding is flawed."
+        },
+        {
+          "beat": "Introduce correct method.",
+          "target_sec": "10",
+          "scene_type": "Explainer",
+          "proof": "Reveals the proper, counterintuitive solution."
+        },
+        {
+          "beat": "Elaborate on correct method.",
+          "target_sec": "8",
+          "scene_type": "Explainer",
+          "proof": "Provides further detail or a practical example of the correct method."
+        },
+        {
+          "beat": "CTA",
+          "target_sec": "3",
+          "scene_type": "Call to Action",
+          "proof": "Encourages audience engagement."
+        }
+      ],
+      "concept": {
+        "premise": "Many common ideas are wrong, and understanding the surprising truth can be genuinely useful or entertaining."
+      },
+      "hook_options": [
+        "You've been told to do it THIS way, but actually, that's completely wrong.",
+        "The one rule everyone misunderstands, and what you SHOULD be doing.",
+        "Forget what you think you know about [topic related to ASMR inflation], here's the real truth.",
+        "Why your instincts are dead wrong about [topic related to ASMR inflation].",
+        "Prepare to have your mind blown: the surprising truth about [topic related to ASMR inflation] is not what you think."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "You know those satisfying ASMR videos of inflating toys popping? What if I told you the way you think about enjoying them is all wrong?",
+          "location": "Studio",
+          "broll_request": "Quick cuts of various inflating toys, close-ups of the toys stretching just before popping.",
+          "wardrobe": "Casual, comfortable shirt.",
+          "action_posing": "Engaged, slightly mysterious, direct address.",
+          "substance": "creator_knowledge",
+          "substance_evidence": "ASMR videos of inflating toys popping"
+        },
+        {
+          "section": "Common Mistake",
+          "line": "Most people just focus on the sound of the pop itself, but that's like only listening to the end of a song. You're missing the crucial build-up and the subtle textures leading to that explosive finish.",
+          "location": "Studio",
+          "broll_request": "Show a person listening to a video, perhaps looking a bit bored or unfocused until the pop.",
+          "wardrobe": "Casual, comfortable shirt.",
+          "action_posing": "Expressive, using hands to illustrate 'missing' something.",
+          "substance": "general",
+          "substance_evidence": "Common focus on the 'pop' in ASMR."
+        },
+        {
+          "section": "Correct Method",
+          "line": "The real secret to ASMR inflation videos is to focus on the tension – the sound of the air stretching the material, the subtle creaks and groans as it expands to its limit. That's where the true ASMR magic lies.",
+          "location": "Studio",
+          "broll_request": "Macro shots of a balloon or toy slowly inflating, showing the material stretching, with subtle visual cues of tension.",
+          "wardrobe": "Casual, comfortable shirt.",
+          "action_posing": "Leaning in, conspiratorial, emphasizing the 'secret'.",
+          "substance": "general",
+          "substance_evidence": "Focus on tension and expansion in ASMR."
+        },
+        {
+          "section": "Elaboration",
+          "line": "By tuning into those pre-pop sounds, you're not just waiting for the climax; you're immersed in the entire journey of anticipation, making the final pop even more satisfying and impactful.",
+          "location": "Studio",
+          "broll_request": "Continue with macro shots of inflation, perhaps a visual representation of sound waves for the stretching.",
+          "wardrobe": "Casual, comfortable shirt.",
+          "action_posing": "Thoughtful, reinforcing the benefit of the new perspective.",
+          "substance": "general",
+          "substance_evidence": "Increased satisfaction from anticipation."
+        },
+        {
+          "section": "CTA",
+          "line": "What's your favorite ASMR sound? Let me know in the comments!",
+          "location": "Studio",
+          "broll_request": "N/A",
+          "wardrobe": "Casual, comfortable shirt.",
+          "action_posing": "Friendly, open, inviting interaction.",
+          "substance": "none",
+          "substance_evidence": "Call to action."
+        }
+      ],
+      "cta": "What's your favorite ASMR sound? Let me know in the comments!"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "topic",
+          "text": "ASMR videos of inflating toys popping",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "ASMR fridge restock",
+        "a story about a girl joining the Army Hostel where trouble begins",
+        "a story about a girl failing every test but winning every laugh",
+        "a story about a girl trying flyboarding just for one hug",
+        "a story about a big sister getting angry and then realizing the truth",
+        "a story about someone taking advantage of his tall height at his grandparents",
+        "a story about a grandma's smart tricks where the granddaughter pays the price every time",
+        "a story about a man who couldn't fix a door so he closed it forever"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  },
+  {
+    "case": {
+      "creator": "gnexplain3d",
+      "label": "B-caption+transcript",
+      "fidelity": "close",
+      "tone": "balanced",
+      "refNote": "A survival-tips explainer: one counterintuitive rule, why people get it wrong, then the correct method.",
+      "sources": [
+        "caption",
+        "transcript"
+      ]
+    },
+    "blueprint": {
+      "reference_read": {
+        "mechanism": {
+          "enumeration": {
+            "is_enumerated": "false",
+            "count": "",
+            "unit": ""
+          },
+          "hook_promise": "A counterintuitive survival tip to stay hydrated.",
+          "rehook_after_item": "",
+          "beat_debts": [
+            "The common mistake leads to a problem.",
+            "The problem is solved by the correct method.",
+            "The correct method is explained with context."
+          ]
+        }
+      },
+      "beat_plan": [
+        {
+          "beat": "Hook - Present counterintuitive rule",
+          "target_sec": "5",
+          "scene_type": "Explainer",
+          "proof": "Direct statement of the rule."
+        },
+        {
+          "beat": "Problem - Why people get it wrong",
+          "target_sec": "8",
+          "scene_type": "Explainer",
+          "proof": "Explanation of the common misconception."
+        },
+        {
+          "beat": "Solution - The correct method",
+          "target_sec": "10",
+          "scene_type": "Explainer",
+          "proof": "Description of the correct approach."
+        },
+        {
+          "beat": "Context/Elaboration",
+          "target_sec": "7",
+          "scene_type": "Explainer",
+          "proof": "Additional detail or caveat for the solution."
+        }
+      ],
+      "concept": {
+        "premise": "Eating snow for hydration can be dangerous and should only be done as a last resort because it can lower your body temperature and dehydrate you further."
+      },
+      "hook_options": [
+        "Do NOT eat snow if you're stranded and thirsty!",
+        "Think snow is a good source of hydration? Think again!",
+        "Here's why eating snow when you're thirsty is a bad idea.",
+        "Surprising survival tip: eating snow can actually make you MORE dehydrated.",
+        "The one thing you should AVOID if you're desperate for water in the snow."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "If you ever find yourself stranded in a snowy wilderness and thirsty, do NOT eat the snow!",
+          "location": "Studio",
+          "broll_request": "3D animation of a person looking thirsty in a snowy landscape, then reaching for snow.",
+          "wardrobe": "Casual",
+          "action_posing": "Direct address to camera, slightly urgent expression.",
+          "substance": "creator_knowledge",
+          "substance_evidence": "People should not eat snow for hydration unless absolutely necessary."
+        },
+        {
+          "section": "Problem",
+          "line": "While it seems like a quick fix, consuming snow can actually lower your body temperature, forcing your body to burn more calories to warm up, which in turn, can dehydrate you even further.",
+          "location": "Studio",
+          "broll_request": "3D animation of a person shivering while eating snow, showing internal body temperature dropping.",
+          "wardrobe": "Casual",
+          "action_posing": "Explaining gesture.",
+          "substance": "general",
+          "substance_evidence": "Explanation of why eating snow causes dehydration."
+        },
+        {
+          "section": "Solution",
+          "line": "Instead, if you absolutely must use snow for hydration, melt it first. Your best bet is to use a container and a heat source.",
+          "location": "Studio",
+          "broll_request": "3D animation of snow being melted in a container over a small fire or heat source.",
+          "wardrobe": "Casual",
+          "action_posing": "Demonstrative gestures.",
+          "substance": "general",
+          "substance_evidence": "Melting snow before consumption."
+        },
+        {
+          "section": "Context",
+          "line": "This way, you get the water without the energy drain, helping you stay hydrated and warm in a survival situation.",
+          "location": "Studio",
+          "broll_request": "3D animation of a person drinking melted water from a cup, looking more comfortable.",
+          "wardrobe": "Casual",
+          "action_posing": "Conclusive nod.",
+          "substance": "none",
+          "substance_evidence": "Conclusion to advice."
+        }
+      ],
+      "cta": "What's another common survival myth you've heard? Let me know in the comments!"
+    },
+    "supplied": {
+      "knowledge": [
+        {
+          "kind": "fact",
+          "text": "People do not hear their real voice when they talk, making their own voice recordings sound weird to them.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "framework",
+          "text": "People should not eat snow for hydration unless absolutely necessary.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "topic",
+          "text": "ASMR videos of inflating toys popping",
+          "basis": "demonstrated",
+          "source": "caption",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "Human thigh bones are stronger than concrete.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "You can pinch the skin on your elbow as hard as possible without feeling any pain.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "The human brain ignores the nose even though it is always in the field of vision.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "Laptop batteries last longer when charged only up to 80 percent instead of the full 100 percent.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "fact",
+          "text": "The average person blinks 15 to 20 times per minute, totaling around 1200 times per hour.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "framework",
+          "text": "To break a car window, one should aim for the edges and corners rather than the center where the glass is strongest.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        },
+        {
+          "kind": "framework",
+          "text": "Passengers should resist inflating their life jackets immediately during a plane water landing.",
+          "basis": "stated",
+          "source": "transcript",
+          "timesSeen": 1,
+          "sourceRef": null,
+          "sourceExpiry": null
+        }
+      ],
+      "covered": [
+        "ASMR fridge restock",
+        "a story about a girl joining the Army Hostel where trouble begins",
+        "a story about a girl failing every test but winning every laugh",
+        "a story about a girl trying flyboarding just for one hug",
+        "a story about a big sister getting angry and then realizing the truth",
+        "a story about someone taking advantage of his tall height at his grandparents",
+        "a story about a grandma's smart tricks where the granddaughter pays the price every time",
+        "a story about a man who couldn't fix a door so he closed it forever"
+      ],
+      "productFacts": [],
+      "cap": 10
+    }
+  }
+]
