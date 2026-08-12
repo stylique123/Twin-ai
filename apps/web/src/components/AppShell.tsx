@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { logEvent } from '../lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X, Settings, Users, CalendarDays } from 'lucide-react'
+import { LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X, Settings, Users, CalendarDays, Package } from 'lucide-react'
 import { Logo, LogoMark } from './Logo'
 import { BrandSwitcher } from './BrandSwitcher'
 import { BrandReminder } from './BrandReminder'
@@ -21,6 +21,7 @@ const NAV = [
   { to: '/brands',    label: 'Workspaces', icon: Users,           note: 'Your clients', agencyOnly: true },
   { to: '/history',   label: 'Library',    icon: LibraryBig,      note: 'All your scripts' },
   { to: '/calendar',  label: 'Content calendar', icon: CalendarDays, note: 'Schedule posts' },
+  { to: '/products',  label: 'Products',   icon: Package,         note: 'What scripts may show' },
   { to: '/settings',  label: 'Settings',   icon: Settings,        note: 'Account & DNA' },
 ]
 

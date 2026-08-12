@@ -1027,15 +1027,14 @@ function ConfirmStep({
             voiceId: draft.voiceId,
             detail: mintError instanceof Error ? mintError.message : String(mintError),
           }))
-          // ⚠️ THIS DELIBERATELY DOES NOT SAY "fix it in the Product Library".
-          // Three comments in this file send people there and the page does not
-          // exist — there is no route, no component, and `loadProductEntities`
-          // in `api.ts` has no caller at all. Telling someone to go somewhere
-          // that isn't there converts a storage failure into a hunt. So the
-          // notice says what happened and what follows from it, and stops.
+          // ⚖️ NOW THAT THE PAGE EXISTS, THE NOTICE CAN POINT AT IT. This text
+          // deliberately said nothing about the Product Library while three
+          // comments in this file sent people to a route that did not exist —
+          // telling someone to go somewhere that isn't there turns a storage
+          // failure into a hunt. `/products` is real as of this change.
           setMintWarning(
             'Your profile is saved, but we could not store your product details. '
-            + 'Your scripts will not assume you have a product until this is set up.',
+            + 'Your scripts will not assume you have a product until you add it in the Product Library.',
           )
         }
       }
