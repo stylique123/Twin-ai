@@ -41,6 +41,11 @@ export const env = {
   // schema-constrained work does not need the expensive model — is a TASK-CLASS
   // argument, and it now lives beside the class it argues about.
   apifyToken: (process.env.APIFY_TOKEN ?? '').trim(),
+  // ⚠️ SEPARATE FROM `apifyToken`, AND NOT DERIVABLE FROM IT. Apify's residential
+  // proxy authenticates with its own password, which is why an account with a
+  // working token can still have no proxy. Absent means "no proxy configured",
+  // which degrades the palette to caption-only rather than failing a scan.
+  apifyProxyPassword: (process.env.APIFY_PROXY_PASSWORD ?? '').trim(),
   // Actor that returns YouTube captions as [{ start, dur, text }] in its KV output.
   apifyYoutubeActor: (process.env.APIFY_YOUTUBE_ACTOR ?? 'faVsWy9VTSNVIhWpR').trim(),
   // Actor that returns Instagram transcripts as dataset items with
