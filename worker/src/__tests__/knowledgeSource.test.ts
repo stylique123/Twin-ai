@@ -17,11 +17,23 @@ const SCAN = readFileSync(join(REPO, 'worker/src/jobs/scrapeDna.ts'), 'utf8')
 const VOICE = readFileSync(join(REPO, 'worker/src/jobs/voice.ts'), 'utf8')
 const MIG = readFileSync(join(REPO, 'supabase/migrations/0122_creator_knowledge_source.sql'), 'utf8')
 
-const fakeDb = (behaviour: 'ok' | 'missing_column' | 'other_error') => {
+const fakeDb = (behaviour: 'ok' | 'missing_column' | 'other_error', rpc: 'ok' | 'absent' | 'error' = 'absent') => {
   const seen: unknown[][] = []
+  const rpcCalls: unknown[] = []
   let call = 0
   return {
     seen,
+    rpcCalls,
+    // ⚠️ THE PREFERRED PATH IS NOW THE MERGE RPC. These tests default it to
+    // ABSENT so every existing assertion still exercises the insert fallback it
+    // was written for — a default of 'ok' would have silently stopped testing
+    // the fallback the moment the RPC landed.
+    rpc: async (fn: string, args: Record<string, unknown>) => {
+      rpcCalls.push({ fn, args })
+      if (rpc === 'ok') return { error: null }
+      if (rpc === 'error') return { error: { code: '22P02', message: 'invalid input' } }
+      return { error: { code: 'PGRST202', message: 'Could not find the function' } }
+    },
     from: () => ({
       insert: async (rows: unknown[]) => {
         seen.push(rows); call++
@@ -99,5 +111,49 @@ describe('the migration refuses to invent provenance', () => {
 
   it('indexes what the deployment question actually queries', () => {
     expect(MIG).toMatch(/on public\.creator_knowledge \(owner_id, source\)/)
+  })
+})
+
+
+// ── THE BATCH THAT LOST EVERYTHING ON ONE COLLISION ─────────────────────────
+describe('a re-scan merges repeats instead of discarding the batch', () => {
+  it('prefers the merge RPC, so a repeated claim bumps times_seen', async () => {
+    // ⚠️ 0121 puts a UNIQUE index on (owner, voice, kind, normalised text) so
+    // repeats MERGE — but a plain batch insert fails the WHOLE statement on the
+    // first conflict. The second scan of a creator, if the extractor phrased one
+    // item exactly as before, discarded every OTHER item in that batch: all the
+    // new material, gone, with one console.error. The index was built for a
+    // merge nobody had written.
+    const db = fakeDb('ok', 'ok')
+    const r = await insertKnowledge(db as never, [{ text: 'a', source: 'caption' }])
+    expect(r.error).toBeNull()
+    expect(r.merged).toBe(true)
+    expect(db.rpcCalls).toHaveLength(1)
+    // And it must NOT also run the plain insert — that would double-count.
+    expect(db.seen).toHaveLength(0)
+  })
+
+  it('falls back to the insert only when the FUNCTION is missing', async () => {
+    const db = fakeDb('ok', 'absent')
+    const r = await insertKnowledge(db as never, [{ text: 'a', source: 'caption' }])
+    expect(r.error).toBeNull()
+    expect(r.merged).toBe(false)
+    expect(db.seen).toHaveLength(1)
+  })
+
+  it('a REAL rpc failure surfaces instead of falling back', async () => {
+    // ⚖️ Falling back on any error would mask a broken merge with the very
+    // behaviour it replaced, and the batch-loss defect would silently return.
+    const db = fakeDb('ok', 'error')
+    const r = await insertKnowledge(db as never, [{ text: 'a', source: 'caption' }])
+    expect(r.error?.message).toMatch(/invalid input/)
+    expect(db.seen).toHaveLength(0)
+  })
+
+  it('an empty batch is a no-op, not a round trip', async () => {
+    const db = fakeDb('ok', 'ok')
+    const r = await insertKnowledge(db as never, [])
+    expect(r.error).toBeNull()
+    expect(db.rpcCalls).toHaveLength(0)
   })
 })
