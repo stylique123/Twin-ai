@@ -100,3 +100,48 @@ describe('the head is read before anything is stripped', () => {
     expect(prose.length).toBeLessThan(80)
   })
 })
+
+describe('the official-product-page source is reachable', () => {
+  // ⚠️ IT WAS NOT, AND THAT MADE THE RISK SPLIT INERT. The first successful
+  // extraction pulled 17 real facts and graded every one `needs_confirmation`,
+  // because `sourceFor` could only ever return documentation / pricing_page /
+  // listing / marketing_copy. The enum value documented as "the product's own
+  // site" was produced by nothing, so `usable` was 0 and a creator pasting their
+  // homepage got seventeen things to confirm by hand.
+  const src = SRC.slice(SRC.indexOf('function sourceFor'))
+
+  it('can actually return official_product_page', () => {
+    expect(src.slice(0, src.indexOf('\n}'))).toMatch(/return 'official_product_page'/)
+  })
+
+  it('decides it by HOST MATCH against the entity\'s registered URL', () => {
+    // ⚖️ A factual claim about two URLs matching, not a permission granted
+    // because someone said they own something.
+    expect(src).toMatch(/productUrl && sameHost\(url, productUrl\)/)
+    expect(SRC).toMatch(/select\('product_url'\)/)
+  })
+
+  it('treats www and bare hosts as the same site', () => {
+    const strip = (h) => h.toLowerCase().replace(/^www\./, '')
+    const same = (a, b) => strip(new URL(a).host) === strip(new URL(b).host)
+    expect(same('https://www.twinai.studio', 'https://twinai.studio')).toBe(true)
+    expect(same('https://twinai.studio/pricing', 'https://www.twinai.studio')).toBe(true)
+    expect(same('https://notmyproduct.com', 'https://twinai.studio')).toBe(false)
+  })
+
+  it('lets a more specific page KIND win over "it is their site"', () => {
+    // A pricing page is a pricing page whoever owns it, and its own type already
+    // carries authority — so the host check comes last.
+    const body = src.slice(0, src.indexOf('\n}'))
+    expect(body.indexOf("'pricing_page'")).toBeLessThan(body.indexOf("'official_product_page'"))
+    expect(body.indexOf("'documentation'")).toBeLessThan(body.indexOf("'official_product_page'"))
+  })
+
+  it('still degrades to marketing_copy when there is no match', () => {
+    // ⚠️ Guessing "official" wrongly promotes copy that should have waited;
+    // guessing "marketing" wrongly costs one confirmation tap.
+    const body = src.slice(0, src.indexOf('\n}'))
+    expect(body.trimEnd().endsWith("return 'marketing_copy'\n}")
+      || body.includes("return 'marketing_copy'")).toBe(true)
+  })
+})

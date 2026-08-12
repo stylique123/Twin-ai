@@ -97,14 +97,47 @@ async function fetchPageText(url: string): Promise<string | null> {
 
 /** Which kind of page this is, which sets how far its claims are trusted.
  *
- *  ⚖️ INFERRED FROM THE URL AND DEGRADED TOWARDS `marketing_copy`, never towards
- *  authority. Guessing "official product page" wrongly promotes copy that should
- *  have waited; guessing `marketing_copy` wrongly costs one confirmation tap. */
-function sourceFor(url: string): ExtractionSource {
+ *  ⚠️ `official_product_page` WAS UNREACHABLE, AND THAT MADE THE WHOLE SPLIT
+ *  INERT. The first successful extraction pulled 17 real facts off twinai.studio
+ *  — features, plans, prices, straight out of its JSON-LD — and graded every one
+ *  of them `needs_confirmation`, because this function could only ever return
+ *  `documentation`, `pricing_page`, `listing` or `marketing_copy`. The enum value
+ *  documented as "the product's own site" was produced by nothing.
+ *
+ *  So `usable: 0`. The feature was safe and useless: a creator pastes their
+ *  homepage, waits, and is handed seventeen things to confirm by hand — which is
+ *  the "paste a link and then do all the work anyway" outcome the risk split was
+ *  chosen to avoid.
+ *
+ *  ⚖️ THE AUTHORITY TEST IS THE URL, NOT THE RELATIONSHIP. The entity carries a
+ *  `product_url` the creator supplied when they registered it. If the page being
+ *  read is on that same host, it is the official page FOR THAT PRODUCT — a
+ *  factual claim about two URLs matching, not a permission granted because
+ *  someone said they own something. Deliberately not keyed on OWN_PRODUCT: a
+ *  vendor's own site is authoritative about what the vendor sells whether the
+ *  creator owns it, earns on it, or merely reviews it.
+ *
+ *  ⚠️ AND IT STILL DEGRADES TOWARDS `marketing_copy`. No product_url, a host
+ *  mismatch, or an unparseable URL all fall through to the weakest source.
+ *  Guessing "official" wrongly promotes copy that should have waited; guessing
+ *  "marketing" wrongly costs one confirmation tap. */
+function sameHost(a: string, b: string): boolean {
+  try {
+    const strip = (h: string) => h.toLowerCase().replace(/^www\./, '')
+    return strip(new URL(a).host) === strip(new URL(b).host)
+  } catch {
+    return false
+  }
+}
+
+function sourceFor(url: string, productUrl?: string | null): ExtractionSource {
   const u = url.toLowerCase()
+  // More specific page KINDS win over "it is their site" — a pricing page is a
+  // pricing page whoever owns it, and its own type already carries authority.
   if (/\/(?:docs|documentation|developers?|api)\b/.test(u)) return 'documentation'
   if (/\/(?:pricing|plans)\b/.test(u)) return 'pricing_page'
   if (/(?:amazon\.|etsy\.|ebay\.|shopify\.|\/products?\/)/.test(u)) return 'listing'
+  if (productUrl && sameHost(url, productUrl)) return 'official_product_page'
   return 'marketing_copy'
 }
 
@@ -158,6 +191,12 @@ export async function handleExtractProduct(job: Job): Promise<Record<string, unk
   // and anything else non-HTTPS are refused rather than fetched.
   if (!/^https:\/\//i.test(url)) throw new Error('extract_product needs an https URL')
 
+  // The entity's own registered URL, so `sourceFor` can tell "this is the page
+  // for the thing you registered" from "some page on the internet".
+  const { data: entity } = await db.from('product_entities')
+    .select('product_url').eq('id', entityId).maybeSingle()
+  const productUrl = (entity as { product_url?: string | null } | null)?.product_url ?? null
+
   const text = await fetchPageText(url)
   if (!text || text.length < 80) {
     // ⚖️ AN UNREADABLE PAGE IS RECORDED AS EMPTY, NOT LEFT NULL. Null means
@@ -172,7 +211,7 @@ export async function handleExtractProduct(job: Job): Promise<Record<string, unk
     return { extracted: 0, reason: 'unreadable' }
   }
 
-  const source = sourceFor(url)
+  const source = sourceFor(url, productUrl)
   // ⚠️ `thinkingBudget: 0` IS INVALID FOR THIS MODEL CLASS, AND THE FIRST REAL
   // RUN FOUND IT: "Budget 0 is invalid. This model only works in thinking mode."
   // Every other `geminiJson` caller in the worker either omits the budget or
