@@ -314,11 +314,28 @@ const ASSERTED_RESULT = /\b(?:saved|earned|made|cost|took)\s+me\b|\bfor me,? (?:
 const ASSERTED_HISTORY = /\bI(?:'ve| have)\s+[\w ]{0,30}?\bfor\s+(?:\d+|a|an|several|many|one|two|three|four|five|six|seven|eight|nine|ten|twelve|eighteen)\b|\bI used to\b/i
 const ASSERTED_EXPERIENCE = /\bwhen I (?:tried|used|got|bought|switched|tested)\b/i
 const ASSERTED_RELATIONSHIP = /\bmy (?:team|company|clients?|students?|staff|agency)\b/i
-/** Something the creator DID: started, stopped, switched, quit, built.
+/** Something the creator DID: started, stopped, switched, quit, built, grew.
  *  ⚖️ Deliberately about deliberate acts. "I saw", "I thought" are not choices
- *  a creator can be held to, and condemning them would fail ordinary narration. */
+ *  a creator can be held to, and condemning them would fail ordinary narration.
+ *
+ *  ⚠️ "WE" COUNTS, AND MISSING IT LET A FALSE OWNERSHIP CLAIM SHIP. A creator
+ *  panel reading real generated scripts found this line, written for a channel
+ *  that REPORTS on other founders' businesses:
+ *
+ *      "Take Early, for example. We grew it from zero to over $50,000 a month."
+ *
+ *  Early is somebody else's app. The script claimed it as the creator's own, and
+ *  this detector missed it twice over: `we` was not in the pronoun set, and
+ *  `grew` was not in the verb set. A business claim in the first-person PLURAL
+ *  is still a claim about the creator's life — "we" is their company — and the
+ *  growth verbs are exactly the ones a false ownership claim reaches for.
+ *
+ *  ⚖️ "WE" IS NARROWER THAN IT LOOKS, BECAUSE THE VERB LIST GATES IT. Generic
+ *  "we all know", "we're switching to a trust economy" — the rhetorical `we`
+ *  that means everyone — takes none of these verbs and stays out. The pairing is
+ *  what makes it safe; `we` alone would have condemned ordinary commentary. */
 const ASSERTED_ACTION =
-  /\bI (?:\w+ly |just |recently |finally |once )*(?:stopped|started|switched|quit|ditched|dropped|cancelled|canceled|built|made|launched|deleted|swapped)\b/i
+  /\b(?:I|we) (?:\w+ly |just |recently |finally |once )*(?:stopped|started|switched|quit|ditched|dropped|cancelled|canceled|built|made|launched|deleted|swapped|grew|scaled|founded|acquired|ran)\b/i
 
 /** A possessive on something concrete: "my WHOOP", "my electric bike".
  *  The capture is the thing itself, so a caller can resolve it as an entity.
