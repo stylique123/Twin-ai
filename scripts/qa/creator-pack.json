@@ -481,88 +481,6 @@
       }
     },
     {
-      "key": "garyvee",
-      "name": "Gary Vaynerchuk",
-      "handle": "@garyvee",
-      "platform": "instagram",
-      "truth": {
-        "relationship": "OWN_PRODUCT + OWN_SERVICE (VaynerX, VaynerMedia, VeeFriends) — but ~85-95% of short-form sells NOTHING",
-        "relationshipCode": "NONE",
-        "personalUse": "CONFIRMED",
-        "showability": "talking-head/keynote; low b-roll; MOSTLY CLIPPED FROM LONG-FORM",
-        "ctaStyle": "behavioural, not commercial",
-        "coinages": [
-          "day trading attention",
-          "document don't create",
-          "clouds and dirt"
-        ]
-      },
-      "answers": {
-        "goal": "authority+followers",
-        "audience": "entrepreneurs/marketers, mixed",
-        "workKind": "saas",
-        "promotes": "none"
-      },
-      "answerConflicts": [
-        "'promotes: own businesses' is true and MUST NOT produce a default sales CTA — it would break 9 of 10 of his scripts.",
-        "His energy comes from answering a live room. 'Film this as a 45s talking-head' mis-specifies the format, and 'clip this from your keynote' is unusable for a creator without one."
-      ],
-      "knowledge": {
-        "items": [
-          {
-            "kind": "belief",
-            "text": "patience and self-awareness beat tactics almost every time",
-            "basis": "stated",
-            "timesSeen": 7,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "belief",
-            "text": "most people are held back by caring what other people think",
-            "basis": "stated",
-            "timesSeen": 6,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "framework",
-            "text": "audit what you are actually good at before choosing a strategy",
-            "basis": "demonstrated",
-            "timesSeen": 5,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "experience",
-            "text": "grew a family wine business, then built agencies",
-            "basis": "stated",
-            "timesSeen": 6,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "covered",
-            "text": "why your twenties are not a race",
-            "basis": "stated",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          }
-        ],
-        "audience": [
-          {
-            "summary": "people ask how to start when they have no money",
-            "asked": 35
-          },
-          {
-            "summary": "many ask how to deal with unsupportive family",
-            "asked": 20
-          }
-        ]
-      }
-    },
-    {
       "key": "arun",
       "name": "Arun Maini",
       "handle": "@mrwhosetheboss",
@@ -1225,6 +1143,1697 @@
             "text": "Walking downhill increases the chances of finding help when lost.",
             "basis": "stated",
             "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          }
+        ]
+      }
+    },
+    {
+      "key": "AlexHormozi",
+      "name": "AlexHormozi",
+      "handle": "@AlexHormozi",
+      "platform": "youtube",
+      "truth": {
+        "relationship": "NONE",
+        "relationshipCode": "NONE",
+        "personalUse": "NOT_CONFIRMED",
+        "ownsProduct": "none confirmed",
+        "showability": "UNKNOWN",
+        "enemy": "unknown",
+        "signature": "unknown",
+        "ctaStyle": "soft follow"
+      },
+      "answers": {
+        "niche": "Business, entrepreneurship, wealth building",
+        "tone": "Authoritative, analytical, pragmatic, direct"
+      },
+      "answerConflicts": [],
+      "mustNever": [
+        "invent a personal history"
+      ],
+      "knowledge": {
+        "items": [
+          {
+            "kind": "example",
+            "text": "Amazon operated at a loss for over a decade before turning a profit in order to capture market share",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "example",
+            "text": "Elon Musk, Larry Ellison, Mark Zuckerberg, Jeff Bezos, Larry Page, Sergey Brin and Jensen Huang all built wealth by raising capital",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "example",
+            "text": "Michael Dell and the Waltons built their wealth through bootstrapped businesses like Walmart.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Raised venture capital for his company Skool to fund its continued growth.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Uses his company Acquisition.com to invest his own capital into other people's businesses.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Bootstrapped his first brick-and-mortar business, which was a gym.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Bootstrapped a supplement company called Prestige Labs using profits from his gym business.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Bootstrapped a software company named Allen.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "fact",
+            "text": "Microsoft was initially a bootstrapped company, which contributed to Steve Ballmer's wealth.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "framework",
+            "text": "There are four paths to wealth: bootstrapping, raising capital, investing, and fund management.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Bootstrapped businesses incur non-financial debts such as management, leadership and technical debt",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "First-time founders should bootstrap to avoid losing friends and family's money to their inexperience",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Seeking shortcuts keeps people poor, while the wealthiest pick a path and stick to it for a decade",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Raising capital forces founders to serve two conflicting masters: the customer and the investors",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Bootstrapping is the slowest path to wealth because growth requires internally generated capital",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Prices Skool at $9 a month to provide affordable business-building tools to as many people as possible",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "AI won't make you rich in 2026",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "your events are a cost until you sell from them",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "you should make content first, then run it as ads",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "you suck at training, not everyone else",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "we're switching from the attention economy to the trust economy",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "how to get clients to stay past 6 months",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "how to know when to hire your first employee",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "how to build a billion dollar restaurant chain",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "3 signs you're going to be a successful entrepreneur",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "4 paths to create wealth in 2026",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "the fix for when founders won't let you send DMs",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "how to sell like the top 1% in Scale or Fail Episode 1",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "why AI won't make you rich in 2026",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "how to close 90% of supplement sales",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "how to scale a business with a cash flow problem",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "getting rich and creating wealth",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "selling and closing sales",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "how the top 1% think and sell",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "how to get rich by thinking like the top 1%",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          }
+        ]
+      }
+    },
+    {
+      "key": "garyvee",
+      "name": "garyvee",
+      "handle": "@garyvee",
+      "platform": "tiktok",
+      "truth": {
+        "relationship": "NONE",
+        "relationshipCode": "NONE",
+        "personalUse": "NOT_CONFIRMED",
+        "ownsProduct": "none confirmed",
+        "showability": "UNKNOWN",
+        "enemy": "unknown",
+        "signature": "unknown",
+        "ctaStyle": "soft follow"
+      },
+      "answers": {
+        "niche": "Entrepreneurship, mindset, personal development",
+        "tone": "Passionate, blunt, empathetic, urgent"
+      },
+      "answerConflicts": [],
+      "mustNever": [
+        "invent a personal history"
+      ],
+      "knowledge": {
+        "items": [
+          {
+            "kind": "claim",
+            "text": "The internet shifted from social media to interest media three years ago, so algorithms serve by interest not followers",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "A brand new account with 9 followers on TikTok or 48 on Instagram can outperform established accounts",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Spends time talking with 70 to 90-year-old strangers to understand what they value in hindsight",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Observed the breakdown of high school cliques during the last 30 days of the school year across multiple classes",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "People who refuse to take risks and instead mock friends whose ventures fail are living unfulfilling lives",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Elderly people focus on love and family rather than daily worries, proving current stressors are manageable",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Society is entering an era that heavily rewards good people, making reputation a person's most valuable asset",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "The idea that success requires stepping on others is outdated because the world is abundant",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Wants to produce a movie titled The Last 30 Days about high school cliques dissolving at the end of senior year",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "too many of you are overthinking",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "the way you build a community is first and foremost being completely...",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "the most important thing you can do for your kid as a parent is to build...",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "how to build a community",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "overthinking and the reasons behind it",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "the most important thing you can do for your kid as a parent",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "the GaryVee Barbell Effect",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          }
+        ]
+      }
+    },
+    {
+      "key": "hanushkaa",
+      "name": "hanushkaa",
+      "handle": "@hanushkaa",
+      "platform": "instagram",
+      "truth": {
+        "relationship": "NONE",
+        "relationshipCode": "NONE",
+        "personalUse": "NOT_CONFIRMED",
+        "ownsProduct": "none confirmed",
+        "showability": "UNKNOWN",
+        "enemy": "unknown",
+        "signature": "unknown",
+        "ctaStyle": "soft follow"
+      },
+      "answers": {
+        "niche": "Luxury resale and founder-led business",
+        "tone": "Ambitious, glamorous, direct, encouraging"
+      },
+      "answerConflicts": [],
+      "mustNever": [
+        "invent a personal history"
+      ],
+      "knowledge": {
+        "items": [
+          {
+            "kind": "claim",
+            "text": "Made her first million selling Birkin bags and has generated up to 26 million in a single year.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "Has run her fashion business for seven years with zero marketing spend, relying entirely on virality",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "example",
+            "text": "Hosted a drop at her Knightsbridge store selling authentic Chanel bags for under £2,500",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "example",
+            "text": "Ran a viral campaign leaving £10,000 Birkin bags in London charity shops to be sold for £3,000",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Sold a black Birkin bag for £13,500 in roughly 40 seconds by posting a single Instagram story.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Built Sellier, a fast-growing UK resale platform for luxury brands, starting with zero investment",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Believes the secret to viral marketing is to avoid being boring or safe",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Believes unrealized motivations rule your life on autopilot until you reflect on them",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Would build an AI dating app that analyzes WhatsApp data to match compatible partners",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Launched Juice, an intimate self-care brand focused on beauty products for the genital area.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "the future of dating lies in AI and WhatsApp data",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "hosting a glamorous evening event for Mytheresa in Monaco",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "hosting a one-day event at Sellier Brompton Road featuring over 100 luxury bags",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "introducing her dog Memphis",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "building Sellier Knightsbridge, a luxury resale brand, from an empty shop to $26M in annual revenue",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "fact",
+            "text": "grew Sellier from an empty shop with 3 bags to $26M in annual revenue",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "fact",
+            "text": "is a former city lawyer turned founder of luxury resale brand Sellier and wellness brand We Are Juicers",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "fact",
+            "text": "has a dog named Memphis",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "you must stop living on autopilot and be conscious of your motivations",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "We Are Juicers wellness brand",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "growing a founder-led business and creating viral moments without a big marketing budget",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          }
+        ]
+      }
+    },
+    {
+      "key": "matthew_berman",
+      "name": "matthew_berman",
+      "handle": "@matthew_berman",
+      "platform": "youtube",
+      "truth": {
+        "relationship": "NONE",
+        "relationshipCode": "NONE",
+        "personalUse": "NOT_CONFIRMED",
+        "ownsProduct": "none confirmed",
+        "showability": "UNKNOWN",
+        "enemy": "unknown",
+        "signature": "unknown",
+        "ctaStyle": "soft follow"
+      },
+      "answers": {
+        "niche": "AI news and tech industry analysis",
+        "tone": "Analytical, narrative-driven, accessible"
+      },
+      "answerConflicts": [],
+      "mustNever": [
+        "invent a personal history"
+      ],
+      "knowledge": {
+        "items": [
+          {
+            "kind": "fact",
+            "text": "Google published the Attention Is All You Need paper in 2017, the foundation for modern AI systems",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "fact",
+            "text": "Demis Hassabis stepped down as CEO of Google DeepMind to become chair and chief scientist of Alphabet",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "fact",
+            "text": "Jeff Dean left Google to start a new AI company called Discovery Loop automating scientific discovery",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Google remains well-positioned because of proprietary training data, custom TPU chips and Android reach",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Google should stop pretending to compete at the frontier and focus on the best open-source model",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Middle management at Google prioritized job security over frontier scientific research",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Traditional ten-blue-link search is being disrupted by users going directly to AI tools",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Google suffers the innovator's dilemma because they protected their search and advertising cash cow",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Google had an internal chatbot named LM Chat a year before ChatGPT but did not release it",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Google's TPUs are on their eighth generation and provide a competitive advantage",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "The creator runs an AI-focused newsletter at forwardfuture.com.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "China's making their own chips now",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "Anthropic messed up",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "Open-source is WINNING",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "GPT-5.6 making itself better",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "which business will win AI",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "15 insane Codex tips that everyone needs",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "the worst AI mistakes by companies",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "AI going rogue in real life",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "Google fumbling and questioning what they are doing",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "Mark Zuckerberg calling out Dario and Anthropic",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "a potential Deepseek ban",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Codex",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "Open-source AI and software",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "Anthropic's AI developments and missteps",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          }
+        ]
+      }
+    },
+    {
+      "key": "mrbeast",
+      "name": "mrbeast",
+      "handle": "@mrbeast",
+      "platform": "youtube",
+      "truth": {
+        "relationship": "NONE",
+        "relationshipCode": "NONE",
+        "personalUse": "NOT_CONFIRMED",
+        "ownsProduct": "none confirmed",
+        "showability": "UNKNOWN",
+        "enemy": "unknown",
+        "signature": "unknown",
+        "ctaStyle": "soft follow"
+      },
+      "answers": {
+        "niche": "Extreme challenges and massive giveaways",
+        "tone": "Energetic, fast-paced, sensational"
+      },
+      "answerConflicts": [],
+      "mustNever": [
+        "invent a personal history"
+      ],
+      "knowledge": {
+        "items": [
+          {
+            "kind": "experience",
+            "text": "Visited YouTube headquarters to receive a custom 500 million subscriber award from the CEO.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Sent a team member to India to find a random subscriber and give them 10,000 dollars.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Hosted a 30-day tropical island challenge where a woman eliminated her six ex-boyfriends for $250,000",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "racing the fastest man on earth",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "surprising a random subscriber with $10,000",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "building 10 schools around the world",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "a last to leave the grocery store challenge for $250,000",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "granting 100 kids their biggest wish",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "being trapped on an island until building a boat",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "stranding 100 people in the wilderness for $250,000",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "being stranded in the Arctic for 7 days",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "comparing a $1 cake to a $10,000 cake",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "large-scale creator tournaments for $1,000,000",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "stranded survival challenges",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "granting wishes for children",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          }
+        ]
+      }
+    },
+    {
+      "key": "real_techh",
+      "name": "real_techh",
+      "handle": "@real_techh",
+      "platform": "tiktok",
+      "truth": {
+        "relationship": "NONE",
+        "relationshipCode": "NONE",
+        "personalUse": "NOT_CONFIRMED",
+        "ownsProduct": "none confirmed",
+        "showability": "UNKNOWN",
+        "enemy": "unknown",
+        "signature": "unknown",
+        "ctaStyle": "soft follow"
+      },
+      "answers": {
+        "niche": "Android tech tips and hidden settings",
+        "tone": "Energetic, persuasive, urgent, informal"
+      },
+      "answerConflicts": [],
+      "mustNever": [
+        "invent a personal history"
+      ],
+      "knowledge": {
+        "items": [
+          {
+            "kind": "claim",
+            "text": "Deleting residual files from uninstalled apps and disabling auto-updates makes an Android run fast",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "Users can add an in-display fingerprint lock to phones without one using a third-party app",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "framework",
+            "text": "Clear hidden Android storage via Play Store, Manage apps and device, Not installed, delete residual files",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "framework",
+            "text": "Upscale low-quality videos natively within TikTok using the AI enhance effect before posting.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Provides access to CapCut Pro to viewers who message the phone number in the account bio.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "managing or recovering deleted photos",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "what to do when your mobile phone storage is full",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "a water wallpaper trick",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "a Siri app trick",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "a phone charging trick",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "how to activate or convert a 4G phone to 5G internet",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "indisplay fingerprint settings",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "the new Nokia Launcher app",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "front camera light trick",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Nokia Launcher app",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "mobile phone tricks and tips",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          }
+        ]
+      }
+    },
+    {
+      "key": "starterstory",
+      "name": "starterstory",
+      "handle": "@starterstory",
+      "platform": "youtube",
+      "truth": {
+        "relationship": "NONE",
+        "relationshipCode": "NONE",
+        "personalUse": "NOT_CONFIRMED",
+        "ownsProduct": "none confirmed",
+        "showability": "UNKNOWN",
+        "enemy": "unknown",
+        "signature": "unknown",
+        "ctaStyle": "soft follow"
+      },
+      "answers": {
+        "niche": "Business case studies and solo app development",
+        "tone": "Enthusiastic, practical, analytical"
+      },
+      "answerConflicts": [],
+      "mustNever": [
+        "invent a personal history"
+      ],
+      "knowledge": {
+        "items": [
+          {
+            "kind": "claim",
+            "text": "The Early app grew from zero to over $50,000 a month in revenue within its first four months.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Grew the Early app by paying TikTok and Instagram influencers to integrate it into day-in-the-life videos",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "fact",
+            "text": "The iOS 26 update introduced the AlarmKit API, letting third-party apps connect to the native alarm",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "framework",
+            "text": "Solve a painful daily problem simply and ensure the core idea makes the app inherently viral",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "The best mobile app ideas solve a painful problem with one main killer feature",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Getting views and marketing an app is more important and harder than building the product",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "AI tools have made it possible to build software without a highly technical background",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Early is an iOS alarm clock app requiring push-ups to turn off, priced at $29.99 a year",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Created a free database of over 30 successful mobile app ideas with real revenue numbers",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "there are two types of people who will succeed",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "a $300K/month idea men would never think to build",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "the dead simple tech stack powering a $100K/month app",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "an alarm clock app where you do push-ups to turn it off that made $50K in 28 days",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "an app built in 60 days that makes $340K/month",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "quitting a job at Meta to build a $30K/month SaaS",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "making $50K per month working 5 hours a week",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "how Postiz went from $17K to $143K/month in 4 months",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "turning a spreadsheet into a $30K/month Micro-SaaS",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "cold-DMing thousands of influencers with one killer insight to grow an app",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Postiz",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "highly profitable simple apps and solo founders",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          }
+        ]
+      }
+    },
+    {
+      "key": "thejoemoffett",
+      "name": "thejoemoffett",
+      "handle": "@thejoemoffett",
+      "platform": "youtube",
+      "truth": {
+        "relationship": "NONE",
+        "relationshipCode": "NONE",
+        "personalUse": "NOT_CONFIRMED",
+        "ownsProduct": "none confirmed",
+        "showability": "UNKNOWN",
+        "enemy": "unknown",
+        "signature": "unknown",
+        "ctaStyle": "soft follow"
+      },
+      "answers": {
+        "niche": "Real estate investing and cash flow",
+        "tone": "Pragmatic, confident, numbers-driven"
+      },
+      "answerConflicts": [],
+      "mustNever": [
+        "invent a personal history"
+      ],
+      "knowledge": {
+        "items": [
+          {
+            "kind": "claim",
+            "text": "Can generate $1,000 a month in cash flow by converting a 4-bedroom house into an 8-bedroom house",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Purchased a 4-bed 3-bath house planning to convert basement, living room and garage into four bedrooms",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "framework",
+            "text": "Maximizes rental cash flow by converting unused spaces like basements and garages into bedrooms",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Subdividing houses into more bedrooms creates necessary affordable housing in expensive markets",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Traditional long-term rentals are risky because $200 a month cash flow is wiped out by one repair",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "a specific ugly house prints $2K a month",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "Co-Living is a win-win for real estate owners and tenants",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "rehabbing a co-living property on the road to financial freedom",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "creative financing and what the seller is thinking",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "one mistake high-performing men keep making",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "five things broke people believe about money",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "never buy an ugly property",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "achieving financial freedom and independence",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "real estate investing tips, rules, and early mistakes",
+            "basis": "demonstrated",
+            "source": "caption",
             "timesSeen": 1,
             "sourceRef": null,
             "sourceExpiry": null
