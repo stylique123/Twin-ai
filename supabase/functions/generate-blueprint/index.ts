@@ -1938,12 +1938,21 @@ Deno.serve(async (req: Request) => {
     .order('asked', { ascending: false })
     .limit(8)
 
+  // ⚠️ ARCHIVED ENTITIES ARE EXCLUDED, AND THIS IS THE READER THAT MAKES ARCHIVE
+  // SAFE TO HAVE AT ALL. An archived row reaching this read would keep granting
+  // the commercial CTA, the disclosure exemption and the demonstration
+  // permission that the creator explicitly withdrew — the exact failure that
+  // argued against a `retired` flag before this filter existed. `is null` rather
+  // than a date comparison: live is the ABSENCE of a withdrawal, not a date
+  // range, and a comparison would need a clock this function has no reason to
+  // trust.
   const { data: ownedEntity, error: ownedEntityErr } = await admin
     .from('product_entities')
     .select('name, type, relationship, personal_use, showability, evidence')
     .eq('owner_id', ownerId)
     .eq('voice_id', voice?.id ?? null)
     .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
+    .is('archived_at', null)
     .maybeSingle()
   if (ownedEntityErr) {
     console.error('product_entities lookup failed', ownedEntityErr)
@@ -1976,6 +1985,8 @@ Deno.serve(async (req: Request) => {
     .from('product_entities')
     .select('name, relationship')
     .eq('owner_id', ownerId)
+    // Grounding must not resolve a claim against a product the creator retired.
+    .is('archived_at', null)
     .limit(200)
   if (libraryErr) console.error('product_entities library read failed', libraryErr)
   const csEntities = (libraryRows ?? [])

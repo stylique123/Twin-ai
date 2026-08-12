@@ -38,7 +38,8 @@
 import { useEffect, useState } from 'react'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation,
-  claimProductEntity, deleteProductEntity, listBrandVoices, OwnedEntityExistsError,
+  claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
+  listBrandVoices, OwnedEntityExistsError, ProductLibraryFullError,
   type ProductSuggestion,
 } from '@twinai/shared'
 import type {
@@ -219,6 +220,9 @@ export default function ProductLibrary() {
   // Removal is confirmed in place rather than with a window.confirm, so the
   // consequence can be SPELLED OUT — a browser dialog cannot say what is lost.
   const [removingId, setRemovingId] = useState<string | null>(null)
+  // Loaded WITH archived so the page can show what was withdrawn. The live list
+  // stays the default everywhere else.
+  const [archivedAll, setArchived] = useState<ProductEntityRecord[] | null>(null)
   const [claimBusy, setClaimBusy] = useState(false)
   const { session } = useAuth()
   const [voiceId, setVoiceId] = useState<string | null>(null)
@@ -234,7 +238,10 @@ export default function ProductLibrary() {
         // convenience; the entities are the page. A knowledge-table error must
         // not blank out the products a creator actually registered.
         try {
-          const s = await loadProductSuggestions(rows)
+          loadProductEntities({ includeArchived: true }).then((all) => {
+          if (alive) setArchived(all)
+        }).catch(() => { /* the archive view is optional */ })
+        const s = await loadProductSuggestions(rows)
           if (alive) setSuggestions(s)
         } catch { /* the page works without them */ }
         // The voice an OWNED product is scoped to. Only needed to claim one, so
@@ -297,11 +304,42 @@ export default function ProductLibrary() {
       // ⚖️ THE ONE-PRODUCT-PER-VOICE REFUSAL GETS ITS OWN MESSAGE. Falling back
       // to a generic failure would leave a creator retrying a thing that will
       // never succeed, with no idea why.
-      setErr(e instanceof OwnedEntityExistsError
-        ? e.message
-        : e instanceof Error ? e.message : 'Could not add that product.')
+      // ⚖️ THREE DISTINCT SITUATIONS, THREE DISTINCT MESSAGES. A correctness
+      // refusal ("already added") shown to someone at their plan cap sends them
+      // hunting for a duplicate that does not exist; a commercial refusal shown
+      // to a replayed mint invites them to buy their way out of our bug.
+      setErr(e instanceof ProductLibraryFullError
+        ? `${e.message} Archive a product you no longer use, or upgrade your plan.`
+        : e instanceof OwnedEntityExistsError
+          ? e.message
+          : e instanceof Error ? e.message : 'Could not add that product.')
     } finally {
       setClaimBusy(false)
+    }
+  }
+
+  async function archive(id: string) {
+    setErr(null)
+    try {
+      await archiveProductEntity(id)
+      // Re-read rather than mutating in place: `loadProductEntities` decides what
+      // "live" means, and duplicating that rule here is how the two drift.
+      setEntities(await loadProductEntities())
+      setArchived(await loadProductEntities({ includeArchived: true }))
+      setRemovingId(null)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not archive that product.')
+    }
+  }
+
+  async function restore(id: string) {
+    setErr(null)
+    try {
+      await restoreProductEntity(id)
+      setEntities(await loadProductEntities())
+      setArchived(await loadProductEntities({ includeArchived: true }))
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not restore that product.')
     }
   }
 
@@ -444,20 +482,28 @@ export default function ProductLibrary() {
               {savingId === e.id ? 'Saving…' : saved === e.id ? 'Saved.' : ''}
             </p>
             {removingId === e.id ? (
-              // ⚖️ THE CONSEQUENCE IS NAMED, NOT IMPLIED. Removing an entity
-              // withdraws the permissions it carried, so the next script stops
-              // being allowed to demonstrate or make claims about it. A bare
-              // "are you sure?" would hide exactly the part that matters.
+              // ⚖️ TWO WAYS OUT, AND THEY ARE NOT THE SAME ACT. Archiving
+              // withdraws the product from FUTURE videos and keeps the record,
+              // so scripts already written about it still resolve what they
+              // referred to. Removing destroys it. The spec prefers archive
+              // wherever scripts may already reference the entity, which is
+              // every entity that has been used even once — so archive leads and
+              // delete is the smaller, explicitly destructive choice.
               <span className="text-xs">
                 <span className="text-ink/60">
-                  Remove it? Your scripts will stop being allowed to show it or make
-                  claims about it.
+                  Archiving stops Twin using it in new videos; your existing scripts keep
+                  their record of it. Removing deletes it entirely.
                 </span>
                 <button
                   type="button"
-                  className="ml-2 font-medium text-coral"
+                  className="ml-2 font-medium"
+                  onClick={() => void archive(e.id)}
+                >Archive</button>
+                <button
+                  type="button"
+                  className="ml-2 text-coral"
                   onClick={() => void remove(e.id)}
-                >Remove</button>
+                >Delete for good</button>
                 <button
                   type="button"
                   className="ml-2 text-ink/50"
@@ -469,11 +515,38 @@ export default function ProductLibrary() {
                 type="button"
                 className="text-xs text-ink/50 underline"
                 onClick={() => setRemovingId(e.id)}
-              >Remove</button>
+              >Archive or remove</button>
             )}
           </div>
         </section>
       ))}
+
+      {(archivedAll ?? []).filter((a) => a.archivedAt).length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold">Archived</h2>
+          <p className="mt-1 text-sm text-ink/60">
+            Twin will not use these in new videos. Scripts you have already made keep their
+            record of them.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {(archivedAll ?? []).filter((a) => a.archivedAt).map((a) => (
+              <li key={a.id} className="flex items-center justify-between rounded-lg border border-ink/10 px-3 py-2 text-sm">
+                <span>
+                  {a.name ?? 'Unnamed product'}
+                  <span className="block text-xs text-ink/50">
+                    {RELATIONSHIP_LABEL[a.relationship] ?? a.relationship}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="text-xs underline"
+                  onClick={() => void restore(a.id)}
+                >Restore</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {suggestions.length > 0 && (
         <section>
