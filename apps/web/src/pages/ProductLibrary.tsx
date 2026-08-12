@@ -38,7 +38,7 @@
 import { useEffect, useState } from 'react'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation,
-  claimProductEntity, listBrandVoices, OwnedEntityExistsError,
+  claimProductEntity, deleteProductEntity, listBrandVoices, OwnedEntityExistsError,
   type ProductSuggestion,
 } from '@twinai/shared'
 import type {
@@ -92,7 +92,12 @@ const RELATIONSHIP_LABEL: Record<string, string> = {
  *  asserted nothing, which is the permission escalation the whole page is built
  *  to refuse. The cost of an entitlement is answering for it. */
 function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
-  suggestion: ProductSuggestion
+  // ⚠️ OPTIONAL, AND THAT WAS THE BUG. This form shipped reachable ONLY from a
+  // suggestion, so a creator whose product the extractor never saw could not
+  // register it AT ALL — 6 of 17 owners in production had no suggestions and so
+  // no way in. The attestation was never the part that needed a suggestion; the
+  // suggestion only ever saved typing.
+  suggestion?: ProductSuggestion | null
   onCancel: () => void
   busy: boolean
   onClaim: (a: {
@@ -100,6 +105,9 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
     type: EntityType; name: string
   }) => void
 }) {
+  // ⚖️ NOT PREFILLED FROM THE SUGGESTION TEXT. A suggestion is a CLAIM — "Early
+  // is an iOS alarm app that requires push-ups" — not a name. Dropping that into
+  // the name field would put a sentence where the prompt expects a noun.
   const [name, setName] = useState('')
   const [relationship, setRelationship] = useState<EntityRelationship | null>(null)
   const [type, setType] = useState<EntityType | null>(null)
@@ -150,7 +158,7 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
             <label key={r.value} className="flex items-center gap-2 text-sm">
               <input
                 type="radio"
-                name={`rel-${suggestion.id}`}
+                name={`rel-${suggestion?.id ?? 'new'}`}
                 checked={relationship === r.value}
                 onChange={() => setRelationship(r.value)}
               />
@@ -206,6 +214,11 @@ export default function ProductLibrary() {
   const [savingId, setSavingId] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
   const [claimingId, setClaimingId] = useState<string | null>(null)
+  // `addingNew` is the same attestation with no suggestion behind it.
+  const [addingNew, setAddingNew] = useState(false)
+  // Removal is confirmed in place rather than with a window.confirm, so the
+  // consequence can be SPELLED OUT — a browser dialog cannot say what is lost.
+  const [removingId, setRemovingId] = useState<string | null>(null)
   const [claimBusy, setClaimBusy] = useState(false)
   const { session } = useAuth()
   const [voiceId, setVoiceId] = useState<string | null>(null)
@@ -254,7 +267,7 @@ export default function ProductLibrary() {
     }
   }
 
-  async function claim(s: ProductSuggestion, a: {
+  async function claim(s: ProductSuggestion | null, a: {
     relationship: EntityRelationship; personalUse: PersonalUse; type: EntityType; name: string
   }) {
     // ⚠️ AN EMPTY OWNER ID MUST NOT REACH THE INSERT. RLS is owner-scoped, so a
@@ -276,9 +289,10 @@ export default function ProductLibrary() {
         setEntities((prev) => [...(prev ?? []), created])
         // Drop it from the suggestions — it is claimed now, and leaving it there
         // invites a second claim of the same thing.
-        setSuggestions((prev) => prev.filter((x) => x.id !== s.id))
+        if (s) setSuggestions((prev) => prev.filter((x) => x.id !== s.id))
       }
       setClaimingId(null)
+      setAddingNew(false)
     } catch (e) {
       // ⚖️ THE ONE-PRODUCT-PER-VOICE REFUSAL GETS ITS OWN MESSAGE. Falling back
       // to a generic failure would leave a creator retrying a thing that will
@@ -288,6 +302,17 @@ export default function ProductLibrary() {
         : e instanceof Error ? e.message : 'Could not add that product.')
     } finally {
       setClaimBusy(false)
+    }
+  }
+
+  async function remove(id: string) {
+    setErr(null)
+    try {
+      await deleteProductEntity(id)
+      setEntities((prev) => (prev ?? []).filter((e) => e.id !== id))
+      setRemovingId(null)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not remove that product.')
     }
   }
 
@@ -307,12 +332,43 @@ export default function ProductLibrary() {
 
       {err && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
 
-      {entities.length === 0 && (
-        <p className="rounded-lg border border-ink/10 px-4 py-6 text-sm text-ink/70">
-          You have not registered a product yet. Until you do, your scripts will not assume
-          you have one — they will not invent a product for you, and they will not build a
-          scene around showing one.
-        </p>
+      {entities.length === 0 && !addingNew && (
+        <div className="rounded-lg border border-ink/10 px-4 py-6 text-sm text-ink/70">
+          <p>
+            You have not registered a product yet. Until you do, your scripts will not assume
+            you have one — they will not invent a product for you, and they will not build a
+            scene around showing one.
+          </p>
+          {/* ⚠️ THE EMPTY STATE USED TO BE A DEAD END. The only way in was a
+              suggestion the extractor had already found, so a creator whose
+              product was never mentioned on camera could not register it at all —
+              and the page they were sent to told them, accurately, that they had
+              no product and offered no way to fix that. */}
+          <button
+            type="button"
+            className="mt-4 rounded-lg bg-ink px-3 py-1.5 text-sm text-white"
+            onClick={() => setAddingNew(true)}
+          >Add a product</button>
+        </div>
+      )}
+
+      {addingNew && (
+        <section className="rounded-xl border border-ink/10 p-4">
+          <h2 className="text-sm font-semibold">Add a product</h2>
+          <ClaimForm
+            busy={claimBusy}
+            onCancel={() => setAddingNew(false)}
+            onClaim={(a) => void claim(null, a)}
+          />
+        </section>
+      )}
+
+      {entities.length > 0 && !addingNew && (
+        <button
+          type="button"
+          className="rounded-lg border border-ink/20 px-3 py-1.5 text-sm"
+          onClick={() => setAddingNew(true)}
+        >Add another product</button>
       )}
 
       {entities.map((e) => (
@@ -383,9 +439,39 @@ export default function ProductLibrary() {
             </p>
           </div>
 
-          <p className="mt-3 h-4 text-xs text-ink/50">
-            {savingId === e.id ? 'Saving…' : saved === e.id ? 'Saved.' : ''}
-          </p>
+          <div className="mt-3 flex items-center justify-between">
+            <p className="h-4 text-xs text-ink/50">
+              {savingId === e.id ? 'Saving…' : saved === e.id ? 'Saved.' : ''}
+            </p>
+            {removingId === e.id ? (
+              // ⚖️ THE CONSEQUENCE IS NAMED, NOT IMPLIED. Removing an entity
+              // withdraws the permissions it carried, so the next script stops
+              // being allowed to demonstrate or make claims about it. A bare
+              // "are you sure?" would hide exactly the part that matters.
+              <span className="text-xs">
+                <span className="text-ink/60">
+                  Remove it? Your scripts will stop being allowed to show it or make
+                  claims about it.
+                </span>
+                <button
+                  type="button"
+                  className="ml-2 font-medium text-coral"
+                  onClick={() => void remove(e.id)}
+                >Remove</button>
+                <button
+                  type="button"
+                  className="ml-2 text-ink/50"
+                  onClick={() => setRemovingId(null)}
+                >Keep</button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="text-xs text-ink/50 underline"
+                onClick={() => setRemovingId(e.id)}
+              >Remove</button>
+            )}
+          </div>
         </section>
       ))}
 
@@ -427,7 +513,8 @@ export default function ProductLibrary() {
               an entitlement granted by a gesture that asserted nothing, which is
               the escalation this whole page refuses. See `ClaimForm`. */}
           <p className="mt-3 text-xs text-ink/50">
-            Nothing here is added to your products until you answer for it.
+            Nothing here is added to your products until you answer for it. Anything we
+            missed, you can add yourself.
           </p>
         </section>
       )}
