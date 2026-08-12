@@ -335,9 +335,45 @@ const STOPWORDS = new Set([
 /** Ranked by how established a position is — repeated first, then directly
  *  stated over merely demonstrated. What someone is KNOWN for should reach a
  *  bounded prompt before a one-off remark does. */
+/** ⚠️ TIMES-SEEN FIRST RANKED THE WEAKEST MATERIAL HIGHEST, and it took reading
+ *  real scripts to see it. Topics recur across every caption a creator posts, so
+ *  they accumulate `timesSeen` — "mobile phone tricks and tips" was stored with
+ *  12 — while a thing the creator DID is said once and carries 1. Sorting by
+ *  frequency before kind therefore put subject headings above lived experience,
+ *  which is the opposite of what the writer needs.
+ *
+ *  ⚖️ MEASURED, NOT ASSUMED. Across 32 generated scripts, only 50% of supplied
+ *  items were cited at all, and the split by kind was damning:
+ *
+ *      framework  88% used      experience  37% used
+ *      opinion    68% used      topic        (dropped once speech existed)
+ *
+ *  Experiences were the LEAST used and the most valuable — every line creator
+ *  panels praised was one. "I sold a black Birkin bag for £13,500 in roughly 40
+ *  seconds by posting a single Instagram story" is a video; "growing a
+ *  founder-led business" is a folder name.
+ *
+ *  So kind leads the sort now. `timesSeen` still breaks ties WITHIN a kind,
+ *  where it means what it was always meant to mean: a belief the creator keeps
+ *  returning to is more durable than one they mentioned once. */
+const KIND_RANK: Record<string, number> = {
+  experience: 6, example: 5, framework: 4, opinion: 3, claim: 2, fact: 2,
+  // Subject headings. `covered` is filtered out upstream by `writableClaims` —
+  // it means DO NOT REPEAT — and `product`/`topic` name a thing without saying
+  // anything about it, which is exactly the material the writer wraps in filler.
+  product: 1, topic: 0,
+}
+
 export function rankedKnowledge(k: CreatorKnowledge): KnowledgeItem[] {
   const weight = (i: KnowledgeItem) => (i.basis === 'stated' ? 2 : i.basis === 'demonstrated' ? 1 : 0)
-  return [...writableClaims(k)].sort((a, b) => b.timesSeen - a.timesSeen || weight(b) - weight(a))
+  const kind = (i: KnowledgeItem) => KIND_RANK[i.kind] ?? 0
+  // ⚠️ BASIS STILL LEADS, AND A FAILING TEST IS WHY. A first version put kind
+  // first and promoted a DEMONSTRATED experience ("has reviewed several
+  // foldables", read off captions) above a STATED opinion the creator said out
+  // loud. Kind orders material of equal evidential strength; it can never
+  // outrank the evidence itself, or a caption inference starts outranking speech.
+  return [...writableClaims(k)]
+    .sort((a, b) => weight(b) - weight(a) || kind(b) - kind(a) || b.timesSeen - a.timesSeen)
 }
 
 /** Is a raw source past the date we said we would stop holding it? Callers do

@@ -263,3 +263,61 @@ describe('how current a thing is — the niche moves', () => {
     expect(line).toMatch(/ageing.*something they have said/is)
   })
 })
+
+// ── THE RANKING PREFERRED THE WEAKEST MATERIAL ──────────────────────────────
+describe('rankedKnowledge puts lived material above subject headings', () => {
+  const item = (kind: string, text: string, basis: string, timesSeen: number) =>
+    ({ kind, text, basis, timesSeen, sourceRef: null, sourceExpiry: null }) as unknown as KnowledgeItem
+
+  it('an experience seen ONCE outranks a topic seen twelve times', () => {
+    // ⚠️ THE EXACT SHAPE FROM PRODUCTION. Topics recur across every caption, so
+    // they accumulate timesSeen — "mobile phone tricks and tips" was stored with
+    // 12 — while a thing the creator DID is said once. Sorting by frequency
+    // first put the folder name above the story.
+    const ranked = rankedKnowledge({ items: [
+      item('topic', 'mobile phone tricks and tips', 'demonstrated', 12),
+      item('experience', 'Sold a black Birkin bag for £13,500 in forty seconds', 'stated', 1),
+    ] } as unknown as CreatorKnowledge)
+    expect(ranked[0].kind).toBe('experience')
+  })
+
+  it('orders the kinds by how much a script can be built from them', () => {
+    const ranked = rankedKnowledge({ items: [
+      item('topic', 't', 'stated', 9), item('product', 'p', 'stated', 9),
+      item('opinion', 'o', 'stated', 1), item('experience', 'e', 'stated', 1),
+      item('framework', 'f', 'stated', 1), item('example', 'x', 'stated', 1),
+    ] } as unknown as CreatorKnowledge)
+    expect(ranked.map((i) => i.kind)).toEqual(
+      ['experience', 'example', 'framework', 'opinion', 'product', 'topic'])
+  })
+
+  it('timesSeen still breaks ties WITHIN a kind', () => {
+    // ⚖️ Where it means what it always meant: a belief the creator keeps
+    // returning to is more durable than one mentioned once.
+    const ranked = rankedKnowledge({ items: [
+      item('opinion', 'said once', 'stated', 1),
+      item('opinion', 'said often', 'stated', 5),
+    ] } as unknown as CreatorKnowledge)
+    expect(ranked[0].text).toBe('said often')
+  })
+
+  it('a stated item outranks a demonstrated one of ANY kind', () => {
+    // ⚠️ KIND CAN NEVER OUTRANK THE EVIDENCE. A first version sorted by kind
+    // first and promoted a DEMONSTRATED experience read off captions above a
+    // STATED opinion the creator said aloud — a caption inference beating
+    // speech, which is the ladder inverted.
+    const across = rankedKnowledge({ items: [
+      item('experience', 'has reviewed several foldables', 'demonstrated', 3),
+      item('opinion', 'battery life matters more', 'stated', 6),
+    ] } as unknown as CreatorKnowledge)
+    expect(across[0].basis).toBe('stated')
+  })
+
+  it('a stated item still outranks a demonstrated one of the same kind', () => {
+    const ranked = rankedKnowledge({ items: [
+      item('opinion', 'from a caption', 'demonstrated', 9),
+      item('opinion', 'from speech', 'stated', 1),
+    ] } as unknown as CreatorKnowledge)
+    expect(ranked[0].text).toBe('from speech')
+  })
+})
