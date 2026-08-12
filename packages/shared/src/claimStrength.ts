@@ -102,6 +102,29 @@ const MY_STANCE = /\bmy (?:take|answer|verdict|call|advice)\b\s*(?:is|was|:|—|
  *  cases would turn every self-description into a fabricated history.  */
 const CREDENTIAL = /\bas someone who has\s+\w+|\bas someone who'(?:s)\s+(?:\w+ed|built|spent|run|made|been|grown|sold|worked|shipped|launched|managed|owned|tested)\b/i
 
+/** "my WHOOP", "my Fitbit Air", "my HomeKit setup" — a NAMED thing they own.
+ *
+ *  ⚠️ A WHOLE CLASS THE DETECTOR MISSED, and finding it refuted my own claim
+ *  that returns had flattened. `my own` was covered; `my <thing>` was not. Over
+ *  2,857 beats, 34 (1.19%) assert a possession and score `discussion` — an
+ *  order of magnitude more common than the last three patterns added, and each
+ *  one puts a specific object in a creator's hands on camera:
+ *
+ *      "Next, the second item, my Fitbit Air."
+ *      "The third item is my WHOOP."
+ *
+ *  If they do not own a WHOOP, that is a fabricated product claim being read to
+ *  an audience, and `evidenceLevel` should have to license it.
+ *
+ *  ⚖️ ONLY THE NAMED HALF, DELIBERATELY. This catches 4 of the 34. The other 30
+ *  are lowercase — "my electric bike", "my proof", "my smart home projects" —
+ *  and separating those from "my approach", "my goals", "my life" needs an
+ *  open-ended list of concrete nouns. A pattern that guessed would fire on every
+ *  abstraction a creator mentions, which is the crying-wolf failure that has
+ *  cost this file twice already. The residual class is recorded rather than
+ *  half-caught; it needs the product-entity check, not a bigger regex. */
+const NAMED_POSSESSION = /\bmy [A-Z][A-Za-z0-9]*/
+
 const POSITION =
   /\bI (?:\w+ly |still |always |usually |often |sometimes )*(?:think|reckon|believe|feel|like|love|hate|prefer|recommend|rate|adore|enjoy|swear by|rely on|care|don'?t care|would argue)\b|\bI(?:'m| am) (?:\w+ly |not |so |a )*(?:shocked|glad|terrified|surprised|impressed|disappointed|excited|worried|sold|convinced|obsessed|sure|not sure|fan)\b|\bI(?:'d| would)?(?:'?m)? (?:never|not)\b|\bI would ?n'?t\b|\bI wouldn't\b|\bI(?:'m| am) (?:staying away|steering clear|skipping|avoiding|passing)\b|\b(?:hard |soft )?pass(?: for me)?\b|\ba pass for me\b|\bI'?d skip\b|\bI'?d\b|\bmy favou?rite\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? |\bI'?m not going to lie\b|\bno-?brainer\b/i
 
@@ -164,7 +187,7 @@ export function claimStrength(line: string): ClaimStrength {
   if ((NARRATION.test(s) || SELF_INTRO.test(s)) && !POSITION.test(s) && !HISTORY_STRICT.test(s) && !DECLARED_PROMISE.test(s)) return 'discussion'
   // A claimed credential is a life event however the sentence is framed, so it
   // is checked before narration can wave the line through.
-  if (CREDENTIAL.test(s)) return 'history'
+  if (CREDENTIAL.test(s) || NAMED_POSSESSION.test(s)) return 'history'
   if (HISTORY.test(s) && !NARRATION.test(s)) return 'history'
   if (POSITION.test(s) || MY_STANCE.test(s)) return 'position'
   if (HISTORY.test(s)) return 'history'

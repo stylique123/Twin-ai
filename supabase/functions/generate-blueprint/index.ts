@@ -393,6 +393,11 @@ const CLAIM_MY_STANCE = /\bmy (?:take|answer|verdict|call|advice)\b\s*(?:is|was|
  *  this file can miss. `who's` is only read as perfect before a past participle,
  *  because "who's passionate" is a stance. Mirrors CREDENTIAL in shared. */
 const CLAIM_CREDENTIAL = /\bas someone who has\s+\w+|\bas someone who'(?:s)\s+(?:\w+ed|built|spent|run|made|been|grown|sold|worked|shipped|launched|managed|owned|tested)\b/i
+/** "my WHOOP", "my Fitbit Air" — a NAMED thing they claim to own. 34 beats in
+ *  2,857 assert a possession and scored `discussion`; this catches the named
+ *  half. The lowercase half ("my electric bike") needs the product-entity check,
+ *  not a bigger regex. Mirrors NAMED_POSSESSION in shared. */
+const CLAIM_NAMED_POSSESSION = /\bmy [A-Z][A-Za-z0-9]*/
 const CLAIM_POSITION =
   /\bI (?:\w+ly |still |always |usually |often |sometimes )*(?:think|reckon|believe|feel|like|love|hate|prefer|recommend|rate|adore|enjoy|swear by|rely on|care|don'?t care|would argue)\b|\bI(?:'m| am) (?:\w+ly |not |so |a )*(?:shocked|glad|terrified|surprised|impressed|disappointed|excited|worried|sold|convinced|obsessed|sure|not sure|fan)\b|\bI(?:'d| would)?(?:'?m)? (?:never|not)\b|\bI would ?n'?t\b|\bI wouldn't\b|\bI(?:'m| am) (?:staying away|steering clear|skipping|avoiding|passing)\b|\b(?:hard |soft )?pass(?: for me)?\b|\ba pass for me\b|\bI'?d skip\b|\bI'?d\b|\bmy favou?rite\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? |\bI'?m not going to lie\b|\bno-?brainer\b/i
 
@@ -436,7 +441,7 @@ function claimStrength(line: string): ClaimStrength {
   // event in a life. It never beats a stance or a promise actually made.
   if ((CLAIM_NARRATION.test(t) || CLAIM_SELF_INTRO.test(t))
     && !CLAIM_POSITION.test(t) && !CLAIM_HISTORY_STRICT.test(t) && !CLAIM_DECLARED_PROMISE.test(t)) return 'discussion'
-  if (CLAIM_CREDENTIAL.test(t)) return 'history'
+  if (CLAIM_CREDENTIAL.test(t) || CLAIM_NAMED_POSSESSION.test(t)) return 'history'
   if (CLAIM_HISTORY.test(t) && !CLAIM_NARRATION.test(t)) return 'history'
   if (CLAIM_POSITION.test(t) || CLAIM_MY_STANCE.test(t)) return 'position'
   if (CLAIM_HISTORY.test(t)) return 'history'
