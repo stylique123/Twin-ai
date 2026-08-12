@@ -38,9 +38,44 @@ describe('readiness runs BEFORE the money moves', () => {
 
   it('caps the ask at three, ordered by what unblocks the most', () => {
     for (const src of [EDGE, SHARED]) {
-      expect(src).toMatch(/'goal', 'offer', 'angle', 'relationship', 'cta', 'claims'/)
+      expect(src).toMatch(/'goal', 'offer', 'angle', 'relationship', 'cta', 'claims', 'audience'/)
       expect(src).toMatch(/\.slice\(0, 3\)/)
     }
+  })
+
+  it('BOTH copies evaluate audience, which only one of them used to', () => {
+    // ⚠️ THE SHARED RULE HAD THIS AND THE EDGE DID NOT. `assessReadiness` marks
+    // audience MISSING_REQUIRED when no audience was given AND nothing was
+    // learned about the creator. The edge evaluated six fields and never this
+    // one — so the shared module blocked a case production charged for, with
+    // its own tests asserting behaviour that did not exist downstream.
+    //
+    // ⚠️ AND IT STOPPED BEING HYPOTHETICAL. Until the scan was wired to store
+    // caption knowledge, a creator whose audio upgrade never ran had an EMPTY
+    // knowledge table. Empty table plus no audience answer is exactly this
+    // branch: nothing known about who they are or who they talk to.
+    expect(EDGE).toMatch(/readyMissing\.push\(\{ field: 'audience'/)
+    expect(SHARED).toMatch(/put\('audience'/)
+  })
+
+  it('any creator knowledge at all satisfies audience, in both', () => {
+    // ⚖️ A back catalogue infers an audience well enough — being wrong there
+    // costs register, not truth. Requiring a stronger signal would ask almost
+    // every creator a question the scan can already answer.
+    expect(EDGE).toMatch(/const readyKnows = Array\.isArray\(knowledgeRows\) && knowledgeRows\.length > 0/)
+    expect(SHARED).toMatch(/input\.hasCreatorKnowledge \? 'INFERRED_BUT_SAFE' : 'MISSING_REQUIRED'/)
+  })
+
+  it('reads the fetched rows, not the alias declared far below it', () => {
+    // ⚠️ `kRows` is declared several hundred lines after the readiness block, so
+    // referencing it there is a temporal-dead-zone crash at RUNTIME and not a
+    // compile error — the kind of bug that ships green and 500s on first use.
+    // Scoped to CODE, not commentary — the block names `kRows` in a comment
+    // explaining why it is not used, and a check that cannot tell an
+    // explanation from an implementation forbids documenting the decision.
+    const block = EDGE.slice(EDGE.indexOf('READINESS: CAN WE WRITE'), EDGE.indexOf("admin.rpc('spend_credits'"))
+    const code = block.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')
+    expect(code).not.toMatch(/\bkRows\b/)
   })
 })
 

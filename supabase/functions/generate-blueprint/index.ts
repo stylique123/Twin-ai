@@ -1470,10 +1470,36 @@ Deno.serve(async (req: Request) => {
   if (readyPromoting && readyFacts.length === 0 && !readyPresent(answers.claims)) {
     readyMissing.push({ field: 'claims', question: 'What does it actually do? Give me the details this video is allowed to state.' })
   }
+  // ── AUDIENCE: INFERRED WHEN THERE IS A BACK CATALOGUE, ASKED WHEN THERE IS NOT
+  //
+  // ⚠️ THE SHARED RULE HAD THIS AND THE EDGE DID NOT. `assessReadiness` marks
+  // audience MISSING_REQUIRED when no audience was given AND nothing was learned
+  // about the creator; the edge evaluated six fields and never this one. So the
+  // shared module blocked a case the edge charged for, with 23 tests asserting
+  // behaviour production did not have.
+  //
+  // ⚠️ AND IT STOPPED BEING HYPOTHETICAL. Until the scan was wired to store
+  // caption knowledge, a creator whose audio upgrade never ran had an EMPTY
+  // knowledge table. Empty table plus no audience answer is exactly this branch:
+  // we know nothing about who they are and nothing about who they talk to, and
+  // the old behaviour was to charge them and write for an invented audience.
+  //
+  // ⚖️ ASKED LAST, AND ONLY WHEN WE KNOW NOTHING. A back catalogue infers an
+  // audience well enough — being wrong there costs register, not truth — so any
+  // creator knowledge at all satisfies this. It is the weakest of the questions
+  // and sorts last, so it is the first to fall off the cap of three.
+  // ⚖️ READS `knowledgeRows` (fetched above at the creator_knowledge select),
+  // NOT the `kRows` alias — that is declared several hundred lines below this
+  // point, so referencing it here would be a temporal-dead-zone crash at
+  // runtime rather than a compile error.
+  const readyKnows = Array.isArray(knowledgeRows) && knowledgeRows.length > 0
+  if (!readyPresent(answers.audience ?? brief.audience ?? (dna.audience as string | undefined)) && !readyKnows) {
+    readyMissing.push({ field: 'audience', question: 'Who is this video for?' })
+  }
   if (readyMissing.length) {
     // ⚖️ ORDERED BY WHAT UNBLOCKS THE MOST, capped at three. A creator asked
     // eight questions abandons; a creator asked two answers them.
-    const ORDER = ['goal', 'offer', 'angle', 'relationship', 'cta', 'claims']
+    const ORDER = ['goal', 'offer', 'angle', 'relationship', 'cta', 'claims', 'audience']
     const ask = readyMissing
       .slice()
       .sort((a, b) => ORDER.indexOf(a.field) - ORDER.indexOf(b.field))
