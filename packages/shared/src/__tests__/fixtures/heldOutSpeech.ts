@@ -60,4 +60,20 @@ export const HELD_OUT_SPEECH: {
   { text: 'Each battery can be used over 300 times and it\'s basically a personal vending machine.', expect: 'discussion' },
   { text: 'This might look like a regular rice cooker, but when you pour stuff inside, it has a built-in scale.', expect: 'discussion' },
   { text: 'Sony promises that it\'s going to go on US roads by 2026.', expect: 'discussion' },
+  // ── NEGATIVE PREFERENCES: a family the detector still misses ──────────────
+  // ⚠️ FOUND BY READING SCRIPTS, NOT BY COUNTING THEM. All five are verbatim
+  // from generated `evidence` beats for a REVIEW_ONLY creator with coverage-only
+  // evidence — so each puts a preference in his mouth that nothing on record
+  // supports. Five of the six were classified `discussion` and waved through.
+  //
+  // ⚖️ THE UNCOMFORTABLE COROLLARY. CarterPCs' actual format IS "things I'd
+  // never buy". If we have never heard him state a preference, that format is
+  // not available to him — and the honest fix is evidence (a transcript), not a
+  // looser detector. Blocking these is correct even though it blocks a video
+  // he really makes.
+  { text: "Second, I wouldn't buy a Chromebook for my primary device.", expect: 'position' },
+  { text: 'Third, I\'m staying away from older iPhone models, especially if they\'re more than two generations old.', expect: 'position' },
+  { text: 'Fourth, smart home devices that lock you into a proprietary ecosystem are a pass for me.', expect: 'position' },
+  { text: 'Fifth, generic, uncertified charging cables and adapters? Hard pass.', expect: 'position' },
+  { text: 'Seventh, I\'d skip cheap, no-name drones.', expect: 'position' },
 ]

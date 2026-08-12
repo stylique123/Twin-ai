@@ -49,7 +49,12 @@ for (const r of runs) {
     const lt = terms(line)
     const hit = items.find((i) => {
       const it = terms(i.text ?? '')
-      return [...it].filter((w) => lt.has(w)).length >= 2
+      // ⚠️ FLAT >=2 CANNOT MATCH A SHORT ITEM. "3D printing" reduces to one
+      // usable term, so a script entirely about 3D printing scored as using
+      // nothing — 13% of every item these creators hold is unmatchable this
+      // way, and every emptiness number computed with it was overstated.
+      // Production uses Math.min(2, size); so does this now.
+      return [...it].filter((w) => lt.has(w)).length >= Math.min(2, it.size)
     })
     if (hit) { overlapping++; usedPer[c.key].used.add(hit.text) }
   }
