@@ -160,18 +160,61 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   const isCtaSection = (section: string): boolean =>
     /\b(cta|call[ -]?to[ -]?action|outro|closing|sign[ -]?off)\b/i.test(section)
 
-  const usable = (blueprint.script ?? []).filter((s) => {
-    const l = (s.line || '').trim()
-    if (!l) return false
-    if (isWhollyPlaceholder(l)) return false
-    if (/hook|opener/i.test(s.section || '')) return false
-    return !looksLikeHook(l)
+  // ⚠️ THE PLAN IS INDEXED BY THE SCRIPT, SO THE SOURCE INDEX MUST SURVIVE THE
+  // FILTER. `readBeatPlan` aligns the plan one-to-one with `blueprint.script`,
+  // and refuses a plan of a different length WHOLE rather than mapping it by
+  // guesswork — precisely so no scene can take a target belonging to a
+  // different beat. This filter then drops the hook, the empty lines, the
+  // placeholders and (below) the CTA, and the first version indexed the plan by
+  // position in what SURVIVED. So every scene took the target of an earlier
+  // beat, by an offset that varies per script:
+  //
+  //   hook   planned  3s → filtered out, got the estimator
+  //   setup  planned 11s → took the HOOK's 3s
+  //   proof  planned 22s → took the SETUP's 11s
+  //   cta    planned  5s → held aside, got the estimator
+  //
+  // The module's whole-refusal rule was intact and the caller reintroduced the
+  // exact defect it exists to prevent: a creator told to speak for three
+  // seconds on a beat planned for eleven, with nothing indicating anything went
+  // wrong. Carrying `idx` is what makes beat *i* mean script entry *i* again.
+  let hookIdx: number | null = null
+  const usable: Array<{ seg: Blueprint['script'][number]; idx: number }> = []
+  ;(blueprint.script ?? []).forEach((seg, idx) => {
+    const l = (seg.line || '').trim()
+    if (!l) return
+    if (isWhollyPlaceholder(l)) return
+    if (/hook|opener/i.test(seg.section || '') || looksLikeHook(l)) {
+      // The FIRST hook-like line is the one scene 1 displaced; a later one is a
+      // re-hook whose plan entry is not scene 1's to take.
+      if (hookIdx === null) hookIdx = idx
+      return
+    }
+    usable.push({ seg, idx })
   })
+
+  // ⚠️ AND THE HOOK GETS THE LENGTH THAT WAS PLANNED FOR IT. Scene 1 is built
+  // above, before `looksLikeHook` exists to say WHICH script entry it displaced,
+  // so it was estimated from its own word count while a decided target sat in
+  // the plan unused. The hook is the beat where length matters most — it is the
+  // only one whose overrun costs the whole video — and it was the one beat
+  // guaranteed to be paced by the estimator.
+  //
+  // ⚖️ PATCHED, NOT RE-ORDERED. Moving the hook push below the filter would put
+  // the scene-numbering and the caption-uniqueness counter behind it too, for a
+  // value that is two assignments. Silent when no plan entry applies: an absent
+  // target means "no target", and `target_sec` stays off the scene rather than
+  // arriving as a zero the recorder would read as a countdown.
+  const plannedHook = hookIdx === null ? null : (beatPlan?.[hookIdx]?.targetSec ?? null)
+  if (plannedHook !== null) {
+    scenes[0].duration_sec = plannedHook
+    scenes[0].target_sec = plannedHook
+  }
   // The LAST CTA-labelled beat, not the first: if the model labels more than
   // one, the ending is the one at the end.
   let ctaIdx = -1
   for (let i = usable.length - 1; i >= 0; i--) {
-    if (isCtaSection(usable[i].section || '')) { ctaIdx = i; break }
+    if (isCtaSection(usable[i].seg.section || '')) { ctaIdx = i; break }
   }
   const ctaBeat = ctaIdx >= 0 ? usable[ctaIdx] : null
   const body = ctaIdx >= 0 ? usable.filter((_, i) => i !== ctaIdx) : usable
@@ -198,7 +241,7 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   // under.
   const pending: Array<{ label: string; medium: ClipMedium }> = []
 
-  body.forEach((seg, i) => {
+  body.forEach(({ seg, idx }, i) => {
     const raw = (seg.line || '').trim()
 
     // A whole-line marker declares a clip and no words. Queued, not emitted.
@@ -232,10 +275,15 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
       dialogue: line,
       // DECIDED, not derived — the plan's target when there is one, and the
       // words-over-speaking-rate estimate when there is not.
-      duration_sec: beatDurationSec(beatPlan, i, estimateDurationSec(line, wpm)),
+      duration_sec: beatDurationSec(beatPlan, idx, estimateDurationSec(line, wpm)),
       // Kept beside it, so an edit that stretches the line cannot erase what the
       // beat was planned to be.
-      ...(beatPlan?.[i]?.targetSec != null ? { target_sec: beatPlan[i].targetSec } : {}),
+      ...(beatPlan?.[idx]?.targetSec != null ? { target_sec: beatPlan[idx].targetSec } : {}),
+      // ⚖️ STILL THE BODY POSITION, DELIBERATELY. This indexes `shot_list`, a
+      // DIFFERENT array from `script`, whose alignment with the script is its
+      // own question and not one this change has evidence about. Only the beat
+      // plan is documented as one-to-one with `script`, so only the beat plan
+      // moves to the source index.
       ...framingFor(i + 1, blueprint, seg),
       caption_text: pushCaption(captionFromLine(line), n),
       pause_after: true,
@@ -317,16 +365,29 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   // The fallback stays deliberately plain. "Follow for more" is weak, and a
   // weak line the creator can see and rewrite is better than a confident one
   // that misstates their offer — nothing here knows what they actually sell.
-  const ctaLine = (ctaBeat?.line || '').trim()
+  const ctaLine = (ctaBeat?.seg.line || '').trim()
   const cta = ctaLine || 'Follow for more'
   const ctaN = scenes.length + 1
+  // The CTA is held out of the body, so it missed the plan the same way the hook
+  // did, and takes its own beat's target when there is one.
+  //
+  // ⚖️ KEYED ON `ctaBeat`, NOT ON THE WORDS. A first version also required
+  // `ctaLine` to be non-empty, on the reasoning that the 'Follow for more'
+  // fallback is a sentence nothing planned. Mutation-testing showed that
+  // condition can never be false: `usable` already drops empty lines, so a
+  // `ctaBeat` always carries words. It was an unreachable guard reading as a
+  // deliberate one. The property it was protecting still holds — no `ctaBeat`
+  // means no target — and it holds because there is no beat, which is the
+  // honest reason.
+  const plannedCta = ctaBeat ? (beatPlan?.[ctaBeat.idx]?.targetSec ?? null) : null
   scenes.push({
     scene_number: ctaN,
     scene_type: 'cta',
-    purpose: ctaBeat?.section?.trim() || 'End with one clear final action',
+    purpose: ctaBeat?.seg.section?.trim() || 'End with one clear final action',
     dialogue: cta,
-    duration_sec: estimateDurationSec(cta, wpm),
-    ...framingFor(scenes.length, blueprint, ctaBeat ?? undefined),
+    duration_sec: plannedCta ?? estimateDurationSec(cta, wpm),
+    ...(plannedCta !== null ? { target_sec: plannedCta } : {}),
+    ...framingFor(scenes.length, blueprint, ctaBeat?.seg ?? undefined),
     caption_text: pushCaption(captionFromLine(cta), ctaN),
     pause_after: false,
     show_in_teleprompter: true,
