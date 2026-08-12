@@ -55,11 +55,24 @@ for (const r of rows) {
     if (L === 'strict' && supplied) {
       const grounded = cited !== '' && groundingDepth(cited, supplied) !== 'none'
       const personal = claimStrength(line) === 'history'
+      // ⚠️ THE FIRST VERSION OF THIS LINE MADE `UNRESOLVED` UNREACHABLE, and it
+      // reported a clean 0% that read like a green light to enforce. It passed
+      // `externallyAnswerable: !personal`, so every ungrounded beat routed to
+      // ASK (personal) or RESOLVABLE (not personal) and the rewrite path could
+      // never be counted. A measurement whose answer is fixed by its own wiring
+      // is worse than no measurement, because it looks like evidence.
+      //
+      // ⚖️ WHAT ACTUALLY MAKES A CLAIM EXTERNALLY ANSWERABLE: it is about the
+      // world. A spec, a public product, a general statistic — research can
+      // settle it. A claim about the creator's OWN product or business cannot be
+      // researched; only Product DNA answers it, and when none was carried the
+      // claim is genuinely UNRESOLVED.
+      const ownBusiness = /\b(?:my|our)\s+(?:app|product|tool|course|service|company|business|startup|agency|program|software|platform|brand)\b/i.test(line)
+        || /\b(?:we|I)\s+(?:built|made|created|launched|designed|offer|charge|price)\b/i.test(line)
       const res = resolveStrictBeat({
         grounded,
         personalToCreator: personal,
-        // A non-personal factual claim about the world is what research answers.
-        externallyAnswerable: !personal,
+        externallyAnswerable: !personal && !ownBusiness,
         // The pack carries none, and the run records that as `[]` — KNOWN empty.
         productFactsAvailable: (r.supplied.productFacts ?? []).length > 0,
       })
