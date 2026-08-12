@@ -1,0 +1,4557 @@
+[
+  {
+    "label": "SUBSTANTIVE",
+    "items": [
+      {
+        "kind": "opinion",
+        "text": "megapixels are the least useful number on a phone's spec sheet because image processing matters more than the sensor",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "experience",
+        "text": "tested phones with 200 megapixel sensors that produced worse photos than a three-year-old iPhone due to processing differences",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "topic",
+        "text": "battery life, specifically getting a full day of shooting, is the most important phone feature",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "covered",
+        "text": "made a video explaining why he stopped upgrading phones every year",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "experience",
+        "text": "reviewed every foldable phone shipped in the last four years",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "2"
+      },
+      {
+        "kind": "fact",
+        "text": "the hinge is the first component to fail on foldable phones",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "2"
+      },
+      {
+        "kind": "experience",
+        "text": "a foldable phone developed a crease after six weeks of normal use",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "2"
+      },
+      {
+        "kind": "framework",
+        "text": "uses a phone as his only device for two weeks before making any statements about it to find hidden issues",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "2"
+      },
+      {
+        "kind": "opinion",
+        "text": "faster charging is not better for phone battery health",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "3"
+      },
+      {
+        "kind": "experience",
+        "text": "measured noticeable capacity loss over a year on the same phone model charged at different speeds",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "3"
+      },
+      {
+        "kind": "fact",
+        "text": "slow overnight charging maintains noticeably more battery capacity over time",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "3"
+      }
+    ]
+  },
+  {
+    "label": "NAMED",
+    "items": [
+      {
+        "kind": "experience",
+        "text": "dropped Notion for Obsidian about six months ago",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "opinion",
+        "text": "Notion got slow once the vault passed a few thousand notes",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "1"
+      },
+      {
+        "kind": "fact",
+        "text": "Obsidian is local-first",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "product",
+        "text": "still pays for Todoist because nothing else handles natural-language dates as well",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "product",
+        "text": "recommends the M4 iPad Pro only in the 512GB model, where the extra RAM is available",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "2"
+      },
+      {
+        "kind": "experience",
+        "text": "tested Final Cut on the 256GB M4 iPad Pro and it choked on a multicam timeline",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "2"
+      },
+      {
+        "kind": "experience",
+        "text": "found the 512GB M4 iPad Pro handled the same multicam timeline in Final Cut fine",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "2"
+      }
+    ]
+  },
+  {
+    "label": "EMPTY",
+    "items": []
+  },
+  {
+    "label": "REAL:BuildersCentral",
+    "items": [
+      {
+        "kind": "topic",
+        "text": "building apps",
+        "basis": "demonstrated",
+        "times_seen": "11",
+        "confidence": "1.0",
+        "source_video": "6,7,15,16,19,23,40,44,54,60,62"
+      },
+      {
+        "kind": "topic",
+        "text": "AI development",
+        "basis": "demonstrated",
+        "times_seen": "10",
+        "confidence": "1.0",
+        "source_video": "5,11,12,35,36,37,47,87,90,94"
+      },
+      {
+        "kind": "topic",
+        "text": "no-code tools and strategies",
+        "basis": "demonstrated",
+        "times_seen": "8",
+        "confidence": "1.0",
+        "source_video": "18,29,50,54,66,68,70,74"
+      },
+      {
+        "kind": "product",
+        "text": "Claude Code",
+        "basis": "demonstrated",
+        "times_seen": "4",
+        "confidence": "1.0",
+        "source_video": "2,7,8,23"
+      },
+      {
+        "kind": "covered",
+        "text": "alternatives to building SaaS",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "covered",
+        "text": "loop engineering with Claude Code",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "2"
+      },
+      {
+        "kind": "covered",
+        "text": "alternatives to building a website",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "3"
+      },
+      {
+        "kind": "product",
+        "text": "Hermes Agent",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "4"
+      },
+      {
+        "kind": "topic",
+        "text": "building with AI using the 4 Pillar System",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "5"
+      },
+      {
+        "kind": "topic",
+        "text": "building startups",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "7"
+      },
+      {
+        "kind": "product",
+        "text": "GitHub",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "7,79"
+      },
+      {
+        "kind": "product",
+        "text": "Vercel",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "7,34"
+      },
+      {
+        "kind": "product",
+        "text": "Figma",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "7"
+      },
+      {
+        "kind": "product",
+        "text": "Reddit",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "7,29"
+      },
+      {
+        "kind": "covered",
+        "text": "designing a portfolio website with Claude Code for free",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "8"
+      },
+      {
+        "kind": "covered",
+        "text": "firing a video editor",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "9"
+      },
+      {
+        "kind": "covered",
+        "text": "building a full development tracker while stuck in traffic",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "10"
+      },
+      {
+        "kind": "covered",
+        "text": "building Claude Skills",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "11"
+      },
+      {
+        "kind": "covered",
+        "text": "reacting to best and worst AI updates",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "12"
+      },
+      {
+        "kind": "covered",
+        "text": "automating YouTube with Clawdbot (OpenClaw)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "13"
+      },
+      {
+        "kind": "product",
+        "text": "Google Antigravity",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "14"
+      },
+      {
+        "kind": "covered",
+        "text": "finding app ideas that print ($100K/Month)",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "15,16"
+      },
+      {
+        "kind": "covered",
+        "text": "AI will not replace junior developers",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "17"
+      },
+      {
+        "kind": "product",
+        "text": "n8n",
+        "basis": "demonstrated",
+        "times_seen": "3",
+        "confidence": "1.0",
+        "source_video": "18,24,29"
+      },
+      {
+        "kind": "topic",
+        "text": "automating a YouTube Channel with n8n + No-code",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "18"
+      },
+      {
+        "kind": "covered",
+        "text": "solving entrepreneur challenges by building apps",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "19"
+      },
+      {
+        "kind": "covered",
+        "text": "using AI tools in the streets of Bangalore",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "20"
+      },
+      {
+        "kind": "product",
+        "text": "Nano Banana",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "20,21"
+      },
+      {
+        "kind": "product",
+        "text": "VEO 3",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "20,24"
+      },
+      {
+        "kind": "product",
+        "text": "Sora 2",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "20"
+      },
+      {
+        "kind": "covered",
+        "text": "designing a brand with Google's Nano Banana",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "21"
+      },
+      {
+        "kind": "covered",
+        "text": "Hugging Face explained and running AI models locally",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "22"
+      },
+      {
+        "kind": "product",
+        "text": "Cursor",
+        "basis": "demonstrated",
+        "times_seen": "4",
+        "confidence": "1.0",
+        "source_video": "23,40,42,44"
+      },
+      {
+        "kind": "product",
+        "text": "Android Studio",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "23"
+      },
+      {
+        "kind": "covered",
+        "text": "automating viral AI videos for free with n8n + Veo 3",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "24"
+      },
+      {
+        "kind": "covered",
+        "text": "the unfair advantage every startup needs (and it's free)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "25"
+      },
+      {
+        "kind": "covered",
+        "text": "Retrieval-augmented generation (RAG) explained",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "26"
+      },
+      {
+        "kind": "product",
+        "text": "Bolt",
+        "basis": "demonstrated",
+        "times_seen": "3",
+        "confidence": "1.0",
+        "source_video": "27,44,56"
+      },
+      {
+        "kind": "product",
+        "text": "V0",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "27,62"
+      },
+      {
+        "kind": "product",
+        "text": "Lovable",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "27,40"
+      },
+      {
+        "kind": "covered",
+        "text": "Google winning the AI race",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "28"
+      },
+      {
+        "kind": "covered",
+        "text": "stealing startup ideas from Reddit with n8n + No-code",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "29"
+      },
+      {
+        "kind": "covered",
+        "text": "Model Context Protocol (MCP) explained",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "30"
+      },
+      {
+        "kind": "topic",
+        "text": "Scroll Engineering as new AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "31"
+      },
+      {
+        "kind": "covered",
+        "text": "Vercel open-sourcing its security harness",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "34"
+      },
+      {
+        "kind": "product",
+        "text": "GPT inside Claude",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "38"
+      },
+      {
+        "kind": "product",
+        "text": "Kimiai (Chinese AI model)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "39"
+      },
+      {
+        "kind": "product",
+        "text": "Claude 4",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "40"
+      },
+      {
+        "kind": "product",
+        "text": "Framer",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "40"
+      },
+      {
+        "kind": "covered",
+        "text": "building a game without coding with Grok 3 + Cursor",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "42"
+      },
+      {
+        "kind": "product",
+        "text": "Grok 3",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "42"
+      },
+      {
+        "kind": "topic",
+        "text": "jobs disappearing due to AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "43"
+      },
+      {
+        "kind": "product",
+        "text": "Claude 3.7",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "44"
+      },
+      {
+        "kind": "covered",
+        "text": "building an app in Bengaluru traffic",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "44"
+      },
+      {
+        "kind": "topic",
+        "text": "cybersecurity failures in India's education system",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "45"
+      },
+      {
+        "kind": "product",
+        "text": "Deepseek R1",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "46"
+      },
+      {
+        "kind": "covered",
+        "text": "building a game using Deepseek R1",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "46"
+      },
+      {
+        "kind": "covered",
+        "text": "building two AI Agents in 8 minutes using Langflow without coding",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "48"
+      },
+      {
+        "kind": "product",
+        "text": "Langflow",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "48"
+      },
+      {
+        "kind": "topic",
+        "text": "LinkedIn not showing correct job opportunities",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "49"
+      },
+      {
+        "kind": "covered",
+        "text": "top 10 No-Code tools every builder needs in 2025",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "50"
+      },
+      {
+        "kind": "covered",
+        "text": "not building for humans",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "51"
+      },
+      {
+        "kind": "product",
+        "text": "REPLIT AGENT",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "52"
+      },
+      {
+        "kind": "covered",
+        "text": "deploying in seconds",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "53"
+      },
+      {
+        "kind": "covered",
+        "text": "the best tool to build powerful business apps (No Code)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "54"
+      },
+      {
+        "kind": "covered",
+        "text": "a challenge for an app with Bolt.new",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "56"
+      },
+      {
+        "kind": "topic",
+        "text": "the future of coding in the education system",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "58"
+      },
+      {
+        "kind": "topic",
+        "text": "better ways to learn",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "59"
+      },
+      {
+        "kind": "covered",
+        "text": "building and deploying two apps from scratch in 9 minutes with Bolt.new",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "60"
+      },
+      {
+        "kind": "covered",
+        "text": "not spending on AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "61"
+      },
+      {
+        "kind": "covered",
+        "text": "building an app using the Viral Cursor, Claude & v0 Workflow (No Coding Required)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "62"
+      },
+      {
+        "kind": "topic",
+        "text": "Apple design",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "63"
+      },
+      {
+        "kind": "topic",
+        "text": "the future of coding from scratch",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "64"
+      },
+      {
+        "kind": "topic",
+        "text": "hottest career path no one knows",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "65"
+      },
+      {
+        "kind": "covered",
+        "text": "3 million dollar ideas to launch in 2024 (No Coding Required)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "66"
+      },
+      {
+        "kind": "covered",
+        "text": "all apk in just one model",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "67"
+      },
+      {
+        "kind": "covered",
+        "text": "getting jobs in 2024 without coding",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "68"
+      },
+      {
+        "kind": "covered",
+        "text": "investment in cow collars",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "69"
+      },
+      {
+        "kind": "covered",
+        "text": "creating something in 6 seconds without coding",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "70"
+      },
+      {
+        "kind": "topic",
+        "text": "earning money",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "71"
+      },
+      {
+        "kind": "covered",
+        "text": "a chai wala giving a crazy app idea",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "72"
+      },
+      {
+        "kind": "covered",
+        "text": "2000 old phones turning into a data centre",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "73"
+      },
+      {
+        "kind": "covered",
+        "text": "rating top No Code tools (2024)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "74"
+      },
+      {
+        "kind": "covered",
+        "text": "breaking the AI Race in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "75"
+      },
+      {
+        "kind": "covered",
+        "text": "Bengaluru's knowledge of tech, engineers reacting on No-Code",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "76"
+      },
+      {
+        "kind": "topic",
+        "text": "updating your resume",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "77"
+      },
+      {
+        "kind": "covered",
+        "text": "building software for sales (Airtable Tutorial Custom CRM)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "78"
+      },
+      {
+        "kind": "product",
+        "text": "Airtable",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "78"
+      },
+      {
+        "kind": "topic",
+        "text": "GitHub repos that quietly print money",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "79"
+      },
+      {
+        "kind": "covered",
+        "text": "using Claude better for real world use cases",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "80"
+      },
+      {
+        "kind": "covered",
+        "text": "how to become a GTM Engineer (Highest paying Tech job)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "81"
+      },
+      {
+        "kind": "covered",
+        "text": "Anthropic's Master Plan for 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "82"
+      },
+      {
+        "kind": "covered",
+        "text": "a tool that replaced 3 others",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "83"
+      },
+      {
+        "kind": "covered",
+        "text": "pitching like a billionaire",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "84"
+      },
+      {
+        "kind": "covered",
+        "text": "fixing UI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "85"
+      },
+      {
+        "kind": "covered",
+        "text": "editing videos with AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "86"
+      },
+      {
+        "kind": "covered",
+        "text": "a new programming language just for AI Agents",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "87"
+      },
+      {
+        "kind": "product",
+        "text": "Grok's Coding Agent",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "88"
+      },
+      {
+        "kind": "covered",
+        "text": "launching AI SAAS",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "89"
+      },
+      {
+        "kind": "covered",
+        "text": "Grok getting better",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "90"
+      },
+      {
+        "kind": "covered",
+        "text": "using a YC tool instead of cold emailing",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "91"
+      },
+      {
+        "kind": "covered",
+        "text": "alternatives to running AI Agents locally",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "92"
+      },
+      {
+        "kind": "product",
+        "text": "Notion as an AI OS",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "93"
+      },
+      {
+        "kind": "covered",
+        "text": "Wall Street's Secret Advantage officially dead",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "95"
+      },
+      {
+        "kind": "covered",
+        "text": "alternatives to using Markdown for AI Prompts",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "96"
+      },
+      {
+        "kind": "covered",
+        "text": "an AI that actually thinks while you speak",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "97"
+      },
+      {
+        "kind": "covered",
+        "text": "not needing a co-founder anymore",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "98"
+      },
+      {
+        "kind": "covered",
+        "text": "finding customers",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "99"
+      },
+      {
+        "kind": "covered",
+        "text": "finding $1M Startup Ideas",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "100"
+      }
+    ]
+  },
+  {
+    "label": "REAL:matthew_berman",
+    "items": [
+      {
+        "kind": "person",
+        "text": "Mark Zuckerberg",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "person",
+        "text": "Dario",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "organization",
+        "text": "Anthropic",
+        "basis": "demonstrated",
+        "times_seen": "12",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "person",
+        "text": "Nader Dabit",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "2"
+      },
+      {
+        "kind": "topic",
+        "text": "open-source",
+        "basis": "demonstrated",
+        "times_seen": "9",
+        "confidence": "1.0",
+        "source_video": "2"
+      },
+      {
+        "kind": "topic",
+        "text": "software factories",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "2"
+      },
+      {
+        "kind": "organization",
+        "text": "Google",
+        "basis": "demonstrated",
+        "times_seen": "3",
+        "confidence": "1.0",
+        "source_video": "3"
+      },
+      {
+        "kind": "topic",
+        "text": "AI tips",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "5"
+      },
+      {
+        "kind": "product",
+        "text": "Codex",
+        "basis": "demonstrated",
+        "times_seen": "4",
+        "confidence": "1.0",
+        "source_video": "5"
+      },
+      {
+        "kind": "covered",
+        "text": "open-source is winning",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "6"
+      },
+      {
+        "kind": "product",
+        "text": "GPT-5.6",
+        "basis": "demonstrated",
+        "times_seen": "4",
+        "confidence": "1.0",
+        "source_video": "8"
+      },
+      {
+        "kind": "person",
+        "text": "Jeetu Patel",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "9"
+      },
+      {
+        "kind": "topic",
+        "text": "AI and jobs",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "9"
+      },
+      {
+        "kind": "topic",
+        "text": "humanity's full potential",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "9"
+      },
+      {
+        "kind": "topic",
+        "text": "OpenAI hardware",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "10"
+      },
+      {
+        "kind": "product",
+        "text": "Opus 5",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "12"
+      },
+      {
+        "kind": "topic",
+        "text": "AI savings",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "13"
+      },
+      {
+        "kind": "covered",
+        "text": "an AI tried to escape the lab",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "14"
+      },
+      {
+        "kind": "covered",
+        "text": "the most important conversation in AI right now",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "15"
+      },
+      {
+        "kind": "covered",
+        "text": "a model that just changed everything",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "16"
+      },
+      {
+        "kind": "covered",
+        "text": "OpenAI vs Anthropic",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "17"
+      },
+      {
+        "kind": "covered",
+        "text": "how AI actually works (J-Space)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "20"
+      },
+      {
+        "kind": "topic",
+        "text": "cutting AI cost in half",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "21"
+      },
+      {
+        "kind": "product",
+        "text": "Hermes",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "22"
+      },
+      {
+        "kind": "covered",
+        "text": "open-source AI projects",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "25"
+      },
+      {
+        "kind": "topic",
+        "text": "loops",
+        "basis": "demonstrated",
+        "times_seen": "3",
+        "confidence": "1.0",
+        "source_video": "26"
+      },
+      {
+        "kind": "covered",
+        "text": "vibe code",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "27"
+      },
+      {
+        "kind": "covered",
+        "text": "the government is banning AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "28"
+      },
+      {
+        "kind": "product",
+        "text": "Mythos",
+        "basis": "demonstrated",
+        "times_seen": "4",
+        "confidence": "1.0",
+        "source_video": "30"
+      },
+      {
+        "kind": "organization",
+        "text": "Perplexity",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "32"
+      },
+      {
+        "kind": "covered",
+        "text": "AI that does everything",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "32"
+      },
+      {
+        "kind": "covered",
+        "text": "you get to keep your job",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "34"
+      },
+      {
+        "kind": "covered",
+        "text": "the Pope's AI essay",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "35"
+      },
+      {
+        "kind": "product",
+        "text": "Opus 4.8",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "36"
+      },
+      {
+        "kind": "product",
+        "text": "DeepSWE",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "37"
+      },
+      {
+        "kind": "covered",
+        "text": "changing the benchmark game",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "37"
+      },
+      {
+        "kind": "product",
+        "text": "Cursor",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "38"
+      },
+      {
+        "kind": "person",
+        "text": "Google CEO",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "40"
+      },
+      {
+        "kind": "topic",
+        "text": "AI agents",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "40"
+      },
+      {
+        "kind": "topic",
+        "text": "race to AGI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "40"
+      },
+      {
+        "kind": "topic",
+        "text": "cybersecurity",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "40"
+      },
+      {
+        "kind": "topic",
+        "text": "chips",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "40"
+      },
+      {
+        "kind": "topic",
+        "text": "China",
+        "basis": "demonstrated",
+        "times_seen": "3",
+        "confidence": "1.0",
+        "source_video": "40"
+      },
+      {
+        "kind": "covered",
+        "text": "everyone's getting hacked",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "42"
+      },
+      {
+        "kind": "covered",
+        "text": "Anthropic scares me",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "45"
+      },
+      {
+        "kind": "covered",
+        "text": "why AI is brilliant and stupid",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "46"
+      },
+      {
+        "kind": "product",
+        "text": "Deepseek",
+        "basis": "demonstrated",
+        "times_seen": "3",
+        "confidence": "1.0",
+        "source_video": "47"
+      },
+      {
+        "kind": "covered",
+        "text": "worst AI Reddit take",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "48"
+      },
+      {
+        "kind": "person",
+        "text": "Google Cloud CEO",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "50"
+      },
+      {
+        "kind": "product",
+        "text": "TPUs",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "50"
+      },
+      {
+        "kind": "organization",
+        "text": "NVIDIA",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "50"
+      },
+      {
+        "kind": "covered",
+        "text": "faster and cheaper AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "51"
+      },
+      {
+        "kind": "covered",
+        "text": "AI went rogue in real life",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "52"
+      },
+      {
+        "kind": "covered",
+        "text": "hidden Codex setting",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "53"
+      },
+      {
+        "kind": "covered",
+        "text": "which business will \"win\" AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "54"
+      },
+      {
+        "kind": "covered",
+        "text": "testing an AI brain vs my actual brain",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "55"
+      },
+      {
+        "kind": "covered",
+        "text": "AI can't read this",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "56"
+      },
+      {
+        "kind": "covered",
+        "text": "negotiated my entire return",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "57"
+      },
+      {
+        "kind": "covered",
+        "text": "worst AI mistakes by companies",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "58"
+      },
+      {
+        "kind": "product",
+        "text": "Kimi K3",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "60"
+      },
+      {
+        "kind": "product",
+        "text": "FABLE",
+        "basis": "demonstrated",
+        "times_seen": "3",
+        "confidence": "1.0",
+        "source_video": "60"
+      },
+      {
+        "kind": "covered",
+        "text": "Deepseek ban",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "61"
+      },
+      {
+        "kind": "covered",
+        "text": "China's making their own chips now",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "62"
+      },
+      {
+        "kind": "covered",
+        "text": "Codex is gone",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "63"
+      },
+      {
+        "kind": "product",
+        "text": "Minecraft made by GPT-5.6",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "64"
+      },
+      {
+        "kind": "product",
+        "text": "Grok",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "65"
+      },
+      {
+        "kind": "covered",
+        "text": "AI is \"thinking\" for real",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "66"
+      },
+      {
+        "kind": "covered",
+        "text": "cheap tricks for AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "68"
+      },
+      {
+        "kind": "covered",
+        "text": "telling my chickens that Dario won",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "69"
+      },
+      {
+        "kind": "organization",
+        "text": "Apple",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "70"
+      },
+      {
+        "kind": "covered",
+        "text": "Apple raised prices",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "70"
+      },
+      {
+        "kind": "covered",
+        "text": "GPT 5.6 is officially NOT BANNED (even worse)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "72"
+      },
+      {
+        "kind": "product",
+        "text": "Claude",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "73"
+      },
+      {
+        "kind": "covered",
+        "text": "GPT 5.6 is officially BANNED",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "74"
+      },
+      {
+        "kind": "covered",
+        "text": "AI companies are trying to take over",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "75"
+      },
+      {
+        "kind": "covered",
+        "text": "AI can run for days on its own now",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "76"
+      },
+      {
+        "kind": "covered",
+        "text": "Fable 5 is gone",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "78"
+      },
+      {
+        "kind": "covered",
+        "text": "Mythos BANNED",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "79"
+      },
+      {
+        "kind": "covered",
+        "text": "making a BITZEE",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "81"
+      },
+      {
+        "kind": "covered",
+        "text": "supercomputer is the next level of AI video generation",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "82"
+      },
+      {
+        "kind": "covered",
+        "text": "AI insurance",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "86"
+      },
+      {
+        "kind": "covered",
+        "text": "SWEbench is done",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "88"
+      },
+      {
+        "kind": "covered",
+        "text": "self improving AI actually solves everything",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "89"
+      },
+      {
+        "kind": "covered",
+        "text": "robot sets the sorting record",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "92"
+      },
+      {
+        "kind": "covered",
+        "text": "HTML is King",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "93"
+      },
+      {
+        "kind": "covered",
+        "text": "AI is taking over video games",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "94"
+      },
+      {
+        "kind": "covered",
+        "text": "how to generate AI videos",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "95"
+      },
+      {
+        "kind": "covered",
+        "text": "next most important app ever",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "96"
+      },
+      {
+        "kind": "covered",
+        "text": "what is an AI Agent",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "97"
+      },
+      {
+        "kind": "covered",
+        "text": "Google's in a crazy position",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "99"
+      }
+    ]
+  },
+  {
+    "label": "REAL:codebrewappdevelopment",
+    "items": [
+      {
+        "kind": "covered",
+        "text": "building a fantasy sports app like DraftKings in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "covered",
+        "text": "building a RWA tokenization platform for gold and US Treasuries",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "2"
+      },
+      {
+        "kind": "covered",
+        "text": "building a money transfer app with AI in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "3"
+      },
+      {
+        "kind": "covered",
+        "text": "building an AI voice agent in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "4"
+      },
+      {
+        "kind": "covered",
+        "text": "building AI tools for marketing & sales to grow business with AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "5"
+      },
+      {
+        "kind": "covered",
+        "text": "building an AI healthcare app in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "6"
+      },
+      {
+        "kind": "product",
+        "text": "Hippocratic AI valued at $3 Billion+",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "6"
+      },
+      {
+        "kind": "covered",
+        "text": "building a cyber security platform in 2026 and how AI cybersecurity platforms work",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "7"
+      },
+      {
+        "kind": "covered",
+        "text": "building an ecommerce app in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "8"
+      },
+      {
+        "kind": "covered",
+        "text": "building an AI voice generator like ElevenLabs in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "9"
+      },
+      {
+        "kind": "covered",
+        "text": "building a real estate app with AI in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "10"
+      },
+      {
+        "kind": "covered",
+        "text": "building an AI home renovation app in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "11"
+      },
+      {
+        "kind": "topic",
+        "text": "AI as the next big business",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "0.9",
+        "source_video": "11"
+      },
+      {
+        "kind": "covered",
+        "text": "building an AI girlfriend app in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "12"
+      },
+      {
+        "kind": "topic",
+        "text": "AI market",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "12"
+      },
+      {
+        "kind": "covered",
+        "text": "building a food delivery app in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "13"
+      },
+      {
+        "kind": "covered",
+        "text": "building an app in 30 minutes with an AI No Code App Builder",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "14"
+      },
+      {
+        "kind": "covered",
+        "text": "building an AI beauty and wellness app in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "15"
+      },
+      {
+        "kind": "covered",
+        "text": "building a wealth management app in 2026 as an AI wealth management app",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "16"
+      },
+      {
+        "kind": "covered",
+        "text": "building an AI streaming app in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "17"
+      },
+      {
+        "kind": "covered",
+        "text": "building an AI astrology app in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "18"
+      },
+      {
+        "kind": "covered",
+        "text": "building a taxi app in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "19"
+      },
+      {
+        "kind": "covered",
+        "text": "building a logistics app or platform in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "20"
+      },
+      {
+        "kind": "covered",
+        "text": "building a dentist app with AI or a dental SaaS platform in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "21"
+      },
+      {
+        "kind": "covered",
+        "text": "real estate tokenization platforms and if tokens can change the $52 Trillion U.S. real estate market",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "22"
+      },
+      {
+        "kind": "covered",
+        "text": "gold tokenization platforms and if tokenized gold can change the $30 Trillion gold market",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "23"
+      },
+      {
+        "kind": "covered",
+        "text": "Real World Assets (RWA) explained and how to build a Real World Asset tokenization platform",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "24"
+      },
+      {
+        "kind": "covered",
+        "text": "Neo Banks vs Traditional Banks and how to build a NeoBanking app in 2026 with AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "25"
+      },
+      {
+        "kind": "covered",
+        "text": "5 AI Businesses that will make $1M in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "26"
+      },
+      {
+        "kind": "covered",
+        "text": "how to start a SaaS company in 2026, from idea to MVP, with the ultimate 2026 SaaS blueprint",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "27"
+      },
+      {
+        "kind": "covered",
+        "text": "how to build & sell AI agents in 2026 as a beginner's guide",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "28"
+      },
+      {
+        "kind": "covered",
+        "text": "building an AI insurance agent in 2026 to make insurance claims & fraud detection 10x faster with AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "29"
+      },
+      {
+        "kind": "covered",
+        "text": "how AI cuts fleet costs and is transforming the automotive industry",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "30"
+      },
+      {
+        "kind": "topic",
+        "text": "AI bubble",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "0.9",
+        "source_video": "31"
+      },
+      {
+        "kind": "covered",
+        "text": "why most startup ideas fail",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "32"
+      },
+      {
+        "kind": "covered",
+        "text": "building & launching AI powered apps in the Middle East",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "33"
+      },
+      {
+        "kind": "product",
+        "text": "Uber building a Robo Taxi fleet with 100K driverless cars",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "34"
+      },
+      {
+        "kind": "covered",
+        "text": "the next tech bubble, comparing the AI boom vs 2000 Dot Com Crash",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "35"
+      },
+      {
+        "kind": "product",
+        "text": "Clio, a Canada based AI Company hitting a $5 Billion Valuation",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "36"
+      },
+      {
+        "kind": "product",
+        "text": "a company named after Harvey Specter hitting an $8 Billion Valuation",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "37"
+      },
+      {
+        "kind": "product",
+        "text": "Jensen Huang taking Nvidia to $5 Trillion riding the AI wave",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "38"
+      },
+      {
+        "kind": "product",
+        "text": "Elon Musk losing the Robot Race",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "39"
+      },
+      {
+        "kind": "covered",
+        "text": "AWS outage explained: one bug, millions offline",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "40"
+      },
+      {
+        "kind": "covered",
+        "text": "hackers vs Jaguar Land Rover in a £1.9 Billion cyber battle",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "41"
+      },
+      {
+        "kind": "covered",
+        "text": "Google losing $150 Billion after one sentence from Sam Altman",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "42"
+      },
+      {
+        "kind": "covered",
+        "text": "building an AI agent in a week",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "43"
+      },
+      {
+        "kind": "covered",
+        "text": "how the Middle East is transforming from oil to AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "44"
+      },
+      {
+        "kind": "covered",
+        "text": "building a rental marketplace like Airbnb (Powered By AI)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "45"
+      },
+      {
+        "kind": "covered",
+        "text": "Elon Musk might sue Apple over AI Bias",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "46"
+      },
+      {
+        "kind": "covered",
+        "text": "building a flight booking app with AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "47"
+      },
+      {
+        "kind": "product",
+        "text": "Elon Musk getting a $29 Billion payday while Tesla struggles",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "48"
+      },
+      {
+        "kind": "covered",
+        "text": "power trouble at Google",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "49"
+      },
+      {
+        "kind": "covered",
+        "text": "building a real estate app in 2026 (Powered By AI)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "50"
+      },
+      {
+        "kind": "covered",
+        "text": "Tesla in big trouble with Elon Musk firing top Tesla executive as profits crash",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "51"
+      },
+      {
+        "kind": "covered",
+        "text": "building an AI companion app in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "52"
+      },
+      {
+        "kind": "covered",
+        "text": "Elon Musk not owning a laptop and the OpenAI lawsuit getting wild",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "53"
+      },
+      {
+        "kind": "covered",
+        "text": "a college kid outsmarting Shark Tank and making $54M with zero investment",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "54"
+      },
+      {
+        "kind": "covered",
+        "text": "building a FinTech app with AI in 2026 (step by step breakdown)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "55"
+      },
+      {
+        "kind": "covered",
+        "text": "what happened to Clubhouse in 2025, from $4 Billion hype to dead app",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "56"
+      },
+      {
+        "kind": "covered",
+        "text": "5 profitable micro SaaS ideas that can be built in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "57"
+      },
+      {
+        "kind": "covered",
+        "text": "3 easy ways to make money using AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "58"
+      },
+      {
+        "kind": "covered",
+        "text": "building a real estate tokenization platform in 2026 (Future of Real Estate)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "59"
+      },
+      {
+        "kind": "covered",
+        "text": "building a smart delivery app in 2025",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "60"
+      },
+      {
+        "kind": "covered",
+        "text": "6 best AI business ideas in 2026 ($15K/Month Passive Income)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "61"
+      },
+      {
+        "kind": "product",
+        "text": "Instacart's Fizz App as the future of social commerce",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "62"
+      },
+      {
+        "kind": "covered",
+        "text": "building a travel app with AI in 2026 (step by step breakdown)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "63"
+      },
+      {
+        "kind": "covered",
+        "text": "3 untapped Micro SaaS ideas for 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "64"
+      },
+      {
+        "kind": "covered",
+        "text": "creating a dating app like Tinder, Bumble, or Hinge (Powered by AI)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "65"
+      },
+      {
+        "kind": "covered",
+        "text": "building a doctor app in 2026 (Powered By AI)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "66"
+      },
+      {
+        "kind": "covered",
+        "text": "Token2049 Dubai 2025",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "67"
+      },
+      {
+        "kind": "covered",
+        "text": "building a fitness app in 2026 (Powered By AI)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "68"
+      },
+      {
+        "kind": "covered",
+        "text": "AI in supply chain, TOP 5 reasons why a supply chain needs AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "69"
+      },
+      {
+        "kind": "covered",
+        "text": "building a medical diagnostic app with AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "70"
+      },
+      {
+        "kind": "covered",
+        "text": "transforming eCommerce with AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "71"
+      },
+      {
+        "kind": "covered",
+        "text": "UAE's most reliable AI development company at GITEX 2025",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "72"
+      },
+      {
+        "kind": "covered",
+        "text": "riding the wave of Generative AI in 2025",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "73"
+      },
+      {
+        "kind": "product",
+        "text": "Code Brew Labs India's BEST AI Development Company",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "74"
+      },
+      {
+        "kind": "covered",
+        "text": "5 business ideas to launch in UAE before 2026 ends",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "75"
+      },
+      {
+        "kind": "covered",
+        "text": "Code Brew Family trying the Ghibli Trend",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "76"
+      },
+      {
+        "kind": "covered",
+        "text": "AI in healthcare: building an AI-Powered Healthcare App in 30 Days",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "77"
+      },
+      {
+        "kind": "covered",
+        "text": "SEC vs XRP: the 4 year battle finally ending in Ripple’s win",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "78"
+      },
+      {
+        "kind": "covered",
+        "text": "building a digital wallet in 2026 with latest AI features",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "79"
+      },
+      {
+        "kind": "covered",
+        "text": "U.S. creating a $17.5B Bitcoin Reserve from seized assets",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "80"
+      },
+      {
+        "kind": "covered",
+        "text": "Fintech App Development: how to create your own Fintech App in 2026",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "81"
+      },
+      {
+        "kind": "covered",
+        "text": "building a salon app or a beauty salon app",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "82"
+      },
+      {
+        "kind": "covered",
+        "text": "AI as Amazon’s secret weapon and how it’s changing everything",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "83"
+      },
+      {
+        "kind": "covered",
+        "text": "an AI built for just $5M beating the competition",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "84"
+      },
+      {
+        "kind": "covered",
+        "text": "Super AI Scan: The Future of Smart Scanning",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "85"
+      },
+      {
+        "kind": "covered",
+        "text": "an exclusive 25% Off offer for Christmas & New Year",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "86"
+      },
+      {
+        "kind": "covered",
+        "text": "creating & launching your own AI-powered Fitness App",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "87"
+      },
+      {
+        "kind": "product",
+        "text": "the Billion-Dollar Blueprint of BlaBlaCar's Success",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "88"
+      },
+      {
+        "kind": "product",
+        "text": "Paul Atkins as the New SEC Chair",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "89"
+      },
+      {
+        "kind": "covered",
+        "text": "if Elon Musk can balance the US Budget by his proposed $2 Trillion cuts",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "90"
+      },
+      {
+        "kind": "covered",
+        "text": "if Google can help Saudi Arabia's Vision 2030 by making it a world leader in AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "91"
+      },
+      {
+        "kind": "product",
+        "text": "the HIDDEN TRUTH about Perplexity AI and how Aravind Srinivas led Startup Perplexity AI is in trouble",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "92"
+      },
+      {
+        "kind": "product",
+        "text": "Code Brew Labs at GITEX Global 2024 innovating the future of technology",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "93"
+      },
+      {
+        "kind": "covered",
+        "text": "German brothers copying business ideas of US Startups like Facebook to become billionaires",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "94"
+      },
+      {
+        "kind": "product",
+        "text": "the HIDDEN TRUTH about Revolut",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "95"
+      },
+      {
+        "kind": "covered",
+        "text": "how Ilya Sutskever a 37 Year Old Computer Scientist built a $5 Billion Startup in just 3 months",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "96"
+      },
+      {
+        "kind": "covered",
+        "text": "Spenser Skates shutting down his first startup to build Amplitude which was worth $8 Billion",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "97"
+      },
+      {
+        "kind": "covered",
+        "text": "if Jensen Huang can grow Nvidia stock back to $3 Trillion after an $800 Billion loss in stock value",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "98"
+      },
+      {
+        "kind": "product",
+        "text": "the Australia based company Atlassian worth $50 billion was started because of a random email",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "99"
+      },
+      {
+        "kind": "product",
+        "text": "the UK based startup Octopus Energy making $16 Billion by paying its customers to use less electricity",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "100"
+      }
+    ]
+  },
+  {
+    "label": "REAL:starterstory",
+    "items": [
+      {
+        "kind": "covered",
+        "text": "building an app that makes $80K/month by copying a huge app",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "topic",
+        "text": "making money with apps",
+        "basis": "demonstrated",
+        "times_seen": "57",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "covered",
+        "text": "working as a solo app builder making $40K/month",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "2"
+      },
+      {
+        "kind": "product",
+        "text": "Postiz app, which grew from $17K to $143K/month in 4 months",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "3"
+      },
+      {
+        "kind": "covered",
+        "text": "a ridiculously simple app that makes $18K/month",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "4"
+      },
+      {
+        "kind": "covered",
+        "text": "making $50K per month working 5 hours a week",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "5"
+      },
+      {
+        "kind": "covered",
+        "text": "a stupidly simple app that makes $100K/month",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "6"
+      },
+      {
+        "kind": "covered",
+        "text": "building a $30K/month SaaS after quitting a job at Meta",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "7"
+      },
+      {
+        "kind": "product",
+        "text": "an app built in 60 days that makes $340K/month",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "8"
+      },
+      {
+        "kind": "covered",
+        "text": "an insanely simple app that makes $50K/month",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "9"
+      },
+      {
+        "kind": "covered",
+        "text": "working as a $10M/year serial entrepreneur",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "10"
+      },
+      {
+        "kind": "covered",
+        "text": "building a $20K/month AI app",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "11"
+      },
+      {
+        "kind": "covered",
+        "text": "turning a spreadsheet into a $30K/month Micro-SaaS",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "12"
+      },
+      {
+        "kind": "covered",
+        "text": "building a $10K/month app with one system",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "13"
+      },
+      {
+        "kind": "covered",
+        "text": "the first app ever built making $25K/month",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "14"
+      },
+      {
+        "kind": "covered",
+        "text": "building a $1M SaaS in a hidden niche",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "15"
+      },
+      {
+        "kind": "covered",
+        "text": "building two apps that make $120K/month",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "16"
+      },
+      {
+        "kind": "covered",
+        "text": "building a $30K/month app and the exact process",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "17"
+      },
+      {
+        "kind": "covered",
+        "text": "building a micro-version of a $1B SaaS and now making $50K/month",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "18"
+      },
+      {
+        "kind": "covered",
+        "text": "building a $30K/month app in 35 days",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "19"
+      },
+      {
+        "kind": "covered",
+        "text": "making $1.7M/year in the most boring niche imaginable",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "20"
+      },
+      {
+        "kind": "covered",
+        "text": "two apps making $150K/month each",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "21"
+      },
+      {
+        "kind": "covered",
+        "text": "building a $20K/month app in 83 days",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "22"
+      },
+      {
+        "kind": "covered",
+        "text": "working as a $77K/month solopreneur",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "23"
+      },
+      {
+        "kind": "covered",
+        "text": "spending 24 hours with a SaaS millionaire",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "24"
+      },
+      {
+        "kind": "covered",
+        "text": "making $1.5M from an app unknown to the audience",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "25"
+      },
+      {
+        "kind": "covered",
+        "text": "finding a simple idea and turning it into a profitable business that makes $20K/month",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "26"
+      },
+      {
+        "kind": "covered",
+        "text": "how an app makes $35K/month",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "27"
+      },
+      {
+        "kind": "covered",
+        "text": "a 14-year-old building a $14K/month app",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "28"
+      },
+      {
+        "kind": "covered",
+        "text": "an app making $120K in 24 hours",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "29"
+      },
+      {
+        "kind": "covered",
+        "text": "building a $100K/month Android app",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "30"
+      },
+      {
+        "kind": "covered",
+        "text": "the financial success of an app that initially seemed amusing",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "31"
+      },
+      {
+        "kind": "covered",
+        "text": "a tiny side project generating $18K/month in revenue",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "32"
+      },
+      {
+        "kind": "covered",
+        "text": "cold-DMing thousands of influencers with one killer insight to grow an app",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "33"
+      },
+      {
+        "kind": "covered",
+        "text": "learning to stop working at dinner time to save a relationship",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "34"
+      },
+      {
+        "kind": "covered",
+        "text": "spotting a $300K/month idea that men might not think to build",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "35"
+      },
+      {
+        "kind": "covered",
+        "text": "an entrepreneur breaking a KitchenAid container to check his phone",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "36"
+      },
+      {
+        "kind": "covered",
+        "text": "making $250K/month from 13 businesses after losing everything to AI",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "37"
+      },
+      {
+        "kind": "covered",
+        "text": "a comment-seeding tactic that hits a 1% conversion rate for a $10k MRR app",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "38"
+      },
+      {
+        "kind": "covered",
+        "text": "the dead simple tech stack powering a $100K/month app",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "39"
+      },
+      {
+        "kind": "covered",
+        "text": "making $17K/month with one strategy",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "40"
+      },
+      {
+        "kind": "topic",
+        "text": "women using AI getting canceled online more",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "41"
+      },
+      {
+        "kind": "covered",
+        "text": "making $60K/month from the most boring SaaS on the Internet",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "42"
+      },
+      {
+        "kind": "topic",
+        "text": "two types of people who will succeed",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "43"
+      },
+      {
+        "kind": "covered",
+        "text": "how a $250K/month SaaS got its first 100 users",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "44"
+      },
+      {
+        "kind": "product",
+        "text": "alarm clock app where you do push-ups to turn it off, made $50K in 28 days",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "45"
+      },
+      {
+        "kind": "covered",
+        "text": "building a $10K/month SaaS using other people's customers",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "46"
+      },
+      {
+        "kind": "covered",
+        "text": "zero to $40K/month with one marketing channel (no social media)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "47"
+      },
+      {
+        "kind": "covered",
+        "text": "finding a $20,000 app idea on acquire.com and now making $100K per month with it",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "48"
+      },
+      {
+        "kind": "covered",
+        "text": "making $15K/month from one website",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "49"
+      },
+      {
+        "kind": "product",
+        "text": "manifestation app that hit $360K MRR in just 2 months",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "50"
+      },
+      {
+        "kind": "covered",
+        "text": "building a niche app to $9K MRR",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "51"
+      },
+      {
+        "kind": "product",
+        "text": "Height Predictor app that hit 1 million downloads and pulls in $100K/month",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "52"
+      },
+      {
+        "kind": "covered",
+        "text": "selling a company",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "53"
+      },
+      {
+        "kind": "covered",
+        "text": "how a $25K MRR app founder found his app idea",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "54"
+      },
+      {
+        "kind": "covered",
+        "text": "building a $12K/month Micro-SaaS",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "55"
+      },
+      {
+        "kind": "covered",
+        "text": "a five-year journal that exposed an uncomfortable truth for a $10M/year entrepreneur",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "56"
+      },
+      {
+        "kind": "covered",
+        "text": "making $150K/month from 20 tiny apps",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "57"
+      },
+      {
+        "kind": "covered",
+        "text": "searching the App Store, finding zero competition, and building an app himself",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "58"
+      },
+      {
+        "kind": "covered",
+        "text": "making $16K/month even in a tiny niche",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "59"
+      },
+      {
+        "kind": "covered",
+        "text": "the exact tech stack behind a $440K per month app",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "60"
+      },
+      {
+        "kind": "covered",
+        "text": "making $500K from 8 different income streams",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "61"
+      },
+      {
+        "kind": "covered",
+        "text": "the entire tech stack of a founder of 2 profitable SaaS products",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "62"
+      },
+      {
+        "kind": "covered",
+        "text": "building a $17K/month Open Source SaaS",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "63"
+      },
+      {
+        "kind": "covered",
+        "text": "how to validate a business idea by a $1M app founder",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "64"
+      },
+      {
+        "kind": "covered",
+        "text": "using Reddit to build a $34K/month SaaS",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "65"
+      },
+      {
+        "kind": "covered",
+        "text": "two broke college guys building an app in 2 weeks and making $70K in 6 months",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "66"
+      },
+      {
+        "kind": "covered",
+        "text": "building a $13K/month SaaS",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "67"
+      },
+      {
+        "kind": "covered",
+        "text": "a claim of guaranteeing 50K TikTok followers on a new account within 3-4 months",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "68"
+      },
+      {
+        "kind": "covered",
+        "text": "building a $20K/month Mobile App and the entire playbook",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "69"
+      },
+      {
+        "kind": "covered",
+        "text": "one influencer post generating over $10K in revenue for a peptides app",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "70"
+      },
+      {
+        "kind": "covered",
+        "text": "building a $14K/month SaaS using Discord",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "71"
+      },
+      {
+        "kind": "covered",
+        "text": "the weirdest TikTok hack for content discovered by a $10K MRR founder",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "72"
+      },
+      {
+        "kind": "covered",
+        "text": "an app hitting $60K/month in 2 months",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "73"
+      },
+      {
+        "kind": "covered",
+        "text": "Jake building his app in 19 days and scaling to $50K per month by month four",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "74"
+      },
+      {
+        "kind": "product",
+        "text": "a $25K MRR app that matches guitar tone to any song in 30 seconds",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "75"
+      },
+      {
+        "kind": "covered",
+        "text": "growing an app to $13K/month despite hating marketing",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "76"
+      },
+      {
+        "kind": "covered",
+        "text": "two college students building a $70K app with just 5 tools",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "77"
+      },
+      {
+        "kind": "covered",
+        "text": "an app hitting $147K revenue with absolutely no marketing",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "78"
+      },
+      {
+        "kind": "covered",
+        "text": "2 college students building a $20K/month app by pricing it like Robux",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "79"
+      },
+      {
+        "kind": "topic",
+        "text": "why most apps never take off",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "80"
+      },
+      {
+        "kind": "covered",
+        "text": "a $30K MRR founder locking in creators before launch and hitting a 300 person waitlist",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "81"
+      },
+      {
+        "kind": "covered",
+        "text": "an idea validation formula that has made $500K from iOS apps",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "82"
+      },
+      {
+        "kind": "covered",
+        "text": "running 20 TikTok accounts for a $10K/month app",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "83"
+      },
+      {
+        "kind": "covered",
+        "text": "two apps making over a million a year",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "84"
+      },
+      {
+        "kind": "covered",
+        "text": "scaling an app to $25K MRR with one content strategy",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "85"
+      },
+      {
+        "kind": "product",
+        "text": "a 'Tinder for jobs' app that generates $150K per month",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "86"
+      },
+      {
+        "kind": "covered",
+        "text": "what is inside a $30K/month AI peptide app",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "87"
+      },
+      {
+        "kind": "topic",
+        "text": "AI agents becoming the new form of procrastination",
+        "basis": "stated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "88"
+      },
+      {
+        "kind": "covered",
+        "text": "building a $25K/month app in one week using Cursor and its entire tech stack",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "89"
+      },
+      {
+        "kind": "covered",
+        "text": "a student building a medical AI app in 2 weeks with no coding experience",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "90"
+      },
+      {
+        "kind": "covered",
+        "text": "a TikTok slideshow strategy as a top download driver",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "91"
+      },
+      {
+        "kind": "covered",
+        "text": "a college kid building a $15K/month website using specific tools",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "92"
+      },
+      {
+        "kind": "covered",
+        "text": "the reason a $77K/month founder never feels tired starting at 4 PM",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "93"
+      },
+      {
+        "kind": "covered",
+        "text": "shipping 300 features in 3 months with the most boring setup ever",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "94"
+      },
+      {
+        "kind": "covered",
+        "text": "a girl's two apps making $150K/month each, scaled while still in college",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "95"
+      },
+      {
+        "kind": "covered",
+        "text": "a $150K/month app founder managing 200 UGC creators at once",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "96"
+      },
+      {
+        "kind": "covered",
+        "text": "the exact Reddit system behind 11 million views and $30K MRR",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "97"
+      },
+      {
+        "kind": "product",
+        "text": "a posture-tracking app that made $1K in revenue the same day",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "98"
+      },
+      {
+        "kind": "covered",
+        "text": "friends thinking scaling an app to $1M/month is a joke",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "99"
+      },
+      {
+        "kind": "covered",
+        "text": "a college student finding a $50K idea in an afternoon",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "100"
+      }
+    ]
+  },
+  {
+    "label": "REAL:davidheikka",
+    "items": [
+      {
+        "kind": "product",
+        "text": "Buildpad",
+        "basis": "demonstrated",
+        "times_seen": "12",
+        "confidence": "0.9",
+        "source_video": "11"
+      },
+      {
+        "kind": "topic",
+        "text": "business idea validation",
+        "basis": "demonstrated",
+        "times_seen": "15",
+        "confidence": "0.8",
+        "source_video": "1"
+      },
+      {
+        "kind": "topic",
+        "text": "deep market research",
+        "basis": "demonstrated",
+        "times_seen": "7",
+        "confidence": "0.8",
+        "source_video": "1"
+      },
+      {
+        "kind": "covered",
+        "text": "how to find out if a business idea has real potential",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.8",
+        "source_video": "1"
+      },
+      {
+        "kind": "covered",
+        "text": "how to find out if a business idea has real demand",
+        "basis": "demonstrated",
+        "times_seen": "3",
+        "confidence": "0.8",
+        "source_video": "2"
+      },
+      {
+        "kind": "covered",
+        "text": "how to find out if people want your business idea",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "0.8",
+        "source_video": "3"
+      },
+      {
+        "kind": "covered",
+        "text": "how to quickly find out if a business idea has demand for free",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.8",
+        "source_video": "4"
+      },
+      {
+        "kind": "covered",
+        "text": "how to quickly find out if a business idea is worth pursuing",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.8",
+        "source_video": "10"
+      },
+      {
+        "kind": "covered",
+        "text": "how to research and build a business idea with step-by-step guidance",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.8",
+        "source_video": "13"
+      },
+      {
+        "kind": "covered",
+        "text": "how to turn a business idea into something people actually want",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "0.8",
+        "source_video": "14"
+      }
+    ]
+  },
+  {
+    "label": "REAL:everydayemporium1",
+    "items": [
+      {
+        "kind": "topic",
+        "text": "Gadgets",
+        "basis": "demonstrated",
+        "times_seen": "35",
+        "confidence": "0.9",
+        "source_video": "4"
+      },
+      {
+        "kind": "topic",
+        "text": "Products",
+        "basis": "demonstrated",
+        "times_seen": "15",
+        "confidence": "0.85",
+        "source_video": "5"
+      },
+      {
+        "kind": "product",
+        "text": "Evolution Patented Micro-Pop Microwave Popcorn Popper",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.95",
+        "source_video": "23"
+      },
+      {
+        "kind": "product",
+        "text": "Refrigerator Deodorizer",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.95",
+        "source_video": "25"
+      },
+      {
+        "kind": "product",
+        "text": "Alpha Griller Meat Thermometer Digital",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.95",
+        "source_video": "27"
+      },
+      {
+        "kind": "product",
+        "text": "Rotary Cheese Grater Hand Crank",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.95",
+        "source_video": "28"
+      },
+      {
+        "kind": "product",
+        "text": "Circle joy gravity electric salt and pepper",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.95",
+        "source_video": "30"
+      },
+      {
+        "kind": "product",
+        "text": "Chicken Shredder Tool",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.95",
+        "source_video": "31"
+      },
+      {
+        "kind": "product",
+        "text": "Household Egg Shell Opener 2025",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.95",
+        "source_video": "32"
+      },
+      {
+        "kind": "product",
+        "text": "Vegetable Dicer",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.95",
+        "source_video": "33"
+      },
+      {
+        "kind": "product",
+        "text": "Labubu",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.95",
+        "source_video": "36"
+      },
+      {
+        "kind": "topic",
+        "text": "Kitchen Gadgets",
+        "basis": "demonstrated",
+        "times_seen": "22",
+        "confidence": "0.9",
+        "source_video": "21"
+      },
+      {
+        "kind": "topic",
+        "text": "Home Gadgets",
+        "basis": "demonstrated",
+        "times_seen": "4",
+        "confidence": "0.9",
+        "source_video": "18"
+      },
+      {
+        "kind": "topic",
+        "text": "Exercise Gadgets",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "0.9",
+        "source_video": "43"
+      },
+      {
+        "kind": "topic",
+        "text": "Cleaning Products",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "50"
+      }
+    ]
+  },
+  {
+    "label": "REAL:jayctech",
+    "items": [
+      {
+        "kind": "product",
+        "text": "laptop stand",
+        "basis": "demonstrated",
+        "times_seen": "8",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "product",
+        "text": "docking station",
+        "basis": "demonstrated",
+        "times_seen": "3",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "product",
+        "text": "MacBook",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "1"
+      },
+      {
+        "kind": "product",
+        "text": "190W car charger",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "2"
+      },
+      {
+        "kind": "topic",
+        "text": "useful tech gadgets",
+        "basis": "stated",
+        "times_seen": "2",
+        "confidence": "0.9",
+        "source_video": "2"
+      },
+      {
+        "kind": "product",
+        "text": "3-in-1 stand power bank",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "3"
+      },
+      {
+        "kind": "product",
+        "text": "power bank",
+        "basis": "demonstrated",
+        "times_seen": "13",
+        "confidence": "1.0",
+        "source_video": "3"
+      },
+      {
+        "kind": "product",
+        "text": "magnetic phone mount",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "5"
+      },
+      {
+        "kind": "product",
+        "text": "Bluetooth shower speaker",
+        "basis": "demonstrated",
+        "times_seen": "4",
+        "confidence": "1.0",
+        "source_video": "6"
+      },
+      {
+        "kind": "product",
+        "text": "nugget ice maker",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "7"
+      },
+      {
+        "kind": "product",
+        "text": "camping light",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "10"
+      },
+      {
+        "kind": "product",
+        "text": "retractable keychain",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "12"
+      },
+      {
+        "kind": "product",
+        "text": "Anker iPhone power bank",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "14"
+      },
+      {
+        "kind": "product",
+        "text": "DIISEA wet-dry vacuum",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "15"
+      },
+      {
+        "kind": "product",
+        "text": "Shokz clip-on open earbuds",
+        "basis": "demonstrated",
+        "times_seen": "3",
+        "confidence": "1.0",
+        "source_video": "17"
+      },
+      {
+        "kind": "product",
+        "text": "headphones for people who hate earbuds",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "21"
+      },
+      {
+        "kind": "product",
+        "text": "portable misting fan",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "25"
+      },
+      {
+        "kind": "product",
+        "text": "multi-use magnetic fan",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "24"
+      },
+      {
+        "kind": "product",
+        "text": "rechargeable outdoor fan",
+        "basis": "demonstrated",
+        "times_seen": "4",
+        "confidence": "1.0",
+        "source_video": "23"
+      },
+      {
+        "kind": "product",
+        "text": "magnetic power bank for iPhone",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "27"
+      },
+      {
+        "kind": "product",
+        "text": "wallet tracker",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "29"
+      },
+      {
+        "kind": "product",
+        "text": "stand for phone, iPad and laptop",
+        "basis": "demonstrated",
+        "times_seen": "3",
+        "confidence": "1.0",
+        "source_video": "30"
+      },
+      {
+        "kind": "product",
+        "text": "Anker charging bundle",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "32"
+      },
+      {
+        "kind": "product",
+        "text": "shower phone holder",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "34"
+      },
+      {
+        "kind": "product",
+        "text": "waterproof phone case",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "1.0",
+        "source_video": "34"
+      },
+      {
+        "kind": "product",
+        "text": "Viture beast XR glasses with a 174-inch virtual display",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "39"
+      },
+      {
+        "kind": "product",
+        "text": "Llano wireless video transmission",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "40"
+      },
+      {
+        "kind": "product",
+        "text": "compact charging station",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "41"
+      },
+      {
+        "kind": "product",
+        "text": "desk power strip",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "42"
+      },
+      {
+        "kind": "covered",
+        "text": "turning your phone into a real camera setup",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "43"
+      },
+      {
+        "kind": "product",
+        "text": "Steam Deck and USB-C dock in one",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "45"
+      },
+      {
+        "kind": "product",
+        "text": "machine that prints and cuts stickers",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "46"
+      },
+      {
+        "kind": "product",
+        "text": "tiny dial for editing setup",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "47"
+      },
+      {
+        "kind": "product",
+        "text": "MagSafe charger for iPhone",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "49"
+      }
+    ]
+  },
+  {
+    "label": "REAL:morozov.ideas",
+    "items": [
+      {
+        "kind": "product",
+        "text": "device that turns any drink into ice cream",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "3"
+      },
+      {
+        "kind": "product",
+        "text": "capsule pads",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "4"
+      },
+      {
+        "kind": "covered",
+        "text": "transforming ordinary dumbbells into stylish decorative items",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "5"
+      },
+      {
+        "kind": "covered",
+        "text": "turning a boring product into a loved brand",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "6"
+      },
+      {
+        "kind": "product",
+        "text": "IKEA's viral recipe prepared directly on paper",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "7"
+      },
+      {
+        "kind": "covered",
+        "text": "turning an ordinary cupcake into a luxury gift",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "8"
+      },
+      {
+        "kind": "product",
+        "text": "carpet with a car design",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "9"
+      },
+      {
+        "kind": "product",
+        "text": "candy from a mold that has gone viral",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "10"
+      },
+      {
+        "kind": "covered",
+        "text": "turning a ceiling into a profitable project",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "11"
+      },
+      {
+        "kind": "product",
+        "text": "reusable \"puff pastry plate\"",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "12"
+      },
+      {
+        "kind": "covered",
+        "text": "using cars on the background of \"Hot Wheels packaging\" to blow up sales",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "13"
+      },
+      {
+        "kind": "product",
+        "text": "sweet kebab dessert",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "14"
+      },
+      {
+        "kind": "product",
+        "text": "bottle that can't be opened alone",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "15"
+      },
+      {
+        "kind": "product",
+        "text": "honey that doesn't leak or stick packaging",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "16"
+      },
+      {
+        "kind": "covered",
+        "text": "making shells by hand as a business",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "17"
+      },
+      {
+        "kind": "covered",
+        "text": "selling coconuts with a daily queue of customers",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "18"
+      },
+      {
+        "kind": "product",
+        "text": "nightclub that fits in a trunk",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "19"
+      },
+      {
+        "kind": "covered",
+        "text": "running and taking over areas on a map",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "20"
+      },
+      {
+        "kind": "product",
+        "text": "dumbbells that replaced an entire gym and cost pennies",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "21"
+      },
+      {
+        "kind": "covered",
+        "text": "printing a residential area to change the future of construction",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "22"
+      },
+      {
+        "kind": "product",
+        "text": "car that makes bikers happier and richer",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "23"
+      },
+      {
+        "kind": "covered",
+        "text": "making paintings that literally glow with life",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "24"
+      },
+      {
+        "kind": "covered",
+        "text": "growing furniture from trees",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "25"
+      },
+      {
+        "kind": "product",
+        "text": "faucet for honey for home collection",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "26"
+      },
+      {
+        "kind": "product",
+        "text": "spectacular walls of cheese, sausage and fruits",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "27"
+      },
+      {
+        "kind": "product",
+        "text": "new cake format where desserts look like real paintings",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "28"
+      },
+      {
+        "kind": "covered",
+        "text": "turning concrete pipes into a profitable business",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "29"
+      },
+      {
+        "kind": "covered",
+        "text": "a bar that works like an exchange with variable pricing",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "30"
+      },
+      {
+        "kind": "product",
+        "text": "wine in a glass from Australia",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "31"
+      },
+      {
+        "kind": "product",
+        "text": "T-shirt that hides the stomach",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "32"
+      },
+      {
+        "kind": "product",
+        "text": "landlines for children",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "33"
+      },
+      {
+        "kind": "covered",
+        "text": "turning buying sausage into a game to increase sales",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "34"
+      },
+      {
+        "kind": "product",
+        "text": "Cyclewash.com's genius solution",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "35"
+      },
+      {
+        "kind": "covered",
+        "text": "assembling walls like LEGO as a new construction technology",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "36"
+      },
+      {
+        "kind": "covered",
+        "text": "washing shoes as a profitable business",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "37"
+      },
+      {
+        "kind": "covered",
+        "text": "creating surprise boxes from home as a business",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "38"
+      },
+      {
+        "kind": "covered",
+        "text": "making castles and houses out of snow",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "39"
+      },
+      {
+        "kind": "product",
+        "text": "cube that boosts Excel speed",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "40"
+      },
+      {
+        "kind": "covered",
+        "text": "manicure worn like a jeweler",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "42"
+      },
+      {
+        "kind": "product",
+        "text": "pancake instead of nori",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "43"
+      },
+      {
+        "kind": "product",
+        "text": "robot that does massage",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "44"
+      },
+      {
+        "kind": "covered",
+        "text": "printing T-shirts at home as a money-making venture",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "45"
+      },
+      {
+        "kind": "covered",
+        "text": "dessert that gives emotions and is remembered forever",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "46"
+      },
+      {
+        "kind": "covered",
+        "text": "alternative to washing pets at home",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "47"
+      },
+      {
+        "kind": "product",
+        "text": "edible dishes",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "48"
+      },
+      {
+        "kind": "product",
+        "text": "machine that prints art directly on walls",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "49"
+      },
+      {
+        "kind": "covered",
+        "text": "turning plastic cups into adorable fruit baskets",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "1.0",
+        "source_video": "50"
+      }
+    ]
+  },
+  {
+    "label": "REAL:djladydo",
+    "items": [
+      {
+        "kind": "product",
+        "text": "Focallure highlighter",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "0.9",
+        "source_video": "1"
+      },
+      {
+        "kind": "topic",
+        "text": "skincare",
+        "basis": "demonstrated",
+        "times_seen": "18",
+        "confidence": "0.9",
+        "source_video": "3"
+      },
+      {
+        "kind": "product",
+        "text": "Barbie farmhouse",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.8",
+        "source_video": "4"
+      },
+      {
+        "kind": "topic",
+        "text": "shiny hair",
+        "basis": "demonstrated",
+        "times_seen": "5",
+        "confidence": "0.9",
+        "source_video": "5"
+      },
+      {
+        "kind": "product",
+        "text": "aloe vera",
+        "basis": "demonstrated",
+        "times_seen": "3",
+        "confidence": "0.9",
+        "source_video": "5"
+      },
+      {
+        "kind": "covered",
+        "text": "DIY clove ice cubes for natural glow",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "6"
+      },
+      {
+        "kind": "covered",
+        "text": "DIY hairgloss for shiny hair",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "7"
+      },
+      {
+        "kind": "covered",
+        "text": "carrot juice as a beauty drink for glowy skin",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "0.9",
+        "source_video": "8"
+      },
+      {
+        "kind": "covered",
+        "text": "DIY glossy hair mask with aloe vera",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "9"
+      },
+      {
+        "kind": "covered",
+        "text": "cucumber eye patches",
+        "basis": "demonstrated",
+        "times_seen": "3",
+        "confidence": "0.9",
+        "source_video": "10"
+      },
+      {
+        "kind": "covered",
+        "text": "skincare gummies for glowy skin",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "0.9",
+        "source_video": "12"
+      },
+      {
+        "kind": "covered",
+        "text": "DIY eye patches",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "0.9",
+        "source_video": "14"
+      },
+      {
+        "kind": "product",
+        "text": "Lactomedi",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "0.9",
+        "source_video": "15"
+      },
+      {
+        "kind": "covered",
+        "text": "everything shower reset",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "17"
+      },
+      {
+        "kind": "product",
+        "text": "Joybuy NL",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "0.9",
+        "source_video": "18"
+      },
+      {
+        "kind": "covered",
+        "text": "flaxseed mask for glass skin",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "19"
+      },
+      {
+        "kind": "covered",
+        "text": "daily drink for shiny hair (cucumber and carrot)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "20"
+      },
+      {
+        "kind": "covered",
+        "text": "glow up hack for shiny hair",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "23"
+      },
+      {
+        "kind": "covered",
+        "text": "recipe to make collagen skincare gummies",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "24"
+      },
+      {
+        "kind": "product",
+        "text": "Gisou",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "0.9",
+        "source_video": "25"
+      },
+      {
+        "kind": "covered",
+        "text": "candle workshop at Glamara, Canggu, Bali",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "26"
+      },
+      {
+        "kind": "covered",
+        "text": "retinol skincare juice recipe for gut health",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "28"
+      },
+      {
+        "kind": "product",
+        "text": "Bershka bodymist",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "29"
+      },
+      {
+        "kind": "covered",
+        "text": "drink for gut health and glowy skin",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "30"
+      },
+      {
+        "kind": "covered",
+        "text": "day in a life in Bali (pilates, matcha bar)",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "33"
+      },
+      {
+        "kind": "topic",
+        "text": "glow up tips",
+        "basis": "demonstrated",
+        "times_seen": "2",
+        "confidence": "0.9",
+        "source_video": "15"
+      },
+      {
+        "kind": "covered",
+        "text": "matcha bar taste test",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "35"
+      },
+      {
+        "kind": "covered",
+        "text": "girl trip to Bali",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "36"
+      },
+      {
+        "kind": "covered",
+        "text": "pilates with horses in Dubai",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "39"
+      },
+      {
+        "kind": "covered",
+        "text": "Gisou pop-up in Dubai",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "40"
+      },
+      {
+        "kind": "topic",
+        "text": "oily hair",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.8",
+        "source_video": "43"
+      },
+      {
+        "kind": "covered",
+        "text": "DIY mask with rice, milk & honey for face",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "44"
+      },
+      {
+        "kind": "covered",
+        "text": "DIY matcha face mask recipe",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "47"
+      },
+      {
+        "kind": "covered",
+        "text": "DIY cacao lipscrub for winter days",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.9",
+        "source_video": "49"
+      },
+      {
+        "kind": "product",
+        "text": "pink iPad",
+        "basis": "demonstrated",
+        "times_seen": "1",
+        "confidence": "0.8",
+        "source_video": "50"
+      }
+    ]
+  }
+]
