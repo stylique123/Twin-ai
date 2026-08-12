@@ -559,3 +559,35 @@ export function creatorDepth(supplied: readonly KnowledgeItem[]): 'high' | 'medi
   if (propositional.length >= 3 || stated.length >= 1) return 'medium'
   return 'low'
 }
+
+/** A beat whose line only tells the viewer how far through they are.
+ *
+ * ⚠️ A PROMPT RULE WAS TRIED FIRST AND MEASURABLY FAILED. After adding "NEVER
+ * WRITE A PROGRESS CHECK" and naming the phrases, a regeneration of the same 16
+ * scripts halved them — 6 to 3 — and the three survivors were the exact strings
+ * the instruction forbids, verbatim. The empty-beat share did not fall at all.
+ *
+ * ⚖️ AND THIS REPO ALREADY KNEW: a contract check beats a prompt rule where the
+ * defect is decidable. This one is trivially decidable — the phrases are a small
+ * closed set — so it belongs in code, not in an instruction the model may or may
+ * not honour.
+ *
+ * ⚠️ IT MUST ALSO CARRY NO SUBSTANCE, and that second condition is not optional.
+ * "Still with me? Because the next one cost me £4,000" is a re-hook doing real
+ * work; the phrase alone is not the defect. Condemning the phrase wherever it
+ * appears would delete good beats to fix bad ones, which is how a guard earns
+ * its way into being disabled.
+ *
+ * ⚖️ REPORTED, NOT REWRITTEN — for now, and deliberately. Creator panels called
+ * these "dead weight neither creator would say", so deleting them is probably
+ * right; but every enforcement shipped without measurement today has had to be
+ * walked back, and a count is what tells us how often the case is clean. */
+const PROGRESS_CHECK =
+  /\b(?:still with me|still here|you'?re (?:still )?(?:with me|watching)|halfway (?:there|through|done)|ready for the (?:last|next|final)|are you (?:still )?(?:there|watching)|if you'?re still watching)\b/i
+
+export function isProgressCheck(line: string, substance?: string | null): boolean {
+  if (!PROGRESS_CHECK.test(String(line ?? ''))) return false
+  // `none` and an absent declaration both mean the beat carries nothing.
+  const s = String(substance ?? 'none').trim().toLowerCase()
+  return s === 'none' || s === ''
+}

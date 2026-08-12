@@ -934,6 +934,9 @@ function readReferenceObservations(
   }
 }
 
+const PROGRESS_CHECK =
+  /\b(?:still with me|still here|you'?re (?:still )?(?:with me|watching)|halfway (?:there|through|done)|ready for the (?:last|next|final)|are you (?:still )?(?:there|watching)|if you'?re still watching)\b/i
+
 // Mirrors `substanceIssues` in packages/shared/src/knowledgeResolver.ts.
 function substanceIssues(
   beats: unknown,
@@ -3226,6 +3229,27 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // the data rather than inferred from silence.
       change_concept: routeCounts.CHANGE_CONCEPT ?? 0,
     }))
+    // ⚠️ THE PROMPT RULE AGAINST THESE FAILED IN MEASUREMENT. "NEVER WRITE A
+    // PROGRESS CHECK", with the phrases named, halved them across 16 regenerated
+    // scripts — and the survivors were the forbidden strings verbatim. A contract
+    // check beats a prompt rule where the defect is decidable, and this one is.
+    //
+    // Inlined from `isProgressCheck` in packages/shared/src/knowledgeResolver.ts;
+    // `progressCheckParity.test.ts` fails if they drift.
+    //
+    // ⚖️ COUNTED, NOT DELETED. Creator panels called these "dead weight neither
+    // creator would say", so removing them is probably right — but every
+    // enforcement shipped without measurement today had to be walked back, and
+    // the count is what says how often the case is clean enough to act on.
+    let progressChecks = 0
+    if (Array.isArray(declared)) {
+      for (const b of declared) {
+        const r = b as { line?: unknown; substance?: unknown }
+        const line = typeof r?.line === 'string' ? r.line : ''
+        const sub = String(r?.substance ?? 'none').trim().toLowerCase()
+        if (PROGRESS_CHECK.test(line) && (sub === 'none' || sub === '')) progressChecks++
+      }
+    }
     console.log(JSON.stringify({
       event: 'beat_substance',
       beats: Array.isArray(declared) ? declared.length : 0,
@@ -3234,6 +3258,8 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       knowledge_supplied: speakable.length,
       issues: issues.length,
       issue_codes: issues.map((i) => i.code),
+      // Beats whose only content is telling the viewer how far through they are.
+      progress_checks: progressChecks,
     }))
     if (issues.length) {
       // Reported, never rewritten. There are no alternate script lines to fall
