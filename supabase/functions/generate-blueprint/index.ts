@@ -2172,6 +2172,50 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     const productFactsForCheck: string[] = ev && typeof ev === 'object' && Array.isArray(ev.sections)
       ? ev.sections.map((x) => String(x?.label ?? '')).filter((x) => x.trim() !== '')
       : []
+    // ── THE HOOKS NOBODY CHECKED ────────────────────────────────────────────
+    //
+    // ⚠️ FIVE HOOKS ARE GENERATED AND FOUR ARE NEVER CHECKED. `hook_options[0]`
+    // is copied into the first script beat, so it faces `entitlementFailures`
+    // like every other line. Options 1-4 face only the placeholder and
+    // generic-promise filters above — and the creator picks from all five. The
+    // hook is the most claim-dense line in a short-form video and the one most
+    // likely to reach for a personal history to earn attention.
+    //
+    // Measured across two 112-case runs: 1 alternate hook in 555 carries a
+    // first-person history — "I used to have so many failed 3D prints, until I
+    // started doing this" — and 0 recommended hooks do. Rare, and the one it
+    // catches is read aloud on camera as a fabricated life event, which this
+    // system's own docs call the most expensive error it can make.
+    //
+    // ⚖️ DROPPED, NOT ESCALATED, AND THE CODE ABOVE ALREADY ARGUES WHY: "Hooks
+    // are REPAIRABLE because five are generated and one is chosen." Same rule as
+    // the placeholder filter — discard the unlicensed ones, never empty the list.
+    // A script beat has no alternates and must still be escalated; a hook has
+    // four, so refusing one costs nothing.
+    //
+    // ⚖️ AND IT REUSES `entitlementFailures` RATHER THAN RESTATING IT. A second
+    // copy of the claim rule is exactly the failure that let 16 purchase CTAs
+    // ship while three copies of the CTA rule agreed with each other.
+    try {
+      const bpH = templated.bp as { hook_options?: unknown }
+      const hooks = Array.isArray(bpH.hook_options)
+        ? (bpH.hook_options as unknown[]).filter((h): h is string => typeof h === 'string')
+        : []
+      if (hooks.length > 1) {
+        const bad = new Set(entitlementFailures(hooks.map((line) => ({ line })), suppliedForCheck)
+          .map((f) => f.index))
+        const kept = hooks.filter((_, i) => !bad.has(i))
+        // An empty hook list is a worse outcome than an overreaching one, and
+        // the count still reaches analytics either way.
+        if (bad.size > 0 && kept.length > 0) {
+          bpH.hook_options = kept
+          console.warn(JSON.stringify({
+            event: 'hooks_unentitled', dropped: bad.size, of: hooks.length,
+          }))
+        }
+      }
+    } catch { /* never fail a generation on a hook filter */ }
+
     const issues = substanceIssues(declared, suppliedForCheck, productFactsForCheck)
     const bySource: Record<string, number> = {}
     if (Array.isArray(declared)) {
