@@ -882,6 +882,10 @@ function ConfirmStep({
   const [canFilmObjects, setCanFilmObjects] = useState<boolean | null>(draft.canFilmObjects)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // A refinement that did not land. Distinct from `err`, which blocks: this one
+  // reports something already-committed and lets the flow continue, so it is
+  // rendered as a notice beside the error rather than in its place.
+  const [mintWarning, setMintWarning] = useState<string | null>(null)
 
   // Preserve every edit within this browser tab until the server has verified
   // onboarding completion. A refresh or retry must never erase Brand DNA.
@@ -1005,7 +1009,34 @@ function ConfirmStep({
             }),
           )
         } catch (mintError) {
-          console.warn('mint owned entity', mintError)
+          // ⚠️ THIS WAS A BARE console.warn, AND IT HID THE ONE FAILURE THAT
+          // CHANGES WHAT GETS WRITTEN. Not throwing is right — see above, the
+          // voice is already saved and sending them back would lose nothing but
+          // their time. Staying SILENT is not. A swallowed mint leaves the
+          // creator believing they told us about their product while
+          // `generate-blueprint` reads no row and writes to a prompt that says
+          // so. They then get scripts shaped around not having the thing they
+          // just described, with nothing anywhere pointing at why.
+          //
+          // ⚖️ SO IT IS LOGGED AS AN EVENT AND SHOWN AS A NOTICE, NOT RAISED AS
+          // AN ERROR. The severity is "a refinement did not land", which is a
+          // thing to tell someone about and let them fix, not a thing to fail
+          // their signup over.
+          console.error(JSON.stringify({
+            event: 'owned_entity_mint_failed',
+            voiceId: draft.voiceId,
+            detail: mintError instanceof Error ? mintError.message : String(mintError),
+          }))
+          // ⚠️ THIS DELIBERATELY DOES NOT SAY "fix it in the Product Library".
+          // Three comments in this file send people there and the page does not
+          // exist — there is no route, no component, and `loadProductEntities`
+          // in `api.ts` has no caller at all. Telling someone to go somewhere
+          // that isn't there converts a storage failure into a hunt. So the
+          // notice says what happened and what follows from it, and stops.
+          setMintWarning(
+            'Your profile is saved, but we could not store your product details. '
+            + 'Your scripts will not assume you have a product until this is set up.',
+          )
         }
       }
       // ALSO seed the Creator DNA (profile.dna) from the scan + these answers, so
@@ -1356,6 +1387,9 @@ function ConfirmStep({
       </div>
 
       {err && <p className="mt-3 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
+      {mintWarning && (
+        <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-600">{mintWarning}</p>
+      )}
 
       {/* A WAY OUT. "Describe your voice myself" landed here with no exit, so
           choosing it by mistake meant filling in fifteen fields or reloading

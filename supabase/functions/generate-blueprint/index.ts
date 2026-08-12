@@ -2668,11 +2668,37 @@ Deno.serve(async (req: Request) => {
     // not exist yet, and a refusal invented without evidence would be the same
     // failure in the opposite direction. `compatibilityGate.ts` carries the full
     // stage and returns NOT_OBSERVED for exactly those.
-    const noProduct = !ownedEntity || ownedEntity.relationship === 'NONE'
+    // ⚠️ UNRECORDED IS NOT NONE, AND THIS LINE ASSERTED OTHERWISE TO EVERY USER.
+    // `noProduct` used to read `!ownedEntity || relationship === 'NONE'`, which
+    // collapses two different states into one refusal:
+    //
+    //     relationship === 'NONE'   the creator ANSWERED, and the answer is no
+    //     !ownedEntity              nobody ever wrote a row. We know nothing.
+    //
+    // `product_entities` is written from exactly one place — a browser tap on
+    // the onboarding confirm step — and holds ZERO rows in production. So the
+    // second branch was true for every generation this system has ever run, and
+    // every script was told "this creator has no product" as a fact. For a
+    // creator who does have one, that is our guess placed above their own
+    // reality, which is the same defect as inventing an opinion, pointed the
+    // other way. The comment directly above already says a refusal invented
+    // without evidence is the failure in the opposite direction; this is one.
+    //
+    // ⚖️ THE UNRECORDED CASE STILL GETS A GUARD, JUST NOT AN ASSERTION. Silence
+    // would let the writer build a scene around a product that may not exist.
+    // So the refusal is narrowed to what is true under BOTH possibilities: do
+    // not write a scene that DEPENDS on one. That is safe if they have no
+    // product and harmless if they do, and it claims nothing we did not observe.
+    const recordedNoProduct = !!ownedEntity && ownedEntity.relationship === 'NONE'
+    const unrecordedProduct = !ownedEntity
+    const noProduct = recordedNoProduct || unrecordedProduct
     const cannotShow = !noProduct && showability !== 'ALWAYS'
     const doNotUse = [
-      noProduct
+      recordedNoProduct
         ? '  * PRODUCT DEMONSTRATION — this creator has no product. Do NOT write a scene that shows, holds or demonstrates one, however the reference used it. A scene that cannot be filled is discovered while standing in a room holding a phone.'
+        : '',
+      unrecordedProduct
+        ? '  * PRODUCT DEMONSTRATION — it is NOT RECORDED whether this creator has a product, so do not assume either way. Do NOT write a scene that depends on showing, holding or demonstrating one, and do NOT name or invent a product for them. A passing mention they could cut is fine; a beat built on a product is not.'
         : '',
       cannotShow
         ? '  * PRODUCT DEMONSTRATION — this creator cannot dependably put their product on screen. Do NOT write a scene that depends on it being visible.'

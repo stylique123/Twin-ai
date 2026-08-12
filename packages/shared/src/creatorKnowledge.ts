@@ -358,22 +358,74 @@ const STOPWORDS = new Set([
  *  returning to is more durable than one they mentioned once. */
 const KIND_RANK: Record<string, number> = {
   experience: 6, example: 5, framework: 4, opinion: 3, claim: 2, fact: 2,
-  // Subject headings. `covered` is filtered out upstream by `writableClaims` —
-  // it means DO NOT REPEAT — and `product`/`topic` name a thing without saying
-  // anything about it, which is exactly the material the writer wraps in filler.
-  product: 1, topic: 0,
+  // ⚠️ `product` SAT DOWN HERE ON AN ASSUMPTION, AND PRODUCTION DISPROVED IT.
+  // The comment this replaces said `product`/`topic` "name a thing without
+  // saying anything about it". That is true of `topic` and false of `product`.
+  // Across the 552 rows live at the time of writing, `product` is sharply
+  // BIMODAL — 26 rows of three words or fewer ("Codex", "Siri App"), 36 rows
+  // over ten words that are complete propositions ("Early is an iOS alarm clock
+  // app that requires users to do push-ups to turn it off, priced at $29.99 a
+  // year"), and just 2 rows anywhere in between. `topic` has no such gap: it is
+  // a smooth hump from 4 to 10 words, heading-shaped the whole way through.
+  //
+  // So a propositional product row asserts a fact ABOUT a thing and belongs
+  // with `claim`/`fact`. It is not an experience — the creator need not have
+  // lived it — and it is not a heading. Ranking it as one buried 36 rows of the
+  // most concrete, most checkable substance in the table beneath subject
+  // folders, which is the exact "voice-accurate, content-empty" defect.
+  product: 2, topic: 0,
+}
+
+/** A name with nothing said about it: "Codex", "Siri App", "Samsung Z Fold 8".
+ *
+ *  ⚖️ THIS IS A PROPERTY OF THE TEXT, NOT OF THE KIND — which is the whole
+ *  point. The old ranking asked "what kind is this?" and got headings and
+ *  propositions filed under one label. Asking "does this text predicate
+ *  anything?" is decidable from the row itself, so it cannot be wrong about a
+ *  kind the extractor happens to choose differently next month. Same reason
+ *  `isProgressCheck` is a contract check rather than a line in the prompt: where
+ *  the defect is decidable, decide it.
+ *
+ *  ⚠️ WORD COUNT, NOT A VERB LIST. The first attempt matched a hand-written list
+ *  of verbs and scored `framework` at 3 propositions out of 14 despite an
+ *  average of 18.8 words — the list simply missed past tenses and modals. A rule
+ *  that misgrades the best material is worse than no rule. Length is a cruder
+ *  signal but an honest one, and the measured bimodality means it lands in a gap
+ *  rather than on a judgement call.
+ *
+ *  ⚖️ AND THE BLAST RADIUS WAS CHECKED BEFORE THE RULE WAS WRITTEN. In
+ *  production, `experience`, `framework`, `example` and `fact` have ZERO rows at
+ *  or under three words. This can only ever demote products, topics, and a
+ *  handful of stub claims — it cannot reach the material panels praised. */
+export function isBareLabel(text: string): boolean {
+  const words = String(text ?? '').trim().split(/\s+/).filter(Boolean)
+  return words.length > 0 && words.length <= 3
 }
 
 export function rankedKnowledge(k: CreatorKnowledge): KnowledgeItem[] {
   const weight = (i: KnowledgeItem) => (i.basis === 'stated' ? 2 : i.basis === 'demonstrated' ? 1 : 0)
   const kind = (i: KnowledgeItem) => KIND_RANK[i.kind] ?? 0
-  // ⚠️ BASIS STILL LEADS, AND A FAILING TEST IS WHY. A first version put kind
-  // first and promoted a DEMONSTRATED experience ("has reviewed several
-  // foldables", read off captions) above a STATED opinion the creator said out
-  // loud. Kind orders material of equal evidential strength; it can never
-  // outrank the evidence itself, or a caption inference starts outranking speech.
+  // ⚖️ BARE LABELS SORT LAST, AHEAD OF BASIS, AND THAT ORDER IS DELIBERATE.
+  // `basis` grades how well attested a PROPOSITION is. A text that predicates
+  // nothing is not a weakly-attested claim; it is not a claim at all, so there
+  // is nothing for `basis` to grade — the same reason this file treats
+  // `inferred` as a different kind of thing rather than a fainter `stated`.
+  // Without this leading key a bare product name read off speech would still
+  // outrank a full proposition read off a caption, because basis would decide
+  // it first and the demotion below would never be consulted.
+  const bare = (i: KnowledgeItem) => (isBareLabel(i.text) ? 1 : 0)
+  // ⚠️ BASIS STILL LEADS THE PROPOSITIONS, AND A FAILING TEST IS WHY. A first
+  // version put kind first and promoted a DEMONSTRATED experience ("has reviewed
+  // several foldables", read off captions) above a STATED opinion the creator
+  // said out loud. Kind orders material of equal evidential strength; it can
+  // never outrank the evidence itself, or a caption inference starts outranking
+  // speech.
   return [...writableClaims(k)]
-    .sort((a, b) => weight(b) - weight(a) || kind(b) - kind(a) || b.timesSeen - a.timesSeen)
+    .sort((a, b) =>
+      bare(a) - bare(b)
+      || weight(b) - weight(a)
+      || kind(b) - kind(a)
+      || b.timesSeen - a.timesSeen)
 }
 
 /** Is a raw source past the date we said we would stop holding it? Callers do
