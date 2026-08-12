@@ -36,12 +36,34 @@
 // still costs an explicit assertion. What the suggestion saves is typing, which
 // is the difference between a page nobody fills in and one they finish.
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation,
+  claimProductEntity, listBrandVoices, OwnedEntityExistsError,
   type ProductSuggestion,
 } from '@twinai/shared'
-import type { ProductEntityRecord, Showability } from '@twinai/shared'
+import type {
+  ProductEntityRecord, Showability, EntityRelationship, EntityType, PersonalUse,
+} from '@twinai/shared'
+import { useAuth } from '../context/AuthContext'
+
+/** ⚖️ THE TWO QUESTIONS THAT CANNOT BE SKIPPED OR DERIVED. `relationship` decides
+ *  whether commercial language is permitted at all; `personalUse` decides whether
+ *  "I use this" may be said. Owning a thing does not establish using it, and a
+ *  commission establishes even less, so neither answer may be inferred from the
+ *  other. Both are asked, in the creator's words, before anything is written. */
+const RELATIONSHIP_CHOICES: Array<{ value: EntityRelationship; label: string }> = [
+  { value: 'OWN_PRODUCT', label: 'I make or sell it' },
+  { value: 'AFFILIATE', label: 'I earn a commission on it' },
+  { value: 'SPONSOR', label: 'A sponsor pays me to feature it' },
+  { value: 'REVIEW_ONLY', label: 'I just talk about it — no commercial tie' },
+]
+
+const TYPE_CHOICES: Array<{ value: EntityType; label: string }> = [
+  { value: 'SAAS', label: 'Software or an app' },
+  { value: 'PHYSICAL', label: 'A physical product' },
+  { value: 'SERVICE', label: 'A service' },
+  { value: 'DIGITAL', label: 'A digital product (course, template…)' },
+]
 
 const SHOW_OPTIONS: Array<{ value: Showability; label: string; note: string }> = [
   { value: 'ALWAYS', label: 'Always', note: 'A scene may show it directly.' },
@@ -62,12 +84,131 @@ const RELATIONSHIP_LABEL: Record<string, string> = {
   NONE: 'No commercial relationship',
 }
 
+
+/** The attestation. Two questions, both required, neither derivable.
+ *
+ *  ⚠️ THERE IS NO "CLAIM" SHORTCUT AND THERE MUST NOT BE. A one-tap button on a
+ *  suggestion would write `relationship` and `personalUse` from a gesture that
+ *  asserted nothing, which is the permission escalation the whole page is built
+ *  to refuse. The cost of an entitlement is answering for it. */
+function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
+  suggestion: ProductSuggestion
+  onCancel: () => void
+  busy: boolean
+  onClaim: (a: {
+    relationship: EntityRelationship; personalUse: PersonalUse
+    type: EntityType; name: string
+  }) => void
+}) {
+  const [name, setName] = useState('')
+  const [relationship, setRelationship] = useState<EntityRelationship | null>(null)
+  const [type, setType] = useState<EntityType | null>(null)
+  const [personalUse, setPersonalUse] = useState<PersonalUse | null>(null)
+  // ⚖️ EVERY ANSWER IS REQUIRED, INCLUDING THE NAME. A nameless entity reaches
+  // the prompt as "the product", and an unanswered relationship has no default
+  // that is safe — `NONE` would silently forbid, `OWN_PRODUCT` would silently
+  // permit. So the button stays disabled rather than either.
+  const ready = name.trim() !== '' && relationship !== null && type !== null && personalUse !== null
+
+  return (
+    <div className="mt-3 space-y-3 rounded-lg bg-ink/5 p-3">
+      <div>
+        <label className="text-xs font-medium uppercase tracking-wide text-ink/50">
+          What do you call it?
+        </label>
+        <input
+          className="mt-1 w-full rounded-lg border border-ink/15 px-3 py-2 text-sm"
+          value={name}
+          placeholder="The name you use on camera"
+          onChange={(ev) => setName(ev.target.value)}
+        />
+      </div>
+
+      <fieldset>
+        <legend className="text-xs font-medium uppercase tracking-wide text-ink/50">
+          What is it?
+        </legend>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {TYPE_CHOICES.map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              onClick={() => setType(t.value)}
+              className={`rounded-full border px-3 py-1 text-xs ${
+                type === t.value ? 'border-ink bg-ink text-white' : 'border-ink/20'}`}
+            >{t.label}</button>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend className="text-xs font-medium uppercase tracking-wide text-ink/50">
+          Your relationship to it
+        </legend>
+        <div className="mt-1 space-y-1">
+          {RELATIONSHIP_CHOICES.map((r) => (
+            <label key={r.value} className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name={`rel-${suggestion.id}`}
+                checked={relationship === r.value}
+                onChange={() => setRelationship(r.value)}
+              />
+              {r.label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset>
+        {/* ⚠️ ASKED SEPARATELY ON PURPOSE. Owning a product does not establish
+            having used it, and a commission establishes less still. This is the
+            answer that licenses "I use this every day"; the one above licenses
+            commercial language. They are different permissions. */}
+        <legend className="text-xs font-medium uppercase tracking-wide text-ink/50">
+          Do you actually use it yourself?
+        </legend>
+        <div className="mt-1 flex gap-2">
+          {([['CONFIRMED', 'Yes, I use it'], ['NOT_CONFIRMED', 'No, or not regularly']] as const)
+            .map(([v, label]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setPersonalUse(v)}
+                className={`rounded-full border px-3 py-1 text-xs ${
+                  personalUse === v ? 'border-ink bg-ink text-white' : 'border-ink/20'}`}
+              >{label}</button>
+            ))}
+        </div>
+      </fieldset>
+
+      <div className="flex gap-2 pt-1">
+        <button
+          type="button"
+          disabled={!ready || busy}
+          onClick={() => ready && onClaim({
+            relationship: relationship!, personalUse: personalUse!, type: type!, name,
+          })}
+          className="rounded-lg bg-ink px-3 py-1.5 text-sm text-white disabled:opacity-40"
+        >{busy ? 'Adding…' : 'Add to my products'}</button>
+        <button type="button" onClick={onCancel} className="px-3 py-1.5 text-sm text-ink/60">
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function ProductLibrary() {
   const [entities, setEntities] = useState<ProductEntityRecord[] | null>(null)
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
+  const [claimingId, setClaimingId] = useState<string | null>(null)
+  const [claimBusy, setClaimBusy] = useState(false)
+  const { session } = useAuth()
+  const [voiceId, setVoiceId] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -83,6 +224,12 @@ export default function ProductLibrary() {
           const s = await loadProductSuggestions(rows)
           if (alive) setSuggestions(s)
         } catch { /* the page works without them */ }
+        // The voice an OWNED product is scoped to. Only needed to claim one, so
+        // a failure here must not block the rest of the page.
+        try {
+          const voices = await listBrandVoices()
+          if (alive) setVoiceId(voices[0]?.id ?? null)
+        } catch { /* claiming an owned product will report it */ }
       } catch (e) {
         if (alive) setErr(e instanceof Error ? e.message : 'Could not load your products.')
       }
@@ -104,6 +251,43 @@ export default function ProductLibrary() {
       setErr(e instanceof Error ? e.message : 'Could not save that change.')
     } finally {
       setSavingId(null)
+    }
+  }
+
+  async function claim(s: ProductSuggestion, a: {
+    relationship: EntityRelationship; personalUse: PersonalUse; type: EntityType; name: string
+  }) {
+    // ⚠️ AN EMPTY OWNER ID MUST NOT REACH THE INSERT. RLS is owner-scoped, so a
+    // blank id fails somewhere deep with a policy error that reads as a bug in
+    // the product form. Say the real thing instead.
+    const ownerId = session?.user?.id
+    if (!ownerId) { setErr('Please sign in again before adding a product.'); return }
+    // An OWNED product is scoped to a voice, and the partial unique index is on
+    // that column — claiming one without a voice would write an unscoped row
+    // that the entitlement reader in generate-blueprint never finds.
+    if ((a.relationship === 'OWN_PRODUCT' || a.relationship === 'OWN_SERVICE') && !voiceId) {
+      setErr('We could not find your brand voice, so this cannot be saved as a product you own yet.')
+      return
+    }
+    setClaimBusy(true); setErr(null)
+    try {
+      const created = await claimProductEntity(ownerId, voiceId, a)
+      if (created) {
+        setEntities((prev) => [...(prev ?? []), created])
+        // Drop it from the suggestions — it is claimed now, and leaving it there
+        // invites a second claim of the same thing.
+        setSuggestions((prev) => prev.filter((x) => x.id !== s.id))
+      }
+      setClaimingId(null)
+    } catch (e) {
+      // ⚖️ THE ONE-PRODUCT-PER-VOICE REFUSAL GETS ITS OWN MESSAGE. Falling back
+      // to a generic failure would leave a creator retrying a thing that will
+      // never succeed, with no idea why.
+      setErr(e instanceof OwnedEntityExistsError
+        ? e.message
+        : e instanceof Error ? e.message : 'Could not add that product.')
+    } finally {
+      setClaimBusy(false)
     }
   }
 
@@ -221,19 +405,29 @@ export default function ProductLibrary() {
                   {s.basis === 'stated' ? 'You said this' : 'From a video description'}
                   {s.timesSeen > 1 && ` · mentioned ${s.timesSeen} times`}
                 </p>
+                {claimingId === s.id ? (
+                  <ClaimForm
+                    suggestion={s}
+                    busy={claimBusy}
+                    onCancel={() => setClaimingId(null)}
+                    onClaim={(a) => void claim(s, a)}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className="mt-2 rounded-lg border border-ink/20 px-3 py-1 text-xs"
+                    onClick={() => setClaimingId(s.id)}
+                  >This is mine</button>
+                )}
               </li>
             ))}
           </ul>
-          {/* ⚠️ NO ONE-TAP CLAIM BUTTON YET, ON PURPOSE. Claiming a product sets
-              `relationship` and `personalUse`, which is the entitlement decision
-              this page deliberately refuses to make from a single tap. The
-              attestation flow that records what was asserted and when is the next
-              piece of work; shipping a button that quietly wrote `OWN_PRODUCT`
-              would be the escalation the rest of this file exists to prevent. */}
+          {/* ⚠️ "This is mine" OPENS QUESTIONS, IT DOES NOT CLAIM. The button
+              could write `OWN_PRODUCT` directly and save four taps; that would be
+              an entitlement granted by a gesture that asserted nothing, which is
+              the escalation this whole page refuses. See `ClaimForm`. */}
           <p className="mt-3 text-xs text-ink/50">
-            Claiming a product needs a couple of questions about your relationship to it —
-            that flow is coming next. Until then, <Link className="underline" to="/settings">
-            Settings</Link> is the place to ask us to add one.
+            Nothing here is added to your products until you answer for it.
           </p>
         </section>
       )}

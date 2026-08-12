@@ -8,7 +8,9 @@ import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfil
 import { sanitizeBriefForWrite, readStoredBrief, type BriefAnswers } from './preScriptBrief'
 import {
   emptyRestrictions, isEntityRelationship, isEntityType, isPersonalUse, isShowability,
-  type DraftEntity, type EntityRestrictions, type ProductEntityRecord, type Showability,
+  attestedEntity, isOwned,
+  type DraftEntity, type EntityAttestation, type EntityRestrictions,
+  type ProductEntityRecord, type Showability,
 } from './productEntity'
 import { generationLifecycle, resolveFinishedOutputs, resolveFinishedOutputsResult } from './editor/finishedOutput'
 
@@ -1481,6 +1483,79 @@ export async function loadProductSuggestions(
     }))
     .filter((s) => s.id !== '' && s.text !== '')
     .filter((s) => !names.some((n) => s.text.toLowerCase().includes(n)))
+}
+
+/** Raised when a creator claims a SECOND owned product for the same voice.
+ *
+ *  ⚠️ THE ALTERNATIVE WAS SILENT DATA LOSS. `saveMintedEntity` answers a 23505
+ *  from the partial unique index by UPDATING the existing owned row, which is
+ *  right there — that path exists for a remount replay arriving twice, where
+ *  both writes are the same product. It is exactly wrong here: a creator
+ *  claiming a second, different product would have their first one overwritten
+ *  in place, silently, with no way to notice. So this path refuses and says why.
+ *
+ *  ⚖️ AND THE REFUSAL IS THE HONEST ANSWER, NOT A LIMITATION TO ROUTE AROUND.
+ *  The database allows ONE owned product per voice by design — the whole
+ *  entitlement model assumes "the thing this creator sells" is singular. A
+ *  creator who genuinely has two needs a second voice or a schema change, and
+ *  both are decisions someone should make deliberately. */
+export class OwnedEntityExistsError extends Error {
+  constructor() {
+    super('You already have a product registered for this voice. Only one owned product is supported per voice.')
+    this.name = 'OwnedEntityExistsError'
+  }
+}
+
+/** Turn a mention the creator has CLAIMED into an entity that carries permissions.
+ *
+ *  ⚠️ NOTHING CALLS THIS FROM AN EXTRACTOR, AND NOTHING MAY. The argument is an
+ *  `EntityAttestation` — a set of answers — precisely so this cannot be handed
+ *  the output of a scan. Reaching `product_entities` from `creator_knowledge`
+ *  without a creator answering in between is the traceability-versus-entitlement
+ *  confusion that keeps this whole module honest: knowing someone MENTIONED a
+ *  product is not knowing they may CLAIM one.
+ *
+ *  `voiceId` is null for a library row — a product the creator has a relationship
+ *  with that is not the thing this voice sells. Only owned entities are scoped to
+ *  a voice, which is what the partial unique index encodes. */
+export async function claimProductEntity(
+  ownerId: string,
+  voiceId: string | null,
+  attestation: EntityAttestation,
+): Promise<ProductEntityRecord | null> {
+  const entity = attestedEntity(attestation)
+  const owned = isOwned(entity.relationship)
+  const row = {
+    owner_id: ownerId,
+    // ⚖️ A NON-OWNED ENTITY IS NEVER SCOPED TO A VOICE. Writing `voice_id` for an
+    // affiliate row would make it collide with the owned-product index the
+    // moment the creator later claims something they own.
+    voice_id: owned ? voiceId : null,
+    name: entity.name,
+    type: entity.type,
+    relationship: entity.relationship,
+    personal_use: entity.personalUse,
+    showability: entity.showability,
+    product_url: entity.productUrl,
+    affiliate_url: entity.affiliateUrl,
+    evidence: entity.evidence,
+    restrictions: entity.restrictions,
+    source: entity.source,
+    user_confirmed: entity.userConfirmed,
+  }
+
+  const { data, error } = await supabase
+    .from('product_entities')
+    .insert(row)
+    .select(ENTITY_COLUMNS)
+    .single()
+  if (error) {
+    // 23505 here means the partial unique index caught a SECOND owned product.
+    // Unlike the mint path, the correct answer is to refuse — see the error.
+    if (error.code === '23505') throw new OwnedEntityExistsError()
+    throw error
+  }
+  return readEntityRow(data as ProductEntityRow)
 }
 
 /** THE ONLY FIELDS A CREATOR MAY EDIT AFTER THE FACT, as a type rather than a
