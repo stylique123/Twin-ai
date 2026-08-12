@@ -1,6 +1,7 @@
 import { db, type Job } from '../db.js'
 import { scrapeTikTokProfile, type ScrapedPost } from '../media.js'
 import { assessScanTarget } from '../scanTarget.js'
+import { selectVideosToTranscribe } from '../transcriptSelection.js'
 import { synthesizeVoiceFromPosts, extractKnowledgeFromCaptions } from '../voice.js'
 import type { InlineImage } from '../gemini.js'
 
@@ -274,11 +275,15 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   // Best-effort audio upgrade: transcribe the creator's top TikToks and refine the
   // voice from their actual spoken audio (TikTok yt-dlp+whisper works from our IP).
   try {
-    const urls = [...posts]
-      .sort((a, b) => (b.plays || b.likes) - (a.plays || a.likes))
-      .map((x) => x.url)
-      .filter((u) => /^https:\/\//i.test(u))
-      .slice(0, 5)
+    // ⚠️ WAS TOP-5-BY-VIEWS, WHICH SAMPLES ONE THING: WHAT WENT VIRAL. Viral
+    // videos are systematically the least representative source of belief —
+    // they skew to spectacle and to older uploads that had time to accumulate
+    // reach. Transcripts are the ONLY source that can produce `stated`
+    // positions, so which few get transcribed decides whether Twin can ever say
+    // anything the creator actually believes.
+    const urls = selectVideosToTranscribe(posts.map((x) => ({
+      url: x.url, plays: x.plays, likes: x.likes, text: x.text,
+    })))
     if (urls.length && ownerId) {
       await db.from('jobs').insert({
         owner_id: ownerId,
