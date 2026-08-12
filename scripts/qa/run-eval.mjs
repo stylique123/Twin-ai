@@ -118,6 +118,26 @@ const COUNT_CONTRACT = liftBlock(
 // never established in any run to date. The rules were present and inert. The
 // mechanism read is lifted too, and emitted BEFORE the contract, in the same
 // order as production, so the precondition can actually become true.
+// ⚠️ AND THE FIFTH TIME: `productFacts` WAS A SLOT THAT WAS ALWAYS EMPTY.
+//
+// The harness has recorded `supplied.productFacts` on every run since it was
+// added, and across all 32 runs of the latest matrix its value was `[]` — every
+// time, for every creator — because `creator.productFacts` does not exist in the
+// pack. So the entire Product Knowledge path was UNMEASURABLE while appearing in
+// the output as a measured zero. `IMPOSS-PROD` fired on beats declaring
+// `product_dna`, and the scorer's own note explains it away: "this harness
+// supplies no product DNA to anyone."
+//
+// ⚖️ THAT NOTE IS THE BUG, NOT THE EXPLANATION. A harness that cannot supply the
+// thing under test reports the product path as clean no matter how broken it is.
+// So the real block is lifted, the pack carries real graded facts, and a script
+// that states a HELD fact is now countable.
+const PRODUCT_FACTS_RULE = liftBlock(
+  '- WHAT IS TRUE ABOUT THIS PRODUCT',
+  'describe it in general terms or leave it out.',
+  'the usable-product-facts rule',
+)
+
 const MECHANISM_READ = liftBlock(
   '- reference_read.mechanism: READ THE FORMAT',
   'the debt that makes a list a sequence rather than a pile.',
@@ -368,6 +388,26 @@ function knowledgeBlock(k, aboutText = '', cap = KNOWLEDGE_CAP) {
 
 const pack = JSON.parse(readFileSync('scripts/qa/creator-pack.json', 'utf8'))
 
+/** What the product's own pages say, split exactly as production splits it.
+ *
+ *  ⚠️ ONLY `usable` FACTS ARE SENT, and that is the property under test. A fact
+ *  graded `needs_confirmation` — anything carrying a magnitude or promising an
+ *  outcome — is deliberately WITHHELD from the prompt, so a script that states
+ *  one anyway has either invented it or leaked it, and either is a defect worth
+ *  counting. Sending both and hoping the model behaves would measure nothing.
+ *
+ *  ⚖️ THE RULE TEXT IS LIFTED, THE FACTS ARE THE PACK'S. Retyping the instruction
+ *  is how this harness has drifted from production five times; retyping the facts
+ *  would just be inventing data. */
+function productFactsBlock(creator) {
+  const facts = creator.productFacts ?? []
+  const usable = facts.filter((f) => f.trust === 'usable')
+  if (usable.length === 0) return ''
+  const lines = usable.map((f) => `  * ${f.field}: ${f.value}`).join('\n')
+  return `${PRODUCT_FACTS_RULE.split('\n')[0]}\n${lines}\n${
+    PRODUCT_FACTS_RULE.split('\n').slice(1).join('\n')}`
+}
+
 async function gen({ creator, refNote, fidelity, tone, goal, withKnowledge = true, answers, cap = KNOWLEDGE_CAP, knowledgeStore }) {
   // Defaults to the creator's whole store; a `sources` arm passes the filtered one.
   knowledgeStore = knowledgeStore ?? creator.knowledge
@@ -417,6 +457,7 @@ CREATOR'S ANSWERS
 - What they do: ${A.workKind}
 - Third-party products featured: ${A.promotes}${promotesLine(A.promotes)}
 ${withKnowledge ? knowledgeBlock(knowledgeStore, `${refNote} ${A.idea ?? ''}`, cap) : ''}
+${productFactsBlock(creator)}
 
 REFERENCE (described, not transcribed)
 ${refNote}

@@ -1,6 +1,6 @@
 {
   "$why": [
-    "GROUND TRUTH for the QA matrix — what a scan SHOULD have found, established by",
+    "GROUND TRUTH for the QA matrix \u2014 what a scan SHOULD have found, established by",
     "researching each creator's real public content BEFORE any generation runs.",
     "",
     "This exists so DNA extraction can be scored against reality rather than against",
@@ -9,7 +9,7 @@
     "",
     "THE ANSWERS ARE QA SCENARIOS, NOT BIOGRAPHY. We deliberately feed controlled",
     "answers and scan real accounts, to see whether the system combines both sources",
-    "correctly. Where an answer CONFLICTS with reality, that conflict is the test —",
+    "correctly. Where an answer CONFLICTS with reality, that conflict is the test \u2014",
     "it is recorded in `answerConflicts`, not silently corrected."
   ],
   "references": {
@@ -69,7 +69,7 @@
         "relationship": "REVIEW_ONLY+SPONSOR",
         "relationshipCode": "NONE",
         "personalUse": "NOT_CONFIRMED",
-        "ownsProduct": "merch sold AT COST — scoring this as OWN_PRODUCT is a trap",
+        "ownsProduct": "merch sold AT COST \u2014 scoring this as OWN_PRODUCT is a trap",
         "showability": "PHYSICAL objects yes (field/lab), software off-brand",
         "enemy": "tech doomerism; hype without mechanism",
         "signature": "naive question -> why it's hard -> go to the source in person -> mechanism via analogy -> stakes -> optimistic-but-caveated close",
@@ -82,9 +82,9 @@
         "promotes": "none"
       },
       "answerConflicts": [
-        "QA says 'promotes: ideas/tech/software' — she promotes IDEAS, not software. Any product plug or tool recommendation is a hard fail.",
-        "QA says 'formats: talking' — her real format is FIELD-REPORTED with graphics. A static monologue has lost her.",
-        "No question captures her 'what could go right' thesis or the 'if' caveat — the highest-signal traits are exactly what the questionnaire cannot see."
+        "QA says 'promotes: ideas/tech/software' \u2014 she promotes IDEAS, not software. Any product plug or tool recommendation is a hard fail.",
+        "QA says 'formats: talking' \u2014 her real format is FIELD-REPORTED with graphics. A static monologue has lost her.",
+        "No question captures her 'what could go right' thesis or the 'if' caveat \u2014 the highest-signal traits are exactly what the questionnaire cannot see."
       ],
       "mustNever": [
         "sell/plug any product incl. her own merch",
@@ -157,8 +157,8 @@
         "relationship": "REVIEW_ONLY on every gadget reviewed",
         "relationshipCode": "REVIEW_ONLY",
         "personalUse": "CONFIRMED",
-        "ownsProduct": "Panels (app), equity in Ridge, Waveform podcast — and NONE of the gadgets he reviews",
-        "showability": "ALWAYS — device in hand, studio, high b-roll",
+        "ownsProduct": "Panels (app), equity in Ridge, Waveform podcast \u2014 and NONE of the gadgets he reviews",
+        "showability": "ALWAYS \u2014 device in hand, studio, high b-roll",
         "signature": "spoken tease -> intro sting -> claims -> subsystems -> real-world -> verdict"
       },
       "answers": {
@@ -168,7 +168,7 @@
         "promotes": "review_only"
       },
       "answerConflicts": [
-        "QA says 'promotes: gadgets + products reviewed' — CRITICAL. Reviewed gadgets are REVIEW_ONLY. This single field is the direct cause of the ownership trap.",
+        "QA says 'promotes: gadgets + products reviewed' \u2014 CRITICAL. Reviewed gadgets are REVIEW_ONLY. This single field is the direct cause of the ownership trap.",
         "'workKind: creator' invites 'I built/launched this' unless REVIEW_ONLY is carried explicitly.",
         "'goal: educate' omits VERDICT, his defining function."
       ],
@@ -265,7 +265,7 @@
         "present a sponsored product as a medical recommendation, or omit disclosure",
         "rank interventions as 'best/#1' as if clinical advice"
       ],
-      "adversarialCase": "high-energy gadget ranking reference — must REFUSE the ranking payoff rather than satisfy it",
+      "adversarialCase": "high-energy gadget ranking reference \u2014 must REFUSE the ranking payoff rather than satisfy it",
       "knowledge": {
         "items": [
           {
@@ -331,7 +331,7 @@
         "relationshipCode": "OWN_SERVICE",
         "personalUse": "CONFIRMED",
         "showability": "talking-head, studio",
-        "knownDefect": "produced the real §5d run: idea said three, hook said no number, script counted to two; and leaked brand hex into wardrobe"
+        "knownDefect": "produced the real \u00a75d run: idea said three, hook said no number, script counted to two; and leaked brand hex into wardrobe"
       },
       "answers": {
         "goal": "leads+authority",
@@ -403,7 +403,7 @@
         "relationship": "OWN_PRODUCT (book, PTYA course) + OWN_SERVICE (community, podcast) + AFFILIATE + SPONSOR",
         "relationshipCode": "OWN_PRODUCT",
         "personalUse": "CONFIRMED",
-        "showability": "ALWAYS — screen recording well within format",
+        "showability": "ALWAYS \u2014 screen recording well within format",
         "opener": "Hey friends",
         "enemy": "discipline/willpower/hustle-grind; burnout-as-badge",
         "signature": "greeting -> personal failure -> numbered framework -> research per item -> 'try this this week' -> soft CTA"
@@ -415,7 +415,7 @@
         "promotes": "none"
       },
       "answerConflicts": [
-        "QA wants 'creator/educator/business owner' — the product supports ONE workKind. Primary = creator.",
+        "QA wants 'creator/educator/business owner' \u2014 the product supports ONE workKind. Primary = creator.",
         "LOST by that choice: legitimacy of promoting owned courses, business-operator anecdotes, and the guardrail that his money claims are OWNER claims."
       ],
       "nonTransferableClaims": [
@@ -490,7 +490,7 @@
         "relationshipCode": "REVIEW_ONLY",
         "personalUse": "CONFIRMED",
         "showability": "ALWAYS",
-        "productionRisk": "highest-production creator in the suite — studio, motion graphics, multi-camera, editing team"
+        "productionRisk": "highest-production creator in the suite \u2014 studio, motion graphics, multi-camera, editing team"
       },
       "answers": {
         "goal": "followers+entertain",
@@ -646,7 +646,7 @@
         "promotes": "none"
       },
       "truth": {
-        "formatRisk": "street interviews require strangers — unrecreatable by a solo creator",
+        "formatRisk": "street interviews require strangers \u2014 unrecreatable by a solo creator",
         "relationship": "OWN_SERVICE+OWN_PRODUCT",
         "relationshipCode": "OWN_SERVICE",
         "personalUse": "CONFIRMED",
@@ -1292,7 +1292,65 @@
             "sourceExpiry": null
           }
         ]
-      }
+      },
+      "productFacts": [
+        {
+          "field": "name",
+          "value": "Acquisition.com",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "usable",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "category",
+          "value": "Business acquisition and scaling advisory",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "usable",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "description",
+          "value": "Invests in and scales portfolio companies from $1M to $100M",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "usable",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "audience",
+          "value": "Founders of service and product businesses",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "usable",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "feature",
+          "value": "Free business frameworks, books and templates",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "usable",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "claim",
+          "value": "Portfolio does over $200M a year",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "needs_confirmation",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "price",
+          "value": "Free resources, equity partnership by application",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "needs_confirmation",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        }
+      ]
     },
     {
       "key": "garyvee",
@@ -1511,7 +1569,7 @@
           },
           {
             "kind": "example",
-            "text": "Hosted a drop at her Knightsbridge store selling authentic Chanel bags for under £2,500",
+            "text": "Hosted a drop at her Knightsbridge store selling authentic Chanel bags for under \u00a32,500",
             "basis": "stated",
             "source": "transcript",
             "timesSeen": 1,
@@ -1520,7 +1578,7 @@
           },
           {
             "kind": "example",
-            "text": "Ran a viral campaign leaving £10,000 Birkin bags in London charity shops to be sold for £3,000",
+            "text": "Ran a viral campaign leaving \u00a310,000 Birkin bags in London charity shops to be sold for \u00a33,000",
             "basis": "stated",
             "source": "transcript",
             "timesSeen": 1,
@@ -1529,7 +1587,7 @@
           },
           {
             "kind": "experience",
-            "text": "Sold a black Birkin bag for £13,500 in roughly 40 seconds by posting a single Instagram story.",
+            "text": "Sold a black Birkin bag for \u00a313,500 in roughly 40 seconds by posting a single Instagram story.",
             "basis": "stated",
             "source": "transcript",
             "timesSeen": 1,
@@ -1934,7 +1992,57 @@
             "sourceExpiry": null
           }
         ]
-      }
+      },
+      "productFacts": [
+        {
+          "field": "name",
+          "value": "Forward Future AI",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "usable",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "category",
+          "value": "AI newsletter and community",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "usable",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "description",
+          "value": "Covers AI model releases, tooling and practical use",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "usable",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "feature",
+          "value": "Weekly newsletter and video breakdowns",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "usable",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "claim",
+          "value": "Read by 200,000 subscribers",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "needs_confirmation",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "guarantee",
+          "value": "Cancel any time",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "needs_confirmation",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        }
+      ]
     },
     {
       "key": "mrbeast",
@@ -2486,7 +2594,65 @@
             "sourceExpiry": null
           }
         ]
-      }
+      },
+      "productFacts": [
+        {
+          "field": "name",
+          "value": "Starter Story",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "usable",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "category",
+          "value": "Founder case-study library",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "usable",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "description",
+          "value": "Interviews founders and documents how their businesses were started and grown",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "usable",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "feature",
+          "value": "Searchable database of business case studies",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "usable",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "audience",
+          "value": "Aspiring and early-stage founders",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "usable",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "claim",
+          "value": "Over 7,000 case studies",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "needs_confirmation",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        },
+        {
+          "field": "price",
+          "value": "$US299 a year for full access",
+          "source": "official_product_page",
+          "sourceUrl": null,
+          "trust": "needs_confirmation",
+          "extractedAt": "2026-08-12T00:00:00Z"
+        }
+      ]
     },
     {
       "key": "thejoemoffett",
@@ -3744,11 +3910,11 @@
     "TECH-iELA's enumeration ground truth (does the spoken hook say 3? are all 3 tools verbally marked?) is UNVERIFIED and must be sourced before the count contract is scored against it.",
     "THE SYSTEM ASSUMES ONE CREATOR. Colin & Samir are two, plus guests. There is no speaker attribution anywhere in the script contract."
   ],
-  "knowledgeNote": "FIXTURE KNOWLEDGE, NOT AN EXTRACTION. These are well-known public positions of each creator, written by hand to stand in for what Creator Knowledge extraction WOULD produce. They are labelled with an honest basis, but no scan generated them, so a run using this pack tests whether the WRITER uses substance — never whether the extractor finds it.",
+  "knowledgeNote": "FIXTURE KNOWLEDGE, NOT AN EXTRACTION. These are well-known public positions of each creator, written by hand to stand in for what Creator Knowledge extraction WOULD produce. They are labelled with an honest basis, but no scan generated them, so a run using this pack tests whether the WRITER uses substance \u2014 never whether the extractor finds it.",
   "scanTargets": "Owner-supplied handle and platform for each persona, for the scan retest. These are the accounts a real DNA scan would run against; every result recorded so far used hand-written fixture knowledge instead, so nothing here has been scanned yet.",
   "cohort2": {
-    "note": "SECOND COHORT — SCAN TARGETS, NOT PERSONAS. Everything recorded here is visible on the channel page the owner supplied: handle, platform, subscriber and video counts, bio text, and the format legible in the Shorts grid. There is deliberately NO `knowledge` block for any of them. Cohort 1 carries hand-written positions because those creators are well documented and the fixture was needed to test the WRITER; inventing positions for these five would be the exact defect this work exists to remove — a guess about a person, stored as though observed. Their knowledge must come from a real scan or stay empty.",
-    "whyTheseFive": "They stress what cohort 1 could not. All five are PRODUCT-LED, so they exercise the `product` knowledge kind, `showability`, and the ownership split between reviewing and owning — the axes cohort 1 mostly left idle.",
+    "note": "SECOND COHORT \u2014 SCAN TARGETS, NOT PERSONAS. Everything recorded here is visible on the channel page the owner supplied: handle, platform, subscriber and video counts, bio text, and the format legible in the Shorts grid. There is deliberately NO `knowledge` block for any of them. Cohort 1 carries hand-written positions because those creators are well documented and the fixture was needed to test the WRITER; inventing positions for these five would be the exact defect this work exists to remove \u2014 a guess about a person, stored as though observed. Their knowledge must come from a real scan or stay empty.",
+    "whyTheseFive": "They stress what cohort 1 could not. All five are PRODUCT-LED, so they exercise the `product` knowledge kind, `showability`, and the ownership split between reviewing and owning \u2014 the axes cohort 1 mostly left idle.",
     "creators": [
       {
         "key": "justicebuys",
@@ -3771,7 +3937,7 @@
           "viewsSeen": "64k-471k"
         },
         "stresses": "ENUMERATED FORMAT, visible: one thumbnail reads \"10. Citring One Juicer\", so the videos are numbered countdowns. This is the count contract's home turf and the first cohort member whose OWN format is enumerated rather than borrowed from a reference.",
-        "openQuestion": "Reviews or affiliates? The bio says discovery and the site is their own — ownership is UNVERIFIED and must be asked, not assumed.",
+        "openQuestion": "Reviews or affiliates? The bio says discovery and the site is their own \u2014 ownership is UNVERIFIED and must be asked, not assumed.",
         "answers": {
           "workKind": "creator",
           "promotes": "review_only",
@@ -3779,10 +3945,10 @@
           "audience": "people looking for products they did not know existed"
         },
         "truth": {
-          "relationship": "REVIEW_ONLY (UNVERIFIED — own site suggests a possible commercial tie nobody has confirmed)",
+          "relationship": "REVIEW_ONLY (UNVERIFIED \u2014 own site suggests a possible commercial tie nobody has confirmed)",
           "relationshipCode": "REVIEW_ONLY",
           "personalUse": "NOT_CONFIRMED",
-          "showability": "ALWAYS — every short is the product in hand or in use",
+          "showability": "ALWAYS \u2014 every short is the product in hand or in use",
           "signature": "numbered countdown of named products, each demonstrated",
           "enemy": "products that look impressive and do nothing",
           "ctaStyle": "engagement; no confirmed offer",
@@ -3862,7 +4028,7 @@
           "viewsSeen": "1k-1.6k"
         },
         "stresses": "HIGHEST CLAIM RISK IN EITHER COHORT. Thumbnails say \"How To Buy Your Dream Car With Ai Money\" and \"how average people are making thousands of dollars a day\". Earnings claims are the one class where a transferred claim is a regulatory problem rather than an aesthetic one, so this is the persona that should exercise forbidden-claims handling hardest.",
-        "openQuestion": "Owns paid products (dropshippingstarter.com) — an OWN_PRODUCT relationship that must be confirmed, and a sell goal that is legitimate for them.",
+        "openQuestion": "Owns paid products (dropshippingstarter.com) \u2014 an OWN_PRODUCT relationship that must be confirmed, and a sell goal that is legitimate for them.",
         "answers": {
           "workKind": "saas",
           "promotes": "none",
@@ -3873,7 +4039,7 @@
           "relationship": "OWN_PRODUCT (dropshippingstarter.com) + OWN_SERVICE",
           "relationshipCode": "OWN_PRODUCT",
           "personalUse": "CONFIRMED",
-          "showability": "UNKNOWN — talking head; screen recording plausible but unconfirmed",
+          "showability": "UNKNOWN \u2014 talking head; screen recording plausible but unconfirmed",
           "signature": "how-to walkthrough promising an outcome",
           "enemy": "gatekeeping what actually works in e-commerce",
           "ctaStyle": "links to own paid resources",
@@ -3945,7 +4111,7 @@
           "viewsSeen": "803k-1m"
         },
         "stresses": "The TONE CLAMP's opposite case. Their stated identity is high energy, so `punchy` should NOT clamp here, and `understated` should be visibly wrong for them. Cohort 1 tested the clamp firing; this tests it staying out of the way.",
-        "openQuestion": "4x a day cadence implies a very large already-covered set — the strongest test of not handing them their own upload back.",
+        "openQuestion": "4x a day cadence implies a very large already-covered set \u2014 the strongest test of not handing them their own upload back.",
         "answers": {
           "workKind": "creator",
           "promotes": "review_only",
@@ -3956,7 +4122,7 @@
           "relationship": "REVIEW_ONLY on the hardware covered",
           "relationshipCode": "REVIEW_ONLY",
           "personalUse": "NOT_CONFIRMED",
-          "showability": "ALWAYS — device on camera, heavy caption emphasis",
+          "showability": "ALWAYS \u2014 device on camera, heavy caption emphasis",
           "signature": "high-energy face cam, rapid caption punches",
           "enemy": "tech coverage that is a snooze fest",
           "ctaStyle": "engagement",
@@ -3974,7 +4140,7 @@
           "subscribers": "60k",
           "videos": 270,
           "bio": "Everything #tech",
-          "format": "\"I bought X\" — device in hand, teardown and repair",
+          "format": "\"I bought X\" \u2014 device in hand, teardown and repair",
           "namedInThumbnails": [
             "Samsung Z Fold 8",
             "Google Pixel (1st gen)",
@@ -3984,7 +4150,7 @@
           "viewsSeen": "17k-165k"
         },
         "stresses": "SHOWABILITY = ALWAYS and REVIEW_ONLY, with the most named products per thumbnail of any creator in either cohort. If the `product` kind stays empty for this person after a real scan, the extractor is not finding named things and the fixture excuse no longer applies.",
-        "openQuestion": "Runs giveaways — a promotional mechanic the entity model has no vocabulary for yet.",
+        "openQuestion": "Runs giveaways \u2014 a promotional mechanic the entity model has no vocabulary for yet.",
         "answers": {
           "workKind": "creator",
           "promotes": "review_only",
@@ -3995,7 +4161,7 @@
           "relationship": "REVIEW_ONLY on every device bought and shown",
           "relationshipCode": "REVIEW_ONLY",
           "personalUse": "CONFIRMED",
-          "showability": "ALWAYS — device in hand in every thumbnail",
+          "showability": "ALWAYS \u2014 device in hand in every thumbnail",
           "signature": "\"I bought X\" then the thing nobody else shows you about it",
           "enemy": "reviews that never open the device",
           "ctaStyle": "engagement, plus giveaways",
@@ -4083,7 +4249,7 @@
           "viewsSeen": "868k-7.1m"
         },
         "stresses": "Highest reach in either cohort (7.1M on one short), so the widest gap between a good and a bad script.",
-        "openQuestion": "Covers unreleased or concept hardware (Cybercab) — knowledge freshness matters more here than anywhere else.",
+        "openQuestion": "Covers unreleased or concept hardware (Cybercab) \u2014 knowledge freshness matters more here than anywhere else.",
         "answers": {
           "workKind": "creator",
           "promotes": "review_only",
@@ -4094,7 +4260,7 @@
           "relationship": "REVIEW_ONLY on gadgets covered",
           "relationshipCode": "REVIEW_ONLY",
           "personalUse": "NOT_CONFIRMED",
-          "showability": "ALWAYS — gadget in hand or worn",
+          "showability": "ALWAYS \u2014 gadget in hand or worn",
           "signature": "gadget reveal with a single emphasised word per beat",
           "enemy": "gadgets that are all concept and no use",
           "ctaStyle": "engagement",
@@ -4104,12 +4270,12 @@
         "forbiddenClaims": []
       }
     ],
-    "answersNote": "The `answers` and `truth` blocks are DERIVED FROM OBSERVABLE CHANNEL FACTS, not supplied by the creator. What someone TYPES in onboarding is a handful of closed choices readable off a channel page — do they hold the product on camera, do they sell anything, what do they make. What someone BELIEVES is a claim about their mind. The first is derivable; the second is not, which is why there is still no `knowledge` block here. Where a fact is genuinely unknown it says UNVERIFIED rather than guessing.",
-    "knowledgeProvenance": "EXTRACTED, NOT WRITTEN. These items came from the real extractor reading the real titles legible in the owner-supplied screenshots — six per channel, not a scan. Two of the five produced ZERO and have no knowledge block, which is the correct answer for their input rather than a failure: their on-screen text is burned-in caption fragments (\"CAN'T HAVE A\", \"unlock\"), not descriptive titles."
+    "answersNote": "The `answers` and `truth` blocks are DERIVED FROM OBSERVABLE CHANNEL FACTS, not supplied by the creator. What someone TYPES in onboarding is a handful of closed choices readable off a channel page \u2014 do they hold the product on camera, do they sell anything, what do they make. What someone BELIEVES is a claim about their mind. The first is derivable; the second is not, which is why there is still no `knowledge` block here. Where a fact is genuinely unknown it says UNVERIFIED rather than guessing.",
+    "knowledgeProvenance": "EXTRACTED, NOT WRITTEN. These items came from the real extractor reading the real titles legible in the owner-supplied screenshots \u2014 six per channel, not a scan. Two of the five produced ZERO and have no knowledge block, which is the correct answer for their input rather than a failure: their on-screen text is burned-in caption fragments (\"CAN'T HAVE A\", \"unlock\"), not descriptive titles."
   },
   "cohort3": {
     "$why": "The first cohort built from a REAL scan. Knowledge is live extractor output over 501 real captions from 8 accounts.",
-    "$limits": "Titles only — no transcripts, so NO opinion-level or experience-level evidence exists for anyone here. Every item is coverage. That is the honest ceiling of a caption-only scan. ⚠️ DERIVED FROM THE 501-CAPTION CORPUS, WHICH LANDS WITH PR #320 — not from the 86-caption file currently on this branch. Regenerating from that older file gives different numbers.",
+    "$limits": "Titles only \u2014 no transcripts, so NO opinion-level or experience-level evidence exists for anyone here. Every item is coverage. That is the honest ceiling of a caption-only scan. \u26a0\ufe0f DERIVED FROM THE 501-CAPTION CORPUS, WHICH LANDS WITH PR #320 \u2014 not from the 86-caption file currently on this branch. Regenerating from that older file gives different numbers.",
     "creators": [
       {
         "key": "johnny",
@@ -4118,11 +4284,11 @@
         "platform": "youtube",
         "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
         "truth": {
-          "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+          "relationship": "REVIEW_ONLY \u2014 nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
           "relationshipCode": "REVIEW_ONLY",
           "personalUse": "NOT_CONFIRMED",
-          "showability": "UNKNOWN — the scan reads titles, never pixels.",
-          "signature": "NOT OBSERVED — titles only."
+          "showability": "UNKNOWN \u2014 the scan reads titles, never pixels.",
+          "signature": "NOT OBSERVED \u2014 titles only."
         },
         "answers": {
           "goal": "followers",
@@ -4769,11 +4935,11 @@
         "platform": "youtube",
         "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
         "truth": {
-          "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+          "relationship": "REVIEW_ONLY \u2014 nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
           "relationshipCode": "REVIEW_ONLY",
           "personalUse": "NOT_CONFIRMED",
-          "showability": "UNKNOWN — the scan reads titles, never pixels.",
-          "signature": "NOT OBSERVED — titles only."
+          "showability": "UNKNOWN \u2014 the scan reads titles, never pixels.",
+          "signature": "NOT OBSERVED \u2014 titles only."
         },
         "answers": {
           "goal": "followers",
@@ -5188,11 +5354,11 @@
         "platform": "youtube",
         "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
         "truth": {
-          "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+          "relationship": "REVIEW_ONLY \u2014 nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
           "relationshipCode": "REVIEW_ONLY",
           "personalUse": "NOT_CONFIRMED",
-          "showability": "UNKNOWN — the scan reads titles, never pixels.",
-          "signature": "NOT OBSERVED — titles only."
+          "showability": "UNKNOWN \u2014 the scan reads titles, never pixels.",
+          "signature": "NOT OBSERVED \u2014 titles only."
         },
         "answers": {
           "goal": "followers",
@@ -5847,11 +6013,11 @@
         "platform": "youtube",
         "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
         "truth": {
-          "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+          "relationship": "REVIEW_ONLY \u2014 nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
           "relationshipCode": "REVIEW_ONLY",
           "personalUse": "NOT_CONFIRMED",
-          "showability": "UNKNOWN — the scan reads titles, never pixels.",
-          "signature": "NOT OBSERVED — titles only."
+          "showability": "UNKNOWN \u2014 the scan reads titles, never pixels.",
+          "signature": "NOT OBSERVED \u2014 titles only."
         },
         "answers": {
           "goal": "followers",
@@ -6458,11 +6624,11 @@
         "platform": "youtube",
         "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
         "truth": {
-          "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+          "relationship": "REVIEW_ONLY \u2014 nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
           "relationshipCode": "REVIEW_ONLY",
           "personalUse": "NOT_CONFIRMED",
-          "showability": "UNKNOWN — the scan reads titles, never pixels.",
-          "signature": "NOT OBSERVED — titles only."
+          "showability": "UNKNOWN \u2014 the scan reads titles, never pixels.",
+          "signature": "NOT OBSERVED \u2014 titles only."
         },
         "answers": {
           "goal": "followers",
@@ -6509,7 +6675,7 @@
             },
             {
               "kind": "product",
-              "text": "Sony Afeela (Sony’s cancelled PlayStation car)",
+              "text": "Sony Afeela (Sony\u2019s cancelled PlayStation car)",
               "basis": "demonstrated",
               "timesSeen": 1,
               "sourceRef": null,
@@ -6901,11 +7067,11 @@
         "platform": "youtube",
         "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
         "truth": {
-          "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+          "relationship": "REVIEW_ONLY \u2014 nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
           "relationshipCode": "REVIEW_ONLY",
           "personalUse": "NOT_CONFIRMED",
-          "showability": "UNKNOWN — the scan reads titles, never pixels.",
-          "signature": "NOT OBSERVED — titles only."
+          "showability": "UNKNOWN \u2014 the scan reads titles, never pixels.",
+          "signature": "NOT OBSERVED \u2014 titles only."
         },
         "answers": {
           "goal": "followers",
@@ -7048,7 +7214,7 @@
             },
             {
               "kind": "product",
-              "text": "World’s First COOKING Robot",
+              "text": "World\u2019s First COOKING Robot",
               "basis": "demonstrated",
               "timesSeen": 1,
               "sourceRef": null,
@@ -7144,7 +7310,7 @@
             },
             {
               "kind": "product",
-              "text": "World’s First SMART Dog Door",
+              "text": "World\u2019s First SMART Dog Door",
               "basis": "demonstrated",
               "timesSeen": 1,
               "sourceRef": null,
@@ -7216,7 +7382,7 @@
             },
             {
               "kind": "product",
-              "text": "World’s 1st Robot Vacuum with an ARM",
+              "text": "World\u2019s 1st Robot Vacuum with an ARM",
               "basis": "demonstrated",
               "timesSeen": 1,
               "sourceRef": null,
@@ -7272,7 +7438,7 @@
             },
             {
               "kind": "product",
-              "text": "World’s First FOLDABLE Home Gym",
+              "text": "World\u2019s First FOLDABLE Home Gym",
               "basis": "demonstrated",
               "timesSeen": 1,
               "sourceRef": null,
@@ -7336,11 +7502,11 @@
         "platform": "tiktok",
         "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
         "truth": {
-          "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+          "relationship": "REVIEW_ONLY \u2014 nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
           "relationshipCode": "REVIEW_ONLY",
           "personalUse": "NOT_CONFIRMED",
-          "showability": "UNKNOWN — the scan reads titles, never pixels.",
-          "signature": "NOT OBSERVED — titles only."
+          "showability": "UNKNOWN \u2014 the scan reads titles, never pixels.",
+          "signature": "NOT OBSERVED \u2014 titles only."
         },
         "answers": {
           "goal": "followers",
@@ -7531,7 +7697,7 @@
             },
             {
               "kind": "covered",
-              "text": "the world’s first robot that can detect skin cancer automatically",
+              "text": "the world\u2019s first robot that can detect skin cancer automatically",
               "basis": "demonstrated",
               "timesSeen": 1,
               "sourceRef": null,
@@ -7763,11 +7929,11 @@
         "platform": "tiktok",
         "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
         "truth": {
-          "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+          "relationship": "REVIEW_ONLY \u2014 nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
           "relationshipCode": "REVIEW_ONLY",
           "personalUse": "NOT_CONFIRMED",
-          "showability": "UNKNOWN — the scan reads titles, never pixels.",
-          "signature": "NOT OBSERVED — titles only."
+          "showability": "UNKNOWN \u2014 the scan reads titles, never pixels.",
+          "signature": "NOT OBSERVED \u2014 titles only."
         },
         "answers": {
           "goal": "followers",
@@ -8163,14 +8329,14 @@
   },
   "derivedReferences": {
     "$why": "Shapes these creators ACTUALLY use, derived from the real corpus.",
-    "$limits": "TITLE-INFERRED. The promise is observed; beat order and re-hook placement are NOT. Never pool with pack.references without splitting on mechanismSource. ⚠️ DERIVED FROM THE 501-CAPTION CORPUS, WHICH LANDS WITH PR #320 — not from the 86-caption file currently on this branch. Regenerating from that older file gives different numbers.",
+    "$limits": "TITLE-INFERRED. The promise is observed; beat order and re-hook placement are NOT. Never pool with pack.references without splitting on mechanismSource. \u26a0\ufe0f DERIVED FROM THE 501-CAPTION CORPUS, WHICH LANDS WITH PR #320 \u2014 not from the 86-caption file currently on this branch. Regenerating from that older file gives different numbers.",
     "references": {
       "D_JOHNNYYTECH_QUESTION_TEST": {
         "source": "@johnnyytech",
         "shape": "QUESTION_TEST",
-        "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+        "mechanism": "opens as a QUESTION about a specific thing and the video is the answer \u2014 the answer may be no",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 12,
         "evidence": [
           "Is this the PERFECT Foldable phone design? #samsungzfold8 #zfold8 #samsung #tech",
@@ -8182,12 +8348,12 @@
       "D_NATHANESPINOZA_QUESTION_TEST": {
         "source": "@nathanespinoza",
         "shape": "QUESTION_TEST",
-        "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+        "mechanism": "opens as a QUESTION about a specific thing and the video is the answer \u2014 the answer may be no",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 15,
         "evidence": [
-          "Would You Buy a Car You CAN’T Drive?",
+          "Would You Buy a Car You CAN\u2019T Drive?",
           "How to ACTUALLY Stop Doomscrolling",
           "The Most UNDERRATED iOS 27 Feature?",
           "The COOLEST iPhone Accessory?"
@@ -8198,10 +8364,10 @@
         "shape": "SUPERLATIVE",
         "mechanism": "a superlative claim about one named thing, then the evidence for it",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 15,
         "evidence": [
-          "Samsung’s THINNEST Fold Yet 👀",
+          "Samsung\u2019s THINNEST Fold Yet \ud83d\udc40",
           "The Most UNDERRATED iOS 27 Feature?",
           "The COOLEST Electric Bike Ever",
           "The UGLIEST Ferrari Might Be Genius"
@@ -8210,9 +8376,9 @@
       "D_ACTUALLYCARTERPCS_QUESTION_TEST": {
         "source": "@actuallycarterpcs",
         "shape": "QUESTION_TEST",
-        "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+        "mechanism": "opens as a QUESTION about a specific thing and the video is the answer \u2014 the answer may be no",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 29,
         "evidence": [
           "How To Take Good Pictures (For Old People #carterpcs #tech #techtok #photography",
@@ -8226,10 +8392,10 @@
         "shape": "ACQUISITION",
         "mechanism": "FIRST-PERSON acquisition or trial, then what was found by having it",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 6,
         "evidence": [
-          "I Drove A Tesla Model S Plaid for 24 hours… this is what ive learned",
+          "I Drove A Tesla Model S Plaid for 24 hours\u2026 this is what ive learned",
           "I bought a $34 Drone from Shein",
           "I bought a Model S Plaid before graduating highschool",
           "I bought a fake vision pro from Aliexpress.."
@@ -8241,13 +8407,13 @@
         "shape": "SUPERLATIVE",
         "mechanism": "a superlative claim about one named thing, then the evidence for it",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 9,
         "evidence": [
           "The US Government is banning the BIGGEST DRONE COMPANY DJI #carterpcs #tech #techtok #gaming #techfa",
           "The best $43 gaming keyboard",
           "When the US banned the 2nd biggest smartphone company.",
-          "What’s the best PC you can get for $250k?? #carterpcs #tech #gaming #gpu #pc"
+          "What\u2019s the best PC you can get for $250k?? #carterpcs #tech #gaming #gpu #pc"
         ]
       },
       "D_JEREMYRAYHOLST_ENUMERATED": {
@@ -8255,11 +8421,11 @@
         "shape": "ENUMERATED",
         "mechanism": "a COUNT is announced in the title and each item is delivered in turn",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 11,
         "evidence": [
           "Top 7 Products To Sell This Week (Shopify Dropshipping)",
-          "Top 10 Dropshipping Products I’d Sell Right Now",
+          "Top 10 Dropshipping Products I\u2019d Sell Right Now",
           "Top 10 Dropshipping Products For July 2026",
           "Top 7 WINNING Products To Sell Now (Shopify Dropshipping)"
         ],
@@ -8268,9 +8434,9 @@
       "D_JEREMYRAYHOLST_QUESTION_TEST": {
         "source": "@jeremyrayholst",
         "shape": "QUESTION_TEST",
-        "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+        "mechanism": "opens as a QUESTION about a specific thing and the video is the answer \u2014 the answer may be no",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 38,
         "evidence": [
           "How to Build a FREE AI Dropshipping Store in 5 Minutes",
@@ -8284,11 +8450,11 @@
         "shape": "ACQUISITION",
         "mechanism": "FIRST-PERSON acquisition or trial, then what was found by having it",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 6,
         "evidence": [
           "I Tested Claude Fable 5 vs ChatGPT 5.6 Sol For Dropshipping",
-          "I Tested Shopify’s NEW AI Features…",
+          "I Tested Shopify\u2019s NEW AI Features\u2026",
           "I Tried AI Dropshipping",
           "I Tried to Go Viral With AI in 24 Hours"
         ],
@@ -8299,7 +8465,7 @@
         "shape": "SUPERLATIVE",
         "mechanism": "a superlative claim about one named thing, then the evidence for it",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 5,
         "evidence": [
           "Top 10 BEST Tools for Shopify Dropshipping (2026)",
@@ -8311,13 +8477,13 @@
       "D_REALRYANKENNEDY_QUESTION_TEST": {
         "source": "@realryankennedy",
         "shape": "QUESTION_TEST",
-        "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+        "mechanism": "opens as a QUESTION about a specific thing and the video is the answer \u2014 the answer may be no",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 6,
         "evidence": [
           "XBOX Game Pass losing games to Linux? #ryanreviews #heroicgameslauncher #lunux #shorts #tech",
-          "How’s game streaming in 2026? #ryanreviews #geforcenow #gamepass #tech",
+          "How\u2019s game streaming in 2026? #ryanreviews #geforcenow #gamepass #tech",
           "SpaceX mobile service a good idea? #ryanreviews #spacex #mobileplan",
           "Is GeForce Now Any Good While RAM and GPUs are Expensive"
         ]
@@ -8327,7 +8493,7 @@
         "shape": "ENUMERATED",
         "mechanism": "a COUNT is announced in the title and each item is delivered in turn",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 7,
         "evidence": [
           "Top 10 TRAVEL Gadgets for 2026 #shorts",
@@ -8340,9 +8506,9 @@
       "D_JUSTICEBUYS1_QUESTION_TEST": {
         "source": "@justicebuys1",
         "shape": "QUESTION_TEST",
-        "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+        "mechanism": "opens as a QUESTION about a specific thing and the video is the answer \u2014 the answer may be no",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 5,
         "evidence": [
           "These Sleep Earbuds Have a SNORE DETECTOR?! #sleep #tech",
@@ -8356,7 +8522,7 @@
         "shape": "SUPERLATIVE",
         "mechanism": "a superlative claim about one named thing, then the evidence for it",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 4,
         "evidence": [
           "The Most ADVANCED Chess Robot That Can Beat Grandmasters #tech",
@@ -8370,7 +8536,7 @@
         "shape": "SUPERLATIVE",
         "mechanism": "a superlative claim about one named thing, then the evidence for it",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 7,
         "evidence": [
           "This is the most insane tech company in the world #ai #techtok #technology #artificialintelligence #asml",
@@ -8382,15 +8548,15 @@
       "D_BRETTTECH_QUESTION_TEST": {
         "source": "@brett.tech",
         "shape": "QUESTION_TEST",
-        "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+        "mechanism": "opens as a QUESTION about a specific thing and the video is the answer \u2014 the answer may be no",
         "mechanismSource": "title_inferred",
-        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+        "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT \u2014 nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
         "support": 4,
         "evidence": [
           "Chat is mass fish surveilance ethical?",
           "Reduce reuse recycle? #3dprinting #aviation",
           "ACTUAL good deals this year????? #smarthome #tech #home #greenscreen",
-          "This is a big deal…right???? RIGHT????? #apple #mac #tech"
+          "This is a big deal\u2026right???? RIGHT????? #apple #mac #tech"
         ]
       }
     }
