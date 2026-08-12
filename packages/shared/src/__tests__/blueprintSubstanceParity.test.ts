@@ -35,11 +35,31 @@ function lift(src: string, where: string, name: string): string {
 }
 
 describe('edge ↔ shared substance-check parity', () => {
-  it('the first-person history pattern is character-identical', () => {
-    // The most expensive check in the system: this pattern is the only thing
-    // standing between a creator and a fabricated claim about their own life.
-    expect(lift(EDGE, 'the edge function', 'FIRST_PERSON_HISTORY'))
-      .toBe(lift(SHARED, 'shared', 'FIRST_PERSON_HISTORY'))
+  it('there is ONE first-person rule, and both copies call it', () => {
+    // ⚠️ THIS ASSERTION USED TO SAY "the pattern is character-identical", and it
+    // passed for months while being satisfied by the wrong thing: two copies of
+    // a STALE narrow verb list, agreeing with each other and with nothing that
+    // measured well. Over the last matrix that pattern saw 2 history beats where
+    // `claimStrength` saw 22.
+    //
+    // ⚖️ SO THE CONTRACT CHANGED, AND SAYING SO IS THE POINT. Identical copies
+    // were never the goal — one rule was. Two files agreeing is only worth
+    // anything when what they agree on is the thing that was measured.
+    for (const src of [EDGE, SHARED]) {
+      expect(src).toMatch(/const isFirstPersonHistory = \(line: string\): boolean => claimStrength\(line\) === 'history'/)
+    }
+    // And the stale pattern is gone from both, not merely unreferenced.
+    for (const src of [EDGE, SHARED]) {
+      expect(src).not.toMatch(/const FIRST_PERSON_HISTORY\s*=/)
+    }
+  })
+
+  it('…and the claim rule it now defers to is still lifted, not retyped', () => {
+    // The single rule is only single if the edge's inlined copy tracks the
+    // shared one character for character. That check lives below and must not
+    // be weakened just because there is now one caller instead of two patterns.
+    expect(lift(EDGE, 'the edge function', 'CLAIM_HISTORY'))
+      .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimStrength.ts'), 'utf8'), 'shared', 'HISTORY'))
   })
 
   it('the stopword set is identical, so relevance is judged the same way', () => {
@@ -142,9 +162,9 @@ describe('edge ↔ shared substance-check parity', () => {
 
   it('the claim-strength patterns match the shared module character for character', () => {
     expect(lift(EDGE, 'the edge function', 'CLAIM_HISTORY'))
-      .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimEntitlement.ts'), 'utf8'), 'shared', 'HISTORY'))
+      .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimStrength.ts'), 'utf8'), 'shared','HISTORY'))
     expect(lift(EDGE, 'the edge function', 'CLAIM_POSITION'))
-      .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimEntitlement.ts'), 'utf8'), 'shared', 'POSITION'))
+      .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimStrength.ts'), 'utf8'), 'shared','POSITION'))
   })
 })
 

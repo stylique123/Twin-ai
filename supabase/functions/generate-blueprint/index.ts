@@ -167,11 +167,17 @@ function substanceTerms(s: string): Set<string> {
   return new Set(String(s).toLowerCase().split(/[^a-z0-9]+/)
     .filter((w) => w.length > 3 && !SUBSTANCE_STOP.has(w)))
 }
-/** First-person personal history — "I bought", "I used", "I switched".
- *  ⚖️ Narrow on purpose: "I think" and "I'd say" are stance, not history, and
- *  condemning them would fail every honest talking-head script. */
-const FIRST_PERSON_HISTORY =
-  /\bI(?:'ve| have)?\s+(?:bought|owned|used|switched|returned|tested|kept|ran)\b|\bmy own\b|\bwhen I (?:got|bought|switched)\b/i
+/** First-person personal history — ONE detector, the measured one.
+ *
+ *  ⚠️ THIS WAS A SECOND COPY AND IT WAS TEN TIMES BLINDER. It held the narrow
+ *  verb list that `claimStrength` below replaced with a structural rule after
+ *  measuring against real speech; over the last matrix it saw 2 history beats
+ *  where `claimStrength` saw 22. Its "narrow on purpose" rationale was that
+ *  "I think" is stance rather than history — still true, and `claimStrength`
+ *  already returns `position` for exactly that. The reason survived; the
+ *  implementation serving it did not. Mirrors `isFirstPersonHistory` in
+ *  packages/shared/src/knowledgeResolver.ts. */
+const isFirstPersonHistory = (line: string): boolean => claimStrength(line) === 'history'
 type SuppliedKnowledge = { kind: string; text: string; basis: string }
 /** Same ladder as the shared module: a title is coverage however confident it
  *  sounds; only speech is opinion, and only first-person speech is experience. */
@@ -291,7 +297,7 @@ function substanceIssues(
     // ⚖️ THE MOST EXPENSIVE ERROR, CHECKED SEPARATELY. A personal history is a
     // claim about the creator's life, and nothing but experience-level evidence
     // licenses it — not research, not a title, not a rephrasing.
-    if (FIRST_PERSON_HISTORY.test(line)) {
+    if (isFirstPersonHistory(line)) {
       const licensed = supplied.some((k) => suppliedLevel(k) === 'experience'
         && (cited === '' ? true : tracesTo(cited, [k])))
       if (!licensed) {
