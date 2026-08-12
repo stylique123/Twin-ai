@@ -328,7 +328,36 @@ export async function scrapeProfile(
   if (p === 'tiktok') {
     try {
       const free = await scrapeTikTokProfile(handle, limit)
-      if (free.posts.length) return free
+      if (free.posts.length) {
+        // ⚠️ POSTS WITHOUT FACTS IS NOT A SUCCESS. Observed on four live TikTok
+        // scans: yt-dlp returned real posts but `resolvedHandle` and `audience`
+        // both null, so every one stored `followers: 0` and — the part that
+        // matters — `assessScanTarget` had NO resolved handle to compare against
+        // the requested one. That check is the thing that catches a scan landing
+        // on a DIFFERENT account holding the same name, the @CarterPCs trap. It
+        // was silently unenforceable for TikTok.
+        //
+        // ⚖️ ENRICH, DON'T REDO. The free posts are good; only the identity is
+        // missing. One Actor result carries `authorMeta`, so this buys the
+        // resolved handle and follower count for a single billed item instead of
+        // re-scraping the whole profile. A failure here keeps the free posts —
+        // an identity we could not read must never cost a scrape that worked.
+        if (free.facts.resolvedHandle === null) {
+          console.warn(JSON.stringify({ event: 'profile_facts_missing', handle, platform: p }))
+          try {
+            const enriched = await tiktokProfileViaApify(handle, 1)
+            if (enriched.facts.resolvedHandle !== null) {
+              return { posts: free.posts, facts: enriched.facts }
+            }
+          } catch (err) {
+            console.warn(JSON.stringify({
+              event: 'profile_facts_enrich_failed', handle, platform: p,
+              reason: err instanceof Error ? err.message : String(err),
+            }))
+          }
+        }
+        return free
+      }
       console.warn(JSON.stringify({ event: 'profile_scrape_free_empty', handle, platform: p }))
     } catch (err) {
       console.warn(JSON.stringify({
