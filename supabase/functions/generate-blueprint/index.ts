@@ -2345,6 +2345,58 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       console.warn(JSON.stringify({ event: 'entitlement_unrepaired', beats: entFails.length, questions: creatorQuestions }))
     }
 
+    // ── AN UNFILLED TEMPLATE IS NOT A SCRIPT ────────────────────────────────
+    //
+    // ⚠️ THESE WERE COUNTED AND SHIPPED. `dropSpokenPlaceholders` above removes
+    // templated HOOKS — five are generated, so discarding one costs nothing —
+    // and for script lines it only sets `linesAffected`. The line itself went
+    // out to the creator:
+    //
+    //     "You've probably been doing [tech task] wrong your whole life."
+    //     "First, do [step 1]. Then, [step 2]. And finally, [step 3]."
+    //
+    // Measured across three 112-case runs: 5-17 lines in 3-6 scripts, so roughly
+    // one script in twenty to thirty ships a bracket. Read by a creator panel,
+    // the reaction was not proportional to the rate — one occurrence destroys
+    // trust in the whole document, because every other line now has to be read
+    // as possibly fake.
+    //
+    // ⚖️ THE ORIGINAL REASONING WAS RIGHT AND ITS CONCLUSION WAS WRONG. The
+    // comment said a script line "has no alternates, so it is reported and never
+    // invented over" — correct, we must not invent one. But there was always a
+    // third option, and it is the one this file already uses everywhere else:
+    // ASK. A bracket is the writer stating outright that it lacked a fact, which
+    // is the exact condition `needs_user` exists for. Deleting the beat would
+    // break the count contract; inventing it would fabricate; asking is honest
+    // and already has a reader in the client.
+    //
+    // ⚖️ AND IT MAKES THE SCRIPT UNBILLABLE, which is the correct economics. A
+    // script that asks the creator to fill in its blanks is a preflight
+    // question, not a delivered creation.
+    if (Array.isArray(declared)) {
+      let bracketed = 0
+      for (const raw of declared) {
+        const b = raw as { line?: unknown; substance?: string; substance_evidence?: string }
+        if (typeof b?.line !== 'string' || !SPOKEN_PLACEHOLDER.test(b.line)) continue
+        bracketed++
+        // ⚠️ THE WORDING IS LOAD-BEARING, NOT COSMETIC. `discoveryQuestions` and
+        // `isBillableScript` detect OUR asks by AUTHORSHIP — they match the
+        // phrases this system writes, not question grammar, because a rhetorical
+        // hook is also a question. A first draft of this line invented fresh
+        // wording and the script stayed BILLABLE: a question with no reader,
+        // which is the one thing this repo's standing rule forbids. Its own test
+        // caught it. Reuse the canonical marker; do not paraphrase it.
+        const q = 'Only you can supply this. This beat came back as an unfilled template — what would you actually say here?'
+        b.line = q
+        b.substance = 'needs_user'
+        b.substance_evidence = ''
+        if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
+      }
+      if (bracketed) {
+        console.warn(JSON.stringify({ event: 'placeholder_beats_asked', beats: bracketed }))
+      }
+    }
+
     // ── A DECLARED SOURCE THAT DOES NOT EXIST IS ASKED, NEVER REWRITTEN ──────
     //
     // ⚠️ DETECTION WITHOUT ENFORCEMENT IS THE MISTAKE ABOVE, REPEATED. The
