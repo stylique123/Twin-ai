@@ -75,14 +75,46 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     posts = scraped.posts
     profileFacts = scraped.facts
   } catch (err) {
-    console.error('scrape_dna: yt-dlp failed', handle, err instanceof Error ? err.message : err)
+    // ⚠️ THIS BLAMED THE CREATOR FOR OUR OWN MISSING DEPENDENCY. The old
+    // message said "If that account is private or empty, try a public account"
+    // — repeating a GUESS yt-dlp prints whenever it cannot read the page at
+    // all. TikTok began requiring impersonation, this image installed no
+    // backend for it (fixed in requirements.txt), and every affected creator
+    // was told their own account was the problem. A scraper that cannot reach a
+    // page does not know why, and must not pretend it does.
+    const detail = err instanceof Error ? err.message : String(err)
+    const impersonation = /impersonat|secondary user ID/i.test(detail)
+    console.error(JSON.stringify({
+      event: 'scrape_dna_read_failed',
+      handle, platform,
+      // Distinguishes "our tooling cannot read this site" from every other
+      // cause, because those need opposite responses and looked identical.
+      likely_cause: impersonation ? 'yt_dlp_impersonation_unavailable' : 'unknown',
+      detail: detail.slice(0, 500),
+    }))
     return await fail(
-      `We couldn't read @${handle} on ${platform}. If that account is private or empty, try a public account or set up your voice manually.`,
+      `We couldn't read @${handle} on ${platform} just now. This is usually on our side — try again shortly, or set up your voice manually.`,
     )
   }
 
   // Empty result = private / empty / mistyped. Never fabricate a voice from nothing.
+  //
+  // ⚠️ AND THIS IS THE SHAPE THAT HID FOR THREE DAYS. The scrape returns
+  // nothing, `fail()` keeps the creator's existing voice, the JOB still records
+  // `done` — so a run that wrote no knowledge, no entities and no questions is
+  // indistinguishable from a healthy one on any dashboard. `creator_knowledge`
+  // sat at 0 rows in production with 27 voices present and nothing reported.
+  // The reasoning above is right — never fabricate a voice from nothing — but a
+  // refusal has to be COUNTABLE or it is just silence with good manners.
   if (!posts.length) {
+    console.error(JSON.stringify({
+      event: 'scrape_dna_empty',
+      handle, platform,
+      // The scrape SUCCEEDED and returned nothing, which is a different fact
+      // from being unable to read the page at all.
+      resolved_handle: profileFacts?.resolvedHandle ?? null,
+      post_count: profileFacts?.postCount ?? null,
+    }))
     return await fail(
       `We couldn't read any public posts from @${handle}. If that account is private or empty, make it public ` +
         `for a moment, try a different public account, or set up your voice manually.`,
