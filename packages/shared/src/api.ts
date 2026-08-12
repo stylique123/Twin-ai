@@ -12,6 +12,9 @@ import {
   type DraftEntity, type EntityAttestation, type EntityRestrictions,
   type ProductEntityRecord, type Showability,
 } from './productEntity'
+import {
+  EXTRACTED_FIELDS, EXTRACTION_SOURCES, type ExtractedFact,
+} from './productExtraction'
 import { generationLifecycle, resolveFinishedOutputs, resolveFinishedOutputsResult } from './editor/finishedOutput'
 
 // ---- Client injection ------------------------------------------------------
@@ -1344,10 +1347,13 @@ interface ProductEntityRow {
   user_confirmed: boolean
   updated_at: string
   archived_at?: string | null
+  knowledge?: unknown
+  knowledge_extracted_at?: string | null
+  knowledge_source_url?: string | null
 }
 
 const ENTITY_COLUMNS =
-  'id, name, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at, archived_at'
+  'id, name, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at, archived_at, knowledge, knowledge_extracted_at, knowledge_source_url'
 
 /** Read `restrictions` back defensively. `approvedClaims` is the field §5a.5
  *  turns on — an outcome claim needs a permission that EXISTS — so a malformed
@@ -1411,7 +1417,99 @@ function readEntityRow(row: ProductEntityRow): ProductEntityRecord | null {
     // an entity the creator never withdrew — that would silently remove a
     // product from their videos. The safe degradation is the state they had.
     archivedAt: typeof row.archived_at === 'string' ? row.archived_at : null,
+    // ⚖️ NULL AND [] ARE DIFFERENT ANSWERS AND BOTH SURVIVE THE READ. Null means
+    // nobody has extracted yet — the UI offers a link field. `[]` means we read
+    // a page and found nothing usable, which is a result, not an absence.
+    knowledge: Array.isArray(row.knowledge)
+      ? (row.knowledge as unknown[]).map(readStoredFact).filter((f): f is ExtractedFact => f !== null)
+      : null,
+    knowledgeExtractedAt: typeof row.knowledge_extracted_at === 'string' ? row.knowledge_extracted_at : null,
+    knowledgeSourceUrl: typeof row.knowledge_source_url === 'string' ? row.knowledge_source_url : null,
   }
+}
+
+/** Read one stored fact back defensively.
+ *
+ *  ⚠️ THE STORED `trust` IS HONOURED RATHER THAN RECOMPUTED, and that is the
+ *  whole reason it is stored. Re-grading on read would mean a later tightening
+ *  of the classifier silently changed the status of facts a creator had already
+ *  reviewed — and re-grading a `user_confirmed` fact would throw away the
+ *  confirmation entirely.
+ *
+ *  ⚖️ BUT AN UNREADABLE GRADE DEGRADES TO `needs_confirmation`, never to
+ *  `usable`. Junk in the column must not become permission. */
+function readStoredFact(raw: unknown): ExtractedFact | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  const field = String(r.field ?? '')
+  const value = String(r.value ?? '').trim()
+  if (value === '' || !EXTRACTED_FIELDS.includes(field as never)) return null
+  return {
+    field: field as ExtractedFact['field'],
+    value,
+    source: EXTRACTION_SOURCES.includes(r.source as never)
+      ? (r.source as ExtractedFact['source'])
+      : 'marketing_copy',
+    sourceUrl: typeof r.sourceUrl === 'string' ? r.sourceUrl : null,
+    trust: r.trust === 'usable' ? 'usable' : 'needs_confirmation',
+    extractedAt: typeof r.extractedAt === 'string' ? r.extractedAt : '',
+  }
+}
+
+/** Ask the worker to read a product page.
+ *
+ *  ⚖️ ENQUEUED RATHER THAN AWAITED, because the fetch-and-extract can take tens
+ *  of seconds and must survive the creator closing the tab — the dependency
+ *  YouTube DNA was just moved off. The page polls the entity for `knowledge`
+ *  rather than the job, so a reload picks the result up wherever it got to. */
+export async function requestProductExtraction(
+  ownerId: string, entityId: string, url: string,
+): Promise<void> {
+  const clean = url.trim()
+  // ⚠️ REFUSED HERE AS WELL AS IN THE WORKER. The worker's check is the one that
+  // protects the credentialed process; this one exists so the creator is told
+  // immediately rather than watching a job fail silently.
+  if (!/^https:\/\//i.test(clean)) throw new Error('Please paste a full https:// link.')
+  const { error } = await supabase.from('jobs').insert({
+    owner_id: ownerId,
+    type: 'extract_product',
+    status: 'queued',
+    max_attempts: 3,
+    payload: { entity_id: entityId, url: clean },
+  })
+  if (error) throw error
+}
+
+/** Promote the facts a creator has checked.
+ *
+ *  ⚠️ THIS IS THE ONLY PATH FROM `needs_confirmation` TO `usable`, and it exists
+ *  because a person acted. `source` becomes `user_confirmed` so the reason is
+ *  recorded rather than just the outcome — a fact that reads `usable` with a
+ *  `marketing_copy` source would be indistinguishable from a classifier bug.
+ *
+ *  ⚖️ CONFIRMING IS PER-FACT, NOT PER-PRODUCT. "Confirm everything" on a page of
+ *  extracted claims is a single tap that grants a dozen permissions, which is
+ *  the same escalation the claim flow refuses. */
+export async function confirmProductFacts(
+  entityId: string, values: readonly string[],
+): Promise<ProductEntityRecord | null> {
+  const wanted = new Set(values)
+  const { data: current, error: readErr } = await supabase
+    .from('product_entities').select('knowledge').eq('id', entityId).single()
+  if (readErr) throw readErr
+  const facts = Array.isArray((current as { knowledge?: unknown })?.knowledge)
+    ? ((current as { knowledge: unknown[] }).knowledge)
+    : []
+  const next = facts.map((raw) => {
+    const f = readStoredFact(raw)
+    if (!f || !wanted.has(f.value)) return raw
+    return { ...f, source: 'user_confirmed', trust: 'usable' }
+  })
+  const { data, error } = await supabase
+    .from('product_entities').update({ knowledge: next }).eq('id', entityId)
+    .select(ENTITY_COLUMNS).single()
+  if (error) throw error
+  return readEntityRow(data as ProductEntityRow)
 }
 
 /** Every entity this creator holds. Unreadable rows are DROPPED rather than

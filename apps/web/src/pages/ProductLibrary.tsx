@@ -39,6 +39,7 @@ import { useEffect, useState } from 'react'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation,
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
+  requestProductExtraction, confirmProductFacts,
   listBrandVoices, OwnedEntityExistsError, ProductLibraryFullError,
   type ProductSuggestion,
 } from '@twinai/shared'
@@ -232,6 +233,8 @@ export default function ProductLibrary() {
   // Loaded WITH archived so the page can show what was withdrawn. The live list
   // stays the default everywhere else.
   const [archivedAll, setArchived] = useState<ProductEntityRecord[] | null>(null)
+  const [learnUrl, setLearnUrl] = useState<Record<string, string>>({})
+  const [learning, setLearning] = useState<string | null>(null)
   const [claimBusy, setClaimBusy] = useState(false)
   const { session } = useAuth()
   const [voiceId, setVoiceId] = useState<string | null>(null)
@@ -352,6 +355,40 @@ export default function ProductLibrary() {
     }
   }
 
+  async function learn(id: string) {
+    const url = (learnUrl[id] ?? '').trim()
+    setErr(null)
+    const ownerId = session?.user?.id
+    if (!ownerId) { setErr('Please sign in again.'); return }
+    setLearning(id)
+    try {
+      await requestProductExtraction(ownerId, id, url)
+      // ⚖️ POLLS THE ENTITY, NOT THE JOB. A creator who reloads or comes back
+      // tomorrow sees whatever the worker got to; watching a job id would lose
+      // the result the moment the tab did.
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => window.setTimeout(r, 3000))
+        const rows = await loadProductEntities()
+        const found = rows.find((e) => e.id === id)
+        if (found && found.knowledge !== null) { setEntities(rows); break }
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not read that page.')
+    } finally {
+      setLearning(null)
+    }
+  }
+
+  async function confirmFact(id: string, value: string) {
+    setErr(null)
+    try {
+      const updated = await confirmProductFacts(id, [value])
+      if (updated) setEntities((prev) => (prev ?? []).map((e) => (e.id === id ? updated : e)))
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not confirm that.')
+    }
+  }
+
   async function remove(id: string) {
     setErr(null)
     try {
@@ -468,6 +505,85 @@ export default function ProductLibrary() {
               ))}
             </div>
           </fieldset>
+
+          {/* ── WHAT TWIN KNOWS ABOUT THIS PRODUCT ───────────────────────
+              ⚖️ NULL AND EMPTY SAY DIFFERENT THINGS. "Never extracted" offers a
+              link; "read it and found nothing" says so, rather than pretending
+              nobody ever tried. Same `unset ≠ false` rule as everywhere else. */}
+          <div className="mt-4 rounded-lg border border-ink/10 p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-ink/50">
+              What Twin knows about it
+            </p>
+
+            {e.knowledge === null ? (
+              <>
+                <p className="mt-1 text-sm text-ink/60">
+                  Paste a link to its page and Twin will read it, so your scripts can say
+                  what it actually does instead of guessing.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    className="w-full rounded-lg border border-ink/15 px-3 py-2 text-sm"
+                    placeholder="https://"
+                    value={learnUrl[e.id] ?? ''}
+                    onChange={(ev) => setLearnUrl((p) => ({ ...p, [e.id]: ev.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    disabled={learning === e.id || (learnUrl[e.id] ?? '').trim() === ''}
+                    className="whitespace-nowrap rounded-lg bg-ink px-3 py-1.5 text-sm text-white disabled:opacity-40"
+                    onClick={() => void learn(e.id)}
+                  >{learning === e.id ? 'Reading…' : 'Read the page'}</button>
+                </div>
+                {learning === e.id && (
+                  <p className="mt-2 text-xs text-ink/50">
+                    This keeps running if you leave — come back and it will be here.
+                  </p>
+                )}
+              </>
+            ) : e.knowledge.length === 0 ? (
+              <p className="mt-1 text-sm text-ink/60">
+                Twin read that page and could not find anything usable on it. You can still
+                describe the product yourself.
+              </p>
+            ) : (
+              <>
+                <ul className="mt-2 space-y-1">
+                  {e.knowledge.filter((f) => f.trust === 'usable').map((f) => (
+                    <li key={`u-${f.field}-${f.value}`} className="text-sm">
+                      <span className="text-ink/50">{f.field}: </span>{f.value}
+                    </li>
+                  ))}
+                </ul>
+                {e.knowledge.some((f) => f.trust === 'needs_confirmation') && (
+                  <div className="mt-3 rounded-lg bg-amber-500/10 p-2">
+                    {/* ⚠️ THE POINT OF THE WHOLE SPLIT. These came off a page and
+                        carry a number or promise a result, so they are stored,
+                        shown, and NOT given to the writer until a person says
+                        they are true. Confirming is per fact — one tap that
+                        approved a dozen claims would be the escalation the claim
+                        flow already refuses. */}
+                    <p className="text-xs text-ink/70">
+                      Twin found these but will not say them until you confirm each one —
+                      they claim a number or a result.
+                    </p>
+                    <ul className="mt-2 space-y-1">
+                      {e.knowledge.filter((f) => f.trust === 'needs_confirmation').map((f) => (
+                        <li key={`n-${f.field}-${f.value}`} className="flex items-start justify-between gap-2 text-sm">
+                          <span><span className="text-ink/50">{f.field}: </span>{f.value}</span>
+                          <button
+                            type="button"
+                            className="whitespace-nowrap text-xs underline"
+                            onClick={() => void confirmFact(e.id, f.value)}
+                          >That's right</button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
 
           {/* ⚖️ READ-ONLY, AND SAID SO PLAINLY. A greyed-out control with no
               explanation reads as broken; naming why it cannot change here tells

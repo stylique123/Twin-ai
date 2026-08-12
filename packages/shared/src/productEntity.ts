@@ -715,6 +715,11 @@ export interface ProductEntityRecord extends DraftEntity {
    *  it. Null is `live`, not `unknown`: the same three-state discipline `basis`
    *  uses, where the absent value is a real state rather than a missing one. */
   archivedAt: string | null
+  /** What Twin read off a product page, each fact graded. Null = never
+   *  extracted; [] = extracted and nothing usable found. Different answers. */
+  knowledge: import('./productExtraction').ExtractedFact[] | null
+  knowledgeExtractedAt: string | null
+  knowledgeSourceUrl: string | null
 }
 
 /**

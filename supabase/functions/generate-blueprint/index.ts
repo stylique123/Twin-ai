@@ -1948,7 +1948,7 @@ Deno.serve(async (req: Request) => {
   // trust.
   const { data: ownedEntity, error: ownedEntityErr } = await admin
     .from('product_entities')
-    .select('name, type, relationship, personal_use, showability, evidence, restrictions')
+    .select('name, type, relationship, personal_use, showability, evidence, restrictions, knowledge')
     .eq('owner_id', ownerId)
     .eq('voice_id', voice?.id ?? null)
     .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
@@ -2703,6 +2703,37 @@ Deno.serve(async (req: Request) => {
       ? entityRestrictions.complianceNotes.trim() : ''
     if (compliance !== '') {
       claimLines.push(`\n- COMPLIANCE NOTE recorded against this product: ${compliance}`)
+    }
+
+    // ── WHAT TWIN READ OFF THE PRODUCT'S OWN PAGE ────────────────────────
+    //
+    // ⚖️ ONLY THE FACTS GRADED `usable` REACH THE WRITER. The grade was decided
+    // by `productExtraction`'s classifier when the page was read, not here and
+    // not by the model that read it: identity and capability from an
+    // authoritative page are usable, and anything carrying a magnitude or
+    // promising an outcome waits for the creator. So a landing page's
+    // "clinically proven" is stored, visible to the creator, and INVISIBLE here
+    // until they confirm it — which is the whole point of the split.
+    //
+    // ⚠️ THE STORED GRADE IS HONOURED, NOT RECOMPUTED. Re-deciding it in this
+    // function would put a second copy of the rules in a third place, and the
+    // one that ran at extraction time is the one the creator reviewed against.
+    const knowledge = Array.isArray((ownedEntity as { knowledge?: unknown } | null)?.knowledge)
+      ? ((ownedEntity as { knowledge: unknown[] }).knowledge)
+      : []
+    const usableProductFacts = knowledge
+      .filter((f) => (f as { trust?: unknown })?.trust === 'usable')
+      .map((f) => {
+        const r = f as { field?: unknown; value?: unknown }
+        const value = String(r.value ?? '').trim()
+        return value === '' ? '' : `  * ${String(r.field ?? 'fact')}: ${value}`
+      })
+      .filter((l) => l !== '')
+      .slice(0, 24)
+    if (usableProductFacts.length > 0) {
+      claimLines.push('\n- WHAT IS TRUE ABOUT THIS PRODUCT, read from its own pages and safe to state:\n'
+        + usableProductFacts.join('\n')
+        + '\n  Use these rather than inventing capabilities. Anything about this product NOT listed here is unverified — describe it in general terms or leave it out.')
     }
 
     const claimRulesBlock = claimLines.join('')
