@@ -8,7 +8,7 @@ import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfil
 import { sanitizeBriefForWrite, readStoredBrief, type BriefAnswers } from './preScriptBrief'
 import {
   emptyRestrictions, isEntityRelationship, isEntityType, isPersonalUse, isShowability,
-  type DraftEntity, type EntityRestrictions, type ProductEntityRecord,
+  type DraftEntity, type EntityRestrictions, type ProductEntityRecord, type Showability,
 } from './productEntity'
 import { generationLifecycle, resolveFinishedOutputs, resolveFinishedOutputsResult } from './editor/finishedOutput'
 
@@ -1418,6 +1418,126 @@ export async function loadProductEntities(): Promise<ProductEntityRecord[]> {
   return ((data ?? []) as ProductEntityRow[])
     .map(readEntityRow)
     .filter((e): e is ProductEntityRecord => e !== null)
+}
+
+/** A product the creator has TALKED ABOUT, which is not the same as one they own.
+ *
+ *  `text` is the extracted claim, not a name — "Early is an iOS alarm clock app
+ *  that requires push-ups to turn it off" rather than "Early". That is
+ *  deliberate: the creator recognises their own material faster than they
+ *  recognise a noun we guessed at, and showing the claim is also showing our
+ *  evidence for raising it at all. */
+export interface ProductSuggestion {
+  id: string
+  text: string
+  basis: 'stated' | 'demonstrated' | 'inferred'
+  source: string | null
+  timesSeen: number
+}
+
+/** Products this creator has mentioned but never claimed.
+ *
+ *  ⚠️ THIS IS A SUGGESTION LIST AND MAY NEVER BECOME A BACKFILL. It is tempting
+ *  to write these straight into `product_entities` and call the empty-table
+ *  problem solved. That would be exactly the traceability-versus-entitlement
+ *  confusion this codebase exists to prevent: knowing a creator SAID "Peak
+ *  Design Phone Tripod" is evidence they mentioned it, and no evidence at all
+ *  that they own it, use it, or may make a claim about it. `relationship` and
+ *  `personalUse` come from the creator asserting them, or they do not come.
+ *
+ *  ⚖️ SO THE ONLY THING THIS BUYS IS TYPING. It turns "add your product" from a
+ *  blank field into a list of things they actually talked about, which is the
+ *  difference between a page nobody fills in and one they can complete in a tap
+ *  plus an attestation. The attestation is still required.
+ *
+ *  Rows already represented by an entity are dropped, matched on the entity name
+ *  appearing in the claim — deliberately loose, because showing a duplicate is a
+ *  smaller failure than hiding a product they have not registered yet. */
+export async function loadProductSuggestions(
+  claimed: ReadonlyArray<ProductEntityRecord> = [],
+): Promise<ProductSuggestion[]> {
+  const { data, error } = await supabase
+    .from('creator_knowledge')
+    .select('id, text, basis, source, times_seen')
+    .eq('kind', 'product')
+    .order('times_seen', { ascending: false })
+  if (error) throw error
+
+  const names = claimed
+    .map((e) => (e.name ?? '').trim().toLowerCase())
+    .filter((n) => n.length > 2)
+
+  return ((data ?? []) as Array<Record<string, unknown>>)
+    .map((r) => ({
+      id: String(r.id ?? ''),
+      text: String(r.text ?? '').trim(),
+      // ⚖️ An unreadable basis degrades to `inferred`, never to `stated` — the
+      // same rule `readKnowledgeItem` uses. A guess must not present as speech.
+      basis: r.basis === 'stated' ? 'stated' as const
+        : r.basis === 'demonstrated' ? 'demonstrated' as const
+          : 'inferred' as const,
+      source: typeof r.source === 'string' ? r.source : null,
+      timesSeen: typeof r.times_seen === 'number' ? r.times_seen : 1,
+    }))
+    .filter((s) => s.id !== '' && s.text !== '')
+    .filter((s) => !names.some((n) => s.text.toLowerCase().includes(n)))
+}
+
+/** THE ONLY FIELDS A CREATOR MAY EDIT AFTER THE FACT, as a type rather than a
+ *  rule someone has to remember.
+ *
+ *  ⚠️ THE FIELDS LEFT OUT ARE THE POINT. `relationship` and `personalUse` are
+ *  what the entitlement ladder reads to decide what this person is ALLOWED to
+ *  say — whether a commercial CTA is permitted, whether disclosure is required,
+ *  whether a marketing claim may be attributed to them at all. A settings page
+ *  that let a creator set `relationship = OWN_PRODUCT` and
+ *  `personalUse = CONFIRMED` from a dropdown would unlock every one of those
+ *  permissions with a tap and no assertion on record. That is not an edit; it is
+ *  a bypass of the whole traceability-versus-entitlement split.
+ *
+ *  ⚖️ SO THE RESTRICTION IS STRUCTURAL, NOT EDITORIAL. Enforcing it in the form
+ *  would mean the guarantee holds only as long as every future page remembers
+ *  to. Making the entitlement fields INEXPRESSIBLE in the writer's argument type
+ *  means a page that tries to change them does not compile — the same reason
+ *  this codebase prefers a contract check to a prompt rule wherever the defect
+ *  is decidable. Ownership changes go through an attestation flow that records
+ *  what the creator claimed and when, never through here. */
+export interface EntityPresentationEdit {
+  name?: string | null
+  productUrl?: string | null
+  showability?: Showability
+}
+
+/** Edit the presentation of an entity the creator already declared.
+ *
+ *  Returns the re-read row so the caller renders what the database now holds
+ *  rather than what it hoped it wrote — a mismatch here is exactly the silent
+ *  divergence that left `product_entities` empty while onboarding believed it
+ *  had saved. */
+export async function updateEntityPresentation(
+  id: string,
+  edit: EntityPresentationEdit,
+): Promise<ProductEntityRecord | null> {
+  // ⚠️ BUILT KEY BY KEY, NEVER SPREAD. `{ ...edit }` would forward whatever a
+  // caller actually passed at runtime — including an `any` carrying
+  // `relationship` — straight past the type that exists to forbid it. The
+  // compile-time guarantee is only worth what the runtime one is.
+  const row: Record<string, unknown> = {}
+  if ('name' in edit) row.name = edit.name === null ? null : String(edit.name).trim() || null
+  if ('productUrl' in edit) row.product_url = edit.productUrl === null ? null : String(edit.productUrl).trim() || null
+  if ('showability' in edit) row.showability = edit.showability
+  // An empty edit must not issue a no-op UPDATE that only bumps `updated_at`,
+  // which would read afterwards as a change the creator never made.
+  if (Object.keys(row).length === 0) return null
+
+  const { data, error } = await supabase
+    .from('product_entities')
+    .update(row)
+    .eq('id', id)
+    .select(ENTITY_COLUMNS)
+    .single()
+  if (error) throw error
+  return readEntityRow(data as ProductEntityRow)
 }
 
 /**

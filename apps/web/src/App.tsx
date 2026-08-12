@@ -18,6 +18,7 @@ const Onboarding = lazy(() => import('./pages/Onboarding'))
 const Result = lazy(() => import('./pages/Result'))
 const History = lazy(() => import('./pages/History'))
 const Gallery = lazy(() => import('./pages/Gallery'))
+const ProductLibrary = lazy(() => import('./pages/ProductLibrary'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Brands = lazy(() => import('./pages/Brands'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -223,6 +224,9 @@ export default function App() {
               Library. Only the transient building screen stays chrome-less: it's a
               modal progress moment, not a destination. */}
           <Route path="/v2" element={<Protected><AppShell><Page><V2Create /></Page></AppShell></Protected>} />
+          {/* The Product Library. Three comments in Onboarding.tsx sent creators
+              here while it did not exist — see the header of the page itself. */}
+          <Route path="/products" element={<Protected><AppShell><Page><ProductLibrary /></Page></AppShell></Protected>} />
           {/* Building keeps the full app chrome (top bar + tab bar) so the creator can
               leave to any tab while it builds in the background — the copy promises
               "leave anytime" and the build already survives in-app navigation. */}
