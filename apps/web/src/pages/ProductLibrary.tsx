@@ -59,11 +59,20 @@ const RELATIONSHIP_CHOICES: Array<{ value: EntityRelationship; label: string }> 
   { value: 'REVIEW_ONLY', label: 'I just talk about it — no commercial tie' },
 ]
 
+/** ⚖️ ORDERED BY HOW OFTEN CREATORS PICK THEM, not by the enum. `OTHER` sits
+ *  last and is deliberately offered: forcing a misclassification is worse than
+ *  an unspecific answer, because `inferShowability` reads this to tell the
+ *  Director what it may ask for on camera. */
 const TYPE_CHOICES: Array<{ value: EntityType; label: string }> = [
-  { value: 'SAAS', label: 'Software or an app' },
-  { value: 'PHYSICAL', label: 'A physical product' },
+  { value: 'SAAS', label: 'Software' },
+  { value: 'APP', label: 'A mobile app' },
+  { value: 'PHYSICAL_PRODUCT', label: 'A physical product' },
+  { value: 'DIGITAL_PRODUCT', label: 'A digital product (template, preset…)' },
+  { value: 'COURSE', label: 'A course' },
+  { value: 'COMMUNITY', label: 'A community or membership' },
   { value: 'SERVICE', label: 'A service' },
-  { value: 'DIGITAL', label: 'A digital product (course, template…)' },
+  { value: 'MARKETPLACE', label: 'A marketplace or store' },
+  { value: 'OTHER', label: 'Something else' },
 ]
 
 const SHOW_OPTIONS: Array<{ value: Showability; label: string; note: string }> = [

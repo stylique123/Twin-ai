@@ -45,7 +45,20 @@ import { BRIEF_PROMOTES, type BriefWorkKind } from './preScriptBrief'
 // ---------------------------------------------------------------------------
 
 /** WHICH SCHEMA the entity is described by (§9–§11). Never what may be claimed. */
-export const ENTITY_TYPES = ['SAAS', 'PHYSICAL', 'SERVICE', 'DIGITAL'] as const
+// ⚠️ WIDENED WHILE THE TABLE WAS EMPTY, WHICH IS THE ONLY CHEAP MOMENT. Renaming
+// a value costs one constraint change today and a data migration with a backfill
+// the moment a creator registers a product.
+//
+// ⚖️ THE KINDS THAT LOOK REDUNDANT ARE NOT. A COURSE is not SaaS, a COMMUNITY is
+// not a SERVICE, and an APP is distinct from SAAS for the only question this
+// field decides — what can be put on camera. A phone screen and a desktop
+// dashboard are different shots. `OTHER` exists so the enum never forces a
+// misclassification: `inferShowability` reads this to tell the Director what it
+// may ask for, so a WRONG kind is worse than an unspecific one.
+export const ENTITY_TYPES = [
+  'SAAS', 'APP', 'PHYSICAL_PRODUCT', 'DIGITAL_PRODUCT',
+  'SERVICE', 'COURSE', 'COMMUNITY', 'MARKETPLACE', 'OTHER',
+] as const
 export type EntityType = (typeof ENTITY_TYPES)[number]
 
 /** WHAT MAY BE CLAIMED about the entity. Never which schema describes it.
@@ -154,8 +167,16 @@ export function inferShowability(
   type: EntityType,
   flags: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null } = {},
 ): Showability {
-  if (type === 'SERVICE') return 'NEVER'
-  const flag = type === 'PHYSICAL' ? flags.canFilmObjects : flags.canRecordScreen
+  // ⚖️ WHAT IS FILMABLE AT ALL. A service and a community have nothing to point
+  // a camera at, so no capability answer can make them showable — that is a fact
+  // about the kind, not a gap in what the creator told us.
+  if (type === 'SERVICE' || type === 'COMMUNITY') return 'NEVER'
+  // ⚠️ THE SPLIT IS "OBJECT IN THE ROOM" VERSUS "THING ON A SCREEN", NOT the
+  // enum's alphabetical shape. A physical product needs `canFilmObjects`;
+  // everything else that can be shown at all is shown through a screen. OTHER
+  // takes the screen branch because it is the weaker permission of the two —
+  // recording a screen is the capability more creators have.
+  const flag = type === 'PHYSICAL_PRODUCT' ? flags.canFilmObjects : flags.canRecordScreen
   if (flag === true) return 'ALWAYS'
   if (flag === false) return 'NEVER'
   // Unanswered. Not a denial, and not a permission.
@@ -196,7 +217,7 @@ export function isOwned(relationship: EntityRelationship): boolean {
  */
 export const WORK_KIND_MINT: Partial<Record<BriefWorkKind, { type: EntityType; relationship: EntityRelationship }>> = {
   saas: { type: 'SAAS', relationship: 'OWN_PRODUCT' },
-  ecommerce: { type: 'PHYSICAL', relationship: 'OWN_PRODUCT' },
+  ecommerce: { type: 'PHYSICAL_PRODUCT', relationship: 'OWN_PRODUCT' },
   professional: { type: 'SERVICE', relationship: 'OWN_SERVICE' },
   local_service: { type: 'SERVICE', relationship: 'OWN_SERVICE' },
 }
@@ -548,6 +569,109 @@ export interface EntityRestrictions {
   approvedClaims: string[]
   forbiddenClaims: string[]
   complianceNotes: string | null
+}
+
+/** Everything a script may not say about THIS entity, gathered from every level
+ *  that has a say.
+ *
+ *  ⚠️ `restrictions` WAS WRITTEN ON EVERY ENTITY AND READ BY NOTHING. It appears
+ *  exactly once in `generate-blueprint`, inside a comment. So a creator who
+ *  recorded "do not say clinically proven" against a product had that stored,
+ *  displayed back to them as saved, and then ignored by every generation — the
+ *  worst kind of unread field, because the interface promised it was working.
+ *
+ *  ⚖️ THREE LEVELS, AND THEY ARE NOT INTERCHANGEABLE:
+ *
+ *      creator      "never promise guaranteed results" — applies to everything
+ *                   this person says, regardless of product.
+ *      entity       "do not say clinically proven" — a fact about THIS product,
+ *                   often a legal one, and it outlives any single video.
+ *      relationship "do not imply ownership" — derived from AFFILIATE/SPONSOR,
+ *                   not stored, because storing it would let it drift out of
+ *                   agreement with `claimRulesFor`.
+ *
+ *  The script receives the UNION. A restriction that only some levels know about
+ *  is a restriction that some videos will break.
+ *
+ *  ⚠️ APPROVALS DO NOT UNION THE SAME WAY, AND THIS IS §5a.5. An outcome claim
+ *  needs a permission that EXISTS, not merely the absence of a prohibition — the
+ *  finance creator whose title claimed a replaced income nothing had approved.
+ *  Only the ENTITY can approve a claim about itself; a creator-level setting
+ *  cannot pre-approve claims about a product it has never heard of. So approvals
+ *  come from one place while prohibitions come from three. */
+export interface RestrictionUnion {
+  forbidden: string[]
+  approved: string[]
+  disclosures: string[]
+  complianceNotes: string | null
+}
+
+/** Prohibitions implied by the relationship itself. Derived rather than stored,
+ *  so they cannot drift out of agreement with `claimRulesFor`. */
+function relationshipRestrictions(relationship: EntityRelationship): {
+  forbidden: string[]; disclosures: string[]
+} {
+  const rules = claimRulesFor(relationship, 'NOT_CONFIRMED')
+  const forbidden: string[] = []
+  const disclosures: string[] = []
+  // ⚖️ READ OFF THE RULES RATHER THAN RE-ASSERTED. A second hand-written list
+  // here would eventually disagree with the one the permissions block uses, and
+  // the disagreement would be invisible until a script said something it should
+  // not have.
+  if (!rules.ownershipLanguage) {
+    forbidden.push('Do not imply the creator owns, makes or sells this — they do not.')
+  }
+  if (rules.marketingClaims === 'forbidden') {
+    forbidden.push("Do not repeat the product's marketing claims as though the creator were vouching for them.")
+  } else if (rules.marketingClaims === 'attributed') {
+    forbidden.push('Do not state a marketing claim flatly — attribute it to the company that makes it.')
+  }
+  if (rules.disclosureRequired) {
+    disclosures.push('This is a paid or commissioned relationship and must be disclosed on screen.')
+  }
+  return { forbidden, disclosures }
+}
+
+export function restrictionUnion(input: {
+  /** The creator's own standing restriction, free text as they typed it. */
+  creatorForbidden?: string | null
+  entity?: { relationship: EntityRelationship; restrictions?: EntityRestrictions | null } | null
+}): RestrictionUnion {
+  const forbidden: string[] = []
+  const disclosures: string[] = []
+
+  const creator = String(input.creatorForbidden ?? '').trim()
+  // ⚠️ KEPT WHOLE, NOT SPLIT INTO ITEMS. This is a sentence the creator wrote;
+  // chopping it on punctuation would turn "no guarantees, ever" into two
+  // fragments and could invert a clause that depends on its second half.
+  if (creator !== '') forbidden.push(creator)
+
+  // ⚖️ NO ENTITY MEANS NO ENTITY RULES — and, importantly, no relationship rules
+  // either. Deriving "do not imply ownership" with nothing to own would forbid
+  // language about a product that is not in the video at all.
+  if (input.entity) {
+    const own = input.entity.restrictions
+    for (const f of own?.forbiddenClaims ?? []) {
+      const t = String(f ?? '').trim()
+      if (t !== '') forbidden.push(t)
+    }
+    const rel = relationshipRestrictions(input.entity.relationship)
+    forbidden.push(...rel.forbidden)
+    disclosures.push(...rel.disclosures)
+  }
+
+  const approved = (input.entity?.restrictions?.approvedClaims ?? [])
+    .map((a) => String(a ?? '').trim())
+    .filter((a) => a !== '')
+
+  return {
+    // Deduped, because the same rule arriving from two levels should be said
+    // once. Order is preserved so the creator's own words come first.
+    forbidden: [...new Set(forbidden)],
+    approved: [...new Set(approved)],
+    disclosures: [...new Set(disclosures)],
+    complianceNotes: input.entity?.restrictions?.complianceNotes ?? null,
+  }
 }
 
 export function emptyRestrictions(): EntityRestrictions {
