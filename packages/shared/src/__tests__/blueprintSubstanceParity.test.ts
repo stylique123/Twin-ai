@@ -163,6 +163,12 @@ describe('edge ↔ shared substance-check parity', () => {
   it('the claim-strength patterns match the shared module character for character', () => {
     expect(lift(EDGE, 'the edge function', 'CLAIM_HISTORY'))
       .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimStrength.ts'), 'utf8'), 'shared','HISTORY'))
+    // Every claim pattern must be lifted, not just the two oldest: a widening
+    // that lands in one copy only is how the two silently disagree.
+    expect(lift(EDGE, 'the edge function', 'CLAIM_MY_STANCE'))
+      .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimStrength.ts'), 'utf8'), 'shared', 'MY_STANCE'))
+    expect(lift(EDGE, 'the edge function', 'CLAIM_CREDENTIAL'))
+      .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimStrength.ts'), 'utf8'), 'shared', 'CREDENTIAL'))
     expect(lift(EDGE, 'the edge function', 'CLAIM_POSITION'))
       .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimStrength.ts'), 'utf8'), 'shared','POSITION'))
   })

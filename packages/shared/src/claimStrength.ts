@@ -79,6 +79,29 @@ const HISTORY_STRICT =
  *  where `told you` is the exact string being excluded. */
 const DECLARED_PROMISE = /\bI told you (?:guys |all |folks )?(?:I|that|about)\b/i
 
+/** "My take is…", "My answer is yes", "My verdict: skip it."
+ *
+ *  ⚠️ RARE AND SEVERE, AND BOTH HALVES ARE THE REASON. Measured across 2,857
+ *  beats in four runs this fires TWICE (0.07%) — but each time it is a stance
+ *  put in the creator's mouth that scored `discussion`, meaning "carries no
+ *  claim about this person", which is the verdict that lets a beat speak on
+ *  coverage-only evidence. A pattern earns its place by what it catches, not by
+ *  how often. */
+const MY_STANCE = /\bmy (?:take|answer|verdict|call|advice)\b\s*(?:is|was|:|—|-)/i
+
+/** "As someone who's built stores and made viral AI ads…"
+ *
+ *  ⚠️ A CLAIMED CAREER IS THE MOST EXPENSIVE THING THIS FILE CAN MISS, and this
+ *  scored `discussion`. One match in 2,857 beats — and it invented a business
+ *  history for a creator on a line they would read to camera.
+ *
+ *  ⚖️ `who's` IS AMBIGUOUS AND THAT DECIDES THE SHAPE. "who's built" is HAS
+ *  built; "who's passionate about tech" is IS passionate — a stance, not a life
+ *  event. So the contraction is only accepted before a past participle, while
+ *  the unambiguous "who has" takes anything. Reading `who's` as perfect in all
+ *  cases would turn every self-description into a fabricated history.  */
+const CREDENTIAL = /\bas someone who has\s+\w+|\bas someone who'(?:s)\s+(?:\w+ed|built|spent|run|made|been|grown|sold|worked|shipped|launched|managed|owned|tested)\b/i
+
 const POSITION =
   /\bI (?:\w+ly |still |always |usually |often |sometimes )*(?:think|reckon|believe|feel|like|love|hate|prefer|recommend|rate|adore|enjoy|swear by|rely on|care|don'?t care|would argue)\b|\bI(?:'m| am) (?:\w+ly |not |so |a )*(?:shocked|glad|terrified|surprised|impressed|disappointed|excited|worried|sold|convinced|obsessed|sure|not sure|fan)\b|\bI(?:'d| would)?(?:'?m)? (?:never|not)\b|\bI would ?n'?t\b|\bI wouldn't\b|\bI(?:'m| am) (?:staying away|steering clear|skipping|avoiding|passing)\b|\b(?:hard |soft )?pass(?: for me)?\b|\ba pass for me\b|\bI'?d skip\b|\bI'?d\b|\bmy favou?rite\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? |\bI'?m not going to lie\b|\bno-?brainer\b/i
 
@@ -139,8 +162,11 @@ export function claimStrength(line: string): ClaimStrength {
   // upload, not an event in a life. It never beats a stance: "I'm going to tell
   // you why I'd never buy one" is a position wearing an announcement.
   if ((NARRATION.test(s) || SELF_INTRO.test(s)) && !POSITION.test(s) && !HISTORY_STRICT.test(s) && !DECLARED_PROMISE.test(s)) return 'discussion'
+  // A claimed credential is a life event however the sentence is framed, so it
+  // is checked before narration can wave the line through.
+  if (CREDENTIAL.test(s)) return 'history'
   if (HISTORY.test(s) && !NARRATION.test(s)) return 'history'
-  if (POSITION.test(s)) return 'position'
+  if (POSITION.test(s) || MY_STANCE.test(s)) return 'position'
   if (HISTORY.test(s)) return 'history'
   return 'discussion'
 }

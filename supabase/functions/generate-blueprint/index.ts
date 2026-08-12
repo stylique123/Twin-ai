@@ -386,6 +386,13 @@ function packagingPromptLine(p: Packaging | null | undefined, minSample = 20): s
 // claim against the LEVEL of the evidence.
 const CLAIM_HISTORY =
   /\bI(?:'ve| have| had| was| were)\s+\w+|\bI\s+\w+ed\b|\bI (?:\w+ly |already |just |recently |finally |once )*(?:bought|owned|used|switched|returned|tested|quit|regret(?:ted)?|stopped|took|got|made|went|saw|thought|began|ran|kept|told|found|woke|paid|built|broke|felt|knew|meant|left|wrote|spent|sold|read|held|gave|came|did|didn'?t|couldn'?t|wasn'?t|never)\b|\bI used to\b|\bmy own\b|\bthat I have\b|\bwhen I (?:got|bought|switched|tried)\b|\bI (?:\w+ly )?(?:haven'?t|hadn'?t|didn'?t|wasn'?t|couldn'?t)\b/i
+/** "My take is…" / "My verdict:" — a stance put in their mouth. Mirrors
+ *  MY_STANCE in packages/shared/src/claimStrength.ts. */
+const CLAIM_MY_STANCE = /\bmy (?:take|answer|verdict|call|advice)\b\s*(?:is|was|:|—|-)/i
+/** "as someone who's built stores" — a claimed career, the most expensive thing
+ *  this file can miss. `who's` is only read as perfect before a past participle,
+ *  because "who's passionate" is a stance. Mirrors CREDENTIAL in shared. */
+const CLAIM_CREDENTIAL = /\bas someone who has\s+\w+|\bas someone who'(?:s)\s+(?:\w+ed|built|spent|run|made|been|grown|sold|worked|shipped|launched|managed|owned|tested)\b/i
 const CLAIM_POSITION =
   /\bI (?:\w+ly |still |always |usually |often |sometimes )*(?:think|reckon|believe|feel|like|love|hate|prefer|recommend|rate|adore|enjoy|swear by|rely on|care|don'?t care|would argue)\b|\bI(?:'m| am) (?:\w+ly |not |so |a )*(?:shocked|glad|terrified|surprised|impressed|disappointed|excited|worried|sold|convinced|obsessed|sure|not sure|fan)\b|\bI(?:'d| would)?(?:'?m)? (?:never|not)\b|\bI would ?n'?t\b|\bI wouldn't\b|\bI(?:'m| am) (?:staying away|steering clear|skipping|avoiding|passing)\b|\b(?:hard |soft )?pass(?: for me)?\b|\ba pass for me\b|\bI'?d skip\b|\bI'?d\b|\bmy favou?rite\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? |\bI'?m not going to lie\b|\bno-?brainer\b/i
 
@@ -429,8 +436,9 @@ function claimStrength(line: string): ClaimStrength {
   // event in a life. It never beats a stance or a promise actually made.
   if ((CLAIM_NARRATION.test(t) || CLAIM_SELF_INTRO.test(t))
     && !CLAIM_POSITION.test(t) && !CLAIM_HISTORY_STRICT.test(t) && !CLAIM_DECLARED_PROMISE.test(t)) return 'discussion'
+  if (CLAIM_CREDENTIAL.test(t)) return 'history'
   if (CLAIM_HISTORY.test(t) && !CLAIM_NARRATION.test(t)) return 'history'
-  if (CLAIM_POSITION.test(t)) return 'position'
+  if (CLAIM_POSITION.test(t) || CLAIM_MY_STANCE.test(t)) return 'position'
   if (CLAIM_HISTORY.test(t)) return 'history'
   return 'discussion'
 }

@@ -97,3 +97,50 @@ describe('a typographic apostrophe is not a different claim', () => {
     expect(claimStrength('I’ll have the link in the description.')).toBe('discussion')
   })
 })
+
+// ── THE THREE MISSES I DECLINED TO RUSH, NOW MEASURED ────────────────────────
+//
+// ⚠️ RARE AND SEVERE, AND BOTH HALVES DECIDE THIS. Across 2,857 beats in four
+// runs these fire three times: 0.07% and 0.04%. Each one was scored
+// `discussion` — "carries no claim about this person" — which is the verdict
+// that lets a beat speak on coverage-only evidence.
+//
+// ⚖️ A PATTERN EARNS ITS PLACE BY WHAT IT CATCHES, NOT BY HOW OFTEN. A claimed
+// career is the most expensive thing this file can miss, and it appeared on a
+// line a creator would read to camera.
+describe('stances and credentials the detector used to wave through', () => {
+  it('reads "my take is" and "my answer is" as positions', () => {
+    // Verbatim from the corpus.
+    expect(claimStrength('My take is that Rockstar indeed lost the plot with GTA 6.')).toBe('position')
+    expect(claimStrength("My answer is yes, for most people, it's actually the smarter move right now.")).toBe('position')
+  })
+
+  it('reads a claimed career as a history', () => {
+    // Verbatim. It invents a business history for whoever reads it.
+    expect(claimStrength("Look, as someone who's built stores and made viral AI ads, I can tell you, that promise? It's usually clickbait."))
+      .toBe('history')
+    expect(claimStrength('as someone who has spent ten years in professional kitchens')).toBe('history')
+  })
+
+  it("does NOT read \"who's <adjective>\" as a career", () => {
+    // ⚠️ `who's` IS AMBIGUOUS AND THIS IS THE FALSE POSITIVE IT WOULD CAUSE.
+    // "who's built" is HAS built; "who's passionate about tech" is IS
+    // passionate — a self-description, not a life event. Reading the
+    // contraction as perfect everywhere would fabricate a history out of every
+    // ordinary introduction.
+    expect(claimStrength("as someone who's passionate about tech, this update excites me"))
+      .not.toBe('history')
+    expect(claimStrength("as someone who's really into 3D printing")).not.toBe('history')
+  })
+
+  it('moves nothing else: the false-positive set is untouched', () => {
+    // The widening is worth having only if it costs nothing. These are the
+    // narration lines the whole file is calibrated against.
+    for (const l of [
+      "In this video, I'm going to be breaking down the top seven products.",
+      "I'll have the link in the description.",
+      'Let us talk about what actually changed in this update.',
+      'Most people leave Smart HDR on auto.',
+    ]) expect(claimStrength(l), l).toBe('discussion')
+  })
+})
