@@ -115,6 +115,34 @@ COPY youtube_transcript.py ./youtube_transcript.py
 # Frozen Phase-6 analysis rules — the single numeric authority; its canonical
 # digest is an input to every component digest.
 COPY analysis_rules_v1.json ./analysis_rules_v1.json
+# ⚠️ MISSING UNTIL 12 AUG, AND IT BROKE EVERY GEMINI CALL IN THE WORKER.
+# `modelRouting.ts` reads this at the first `modelForTask()`, which is on the
+# path of voice synthesis, caption-knowledge extraction, structure derivation —
+# everything the worker uses a model for. Without it the runtime image threw
+# `ENOENT: /app/model_routing_v1.json` and `scrape_dna` reported
+# "We could not finish building your voice" for every creator, having already
+# scraped their posts successfully.
+#
+# ⚖️ THE FILE ABOVE IS WHY IT WAS EASY TO MISS. `analysis_rules_v1.json` sits one
+# line up and is copied; the two are the same KIND of thing — a frozen JSON
+# authority read at runtime — and only one of them travelled. A test now derives
+# this list from the source rather than trusting the eye: see
+# `runtimeAssetsShipped.test.ts`.
+COPY model_routing_v1.json ./model_routing_v1.json
+# ⚠️ TWO MORE THE SAME GUARD FOUND IMMEDIATELY. `editorCompile.ts` reads
+# `edit_policy_v1.json` and `editorRender.ts` reads `render_catalog_v1.json`,
+# both via `join(WORKER_ROOT, …)` — and neither was in the app directory.
+#
+# The catalog is the subtler one: it IS copied above, to /tmp, for the BUILD-TIME
+# font digest check. That made it look shipped to any eye — and to the first
+# version of the guard, which matched `COPY <name>` and ignored the destination.
+# A build-time copy is not a runtime asset, and render would have thrown the same
+# ENOENT the moment a marked render verified its watermark.
+#
+# These two are on the EDITOR_V2 path, which is dormant, so nothing has failed on
+# them yet. That is the reason to fix them now rather than the reason to wait.
+COPY edit_policy_v1.json ./edit_policy_v1.json
+COPY render_catalog_v1.json ./render_catalog_v1.json
 RUN mkdir -p ./models ./scripts
 COPY models/faster-whisper-small.manifest.json ./models/faster-whisper-small.manifest.json
 # Pinned YuNet face detector: the .onnx is COMMITTED in-repo (232 KB) and its
