@@ -712,6 +712,7 @@ function routeSubstance(ctx: RoutingContext): string {
   if (ctx.personalToCreator) {
     return ctx.depth === 'high' ? 'CREATOR_KNOWLEDGE' : 'ASK_CREATOR'
   }
+  if (ctx.externallyAnswerable) return 'RESEARCH'
   if (ctx.depth === 'high') return 'CREATOR_KNOWLEDGE'
   if (ctx.depth === 'medium' && !ctx.externallyAnswerable) return 'CREATOR_KNOWLEDGE'
   return ctx.externallyAnswerable ? 'RESEARCH' : 'ASK_CREATOR'

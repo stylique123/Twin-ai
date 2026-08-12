@@ -276,6 +276,19 @@ export function routeSubstance(ctx: RoutingContext): RoutedSource {
     // than write an autobiography.
     return ctx.depth === 'high' ? 'CREATOR_KNOWLEDGE' : 'ASK_CREATOR'
   }
+  // ⚠️ A FACT OF THE WORLD IS NOT THEIRS TO OWN, HOWEVER WELL WE KNOW THEM.
+  // This check used to sit BELOW the blanket high-depth branch, which made
+  // `high` more permissive than `medium` about exactly the claims depth says
+  // nothing about: measured on the cohort-1 corpus, forcing depth to `high`
+  // routed 91.1% of beats to CREATOR_KNOWLEDGE and sent ZERO to research —
+  // including 416 beats the writer itself declared as general knowledge.
+  //
+  // ⚖️ DEPTH IS A LICENCE ABOUT THE CREATOR, NOT ABOUT THE WORLD. Knowing
+  // someone deeply does not make them the source for a claim that survives being
+  // attributed to anybody, and `medium` already had this right — a deep profile
+  // being handled WORSE than a shallow one is the tell that the ordering, not
+  // the rule, was wrong.
+  if (ctx.externallyAnswerable) return 'RESEARCH'
   if (ctx.depth === 'high') return 'CREATOR_KNOWLEDGE'
   // ⚖️ MEDIUM MAY REST ON KNOWN POSITIONS BUT NOT EXPAND THEM. A creator on
   // record that "most SaaS onboarding asks for too much" supports a beat around
