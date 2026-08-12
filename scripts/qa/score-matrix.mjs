@@ -70,11 +70,33 @@ function scoreRun(r, knowledgeFor, relationshipFor) {
     sellInCta: 0, sellInBody: 0, impossibleProduct: 0,
     declared: 0, fromCreator: 0, fromProduct: 0, fromGeneral: 0, needsUser: 0, undeclaredSource: 0,
     unsupportedCreatorClaim: 0, undeclaredEvidence: 0, unearnedFirstPerson: 0,
+    heldFactLeak: 0, usableFactUsed: 0,
   }
   if (!bp || bp.error) { s.failed = 1; return s }
   const supplied = r.case?.withKnowledge === false ? [] : (knowledgeFor(r.case?.creator) ?? [])
   const script = Array.isArray(bp.script) ? bp.script : []
   s.beats = script.length
+
+  // ⚠️ THE PROPERTY THE PRODUCT SPLIT EXISTS FOR, AND IT WAS UNMEASURED UNTIL
+  // NOW. Facts graded `needs_confirmation` — anything carrying a magnitude or
+  // promising an outcome — are deliberately WITHHELD from the prompt. So a
+  // script that states one has either invented it or leaked it, and either is a
+  // defect. `usableFactUsed` is the other half: withholding everything would
+  // score a perfect zero leak while making the feature pointless.
+  const pf = r.supplied?.productFacts ?? []
+  if (pf.length) {
+    const body = JSON.stringify(bp).toLowerCase()
+    const seen = (v) => {
+      const t = String(v ?? '').trim().toLowerCase()
+      // Match on a distinctive fragment rather than the whole string: a writer
+      // rephrases, and demanding an exact quote would score every real leak zero.
+      return t.length >= 12 && body.includes(t.slice(0, Math.min(28, t.length)))
+    }
+    for (const f of pf) {
+      if (f.trust === 'needs_confirmation' && seen(f.value)) s.heldFactLeak += 1
+      if (f.trust === 'usable' && seen(f.value)) s.usableFactUsed += 1
+    }
+  }
   for (const b of script) {
     const line = String(b?.line ?? '')
     if (PLACEHOLDER.test(line) || FILLER.test(line)) s.placeholderBeats++
@@ -93,10 +115,25 @@ function scoreRun(r, knowledgeFor, relationshipFor) {
         else if (!tracesTo(cited, supplied)) s.unsupportedCreatorClaim++
       } else if (src === 'product_dna') {
         s.fromProduct++
-        // ⚠️ THE HARNESS SUPPLIES NO PRODUCT DNA TO ANY CREATOR, so every one of
-        // these declares a source that was never carried. Not a weak citation —
-        // an impossible one. It ran 46 times, then 70, entirely unchecked.
-        s.impossibleProduct++
+        // ⚠️ "IMPOSSIBLE" IS NOW CONDITIONAL, AND THE UNCONDITIONAL VERSION WAS
+        // A BUG I SHIPPED IN THE SAME CHANGE THAT MADE IT WRONG.
+        //
+        // This counter existed because the harness supplied product DNA to
+        // nobody, so every `product_dna` declaration cited a source that was
+        // never carried — an impossible citation, not a weak one, and it ran 46
+        // times then 70 entirely unchecked. That reasoning was correct for as
+        // long as the premise held.
+        //
+        // ⚖️ POPULATING THE PACK BROKE THE PREMISE. On the first run with real
+        // product facts this fired 4 times on beats that were citing facts the
+        // prompt DID carry — legitimate declarations scored as defects. The
+        // legend was updated and the logic was not, which is exactly the drift
+        // this file keeps catching in others.
+        //
+        // So it now asks the question its name claims to ask: was anything
+        // actually supplied? A creator with no product facts declaring
+        // `product_dna` is still citing nothing.
+        if ((r.supplied?.productFacts ?? []).length === 0) s.impossibleProduct++
       }
       else if (src === 'general') s.fromGeneral++
       else if (src === 'needs_user') s.needsUser++
@@ -174,7 +211,7 @@ for (const r of runs) {
 const pct = (n, d) => (d ? `${((100 * n) / d).toFixed(0)}%` : '—')
 const rows = [...groups.entries()].sort()
 console.log(`\ngrouped by ${by} — ${runs.length} runs\n`)
-const head = ['group', 'runs', 'fail', 'beats', 'declared', 'creator', 'general', 'needsUser', 'undecl', 'UNSUPPORTED', 'unearned1P', 'placeholder', 'specific', 'money', 'sellCTA', 'sellBODY', 'IMPOSS-PROD']
+const head = ['group', 'runs', 'fail', 'beats', 'declared', 'creator', 'general', 'needsUser', 'undecl', 'UNSUPPORTED', 'unearned1P', 'placeholder', 'specific', 'money', 'sellCTA', 'sellBODY', 'IMPOSS-PROD', 'HELD-LEAK', 'prodUsed']
 console.log(head.map((h, i) => h.padEnd(i === 0 ? 10 : 12)).join(''))
 console.log('-'.repeat(head.length * 12))
 for (const [k, s] of rows) {
@@ -187,9 +224,12 @@ for (const [k, s] of rows) {
     pct(s.placeholderBeats, s.beats).padEnd(12), pct(s.specificBeats, s.beats).padEnd(12),
     String(s.moneyClaims).padEnd(12), String(s.sellInCta).padEnd(12), String(s.sellInBody).padEnd(12),
     String(s.impossibleProduct).padEnd(12),
+    String(s.heldFactLeak).padEnd(12), String(s.usableFactUsed).padEnd(12),
   ].join(''))
 }
 console.log('\nUNSUPPORTED = beat cited creator knowledge the prompt never carried — a fabrication wearing a citation.')
 console.log('unearned1P  = first-person HISTORY with no experience-level evidence behind it.')
-console.log('IMPOSS-PROD = beat declared product_dna; this harness supplies no product DNA to anyone.')
+console.log('IMPOSS-PROD = beat declared product_dna but the creator has no product facts in the pack.')
+console.log('HELD-LEAK   = script stated a product fact graded needs_confirmation, which was NEVER SENT. Must be 0.')
+console.log('prodUsed    = usable product facts the script actually used. A zero leak with zero use is not a pass.')
 }
