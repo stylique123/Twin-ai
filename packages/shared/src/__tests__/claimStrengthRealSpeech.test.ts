@@ -57,3 +57,43 @@ describe('claimStrength on two creators it was never tuned against', () => {
     }
   })
 })
+
+// ── THE APOSTROPHE THAT WAVED EVERY CLAIM THROUGH ────────────────────────────
+//
+// ⚠️ EVERY LINE IN THIS BLOCK USES U+2019, VERBATIM AS THE WRITER EMITTED IT.
+// Do not "tidy" them to straight quotes — the curl IS the test. The patterns
+// spell contractions with U+0027, the writer emits U+2019 whenever it feels
+// like prose, and 29 of 705 beats in the last matrix carry one.
+//
+// ⚖️ WHY THIS HID FOR SO LONG. The fixtures were typed by hand with straight
+// quotes, so a detector measured only against text we wrote passed cleanly
+// while missing real output — which is the exact failure `realSpeech.ts` was
+// created to prevent, reappearing one layer down as an encoding assumption.
+describe('a typographic apostrophe is not a different claim', () => {
+  it('classifies the curly and straight forms identically', () => {
+    for (const [curly, straight] of [
+      ['I’ve been using this for months.', "I've been using this for months."],
+      ['I’m going to show you three things.', "I'm going to show you three things."],
+      ['I’d never buy a Chromebook.', "I'd never buy a Chromebook."],
+      ['I don’t know if any of you have tried this.', "I don't know if any of you have tried this."],
+    ]) {
+      expect(claimStrength(curly), curly).toBe(claimStrength(straight))
+    }
+  })
+
+  it('the corpus line this was found from is a history, not discussion', () => {
+    // Verbatim from matrix-112. It read `discussion` — meaning "carries no claim
+    // about this person" — and in production that is what licenses a beat to
+    // speak on coverage-only evidence.
+    expect(claimStrength('This is easily the most insane tech I’ve seen all year, no contest.'))
+      .toBe('history')
+  })
+
+  it('does not turn narration into a claim on the way past', () => {
+    // The normalisation must fix the miss without moving anything else: these
+    // are the same false-positive set the widening was measured against.
+    expect(claimStrength('This is the MOST underrated product you should be selling. And I’m going to show you.'))
+      .toBe('discussion')
+    expect(claimStrength('I’ll have the link in the description.')).toBe('discussion')
+  })
+})

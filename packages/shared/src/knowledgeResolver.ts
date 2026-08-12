@@ -40,6 +40,9 @@
 // can make: a first-person claim the creator never made.
 
 import type { CreatorKnowledge, KnowledgeItem } from './creatorKnowledge'
+// ⚖️ Imports DOWN into a module with no imports of its own, which is what makes
+// one shared rule possible without a cycle. See the note at `claimStrength.ts`.
+import { claimStrength } from './claimStrength'
 
 export const EVIDENCE_LEVELS = ['coverage', 'opinion', 'experience'] as const
 export type EvidenceLevel = (typeof EVIDENCE_LEVELS)[number]
@@ -293,11 +296,34 @@ export interface SubstanceIssue {
   detail: string
 }
 
-/** First-person personal history — "I bought", "I used it for", "I switched".
- *  ⚖️ Narrow on purpose: "I think" and "I'd say" are opinion, not history, and
- *  condemning them would fail every honest talking-head script. */
-const FIRST_PERSON_HISTORY =
-  /\bI(?:'ve| have)?\s+(?:bought|owned|used|switched|returned|tested|kept|ran)\b|\bmy own\b|\bwhen I (?:got|bought|switched)\b/i
+/** First-person personal history — ONE detector, the measured one.
+ *
+ * ⚠️ THIS WAS A SECOND COPY, AND IT WAS TEN TIMES BLINDER. It read:
+ *
+ *     /\bI(?:'ve| have)?\s+(?:bought|owned|used|switched|returned|tested|
+ *       kept|ran)\b|\bmy own\b|\bwhen I (?:got|bought|switched)\b/i
+ *
+ * — the narrow verb list that `claimStrength` replaced with a structural rule
+ * after measuring it against real speech. Over the last matrix the stale copy
+ * saw 2 history beats where `claimStrength` saw 22 (1 vs 27 on the replicate,
+ * 11 vs 52 before the claim rules). The check whose own comment calls it "THE
+ * MOST EXPENSIVE ERROR, CHECKED SEPARATELY" ran at about a tenth of its
+ * sensitivity, so the per-beat traceability question was simply never asked of
+ * 20 of 22 history beats.
+ *
+ * ⚖️ ITS "NARROW ON PURPOSE" RATIONALE WAS SUPERSEDED, NOT OVERRULED. The
+ * comment justified the narrowness by saying "I think" and "I'd say" are
+ * opinion rather than history — which is true, and which `claimStrength`
+ * already handles by returning `position` for them. The reason survived; the
+ * implementation that served it did not.
+ *
+ * ⚖️ AND THE POLICY LANDED FIRST, DELIBERATELY. Firing 10x more often is a
+ * product decision, so `traceability.ts` froze the risk tiers in a separate
+ * change before this one — otherwise this refactor would have been the policy.
+ * This check remains REPORT-ONLY either way; enforcement runs through
+ * `entitlementFailures`, which has always used the measured rule.
+ */
+const isFirstPersonHistory = (line: string): boolean => claimStrength(line) === 'history'
 
 /** ⚠️ THE PROMPT SHOWS EACH ITEM AS `* (product) cardboard PC`, so the writer
  *  cites it back WITH THE KIND PREFIX. Left in, the literal word "product" or
@@ -442,7 +468,7 @@ export function substanceIssues(
     // ⚖️ NAMED, NOT ESCALATED. This says the beat is UNACCOUNTED FOR, not that
     // it is wrong — the line above is innocuous, and rewriting it into a
     // question would charge an honest script for the writer's omission. The
-    // expensive claims are still caught on the line itself: `FIRST_PERSON_HISTORY`
+    // expensive claims are still caught on the line itself: `isFirstPersonHistory`
     // below and `entitlementFailures` both run regardless of what was declared.
     if (!SUBSTANCE_SOURCES.has(source)) {
       out.push({ code: 'undeclared_substance', beat: i,
@@ -483,7 +509,7 @@ export function substanceIssues(
     // ⚖️ THE MOST EXPENSIVE ERROR, CHECKED SEPARATELY. A personal history is a
     // claim about the creator's life, and no source other than experience-level
     // evidence can license it — not research, not a title, not a rephrasing.
-    if (FIRST_PERSON_HISTORY.test(line)) {
+    if (isFirstPersonHistory(line)) {
       const licensed = supplied.some((k) => evidenceLevel(k) === 'experience'
         && (cited === '' ? true : tracesTo(cited, [k])))
       if (!licensed) {
