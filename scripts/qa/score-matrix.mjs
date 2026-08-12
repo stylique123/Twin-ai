@@ -115,10 +115,25 @@ function scoreRun(r, knowledgeFor, relationshipFor) {
         else if (!tracesTo(cited, supplied)) s.unsupportedCreatorClaim++
       } else if (src === 'product_dna') {
         s.fromProduct++
-        // ⚠️ THE HARNESS SUPPLIES NO PRODUCT DNA TO ANY CREATOR, so every one of
-        // these declares a source that was never carried. Not a weak citation —
-        // an impossible one. It ran 46 times, then 70, entirely unchecked.
-        s.impossibleProduct++
+        // ⚠️ "IMPOSSIBLE" IS NOW CONDITIONAL, AND THE UNCONDITIONAL VERSION WAS
+        // A BUG I SHIPPED IN THE SAME CHANGE THAT MADE IT WRONG.
+        //
+        // This counter existed because the harness supplied product DNA to
+        // nobody, so every `product_dna` declaration cited a source that was
+        // never carried — an impossible citation, not a weak one, and it ran 46
+        // times then 70 entirely unchecked. That reasoning was correct for as
+        // long as the premise held.
+        //
+        // ⚖️ POPULATING THE PACK BROKE THE PREMISE. On the first run with real
+        // product facts this fired 4 times on beats that were citing facts the
+        // prompt DID carry — legitimate declarations scored as defects. The
+        // legend was updated and the logic was not, which is exactly the drift
+        // this file keeps catching in others.
+        //
+        // So it now asks the question its name claims to ask: was anything
+        // actually supplied? A creator with no product facts declaring
+        // `product_dna` is still citing nothing.
+        if ((r.supplied?.productFacts ?? []).length === 0) s.impossibleProduct++
       }
       else if (src === 'general') s.fromGeneral++
       else if (src === 'needs_user') s.needsUser++
