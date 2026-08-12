@@ -215,6 +215,29 @@ function tracesTo(cited: string, supplied: readonly SuppliedKnowledge[]): boolea
 //
 // ⚖️ THREE STATES. `undefined` runs no product check; `[]` means the prompt
 // carried none, which makes the claim IMPOSSIBLE rather than unsupported.
+/** Kinds that name a SUBJECT rather than assert anything. Mirrors
+ *  SUBJECT_KINDS in packages/shared/src/knowledgeResolver.ts. */
+const SUBJECT_KINDS: ReadonlySet<string> = new Set(['topic', 'product', 'covered'])
+
+/** How deep a citation's grounding goes — did it reach something the creator
+ *  SAID, or only the name of something they talk about?
+ *
+ *  ⚠️ A MEASUREMENT, NOT A GATE. 28% of `creator_knowledge` beats in the last
+ *  matrix cite a bare subject ("3D printing", "Unihertz"). Every layer handles
+ *  those correctly and only 1 of 75 dressed an invented specific as creator
+ *  knowledge — nothing leaks. What is wrong is that `beat_substance` counts
+ *  them as creator-grounded alongside beats resting on something actually said,
+ *  so the number this layer exists to move cannot show content-emptiness
+ *  improving. Acting on the split is an owner-level call; reporting it is not. */
+function groundingDepth(
+  cited: string,
+  supplied: readonly SuppliedKnowledge[],
+): 'proposition' | 'subject' | 'none' {
+  if (!tracesTo(cited, supplied)) return 'none'
+  const reached = supplied.filter((k) => tracesTo(cited, [k]))
+  return reached.some((k) => !SUBJECT_KINDS.has(String(k.kind))) ? 'proposition' : 'subject'
+}
+
 /** The five sources a beat may declare. Anything else is unaccounted for. */
 const SUBSTANCE_SOURCES: ReadonlySet<string> =
   new Set(['creator_knowledge', 'product_dna', 'general', 'needs_user', 'none'])
@@ -2161,10 +2184,26 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // Always emitted, including the clean case: the share of beats a creator can
     // actually film is the number this whole layer exists to move, and a metric
     // that only appears on failure cannot show a trend.
+    // ⚖️ THE SAME COUNT, SPLIT BY HOW DEEP IT GOES. `by_source` says the beat
+    // declared creator knowledge; this says whether that knowledge was a claim
+    // or a subject heading. Without the split, a run where every beat rests on
+    // the word "3D printing" and a run built from what the creator actually
+    // said report the identical number.
+    const byDepth: Record<string, number> = {}
+    if (Array.isArray(declared)) {
+      for (const b of declared) {
+        const r = b as { substance?: unknown; substance_evidence?: unknown }
+        if (r?.substance !== 'creator_knowledge') continue
+        const c = typeof r?.substance_evidence === 'string' ? r.substance_evidence.trim() : ''
+        const d = groundingDepth(c, suppliedForCheck)
+        byDepth[d] = (byDepth[d] ?? 0) + 1
+      }
+    }
     console.log(JSON.stringify({
       event: 'beat_substance',
       beats: Array.isArray(declared) ? declared.length : 0,
       by_source: bySource,
+      creator_knowledge_depth: byDepth,
       knowledge_supplied: speakable.length,
       issues: issues.length,
       issue_codes: issues.map((i) => i.code),

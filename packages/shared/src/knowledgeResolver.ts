@@ -344,6 +344,49 @@ function tracesTo(cited: string, supplied: readonly KnowledgeItem[]): boolean {
   return tracesToText(cited, supplied.map((i) => i.text))
 }
 
+/** The kinds that name a SUBJECT rather than assert anything.
+ *
+ *  ⚖️ NOT A WORD-COUNT HEURISTIC. `topic` is documented as "something they
+ *  return to" and `product` as "a product they have mentioned" — both are, by
+ *  their own definition, things rather than claims. `covered` joins them: "how
+ *  nuclear fusion actually works" names a video's subject, and its whole
+ *  purpose downstream is to say DO NOT REPEAT THIS, not to license a sentence. */
+const SUBJECT_KINDS: ReadonlySet<string> = new Set(['topic', 'product', 'covered'])
+
+/** How deep a citation's grounding goes: did it reach something the creator
+ *  SAID, or only the name of something they talk about?
+ *
+ * ⚠️ WHY THIS IS MEASURED SEPARATELY FROM WHETHER IT TRACES. Reading the 265
+ * `creator_knowledge` beats in the last matrix, 28% cite a bare subject —
+ * "3D printing", "Unihertz", "hidden iPhone features". Every layer handles
+ * those correctly: `tracesTo` passes them because the subject really is the
+ * creator's, and `evidenceLevel` maps a topic to `coverage`, which licenses
+ * exactly the discussion-strength claims those lines make. Only ONE of the 75
+ * dressed an invented specific as creator knowledge. Nothing here is a leak.
+ *
+ * ⚖️ THE DEFECT IS IN WHAT GETS COUNTED, NOT IN WHAT SHIPS. `beat_substance`
+ * reports the share of beats a creator can actually film — "the number this
+ * whole layer exists to move" — and it counts a beat resting on the word
+ * "3D printing" the same as one resting on "my prints used to be brittle until
+ * I raised the infill". A metric that cannot tell those apart cannot show this
+ * product solving its founding defect, which is content-emptiness, not
+ * voice-inaccuracy. So this splits the number; it blocks nothing and changes
+ * no threshold. Choosing to ACT on the split is a separate, owner-level call.
+ */
+export type GroundingDepth = 'proposition' | 'subject' | 'none'
+
+export function groundingDepth(
+  cited: string,
+  supplied: readonly KnowledgeItem[],
+): GroundingDepth {
+  if (!tracesTo(cited, supplied)) return 'none'
+  // ⚖️ ANY propositional hit wins. `tracesTo` already accepts a citation that
+  // reaches one real item among several, so asking for a stricter agreement
+  // here would report two different answers about the same citation.
+  const reached = supplied.filter((k) => tracesTo(cited, [k]))
+  return reached.some((k) => !SUBJECT_KINDS.has(k.kind)) ? 'proposition' : 'subject'
+}
+
 /**
  * Check what the writer CLAIMED against what it was GIVEN.
  *

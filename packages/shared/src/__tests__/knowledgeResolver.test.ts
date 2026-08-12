@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { readKnowledge } from '../creatorKnowledge'
 import {
   evidenceLevel, resolveContainer, resolveAll, resolutionStats, resolutionPromptLine, substanceIssues,
+  groundingDepth,
   type Container,
 } from '../knowledgeResolver'
 
@@ -373,5 +374,53 @@ describe('substanceIssues — product_dna', () => {
       expect(substanceIssues([{ line: 'x', substance: src, substance_evidence: '' }], [], []))
         .toEqual([])
     }
+  })
+})
+
+// ── HOW DEEP DOES THE GROUNDING GO? ──────────────────────────────────────────
+// ⚠️ FOUND BY READING, AND DELIBERATELY NOT WIRED TO A GATE. 28% of the 265
+// `creator_knowledge` beats in the last matrix cite a bare subject. Every layer
+// handles them correctly — they trace, and a topic maps to coverage, which
+// licenses exactly the discussion-strength claims those lines make. What is
+// wrong is the COUNT: `beat_substance` reports them as creator-grounded
+// alongside beats resting on something the creator actually said.
+describe('groundingDepth — a subject is not a claim', () => {
+  const supplied = readKnowledge({ items: [
+    { kind: 'topic', text: '3D printing', basis: 'demonstrated' },
+    { kind: 'product', text: 'Unihertz', basis: 'demonstrated' },
+    { kind: 'opinion', text: 'megapixels are oversold on flagship phones', basis: 'stated' },
+    { kind: 'experience', text: 'printed a full-size helmet over three days', basis: 'stated' },
+  ] }).items
+
+  it('calls a bare subject citation what it is', () => {
+    expect(groundingDepth('(topic) 3D printing', supplied)).toBe('subject')
+    expect(groundingDepth('(product) Unihertz', supplied)).toBe('subject')
+  })
+
+  it('calls a citation that reaches something they SAID a proposition', () => {
+    expect(groundingDepth('megapixels are oversold', supplied)).toBe('proposition')
+    expect(groundingDepth('printed a full-size helmet', supplied)).toBe('proposition')
+  })
+
+  it('reports nothing traced as nothing traced, not as shallow', () => {
+    // ⚖️ Three states. `none` is already caught by `unsupported_creator_claim`;
+    // collapsing it into `subject` would hide a fabrication inside a
+    // shallowness metric and make the split useless for both questions.
+    expect(groundingDepth('the battery lasts nine days', supplied)).toBe('none')
+  })
+
+  it('a citation reaching BOTH counts as the deeper one', () => {
+    // `tracesTo` already accepts one real hit among several, so anything
+    // stricter would answer differently about the same citation.
+    expect(groundingDepth('3D printing, printed a full-size helmet', supplied)).toBe('proposition')
+  })
+
+  it('is a measurement and refuses no beat', () => {
+    // If this ever appears in `substanceIssues`, the split has quietly become a
+    // gate — which is an owner-level call, not a refactor.
+    expect(substanceIssues([
+      { line: 'Infill is what makes a print strong.', substance: 'creator_knowledge',
+        substance_evidence: '(topic) 3D printing' },
+    ], supplied)).toEqual([])
   })
 })
