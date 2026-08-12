@@ -195,11 +195,40 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // TikTok DNA is built FREE by the worker (yt-dlp), not Apify. Enqueue the worker
-  // job; the worker scrapes + synthesizes and flips the row to ready, and dna-poll
-  // reports that row's status. (Instagram + YouTube keep the Apify path below —
-  // yt-dlp is bot-blocked on those from datacenter IPs.)
-  if (platform === 'tiktok') {
+  // ── WHO BUILDS THIS DNA: THE WORKER, OR A BROWSER TAB ────────────────────
+  //
+  // ⚠️ THE `build_dna` PATH BELOW IS ADVANCED ONLY BY A POLLING BROWSER. Close
+  // the tab, lose the connection, or hit the 60/min poll cap and the voice sits
+  // in `building` until a reaper marks it failed 600s later — the infinite
+  // spinner `0018_dna_reaper.sql` names in its own header. The worker's
+  // `scrape_dna` has no such dependency: it claims the job, finishes it, and
+  // flips the row, whether or not anyone is watching.
+  //
+  // ⚖️ AND THE WORKER PATH IS STRICTLY RICHER. It runs `measurePackaging`,
+  // `assessScanTarget` (wrong-account detection) and caption knowledge
+  // extraction — none of which the edge path has any equivalent of — and it
+  // enqueues the `build_voice` upgrade itself, so nothing is lost by moving.
+  //
+  // ⚠️ YOUTUBE MOVES FIRST, INSTAGRAM DELIBERATELY LATER. YouTube is 9 of 27
+  // production voices, currently succeeding 9/9, and its thumbnails are not
+  // signed to the scraping IP the way Meta's are — so it exercises the new route
+  // without also exercising the residential-proxy retry that Instagram depends
+  // on. Instagram is the larger and more fragile half and gets its own flip once
+  // this one has run clean.
+  //
+  // ⚖️ THE LIST IS ENV-OVERRIDABLE SO A BAD FLIP IS A SETTING, NOT A DEPLOY.
+  // `WORKER_DNA_PLATFORMS=tiktok` reverts to the previous behaviour without
+  // shipping anything. An unset or malformed value falls back to the default
+  // rather than to "nothing" — an empty list would silently send every platform
+  // down the browser path and look like the flip simply did not work.
+  const workerPlatforms = new Set(
+    (Deno.env.get('WORKER_DNA_PLATFORMS') ?? 'tiktok,youtube')
+      .split(',').map((p) => p.trim().toLowerCase()).filter(Boolean),
+  )
+  // TikTok is built FREE by the worker (yt-dlp); YouTube and Instagram reach the
+  // same worker job through Apify inside `scrapeProfile`. Same actors either way —
+  // what changes is who drives the run to completion.
+  if (workerPlatforms.has(platform)) {
     const { data: job } = await admin
       .from('jobs')
       .insert({
