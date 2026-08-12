@@ -7,7 +7,8 @@
 // here so the next refactor breaks a test instead of the product.
 import { describe, expect, it } from 'vitest'
 import {
-  TRACEABILITY_LEVELS, traceabilityLevel, responseToLowDepth, LOW_DEPTH_RESPONSES,
+  TRACEABILITY_LEVELS, traceabilityLevel, resolveStrictBeat, STRICT_ACTIONS,
+  STRICT_RESOLUTIONS, routeSubstance, SUBSTANCE_SOURCES_ROUTED,
 } from '../traceability'
 import { substanceIssues } from '../knowledgeResolver'
 import { readKnowledge } from '../creatorKnowledge'
@@ -79,27 +80,6 @@ describe('the false positives that measurement caught', () => {
 })
 
 describe('rules 1-3: low depth reshapes a beat, it never refuses one', () => {
-  it('refuse is not an available response at ANY level', () => {
-    // ⚖️ RULE 3, MADE STRUCTURAL. A creator whose expertise lives in their head
-    // rather than in Product DNA is a user, not an error.
-    expect(LOW_DEPTH_RESPONSES).not.toContain('refuse')
-    for (const l of TRACEABILITY_LEVELS) {
-      expect(LOW_DEPTH_RESPONSES, l).toContain(responseToLowDepth(l))
-    }
-  })
-
-  it('asks the creator rather than softening a strict claim', () => {
-    // The "$100K store" case: the honest output is a question, not a smaller
-    // number we also made up.
-    expect(responseToLowDepth('strict')).toBe('ask_creator')
-  })
-
-  it('a subject label still earns a usable beat', () => {
-    // ⚖️ "AI tools" cannot justify a factual claim, but it justifies a
-    // structure, an angle, or a question — so a light beat is softened, not cut.
-    expect(responseToLowDepth('light')).toBe('soften')
-  })
-
   it('rule 1: depth is STILL not a reason to raise a substance issue', () => {
     // Asserted here as well as in the parity test, because this file is where
     // someone will come looking for the policy.
@@ -109,5 +89,138 @@ describe('rules 1-3: low depth reshapes a beat, it never refuses one', () => {
       line: 'Infill is what makes a print strong.', substance: 'creator_knowledge',
       substance_evidence: '(topic) 3D printing',
     }], supplied)).toEqual([])
+  })
+})
+
+// ── STRICT ENFORCES; THE ASSERTION FAILS, NOT THE SCRIPT ─────────────────────
+describe('resolveStrictBeat — a resolution ladder, not a refusal', () => {
+  const base = {
+    grounded: false, externallyAnswerable: false, personalToCreator: false,
+    productFactsAvailable: null as boolean | null,
+  }
+
+  it('allows a grounded claim', () => {
+    expect(resolveStrictBeat({ ...base, grounded: true })).toBe('GROUNDED')
+  })
+
+  it('sends an externally checkable claim to research', () => {
+    expect(resolveStrictBeat({ ...base, externallyAnswerable: true })).toBe('RESOLVABLE')
+  })
+
+  it('asks the creator for what only they can answer, BEFORE offering research', () => {
+    // ⚖️ "The biggest mistake I made with my first startup" is not fixable by a
+    // literature search, and offering one is how a system ends up writing
+    // somebody's autobiography for them.
+    expect(resolveStrictBeat({ ...base, personalToCreator: true, externallyAnswerable: true }))
+      .toBe('USER_KNOWLEDGE_REQUIRED')
+  })
+
+  it('uses Product DNA when the caller KNOWS facts were carried', () => {
+    expect(resolveStrictBeat({ ...base, productFactsAvailable: true })).toBe('RESOLVABLE')
+    // ⚖️ `null` is "caller does not know" and may never be read as "yes" — the
+    // three-state rule this repo applies everywhere else.
+    expect(resolveStrictBeat({ ...base, productFactsAvailable: null })).toBe('UNRESOLVED')
+    expect(resolveStrictBeat({ ...base, productFactsAvailable: false })).toBe('UNRESOLVED')
+  })
+
+  it('an unresolved claim is REWRITTEN, and no path refuses the script', () => {
+    // ⚠️ THE WHOLE POINT OF ENFORCEMENT BEING USEFUL RATHER THAN OBNOXIOUS.
+    // "Twin increases retention by 42%" with nothing behind it becomes "Twin is
+    // designed to help creators make tighter videos" — the claim goes, the video
+    // survives. If `refuse` ever appears here, strict has become a wall.
+    expect(STRICT_ACTIONS.UNRESOLVED).toBe('rewrite_without_claim')
+    for (const r of STRICT_RESOLUTIONS) {
+      expect(STRICT_ACTIONS[r], r).not.toMatch(/refuse|reject|fail/)
+    }
+  })
+})
+
+// ── KNOWLEDGE DEPTH ROUTES SUBSTANCE; IT NEVER JUDGES IT ─────────────────────
+describe('routeSubstance — where the substance comes from', () => {
+  const base = {
+    depth: 'low' as const, aboutOwnProduct: false,
+    externallyAnswerable: false, personalToCreator: false,
+  }
+
+  it('routes an externally answerable question to research', () => {
+    // "Which three AI tools are currently best for sales teams?"
+    expect(routeSubstance({ ...base, externallyAnswerable: true })).toBe('RESEARCH')
+  })
+
+  it('routes their own product to Product DNA', () => {
+    // "Why is Twin different?"
+    expect(routeSubstance({ ...base, aboutOwnProduct: true })).toBe('PRODUCT_DNA')
+  })
+
+  it('asks the creator for their own history rather than inventing it', () => {
+    // "What mistake did you make when you launched your first company?"
+    expect(routeSubstance({ ...base, personalToCreator: true })).toBe('ASK_CREATOR')
+  })
+
+  it('changes the concept when it presumes expertise nothing evidences', () => {
+    // ⚠️ "Five things I've learned in ten years as a surgeon" for a creator with
+    // no such evidence. Sourcing the facts elsewhere does not fix this — the
+    // ADAPTATION is wrong, and generating the wisdom anyway invents a career.
+    expect(routeSubstance({ ...base, conceptDemandsUnevidencedExpertise: true }))
+      .toBe('CHANGE_CONCEPT')
+  })
+
+  it('lets a deep creator carry opinion without outside research', () => {
+    expect(routeSubstance({ ...base, depth: 'high' })).toBe('CREATOR_KNOWLEDGE')
+    expect(routeSubstance({ ...base, depth: 'high', personalToCreator: true }))
+      .toBe('CREATOR_KNOWLEDGE')
+  })
+
+  it('lets medium depth rest on known positions but not expand them', () => {
+    // ⚖️ On record that "most SaaS onboarding asks for too much" supports a beat
+    // around that belief. It does NOT support "seven-field onboarding reduces
+    // conversion by 31%" — that is a statistic, and it belongs to research.
+    expect(routeSubstance({ ...base, depth: 'medium' })).toBe('CREATOR_KNOWLEDGE')
+    expect(routeSubstance({ ...base, depth: 'medium', externallyAnswerable: true }))
+      .toBe('RESEARCH')
+  })
+
+  it('NEVER returns a refusal, at any depth', () => {
+    // ⚠️ THE WRONG ABSTRACTION THIS EXISTS TO PREVENT: depth=low becoming
+    // script_invalid=true. Depth answers "is the creator a sufficient source",
+    // which is a routing question and never a verdict.
+    for (const s of SUBSTANCE_SOURCES_ROUTED) {
+      expect(s).not.toMatch(/REFUSE|REJECT|INVALID/)
+    }
+  })
+
+  it('does not soften globally, because that was the earlier mistake', () => {
+    // ⚖️ `soften` is deliberately absent from the routed sources. Hedging every
+    // sentence at low depth produces "might", "perhaps", "some people think" —
+    // an AI lawyer trying not to get sued by oxygen. Low depth changes WHERE
+    // substance comes from, not how confidently it is worded.
+    expect(SUBSTANCE_SOURCES_ROUTED as readonly string[]).not.toContain('soften')
+  })
+})
+
+// ── THE TWO TOGETHER, ON THE OWNER'S WORKED EXAMPLES ─────────────────────────
+describe('the interaction, which is where the architecture earns its keep', () => {
+  it('strict + low depth: check product DNA, then research, then rewrite', () => {
+    // "This app saves founders five hours per week."
+    expect(traceabilityLevel({ line: 'This app saves founders five hours per week.' })).toBe('strict')
+    expect(resolveStrictBeat({
+      grounded: false, personalToCreator: false, externallyAnswerable: false,
+      productFactsAvailable: false,
+    })).toBe('UNRESOLVED')
+  })
+
+  it('light + high depth: creator POV carries it, allow', () => {
+    // "I think most founders automate too early."
+    expect(traceabilityLevel({ line: 'I think most founders automate too early.' })).not.toBe('strict')
+    expect(routeSubstance({
+      depth: 'high', aboutOwnProduct: false, externallyAnswerable: false, personalToCreator: false,
+    })).toBe('CREATOR_KNOWLEDGE')
+  })
+
+  it('personal experience + low depth: research cannot solve it, so ask', () => {
+    // "The biggest mistake I made with my first startup was hiring too early."
+    expect(routeSubstance({
+      depth: 'low', aboutOwnProduct: false, externallyAnswerable: true, personalToCreator: true,
+    })).toBe('ASK_CREATOR')
   })
 })

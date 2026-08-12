@@ -53,8 +53,22 @@ export type TraceabilityLevel = (typeof TRACEABILITY_LEVELS)[number]
  *  promise the format is built on; condemning it would put every listicle
  *  through strict grounding. The tell is a number attached to a MEASUREMENT —
  *  a unit, a percentage, or a comparison — not to an enumeration. */
-const STATISTIC =
-  /\b\d+(?:\.\d+)?\s*(?:%|percent|x\b|times (?:faster|slower|better|cheaper|longer))|\b\d+(?:\.\d+)?\s*(?:hours?|minutes?|seconds?|days?|weeks?|months?|years?|mm|cm|kg|lbs?|GB|TB|MB|W|fps|mAh|nits|Hz)\b|\b\d+\s*(?:out of|in)\s*\d+\b/i
+/** ⚠️ SPELLED-OUT NUMBERS COUNT, AND THE FIRST VERSION MISSED THEM. The owner's
+ *  own example — "This app saves founders five hours per week" — classified as
+ *  `standard`, because the pattern asked for digits and a SCRIPT IS SPOKEN.
+ *  "five hours", "double your reach", "three times faster" are how a creator
+ *  actually says a measurement, and a rule that only sees `5` grades the written
+ *  form of a claim more strictly than the form that gets read on camera. */
+const NUM = '(?:\\d+(?:\\.\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|hundred|thousand)'
+const UNIT = '(?:hours?|minutes?|seconds?|days?|weeks?|months?|years?|mm|cm|kg|lbs?|GB|TB|MB|W|fps|mAh|nits|Hz)'
+const STATISTIC = new RegExp(
+  `\\b${NUM}\\s*(?:%|percent)`
+  + `|\\b${NUM}\\s*x\\b|\\b${NUM}\\s+times\\s+(?:faster|slower|better|cheaper|longer|more|less)`
+  + `|\\b(?:double|triple|halve|halved|doubles|triples)\\b`
+  + `|\\b${NUM}\\s*${UNIT}\\b`
+  + `|\\b${NUM}\\s*(?:out of|in)\\s*${NUM}\\b`,
+  'i',
+)
 
 /** Money, as an AMOUNT rather than as a topic.
  *
@@ -133,31 +147,140 @@ export function traceabilityLevel(beat: TraceabilityInput): TraceabilityLevel {
   return 'standard'
 }
 
-/**
- * What low grounding is permitted to do — and the one thing it may never do.
- *
- * ⚠️ FROZEN BY THE OWNER, AND WRITTEN DOWN BECAUSE A RULE THAT LIVES ONLY IN A
- * CONVERSATION IS A RULE THE NEXT REFACTOR BREAKS:
- *
- *   1. `creator_knowledge_depth` never enters `substanceIssues`.
- *   2. Low depth may soften wording, insert a creator-answer placeholder,
- *      trigger research, or warn.
- *   3. It does NOT automatically refuse the beat.
- *   4. Per-beat traceability is risk-weighted.
- *   5. Only high-risk factual beats require strict grounding before generation.
- *
- * This function is rule 2 and 3 made executable: it returns what MAY happen,
- * and `refuse` is not among the options at any level.
- */
-export const LOW_DEPTH_RESPONSES = ['soften', 'ask_creator', 'research', 'warn'] as const
-export type LowDepthResponse = (typeof LOW_DEPTH_RESPONSES)[number]
+// ── TWO MECHANISMS, TWO QUESTIONS ─────────────────────────────────────────
+//
+// ⚠️ AN EARLIER VERSION OF THIS FILE GOT THE SPLIT WRONG, AND THE CORRECTION IS
+// THE DESIGN. It exported `responseToLowDepth(level)`, mapping a TRACEABILITY
+// level to a soften/ask/research action — which quietly made one mechanism
+// answer the other's question, the exact overlap this pair exists to remove.
+// It also made `soften` the default response to thin knowledge, and softening
+// globally produces scripts full of "might", "perhaps", "some people think":
+// an AI lawyer trying not to get sued by oxygen. Deleted rather than deprecated,
+// because a wrong abstraction left importable gets imported.
+//
+// The two questions are genuinely different:
+//
+//   traceability     Does this assertion require evidence?
+//   knowledge depth  Is the CREATOR themselves a sufficient source for this?
+//
+// The first decides whether a claim may stand. The second decides WHERE the
+// missing substance should come from. Neither answers the other.
 
-export function responseToLowDepth(level: TraceabilityLevel): LowDepthResponse {
-  // ⚖️ ASK BEFORE INVENTING, AT THE ONLY LEVEL WHERE INVENTING IS EXPENSIVE.
-  // A strict beat with nothing behind it is the "Twin cuts editing time by 80%"
-  // case: the honest output is a question, not a softer number.
-  if (level === 'strict') return 'ask_creator'
-  if (level === 'standard') return 'research'
-  // A hook grounded only in "AI tools" is still a usable hook.
-  return 'soften'
+/** What a strict beat's grounding actually amounts to, once looked for. */
+export const STRICT_RESOLUTIONS = [
+  /** Evidence exists and the beat traces to it. Ship it. */
+  'GROUNDED',
+  /** No creator evidence, but the claim is externally checkable — look it up. */
+  'RESOLVABLE',
+  /** Only the creator can answer: their history, their business, their numbers. */
+  'USER_KNOWLEDGE_REQUIRED',
+  /** Nothing can ground it. The ASSERTION goes, not the script. */
+  'UNRESOLVED',
+] as const
+export type StrictResolution = (typeof STRICT_RESOLUTIONS)[number]
+
+export interface StrictContext {
+  /** Does the beat trace to supplied creator knowledge or product facts? */
+  grounded: boolean
+  /** Were product facts carried at all? `null` = caller does not know. */
+  productFactsAvailable?: boolean | null
+  /** Can research answer this — is it a fact about the world? */
+  externallyAnswerable: boolean
+  /** Is this a claim only the creator can make true (their life, their firm)? */
+  personalToCreator: boolean
+}
+
+/**
+ * Where a strict beat stands, and therefore what to do about it.
+ *
+ * ⚖️ THE ASSERTION IS WHAT FAILS, NEVER THE SCRIPT. "Twin increases retention by
+ * 42%" with nothing behind it does not kill the video; it becomes "Twin is
+ * designed to help creators make tighter, more structured videos" if Product DNA
+ * supports that. Refusing the whole generation for one unsupported number is the
+ * behaviour that makes a safety rule feel like an obstruction, and it is why
+ * `UNRESOLVED` names a rewrite rather than a refusal.
+ *
+ * ⚖️ AND ONLY `strict` REACHES HERE. `light` and `standard` are advisory; a
+ * caller that runs this over every beat has reintroduced the compliance hearing.
+ */
+export function resolveStrictBeat(ctx: StrictContext): StrictResolution {
+  if (ctx.grounded) return 'GROUNDED'
+  // ⚖️ PERSONAL BEFORE RESEARCHABLE. "The biggest mistake I made with my first
+  // startup" is not fixable by a literature search, and offering research for it
+  // is how a system ends up writing someone's autobiography for them.
+  if (ctx.personalToCreator) return 'USER_KNOWLEDGE_REQUIRED'
+  if (ctx.externallyAnswerable) return 'RESOLVABLE'
+  // Product facts might carry it — but only if the caller KNOWS some were
+  // supplied. `null` is "not known" and may not be read as "yes".
+  if (ctx.productFactsAvailable === true) return 'RESOLVABLE'
+  return 'UNRESOLVED'
+}
+
+/** What the pipeline does about each resolution. Separated from the verdict so
+ *  the policy is readable without tracing call sites. */
+export const STRICT_ACTIONS = {
+  GROUNDED: 'allow',
+  RESOLVABLE: 'research_or_product_dna',
+  USER_KNOWLEDGE_REQUIRED: 'ask_creator',
+  UNRESOLVED: 'rewrite_without_claim',
+} as const satisfies Record<StrictResolution, string>
+
+// ── KNOWLEDGE DEPTH: WHERE SUBSTANCE COMES FROM, NEVER WHETHER IT MAY EXIST ──
+
+export const KNOWLEDGE_DEPTHS = ['high', 'medium', 'low'] as const
+export type KnowledgeDepth = (typeof KNOWLEDGE_DEPTHS)[number]
+
+/** Where a container's substance should be sourced from. */
+export const SUBSTANCE_SOURCES_ROUTED = [
+  'CREATOR_KNOWLEDGE', 'RESEARCH', 'PRODUCT_DNA', 'ASK_CREATOR', 'CHANGE_CONCEPT',
+] as const
+export type RoutedSource = (typeof SUBSTANCE_SOURCES_ROUTED)[number]
+
+export interface RoutingContext {
+  depth: KnowledgeDepth
+  /** Is this container about the creator's own product or business? */
+  aboutOwnProduct: boolean
+  /** Could research answer it — a fact about the world? */
+  externallyAnswerable: boolean
+  /** Does it require the creator's own life or credentials? */
+  personalToCreator: boolean
+  /** Does the CONCEPT itself presume expertise there is no evidence for —
+   *  "five things I've learned in ten years as a surgeon"? */
+  conceptDemandsUnevidencedExpertise?: boolean
+}
+
+/**
+ * Where the substance for this container should come from.
+ *
+ * ⚠️ THIS NEVER RETURNS A REFUSAL, AND THAT IS THE POINT. Low depth is not a
+ * quality verdict — it answers "how much substantive material can Twin safely
+ * derive from the creator themselves", which is a routing question. Letting
+ * `depth === 'low'` become `script_invalid` is the wrong abstraction, and it is
+ * the one this function exists to prevent anyone reaching for.
+ *
+ * ⚖️ HIGH DEPTH IS A LICENCE, NOT A SHORTCUT. It means the creator's own
+ * positions, frameworks and examples can carry opinion and thought-leadership
+ * beats without outside research — not that anything may be asserted.
+ */
+export function routeSubstance(ctx: RoutingContext): RoutedSource {
+  // ⚖️ THE CONCEPT CHECK COMES FIRST. A reference demanding "ten years as a
+  // surgeon" from a creator with no such evidence is not fixed by sourcing the
+  // facts elsewhere — the ADAPTATION is wrong, and generating the wisdom anyway
+  // is how a system invents a career for someone.
+  if (ctx.conceptDemandsUnevidencedExpertise && ctx.depth !== 'high') return 'CHANGE_CONCEPT'
+  // Their own product is answerable from Product DNA at any depth — it is not
+  // creator knowledge and never was.
+  if (ctx.aboutOwnProduct) return 'PRODUCT_DNA'
+  if (ctx.personalToCreator) {
+    // ⚖️ HIGH DEPTH MEANS WE MAY ALREADY HAVE IT; anything less must ask rather
+    // than write an autobiography.
+    return ctx.depth === 'high' ? 'CREATOR_KNOWLEDGE' : 'ASK_CREATOR'
+  }
+  if (ctx.depth === 'high') return 'CREATOR_KNOWLEDGE'
+  // ⚖️ MEDIUM MAY REST ON KNOWN POSITIONS BUT NOT EXPAND THEM. A creator on
+  // record that "most SaaS onboarding asks for too much" supports a beat around
+  // that belief; it does not support "seven-field onboarding reduces conversion
+  // by 31%", which is a statistic and belongs to research.
+  if (ctx.depth === 'medium' && !ctx.externallyAnswerable) return 'CREATOR_KNOWLEDGE'
+  return ctx.externallyAnswerable ? 'RESEARCH' : 'ASK_CREATOR'
 }
