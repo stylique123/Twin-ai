@@ -1343,10 +1343,11 @@ interface ProductEntityRow {
   source: string
   user_confirmed: boolean
   updated_at: string
+  archived_at?: string | null
 }
 
 const ENTITY_COLUMNS =
-  'id, name, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at'
+  'id, name, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at, archived_at'
 
 /** Read `restrictions` back defensively. `approvedClaims` is the field §5a.5
  *  turns on — an outcome claim needs a permission that EXISTS — so a malformed
@@ -1406,16 +1407,29 @@ function readEntityRow(row: ProductEntityRow): ProductEntityRecord | null {
     source: row.source === 'user_answer' ? 'user_answer' : 'inferred',
     userConfirmed: row.user_confirmed === true,
     updated: row.updated_at,
+    // ⚖️ ANYTHING NOT A STRING READS AS LIVE. A malformed value must not archive
+    // an entity the creator never withdrew — that would silently remove a
+    // product from their videos. The safe degradation is the state they had.
+    archivedAt: typeof row.archived_at === 'string' ? row.archived_at : null,
   }
 }
 
 /** Every entity this creator holds. Unreadable rows are DROPPED rather than
  *  surfaced — see `readEntityRow`. */
-export async function loadProductEntities(): Promise<ProductEntityRecord[]> {
-  const { data, error } = await supabase
+export async function loadProductEntities(
+  opts: { includeArchived?: boolean } = {},
+): Promise<ProductEntityRecord[]> {
+  // ⚠️ ARCHIVED ROWS ARE EXCLUDED BY DEFAULT, AND THAT DEFAULT IS THE WHOLE
+  // POINT OF THE COLUMN. An archived entity that still reached a caller would
+  // keep granting the permission the creator withdrew — which is precisely the
+  // failure that argued against a flag in the first place. Callers who want the
+  // archive must ask for it by name.
+  let q = supabase
     .from('product_entities')
     .select(ENTITY_COLUMNS)
     .order('created_at', { ascending: true })
+  if (!opts.includeArchived) q = q.is('archived_at', null)
+  const { data, error } = await q
   if (error) throw error
   return ((data ?? []) as ProductEntityRow[])
     .map(readEntityRow)
@@ -1485,6 +1499,50 @@ export async function loadProductSuggestions(
     .filter((s) => !names.some((n) => s.text.toLowerCase().includes(n)))
 }
 
+/** Raised when the plan's Product Library allowance is used up.
+ *
+ *  ⚠️ THIS IS A DIFFERENT KIND OF FAILURE FROM `OwnedEntityExistsError`, AND
+ *  CONFLATING THEM WOULD MISLEAD EVERY USER WHO HIT EITHER.
+ *
+ *      OwnedEntityExistsError   a CORRECTNESS guard fired. Something is already
+ *                               there; adding again would duplicate it. Nothing
+ *                               the creator can buy changes this.
+ *      ProductLibraryFullError  a COMMERCIAL limit fired. The request is
+ *                               perfectly valid; they are simply past what
+ *                               their plan covers.
+ *
+ *  ⚖️ AND A COMMERCIAL LIMIT MUST NEVER WEAR A TECHNICAL ERROR'S CLOTHES. "This
+ *  product has already been added" shown to someone who hit a plan cap sends
+ *  them hunting for a duplicate that does not exist; "you've reached your limit"
+ *  shown to a replayed mint invites them to buy their way out of a bug. The
+ *  messages are separate because the situations are.
+ *
+ *  `limit` travels with the error so the caller can say what the allowance IS
+ *  rather than only that it was exceeded. */
+export class ProductLibraryFullError extends Error {
+  readonly limit: number
+  constructor(limit: number) {
+    super(`You've reached your Product Library limit of ${limit}.`)
+    this.name = 'ProductLibraryFullError'
+    this.limit = limit
+  }
+}
+
+/** How many live entities a plan may hold.
+ *
+ *  ⚠️ CONFIGURATION, NOT A HARD-CODED ASSUMPTION INSIDE PRODUCT KNOWLEDGE. The
+ *  numbers belong to pricing and will change without this module changing. An
+ *  unknown plan gets `Infinity` rather than zero: failing open costs a few rows,
+ *  failing closed locks paying customers out of a feature over a rename.
+ *
+ *  ⚖️ ARCHIVED ENTITIES DO NOT COUNT. The limit is on what Twin is actively
+ *  maintaining knowledge about, so archiving is a real way to make room — which
+ *  is exactly what the upgrade-or-archive prompt offers. */
+export function productLibraryLimit(entitlements: Record<string, unknown> | null | undefined): number {
+  const raw = entitlements?.product_library_limit
+  return typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 ? raw : Infinity
+}
+
 /** Raised when a creator claims a SECOND owned product for the same voice.
  *
  *  ⚠️ THE ALTERNATIVE WAS SILENT DATA LOSS. `saveMintedEntity` answers a 23505
@@ -1522,8 +1580,35 @@ export async function claimProductEntity(
   ownerId: string,
   voiceId: string | null,
   attestation: EntityAttestation,
+  /** The plan's entitlements. Absent means unlimited — a caller that has not
+   *  wired entitlements yet must not silently start refusing writes. */
+  entitlements?: Record<string, unknown> | null,
 ): Promise<ProductEntityRecord | null> {
   const entity = attestedEntity(attestation)
+
+  // ⚖️ THE ORDER IS CORRECTNESS FIRST, THEN ENTITLEMENT, AND IT IS NOT
+  // ARBITRARY. A duplicate mint arriving from an onboarding replay is a BUG; it
+  // must be refused as a duplicate whether or not the creator has room, or a
+  // customer at their limit would be told to upgrade in order to fix our
+  // remount. The correctness check lives in the insert's 23505 handler below —
+  // the database is the only place that can answer it without a race — so this
+  // check is placed where it cannot mask that one.
+  const limit = productLibraryLimit(entitlements)
+  if (Number.isFinite(limit)) {
+    const { count, error: countErr } = await supabase
+      .from('product_entities')
+      .select('id', { count: 'exact', head: true })
+      .eq('owner_id', ownerId)
+      // ⚠️ LIVE ROWS ONLY. Counting archived entities would make "archive one to
+      // make room" — the exact remedy the limit message offers — do nothing.
+      .is('archived_at', null)
+    // ⚖️ A FAILED COUNT MUST NOT REFUSE THE WRITE. Reading the allowance is not
+    // the same as being over it, and treating an unreadable count as "full"
+    // would block paying customers on a transient error.
+    if (!countErr && typeof count === 'number' && count >= limit) {
+      throw new ProductLibraryFullError(limit)
+    }
+  }
   const owned = isOwned(entity.relationship)
   const row = {
     owner_id: ownerId,
@@ -1556,6 +1641,39 @@ export async function claimProductEntity(
     throw error
   }
   return readEntityRow(data as ProductEntityRow)
+}
+
+/** Withdraw an entity from future videos, keeping it for the ones already made.
+ *
+ *  ⚖️ ARCHIVE IS THE DEFAULT WAY OUT, AND DELETE IS THE EXCEPTION. #354 shipped
+ *  delete as the only option, arguing a `retired` flag would have no reader and
+ *  that a retired row the generator failed to filter would keep granting a
+ *  withdrawn permission. The danger was real; the conclusion was wrong. The
+ *  answer is to WRITE the reader — `loadProductEntities` and the generator's
+ *  owned-entity read both exclude archived rows — not to make withdrawal
+ *  destructive and lose the provenance of scripts already written.
+ *
+ *  ⚠️ ARCHIVING DOES NOT FREE THE OWNED SLOT. The one-owned-per-voice index is a
+ *  guard against onboarding remount replay, not a quota, so archiving an owned
+ *  product does not let another be minted. Swapping the product a creator sells
+ *  is a deliberate act that deserves its own flow. */
+export async function archiveProductEntity(id: string, now?: string): Promise<void> {
+  const { error } = await supabase
+    .from('product_entities')
+    .update({ archived_at: now ?? new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+/** Bring an archived entity back. The sponsorship restarted, the product
+ *  relaunched. Null means live — the same three-state discipline used for
+ *  `basis`: unrecorded is not false. */
+export async function restoreProductEntity(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('product_entities')
+    .update({ archived_at: null })
+    .eq('id', id)
+  if (error) throw error
 }
 
 /** Remove an entity the creator no longer has a relationship with.

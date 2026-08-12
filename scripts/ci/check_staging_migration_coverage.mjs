@@ -127,6 +127,17 @@ export const EXCLUDED = {
     + 'ordering would be the tail wagging the dog. The editor never reads '
     + '`product_entities` either — entities reach it through the blueprint prompt, the '
     + 'same route the brief takes in 0109 above. ⚠️ MANUAL APPLY: excluding it here means nothing applies it anywhere, so it was applied to production BY HAND on 2026-08-11 (verified: the table exists with RLS on). Any future migration excluded here carries the same debt.',
+  '0124_product_entity_archive':
+    'Adds `archived_at` to `product_entities`, which is itself excluded above for the '
+    + 'staging FK-ordering reason — a column cannot be applied to a table staging does '
+    + 'not have, so this inherits that exclusion rather than introducing a new one. '
+    + '⚠️ MANUAL APPLY: applied to production BY HAND on 2026-08-12 (verified: '
+    + '`information_schema.columns` reports archived_at, timestamptz, nullable). The '
+    + 'READERS shipped in the same change — `loadProductEntities` hides archived rows '
+    + 'by default and both `generate-blueprint` product reads filter them — so an '
+    + 'unapplied column would surface as a PostgREST error on the filter rather than '
+    + 'as an archived entity silently keeping its permissions, which is the failure '
+    + 'that mattered.',
   '0121_creator_knowledge':
     'Creates `creator_knowledge` and `audience_questions`, both with foreign keys to '
     + '`public.brand_voices` — the same staging FIXTURE-APPLIED-AFTER-THE-LOOP ordering '

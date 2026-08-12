@@ -584,6 +584,13 @@ export interface DraftEntity {
 
 export interface ProductEntityRecord extends DraftEntity {
   id: string
+  /** When the creator withdrew this from future videos. Null means live.
+   *
+   *  ⚖️ A DATE RATHER THAN A BOOLEAN, because "when did this stop" is a fact
+   *  worth keeping — it dates the end of a sponsorship — and a flag cannot say
+   *  it. Null is `live`, not `unknown`: the same three-state discipline `basis`
+   *  uses, where the absent value is a real state rather than a missing one. */
+  archivedAt: string | null
 }
 
 /**

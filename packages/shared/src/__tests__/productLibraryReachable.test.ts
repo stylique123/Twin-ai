@@ -67,16 +67,41 @@ describe('a claimed product can be withdrawn', () => {
   })
 
   it('names the CONSEQUENCE rather than asking a bare "are you sure"', () => {
-    // ⚖️ Removing withdraws permissions. A generic confirm hides the only part
+    // ⚖️ Withdrawing removes permissions. A generic confirm hides the only part
     // of the decision the creator needs.
+    //
+    // ⚠️ THE WORDING MOVED WHEN ARCHIVE ARRIVED, AND THE ASSERTION MOVED WITH
+    // IT RATHER THAN BEING LOOSENED. There are now TWO ways out and the copy has
+    // to distinguish them, so what is pinned is that both consequences are
+    // stated: archiving stops future use and keeps the record, deleting does not.
     const row = PAGE.slice(PAGE.indexOf('{entities.map('))
-    expect(row).toMatch(/stop being allowed to show it or make/)
+    expect(row).toMatch(/stops Twin using it in new videos/)
+    expect(row).toMatch(/existing scripts keep/)
+    expect(row).toMatch(/Removing deletes it entirely/)
   })
 
-  it('deletes the row rather than flagging it retired', () => {
-    // ⚠️ A `retired` FLAG WOULD BE WORSE THAN UNREAD. `generate-blueprint`
-    // selects the owned entity by relationship; a retired row it did not filter
-    // would keep granting the permissions the creator just withdrew.
+  it('offers ARCHIVE as the primary way out, with delete as the smaller choice', () => {
+    // ⚖️ The spec prefers archive wherever scripts may already reference the
+    // entity — which is every entity that has been used even once.
+    const row = PAGE.slice(PAGE.indexOf('{entities.map('))
+    const archive = row.indexOf('void archive(e.id)')
+    const del = row.indexOf('void remove(e.id)')
+    expect(archive).toBeGreaterThan(-1)
+    expect(del).toBeGreaterThan(archive)
+  })
+
+  it('DELETE really deletes, rather than quietly archiving', () => {
+    // ⚠️ THIS COMMENT USED TO ARGUE AGAINST A RETIRED FLAG ALTOGETHER, and that
+    // argument is now half wrong. The danger it named was real — a flagged row
+    // the generator did not filter would keep granting withdrawn permissions —
+    // but the answer was to WRITE the filter, which 0124 and its readers do. So
+    // archive exists and is the preferred path.
+    //
+    // ⚖️ WHAT THIS STILL PINS is that the two operations stay DIFFERENT. Once
+    // both are on the page, the tempting simplification is to make "delete" call
+    // archive so nothing is ever really lost. That would make the destructive
+    // choice silently non-destructive, and a creator who deleted a sponsor's
+    // product for legal reasons would find it still on record.
     const api = readFileSync(join(REPO, 'packages/shared/src/api.ts'), 'utf8')
     const fn = api.slice(api.indexOf('export async function deleteProductEntity'))
     expect(fn.slice(0, fn.indexOf('\n}'))).toMatch(/\.delete\(\)\s*\.eq\('id', id\)/)
