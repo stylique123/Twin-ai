@@ -952,205 +952,6 @@
       }
     },
     {
-      "key": "gnexplain3d",
-      "name": "GN Explain 3D",
-      "handle": "@gnexplain3d",
-      "platform": "tiktok",
-      "truth": {
-        "relationship": "NONE",
-        "relationshipCode": "NONE",
-        "personalUse": "NOT_CONFIRMED",
-        "ownsProduct": "none",
-        "showability": "UNKNOWN",
-        "enemy": "boring facts",
-        "signature": "3D-animated narration of surprising facts",
-        "ctaStyle": "soft follow"
-      },
-      "answers": {
-        "niche": "3D animation narration and random facts",
-        "tone": "Energetic, dramatic, humorous, quirky"
-      },
-      "answerConflicts": [],
-      "mustNever": [
-        "invent a personal history"
-      ],
-      "knowledge": {
-        "items": [
-          {
-            "kind": "covered",
-            "text": "ASMR fridge restock",
-            "basis": "demonstrated",
-            "source": "caption",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "covered",
-            "text": "a story about a girl joining the Army Hostel where trouble begins",
-            "basis": "demonstrated",
-            "source": "caption",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "covered",
-            "text": "a story about a girl failing every test but winning every laugh",
-            "basis": "demonstrated",
-            "source": "caption",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "covered",
-            "text": "a story about a girl trying flyboarding just for one hug",
-            "basis": "demonstrated",
-            "source": "caption",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "covered",
-            "text": "a story about a big sister getting angry and then realizing the truth",
-            "basis": "demonstrated",
-            "source": "caption",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "covered",
-            "text": "a story about someone taking advantage of his tall height at his grandparents",
-            "basis": "demonstrated",
-            "source": "caption",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "covered",
-            "text": "a story about a grandma's smart tricks where the granddaughter pays the price every time",
-            "basis": "demonstrated",
-            "source": "caption",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "covered",
-            "text": "a story about a man who couldn't fix a door so he closed it forever",
-            "basis": "demonstrated",
-            "source": "caption",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "topic",
-            "text": "ASMR videos of inflating toys popping",
-            "basis": "demonstrated",
-            "source": "caption",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "fact",
-            "text": "Human thigh bones are stronger than concrete.",
-            "basis": "stated",
-            "source": "transcript",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "fact",
-            "text": "You can pinch the skin on your elbow as hard as possible without feeling any pain.",
-            "basis": "stated",
-            "source": "transcript",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "fact",
-            "text": "The human brain ignores the nose even though it is always in the field of vision.",
-            "basis": "stated",
-            "source": "transcript",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "fact",
-            "text": "Laptop batteries last longer when charged only up to 80 percent instead of the full 100 percent.",
-            "basis": "stated",
-            "source": "transcript",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "fact",
-            "text": "The average person blinks 15 to 20 times per minute, totaling around 1200 times per hour.",
-            "basis": "stated",
-            "source": "transcript",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "fact",
-            "text": "People do not hear their real voice when they talk, making their own voice recordings sound weird to them.",
-            "basis": "stated",
-            "source": "transcript",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "framework",
-            "text": "To break a car window, one should aim for the edges and corners rather than the center where the glass is strongest.",
-            "basis": "stated",
-            "source": "transcript",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "framework",
-            "text": "People should not eat snow for hydration unless absolutely necessary.",
-            "basis": "stated",
-            "source": "transcript",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "framework",
-            "text": "Passengers should resist inflating their life jackets immediately during a plane water landing.",
-            "basis": "stated",
-            "source": "transcript",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          },
-          {
-            "kind": "framework",
-            "text": "Walking downhill increases the chances of finding help when lost.",
-            "basis": "stated",
-            "source": "transcript",
-            "timesSeen": 1,
-            "sourceRef": null,
-            "sourceExpiry": null
-          }
-        ]
-      }
-    },
-    {
       "key": "AlexHormozi",
       "name": "AlexHormozi",
       "handle": "@AlexHormozi",
@@ -2832,6 +2633,1102 @@
           {
             "kind": "topic",
             "text": "real estate investing tips, rules, and early mistakes",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          }
+        ]
+      }
+    },
+    {
+      "key": "aliabdaal",
+      "name": "aliabdaal",
+      "handle": "@aliabdaal",
+      "platform": "youtube",
+      "truth": {
+        "relationship": "NONE",
+        "relationshipCode": "NONE",
+        "personalUse": "NOT_CONFIRMED",
+        "ownsProduct": "none confirmed",
+        "showability": "UNKNOWN",
+        "enemy": "unknown",
+        "signature": "unknown",
+        "ctaStyle": "soft follow"
+      },
+      "answers": {
+        "niche": "Content creation, YouTube growth, creator entrepreneurship",
+        "tone": "Friendly, practical, casually authoritative"
+      },
+      "answerConflicts": [],
+      "mustNever": [
+        "invent a personal history"
+      ],
+      "knowledge": {
+        "items": [
+          {
+            "kind": "experience",
+            "text": "Has been a professional content creator for 8 years and started his YouTube channel in 2017.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Has run the Part-Time YouTuber Academy for five years helping students grow and monetize channels",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "framework",
+            "text": "Position large light sources like windows at a 45-degree angle to the face for optimal lighting",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "framework",
+            "text": "Frame shots with the camera at eye level and the top of the head just brushing the top of frame",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "framework",
+            "text": "Cover the lenses on the back of a phone with a finger to identify the active camera when filming blind",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Camera lines must be kept straight because wonky angles look highly unprofessional.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Using a phone's selfie camera is risky because it tempts you to look at the screen not the lens",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "The 0.5x ultrawide lens on a phone is ideal for handheld filming because it creates a vlog-style feel",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Always keeps a Peak Design Phone Tripod attached to his phone for hands-free filming",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Uses an Apple Watch as a remote viewfinder to check framing when filming with the rear camera",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "I can type at 156 words per minute",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "7 obsessive habits that turned him into a multi-millionaire",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "his worst business failures",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "3 skills to learn in the age of AI",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "a case study on the simplest way to make $10k/month",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "the dark side of getting rich on YouTube",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "you should stop typing out your AI prompts",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "the realities of making money and getting rich on YouTube",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "career building and job applications",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          }
+        ]
+      }
+    },
+    {
+      "key": "BuildersCentral",
+      "name": "BuildersCentral",
+      "handle": "@BuildersCentral",
+      "platform": "youtube",
+      "truth": {
+        "relationship": "NONE",
+        "relationshipCode": "NONE",
+        "personalUse": "NOT_CONFIRMED",
+        "ownsProduct": "none confirmed",
+        "showability": "UNKNOWN",
+        "enemy": "unknown",
+        "signature": "unknown",
+        "ctaStyle": "soft follow"
+      },
+      "answers": {
+        "niche": "AI coding agents, web dev, freelance business",
+        "tone": "Direct, authoritative, contrarian"
+      },
+      "answerConflicts": [],
+      "mustNever": [
+        "invent a personal history"
+      ],
+      "knowledge": {
+        "items": [
+          {
+            "kind": "product",
+            "text": "Lovable, Bold, Vercel and Replit Agent generate full websites from prompts free, making basic web design a race to the bottom",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Uses Clerk to quickly add user authentication, dashboards and protected routes to client websites.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Uses Resend and React Email to build automated email sequences because of Resend's generous free tier",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "OpenAI's Whisper is open source, runs locally without API fees, and gives word-level timestamps",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "A one-time website project bills 50,000 to 100,000 rupees, ongoing systems retainers bill 40,000 to 50,000 monthly",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "framework",
+            "text": "Sell business outcomes like customer acquisition and retention systems instead of static websites",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Descript and CapCut are only good for basic video editing and fail when pushed beyond the basics.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Used Cursor to build a custom AI video editing application over a single weekend, not being an engineer",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "SAAS is dead",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "no one wants a website",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "using Loop Engineering instead of prompting Claude Code",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "building with AI using the 4 Pillar System",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "building Claude Skills better than 99% of people",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "what jobs will disappear due to AI",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Claude Code",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "AI development and engineering",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          }
+        ]
+      }
+    },
+    {
+      "key": "codebrewappdevelopment",
+      "name": "codebrewappdevelopment",
+      "handle": "@codebrewappdevelopment",
+      "platform": "youtube",
+      "truth": {
+        "relationship": "NONE",
+        "relationshipCode": "NONE",
+        "personalUse": "NOT_CONFIRMED",
+        "ownsProduct": "none confirmed",
+        "showability": "UNKNOWN",
+        "enemy": "unknown",
+        "signature": "unknown",
+        "ctaStyle": "soft follow"
+      },
+      "answers": {
+        "niche": "AI software development and B2B SaaS",
+        "tone": "Professional, analytical, authoritative"
+      },
+      "answerConflicts": [],
+      "mustNever": [
+        "invent a personal history"
+      ],
+      "knowledge": {
+        "items": [
+          {
+            "kind": "fact",
+            "text": "Nvidia reached a $5 trillion market value, surpassing the entire economy of Japan.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "fact",
+            "text": "The legal AI startup Harvey reached an $8 billion valuation and over $100M ARR three years after launch",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "fact",
+            "text": "Harvey raised a $150 million funding round led by Andreessen Horowitz.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "fact",
+            "text": "Harvey partnered with LexisNexis to train its AI models on their legal document database.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Nvidia's $5 trillion valuation is vulnerable because it relies entirely on the AI boom continuing.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Code Brew Labs has worked with over 5,000 businesses globally including AI enterprise platforms",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "AI cybersecurity platforms reduce alert fatigue by grouping related events into single investigations",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "whether the Big Tech AI gamble will fail and the AI bubble",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "the AWS outage where one bug took millions offline",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "how Google lost $150 billion after one sentence from Sam Altman",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "how to build a money transfer app with AI in 2026 without copying Wise",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "how to build an ecommerce app in 2026 without copying Amazon",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "how to build various types of apps and AI platforms in 2026",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          }
+        ]
+      }
+    },
+    {
+      "key": "jayctech",
+      "name": "jayctech",
+      "handle": "@jayctech",
+      "platform": "tiktok",
+      "truth": {
+        "relationship": "NONE",
+        "relationshipCode": "NONE",
+        "personalUse": "NOT_CONFIRMED",
+        "ownsProduct": "none confirmed",
+        "showability": "UNKNOWN",
+        "enemy": "unknown",
+        "signature": "unknown",
+        "ctaStyle": "soft follow"
+      },
+      "answers": {
+        "niche": "Tech gadgets, EDC and practical accessories",
+        "tone": "Enthusiastic, direct, practical"
+      },
+      "answerConflicts": [],
+      "mustNever": [
+        "invent a personal history"
+      ],
+      "knowledge": {
+        "items": [
+          {
+            "kind": "product",
+            "text": "A folding cube charger with a direct wall plug, phone stand, magnetic Apple Watch charger and extra cable",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "A portable spool with 49 feet of retractable solar string lights and a built-in 5,400 mAh battery.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "A metal-body car charger with a 100W USB-C, a 45W USB-C and a 45W USB-A port",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "A retractable keychain with a coated steel wire that prevents scratching and keeps keys attached",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Recommends the folding cube charger for Apple users because it eliminates carrying extra cables.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Metal-body car chargers dissipate heat better and feel more solid than cheap plastic chargers.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "example",
+            "text": "Uses for the retractable solar string light include camping, patios, RVs and emergency kits.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Uses a coated steel wire retractable keychain every day to make small tasks quicker.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "a 190W car charger that is actually useful if you drive a lot",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "a 3in1 stand power bank that covers all your charging needs on the go",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "lights that make your campsite or patio look cozy",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "a keychain for people who hate taking their keys on and off",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "nugget ice maker",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "practical content creator must-haves",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          }
+        ]
+      }
+    },
+    {
+      "key": "gnexplain3d",
+      "name": "gnexplain3d",
+      "handle": "@gnexplain3d",
+      "platform": "tiktok",
+      "truth": {
+        "relationship": "NONE",
+        "relationshipCode": "NONE",
+        "personalUse": "NOT_CONFIRMED",
+        "ownsProduct": "none confirmed",
+        "showability": "UNKNOWN",
+        "enemy": "unknown",
+        "signature": "unknown",
+        "ctaStyle": "soft follow"
+      },
+      "answers": {
+        "niche": "3D animation narration and random facts",
+        "tone": "Energetic, dramatic, humorous, quirky"
+      },
+      "answerConflicts": [],
+      "mustNever": [
+        "invent a personal history"
+      ],
+      "knowledge": {
+        "items": [
+          {
+            "kind": "fact",
+            "text": "Human thigh bones are stronger than concrete.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "fact",
+            "text": "You can pinch the skin on your elbow as hard as possible without feeling any pain.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "fact",
+            "text": "The human brain ignores the nose even though it is always in the field of vision.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "fact",
+            "text": "Laptop batteries last longer when charged only up to 80 percent instead of the full 100 percent.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "fact",
+            "text": "The average person blinks 15 to 20 times per minute, totaling around 1200 times per hour.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "fact",
+            "text": "People do not hear their real voice when they talk, making their own recordings sound weird.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "framework",
+            "text": "To break a car window, aim for the edges and corners rather than the centre where glass is strongest",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "framework",
+            "text": "People should not eat snow for hydration unless absolutely necessary.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "framework",
+            "text": "Passengers should resist inflating their life jackets immediately during a plane water landing.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "framework",
+            "text": "Walking downhill increases the chances of finding help when lost.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "ASMR videos of inflating toys popping",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "ASMR fridge restock",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "a story about a girl failing every test but winning every laugh",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "a story about a big sister getting angry and then realizing the truth",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "a story about a man who couldn't fix a door so he closed it forever",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          }
+        ]
+      }
+    },
+    {
+      "key": "muboy_",
+      "name": "muboy_",
+      "handle": "@muboy_",
+      "platform": "tiktok",
+      "truth": {
+        "relationship": "NONE",
+        "relationshipCode": "NONE",
+        "personalUse": "NOT_CONFIRMED",
+        "ownsProduct": "none confirmed",
+        "showability": "UNKNOWN",
+        "enemy": "unknown",
+        "signature": "unknown",
+        "ctaStyle": "soft follow"
+      },
+      "answers": {
+        "niche": "AI tools, faceless automation, online earning",
+        "tone": "Urgent, motivational, slightly sensational"
+      },
+      "answerConflicts": [],
+      "mustNever": [
+        "invent a personal history"
+      ],
+      "knowledge": {
+        "items": [
+          {
+            "kind": "product",
+            "text": "Uses ChatGPT with a custom master prompt to analyze viral channel topics and generate video scripts.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Uses the Grok app's video generation feature to create AI videos directly from text prompts.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "Uses Google's Omni model to alter video backgrounds and change clothing in existing footage.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "example",
+            "text": "Cited a 16-year-old creator who generates millions of views and income using AI-generated videos.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "example",
+            "text": "Uses ChatGPT to write 1-minute TikTok scripts, demonstrating with a love story about an Aloo Samosa",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Advises against AI video generators that restrict free users to 2-3 videos before requiring payment",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "using ChatGPT to analyze and clone content for starting a YouTube channel",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "alternatives to Veo 3 and Kling AI for AI video generation",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "5 useful AI image prompts including iPhone swap and hairstyle change",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "3 useful free websites every creator should know in 2026",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "product",
+            "text": "ChatGPT",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "creating AI cartoon videos and animated stories",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          }
+        ]
+      }
+    },
+    {
+      "key": "hamzaachishti",
+      "name": "hamzaachishti",
+      "handle": "@hamzaachishti",
+      "platform": "instagram",
+      "truth": {
+        "relationship": "NONE",
+        "relationshipCode": "NONE",
+        "personalUse": "NOT_CONFIRMED",
+        "ownsProduct": "none confirmed",
+        "showability": "UNKNOWN",
+        "enemy": "unknown",
+        "signature": "unknown",
+        "ctaStyle": "soft follow"
+      },
+      "answers": {
+        "niche": "Tech careers, salary transparency, South Asian representation",
+        "tone": "Direct, inquisitive, conversational"
+      },
+      "answerConflicts": [],
+      "mustNever": [
+        "invent a personal history"
+      ],
+      "knowledge": {
+        "items": [
+          {
+            "kind": "experience",
+            "text": "Currently works at Microsoft.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Plans to pivot his content to focus on helping people secure jobs at major tech companies.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "experience",
+            "text": "Was born and raised in Lahore, Pakistan.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "Earns a salary ranging between 350,000 and 600,000.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "opinion",
+            "text": "Believes professionals in the UK work around 30 hours a week, far fewer than those in the US.",
+            "basis": "stated",
+            "source": "transcript",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "claim",
+            "text": "initiative can open doors credentials never will",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "the story of Sidra Qasim, Founder and CEO of Atoms, from Okara to Y Combinator",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "the story of Aiza Usman, an Applied AI engineer at Anthropic",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "how to say unprofessional thoughts in a professional way in a corporate setting",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "covered",
+            "text": "representing Microsoft at one of Europe's biggest tax conferences in Copenhagen",
+            "basis": "demonstrated",
+            "source": "caption",
+            "timesSeen": 1,
+            "sourceRef": null,
+            "sourceExpiry": null
+          },
+          {
+            "kind": "topic",
+            "text": "interviewing Pakistani creators, entrepreneurs and professionals about their stories",
             "basis": "demonstrated",
             "source": "caption",
             "timesSeen": 1,
