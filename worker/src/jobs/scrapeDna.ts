@@ -1,5 +1,5 @@
 import { db, type Job } from '../db.js'
-import { scrapeProfile, type ScrapedPost } from '../media.js'
+import { scrapeProfile, UnsupportedPlatformError, type ScrapedPost } from '../media.js'
 import { assessScanTarget } from '../scanTarget.js'
 import { selectVideosToTranscribe } from '../transcriptSelection.js'
 import { insertKnowledge } from '../knowledgeInsert.js'
@@ -82,6 +82,20 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     // backend for it (fixed in requirements.txt), and every affected creator
     // was told their own account was the problem. A scraper that cannot reach a
     // page does not know why, and must not pretend it does.
+    // ⚠️ "WE CANNOT READ THIS PLATFORM" IS NOT "WE TRIED AND FAILED", and the
+    // creator must not be told to try again for a thing that will never work.
+    // Instagram used to reach the TikTok scraper here and could return a
+    // DIFFERENT PERSON who happens to hold the same handle; it now refuses, and
+    // the refusal has to arrive as an honest sentence rather than as the
+    // transient-failure message beneath it.
+    if (err instanceof UnsupportedPlatformError) {
+      console.error(JSON.stringify({
+        event: 'scrape_dna_unsupported_platform', handle, platform: err.platform,
+      }))
+      return await fail(
+        `We can't scan ${platform} accounts yet. Connect a TikTok or YouTube account, or set up your voice manually.`,
+      )
+    }
     const detail = err instanceof Error ? err.message : String(err)
     const impersonation = /impersonat|secondary user ID/i.test(detail)
     console.error(JSON.stringify({

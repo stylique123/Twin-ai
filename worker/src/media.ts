@@ -243,6 +243,18 @@ async function youtubeChannelViaApify(handle: string, limit: number) {
   return { posts, facts }
 }
 
+/** The scan was asked for a platform this worker cannot read. Typed, so the
+ *  caller can tell "we do not support this" apart from "we tried and failed" —
+ *  those need opposite messages and opposite fixes. */
+export class UnsupportedPlatformError extends Error {
+  readonly platform: string
+  constructor(platform: string) {
+    super(`No proven profile source for platform "${platform}"`)
+    this.name = 'UnsupportedPlatformError'
+    this.platform = platform
+  }
+}
+
 /** Scrape a creator's own back catalogue for the platform they actually publish on.
  *
  *  ⚠️ PLATFORM WAS IGNORED BEFORE THIS. Every scan went to TikTok regardless of
@@ -250,10 +262,20 @@ async function youtubeChannelViaApify(handle: string, limit: number) {
  *  that does not exist there and read nothing — a second, independent cause of
  *  the same empty result.
  *
- *  Instagram is deliberately NOT routed here: no profile Actor has been proven
- *  against a real IG account from this worker, and guessing one would repeat the
- *  defect this function exists to fix. It keeps the existing behaviour until an
- *  Actor is verified the way these two were. */
+ *  ⚠️ AND "KEEP THE EXISTING BEHAVIOUR" WAS NOT INERT. Instagram used to fall
+ *  through to the TikTok scraper — so an IG creator's scan asked tiktok.com for
+ *  their handle. Best case it read nothing. WORST CASE IT READ SOMEBODY ELSE:
+ *  handles are not unique across platforms, so an IG creator whose name belongs
+ *  to a different person on TikTok would have had a voice synthesised from a
+ *  stranger's videos, with no error raised anywhere. A wrong-person profile is
+ *  worse than a missing one, and 14 of 27 production voices are Instagram.
+ *
+ *  So an unsupported platform now REFUSES. No IG profile Actor has been proven
+ *  against a real account from this worker, and guessing one would repeat the
+ *  defect this function exists to fix — but silence was never the safe half of
+ *  that choice. The refusal is explicit, typed, and reaches the creator as "we
+ *  cannot scan Instagram yet" rather than as a scan that quietly returns a
+ *  stranger. */
 export async function scrapeProfile(
   handle: string, platform: string, limit = 12,
 ): Promise<{ posts: ScrapedPost[]; facts: ScrapedProfileFacts }> {
@@ -276,7 +298,11 @@ export async function scrapeProfile(
     }
     return await tiktokProfileViaApify(handle, limit)
   }
-  return await scrapeTikTokProfile(handle, limit)
+  // ⚖️ A CLOSED LIST, NOT A DEFAULT. Anything that is not a platform we have
+  // PROVEN we can read is refused by name. A fallback here is how Instagram
+  // ended up asking TikTok for someone else's account, and any platform added
+  // later would inherit exactly that.
+  throw new UnsupportedPlatformError(p)
 }
 
 function buildPosts(entries: Record<string, unknown>[]): ScrapedPost[] {
