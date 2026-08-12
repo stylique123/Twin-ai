@@ -413,8 +413,16 @@ const CLAIM_HISTORY_STRICT =
  *  this guards the NARRATION branch only, never the rhetorical one. */
 const CLAIM_DECLARED_PROMISE =
   /\bI told you (?:guys |all |folks )?(?:I|that|about)\b/i
+/** ⚠️ A TYPOGRAPHIC APOSTROPHE SILENTLY DEFEATED EVERY CLAIM PATTERN. The rules
+ *  spell contractions with U+0027; the writer emits U+2019 whenever it feels
+ *  like prose, and 29 of 705 beats in the last matrix carry one. "I've been
+ *  using this" scored `history` and "I’ve been using this" scored `discussion` —
+ *  the same claim, waved through. Normalised at the entry point rather than per
+ *  pattern. Mirrors `straighten` in packages/shared/src/claimStrength.ts. */
+const straighten = (s: string): string => s.replace(/[’ʼ‘´`]/g, "'")
+
 function claimStrength(line: string): ClaimStrength {
-  const t = String(line ?? '')
+  const t = straighten(String(line ?? ''))
   if (CLAIM_RHETORICAL.test(t) && !CLAIM_HISTORY_STRICT.test(t)) return 'discussion'
   // Narration BEFORE history: a structural tense rule fires on "in today's
   // video, I wanted to make a review" — an intention about the upload, not an

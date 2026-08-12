@@ -110,8 +110,28 @@ const SELF_INTRO = /\bI'm [A-Z][a-z]+/
 const RHETORICAL =
   /\bwhat if I told you\b|\blet me tell you\b|\bI'?ll tell you\b/i
 
+/** ⚠️ A TYPOGRAPHIC APOSTROPHE SILENTLY DEFEATED EVERY PATTERN BELOW.
+ *
+ * Every rule here spells contractions with U+0027 — `I've`, `I'll`, `don't`.
+ * The writer emits U+2019 whenever it feels like prose, and 29 of 705 beats in
+ * the last matrix contain one. The two are different characters, so:
+ *
+ *     "I've been using this for months."  -> history
+ *     "I’ve been using this for months."  -> discussion
+ *
+ * The same sentence, the same claim, and the most expensive check in the system
+ * waved the second one through. Nothing in the corpus made this visible because
+ * the fixtures were typed with straight quotes — a detector measured only
+ * against text we wrote is the exact failure `realSpeech.ts` exists to prevent,
+ * reappearing one layer down as an encoding assumption.
+ *
+ * ⚖️ NORMALISED AT THE ENTRY POINT, NOT PATTERN BY PATTERN. Adding `['’]` to
+ * every contraction across five regexes is five chances to miss one, and the
+ * next pattern added would start the cycle again. */
+const straighten = (s: string): string => s.replace(/[’ʼ‘´`]/g, "'")
+
 export function claimStrength(line: string): ClaimStrength {
-  const s = String(line ?? '')
+  const s = straighten(String(line ?? ''))
   // A rhetorical frame recounts nothing — unless it wraps an unambiguous one.
   if (RHETORICAL.test(s) && !HISTORY_STRICT.test(s)) return 'discussion'
   // ⚖️ NARRATION BEFORE HISTORY, because a structural tense rule fires on
