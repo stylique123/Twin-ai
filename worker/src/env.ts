@@ -58,6 +58,11 @@ export const env = {
   // maxResultsShorts}; maxResultsShorts MUST match maxResults or a shorts-first
   // channel returns NOTHING, which is indistinguishable from a wrong handle.
   apifyYoutubeChannelActor: (process.env.APIFY_YOUTUBE_CHANNEL_ACTOR ?? '67Q6fmd8iedTVcCwY').trim(),
+  // apify/instagram-scraper. Input {directUrls, resultsType, resultsLimit};
+  // directUrls needs the trailing-slash profile form, and `posts` carries the
+  // caption but NOT the follower count — that is a separate charged run, so
+  // ScrapedProfileFacts reports audience as null rather than guessing.
+  apifyInstagramProfileActor: (process.env.APIFY_INSTAGRAM_PROFILE_ACTOR ?? 'shu8hvrXbJbY3Eb9W').trim(),
   // Which job types this worker process handles.
   // 'transcribe' removed — it was registered + claimed but nothing ever enqueues it
   // (ingest-reference enqueues type 'ingest'). 'autoedit' removed with the old AI

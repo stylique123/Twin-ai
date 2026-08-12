@@ -72,12 +72,19 @@ describe('the Actor inputs carry the two settings that silently return nothing',
   })
 })
 
-describe('Instagram is left alone rather than guessed at', () => {
-  it('does not route Instagram to an unproven Actor', () => {
-    // ⚖️ No IG profile Actor has been run against a real account from this
-    // worker. Wiring one on the strength of its listing would repeat the defect
-    // this file exists to close: a path nobody watched return nothing.
+describe('Instagram, the platform that was still reading nothing', () => {
+  it('routes Instagram to its own Actor rather than to TikTok', () => {
+    // ⚠️ After TikTok and YouTube landed, EVERY voice still missing knowledge
+    // was an IG one — 14 of them — because IG fell through to the TikTok path
+    // and asked tiktok.com for an Instagram handle.
     const block = MEDIA.slice(MEDIA.indexOf('export async function scrapeProfile'))
-    expect(block).not.toMatch(/'instagram'/)
+    expect(block).toMatch(/if \(p === 'instagram'\)[\s\S]*?instagramProfileViaApify/)
+  })
+
+  it('reports an unread audience as null, never 0', () => {
+    // The `posts` result type carries captions but no follower count; that is a
+    // separately charged run. 0 would make every IG creator look brand new.
+    const block = MEDIA.slice(MEDIA.indexOf('async function instagramProfileViaApify'))
+    expect(block.slice(0, block.indexOf('return { posts, facts }'))).toMatch(/audience: null/)
   })
 })

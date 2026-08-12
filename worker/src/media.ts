@@ -243,6 +243,46 @@ async function youtubeChannelViaApify(handle: string, limit: number) {
   return { posts, facts }
 }
 
+async function instagramProfileViaApify(handle: string, limit: number) {
+  const h = handle.replace(/^@/, '')
+  const items = await apifyDataset(env.apifyInstagramProfileActor, {
+    directUrls: [`https://www.instagram.com/${h}/`],
+    resultsType: 'posts',
+    resultsLimit: limit,
+    addParentData: false,
+  })
+  const first = items[0] ?? {}
+  const posts: ScrapedPost[] = items
+    .map((e) => {
+      const text = String(e.caption ?? '').replace(/\s+/g, ' ').trim()
+      return {
+        text,
+        likes: num(e.likesCount),
+        plays: num(e.videoPlayCount) || num(e.videoViewCount),
+        hashtags: tags(text),
+        url: String(e.url ?? ''),
+        cover: typeof e.displayUrl === 'string' ? e.displayUrl : undefined,
+      }
+    })
+    .filter((p) => p.text.length > 0)
+  const facts: ScrapedProfileFacts = {
+    // ⚖️ THE HANDLE THE POSTS ACTUALLY CAME FROM. This is what lets
+    // `assessScanTarget` catch a profile URL that resolved to someone else —
+    // the specific hazard that made refusing Instagram the right call until an
+    // Actor could report it.
+    resolvedHandle: nonEmpty(first.ownerUsername),
+    displayName: nonEmpty(first.ownerFullName),
+    // ⚖️ NOT READ, AND SAID SO. The `posts` result type carries no follower or
+    // post total; those need a second, separately charged `details` run. `null`
+    // is the honest answer and the one `scan_target` renders as "audience not
+    // read". Rounding to 0 would make every IG creator look brand new — the
+    // three-state defect this file already documents twice.
+    audience: null,
+    postCount: null,
+  }
+  return { posts, facts }
+}
+
 /** The scan was asked for a platform this worker cannot read. Typed, so the
  *  caller can tell "we do not support this" apart from "we tried and failed" —
  *  those need opposite messages and opposite fixes. */
@@ -297,6 +337,20 @@ export async function scrapeProfile(
       }))
     }
     return await tiktokProfileViaApify(handle, limit)
+  }
+  if (p === 'instagram') {
+    // ⚖️ INSTAGRAM JOINS THE LIST BY THE LIST'S OWN RULE — proven, then added.
+    // It was refused because it fell through to TikTok and could return a
+    // DIFFERENT PERSON holding the same handle. The fix for that is a source
+    // that reads Instagram and reports whose posts it returned, not a permanent
+    // refusal: 14 of 27 production voices are IG, and every one of them was
+    // going to keep reading nothing. Verified against a real public profile
+    // (12 posts, 0 failed requests) before being wired, and `resolvedHandle`
+    // now carries the owner the posts actually came from so `assessScanTarget`
+    // can still catch a mismatch.
+    // No free attempt: yt-dlp gets "login required" on Instagram, which is why
+    // the TRANSCRIPT path has been on Apify since it was written.
+    return await instagramProfileViaApify(handle, limit)
   }
   // ⚖️ A CLOSED LIST, NOT A DEFAULT. Anything that is not a platform we have
   // PROVEN we can read is refused by name. A fallback here is how Instagram
