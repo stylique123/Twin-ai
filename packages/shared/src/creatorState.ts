@@ -245,3 +245,85 @@ export function creatorStateQuestion(claim: CreatorStateClaim): string {
     case 'relationship': return 'This speaks for your team or clients. Is that accurate?'
   }
 }
+
+// ── RESOLVING THE ENTITY: MENTIONING IS NOT OWNING ───────────────────────────
+//
+// ⚠️ THE TRAP THIS EXISTS FOR. A scan returns `{kind: 'product', text: 'Samsung
+// Z Fold 8', basis: 'demonstrated'}` — the creator NAMED it in a title. That is
+// coverage-level evidence, and coverage proves a video was made. It does not
+// prove a purchase, a drawer, or a wrist.
+//
+// So the obvious implementation — "does any supplied item mention this entity?"
+// — would license "my WHOOP" from a title that merely says WHOOP, which is the
+// exact fabrication the whole module exists to stop, arriving through the
+// lookup meant to prevent it.
+//
+// ⚖️ WHAT LICENSES A CREATOR-STATE CLAIM: evidence at EXPERIENCE level naming
+// the thing, or an explicit ownership relationship recorded against it. Nothing
+// weaker. An affiliate tie, a sponsorship, or fifty mentions still do not make
+// someone an owner.
+
+/** Relationships that establish the creator actually has the thing.
+ *  ⚖️ AFFILIATE AND SPONSOR ARE ABSENT ON PURPOSE. Earning from a product is
+ *  not owning or using it, and a disclosure obligation is not a licence to say
+ *  "mine". */
+const OWNING_RELATIONSHIPS = new Set(['OWN_PRODUCT', 'OWN_SERVICE', 'PERSONAL_USE'])
+
+export interface EntityEvidence {
+  /** Supplied knowledge, already read/normalised by the caller. */
+  items: readonly { kind: string; text: string; basis: string }[]
+  /** Entities with a recorded relationship, e.g. from product_entities. */
+  entities?: readonly { name: string; relationship?: string | null }[]
+}
+
+/** Loose containment both ways, so "WHOOP" matches "my WHOOP 4.0" and vice
+ *  versa. Deliberately generous: the STRENGTH test below is what protects the
+ *  claim, not the string match. */
+function namesSameThing(a: string, b: string): boolean {
+  const x = a.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
+  const y = b.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
+  if (!x || !y) return false
+  return x.includes(y) || y.includes(x)
+}
+
+/**
+ * Is there evidence that THIS creator has THIS relationship to THIS entity?
+ *
+ * Returns the three states `resolveCreatorState` expects:
+ *   true   experience-level evidence, or a recorded owning relationship
+ *   false  the entity is known but only at coverage/opinion level
+ *   null   no entity to check, or nothing on record mentions it at all
+ *
+ * ⚖️ `false` AND `null` RESOLVE THE SAME WAY DOWNSTREAM, and they are still
+ * distinguished here. "We looked and found only a title" is a different fact
+ * from "we have never heard of this", and a caller reporting on why a beat was
+ * rewritten needs to be able to tell an operator which one happened.
+ */
+export function entityEvidence(
+  entity: string | null,
+  evidence: EntityEvidence,
+): boolean | null {
+  if (!entity || !entity.trim()) return null
+
+  // ⚠️ A KNOWN ENTITY COUNTS AS KNOWN EVEN WHEN THE TIE IS THE WRONG ONE. The
+  // first version marked `mentioned` only from knowledge items, so an entity
+  // recorded as AFFILIATE returned `null` — "never heard of it" — when the truth
+  // is "we have it on record and the tie does not establish ownership". Both
+  // resolve the same way downstream, but an operator asking WHY a beat was
+  // rewritten needs those two answers distinguished.
+  let mentioned = false
+  for (const e of evidence.entities ?? []) {
+    if (!namesSameThing(entity, e.name)) continue
+    mentioned = true
+    if (OWNING_RELATIONSHIPS.has(String(e.relationship ?? '').toUpperCase())) return true
+  }
+
+  for (const it of evidence.items) {
+    if (!namesSameThing(entity, it.text)) continue
+    mentioned = true
+    // The evidence ladder, applied to one entity: only first-person speech
+    // establishes that they have it.
+    if (it.kind === 'experience' && it.basis === 'stated') return true
+  }
+  return mentioned ? false : null
+}

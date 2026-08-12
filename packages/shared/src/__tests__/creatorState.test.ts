@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   creatorStateClaim, resolveCreatorState, stripPersonalClaim,
-  creatorStateQuestion, CREATOR_STATE_KINDS,
+  creatorStateQuestion, CREATOR_STATE_KINDS, entityEvidence,
 } from '../creatorState'
 
 describe('what the sentence asserts about their life', () => {
@@ -129,5 +129,69 @@ describe('knowledge depth cannot entitle a creator-state claim', () => {
     expect(resolveCreatorState.length).toBe(2)
     const src = String(resolveCreatorState)
     expect(src).not.toMatch(/depth|Depth|hasCreatorKnowledge/)
+  })
+})
+
+// ── RESOLVING THE ENTITY: MENTIONING IS NOT OWNING ───────────────────────────
+describe('entityEvidence — a title proves a video, not a purchase', () => {
+  const titled = [{ kind: 'product', text: 'Samsung Z Fold 8', basis: 'demonstrated' }]
+  const lived = [{ kind: 'experience', text: 'used the Z Fold 8 as his only phone for two weeks', basis: 'stated' }]
+
+  it('REFUSES a product the creator only named in a title', () => {
+    // ⚠️ THE TRAP THIS EXISTS FOR. The obvious implementation — "does any
+    // supplied item mention this entity?" — would license "my Z Fold 8" from a
+    // title that merely says Z Fold 8. That is the exact fabrication the module
+    // exists to stop, arriving through the lookup meant to prevent it.
+    expect(entityEvidence('Z Fold 8', { items: titled })).toBe(false)
+  })
+
+  it('allows it when they were HEARD saying they used it', () => {
+    expect(entityEvidence('Z Fold 8', { items: lived })).toBe(true)
+  })
+
+  it('an affiliate or sponsor tie is KNOWN but not OWNED', () => {
+    // ⚖️ Earning from a product is not owning or using it, and a disclosure
+    // obligation is not a licence to say "mine".
+    for (const rel of ['AFFILIATE', 'SPONSOR', 'REVIEW_ONLY']) {
+      expect(entityEvidence('WHOOP', { items: [], entities: [{ name: 'WHOOP', relationship: rel }] }), rel)
+        .toBe(false)
+    }
+    expect(entityEvidence('WHOOP', { items: [], entities: [{ name: 'WHOOP', relationship: 'OWN_PRODUCT' }] }))
+      .toBe(true)
+  })
+
+  it('distinguishes "known but wrong tie" from "never heard of it"', () => {
+    // Both resolve the same way downstream. An operator asking WHY a beat was
+    // rewritten still needs to tell those two answers apart.
+    expect(entityEvidence('WHOOP', { items: titled })).toBeNull()
+    expect(entityEvidence('WHOOP', { items: [], entities: [{ name: 'WHOOP', relationship: 'AFFILIATE' }] }))
+      .toBe(false)
+  })
+
+  it('returns null when there is no entity to check', () => {
+    expect(entityEvidence(null, { items: lived })).toBeNull()
+    expect(entityEvidence('   ', { items: lived })).toBeNull()
+  })
+})
+
+describe('the full chain, end to end', () => {
+  it('a titled product cannot license "my <product>" — it is rewritten', () => {
+    const line = 'My Z Fold 8 folds flat with no gap at all.'
+    const claim = creatorStateClaim(line)!
+    const ev = entityEvidence(claim.entity, {
+      items: [{ kind: 'product', text: 'Samsung Z Fold 8', basis: 'demonstrated' }],
+    })
+    expect(resolveCreatorState(claim, ev)).toBe('rewrite')
+    // A PROPER noun needs no article — "Z Fold 8 folds flat" is correct English.
+    // Only common nouns take "the". My first expectation here was wrong, not the code.
+    expect(stripPersonalClaim(line)).toBe('Z Fold 8 folds flat with no gap at all.')
+  })
+
+  it('…and first-person evidence lets the same line stand', () => {
+    const claim = creatorStateClaim('My Z Fold 8 folds flat with no gap at all.')!
+    const ev = entityEvidence(claim.entity, {
+      items: [{ kind: 'experience', text: 'used the Z Fold 8 as his only phone', basis: 'stated' }],
+    })
+    expect(resolveCreatorState(claim, ev)).toBe('grounded')
   })
 })
