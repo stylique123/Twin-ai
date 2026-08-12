@@ -74,6 +74,28 @@ describe('edge ↔ shared substance-check parity', () => {
     expect(EDGE).toMatch(/'action_posing', 'substance', 'substance_evidence'\]/)
   })
 
+  it('both copies split creator knowledge by how deep the grounding goes', () => {
+    // ⚠️ MEASUREMENT PARITY MATTERS AS MUCH AS RULE PARITY. If the two disagree
+    // about what counts as a subject, the harness and production report
+    // different grounding rates for the same script and neither is checkable.
+    for (const src of [EDGE, SHARED]) {
+      expect(src).toMatch(/SUBJECT_KINDS: ReadonlySet<string> = new Set\(\['topic', 'product', 'covered'\]\)/)
+      expect(src).toMatch(/reached\.some\(\(k\) => !SUBJECT_KINDS\.has\(/)
+    }
+    // …and the edge actually EMITS it, or the split exists only in a unit test.
+    expect(EDGE).toMatch(/creator_knowledge_depth: byDepth/)
+  })
+
+  it('the split refuses no beat, in either copy', () => {
+    // A measurement that quietly became a gate would change what creators are
+    // charged for, which is not a refactor. `groundingDepth` must not appear in
+    // the issue list either side.
+    for (const src of [EDGE, SHARED]) {
+      const fn = src.slice(src.indexOf('function substanceIssues'))
+      expect(fn.slice(0, fn.indexOf('\n}\n'))).not.toMatch(/groundingDepth/)
+    }
+  })
+
   it('…and BOTH copies check what came back, because required is advisory', () => {
     // ⚠️ THE TEST ABOVE ASSERTS THE REQUEST. This one asserts the RESPONSE is
     // checked, which is the half that was missing: one beat in 705 came back
