@@ -7,8 +7,13 @@ const obj = (properties: Record<string, unknown>, required: string[]) => ({ type
 const arr = (items: unknown) => ({ type: 'ARRAY', items })
 const str = { type: 'STRING' }
 const num = { type: 'NUMBER' }
+const bool = { type: 'BOOLEAN' }
+/** A closed string vocabulary. The type stays 'STRING' — `enum` narrows it
+ *  rather than replacing it, and a schema that omits the type is accepted and
+ *  then ignored, which reads as a constraint and enforces nothing. */
+const oneOf = (values: readonly string[]) => ({ type: 'STRING', enum: [...values] })
 
-export { obj, arr, str, num }
+export { obj, arr, str, num, bool, oneOf }
 
 // An image sent inline as base64 so the model can read it (Gemini vision) — e.g.
 // a creator's post thumbnail, for reading their real brand palette from pixels.
