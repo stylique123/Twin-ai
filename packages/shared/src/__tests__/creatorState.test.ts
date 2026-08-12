@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   creatorStateClaim, resolveCreatorState, stripPersonalClaim,
-  creatorStateQuestion, CREATOR_STATE_KINDS, entityEvidence,
+  creatorStateQuestion, CREATOR_STATE_KINDS, entityEvidence, rewriteSafety, creatorStateAction,
 } from '../creatorState'
 
 describe('what the sentence asserts about their life', () => {
@@ -26,7 +26,7 @@ describe('what the sentence asserts about their life', () => {
     for (const [line, kind] of cases) {
       expect(creatorStateClaim(line)?.kind, line).toBe(kind)
     }
-    expect(CREATOR_STATE_KINDS.length).toBe(7)
+    expect(CREATOR_STATE_KINDS.length).toBe(8)
   })
 
   it('says nothing about ordinary first-person work talk', () => {
@@ -193,5 +193,81 @@ describe('the full chain, end to end', () => {
       items: [{ kind: 'experience', text: 'used the Z Fold 8 as his only phone', basis: 'stated' }],
     })
     expect(resolveCreatorState(claim, ev)).toBe('grounded')
+  })
+})
+
+// ── HOW SAFELY CAN THE PERSONAL CLAIM BE REMOVED? ────────────────────────────
+describe('rewriteSafety — truthfulness is not the only thing being optimised', () => {
+  const claim = (l: string) => creatorStateClaim(l)!
+
+  it('SAFE_ERASURE when the fact lives in the predicate', () => {
+    const l = 'My WHOOP tracks recovery better than anything.'
+    expect(rewriteSafety(claim(l), l)).toBe('SAFE_ERASURE')
+  })
+
+  it('PERSONALITY_LOSS when erasing would re-attribute the claim', () => {
+    // ⚠️ "I've used WHOOP every day for a year" erased becomes a statement
+    // about people in general — A DIFFERENT CLAIM, and a new fabrication
+    // wearing a fix's clothes.
+    const l = "I've used WHOOP every day for a year."
+    expect(rewriteSafety(claim(l), l)).toBe('PERSONALITY_LOSS')
+  })
+
+  it('PREMISE_DEPENDENT when the experience IS the concept', () => {
+    // ⚖️ There is no version of this video without the personal history.
+    // Rewriting the beat leaves a script whose own hook no longer pays off.
+    for (const l of [
+      '5 things I stopped buying after I turned 30.',
+      'I stopped doing these 5 things that are keeping you poor.',
+    ]) expect(rewriteSafety(claim(l), l, { isOpening: true }), l).toBe('PREMISE_DEPENDENT')
+  })
+
+  it('catches the line this module originally MISSED', () => {
+    // ⚠️ "I stopped doing these 5 things" — quoted all session as the worst
+    // fabrication in the corpus — produced NO CLAIM at all, because every
+    // pattern looked for owning, using or buying and none looked for DOING.
+    // A taxonomy that misses the case it was written about has a hole in it.
+    expect(creatorStateClaim('I stopped doing these 5 things that are keeping you poor.')?.kind)
+      .toBe('action')
+  })
+
+  it('does not treat ordinary narration as an action', () => {
+    // ⚖️ "I saw", "I thought" are not choices a creator can be held to.
+    expect(creatorStateClaim('I saw a lot of tech this year.')).toBeNull()
+  })
+})
+
+describe('three modes, and the default is a product decision', () => {
+  const safe = 'SAFE_ERASURE' as const
+  const premise = 'PREMISE_DEPENDENT' as const
+
+  it('observe changes nothing, whatever the safety', () => {
+    // ⚠️ THE DEFAULT, AND NOT TIMIDITY. On cohort 1 the resolver grounds 0 of
+    // 37 claims — not because the chain is wrong but because every supplied
+    // item is coverage-level. Enforcing against that supply would mean
+    // "whenever Twin writes something personal about you, assume it cannot be
+    // proven", stripping personal experience out of scripts wholesale.
+    for (const s of [safe, premise]) {
+      expect(creatorStateAction(s, false, 'observe').act, s).toBe('none')
+    }
+  })
+
+  it('safe_rewrite touches ONLY provably meaning-preserving erasures', () => {
+    expect(creatorStateAction(safe, false, 'safe_rewrite').act).toBe('rewrite')
+    expect(creatorStateAction(premise, false, 'safe_rewrite').act).toBe('none')
+    expect(creatorStateAction('PERSONALITY_LOSS', false, 'safe_rewrite').act).toBe('none')
+  })
+
+  it('enforce asks rather than mangling a premise', () => {
+    // Even at full enforcement a PREMISE_DEPENDENT beat is never silently
+    // rewritten — the question is the only honest move.
+    expect(creatorStateAction(premise, false, 'enforce').act).toBe('ask')
+    expect(creatorStateAction(safe, false, 'enforce').act).toBe('rewrite')
+  })
+
+  it('a grounded claim is never touched, in any mode', () => {
+    for (const m of ['observe', 'safe_rewrite', 'enforce'] as const) {
+      expect(creatorStateAction(premise, true, m).act, m).toBe('none')
+    }
   })
 })

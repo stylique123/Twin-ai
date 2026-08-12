@@ -49,6 +49,13 @@
 /** What a sentence asserts about the creator's own life. */
 export const CREATOR_STATE_KINDS = [
   'ownership', 'use', 'purchase', 'experience', 'result', 'history', 'relationship',
+  /** ⚠️ ADDED AFTER THE MODULE FAILED ITS OWN HEADLINE EXAMPLE. "I stopped
+   *  doing these 5 things that are keeping you poor" — the line quoted all
+   *  session as the worst fabrication in the corpus — produced NO CLAIM,
+   *  because every pattern here looked for owning, using or buying and none
+   *  looked for DOING. A taxonomy that misses the case it was written about is
+   *  a taxonomy with a hole in it. */
+  'action',
 ] as const
 export type CreatorStateKind = (typeof CREATOR_STATE_KINDS)[number]
 
@@ -95,6 +102,11 @@ const ASSERTED_RESULT = /\b(?:saved|earned|made|cost|took)\s+me\b|\bfor me,? (?:
 const ASSERTED_HISTORY = /\bI(?:'ve| have)\s+[\w ]{0,30}?\bfor\s+(?:\d+|a|an|several|many|one|two|three|four|five|six|seven|eight|nine|ten|twelve|eighteen)\b|\bI used to\b/i
 const ASSERTED_EXPERIENCE = /\bwhen I (?:tried|used|got|bought|switched|tested)\b/i
 const ASSERTED_RELATIONSHIP = /\bmy (?:team|company|clients?|students?|staff|agency)\b/i
+/** Something the creator DID: started, stopped, switched, quit, built.
+ *  ⚖️ Deliberately about deliberate acts. "I saw", "I thought" are not choices
+ *  a creator can be held to, and condemning them would fail ordinary narration. */
+const ASSERTED_ACTION =
+  /\bI (?:\w+ly |just |recently |finally |once )*(?:stopped|started|switched|quit|ditched|dropped|cancelled|canceled|built|made|launched|deleted|swapped)\b/i
 
 /** A possessive on something concrete: "my WHOOP", "my electric bike".
  *  The capture is the thing itself, so a caller can resolve it as an entity.
@@ -152,6 +164,9 @@ export function creatorStateClaim(line: string): CreatorStateClaim | null {
   }
   if (ASSERTED_USE.test(s)) {
     return { kind: 'use', entity: possIsConcrete ? possHead : null, rewritable: false }
+  }
+  if (ASSERTED_ACTION.test(s)) {
+    return { kind: 'action', entity: possIsConcrete ? possHead : null, rewritable: false }
   }
   if (ASSERTED_RESULT.test(s)) {
     return { kind: 'result', entity: possIsConcrete ? possHead : null, rewritable: false }
@@ -243,6 +258,7 @@ export function creatorStateQuestion(claim: CreatorStateClaim): string {
     case 'result': return 'This claims a result you personally got. What actually happened?'
     case 'history': return `How long have you really used ${thing}?`
     case 'relationship': return 'This speaks for your team or clients. Is that accurate?'
+    case 'action': return 'This says you did something. Did you actually?'
   }
 }
 
@@ -326,4 +342,113 @@ export function entityEvidence(
     if (it.kind === 'experience' && it.basis === 'stated') return true
   }
   return mentioned ? false : null
+}
+
+// ── HOW SAFELY CAN THE PERSONAL CLAIM BE REMOVED? ────────────────────────────
+//
+// ⚠️ `rewritable: boolean` WAS TOO COARSE TO DEPLOY ON. It answers "can the
+// possessive be stripped", which conflates three very different situations, and
+// enforcement built on it would either destroy content or ask about everything.
+//
+//   SAFE_ERASURE      "My WHOOP tracks recovery."  ->  "WHOOP tracks recovery."
+//                     The fact lives in the predicate. Removing the possessive
+//                     removes an unsupported ownership claim and changes
+//                     nothing else. Safe to do silently.
+//
+//   PERSONALITY_LOSS  "I've used WHOOP every day for a year."
+//                     Erasing it yields "WHOOP is used every day", which is A
+//                     DIFFERENT CLAIM — about people in general rather than
+//                     this person. The rewrite would be a new fabrication
+//                     wearing a fix's clothes.
+//
+//   PREMISE_DEPENDENT "5 things I stopped buying after I turned 30."
+//                     The personal experience IS the concept. There is no
+//                     version of this video without it, so rewriting the beat
+//                     leaves a script whose own hook no longer pays off.
+//
+//   UNRESOLVABLE      Only the creator can settle it, and no rewrite avoids
+//                     that.
+//
+// ⚖️ TRUTHFULNESS IS NOT THE ONLY THING BEING OPTIMISED. "I stopped paying for
+// three tools" becoming "Three tools that may not be worth paying for" is more
+// defensible and materially worse content. A guard that improves accuracy by
+// deleting the reason anyone watches has not improved the product.
+
+export const REWRITE_SAFETY = [
+  'SAFE_ERASURE', 'PERSONALITY_LOSS', 'PREMISE_DEPENDENT', 'UNRESOLVABLE',
+] as const
+export type RewriteSafety = (typeof REWRITE_SAFETY)[number]
+
+/** An enumerated promise carried by a personal experience — "5 things I
+ *  stopped buying", "3 mistakes I made". The number and the first person
+ *  together make the personal history the video's premise. */
+const ENUMERATED_PREMISE =
+  /\b(?:\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:\w+\s+){0,2}(?:I|that I|things I|mistakes I|reasons I)\b/i
+
+export interface RewriteContext {
+  /** True when the beat opens the script — a hook carries the promise. */
+  isOpening?: boolean
+}
+
+/**
+ * How safely can this claim's personal component be removed?
+ *
+ * ⚖️ ORDER MATTERS AND PREMISE WINS. A line can be both enumerated and
+ * verb-asserted; when it is, the premise reading is the one that must hold,
+ * because rewriting it breaks the whole script rather than one sentence.
+ */
+export function rewriteSafety(
+  claim: CreatorStateClaim,
+  line: string,
+  ctx: RewriteContext = {},
+): RewriteSafety {
+  const s = String(line ?? '')
+  if (ENUMERATED_PREMISE.test(s)) return 'PREMISE_DEPENDENT'
+  // ⚖️ An opening line carrying a verb-asserted state is the promise itself.
+  // A possessive in a hook is not — "My WHOOP is the first item" still works
+  // as "WHOOP is the first item".
+  if (ctx.isOpening && !claim.rewritable) return 'PREMISE_DEPENDENT'
+  if (claim.rewritable) return 'SAFE_ERASURE'
+  // Everything verb-asserted: erasing it re-attributes the claim to people in
+  // general, which is a new assertion rather than a removal.
+  return 'PERSONALITY_LOSS'
+}
+
+/** How much the pipeline is allowed to change. */
+export const CREATOR_STATE_MODES = ['observe', 'safe_rewrite', 'enforce'] as const
+export type CreatorStateMode = (typeof CREATOR_STATE_MODES)[number]
+
+export interface CreatorStateAction {
+  mode: CreatorStateMode
+  safety: RewriteSafety
+  /** What actually happens to the beat. */
+  act: 'none' | 'rewrite' | 'ask'
+}
+
+/**
+ * What the pipeline does, given how much it is allowed to do.
+ *
+ * ⚠️ THE DEFAULT IS `observe`, AND THAT IS A PRODUCT DECISION NOT A TIMIDITY.
+ * On cohort 1 the resolver grounds 0 of 37 claims — not because the chain is
+ * wrong but because every supplied knowledge item is coverage-level. Enforcing
+ * against that supply would mean "whenever Twin writes something personal about
+ * you, assume it cannot be proven", and would strip personal experience out of
+ * scripts wholesale. The chain is exposing an upstream deficiency; enforcement
+ * must wait until the knowledge pipeline gives it a fair chance.
+ *
+ * ⚖️ `safe_rewrite` IS THE USEFUL MIDDLE. It removes unsupported ownership
+ * where meaning is provably preserved and observes everything else, which buys
+ * real safety without letting weak upstream knowledge flatten the writing.
+ */
+export function creatorStateAction(
+  safety: RewriteSafety,
+  grounded: boolean,
+  mode: CreatorStateMode = 'observe',
+): CreatorStateAction {
+  if (grounded) return { mode, safety, act: 'none' }
+  if (mode === 'observe') return { mode, safety, act: 'none' }
+  if (mode === 'safe_rewrite') {
+    return { mode, safety, act: safety === 'SAFE_ERASURE' ? 'rewrite' : 'none' }
+  }
+  return { mode, safety, act: safety === 'SAFE_ERASURE' ? 'rewrite' : 'ask' }
 }
