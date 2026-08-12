@@ -23,7 +23,12 @@ describe('worker job registry has no old editor', () => {
     // every capture while the migration, the edge and the UI all looked correct
     // — the same quiet failure purge_media is listed here to prevent.
     expect(types).toEqual([
-      'build_voice', 'editor_v2', 'ingest', 'purge_media', 'scrape_dna', 'validate_clip', 'validate_source',
+      // extract_product reads a creator-supplied product page and grades what
+      // it says. Listed here for the same reason purge_media is: a job type
+      // that appeared in the registry without a line in this test would be a
+      // capability nobody chose.
+      'build_voice', 'editor_v2', 'extract_product', 'ingest', 'purge_media',
+      'scrape_dna', 'validate_clip', 'validate_source',
     ])
     expect(handlers).not.toHaveProperty('autoedit')
     expect(handlers).not.toHaveProperty('transcribe')

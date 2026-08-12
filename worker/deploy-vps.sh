@@ -18,7 +18,7 @@
 #   APIFY_TOKEN=<Apify API token — YouTube + Instagram transcripts (yt-dlp is
 #               bot-blocked on both from datacenter IPs). TikTok uses yt-dlp.>
 #   # Leave WORKER_JOB_TYPES UNSET on the shared worker — src/env.ts is the
-#   # canonical registry (ingest,build_voice,scrape_dna,validate_source,editor_v2).
+#   # canonical registry (ingest,build_voice,scrape_dna,validate_source,validate_clip,editor_v2,purge_media,extract_product).
 #   # Set it only to split types across dedicated pools (see worker/SCALING.md).
 #   WHISPER_MODEL=base         # tiny|base|small — drop to tiny on a small box
 #   WORKER_MAX_MEDIA_SECS=900
@@ -52,7 +52,7 @@ docker build -t "$NAME" "$SRC/worker"
 # .github/workflows/deploy-worker.yml applies, so the manual deploy path can
 # never drift from the CI path. Drops old-editor/Revideo wiring and any stale
 # WORKER_JOB_TYPES override (worker/src/env.ts is the single canonical registry:
-# ingest,build_voice,scrape_dna,validate_source,editor_v2). A stale override
+# ingest,build_voice,scrape_dna,validate_source,validate_clip,editor_v2,purge_media,extract_product). A stale override
 # would make the worker claim retired types it can't run AND silently exclude
 # newly-registered types. Then remove any leftover Revideo container + image.
 if [ -f "$ENV_FILE" ]; then

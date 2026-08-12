@@ -149,6 +149,14 @@ export const EXCLUDED = {
     + 'disagree. The migration deliberately carries NO backfill statement, so if it '
     + 'ever runs against a database holding old values it fails loudly on the '
     + 'constraint rather than silently no-opping.',
+  '0126_product_entity_knowledge':
+    'Adds `knowledge`, `knowledge_extracted_at` and `knowledge_source_url` to '
+    + '`product_entities`, which is itself excluded above for the staging '
+    + 'FK-ordering reason. ⚠️ MANUAL APPLY: applied to production BY HAND on '
+    + '2026-08-12. The WRITER ships in the same change (`extract_product`, a worker '
+    + 'job) and the grade it stores is what decides whether an extracted claim may '
+    + 'be spoken — so an unapplied column would surface as a PostgREST error on the '
+    + 'update, loudly, rather than as ungraded marketing copy reaching a script.',
   '0121_creator_knowledge':
     'Creates `creator_knowledge` and `audience_questions`, both with foreign keys to '
     + '`public.brand_voices` — the same staging FIXTURE-APPLIED-AFTER-THE-LOOP ordering '

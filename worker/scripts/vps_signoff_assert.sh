@@ -60,10 +60,10 @@ _good_env() {
   local MSHA=$(printf 'a%.0s' $(seq 1 64))   # 64 'a' chars — a valid sha256 shape
   export EXP_SHA=$SHA40 EXP_REVISION=rev1 EXP_BUNDLE=speech-6
   export EXP_REPOSITORY=Systran/faster-whisper-small EXP_MODEL_PATH=/opt/models/faster-whisper-small EXP_MANIFEST_SHA=$MSHA
-  export EXP_REGISTRY="ingest,build_voice,scrape_dna,validate_source,editor_v2"
+  export EXP_REGISTRY="ingest,build_voice,scrape_dna,validate_source,validate_clip,editor_v2,purge_media,extract_product"
   export OBS_SHA=$SHA40 OBS_STATUS=running OBS_HEALTH=healthy OBS_RESTARTS=0
   # deliberately different order + JSON quoting to prove order/quote-insensitivity:
-  export OBS_REGISTRY='"editor_v2","ingest","scrape_dna","build_voice","validate_source"'
+  export OBS_REGISTRY='"editor_v2","extract_product","ingest","purge_media","scrape_dna","build_voice","validate_clip","validate_source"'
   export OBS_JOBTYPES_OVERRIDE="" OBS_REVISION=rev1 OBS_BUNDLE=speech-6 OBS_VERIFY_RC=0
   export OBS_REPOSITORY=Systran/faster-whisper-small OBS_MODEL_PATH=/opt/models/faster-whisper-small OBS_MANIFEST_SHA=$MSHA
   export OBS_TEST_ALLOW="" OBS_TEST_MANIFEST="" OBS_REVIDEO=0 OBS_PORT4500=0 OBS_LEGACY_ENV=0
@@ -82,7 +82,7 @@ selftest() {
     "OBS_RESTARTS=4|restart loop"
     "EXP_SHA=abc123|EXP_SHA not 40-hex (authority weakened)"
     "OBS_REGISTRY=ingest,build_voice|registry missing types"
-    "OBS_REGISTRY=ingest,build_voice,scrape_dna,validate_source,editor_v2,render_v2|registry has extra type"
+    "OBS_REGISTRY=ingest,build_voice,scrape_dna,validate_source,validate_clip,editor_v2,purge_media,extract_product,render_v2|registry has extra type"
     "OBS_JOBTYPES_OVERRIDE=ingest,transcribe|WORKER_JOB_TYPES override present"
     "OBS_REPOSITORY=evil/whisper|wrong model repository"
     "OBS_REVISION=badrev|wrong model revision"
