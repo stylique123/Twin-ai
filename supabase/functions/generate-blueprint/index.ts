@@ -1055,6 +1055,67 @@ function checkSupply(
   return { demand: count, supply, shortfall, wouldInvent: shortfall > 0 }
 }
 
+// THE REFERENCE'S OWN NUMBER, SPOKEN BY SOMEBODY WHO NEVER EARNED IT — inlined
+// from `packages/shared/src/referenceClaimLeak.ts`, held identical by a parity
+// test.
+//
+// ⚠️ MEASURED ON REAL RUNS. A matrix case carries a hand-written note: "'3x more
+// productive' is self-reported creator experience and MUST NOT transfer". It
+// transferred 9 times across 16 runs to five creators — a tech reviewer and a
+// founder-story channel both told their audience they would be 3x more
+// productive, using another creator's number.
+//
+// ⚠️ AND EVERY SAFETY COUNTER READ CLEAN. UNSUPPORTED 0, unearned-first-person 0.
+// Those ask whether a beat's CITED knowledge traces to something supplied; these
+// beats cite nothing, declaring `general` — "common knowledge, nobody's claim".
+// A named creator's measured multiplier is not general knowledge.
+//
+// ⚖️ THE PROMPT ALREADY FORBADE IT ("we copy STRUCTURE, never content… never
+// reproduce the reference's claims") and it happened anyway. A contract check
+// beats a prompt rule where the defect is decidable, and this one is: the number
+// is either in both texts or it is not.
+//
+// ⚠️ THE COUNT IS ALLOWED TO TRANSFER. "3 simple ways" is legitimate and "3x more
+// productive" is not, and both are the digit 3 from the same reference. The count
+// contract says so outright: THE COUNT TRANSFERS, THE UNIT DOES NOT. So a bare
+// integer matching the enumeration is spared and a number wearing a unit is not.
+const MEASURED_CLAIM = new RegExp(
+  '\\d[\\d,.]*\\s*(?:x\\b|×|%|k\\b|m\\b|bn\\b|hours?|hrs?|minutes?|mins?|days?|weeks?|months?|years?'
+  + '|dollars?|pounds?|euros?|subscribers?|followers?|customers?|users?|views?|clients?)'
+  + '|[$£€]\\s?\\d[\\d,.]*',
+  'gi')
+
+function measuredClaims(text: string): string[] {
+  const out = new Set<string>()
+  for (const m of String(text ?? '').matchAll(MEASURED_CLAIM)) {
+    out.add(m[0].toLowerCase().replace(/[\s,]/g, '').replace(/\.$/, ''))
+  }
+  return [...out]
+}
+
+function findLeakedClaims(
+  referenceText: string,
+  script: readonly { line?: unknown; substance?: unknown }[],
+  enumerationCount?: number | null,
+): Array<{ claim: string; beat: number; substance: string; line: string }> {
+  const fromReference = new Set(measuredClaims(referenceText))
+  if (fromReference.size === 0) return []
+  const allowed = typeof enumerationCount === 'number' && enumerationCount > 0
+    ? new Set([String(enumerationCount)]) : new Set<string>()
+  const out: Array<{ claim: string; beat: number; substance: string; line: string }> = []
+  script.forEach((b, i) => {
+    const line = typeof b?.line === 'string' ? b.line : ''
+    for (const claim of measuredClaims(line)) {
+      if (!fromReference.has(claim) || allowed.has(claim)) continue
+      out.push({
+        claim, beat: i + 1, line,
+        substance: typeof b?.substance === 'string' ? b.substance : 'none',
+      })
+    }
+  })
+  return out
+}
+
 const PROGRESS_CHECK =
   /\b(?:still with me|still here|you'?re (?:still )?(?:with me|watching)|halfway (?:there|through|done)|ready for the (?:last|next|final)|are you (?:still )?(?:there|watching)|if you'?re still watching)\b/i
 
@@ -3658,6 +3719,75 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     }
     if (entFails.length) {
       console.warn(JSON.stringify({ event: 'entitlement_unrepaired', beats: entFails.length, questions: creatorQuestions }))
+
+    // ── THE REFERENCE'S OWN MEASUREMENTS MUST NOT BE SPOKEN BY THIS CREATOR ──
+    //
+    // ⚠️ MEASURED: 9 leaks across 16 runs of one reference, to five creators, with
+    // every existing safety counter reading clean. `general` was doing the work of
+    // a licence — the beats cited nothing, so nothing could fail them.
+    //
+    // ⚖️ REPAIRED, NOT ONLY COUNTED. A counter is right for a shape nobody has
+    // measured yet; this one is measured, it puts another person's number in a
+    // creator's mouth, and it reaches the audience as a first-person promise.
+    // It reuses the entitlement repair path rather than a second one.
+    try {
+      const refForClaims = [
+        reference_note ?? '',
+        typeof ref?.text === 'string' ? ref.text : '',
+        ref?.structure ? JSON.stringify(ref.structure) : '',
+      ].join('\n')
+      const leaks = findLeakedClaims(
+        refForClaims,
+        (Array.isArray(declared) ? declared : []) as Array<{ line?: unknown; substance?: unknown }>,
+        readMechanism((ref?.structure as Record<string, unknown> | null)?.mechanism)
+          ?.enumeration?.count ?? null,
+      )
+      if (leaks.length) {
+        console.warn(JSON.stringify({
+          event: 'reference_claim_leak',
+          leaks: leaks.length,
+          claims: [...new Set(leaks.map((l) => l.claim))],
+          // ⚠️ WHICH DECLARATION WAS USED TO CARRY IT. `general` means the writer
+          // called another creator's measurement common knowledge;
+          // `creator_knowledge` means it cited THIS creator for a number they
+          // never gave. Both are false and they are false differently.
+          by_substance: leaks.reduce<Record<string, number>>(
+            (a, l) => ({ ...a, [l.substance]: (a[l.substance] ?? 0) + 1 }), {}),
+        }))
+        const leakPrompt = 'These script lines repeat a MEASUREMENT taken from the reference video.'
+          + ' That number belongs to the reference creator, who measured it themselves. THIS creator'
+          + ' never made that claim and cannot support it. Rewrite ONLY the lines listed, removing the'
+          + ' number entirely — do not soften it, do not approximate it, and do not substitute a'
+          + ' different number. Keep each line the same length, purpose and position.'
+          + ' Return JSON: {"rewrites":[{"index":<number>,"line":"<new line>"}]}\n\n'
+          + leaks.map((l) => `index ${l.beat - 1}\nLINE: ${l.line}\nREMOVE: ${l.claim}`).join('\n\n')
+        const fixed = await callModel(
+          apiKey,
+          'You rewrite single script lines to remove a number the creator did not measure.'
+          + ' You never invent a new fact, product, number or experience. You return JSON only.',
+          leakPrompt,
+          REPAIR_SCHEMA,
+        )
+        let applied = 0
+        for (const r of ((fixed as { rewrites?: Array<{ index?: unknown; line?: unknown }> })?.rewrites ?? [])) {
+          const i = typeof r?.index === 'number' ? r.index : -1
+          const line = typeof r?.line === 'string' ? r.line.trim() : ''
+          if (i < 0 || line === '' || !Array.isArray(declared) || !declared[i]) continue
+          // ⚠️ THE REWRITE MUST NOT CARRY THE NUMBER BACK IN. A repair that
+          // rephrases around the claim and keeps it is worse than no repair,
+          // because it reports success.
+          if (measuredClaims(line).some((c) => leaks.some((l) => l.claim === c))) continue
+          ;(declared[i] as { line?: unknown }).line = line
+          applied++
+        }
+        console.log(JSON.stringify({
+          event: 'reference_claim_leak_repair', found: leaks.length, applied,
+          still_leaking: leaks.length - applied,
+        }))
+      }
+    } catch (err) {
+      console.error('reference_claim_leak_failed', err instanceof Error ? err.message : err)
+    }
     }
 
     // ── AN UNFILLED TEMPLATE IS NOT A SCRIPT ────────────────────────────────
