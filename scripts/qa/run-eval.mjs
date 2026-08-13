@@ -360,9 +360,16 @@ const RESPONSE_SCHEMA = {
 const SUBSTANCE_KINDS = new Set(
   (EDGE.match(/const SUBSTANCE_KINDS: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\)/) ?? [])[1]
     ?.split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean) ?? [])
-const SUBSTANCE_FLOOR = Number(
+// ⚖️ OVERRIDABLE FOR ONE PURPOSE: running the OLD selector against the NEW code.
+// `SUBSTANCE_FLOOR=0` reproduces pure relevance order exactly, so an A/B can
+// isolate the floor from every other change made the same day. Without it the
+// only baseline is an older run that also predates the beat-plan and proof
+// prompt changes — a comparison with three variables in it.
+const LIFTED_FLOOR = Number(
   (EDGE.match(/const SUBSTANCE_FLOOR = (\d+)/) ?? [])[1] ?? NaN)
-if (!SUBSTANCE_KINDS.size || !Number.isFinite(SUBSTANCE_FLOOR)) {
+const SUBSTANCE_FLOOR = process.env.SUBSTANCE_FLOOR !== undefined
+  ? Number(process.env.SUBSTANCE_FLOOR) : LIFTED_FLOOR
+if (!SUBSTANCE_KINDS.size || !Number.isFinite(LIFTED_FLOOR) || !Number.isFinite(SUBSTANCE_FLOOR)) {
   console.error('FATAL: could not lift the substance floor from generate-blueprint/index.ts.')
   console.error('The harness will not run on a paraphrase of the selector. Fix the marker.')
   process.exit(1)
