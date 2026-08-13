@@ -1021,6 +1021,40 @@ function selectionShape(
   }
 }
 
+// CAN THIS CREATOR FILL WHAT THE REFERENCE PROMISES — inlined from
+// `packages/shared/src/containerSupply.ts`, held identical by a parity test.
+//
+// ⚠️ THE COUNT CONTRACT CHECKS THE OUTPUT, NOT THE INPUT. It verifies the script
+// delivered the promised number of items. It cannot tell three real tools from
+// one real tool and two invented ones — both count as three. §18a: "an
+// unresolved container does not come back empty; it comes back INVENTED, phrased
+// with the same confidence as the resolved ones."
+//
+// ⚖️ MEASURED BEFORE IT IS ENFORCED. §18a says UNRESOLVED is a stop and it is
+// right, but nobody has ever counted how often a creator falls short, because
+// nothing has ever asked. A stop shipped blind could refuse most generations on
+// day one.
+const ENUMERABLE_KINDS: ReadonlySet<string> = new Set([
+  'product', 'example', 'experience', 'claim', 'framework', 'fact',
+])
+
+function checkSupply(
+  demand: { isEnumerated: boolean; count: number | null } | null | undefined,
+  available: readonly { kind: string; text: string }[],
+): { demand: number | null; supply: number; shortfall: number; wouldInvent: boolean } {
+  const enumerated = Boolean(demand?.isEnumerated)
+  const count = enumerated && typeof demand?.count === 'number' && demand.count > 0
+    ? demand.count : null
+  const usable = new Set(
+    available.filter((i) => ENUMERABLE_KINDS.has(i.kind) && String(i.text).trim() !== '')
+      .map((i) => `${i.kind}:${String(i.text).toLowerCase().replace(/[^a-z0-9 ]/g, ' ')
+        .replace(/\s+/g, ' ').trim()}`))
+  const supply = usable.size
+  if (count === null) return { demand: null, supply, shortfall: 0, wouldInvent: false }
+  const shortfall = Math.max(0, count - supply)
+  return { demand: count, supply, shortfall, wouldInvent: shortfall > 0 }
+}
+
 const PROGRESS_CHECK =
   /\b(?:still with me|still here|you'?re (?:still )?(?:with me|watching)|halfway (?:there|through|done)|ready for the (?:last|next|final)|are you (?:still )?(?:there|watching)|if you'?re still watching)\b/i
 
@@ -3485,6 +3519,15 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // logs said ten items reached the writer and never said what KIND. A floor
       // shipped without this counter would be a fix nobody could confirm.
       selection: selectionShape(speakable, ranked),
+      // ⚠️ GAP 2, MEASURED FIRST. Whether the creator can fill what the reference
+      // promises — the question §18a says must be answered BEFORE writing, and
+      // that nothing has ever asked. `wouldInvent` true means writing produces
+      // invention, and it is knowable from the inputs alone.
+      container_supply: checkSupply(
+        (readMechanism((ref?.structure as Record<string, unknown> | null)?.mechanism)
+          ?.enumeration) ?? null,
+        speakable.map((k) => ({ kind: String(k.kind), text: String(k.text) })),
+      ),
       routes: routeCounts,
       route_vs_declared: routeVsDeclared,
       // Always 0 until a detector exists. Logged so its absence is visible in
