@@ -177,7 +177,10 @@ export const mayPitch = (rel) => rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
 
 export { scoreRun, add, SELL }
 
-const pack = JSON.parse(readFileSync('scripts/qa/creator-pack.json', 'utf8'))
+// The SAME pack the run was generated against — see run-eval. Scoring a derived
+// run against the hand-written pack would grade every derived item as
+// unsupported, which would look exactly like the writer fabricating.
+const pack = JSON.parse(readFileSync(process.env.CREATOR_PACK ?? 'scripts/qa/creator-pack.json', 'utf8'))
 const ALL = [...pack.creators, ...(pack.cohort2?.creators ?? []), ...(pack.cohort3?.creators ?? [])]
 const knowledgeFor = (key) => ALL.find((c) => c.key === key)?.knowledge?.items ?? []
 // The permission the CTA check needs. Missing is refused, not defaulted: a

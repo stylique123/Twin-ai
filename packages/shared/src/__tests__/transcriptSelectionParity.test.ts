@@ -26,6 +26,8 @@ function lift(src: string, where: string): string {
   return src.slice(i, end).replace(/\s+/g, ' ').trim()
 }
 
+const budget2 = (s: string) => s.match(/TRANSCRIPT_BUDGET = (\d+)/)?.[1]
+
 describe('all three copies select identically', () => {
   it('the worker matches shared, character for character', () => {
     expect(lift(WORKER, 'the worker')).toBe(lift(SHARED, 'shared'))
@@ -36,9 +38,24 @@ describe('all three copies select identically', () => {
   })
 
   it('the budget is the same number everywhere', () => {
+    // ⚠️ EQUALITY ACROSS COPIES, NOT A FROZEN LITERAL. This pinned `= 5` and
+    // fired correctly when the budget was raised to 10 — but the thing worth
+    // guarding is that the three copies AGREE, since a worker transcribing ten
+    // while the edge believes five is a paid divergence nobody would see. The
+    // number itself is a product decision recorded in the shared file.
+    const budget = (s: string) => s.match(/TRANSCRIPT_BUDGET = (\d+)/)?.[1]
+    const shared = budget(SHARED)
+    expect(shared, 'shared must declare a budget').toBeTruthy()
     for (const [src, where] of [[WORKER, 'worker'], [EDGE, 'edge']] as const) {
-      expect(src, where).toMatch(/TRANSCRIPT_BUDGET = 5/)
+      expect(budget(src), where).toBe(shared)
     }
+  })
+
+  it('the budget is a deliberate number with its cost written down', () => {
+    // ⚖️ TRANSCRIPTION IS PAID PER VIDEO. A silent bump is a silent bill, so the
+    // constant carries why it is what it is.
+    expect(SHARED).toMatch(/PAID PER VIDEO/)
+    expect(Number(budget2(SHARED))).toBeGreaterThan(0)
   })
 })
 

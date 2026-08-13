@@ -1,0 +1,135 @@
+// WHICH TEN THINGS THE WRITER SEES, OUT OF EVERYTHING THE CREATOR KNOWS.
+//
+// ── THE DEFECT, MEASURED ──────────────────────────────────────────────────
+//
+// A prompt can carry about ten knowledge items. The selector ranked them by
+// LEXICAL OVERLAP with the video's topic and nothing else, then took the first
+// ten. That is simple and explainable, which is why it was chosen, and it is
+// safe only while a creator's store is small and hand-curated.
+//
+// An A/B on three creators — same references, same arms, only the knowledge
+// differing — measured what happens when the store is realistic instead:
+//
+//                               hand-written    + 382 derived items
+//     grounded in creator knowledge   63%              52%
+//     generic beats                   20%              25%
+//     product facts used               6                1
+//
+// MORE KNOWLEDGE MADE THE SCRIPTS WORSE. What reached the writer explains it:
+//
+//     hand-written  claim 22 · product 22 · opinion 18 · topic  8 · experience 4
+//     merged        product 44 · topic 25 · claim 19 · opinion 17 · experience 3
+//
+// The small pack never filled the cap, so the writer saw every substantive item
+// there was. The realistic store filled all ten slots on every case, and the
+// thin items — "they made a video about Cursor" — won on keyword overlap and
+// pushed the claims and experiences out. Product mentions doubled; experiences
+// fell.
+//
+// ⚠️ AND EVERY REAL CREATOR'S STORE IS THE REALISTIC ONE. Knowledge accumulates
+// across every scan; an established account holds hundreds of caption-derived
+// `product` and `topic` rows. So an established creator crowds their own claims
+// out of their own prompt, and the hand-curated test pack was hiding it.
+//
+// ── WHY RESERVATION, AND NOT "RANK BY DEPTH" ──────────────────────────────
+//
+// The obvious fix is to sort by substance first and overlap second. It was not
+// taken, because it throws away the property that made this selector defensible:
+// a video ABOUT a product should see that product. Depth-first ordering would
+// hand a phone review a generic business claim ahead of the phone.
+//
+// ⚖️ SO RELEVANCE STILL CHOOSES WITHIN EACH GROUP, and the only thing reserved is
+// that substance cannot reach ZERO. A floor, not a reordering.
+
+/** The kinds that carry something a script can be built out of — a position, a
+ *  method, a number, something they did.
+ *
+ *  ⚠️ `product` AND `topic` ARE DELIBERATELY ABSENT, and they are not junk. "They
+ *  covered the Z Fold 8" is true, useful for choosing an angle, and exactly what
+ *  a caption can prove. It just cannot carry a beat on its own: a script built
+ *  from ten of them says a creator has mentioned ten things and asserts nothing.
+ *  `covered` is excluded upstream — it steers choice and is never spoken. */
+export const SUBSTANCE_KINDS: ReadonlySet<string> = new Set([
+  'claim', 'experience', 'framework', 'opinion', 'fact', 'example',
+])
+
+/** How many of the slots substance may not be pushed out of.
+ *
+ *  ⚖️ SIX OF TEN, AND THE NUMBER IS AN OBSERVATION RATHER THAN A TASTE. The
+ *  hand-written arm — the one that scored 63% — supplied 86 items across 12
+ *  cases, of which 56 were substance kinds: 65%. This floor keeps a full store
+ *  from falling below the mix that was measured working, while leaving four
+ *  slots for whatever the video is actually about.
+ *
+ *  It is a FLOOR, not a quota: with fewer than six substance items available,
+ *  the remainder goes back to the general pool rather than sitting empty. */
+export const SUBSTANCE_FLOOR = 6
+
+export interface SelectableItem {
+  kind: string
+  text: string
+  basis?: string | null
+}
+
+/**
+ * Choose what the writer sees.
+ *
+ * `score` is supplied by the caller — this module does not decide what relevance
+ * means, it decides that relevance alone must not starve the prompt of
+ * substance. Ordering WITHIN each group is still whatever the caller ranked by.
+ *
+ * Returns at most `cap` items, in one list, substance-first only insofar as the
+ * floor requires. Never returns duplicates, and never fewer items than the old
+ * behaviour would have.
+ */
+export function selectSpeakable<T extends SelectableItem>(
+  ranked: readonly T[],
+  cap: number,
+  floor: number = SUBSTANCE_FLOOR,
+): T[] {
+  if (cap <= 0) return []
+  // ⚠️ THE INPUT IS ALREADY IN RELEVANCE ORDER. Re-sorting here would silently
+  // replace the caller's notion of relevance with this module's, which is the
+  // thing the reservation exists NOT to do.
+  const substance = ranked.filter((i) => SUBSTANCE_KINDS.has(i.kind))
+
+  const keepSubstance = substance.slice(0, Math.min(floor, cap))
+  const taken = new Set<T>(keepSubstance)
+  const out = [...keepSubstance]
+
+  // ⚖️ THE REMAINING SLOTS ARE OPEN TO EVERYTHING, in the caller's order. A video
+  // about a product still gets the product, and a creator with more than six
+  // strong items still gets the seventh — the floor guarantees a minimum, it
+  // does not impose a maximum.
+  for (const item of ranked) {
+    if (out.length >= cap) break
+    if (taken.has(item)) continue
+    out.push(item)
+    taken.add(item)
+  }
+  return out
+}
+
+/** How the selection came out, for the log line that will say whether this
+ *  worked on real stores rather than on the three creators it was tuned against.
+ *
+ *  ⚠️ A FIX SHIPPED WITHOUT A COUNTER IS A FIX NOBODY CAN CONFIRM. The defect it
+ *  addresses was invisible for months precisely because nothing recorded the MIX
+ *  of what reached the writer — only that ten things did. */
+export function selectionShape(
+  chosen: readonly SelectableItem[],
+  available: readonly SelectableItem[],
+): { chosen: number; available: number; substance: number; thin: number; starved: boolean } {
+  const substance = chosen.filter((i) => SUBSTANCE_KINDS.has(i.kind)).length
+  const availableSubstance = available.filter((i) => SUBSTANCE_KINDS.has(i.kind)).length
+  return {
+    chosen: chosen.length,
+    available: available.length,
+    substance,
+    thin: chosen.length - substance,
+    // ⚠️ THE CONDITION THE A/B CAUGHT: substance existed in the store and did not
+    // make it into the prompt. True here means the floor is set too low or the
+    // cap too tight — not that the creator has nothing to say.
+    starved: substance < Math.min(SUBSTANCE_FLOOR, availableSubstance),
+  }
+}

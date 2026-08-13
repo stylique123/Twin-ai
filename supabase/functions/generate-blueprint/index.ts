@@ -971,6 +971,56 @@ function proofQualityCounts(plan: unknown): Record<ProofQuality, number> {
   return out
 }
 
+// WHICH TEN THINGS THE WRITER SEES — INLINED FROM
+// `packages/shared/src/knowledgeSelection.ts`. The edge cannot import
+// @twinai/shared; `knowledgeSelectionParity.test.ts` holds the two identical.
+//
+// ⚠️ WHY A FLOOR EXISTS AT ALL. Ranking by lexical overlap alone was measured
+// taking grounding from 63% to 52% once a creator's store was realistic rather
+// than hand-curated: thin `product`/`topic` rows won on keyword overlap and
+// pushed claims and experiences out of all ten slots.
+const SUBSTANCE_KINDS: ReadonlySet<string> = new Set([
+  'claim', 'experience', 'framework', 'opinion', 'fact', 'example',
+])
+const SUBSTANCE_FLOOR = 6
+
+function selectSpeakable<T extends { kind: string }>(
+  ranked: readonly T[], cap: number, floor: number = SUBSTANCE_FLOOR,
+): T[] {
+  if (cap <= 0) return []
+  const substance = ranked.filter((i) => SUBSTANCE_KINDS.has(i.kind))
+  const keepSubstance = substance.slice(0, Math.min(floor, cap))
+  const taken = new Set<T>(keepSubstance)
+  const out = [...keepSubstance]
+  for (const item of ranked) {
+    if (out.length >= cap) break
+    if (taken.has(item)) continue
+    out.push(item)
+    taken.add(item)
+  }
+  return out
+}
+
+function selectionShape(
+  chosen: readonly { kind: string }[], available: readonly { kind: string }[],
+): Record<string, number | boolean> {
+  const substance = chosen.filter((i) => SUBSTANCE_KINDS.has(i.kind)).length
+  const availableSubstance = available.filter((i) => SUBSTANCE_KINDS.has(i.kind)).length
+  return {
+    chosen: chosen.length,
+    available: available.length,
+    substance,
+    thin: chosen.length - substance,
+    // ⚠️ SUBSTANCE EXISTED IN THE STORE AND DID NOT REACH THE PROMPT. This is the
+    // condition the A/B caught and the reason the floor exists. True means the
+    // floor is too low or the cap too tight — NOT that the creator has nothing
+    // to say, which is `available_substance` being small and is a different
+    // problem with a different fix (more transcripts, or asking them).
+    starved: substance < Math.min(SUBSTANCE_FLOOR, availableSubstance),
+    available_substance: availableSubstance,
+  }
+}
+
 const PROGRESS_CHECK =
   /\b(?:still with me|still here|you'?re (?:still )?(?:with me|watching)|halfway (?:there|through|done)|ready for the (?:last|next|final)|are you (?:still )?(?:there|watching)|if you'?re still watching)\b/i
 
@@ -2561,10 +2611,32 @@ Deno.serve(async (req: Request) => {
     }))
     // Topic matches first, then the best-established — so a niche subject never
     // starves the prompt of substance entirely.
-    const speakable = [
+    // ⚠️ RELEVANCE ALONE STARVED THE PROMPT OF SUBSTANCE, MEASURED. An A/B on
+    // three creators — same references, same arms, only the size of the
+    // knowledge store differing — found that adding 382 caption-derived items
+    // took grounding DOWN from 63% to 52% and generic beats UP from 20% to 25%.
+    //
+    // The reason is this line as it stood. The small hand-curated store never
+    // filled the ten slots, so the writer saw every substantive item there was.
+    // A realistic store fills them all, and the thin rows — "they made a video
+    // about Cursor" — win on keyword overlap and push the claims and
+    // experiences out. Supplied mix went from `claim 22 · experience 4` to
+    // `product 44 · topic 25 · experience 3`.
+    //
+    // Every established creator has the realistic store: knowledge accumulates
+    // across every scan. So a creator with a lot to say crowds their own claims
+    // out of their own prompt, and only the hand-curated test pack hid it.
+    //
+    // ⚖️ A FLOOR, NOT A REORDERING. Sorting by depth first would hand a phone
+    // review a generic business claim ahead of the phone. Relevance still
+    // chooses within each group; the only guarantee is that substance cannot
+    // reach zero. `selectSpeakable` is the shared rule, inlined here because
+    // the edge cannot import @twinai/shared, and held identical by a parity test.
+    const relevanceOrdered = [
       ...scored.filter((x) => x.hit > 0).sort((a, b) => b.hit - a.hit).map((x) => x.k),
       ...scored.filter((x) => x.hit === 0).map((x) => x.k),
-    ].slice(0, 10)
+    ]
+    const speakable = selectSpeakable(relevanceOrdered, 10)
     const coveredRows = kRows.filter((k) => k.kind === 'covered')
     const aRows = Array.isArray(audienceRows) ? audienceRows : []
     const knowledgeParts: string[] = []
@@ -3408,6 +3480,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       event: 'substance_route_shadow',
       depth: creatorDepth(suppliedForCheck),
       knowledge_items: suppliedForCheck.length,
+      // ⚠️ WHAT THE SELECTOR ACTUALLY HANDED OVER, which nothing recorded until
+      // now. The 63%→52% collapse was invisible for exactly this reason: the
+      // logs said ten items reached the writer and never said what KIND. A floor
+      // shipped without this counter would be a fix nobody could confirm.
+      selection: selectionShape(speakable, ranked),
       routes: routeCounts,
       route_vs_declared: routeVsDeclared,
       // Always 0 until a detector exists. Logged so its absence is visible in
