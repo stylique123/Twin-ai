@@ -400,7 +400,11 @@ function knowledgeBlock(k, aboutText = '', cap = KNOWLEDGE_CAP) {
   return parts.join('\n')
 }
 
-const pack = JSON.parse(readFileSync('scripts/qa/creator-pack.json', 'utf8'))
+// ⚖️ THE PACK IS OVERRIDABLE, SO AN EXPERIMENT NEVER MUTATES THE CHECKED-IN ONE.
+// Comparing hand-written knowledge against derived knowledge means running the
+// same cases against two packs; doing that by editing the real file and putting
+// it back is how a half-finished run leaves the repo holding an experiment.
+const pack = JSON.parse(readFileSync(process.env.CREATOR_PACK ?? 'scripts/qa/creator-pack.json', 'utf8'))
 
 /** What the product's own pages say, split exactly as production splits it.
  *
