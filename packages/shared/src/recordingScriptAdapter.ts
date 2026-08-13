@@ -59,7 +59,7 @@ function framingFor(
   }
 }
 
-import { readBeatPlan, beatDurationSec, proofAt, purposeAt, type PlannedBeat } from './beatPlan'
+import { readBeatPlan, beatDurationSec, purposeAt, type PlannedBeat } from './beatPlan'
 import { blueprintCountIssues, type MechanismIssue } from './referenceMechanism'
 import { placeToStand, readShotDirection, stripPalette } from './shotDirection'
 
@@ -210,8 +210,6 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
     scenes[0].duration_sec = plannedHook
     scenes[0].target_sec = plannedHook
   }
-  const hookProof = hookIdx === null ? '' : proofAt(beatPlan, hookIdx)
-  if (hookProof) scenes[0].proof = hookProof
   // The LAST CTA-labelled beat, not the first: if the model labels more than
   // one, the ending is the one at the end.
   let ctaIdx = -1
@@ -292,11 +290,6 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
       // Kept beside it, so an edit that stretches the line cannot erase what the
       // beat was planned to be.
       ...(beatPlan?.[idx]?.targetSec != null ? { target_sec: beatPlan[idx].targetSec } : {}),
-      // WHAT MAKES THIS BEAT BELIEVABLE — same source index as the target, for
-      // the same reason: the plan is aligned to `script`, not to what survived
-      // the filter. A proof paired to the wrong beat would tell a creator to
-      // hold up the object during the beat that has no object in it.
-      ...(proofAt(beatPlan, idx) ? { proof: proofAt(beatPlan, idx) } : {}),
       // ⚖️ STILL THE BODY POSITION, DELIBERATELY. This indexes `shot_list`, a
       // DIFFERENT array from `script`, whose alignment with the script is its
       // own question and not one this change has evidence about. Only the beat
@@ -405,8 +398,6 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
     dialogue: cta,
     duration_sec: plannedCta ?? estimateDurationSec(cta, wpm),
     ...(plannedCta !== null ? { target_sec: plannedCta } : {}),
-    ...(ctaBeat && proofAt(beatPlan, ctaBeat.idx)
-      ? { proof: proofAt(beatPlan, ctaBeat.idx) } : {}),
     ...framingFor(scenes.length, blueprint, ctaBeat?.seg ?? undefined),
     caption_text: pushCaption(captionFromLine(cta), ctaN),
     pause_after: false,

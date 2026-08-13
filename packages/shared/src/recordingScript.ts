@@ -72,25 +72,6 @@ export interface RecordingScene {
   // to a shot you film, and getting that wrong offered a jeweller a
   // share-your-screen dialog for a product box.
   clip_medium?: 'screen' | 'camera' | 'unknown' | null
-  // WHAT MAKES THIS BEAT BELIEVABLE — a screen, the object in hand, a number, a
-  // story. Decided in `beat_plan` at the same moment the beat's length was.
-  //
-  // ⚠️ IT WAS REQUIRED OF THE MODEL AND READ BY NOTHING. `beat_plan` has carried
-  // `proof` since it shipped: demanded by the schema, filled on every
-  // generation, parsed into `PlannedBeat.proof` — and no surface showed it and
-  // no check tested it. The one field that tells a creator WHAT TO CAPTURE
-  // reached nobody holding a camera. This is the eighth field found written,
-  // stored and read by nothing, which is why the guard below is on the rule
-  // rather than on this field.
-  //
-  // ⚖️ A HINT, NEVER A ROUTER. It sits beside framing and movement as something
-  // the creator reads, and nothing branches on it. `scene_type` is what routes
-  // capture, and a free-text field deciding behaviour is the retired archetype
-  // trap.
-  //
-  // Absent means no plan applied to this scene — not an empty proof, and not a
-  // beat that needs none.
-  proof?: string | null
 }
 
 export interface RecordingScript {

@@ -26,7 +26,7 @@
 // without; an EDIT is not a cache. If it does not land, the creator films the
 // old words — so failure is surfaced, and the field keeps their text.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BadgeCheck, Check, Loader2, Pencil, SlidersHorizontal, TriangleAlert, User, Video, X } from 'lucide-react'
+import { Check, Loader2, Pencil, SlidersHorizontal, TriangleAlert, User, Video, X } from 'lucide-react'
 import {
   applyDialogueEdit, applyHookEdit, buildRecordingScript, changesTheRecordedScript,
   establishDurableRecordingScriptLive, loadRecordingScript, SCRIPT_EDIT_MESSAGE,
@@ -317,13 +317,6 @@ function Guidance({ scene }: { scene: RecordingScene }) {
     { icon: Video, color: 'text-amber', label: 'Where to film', value: scene.background },
     { icon: User, color: 'text-coral', label: 'How to stand & move', value: scene.movement },
     { icon: SlidersHorizontal, color: 'text-teal', label: 'Framing', value: scene.camera_framing },
-    // WHAT MAKES THIS BEAT BELIEVABLE. Decided in `beat_plan` alongside the
-    // beat's length, and until now shown to nobody — the one field that tells a
-    // creator what to CAPTURE never reached the person holding the camera.
-    //
-    // Last in the list on purpose: framing and where to stand are what they need
-    // before rolling, and proof is what makes the take worth keeping.
-    { icon: BadgeCheck, color: 'text-teal', label: 'What makes this land', value: scene.proof ?? '' },
   ].filter((r) => r.value && r.value.trim() !== '')
   if (rows.length === 0) return null
   return (

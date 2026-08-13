@@ -857,13 +857,6 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
             the structural fix is the field split in §5c. */}
         {next?.movement && safeToShow({ spoken: !!next.show_in_teleprompter, dialogue: next.dialogue, movement: next.movement }, 'movement') && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">What to do while you talk</div><p className="text-white/90">{next.movement}</p></div>}
         {next?.purpose && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">Why this scene matters</div><p className="text-white/90">{next.purpose}</p></div>}
-        {/* WHAT MAKES THIS BEAT BELIEVABLE — the object in hand, a number, a
-            screen, a story. Decided in `beat_plan` at the same moment the beat's
-            length was, and until now shown to nobody: the one field naming what
-            to CAPTURE never reached the person holding the camera.
-            This is the last thing before they hit record, which is the last
-            moment picking the object up is still free. */}
-        {next?.proof && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">What makes this land</div><p className="text-white/90">{next.proof}</p></div>}
       </div>
 
       {/* Switch camera between scenes (front / back) — the take is paused here. */}

@@ -30,6 +30,15 @@ const read = (...p: string[]) => readFileSync(join(SRC, '..', ...p), 'utf8')
 const PLAN = read('beatPlan.ts')
 const ADAPTER = read('recordingScriptAdapter.ts')
 const SCENE = read('recordingScript.ts')
+const EDGE = readFileSync(join(SRC, '..', '..', '..', '..', 'supabase', 'functions',
+  'generate-blueprint', 'index.ts'), 'utf8')
+/** Every surface a creator reads while planning or filming. */
+const SURFACES = {
+  ScriptEditor: readFileSync(join(SRC, '..', '..', '..', '..', 'apps', 'web', 'src',
+    'components', 'ScriptEditor.tsx'), 'utf8'),
+  V2Capture: readFileSync(join(SRC, '..', '..', '..', '..', 'apps', 'web', 'src', 'pages',
+    'v2', 'V2Capture.tsx'), 'utf8'),
+}
 
 /** The declared fields of `PlannedBeat`, read from the source rather than
  *  retyped — a retyped list is a list that stops matching. */
@@ -79,28 +88,40 @@ describe('the beat plan has no write-only fields', () => {
   })
 })
 
-describe('proof reaches the person holding the camera', () => {
-  it('is carried onto the scene, which is what the surfaces read', () => {
-    // The scene is the boundary: `RecordingScene` is what the plan screen and the
-    // capture screen both render, and a value that stops at the adapter reaches
-    // neither.
-    expect(SCENE).toMatch(/^\s*proof\?: string \| null$/m)
-    expect(ADAPTER).toMatch(/proofAt\(beatPlan, idx\)/)
+describe("proof's reader is a counter, and deliberately not a surface", () => {
+  // ⚠️ A READER EXISTING IS NOT A READER BEING RIGHT. The first pass wired
+  // `proof` onto the plan card and the capture screen and this file went green.
+  // Then 192 real proofs said 23 were the `substance` enum verbatim, 107 named a
+  // source, 18 restated the purpose, and about 6 were filmable — so the row
+  // would have told somebody holding a camera "What makes this land:
+  // creator_knowledge". The guard was satisfied by a surface that was wrong five
+  // times in six.
+  //
+  // ⚖️ SO THE READER IS THE PRODUCTION COUNTER, until the counter says the value
+  // is worth showing. That is a real reader — it runs on every generation and it
+  // is what will report the sharpened instruction working — and it cannot put a
+  // wrong word in front of a creator.
+  it('counts proof quality in the generator', () => {
+    expect(PLAN).toMatch(/export function proofQualityCounts/)
+    expect(EDGE).toMatch(/proof_quality: proofQualityCounts\(/)
   })
 
-  it('is carried for the HOOK and the CTA too, not just the body', () => {
-    // ⚠️ THESE TWO ARE HELD OUT OF THE BODY LOOP, so they are exactly the beats
-    // a per-line wiring silently misses — the same way they missed the target
-    // until #362.
-    expect(ADAPTER).toMatch(/hookProof/)
-    expect(ADAPTER).toMatch(/ctaBeat && proofAt\(beatPlan, ctaBeat\.idx\)/)
+  it('does NOT carry proof onto the scene', () => {
+    // The scene is what the surfaces read. Keeping the field there with nothing
+    // rendering it would be the write-only defect again, one layer down.
+    expect(SCENE).not.toMatch(/^\s*proof\?:/m)
   })
 
-  it('indexes proof by the SOURCE index, exactly like the target', () => {
-    // ⚖️ A PROOF PAIRED TO THE WRONG BEAT tells a creator to hold up the object
-    // during the beat that has no object in it — the same class of defect as the
-    // mis-paced beat, in a field where it reads as nonsense rather than as a
-    // number being slightly off.
-    expect(ADAPTER).not.toMatch(/proofAt\(beatPlan, i\)/)
+  it('renders proof on no creator surface', () => {
+    for (const [name, src] of Object.entries(SURFACES)) {
+      expect(/\.proof\b/.test(src), `${name} renders beat proof before it is good enough`)
+        .toBe(false)
+    }
+  })
+
+  it('still refuses to hand on a non-shootable proof', () => {
+    // The classifier gates `proofAt`, so the day a surface is added it cannot
+    // start by rendering the shapes that caused this.
+    expect(PLAN).toMatch(/proofQuality\(p\) === 'shootable'/)
   })
 })

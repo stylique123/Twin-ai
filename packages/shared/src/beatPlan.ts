@@ -174,6 +174,43 @@ export function beatDurationSec(
  *  line: it is a stand-in that reached the creator instead of a value. */
 const NON_PROOF = /^(?:n\/?a|none|nil|null|no(?:ne)? needed|not applicable|proof|tbd|-+|\.+)$/i
 
+/** ⚠️ THE MODEL ANSWERS A DIFFERENT QUESTION, MEASURED ON 192 REAL PROOFS ACROSS
+ *  206 BEATS. `proof` is documented as what makes the beat believable — a screen,
+ *  the object in hand, a number. What came back:
+ *
+ *      23  the `substance` enum verbatim ("creator_knowledge", "general")
+ *     107  source prose ("Creator's stated knowledge of wealth paths")
+ *      18  the beat's PURPOSE restated ("Establishes the problem")
+ *      ~6  something a person could actually film
+ *
+ *  Two of those three wrong answers are questions the blueprint asks ELSEWHERE —
+ *  `substance` records where the substance came from, `beat` records what the
+ *  beat is for — so `proof` was collapsing into a duplicate of its neighbours.
+ *
+ *  ⚖️ DECIDABLE, SO CHECKED RATHER THAN ONLY ASKED. The prompt now forbids all
+ *  three shapes by name, but a prompt rule is a request and this defect is
+ *  decidable from the string: an enum member is exact, a source is a prefix, and
+ *  a purpose opens with an effect verb. The classifier is what will say whether
+ *  the prompt fix worked, on real generations, without anybody re-reading 192
+ *  strings by hand. */
+const SUBSTANCE_ENUM = /^(?:creator_knowledge|creator_experience|creator_opinion|product_dna|general|needs_user)$/i
+const NAMES_A_SOURCE = /^(?:the\s+)?(?:creator'?s?\b|general (?:knowledge|observation)\b|product_dna\b|reference structure\b|specific knowledge\b)/i
+const NAMES_AN_EFFECT = /^(?:establishes?|sets? up|provides?|guides?|engages?|introduces?|explains?|concludes?|reinforces?|builds?|creates?|delivers?|summari[sz]es?|transitions?|highlights?|emphasi[sz]es?)\b/i
+
+export type ProofQuality = 'shootable' | 'substance_enum' | 'names_a_source' | 'names_an_effect' | 'absent'
+
+/** What KIND of answer the model gave. A measurement, not a gate — nothing is
+ *  refused on it, because a wrong proof costs a row on a card and refusing a
+ *  whole generation over one would be wildly out of proportion. */
+export function proofQuality(value: string | null | undefined): ProofQuality {
+  const t = (value ?? '').trim()
+  if (!t || NON_PROOF.test(t) || /^\[[^\]]*\]$/.test(t)) return 'absent'
+  if (SUBSTANCE_ENUM.test(t)) return 'substance_enum'
+  if (NAMES_A_SOURCE.test(t)) return 'names_a_source'
+  if (NAMES_AN_EFFECT.test(t)) return 'names_an_effect'
+  return 'shootable'
+}
+
 export function readProof(value: string | null | undefined): string {
   const t = (value ?? '').trim()
   if (!t) return ''
@@ -192,7 +229,25 @@ export function readProof(value: string | null | undefined): string {
  * during the beat that has no object in it.
  */
 export function proofAt(plan: PlannedBeat[] | null, index: number): string {
-  return readProof(plan?.[index]?.proof)
+  const p = plan?.[index]?.proof
+  // Only a shootable answer is a proof. The other three shapes are the model
+  // answering a neighbouring field's question, and passing one through would put
+  // "creator_knowledge" on a card somebody reads with a camera up.
+  return proofQuality(p) === 'shootable' ? readProof(p) : ''
+}
+
+/** How the plan's proofs came back, counted. This is `proof`'s reader until the
+ *  quality supports showing it to a creator: on the corpus that exposed the
+ *  defect it would report 6 shootable out of 192, and a surface fed by that is a
+ *  surface that is wrong five times out of six. */
+export function proofQualityCounts(
+  plan: PlannedBeat[] | null,
+): Record<ProofQuality, number> {
+  const out: Record<ProofQuality, number> = {
+    shootable: 0, substance_enum: 0, names_a_source: 0, names_an_effect: 0, absent: 0,
+  }
+  for (const b of plan ?? []) out[proofQuality(b.proof)]++
+  return out
 }
 
 /**

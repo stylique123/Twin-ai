@@ -7,10 +7,17 @@
 // answer to "what do I actually need in frame for this to land" was computed,
 // stored, and thrown away on every single video.
 //
-// The guard in `beatPlanFieldsHaveReaders` proves a reader EXISTS. These tests
-// are about whether it is the right value in the right place — a proof paired to
-// the wrong beat is worse than none, because it tells a creator to hold up an
-// object during the beat that has no object in it.
+// ⚠️ AND THE FIRST FIX WAS WRONG. `proof` was wired onto the plan card and the
+// capture screen, with tests that passed. Then 192 real proofs said 23 were the
+// `substance` enum verbatim, 107 named a SOURCE, 18 restated the PURPOSE, and
+// about 6 were filmable — so the row would have read "What makes this land:
+// creator_knowledge" to somebody holding a camera. The display is reversed and
+// the reader is a production counter until the counter says otherwise; see
+// `beatProofParity.test.ts`.
+//
+// What remains here is the value-level contract that survives either way: a
+// required field filled with "n/a" must render as nothing, and `beat` must
+// supply the purpose the card's heading actually promises.
 import { describe, expect, it } from 'vitest'
 import { buildRecordingScript } from '../recordingScriptAdapter'
 import { readProof, proofAt, purposeAt } from '../beatPlan'
@@ -45,46 +52,6 @@ function byLine(blueprint: Blueprint) {
   return out
 }
 
-describe('proof lands on the beat it was written for', () => {
-  it('pairs each proof with its own words, including hook and CTA', () => {
-    // ⚠️ THE HOOK AND THE CTA ARE HELD OUT OF THE BODY LOOP, which is exactly
-    // how they missed the beat plan's TARGET until #362. Same two beats, same
-    // trap, one field later.
-    const t = byLine(bp())
-    expect(t['Nobody tells you this about lighting'].proof).toBe('Your face, no cuts')
-    expect(t['Here is the setup nobody explains properly.'].proof).toBe('The lamp in shot')
-    expect(t['Here is the proof that it actually works.'].proof)
-      .toBe('Screen: the two frames side by side')
-    expect(t['Grab the preset pack in my bio.'].proof).toBe('The pack open on your desk')
-  })
-
-  it('stays paired when the filter drops more than the hook', () => {
-    const t = byLine(bp({
-      script: [
-        { section: 'Hook', line: 'Nobody tells you this about lighting', direction: '' },
-        { section: 'Dead', line: '  ', direction: '' },
-        { section: 'Setup', line: 'Here is the setup nobody explains properly.', direction: '' },
-        { section: 'CTA', line: 'Grab the preset pack in my bio.', direction: '' },
-      ],
-      beat_plan: [
-        { beat: 'Open', target_sec: '3', proof: 'Your face, no cuts' },
-        { beat: 'Dead', target_sec: '7', proof: 'Nothing' },
-        { beat: 'Setup', target_sec: '11', proof: 'The lamp in shot' },
-        { beat: 'Close', target_sec: '5', proof: 'The pack open on your desk' },
-      ],
-    }))
-    expect(t['Here is the setup nobody explains properly.'].proof).toBe('The lamp in shot')
-    expect(t['Grab the preset pack in my bio.'].proof).toBe('The pack open on your desk')
-  })
-
-  it('leaves proof absent when no plan applies', () => {
-    // Absent is not an empty proof and not a beat that needs none. Consumers
-    // render the row only when there is something in it.
-    const t = byLine(bp({ beat_plan: undefined }))
-    for (const v of Object.values(t)) expect(v.proof).toBeUndefined()
-  })
-})
-
 describe('a required field filled with nothing renders as nothing', () => {
   // ⚠️ A MODEL ASKED FOR A REQUIRED FIELD ALWAYS FILLS IT. A beat that genuinely
   // needs no proof still comes back with "n/a" in the slot, and a card reading
@@ -108,20 +75,6 @@ describe('a required field filled with nothing renders as nothing', () => {
     expect(readProof('The n/a column highlighted')).not.toBe('')
   })
 
-  it('does not put a non-value on the scene', () => {
-    const t = byLine(bp({
-      beat_plan: [
-        { beat: 'Open', target_sec: '3', proof: 'n/a' },
-        { beat: 'Setup', target_sec: '11', proof: 'The lamp in shot' },
-        { beat: 'Proof', target_sec: '22', proof: '[proof]' },
-        { beat: 'Close', target_sec: '5', proof: 'none' },
-      ],
-    }))
-    expect(t['Nobody tells you this about lighting'].proof).toBeUndefined()
-    expect(t['Here is the setup nobody explains properly.'].proof).toBe('The lamp in shot')
-    expect(t['Here is the proof that it actually works.'].proof).toBeUndefined()
-    expect(t['Grab the preset pack in my bio.'].proof).toBeUndefined()
-  })
 })
 
 describe('the plan supplies the purpose the card promises', () => {
