@@ -41,10 +41,12 @@ import {
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
   requestProductExtraction, confirmProductFacts,
   listBrandVoices, OwnedEntityExistsError, ProductLibraryFullError,
+  isStale, factAgeDays,
   type ProductSuggestion,
 } from '@twinai/shared'
 import type {
   ProductEntityRecord, Showability, EntityRelationship, EntityType, PersonalUse,
+  ExtractedFact as ProductFact,
 } from '@twinai/shared'
 import { useAuth } from '../context/AuthContext'
 
@@ -552,6 +554,7 @@ export default function ProductLibrary() {
                   {e.knowledge.filter((f) => f.trust === 'usable').map((f) => (
                     <li key={`u-${f.field}-${f.value}`} className="text-sm">
                       <span className="text-ink/50">{f.field}: </span>{f.value}
+                      <FactAge fact={f} />
                     </li>
                   ))}
                 </ul>
@@ -570,7 +573,10 @@ export default function ProductLibrary() {
                     <ul className="mt-2 space-y-1">
                       {e.knowledge.filter((f) => f.trust === 'needs_confirmation').map((f) => (
                         <li key={`n-${f.field}-${f.value}`} className="flex items-start justify-between gap-2 text-sm">
-                          <span><span className="text-ink/50">{f.field}: </span>{f.value}</span>
+                          <span>
+                            <span className="text-ink/50">{f.field}: </span>{f.value}
+                            <FactAge fact={f} />
+                          </span>
                           <button
                             type="button"
                             className="whitespace-nowrap text-xs underline"
@@ -717,5 +723,55 @@ export default function ProductLibrary() {
         </section>
       )}
     </div>
+  )
+}
+
+/** HOW OLD THIS FACT IS, AND WHERE IT CAME FROM.
+ *
+ *  ⚠️ `extractedAt` AND `sourceUrl` WERE STORED ON EVERY FACT AND READ BY
+ *  NOTHING. The timestamp's own definition says why it exists — "Pricing ages in
+ *  weeks; a category does not" — and the URL's says "so a creator correcting it
+ *  can go and look". Neither reached a screen, so a creator had no way to tell a
+ *  price read this morning from one read in the spring, and no way to check a
+ *  fact they doubted.
+ *
+ *  ⚖️ STALE IS A PROMPT, NOT A WARNING. A four-month-old price is probably still
+ *  right. This marks it worth a glance and links the page it came from; nothing
+ *  is refused and no script is blocked, because blocking on a maybe would stop a
+ *  creator working for no gain.
+ *
+ *  ⚖️ AND THE AGE IS ONLY SHOWN WHEN IT MEANS SOMETHING. Stamping every line
+ *  with "read 2 days ago" is noise that trains people to stop reading the line —
+ *  the same way a staleness indicator on a product's NAME would. */
+function FactAge({ fact }: { fact: ProductFact }) {
+  const stale = isStale(fact, new Date())
+  const days = factAgeDays(fact, new Date())
+  if (!stale) {
+    return fact.sourceUrl ? (
+      <a
+        href={fact.sourceUrl}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="ml-1.5 text-xs text-ink/35 underline decoration-dotted"
+      >source</a>
+    ) : null
+  }
+  return (
+    <span className="ml-1.5 whitespace-nowrap text-xs text-amber-700">
+      {Number.isFinite(days)
+        ? `read ${Math.round(days)} days ago — worth re-checking`
+        : 'age unknown — worth re-checking'}
+      {fact.sourceUrl && (
+        <>
+          {' '}
+          <a
+            href={fact.sourceUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="underline decoration-dotted"
+          >source</a>
+        </>
+      )}
+    </span>
   )
 }
