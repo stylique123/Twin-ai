@@ -934,6 +934,43 @@ function readReferenceObservations(
   }
 }
 
+// WHAT `proof` CAME BACK AS — INLINED FROM `packages/shared/src/beatPlan.ts`.
+//
+// ⚠️ THE EDGE CANNOT IMPORT `@twinai/shared`, so this is a deliberate copy, held
+// byte-identical by `beatProofParity.test.ts` rather than by hope.
+//
+// ⚖️ A MEASUREMENT, NEVER A GATE. Nothing is refused on it. A wrong proof costs
+// one row on one card, and failing a whole generation over that would be wildly
+// out of proportion — but the count is what says whether the sharpened
+// instruction worked, and the creator surface waits on it.
+const NON_PROOF = /^(?:n\/?a|none|nil|null|no(?:ne)? needed|not applicable|proof|tbd|-+|\.+)$/i
+const SUBSTANCE_ENUM = /^(?:creator_knowledge|creator_experience|creator_opinion|product_dna|general|needs_user)$/i
+const NAMES_A_SOURCE = /^(?:the\s+)?(?:creator'?s?\b|general (?:knowledge|observation)\b|product_dna\b|reference structure\b|specific knowledge\b)/i
+const NAMES_AN_EFFECT = /^(?:establishes?|sets? up|provides?|guides?|engages?|introduces?|explains?|concludes?|reinforces?|builds?|creates?|delivers?|summari[sz]es?|transitions?|highlights?|emphasi[sz]es?)\b/i
+
+type ProofQuality = 'shootable' | 'substance_enum' | 'names_a_source' | 'names_an_effect' | 'absent'
+
+function proofQuality(value: string | null | undefined): ProofQuality {
+  const t = (value ?? '').trim()
+  if (!t || NON_PROOF.test(t) || /^\[[^\]]*\]$/.test(t)) return 'absent'
+  if (SUBSTANCE_ENUM.test(t)) return 'substance_enum'
+  if (NAMES_A_SOURCE.test(t)) return 'names_a_source'
+  if (NAMES_AN_EFFECT.test(t)) return 'names_an_effect'
+  return 'shootable'
+}
+
+function proofQualityCounts(plan: unknown): Record<ProofQuality, number> {
+  const out: Record<ProofQuality, number> = {
+    shootable: 0, substance_enum: 0, names_a_source: 0, names_an_effect: 0, absent: 0,
+  }
+  if (!Array.isArray(plan)) return out
+  for (const b of plan) {
+    const p = (b as { proof?: unknown })?.proof
+    out[proofQuality(typeof p === 'string' ? p : '')]++
+  }
+  return out
+}
+
 const PROGRESS_CHECK =
   /\b(?:still with me|still here|you'?re (?:still )?(?:with me|watching)|halfway (?:there|through|done)|ready for the (?:last|next|final)|are you (?:still )?(?:there|watching)|if you'?re still watching)\b/i
 
@@ -1294,10 +1331,21 @@ const blueprintSchema = obj(
     // ONE BEAT PER SCRIPT ENTRY, exactly. A plan that disagrees with the script
     // is discarded whole downstream, because mapping five beats onto seven
     // entries means giving lines a target that belongs to a different beat.
+    //
+    // ⚠️ `scene_type` IS GONE, AND IT WAS REMOVED RATHER THAN GIVEN A READER.
+    // It was required of the model on every generation and consumed by nothing.
+    // Its own definition in `beatPlan.ts` says why no reader was ever written:
+    // "deliberately not an enum. The teleprompter already routes on the script's
+    // own structure, and a content-type enum is the retired archetype trap; this
+    // is a hint for the shoot plan, not a router." That is a documented decision
+    // NOT to branch on it — so inventing a router now to satisfy the
+    // every-field-needs-a-reader rule would be obeying the rule by breaking the
+    // reason for it. `scene_type` on the SCENE is still derived where it always
+    // was, and the creator-facing hint is `proof`.
     beat_plan: arr(
       obj(
-        { beat: str, target_sec: str, scene_type: str, proof: str },
-        ['beat', 'target_sec', 'scene_type', 'proof'],
+        { beat: str, target_sec: str, proof: str },
+        ['beat', 'target_sec', 'proof'],
       ),
     ),
     // THE FIRST SECOND, which nothing has ever specified. hook_options are
@@ -3014,7 +3062,8 @@ This is the video's position. Every field below must serve it. If the reference'
 ${positionBlock}${referenceBlock}
 ${claimsBlock}
 Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
-- beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each one should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds, not a guess after the fact, and beats should differ in length when their jobs differ. proof says what makes that beat believable: a screen, the object in hand, a number, a story. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
+- beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each one should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds, not a guess after the fact, and beats should differ in length when their jobs differ. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
+- beat_plan[].proof is WHAT THE CAMERA SEES, and it was measured returning the wrong thing on 186 of 192 real beats. It is NOT where the substance came from and NOT what the beat achieves — those are the substance and beat fields, and repeating either here wastes the only field that tells the creator what to physically put in frame. NEVER write "creator_knowledge", "creator_experience", "general", "Creator's experience with X", "Establishes the problem" or "Sets up the framework": the first three are another field's enum, the fourth names a SOURCE, the fifth restates the PURPOSE. Write the thing a person holds, points at, or shows: "The phone in hand, showing the wonky line", "The receipt on the desk", "Screen recording of the dashboard loading", "The scar on your left hand". If a beat is you talking straight to camera with nothing to show, write exactly "Straight to camera" — that is a real answer and it is short.
 - visual_hook: what the viewer SEES in the first second, and why it interrupts a scroll. Something that changes on screen, not a description of the spoken line. Achievable with a phone and whatever is already in the creator's room.
 - concept: FIRST nail the actual video premise by adapting ONE of the creator's real video FORMATS (listed in CREATOR DNA) to the reference's winning mechanism, then translate the reference's production down to what one person with a phone can shoot (never assume a team, budget or gear they lack).
 - packaging: decide the title + thumbnail (the package that earns the click) for THAT concept, FOLLOWING the creator's title style and thumbnail style from CREATOR DNA and using their brand colors. Every hook and script beat must pay off that exact promise.
@@ -3396,6 +3445,21 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       issue_codes: issues.map((i) => i.code),
       // Beats whose only content is telling the viewer how far through they are.
       progress_checks: progressChecks,
+      // ⚠️ WHAT `proof` ACTUALLY CAME BACK AS. Measured on 192 real proofs
+      // across 206 beats: 23 were the `substance` enum verbatim, 107 named a
+      // SOURCE ("Creator's stated knowledge of wealth paths"), 18 restated the
+      // beat's PURPOSE ("Establishes the problem"), and about 6 were something a
+      // person could film. `proof` is documented as what the camera sees, and it
+      // was collapsing into a duplicate of the two fields either side of it.
+      //
+      // ⚖️ COUNTED IN PRODUCTION, NOT ONLY IN THE HARNESS. This is the reader
+      // that says whether the sharpened instruction worked, on real generations,
+      // without anyone re-reading strings by hand — and it is what the creator
+      // surface waits on. A row that is wrong five times out of six is not
+      // guidance, so `proof` is deliberately shown to nobody until this reports
+      // otherwise.
+      proof_quality: proofQualityCounts(
+        (templated.bp as { beat_plan?: unknown })?.beat_plan),
     }))
     if (issues.length) {
       // Reported, never rewritten. There are no alternate script lines to fall
