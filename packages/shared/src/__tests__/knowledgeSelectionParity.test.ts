@@ -51,6 +51,29 @@ describe('the edge copy matches shared', () => {
     expect(EDGE).toMatch(/available_substance: availableSubstance/)
   })
 
+  it('recognises a figure by the same rule', () => {
+    // ⚠️ THE REGEX IS THE DEFINITION. If the edge and shared disagree about what
+    // counts as a figure, `figures` in the production log measures one thing and
+    // every local analysis measures another — and the whole point of the counter
+    // is to settle a question with production data.
+    const lift = (s: string) => s.slice(s.indexOf('const FIGURE'), s.indexOf("'i')", s.indexOf('const FIGURE')))
+      .replace(/\s+/g, ' ')
+    const SHARED = readFileSync(join(REPO, 'packages/shared/src/knowledgeSelection.ts'), 'utf8')
+    expect(lift(EDGE)).toBe(lift(SHARED))
+    expect(lift(EDGE)).toContain('const FIGURE')
+  })
+
+  it('records the DENOMINATOR, not only what got through', () => {
+    // ⚖️ THE FINDING THAT PUT THIS COUNTER HERE. Gap 5 assumed the selector was
+    // dropping the creator's numbers. On the curated pack `figures` already
+    // equals `available_figures`, and on caption-derived stores both are ZERO —
+    // so the numbers are missing from scripts because the STORE has none, which
+    // is a different problem with a different fix. Logging only `figures` would
+    // leave those two indistinguishable.
+    expect(EDGE).toMatch(/figures: chosen\.filter\(carriesFigure\)\.length/)
+    expect(EDGE).toMatch(/available_figures: available\.filter\(carriesFigure\)\.length/)
+  })
+
   it('applies it where the prompt is built, not somewhere decorative', () => {
     expect(EDGE).toMatch(/const speakable = selectSpeakable\(relevanceOrdered, 10\)/)
     // ⚠️ THE OLD LINE MUST BE GONE, not merely bypassed. A surviving
