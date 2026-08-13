@@ -15,8 +15,36 @@
 import { db, type Job } from '../db.js'
 import { geminiJson } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
-import { readExtractedFact, type ExtractedFact, type ExtractionSource }
+import { readExtractedFact, EXTRACTED_FIELDS, EXTRACTION_SOURCES,
+  type ExtractedFact, type ExtractedField, type ExtractionSource }
   from './productExtractionContract.js'
+import { mergeExtraction, needsAttention, describeChange }
+  from './productFreshnessContract.js'
+
+/** Read a fact back off the row so a merge compares like with like.
+ *
+ *  ⚠️ THE STORED `trust` AND `source` ARE HONOURED, NEVER RECOMPUTED. A fact the
+ *  creator confirmed carries `source: 'user_confirmed'`, and re-deriving it here
+ *  would erase the confirmation this whole merge exists to protect. */
+function readStoredFactLike(raw: unknown): ExtractedFact | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  const field = String(r.field ?? '')
+  const value = String(r.value ?? '').trim()
+  if (value === '' || !EXTRACTED_FIELDS.includes(field as ExtractedField)) return null
+  const source = r.source === 'user_confirmed'
+    ? 'user_confirmed' as const
+    : (EXTRACTION_SOURCES.includes(r.source as ExtractionSource)
+        ? r.source as ExtractionSource : 'marketing_copy' as const)
+  return {
+    field: field as ExtractedField,
+    value,
+    source: source as ExtractionSource,
+    sourceUrl: typeof r.sourceUrl === 'string' ? r.sourceUrl : null,
+    trust: r.trust === 'usable' ? 'usable' : 'needs_confirmation',
+    extractedAt: typeof r.extractedAt === 'string' ? r.extractedAt : '',
+  }
+}
 
 /** Structured facts a page states about itself in its HEAD, before any
  *  JavaScript runs.
@@ -243,18 +271,53 @@ export async function handleExtractProduct(job: Job): Promise<Record<string, unk
     if (f) facts.push(f)
   }
 
+  // ⚠️ A RE-EXTRACT USED TO DESTROY EVERY CONFIRMATION THE CREATOR HAD MADE.
+  // This wrote `knowledge: facts` — a wholesale replace — and
+  // `confirmProductFacts` stores a creator's approvals INSIDE THAT SAME JSONB,
+  // flipping `source` to `user_confirmed` on the facts they personally vouched
+  // for. So a creator could work through ten held prices by hand, paste the
+  // link again a month later, and have all ten silently revert to
+  // `needs_confirmation`. Nothing told them; the only sign was being asked
+  // again about facts they had already approved.
+  //
+  // ⚖️ MERGED, AND THE DISAGREEMENTS REPORTED. A confirmed fact is never
+  // overwritten and never silently kept: if the page now says something else,
+  // both survive and the conflict is surfaced, because the creator is the one
+  // who gets to retire something they vouched for. Unconfirmed facts are the
+  // extractor's own and a newer read replaces them, which is what re-crawling
+  // is for.
+  const { data: prevRow } = await db.from('product_entities')
+    .select('knowledge').eq('id', entityId).maybeSingle()
+  const rawPrev = (prevRow as { knowledge?: unknown } | null)?.knowledge
+  const previous = Array.isArray(rawPrev)
+    ? rawPrev.map((r) => readStoredFactLike(r)).filter((f): f is ExtractedFact => f !== null)
+    : null
+
+  const { knowledge, changes } = mergeExtraction(previous, facts)
+
   const { error } = await db.from('product_entities').update({
-    knowledge: facts,
+    knowledge,
     knowledge_extracted_at: now,
     knowledge_source_url: url,
   }).eq('id', entityId)
   if (error) throw new Error(`extract_product could not store knowledge: ${error.message}`)
 
-  const usable = facts.filter((f) => f.trust === 'usable').length
+  const usable = knowledge.filter((f) => f.trust === 'usable').length
+  const attention = needsAttention(changes)
   console.log(JSON.stringify({
     event: 'product_knowledge_extracted',
-    entity_id: entityId, source, total: facts.length, usable,
-    needs_confirmation: facts.length - usable,
+    entity_id: entityId, source, total: knowledge.length, usable,
+    needs_confirmation: knowledge.length - usable,
+    // What a refresh actually DID, so "we re-read the page and nothing moved" is
+    // distinguishable from "we re-read it and quietly replaced nine things".
+    read_from_page: facts.length,
+    changed: changes.length,
+    by_change: changes.reduce<Record<string, number>>(
+      (a, c) => ({ ...a, [c.kind]: (a[c.kind] ?? 0) + 1 }), {}),
+    // Confirmations that the page now contradicts or has dropped. Both were
+    // performed silently by the replace this fixed.
+    needs_creator: attention.length,
+    conflicts: attention.map(describeChange).slice(0, 10),
   }))
-  return { extracted: facts.length, usable }
+  return { extracted: knowledge.length, usable, changed: changes.length, conflicts: attention.length }
 }
