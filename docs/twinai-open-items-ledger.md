@@ -593,3 +593,60 @@ Shipped as a counter (`entailment_gaps`), not a repair: both instances on the
 corpus are already repaired by the reference-leak pass, so the incremental catch
 today is zero. Its value is the general case — a figure NOT from the reference,
 citing a real but unrelated item — which nothing has measured yet.
+
+### G9. Paraphrase drift — a re-scan nearly doubles the store
+
+0123 made exact repeats merge and said plainly that it did not close this:
+"the extractor re-reads the transcripts on every scan and writes the same fact
+in different words… BOTH survive." Nobody had measured how often.
+
+**Two runs of the production extractor over identical input**, 18 items in the
+second run:
+
+| | |
+| :--- | ---: |
+| merged today (exact match) | 6 |
+| **the same fact in different words — accumulates** | **9** |
+| genuinely new | 3 |
+
+> "Faster charging is not better for phone battery longevity."
+> "faster charging is not better for phone battery health"
+
+⚠️ **THE COST IS NOT DISK.** The prompt carries about ten items behind a floor
+of six substance slots. Two phrasings of one opinion occupy two of those six,
+and the creator's second-best idea never reaches the writer.
+
+**Scope is a measurement, not a preference.** Across 1,033 items from 17 real
+creators the rule merges *nothing* within a single scan — every pair it would
+have collapsed was a `topic` or `covered` row, and most of those were not
+duplicates at all ("starting AI dropshipping with Claude" vs "…with your
+phone" — different videos). All nine drifted items were substance kinds. So
+thin kinds keep exact-match merging and this touches the six kinds a script is
+built out of.
+
+⚠️ **AND WORD OVERLAP ALONE WOULD HAVE DELETED VIDEOS.** At the same threshold,
+on the same corpus:
+
+> "top 10 dropshipping products for July 2026" — 0.71 — "…for May 2026"
+> "top 10 dropshipping products to sell now" — 0.63 — "top 7 dropshipping…"
+> "Google Pixel 1" — 0.67 — "Google Pixel"
+
+Each differs by a number or a month and by almost nothing else, which is exactly
+what high overlap cannot see. Two texts are never merged when their numerals or
+month names disagree — the same principle G8 runs on: numbers do not paraphrase.
+The sharpest case the guard catches is a pair of experiences at 0.54 that reached
+**opposite** findings (256GB choked, 512GB fine); merging them would delete the
+comparison that is the content.
+
+⚖️ **THE FALLBACK DELIBERATELY DOES NOT USE THE CANONICALISED ROWS.** Rewriting a
+re-wording into an exact repeat is what lets the merge see it — and sent instead
+to the plain insert that runs when 0123 is absent, it collides with 0121's unique
+index and fails the whole batch. That is the precise defect 0123 was written to
+fix. Without the merge, dedupe is off.
+
+Wired at the only place it can run (`worker/src/knowledgeInsert.ts`, before the
+merge RPC), with a `creator_knowledge_paraphrase_merged` counter, and every way
+of failing to read the store — no `select`, a throw, a null result, an absent
+`voice_id` — stores the scan unchanged. Nine mutations of the rule were checked to fail their guard; the
+threshold is pinned by a test because no corpus-free assertion can catch it
+being loosened.
