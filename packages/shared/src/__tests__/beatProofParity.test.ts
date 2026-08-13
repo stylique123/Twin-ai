@@ -88,6 +88,25 @@ describe('the real corpus, classified', () => {
     ['Demonstration with light source and creator, showing 45-degree angle.', 'shootable'],
     ['The receipt on the desk', 'shootable'],
     ['Straight to camera', 'shootable'],
+    // ⚠️ THE CLASSIFIER OVER-REJECTED, AND ONLY THE POST-FIX RUN SHOWED IT. The
+    // source pattern matched a BARE "Creator", not just the possessive, so every
+    // proof whose subject is the person on camera was filed as naming a source.
+    // These are the shape the field is FOR and they were being counted as the
+    // defect — which also means my first hand-count of the old corpus was too
+    // harsh: 61% wrong, not 97%.
+    //
+    // ⚖️ THE DISTINCTION IS GRAMMATICAL AND DECIDABLE. "Creator's knowledge" is
+    // possessive and names where something came from; "Creator holding phone" is
+    // a subject doing something in frame.
+    ['Creator at desk, writing on a whiteboard or notepad', 'shootable'],
+    ['Creator holding phone, demonstrating a wonky angle', 'shootable'],
+    ['Creator typing on a laptop, showing a spreadsheet', 'shootable'],
+    ['Creator gesturing to a window or light source at 45-degree angle', 'shootable'],
+    ['Graph showing revenue comparison for project vs. retainer', 'shootable'],
+    ['Screen recording of a simple AI tool interface', 'shootable'],
+    // …while the possessive still names a source, which is what it always did.
+    ["Creator's experience raising capital for Skool", 'names_a_source'],
+    ['Creator experience with paid ads', 'names_a_source'],
   ])('classifies %j as %s', (value, expected) => {
     expect(proofQuality(value)).toBe(expected)
   })

@@ -107,6 +107,20 @@ const SUBSTANCE_RULES = liftBlock(
   '- KILL THE BORING MIDDLE.',
   'the substance declaration rules',
 )
+// THE BEAT PLAN INSTRUCTION, LIFTED — AND IT WAS RETYPED UNTIL NOW.
+//
+// ⚠️ THE HARNESS WOULD HAVE MEASURED THE OLD RULE. `proof` was found answering a
+// different question on 186 of 192 real beats, and the fix is a sharpened
+// instruction naming the three wrong shapes. This file carried its OWN typed
+// copy of the beat_plan lines, so a run made to check that fix would have sent
+// the pre-fix wording and reported that nothing had changed — a drift result
+// indistinguishable from a real one, which is the exact failure the header of
+// this file warns about.
+const BEAT_PLAN_RULES = liftBlock(
+  '- beat_plan: BEFORE writing any words',
+  'that is a real answer and it is short.',
+  'the beat plan instruction',
+)
 const COUNT_CONTRACT = liftBlock(
   '- THE COUNT IS THE FORMAT',
   'Silent beats are fine BEFORE the first item and AFTER the last.',
@@ -296,8 +310,8 @@ const RESPONSE_SCHEMA = {
       type: 'ARRAY',
       items: {
         type: 'OBJECT',
-        properties: { beat: S('STRING'), target_sec: S('STRING'), scene_type: S('STRING'), proof: S('STRING') },
-        required: ['beat', 'target_sec', 'scene_type', 'proof'],
+        properties: { beat: S('STRING'), target_sec: S('STRING'), proof: S('STRING') },
+        required: ['beat', 'target_sec', 'proof'],
       },
     },
     concept: { type: 'OBJECT', properties: { premise: S('STRING') }, required: ['premise'] },
@@ -437,7 +451,7 @@ DECIDE THE SUBSTANCE BEFORE THE PROSE
 ${SUBSTANCE_RULES}
 
 HOW TO SHAPE THE VIDEO
-- beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
+${BEAT_PLAN_RULES}
 - Write every script line TO ITS BEAT'S target_sec. A line for a 6 second beat is roughly 15 words at a natural pace; a line for a 16 second beat is roughly 40. Do not write a forty word line into a six second beat.
 - This is a SHORT-FORM vertical video.
 
@@ -472,7 +486,7 @@ YOUR TASK: produce the FULL blueprint now — the mechanism read AND the beat pl
 
 Return JSON only, with EVERY key below present and populated:
 {"reference_read":{"mechanism":{"enumeration":{"is_enumerated":"","count":"","unit":""},"hook_promise":"","rehook_after_item":"","beat_debts":[""]}},
- "beat_plan":[{"beat":"","target_sec":"","scene_type":"","proof":""}],
+ "beat_plan":[{"beat":"","target_sec":"","proof":""}],
  "concept":{"premise":""},"hook_options":["","","","",""],
  "script":[{"section":"","line":"","location":"","broll_request":"","wardrobe":"","action_posing":"","substance":"","substance_evidence":""}],
  "cta":""}`

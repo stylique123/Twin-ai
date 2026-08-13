@@ -194,7 +194,7 @@ const NON_PROOF = /^(?:n\/?a|none|nil|null|no(?:ne)? needed|not applicable|proof
  *  the prompt fix worked, on real generations, without anybody re-reading 192
  *  strings by hand. */
 const SUBSTANCE_ENUM = /^(?:creator_knowledge|creator_experience|creator_opinion|product_dna|general|needs_user)$/i
-const NAMES_A_SOURCE = /^(?:the\s+)?(?:creator'?s?\b|general (?:knowledge|observation)\b|product_dna\b|reference structure\b|specific knowledge\b)/i
+const NAMES_A_SOURCE = /^(?:the\s+)?(?:creator'\s?s?\b|creators'\b|creator\s+(?:experience|knowledge|expertise|opinion)\b|general (?:knowledge|observation)\b|product_dna\b|reference structure\b|specific knowledge\b)/i
 const NAMES_AN_EFFECT = /^(?:establishes?|sets? up|provides?|guides?|engages?|introduces?|explains?|concludes?|reinforces?|builds?|creates?|delivers?|summari[sz]es?|transitions?|highlights?|emphasi[sz]es?)\b/i
 
 export type ProofQuality = 'shootable' | 'substance_enum' | 'names_a_source' | 'names_an_effect' | 'absent'
