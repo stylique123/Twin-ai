@@ -352,6 +352,36 @@ const RESPONSE_SCHEMA = {
 // items did we show" would be a second chance to be wrong about the only
 // question the recording exists to answer. `knowledgeBlock` renders what this
 // returns; nothing else may decide it.
+// THE SUBSTANCE FLOOR, READ OUT OF THE EDGE THAT SHIPS.
+//
+// ⚖️ LIFTED, NOT RETYPED. A typed copy of the kind list would drift the moment a
+// kind moved between substance and thin, and the run would report a selector
+// nobody is running. Same rule as every other lifted block in this file.
+const SUBSTANCE_KINDS = new Set(
+  (EDGE.match(/const SUBSTANCE_KINDS: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\)/) ?? [])[1]
+    ?.split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean) ?? [])
+const SUBSTANCE_FLOOR = Number(
+  (EDGE.match(/const SUBSTANCE_FLOOR = (\d+)/) ?? [])[1] ?? NaN)
+if (!SUBSTANCE_KINDS.size || !Number.isFinite(SUBSTANCE_FLOOR)) {
+  console.error('FATAL: could not lift the substance floor from generate-blueprint/index.ts.')
+  console.error('The harness will not run on a paraphrase of the selector. Fix the marker.')
+  process.exit(1)
+}
+
+function selectSpeakable(ranked, cap, floor = SUBSTANCE_FLOOR) {
+  if (cap <= 0) return []
+  const substance = ranked.filter((i) => SUBSTANCE_KINDS.has(i.kind))
+  const keep = substance.slice(0, Math.min(floor, cap))
+  const taken = new Set(keep)
+  const out = [...keep]
+  for (const item of ranked) {
+    if (out.length >= cap) break
+    if (taken.has(item)) continue
+    out.push(item); taken.add(item)
+  }
+  return out
+}
+
 function selectKnowledge(k, aboutText = '', cap = KNOWLEDGE_CAP) {
   if (!k) return { items: [], covered: [] }
   const aboutTerms = new Set(String(aboutText).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3))
@@ -364,9 +394,15 @@ function selectKnowledge(k, aboutText = '', cap = KNOWLEDGE_CAP) {
     ...scored.filter((x) => x.hit > 0).sort((a, b) => b.hit - a.hit).map((x) => x.i),
     ...scored.filter((x) => x.hit === 0).map((x) => x.i),
   ]
+  // ⚠️ THE SUBSTANCE FLOOR, LIFTED FROM THE EDGE. Slicing relevance-ordered
+  // items straight to the cap is the behaviour an A/B measured taking grounding
+  // from 63% to 52% once the store was realistic. Measuring the OLD selector
+  // while production runs the new one would report on a product nobody ships —
+  // the same drift `SUBSTANCE_RULES` is lifted to avoid.
+  //
   // The cap is applied HERE, so what is recorded is what the writer could see —
   // not the fuller store it was chosen from.
-  return { items: ordered.slice(0, cap), covered: (k.items ?? []).filter((i) => i.kind === 'covered') }
+  return { items: selectSpeakable(ordered, cap), covered: (k.items ?? []).filter((i) => i.kind === 'covered') }
 }
 
 function knowledgeBlock(k, aboutText = '', cap = KNOWLEDGE_CAP) {
