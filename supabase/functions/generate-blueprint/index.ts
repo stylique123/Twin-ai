@@ -1116,6 +1116,76 @@ function findLeakedClaims(
   return out
 }
 
+// A TRUE CITATION ATTACHED TO A NUMBER IT DOES NOT CONTAIN (ledger G8) —
+// inlined from `packages/shared/src/claimEntailment.ts`.
+//
+// ⚠️ `UNSUPPORTED` ASKS WHETHER THE CITED TEXT TRACES TO SOMETHING SUPPLIED. It
+// does not ask whether the citation SUPPORTS the assertion, so a beat can attach
+// a real knowledge item to an invented figure and pass every counter clean:
+//
+//     LINE  : "…has genuinely 3x'd my productivity as a creator."
+//     CITED : (experience) Has been a professional content creator for 8 years
+//
+// ⚖️ RESTRICTED TO NUMBERS, DELIBERATELY. Entailment over prose is a judgement
+// and a string test on it blocks legitimate paraphrase. NUMBERS DO NOT
+// PARAPHRASE — "$50,000" may be written "$50K" and can never become "$70,000" —
+// so for measured values the question is decidable.
+//
+// ⚠️ NORMALISATION IS THE LOAD-BEARING PART. A first measurement reported 3
+// violations in 10 and one was its own bug: "$50K in four months" citing
+// "$50,000 a month" was called invented because the K was not normalised.
+//
+// ⚖️ COUNTED, NOT REPAIRED. On the 32-case corpus this finds 2 gaps in 11
+// numeric cited beats, and BOTH are already repaired by the reference-leak pass
+// above. Its value is the general case — a figure not from the reference, citing
+// a real but unrelated item — which nothing has measured yet.
+const CLAIM_VALUE = new RegExp(
+  '[$£€]\\s?\\d[\\d,.]*\\s*(?:k|m|bn)?'
+  + '|\\d[\\d,.]*\\s*(?:k|m|bn)?\\s*(?:x\\b|×|%|hours?|hrs?|minutes?|mins?|days?|weeks?'
+  + '|months?|years?|dollars?|pounds?|euros?|subscribers?|followers?|customers?|users?|views?)',
+  'gi')
+
+function canonicalValue(raw: string): string {
+  const s = String(raw).toLowerCase().replace(/[\s,]/g, '')
+  const num = s.match(/\d[\d.]*/)?.[0] ?? ''
+  if (num === '') return s
+  let n = Number.parseFloat(num)
+  if (!Number.isFinite(n)) return s
+  if (/\d[\d.]*k/.test(s)) n *= 1_000
+  else if (/\d[\d.]*bn/.test(s)) n *= 1_000_000_000
+  else if (/\d[\d.]*m(?![io])/.test(s)) n *= 1_000_000
+  const unit = /x|×/.test(s.replace(/[\d.,$£€]/g, '')) ? 'x'
+    : s.includes('%') ? '%'
+    : /[$£€]|dollar|pound|euro/.test(s) ? '$'
+    : (s.match(/hour|hr|minute|min|day|week|month|year|subscriber|follower|customer|user|view/)?.[0] ?? '')
+  return `${n}${unit}`
+}
+
+function claimedValues(text: string): Set<string> {
+  const out = new Set<string>()
+  for (const m of String(text ?? '').matchAll(CLAIM_VALUE)) {
+    const c = canonicalValue(m[0])
+    if (c && /\d/.test(c)) out.add(c)
+  }
+  return out
+}
+
+function findEntailmentGaps(
+  script: readonly { line?: unknown; substance?: unknown; substance_evidence?: unknown }[],
+): Array<{ beat: number; value: string }> {
+  const out: Array<{ beat: number; value: string }> = []
+  script.forEach((b, i) => {
+    if (b?.substance !== 'creator_knowledge') return
+    const cited = typeof b?.substance_evidence === 'string' ? b.substance_evidence : ''
+    if (cited.trim() === '') return
+    const supported = claimedValues(cited)
+    for (const v of claimedValues(typeof b?.line === 'string' ? b.line : '')) {
+      if (!supported.has(v)) out.push({ beat: i + 1, value: v })
+    }
+  })
+  return out
+}
+
 const PROGRESS_CHECK =
   /\b(?:still with me|still here|you'?re (?:still )?(?:with me|watching)|halfway (?:there|through|done)|ready for the (?:last|next|final)|are you (?:still )?(?:there|watching)|if you'?re still watching)\b/i
 
@@ -3639,6 +3709,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // surface waits on. A row that is wrong five times out of six is not
       // guidance, so `proof` is deliberately shown to nobody until this reports
       // otherwise.
+      // ⚠️ FIGURES ASSERTED THAT THE BEAT'S OWN CITATION DOES NOT CARRY (G8).
+      // `UNSUPPORTED` cannot see these: the citation is real, it just does not
+      // contain the number.
+      entailment_gaps: findEntailmentGaps(
+        (Array.isArray(declared) ? declared : []) as Array<Record<string, unknown>>).length,
       proof_quality: proofQualityCounts(
         (templated.bp as { beat_plan?: unknown })?.beat_plan),
     }))
