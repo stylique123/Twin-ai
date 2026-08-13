@@ -416,3 +416,119 @@ instruction.
 - **Pull real failing inputs before changing anything.** The caption bug was
   found by reading staging project `90eeb742`'s actual data, not by reasoning
   from the error string.
+
+---
+
+## G. 2026-08-13 — knowledge supply, and what measurement caught
+
+Recorded because the findings below cost a day to produce and none of them are
+visible in the code they concern. PRs #347–#366.
+
+### G1. The recurring defect, nine times in one session
+
+A field written, stored, displayed, and read by **nothing** — found nine times:
+`product_entities` (table, no writer) · `loadProductEntities` (reader, no
+caller) · `restrictions` (appeared only inside a comment) · `archived_at` ·
+`productFacts` · the `IMPOSS-PROD` legend · `official_product_page` (enum value
+produced by nothing) · `beat_plan.proof` / `beat` / `scene_type` ·
+`selectionShape`.
+
+**Three of those were introduced by the changes that fixed the others.** The rule
+"never add a field without a reader in the same PR" is easy to state and easy to
+break in the same afternoon you state it, so the guards are now written against
+*the rule* (walk the interface, demand a reader for whatever is found) rather
+than against the individual field.
+
+### G2. A reader existing is not a reader being right
+
+`beat_plan.proof` was wired to the plan card and the capture screen, with passing
+tests. Then 192 real proofs said 186 were the wrong answer — the `substance` enum
+verbatim, a source, or the beat's purpose restated. The row would have read
+"What makes this land: creator_knowledge" to somebody holding a camera.
+
+The display was reversed and `proof`'s reader is a **production counter** until
+the counter says the value is worth showing. After the instruction was sharpened
+to forbid the three wrong shapes by name: 201 beats, 100% shootable.
+
+⚠️ **The first headline was wrong too** — "186 of 192" was inflated by a bug in
+the classifier doing the measuring (it matched a bare "Creator", so every proof
+whose subject was the person on camera was filed as a defect). True figure: 61%,
+not 97%. *The measuring instrument is part of the experiment.*
+
+### G3. More knowledge made scripts WORSE, and why
+
+A/B on three creators, same references, only the store differing:
+
+| | hand-written | +382 derived |
+|---|---|---|
+| grounded in creator knowledge | 63% | **52%** |
+| generic beats | 20% | 25% |
+
+Ten-item cap, ranked by lexical overlap alone. The small curated store never
+filled the cap; a realistic store fills it and thin `product`/`topic` rows win on
+keyword overlap, pushing claims and experiences out. **Every established creator
+has the realistic store** — knowledge accumulates across scans — so a creator
+with a lot to say crowds their own claims out of their own prompt.
+
+Fixed with a substance **floor** (not depth-first ordering, which would hand a
+phone review a generic business claim ahead of the phone).
+
+⚠️ **Verified inert on the shipping configuration.** 32 cases, both selectors,
+identical supplied mix: the floor never fired once, because 18 of 32 cases were
+below the floor and **none of those were at the cap**. Substance was thin because
+the creator had none, not because anything displaced it. A seatbelt in a car that
+never crashed — correct to have, and not evidence of improvement.
+
+### G4. The structural ceiling: captions cannot carry substance
+
+Caption-derived knowledge contains **zero** `claim` / `experience` / `opinion` /
+`framework`, by construction — the caption prompt correctly refuses to file a
+position as `stated` from a headline, because nobody heard them say it. Only
+transcripts produce substance.
+
+So `TRANSCRIPT_BUDGET` is the ceiling on everything downstream, and no selector,
+floor or cap change raises it. Raised 5 → 10 (**a recurring paid cost**), plus a
+free stance axis that spends the same budget on titles shaped like an argument
+rather than spectacle — reach is a proxy for what got views, not for what
+contains a position.
+
+**Unvalidated:** whether stance-picked videos actually yield more substance needs
+a paid transcription trial. The mechanism shipped; the proof did not.
+
+### G5. Two problems that look identical in a finished script
+
+- `starved` — substance existed and did not reach the prompt. A ranking bug.
+- small `available_substance` — the creator's store is thin. Needs transcripts or
+  a question. **No selector change touches it.**
+
+Both produce generic scripts. Without the split, every thin creator reads as a
+ranking failure and the selector gets tuned at a problem that isn't selection.
+
+### G6. Corrections to items recorded elsewhere
+
+- **Tasks "re-scan the 8 cohort-1 creators" and "regenerate the creator pack"
+  were mis-scoped.** The manifest's cohort-1 (`johnnyytech`, `brett.tech`, …) is
+  a **different set** from the 8 creators the matrix runs (`AlexHormozi`,
+  `garyvee`, …) — zero overlap. Re-scanning them would not have moved any number
+  we report.
+- **Nothing writes `creator-pack.json`.** Every QA script reads it; the items were
+  hand-written. `derive-knowledge.mjs` now produces them by production's rules.
+  Do **not** replace the pack wholesale — the derived set has no `opinion` items
+  and swapping would delete the only stance-shaped knowledge the harness has.
+- **Re-scraping was not needed** and was not done: captions were two days old and
+  the manifest opens by warning that re-scraping costs credits.
+
+### G7. Process
+
+- **Walk the feature on real data.** Every defect above was found by walking, not
+  by the suite — which was green at 2,875 tests throughout.
+- **A guard that reads prose checks the wrong thing.** Two guards failed on the
+  *comments explaining the defect they forbid*. Explaining a defect must not be
+  indistinguishable from committing it.
+- **Retyping a constant is the same defect as retyping a prompt.** A hand-typed
+  `maxOutputTokens` (8k vs the real 40k) made all eight extractions fail as
+  "unparseable".
+- **The harness must lift, never retype.** `run-eval.mjs` carried its own copy of
+  the `beat_plan` instruction; a run made to check that fix would have sent the
+  pre-fix wording and reported no change — a null result indistinguishable from a
+  real one.
