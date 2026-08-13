@@ -573,3 +573,23 @@ in the cited item" catches this case and produces false positives on legitimate
 paraphrase — blocking good scripts, or shipping another green-tests-with-a-hole.
 Whether a citation supports an assertion is a judgement, not a substring test,
 and it needs designing rather than patching.
+
+**RESOLVED, narrowly and on purpose.** The general form stays a judgement, so the
+check is restricted to the part that is not: **numbers do not paraphrase**.
+"$50,000" may be written "$50K"; it can never become "$70,000". For measured
+values, "does the citation contain this figure" is decidable, and every G8
+instance found on real runs was a NUMBER attached to evidence that did not carry
+it.
+
+⚠️ **AND THE FIRST ATTEMPT WALKED STRAIGHT INTO THE TRAP THIS ENTRY WARNS
+ABOUT.** It reported 3 violations in 10; one was its own bug — a beat saying
+"$50K in four months" citing "$50,000 a month within its first four months",
+called invented because the `K` was not normalised. A second bug read "1.5M
+views" as 1.5 because the multiplier test used a word boundary and "views"
+follows the `m` directly. **Normalisation is the load-bearing part, not the
+comparison.** True rate: 2 of 11 numeric cited beats.
+
+Shipped as a counter (`entailment_gaps`), not a repair: both instances on the
+corpus are already repaired by the reference-leak pass, so the incremental catch
+today is zero. Its value is the general case — a figure NOT from the reference,
+citing a real but unrelated item — which nothing has measured yet.
