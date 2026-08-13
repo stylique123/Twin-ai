@@ -984,6 +984,20 @@ const SUBSTANCE_KINDS: ReadonlySet<string> = new Set([
 ])
 const SUBSTANCE_FLOOR = 6
 
+// ⚠️ A BARE INTEGER IS NOT A FIGURE. "3 ways to do X" is a count; "3x" and
+// "$40k" are the measurements a numbers channel is built on.
+const FIGURE = new RegExp(
+  '\\d[\\d,.]*\\s*(?:x\\b|×|%|k\\b|m\\b|bn\\b|hours?|hrs?|minutes?|mins?|days?|weeks?|months?'
+  + '|years?|dollars?|pounds?|euros?|subscribers?|followers?|customers?|users?|views?|clients?)'
+  + '|[$£€]\\s?\\d[\\d,.]*',
+  'i')
+
+/** ⚖️ SUBSTANCE KINDS ONLY. A figure inside a `topic` row is not a number the
+ *  creator can assert, and counting it is how a shortage looks like a supply. */
+function carriesFigure(item: { kind?: string; text?: string }): boolean {
+  return SUBSTANCE_KINDS.has(String(item?.kind)) && FIGURE.test(String(item?.text ?? ''))
+}
+
 function selectSpeakable<T extends { kind: string }>(
   ranked: readonly T[], cap: number, floor: number = SUBSTANCE_FLOOR,
 ): T[] {
@@ -1002,7 +1016,8 @@ function selectSpeakable<T extends { kind: string }>(
 }
 
 function selectionShape(
-  chosen: readonly { kind: string }[], available: readonly { kind: string }[],
+  chosen: readonly { kind: string; text?: string }[],
+  available: readonly { kind: string; text?: string }[],
 ): Record<string, number | boolean> {
   const substance = chosen.filter((i) => SUBSTANCE_KINDS.has(i.kind)).length
   const availableSubstance = available.filter((i) => SUBSTANCE_KINDS.has(i.kind)).length
@@ -1018,6 +1033,14 @@ function selectionShape(
     // problem with a different fix (more transcripts, or asking them).
     starved: substance < Math.min(SUBSTANCE_FLOOR, availableSubstance),
     available_substance: availableSubstance,
+    // ⚠️ BOTH HALVES, BECAUSE THE INTERESTING ANSWER IS THE DENOMINATOR. "Numbers
+    // vanish for the channels built on numbers" assumed selection was dropping
+    // them. On every corpus available it is not: these two are EQUAL on the
+    // curated pack and BOTH ZERO on caption-derived stores. Logging only what
+    // got through would leave a shortage indistinguishable from a selector that
+    // discards figures — and those have opposite fixes.
+    figures: chosen.filter(carriesFigure).length,
+    available_figures: available.filter(carriesFigure).length,
   }
 }
 

@@ -16,7 +16,7 @@
 // to say was crowding their own claims out of their own prompt.
 import { describe, expect, it } from 'vitest'
 import {
-  selectSpeakable, selectionShape, SUBSTANCE_KINDS, SUBSTANCE_FLOOR,
+  selectSpeakable, selectionShape, SUBSTANCE_KINDS, SUBSTANCE_FLOOR, carriesFigure,
 } from '../knowledgeSelection'
 
 const item = (kind: string, text = kind) => ({ kind, text })
@@ -139,5 +139,57 @@ describe('the shape is counted, so the fix can be confirmed on real stores', () 
     // facts, and only one is a bug.
     const thinOnly = Array.from({ length: 10 }, (_, i) => item('product', `p${i}`))
     expect(selectionShape(thinOnly, thinOnly).starved).toBe(false)
+  })
+})
+
+// ── GAP 5: "NUMBERS VANISH FOR THE CHANNELS BUILT ON NUMBERS" ──────────────
+//
+// The gap assumed the selector was dropping the creator's figures. Measured on
+// every corpus available, it is not — so what shipped is the counter that can
+// settle it on production data, and NOT the floor that was written for it.
+describe('carriesFigure', () => {
+  it.each([
+    ['grew the channel 3x in a year', true],
+    ['made $50k from one launch', true],
+    ['cut editing from 10 hours to two', true],
+    ['conversion went up 40%', true],
+  ])('%j is a measurement', (text, expected) => {
+    expect(carriesFigure({ kind: 'claim', text })).toBe(expected)
+  })
+
+  it('a bare count is NOT a figure', () => {
+    // ⚠️ THE COUNT CONTRACT'S OWN LINE. "3 ways to do X" promises three items and
+    // asserts nothing about an outcome; treating it as a measurement would report
+    // every list-format creator as numeric.
+    expect(carriesFigure({ kind: 'claim', text: '3 ways to grow a channel' })).toBe(false)
+  })
+
+  it('a figure in a thin kind does not count', () => {
+    // ⚖️ THIS NARROWING IS THE FINDING. Counting figures across every kind says
+    // ten creators in the pack have numbers; counting only the kinds that can
+    // carry a beat says almost none do. A `topic` row is not something the
+    // creator can assert.
+    expect(carriesFigure({ kind: 'topic', text: 'top 10 products that made $50k' })).toBe(false)
+    expect(carriesFigure({ kind: 'covered', text: 'grew 3x in a year' })).toBe(false)
+  })
+
+  it('survives a missing kind or text', () => {
+    expect(carriesFigure({})).toBe(false)
+    expect(carriesFigure({ kind: 'claim' })).toBe(false)
+  })
+})
+
+describe('selectionShape records both halves', () => {
+  it('reports what was available, not only what got through', () => {
+    const avail = [
+      { kind: 'claim', text: 'grew 3x in a year' },
+      { kind: 'claim', text: 'thumbnails matter' },
+    ]
+    const shape = selectionShape([avail[1]], avail)
+    // ⚠️ ONE FIGURE EXISTED AND NONE WAS SELECTED. Without the denominator this
+    // is indistinguishable from a creator who simply has no numbers — and those
+    // two have opposite fixes.
+    expect(shape.figures).toBe(0)
+    expect(shape.availableFigures).toBe(1)
   })
 })

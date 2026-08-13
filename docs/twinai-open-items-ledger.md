@@ -650,3 +650,42 @@ of failing to read the store — no `select`, a throw, a null result, an absent
 `voice_id` — stores the scan unchanged. Nine mutations of the rule were checked to fail their guard; the
 threshold is pinned by a test because no corpus-free assertion can catch it
 being loosened.
+
+### G10. Gap 5's premise was wrong — the selector was not dropping the numbers
+
+Gap 5 read: *"the knowledge selector should prefer items containing figures when
+the creator's own material is numeric,"* on panel evidence that Starter Story's
+winning script was "completely numberless — on the one channel where numbers are
+the format." The floor was written. Then it was measured, and it never fires.
+
+**First count said ten of twenty-six creators hold numeric items and only one
+loses all of them.** That count was wrong in the way that matters: it matched a
+figure anywhere, including in `topic` and `product` rows.
+
+⚠️ **A FIGURE IN A THIN KIND IS NOT A NUMBER THE CREATOR CAN SAY.** "top 10
+dropshipping products that made $50k" is a video title, not an assertion. Counted
+against the six kinds that can carry a beat:
+
+| corpus | creators with figure-carrying substance | selection drops them |
+| :--- | ---: | ---: |
+| curated 26-creator pack | 9 | **0** |
+| caption-derived, 1,033 items, 17 creators | **0** | — |
+
+⚖️ **SO THE FLOOR WAS WITHHELD, NOT SHIPPED.** It changes nothing on the pack —
+the substance floor already carries every figure through — and on caption-derived
+stores there is not one figure-carrying substance item for it to reserve a slot
+for. Shipping it would have been a mechanism that cannot fire, validated by
+nothing, which is precisely the write-only pattern this session shipped nine
+times.
+
+**The scripts are numberless because the STORES are**, which is G4's structural
+ceiling again and has a different fix — transcripts, or asking the creator —
+none of it in the selector. This also corrects an earlier claim of mine in this
+session: seven of eight creators "having numbers they don't use" counted figures
+across all kinds and overstated the supply.
+
+What shipped is `carriesFigure` plus `figures` / `available_figures` in
+`selection`, in shared and in the edge, held identical by the parity test. **Both
+halves**, because the interesting number is the denominator: logging only what
+got through leaves "the selector discarded them" and "the creator has none"
+indistinguishable, and those have opposite fixes.

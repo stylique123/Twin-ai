@@ -65,6 +65,28 @@ export const SUBSTANCE_KINDS: ReadonlySet<string> = new Set([
  *  the remainder goes back to the general pool rather than sitting empty. */
 export const SUBSTANCE_FLOOR = 6
 
+/** A measured value: a number wearing a unit, a multiplier or a currency.
+ *
+ *  ⚠️ A BARE INTEGER IS NOT A FIGURE. "3 ways to do X" is a count and asserts
+ *  nothing about an outcome; "3x" and "$40k" are the measurements a numbers
+ *  channel is built on. The same line the count contract draws. */
+const FIGURE = new RegExp(
+  '\\d[\\d,.]*\\s*(?:x\\b|×|%|k\\b|m\\b|bn\\b|hours?|hrs?|minutes?|mins?|days?|weeks?|months?'
+  + '|years?|dollars?|pounds?|euros?|subscribers?|followers?|customers?|users?|views?|clients?)'
+  + '|[$£€]\\s?\\d[\\d,.]*',
+  'i')
+
+/** Does this item carry a measurement the creator could actually say?
+ *
+ *  ⚖️ SUBSTANCE KINDS ONLY, AND THAT NARROWING IS THE WHOLE FINDING. Counting
+ *  figures across every kind says ten creators have numbers; counting only the
+ *  kinds that can carry a beat says almost none do. A figure sitting in a
+ *  `topic` row — "top 10 dropshipping products" — is not a number the creator
+ *  can assert, and treating it as one is how a shortage looks like a supply. */
+export function carriesFigure(item: { kind?: string; text?: string }): boolean {
+  return SUBSTANCE_KINDS.has(String(item?.kind)) && FIGURE.test(String(item?.text ?? ''))
+}
+
 export interface SelectableItem {
   kind: string
   text: string
@@ -119,7 +141,10 @@ export function selectSpeakable<T extends SelectableItem>(
 export function selectionShape(
   chosen: readonly SelectableItem[],
   available: readonly SelectableItem[],
-): { chosen: number; available: number; substance: number; thin: number; starved: boolean } {
+): {
+  chosen: number; available: number; substance: number; thin: number; starved: boolean
+  figures: number; availableFigures: number
+} {
   const substance = chosen.filter((i) => SUBSTANCE_KINDS.has(i.kind)).length
   const availableSubstance = available.filter((i) => SUBSTANCE_KINDS.has(i.kind)).length
   return {
@@ -127,6 +152,14 @@ export function selectionShape(
     available: available.length,
     substance,
     thin: chosen.length - substance,
+    // ⚠️ BOTH HALVES, BECAUSE THE INTERESTING ANSWER IS THE DENOMINATOR. The gap
+    // this was built to test — "numbers vanish for the channels built on
+    // numbers" — assumed selection was dropping them. On every corpus available
+    // it is not: `figures` equals `availableFigures` on the curated pack, and
+    // BOTH are zero on caption-derived stores. Recording only what got through
+    // would keep that indistinguishable from a selector that discards them.
+    figures: chosen.filter(carriesFigure).length,
+    availableFigures: available.filter(carriesFigure).length,
     // ⚠️ THE CONDITION THE A/B CAUGHT: substance existed in the store and did not
     // make it into the prompt. True here means the floor is set too low or the
     // cap too tight — not that the creator has nothing to say.
