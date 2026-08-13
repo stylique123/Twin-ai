@@ -33,6 +33,24 @@ describe('the edge copy matches shared', () => {
     expect(Number(m![1])).toBe(SUBSTANCE_FLOOR)
   })
 
+  it('COUNTS what it handed over, so the fix is confirmable in production', () => {
+    // ⚠️ THE 63%→52% COLLAPSE WAS INVISIBLE because the logs recorded that ten
+    // items reached the writer and never what KIND. A floor shipped without this
+    // counter would be a fix nobody could confirm — and `selectionShape` sat
+    // written-and-unread in shared until this wired it, which is the exact
+    // write-only defect this repo has now shipped nine times.
+    expect(EDGE).toMatch(/function selectionShape/)
+    expect(EDGE).toMatch(/selection: selectionShape\(speakable, ranked\)/)
+  })
+
+  it('distinguishes "crowded out" from "has nothing to say"', () => {
+    // ⚖️ TWO DIFFERENT PROBLEMS WITH TWO DIFFERENT FIXES. `starved` means
+    // substance existed and did not reach the prompt — the floor's business.
+    // A small `available_substance` means the creator's store is thin, which
+    // needs more transcripts or a question, and no selector can fix it.
+    expect(EDGE).toMatch(/available_substance: availableSubstance/)
+  })
+
   it('applies it where the prompt is built, not somewhere decorative', () => {
     expect(EDGE).toMatch(/const speakable = selectSpeakable\(relevanceOrdered, 10\)/)
     // ⚠️ THE OLD LINE MUST BE GONE, not merely bypassed. A surviving

@@ -1001,6 +1001,26 @@ function selectSpeakable<T extends { kind: string }>(
   return out
 }
 
+function selectionShape(
+  chosen: readonly { kind: string }[], available: readonly { kind: string }[],
+): Record<string, number | boolean> {
+  const substance = chosen.filter((i) => SUBSTANCE_KINDS.has(i.kind)).length
+  const availableSubstance = available.filter((i) => SUBSTANCE_KINDS.has(i.kind)).length
+  return {
+    chosen: chosen.length,
+    available: available.length,
+    substance,
+    thin: chosen.length - substance,
+    // ⚠️ SUBSTANCE EXISTED IN THE STORE AND DID NOT REACH THE PROMPT. This is the
+    // condition the A/B caught and the reason the floor exists. True means the
+    // floor is too low or the cap too tight — NOT that the creator has nothing
+    // to say, which is `available_substance` being small and is a different
+    // problem with a different fix (more transcripts, or asking them).
+    starved: substance < Math.min(SUBSTANCE_FLOOR, availableSubstance),
+    available_substance: availableSubstance,
+  }
+}
+
 const PROGRESS_CHECK =
   /\b(?:still with me|still here|you'?re (?:still )?(?:with me|watching)|halfway (?:there|through|done)|ready for the (?:last|next|final)|are you (?:still )?(?:there|watching)|if you'?re still watching)\b/i
 
@@ -3460,6 +3480,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       event: 'substance_route_shadow',
       depth: creatorDepth(suppliedForCheck),
       knowledge_items: suppliedForCheck.length,
+      // ⚠️ WHAT THE SELECTOR ACTUALLY HANDED OVER, which nothing recorded until
+      // now. The 63%→52% collapse was invisible for exactly this reason: the
+      // logs said ten items reached the writer and never said what KIND. A floor
+      // shipped without this counter would be a fix nobody could confirm.
+      selection: selectionShape(speakable, ranked),
       routes: routeCounts,
       route_vs_declared: routeVsDeclared,
       // Always 0 until a detector exists. Logged so its absence is visible in
