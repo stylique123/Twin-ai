@@ -532,3 +532,44 @@ ranking failure and the selector gets tuned at a problem that isn't selection.
   the `beat_plan` instruction; a run made to check that fix would have sent the
   pre-fix wording and reported no change — a null result indistinguishable from a
   real one.
+
+### G8. A true citation attached to an invented number — OPEN, nothing catches it
+
+Found by asking where `real_techh`'s digits came from, having established that
+creator has **zero** speakable numeric knowledge.
+
+**The leak (fixed, #368).** A reference's measured claim — "3x more productive",
+Ali Abdaal's own self-report — transferred to five creators across 9 of 16 runs,
+declared `general`, i.e. *"common knowledge, nobody's claim"*. `general` was
+functioning as a licence. The prompt already forbade it and it happened anyway in
+56% of runs, which is the clearest case yet for *a contract check beats a prompt
+rule where the defect is decidable*.
+
+**The second bug (OPEN).** One of those beats declared `creator_knowledge`:
+
+```
+LINE   : "This one simple filming technique has genuinely 3x'd my productivity."
+CITED  : (experience) Has been a professional content creator for 8 years
+SUPPLIED items containing 3x: NONE
+```
+
+The citation is REAL — that item was genuinely supplied — and it **does not
+contain the claim being made**. `UNSUPPORTED` checks whether the cited *text*
+traces to something supplied. It does. Nothing checks whether the citation
+**supports the specific assertion in the line**, so a beat can attach any real
+item to any invention and pass every counter.
+
+| | what is wrong | caught by |
+|---|---|---|
+| leak | reference's number, declared `general` | #368 |
+| mis-citation | invented number, citing a real but unrelated item | **nothing** |
+
+#368 catches this instance incidentally, because the number came from the
+reference. **A number that is NOT in the reference, citing an unrelated real
+item, still sails through.**
+
+⚠️ **Do not fix this with a naive string match.** "Does the beat's number appear
+in the cited item" catches this case and produces false positives on legitimate
+paraphrase — blocking good scripts, or shipping another green-tests-with-a-hole.
+Whether a citation supports an assertion is a judgement, not a substring test,
+and it needs designing rather than patching.
