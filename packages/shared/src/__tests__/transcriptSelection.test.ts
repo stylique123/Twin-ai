@@ -6,7 +6,7 @@
 // videos get transcribed therefore decides whether Twin can ever say anything a
 // creator actually believes.
 import { describe, expect, it } from 'vitest'
-import { selectVideosToTranscribe, TRANSCRIPT_BUDGET } from '../transcriptSelection'
+import { selectVideosToTranscribe, TRANSCRIPT_BUDGET, TRANSCRIPT_BUDGET } from '../transcriptSelection'
 
 const v = (url: string, plays: number, text = '', postedAt: string | null = null) =>
   ({ url: `https://x/${url}`, plays, text, postedAt })
@@ -78,8 +78,30 @@ describe('the three-state and budget rules', () => {
 
   it('spends the whole budget when an axis has nothing to give', () => {
     // ⚖️ An unspent slot is a transcript we could have had for free.
+    //
+    // ⚠️ ASSERTED AGAINST THE BUDGET, NOT A LITERAL. This read `toHaveLength(5)`
+    // and failed when the budget rose to 10 — correctly, but for the wrong
+    // reason: the property is "spend everything available", not "pick five".
+    // With fewer candidates than budget, every candidate is taken.
     const c = [v('a', 5), v('b', 4), v('c', 3), v('d', 2), v('e', 1), v('f', 0)]
-    expect(selectVideosToTranscribe(c)).toHaveLength(5)
+    expect(selectVideosToTranscribe(c))
+      .toHaveLength(Math.min(c.length, TRANSCRIPT_BUDGET))
+    const many = Array.from({ length: TRANSCRIPT_BUDGET + 4 }, (_, i) => v(`x${i}`, i))
+    expect(selectVideosToTranscribe(many)).toHaveLength(TRANSCRIPT_BUDGET)
+  })
+
+  it('spends extra budget on stance before falling back to raw reach', () => {
+    // ⚠️ THE POINT OF RAISING THE BUDGET. Extra slots should buy DIFFERENT
+    // videos — arguments the creator made — not simply the next-biggest
+    // spectacles, which is what a pure reach fallback would do.
+    const c = [
+      v('big1', 100), v('big2', 90), v('big3', 80), v('big4', 70),
+      { url: 'https://s1', plays: 5, text: 'why RGB lighting is a scam' },
+      { url: 'https://s2', plays: 4, text: 'the mistake everyone makes with lenses' },
+    ]
+    const got = selectVideosToTranscribe(c, 4)
+    expect(got).toContain('https://s1')
+    expect(got).toContain('https://s2')
   })
 
   it('never exceeds the budget, and refuses non-https', () => {

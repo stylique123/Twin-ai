@@ -271,7 +271,35 @@ export function computeStats(items: Record<string, unknown>[], posts: PostSample
 // scontent CDN links are IP-bound to the scraper and 403 from the worker, so the
 // audio upgrade must transcribe via the permalink. `videoUrl` stays last as a
 // fallback for items that only expose a direct media URL.
-export const TRANSCRIPT_BUDGET = 5
+/** How many videos get transcribed per creator, ever.
+ *
+ *  ⚠️ THIS NUMBER IS THE CEILING ON EVERYTHING DOWNSTREAM. Transcripts are the
+ *  ONLY source that yields `claim`, `experience`, `opinion` or `framework` — a
+ *  caption proves someone made a video about a thing, never what they concluded
+ *  about it. Measured across 8 production creators: 84 substance items total,
+ *  roughly ten each, off five videos each. The prompt's ten-item cap, the
+ *  substance floor and the relevance ranking are all rearranging whatever these
+ *  five produced.
+ *
+ *  So a creator whose five videos happen to be spectacle rather than argument
+ *  has no positions in the system, and no amount of selection logic invents any.
+ *  Raised 5 → 10 deliberately: transcription is PAID PER VIDEO, so this doubles
+ *  a real per-scan cost, and it is the only lever that raises the ceiling for
+ *  every creator at once rather than redistributing a fixed supply. */
+export const TRANSCRIPT_BUDGET = 10
+
+/** Captions that suggest the video contains a POSITION rather than a spectacle.
+ *
+ *  ⚖️ REACH IS A PROXY FOR WHAT GOT VIEWS, NOT FOR WHAT CONTAINS AN ARGUMENT —
+ *  and this file already warned that top performers "skew to spectacle". A
+ *  creator's most-viewed upload is frequently their least opinionated one, so
+ *  spending the first two slots on reach can spend them on the two videos least
+ *  likely to yield a claim.
+ *
+ *  These are shapes a stance takes in a title: a correction, a ranking, a
+ *  lesson, a reason. Deliberately NOT a sentiment model — an explainable pattern
+ *  list can be argued with, and "why this video was picked" has an answer. */
+const STANCE_TITLE = /\b(why|how i|what i|the truth|actually|stop |never |always |mistake|wrong|worst|best|vs\.?|versus|lesson|learned|regret|should|shouldn'?t|myth|overrated|underrated|problem with|reason)\b/i
 
 /**
  * Pick a representative few to transcribe.
@@ -310,14 +338,35 @@ export function selectVideosToTranscribe(
   const byReach = [...usable].sort((a, b) => reach(b) - reach(a))
   take(byReach[0]); take(byReach[1])
 
-  // 3-4. Recency — only among videos whose date is actually known.
+  // 3-4. STANCE — titles shaped like an argument rather than a spectacle.
+  //
+  // ⚠️ ADDED BECAUSE REACH AND RECENCY BOTH MISS POSITIONS. Every substance kind
+  // in the system comes from speech, and a video titled "I built a PC in a
+  // volcano" yields products and topics; one titled "why RGB is a scam" yields
+  // an opinion. Spending slots on stance costs nothing extra — same budget,
+  // different picks — and it is the only axis aimed at what the knowledge
+  // extractor is actually looking for.
+  //
+  // ⚖️ PLACED AFTER REACH, NOT BEFORE. Reach still opens, because a creator's
+  // biggest videos are the ones their audience associates with them, and losing
+  // those entirely would trade one blind spot for another.
+  const byStance = left().filter((c) => STANCE_TITLE.test(String(c.text ?? '')))
+    .sort((a, b) => reach(b) - reach(a))
+  take(byStance[0]); take(byStance[1])
+
+  // 5-6. Recency — only among videos whose date is actually known.
   const dated = left().filter((c) => when(c) !== null)
     .sort((a, b) => (when(b) as number) - (when(a) as number))
   take(dated[0]); take(dated[1])
 
-  // 5. Density: the longest remaining caption.
+  // 7. Density: the longest remaining caption.
   const byLength = left().sort((a, b) => String(b.text ?? '').length - String(a.text ?? '').length)
   take(byLength[0])
+
+  // 8+. More stance, then more recency, before falling back to raw reach — the
+  // extra budget should buy DIFFERENT videos, not simply the next-biggest ones.
+  for (const c of byStance) { if (picked.length >= budget) break; take(c) }
+  for (const c of dated) { if (picked.length >= budget) break; take(c) }
 
   // ⚖️ SPEND THE BUDGET. If an axis had nothing to give — no dates, too few
   // videos — fall back to reach rather than returning a short list, because an
