@@ -689,3 +689,41 @@ What shipped is `carriesFigure` plus `figures` / `available_figures` in
 halves**, because the interesting number is the denominator: logging only what
 got through leaves "the selector discarded them" and "the creator has none"
 indistinguishable, and those have opposite fixes.
+
+### G11. The §18a refusal must NOT ship as a stop — measured
+
+`containerSupply.ts` shipped as a measurement on purpose: *"a stop shipped before
+anyone knows how often it fires is a stop that may refuse most generations on its
+first day."* Gap 2 step 2 was blocked waiting on production traffic. It did not
+need traffic — `checkSupply` is a pure function of the reference's demand and the
+creator's store, so the refusal rate is computable offline.
+
+Enumerated demands were read from the derived-reference corpus with production's
+own `countsIn`, restricted to `ENUMERATED`-shape references. Demands seen: 7 and
+10 — "Top 7 Products To Sell This Week", "Top 10 Dropshipping Products".
+
+| store | creator × reference pairs | would refuse |
+| :--- | ---: | ---: |
+| hand fixtures (5 items) | 88 | **100%** |
+| curated pack (11–35 items) | 120 | **60%** |
+| caption-derived (78–109 items) | 136 | **25%** |
+
+⚖️ **SO THE ANSWER IS NO.** Even for an established account with a hundred
+caption-derived items, one generation in four against an enumerated reference
+would be refused — and enumerated commerce formats are exactly what those
+creators want. §18a is right that an unresolved container comes back invented;
+it does not follow that refusing is the affordable response.
+
+⚠️ **AND 25% IS THE OPTIMISTIC BOUND, BUILT ON NOTHING.** Of the 302 enumerable
+items those 17 real creators had, **302 were bare `product` mentions** — not one
+example, experience, claim, framework or fact. Ten "they mentioned the Z Fold 8"
+rows cannot carry "the 10 products I'd sell right now"; the creator has no view
+on any of them. For a caption-only creator the true rate is nearer 100%, and the
+supply number was hiding it behind a total.
+
+What ships is `bareProduct` on the supply check, in shared and the edge, held by
+the parity test — the same denominator lesson as G10. **A refusal is not what to
+build next.** `describeShortfall` already writes the trade — *"this format
+promises 10 and we can support 4; writing it now would invent 6"* — and offering
+the count the creator CAN support is the honest move where refusing is not.
+Deciding that needs a generation, not another counter.
