@@ -1065,3 +1065,43 @@ order of thirty payoff cases rather than two.
 The instruments ship: classifier, span repairer, and blind preference panel. The
 labelled soft beats and the repaired/original pairs are kept, so the next attempt
 starts from real cases.
+
+### G19. Real creator preference data exists, and it is 13 decisions
+
+Every quality instrument built this session is a model judging a model. The panel
+scored three arms with genuinely different grounding — 58% vs 73%, generic 23% vs
+8% — at 8.0, 8.0 and 8.1, and there was no way to tell whether that flatness was
+the arms or the judge.
+
+⚖️ **PRODUCTION HAS BEEN COLLECTING GROUND TRUTH THE WHOLE TIME.** A creator is
+shown five hook options and picks one. `generations.selected_hook` holds 22 such
+picks against real alternatives — the only non-circular preference signal in the
+system.
+
+**And the headline number is a sampling artefact:**
+
+| account | choices | took the recommended hook |
+| :--- | ---: | ---: |
+| styliquetechnologies *(the owner's own account)* | 9 | 8 — **89%** |
+| every other creator combined | 13 | 6 — **46%** |
+
+⚠️ **STRIP THE HOUSE ACCOUNT AND REAL CREATORS REJECT THE WRITER'S TOP-RANKED
+HOOK MORE THAN HALF THE TIME.** Reading the pooled 68% as "the ranking is mostly
+right" would have been reading one person's habit as a population.
+
+⚖️ **SO THE HEADROOM FOR A RERANKER IS REAL AND THE DATA TO BUILD ONE IS NOT.**
+Thirteen decisions across seven creators cannot calibrate anything; a judge tuned
+on it would fit one account's taste. The instrument that would settle the whole
+question — *can a judge predict which hook a creator takes?* — is written and
+runnable, and is being held rather than run, because a result at n=13 would be
+quoted later as though it meant something.
+
+⚠️ **THIS RELOCATES THE BOTTLENECK FOR THE WHOLE WRITER PROGRAMME.** Candidate
+generation, reranking and judge calibration all depend on preference data the
+product already knows how to collect and has barely collected. Nothing needs
+building for it. It needs usage.
+
+Also noted: three of the 39 generations carry a script snapshot, none is
+`approved`, and one `selected_hook` holds the literal string "PICK THIS HOOK for
+the cover and broll" — a UI affordance being used as a note field. Edit-pairs, the
+richest preference signal of all, are not being captured anywhere.
