@@ -92,6 +92,16 @@ docker rm -f twinai-revideo 2>/dev/null || true
 docker rmi -f twinai-revideo 2>/dev/null || true
 
 echo "==> (Re)starting container"
+# ⚠️ `docker restart` DOES NOT RE-READ --env-file, AND THIS IS WHERE THAT BITES.
+# Docker resolves the env file ONCE, at `docker run`, and bakes the result into
+# the container; restarting replays the same container with the same values. So
+# editing /opt/twinai-worker.env and running `docker restart twinai-worker`
+# changes nothing, reports success, and the boot line keeps saying the key is
+# missing — which reads as "the edit didn't save".
+#
+# ⚖️ RECREATION IS THEREFORE THE ONLY WAY TO APPLY AN ENV CHANGE, and it is what
+# this script does. Anyone who edits the env file by hand must run this script
+# (or the CI deploy) afterwards; a restart is not enough.
 docker rm -f "$NAME" 2>/dev/null || true
 docker run -d --name "$NAME" \
   --restart unless-stopped \
