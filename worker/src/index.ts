@@ -9,6 +9,7 @@ import { db, claimJob, completeJob, deadLetterJob, failJob, heartbeat } from './
 import { handlers } from './jobs/index.js'
 import { beginJobScope } from './jobs/editorCancel.js'
 import { env } from './env.js'
+import { capabilitySummary, darkCapabilityWarnings, readCapabilities } from './capabilities.js'
 import { isLeaseLost, isPermanent } from './errors.js'
 import { redact } from './sanitizeError.js'
 
@@ -128,7 +129,19 @@ async function tick(): Promise<boolean> {
 }
 
 async function main() {
-  log('info', 'worker up', { types: env.jobTypes, model: env.whisperModel })
+  // ⚠️ WHAT THIS WORKER CAN DO, BEFORE ANYONE TRIPS OVER WHAT IT CANNOT.
+  // `APIFY_TOKEN` was absent for a full day of development and nothing said so:
+  // every credential check is per-call, so the absence only spoke when a user
+  // hit it, and what it said — "not configured yet, contact support" — reads as
+  // a product limitation rather than a missing variable.
+  const caps = readCapabilities(env)
+  log('info', 'worker up', {
+    types: env.jobTypes, model: env.whisperModel, capabilities: capabilitySummary(caps),
+  })
+  // ⚖️ WARN, NOT FAIL. A worker without Apify still transcribes, renders and
+  // scans TikTok — reduced capability is a legitimate state and crashing on it
+  // would turn a missing optional key into an outage.
+  for (const line of darkCapabilityWarnings(caps)) log('warn', line)
   // Graceful shutdown: finish the current job, then exit.
   for (const sig of ['SIGTERM', 'SIGINT']) {
     process.on(sig, () => {

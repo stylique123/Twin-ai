@@ -778,3 +778,42 @@ Shipped: the `keepEnumerable` arm option in the harness, and the two scorers, so
 the corrected experiment is one command away when a corpus exists. The blind
 metric is kept, not deleted, with its failure recorded on it — it is the clearest
 demonstration in the repo of what provenance checks cannot see.
+
+### G13. The missing token that cost a session, made audible
+
+`APIFY_TOKEN` was absent from the worker's environment for an entire session of
+development. Every YouTube and Instagram scan failed, every transcript fell back
+to captions, and **nothing said so.**
+
+⚠️ **EVERY CREDENTIAL CHECK WAS CORRECT, AND EVERY ONE WAS PER-CALL.**
+
+>     if (!env.apifyToken) throw new Error('YouTube analysis is not configured
+>       yet. Try a TikTok or Instagram link, or contact support.')
+
+So the absence only spoke when a user tripped over it — and when it spoke, it
+lied. *"Not configured yet… contact support"* reads as a product limitation the
+operator chose. It is a missing environment variable, and the one person who
+could fix it in thirty seconds is the one person that message never reaches.
+
+⚖️ **THE FIX IS A BOOT LINE, NOT A HARDER CHECK.** A worker without Apify still
+transcribes, renders and scans TikTok — reduced capability is a legitimate state,
+and crashing on it would turn a missing optional key into an outage. So it warns
+and keeps running, and a mutation test asserts that it does.
+
+⚠️ **AND IT NAMES THE VARIABLE, NOT THE SYMPTOM.** "apify unavailable" sends
+somebody reading source:
+
+>     WARN APIFY_TOKEN is not set — cannot scan a YouTube or Instagram account.
+>          While this is unset, every YouTube and Instagram scan fails; TikTok is
+>          unaffected.
+>     WARN APIFY_PROXY_PASSWORD is not set — cannot fetch Instagram imagery.
+>          While this is unset, Instagram scans succeed but return empty palettes.
+
+⚠️ **THE PROXY PASSWORD IS ITS OWN CAPABILITY AND IS NOT DERIVABLE FROM THE
+TOKEN.** Meta signs its imagery to the requesting IP, so an account with a token
+and no proxy password scrapes Instagram perfectly and comes back with empty
+palettes — which presents as a colour bug, not a config gap. That distinction is
+the one the Gap 6 Instagram flip turns on.
+
+Nothing is printed when everything is live: a warning on every healthy boot is a
+warning nobody reads.
