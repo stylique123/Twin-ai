@@ -1287,3 +1287,42 @@ a null result.
 Caveat kept: 6 of 24 new-selector scripts were judged LESS NATURAL even while
 winning overall. Denser first-person material reads as better and slightly
 rougher, which is a trade worth watching rather than a defect.
+
+### G24. Capturing what the creator rejected
+
+`applyDialogueEdit` holds both texts in one expression — it compares them to
+decide whether anything changed — and returns only the new script. So for the
+product's whole life, a creator rewriting
+
+>     "This tool dramatically improves productivity."
+>   → "This saves me doing the same edit six times."
+
+left behind the second sentence and no trace that the first was rejected. **The
+rejected half is the one carrying the signal**, and it was discarded at the seam
+that had it in hand.
+
+⚠️ **THE SYSTEM HOLDS 13 REAL CREATOR DECISIONS** (G19), all hook picks. Every
+judge, reranker and calibration idea waits on preference data the product
+generates continuously and had never written down.
+
+**What ships:** `0127_script_edits`, append-only — INSERT and SELECT policies and
+deliberately no UPDATE, the discipline `recordPostStats` had to be given after the
+dashboard was found overwriting its own history on every save. Both halves are
+stored, plus facts decidable from the two strings: word delta, whether a figure or
+first person arrived, and what share of the original words survived.
+
+⚖️ **"GENERIC → CONCRETE" IS NOT STORED, AND THAT IS DELIBERATE.** It is the
+interpretation everyone wants, and interpretation frozen at capture time cannot be
+revised when it turns out wrong. This session produced four broken metrics that
+would each have been baked permanently into the data. The pair is kept raw and the
+reading is left to whoever analyses it.
+
+⚠️ **AND THE LOG MUST NEVER MAKE A SAVED EDIT LOOK UNSAVED.** The creator's words
+are the product; this is telemetry. It is written AFTER the durable save lands,
+not awaited, and swallows every failure — a table that does not exist yet must not
+present as a broken editor. Three mutations checked: removing the record,
+dropping the before-text, and recording before the save lands.
+
+`keptShare` separates a tweak from a rejection rather than averaging them: a
+creator appending a clause kept 100% of the original and still changed the line,
+and those two facts answer different questions.
