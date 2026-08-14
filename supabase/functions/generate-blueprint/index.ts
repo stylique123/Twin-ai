@@ -989,7 +989,12 @@ const SUBSTANCE_FLOOR = 6
 // experiences; transcript is 178 items / 78% substance / 50 experiences. And
 // mixing them scored BELOW the hand-curated pack — 58% grounded / 23% generic
 // against 73% / 8% for the same stores with only spoken material.
-const SPOKEN_SOURCES: ReadonlySet<string> = new Set(['transcript'])
+// ⚠️ 'asked' BELONGS HERE, AND IT IS NOT A TRANSCRIPT. Everything else in this
+// set is a model recovering a position from evidence; an answered question is the
+// creator stating one, with no extraction step to lose it.
+// ⚖️ IT DOES NOT OUTRANK TRANSCRIPT WITHIN THE RESERVATION. This set decides
+// WHICH pool fills the floor first; which item inside it is still relevance's call.
+const SPOKEN_SOURCES: ReadonlySet<string> = new Set(['transcript', 'asked'])
 /** Null source means UNRECORDED, not caption — pre-0122 rows must not be demoted. */
 function wasSpoken(item: { source?: string | null }): boolean {
   return SPOKEN_SOURCES.has(String(item?.source ?? ''))
@@ -2239,12 +2244,40 @@ Deno.serve(async (req: Request) => {
   // what the pov and enemy fallbacks below do and is the exact move that
   // manufactures opinions. A failed read is treated the same as none: it may
   // make a script thinner, never wronger.
-  const { data: knowledgeRows } = await admin
+  const { data: rankedRows } = await admin
     .from('creator_knowledge')
     .select('kind, text, basis, times_seen, confidence, source')
     .eq('owner_id', ownerId)
     .order('times_seen', { ascending: false })
     .limit(40)
+  // ⚠️ THE TOP-40-BY-`times_seen` READ CANNOT SEE AN ANSWERED QUESTION, AND WOULD
+  // HAVE MADE THAT WHOLE CHANNEL DECORATIVE. `times_seen` counts how many videos
+  // carried a position, so a row the creator STATED once is a 1 — and on a
+  // caption-derived store of 374 items, forty rows of 2-and-3 sit above it. The
+  // creator would answer, the row would land, and the writer would never see it:
+  // the same shape as `product_entities`, complete and unread.
+  //
+  // ⚖️ A SECOND READ RATHER THAN A BIGGER LIMIT. Raising 40 buys mostly more
+  // caption rows, which is the material MEASURED to push substance out of the
+  // selection (73% grounded transcript-only against 58% mixed). This asks for the
+  // scarce thing by name and leaves the ranking alone.
+  const { data: askedRows } = await admin
+    .from('creator_knowledge')
+    .select('kind, text, basis, times_seen, confidence, source')
+    .eq('owner_id', ownerId)
+    .eq('source', 'asked')
+    .order('created_at', { ascending: false })
+    .limit(20)
+  // ⚖️ DEDUPED BY IDENTITY, because a stated row with a high enough `times_seen`
+  // can legitimately appear in both reads and must not be supplied twice —
+  // duplicate supply inflates every count downstream that reasons about it.
+  const seenKnowledge = new Set<string>()
+  const knowledgeRows = [...(askedRows ?? []), ...(rankedRows ?? [])].filter((r) => {
+    const k = `${r?.kind}|${String(r?.text ?? '').trim().toLowerCase()}`
+    if (seenKnowledge.has(k)) return false
+    seenKnowledge.add(k)
+    return true
+  })
   const { data: audienceRows } = await admin
     .from('audience_questions')
     .select('summary, asked')

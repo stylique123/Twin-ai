@@ -104,8 +104,20 @@ export function carriesFigure(item: { kind?: string; text?: string }): boolean {
  *
  *  Generic beats fell by two thirds. Caption rows do not merely add nothing —
  *  they win slots on keyword overlap and push out the material that can carry a
- *  beat, which is why the realistic store scored BELOW the hand-curated one. */
-export const SPOKEN_SOURCES: ReadonlySet<string> = new Set(['transcript'])
+ *  beat, which is why the realistic store scored BELOW the hand-curated one.
+ *
+ *  ⚠️ 'asked' BELONGS HERE, AND IT IS NOT A TRANSCRIPT. Everything else in this
+ *  set is a model recovering a position from evidence; an answered question is
+ *  the creator stating one, with no extraction step to lose it. If spoken
+ *  material earns the substance reservation because it can carry a belief, an
+ *  answer earns it for the same reason and more directly.
+ *
+ *  ⚖️ IT DOES NOT OUTRANK TRANSCRIPT WITHIN THE RESERVATION, BECAUSE NOTHING
+ *  HERE DOES. This set decides WHICH pool fills the floor first; which item
+ *  inside that pool is still relevance's call, exactly as it was when the set
+ *  had one member. Ordering answers above transcripts would be a second,
+ *  unmeasured judgement smuggled in beside a measured one. */
+export const SPOKEN_SOURCES: ReadonlySet<string> = new Set(['transcript', 'asked'])
 
 /** Did the creator actually say this, rather than caption it? */
 export function wasSpoken(item: { source?: string | null }): boolean {

@@ -1401,3 +1401,49 @@ already have spent an Apify call before throwing.
 **No answer yet, and there cannot be one until scans run.** The instrument is in
 place; the reading requires production traffic, which is the same thing the other
 six counters are waiting for.
+
+### G26. Asking the creator, one question at a time
+
+Transcripts beat captions 78% to 13% on substance, and the only source better
+than a transcript is the creator answering a question — it is the one input in
+this product with no extraction step to lose anything. Ten questions now exist,
+and an answer becomes a `creator_knowledge` row with `basis: 'stated'` and
+`source: 'asked'`.
+
+⚖️ **PLACEMENT WAS THE DECISION, AND IT WAS ALREADY MEASURED ONCE.** In the first
+real production run, EVERY question below the fold on the confirm screen came
+back unanswered — wording was fine, position was fatal. A screen of its own is
+that wall rebuilt: the Product Library is a complete, working feature with **zero
+rows** because it waits to be visited. So this asks ONE question, under a script
+the creator has just been handed, dismissible in a tap. Ten answers over weeks
+beats ten questions at once and a closed tab.
+
+⚠️ **AND IT WOULD HAVE BEEN DECORATIVE.** The blueprint's knowledge read takes the
+top 40 by `times_seen` — how many videos carried a position — and an answered
+question is a 1. On a 374-item caption store, forty rows of 2 and 3 sit above it.
+The creator would answer, the row would land, and the writer would never see it.
+Found before shipping, not after: a second read asks for `source = 'asked'` by
+name and merges deduped, rather than raising the limit, which would buy mostly
+more caption rows — the material measured to push substance OUT of selection.
+
+`'asked'` also joins `SPOKEN_SOURCES`, in shared and at the edge. Everything else
+in that set is a model recovering a position from evidence; this is the creator
+stating one. It does not outrank transcript INSIDE the reservation, because that
+set decides which pool fills the floor first and nothing more — ordering answers
+above transcripts would smuggle a second, unmeasured judgement in beside a
+measured one.
+
+⚠️ **A SKIP IS STORED AS FIRMLY AS AN ANSWER.** 0128 puts a unique index on
+(owner, question) so never-ask-twice survives a race, and a skip that only hid the
+card is one of the two mutations checked. The other is deleting the asked read.
+A failed read returns `null`, never `[]` — not-knowing must not open on question
+one and re-ask something already declined.
+
+**Refuses rather than truncates at 240 chars.** A sentence cut mid-clause can
+invert its own meaning ("I never recommend X unless the client has…"), and a
+wrong row is worse than a missing one.
+
+**Unmeasurable until creators answer, and that is the honest state.** No panel can
+score this: it is not a better prompt over the same supply, it is supply that does
+not exist yet. The first real signal is whether anyone answers a second question
+after their first.
