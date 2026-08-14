@@ -1161,3 +1161,54 @@ the only candidate worth another look.
 Conditional repair therefore does not ship, and the specific recommendation is
 stronger than "not yet": **do not build the payoff branch.** Total across both
 runs: 15 repaired preferred, 19 original preferred, n=34.
+
+### G21. The Substance Packet is a coin flip, and that is three predictions of mine in one day
+
+The writer receives ten standalone facts and is asked for an argument. It produces
+inventories — accurate, 73% grounded, 8% generic, and still a list of true
+sentences in a row. The Substance Packet replaces the list with the argument:
+core insight, the distinction most people miss, one concrete case, the detail that
+proves first-hand knowledge, where the creator stands, what the viewer does next —
+assembled by a SEPARATE call, from supplied material only, before any prose exists.
+
+**It builds cleanly.** 24 packets from 8 creators × 3 reference shapes:
+
+| | |
+| :--- | ---: |
+| packets built | 24 / 24 |
+| usable (insight + ≥3 fields) | **24 / 24** |
+| average fields filled | **5.9 / 6** |
+| average supplied items cited | 5.0 |
+
+**And it changes nothing a judge can see.** Blind preference, packet script against
+list script, same creator, same reference:
+
+| | |
+| :--- | ---: |
+| packet preferred | **12** |
+| list preferred | **12** |
+| packet judged less natural | 2 |
+
+Per reference shape: 4–4, 5–3, 3–5. No pattern.
+
+⚠️ **I PREDICTED THIS WOULD BE THE LARGEST AVAILABLE IMPROVEMENT.** It is the
+third prediction measurement killed today. Transcripts were going to fix the story
+and number gaps — grounding fell when they were handed to the existing selector.
+Payoff softness was the branch most worth repairing — it lost 1–6. The packet was
+"the one item supported by evidence and blocked on nothing" — 12–12.
+
+⚖️ **THE PATTERN IS THE FINDING, AND IT IS NOT ABOUT ANY OF THE THREE CHANGES.**
+Counter-visible quality moved a great deal this week: grounding 58%→73%, generic
+beats 23%→8%. Judged quality moved on none of it — three interventions, three
+nulls, at 6–8 of 8 publishable throughout. Either the remaining variance sits
+below the panel's resolution, or it is real and only a person can see it.
+
+There is weak evidence the panel is not simply blind: on the repair triggers it
+separated 1–6 from 3–0 rather than returning 50/50 everywhere. So it discriminates
+SOMETIMES, and not on any pipeline change tried so far.
+
+The module ships as an instrument and is deliberately NOT wired into
+`generate-blueprint`: it costs an extra call per generation and buys nothing this
+system can currently measure. It exists so the result is reproducible, and so that
+a panel of real creators — which is now the only untried instrument — can be shown
+packet and list scripts side by side.

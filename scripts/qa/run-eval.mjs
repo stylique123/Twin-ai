@@ -39,6 +39,10 @@
 // harness reproduces the real prompt's ORDER, only cases that return a full
 // blueprint carry any signal at all.
 import { readFileSync } from 'node:fs'
+// ⚠️ THE PACKET SHAPE IS LIFTED, NOT REDEFINED. The whole point of testing it
+// here is to measure the object production would send; a harness-local copy
+// would measure the harness, which this file has been burned by five times.
+import { PACKET_SYSTEM, packetPrompt, packetPromptLine, packetShape } from '../../packages/shared/src/substancePacket.ts'
 
 /** Production's cap, lifted so a change there is a change here. Overridable per
  *  case ONLY for the experiment that varies it. */
@@ -469,7 +473,7 @@ function productFactsBlock(creator) {
     PRODUCT_FACTS_RULE.split('\n').slice(1).join('\n')}`
 }
 
-async function gen({ creator, refNote, fidelity, tone, goal, withKnowledge = true, answers, cap = KNOWLEDGE_CAP, knowledgeStore }) {
+async function gen({ creator, refNote, fidelity, tone, goal, withKnowledge = true, answers, cap = KNOWLEDGE_CAP, knowledgeStore, packetBlock }) {
   // Defaults to the creator's whole store; a `sources` arm passes the filtered one.
   knowledgeStore = knowledgeStore ?? creator.knowledge
   const t = creator.truth ?? {}
@@ -518,6 +522,7 @@ CREATOR'S ANSWERS
 - What they do: ${A.workKind}
 - Third-party products featured: ${A.promotes}${promotesLine(A.promotes)}
 ${withKnowledge ? knowledgeBlock(knowledgeStore, `${refNote} ${A.idea ?? ''}`, cap) : ''}
+${packetBlock ?? ''}
 ${productFactsBlock(creator)}
 
 REFERENCE (described, not transcribed)
@@ -558,6 +563,24 @@ Return JSON only, with EVERY key below present and populated:
 // store, and 64 of them is megabytes — the shell fails with "Argument list too
 // long" BEFORE node starts, so the run dies with no output and no error inside
 // this file. CASES_FILE takes the same JSON from a path instead.
+/** One call, JSON out, no schema — the packet's shape is the module's business.
+ *  ⚖️ SEPARATE FROM `gen` ON PURPOSE: this decides the argument, that writes the
+ *  prose, and collapsing them is the thing being tested against. */
+async function buildPacket(system, prompt) {
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + KEY, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 40000, temperature: 0.4 },
+    }),
+  })
+  const j = await r.json()
+  const t = j?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? ''
+  try { return JSON.parse(t) } catch { return null }
+}
+
 const CASES = process.env.CASES_FILE
   ? JSON.parse(readFileSync(process.env.CASES_FILE, 'utf8'))
   : JSON.parse(process.env.CASES ?? '[]')
@@ -606,7 +629,18 @@ for (const c of CASES) {
       }),
     }
   }
-  const bp = await gen({ creator, refNote: c.refNote, fidelity: c.fidelity, tone: c.tone, goal: c.goal, withKnowledge: c.withKnowledge !== false, answers: c.answers, cap: c.cap ?? KNOWLEDGE_CAP, knowledgeStore: armStore })
+  // ⚠️ THE PACKET IS A SEPARATE DECISION CALL, BEFORE ANY PROSE EXISTS. Choosing
+  // which fact is the insight is a different job from writing a sayable
+  // sentence, and asking one call to do both is what produces prose that is
+  // fluent and pointless. `packet: true` on a case buys that extra call.
+  let packetBlock, packetMeta
+  if (c.packet) {
+    const items = (armStore?.items ?? []).map((k) => ({ kind: k.kind, text: k.text }))
+    const built = await buildPacket(PACKET_SYSTEM, packetPrompt(c.creator, c.refNote, items))
+    packetBlock = packetPromptLine(built)
+    packetMeta = { ...packetShape(built), packet: built }
+  }
+  const bp = await gen({ creator, refNote: c.refNote, fidelity: c.fidelity, tone: c.tone, goal: c.goal, withKnowledge: c.withKnowledge !== false, answers: c.answers, cap: c.cap ?? KNOWLEDGE_CAP, knowledgeStore: armStore, packetBlock })
   // ⚠️ RECORD WHAT THE PROMPT CARRIED, NOT JUST WHAT CAME BACK. Every result
   // file before this one stored `{case, blueprint}` and nothing else, so
   // `grounded` — did this beat trace to something we actually supplied? — was
@@ -639,6 +673,7 @@ for (const c of CASES) {
     blueprint: bp,
     supplied: {
       knowledge: sel.items,
+      packet: packetMeta ?? null,
       covered: sel.covered.map((x) => x.text),
       // `[]` means we KNOW none were carried; the pack supplies no product
       // facts, and saying so is different from staying silent about it.
