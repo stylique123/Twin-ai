@@ -898,12 +898,19 @@ also defaults to paid, because defaulting the other way makes every platform
 added later silently expensive and puts the cost on the owner's bill rather than
 on a failing test.
 
-⚠️ **AND A GAP FOUND WHILE MEASURING THIS: `source_ref` IS NULL ON EVERY
-TRANSCRIPT ROW.** Per-video yield is therefore not computable from the store —
-`count(distinct source_ref)` returns 0 for all eight creators — and an item
-cannot be traced back to the video the creator said it in. The column exists and
-nothing fills it. Not fixed here; recorded so the next person measuring yield
-does not conclude the videos were never transcribed.
+⚠️ **CORRECTION — THE PROVENANCE GAP RECORDED HERE WAS MY OWN MEASUREMENT ERROR.**
+This entry originally claimed `source_ref` is null on every transcript row and
+concluded an item cannot be traced to the video it was said in. `source_ref` is
+indeed always null — it is an unused column. The provenance lives in
+`source_url`, and it is COMPLETE: 178 of 178 transcript items carry one, across
+55 distinct videos. `voice.ts` maps the extractor's `source_video` index onto the
+real URL and refuses to guess when it is out of range.
+
+⚖️ SO PER-VIDEO YIELD *IS* COMPUTABLE, and the honest lesson is about the
+measurement, not the schema: querying a plausible-sounding column and reporting
+its emptiness as a product defect is the same class of error as the four broken
+similarity metrics recorded elsewhere in this section. Check which column the
+writer actually writes before concluding the writer never wrote.
 
 ### G16. The panel ran, and it does not confirm the week's improvements
 
