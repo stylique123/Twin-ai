@@ -148,3 +148,28 @@ describe('the edge prefers spoken material by the same rule', () => {
     expect(lift(EDGE)).toBe(lift(SHARED))
   })
 })
+
+describe('the HARNESS runs the current selector, not the previous one', () => {
+  // ⚠️ IT DID NOT, AND NOBODY NOTICED FOR A DAY. #376 made spoken material fill
+  // the substance reservation first. The harness carried its own retyped
+  // `selectSpeakable` with no such partition, so every run after that change
+  // measured the PREVIOUS selector while reporting on the current product —
+  // the same failure this file already records for `promotes`, the count
+  // contract, the beat plan and `productFacts`.
+  //
+  // ⚖️ THE EXISTING CHECKS ASSERTED THE HARNESS LIFTS THE CONSTANTS. Kinds and
+  // floor were lifted and correct the whole time; the FUNCTION that uses them
+  // was hand-written. A constant is not a rule.
+  it('partitions spoken material first, like the edge does', () => {
+    expect(HARNESS).toMatch(/const spoken = substance\.filter\(wasSpoken\)/)
+    expect(HARNESS).toMatch(/\[\.\.\.spoken, \.\.\.rest\]\.slice/)
+  })
+
+  it('reads which sources count as spoken OUT OF the edge, rather than assuming', () => {
+    expect(HARNESS).toMatch(/EDGE\.match\(\/const SPOKEN_SOURCES/)
+  })
+
+  it('treats an absent source as unrecorded, matching the edge', () => {
+    expect(HARNESS).toMatch(/SPOKEN_SOURCES\.has\(String\(item\?\.source \?\? ''\)\)/)
+  })
+})
