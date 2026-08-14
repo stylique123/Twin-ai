@@ -1027,9 +1027,11 @@ unit economics. The detector becomes a ROUTING signal instead.
 | position | BODY 29 · PAYOFF 5 · CTA 1 · SETUP 1 · **HOOK 0** |
 | function | SUBSTANCE 26 · SUMMARY 6 · CLAIM 4 |
 
-⚠️ **TWO OF THE PROPOSED BRANCHES CANNOT FIRE.** `severity` is
-non-discriminating as implemented — every soft beat came back MEDIUM, so
-"HIGH → repair" is dead. And **no soft beat ever landed in the HOOK**: it gets the
+⚠️ **ONE OF THE PROPOSED BRANCHES CANNOT FIRE, AND MY CLAIM ABOUT A SECOND WAS A
+SAMPLE ARTEFACT.** At 32 scripts every soft beat came back MEDIUM and severity was
+recorded here as non-discriminating. At 64 it varies — LOW 5, HIGH 4 — so
+"HIGH → repair" fires, on 4 scripts. The axis was fine; the sample was too small
+to show it. And **no soft beat ever landed in the HOOK**: it gets the
 best material and the most attention, so the most aggressive branch is driven
 entirely by PAYOFF. A policy written against axes that do not vary is a policy
 that has not been tested.
@@ -1105,3 +1107,57 @@ Also noted: three of the 39 generations carry a script snapshot, none is
 `approved`, and one `selected_hook` holds the literal string "PICK THIS HOOK for
 the cover and broll" — a UI affordance being used as a note field. Edit-pairs, the
 richest preference signal of all, are not being captured anywhere.
+
+### G20. The payoff branch is the WORST one — 1 win, 6 losses
+
+G18 left one question open: `high-value position` won 2–0 at n=2, which is two
+coin flips landing heads. 64 fresh scripts across 8 reference shapes were
+generated to answer it properly.
+
+**Classification at 64 scripts, 370 beats, 75 soft beats (20%):**
+
+| axis | distribution |
+| :--- | :--- |
+| severity | MEDIUM 66 · LOW 5 · HIGH 4 |
+| position | BODY 57 · PAYOFF 10 · REHOOK 3 · CTA 3 · SETUP 2 · **HOOK 0** |
+| function | SUBSTANCE 48 · CLAIM 16 · SUMMARY 8 · TRANSITION 3 |
+
+⚠️ **HOOK REMAINS AT ZERO ACROSS 64 SCRIPTS.** The writer does not fail there; it
+gets the best material and the most attention. Any policy branch written for a
+soft hook is dead code.
+
+**The policy routed 24 of 64 (38%). Blind preference against the originals:**
+
+| | |
+| :--- | ---: |
+| repaired preferred | 10 |
+| **original preferred** | **14** |
+| repair judged less natural | 4 |
+
+**By trigger — and this is the finding:**
+
+| trigger | win | lose |
+| :--- | ---: | ---: |
+| **high-value position (PAYOFF/REHOOK)** | **1** | **6** |
+| primary substance | 3 | 4 |
+| 2+ substantive | **3** | **0** |
+| high-value + primary + 2+ | 2 | 0 |
+
+⚖️ **THE BRANCH THAT LOOKED BEST IS THE WORST.** Repairing softness in the payoff
+made the script worse six times in seven. Across both runs it is 3–6. The
+intuition — that a limp payoff costs the video and is therefore the most worth
+fixing — is wrong, and it was mine as well as the proposal's.
+
+⚠️ **A PLAUSIBLE READING, NOT A MEASURED ONE:** a payoff beat that reads "soft"
+is often doing a real job — landing gently, resolving rather than escalating —
+and replacing it with something specific makes it clank. Four repairs were judged
+LESS NATURAL, all of them in payoff or primary-substance positions. That is a
+hypothesis this data suggests and does not establish.
+
+**The only trigger that wins is `2+ substantive`** — 3–0 alone, 2–0 combined —
+where a script has multiple weak substantive beats rather than one. Small, and
+the only candidate worth another look.
+
+Conditional repair therefore does not ship, and the specific recommendation is
+stronger than "not yet": **do not build the payoff branch.** Total across both
+runs: 15 repaired preferred, 19 original preferred, n=34.
