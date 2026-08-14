@@ -871,3 +871,36 @@ a column that did not exist when they were stored.
 13%/78% split I said transcripts would fix Gap 3 and Gap 5. Handed to the writer
 through the existing selector, they did not — grounding fell. The supply was
 never sufficient on its own, and saying so before measuring was the error.
+
+### G15. One budget for three different prices
+
+`TRANSCRIPT_BUDGET = 10` capped every platform equally. The three cost nothing
+alike:
+
+| platform | transcript path | price per video |
+| :--- | :--- | :--- |
+| TikTok | yt-dlp + local whisper | **free** |
+| YouTube | free captions, paid Actor fallback | free *usually* |
+| Instagram | paid Actor, always | paid |
+
+⚠️ **SO THE FREE PLATFORM WAS PRICED AS IF IT WERE THE EXPENSIVE ONE**, and this
+budget is the ceiling on the only input measured to change script quality:
+transcript knowledge is 78% substance against 13% for captions, and
+transcript-only stores scored 73% grounded / 8% generic against 58% / 23%.
+
+TikTok now gets 25, everything else keeps 10.
+
+⚖️ **YOUTUBE STAYS ON THE PAID BUDGET, AND THAT IS THE JUDGEMENT CALL.** Its path
+is free-*first*, not free: a channel whose videos carry no captions falls through
+to a paid Actor, so raising its budget converts silently into spend on exactly
+the accounts least able to afford it. Free-first is not free. An unknown platform
+also defaults to paid, because defaulting the other way makes every platform
+added later silently expensive and puts the cost on the owner's bill rather than
+on a failing test.
+
+⚠️ **AND A GAP FOUND WHILE MEASURING THIS: `source_ref` IS NULL ON EVERY
+TRANSCRIPT ROW.** Per-video yield is therefore not computable from the store —
+`count(distinct source_ref)` returns 0 for all eight creators — and an item
+cannot be traced back to the video the creator said it in. The column exists and
+nothing fills it. Not fixed here; recorded so the next person measuring yield
+does not conclude the videos were never transcribed.
