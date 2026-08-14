@@ -1002,3 +1002,59 @@ is made here.
 `scripts/qa/detect-repetition.mjs` ships as the instrument, with its labelled
 output kept so the next detector can be tested against real positives rather
 than invented ones.
+
+### G18. Conditional repair: built, routed, judged — and it is a coin flip at n=10
+
+The decision was not to ship a mandatory repair pass. 67% of scripts contain a
+soft beat and 6–8 of 8 are judged publishable, so "soft beat detected" is not
+"script materially harmed", and a call per generation to polish what creators
+already accept is an optimisation that improves the architecture and degrades the
+unit economics. The detector becomes a ROUTING signal instead.
+
+**Classification first, because a branch that never fires is not worth building.**
+32 scripts, 173 beats, 36 soft beats (21% of all beats):
+
+| axis | distribution |
+| :--- | :--- |
+| severity | **MEDIUM ×36** — LOW 0, HIGH 0 |
+| position | BODY 29 · PAYOFF 5 · CTA 1 · SETUP 1 · **HOOK 0** |
+| function | SUBSTANCE 26 · SUMMARY 6 · CLAIM 4 |
+
+⚠️ **TWO OF THE PROPOSED BRANCHES CANNOT FIRE.** `severity` is
+non-discriminating as implemented — every soft beat came back MEDIUM, so
+"HIGH → repair" is dead. And **no soft beat ever landed in the HOOK**: it gets the
+best material and the most attention, so the most aggressive branch is driven
+entirely by PAYOFF. A policy written against axes that do not vary is a policy
+that has not been tested.
+
+What survived routed **10 of 32 scripts (31%)** to repair; the other 22 ship as
+written. Repair was span-level — the line, its two neighbours, its planned
+purpose and its own evidence, three candidates, one chosen — never
+whole-script regeneration. 14 lines rewritten, 14 calls.
+
+**Then the only test that pays: blind preference, repaired against original.**
+
+| | |
+| :--- | ---: |
+| repaired preferred | **5** |
+| original preferred | **5** |
+| tie | 0 |
+| repair judged less natural | 0 |
+
+⚖️ **A COIN FLIP.** By trigger: high-value position alone 2–0, primary substance
+**2–5**, the combinations 1–2. The only branch that looks good has n=2, which is
+two coin flips landing heads and not a finding.
+
+⚠️ **AND THE HIGHEST-VOLUME TRIGGER LOSES.** `primary substance` routed five
+scripts and the original won three of them — repairing the beat that carries a
+container makes it worse more often than better, which is the opposite of the
+intuition that built the branch.
+
+**So no repair ships, conditional or otherwise.** 5–5 is not evidence of harm
+either; it is absence of evidence, at a sample far too small to route on. The one
+branch worth more data is PAYOFF softness, and answering it properly needs on the
+order of thirty payoff cases rather than two.
+
+The instruments ship: classifier, span repairer, and blind preference panel. The
+labelled soft beats and the repaired/original pairs are kept, so the next attempt
+starts from real cases.
