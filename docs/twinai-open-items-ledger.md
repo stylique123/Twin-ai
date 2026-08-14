@@ -952,3 +952,53 @@ concatenated script; a long text dilutes the denominator, so it returned
 is containment (what share of the ITEM's words appear in one line), not overlap.
 Recorded because three of this session's four metric failures share one root:
 a similarity measure applied to texts of very different lengths.
+
+### G17. Repetition is the top defect, is not cheaply detectable, and does not respond to instruction
+
+The panel named REPETITION the most common biggest-flaw. A dedicated judge over
+all 24 scripts put a number on it: **16 of 24 scripts (67%) restate an earlier
+beat**, 24 pairs in total. Per arm: hand pack 6/8, all sources 3/8,
+transcript-only **7/8**.
+
+⚠️ **THE BEST-GROUNDED ARM IS THE MOST REPETITIVE.** Denser material into the
+same five beats yields more ways to say the same thing, not more things to say.
+
+**Four detectors were tested against 24 labelled positives and 306 negatives:**
+
+| detector | catches | false alarms |
+| :--- | ---: | ---: |
+| lexical Jaccard on prose, any threshold | **0 / 24** | 0 |
+| word containment on prose (best) | 4 / 24 | 22 / 306 |
+| **embeddings**, cosine ≥ 0.70 | 17 / 24 | **57 / 306** |
+| embeddings, cosine ≥ 0.75 | 6 / 24 | 16 / 306 |
+| lexical containment on the BEAT PLAN | 3 / 16 | 3 / 8 |
+
+⚖️ **NO THRESHOLD SEPARATES THEM, AND THE REASON IS STRUCTURAL.** Every beat in
+one script is about the same subject, so all pairs sit close together in meaning.
+Similarity cannot tell "restates the point" from "same topic, new point" — which
+is precisely the distinction the judge prompt has to spell out in a sentence.
+**This defect is not decidable by any cheap measure.**
+
+**Then a prompt rule was tried and measured.** A beat-plan instruction naming the
+fault, quoting the 67%, and telling the writer to check each beat against the
+ones above it:
+
+|  | scripts with a repeat | pairs |
+| :--- | ---: | ---: |
+| transcript-only, before | 7 / 8 | 7 |
+| transcript-only, after the rule | **7 / 8** | **7** |
+
+⚠️ **IDENTICAL. THE RULE WAS EXACTLY INERT**, so it was reverted rather than
+shipped — an instruction that changes nothing is prompt bloat that costs tokens
+on every generation and reads, to the next person, like a solved problem.
+
+That is consistent with everything else measured this week: every improvement
+came from changing WHAT REACHES the writer, never from telling the writer to try
+harder. The remaining options are a model-based repair pass at generation time
+(the judge finds these reliably, so a repair could too, at one extra call per
+generation) or accepting the defect. Both are decisions with a cost, and neither
+is made here.
+
+`scripts/qa/detect-repetition.mjs` ships as the instrument, with its labelled
+output kept so the next detector can be tested against real positives rather
+than invented ones.
