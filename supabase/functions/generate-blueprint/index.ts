@@ -984,6 +984,17 @@ const SUBSTANCE_KINDS: ReadonlySet<string> = new Set([
 ])
 const SUBSTANCE_FLOOR = 6
 
+// ⚠️ WHERE AN ITEM WAS LEARNED, AND WHY IT DECIDES THE SLOT. Measured on
+// production knowledge: caption-derived is 374 items / 13% substance / ZERO
+// experiences; transcript is 178 items / 78% substance / 50 experiences. And
+// mixing them scored BELOW the hand-curated pack — 58% grounded / 23% generic
+// against 73% / 8% for the same stores with only spoken material.
+const SPOKEN_SOURCES: ReadonlySet<string> = new Set(['transcript'])
+/** Null source means UNRECORDED, not caption — pre-0122 rows must not be demoted. */
+function wasSpoken(item: { source?: string | null }): boolean {
+  return SPOKEN_SOURCES.has(String(item?.source ?? ''))
+}
+
 // ⚠️ A BARE INTEGER IS NOT A FIGURE. "3 ways to do X" is a count; "3x" and
 // "$40k" are the measurements a numbers channel is built on.
 const FIGURE = new RegExp(
@@ -1003,7 +1014,11 @@ function selectSpeakable<T extends { kind: string }>(
 ): T[] {
   if (cap <= 0) return []
   const substance = ranked.filter((i) => SUBSTANCE_KINDS.has(i.kind))
-  const keepSubstance = substance.slice(0, Math.min(floor, cap))
+  // Spoken material fills the reservation first — a stable partition, not a sort,
+  // so relevance still decides WHICH experience.
+  const spoken = substance.filter(wasSpoken)
+  const rest = substance.filter((i) => !wasSpoken(i))
+  const keepSubstance = [...spoken, ...rest].slice(0, Math.min(floor, cap))
   const taken = new Set<T>(keepSubstance)
   const out = [...keepSubstance]
   for (const item of ranked) {
@@ -2226,7 +2241,7 @@ Deno.serve(async (req: Request) => {
   // make a script thinner, never wronger.
   const { data: knowledgeRows } = await admin
     .from('creator_knowledge')
-    .select('kind, text, basis, times_seen, confidence')
+    .select('kind, text, basis, times_seen, confidence, source')
     .eq('owner_id', ownerId)
     .order('times_seen', { ascending: false })
     .limit(40)

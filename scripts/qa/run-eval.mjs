@@ -567,9 +567,18 @@ for (const c of CASES) {
   // from the full store while recording the filtered one would report an arm
   // that never ran — the `supplied` block exists precisely so a citation cannot
   // "trace" to something the writer never saw.
-  let armStore = c.sources
-    ? { ...creator.knowledge, items: (creator.knowledge?.items ?? []).filter((i) => c.sources.includes(i.source)) }
-    : creator.knowledge
+  // ⚠️ `store` REPLACES THE PACK'S KNOWLEDGE WITH A REAL ONE. Every quality
+  // measurement this project has ever made ran on the hand-written pack, which
+  // is caption-shaped: production says caption-derived knowledge is 13%
+  // substance and contains ZERO experiences or frameworks across 374 items.
+  // So every previous score was taken on material that could not have produced a
+  // good script under any logic, and "the scripts are dull" was never separable
+  // from "the inputs were empty". This lets the same creator run on what their
+  // account actually yielded.
+  let armStore = c.store
+    ?? (c.sources
+      ? { ...creator.knowledge, items: (creator.knowledge?.items ?? []).filter((i) => c.sources.includes(i.source)) }
+      : creator.knowledge)
   // ⚠️ THE SHORT-SUPPLY ARM, MADE OUT OF THE CREATOR'S OWN MATERIAL. `keepEnumerable`
   // caps how many items that could FILL A LIST SLOT survive, leaving everything
   // else untouched, so the two arms differ in supply and in nothing else.

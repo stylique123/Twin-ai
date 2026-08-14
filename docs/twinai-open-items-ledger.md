@@ -817,3 +817,57 @@ the one the Gap 6 Instagram flip turns on.
 
 Nothing is printed when everything is live: a warning on every healthy boot is a
 warning nobody reads.
+
+### G14. The founding question, answered on real data — and the bottleneck moved
+
+Production knowledge finally exists, so the matrix was re-run on what creators'
+accounts actually yielded rather than on the hand-written pack every previous
+score was measured against.
+
+**What the two sources are made of** (production, 552 items):
+
+| source | items | substance | experiences | with a figure |
+| :--- | ---: | ---: | ---: | ---: |
+| caption | 374 | **13%** | **0** | 2 |
+| transcript | 178 | **78%** | **50** | 23 |
+
+⚠️ **CAPTIONS PRODUCED ZERO EXPERIENCES ACROSS 374 ITEMS.** Not few — none. That
+single fact explains three things filed separately for months: "nothing has a
+story" (stories are made of experiences), "the numbers vanish" (2 in 374), and
+"more knowledge made scripts worse" (the extra knowledge was 87% filler).
+
+**Then the scripts.** Same eight creators, same reference, same rules, changing
+only the store:
+
+| store | grounded | generic | story beats | beats with a figure |
+| :--- | ---: | ---: | ---: | ---: |
+| hand pack | 61% | 25% | 1 | 4 |
+| production, all sources | **58%** | 23% | 1 | 2 |
+| production, TRANSCRIPT ONLY | **73%** | **8%** | 2 | 5 |
+
+⚠️ **THE FULL PRODUCTION STORE SCORED BELOW THE HAND-CURATED PACK**, and that is
+the finding. Better material was available and the scripts did not improve —
+because the selector never surfaced it. Of 50 experiences in the corpus, **11
+reached a prompt**; caption `topic` and `product` rows took 24 of 80 slots.
+
+⚖️ **SO THE BOTTLENECK MOVED FROM SUPPLY TO SELECTION.** The substance floor
+counts kinds and is blind to where an item came from — and a caption-derived
+`claim` counts against the floor exactly like a spoken experience. Transcript-only
+stores cut generic beats by two thirds, which is the largest effect measured on
+this system to date.
+
+⚠️ **AND THE EDGE WAS NOT READING `source` AT ALL.** The column has existed since
+0122; `generate-blueprint` selected `kind, text, basis, times_seen, confidence`
+and nothing else, so no preference on provenance could have worked — it would
+have been computed against `undefined` on every row.
+
+Shipped: spoken material fills the substance reservation first — a stable
+partition, not a sort, so relevance still decides WHICH experience, and the four
+unreserved slots stay open to everything. An absent `source` counts as
+unrecorded, never as caption, so voices scanned before 0122 are not demoted for
+a column that did not exist when they were stored.
+
+⚖️ **THIS ALSO CORRECTS A PREDICTION MADE EARLIER THE SAME DAY.** On seeing the
+13%/78% split I said transcripts would fix Gap 3 and Gap 5. Handed to the writer
+through the existing selector, they did not — grounding fell. The supply was
+never sufficient on its own, and saying so before measuring was the error.
