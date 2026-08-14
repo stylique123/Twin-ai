@@ -1364,17 +1364,40 @@ field, on platforms billed per video. `transcriptBudgetFor` is deliberately
 conservative about platforms it does not recognise, and that only helps if it is
 given what actually arrived.
 
-**Cost this changes, stated plainly:** TikTok scans go from 5 to 25 local
-whisper transcriptions — free per video, real CPU per scan. Instagram and YouTube
-go from 5 to 10, and Instagram is paid on every video, so that is a doubling of a
-real Apify line item. Both are what #366 and #377 asked for; neither has been
-paid yet.
+**Cost this changes, stated plainly:** TikTok scans go from 5 to 25 local whisper
+transcriptions — free per video, real CPU per scan.
 
-**The YouTube question I set out to answer is still open, and is now blocked on
-instrumentation rather than on judgement.** `transcribeFromUrl` tries free
+⚖️ **AND THE PAID PLATFORMS ARE HELD AT FIVE, WHICH IS NOT A REVERT OF #366.** Ten
+was argued from measured yield and that argument still stands; what was never true
+is that it had been tried. Making the number real and doubling a per-video Apify
+bill in the same change would leave two things moving at once with no way to
+attribute a cost jump to either. `TRANSCRIPT_BUDGET` is now 5 in all three copies,
+and raising it is one edit against one constant with one consumer — to be done
+deliberately, with the bill in view.
+
+⚠️ **A THIRD COPY EXISTED AND THE PARITY TEST FOUND IT.** `supabase/functions/
+_shared/dna.ts` carries its own `TRANSCRIPT_BUDGET`, and the guard that failed on
+it is the one piece of this machinery that was working correctly all along.
+
+**The YouTube question I set out to answer is now instrumented rather than open.** `transcribeFromUrl` tries free
 captions and falls back to a paid Actor on ANY thrown error — no captions, a
 30-second timeout, a network blip — and records nothing either way. One
-`console.error` on the fallback, nothing on success, no column, no counter. So
-"how often do YouTube captions actually exist" cannot be answered from production
-data today, and raising YouTube to 25 would be raising a budget whose price
-nobody can see. The cheapest fix is a source marker at that single chokepoint.
+`console.error` on the fallback, nothing on success, no column, no counter. The
+information existed at the moment of spending and was dropped one line later.
+
+Every route now stamps itself — `youtube_captions_free`, `youtube_captions_paid`,
+`instagram_paid`, `local_whisper` — and a paid YouTube call records WHY: the helper
+already exited 2 with `NO_CAPTIONS` for a genuine absence and 1 for anything else,
+and nothing read the difference. ⚖️ **POOLING THOSE TWO WOULD REPORT OUR OWN
+TIMEOUTS AS EVIDENCE ABOUT YOUTUBE**, which is the shape of at least four broken
+metrics this session.
+
+⚠️ **AND THE STAMP IS TALLIED WHERE IT IS STORED, NOT LOGGED.** `handleBuildVoice`
+counts routes into its job result alongside `attempted`, so the ratio is queryable
+from the `jobs` table with no migration. An unstamped transcript counts as
+`unrecorded`, never as free. A failed one counts as `failed`, because it may
+already have spent an Apify call before throwing.
+
+**No answer yet, and there cannot be one until scans run.** The instrument is in
+place; the reading requires production traffic, which is the same thing the other
+six counters are waiting for.

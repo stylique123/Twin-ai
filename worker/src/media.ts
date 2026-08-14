@@ -57,12 +57,41 @@ function run(cmd: string, args: string[], timeoutMs: number): Promise<{ stdout: 
   })
 }
 
+/** Which route produced a transcript, and — when it cost money — why.
+ *
+ *  ⚠️ THE PRICE OF A YOUTUBE TRANSCRIPT WAS UNOBSERVABLE. `transcribeFromUrl`
+ *  tries free captions and falls back to a paid Actor on ANY thrown error: no
+ *  captions, a 30-second timeout, a library fault. It logged one `console.error`
+ *  on the fallback, nothing at all on success, and stored neither. So "how often
+ *  do YouTube captions actually exist" — the question that decides whether that
+ *  platform's transcript budget can be raised like TikTok's — could not be
+ *  answered from production at any sample size.
+ *
+ *  ⚖️ AND "NO CAPTIONS" MUST NOT BE POOLED WITH "IT BROKE". They imply opposite
+ *  actions: the first is a fact about YouTube that caps the budget, the second is
+ *  a bug on our side that inflates the bill while looking identical in a total.
+ *  The Python helper already exits 2 with NO_CAPTIONS for one and 1 for the
+ *  other; nothing downstream was reading the difference. */
+export type TranscriptSource =
+  | 'youtube_captions_free'
+  | 'youtube_captions_paid'
+  | 'instagram_paid'
+  | 'local_whisper'
+
+/** Why a paid route ran. Absent on free routes. */
+export type PaidBecause = 'no_captions' | 'free_path_failed'
+
 export interface Transcript {
   language: string
   duration_sec: number
   text: string
   words: { w: string; start: number; end: number }[]
   segments: { start: number; end: number; text: string }[]
+  /** ⚠️ ABSENT MEANS UNRECORDED, NOT FREE. Transcripts parsed straight out of a
+   *  helper's JSON carry whatever that helper wrote, and counting an unstamped
+   *  one as free would report a cost of zero for routes never measured. */
+  source?: TranscriptSource
+  paidBecause?: PaidBecause
 }
 
 export interface ScrapedPost {
@@ -600,14 +629,21 @@ export async function transcribeFromUrl(rawUrl: string): Promise<Transcript> {
   if (isYouTube(u)) {
     // Free first (YouTube doesn't block us), Apify only as a paid fallback.
     try {
-      return await youtubeTranscriptFree(rawUrl)
+      return { ...(await youtubeTranscriptFree(rawUrl)), source: 'youtube_captions_free' }
     } catch (e) {
-      console.error('free YT transcript failed, falling back to Apify:', e instanceof Error ? e.message : e)
-      return youtubeTranscriptViaApify(rawUrl)
+      const why = e instanceof Error ? e.message : String(e)
+      // ⚠️ THE HELPER ALREADY DISTINGUISHES THESE AND NOBODY READ IT.
+      // `youtube_transcript.py` exits 2 with NO_CAPTIONS on its stderr when the
+      // video genuinely has none, and 1 on anything else. Pooling them would
+      // report our own timeouts as evidence about YouTube.
+      const paidBecause: PaidBecause = /NO_CAPTIONS/.test(why) ? 'no_captions' : 'free_path_failed'
+      console.error(`free YT transcript failed (${paidBecause}), falling back to Apify:`, why)
+      return { ...(await youtubeTranscriptViaApify(rawUrl)), source: 'youtube_captions_paid', paidBecause }
     }
   }
-  if (isInstagram(u)) return instagramTranscriptViaApify(rawUrl)
-  if (isDirectMedia(u)) return transcribeDirectMedia(rawUrl) // scraped IG/FB CDN mp4 → free local whisper
+  if (isInstagram(u)) return { ...(await instagramTranscriptViaApify(rawUrl)), source: 'instagram_paid' }
+  // scraped IG/FB CDN mp4 → free local whisper
+  if (isDirectMedia(u)) return { ...(await transcribeDirectMedia(rawUrl)), source: 'local_whisper' }
   const dir = await mkdtemp(join(tmpdir(), 'twinai-'))
   const audioPath = join(dir, 'audio.m4a')
   const outPath = join(dir, 'transcript.json')
@@ -631,7 +667,9 @@ export async function transcribeFromUrl(rawUrl: string): Promise<Transcript> {
        '--max-seconds', String(env.maxMediaSecs)],
       Math.max(180_000, env.maxMediaSecs * 1000),
     )
-    return JSON.parse(await readFile(outPath, 'utf8')) as Transcript
+    // ⚠️ THE TIKTOK ROUTE. yt-dlp + local whisper, free per video and bounded
+    // only by this box's CPU — the one platform whose budget is already raised.
+    return { ...(JSON.parse(await readFile(outPath, 'utf8')) as Transcript), source: 'local_whisper' }
   } finally {
     // Discard raw media + working files no matter what.
     await rm(dir, { recursive: true, force: true }).catch(() => {})
