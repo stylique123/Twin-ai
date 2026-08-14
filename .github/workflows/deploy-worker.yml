@@ -83,7 +83,12 @@ jobs:
             # transcribe was retired (ingest-reference enqueues 'ingest'); autoedit
             # was removed with the old editor. Neither has a handler, so a stale
             # override would only make the worker claim jobs it can't run.
-            sed -i '/^REVIDEO_/d;/^PEXELS_API_KEY/d;/^MUSIC_BED_URL/d;/^EDIT_/d' /opt/twinai-worker.env || true
+            # REVIDEO[-_], not REVIDEO_: a real box carried `REVIDEO-TRUSTED=true`
+            # with a hyphen, which this scrub never matched, so it survived every
+            # deploy. A hyphen is illegal in a shell variable name, so sourcing the
+            # env file aborts on that line and anything chained after it never runs.
+            # Kept identical to deploy-vps.sh — the two paths must not drift.
+            sed -i '/^REVIDEO[-_]/d;/^PEXELS_API_KEY/d;/^MUSIC_BED_URL/d;/^EDIT_/d' /opt/twinai-worker.env || true
             # Drop the box's WORKER_JOB_TYPES override entirely: the code default in
             # worker/src/env.ts is the single source of truth for job types now.
             # (A stale override once kept retired types alive AND would silently
