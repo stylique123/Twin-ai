@@ -554,7 +554,13 @@ Return JSON only, with EVERY key below present and populated:
   try { return JSON.parse(txt) } catch { return { error: 'unparseable', raw: txt.slice(0, 300) } }
 }
 
-const CASES = JSON.parse(process.env.CASES ?? '[]')
+// ⚠️ CASES CAN EXCEED THE ARGUMENT/ENV LIMIT. A case may carry a whole knowledge
+// store, and 64 of them is megabytes — the shell fails with "Argument list too
+// long" BEFORE node starts, so the run dies with no output and no error inside
+// this file. CASES_FILE takes the same JSON from a path instead.
+const CASES = process.env.CASES_FILE
+  ? JSON.parse(readFileSync(process.env.CASES_FILE, 'utf8'))
+  : JSON.parse(process.env.CASES ?? '[]')
 const out = []
 for (const c of CASES) {
   // ⚠️ EVERY COHORT, or a new one silently resolves to `undefined` and the run
