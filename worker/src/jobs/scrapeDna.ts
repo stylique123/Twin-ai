@@ -1,7 +1,7 @@
 import { db, type Job } from '../db.js'
 import { scrapeProfile, UnsupportedPlatformError, type ScrapedPost } from '../media.js'
 import { assessScanTarget } from '../scanTarget.js'
-import { selectVideosToTranscribe } from '../transcriptSelection.js'
+import { selectVideosToTranscribe, transcriptBudgetFor } from '../transcriptSelection.js'
 import { insertKnowledge } from '../knowledgeInsert.js'
 import { synthesizeVoiceFromPosts, extractKnowledgeFromCaptions } from '../voice.js'
 import type { InlineImage } from '../gemini.js'
@@ -381,9 +381,13 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     // reach. Transcripts are the ONLY source that can produce `stated`
     // positions, so which few get transcribed decides whether Twin can ever say
     // anything the creator actually believes.
+    // ⚠️ THE BUDGET IS PER PLATFORM BECAUSE THE PRICE IS. TikTok transcribes
+    // locally and free; Instagram is paid on every video. One number priced the
+    // free platform as if it were the expensive one — and this budget is the
+    // ceiling on the only input measured to change script quality.
     const urls = selectVideosToTranscribe(posts.map((x) => ({
       url: x.url, plays: x.plays, likes: x.likes, text: x.text,
-    })))
+    })), transcriptBudgetFor(platform))
     if (urls.length && ownerId) {
       await db.from('jobs').insert({
         owner_id: ownerId,

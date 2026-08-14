@@ -31,6 +31,45 @@ export interface TranscriptCandidate {
  *  every creator at once rather than redistributing a fixed supply. */
 export const TRANSCRIPT_BUDGET = 10
 
+/** The budget where transcription costs NOTHING per video.
+ *
+ *  ⚠️ ONE NUMBER FOR THREE DIFFERENT PRICES WAS THE MISTAKE. TikTok is
+ *  transcribed locally by yt-dlp and whisper — free, and bounded only by the
+ *  worker's own CPU. YouTube tries free captions first and only falls back to a
+ *  paid Actor. Instagram is paid on every video. A single budget therefore
+ *  priced the free platforms as if they were the expensive one, and the ceiling
+ *  it imposed was the ceiling on everything downstream.
+ *
+ *  ⚖️ AND THE YIELD IS NOW MEASURED RATHER THAN ASSUMED. Across the production
+ *  store, transcript items run 78% substance against 13% for captions, and a
+ *  transcribed video returns roughly one to two-and-a-half substance items —
+ *  garyvee's TikTok scan produced 25 items, 22 of them substance, from ten
+ *  videos. Scripts built on transcript-only stores scored 73% grounded and 8%
+ *  generic against 58% and 23% for the same creators' full stores.
+ *
+ *  So on a free platform this is the cheapest available improvement to the one
+ *  input that was measured to matter, and 25 is chosen to roughly triple the
+ *  supply while staying inside a single scan's CPU budget. */
+export const FREE_TRANSCRIPT_BUDGET = 25
+
+/** Platforms whose transcripts cost nothing per video.
+ *
+ *  ⚠️ YOUTUBE IS NOT IN HERE, AND THAT IS DELIBERATE. Its transcript path tries
+ *  free captions FIRST and falls back to a paid Actor, so a raised budget on a
+ *  channel whose videos lack captions turns straight into spend. Free-first is
+ *  not free, and only a platform that is free in every case belongs here. */
+const FREE_TRANSCRIPT_PLATFORMS: ReadonlySet<string> = new Set(['tiktok'])
+
+/** How many videos to transcribe for this platform.
+ *
+ *  ⚖️ AN UNKNOWN PLATFORM GETS THE PAID BUDGET. Defaulting the other way would
+ *  make every platform added later silently expensive, and the cost would land
+ *  on the owner's Apify bill rather than on a failing test. */
+export function transcriptBudgetFor(platform: string | null | undefined): number {
+  return FREE_TRANSCRIPT_PLATFORMS.has(String(platform ?? '').toLowerCase())
+    ? FREE_TRANSCRIPT_BUDGET : TRANSCRIPT_BUDGET
+}
+
 /** Captions that suggest the video contains a POSITION rather than a spectacle.
  *
  *  ⚖️ REACH IS A PROXY FOR WHAT GOT VIEWS, NOT FOR WHAT CONTAINS AN ARGUMENT —

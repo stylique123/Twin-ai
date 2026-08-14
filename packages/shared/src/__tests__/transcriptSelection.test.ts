@@ -6,7 +6,9 @@
 // videos get transcribed therefore decides whether Twin can ever say anything a
 // creator actually believes.
 import { describe, expect, it } from 'vitest'
-import { selectVideosToTranscribe, TRANSCRIPT_BUDGET, TRANSCRIPT_BUDGET } from '../transcriptSelection'
+import {
+  selectVideosToTranscribe, TRANSCRIPT_BUDGET, FREE_TRANSCRIPT_BUDGET, transcriptBudgetFor,
+} from '../transcriptSelection'
 
 const v = (url: string, plays: number, text = '', postedAt: string | null = null) =>
   ({ url: `https://x/${url}`, plays, text, postedAt })
@@ -112,5 +114,53 @@ describe('the three-state and budget rules', () => {
   it('handles an empty or tiny channel without throwing', () => {
     expect(selectVideosToTranscribe([])).toEqual([])
     expect(selectVideosToTranscribe([v('only', 1)])).toEqual(['https://x/only'])
+  })
+})
+
+// ── ONE BUDGET FOR THREE DIFFERENT PRICES ─────────────────────────────────
+//
+// TikTok transcribes locally with yt-dlp and whisper — free. Instagram is paid
+// on every video. YouTube tries free captions first and falls back to a paid
+// Actor. A single number priced the free platform as if it were the expensive
+// one, and this budget is the ceiling on the only input measured to change
+// script quality: transcript items are 78% substance against 13% for captions,
+// and transcript-only stores scored 73% grounded / 8% generic against 58% / 23%.
+describe('the transcript budget follows the price', () => {
+  it('gives a free platform the larger budget', () => {
+    expect(transcriptBudgetFor('tiktok')).toBe(FREE_TRANSCRIPT_BUDGET)
+    expect(FREE_TRANSCRIPT_BUDGET).toBeGreaterThan(TRANSCRIPT_BUDGET)
+  })
+
+  it('keeps YouTube on the paid budget — free-FIRST is not free', () => {
+    // ⚠️ ITS TRANSCRIPT PATH FALLS BACK TO A PAID ACTOR when a video has no
+    // captions, so a raised budget on a caption-less channel turns straight into
+    // spend. Only a platform free in EVERY case belongs in the free set.
+    expect(transcriptBudgetFor('youtube')).toBe(TRANSCRIPT_BUDGET)
+  })
+
+  it('charges Instagram the paid budget', () => {
+    expect(transcriptBudgetFor('instagram')).toBe(TRANSCRIPT_BUDGET)
+  })
+
+  it('defaults an UNKNOWN platform to the paid budget', () => {
+    // ⚖️ DEFAULTING THE OTHER WAY makes every platform added later silently
+    // expensive, and the cost lands on the owner's bill rather than on a test.
+    expect(transcriptBudgetFor('bluesky')).toBe(TRANSCRIPT_BUDGET)
+    expect(transcriptBudgetFor(null)).toBe(TRANSCRIPT_BUDGET)
+    expect(transcriptBudgetFor(undefined)).toBe(TRANSCRIPT_BUDGET)
+  })
+
+  it('is case-insensitive, because callers pass whatever the row holds', () => {
+    expect(transcriptBudgetFor('TikTok')).toBe(FREE_TRANSCRIPT_BUDGET)
+  })
+
+  it('actually selects that many when the creator has them', () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({
+      url: `https://tiktok.com/v/${i}`, plays: 1000 - i, likes: 10, text: `why I stopped doing thing ${i}`,
+    }))
+    expect(selectVideosToTranscribe(many, transcriptBudgetFor('tiktok')))
+      .toHaveLength(FREE_TRANSCRIPT_BUDGET)
+    expect(selectVideosToTranscribe(many, transcriptBudgetFor('instagram')))
+      .toHaveLength(TRANSCRIPT_BUDGET)
   })
 })
