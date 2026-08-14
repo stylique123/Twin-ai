@@ -51,3 +51,13 @@ describe('it is READ, not merely defined', () => {
     expect(EDGE).toMatch(/MEASURED BEFORE IT IS ENFORCED/)
   })
 })
+
+describe('the edge reports the supply MIX, not only the total', () => {
+  it('counts bare product mentions separately', () => {
+    // ⚠️ 302 OF 302 ON CAPTION-DERIVED STORES. Without this field a supply built
+    // entirely out of "they mentioned the Z Fold 8" is indistinguishable in the
+    // logs from a supply of real cases — and only one of those can fill a list.
+    expect(EDGE).toMatch(/const bareProduct = new Set\(/)
+    expect(EDGE).toMatch(/eligible\.filter\(\(i\) => i\.kind === 'product'\)/)
+  })
+})

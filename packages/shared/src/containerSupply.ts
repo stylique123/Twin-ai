@@ -70,6 +70,19 @@ export interface SupplyCheck {
   supply: number
   /** Items the writer would have to invent. 0 when demand is met or absent. */
   shortfall: number
+  /** How many of the supply are BARE PRODUCT MENTIONS.
+   *
+   *  ⚠️ 302 OF 302. Measured on caption-derived stores — 17 real creators, the
+   *  store every established account actually has — every single enumerable item
+   *  was a `product` row. Not one example, experience, claim, framework or fact.
+   *
+   *  ⚖️ SO `supply` ALONE OVERSTATES WHAT CAN FILL A SLOT. "They mentioned the Z
+   *  Fold 8" is genuinely enumerable — it can be one of five phones — but ten of
+   *  them cannot carry "the 10 products I'd sell right now", because the creator
+   *  has no view on any of them. A shortfall of zero built entirely out of these
+   *  is a container that will still come back invented, and reporting only the
+   *  total makes that indistinguishable from a creator who has ten real cases. */
+  bareProduct: number
   /** True when the reference enumerates and the creator cannot fill it.
    *
    *  ⚠️ THIS IS THE §18a CONDITION. Not "the script is wrong" — the script has
@@ -107,13 +120,17 @@ export function checkSupply(
   const enumerated = Boolean(demand?.isEnumerated)
   const count = enumerated && typeof demand?.count === 'number' && demand.count > 0
     ? demand.count : null
-  const usable = new Set(
-    available.filter((i) => ENUMERABLE_KINDS.has(i.kind) && String(i.text).trim() !== '')
-      .map(itemKey))
+  const eligible = available.filter(
+    (i) => ENUMERABLE_KINDS.has(i.kind) && String(i.text).trim() !== '')
+  const usable = new Set(eligible.map(itemKey))
   const supply = usable.size
-  if (count === null) return { demand: null, supply, shortfall: 0, wouldInvent: false }
+  const bareProduct = new Set(
+    eligible.filter((i) => i.kind === 'product').map(itemKey)).size
+  if (count === null) {
+    return { demand: null, supply, bareProduct, shortfall: 0, wouldInvent: false }
+  }
   const shortfall = Math.max(0, count - supply)
-  return { demand: count, supply, shortfall, wouldInvent: shortfall > 0 }
+  return { demand: count, supply, bareProduct, shortfall, wouldInvent: shortfall > 0 }
 }
 
 /** What to tell a creator whose reference asks for more than they have.

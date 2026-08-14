@@ -1064,18 +1064,31 @@ const ENUMERABLE_KINDS: ReadonlySet<string> = new Set([
 function checkSupply(
   demand: { isEnumerated: boolean; count: number | null } | null | undefined,
   available: readonly { kind: string; text: string }[],
-): { demand: number | null; supply: number; shortfall: number; wouldInvent: boolean } {
+): {
+  demand: number | null; supply: number; bareProduct: number
+  shortfall: number; wouldInvent: boolean
+} {
   const enumerated = Boolean(demand?.isEnumerated)
   const count = enumerated && typeof demand?.count === 'number' && demand.count > 0
     ? demand.count : null
-  const usable = new Set(
-    available.filter((i) => ENUMERABLE_KINDS.has(i.kind) && String(i.text).trim() !== '')
-      .map((i) => `${i.kind}:${String(i.text).toLowerCase().replace(/[^a-z0-9 ]/g, ' ')
-        .replace(/\s+/g, ' ').trim()}`))
+  const key = (i: { kind: string; text: string }) => `${i.kind}:${String(i.text).toLowerCase()
+    .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()}`
+  const eligible = available.filter(
+    (i) => ENUMERABLE_KINDS.has(i.kind) && String(i.text).trim() !== '')
+  const usable = new Set(eligible.map(key))
   const supply = usable.size
-  if (count === null) return { demand: null, supply, shortfall: 0, wouldInvent: false }
+  // ⚠️ 302 OF 302 ON CAPTION-DERIVED STORES. Every enumerable item 17 real
+  // creators had was a bare `product` mention — not one example, experience or
+  // claim. Ten of those cannot carry "the 10 products I'd sell", because the
+  // creator has no view on any of them, so a shortfall of zero built out of them
+  // is a container that still comes back invented. The total alone hides that.
+  const bareProduct = new Set(
+    eligible.filter((i) => i.kind === 'product').map(key)).size
+  if (count === null) {
+    return { demand: null, supply, bareProduct, shortfall: 0, wouldInvent: false }
+  }
   const shortfall = Math.max(0, count - supply)
-  return { demand: count, supply, shortfall, wouldInvent: shortfall > 0 }
+  return { demand: count, supply, bareProduct, shortfall, wouldInvent: shortfall > 0 }
 }
 
 // THE REFERENCE'S OWN NUMBER, SPOKEN BY SOMEBODY WHO NEVER EARNED IT — inlined

@@ -21,7 +21,28 @@ describe('a reference that promises more than the creator has', () => {
   it('reports what would be invented', () => {
     const got = checkSupply({ isEnumerated: true, count: 3, unit: 'AI tools' },
       [p('Cursor')])
-    expect(got).toEqual({ demand: 3, supply: 1, shortfall: 2, wouldInvent: true })
+    expect(got).toEqual({
+      demand: 3, supply: 1, bareProduct: 1, shortfall: 2, wouldInvent: true,
+    })
+  })
+
+  it('separates a supply of bare product mentions from a supply of material', () => {
+    // ⚠️ MEASURED: 302 OF 302 ENUMERABLE ITEMS ON CAPTION-DERIVED STORES WERE
+    // `product` ROWS. Ten "they mentioned the Z Fold 8" cannot carry "the 10
+    // products I'd sell right now" — the creator has no view on any of them — so
+    // a shortfall of zero built entirely out of them is a container that still
+    // comes back invented. Same number, different world.
+    const thin = checkSupply({ isEnumerated: true, count: 3, unit: 'phones' },
+      [p('Z Fold 8'), p('Pixel 10'), p('iPhone 18')])
+    const real = checkSupply({ isEnumerated: true, count: 3, unit: 'phones' },
+      [{ kind: 'experience', text: 'carried the Z Fold 8 for a month' },
+        { kind: 'example', text: 'the Pixel 10 night-mode comparison' },
+        { kind: 'claim', text: 'the iPhone 18 battery outlasts both' }])
+    expect(thin.supply).toBe(real.supply)
+    expect(thin.wouldInvent).toBe(real.wouldInvent)
+    // The only thing that tells them apart:
+    expect(thin.bareProduct).toBe(3)
+    expect(real.bareProduct).toBe(0)
   })
 
   it('is clean when the creator can fill it', () => {
