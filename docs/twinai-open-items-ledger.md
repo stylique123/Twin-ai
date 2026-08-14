@@ -1241,3 +1241,49 @@ The harness now lifts `SPOKEN_SOURCES` out of the edge rather than assuming it,
 partitions identically, and a new parity test asserts all three — mutation-checked
 by reverting the harness to the old selector and by replacing the lift with a
 hard-coded assumption.
+
+### G23. #376 works — 17–7 — and the stale harness was hiding it
+
+G22 found the harness had been running the pre-#376 selector, so the shipped
+change had never actually been tested. With the harness realigned, the same eight
+creators, three reference shapes, full production stores — captions and
+transcripts mixed, which is what a real creator has — differing ONLY in whether
+the selector can see `source`:
+
+| | supplied | from transcript | experiences reaching the writer |
+| :--- | ---: | ---: | ---: |
+| old selector (source blind) | 240 | 0 | 31 |
+| **new selector** | 240 | **155** | **38** |
+
+**And the scripts, judged blind:**
+
+| | |
+| :--- | ---: |
+| **new-selector script preferred** | **17** |
+| old-selector script preferred | 7 |
+| judged less natural | 6 |
+
+By reference shape: 7–1, 5–3, 5–3. Consistent, not a coin flip.
+
+⚖️ **THIS IS THE FIRST INTERVENTION THIS SESSION THE PANEL PREFERS, AND IT
+VALIDATES THE THESIS THE REST OF THE SESSION KEPT ASSERTING WITHOUT PROOF.**
+Everything that changed WHAT REACHES the writer worked. Everything that changed
+HOW THE WRITER IS INSTRUCTED did not:
+
+| intervention | kind | result |
+| :--- | :--- | ---: |
+| prefer spoken material (#376) | changes the input | **17–7** |
+| Substance Packet | restructures the input | 12–12 |
+| routed span repair | edits the output | 10–14 |
+| beat-plan prompt rule | instructs the writer | exactly inert |
+
+⚠️ **AND IT CORRECTS WHAT I TOLD THE OWNER AN HOUR EARLIER.** I reported "three
+interventions, three nulls" and "the supply chain is better and the scripts are
+not measurably better." The second half was false, and it was false because my
+own instrument was stale: the one supply change that shipped had never been run
+through the panel at all. A measurement that was never taken had been reported as
+a null result.
+
+Caveat kept: 6 of 24 new-selector scripts were judged LESS NATURAL even while
+winning overall. Denser first-person material reads as better and slightly
+rougher, which is a trade worth watching rather than a defect.
