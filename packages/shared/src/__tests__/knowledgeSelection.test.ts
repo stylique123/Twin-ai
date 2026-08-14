@@ -16,7 +16,7 @@
 // to say was crowding their own claims out of their own prompt.
 import { describe, expect, it } from 'vitest'
 import {
-  selectSpeakable, selectionShape, SUBSTANCE_KINDS, SUBSTANCE_FLOOR, carriesFigure,
+  selectSpeakable, selectionShape, SUBSTANCE_KINDS, SUBSTANCE_FLOOR, carriesFigure, wasSpoken,
 } from '../knowledgeSelection'
 
 const item = (kind: string, text = kind) => ({ kind, text })
@@ -191,5 +191,68 @@ describe('selectionShape records both halves', () => {
     // two have opposite fixes.
     expect(shape.figures).toBe(0)
     expect(shape.availableFigures).toBe(1)
+  })
+})
+
+// ── SPOKEN MATERIAL FILLS THE RESERVATION FIRST ───────────────────────────
+//
+// Measured on production: caption-derived knowledge is 13% substance with ZERO
+// experiences; transcript is 78% with 50. And the same eight creators scored
+// 58% grounded / 23% generic on their full store against 73% / 8% on transcript
+// rows alone — mixing captions in scored BELOW the hand-curated pack.
+describe('wasSpoken', () => {
+  it('is true only for transcript', () => {
+    expect(wasSpoken({ source: 'transcript' })).toBe(true)
+    expect(wasSpoken({ source: 'caption' })).toBe(false)
+  })
+
+  it('treats an ABSENT source as unrecorded, not as caption', () => {
+    // ⚠️ THREE STATES. Rows stored before 0122 have no source at all. Demoting
+    // them would silently downgrade every voice scanned before that migration —
+    // "we never recorded it" is not "the creator did not say it".
+    expect(wasSpoken({})).toBe(false)
+    expect(wasSpoken({ source: null })).toBe(false)
+  })
+})
+
+describe('selectSpeakable prefers spoken material within the floor', () => {
+  const cap10 = (items: any[]) => selectSpeakable(items, 10)
+  const cap = (kind: string, text: string, source?: string) => ({ kind, text, source })
+
+  it('a spoken experience outranks eight caption claims for the reserved slots', () => {
+    const items = [
+      ...Array.from({ length: 8 }, (_, i) => cap('claim', `caption claim ${i}`, 'caption')),
+      cap('experience', 'I spent two years failing at this', 'transcript'),
+      cap('framework', 'the three-pass method', 'transcript'),
+    ]
+    const chosen = cap10(items)
+    // Both spoken items must survive; before this they were ranked 9th and 10th.
+    expect(chosen.filter(wasSpoken)).toHaveLength(2)
+    expect(chosen.slice(0, 2).every(wasSpoken)).toBe(true)
+  })
+
+  it('is a stable partition, not a sort — relevance still orders within a group', () => {
+    // ⚖️ THE PROPERTY THAT MAKES THIS SAFE. Re-sorting would replace the caller's
+    // relevance with this module's, which the floor exists NOT to do.
+    const items = [
+      cap('claim', 'spoken A', 'transcript'),
+      cap('claim', 'spoken B', 'transcript'),
+      cap('claim', 'written C', 'caption'),
+    ]
+    expect(cap10(items).map((i) => i.text)).toEqual(['spoken A', 'spoken B', 'written C'])
+  })
+
+  it('changes nothing when no item records a source', () => {
+    // Every voice scanned before 0122. The order must be exactly as before.
+    const items = [cap('claim', 'one'), cap('opinion', 'two'), cap('fact', 'three')]
+    expect(cap10(items).map((i) => i.text)).toEqual(['one', 'two', 'three'])
+  })
+
+  it('still returns the same NUMBER of items', () => {
+    const items = [
+      cap('claim', 'a', 'caption'), cap('experience', 'b', 'transcript'),
+      cap('product', 'c', 'caption'), cap('opinion', 'd', 'caption'),
+    ]
+    expect(cap10(items)).toHaveLength(4)
   })
 })

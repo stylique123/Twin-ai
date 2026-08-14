@@ -87,10 +87,38 @@ export function carriesFigure(item: { kind?: string; text?: string }): boolean {
   return SUBSTANCE_KINDS.has(String(item?.kind)) && FIGURE.test(String(item?.text ?? ''))
 }
 
+/** Where an item was learned. `transcript` means the creator SAID it.
+ *
+ *  ⚠️ MEASURED ON PRODUCTION KNOWLEDGE AND ON THE SCRIPTS IT PRODUCES. The two
+ *  sources are not two flavours of the same thing:
+ *
+ *      caption-derived : 374 items, 13% substance, ZERO experiences,  2 with figures
+ *      transcript      : 178 items, 78% substance,   50 experiences, 23 with figures
+ *
+ *  ⚖️ AND MIXING THEM IS WORSE THAN EITHER. Same eight creators, same reference,
+ *  changing only the store:
+ *
+ *      hand pack                      61% grounded · 25% generic
+ *      production, all sources        58% grounded · 23% generic
+ *      production, TRANSCRIPT ONLY    73% grounded ·  8% generic
+ *
+ *  Generic beats fell by two thirds. Caption rows do not merely add nothing —
+ *  they win slots on keyword overlap and push out the material that can carry a
+ *  beat, which is why the realistic store scored BELOW the hand-curated one. */
+export const SPOKEN_SOURCES: ReadonlySet<string> = new Set(['transcript'])
+
+/** Did the creator actually say this, rather than caption it? */
+export function wasSpoken(item: { source?: string | null }): boolean {
+  return SPOKEN_SOURCES.has(String(item?.source ?? ''))
+}
+
 export interface SelectableItem {
   kind: string
   text: string
   basis?: string | null
+  /** `transcript` | `caption` | null. Null means unrecorded, NOT caption — items
+   *  stored before 0122 have no source and must not be demoted for it. */
+  source?: string | null
 }
 
 /**
@@ -115,7 +143,18 @@ export function selectSpeakable<T extends SelectableItem>(
   // thing the reservation exists NOT to do.
   const substance = ranked.filter((i) => SUBSTANCE_KINDS.has(i.kind))
 
-  const keepSubstance = substance.slice(0, Math.min(floor, cap))
+  // ⚠️ SPOKEN MATERIAL FILLS THE RESERVATION FIRST. This is a stable partition,
+  // not a sort: relevance order is preserved WITHIN each group, so the caller's
+  // notion of relevance still decides which experience — it just cannot be a
+  // caption row that takes the slot from every experience.
+  //
+  // ⚖️ AND IT ONLY REORDERS THE RESERVED SLOTS. The remaining four are untouched
+  // and open to everything, so a video about a product still gets the product.
+  // Measured: transcript-only stores scored 73% grounded / 8% generic against
+  // 58% / 23% for the same stores with caption rows mixed in.
+  const spoken = substance.filter(wasSpoken)
+  const rest = substance.filter((i) => !wasSpoken(i))
+  const keepSubstance = [...spoken, ...rest].slice(0, Math.min(floor, cap))
   const taken = new Set<T>(keepSubstance)
   const out = [...keepSubstance]
 

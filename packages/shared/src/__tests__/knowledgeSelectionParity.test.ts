@@ -125,3 +125,26 @@ describe('the three implementations agree on a case that separates them', () => 
     expect(edgeLike.map((i) => i.text)).toContain('a claim')
   })
 })
+
+describe('the edge prefers spoken material by the same rule', () => {
+  it('SELECTS the source column — it cannot prefer what it never read', () => {
+    // ⚠️ THE EDGE DID NOT SELECT `source` AT ALL. The column has existed since
+    // 0122 and the selector could not see it, so the preference below would have
+    // been inert — computed against undefined on every row.
+    expect(EDGE).toMatch(/\.select\('kind, text, basis, times_seen, confidence, source'\)/)
+  })
+
+  it('partitions the reservation, and does not sort it', () => {
+    // ⚖️ A SORT WOULD REPLACE THE CALLER'S RELEVANCE. Measured: transcript-only
+    // stores scored 73% grounded / 8% generic against 58% / 23% with caption
+    // rows mixed in — but WHICH experience is still relevance's call.
+    expect(EDGE).toMatch(/const spoken = substance\.filter\(wasSpoken\)/)
+    expect(EDGE).toMatch(/const keepSubstance = \[\.\.\.spoken, \.\.\.rest\]\.slice/)
+  })
+
+  it('treats an absent source as unrecorded in both copies', () => {
+    const lift = (s: string) => s.slice(s.indexOf('function wasSpoken'), s.indexOf('\n}', s.indexOf('function wasSpoken'))).replace(/\s+/g, ' ')
+    const SHARED = readFileSync(join(REPO, 'packages/shared/src/knowledgeSelection.ts'), 'utf8')
+    expect(lift(EDGE)).toBe(lift(SHARED))
+  })
+})
