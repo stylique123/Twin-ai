@@ -904,3 +904,51 @@ TRANSCRIPT ROW.** Per-video yield is therefore not computable from the store —
 cannot be traced back to the video the creator said it in. The column exists and
 nothing fills it. Not fixed here; recorded so the next person measuring yield
 does not conclude the videos were never transcribed.
+
+### G16. The panel ran, and it does not confirm the week's improvements
+
+Three string metrics in a row failed to see what is wrong with these scripts, so
+the instrument changed: a judge, given the creator's own material and the script,
+never told which arm produced it, asked the only question that matters — would
+you spend an afternoon filming this?
+
+**24 scripts, three arms:**
+
+| arm | would publish | mean score | dominant flaw |
+| :--- | ---: | ---: | :--- |
+| hand pack | 7/8 | 8.1 | spread |
+| production, all sources | 6/8 | 8.0 | PAYOFF ×3 |
+| production, transcript only | 6/8 | 8.0 | REPETITION ×3, VOICE ×3 |
+
+⚠️ **THE ARMS ARE INDISTINGUISHABLE ON PUBLISHABILITY, AND THAT IS A CHECK ON THE
+WEEK'S CLAIMS.** #376 and #377 moved grounding from 58% to 73% and generic beats
+from 23% to 8% — real, and measured. The judged quality did not move at all.
+Better sourcing removed a class of defect that a counter can see; it did not make
+a script somebody wants to film. Reporting the grounding gain without this would
+have been reporting half a result.
+
+⚖️ **AND THE PANEL EARNED ITS PLACE BY FINDING WHAT THE TOOLS COULD NOT.** The
+lexical dedupe found ZERO repeated beats in 24 scripts. The panel, unprompted:
+
+> *"Beat 5 largely restates the core message about being unconventional and
+> captivating, which is already covered in beats 2 and 4."*
+
+That is the defect, quoted, on the script this session had already flagged by eye
+and failed twice to measure. **REPETITION is the most common biggest-flaw in the
+best arm** — three of eight — and it is semantic, not lexical, which is why every
+string attempt missed it.
+
+**Second finding: 59–74% of supplied substance never reaches the script**, and
+the transcript-only arm is the HIGHEST at 74% — it supplies denser material into
+the same five beats. That is not automatically a defect: a five-beat script
+cannot speak seven items, and over-supplying so the writer can CHOOSE is the
+point of the cap. It does mean the remaining lever is which items are chosen,
+not how many.
+
+⚠️ **A FOURTH BROKEN METRIC WAS CAUGHT BEFORE IT WAS REPORTED.** The first
+version of the unused count used Jaccard between an item and the whole
+concatenated script; a long text dilutes the denominator, so it returned
+"100% unused" for every arm — including scripts visibly quoting the item. The fix
+is containment (what share of the ITEM's words appear in one line), not overlap.
+Recorded because three of this session's four metric failures share one root:
+a similarity measure applied to texts of very different lengths.
