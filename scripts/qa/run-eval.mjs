@@ -567,9 +567,30 @@ for (const c of CASES) {
   // from the full store while recording the filtered one would report an arm
   // that never ran — the `supplied` block exists precisely so a citation cannot
   // "trace" to something the writer never saw.
-  const armStore = c.sources
+  let armStore = c.sources
     ? { ...creator.knowledge, items: (creator.knowledge?.items ?? []).filter((i) => c.sources.includes(i.source)) }
     : creator.knowledge
+  // ⚠️ THE SHORT-SUPPLY ARM, MADE OUT OF THE CREATOR'S OWN MATERIAL. `keepEnumerable`
+  // caps how many items that could FILL A LIST SLOT survive, leaving everything
+  // else untouched, so the two arms differ in supply and in nothing else.
+  //
+  // ⚖️ TRUNCATION RATHER THAN INVENTED FILLER, and the difference is the whole
+  // experiment. Padding the rich arm with placeholder rows would measure the
+  // model's reaction to placeholders; removing real rows from a creator who has
+  // them measures what §18a actually claims — that an unfilled container comes
+  // back invented.
+  if (typeof c.keepEnumerable === 'number') {
+    const ENUMERABLE = new Set(['product', 'example', 'experience', 'claim', 'framework', 'fact'])
+    let kept = 0
+    armStore = {
+      ...armStore,
+      items: (armStore?.items ?? []).filter((i) => {
+        if (!ENUMERABLE.has(i.kind)) return true
+        kept += 1
+        return kept <= c.keepEnumerable
+      }),
+    }
+  }
   const bp = await gen({ creator, refNote: c.refNote, fidelity: c.fidelity, tone: c.tone, goal: c.goal, withKnowledge: c.withKnowledge !== false, answers: c.answers, cap: c.cap ?? KNOWLEDGE_CAP, knowledgeStore: armStore })
   // ⚠️ RECORD WHAT THE PROMPT CARRIED, NOT JUST WHAT CAME BACK. Every result
   // file before this one stored `{case, blueprint}` and nothing else, so

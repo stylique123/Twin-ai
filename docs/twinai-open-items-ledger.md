@@ -727,3 +727,54 @@ build next.** `describeShortfall` already writes the trade — *"this format
 promises 10 and we can support 4; writing it now would invent 6"* — and offering
 the count the creator CAN support is the honest move where refusing is not.
 Deciding that needs a generation, not another counter.
+
+### G12. The gap-fill screen is NOT validated — the A/B ran and did not test it
+
+The decision was to put a gap-filling step in front of the creator when the
+reference promises more than their material supports, and to A/B it first. It was
+A/B'd. **It should not ship on this evidence.**
+
+**The experiment.** Six creators, one enumerated reference, two arms differing
+only in how much of their own list-fillable material reached the prompt — arm A
+truncated to three items, arm B their full store. Truncation rather than invented
+filler, because padding with placeholder rows would measure the model's reaction
+to placeholders.
+
+**Three instruments, one answer, and two of them were broken.**
+
+| instrument | short-supply arm | full-supply arm |
+| :--- | ---: | ---: |
+| citation does not trace | 0 of 48 | 0 of 38 |
+| items delivered − distinct supply reached | 14% | 12% |
+| blind model judge, per item | 15% filler | 13% filler |
+
+⚠️ **THE FIRST TWO ARE BLIND, AND THE SECOND ONE PROVES IT.** It scored
+0-unbacked a script whose last five items were "authentic connections", "unique
+experiences", "a founder-led brand", "innovation" and "calculated risks" — from a
+creator supplied four usable facts. Every invented item cited a REAL item,
+loosely. That is G8's wall a second time: **provenance-shaped checks cannot see
+invention that cites correctly**, and a pigeonhole metric built on a loose matcher
+inherits the blindness.
+
+⚠️ **AND THE JUDGE'S NULL IS A NULL ABOUT THE EXPERIMENT, NOT ABOUT §18a.** The
+reference said "seven specific things". A list of *lessons* can be filled from
+opinions — and arm A's truncation kept every opinion, so it was never starved of
+fillable material. hanushkaa's starved arm built its seven items out of opinions
+and did fine. The manipulation did not bite.
+
+⚖️ **THE CORRECTED EXPERIMENT CANNOT BE RUN ON THIS CORPUS, AND THAT IS G11
+AGAIN.** §18a's case is the product round-up, where a slot needs a THING. No
+creator in the 26-creator pack has more than six nameable products, so there is no
+full-supply arm to compare against. The only stores that could supply one are the
+caption-derived ones — and those are 100% bare product mentions, which is the
+supply G11 showed cannot fill a list either.
+
+**So: no gap-fill screen, no count negotiation, no refusal — none of them is
+supported by evidence that exists today.** What is needed first is a creator with
+enough real, nameable material to make a full-supply arm possible, which is the
+transcript ingest. Every road out of Gap 2 now runs through the same place.
+
+Shipped: the `keepEnumerable` arm option in the harness, and the two scorers, so
+the corrected experiment is one command away when a corpus exists. The blind
+metric is kept, not deleted, with its failure recorded on it — it is the clearest
+demonstration in the repo of what provenance checks cannot see.
