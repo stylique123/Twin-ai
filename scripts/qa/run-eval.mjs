@@ -379,10 +379,22 @@ if (!SUBSTANCE_KINDS.size || !Number.isFinite(LIFTED_FLOOR) || !Number.isFinite(
   process.exit(1)
 }
 
+// ⚠️ THE SPOKEN PARTITION WAS MISSING HERE FOR EVERY RUN AFTER #376. Production
+// fills the substance reservation with transcript-sourced items first; this copy
+// did not, so the harness measured the PREVIOUS selector while reporting on the
+// current product — the sixth instance of the failure this file's header warns
+// about, and the first one I introduced myself.
+const SPOKEN_SOURCES = new Set(
+  (EDGE.match(/const SPOKEN_SOURCES: ReadonlySet<string> = new Set\(\[([^\]]*)\]\)/)?.[1] ?? "'transcript'")
+    .match(/'([a-z]+)'/g)?.map((x) => x.replace(/'/g, '')) ?? ['transcript'])
+const wasSpoken = (item) => SPOKEN_SOURCES.has(String(item?.source ?? ''))
+
 function selectSpeakable(ranked, cap, floor = SUBSTANCE_FLOOR) {
   if (cap <= 0) return []
   const substance = ranked.filter((i) => SUBSTANCE_KINDS.has(i.kind))
-  const keep = substance.slice(0, Math.min(floor, cap))
+  const spoken = substance.filter(wasSpoken)
+  const rest = substance.filter((i) => !wasSpoken(i))
+  const keep = [...spoken, ...rest].slice(0, Math.min(floor, cap))
   const taken = new Set(keep)
   const out = [...keep]
   for (const item of ranked) {

@@ -1212,3 +1212,32 @@ The module ships as an instrument and is deliberately NOT wired into
 system can currently measure. It exists so the result is reproducible, and so that
 a panel of real creators — which is now the only untried instrument — can be shown
 packet and list scripts side by side.
+
+### G22. The harness drifted from production the moment #376 shipped — the sixth time
+
+`run-eval.mjs` opens with five recorded instances of one failure: a rule retyped
+into the harness, drifting from production, and a run reporting on a product
+nobody ships. It now records a sixth, and this one is mine.
+
+⚠️ **#376 MADE SPOKEN MATERIAL FILL THE SUBSTANCE RESERVATION FIRST. THE HARNESS
+KEPT ITS OWN RETYPED `selectSpeakable` WITH NO SUCH PARTITION.** Every run after
+that change — the payoff study, the soft-beat classification, the Substance Packet
+A/B — selected knowledge the way the product used to.
+
+⚖️ **AND THE PARITY TEST DID NOT CATCH IT, BECAUSE IT CHECKED THE CONSTANTS.**
+`SUBSTANCE_KINDS` and `SUBSTANCE_FLOOR` were lifted from the edge and correct the
+whole time. The FUNCTION that uses them was hand-written. **A constant is not a
+rule**, and a guard that checks the inputs to a rule does not check the rule.
+
+**What it invalidates, precisely:**
+
+- The Substance Packet A/B compared LIST against PACKET with both arms on the old
+  selector. The comparison is internally valid — same selector, same store, one
+  variable — so **12–12 stands**.
+- The same holds for the payoff repair study: both arms saw the same selector.
+- What NO run has measured is the shipped selector change itself.
+
+The harness now lifts `SPOKEN_SOURCES` out of the edge rather than assuming it,
+partitions identically, and a new parity test asserts all three — mutation-checked
+by reverting the harness to the old selector and by replacing the lift with a
+hard-coded assumption.
