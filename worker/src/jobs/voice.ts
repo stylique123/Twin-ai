@@ -1,6 +1,7 @@
 import { db, type Job } from '../db.js'
 import { insertKnowledge } from '../knowledgeInsert.js'
 import { transcribeFromUrl } from '../media.js'
+import { transcriptBudgetFor } from '../transcriptSelection.js'
 import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions } from '../voice.js'
 
 // Handles `build_voice` jobs — the audio upgrade for a brand voice.
@@ -12,7 +13,26 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
   const voiceId = String(p.brand_voice_id ?? '')
   const handle = String(p.handle ?? '')
   const platform = String(p.platform ?? 'tiktok')
-  const urls = Array.isArray(p.urls) ? p.urls.slice(0, 5) : []
+  // ⚠️ THIS CONSUMER TRUNCATED TO FIVE AND MADE BOTH BUDGET RAISES INERT.
+  // The selector picks up to the platform's budget — raised 5→10
+  // in #366 and to 25 for TikTok in #377, each shipped with a rationale about
+  // lifting the ceiling on the only input measured to change script quality.
+  // Neither reached production: a hard `.slice(0, 5)` here threw the rest away,
+  // so the selector was picking twenty-five videos and five were transcribed.
+  //
+  // ⚖️ THE CAP STAYS, BUT IT IS THE SAME RULE THE PRODUCER USED. A bare number
+  // here is what caused this: two places deciding how many videos get
+  // transcribed, one of them silent. The guard against runaway paid calls that
+  // the original five was protecting is intact — an unknown platform still gets
+  // the PAID budget, because `transcriptBudgetFor` is deliberately conservative
+  // about platforms it does not recognise.
+  //
+  // ⚠️ READ THE RAW PAYLOAD VALUE, NOT `platform` ABOVE. That one defaults to
+  // 'tiktok' for voice synthesis, and defaulting an unrecorded platform to the
+  // FREE budget would hand 25 paid transcriptions to anything that arrives
+  // without the field.
+  const budget = transcriptBudgetFor(p.platform)
+  const urls = Array.isArray(p.urls) ? p.urls.slice(0, budget) : []
   if (!voiceId || !urls.length) throw new Error('build_voice needs brand_voice_id and urls')
 
   // Best-effort: skip any video that fails (private / blocked / no speech).

@@ -1326,3 +1326,55 @@ dropping the before-text, and recording before the save lands.
 `keptShare` separates a tweak from a rejection rather than averaging them: a
 creator appending a clause kept 100% of the original and still changed the line,
 and those two facts answer different questions.
+
+### G25. Two transcript-budget raises shipped and neither reached production
+
+I went looking for whether YouTube's transcript budget could safely go from 10 to
+25, and found the budget had never mattered on any platform.
+
+`selectVideosToTranscribe` picks up to `transcriptBudgetFor(platform)` videos —
+raised 5→10 in #366, and to 25 for TikTok in #377, each argued at length as
+lifting the ceiling on the only input measured to change script quality. The
+consumer of those URLs, `handleBuildVoice`, carried its own `.slice(0, 5)`. So the
+selector picked twenty-five videos and five were transcribed. Since 2026-08-04.
+
+⚠️ **THE MEASURED CLAIMS BUILT ON THOSE BUDGETS ARE ABOUT FIVE VIDEOS, NOT TEN OR
+TWENTY-FIVE.** #377's own rationale cites "garyvee's TikTok scan produced 25 items,
+22 of them substance, from ten videos." That number came from five. It does not
+invalidate #376's 17–7 — both arms of that comparison ran on the same real
+supply — but every "roughly one to two-and-a-half substance items per video"
+estimate is now a rate over a denominator I had wrong.
+
+⚖️ **EVERY TEST PASSED THE WHOLE TIME, AND THEY WERE THE WRONG TESTS.** Nine cover
+the selector. Two parity tests check the worker's copy against shared's. All three
+were correct: the copies matched, and both matched the constant. What disagreed was
+a number in a third file that nothing compared against anything. This is #385's
+shape again — lifted constants sitting beside a hand-written rule — and the lesson
+repeats: a guard on a rule's INPUTS is not a guard on the rule.
+
+The fix caps by `transcriptBudgetFor(p.platform)` rather than by a literal, so the
+two ends cannot disagree again, and the new guard asserts the SEAM: whatever the
+producer chose, the transcriber must not silently keep less. Mutation-checked
+both ways — restoring the `5`, and passing the defaulted `platform`.
+
+⚠️ **IT READS THE RAW PAYLOAD VALUE, NOT THE DEFAULTED ONE.** `platform` in that
+handler defaults to `'tiktok'` for voice synthesis; feeding that to the budget
+would hand the FREE budget — 25 videos — to any payload arriving without the
+field, on platforms billed per video. `transcriptBudgetFor` is deliberately
+conservative about platforms it does not recognise, and that only helps if it is
+given what actually arrived.
+
+**Cost this changes, stated plainly:** TikTok scans go from 5 to 25 local
+whisper transcriptions — free per video, real CPU per scan. Instagram and YouTube
+go from 5 to 10, and Instagram is paid on every video, so that is a doubling of a
+real Apify line item. Both are what #366 and #377 asked for; neither has been
+paid yet.
+
+**The YouTube question I set out to answer is still open, and is now blocked on
+instrumentation rather than on judgement.** `transcribeFromUrl` tries free
+captions and falls back to a paid Actor on ANY thrown error — no captions, a
+30-second timeout, a network blip — and records nothing either way. One
+`console.error` on the fallback, nothing on success, no column, no counter. So
+"how often do YouTube captions actually exist" cannot be answered from production
+data today, and raising YouTube to 25 would be raising a budget whose price
+nobody can see. The cheapest fix is a source marker at that single chokepoint.
