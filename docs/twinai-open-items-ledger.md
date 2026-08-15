@@ -1678,3 +1678,40 @@ default in force, which is where the creator already was.
 
 Mutation-checked: pointing the writer at `brand_voices` (the old defect wearing a
 new name), and clearing to unset instead of answering.
+
+### G33. Reading edit pairs, and two proposals checked against production first
+
+Before building either of the owner's two proposals — edit-type classification
+and G9 canonical knowledge identity — both were checked against production.
+
+⚠️ **G9's DRIFT IS REAL AND IS CURRENTLY NOT HAPPENING.** 185 substance rows
+across 17 creators; **6** rows have `times_seen > 1`, and **one** near-duplicate
+pair survives at 0.6 overlap. The 9-of-18 measurement came from a deliberate
+repeat run, not from production: creators do not re-scan. So the canonical-identity
+refactor — stable `knowledge_id`, canonical meaning, surface forms, evidence
+spans — is the right shape for a phenomenon that has occurred about six times,
+and `surface_forms` would have no reader until a style compiler exists. **Held,
+with the trigger named: build it when re-scans become routine.**
+
+⚖️ **AND A NUMBER THIS SESSION HAS BEEN QUOTING IS WRONG.** "13 real creator
+decisions" is stale. Measured: **23 decisions across 14 distinct owners**, 22 of
+which match a stored `hook_options` entry, so the losers are recoverable. **14 of
+22 chose the first option and 8 chose a later one — the top-ranked hook is
+rejected 36% of the time.** The reranker headroom is real; what does not exist is
+anything to learn from. Across 22 chosen and 93 rejected hooks, length, question
+form, numerals and person are flat; the only moving feature is opening with a
+demonstrative, 14% against 3%, which is three hooks and therefore noise.
+
+**What shipped: the classifier, and the thing that reads it.** `classifyEdit`
+decides only what the two strings show — rewritten, made_concrete, made_personal,
+tightened, expanded — with `unclassified` as a real answer. The interesting
+categories ("salesy → natural", "weak hook → stronger") are judgements, are named
+in `NEEDS_JUDGEMENT`, and are deliberately not implemented: a regex claiming them
+would put a confident label on every pair, which is exactly how four metrics
+broke this week.
+
+⚠️ **IT REFUSES TO CALL A SMALL SAMPLE A PREFERENCE.** 20 pairs for a creator,
+100 globally; below that `reportable` is false and the reader prints counts while
+saying they are counts. `script_edits` currently holds **0 rows**, so everything
+here is an instrument waiting for data — which is the honest state and is
+declared rather than dressed up.
