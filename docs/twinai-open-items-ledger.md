@@ -1788,3 +1788,40 @@ caught by running the mutation rather than by reading the diff. Now guarded at
 both seams: the call, and the `select` that fetches the column it matches on.
 
 Unvalidatable until re-scans happen — production shows six merges ever.
+
+### G36. Edit-type learning — the mechanism, and the reason it cannot fire
+
+`deriveLessons` turns classified pairs into a small set of ACTIONS, and the
+choice of what an action may be is the whole design.
+
+⚠️ **A LESSON MAY NOT COMPILE INTO PROMPT TEXT.** The one intervention with human
+evidence changed what REACHED the writer (#376, 17–7). Every prompt instruction
+measured this week was inert — a beat-plan rule naming the top defect and quoting
+its own 67% rate moved zero scripts and zero pairs. So the three actions are
+`prefer_figures`, `prefer_experience` and `shorter_beats`: two change SELECTION,
+one changes the beat shape. A lesson that became a sentence in the prompt would
+be learning aimed at the one lever known not to move.
+
+⚖️ **TWO GATES, AND BOTH MUST CLEAR.** Enough pairs (20 per creator, 100 global)
+and enough agreement (two thirds). A creator who tightens half their lines and
+expands the other half has no preference — they have a script with some long
+lines and some short ones. A unanimous pattern over five pairs is still not
+actionable, and the test asserts exactly that.
+
+⚖️ **GLOBAL AND CREATOR ARE DIFFERENT KINDS OF CLAIM.** "Creators prefer concrete
+mechanisms" is a statement about people, and averaging over people who disagree
+is how a house style gets imposed on everyone. "This creator removes setup
+sentences" needs far less evidence and cannot hurt anybody else.
+
+**Unactionable lessons are returned, not hidden**, so what is nearly true is
+visible while it accumulates rather than appearing on the day it fires.
+
+⚠️ **AND NOTHING CAN FIRE TODAY: `script_edits` HOLDS 0 ROWS.** The mechanism is
+complete and deliberately not wired into selection — wiring a consumer to a
+source that cannot produce a lesson is the write-only pattern this ledger
+records nine times. The trigger is 20 pairs for one creator.
+
+**Still missing for the loop the owner described:** "accepted final". A creator
+who edits a line, then edits it again, leaves two pairs, and nothing records
+which text survived to the recording. Until that exists, a pair says what someone
+tried, not what they kept.
