@@ -3741,6 +3741,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // the writer is worth shipping.
     const routeCounts: Record<string, number> = {}
     const routeVsDeclared: Record<string, number> = {}
+    // ⚠️ NULL UNTIL THE SHADOW BLOCK RUNS, AND NULL IS A TRUE ANSWER. If that
+    // block throws, the generation still ships and the column records that we did
+    // not measure this one — which must stay distinguishable from measuring it
+    // and finding nothing.
+    let selectionSnapshot: Record<string, unknown> | null = null
     try {
       const depth = creatorDepth(suppliedForCheck)
       const ownedName = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim()
@@ -3809,6 +3814,14 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       }))
     } catch (err) {
       console.error('reference_transfer_shadow_failed', err instanceof Error ? err.message : err)
+    }
+    // ⚖️ COMPUTED ONCE AND USED TWICE — logged for live debugging, stored for
+    // counting. Recomputing it at insert time would risk the stored value
+    // describing a different selection from the logged one.
+    selectionSnapshot = {
+      selection: selectionShape(speakable, ranked),
+      depth: creatorDepth(suppliedForCheck),
+      knowledge_items: suppliedForCheck.length,
     }
     console.log(JSON.stringify({
       event: 'substance_route_shadow',
@@ -4241,6 +4254,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         // charge the ledger reversed makes every downstream count wrong.
         credits_spent: unbillable ? 0 : BLUEPRINT_COST,
         idempotency_key: idempotency_key || null,
+        // ⚠️ THE SAME COUNTERS THE SHADOW LOG EMITS, KEPT. They were emitted to
+        // edge logs only, which expire within days, so a month of production
+        // traffic left nothing to count. The row they describe already survives;
+        // writing them here costs one column and turns six ephemeral counters
+        // into six durable ones.
+        selection: selectionSnapshot,
       })
       .select('*')
       .single()

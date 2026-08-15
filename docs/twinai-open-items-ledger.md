@@ -1460,3 +1460,37 @@ wrong row is worse than a missing one.
 score this: it is not a better prompt over the same supply, it is supply that does
 not exist yet. The first real signal is whether anyone answers a second question
 after their first.
+
+### G27. Six counters were built and all six expire
+
+Found while writing the queries that would read them: `substance_route_shadow`
+— the selection shape, the starved flag, the figure counts, the container supply
+check — is a `console.log`. So is every other counter this session kept calling
+"live". They go to edge logs, which expire within days.
+
+⚠️ **THIS IS WORSE THAN "NO COUNTER HAS READ A PRODUCTION GENERATION", WHICH IS
+WHAT I HAVE BEEN SAYING FOR TWO DAYS.** That framing implied the readings were
+waiting for traffic. They were not waiting for anything: a month of production
+traffic would have left nothing to count at the end of it, because each reading
+expires before the next hundred arrive.
+
+⚖️ **IT IS C8's SCRIPT HOLE AGAIN, POINTED AT QUALITY INSTEAD OF FAILURE.** In
+both cases the information exists at the exact moment it matters and is written
+somewhere that forgets. Found twice in one session, in two subsystems, by two
+different routes — which suggests the pattern is worth a standing check rather
+than another fix.
+
+0130 adds `generations.selection`. No new table and no new write path: the row
+these counters describe is already inserted on this exact path and already
+survives. The snapshot is computed ONCE and used twice — logged for live
+debugging, stored for counting — because recomputing at insert time would risk
+the stored value describing a different selection from the logged one.
+
+⚖️ **NULL MEANS NOT MEASURED, AND EVERY EXISTING ROW IS NULL.** Defaulting to
+`{}` would make every historical generation look like it supplied nothing to the
+writer, which is a measurement rather than an absence.
+
+`docs/what-production-can-now-answer.md` carries the query for each question,
+including the two that must never be pooled: `paid_because_no_captions` is a
+fact about YouTube that caps a budget, `paid_because_free_path_failed` is a bug
+on our side that inflates a bill.
