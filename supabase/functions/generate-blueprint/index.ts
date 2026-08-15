@@ -944,6 +944,55 @@ function readReferenceObservations(
 // out of proportion — but the count is what says whether the sharpened
 // instruction worked, and the creator surface waits on it.
 const NON_PROOF = /^(?:n\/?a|none|nil|null|no(?:ne)? needed|not applicable|proof|tbd|-+|\.+)$/i
+// ── PREMISE COMPATIBILITY (inlined from packages/shared/src/premiseCompatibility.ts)
+//
+// ⚠️ THE STRUCTURE TRANSFERS; THE AUTOBIOGRAPHY DOES NOT. A reference opening
+// "5 things I stopped doing" hands the writer a shape and a claim fused
+// together, and the safety checks downstream only catch the claim after a whole
+// premise has been built on it. Deciding before the premise costs nothing.
+const PREMISE_WINDOW_CHARS = 400
+const MIN_PREMISE_CHARS = 40
+const EXPERIENTIAL_VERB = [
+  'stopped', 'quit', 'started', 'built', 'made', 'tried', 'tested', 'bought',
+  'sold', 'launched', 'failed', 'learned', 'spent', 'lost', 'earned', 'hired',
+  'fired', 'left', 'moved', 'switched', 'deleted', 'cancelled', 'canceled',
+  'ran', 'used', 'wrote', 'shipped', 'raised', 'grew', 'doubled',
+].join('|')
+const FIRST_PERSON_ACT = new RegExp(
+  String.raw`\b(?:i|we)\s+(?:just\s+|finally\s+|actually\s+|once\s+)?(?:${EXPERIENTIAL_VERB})\b`, 'i')
+const FIRST_PERSON_ACT_INVERTED = new RegExp(
+  String.raw`\b(?:things?|ways?|lessons?|mistakes?|reasons?|what|how|why)\b[^.?!]{0,40}?` +
+  String.raw`\b(?:i|we)\s+(?:${EXPERIENTIAL_VERB})\b`, 'i')
+
+function premiseDemandInline(referenceText: string | null | undefined): 'narrator_experience' | 'none' | 'unknown' {
+  const text = String(referenceText ?? '').replace(/\s+/g, ' ').trim()
+  if (text.length < MIN_PREMISE_CHARS) return 'unknown'
+  const opening = text.slice(0, PREMISE_WINDOW_CHARS)
+  return (FIRST_PERSON_ACT.test(opening) || FIRST_PERSON_ACT_INVERTED.test(opening))
+    ? 'narrator_experience' : 'none'
+}
+
+// ⚖️ AN UNKNOWN DEMAND EMITS NOTHING. A reference we could not read is not a
+// reference that makes no personal claim.
+function premiseInstructionInline(referenceText: string | null | undefined, hasExperience: boolean): string {
+  if (premiseDemandInline(referenceText) !== 'narrator_experience') return ''
+  if (hasExperience) {
+    return 'REFERENCE PREMISE — IT IS A FIRST-PERSON ACCOUNT.\n'
+      + 'Transfer its STRUCTURE and its framing. Its autobiography is NOT transferable: '
+      + 'you may write the creator into it only where a supplied knowledge item says they '
+      + 'did that thing. Where none does, move the claim off their biography — '
+      + '"5 things I stopped doing" becomes "5 things to stop doing" — and keep the count '
+      + 'and the shape intact.'
+  }
+  return 'REFERENCE PREMISE — IT IS A FIRST-PERSON ACCOUNT, AND THIS CREATOR HAS NO '
+    + 'FIRST-HAND EXPERIENCE ON RECORD.\n'
+    + 'Transfer the STRUCTURE only. Do NOT write any sentence claiming the creator did, '
+    + 'tried, quit, built or bought the thing — there is nothing on record to ground it '
+    + 'and inventing it is the worst failure available here. Rewrite the premise in the '
+    + 'second person or as a claim about the world, keeping the count and the shape: '
+    + '"5 things I stopped doing" becomes "5 things founders should stop doing".'
+}
+
 // ── STYLE COMPILER (inlined from packages/shared/src/styleCompiler.ts) ──────
 //
 // ⚠️ INLINED BECAUSE EDGE FUNCTIONS CANNOT IMPORT `@twinai/shared`, and kept
@@ -3497,6 +3546,12 @@ ${styleRules}` : ''}
 
     // When we have the real transcript, override the format-pattern caveat: the
     // model IS now reading the actual video, so reference_read must describe THIS clip.
+        // ⚠️ DECIDED BEFORE THE PREMISE, WHICH IS THE ONLY PLACE IT IS CHEAP.
+        // `evidenceLevel`'s rule, lifted: an `experience` the creator STATED is
+        // first-hand; an opinion known only because the video exists is not.
+        const creatorHasExperience = knowledgeRows.some(
+          (k) => String(k?.kind) === 'experience' && String(k?.basis) === 'stated')
+        const premiseInstruction = premiseInstructionInline(ref?.text ?? null, creatorHasExperience)
         const referenceBlock =
       ref && (ref.structure || ref.text)
         ? `REFERENCE (REAL — analyzed from the actual video. Base reference_read.why_it_works and retention_map on THIS specific video below, not on a generic format pattern.)
@@ -3508,12 +3563,12 @@ ${fenced('derived structure', ref.structure ? JSON.stringify(ref.structure).slic
 ${fenced('reference transcript', clip(ref.text ?? '', 6000))}
 - Creator's angle/note:
 ${fenced("creator's note", reference_note || '(none provided)')}
-- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)`
+- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
 ${fenced("creator's note", reference_note || '(none provided)')}
-- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)`
+- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}`
 
     // The DNA is fenced too. It reads like our own text, but every field in it
     // was synthesized from captions we scraped — so it is exactly as
