@@ -278,6 +278,15 @@ jobs:
         run: |
           node scripts/ci/check_brand_truth_parity.mjs --selftest
           node scripts/ci/check_brand_truth_parity.mjs
+      # ⚠️ THREE COUNTERS IN TWO DAYS MEASURED NOTHING, in three unrelated
+      # subsystems, each found by accident while writing the query that would
+      # have read it. Each was fixed as an instance; this is the guard on the
+      # class. It cannot decide whether a measurement deserves a column — that is
+      # judgement — but it refuses to let the question go unasked.
+      - name: Counter durability (where does this land, and how long does it live?)
+        run: |
+          node scripts/ci/check_counter_durability.mjs --selftest
+          node scripts/ci/check_counter_durability.mjs
       - name: Staging migration coverage (a new migration is applied, or excluded with a reason)
         run: |
           node scripts/ci/check_staging_migration_coverage.mjs --selftest

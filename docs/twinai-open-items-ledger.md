@@ -1531,3 +1531,38 @@ that `proof_quality` appeared AFTER the log's event name — true only while the
 counters lived inside the log literal. Lifting them into an object flipped the
 string order while strengthening the property the test existed to protect. It
 now asserts the object, and that the audit is stored.
+
+### G29. The guard on the class, after fixing the instance three times
+
+C8's script hole, 0130's selection counters, 0131's `beat_substance`. Three
+subsystems, three unrelated routes, one shape — information that exists at the
+exact moment it matters, written somewhere that forgets. All three were found by
+accident, and by the same accident: writing the query that would have read them.
+
+⚠️ **FIXING AN INSTANCE THREE TIMES IS NOT A PATTERN BEING ADDRESSED.**
+`check_counter_durability.mjs` asks the question nobody asked three times
+running — **where does this land, and how long does it live?** — of every
+structured event the edge and the worker emit. 42 of them today.
+
+⚖️ **IT CANNOT DECIDE WHETHER A MEASUREMENT DESERVES A COLUMN, AND DOES NOT
+TRY.** That is judgement, and a guard that pretended otherwise would be argued
+with until it was deleted. What it can do is refuse to let the question go
+unasked: an unregistered event fails the build, and each entry carries a reason.
+Three answers are legal — `incident` (one occurrence matters, a log is right),
+`counter` (a rate, and it must name a durable destination that EXISTS), and
+`counter_ephemeral` (a rate we knowingly do not persist).
+
+⚠️ **`counter_ephemeral` IS A DEBT, NOT AN ESCAPE HATCH** — the same word
+`check_staging_migration_coverage.mjs` uses for an excluded migration, and for
+the same reason: an exclusion nobody wrote down is how 0120 and 0121 sat
+unapplied while a branch that read them waited to merge. Ten rates are listed
+that way today, each with the condition that would promote it.
+
+⚖️ **THE REVERSE CHECK IS THE ONE THAT MATTERS.** A registry entry claiming a
+home it does not have is worse than an unlisted event: it reads as a decision
+already made and kept, so nobody looks again. Mutation-checked by deleting 0130
+and watching `substance_route_shadow` fail on a destination that no longer
+exists, and by renaming a live event and watching it fail as unregistered.
+
+Current state: 42 events · 2 stored · 10 rates knowingly not persisted · the
+rest incidents.
