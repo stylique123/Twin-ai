@@ -1825,3 +1825,56 @@ records nine times. The trigger is 20 pairs for one creator.
 who edits a line, then edits it again, leaves two pairs, and nothing records
 which text survived to the recording. Until that exists, a pair says what someone
 tried, not what they kept.
+
+---
+
+## G37 — the hook field was reported corrupted; it is something worse
+
+**The claim, and the measurement that narrowed it.** `selected_hook` was called a
+partially corrupted dataset because one row holds `"PICK THIS HOOK for the cover
+and broll"` — a structured selection field used as an instruction channel. That
+row is real. It is also **one row of 23**: the other 22 are an EXACT match to one
+of that generation's five offered options, and the write path (`pickHook`,
+`Result.tsx`) cannot produce another, because it only ever persists an option's
+own text. A schema change built on "the dataset is corrupted" would have fixed a
+row and left the corpus exactly as unusable as it was.
+
+⚠️ **THE REAL DEFECT RUNS THE OTHER WAY, AND IT IS FIVE TIMES LARGER.**
+`Result.tsx` captures the RECOMMENDED hook on page load when none is stored:
+
+```ts
+if (id && !g?.selected_hook && initial) updateGenerationChoice(id, { selected_hook: initial })
+```
+
+added deliberately, with the stated reason that the learning signal was otherwise
+nearly empty (1 of 15). It worked in the only sense it was measured in — the
+column became non-empty — by writing something **no creator ever picked**, and
+nothing afterwards tells the two apart.
+
+Measured in production: **14 of 23 rows equal `option[0]`** and are
+indistinguishable from that write. The usable preference signal is **8 rows, not
+23**, and a ranking model reading this table would learn that creators
+overwhelmingly prefer whichever option we happened to list first.
+
+⚖️ **THIS IS `unrecorded is not none` WEARING A NEW FACE**, and it is the fourth
+time this ledger has recorded that shape. The difference here is that the field
+was not left empty — it was filled with a plausible value, which is strictly
+worse, because an empty field announces itself and a defaulted one does not.
+
+**The fix records provenance rather than removing the default.** The teleprompter
+genuinely needs a line to shoot. `generations.hook_choice` (0134) says HOW the
+value arrived: `creator` | `default` | `freeform`, with the option index.
+`isPreference` admits only `creator`. NULL is its own state — a row predating
+0134 is one we cannot interpret, which is a different claim from "nobody chose".
+
+⚠️ **THE 14 EXISTING ROWS ARE A PERMANENT LOSS AND ARE NOT BACKFILLED.** A stored
+hook equal to `option[0]` classifies as `default` even where the creator really
+did tap it. That is the honest direction to lose in: calling them picks would put
+fabricated preferences into the corpus, and a fabricated preference is worse than
+a missing one. There is no `update ... set hook_choice` anywhere, and a test
+asserts its absence.
+
+**Not built:** a hook classifier, a scoring model, an LLM judge. At 8 usable rows
+none of them would learn preference — they would learn this table's artefacts.
+The reader (`scripts/qa/read-hook-choices.mjs`) prints position counts and says
+plainly that they are counts.

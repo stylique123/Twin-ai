@@ -6,6 +6,7 @@ import {
 } from './editor/capabilities'
 import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
 import { sanitizeBriefForWrite, readStoredBrief, type BriefAnswers } from './preScriptBrief'
+import type { HookChoice } from './hookChoice'
 import {
   emptyRestrictions, isEntityRelationship, isEntityType, isPersonalUse, isShowability,
   attestedEntity, isOwned,
@@ -421,7 +422,7 @@ export async function getGeneration(id: string): Promise<Generation | null> {
 // optimistic).
 export async function updateGenerationChoice(
   id: string,
-  patch: { selected_hook?: string },
+  patch: { selected_hook?: string; hook_choice?: HookChoice },
 ): Promise<boolean> {
   // `!error` IS NOT SUCCESS. A PostgREST UPDATE that matches no row — because
   // RLS filtered it, or the id is not this user's — returns NO error, so a hook

@@ -1,4 +1,5 @@
 // Shared domain types for TwinAI
+import type { HookChoice } from './hookChoice'
 
 export type Platform = 'tiktok' | 'instagram' | 'youtube' | 'linkedin' | 'other'
 
@@ -199,6 +200,12 @@ export interface Generation {
   transcript_id?: string | null
   // Creator's choices that drive the back half of the loop.
   selected_hook?: string | null // which of the 5 hooks to shoot (teleprompter + cover)
+  /** 0134. HOW `selected_hook` got its value. `selected_hook` alone cannot say:
+   *  the recommended hook is captured on load so the teleprompter has something
+   *  to shoot, and 14 of 23 production rows equal option[0] and are therefore
+   *  indistinguishable from that default. Only `source: 'creator'` is a
+   *  preference. NULL predates the column — never "no choice was made". */
+  hook_choice?: HookChoice | null
   edit_style?: string | null // LEGACY (old editor) — kept so stored rows still parse
   // The finished video MP4 + its cover JPEG (storage paths in the private `edits`
   // bucket; sign to display/play). Written by the old editor historically; the
