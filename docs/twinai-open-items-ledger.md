@@ -1751,3 +1751,40 @@ removing the drop.
 0103 named the capability trap and D3 happened anyway; the counter comments named
 durability and three counters expired; this. The pattern is not that the warnings
 are wrong. It is that a comment is read by whoever is already looking.
+
+### G35. G9 canonical identity — and the argument for it that did not survive
+
+`canonicaliseRepeats` rewrites an incoming re-wording to the stored text so the
+exact-match merge can see it, and its own comment admits the cost: *"The newer
+wording is often slightly richer, and that is a real if small loss — accepted."*
+0133 is where the accepted loss goes. `surface_forms` keeps the phrasings the
+creator has actually used; `text` stays canonical because the unique index and
+`times_seen` hang off it.
+
+⚠️ **IDENTITY IS THE ROW, NOT A HASH, AND THERE IS DELIBERATELY NO
+`canonical_key`.** A paraphrase does not collide with its original under any
+deterministic key — that is what makes it a paraphrase. Matching resolves
+identity; the column is the memory that makes matching better.
+
+⚠️ **AND THE ARGUMENT THIS WAS FIRST WRITTEN ON DID NOT SURVIVE CONTACT.** The
+compounding story — "A drifts to B drifts to C, and C no longer matches A" — was
+written into the module and the migration as fact, then tested, and **could not be
+reproduced** at `DEDUPE_THRESHOLD` 0.6 across several realistic chains: the pairs
+that clear 0.6 stay close enough that the third phrasing still matches the first,
+and the ones that do not clear it are far enough apart to be arguably different
+claims. Measured, for the record: 0.71 / 0.44 / 0.30 on the ledger's own
+battery-longevity example.
+
+⚖️ **SO THE JUSTIFICATION NARROWED RATHER THAN THE FEATURE SHIPPING ON A STORY.**
+What is demonstrable: more known wordings can only match MORE repeats, never
+fewer; the guard shows an unrelated fact still fails to match; and the richer
+phrasing is no longer discarded. The negative result is asserted in a test so it
+cannot drift back into the comments as though it had been shown.
+
+⚠️ **A MUTATION FOUND THE WRITER UNGUARDED.** Deleting the `recordSurfaceForms`
+call left every test green — the merge still works without it, so the memory
+would simply never fill. That is the reader-with-no-writer defect in miniature,
+caught by running the mutation rather than by reading the diff. Now guarded at
+both seams: the call, and the `select` that fetches the column it matches on.
+
+Unvalidatable until re-scans happen — production shows six merges ever.
