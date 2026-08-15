@@ -53,7 +53,7 @@ import { Loader2, MonitorPlay, Square, Check, TriangleAlert, Play, X, Camera } f
 import { declaredSlots } from '../lib/declaredClips'
 import {
   listGenerationClips, uploadClipRecording, newRecordingAttemptId,
-  loadCapabilities, loadRecordingScript, signTakeUrl,
+  loadCapabilities, loadRecordingScript, saveVideoCapabilities, signTakeUrl,
   isExplicitlyTrue, isExplicitlyFalse, pickClipMime, baseClipMime,
   type MediaAsset, type RecordingScript, type ResolvedCapabilities, type ClipSlot,
 } from '../lib/api'
@@ -133,6 +133,32 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
   const clipFor = useCallback((label: string): MediaAsset | undefined => (
     clips.find((c) => (c.clip_label ?? '').toLowerCase() === label.toLowerCase())
   ), [clips])
+
+  /** Answer "can you record your screen?" for THIS video only.
+   *
+   *  ⚖️ OPTIMISTIC, AND SAFE TO BE. The worst case of the local update landing
+   *  before the write is a slot hidden for a moment on a screen the creator just
+   *  asked to simplify; the worst case of waiting is a control that feels dead.
+   *  A failed write leaves the account default in force, which is where the
+   *  creator already was.
+   *
+   *  ⚠️ IT WRITES `false`, NOT `null`. Clearing the flag would resolve back to
+   *  the account default and the slot would return — the creator would have
+   *  pressed a button and watched nothing happen. UNSET means unasked; this
+   *  creator has now answered. */
+  const notOnThisVideo = async () => {
+    // ⚠️ THE SOURCE IS PART OF THE ANSWER. Setting a bare `false` would lose
+    // which scope decided, and "why was I not asked to film anything?" is
+    // exactly the question `CapabilitySource` exists to answer.
+    setCaps((prev) => (prev
+      ? { ...prev, can_record_screen: { value: false, source: 'video' as const } }
+      : prev))
+    try {
+      await saveVideoCapabilities(generationId, { can_record_screen: false })
+    } catch (err) {
+      console.warn('per-video capability not saved', err)
+    }
+  }
 
   const capture = async (label: string) => {
     setState({ kind: 'idle' })
@@ -309,6 +335,25 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
               ? 'Your script asks you to show one thing'
               : `Your script asks you to show ${visible.length} things`}
           </p>
+          {/* ⚠️ THE PER-VIDEO ANSWER, WHICH NOTHING COULD GIVE UNTIL NOW.
+              `resolveCapabilities` has always preferred the video's own answer
+              over the account default, 0103 calls that the half that stops a
+              setting sorting the person, and `generations.capability_flags` had
+              no writer anywhere in the product. A creator on a borrowed laptop
+              had two options: leave a slot they cannot film, or change what is
+              true of them permanently.
+              ⚖️ SCOPED TO THIS VIDEO ON PURPOSE, and the label says so — the
+              account default is untouched, so tomorrow's video still offers the
+              screen slot. */}
+          {visible.some((slot) => mediumFor(slot) === 'screen') && (
+            <button
+              type="button"
+              onClick={() => { void notOnThisVideo() }}
+              className="mt-1 text-[11px] text-stone underline decoration-white/20 underline-offset-2 hover:text-cream"
+            >
+              Can’t record your screen on this one? Skip those shots for this video
+            </button>
+          )}
 
             <ul className="mt-2 space-y-2">
               {visible.map((slot) => {

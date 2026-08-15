@@ -1642,3 +1642,39 @@ broken extraction cannot cost a creator their voice. It now asserts that — no
 `throw`, no `await fail(` inside the catch — rather than line adjacency. Three
 tests in three days have asserted a layout where they meant a property; that is
 its own pattern, and worth watching.
+
+### G32. D3 — the precedence rule could never fire
+
+`resolveCapabilities` documents `generations.capability_flags` as winning
+"whenever it is present, including when it says false". 0103 declares it the half
+that stops a setting from sorting the person. `loadCapabilities` reads it on
+every Result and DeclaredClips mount.
+
+⚠️ **AND NOTHING IN THE PRODUCT EVER WROTE IT.** The only writer was
+`saveCapabilityDefaults`, which writes the ACCOUNT default, so the per-video half
+was structurally always null and the account default was structurally always the
+answer. A creator on a borrowed laptop had two options: leave a slot they cannot
+film, or change what is true of them permanently.
+
+⚖️ **THAT IS THE TRAP 0103 NAMES BY NAME** — "a setting that sorts the person and
+cannot be escaped for one video". The migration anticipated the failure exactly
+and the missing writer produced it anyway, which is worth noticing: writing the
+warning down did not prevent it.
+
+`saveVideoCapabilities` writes the video's own answer, merged with the VIDEO's
+previous answer and never with the account default — folding the default in
+would make an unanswered flag look like a per-video decision and the resolver
+could no longer say which scope answered, which is the entire reason
+`CapabilitySource` exists.
+
+⚠️ **IT WRITES `false`, NOT `null`.** Clearing resolves back to the account
+default and the slot returns — the creator presses a button and watches nothing
+happen. UNSET means unasked; a creator who used the control has answered.
+
+The surface is one line in `DeclaredClips`, shown only where a screen shot is
+actually being asked for: "Can't record your screen on this one? Skip those shots
+for this video." Optimistic, and safe to be — a failed write leaves the account
+default in force, which is where the creator already was.
+
+Mutation-checked: pointing the writer at `brand_voices` (the old defect wearing a
+new name), and clearing to unset instead of answering.
