@@ -123,6 +123,17 @@ const MODELS = [
       // that summed these would disagree with the ledger the moment a refund
       // or a grant happened anywhere else.
       'credits_spent',
+      // What the knowledge selector handed the writer for this generation
+      // (0130). Diagnostics, and deliberately not a client field: it exists to
+      // be COUNTED across many rows in SQL, and a creator has no use for
+      // "substance 7, figures 1, starved false" about their own script. A UI
+      // that surfaced it would be reporting our internal supply problem to the
+      // person least able to act on it.
+      //
+      // ⚠️ IT IS ALSO WHY THIS COLUMN EXISTS AT ALL: the same counters were
+      // `console.log` until 0130, and edge logs expire within days, so a month
+      // of traffic left nothing to count.
+      'selection',
       // A CAPABILITY, not a field. Anyone holding this token can view the
       // generation without logging in, which is the entire design of the
       // login-free review link. The client obtains one through
