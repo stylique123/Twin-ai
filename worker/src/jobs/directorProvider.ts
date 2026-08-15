@@ -13,12 +13,23 @@ import {
 
 export class DirectorProviderError extends Error {
   code: string
-  constructor(message: string, code: string) {
+  /** ⚠️ THE PROVIDER'S OWN WORDS (C8 item 2). The code says a call failed; only
+   *  this says whether it was our quota, Google's outage or our malformed
+   *  request — and those are three different responses. Optional because not
+   *  every failure has a body worth keeping (a cancel does not), and absent must
+   *  stay distinguishable from "we looked and there was nothing". */
+  detail?: string
+  constructor(message: string, code: string, detail?: string) {
     super(message)
     this.name = 'DirectorProviderError'
     this.code = code
+    this.detail = detail
   }
 }
+
+/** How much of a provider body is kept. Matches `script_attempts.failure_detail`
+ *  and the CHECK on `edit_director_calls`, so the two failure records compare. */
+export const DIRECTOR_DETAIL_MAX = 300
 
 // Gemini structured-output schema (uppercase OpenAPI-subset types). The real
 // authority is validateDirectorDecision — this only shapes the model's output. It
@@ -148,7 +159,17 @@ export async function callDirectorOnce(
     )
     // NO RETRY. Any non-2xx is a definitive, single-call failure.
     if (!res.ok) {
-      throw new DirectorProviderError(`director provider HTTP ${res.status}`, 'director_provider_http')
+      // ⚠️ READ THE BODY BEFORE THROWING. It is the only place the reason exists
+      // — Google names the quota, or the field it rejected — and the response is
+      // discarded the moment this function returns. Reading it cannot fail the
+      // call any harder than it has already failed, so it is best-effort.
+      let body = ''
+      try { body = (await res.text()).slice(0, DIRECTOR_DETAIL_MAX) } catch { /* body unreadable */ }
+      throw new DirectorProviderError(
+        `director provider HTTP ${res.status}`,
+        'director_provider_http',
+        `HTTP ${res.status}${body ? `: ${body}` : ''}`.slice(0, DIRECTOR_DETAIL_MAX),
+      )
     }
     const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
     const responseText = data?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''

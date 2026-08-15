@@ -112,6 +112,30 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     return { ok: false, reason: msg }
   }
 
+  // ── WHY WAS THIS CLAIM NOT MADE? (C8 item 3) ─────────────────────────────
+  //
+  // ⚠️ `dna_claims` HAS REAL DISCIPLINE ON THE OUTPUT — a correlation needs a
+  // sample size, a hypothesis stays untested, a business claim needs attribution
+  // — and there has never been any record of the RUN that produced it. Every
+  // stage of a scan is best-effort by design: a failed brand kit, an empty
+  // caption extraction and a skipped transcript enqueue all leave a voice that
+  // says `ready`. So "the creator has no experiences" and "the extraction step
+  // failed quietly three weeks ago" are the same observation from the outside.
+  //
+  // ⚖️ NO NEW TABLE, AND THAT IS THE DESIGN RATHER THAN A SHORTCUT. The ledger
+  // says "modelled on edit_events", which is right for the editor: a long
+  // multi-job pipeline needs an append-only stream with a seq. A scan is ONE job
+  // whose row already exists, already survives, and is already queried — and
+  // this session has now added five columns and three tables, each of which is
+  // an owner action before it does anything. A stage record that ships with no
+  // migration starts recording on the next scan instead of the next apply.
+  const stages: Array<{ stage: string; outcome: 'ok' | 'failed' | 'skipped'; detail?: string }> = []
+  const stage = (name: string, outcome: 'ok' | 'failed' | 'skipped', detail?: string) => {
+    // ⚠️ THE REASON IS THE POINT. A stage list of bare names answers "did it run"
+    // and not "why not", and "why not" is the question C8 asks.
+    stages.push(detail ? { stage: name, outcome, detail: detail.slice(0, 300) } : { stage: name, outcome })
+  }
+
   let posts
   let profileFacts
   try {
@@ -121,6 +145,7 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     const scraped = await scrapeProfile(handle, platform)
     posts = scraped.posts
     profileFacts = scraped.facts
+    stage('scrape_profile', 'ok', `${scraped.posts.length} posts`)
   } catch (err) {
     // ⚠️ THIS BLAMED THE CREATOR FOR OUR OWN MISSING DEPENDENCY. The old
     // message said "If that account is private or empty, try a public account"
@@ -190,7 +215,9 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   let profile: Record<string, unknown>
   try {
     profile = await synthesizeVoiceFromPosts(handle, platform, posts, '', inlineImages)
+    stage('synthesize_voice', 'ok')
   } catch (err) {
+    stage('synthesize_voice', 'failed', err instanceof Error ? err.message : String(err))
     console.error('scrape_dna: synth failed', err instanceof Error ? err.message : err)
     return await fail('We could not finish building your voice. Please try again or set it up manually.')
   }
@@ -368,7 +395,16 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
       // construction. Logged anyway: if it is ever not, something changed.
       stated: rows.filter((r) => r.basis === 'stated').length,
     }))
+    // ⚖️ ZERO IS A RESULT, NOT AN ABSENCE. A stage list recording only failures
+    // cannot separate "extracted and found nothing" from "never ran" — the exact
+    // ambiguity C8 item 3 exists to remove.
+    stage('caption_knowledge', capturedKnowledge ? 'ok' : 'skipped',
+      capturedKnowledge ? `${capturedKnowledge} items` : 'no items extracted from captions')
   } catch (err) {
+    // ⚠️ THE STAGE THAT SILENTLY DECIDES WHETHER A CREATOR HAS ANY KNOWLEDGE AT
+    // ALL. It is caught and swallowed on purpose — a voice is still useful
+    // without it — and until now that decision left no trace.
+    stage('caption_knowledge', 'failed', err instanceof Error ? err.message : String(err))
     console.error('scrape_dna: caption knowledge failed', err instanceof Error ? err.message : err)
   }
 
@@ -388,6 +424,8 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     const urls = selectVideosToTranscribe(posts.map((x) => ({
       url: x.url, plays: x.plays, likes: x.likes, text: x.text,
     })), transcriptBudgetFor(platform))
+    stage('transcripts_selected', urls.length ? 'ok' : 'skipped',
+      urls.length ? `${urls.length} of ${posts.length} posts` : 'no usable video urls')
     if (urls.length && ownerId) {
       await db.from('jobs').insert({
         owner_id: ownerId,
@@ -398,12 +436,21 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
         max_attempts: 1,
         payload: { brand_voice_id: voiceId, handle, platform, urls, captions: posts.map((x) => x.text).filter(Boolean).slice(0, 120) },
       })
+      stage('transcripts_enqueued', 'ok', `${urls.length} queued`)
+    } else if (!ownerId) {
+      // ⚠️ A REAL BRANCH, AND PREVIOUSLY INVISIBLE. No owner means the upgrade is
+      // never queued, so the creator's store can only ever hold caption items —
+      // 13% substance, zero experiences — and nothing said so.
+      stage('transcripts_enqueued', 'skipped', 'no owner on the voice')
     }
   } catch (err) {
+    stage('transcripts_enqueued', 'failed', err instanceof Error ? err.message : String(err))
     console.error('scrape_dna: could not enqueue build_voice', err)
   }
 
-  return { ok: true, posts_used: posts.length }
+  // ⚖️ THE STAGES TRAVEL WITH THE RESULT, so "why was this claim not made" is a
+  // query against `jobs` rather than an archaeology dig through expired logs.
+  return { ok: true, posts_used: posts.length, stages }
 }
 
 /** Measured packaging habits. See the call site for why this lives in the worker.

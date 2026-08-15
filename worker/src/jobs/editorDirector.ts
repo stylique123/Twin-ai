@@ -37,7 +37,7 @@ import {
   validateDirectorDecision, validateDirectorEnvelope,
   type DirectorEnvelope, type EnvVisualWaste, type SpeechBoundaryLike, type SpeechCandidateLike, type SpeechWordLike,
 } from './directorContract.js'
-import { callDirectorOnce, DirectorProviderError, type DirectorProviderResult, type DirectorUsage } from './directorProvider.js'
+import { callDirectorOnce, DirectorProviderError, DIRECTOR_DETAIL_MAX, type DirectorProviderResult, type DirectorUsage } from './directorProvider.js'
 import { scriptStartSpokenIndex } from './scriptAlignment.js'
 
 export interface DirectorOutcome {
@@ -243,7 +243,9 @@ export interface DirectorLedger {
   begin(): Promise<DirectorDirective>
   receive(responseSha256: string, usage: DirectorUsage): Promise<void>
   succeed(decisionJson: unknown, decisionSha256: string, responseSha256: string): Promise<void>
-  fail(code: string): Promise<void>
+  /** `detail` is the provider's own message, or the validator's, and is optional
+   *  because some failures genuinely have none. Absent means not recorded. */
+  fail(code: string, detail?: string): Promise<void>
   markUnknown(reason: string): Promise<void>
   event(code: string, details: Record<string, unknown>): Promise<void>
   priorSelections(): Promise<number>
@@ -283,7 +285,14 @@ export async function driveDirectorCall(ctx: DriveCtx): Promise<DirectorOutcome>
       throw new DirectorCancelledError('in_flight')
     }
     const code = e instanceof DirectorProviderError ? e.code : 'director_provider_http'
-    await ctx.ledger.fail(code)
+    // ⚠️ THE CAUSE TRAVELS WITH THE CODE (C8 item 2). Every director failure was
+    // stored as `director_provider_http`, so a 429, a 503 and a 400 were one row
+    // shape calling for three different responses. An unrecognised throw carries
+    // its message rather than nothing — an unclassified cause is still a cause.
+    const detail = e instanceof DirectorProviderError
+      ? e.detail
+      : (e instanceof Error ? e.message : String(e))
+    await ctx.ledger.fail(code, detail)
     throw new PermanentJobError(`director provider failed: ${code}`, code)
   }
 
@@ -303,7 +312,9 @@ export async function driveDirectorCall(ctx: DriveCtx): Promise<DirectorOutcome>
     decision = validateDirectorDecision(result.raw, ctx.envelope)
   } catch (e) {
     const code = (e as { code?: string }).code ?? 'director_decision_invalid'
-    await ctx.ledger.fail(code)
+    // ⚖️ THE VALIDATOR'S REASON IS A CAUSE TOO. A rejected decision is our own
+    // bug or the model's drift, and "which field" is the whole question.
+    await ctx.ledger.fail(code, e instanceof Error ? e.message : String(e))
     throw new PermanentJobError(`director decision rejected: ${code}`, code)
   }
 
@@ -352,8 +363,16 @@ function dbLedger(job: Job, projectId: string, sourceAssetId: string, envelopeSh
       })
       if (error) throw classifyDirectorDbError(error.message)
     },
-    async fail(code) {
-      const { error } = await db.rpc('editor_director_fail', { ...base, p_failure_code: code })
+    async fail(code, detail) {
+      const { error } = await db.rpc('editor_director_fail', {
+        ...base,
+        p_failure_code: code,
+        // ⚖️ TRUNCATED HERE AND IN THE FUNCTION. The CHECK would reject an
+        // over-long detail and take the whole failure record down with it, and
+        // losing the record of a failure because the failure was verbose is the
+        // worst trade available.
+        p_failure_detail: detail ? detail.slice(0, DIRECTOR_DETAIL_MAX) : null,
+      })
       if (error) throw classifyDirectorDbError(error.message)
     },
     async markUnknown(reason) {

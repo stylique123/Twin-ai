@@ -1200,6 +1200,51 @@ export async function saveCapabilityDefaults(
 }
 
 /**
+ * The creator's answer for THIS video, which the resolver already prefers.
+ *
+ * ⚠️ THE PRECEDENCE RULE HAS NEVER BEEN ABLE TO FIRE. `resolveCapabilities`
+ * documents `generations.capability_flags` as winning "whenever it is present,
+ * including when it says false", 0103 declares it the half that stops a setting
+ * from sorting the person, and `loadCapabilities` reads it on every Result and
+ * DeclaredClips mount — and until now NOTHING WROTE IT. The only writer in the
+ * product was `saveCapabilityDefaults`, which writes the ACCOUNT default. So a
+ * creator who could not record their screen today had two options: leave the
+ * slot they cannot film, or change what is true of them permanently.
+ *
+ * ⚖️ AND THAT IS THE TRAP 0103 NAMES BY NAME — "a setting that sorts the person
+ * and cannot be escaped for one video". The account default was acting as the
+ * only answer, which makes the per-video answer advisory in exactly the way the
+ * migration set out to prevent.
+ *
+ * ⚠️ IT DOES NOT MERGE WITH THE ACCOUNT DEFAULT, UNLIKE `saveCapabilityDefaults`.
+ * It merges with the video's OWN previous answer, because the two scopes are
+ * deliberately not derived from each other: folding the default in here would
+ * make an unanswered flag look like a per-video decision, and the resolver could
+ * no longer say which scope answered.
+ */
+export async function saveVideoCapabilities(
+  generationId: string,
+  flags: CapabilityFlags,
+): Promise<void> {
+  const incoming = sanitizeCapabilityFlagsForWrite(flags)
+  // ⚖️ NOTHING TO SAY IS NOT AN ANSWER. An empty write would replace a real
+  // per-video decision with silence, and silence resolves to the account.
+  if (Object.keys(incoming).length === 0) return
+  const { data, error } = await supabase
+    .from('generations')
+    .select('capability_flags')
+    .eq('id', generationId)
+    .single()
+  if (error) throw error
+  const merged = { ...readCapabilityFlags(data?.capability_flags), ...incoming }
+  const { error: writeError } = await supabase
+    .from('generations')
+    .update({ capability_flags: merged })
+    .eq('id', generationId)
+  if (writeError) throw writeError
+}
+
+/**
  * The capability answers in force for one video, and WHO answered each.
  *
  * Both halves are read because both exist and neither is derived from the

@@ -1531,3 +1531,187 @@ that `proof_quality` appeared AFTER the log's event name — true only while the
 counters lived inside the log literal. Lifting them into an object flipped the
 string order while strengthening the property the test existed to protect. It
 now asserts the object, and that the audit is stored.
+
+### G29. The guard on the class, after fixing the instance three times
+
+C8's script hole, 0130's selection counters, 0131's `beat_substance`. Three
+subsystems, three unrelated routes, one shape — information that exists at the
+exact moment it matters, written somewhere that forgets. All three were found by
+accident, and by the same accident: writing the query that would have read them.
+
+⚠️ **FIXING AN INSTANCE THREE TIMES IS NOT A PATTERN BEING ADDRESSED.**
+`check_counter_durability.mjs` asks the question nobody asked three times
+running — **where does this land, and how long does it live?** — of every
+structured event the edge and the worker emit. 42 of them today.
+
+⚖️ **IT CANNOT DECIDE WHETHER A MEASUREMENT DESERVES A COLUMN, AND DOES NOT
+TRY.** That is judgement, and a guard that pretended otherwise would be argued
+with until it was deleted. What it can do is refuse to let the question go
+unasked: an unregistered event fails the build, and each entry carries a reason.
+Three answers are legal — `incident` (one occurrence matters, a log is right),
+`counter` (a rate, and it must name a durable destination that EXISTS), and
+`counter_ephemeral` (a rate we knowingly do not persist).
+
+⚠️ **`counter_ephemeral` IS A DEBT, NOT AN ESCAPE HATCH** — the same word
+`check_staging_migration_coverage.mjs` uses for an excluded migration, and for
+the same reason: an exclusion nobody wrote down is how 0120 and 0121 sat
+unapplied while a branch that read them waited to merge. Ten rates are listed
+that way today, each with the condition that would promote it.
+
+⚖️ **THE REVERSE CHECK IS THE ONE THAT MATTERS.** A registry entry claiming a
+home it does not have is worse than an unlisted event: it reads as a decision
+already made and kept, so nobody looks again. Mutation-checked by deleting 0130
+and watching `substance_route_shadow` fail on a destination that no longer
+exists, and by renaming a live event and watching it fail as unregistered.
+
+Current state: 42 events · 2 stored · 10 rates knowingly not persisted · the
+rest incidents.
+
+### G30. C8 item 2 — the director path records why, not only that
+
+`edit_director_calls` is the one state machine in this system that has ever
+answered "how often has that failed, ever" with a number instead of a guess:
+three times in its whole history, which is how that failure was correctly called
+transient rather than assumed to be. What it never recorded is WHY.
+`directorProvider` threw `director provider HTTP ${res.status}` and stored
+`director_provider_http` for all of them, so a 429 (our quota), a 503 (Google's
+problem) and a 400 (our malformed request) were one row shape calling for three
+different responses.
+
+⚠️ **THE REASON EXISTED IN THE RESPONSE BODY AND WAS DISCARDED ONE THROW LATER.**
+Google names the quota, or the field it rejected. 0132 adds `failure_detail`, the
+provider reads the body before throwing (best-effort — an unreadable body must
+not fail the call any harder than it already has), and the status survives even
+when the body is empty.
+
+⚖️ **`create or replace`, NOT DROP-AND-RECREATE.** Dropping the function would
+revoke `service_role`'s execute and fail every director call until the grant ran
+— a self-inflicted outage on the render path, caused by a telemetry improvement.
+The new parameter defaults to NULL so the signature change cannot break an
+in-flight deploy mid-rollout.
+
+⚖️ **BOUNDED AT BOTH ENDS, AT 300 — THE SAME BOUND AS `script_attempts`.** The
+CHECK would reject an over-long detail and take the whole failure record down
+with it, and losing the record of a failure because the failure was verbose is
+the worst trade available. Matching the script path's bound also means the two
+failure records compare rather than merely resembling each other.
+
+An unrecognised throw carries its own message rather than nothing, and a rejected
+decision now records which field the validator refused — an unclassified cause is
+still a cause, and a failure never seen before is the one worth reading.
+
+Mutation-checked: dropping the detail from `ledger.fail`, and removing the body
+read. Worker 1,290 tests.
+
+### G31. C8 item 3 — the scan records why a claim was not made
+
+`dna_claims` has real discipline on the OUTPUT — a correlation needs a sample
+size, a hypothesis stays untested, a business claim needs attribution — and
+there was never any record of the RUN that produced it.
+
+⚠️ **EVERY STAGE OF A SCAN IS BEST-EFFORT, AND THAT IS CORRECT.** A creator whose
+caption extraction breaks must still get their voice. The cost is that a failed
+synthesis, an empty extraction and a skipped transcript enqueue all leave a voice
+that says `ready` — so **"this creator has no experiences" and "the extraction
+failed quietly three weeks ago" were the same observation from outside**, and
+only one of them is about the creator.
+
+⚖️ **NOT MODELLED ON `edit_events`, AND THE DEPARTURE IS DELIBERATE.** That shape
+is right for the editor: a long multi-job pipeline needs an append-only stream
+with a `seq`. A scan is ONE job whose row already exists, already survives, and
+is already queried. The stages travel in `jobs.result`, exactly as the transcript
+routes do — **no migration, no owner action, recording from the next scan rather
+than the next apply.** This session has added five columns and three tables, each
+of which is an owner action before it does anything; a sixth would have been the
+easy choice rather than the right one.
+
+Recorded: `scrape_profile`, `synthesize_voice`, `caption_knowledge`,
+`transcripts_selected`, `transcripts_enqueued` — each `ok` / `failed` /
+`skipped`, with a bounded reason.
+
+⚠️ **TWO BRANCHES THAT WERE INVISIBLE AND ARE THE POINT.** `caption_knowledge`
+extracting ZERO now reads as `skipped` with "no items extracted from captions",
+which a failures-only list could never separate from "never ran". And a voice
+with **no owner** never queues the audio upgrade, so its store can hold only
+caption items — 13% substance, zero experiences — and nothing said so.
+
+**A test changed for the third time this session with the same shape.**
+`scanKnowledgeWiring` asserted `console.error` sat IMMEDIATELY after the `catch`.
+The property it protects is that the failure is caught and never rethrown, so a
+broken extraction cannot cost a creator their voice. It now asserts that — no
+`throw`, no `await fail(` inside the catch — rather than line adjacency. Three
+tests in three days have asserted a layout where they meant a property; that is
+its own pattern, and worth watching.
+
+### G32. D3 — the precedence rule could never fire
+
+`resolveCapabilities` documents `generations.capability_flags` as winning
+"whenever it is present, including when it says false". 0103 declares it the half
+that stops a setting from sorting the person. `loadCapabilities` reads it on
+every Result and DeclaredClips mount.
+
+⚠️ **AND NOTHING IN THE PRODUCT EVER WROTE IT.** The only writer was
+`saveCapabilityDefaults`, which writes the ACCOUNT default, so the per-video half
+was structurally always null and the account default was structurally always the
+answer. A creator on a borrowed laptop had two options: leave a slot they cannot
+film, or change what is true of them permanently.
+
+⚖️ **THAT IS THE TRAP 0103 NAMES BY NAME** — "a setting that sorts the person and
+cannot be escaped for one video". The migration anticipated the failure exactly
+and the missing writer produced it anyway, which is worth noticing: writing the
+warning down did not prevent it.
+
+`saveVideoCapabilities` writes the video's own answer, merged with the VIDEO's
+previous answer and never with the account default — folding the default in
+would make an unanswered flag look like a per-video decision and the resolver
+could no longer say which scope answered, which is the entire reason
+`CapabilitySource` exists.
+
+⚠️ **IT WRITES `false`, NOT `null`.** Clearing resolves back to the account
+default and the slot returns — the creator presses a button and watches nothing
+happen. UNSET means unasked; a creator who used the control has answered.
+
+The surface is one line in `DeclaredClips`, shown only where a screen shot is
+actually being asked for: "Can't record your screen on this one? Skip those shots
+for this video." Optimistic, and safe to be — a failed write leaves the account
+default in force, which is where the creator already was.
+
+Mutation-checked: pointing the writer at `brand_voices` (the old defect wearing a
+new name), and clearing to unset instead of answering.
+
+### G33. Reading edit pairs, and two proposals checked against production first
+
+Before building either of the owner's two proposals — edit-type classification
+and G9 canonical knowledge identity — both were checked against production.
+
+⚠️ **G9's DRIFT IS REAL AND IS CURRENTLY NOT HAPPENING.** 185 substance rows
+across 17 creators; **6** rows have `times_seen > 1`, and **one** near-duplicate
+pair survives at 0.6 overlap. The 9-of-18 measurement came from a deliberate
+repeat run, not from production: creators do not re-scan. So the canonical-identity
+refactor — stable `knowledge_id`, canonical meaning, surface forms, evidence
+spans — is the right shape for a phenomenon that has occurred about six times,
+and `surface_forms` would have no reader until a style compiler exists. **Held,
+with the trigger named: build it when re-scans become routine.**
+
+⚖️ **AND A NUMBER THIS SESSION HAS BEEN QUOTING IS WRONG.** "13 real creator
+decisions" is stale. Measured: **23 decisions across 14 distinct owners**, 22 of
+which match a stored `hook_options` entry, so the losers are recoverable. **14 of
+22 chose the first option and 8 chose a later one — the top-ranked hook is
+rejected 36% of the time.** The reranker headroom is real; what does not exist is
+anything to learn from. Across 22 chosen and 93 rejected hooks, length, question
+form, numerals and person are flat; the only moving feature is opening with a
+demonstrative, 14% against 3%, which is three hooks and therefore noise.
+
+**What shipped: the classifier, and the thing that reads it.** `classifyEdit`
+decides only what the two strings show — rewritten, made_concrete, made_personal,
+tightened, expanded — with `unclassified` as a real answer. The interesting
+categories ("salesy → natural", "weak hook → stronger") are judgements, are named
+in `NEEDS_JUDGEMENT`, and are deliberately not implemented: a regex claiming them
+would put a confident label on every pair, which is exactly how four metrics
+broke this week.
+
+⚠️ **IT REFUSES TO CALL A SMALL SAMPLE A PREFERENCE.** 20 pairs for a creator,
+100 globally; below that `reportable` is false and the reader prints counts while
+saying they are counts. `script_edits` currently holds **0 rows**, so everything
+here is an instrument waiting for data — which is the honest state and is
+declared rather than dressed up.
