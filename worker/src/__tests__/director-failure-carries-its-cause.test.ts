@@ -99,12 +99,44 @@ describe('the column and the callers agree on the bound', () => {
     expect(script).toMatch(/length\(failure_detail\) <= 300/)
   })
 
-  it('replaces the function in place, keeping its grants', () => {
-    // ⚠️ DROP-AND-RECREATE WOULD REVOKE service_role's EXECUTE and fail every
-    // director call until the grant ran — a self-inflicted outage on the render
-    // path, caused by a telemetry improvement.
+  it('creates before dropping, and restates the grant', () => {
+    // ⚠️ THIS ASSERTION USED TO FORBID ANY `drop function`, AND THAT IS WHAT
+    // SHIPPED THE BUG. The intent was "do not drop-and-recreate first, because
+    // that revokes service_role's execute and fails every director call until the
+    // grant runs". What it actually encoded was "never drop the old signature" —
+    // which is how both functions ended up live in production.
+    //
+    // ⚖️ THE REAL PROPERTY IS AN ORDERING, NOT AN ABSENCE. Create the new one,
+    // drop the old one, restate the grant.
     expect(SQL).toMatch(/create or replace function public\.editor_director_fail/)
-    expect(SQL).not.toMatch(/drop function .*editor_director_fail/)
+    expect(SQL).toMatch(/grant execute on function public\.editor_director_fail\(uuid, uuid, text, integer, text, text\) to service_role/)
+    expect(SQL.indexOf('create or replace function public.editor_director_fail'))
+      .toBeLessThan(SQL.indexOf('grant execute on function'))
+    expect(SQL).toMatch(/p_failure_detail text default null/)
+  })
+})
+
+describe('the old signature is removed, not merely shadowed', () => {
+  // ⚠️ THIS IS THE DEFECT THE MIGRATION SHIPPED WITH, AND IT WAS APPLIED TO
+  // PRODUCTION BEFORE ANYONE NOTICED. `create or replace function` with an added
+  // parameter OVERLOADS in Postgres — it does not replace. Both the 5-arg and the
+  // 6-arg function existed, and any caller sending five arguments would have gone
+  // on writing no detail while appearing to succeed.
+  //
+  // ⚖️ THE MIGRATION'S OWN COMMENT WARNED ABOUT EXACTLY THIS. Prose did not stop
+  // it; a verification query found it. So the assertion lives here.
+  it('drops the 5-arg function explicitly', () => {
+    expect(SQL).toMatch(/drop function if exists public\.editor_director_fail\(uuid, uuid, text, integer, text\);/)
+  })
+
+  it('drops it AFTER creating the new one, never before', () => {
+    // A drop-first ordering leaves a window with no function at all, and the
+    // render path calls this on every director failure.
+    expect(SQL.indexOf('create or replace function public.editor_director_fail'))
+      .toBeLessThan(SQL.indexOf('drop function if exists public.editor_director_fail'))
+  })
+
+  it('keeps the default, so a five-argument call still resolves', () => {
     expect(SQL).toMatch(/p_failure_detail text default null/)
   })
 })

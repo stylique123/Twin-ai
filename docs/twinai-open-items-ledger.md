@@ -1715,3 +1715,39 @@ broke this week.
 saying they are counts. `script_edits` currently holds **0 rows**, so everything
 here is an instrument waiting for data — which is the honest state and is
 declared rather than dressed up.
+
+### G34. The migration warned about the overload and then shipped it
+
+0132 added `p_failure_detail` to `editor_director_fail` with `create or replace`,
+under a comment reading: *"A NEW PARAMETER WITH A DEFAULT, NOT A NEW FUNCTION…
+adding an overload would leave two callable functions where one is the old
+behaviour, and the wrong one would keep working silently."*
+
+⚠️ **`create or replace function` DOES NOT REPLACE WHEN A PARAMETER IS ADDED. IT
+OVERLOADS.** Applied to production, it produced exactly the state its own comment
+forbade: the 5-arg and the 6-arg function both live, and any caller sending five
+arguments writing no detail while appearing to succeed.
+
+⚖️ **PROSE DID NOT PREVENT IT; THE VERIFICATION QUERY FOUND IT.** The apply was
+followed by a `pg_get_function_identity_arguments` read, which returned two rows
+where one was expected. Without that read the overload would have sat there
+indefinitely, and the first person to notice would have been whoever wondered why
+`failure_detail` was always null.
+
+⚠️ **AND A TEST WAS ASSERTING THE BUG.** `director-failure-carries-its-cause`
+contained `expect(SQL).not.toMatch(/drop function .*editor_director_fail/)`. The
+intent was "do not drop-and-recreate first, because that revokes service_role's
+execute". What it encoded was "never drop the old signature" — so the guard
+written to protect the render path is part of why both functions shipped. It now
+asserts the real property, which is an ORDERING: create, then drop, then restate
+the grant.
+
+Fixed in production by dropping the 5-arg signature (safe: the 6-arg defaults
+`p_failure_detail` to null, so a five-argument call resolves to it unchanged),
+and fixed at source so no other environment repeats it. Mutation-checked by
+removing the drop.
+
+**Third instance this week of a warning that did not prevent its own defect** —
+0103 named the capability trap and D3 happened anyway; the counter comments named
+durability and three counters expired; this. The pattern is not that the warnings
+are wrong. It is that a comment is read by whoever is already looking.
