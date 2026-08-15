@@ -57,9 +57,16 @@ describe('the edge copy is byte-identical to shared', () => {
     expect(order(e.slice(0, e.indexOf('\n}')))).toEqual(order(s.slice(0, s.indexOf('\n}'))))
   })
 
-  it('is logged where the other beat counters are', () => {
+  it('travels with the other beat counters — and is now STORED, not only logged', () => {
+    // ⚠️ THIS USED TO ASSERT STRING ORDER: proof_quality after the log's event
+    // name, which held only while the counters lived inside the log literal.
+    // 0131 lifted them into `beatAudit`, computed once, then logged AND written
+    // to the generation row — so the order flipped while the property the test
+    // cares about got stronger. Asserting the object is what was meant.
     expect(EDGE).toMatch(/proof_quality: proofQualityCounts\(/)
-    expect(EDGE.indexOf('proof_quality')).toBeGreaterThan(EDGE.indexOf("event: 'beat_substance'"))
+    const audit = EDGE.slice(EDGE.indexOf('beatAudit = {'), EDGE.indexOf("event: 'beat_substance'"))
+    expect(audit).toMatch(/proof_quality: proofQualityCounts\(/)
+    expect(EDGE).toMatch(/beat_audit: beatAudit,/)
   })
 })
 

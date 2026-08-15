@@ -134,6 +134,13 @@ const MODELS = [
       // `console.log` until 0130, and edge logs expire within days, so a month
       // of traffic left nothing to count.
       'selection',
+      // What the WRITER did with that supply (0131) — beats by declared source,
+      // unsupported-substance issue codes, progress checks, proof quality, and
+      // G8's entailment gaps. Server-only for the same reason as `selection`: it
+      // is counted across many rows, and "your script asserts a figure its own
+      // citation does not carry" is a sentence for us to act on, not one to show
+      // a creator about a script they are about to film.
+      'beat_audit',
       // A CAPABILITY, not a field. Anyone holding this token can view the
       // generation without logging in, which is the entire design of the
       // login-free review link. The client obtains one through

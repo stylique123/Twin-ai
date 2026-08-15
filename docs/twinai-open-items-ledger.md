@@ -1494,3 +1494,40 @@ writer, which is a measurement rather than an absence.
 including the two that must never be pooled: `paid_because_no_captions` is a
 fact about YouTube that caps a budget, `paid_because_free_path_failed` is a bug
 on our side that inflates a bill.
+
+### G28. G8's detector was fine; its readings expired
+
+Started G8 expecting to build a check and found the check already built, wired
+into production, and tested — `findEntailmentGaps`, with the normalisation the
+entry itself calls "the load-bearing part". What is open in G8 is not the
+detector. It is the RATE: how often a beat asserts a figure that did not come
+from the reference while citing a real but unrelated item. That is a number
+across many generations.
+
+⚠️ **AND IT COULD NEVER HAVE ACCUMULATED.** `entailment_gaps` was emitted inside
+the `beat_substance` console.log, along with the unsupported-substance issue
+codes, the progress-check count and the proof-quality split. Edge logs expire
+within days. So the counter ran on every generation and answered nothing, no
+matter how much traffic went through it.
+
+⚖️ **THIS IS G27 AGAIN, ONE LAYER DOWN, AND THAT IS NOW THREE TIMES.** C8's
+script hole, 0130's selection counters, and this. Three subsystems, three
+routes, one shape: information that exists at the moment it matters, written
+somewhere that forgets. The standing check this deserves is not another fix —
+it is a habit of asking, of any counter, "where does this land, and how long
+does it live?"
+
+0131 stores it as `generations.beat_audit`, beside `selection` from 0130. The
+pair is what makes a generation answerable end to end: a thin store, a starved
+selector, and a writer inventing on top of good supply are three different
+diagnoses that look identical in a finished script.
+
+⚠️ **NULL MEANS NOT AUDITED, NOT CLEAN.** An audit defaulting to zero gaps would
+report every unexamined generation as correct, which is the most expensive
+direction to be wrong in.
+
+A parity test had to change, and the change is the interesting part: it asserted
+that `proof_quality` appeared AFTER the log's event name — true only while the
+counters lived inside the log literal. Lifting them into an object flipped the
+string order while strengthening the property the test existed to protect. It
+now asserts the object, and that the audit is stored.

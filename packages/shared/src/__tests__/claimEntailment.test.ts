@@ -20,6 +20,11 @@
 // is a false accusation against a working script.
 import { describe, expect, it } from 'vitest'
 import { findEntailmentGaps, claimedValues, canonicalValue, describeGap } from '../claimEntailment'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
 
 const beat = (line: string, cited: string, substance = 'creator_knowledge') =>
   ({ line, substance, substance_evidence: cited })
@@ -116,5 +121,39 @@ describe('the message names the figure and the fix', () => {
   it('reads values out of a line without inventing any', () => {
     expect(claimedValues('no numbers here').size).toBe(0)
     expect([...claimedValues('grew 3x and saved $2,000')].sort()).toEqual(['2000$', '3x'])
+  })
+})
+
+describe('G8 can accumulate an answer, rather than expiring', () => {
+  // ⚠️ THE DETECTOR WAS BUILT, TESTED, WIRED INTO PRODUCTION — AND ITS READINGS
+  // EXPIRED. `entailment_gaps` was emitted inside the `beat_substance`
+  // console.log, and edge logs are gone within days. The open half of G8 is a
+  // RATE across many generations ("a figure not from the reference, citing a
+  // real but unrelated item"), which no amount of traffic can produce from a log
+  // that forgets. A detector whose count cannot accumulate is a detector that
+  // answers nothing.
+  const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
+  const SQL = readFileSync(join(REPO, 'supabase/migrations/0131_generation_beat_audit.sql'), 'utf8')
+
+  it('stores the audit on the generation row', () => {
+    expect(EDGE).toMatch(/beat_audit: beatAudit,/)
+    expect(SQL).toMatch(/add column if not exists beat_audit jsonb/)
+  })
+
+  it('carries the G8 count into the stored audit, not only the log', () => {
+    const audit = EDGE.slice(EDGE.indexOf('beatAudit = {'), EDGE.indexOf("event: 'beat_substance'"))
+    expect(audit).toMatch(/entailment_gaps: findEntailmentGaps\(/)
+  })
+
+  it('computes it ONCE, so the stored audit cannot describe a different script', () => {
+    expect(EDGE.match(/beatAudit = \{/g)).toHaveLength(1)
+    expect(EDGE).toMatch(/event: 'beat_substance',\s*\n\s*\.\.\.beatAudit,/)
+  })
+
+  it('starts null, so an unaudited generation is not a clean one', () => {
+    // ⚖️ AN AUDIT DEFAULTING TO ZERO GAPS WOULD REPORT EVERY UNEXAMINED
+    // GENERATION AS CORRECT — the most expensive direction to be wrong in.
+    expect(EDGE).toMatch(/let beatAudit: Record<string, unknown> \| null = null/)
+    expect(SQL).toMatch(/NULL means not recorded/)
   })
 })

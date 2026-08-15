@@ -3746,6 +3746,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // not measure this one — which must stay distinguishable from measuring it
     // and finding nothing.
     let selectionSnapshot: Record<string, unknown> | null = null
+    // ⚠️ NULL MEANS NOT AUDITED, WHICH IS NOT THE SAME AS CLEAN. If the block
+    // below throws, the script still ships and the column records that we did not
+    // look — an audit that defaults to zero gaps would report every unexamined
+    // generation as correct.
+    let beatAudit: Record<string, unknown> | null = null
     try {
       const depth = creatorDepth(suppliedForCheck)
       const ownedName = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim()
@@ -3868,36 +3873,30 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         if (PROGRESS_CHECK.test(line) && (sub === 'none' || sub === '')) progressChecks++
       }
     }
-    console.log(JSON.stringify({
-      event: 'beat_substance',
+    // ⚖️ COMPUTED ONCE, LOGGED AND STORED — the same discipline 0130 uses, for
+    // the same reason: recomputing at insert time risks the stored audit
+    // describing a different script from the logged one.
+    beatAudit = {
       beats: Array.isArray(declared) ? declared.length : 0,
       by_source: bySource,
       creator_knowledge_depth: byDepth,
       knowledge_supplied: speakable.length,
       issues: issues.length,
       issue_codes: issues.map((i) => i.code),
-      // Beats whose only content is telling the viewer how far through they are.
       progress_checks: progressChecks,
-      // ⚠️ WHAT `proof` ACTUALLY CAME BACK AS. Measured on 192 real proofs
-      // across 206 beats: 23 were the `substance` enum verbatim, 107 named a
-      // SOURCE ("Creator's stated knowledge of wealth paths"), 18 restated the
-      // beat's PURPOSE ("Establishes the problem"), and about 6 were something a
-      // person could film. `proof` is documented as what the camera sees, and it
-      // was collapsing into a duplicate of the two fields either side of it.
-      //
-      // ⚖️ COUNTED IN PRODUCTION, NOT ONLY IN THE HARNESS. This is the reader
-      // that says whether the sharpened instruction worked, on real generations,
-      // without anyone re-reading strings by hand — and it is what the creator
-      // surface waits on. A row that is wrong five times out of six is not
-      // guidance, so `proof` is deliberately shown to nobody until this reports
-      // otherwise.
-      // ⚠️ FIGURES ASSERTED THAT THE BEAT'S OWN CITATION DOES NOT CARRY (G8).
-      // `UNSUPPORTED` cannot see these: the citation is real, it just does not
-      // contain the number.
+      // ⚠️ G8. A figure asserted in a beat whose own citation does not carry it.
+      // `UNSUPPORTED` cannot see these — the citation is real, it simply does not
+      // contain the number — and the open question is how often this happens with
+      // a figure that did NOT come from the reference. That is only answerable
+      // across many generations, which is only possible if the count survives.
       entailment_gaps: findEntailmentGaps(
         (Array.isArray(declared) ? declared : []) as Array<Record<string, unknown>>).length,
       proof_quality: proofQualityCounts(
         (templated.bp as { beat_plan?: unknown })?.beat_plan),
+    }
+    console.log(JSON.stringify({
+      event: 'beat_substance',
+      ...beatAudit,
     }))
     if (issues.length) {
       // Reported, never rewritten. There are no alternate script lines to fall
@@ -4260,6 +4259,10 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         // writing them here costs one column and turns six ephemeral counters
         // into six durable ones.
         selection: selectionSnapshot,
+        // ⚠️ WHAT THE WRITER DID WITH IT (0131). Same reason as `selection`: the
+        // G8 counter runs on every generation and its readings expired with the
+        // edge logs, so the question it exists to answer could never accumulate.
+        beat_audit: beatAudit,
       })
       .select('*')
       .single()
