@@ -1566,3 +1566,39 @@ exists, and by renaming a live event and watching it fail as unregistered.
 
 Current state: 42 events · 2 stored · 10 rates knowingly not persisted · the
 rest incidents.
+
+### G30. C8 item 2 — the director path records why, not only that
+
+`edit_director_calls` is the one state machine in this system that has ever
+answered "how often has that failed, ever" with a number instead of a guess:
+three times in its whole history, which is how that failure was correctly called
+transient rather than assumed to be. What it never recorded is WHY.
+`directorProvider` threw `director provider HTTP ${res.status}` and stored
+`director_provider_http` for all of them, so a 429 (our quota), a 503 (Google's
+problem) and a 400 (our malformed request) were one row shape calling for three
+different responses.
+
+⚠️ **THE REASON EXISTED IN THE RESPONSE BODY AND WAS DISCARDED ONE THROW LATER.**
+Google names the quota, or the field it rejected. 0132 adds `failure_detail`, the
+provider reads the body before throwing (best-effort — an unreadable body must
+not fail the call any harder than it already has), and the status survives even
+when the body is empty.
+
+⚖️ **`create or replace`, NOT DROP-AND-RECREATE.** Dropping the function would
+revoke `service_role`'s execute and fail every director call until the grant ran
+— a self-inflicted outage on the render path, caused by a telemetry improvement.
+The new parameter defaults to NULL so the signature change cannot break an
+in-flight deploy mid-rollout.
+
+⚖️ **BOUNDED AT BOTH ENDS, AT 300 — THE SAME BOUND AS `script_attempts`.** The
+CHECK would reject an over-long detail and take the whole failure record down
+with it, and losing the record of a failure because the failure was verbose is
+the worst trade available. Matching the script path's bound also means the two
+failure records compare rather than merely resembling each other.
+
+An unrecognised throw carries its own message rather than nothing, and a rejected
+decision now records which field the validator refused — an unclassified cause is
+still a cause, and a failure never seen before is the one worth reading.
+
+Mutation-checked: dropping the detail from `ledger.fail`, and removing the body
+read. Worker 1,290 tests.
