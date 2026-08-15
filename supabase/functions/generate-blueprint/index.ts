@@ -944,6 +944,91 @@ function readReferenceObservations(
 // out of proportion — but the count is what says whether the sharpened
 // instruction worked, and the creator surface waits on it.
 const NON_PROOF = /^(?:n\/?a|none|nil|null|no(?:ne)? needed|not applicable|proof|tbd|-+|\.+)$/i
+// ── STYLE COMPILER (inlined from packages/shared/src/styleCompiler.ts) ──────
+//
+// ⚠️ INLINED BECAUSE EDGE FUNCTIONS CANNOT IMPORT `@twinai/shared`, and kept
+// honest by `style-compiler-parity.test.ts`, which runs both copies over the
+// same fixtures and compares the rendered block byte for byte.
+//
+// ⚖️ IT COMPILES BEHAVIOUR, NOT ADJECTIVES. "Median sentence 9 words; 62% address
+// the viewer as you" is executable. "Direct" is agreeable. And it renders NOTHING
+// below 40 sentences: a style profile is the most confident-sounding thing this
+// system can emit, and it sounds exactly as confident when computed from three.
+const STYLE_MIN_SENTENCES = 40
+const STYLE_SHORT_WORDS = 12
+const STYLE_CONTRACTION = /\b\w+['’](?:s|t|re|ve|ll|d|m)\b/gi
+const STYLE_SECOND_PERSON = /\b(you|your|you['’]re|yours|yourself)\b/i
+const STYLE_FIRST_PERSON = /\b(i|i['’]m|i['’]ve|my|me|we|our)\b/i
+
+// Caption text is hard-wrapped mid-sentence, so the wrap is stripped before
+// punctuation decides a boundary — otherwise this measures the caption width.
+function sentencesOfInline(text: string): string[] {
+  return text.replace(/\s*\n+\s*/g, ' ').split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim()).filter((s) => /\w/.test(s))
+}
+
+interface InlineStyle {
+  sentences: number; medianSentenceWords: number; shortSentenceShare: number
+  secondPersonShare: number; questionShare: number; firstPersonShare: number
+  contractionRate: number; opener: 'claim' | 'question' | 'address' | 'mixed' | 'unknown'
+  reportable: boolean
+}
+
+function compileStyleInline(samples: string[]): InlineStyle {
+  const empty: InlineStyle = {
+    sentences: 0, medianSentenceWords: 0, shortSentenceShare: 0, secondPersonShare: 0,
+    questionShare: 0, firstPersonShare: 0, contractionRate: 0, opener: 'unknown', reportable: false,
+  }
+  const texts = samples.map((s) => String(s ?? '').trim()).filter(Boolean)
+  if (!texts.length) return empty
+  const all: string[] = []
+  const openers: Array<'claim' | 'question' | 'address'> = []
+  for (const t of texts) {
+    const ss = sentencesOfInline(t)
+    if (!ss.length) continue
+    all.push(...ss)
+    const first = ss[0]
+    openers.push(/\?\s*$/.test(first) ? 'question'
+      : STYLE_SECOND_PERSON.test(first.split(/\s+/).slice(0, 4).join(' ')) ? 'address' : 'claim')
+  }
+  if (!all.length) return empty
+  const lens = all.map((s) => s.split(/\s+/).filter((w) => /\w/.test(w)).length)
+  const sorted = [...lens].sort((a, b) => a - b)
+  const m = Math.floor(sorted.length / 2)
+  const med = sorted.length % 2 ? sorted[m] : Math.round((sorted[m - 1] + sorted[m]) / 2)
+  const share = (n: number) => Math.round((n / all.length) * 100) / 100
+  const distinct = new Set(openers)
+  return {
+    sentences: all.length,
+    medianSentenceWords: med,
+    shortSentenceShare: share(lens.filter((n) => n <= STYLE_SHORT_WORDS).length),
+    secondPersonShare: share(all.filter((s) => STYLE_SECOND_PERSON.test(s)).length),
+    questionShare: share(all.filter((s) => /\?\s*$/.test(s)).length),
+    firstPersonShare: share(all.filter((s) => STYLE_FIRST_PERSON.test(s)).length),
+    contractionRate: Math.round((all.join(' ').match(STYLE_CONTRACTION)?.length ?? 0) / all.length * 100) / 100,
+    opener: distinct.size === 1 ? openers[0] : 'mixed',
+    reportable: all.length >= STYLE_MIN_SENTENCES,
+  }
+}
+
+function renderStyleRulesInline(style: InlineStyle): string {
+  if (!style.reportable) return ''
+  const pct = (n: number) => `${Math.round(n * 100)}%`
+  const lines = [
+    `- Sentence length: median ${style.medianSentenceWords} words; ${pct(style.shortSentenceShare)} of their sentences run ${STYLE_SHORT_WORDS} words or fewer. Match this distribution, do not average it.`,
+    `- Direct address: ${pct(style.secondPersonShare)} of their sentences speak to the viewer as "you".`,
+    `- Questions: ${pct(style.questionShare)} of their sentences are questions.`,
+    `- First person: ${pct(style.firstPersonShare)} carry I/we — their own experience.`,
+    `- Contractions: ${style.contractionRate} per sentence.`,
+  ]
+  if (style.opener !== 'mixed' && style.opener !== 'unknown') {
+    lines.push(`- They open on a ${style.opener}, every time in the samples measured.`)
+  }
+  return `HOW THEY ACTUALLY WRITE — MEASURED FROM ${style.sentences} SENTENCES OF THEIR OWN RECORDED SPEECH.
+These are observations of this creator, not style advice. Write to them.
+${lines.join('\n')}`
+}
+
 const SUBSTANCE_ENUM = /^(?:creator_knowledge|creator_experience|creator_opinion|product_dna|general|needs_user)$/i
 const NAMES_A_SOURCE = /^(?:the\s+)?(?:creator'\s?s?\b|creators'\b|creator\s+(?:experience|knowledge|expertise|opinion)\b|general (?:knowledge|observation)\b|product_dna\b|reference structure\b|specific knowledge\b)/i
 const NAMES_AN_EFFECT = /^(?:establishes?|sets? up|provides?|guides?|engages?|introduces?|explains?|concludes?|reinforces?|builds?|creates?|delivers?|summari[sz]es?|transitions?|highlights?|emphasi[sz]es?)\b/i
@@ -2836,6 +2921,36 @@ Deno.serve(async (req: Request) => {
     // posts, blog) more than a sparse video scan. If they pasted writing samples,
     // they're the single strongest voice signal — feed them verbatim (bounded).
     const voiceSamples = String((vp as { voice_samples?: string } | null)?.voice_samples ?? dna.voice_samples ?? '').trim().slice(0, 3000)
+    // ⚠️ AND THAT FIELD IS EMPTY FOR EVERY CREATOR IN PRODUCTION: 0 of 38
+    // profiles, 0 of 37 voices. The block above declares itself the strongest
+    // signal in this prompt and has never once been populated, because filling it
+    // means a creator pasting their own writing into Settings.
+    //
+    // ⚖️ SO MEASURE THE SPEECH WE ALREADY HAVE. `transcripts` holds the creator's
+    // own posts, transcribed by the DNA scan — and 50 of 58 rows are somebody
+    // else's video pasted as a reference, which is why this read filters on
+    // `subject = 'own'` (0135) rather than on owner alone. Compiling a reference
+    // into this block would tell the model a stranger's cadence was the creator's,
+    // under a label instructing it to weight that above everything else.
+    //
+    // ⚠️ NULL `subject` IS EXCLUDED, NOT INCLUDED. A row predating 0135 that no
+    // reference URL matched is unresolved, not own.
+    let styleRules = ''
+    try {
+      const { data: ownSpeech } = await admin
+        .from('transcripts')
+        .select('text')
+        .eq('owner_id', ownerId)
+        .eq('subject', 'own')
+        .order('created_at', { ascending: false })
+        .limit(8)
+      styleRules = renderStyleRulesInline(
+        compileStyleInline((ownSpeech ?? []).map((r) => String(r?.text ?? ''))))
+    } catch {
+      // A failed read makes the script thinner, never wronger — the same
+      // treatment the knowledge read gets, for the same reason.
+      styleRules = ''
+    }
     // WRITE-TIME ENRICHMENT. Even a thin scan must still write IN-VOICE, so we
     // never feed the model "(none captured)" for the fields that decide whether a
     // script sounds like THIS creator. A creator's real hooks ARE their opener
@@ -3375,7 +3490,8 @@ Deno.serve(async (req: Request) => {
 - Do: ${(vp.dos ?? []).join('; ')}
 - Don't: ${(vp.donts ?? []).join('; ')}
 - Voice summary: ${vp.summary ?? ''}` : ''}${voiceSamples ? `
-- HOW THEY ACTUALLY WRITE (verbatim samples — match this EXACT cadence, diction, sentence length and rhythm; weight this above every other signal, it is the most reliable evidence of their true voice): ${voiceSamples}` : ''}
+- HOW THEY ACTUALLY WRITE (verbatim samples — match this EXACT cadence, diction, sentence length and rhythm; weight this above every other signal, it is the most reliable evidence of their true voice): ${voiceSamples}` : ''}${styleRules ? `
+${styleRules}` : ''}
 - Platforms (publish_plan MUST use ONLY these, one entry each): ${platforms.join(', ')}${paletteHex ? `
 - Brand colors (the creator's real palette, hex): ${paletteHex}. Weave these into the BACKGROUND, props and wardrobe of each beat's setup so the shoot looks on-brand (e.g. a backdrop, object, or outfit in these colors). Do NOT name hex codes in the script the creator speaks.` : ''}`
 

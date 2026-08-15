@@ -174,6 +174,21 @@ export const EXCLUDED = {
     + 'OUTSTANDING: until it is applied, insertKnowledge logs '
     + '`creator_knowledge_merge_absent` and falls back to the plain insert that loses a '
     + 'batch on the first duplicate — the defect this migration exists to fix.',
+  '0135_transcript_subject':
+    'Adds `subject` to `public.transcripts`, which 0004 creates — a migration far '
+    + 'below this list\'s floor and never applied to staging, which starts at 0090 and '
+    + 'is an editor test bed that never scans a handle or ingests a reference. '
+    + '⚠️ THE INHERITED-EXCLUSION CHECK CANNOT DECIDE THIS ONE, and that is by design: '
+    + 'staging was bootstrapped with its own stubs (its `generations` is an 11-column '
+    + 'table though 0001 was never applied), so "the creating migration is not in the '
+    + 'list" does not imply the table is missing. Only a human can say which it is, '
+    + 'which is what this reason is. ⚠️ MANUAL APPLY: applied to production BY HAND on '
+    + '2026-08-15 — verified `subject` text nullable, the CHECK present, and the '
+    + 'reference backfill matched 50 of 58 rows. The READER ships in the same change '
+    + '(`generate-blueprint` filters `subject = \'own\'` before compiling a voice), so '
+    + 'an unapplied column would surface as a PostgREST error on the filter — loudly, '
+    + 'rather than as a stranger\'s cadence being compiled into a creator\'s voice, '
+    + 'which is the failure that matters.',
   '0133_knowledge_surface_forms':
     'Adds `surface_forms` to `creator_knowledge` — the table 0121 above excludes for the '
     + 'staging fixture-ordering reason, so the ALTER fails on its first statement rather '
