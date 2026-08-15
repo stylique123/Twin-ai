@@ -26,10 +26,23 @@ export interface TranscriptCandidate {
  *
  *  So a creator whose five videos happen to be spectacle rather than argument
  *  has no positions in the system, and no amount of selection logic invents any.
- *  Raised 5 → 10 deliberately: transcription is PAID PER VIDEO, so this doubles
- *  a real per-scan cost, and it is the only lever that raises the ceiling for
- *  every creator at once rather than redistributing a fixed supply. */
-export const TRANSCRIPT_BUDGET = 10
+ *
+ *  ⚠️ THIS WENT 5 → 10 IN #366 AND NEVER TOOK EFFECT. The consumer of the
+ *  selected URLs, `handleBuildVoice`, carried its own `.slice(0, 5)` and threw the
+ *  rest away, so ten was a number nothing spent. That cap is now the platform
+ *  budget itself, which means this constant is finally live — and since
+ *  transcription on these platforms is PAID PER VIDEO, the first scan after it
+ *  merges is the first time the raise is actually billed.
+ *
+ *  ⚖️ SO IT IS HELD AT FIVE ON PURPOSE, WHICH IS NOT THE SAME AS REVERTING #366.
+ *  Ten was argued from measured yield and the argument still stands; what was
+ *  never true is that it had been tried. Doubling a per-video Apify bill in the
+ *  same change that first makes the number real would leave two things moving at
+ *  once, and no way to attribute a cost jump to either. The free platform's raise
+ *  ships now because it costs CPU rather than money; this one waits for a
+ *  deliberate `5` → `10` with a bill to watch. One edit, one constant, one
+ *  consumer. */
+export const TRANSCRIPT_BUDGET = 5
 
 /** The budget where transcription costs NOTHING per video.
  *

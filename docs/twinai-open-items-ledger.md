@@ -358,9 +358,22 @@ untested, business claims need attribution). There is no `edit_events`
 equivalent for the run that produced it, so "why was this claim NOT made" has
 no record.
 
-**What to build, in this order** (each is independently useful; do not batch):
+**Item 1 is BUILT (0129 + `scriptAttempt.ts`).** `script_attempts` carries one
+row per attempt, opened BEFORE the model call and settled after, with the model
+actually used, the attempt index, a typed failure code and the provider's own
+message. `attemptSummary` and `servedFromFallback` answer the three questions
+this entry says are unanswerable, including the silent fallback one. An attempt
+row with no `generation_id` is a run that never produced a script — the state
+that previously left no trace at all — so it is never backfilled.
 
-1. A durable attempt row for script generation, written BEFORE the model call
+⚠️ **AND THE GUARD FOR IT WAS BRIEFLY FAKE.** The ordering assertion used
+`indexOf(...) < indexOf(...)`, and `indexOf` returns −1 when the call is GONE —
+so it passed on the exact mutation it existed to catch. Found by running the
+mutation rather than by reading the test. Presence is now asserted first.
+
+**Still to build, in this order** (each is independently useful; do not batch):
+
+1. ~~A durable attempt row for script generation~~ — DONE, written BEFORE the model call
    and settled after — the same shape `edit_director_calls` already proves
    works. It must record the model actually used, the attempt index, and a
    typed failure code. Written before the call is the whole point: a row only
@@ -1287,3 +1300,197 @@ a null result.
 Caveat kept: 6 of 24 new-selector scripts were judged LESS NATURAL even while
 winning overall. Denser first-person material reads as better and slightly
 rougher, which is a trade worth watching rather than a defect.
+
+### G24. Capturing what the creator rejected
+
+`applyDialogueEdit` holds both texts in one expression — it compares them to
+decide whether anything changed — and returns only the new script. So for the
+product's whole life, a creator rewriting
+
+>     "This tool dramatically improves productivity."
+>   → "This saves me doing the same edit six times."
+
+left behind the second sentence and no trace that the first was rejected. **The
+rejected half is the one carrying the signal**, and it was discarded at the seam
+that had it in hand.
+
+⚠️ **THE SYSTEM HOLDS 13 REAL CREATOR DECISIONS** (G19), all hook picks. Every
+judge, reranker and calibration idea waits on preference data the product
+generates continuously and had never written down.
+
+**What ships:** `0127_script_edits`, append-only — INSERT and SELECT policies and
+deliberately no UPDATE, the discipline `recordPostStats` had to be given after the
+dashboard was found overwriting its own history on every save. Both halves are
+stored, plus facts decidable from the two strings: word delta, whether a figure or
+first person arrived, and what share of the original words survived.
+
+⚖️ **"GENERIC → CONCRETE" IS NOT STORED, AND THAT IS DELIBERATE.** It is the
+interpretation everyone wants, and interpretation frozen at capture time cannot be
+revised when it turns out wrong. This session produced four broken metrics that
+would each have been baked permanently into the data. The pair is kept raw and the
+reading is left to whoever analyses it.
+
+⚠️ **AND THE LOG MUST NEVER MAKE A SAVED EDIT LOOK UNSAVED.** The creator's words
+are the product; this is telemetry. It is written AFTER the durable save lands,
+not awaited, and swallows every failure — a table that does not exist yet must not
+present as a broken editor. Three mutations checked: removing the record,
+dropping the before-text, and recording before the save lands.
+
+`keptShare` separates a tweak from a rejection rather than averaging them: a
+creator appending a clause kept 100% of the original and still changed the line,
+and those two facts answer different questions.
+
+### G25. Two transcript-budget raises shipped and neither reached production
+
+I went looking for whether YouTube's transcript budget could safely go from 10 to
+25, and found the budget had never mattered on any platform.
+
+`selectVideosToTranscribe` picks up to `transcriptBudgetFor(platform)` videos —
+raised 5→10 in #366, and to 25 for TikTok in #377, each argued at length as
+lifting the ceiling on the only input measured to change script quality. The
+consumer of those URLs, `handleBuildVoice`, carried its own `.slice(0, 5)`. So the
+selector picked twenty-five videos and five were transcribed. Since 2026-08-04.
+
+⚠️ **THE MEASURED CLAIMS BUILT ON THOSE BUDGETS ARE ABOUT FIVE VIDEOS, NOT TEN OR
+TWENTY-FIVE.** #377's own rationale cites "garyvee's TikTok scan produced 25 items,
+22 of them substance, from ten videos." That number came from five. It does not
+invalidate #376's 17–7 — both arms of that comparison ran on the same real
+supply — but every "roughly one to two-and-a-half substance items per video"
+estimate is now a rate over a denominator I had wrong.
+
+⚖️ **EVERY TEST PASSED THE WHOLE TIME, AND THEY WERE THE WRONG TESTS.** Nine cover
+the selector. Two parity tests check the worker's copy against shared's. All three
+were correct: the copies matched, and both matched the constant. What disagreed was
+a number in a third file that nothing compared against anything. This is #385's
+shape again — lifted constants sitting beside a hand-written rule — and the lesson
+repeats: a guard on a rule's INPUTS is not a guard on the rule.
+
+The fix caps by `transcriptBudgetFor(p.platform)` rather than by a literal, so the
+two ends cannot disagree again, and the new guard asserts the SEAM: whatever the
+producer chose, the transcriber must not silently keep less. Mutation-checked
+both ways — restoring the `5`, and passing the defaulted `platform`.
+
+⚠️ **IT READS THE RAW PAYLOAD VALUE, NOT THE DEFAULTED ONE.** `platform` in that
+handler defaults to `'tiktok'` for voice synthesis; feeding that to the budget
+would hand the FREE budget — 25 videos — to any payload arriving without the
+field, on platforms billed per video. `transcriptBudgetFor` is deliberately
+conservative about platforms it does not recognise, and that only helps if it is
+given what actually arrived.
+
+**Cost this changes, stated plainly:** TikTok scans go from 5 to 25 local whisper
+transcriptions — free per video, real CPU per scan.
+
+⚖️ **AND THE PAID PLATFORMS ARE HELD AT FIVE, WHICH IS NOT A REVERT OF #366.** Ten
+was argued from measured yield and that argument still stands; what was never true
+is that it had been tried. Making the number real and doubling a per-video Apify
+bill in the same change would leave two things moving at once with no way to
+attribute a cost jump to either. `TRANSCRIPT_BUDGET` is now 5 in all three copies,
+and raising it is one edit against one constant with one consumer — to be done
+deliberately, with the bill in view.
+
+⚠️ **A THIRD COPY EXISTED AND THE PARITY TEST FOUND IT.** `supabase/functions/
+_shared/dna.ts` carries its own `TRANSCRIPT_BUDGET`, and the guard that failed on
+it is the one piece of this machinery that was working correctly all along.
+
+**The YouTube question I set out to answer is now instrumented rather than open.** `transcribeFromUrl` tries free
+captions and falls back to a paid Actor on ANY thrown error — no captions, a
+30-second timeout, a network blip — and records nothing either way. One
+`console.error` on the fallback, nothing on success, no column, no counter. The
+information existed at the moment of spending and was dropped one line later.
+
+Every route now stamps itself — `youtube_captions_free`, `youtube_captions_paid`,
+`instagram_paid`, `local_whisper` — and a paid YouTube call records WHY: the helper
+already exited 2 with `NO_CAPTIONS` for a genuine absence and 1 for anything else,
+and nothing read the difference. ⚖️ **POOLING THOSE TWO WOULD REPORT OUR OWN
+TIMEOUTS AS EVIDENCE ABOUT YOUTUBE**, which is the shape of at least four broken
+metrics this session.
+
+⚠️ **AND THE STAMP IS TALLIED WHERE IT IS STORED, NOT LOGGED.** `handleBuildVoice`
+counts routes into its job result alongside `attempted`, so the ratio is queryable
+from the `jobs` table with no migration. An unstamped transcript counts as
+`unrecorded`, never as free. A failed one counts as `failed`, because it may
+already have spent an Apify call before throwing.
+
+**No answer yet, and there cannot be one until scans run.** The instrument is in
+place; the reading requires production traffic, which is the same thing the other
+six counters are waiting for.
+
+### G26. Asking the creator, one question at a time
+
+Transcripts beat captions 78% to 13% on substance, and the only source better
+than a transcript is the creator answering a question — it is the one input in
+this product with no extraction step to lose anything. Ten questions now exist,
+and an answer becomes a `creator_knowledge` row with `basis: 'stated'` and
+`source: 'asked'`.
+
+⚖️ **PLACEMENT WAS THE DECISION, AND IT WAS ALREADY MEASURED ONCE.** In the first
+real production run, EVERY question below the fold on the confirm screen came
+back unanswered — wording was fine, position was fatal. A screen of its own is
+that wall rebuilt: the Product Library is a complete, working feature with **zero
+rows** because it waits to be visited. So this asks ONE question, under a script
+the creator has just been handed, dismissible in a tap. Ten answers over weeks
+beats ten questions at once and a closed tab.
+
+⚠️ **AND IT WOULD HAVE BEEN DECORATIVE.** The blueprint's knowledge read takes the
+top 40 by `times_seen` — how many videos carried a position — and an answered
+question is a 1. On a 374-item caption store, forty rows of 2 and 3 sit above it.
+The creator would answer, the row would land, and the writer would never see it.
+Found before shipping, not after: a second read asks for `source = 'asked'` by
+name and merges deduped, rather than raising the limit, which would buy mostly
+more caption rows — the material measured to push substance OUT of selection.
+
+`'asked'` also joins `SPOKEN_SOURCES`, in shared and at the edge. Everything else
+in that set is a model recovering a position from evidence; this is the creator
+stating one. It does not outrank transcript INSIDE the reservation, because that
+set decides which pool fills the floor first and nothing more — ordering answers
+above transcripts would smuggle a second, unmeasured judgement in beside a
+measured one.
+
+⚠️ **A SKIP IS STORED AS FIRMLY AS AN ANSWER.** 0128 puts a unique index on
+(owner, question) so never-ask-twice survives a race, and a skip that only hid the
+card is one of the two mutations checked. The other is deleting the asked read.
+A failed read returns `null`, never `[]` — not-knowing must not open on question
+one and re-ask something already declined.
+
+**Refuses rather than truncates at 240 chars.** A sentence cut mid-clause can
+invert its own meaning ("I never recommend X unless the client has…"), and a
+wrong row is worse than a missing one.
+
+**Unmeasurable until creators answer, and that is the honest state.** No panel can
+score this: it is not a better prompt over the same supply, it is supply that does
+not exist yet. The first real signal is whether anyone answers a second question
+after their first.
+
+### G27. Six counters were built and all six expire
+
+Found while writing the queries that would read them: `substance_route_shadow`
+— the selection shape, the starved flag, the figure counts, the container supply
+check — is a `console.log`. So is every other counter this session kept calling
+"live". They go to edge logs, which expire within days.
+
+⚠️ **THIS IS WORSE THAN "NO COUNTER HAS READ A PRODUCTION GENERATION", WHICH IS
+WHAT I HAVE BEEN SAYING FOR TWO DAYS.** That framing implied the readings were
+waiting for traffic. They were not waiting for anything: a month of production
+traffic would have left nothing to count at the end of it, because each reading
+expires before the next hundred arrive.
+
+⚖️ **IT IS C8's SCRIPT HOLE AGAIN, POINTED AT QUALITY INSTEAD OF FAILURE.** In
+both cases the information exists at the exact moment it matters and is written
+somewhere that forgets. Found twice in one session, in two subsystems, by two
+different routes — which suggests the pattern is worth a standing check rather
+than another fix.
+
+0130 adds `generations.selection`. No new table and no new write path: the row
+these counters describe is already inserted on this exact path and already
+survives. The snapshot is computed ONCE and used twice — logged for live
+debugging, stored for counting — because recomputing at insert time would risk
+the stored value describing a different selection from the logged one.
+
+⚖️ **NULL MEANS NOT MEASURED, AND EVERY EXISTING ROW IS NULL.** Defaulting to
+`{}` would make every historical generation look like it supplied nothing to the
+writer, which is a measurement rather than an absence.
+
+`docs/what-production-can-now-answer.md` carries the query for each question,
+including the two that must never be pooled: `paid_because_no_captions` is a
+fact about YouTube that caps a budget, `paid_because_free_path_failed` is a bug
+on our side that inflates a bill.

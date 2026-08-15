@@ -1,0 +1,120 @@
+// THE ONLY WRITE IN THIS PRODUCT WHERE THE CREATOR STATES A POSITION DIRECTLY.
+//
+// ⚠️ AN ANSWER LANDS IN TWO PLACES AND THEY MEAN DIFFERENT THINGS. The sentence
+// becomes a `creator_knowledge` row — it is knowledge, and belongs where the
+// writer already looks. The fact that the question was PUT becomes a
+// `creator_questions_put` row, so it is never asked again. Storing the answer in
+// the log as well would create two records that can disagree about what the
+// creator said, and the store would lose.
+//
+// ⚖️ THE LOG IS WRITTEN EVEN WHEN THE KNOWLEDGE WRITE FAILS, AND ON PURPOSE.
+// Being asked the same question twice because an insert failed is a worse
+// experience than a lost answer, and the creator can always say it again in
+// their own words. Ordering follows from that: log first, knowledge second.
+import { supabase } from './supabase'
+import { answerToKnowledge, type CreatorQuestion } from '@twinai/shared'
+
+/** Every question already put to this creator — answered OR skipped.
+ *
+ *  ⚠️ RETURNS null, NOT [], WHEN IT CANNOT READ. An empty array means "nothing
+ *  has been asked yet" and would make the UI open with question one; a failed
+ *  read means we do not know, and the right move on not-knowing is to ask
+ *  nothing at all. The two must not collapse. */
+export async function loadQuestionsPut(): Promise<string[] | null> {
+  try {
+    const { data: auth } = await supabase.auth.getUser()
+    const ownerId = auth?.user?.id
+    if (!ownerId) return null
+    const { data, error } = await supabase
+      .from('creator_questions_put')
+      .select('question_id')
+      .eq('owner_id', ownerId)
+    if (error) {
+      // A table that does not exist yet (0128 unapplied) is not-knowing, not empty.
+      console.warn('questions-put not read', error.message)
+      return null
+    }
+    return (data ?? []).map((r) => String((r as { question_id?: unknown }).question_id ?? ''))
+  } catch (err) {
+    console.warn('questions-put not read', err)
+    return null
+  }
+}
+
+/** Record that a question was put and declined. Never throws. */
+export async function skipQuestion(questionId: string): Promise<boolean> {
+  return markPut(questionId, 'skipped')
+}
+
+/** Store an answer as stated knowledge, and close the question.
+ *
+ *  ⚖️ RETURNS THE REFUSAL REASON RATHER THAN A BARE FALSE. "Too long" and "we
+ *  could not save it" need different sentences in front of a creator who just
+ *  typed three sentences, and only this layer knows which happened. */
+export async function answerQuestion(
+  question: CreatorQuestion,
+  answer: string,
+  voiceId: string | null,
+): Promise<{ ok: true } | { ok: false; reason: 'empty' | 'too_short' | 'too_long' | 'not_saved' }> {
+  const built = answerToKnowledge(question, answer)
+  if (!built.ok) return built
+
+  try {
+    const { data: auth } = await supabase.auth.getUser()
+    const ownerId = auth?.user?.id
+    if (!ownerId) return { ok: false, reason: 'not_saved' }
+
+    // ⚠️ THE LOG FIRST. If the knowledge insert fails after this, the creator has
+    // lost a sentence; if it were the other way round and the LOG failed, they
+    // would be asked the same question again with their own answer already in
+    // the store — which reads as the product not listening.
+    await markPut(question.id, 'answered')
+
+    const { error } = await supabase.from('creator_knowledge').insert({
+      owner_id: ownerId,
+      voice_id: voiceId,
+      kind: built.row.kind,
+      text: built.row.text,
+      basis: built.row.basis,
+      source: built.row.source,
+      confidence: built.row.confidence,
+      times_seen: built.row.times_seen,
+      source_ref: built.row.source_ref,
+      // ⚖️ `last_observed_at` IS NOW, BECAUSE THEY SAID IT NOW. Leaving it null
+      // would make a position stated today look older than one read off a
+      // two-year-old video, and the writer ranks partly on recency.
+      last_observed_at: new Date().toISOString(),
+    })
+    if (error) {
+      console.warn('answer not stored as knowledge', error.message)
+      return { ok: false, reason: 'not_saved' }
+    }
+    return { ok: true }
+  } catch (err) {
+    console.warn('answer not stored as knowledge', err)
+    return { ok: false, reason: 'not_saved' }
+  }
+}
+
+/** ⚠️ UPSERT, NOT INSERT. 0128 puts a unique index on (owner, question) so the
+ *  never-ask-twice rule cannot be lost to a race — which means a creator who
+ *  skipped a question and later answers it would collide. That transition is
+ *  legitimate and is the one thing allowed to change about a row. */
+async function markPut(questionId: string, outcome: 'answered' | 'skipped'): Promise<boolean> {
+  try {
+    const { data: auth } = await supabase.auth.getUser()
+    const ownerId = auth?.user?.id
+    if (!ownerId) return false
+    const { error } = await supabase
+      .from('creator_questions_put')
+      .upsert({ owner_id: ownerId, question_id: questionId, outcome }, { onConflict: 'owner_id,question_id' })
+    if (error) {
+      console.warn('question-put not recorded', error.message)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.warn('question-put not recorded', err)
+    return false
+  }
+}

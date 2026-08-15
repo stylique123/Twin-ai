@@ -19,6 +19,7 @@ import { getGeneration, markPosted, updateGenerationChoice, setGenerationApprove
 import { explainFailure } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
+import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
 import { CreativeTransfer } from '../components/CreativeTransfer'
 import { isWhollyPlaceholder } from '../lib/api'
 import { UnfilledContainers } from '../components/UnfilledContainers'
@@ -1020,6 +1021,12 @@ export default function Result() {
               {/* See the other call site: the script owns the list, so the
                   editor that changes it stays above this. */}
               <DeclaredClips generationId={gen.id} />
+              {/* ⚠️ ASKED HERE BECAUSE HERE IS WHERE THE CREATOR ALREADY IS. The
+                  one source better than a transcript is the creator answering a
+                  question, and the measured lesson about questions in this
+                  product is that placement decides whether they get answered at
+                  all. One question, under a script they were just handed. */}
+              <CreatorQuestionCard />
             </div>
 
             {/* Shot List */}

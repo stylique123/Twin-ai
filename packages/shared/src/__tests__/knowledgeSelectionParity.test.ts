@@ -173,3 +173,25 @@ describe('the HARNESS runs the current selector, not the previous one', () => {
     expect(HARNESS).toMatch(/SPOKEN_SOURCES\.has\(String\(item\?\.source \?\? ''\)\)/)
   })
 })
+
+describe('the counters survive the log retention window', () => {
+  // ⚠️ ALL SIX WERE `console.log` AND NOTHING ELSE. `substance_route_shadow`
+  // carries the selection shape and the supply check, per generation, to edge
+  // logs that expire within days — so a month of production traffic would leave
+  // nothing to count at the end of it. The row they describe already survives.
+  it('are stored on the generation row, not only logged', () => {
+    expect(EDGE).toMatch(/selection: selectionSnapshot,/)
+    expect(EDGE).toMatch(/selectionSnapshot = \{/)
+  })
+
+  it('computes the snapshot ONCE, so stored and logged cannot disagree', () => {
+    const shadow = EDGE.slice(EDGE.indexOf('let selectionSnapshot'), EDGE.indexOf("event: 'substance_route_shadow'"))
+    expect(shadow).toMatch(/selectionSnapshot = \{[\s\S]*selectionShape\(speakable, ranked\)/)
+    // Exactly one assignment: a second would be a recomputation.
+    expect(EDGE.match(/selectionSnapshot = \{/g)).toHaveLength(1)
+  })
+
+  it('starts null, so an unmeasured generation is not a measured-empty one', () => {
+    expect(EDGE).toMatch(/let selectionSnapshot: Record<string, unknown> \| null = null/)
+  })
+})

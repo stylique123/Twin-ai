@@ -989,7 +989,12 @@ const SUBSTANCE_FLOOR = 6
 // experiences; transcript is 178 items / 78% substance / 50 experiences. And
 // mixing them scored BELOW the hand-curated pack — 58% grounded / 23% generic
 // against 73% / 8% for the same stores with only spoken material.
-const SPOKEN_SOURCES: ReadonlySet<string> = new Set(['transcript'])
+// ⚠️ 'asked' BELONGS HERE, AND IT IS NOT A TRANSCRIPT. Everything else in this
+// set is a model recovering a position from evidence; an answered question is the
+// creator stating one, with no extraction step to lose it.
+// ⚖️ IT DOES NOT OUTRANK TRANSCRIPT WITHIN THE RESERVATION. This set decides
+// WHICH pool fills the floor first; which item inside it is still relevance's call.
+const SPOKEN_SOURCES: ReadonlySet<string> = new Set(['transcript', 'asked'])
 /** Null source means UNRECORDED, not caption — pre-0122 rows must not be demoted. */
 function wasSpoken(item: { source?: string | null }): boolean {
   return SPOKEN_SOURCES.has(String(item?.source ?? ''))
@@ -1999,7 +2004,75 @@ async function composePosition(apiKey: string, facts: string): Promise<string | 
   }
 }
 
-async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema): Promise<string> {
+// ── THE ATTEMPT RECORD ────────────────────────────────────────────────────
+// Inlined from `packages/shared/src/scriptAttempt.ts` (the edge cannot import
+// @twinai/shared), where the rationale and its tests live. `scriptAttemptParity`
+// fails if these drift.
+type ScriptFailureCode =
+  | 'timeout' | 'provider_quota' | 'provider_unavailable' | 'provider_rejected'
+  | 'truncated' | 'empty_response' | 'invalid_json' | 'incomplete_blueprint' | 'unknown'
+const DETAIL_MAX = 300
+function classifyModelFailure(err: unknown): { code: ScriptFailureCode; detail: string } {
+  const raw = err instanceof Error ? err.message : String(err ?? '')
+  const detail = raw.slice(0, DETAIL_MAX)
+  const name = err instanceof Error ? err.name : ''
+  if (name === 'AbortError' || /\baborted\b|\btimed? ?out\b/i.test(raw)) {
+    return { code: 'timeout', detail }
+  }
+  const status = /Gemini (\d{3})/.exec(raw)?.[1]
+  if (status) {
+    const n = Number(status)
+    if (n === 429) return { code: 'provider_quota', detail }
+    if (n >= 500) return { code: 'provider_unavailable', detail }
+    if (n >= 400) return { code: 'provider_rejected', detail }
+  }
+  if (/MAX_TOKENS|truncated/i.test(raw)) return { code: 'truncated', detail }
+  if (/Empty response/i.test(raw)) return { code: 'empty_response', detail }
+  if (/invalid JSON/i.test(raw)) return { code: 'invalid_json', detail }
+  return { code: 'unknown', detail }
+}
+
+/** Writes one row per attempt, before the call and after it settles.
+ *
+ *  ⚠️ EVERY WRITE IS BEST-EFFORT AND SWALLOWED. This is evidence about the
+ *  generation, not part of it: a telemetry insert that throws must never turn a
+ *  script the creator was about to receive into "Generation failed." That is the
+ *  same discipline `recordScriptEdit` carries, and it matters more here, because
+ *  this code runs on the paying path. */
+interface AttemptRecorder {
+  started(attemptIndex: number, model: string): Promise<string | null>
+  settled(id: string | null, outcome: 'succeeded' | 'incomplete' | 'failed',
+    failure?: { code: string; detail: string }): Promise<void>
+}
+
+function attemptRecorder(
+  admin: ReturnType<typeof createClient>, ownerId: string, runId: string,
+): AttemptRecorder {
+  return {
+    async started(attemptIndex, model) {
+      try {
+        const { data, error } = await admin.from('script_attempts')
+          .insert({ owner_id: ownerId, run_id: runId, attempt_index: attemptIndex, model })
+          .select('id').single()
+        if (error) { console.warn('script attempt not recorded:', error.message); return null }
+        return String((data as { id?: unknown })?.id ?? '') || null
+      } catch (e) { console.warn('script attempt not recorded:', e); return null }
+    },
+    async settled(id, outcome, failure) {
+      if (!id) return
+      try {
+        await admin.from('script_attempts').update({
+          outcome,
+          failure_code: failure?.code ?? null,
+          failure_detail: failure?.detail ?? null,
+          settled_at: new Date().toISOString(),
+        }).eq('id', id)
+      } catch (e) { console.warn('script attempt not settled:', e) }
+    },
+  }
+}
+
+async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder): Promise<string> {
   // The default MUST be a model that reliably returns a FULL blueprint inside the
   // edge wall-clock. gemini-3.1-pro-preview consistently ran 60-90s and timed out
   // on BOTH attempts (edge logs showed repeated 500s at ~70-91s → "We hit a snag"
@@ -2027,17 +2100,29 @@ async function callModel(apiKey: string, system: string, prompt: string, schema:
   let lastParseable: string | null = null // valid JSON, but missing concept/packaging
   for (let i = 0; i < attempts.length; i++) {
     const a = attempts[i]
+    // ⚠️ THE ROW IS OPENED BEFORE THE CALL. A record only written afterwards
+    // cannot describe the call that never came back, which is the exact failure
+    // mode — a 75-second timeout — this table was built to count.
+    const rowId = await record?.started(i, a.model) ?? null
     try {
       const text = await callOnce(apiKey, system, prompt, a.model, a.thinkBudget, a.timeoutMs, schema)
       let parsed: unknown
       try { parsed = JSON.parse(text) } catch { throw new Error('Model returned invalid JSON') }
-      if (blueprintComplete(parsed)) return text // complete → accept
+      if (blueprintComplete(parsed)) {
+        await record?.settled(rowId, 'succeeded')
+        return text // complete → accept
+      }
       // Parseable but Flash dropped concept/packaging. Keep it as a last resort and
       // try the next attempt for a COMPLETE one (the retry usually recovers them).
       lastParseable = text
+      // ⚖️ NEITHER SUCCESS NOR FAILURE. The creator gets a script and no title, so
+      // filing it as either would hide a quality event or claim an outage.
+      await record?.settled(rowId, 'incomplete',
+        { code: 'incomplete_blueprint', detail: 'missing concept/packaging' })
       console.warn(`generate-blueprint: attempt ${i + 1}/${attempts.length} (${a.model}) returned an incomplete blueprint (missing concept/packaging) — retrying`)
     } catch (e) {
       lastErr = e
+      await record?.settled(rowId, 'failed', classifyModelFailure(e))
       console.error(`generate-blueprint: model attempt ${i + 1}/${attempts.length} (${a.model}) failed:`, e instanceof Error ? e.message : e)
       // fall through to the next, faster attempt
     }
@@ -2239,12 +2324,40 @@ Deno.serve(async (req: Request) => {
   // what the pov and enemy fallbacks below do and is the exact move that
   // manufactures opinions. A failed read is treated the same as none: it may
   // make a script thinner, never wronger.
-  const { data: knowledgeRows } = await admin
+  const { data: rankedRows } = await admin
     .from('creator_knowledge')
     .select('kind, text, basis, times_seen, confidence, source')
     .eq('owner_id', ownerId)
     .order('times_seen', { ascending: false })
     .limit(40)
+  // ⚠️ THE TOP-40-BY-`times_seen` READ CANNOT SEE AN ANSWERED QUESTION, AND WOULD
+  // HAVE MADE THAT WHOLE CHANNEL DECORATIVE. `times_seen` counts how many videos
+  // carried a position, so a row the creator STATED once is a 1 — and on a
+  // caption-derived store of 374 items, forty rows of 2-and-3 sit above it. The
+  // creator would answer, the row would land, and the writer would never see it:
+  // the same shape as `product_entities`, complete and unread.
+  //
+  // ⚖️ A SECOND READ RATHER THAN A BIGGER LIMIT. Raising 40 buys mostly more
+  // caption rows, which is the material MEASURED to push substance out of the
+  // selection (73% grounded transcript-only against 58% mixed). This asks for the
+  // scarce thing by name and leaves the ranking alone.
+  const { data: askedRows } = await admin
+    .from('creator_knowledge')
+    .select('kind, text, basis, times_seen, confidence, source')
+    .eq('owner_id', ownerId)
+    .eq('source', 'asked')
+    .order('created_at', { ascending: false })
+    .limit(20)
+  // ⚖️ DEDUPED BY IDENTITY, because a stated row with a high enough `times_seen`
+  // can legitimately appear in both reads and must not be supplied twice —
+  // duplicate supply inflates every count downstream that reasons about it.
+  const seenKnowledge = new Set<string>()
+  const knowledgeRows = [...(askedRows ?? []), ...(rankedRows ?? [])].filter((r) => {
+    const k = `${r?.kind}|${String(r?.text ?? '').trim().toLowerCase()}`
+    if (seenKnowledge.has(k)) return false
+    seenKnowledge.add(k)
+    return true
+  })
   const { data: audienceRows } = await admin
     .from('audience_questions')
     .select('summary, asked')
@@ -3363,7 +3476,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
 - Write every script line TO ITS BEAT'S target_sec. A line for a 6 second beat is roughly 15 words at a natural pace; a line for a 16 second beat is roughly 40. Do not write a forty word line into a six second beat.
 - shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include at least one b-roll or insert shot and the cover frame shot, so the editor is never guessing.`
 
-    const raw = await callModel(apiKey, SYSTEM, userPrompt)
+    // ⚠️ ONE RUN ID FOR THE WHOLE LADDER, so a recovered retry counts as one
+    // generation rather than two. Minted here rather than in the recorder because
+    // the generation row below has to be able to name the same run.
+    const scriptRunId = crypto.randomUUID()
+    const raw = await callModel(apiKey, SYSTEM, userPrompt, blueprintSchema,
+      attemptRecorder(admin, ownerId, scriptRunId))
 
     // OUTPUT-SIDE LINK VALIDATION — the other half of the fencing above.
     //
@@ -3623,6 +3741,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // the writer is worth shipping.
     const routeCounts: Record<string, number> = {}
     const routeVsDeclared: Record<string, number> = {}
+    // ⚠️ NULL UNTIL THE SHADOW BLOCK RUNS, AND NULL IS A TRUE ANSWER. If that
+    // block throws, the generation still ships and the column records that we did
+    // not measure this one — which must stay distinguishable from measuring it
+    // and finding nothing.
+    let selectionSnapshot: Record<string, unknown> | null = null
     try {
       const depth = creatorDepth(suppliedForCheck)
       const ownedName = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim()
@@ -3691,6 +3814,14 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       }))
     } catch (err) {
       console.error('reference_transfer_shadow_failed', err instanceof Error ? err.message : err)
+    }
+    // ⚖️ COMPUTED ONCE AND USED TWICE — logged for live debugging, stored for
+    // counting. Recomputing it at insert time would risk the stored value
+    // describing a different selection from the logged one.
+    selectionSnapshot = {
+      selection: selectionShape(speakable, ranked),
+      depth: creatorDepth(suppliedForCheck),
+      knowledge_items: suppliedForCheck.length,
     }
     console.log(JSON.stringify({
       event: 'substance_route_shadow',
@@ -4123,9 +4254,25 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         // charge the ledger reversed makes every downstream count wrong.
         credits_spent: unbillable ? 0 : BLUEPRINT_COST,
         idempotency_key: idempotency_key || null,
+        // ⚠️ THE SAME COUNTERS THE SHADOW LOG EMITS, KEPT. They were emitted to
+        // edge logs only, which expire within days, so a month of production
+        // traffic left nothing to count. The row they describe already survives;
+        // writing them here costs one column and turns six ephemeral counters
+        // into six durable ones.
+        selection: selectionSnapshot,
       })
       .select('*')
       .single()
+    // ⚖️ THE LINK IS WRITTEN AFTER THE GENERATION EXISTS, AND ITS ABSENCE IS THE
+    // SIGNAL. An attempt row with no `generation_id` is a run that never produced
+    // a script — the state that today leaves no trace at all — so this must never
+    // be backfilled onto rows whose run failed.
+    if (gen?.id) {
+      await admin.from('script_attempts')
+        .update({ generation_id: gen.id })
+        .eq('run_id', scriptRunId)
+        .then(({ error }) => { if (error) console.warn('attempts not linked:', error.message) })
+    }
     // THE RACE THE REPLAY CHECK CANNOT CATCH. Two requests carrying the same key
     // can both pass the lookup above before either has inserted — a double-click
     // or a remount that overlaps the first build. The unique index is what

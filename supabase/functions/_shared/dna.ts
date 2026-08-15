@@ -286,7 +286,7 @@ export function computeStats(items: Record<string, unknown>[], posts: PostSample
  *  Raised 5 → 10 deliberately: transcription is PAID PER VIDEO, so this doubles
  *  a real per-scan cost, and it is the only lever that raises the ceiling for
  *  every creator at once rather than redistributing a fixed supply. */
-export const TRANSCRIPT_BUDGET = 10
+export const TRANSCRIPT_BUDGET = 5
 
 /** Captions that suggest the video contains a POSITION rather than a spectacle.
  *

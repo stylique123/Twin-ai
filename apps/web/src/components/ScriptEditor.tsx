@@ -33,6 +33,8 @@ import {
   sceneOverrunSec, overrunWorthShowing,
   type RecordingScene, type RecordingScript, type ScriptEditResult,
 } from '../lib/api'
+import { describeEdit, type ScriptEditRecord } from '@twinai/shared'
+import { recordScriptEdit } from '../lib/scriptEdits'
 import type { Blueprint } from '../lib/types'
 import { cn } from '../lib/cn'
 
@@ -116,7 +118,10 @@ export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, f
   }
   if (!script) return <>{fallback}</>
 
-  const commit = async (result: ScriptEditResult): Promise<string | null> => {
+  const commit = async (
+    result: ScriptEditResult,
+    edit: ScriptEditRecord | null,
+  ): Promise<string | null> => {
     if (!result.ok) {
       // `unchanged` is not a failure and gets no message: nothing went wrong,
       // and saying so would make a non-event look like one.
@@ -127,6 +132,11 @@ export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, f
       return "We couldn't save that change. Your words are still in the box — try again before recording."
     }
     setScript(durable.script)
+    // ⚠️ RECORDED AFTER THE SCRIPT LANDS, AND NEVER INSTEAD OF IT. The creator's
+    // words are the product; this log is not. `recordScriptEdit` swallows its own
+    // failures for the same reason — an analytics write must not be able to make
+    // a saved edit look unsaved.
+    if (edit) void recordScriptEdit(generationId, edit)
     return null
   }
 
@@ -148,7 +158,8 @@ export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, f
         label="Hook"
         text={script.hook}
         guidance={script.scenes[0]}
-        onSave={(text) => commit(applyHookEdit(script, text))}
+        onSave={(text) => commit(applyHookEdit(script, text),
+          describeEdit('hook', null, script.hook, text))}
       />
 
       {script.scenes.map((s) => {
@@ -165,7 +176,8 @@ export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, f
             label={`Scene ${s.scene_number}`}
             text={s.dialogue}
             guidance={s}
-            onSave={(text) => commit(applyDialogueEdit(script, s.scene_number, text))}
+            onSave={(text) => commit(applyDialogueEdit(script, s.scene_number, text),
+              describeEdit('dialogue', s.scene_number, s.dialogue, text))}
           />
         )
       })}

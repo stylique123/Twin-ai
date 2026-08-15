@@ -1,6 +1,7 @@
 import { db, type Job } from '../db.js'
 import { insertKnowledge } from '../knowledgeInsert.js'
 import { transcribeFromUrl } from '../media.js'
+import { transcriptBudgetFor } from '../transcriptSelection.js'
 import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions } from '../voice.js'
 
 // Handles `build_voice` jobs — the audio upgrade for a brand voice.
@@ -12,23 +13,58 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
   const voiceId = String(p.brand_voice_id ?? '')
   const handle = String(p.handle ?? '')
   const platform = String(p.platform ?? 'tiktok')
-  const urls = Array.isArray(p.urls) ? p.urls.slice(0, 5) : []
+  // ⚠️ THIS CONSUMER TRUNCATED TO FIVE AND MADE BOTH BUDGET RAISES INERT.
+  // The selector picks up to the platform's budget — raised 5→10
+  // in #366 and to 25 for TikTok in #377, each shipped with a rationale about
+  // lifting the ceiling on the only input measured to change script quality.
+  // Neither reached production: a hard `.slice(0, 5)` here threw the rest away,
+  // so the selector was picking twenty-five videos and five were transcribed.
+  //
+  // ⚖️ THE CAP STAYS, BUT IT IS THE SAME RULE THE PRODUCER USED. A bare number
+  // here is what caused this: two places deciding how many videos get
+  // transcribed, one of them silent. The guard against runaway paid calls that
+  // the original five was protecting is intact — an unknown platform still gets
+  // the PAID budget, because `transcriptBudgetFor` is deliberately conservative
+  // about platforms it does not recognise.
+  //
+  // ⚠️ READ THE RAW PAYLOAD VALUE, NOT `platform` ABOVE. That one defaults to
+  // 'tiktok' for voice synthesis, and defaulting an unrecorded platform to the
+  // FREE budget would hand 25 paid transcriptions to anything that arrives
+  // without the field.
+  const budget = transcriptBudgetFor(p.platform)
+  const urls = Array.isArray(p.urls) ? p.urls.slice(0, budget) : []
   if (!voiceId || !urls.length) throw new Error('build_voice needs brand_voice_id and urls')
 
   // Best-effort: skip any video that fails (private / blocked / no speech).
   const transcripts: string[] = []
+  // ⚠️ THE ROUTE EACH TRANSCRIPT CAME BY, COUNTED WHERE IT IS STILL KNOWN.
+  // `transcribeFromUrl` is the only place both YouTube branches are visible, and
+  // it returns a transcript, not a receipt — so unless this loop tallies the
+  // stamp, the fact that a video cost money survives exactly as long as a stderr
+  // line. That is why "how often do YouTube captions exist" was unanswerable:
+  // not missing data, discarded data.
+  const routes: Record<string, number> = {}
+  const bump = (k: string) => { routes[k] = (routes[k] ?? 0) + 1 }
   for (const url of urls) {
     try {
       const t = await transcribeFromUrl(url)
+      // ⚖️ UNSTAMPED IS ITS OWN BUCKET. Folding an absent source into the free
+      // one would report a cost of zero for any route added later and never
+      // stamped — the three-state rule this repo keeps relearning.
+      bump(t.source ?? 'unrecorded')
+      if (t.paidBecause) bump(`paid_because_${t.paidBecause}`)
       if (t.text && t.text.trim().length > 20) transcripts.push(t.text.trim())
     } catch (err) {
+      // ⚖️ A FAILED TRANSCRIPT IS NOT A FREE ONE. It may already have spent an
+      // Apify call before throwing, so it is counted apart rather than ignored.
+      bump('failed')
       console.error('build_voice: transcript failed', url, err instanceof Error ? err.message : err)
     }
   }
 
   if (!transcripts.length) {
     // Nothing usable — leave the caption voice in place. Not a hard failure.
-    return { upgraded: false, reason: 'no usable spoken transcripts' }
+    return { upgraded: false, reason: 'no usable spoken transcripts', attempted: urls.length, routes }
   }
 
   const profile = await synthesizeVoiceFromAudio(handle, platform, transcripts)
@@ -221,6 +257,11 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
   return {
     upgraded: true,
     videos_used: transcripts.length,
+    // ⚠️ THE DENOMINATOR TRAVELS WITH THE COUNT. `videos_used` alone cannot say
+    // whether three transcripts came from three attempts or from twenty-five,
+    // and the budget question is entirely about that ratio.
+    attempted: urls.length,
+    routes,
     knowledge_items: knowledgeStored,
     fields_from_audio: audioFields.size,
     fields_from_captions: Object.values(provenance).filter((v) => v === 'caption_synthesis').length,
