@@ -34,9 +34,19 @@ describe('the scan stores creator knowledge, not just a voice', () => {
     // ⚖️ The rule the audio path already follows. A creator whose extraction
     // breaks must still get their voice; trading a working feature for a new
     // one is not an upgrade.
+    // ⚠️ THIS ASSERTED ADJACENCY — console.error IMMEDIATELY after the catch —
+    // which held only while nothing else was in that block. C8 item 3 records the
+    // stage there, and the property being protected is not the line order: it is
+    // that the failure is CAUGHT and never rethrown, so a broken extraction
+    // cannot cost the creator their voice.
     const block = SCAN.slice(SCAN.indexOf('CAPTION KNOWLEDGE, BECAUSE ZERO IS WORSE'))
-    expect(block.slice(0, block.indexOf('Best-effort audio upgrade')))
-      .toMatch(/catch \(err\) \{\n\s*console\.error\('scrape_dna: caption knowledge failed'/)
+    const caption = block.slice(0, block.indexOf('Best-effort audio upgrade'))
+    expect(caption).toMatch(/catch \(err\) \{/)
+    expect(caption).toMatch(/console\.error\('scrape_dna: caption knowledge failed'/)
+    // Nothing in that catch may rethrow, return a failure, or mark the voice bad.
+    const inCatch = caption.slice(caption.lastIndexOf('catch (err) {'))
+    expect(inCatch).not.toMatch(/\bthrow\b/)
+    expect(inCatch).not.toMatch(/await fail\(/)
   })
 
   it('degrades an unreadable basis to the WEAKEST reading', () => {

@@ -1602,3 +1602,43 @@ still a cause, and a failure never seen before is the one worth reading.
 
 Mutation-checked: dropping the detail from `ledger.fail`, and removing the body
 read. Worker 1,290 tests.
+
+### G31. C8 item 3 — the scan records why a claim was not made
+
+`dna_claims` has real discipline on the OUTPUT — a correlation needs a sample
+size, a hypothesis stays untested, a business claim needs attribution — and
+there was never any record of the RUN that produced it.
+
+⚠️ **EVERY STAGE OF A SCAN IS BEST-EFFORT, AND THAT IS CORRECT.** A creator whose
+caption extraction breaks must still get their voice. The cost is that a failed
+synthesis, an empty extraction and a skipped transcript enqueue all leave a voice
+that says `ready` — so **"this creator has no experiences" and "the extraction
+failed quietly three weeks ago" were the same observation from outside**, and
+only one of them is about the creator.
+
+⚖️ **NOT MODELLED ON `edit_events`, AND THE DEPARTURE IS DELIBERATE.** That shape
+is right for the editor: a long multi-job pipeline needs an append-only stream
+with a `seq`. A scan is ONE job whose row already exists, already survives, and
+is already queried. The stages travel in `jobs.result`, exactly as the transcript
+routes do — **no migration, no owner action, recording from the next scan rather
+than the next apply.** This session has added five columns and three tables, each
+of which is an owner action before it does anything; a sixth would have been the
+easy choice rather than the right one.
+
+Recorded: `scrape_profile`, `synthesize_voice`, `caption_knowledge`,
+`transcripts_selected`, `transcripts_enqueued` — each `ok` / `failed` /
+`skipped`, with a bounded reason.
+
+⚠️ **TWO BRANCHES THAT WERE INVISIBLE AND ARE THE POINT.** `caption_knowledge`
+extracting ZERO now reads as `skipped` with "no items extracted from captions",
+which a failures-only list could never separate from "never ran". And a voice
+with **no owner** never queues the audio upgrade, so its store can hold only
+caption items — 13% substance, zero experiences — and nothing said so.
+
+**A test changed for the third time this session with the same shape.**
+`scanKnowledgeWiring` asserted `console.error` sat IMMEDIATELY after the `catch`.
+The property it protects is that the failure is caught and never rethrown, so a
+broken extraction cannot cost a creator their voice. It now asserts that — no
+`throw`, no `await fail(` inside the catch — rather than line adjacency. Three
+tests in three days have asserted a layout where they meant a property; that is
+its own pattern, and worth watching.
