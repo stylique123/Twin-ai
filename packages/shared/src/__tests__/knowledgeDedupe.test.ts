@@ -5,9 +5,7 @@
 // was measured against. The "must not merge" cases are the ones that decide
 // whether this is a fix or a data-loss bug, so they outnumber the others.
 import { describe, expect, it } from 'vitest'
-import {
-  canonicaliseRepeats, distinctiveMarks, nearDuplicate, overlap, DEDUPE_THRESHOLD,
-} from '../knowledgeDedupe'
+import { canonicaliseRepeats, distinctiveMarks, nearDuplicate, overlap, DEDUPE_THRESHOLD, nearDuplicateAny, knownWordings } from '../knowledgeDedupe'
 import { SUBSTANCE_KINDS } from '../knowledgeSelection'
 
 const row = (kind: string, text: string) => ({ kind, text })
@@ -139,5 +137,61 @@ describe('canonicaliseRepeats', () => {
     // 0123 already merges those; counting them here would inflate the number the
     // decision to keep this rule gets judged on.
     expect(canonicaliseRepeats([stored[0]], stored).merged).toBe(0)
+  })
+})
+
+describe('G9: one belief, several wordings', () => {
+  // Measured pair, not invented: overlap 0.71, which clears DEDUPE_THRESHOLD.
+  const A = 'Faster charging is not better for phone battery longevity'
+  const B = 'Faster charging is not better for phone battery health'
+
+  it('keeps the canonical wording as the key and returns the new one', () => {
+    // ⚠️ THE LOSS THIS COLUMN EXISTS FOR. `canonicaliseRepeats` rewrites the
+    // incoming text to the stored one — correctly, since the stored text is what
+    // `times_seen` and the unique index hang off — and its own comment admits the
+    // newer, often richer wording was simply discarded. Now it is returned.
+    const r = canonicaliseRepeats([{ kind: 'opinion', text: B }],
+      [{ kind: 'opinion', text: A, surfaceForms: [] }])
+    expect(r.merged).toBe(1)
+    expect(r.rows[0].text).toBe(A)
+    expect(r.newForms).toEqual([{ kind: 'opinion', canonicalText: A, form: B }])
+  })
+
+  it('does not re-record a wording it already knows', () => {
+    // ⚖️ Otherwise the column grows on every scan without improving matching.
+    const r = canonicaliseRepeats([{ kind: 'opinion', text: B }],
+      [{ kind: 'opinion', text: A, surfaceForms: [B] }])
+    expect(r.merged).toBe(1)
+    expect(r.newForms).toEqual([])
+  })
+
+  it('matches against a stored form, not only the canonical text', () => {
+    const stored = { kind: 'opinion', text: 'Something else entirely about screens', surfaceForms: [A] }
+    expect(nearDuplicateAny(stored, { kind: 'opinion', text: B })).toBe(true)
+  })
+
+  it('treats an absent surface_forms as none, not as broken', () => {
+    // A store predating 0133 has no column and must match on canonical text
+    // exactly as it did before.
+    expect(knownWordings({ kind: 'opinion', text: A })).toEqual([A])
+    expect(knownWordings({ kind: 'opinion', text: A, surfaceForms: null })).toEqual([A])
+  })
+
+  it('never lets a stored form make an unrelated fact match', () => {
+    // ⚠️ THE RISK THE MEMORY CREATES. More wordings means more chances to match,
+    // so the guard has to hold: a different belief stays a different row.
+    const stored = { kind: 'opinion', text: A, surfaceForms: [B] }
+    expect(nearDuplicateAny(stored, { kind: 'opinion', text: 'Screen size matters more than anything else' })).toBe(false)
+  })
+
+  it('RECORDS THE NEGATIVE RESULT: compounding drift did not reproduce', () => {
+    // ⚠️ THE ARGUMENT THIS FEATURE WAS FIRST WRITTEN ON. "A drifts to B drifts to
+    // C, and C no longer matches A" could not be produced at threshold 0.6 across
+    // several realistic chains — the pairs that clear 0.6 stay close enough that
+    // the third phrasing still matches the first. Asserted here so the claim
+    // cannot quietly return to the comments as though it had been shown.
+    const C = 'Fast charging is not better for battery health over time'
+    expect(nearDuplicate({ kind: 'opinion', text: A }, { kind: 'opinion', text: B })).toBe(true)
+    expect(nearDuplicate({ kind: 'opinion', text: B }, { kind: 'opinion', text: C })).toBe(false)
   })
 })

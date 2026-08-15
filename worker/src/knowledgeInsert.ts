@@ -13,11 +13,24 @@ interface Selectable {
   }
 }
 
+/** A filter chain that is also awaitable, which is the shape supabase-js returns.
+ *  Recursive because the recorder narrows on four columns in a row. */
+interface UpdateChain extends PromiseLike<{ error: DbError | null }> {
+  eq: (col: string, val: unknown) => UpdateChain
+}
+
+/** ⚠️ OPTIONAL, LIKE `select`. The surface-form recorder is an optimisation on
+ *  top of a working insert, and a client shape without `update` must degrade to
+ *  "no forms recorded" rather than break a scan. */
+interface Updatable {
+  update: (values: Record<string, unknown>) => UpdateChain
+}
+
 interface RpcCapableDb {
   rpc: (fn: string, args: Record<string, unknown>) => Promise<{ error: DbError | null }>
   from: (t: string) => {
     insert: (rows: unknown[]) => Promise<{ error: DbError | null }>
-  } & Partial<Selectable>
+  } & Partial<Selectable> & Partial<Updatable>
 }
 
 /** Re-point re-worded repeats at the phrasing already stored, so the exact-match
@@ -33,6 +46,39 @@ interface RpcCapableDb {
  *  db without `select`, a query that errors, a voice_id that is null — each
  *  returns the rows unchanged and stores them. Storing a duplicate is a wasted
  *  slot; failing the insert loses the scan. */
+/** Append newly observed wordings to the rows they restate.
+ *
+ *  ⚠️ BOUNDED AT TWELVE, MATCHING 0133's CHECK. The constraint would reject an
+ *  over-long array and take the whole update down with it, and losing a scan's
+ *  knowledge because a belief has been reworded thirteen times is the worst
+ *  trade available.
+ *
+ *  ⚖️ EVERY FAILURE IS SWALLOWED. The forms make the next scan's matching better;
+ *  they are not the knowledge itself, and a store that never records one is
+ *  exactly the store this product had yesterday. */
+async function recordSurfaceForms(
+  db: RpcCapableDb,
+  owner: unknown,
+  voice: unknown,
+  newForms: Array<{ kind: string; canonicalText: string; form: string }>,
+  stored: Array<{ kind?: unknown; text?: unknown; surfaceForms?: readonly string[] | null }>,
+): Promise<void> {
+  if (!newForms.length) return
+  const table = db.from('creator_knowledge')
+  if (typeof table.update !== 'function') return
+  for (const f of newForms) {
+    try {
+      const existing = stored.find((s) => s.kind === f.kind && s.text === f.canonicalText)
+      const forms = [...(existing?.surfaceForms ?? []), f.form].slice(-12)
+      await table.update({ surface_forms: forms })
+        .eq('owner_id', owner).eq('voice_id', voice)
+        .eq('kind', f.kind).eq('text', f.canonicalText)
+    } catch {
+      // A column that does not exist yet (0133 unapplied) must not fail a scan.
+    }
+  }
+}
+
 async function canonicalise(
   db: RpcCapableDb,
   rows: Array<Record<string, unknown>>,
@@ -43,16 +89,30 @@ async function canonicalise(
   const table = db.from('creator_knowledge')
   if (typeof table.select !== 'function') return rows
   try {
-    const { data, error } = await table.select('kind,text')
+    // ⚠️ `surface_forms` IS SELECTED BECAUSE THE MATCHER READS IT (0133). Drift
+    // compounds across scans, and comparing only against the canonical wording
+    // loses ground every time the extractor rephrases a rephrasing.
+    const { data, error } = await table.select('kind,text,surface_forms')
       .eq('owner_id', owner).eq('voice_id', voice)
     if (error || !Array.isArray(data) || data.length === 0) return rows
-    const { rows: out, merged } = canonicaliseRepeats(
-      rows, data as Array<{ kind?: unknown; text?: unknown }>)
+    const stored = (data as Array<Record<string, unknown>>).map((r) => ({
+      kind: r.kind,
+      text: r.text,
+      // ⚖️ ABSENT READS AS NONE, NOT AS BROKEN. A store predating 0133 has no
+      // column and must simply match on canonical text, exactly as before.
+      surfaceForms: Array.isArray(r.surface_forms) ? (r.surface_forms as string[]) : [],
+    }))
+    const { rows: out, merged, newForms } = canonicaliseRepeats(rows, stored)
     if (merged > 0) {
       console.warn(JSON.stringify({
-        event: 'creator_knowledge_paraphrase_merged', merged, of: rows.length,
+        event: 'creator_knowledge_paraphrase_merged',
+        merged, of: rows.length, new_forms: newForms.length,
       }))
     }
+    // ⚠️ RECORDED AFTER THE MATCH AND BEFORE THE INSERT, and best-effort. This is
+    // memory for the NEXT scan; failing to write it must never cost the creator
+    // the knowledge this scan actually found.
+    await recordSurfaceForms(db, owner, voice, newForms, stored)
     return out
   } catch {
     // ⚠️ A THROW HERE MUST NOT COST THE SCAN. This is an optimisation on top of

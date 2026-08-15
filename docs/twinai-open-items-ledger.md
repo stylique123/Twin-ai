@@ -1715,3 +1715,113 @@ broke this week.
 saying they are counts. `script_edits` currently holds **0 rows**, so everything
 here is an instrument waiting for data — which is the honest state and is
 declared rather than dressed up.
+
+### G34. The migration warned about the overload and then shipped it
+
+0132 added `p_failure_detail` to `editor_director_fail` with `create or replace`,
+under a comment reading: *"A NEW PARAMETER WITH A DEFAULT, NOT A NEW FUNCTION…
+adding an overload would leave two callable functions where one is the old
+behaviour, and the wrong one would keep working silently."*
+
+⚠️ **`create or replace function` DOES NOT REPLACE WHEN A PARAMETER IS ADDED. IT
+OVERLOADS.** Applied to production, it produced exactly the state its own comment
+forbade: the 5-arg and the 6-arg function both live, and any caller sending five
+arguments writing no detail while appearing to succeed.
+
+⚖️ **PROSE DID NOT PREVENT IT; THE VERIFICATION QUERY FOUND IT.** The apply was
+followed by a `pg_get_function_identity_arguments` read, which returned two rows
+where one was expected. Without that read the overload would have sat there
+indefinitely, and the first person to notice would have been whoever wondered why
+`failure_detail` was always null.
+
+⚠️ **AND A TEST WAS ASSERTING THE BUG.** `director-failure-carries-its-cause`
+contained `expect(SQL).not.toMatch(/drop function .*editor_director_fail/)`. The
+intent was "do not drop-and-recreate first, because that revokes service_role's
+execute". What it encoded was "never drop the old signature" — so the guard
+written to protect the render path is part of why both functions shipped. It now
+asserts the real property, which is an ORDERING: create, then drop, then restate
+the grant.
+
+Fixed in production by dropping the 5-arg signature (safe: the 6-arg defaults
+`p_failure_detail` to null, so a five-argument call resolves to it unchanged),
+and fixed at source so no other environment repeats it. Mutation-checked by
+removing the drop.
+
+**Third instance this week of a warning that did not prevent its own defect** —
+0103 named the capability trap and D3 happened anyway; the counter comments named
+durability and three counters expired; this. The pattern is not that the warnings
+are wrong. It is that a comment is read by whoever is already looking.
+
+### G35. G9 canonical identity — and the argument for it that did not survive
+
+`canonicaliseRepeats` rewrites an incoming re-wording to the stored text so the
+exact-match merge can see it, and its own comment admits the cost: *"The newer
+wording is often slightly richer, and that is a real if small loss — accepted."*
+0133 is where the accepted loss goes. `surface_forms` keeps the phrasings the
+creator has actually used; `text` stays canonical because the unique index and
+`times_seen` hang off it.
+
+⚠️ **IDENTITY IS THE ROW, NOT A HASH, AND THERE IS DELIBERATELY NO
+`canonical_key`.** A paraphrase does not collide with its original under any
+deterministic key — that is what makes it a paraphrase. Matching resolves
+identity; the column is the memory that makes matching better.
+
+⚠️ **AND THE ARGUMENT THIS WAS FIRST WRITTEN ON DID NOT SURVIVE CONTACT.** The
+compounding story — "A drifts to B drifts to C, and C no longer matches A" — was
+written into the module and the migration as fact, then tested, and **could not be
+reproduced** at `DEDUPE_THRESHOLD` 0.6 across several realistic chains: the pairs
+that clear 0.6 stay close enough that the third phrasing still matches the first,
+and the ones that do not clear it are far enough apart to be arguably different
+claims. Measured, for the record: 0.71 / 0.44 / 0.30 on the ledger's own
+battery-longevity example.
+
+⚖️ **SO THE JUSTIFICATION NARROWED RATHER THAN THE FEATURE SHIPPING ON A STORY.**
+What is demonstrable: more known wordings can only match MORE repeats, never
+fewer; the guard shows an unrelated fact still fails to match; and the richer
+phrasing is no longer discarded. The negative result is asserted in a test so it
+cannot drift back into the comments as though it had been shown.
+
+⚠️ **A MUTATION FOUND THE WRITER UNGUARDED.** Deleting the `recordSurfaceForms`
+call left every test green — the merge still works without it, so the memory
+would simply never fill. That is the reader-with-no-writer defect in miniature,
+caught by running the mutation rather than by reading the diff. Now guarded at
+both seams: the call, and the `select` that fetches the column it matches on.
+
+Unvalidatable until re-scans happen — production shows six merges ever.
+
+### G36. Edit-type learning — the mechanism, and the reason it cannot fire
+
+`deriveLessons` turns classified pairs into a small set of ACTIONS, and the
+choice of what an action may be is the whole design.
+
+⚠️ **A LESSON MAY NOT COMPILE INTO PROMPT TEXT.** The one intervention with human
+evidence changed what REACHED the writer (#376, 17–7). Every prompt instruction
+measured this week was inert — a beat-plan rule naming the top defect and quoting
+its own 67% rate moved zero scripts and zero pairs. So the three actions are
+`prefer_figures`, `prefer_experience` and `shorter_beats`: two change SELECTION,
+one changes the beat shape. A lesson that became a sentence in the prompt would
+be learning aimed at the one lever known not to move.
+
+⚖️ **TWO GATES, AND BOTH MUST CLEAR.** Enough pairs (20 per creator, 100 global)
+and enough agreement (two thirds). A creator who tightens half their lines and
+expands the other half has no preference — they have a script with some long
+lines and some short ones. A unanimous pattern over five pairs is still not
+actionable, and the test asserts exactly that.
+
+⚖️ **GLOBAL AND CREATOR ARE DIFFERENT KINDS OF CLAIM.** "Creators prefer concrete
+mechanisms" is a statement about people, and averaging over people who disagree
+is how a house style gets imposed on everyone. "This creator removes setup
+sentences" needs far less evidence and cannot hurt anybody else.
+
+**Unactionable lessons are returned, not hidden**, so what is nearly true is
+visible while it accumulates rather than appearing on the day it fires.
+
+⚠️ **AND NOTHING CAN FIRE TODAY: `script_edits` HOLDS 0 ROWS.** The mechanism is
+complete and deliberately not wired into selection — wiring a consumer to a
+source that cannot produce a lesson is the write-only pattern this ledger
+records nine times. The trigger is 20 pairs for one creator.
+
+**Still missing for the loop the owner described:** "accepted final". A creator
+who edits a line, then edits it again, leaves two pairs, and nothing records
+which text survived to the recording. Until that exists, a pair says what someone
+tried, not what they kept.

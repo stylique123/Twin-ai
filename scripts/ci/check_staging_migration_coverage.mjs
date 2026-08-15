@@ -174,6 +174,18 @@ export const EXCLUDED = {
     + 'OUTSTANDING: until it is applied, insertKnowledge logs '
     + '`creator_knowledge_merge_absent` and falls back to the plain insert that loses a '
     + 'batch on the first duplicate — the defect this migration exists to fix.',
+  '0133_knowledge_surface_forms':
+    'Adds `surface_forms` to `creator_knowledge` — the table 0121 above excludes for the '
+    + 'staging fixture-ordering reason, so the ALTER fails on its first statement rather '
+    + 'than passing vacuously. ⚠️ AND IT DID: this migration was added to the applied '
+    + 'list first and the matrix died with `relation "public.creator_knowledge" does not '
+    + 'exist`, which is the one failure mode this guard exists to make impossible to '
+    + 'reach by accident — the guard only demands a decision, it cannot check that the '
+    + 'decision is applicable. The editor never reads the column; surface forms are read '
+    + "by the next scan's matcher in the worker, which staging does not run. "
+    + '⚠️ MANUAL APPLY: applied to production BY HAND on 2026-08-15 (verified: '
+    + '`surface_forms` jsonb NOT NULL default \'[]\', 552 rows, 0 carrying forms — correct, '
+    + 'since nothing has re-scanned yet).',
   '0122_creator_knowledge_source':
     'Adds a nullable `source` column plus a CHECK constraint and an index to '
     + '`creator_knowledge` — a table 0121 above excludes, so staging does not have it '
@@ -235,6 +247,51 @@ export function parse(workflowText, migrationNames, excluded = EXCLUDED) {
   return { applied, problems }
 }
 
+// ── ⚠️ AN EXCLUSION IS INHERITED, AND NOTHING WAS CHECKING THAT ───────────
+//
+// The rule above demands a DECISION, and a decision can be wrong: `0133` was
+// decided into the applied list, and the matrix died with
+//   ERROR: relation "public.creator_knowledge" does not exist
+// because 0133 alters a table 0121 creates and 0121 is excluded. The guard was
+// satisfied — the migration was classified — and staging still could not host it.
+//
+// ⚖️ THIS PART IS DECIDABLE FROM THE FILES, so it is checked rather than
+// described. A migration that ALTERs a table whose only `create table` lives in
+// an EXCLUDED migration inherits that exclusion, and saying otherwise is a
+// statement the SQL contradicts.
+//
+// It is deliberately narrow: `alter table` against a table this repo creates.
+// Functions that merely REFERENCE a missing table (0123's case) still need the
+// human reason above, because CREATE FUNCTION succeeds and only fails at call
+// time — no file says so.
+export function inheritedExclusions(applied, sqlFor, migrationNames, excluded = EXCLUDED) {
+  const createdBy = new Map()
+  for (const name of migrationNames) {
+    const sql = sqlFor(name) ?? ''
+    for (const m of sql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?public\.(\w+)/gi)) {
+      if (!createdBy.has(m[1])) createdBy.set(m[1], name)
+    }
+  }
+  const problems = []
+  for (const name of applied) {
+    const sql = sqlFor(name) ?? ''
+    const seen = new Set()
+    for (const m of sql.matchAll(/alter\s+table\s+(?:if\s+exists\s+)?public\.(\w+)/gi)) {
+      const table = m[1]
+      if (seen.has(table)) continue
+      seen.add(table)
+      const owner = createdBy.get(table)
+      if (owner && owner !== name && owner in excluded) {
+        problems.push(
+          `${name} alters public.${table}, which only ${owner} creates — and ${owner} is `
+          + `EXCLUDED, so staging has no such table and the migration fails on its first `
+          + `statement. Exclude ${name} too (the exclusion is inherited), or un-exclude ${owner}.`)
+      }
+    }
+  }
+  return problems
+}
+
 function migrationNames() {
   return readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).map((f) => f.replace(/\.sql$/, ''))
 }
@@ -267,6 +324,42 @@ function selftest() {
       failed++
     } else console.log(`  ok: ${name}`)
   }
+  // ⚠️ THE INHERITED EXCLUSION — the rule the 0133 failure bought.
+  const sql = {
+    '0121_creator_knowledge': 'create table if not exists public.creator_knowledge (id uuid);',
+    '0133_surface_forms': 'alter table public.creator_knowledge add column if not exists surface_forms jsonb;',
+    '0131_beat_audit': 'alter table public.generations add column if not exists beat_audit jsonb;',
+    '0001_generations': 'create table public.generations (id uuid);',
+  }
+  const sqlFor = (n) => sql[n]
+  const allNames = Object.keys(sql)
+  const inherited = [
+    ['altering an EXCLUDED table FAILS',
+      ['0133_surface_forms'], { '0121_creator_knowledge': 'staging has no brand_voices FK target' }, 1],
+    ['altering a table whose creator is APPLIED passes',
+      ['0131_beat_audit'], { '0121_creator_knowledge': 'reason' }, 0],
+    ['un-excluding the creator clears it',
+      ['0121_creator_knowledge', '0133_surface_forms'], {}, 0],
+  ]
+  for (const [name, applied, exc, expected] of inherited) {
+    const problems = inheritedExclusions(applied, sqlFor, allNames, exc)
+    if (problems.length !== expected) {
+      console.error(`SELFTEST FAIL: ${name} => ${problems.length} problems, expected ${expected}`)
+      for (const p of problems) console.error(`    ${p}`)
+      failed++
+    } else console.log(`  ok: ${name}`)
+  }
+
+  // ⚖️ AND AGAINST THE REAL FILES: putting 0133 back in the list must fail.
+  {
+    const real = migrationNames()
+    const realSql = (n) => { try { return readFileSync(join(MIGRATIONS, `${n}.sql`), 'utf8') } catch { return '' } }
+    const p = inheritedExclusions(['0133_knowledge_surface_forms'], realSql, real)
+    if (p.length !== 1) {
+      console.error(`SELFTEST FAIL: re-applying 0133 should be caught, got ${p.length} problems`); failed++
+    } else console.log('  ok: re-adding 0133 to the applied list is caught against the real files')
+  }
+
   // The exclusion mechanism, against the REAL files, so a stale name is caught.
   const real = migrationNames()
   for (const e of Object.keys(EXCLUDED)) {
@@ -280,7 +373,10 @@ const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.arg
 if (isMain) {
   if (process.argv.includes('--selftest')) selftest()
   else {
-    const { applied, problems } = parse(readFileSync(WORKFLOW, 'utf8'), migrationNames())
+    const names = migrationNames()
+    const { applied, problems } = parse(readFileSync(WORKFLOW, 'utf8'), names)
+    const sqlFor = (n) => readFileSync(join(MIGRATIONS, `${n}.sql`), 'utf8')
+    problems.push(...inheritedExclusions(applied, sqlFor, names))
     console.log(`  matrix applies ${applied.length} migrations, newest ${applied.slice().sort().pop()}`)
     console.log(`  ${Object.keys(EXCLUDED).length} excluded with a stated reason`)
     if (problems.length) { for (const p of problems) console.error(`::error::${p}`); process.exit(1) }

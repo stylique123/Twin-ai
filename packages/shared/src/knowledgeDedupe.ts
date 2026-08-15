@@ -108,6 +108,52 @@ export function distinctiveMarks(text: string): string {
 
 export interface KnowledgeRow { kind?: unknown; text?: unknown }
 
+/** A stored row plus every wording of it we have already seen.
+ *
+ *  ⚠️ IDENTITY IS THE ROW, NOT A HASH. A paraphrase does not collide with the
+ *  original under any deterministic key — that is what makes it a paraphrase —
+ *  so there is no `canonical_key` to compute. The stored row IS the identity, its
+ *  `text` is the canonical wording (the one `times_seen` and the unique index
+ *  hang off), and `surfaceForms` is the history of how the creator has said it. */
+export interface StoredKnowledge extends KnowledgeRow {
+  surfaceForms?: readonly string[] | null
+}
+
+/** Every wording this stored belief is known by, canonical first. */
+export function knownWordings(row: StoredKnowledge): string[] {
+  const canonical = typeof row?.text === 'string' ? row.text : ''
+  const forms = Array.isArray(row?.surfaceForms) ? row.surfaceForms : []
+  const out = canonical ? [canonical] : []
+  for (const f of forms) {
+    const t = typeof f === 'string' ? f.trim() : ''
+    if (t && !out.some((x) => x.toLowerCase() === t.toLowerCase())) out.push(t)
+  }
+  return out
+}
+
+/** Does the incoming row restate ANY known wording of this stored belief?
+ *
+ *  ⚠️ THE COMPOUNDING-DRIFT STORY IS UNPROVEN AND IS NOT THE JUSTIFICATION. The
+ *  obvious argument — "A drifts to B drifts to C, and C no longer matches A" —
+ *  could not be reproduced at DEDUPE_THRESHOLD 0.6 across several realistic
+ *  chains: the pairs that clear 0.6 are close enough that the third phrasing
+ *  still matches the first, and the ones that do not clear it are far enough
+ *  apart to be arguably different claims. Recorded here rather than asserted,
+ *  because a comment claiming a mechanism nobody demonstrated is how this repo's
+ *  worst measurement bugs started.
+ *
+ *  ⚖️ WHAT IS DEMONSTRABLE IS THAT MORE WORDINGS CANNOT MATCH LESS. Every stored
+ *  form is another chance for a rephrasing to be recognised as a repeat, and the
+ *  guard below shows an unrelated fact still fails to match. The cost is one
+ *  bounded column; the benefit is at worst zero and never negative.
+ *
+ *  ⚖️ AND THIS IS THE READER FOR `surface_forms`. The forms are not stored for a
+ *  future feature to consume — they are read by the next scan's matcher, which is
+ *  why storing them is worth a column at all. */
+export function nearDuplicateAny(stored: StoredKnowledge, incoming: KnowledgeRow): boolean {
+  return knownWordings(stored).some((w) => nearDuplicate({ kind: stored.kind, text: w }, incoming))
+}
+
 /**
  * Are these two rows the same thing said twice?
  *
@@ -130,6 +176,11 @@ export interface CanonicalisedRows<T> {
   rows: T[]
   /** How many incoming rows were re-pointed at a phrasing already stored. */
   merged: number
+  /** ⚠️ THE WORDING THE CREATOR ACTUALLY USED THIS TIME, which the rewrite below
+   *  would otherwise discard — the loss this function's own comment accepted
+   *  before there was anywhere to put it. The caller records these against the
+   *  canonical row so the NEXT scan can match on them too. */
+  newForms: Array<{ kind: string; canonicalText: string; form: string }>
 }
 
 /**
@@ -150,14 +201,21 @@ export interface CanonicalisedRows<T> {
  */
 export function canonicaliseRepeats<T extends KnowledgeRow>(
   incoming: readonly T[],
-  stored: readonly KnowledgeRow[],
+  stored: readonly StoredKnowledge[],
 ): CanonicalisedRows<T> {
   let merged = 0
+  const newForms: Array<{ kind: string; canonicalText: string; form: string }> = []
   const rows = incoming.map((row) => {
-    const match = stored.find((s) => nearDuplicate(s, row))
+    const match = stored.find((s) => nearDuplicateAny(s, row))
     if (!match || typeof match.text !== 'string' || match.text === row.text) return row
     merged++
+    const form = typeof row.text === 'string' ? row.text.trim() : ''
+    // ⚖️ ONLY A WORDING WE HAVE NOT SEEN. Re-recording a known form on every scan
+    // would grow the column without adding a way to match anything new.
+    if (form && !knownWordings(match).some((w) => w.toLowerCase() === form.toLowerCase())) {
+      newForms.push({ kind: String(match.kind ?? ''), canonicalText: match.text, form })
+    }
     return { ...row, text: match.text }
   })
-  return { rows, merged }
+  return { rows, merged, newForms }
 }

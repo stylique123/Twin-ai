@@ -108,3 +108,74 @@ export function summariseEdits(
     reportable: rows.length >= (scope === 'creator' ? MIN_PAIRS_PER_CREATOR : MIN_PAIRS_GLOBAL),
   }
 }
+
+// ── FROM PAIRS TO LESSONS ─────────────────────────────────────────────────
+//
+// ⚠️ A LESSON IS NOT A PROMPT RULE, AND THAT IS THE WHOLE DESIGN. The one
+// intervention this project has human evidence for changed what REACHED the
+// writer (#376, 17–7). Every prompt instruction measured came back inert — a
+// beat-plan rule naming the top defect and quoting its own 67% rate changed
+// exactly zero scripts. So a lesson learned from edits must say what to SUPPLY
+// differently, not what to tell the writer.
+//
+// ⚖️ AND THE TWO SCOPES ARE NOT THE SAME KIND OF CLAIM. "Creators generally
+// prefer concrete mechanisms" is a statement about people, and averaging over
+// people who disagree is how a house style gets imposed on everyone. "This
+// creator removes setup sentences" is a statement about one person, needs far
+// less evidence to act on, and cannot hurt anybody else.
+
+/** What a lesson would have us do differently. */
+export type LessonAction =
+  /** Prefer knowledge that carries a figure when selecting for this creator. */
+  | 'prefer_figures'
+  /** Prefer first-hand experience rows over claims and frameworks. */
+  | 'prefer_experience'
+  /** Ask the writer for shorter beats by lowering target_sec, not by instruction. */
+  | 'shorter_beats'
+
+export interface DerivedLesson {
+  scope: 'global' | 'creator'
+  ownerId?: string
+  action: LessonAction
+  /** The share of classified pairs that point this way. */
+  support: number
+  pairs: number
+  /** ⚠️ FALSE UNTIL THE SAMPLE CARRIES IT. A caller that ignores this is doing
+   *  the thing this module exists to prevent. */
+  actionable: boolean
+}
+
+/** The share of a creator's edits that must point one way before it is a
+ *  preference rather than a run of coincidences. Two thirds, because a creator
+ *  who tightens half their lines and expands the other half has no preference —
+ *  they have a script with some long lines and some short ones. */
+export const LESSON_SUPPORT = 0.66
+
+/** Read pairs into lessons, refusing to call any of them actionable below the
+ *  sample thresholds `summariseEdits` already enforces.
+ *
+ *  ⚖️ IT RETURNS THE UNACTIONABLE ONES TOO. A lesson at 3 pairs is worth seeing
+ *  while it accumulates; hiding it until it qualifies would mean nobody knows
+ *  what is nearly true, and the first sight of it would be the day it fires. */
+export function deriveLessons(
+  pairs: readonly { ownerId: string; facts: ScriptEditFacts }[],
+  scope: 'global' | 'creator',
+  ownerId?: string,
+): DerivedLesson[] {
+  const s = summariseEdits(pairs, scope, ownerId)
+  if (s.pairs === 0) return []
+  const share = (n: number) => n / s.pairs
+  const out: DerivedLesson[] = []
+  const add = (action: LessonAction, n: number) => {
+    const support = share(n)
+    out.push({
+      scope, ownerId, action, support, pairs: s.pairs,
+      // BOTH gates: enough pairs, and enough of them agreeing.
+      actionable: s.reportable && support >= LESSON_SUPPORT,
+    })
+  }
+  add('prefer_figures', s.byType.made_concrete)
+  add('prefer_experience', s.byType.made_personal)
+  add('shorter_beats', s.byType.tightened)
+  return out.sort((a, b) => b.support - a.support)
+}

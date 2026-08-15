@@ -33,14 +33,22 @@ comment on column public.edit_director_calls.failure_detail is
 
 -- ── The writer ─────────────────────────────────────────────────────────────
 --
--- ⚠️ A NEW PARAMETER WITH A DEFAULT, NOT A NEW FUNCTION. The worker calls this by
--- name; adding an overload would leave two callable functions where one is the
--- old behaviour, and the wrong one would keep working silently. The default is
--- NULL so the signature change cannot break an in-flight deploy mid-rollout.
+-- ⚠️ `create or replace` DOES NOT REPLACE WHEN A PARAMETER IS ADDED — IT
+-- OVERLOADS. This migration originally shipped with only the `create or replace`
+-- below and a comment warning that "an overload would leave two callable
+-- functions where one is the old behaviour, and the wrong one would keep working
+-- silently". Applying it to production produced exactly that: both the 5-arg and
+-- the 6-arg function existed, and any caller sending five arguments would have
+-- gone on writing no detail while appearing to succeed. Writing the warning down
+-- did not prevent it; the verification query did.
 --
--- ⚖️ AND IT IS `create or replace`, WHICH KEEPS THE EXISTING GRANTS. Dropping and
--- recreating would revoke service_role's execute and fail every director call
--- until the grant below ran — a self-inflicted outage on the render path.
+-- ⚖️ SO THE OLD SIGNATURE IS DROPPED EXPLICITLY, AND AFTER the new one exists.
+-- Dropping first would leave a window with no function at all, and the render
+-- path calls this on every director failure. The 6-arg version defaults
+-- p_failure_detail to null, so a five-argument call resolves to it unchanged.
+--
+-- The default also means the signature change cannot break an in-flight deploy
+-- mid-rollout, which is why it is there rather than being required.
 create or replace function public.editor_director_fail(
   p_project uuid, p_job uuid, p_worker text, p_attempt integer, p_failure_code text,
   p_failure_detail text default null
@@ -70,7 +78,8 @@ begin
 end;
 $$;
 
--- The 5-arg signature is gone (replaced in place by the 6-arg one with a
--- default), so the grants are restated against the new signature.
+-- ⚠️ THE OLD SIGNATURE, GONE. Not shadowed — gone. See the note above.
+drop function if exists public.editor_director_fail(uuid, uuid, text, integer, text);
+
 revoke all on function public.editor_director_fail(uuid, uuid, text, integer, text, text) from public, anon, authenticated;
 grant execute on function public.editor_director_fail(uuid, uuid, text, integer, text, text) to service_role;
