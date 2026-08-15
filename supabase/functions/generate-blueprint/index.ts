@@ -2004,7 +2004,75 @@ async function composePosition(apiKey: string, facts: string): Promise<string | 
   }
 }
 
-async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema): Promise<string> {
+// ── THE ATTEMPT RECORD ────────────────────────────────────────────────────
+// Inlined from `packages/shared/src/scriptAttempt.ts` (the edge cannot import
+// @twinai/shared), where the rationale and its tests live. `scriptAttemptParity`
+// fails if these drift.
+type ScriptFailureCode =
+  | 'timeout' | 'provider_quota' | 'provider_unavailable' | 'provider_rejected'
+  | 'truncated' | 'empty_response' | 'invalid_json' | 'incomplete_blueprint' | 'unknown'
+const DETAIL_MAX = 300
+function classifyModelFailure(err: unknown): { code: ScriptFailureCode; detail: string } {
+  const raw = err instanceof Error ? err.message : String(err ?? '')
+  const detail = raw.slice(0, DETAIL_MAX)
+  const name = err instanceof Error ? err.name : ''
+  if (name === 'AbortError' || /\baborted\b|\btimed? ?out\b/i.test(raw)) {
+    return { code: 'timeout', detail }
+  }
+  const status = /Gemini (\d{3})/.exec(raw)?.[1]
+  if (status) {
+    const n = Number(status)
+    if (n === 429) return { code: 'provider_quota', detail }
+    if (n >= 500) return { code: 'provider_unavailable', detail }
+    if (n >= 400) return { code: 'provider_rejected', detail }
+  }
+  if (/MAX_TOKENS|truncated/i.test(raw)) return { code: 'truncated', detail }
+  if (/Empty response/i.test(raw)) return { code: 'empty_response', detail }
+  if (/invalid JSON/i.test(raw)) return { code: 'invalid_json', detail }
+  return { code: 'unknown', detail }
+}
+
+/** Writes one row per attempt, before the call and after it settles.
+ *
+ *  ⚠️ EVERY WRITE IS BEST-EFFORT AND SWALLOWED. This is evidence about the
+ *  generation, not part of it: a telemetry insert that throws must never turn a
+ *  script the creator was about to receive into "Generation failed." That is the
+ *  same discipline `recordScriptEdit` carries, and it matters more here, because
+ *  this code runs on the paying path. */
+interface AttemptRecorder {
+  started(attemptIndex: number, model: string): Promise<string | null>
+  settled(id: string | null, outcome: 'succeeded' | 'incomplete' | 'failed',
+    failure?: { code: string; detail: string }): Promise<void>
+}
+
+function attemptRecorder(
+  admin: ReturnType<typeof createClient>, ownerId: string, runId: string,
+): AttemptRecorder {
+  return {
+    async started(attemptIndex, model) {
+      try {
+        const { data, error } = await admin.from('script_attempts')
+          .insert({ owner_id: ownerId, run_id: runId, attempt_index: attemptIndex, model })
+          .select('id').single()
+        if (error) { console.warn('script attempt not recorded:', error.message); return null }
+        return String((data as { id?: unknown })?.id ?? '') || null
+      } catch (e) { console.warn('script attempt not recorded:', e); return null }
+    },
+    async settled(id, outcome, failure) {
+      if (!id) return
+      try {
+        await admin.from('script_attempts').update({
+          outcome,
+          failure_code: failure?.code ?? null,
+          failure_detail: failure?.detail ?? null,
+          settled_at: new Date().toISOString(),
+        }).eq('id', id)
+      } catch (e) { console.warn('script attempt not settled:', e) }
+    },
+  }
+}
+
+async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder): Promise<string> {
   // The default MUST be a model that reliably returns a FULL blueprint inside the
   // edge wall-clock. gemini-3.1-pro-preview consistently ran 60-90s and timed out
   // on BOTH attempts (edge logs showed repeated 500s at ~70-91s → "We hit a snag"
@@ -2032,17 +2100,29 @@ async function callModel(apiKey: string, system: string, prompt: string, schema:
   let lastParseable: string | null = null // valid JSON, but missing concept/packaging
   for (let i = 0; i < attempts.length; i++) {
     const a = attempts[i]
+    // ⚠️ THE ROW IS OPENED BEFORE THE CALL. A record only written afterwards
+    // cannot describe the call that never came back, which is the exact failure
+    // mode — a 75-second timeout — this table was built to count.
+    const rowId = await record?.started(i, a.model) ?? null
     try {
       const text = await callOnce(apiKey, system, prompt, a.model, a.thinkBudget, a.timeoutMs, schema)
       let parsed: unknown
       try { parsed = JSON.parse(text) } catch { throw new Error('Model returned invalid JSON') }
-      if (blueprintComplete(parsed)) return text // complete → accept
+      if (blueprintComplete(parsed)) {
+        await record?.settled(rowId, 'succeeded')
+        return text // complete → accept
+      }
       // Parseable but Flash dropped concept/packaging. Keep it as a last resort and
       // try the next attempt for a COMPLETE one (the retry usually recovers them).
       lastParseable = text
+      // ⚖️ NEITHER SUCCESS NOR FAILURE. The creator gets a script and no title, so
+      // filing it as either would hide a quality event or claim an outage.
+      await record?.settled(rowId, 'incomplete',
+        { code: 'incomplete_blueprint', detail: 'missing concept/packaging' })
       console.warn(`generate-blueprint: attempt ${i + 1}/${attempts.length} (${a.model}) returned an incomplete blueprint (missing concept/packaging) — retrying`)
     } catch (e) {
       lastErr = e
+      await record?.settled(rowId, 'failed', classifyModelFailure(e))
       console.error(`generate-blueprint: model attempt ${i + 1}/${attempts.length} (${a.model}) failed:`, e instanceof Error ? e.message : e)
       // fall through to the next, faster attempt
     }
@@ -3396,7 +3476,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
 - Write every script line TO ITS BEAT'S target_sec. A line for a 6 second beat is roughly 15 words at a natural pace; a line for a 16 second beat is roughly 40. Do not write a forty word line into a six second beat.
 - shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include at least one b-roll or insert shot and the cover frame shot, so the editor is never guessing.`
 
-    const raw = await callModel(apiKey, SYSTEM, userPrompt)
+    // ⚠️ ONE RUN ID FOR THE WHOLE LADDER, so a recovered retry counts as one
+    // generation rather than two. Minted here rather than in the recorder because
+    // the generation row below has to be able to name the same run.
+    const scriptRunId = crypto.randomUUID()
+    const raw = await callModel(apiKey, SYSTEM, userPrompt, blueprintSchema,
+      attemptRecorder(admin, ownerId, scriptRunId))
 
     // OUTPUT-SIDE LINK VALIDATION — the other half of the fencing above.
     //
@@ -4159,6 +4244,16 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       })
       .select('*')
       .single()
+    // ⚖️ THE LINK IS WRITTEN AFTER THE GENERATION EXISTS, AND ITS ABSENCE IS THE
+    // SIGNAL. An attempt row with no `generation_id` is a run that never produced
+    // a script — the state that today leaves no trace at all — so this must never
+    // be backfilled onto rows whose run failed.
+    if (gen?.id) {
+      await admin.from('script_attempts')
+        .update({ generation_id: gen.id })
+        .eq('run_id', scriptRunId)
+        .then(({ error }) => { if (error) console.warn('attempts not linked:', error.message) })
+    }
     // THE RACE THE REPLAY CHECK CANNOT CATCH. Two requests carrying the same key
     // can both pass the lookup above before either has inserted — a double-click
     // or a remount that overlaps the first build. The unique index is what

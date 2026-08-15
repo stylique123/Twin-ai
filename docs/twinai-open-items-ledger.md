@@ -358,9 +358,22 @@ untested, business claims need attribution). There is no `edit_events`
 equivalent for the run that produced it, so "why was this claim NOT made" has
 no record.
 
-**What to build, in this order** (each is independently useful; do not batch):
+**Item 1 is BUILT (0129 + `scriptAttempt.ts`).** `script_attempts` carries one
+row per attempt, opened BEFORE the model call and settled after, with the model
+actually used, the attempt index, a typed failure code and the provider's own
+message. `attemptSummary` and `servedFromFallback` answer the three questions
+this entry says are unanswerable, including the silent fallback one. An attempt
+row with no `generation_id` is a run that never produced a script — the state
+that previously left no trace at all — so it is never backfilled.
 
-1. A durable attempt row for script generation, written BEFORE the model call
+⚠️ **AND THE GUARD FOR IT WAS BRIEFLY FAKE.** The ordering assertion used
+`indexOf(...) < indexOf(...)`, and `indexOf` returns −1 when the call is GONE —
+so it passed on the exact mutation it existed to catch. Found by running the
+mutation rather than by reading the test. Presence is now asserted first.
+
+**Still to build, in this order** (each is independently useful; do not batch):
+
+1. ~~A durable attempt row for script generation~~ — DONE, written BEFORE the model call
    and settled after — the same shape `edit_director_calls` already proves
    works. It must record the model actually used, the attempt index, and a
    typed failure code. Written before the call is the whole point: a row only
