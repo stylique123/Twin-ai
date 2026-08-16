@@ -23,6 +23,65 @@ function ownUrlKey(raw: string): string {
 // payload: { brand_voice_id, handle, platform, urls: string[] }
 // Transcribes the creator's top videos and re-synthesizes the voice from their
 // actual spoken audio, then updates the (already-ready) brand_voices.profile.
+/** Where the first cohort ends. Five is not arbitrary: it is the budget this
+ *  scan used to carry, so "did positions 6-10 pay for themselves" is asked
+ *  against exactly the old behaviour. */
+export const TRANSCRIPT_COHORT_SIZE = 5
+
+/** Kinds that can carry a beat. `covered` and `topic` prove a subject was
+ *  mentioned, which is breadth; these are the depth the raise was bought for. */
+const SUBSTANTIVE_KINDS = ['experience', 'opinion', 'claim', 'framework', 'fact', 'example']
+
+/**
+ * How much NEW canonical substance each cohort of videos bought.
+ *
+ * ⚠️ MEASURED AFTER THE MERGE, WHICH IS THE WHOLE POINT. Counting extracted rows
+ * would count ten paraphrases of "AI is useful" as ten items; `times_seen`
+ * increments on a repeat and creates no row. Only a row that did not exist
+ * before is knowledge this scan added.
+ *
+ * ⚖️ ATTRIBUTED BY `source_url`, THE VIDEO THE ITEM WAS READ OUT OF — already
+ * stored so a creator disputing an item can watch it. An item whose source the
+ * extractor did not name lands in `unattributed` rather than being assigned to a
+ * cohort it might not belong to.
+ *
+ * ⚖️ AND IT NEVER FAILS THE SCAN. A measurement that can break the thing it
+ * measures is worse than no measurement.
+ */
+export async function measureCohortYield(
+  ownerId: string,
+  urls: string[],
+  since: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const { data } = await db
+      .from('creator_knowledge')
+      .select('kind, source_url')
+      .eq('owner_id', ownerId)
+      .gte('created_at', since)
+    const rows = (data ?? []) as Array<{ kind?: string; source_url?: string | null }>
+    const first = new Set(urls.slice(0, TRANSCRIPT_COHORT_SIZE))
+    const second = new Set(urls.slice(TRANSCRIPT_COHORT_SIZE))
+    const tally = { first_5: 0, positions_6_plus: 0, unattributed: 0 }
+    const substantive = { first_5: 0, positions_6_plus: 0, unattributed: 0 }
+    for (const r of rows) {
+      const bucket = r.source_url && first.has(r.source_url) ? 'first_5'
+        : r.source_url && second.has(r.source_url) ? 'positions_6_plus'
+        : 'unattributed'
+      tally[bucket] += 1
+      if (SUBSTANTIVE_KINDS.includes(String(r.kind))) substantive[bucket] += 1
+    }
+    return {
+      cohort_size: TRANSCRIPT_COHORT_SIZE,
+      videos_offered: urls.length,
+      new_rows: tally,
+      new_substantive: substantive,
+    }
+  } catch {
+    return null
+  }
+}
+
 export async function handleBuildVoice(job: Job): Promise<Record<string, unknown>> {
   const p = job.payload as { brand_voice_id?: string; handle?: string; platform?: string; urls?: string[]; captions?: string[] }
   const voiceId = String(p.brand_voice_id ?? '')
@@ -191,6 +250,7 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
   // untouched. A creator whose knowledge extraction breaks must still get their
   // voice; trading a working feature for a new one is not an upgrade.
   let knowledgeStored = 0
+  let cohortYield: Record<string, unknown> | null = null
   const ownerId = (existing as { owner_id?: string } | null)?.owner_id ?? null
   // No owner means no row can be attributed, and an unattributed claim about a
   // person is worse than none at all.
@@ -283,12 +343,21 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
       const have = new Set((seen ?? []).map((r) => `${r.kind}\u0000${String(r.text).trim().toLowerCase()}`))
       const fresh = rows.filter((r) => !have.has(`${r.kind}\u0000${r.text.toLowerCase()}`))
       if (fresh.length) {
+        // ⚠️ THE CLOCK IS READ BEFORE THE WRITE, not after. A row that merged
+        // into an existing one keeps its original `created_at`, so "created
+        // since this moment" is exactly "canonical row that did not exist
+        // before" — which is the only definition of new knowledge worth paying
+        // for. Reading it afterwards would race the insert.
+        const before = new Date().toISOString()
         const { error: kErr } = (await insertKnowledge(db as never, fresh as never))
         // Enrichment never gates the scan, but a write that fails must still
         // say so — `knowledgeStored` staying 0 is indistinguishable from a
         // creator who genuinely said nothing.
         if (kErr) console.warn(JSON.stringify({ event: 'knowledge_insert_failed', rows: fresh.length, error: kErr.message }))
-        else knowledgeStored = fresh.length
+        else {
+          knowledgeStored = fresh.length
+          cohortYield = await measureCohortYield(ownerId, urls, before)
+        }
       }
     }
   } catch {
@@ -318,6 +387,15 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     attempted: urls.length,
     routes,
     knowledge_items: knowledgeStored,
+    // ⚠️ STORED, NOT LOGGED — the counter-durability rule. This is the number the
+    // 5→10 decision is waiting on: how much NEW canonical substance positions
+    // 6-10 bought, after the merge collapsed repeats. A console line would
+    // expire; the job result is a row.
+    //
+    // ⚖️ NULL MEANS NOT MEASURED, never zero. A scan that stored no knowledge, or
+    // whose measurement query failed, must not read as "the extra videos added
+    // nothing" — that is the answer this instrument exists to find honestly.
+    cohort_yield: cohortYield,
     fields_from_audio: audioFields.size,
     fields_from_captions: Object.values(provenance).filter((v) => v === 'caption_synthesis').length,
   }

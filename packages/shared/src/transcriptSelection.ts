@@ -70,7 +70,30 @@ export interface TranscriptCandidate {
  *  transcription on these platforms is PAID PER VIDEO, the first scan after it
  *  merges is the first time the raise is actually billed.
  *
- *  ⚖️ SO IT IS HELD AT FIVE ON PURPOSE, WHICH IS NOT THE SAME AS REVERTING #366.
+ *  ⚖️ AND IT IS NOW TEN, WITH THE BILL DELIBERATELY WATCHED. The owner took
+ *  this decision on 2026-08-16, after the number that argued for five turned out
+ *  to be measuring something else: "one to two-and-a-half substance items per
+ *  transcribed video" divided by videos TRANSCRIBED, while the extractor's
+ *  `.slice(0, 12000)` meant only about three were ever READ. The denominator was
+ *  wrong, so the yield was understated several-fold.
+ *
+ *  ⚖️ THE EVIDENCE FOR SPENDING IS NOT AN ESTIMATE. Across the whole production
+ *  corpus, captions produced 0 experiences and 0 stated positions in 374 rows;
+ *  transcripts produced all 36 experiences and all 171 stated items. Captions buy
+ *  breadth — what somebody covers. Transcripts buy depth — what they believe,
+ *  did, and concluded. 24 of 37 voices are Instagram or YouTube, so this is most
+ *  of the population rather than an edge case.
+ *
+ *  ⚠️ TEN RATHER THAN MORE, ON PURPOSE. The marginal yield of positions 6-10 is
+ *  now instrumented per scan (`handleBuildVoice` records new canonical
+ *  substantive rows by cohort). Going to fifteen before that curve exists would
+ *  be spending on conviction. If 6-10 hold up, raise again; if they collapse
+ *  after seven, stop early instead.
+ *
+ *  ⚖️ THE PARAGRAPH BELOW IS THE ARGUMENT THIS REPLACES, KEPT because it was
+ *  right at the time and its caution is what made the raise measurable:
+ *
+ *  ⚖️ SO IT WAS HELD AT FIVE ON PURPOSE, WHICH WAS NOT THE SAME AS REVERTING #366.
  *  Ten was argued from measured yield and the argument still stands; what was
  *  never true is that it had been tried. Doubling a per-video Apify bill in the
  *  same change that first makes the number real would leave two things moving at
@@ -78,7 +101,7 @@ export interface TranscriptCandidate {
  *  ships now because it costs CPU rather than money; this one waits for a
  *  deliberate `5` → `10` with a bill to watch. One edit, one constant, one
  *  consumer. */
-export const TRANSCRIPT_BUDGET = 5
+export const TRANSCRIPT_BUDGET = 10
 
 /** The budget where transcription costs NOTHING per video.
  *
