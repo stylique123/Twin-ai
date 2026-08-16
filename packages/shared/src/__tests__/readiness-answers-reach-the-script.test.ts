@@ -131,7 +131,13 @@ describe('the questions come before the two-minute wait', () => {
   })
 
   it('does not pretend work is happening behind the card', () => {
-    const block = BUILD.slice(BUILD.indexOf('if (missing.length && alive)'))
-    expect(block.slice(0, 300)).toMatch(/setIngesting\(false\)/)
+    // ⚠️ SLICED TO THE BLOCK'S OWN END, NOT A CHARACTER COUNT. The first draft
+    // took a fixed 300 characters and broke the moment a line was added inside
+    // the branch — asserting a layout where it meant a property, which is the
+    // mistake this repo has now recorded three times.
+    const start = BUILD.indexOf('if (missing.length && alive)')
+    const block = BUILD.slice(start, BUILD.indexOf('\n            }', start))
+    expect(block).toMatch(/setIngesting\(false\)/)
+    expect(block).toMatch(/setActive\(0\)/)
   })
 })
