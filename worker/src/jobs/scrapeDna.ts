@@ -1,7 +1,7 @@
 import { db, type Job } from '../db.js'
 import { scrapeProfile, UnsupportedPlatformError, type ScrapedPost } from '../media.js'
 import { assessScanTarget } from '../scanTarget.js'
-import { selectVideosToTranscribe, transcriptBudgetFor } from '../transcriptSelection.js'
+import { selectVideosToTranscribe, transcriptBudgetFor, scrapePoolFor } from '../transcriptSelection.js'
 import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { synthesizeVoiceFromPosts, extractKnowledgeFromCaptions } from '../voice.js'
 import type { InlineImage } from '../gemini.js'
@@ -142,7 +142,14 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     // ⚠️ THE PLATFORM WAS THROWN AWAY HERE. This read `scrapeTikTokProfile(handle)`
     // for every voice, so a YouTube creator's scan asked tiktok.com for a handle
     // that does not exist there, read nothing, and reported `done`.
-    const scraped = await scrapeProfile(handle, platform)
+    // ⚠️ THE LIMIT WAS OMITTED AND THE DEFAULT WAS 12. That single missing
+    // argument capped the whole pipeline: a TikTok scan carrying a transcript
+    // budget of 25 reported `videos_offered: 12` in production, so the free
+    // budget could never be spent and the yield measurement that was meant to
+    // decide 10 → 15 was reading a default argument in media.ts. The pool is now
+    // derived from the same place as the budget, so the two cannot drift apart
+    // again.
+    const scraped = await scrapeProfile(handle, platform, scrapePoolFor(platform))
     posts = scraped.posts
     profileFacts = scraped.facts
     stage('scrape_profile', 'ok', `${scraped.posts.length} posts`)

@@ -26,7 +26,11 @@ const ENV = readFileSync(join(REPO, 'worker/src/env.ts'), 'utf8')
 
 describe('the scan reads the platform the creator actually publishes on', () => {
   it('passes the platform through instead of assuming TikTok', () => {
-    expect(SCAN).toMatch(/scrapeProfile\(handle, platform\)/)
+    // The platform must reach the scraper. It is now followed by an explicit
+    // pool size — the third argument whose ABSENCE capped every scan at the
+    // default 12 — so this matches the first two arguments and lets the call
+    // grow, rather than pinning an exact arity that a later fix must break.
+    expect(SCAN).toMatch(/scrapeProfile\(handle, platform[,)]/)
     // Matches a CALL, not the prose above it — the comment explaining the old
     // line necessarily quotes the old line.
     expect(SCAN).not.toMatch(/await scrapeTikTokProfile\(handle\)/)
