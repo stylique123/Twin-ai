@@ -944,6 +944,38 @@ function readReferenceObservations(
 // out of proportion — but the count is what says whether the sharpened
 // instruction worked, and the creator surface waits on it.
 const NON_PROOF = /^(?:n\/?a|none|nil|null|no(?:ne)? needed|not applicable|proof|tbd|-+|\.+)$/i
+// ── CONTENT HISTORY (inlined from packages/shared/src/contentHistory.ts) ────
+//
+// ⚠️ THE WRITER HAS NEVER SEEN A SCRIPT THIS SYSTEM ALREADY WROTE for this
+// person. Measured on all 39 production generations: of the 11 owners with more
+// than one, exactly ONE repeats a format and ONE repeats a hook opening, and no
+// creator has more than three videos. So this supplies FACTS and issues NO
+// instruction — a "do not repeat" line would be inert (every prompt rule
+// measured here was) and premature (it would push a creator's second video away
+// from a format that worked, on one data point).
+const MIN_PRIOR_VIDEOS = 2
+const MAX_PRIOR_SHOWN = 8
+
+function renderContentHistoryInline(
+  prior: Array<{ formatLabel?: string | null; hook?: string | null; premise?: string | null }>,
+): string {
+  const clean = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim()
+  const rows = prior
+    .filter((p) => clean(p.formatLabel) || clean(p.hook) || clean(p.premise))
+    .slice(0, MAX_PRIOR_SHOWN)
+  if (rows.length < MIN_PRIOR_VIDEOS) return ''
+  const lines = rows.map((p, i) => {
+    const bits: string[] = []
+    if (clean(p.formatLabel)) bits.push(`format: ${clean(p.formatLabel)}`)
+    if (clean(p.premise)) bits.push(`premise: ${clean(p.premise).slice(0, 160)}`)
+    if (clean(p.hook)) bits.push(`opened: "${clean(p.hook).slice(0, 120)}"`)
+    return `${i + 1}. ${bits.join(' · ')}`
+  })
+  return `ALREADY MADE FOR THIS CREATOR (${rows.length} most recent, newest first).
+These are facts about their existing catalogue, not a list to avoid.
+${lines.join('\n')}`
+}
+
 // ── PREMISE COMPATIBILITY (inlined from packages/shared/src/premiseCompatibility.ts)
 //
 // ⚠️ THE STRUCTURE TRANSFERS; THE AUTOBIOGRAPHY DOES NOT. A reference opening
@@ -2984,6 +3016,31 @@ Deno.serve(async (req: Request) => {
     //
     // ⚠️ NULL `subject` IS EXCLUDED, NOT INCLUDED. A row predating 0135 that no
     // reference URL matched is unresolved, not own.
+    // ⚠️ WHAT THIS CREATOR ALREADY HAS. No exclusion is needed and none is
+    // written: the row for THIS generation is inserted after the writer returns
+    // (see the `.insert` far below), so every row this read can see is genuinely
+    // prior work. An idempotent replay returns the stored blueprint before
+    // reaching here, so it never re-enters this path either.
+    let historyBlock = ''
+    try {
+      const { data: priorRows } = await admin
+        .from('generations')
+        .select('id, selected_hook, blueprint, created_at')
+        .eq('user_id', ownerId)
+        .order('created_at', { ascending: false })
+        .limit(MAX_PRIOR_SHOWN)
+      historyBlock = renderContentHistoryInline((priorRows ?? []).map((r) => {
+        const bp = (r?.blueprint ?? {}) as Record<string, any>
+        return {
+          formatLabel: bp?.reference_read?.format_label ?? null,
+          premise: bp?.concept?.premise ?? null,
+          hook: r?.selected_hook ?? bp?.hook_options?.[0] ?? null,
+        }
+      }))
+    } catch {
+      // Thinner, never wronger — the same treatment the knowledge read gets.
+      historyBlock = ''
+    }
     let styleRules = ''
     try {
       const { data: ownSpeech } = await admin
@@ -3631,7 +3688,9 @@ This is the video's position. Every field below must serve it. If the reference'
 
     const userPrompt = `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
-${positionBlock}${referenceBlock}
+${positionBlock}${referenceBlock}${historyBlock ? `
+
+${fenced("this creator's existing catalogue", historyBlock)}` : ''}
 ${claimsBlock}
 Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
 - beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each one should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds, not a guess after the fact, and beats should differ in length when their jobs differ. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
