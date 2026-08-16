@@ -396,7 +396,14 @@ export default function V2Building() {
             const verdict = assessReadiness({
               goal: state.goal ?? str(vBrief.goal) ?? null,
               angle: state.reference_note || refUrl || str(vBrief.idea) || null,
-              offer: str(vBrief.offer) ?? str(v?.profile?.offer) ?? null,
+              // ⚠️ THE CREATOR'S OWN WORDS ONLY. `profile.offer` is the scan's
+              // guess and the scan prompt forbids a blank, so passing it here
+              // made every creator "promoting" and put two mandatory product
+              // questions on the card — including for one whose stored answer
+              // was `nothing_to_sell`.
+              offer: str(vBrief.offer) ?? null,
+              // ⚖️ "Nothing to sell" is an ANSWER. Passing it through as the
+              // relationship keeps `assessReadiness` from treating it as a gap.
               relationship: str(vBrief.promotes) ?? null,
               cta: str(vBrief.cta) ?? null,
               audience: str(vBrief.audience) ?? str(v?.profile?.audience) ?? null,
@@ -711,7 +718,18 @@ export default function V2Building() {
               // Every question must be answered: each one is here because
               // guessing it would put a claim in the creator's mouth, so a
               // partial answer would send us back to the same refusal.
-              disabled={askQuestions.some((q) => !(askAnswers[q.field] ?? '').trim())}
+              // ⚠️ ONLY THE CHIPS BLOCK, AND THE OLD RULE WAS AN UNESCAPABLE CARD.
+              // Requiring every question meant a creator who picked all three
+              // chips and left the free-text boxes empty could not click this
+              // button at all — and those boxes fire from an INFERRED offer, so
+              // for most creators they were unanswerable as well as mandatory.
+              //
+              // ⚖️ THE CHIPS ARE THE CONTRACT. They are three taps, always
+              // answerable, and they are what the build actually needs. A
+              // readiness question left blank is a thinner script; a card that
+              // cannot be dismissed is no script at all.
+              disabled={askQuestions.some(
+                (q) => isChip(q) && !(askAnswers[q.field] ?? '').trim())}
               onClick={() => {
                 answersRef.current = { ...answersRef.current, ...askAnswers }
                 // ⚖️ THE ANSWERS OUTLIVE THE CARD, THE CARD DOES NOT. Keeping

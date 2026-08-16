@@ -3042,8 +3042,27 @@ Deno.serve(async (req: Request) => {
     typeof x === 'string' ? x.trim() !== '' && x.trim().toLowerCase() !== 'unspecified' : x != null
   const readyGoal = String(answers.goal ?? body.goal ?? brief.goal ?? '')
   const readyCommercial = readyGoal.toLowerCase().includes('sell') || readyGoal.toLowerCase().includes('leads')
+  // ⚠️ THE READINESS GATE READS ONLY WHAT THE CREATOR SAID, AND IT USED TO READ
+  // THE SCAN'S GUESS. Measured on a real account: AlexHormozi's scan wrote the
+  // offer "Free, high-level business frameworks and scaling strategies", their
+  // own `brief.offer` was null, and their `promotes` answer was
+  // `nothing_to_sell`. The chain below fell through to `vp.offer`, set
+  // `readyPromoting`, and put two mandatory questions on the remix card asking
+  // this creator to describe a commercial relationship to a product that does
+  // not exist — contradicting an answer they gave at onboarding.
+  //
+  // ⚖️ AN INFERENCE MUST NOT CREATE AN OBLIGATION. The scan prompt FORBIDS a
+  // blank offer, so a guess exists for every creator, which made the question
+  // unavoidable for all of them rather than targeted at the few who promote.
+  // `readyOffer` keeps the full chain because the CTA still needs a fallback;
+  // only the REQUIREMENT narrows to the creator's own words.
   const readyOffer = answers.offer ?? brief.offer ?? (vp?.offer as string | undefined) ?? (dna.product as string | undefined)
-  const readyPromoting = readyPresent(readyOffer) || readyCommercial
+  const readyOfferStated = answers.offer ?? brief.offer
+  // ⚖️ AND "NOTHING TO SELL" IS AN ANSWER, NOT A GAP. A creator who said so at
+  // onboarding must never be asked what they promote.
+  const readyNothingToSell = String(brief.promotes ?? '') === 'nothing_to_sell'
+  const readyPromoting = !readyNothingToSell
+    && (readyPresent(readyOfferStated) || readyCommercial)
   // ⚖️ EITHER AUTHORITY SETTLES IT. `product_entities.relationship` covers the
   // creator's OWN product; `brief.promotes` is where an affiliate or sponsor
   // tie to SOMEBODY ELSE'S product is recorded. Reading only the first would
@@ -3064,7 +3083,11 @@ Deno.serve(async (req: Request) => {
       : `What does ${n} actually do? Specific features, numbers or outcomes this video is allowed to state.`
   }
   const readyMissing: Array<{ field: string; question: string }> = []
-  if (!readyPresent(readyGoal)) readyMissing.push({ field: 'goal', question: 'What should this video do FOR YOU? (grow audience, get leads, sell something, build authority)' })
+  // ⚠️ THE GOAL IS NOT ASKED HERE ANY MORE — the remix card's three intent chips
+  // ask it in plain English before the build starts, and asking it again put one
+  // question on the card twice: a chip row, and a text box in marketing language.
+  // `readyGoal` is still READ below, because it decides whether this video is a
+  // commercial act; it is simply no longer a reason to refuse.
   if (readyPromoting && !readyPresent(readyOffer)) readyMissing.push({ field: 'offer', question: 'Which product or offer should this video point at?' })
   // ⚖️ NO SUBJECT AT ALL. A readable reference gives the video a subject, and an
   // UNREADABLE one already returned above — so at this line a present

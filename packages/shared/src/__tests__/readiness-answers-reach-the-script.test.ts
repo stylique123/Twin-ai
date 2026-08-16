@@ -59,10 +59,20 @@ describe('the answers reach THIS generation, not just the next one', () => {
 })
 
 describe('the two questions are not the same question', () => {
-  it('the goal question is about the CREATOR, and says so', () => {
+  it('the goal is NOT a readiness question any more — the chips ask it', () => {
+    // ⚠️ ASKING IT HERE ASKED IT TWICE. The remix card opens with three intent
+    // chips whose first question IS this one, in plain English. Leaving it
+    // MISSING_REQUIRED put both on the same card: a chip row reading "What do
+    // you want this video to achieve?" above a text box reading "What should
+    // this video do FOR YOU? (grow audience, get leads, sell something, build
+    // authority)". One question, twice, one of them in marketing language.
+    //
+    // ⚖️ AND IT WAS UNANSWERABLE HERE. It read a picker that was deleted and a
+    // brief field nothing writes, so it fired on every single build.
     const v = assessReadiness({ goal: null, angle: 'x', hasCreatorKnowledge: true })
-    const goalQ = v.fields.find((f) => f.field === 'goal')?.question ?? ''
-    expect(goalQ).toMatch(/FOR YOU/)
+    const goalField = v.fields.find((f) => f.field === 'goal')
+    expect(goalField?.state).not.toBe('MISSING_REQUIRED')
+    expect(goalField?.question).toBeNull()
   })
 
   it('the claims question names the OFFER rather than a pronoun', () => {
@@ -91,7 +101,9 @@ describe('the two questions are not the same question', () => {
   it('the edge copy asks the same two questions', () => {
     // The inlined gate is the one that runs; drift here means production asks
     // the old confusing pair while the tests pass on the new one.
-    expect(EDGE).toMatch(/What should this video do FOR YOU\?/)
+    // ⚖️ The goal text box is gone from the gate; the claims question stays and
+    // still names the offer rather than leaning on a pronoun.
+    expect(EDGE).not.toMatch(/readyMissing\.push\(\{ field: 'goal'/)
     expect(EDGE).toMatch(/readyClaimsQuestion\(readyOffer\)/)
     expect(EDGE).not.toMatch(/What does it actually do\? Give me the details/)
   })

@@ -121,6 +121,10 @@ export interface ReadinessVerdict {
  *  are merged into the brief that builds THIS script — vague questions produce
  *  vague scripts, and this form is the only place some of these facts exist. */
 const ASK: Record<ReadinessField, string> = {
+  // ⚠️ NOT SHOWN ANY MORE — the three intent chips ask this in plain English
+  // before the build starts. Kept so the map stays total over the field union,
+  // and because a caller that marks `goal` MISSING for its own reasons should
+  // still get a sentence rather than an empty string.
   goal: 'What should this video do FOR YOU? (grow audience, get leads, sell something, build authority)',
   audience: 'Who is this video for?',
   angle: 'What is this video about?',
@@ -157,6 +161,15 @@ export function assessReadiness(input: ReadinessInputs): ReadinessVerdict {
   // Something is being promoted if the creator named it, OR if the goal says a
   // sale is the point. The second half matters: "make a video selling this"
   // with no offer on file is precisely the case that must ask rather than write.
+  //
+  // ⚠️ `input.offer` MEANS THE CREATOR NAMED IT, AND CALLERS WERE PASSING A
+  // GUESS. Measured on a real account: AlexHormozi's scan wrote the offer
+  // "Free, high-level business frameworks and scaling strategies", the creator's
+  // own `pre_script_brief.offer` was null, and their `promotes` answer was
+  // `nothing_to_sell`. Both callers passed the SCANNED value here, so this line
+  // set `promoting` and the remix card demanded a commercial relationship for a
+  // product that does not exist. The rule was right; the inputs were not, and
+  // the fix belongs at the call sites — see the note beside each.
   const promoting = present(input.offer) || commercial
 
   const v: FieldVerdict[] = []
@@ -165,7 +178,24 @@ export function assessReadiness(input: ReadinessInputs): ReadinessVerdict {
 
   // GOAL — always required. Everything below reads it, so a wrong guess here
   // mis-shapes every other decision rather than one line.
-  put('goal', present(input.goal) ? 'RESOLVED' : 'MISSING_REQUIRED')
+  // ⚠️ THE GOAL IS NO LONGER A READINESS QUESTION, BECAUSE ASKING IT HERE ASKS IT
+  // TWICE. The remix card now opens with three intent chips, and the first one IS
+  // this question in plain English. Leaving it MISSING_REQUIRED put both on the
+  // same card: a chip row reading "What do you want this video to achieve?" above
+  // a text box reading "What should this video do FOR YOU? (grow audience, get
+  // leads, sell something, build authority)". One question, twice, one of them in
+  // marketing language a normal creator should never have to read.
+  //
+  // ⚖️ IT BECAME UNANSWERABLE HERE THE MOMENT THE PICKER MOVED. This reads
+  // `input.goal`, which the caller sourced from the Advanced Settings picker
+  // (deleted) or `pre_script_brief.goal` (never written by anything). So it was
+  // not merely redundant — it was guaranteed to fire on every single build.
+  //
+  // ⚖️ AND UNSET IS A VALID ANSWER NOW. An unanswered goal yields today's
+  // behaviour by design, so refusing to generate without one would be a gate
+  // demanding something the system does not actually require. INFERRED_BUT_SAFE
+  // keeps it visible to any caller that reasons about it, without blocking.
+  put('goal', present(input.goal) ? 'RESOLVED' : 'INFERRED_BUT_SAFE')
 
   // AUDIENCE — inferable when there is a back catalogue to infer from. Being
   // wrong costs register, not truth.

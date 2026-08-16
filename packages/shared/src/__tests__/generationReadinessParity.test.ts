@@ -84,7 +84,7 @@ describe('requiredness is PER VIDEO, in both copies', () => {
     // ⚠️ The half that matters: without it, "make a video selling this" with an
     // empty offer field reads as non-commercial and sails through to a script
     // that invents what is being sold.
-    expect(EDGE).toMatch(/readyPromoting = readyPresent\(readyOffer\) \|\| readyCommercial/)
+    expect(EDGE).toMatch(/readyPromoting = !readyNothingToSell\s*\n\s*&& \(readyPresent\(readyOfferStated\) \|\| readyCommercial\)/)
     expect(SHARED).toMatch(/promoting = present\(input\.offer\) \|\| commercial/)
   })
 
@@ -137,7 +137,7 @@ describe('the answers have a reader, and the right ones persist', () => {
   it('every question must be answered before the retry is allowed', () => {
     // Each one is present because guessing it would put a claim in the
     // creator's mouth, so a partial answer returns to the same refusal.
-    expect(WEB).toMatch(/disabled=\{askQuestions\.some\(\(q\) => !\(askAnswers\[q\.field\] \?\? ''\)\.trim\(\)\)\}/)
+    expect(WEB).toMatch(/disabled=\{askQuestions\.some\(\s*\n?\s*\(q\) => isChip\(q\) && !\(askAnswers\[q\.field\] \?\? ''\)\.trim\(\)\)\}/)
   })
 
   it('persists what is true of the CREATOR and nothing that is true of this video', () => {
