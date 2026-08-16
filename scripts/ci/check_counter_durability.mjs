@@ -132,6 +132,13 @@ const EVENTS = {
   entitlement_unrepaired: { kind: 'incident', why: 'A repair that did not take.' },
   hooks_unentitled: { kind: 'incident', why: 'Hooks resting on an unentitled claim.' },
   generation_not_billable: { kind: 'incident', why: 'A generation the ledger must not charge for.' },
+  // ⚠️ A SUCCESS FOR THE CREATOR AND A DEFECT FOR US, WHICH IS WHY IT IS AN
+  // INCIDENT RATHER THAN A COUNTER. Every occurrence is one throw in the 792
+  // lines of analysis that run after a paid writer call — the script was saved,
+  // and something that was only ever meant to DESCRIBE it failed. It has a
+  // durable home in `ops_events` (kind: generation_rescued) as well as the log,
+  // because the whole point is that the run now looks healthy in every count.
+  generation_rescued: { kind: 'incident', why: 'The analysis threw after the writer succeeded; the paid script was saved anyway.' },
   readiness_incomplete: { kind: 'incident', why: 'Generation attempted before the brief was ready.' },
   readiness_answers_not_persisted: { kind: 'incident', why: 'Brief answers that did not survive the write.' },
   knowledge_insert_failed: { kind: 'incident', why: 'A knowledge write that did not land.' },
