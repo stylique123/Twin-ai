@@ -56,13 +56,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Only the newest profile read may commit, otherwise a slower stale
   // onboarded=false response can overwrite the verified post-onboarding profile.
   const profileRequest = useRef(0)
+  // ⚖️ WHO THE LAST EVENT WAS ABOUT. `onAuthStateChange` does not tell you
+  // whether the user CHANGED, only that something happened, and "same user" is
+  // the fact that decides whether a profile read may block the screen.
+  const lastUserId = useRef<string | null>(null)
 
   // Retry the trigger-created profile briefly, but report a real result to
   // callers. Critical flows (auth routing and onboarding completion) must never
   // treat a failed profile read as success.
-  const refreshProfile = async () => {
+  /**
+   * @param background true when this is a REVALIDATION of a profile we already
+   *   hold, rather than a first load. A background refresh must not announce
+   *   itself: `profileLoading` is what the route guard reads, and flipping it
+   *   for a profile already in memory is what emptied the screen on every tab
+   *   switch. The result still commits — only the spinner is suppressed.
+   */
+  const refreshProfile = async (background = false) => {
     const request = ++profileRequest.current
-    setProfileLoading(true)
+    if (!background) setProfileLoading(true)
     setProfileError(null)
     let lastFailure: unknown
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -103,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(data.session)
       setAuthError(null)
       if (data.session) {
+        lastUserId.current = data.session.user?.id ?? null
         void refreshProfile()
         void redeemStoredReferral()
       } else {
@@ -149,11 +161,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refreshSession()
 
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+      // ⚠️ THIS HANDLER FIRES WHEN A BACKGROUND TAB COMES BACK, and that is the
+      // whole reported bug. Supabase refreshes the access token on focus and
+      // emits TOKEN_REFRESHED — same user, same profile, nothing to reload. The
+      // old body called `refreshProfile()` unconditionally, which flipped
+      // `profileLoading`, which made the route guard swap the page for a
+      // full-screen loader, which UNMOUNTED whatever the creator was doing.
+      //
+      // ⚖️ IDENTITY IS WHAT DECIDES, NOT THE EVENT NAME ALONE. A token refresh
+      // for the same user needs no read; a genuinely different user needs a
+      // blocking one, because rendering someone else's page against a stale
+      // profile is the failure the guard exists to prevent. So: same id -> a
+      // silent background revalidation; new id -> the old blocking path.
+      const sameUser = s?.user?.id != null && s.user.id === lastUserId.current
+      lastUserId.current = s?.user?.id ?? null
       setSession(s)
       setAuthError(null)
       setLoading(false)
-      if (s) { void refreshProfile(); void redeemStoredReferral() }
-      else {
+      if (s) {
+        // ⚖️ STILL REVALIDATED, JUST QUIETLY. Skipping the read entirely would
+        // mean a plan change or a credit spend in another tab never landed.
+        void refreshProfile(sameUser)
+        // ⚠️ ONLY ON A REAL SIGN-IN. A referral redeem on every token refresh is
+        // a network call every focus, forever, for a code that is cleared the
+        // first time it resolves.
+        if (!sameUser) void redeemStoredReferral()
+      } else {
         profileRequest.current++
         setProfile(null)
         setProfileLoading(false)
