@@ -2021,13 +2021,6 @@ const blueprintSchema = obj(
       },
       ['titles', 'thumbnail'],
     ),
-    b_roll_stats: obj(
-      {
-        original_b_roll_count: str,
-        suggested_b_roll_count: str,
-      },
-      ['original_b_roll_count', 'suggested_b_roll_count']
-    ),
     // DECIDED BEFORE THE WORDS, and required so it cannot be skipped.
     //
     // Scene length used to be an accident: the adapter made one scene per script
@@ -2081,7 +2074,6 @@ const blueprintSchema = obj(
           // different owners entirely.
           background: str,
           location: str,
-          broll_request: str,
           editor_intent: str,
           wardrobe: str,
           cuts_info: str,
@@ -2095,7 +2087,7 @@ const blueprintSchema = obj(
           substance: str,
           substance_evidence: str,
         },
-        ['section', 'line', 'direction', 'background', 'location', 'broll_request', 'editor_intent', 'wardrobe', 'cuts_info', 'action_posing', 'substance', 'substance_evidence'],
+        ['section', 'line', 'direction', 'background', 'location', 'editor_intent', 'wardrobe', 'cuts_info', 'action_posing', 'substance', 'substance_evidence'],
       ),
     ),
     shot_list: arr(
@@ -2105,11 +2097,9 @@ const blueprintSchema = obj(
           framing: str,
           notes: str,
           shot_type: str,
-          b_roll_type: str,
-          b_roll_visual: str,
           spoken_text: str,
         },
-        ['shot', 'framing', 'notes', 'shot_type', 'b_roll_type', 'b_roll_visual', 'spoken_text'],
+        ['shot', 'framing', 'notes', 'shot_type', 'spoken_text'],
       ),
     ),
     captions: arr(str),
@@ -2130,7 +2120,6 @@ const blueprintSchema = obj(
     'reference_read',
     'concept',
     'packaging',
-    'b_roll_stats',
     'beat_plan',
     'visual_hook',
     'hook_options',
@@ -2198,7 +2187,6 @@ HOOKS (the single most important field):
 
 - WHERE TO BE IS FOUR FIELDS, NOT ONE. Each has a different owner and a different failure mode, and collapsing them is how a creator gets told to stand inside footage that does not exist:
   * location: WHERE THE CREATOR PHYSICALLY STANDS, and nothing else. Achievable direction only — "clean neutral wall, facing the brightest window" works in any room at any hour. NEVER assumed inventory ("the walnut chair beside your lamp", "your fully renovated kitchen"), NEVER footage, NEVER an edit instruction.
-  * broll_request: footage to supply. Ask only for what one person with a phone can actually produce — no renovation timelapses, no motion graphics, no animated charts.
   * editor_intent: cutaway and return timing, for the EDIT. This is never a place to stand.
   * wardrobe: what the creator wears.
   * NEVER PUT A HEX COLOUR IN location OR wardrobe. The brand palette belongs to packaging and thumbnails. "A black t-shirt to emphasize the brand colors (#000000)" is not something a person can carry out, and it is removed automatically — write the direction without it.
@@ -2235,11 +2223,8 @@ SCRIPT & HOOK INTEGRATION:
 
 SHOT LIST & ASSET SPECIFICATION (B-ROLL & TALKING HEADS):
 - shot_list: specify all shots required to construct the final edit (talking heads, B-roll overlay inserts, and the cover/thumbnail frame).
-- shot_type: specify either 'talking_head' (camera on creator speaking), 'b_roll' (overlay/cutaway footage), or 'cover_frame' (the thumbnail image/first frame).
-- b_roll_type: if shot_type is 'b_roll', specify 'replicate' (real footage from the reference video that we want to copy, e.g. "real footage of endless cardboard boxes") or 'stock' (standard B-roll/stock video that fits the topic). If it is a talking head or cover frame, set to 'none'.
-- b_roll_visual: if shot_type is 'b_roll', write a detailed visual description of the overlay footage to display. For talking head or cover frames, set to an empty string.
+- shot_type: specify either 'talking_head' (camera on creator speaking) or 'cover_frame' (the thumbnail image/first frame). There is no third option: Twin does not plan overlay or cutaway footage, so never invent a shot the creator has no way to supply.
 - spoken_text: if this shot contains spoken lines (voiceover/narrative spoken during the B-roll overlay, or talking head lines), specify the exact spoken dialogue lines here. If this shot is a silent B-roll overlay or a cover thumbnail frame, set spoken_text to an empty string. This ensures some B-roll lines have spoken dialogue, while others remain silent.
-- b_roll_stats: in the main object, estimate the total B-roll overlays in the original reference video (original_b_roll_count) and recommend the total number of B-roll overlays to use in our suggested recreation (suggested_b_roll_count).
 
 CAPTIONS (burned-in, for our own renderer):
 - Short, 3 to 6 words each, punchy, matched to the spoken line. These are the on-screen kinetic captions.
