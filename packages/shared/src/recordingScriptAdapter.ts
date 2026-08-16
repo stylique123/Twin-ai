@@ -184,7 +184,26 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
     const l = (seg.line || '').trim()
     if (!l) return
     if (isWhollyPlaceholder(l)) return
-    if (/hook|opener/i.test(seg.section || '') || looksLikeHook(l)) {
+    // ⚠️ A RE-HOOK IS NOT THE HOOK, AND THE WORD IS INSIDE THE WORD.
+    //
+    // MEASURED ON A REAL GENERATION. Blueprint a98bf712 labelled its fourth
+    // beat "Rehook Point C" — the third of three ways the video promised. This
+    // filter's `/hook/i` matched that label, so the beat was not merely
+    // demoted: `hookIdx` was already 0, so the branch returned and the line
+    // never became a scene at all. The creator read a teleprompter that
+    // promised three and delivered two, and the panel below still listed the
+    // third — which is how it was spotted.
+    //
+    // The writer is INSTRUCTED to produce this beat ("include the mid-video
+    // re-hook beat so the middle never sags"), the mechanism record carries
+    // `rehookAfterItem` to place it, and the adapter deleted it on arrival.
+    //
+    // ⚖️ TESTED BEFORE THE HOOK TEST, NOT FOLDED INTO IT. "Re-hook" must win
+    // over "hook" regardless of how the label is spelled, and a hyphen makes
+    // `\bhook\b` match again — so the exclusion is stated once, positively,
+    // rather than encoded as a cleverer boundary.
+    const rehook = /\bre[\s-]?hook/i.test(seg.section || '')
+    if (!rehook && (/hook|opener/i.test(seg.section || '') || looksLikeHook(l))) {
       // The FIRST hook-like line is the one scene 1 displaced; a later one is a
       // re-hook whose plan entry is not scene 1's to take.
       if (hookIdx === null) hookIdx = idx
