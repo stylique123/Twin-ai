@@ -1,5 +1,5 @@
 import { db, type Job } from '../db.js'
-import { insertKnowledge } from '../knowledgeInsert.js'
+import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { transcribeFromUrl } from '../media.js'
 import { transcriptBudgetFor } from '../transcriptSelection.js'
 import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions } from '../voice.js'
@@ -218,7 +218,7 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     ]
     let rows = raw
       .filter((r) => typeof r?.text === 'string' && r.text.trim().length > 0)
-      .slice(0, 40)
+      .slice(0, KNOWLEDGE_ROWS_PER_SCAN)
       .map((r) => ({
         owner_id: ownerId,
         voice_id: voiceId,

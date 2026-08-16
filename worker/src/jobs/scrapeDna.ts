@@ -2,7 +2,7 @@ import { db, type Job } from '../db.js'
 import { scrapeProfile, UnsupportedPlatformError, type ScrapedPost } from '../media.js'
 import { assessScanTarget } from '../scanTarget.js'
 import { selectVideosToTranscribe, transcriptBudgetFor } from '../transcriptSelection.js'
-import { insertKnowledge } from '../knowledgeInsert.js'
+import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { synthesizeVoiceFromPosts, extractKnowledgeFromCaptions } from '../voice.js'
 import type { InlineImage } from '../gemini.js'
 import { env } from '../env.js'
@@ -365,7 +365,7 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     const items = captions.length ? await extractKnowledgeFromCaptions(handle, platform, captions) : []
     const rows = items
       .filter((r) => typeof r?.text === 'string' && r.text.trim().length > 0)
-      .slice(0, 40)
+      .slice(0, KNOWLEDGE_ROWS_PER_SCAN)
       .map((r) => ({
         owner_id: ownerId,
         voice_id: voiceId,

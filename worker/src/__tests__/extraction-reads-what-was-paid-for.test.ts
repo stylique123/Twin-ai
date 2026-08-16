@@ -87,3 +87,36 @@ describe('it does not grow a second deduplication rule', () => {
     expect(BODY).not.toMatch(/dedupe|new Set\(items|uniqueBy/i)
   })
 })
+
+// ── THE FOURTH INSTANCE, CREATED BY THE FIX FOR THE THIRD ──────────────────
+//
+// ⚠️ RAISING WHAT THE EXTRACTOR READS MADE A DORMANT CAP LIVE. `.slice(0, 40)`
+// sat in TWO files and never bound anything while the extractor saw three
+// videos. Reading fifteen makes it the thing that decides what survives — the
+// same shape as the three caps before it, and introduced by their repair.
+import { KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
+
+describe('the write cap is named, shared, and proportionate', () => {
+  const BUILD = readFileSync(join(SRC, 'jobs', 'voice.ts'), 'utf8')
+  const SCAN = readFileSync(join(SRC, 'jobs', 'scrapeDna.ts'), 'utf8')
+
+  it('neither writer carries a bare number any more', () => {
+    for (const src of [BUILD, SCAN]) {
+      expect(stripComments(src)).not.toMatch(/\.slice\(0, 40\)/)
+      expect(src).toMatch(/\.slice\(0, KNOWLEDGE_ROWS_PER_SCAN\)/)
+    }
+  })
+
+  it('BOTH import the same constant, rather than agreeing by coincidence', () => {
+    // ⚠️ Two places deciding how much material survives, one of them silent, is
+    // the exact shape of every instance this file records.
+    for (const src of [BUILD, SCAN]) {
+      expect(src).toMatch(/import \{ insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN \}/)
+    }
+  })
+
+  it('clears what five batches can realistically produce', () => {
+    // ⚖️ A cap below the extractor's own yield is the defect, not the bound.
+    expect(KNOWLEDGE_ROWS_PER_SCAN).toBeGreaterThanOrEqual(100)
+  })
+})
