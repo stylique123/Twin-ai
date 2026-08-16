@@ -1,0 +1,94 @@
+// THE CREATOR ANSWERED, AND THE SCRIPT THEY PAID FOR IGNORED IT.
+//
+// ⚠️ THE DEFECT, REPORTED FROM A REAL RUN. The readiness form asked for the
+// offer, the creator typed one, and the generated video did not use it. `brief`
+// is read BEFORE the questions are asked, and every prompt field resolves
+// through it — `offer` is `brief.offer ?? vp?.offer ?? dna.product`. The answers
+// were written to `brand_voices.pre_script_brief`, which helps the NEXT video.
+// This one, the one they answered questions for and spent a remix on, was
+// written from the stale values.
+//
+// ⚖️ CLARIFICATION IS FREE, CREATION IS PAID — and the clarification has to
+// arrive in time to change the creation, or the form is a toll booth.
+import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+import { claimsQuestionFor, assessReadiness } from '../generationReadiness'
+
+const EDGE = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..',
+    'supabase', 'functions', 'generate-blueprint', 'index.ts'), 'utf8')
+
+describe('the answers reach THIS generation, not just the next one', () => {
+  it('merges each answered field into the brief the prompt reads', () => {
+    for (const line of [
+      /if \(readyPresent\(answers\.offer\)\) brief\.offer =/,
+      /if \(readyPresent\(answers\.relationship\)\) brief\.promotes =/,
+      /if \(readyPresent\(answers\.claims\)\) brief\.productFacts =/,
+    ]) expect(EDGE).toMatch(line)
+  })
+
+  it('merges BEFORE the prompt resolves the offer', () => {
+    // ⚠️ ORDER IS THE WHOLE FIX. Merging after `const offer = brief.offer ?? …`
+    // would leave the code looking correct and the behaviour unchanged.
+    expect(EDGE.indexOf('brief.offer = String(answers.offer)'))
+      .toBeLessThan(EDGE.indexOf('const offer = brief.offer ??'))
+  })
+
+  it('does NOT let a blank answer erase a stored value', () => {
+    // ⚖️ Unanswered is not "none" — the three-state rule. Every merge is gated
+    // on `readyPresent`, never on the key existing.
+    const merges = EDGE.match(/brief\.(offer|promotes|productFacts|audience) = String\(answers/g) ?? []
+    expect(merges.length).toBeGreaterThanOrEqual(4)
+    for (const f of ['offer', 'relationship', 'claims', 'audience']) {
+      expect(EDGE).toMatch(new RegExp(`readyPresent\\(answers\\.${f}\\)\\) brief\\.`))
+    }
+  })
+
+  it('carries a FREE-TEXT goal as prose instead of dropping it', () => {
+    // ⚠️ `videoGoal` only accepts a GOAL_LINES key, so "grow my audience and
+    // build authority" would be discarded by a `??` chain that type-checks.
+    expect(EDGE).toMatch(/!GOAL_LINES\[String\(answers\.goal\)\]/)
+    expect(EDGE).toMatch(/brief\.idea = \[brief\.idea, String\(answers\.goal\)\]/)
+  })
+})
+
+describe('the two questions are not the same question', () => {
+  it('the goal question is about the CREATOR, and says so', () => {
+    const v = assessReadiness({ goal: null, angle: 'x', hasCreatorKnowledge: true })
+    const goalQ = v.fields.find((f) => f.field === 'goal')?.question ?? ''
+    expect(goalQ).toMatch(/FOR YOU/)
+  })
+
+  it('the claims question names the OFFER rather than a pronoun', () => {
+    // ⚠️ "What does it actually do?" — reported as indistinguishable from the
+    // goal question, because "it" had nothing on screen to bind to.
+    expect(claimsQuestionFor(null)).toMatch(/OFFER/)
+    expect(claimsQuestionFor(null)).not.toMatch(/^What does it actually do/)
+  })
+
+  it('uses the offer\'s real name when we know it', () => {
+    expect(claimsQuestionFor('the $100M roadmap'))
+      .toBe('What does the $100M roadmap actually do? Specific features, numbers or outcomes this video is allowed to state.')
+  })
+
+  it('falls back rather than naming a wrong or absurd product', () => {
+    // ⚖️ A question naming the wrong product is worse than one naming none.
+    expect(claimsQuestionFor('unspecified')).toMatch(/OFFER/)
+    expect(claimsQuestionFor('x'.repeat(80))).toMatch(/OFFER/)
+    expect(claimsQuestionFor('   ')).toMatch(/OFFER/)
+  })
+
+  it('asks for SPECIFICS, which is what a script can actually state', () => {
+    expect(claimsQuestionFor('Twin')).toMatch(/features, numbers or outcomes/)
+  })
+
+  it('the edge copy asks the same two questions', () => {
+    // The inlined gate is the one that runs; drift here means production asks
+    // the old confusing pair while the tests pass on the new one.
+    expect(EDGE).toMatch(/What should this video do FOR YOU\?/)
+    expect(EDGE).toMatch(/readyClaimsQuestion\(readyOffer\)/)
+    expect(EDGE).not.toMatch(/What does it actually do\? Give me the details/)
+  })
+})

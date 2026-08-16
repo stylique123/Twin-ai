@@ -2782,8 +2782,18 @@ Deno.serve(async (req: Request) => {
   const readyFacts = readyEv && typeof readyEv === 'object' && Array.isArray(readyEv.sections)
     ? readyEv.sections.map((x) => String(x?.label ?? '')).filter((x) => x.trim() !== '')
     : []
+  // ⚖️ MIRRORS `claimsQuestionFor` in packages/shared/src/generationReadiness.ts.
+  // Two questions read as one — "what should this video do for you" and "what
+  // does it actually do" — because the second's subject was a pronoun with
+  // nothing on screen to bind to. Naming the offer is what makes it answerable.
+  const readyClaimsQuestion = (offerName: unknown): string => {
+    const n = typeof offerName === 'string' ? offerName.trim() : ''
+    return (!n || n.toLowerCase() === 'unspecified' || n.length > 60)
+      ? 'What does the OFFER do? Specific features, numbers or outcomes this video is allowed to state.'
+      : `What does ${n} actually do? Specific features, numbers or outcomes this video is allowed to state.`
+  }
   const readyMissing: Array<{ field: string; question: string }> = []
-  if (!readyPresent(readyGoal)) readyMissing.push({ field: 'goal', question: 'What should this video actually do for you?' })
+  if (!readyPresent(readyGoal)) readyMissing.push({ field: 'goal', question: 'What should this video do FOR YOU? (grow audience, get leads, sell something, build authority)' })
   if (readyPromoting && !readyPresent(readyOffer)) readyMissing.push({ field: 'offer', question: 'Which product or offer should this video point at?' })
   // ⚖️ NO SUBJECT AT ALL. A readable reference gives the video a subject, and an
   // UNREADABLE one already returned above — so at this line a present
@@ -2802,7 +2812,7 @@ Deno.serve(async (req: Request) => {
     readyMissing.push({ field: 'cta', question: 'What should viewers do after watching?' })
   }
   if (readyPromoting && readyFacts.length === 0 && !readyPresent(answers.claims)) {
-    readyMissing.push({ field: 'claims', question: 'What does it actually do? Give me the details this video is allowed to state.' })
+    readyMissing.push({ field: 'claims', question: readyClaimsQuestion(readyOffer) })
   }
   // ── AUDIENCE: INFERRED WHEN THERE IS A BACK CATALOGUE, ASKED WHEN THERE IS NOT
   //
@@ -2869,6 +2879,38 @@ Deno.serve(async (req: Request) => {
   if (readyPresent(answers.offer)) stable.offer = String(answers.offer).slice(0, 240)
   if (readyPresent(answers.relationship)) stable.promotes = String(answers.relationship).slice(0, 240)
   if (readyPresent(answers.claims)) stable.productFacts = String(answers.claims).slice(0, 2000)
+  // ⚠️ THE ANSWERS MUST REACH *THIS* SCRIPT, AND THEY DID NOT. `brief` was read
+  // before the questions were asked, and every prompt field below resolves
+  // through it — `offer` is `brief.offer ?? vp?.offer ?? dna.product`. Persisting
+  // to `brand_voices` (below) helps the NEXT video; this generation, the one the
+  // creator just answered questions for and paid a remix for, was written from
+  // the stale values. A creator who typed their offer watched a script ignore it.
+  //
+  // ⚖️ MUTATED IN PLACE BECAUSE `brief` IS THE SEAM. It is a plain local object
+  // and `const` pins the binding, not the contents; every downstream reader
+  // already goes through it, so merging here is what makes the answers
+  // load-bearing without threading a second object past forty call sites.
+  //
+  // ⚠️ ONLY WHAT WAS ACTUALLY ANSWERED. A blank answer must not overwrite a
+  // stored value with emptiness — the three-state rule: unanswered is not "none".
+  if (readyPresent(answers.offer)) brief.offer = String(answers.offer).slice(0, 240)
+  if (readyPresent(answers.relationship)) brief.promotes = String(answers.relationship).slice(0, 240)
+  if (readyPresent(answers.claims)) brief.productFacts = String(answers.claims).slice(0, 2000)
+  if (readyPresent(answers.audience)) brief.audience = String(answers.audience).slice(0, 240)
+  // ⚖️ `goal` IS AN ENUM DOWNSTREAM AND THE ANSWER IS FREE TEXT. `videoGoal` only
+  // accepts a `GOAL_LINES` key, so "grow my audience and build authority" would
+  // be silently discarded by a `??` chain that type-checks. It lands in `idea`
+  // instead, which the prompt reads as the video's subject — the answer reaches
+  // the writer as what it is, prose, rather than being dropped for not being an
+  // enum.
+  if (readyPresent(answers.goal) && !GOAL_LINES[String(answers.goal)]) {
+    brief.idea = [brief.idea, String(answers.goal)].filter(Boolean).join(' — ').slice(0, 400)
+  } else if (readyPresent(answers.goal)) {
+    brief.goal = String(answers.goal)
+  }
+  if (readyPresent(answers.angle)) {
+    brief.idea = [brief.idea, String(answers.angle)].filter(Boolean).join(' — ').slice(0, 400)
+  }
   if (Object.keys(stable).length && voice?.id) {
     const { error: briefErr } = await admin
       .from('brand_voices')
