@@ -105,15 +105,40 @@ export interface ReadinessVerdict {
 
 /** The questions, written to be answerable in one line by someone holding a
  *  phone — never "provide your value proposition". */
+/** ⚠️ TWO OF THESE READ AS THE SAME QUESTION, AND A CREATOR SAID SO. "What
+ *  should this video actually do for you?" and "What does it actually do?" both
+ *  parse as *what does the video do* — the second is asking about the PRODUCT,
+ *  but "it" has no anchor on screen, so the form asked one question twice and
+ *  got one answer twice.
+ *
+ *  ⚖️ SO EACH ONE NAMES ITS OWN SUBJECT. The goal question is about the
+ *  creator's outcome; the claims question is about the offer, and says the word
+ *  "offer" rather than leaning on a pronoun. `claimsAbout` puts the real name in
+ *  when it is known, because "What does Acquisition.com's roadmap actually do"
+ *  is answerable and "what does it do" is a riddle.
+ *
+ *  ⚠️ AND THE ANSWERS ARE LOAD-BEARING, WHICH IS WHY THE WORDING MATTERS. They
+ *  are merged into the brief that builds THIS script — vague questions produce
+ *  vague scripts, and this form is the only place some of these facts exist. */
 const ASK: Record<ReadinessField, string> = {
-  goal: 'What should this video actually do for you?',
+  goal: 'What should this video do FOR YOU? (grow audience, get leads, sell something, build authority)',
   audience: 'Who is this video for?',
   angle: 'What is this video about?',
   offer: 'Which product or offer should this video point at?',
   relationship: 'What is your relationship to it — do you own it, earn from it, are you paid to feature it, or are you just covering it?',
   cta: 'What should viewers do after watching?',
-  claims: 'What does it actually do? Give me the details this video is allowed to state.',
+  claims: 'What does the OFFER do? Specific features, numbers or outcomes this video is allowed to state.',
   referenceTransfer: '',
+}
+
+/** The claims question with the offer's real name in it, when we know it.
+ *
+ *  ⚖️ FALLS BACK TO THE GENERIC WORDING rather than inventing a name — a
+ *  question naming the wrong product is worse than one naming none. */
+export function claimsQuestionFor(offer?: string | null): string {
+  const name = typeof offer === 'string' ? offer.trim() : ''
+  if (!name || name.toLowerCase() === 'unspecified' || name.length > 60) return ASK.claims
+  return `What does ${name} actually do? Specific features, numbers or outcomes this video is allowed to state.`
 }
 
 /**

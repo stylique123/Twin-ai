@@ -5,7 +5,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
-import { generateBlueprint, ingestReference, getJob, findGenerationByKey } from '../../lib/api'
+import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
+import { assessReadiness } from '../../lib/api'
 import type { VideoGoal } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE } from '../../lib/api'
@@ -114,6 +115,45 @@ function recallTranscript(key: string): string | undefined {
   try { return sessionStorage.getItem(transcriptSlot(key)) ?? undefined } catch { return undefined }
 }
 
+// ⚠️ TYPED ANSWERS DIED WITH A TAB SWITCH, AND THE BUILD STARTED OVER. Reported
+// from a real session: the creator was part-way through answering the readiness
+// questions, switched to another tab, came back to a blank screen and a build
+// running from the beginning. Everything they had typed was component state, so
+// a discarded tab (mobile Safari and Chrome both reclaim background tabs) took
+// it — and the restored page had no questions open, so it went straight back to
+// building.
+//
+// ⚖️ PARKED UNDER THE BUILD KEY, like the transcript above and for the same
+// reason: it belongs to THIS build intent, not to this component instance, and
+// it should die with the tab rather than outlive it into someone's next video.
+const answersSlot = (key: string) => `twinai.answers.${key}`
+const askSlot = (key: string) => `twinai.ask.${key}`
+function rememberAnswers(key: string, answers: Record<string, string>): void {
+  try { sessionStorage.setItem(answersSlot(key), JSON.stringify(answers)) } catch { /* storage off */ }
+}
+function recallAnswers(key: string): Record<string, string> {
+  try {
+    const raw = sessionStorage.getItem(answersSlot(key))
+    const parsed = raw ? JSON.parse(raw) : null
+    // ⚖️ A CORRUPT SLOT IS AN EMPTY ONE. Restoring junk into the form would be
+    // worse than asking again.
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, string> : {}
+  } catch { return {} }
+}
+function rememberAsk(key: string, qs: ReadinessQuestion[] | null): void {
+  try {
+    if (qs?.length) sessionStorage.setItem(askSlot(key), JSON.stringify(qs))
+    else sessionStorage.removeItem(askSlot(key))
+  } catch { /* storage off */ }
+}
+function recallAsk(key: string): ReadinessQuestion[] | null {
+  try {
+    const raw = sessionStorage.getItem(askSlot(key))
+    const parsed = raw ? JSON.parse(raw) : null
+    return Array.isArray(parsed) && parsed.length ? parsed as ReadinessQuestion[] : null
+  } catch { return null }
+}
+
 export default function V2Building() {
   const nav = useNavigate()
   const loc = useLocation()
@@ -133,10 +173,18 @@ export default function V2Building() {
   // 1-3 inputs it needs to write confidently, so it declined to charge. This is
   // the reader for those questions — without it the server would be asking into
   // a void, which is the one thing this project never ships.
-  const [askQuestions, setAskQuestions] = useState<ReadinessQuestion[] | null>(null)
-  const [askAnswers, setAskAnswers] = useState<Record<string, string>>({})
+  // ⚠️ RESTORED, NOT RESET. A tab the browser reclaimed comes back to the card
+  // it left — with the questions still open and the words still in the boxes.
+  const [askQuestions, setAskQuestions] = useState<ReadinessQuestion[] | null>(
+    () => recallAsk(buildKey((loc.state || {}) as BuildState)))
+  const [askAnswers, setAskAnswers] = useState<Record<string, string>>(
+    () => recallAnswers(buildKey((loc.state || {}) as BuildState)))
   // Answers survive the retry so a second refusal never re-asks what was typed.
-  const answersRef = useRef<Record<string, string>>({})
+  // ⚖️ SEEDED FROM THE SAME SLOT. The ref is what the build actually sends, so
+  // restoring only the visible form would show the creator their answers and
+  // then generate without them.
+  const answersRef = useRef<Record<string, string>>(
+    recallAnswers(buildKey((loc.state || {}) as BuildState)))
   const [retryNonce, setRetryNonce] = useState(0)
   const started = useRef(false)
   // Set ONLY by the explicit Cancel button — so leaving via the nav (Library,
@@ -253,6 +301,61 @@ export default function V2Building() {
         // the creator is told what to change instead of what went wrong.
         const halt = (cause: keyof typeof REFERENCE_UNREAD_TEXT) => {
           if (alive) { setUnusableRef(REFERENCE_UNREAD_TEXT[cause]); setActive(0) }
+        }
+
+        // ── ASK BEFORE THE WAIT, NOT AFTER IT ──────────────────────────
+        //
+        // ⚠️ THE ORDER WAS BACKWARDS AND A CREATOR FELT IT. The readiness
+        // questions are returned by the SERVER, and the server is not called
+        // until the reference has been ingested — `ingestReference` plus a poll
+        // of up to 60 x 1.2s. So the creator watched a two-minute progress bar,
+        // was then asked two questions, and pressing "Build my video plan"
+        // started the bar again. The questions are about the creator's own
+        // intent; not one of them needs the reference read.
+        //
+        // ⚖️ SO THEY ARE ASKED FIRST, FROM ONE CHEAP ROW. `listBrandVoices` is a
+        // single indexed read — milliseconds against two minutes — and it
+        // carries the brief and profile the verdict needs.
+        //
+        // ⚖️ THE SERVER GATE STAYS. This is a courtesy layer that saves the
+        // wait; the refusal that protects the charge still lives beside
+        // `spend_credits`, where no caller — an old client, a direct POST — can
+        // route around it.
+        if (!askQuestions && !Object.keys(answersRef.current).length) {
+          try {
+            const voices = await listBrandVoices()
+            const v = voices.find((x) => x.is_default) ?? voices[0] ?? null
+            const vBrief = ((v as { pre_script_brief?: Record<string, unknown> } | null)
+              ?.pre_script_brief ?? {}) as Record<string, unknown>
+            const str = (x: unknown) => (typeof x === 'string' ? x : undefined)
+            const verdict = assessReadiness({
+              goal: state.goal ?? str(vBrief.goal) ?? null,
+              angle: state.reference_note || refUrl || str(vBrief.idea) || null,
+              offer: str(vBrief.offer) ?? str(v?.profile?.offer) ?? null,
+              relationship: str(vBrief.promotes) ?? null,
+              cta: str(vBrief.cta) ?? null,
+              audience: str(vBrief.audience) ?? str(v?.profile?.audience) ?? null,
+              referenceRead: Boolean(refUrl),
+              hasCreatorKnowledge: Boolean(v?.profile),
+            })
+            const missing = verdict.fields
+              .filter((f) => f.state === 'MISSING_REQUIRED' && f.question)
+              .map((f) => ({ field: f.field, question: f.question as string }))
+            if (missing.length && alive) {
+              // No spend, no ingest, no wait — and `active` stays at 0 so the
+              // bar does not pretend work is happening behind the card.
+              rememberAsk(key, missing)
+              setAskQuestions(missing)
+              setActive(0)
+              setIngesting(false)
+              return
+            }
+          } catch (e) {
+            // ⚖️ A FAILED PRE-CHECK MUST NOT BLOCK A BUILD. The server asks the
+            // same question authoritatively a moment later; losing the courtesy
+            // is a slower path, not a broken one.
+            console.warn('[build] readiness pre-check skipped', e)
+          }
         }
 
         // An unreadable host never even reaches the worker. This used to sail
@@ -394,7 +497,7 @@ export default function V2Building() {
         // Not a failure and not a charge — the build is waiting on the creator.
         if ((e as { code?: string } | null)?.code === READINESS_INCOMPLETE_CODE) {
           const qs = (e as { questions?: ReadinessQuestion[] }).questions ?? []
-          if (qs.length) { setAskQuestions(qs); setActive(0); return }
+          if (qs.length) { rememberAsk(key, qs); setAskQuestions(qs); setActive(0); return }
           // A code with no questions is a server we do not understand. Falling
           // through to the generic error beats rendering an empty form.
         }
@@ -455,7 +558,14 @@ export default function V2Building() {
                     type="text"
                     autoComplete="off"
                     value={askAnswers[q.field] ?? ''}
-                    onChange={(ev) => setAskAnswers((a) => ({ ...a, [q.field]: ev.target.value }))}
+                    onChange={(ev) => setAskAnswers((a) => {
+                      // ⚠️ SAVED ON EVERY KEYSTROKE, because the event that
+                      // loses them is not a submit — it is a background tab
+                      // being reclaimed with no warning and no unload.
+                      const next = { ...a, [q.field]: ev.target.value }
+                      rememberAnswers(buildKey(state), next)
+                      return next
+                    })}
                     className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
                     placeholder="Your answer"
                   />
@@ -470,6 +580,12 @@ export default function V2Building() {
               disabled={askQuestions.some((q) => !(askAnswers[q.field] ?? '').trim())}
               onClick={() => {
                 answersRef.current = { ...answersRef.current, ...askAnswers }
+                // ⚖️ THE ANSWERS OUTLIVE THE CARD, THE CARD DOES NOT. Keeping
+                // the answers means a tab reclaimed mid-build still sends them;
+                // clearing the questions means it does not re-ask what was just
+                // answered.
+                rememberAnswers(buildKey(state), answersRef.current)
+                rememberAsk(buildKey(state), null)
                 setAskQuestions(null)
                 started.current = false
                 setError(null)
