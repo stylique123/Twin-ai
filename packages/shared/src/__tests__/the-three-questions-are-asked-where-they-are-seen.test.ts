@@ -13,7 +13,10 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES } from '../videoIntent'
+import {
+  VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES,
+  INTENT_QUESTIONS, reachableIntentValues, compileVideoIntent,
+} from '../videoIntent'
 
 const V2 = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..',
   'apps', 'web', 'src', 'pages', 'v2')
@@ -50,20 +53,82 @@ describe('Advanced Settings keeps execution and loses intent', () => {
 })
 
 describe('the three questions open with the remix', () => {
-  it('all three are defined, with the shared enums as their options', () => {
+  it('all three are defined in SHARED, beside the enums they map onto', () => {
+    // ⚠️ THEY USED TO LIVE IN THE COMPONENT, which meant the WORDING and the
+    // behaviour it selects could drift apart silently — and the wording is the
+    // part a creator actually experiences.
     for (const f of ['video_goal', 'content_focus', 'viewer_outcome']) {
-      expect(BUILD).toMatch(new RegExp(`field: '${f}'`))
+      expect(INTENT_QUESTIONS.some((q) => q.field === f), f).toBe(true)
     }
-    expect(BUILD).toMatch(/VIDEO_GOALS\.map/)
-    expect(BUILD).toMatch(/CONTENT_FOCUS\.map/)
-    expect(BUILD).toMatch(/VIEWER_OUTCOMES\.map/)
+    expect(BUILD).toMatch(/INTENT_QUESTIONS/)
+    // The card renders what it is given; it holds no option list of its own.
+    expect(BUILD).not.toMatch(/VIDEO_GOALS\.map/)
+  })
+
+  it('every visible value is one the compiler accepts', () => {
+    // ⚖️ A chip whose value the server discards is a question that lies.
+    for (const q of INTENT_QUESTIONS) {
+      const all = q.field === 'video_goal' ? VIDEO_GOALS
+        : q.field === 'content_focus' ? CONTENT_FOCUS : VIEWER_OUTCOMES
+      for (const v of reachableIntentValues(q.field)) {
+        expect(all as readonly string[], `${q.field}/${v}`).toContain(v)
+      }
+    }
+  })
+
+  it('reads in plain English, with no internal vocabulary on screen', () => {
+    // ⚠️ THE HARD RULE. A creator must never have to decode Twin's internals.
+    const shown = INTENT_QUESTIONS.flatMap((q) => [
+      q.question,
+      ...q.options.flatMap((o) => [o.label, o.hint ?? '', ...(o.options ?? []).map((c) => c.label)]),
+    ]).join(' ').toLowerCase()
+    for (const jargon of [
+      'authority', 'content focus', 'viewer outcome', 'entitlement',
+      'reference adaptation', 'product relationship', 'commercial intent',
+      'substance', 'provenance', 'retrieval',
+    ]) {
+      expect(shown, jargon).not.toContain(jargon)
+    }
+  })
+
+  it('keeps leads and sell apart, because they are different videos', () => {
+    const goals = reachableIntentValues('video_goal')
+    expect(goals).toContain('leads')
+    expect(goals).toContain('sell')
+  })
+
+  it('keeps comment, share and follow reachable under one visible chip', () => {
+    // ⚖️ Grouped on screen, distinct underneath — three different endings.
+    const outcomes = reachableIntentValues('viewer_outcome')
+    for (const v of ['comment', 'share', 'follow']) expect(outcomes).toContain(v)
+    const q = INTENT_QUESTIONS.find((x) => x.field === 'viewer_outcome')!
+    expect(q.options.filter((o) => o.options?.length)).toHaveLength(1)
+  })
+
+  it('keeps remember_me, relabelled rather than deleted', () => {
+    expect(reachableIntentValues('viewer_outcome')).toContain('remember_me')
+  })
+
+  it('retires personal_brand from the SCREEN and keeps its behaviour', () => {
+    // ⚠️ A DIRECTIVE IS NEVER DELETED BECAUSE ITS LABEL LEFT. It is routed from
+    // authority + a personal focus + remember/follow.
+    expect(reachableIntentValues('video_goal')).not.toContain('personal_brand')
+    expect(compileVideoIntent({ goal: 'authority', focus: 'experience', outcome: 'remember_me' })
+      .resolutions.join(' ')).toMatch(/personal-brand directive/)
   })
 
   it('asks the intent questions for EVERY video, not only on a refusal', () => {
     // ⚖️ They are not a repair for an incomplete profile. They are about a video
     // that does not exist yet, so there is nothing to be complete about.
     expect(BUILD).toMatch(/const unanswered = INTENT_QUESTIONS\.filter\(/)
-    expect(BUILD).toMatch(/const ask: AskItem\[\] = \[\.\.\.unanswered, \.\.\.missing\]/)
+    expect(BUILD).toMatch(/\[\.\.\.unanswered, \.\.\.missing\.slice\(0, MAX_TEXT_QUESTIONS\)\]/)
+  })
+
+  it('CAPS the free-text tail, which is what made the card a form', () => {
+    // ⚠️ REPORTED WITH A SCREENSHOT: three chip rows and three text boxes,
+    // twenty-five options, in one scroll. The chips are never trimmed — dropping
+    // one would silently unask a question that changes retrieval.
+    expect(BUILD).toMatch(/const MAX_TEXT_QUESTIONS = 1/)
   })
 
   it('asks them BEFORE the two-minute ingest, like the readiness ones', () => {
@@ -96,7 +161,7 @@ describe('the three questions open with the remix', () => {
     // ⚠️ Two maps in sessionStorage are two things a reclaimed tab can restore
     // out of step with each other.
     const chip = BUILD.slice(BUILD.indexOf('isChip(q) ? ('))
-    expect(chip.slice(0, 1400)).toMatch(/rememberAnswers\(buildKey\(state\), next\)/)
+    expect(chip.slice(0, 3000)).toMatch(/rememberAnswers\(buildKey\(state\), next\)/)
   })
 })
 

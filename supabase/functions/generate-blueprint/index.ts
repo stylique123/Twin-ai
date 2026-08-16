@@ -1398,6 +1398,18 @@ function compileVideoIntentInline(answers: {
     goalDirective = 'GROW THE AUDIENCE WITH ONE SHARP IDEA. The creator has chosen their own expertise as the material, so do not water it down for reach — instead pick the single most surprising thing in it and make THAT the entry point. Depth is the hook here, not the obstacle.'
     resolutions.push('followers+expertise → one sharp idea as the wide entry point')
   }
+  // ⚠️ `personal_brand` LEFT THE UI AND KEPT ITS DIRECTIVE. Routed rather than
+  // removed: a creator asking to be trusted, out of their own experience or
+  // opinion, and remembered or followed, is describing a personal-brand video in
+  // plain English without using the phrase. See the shared copy for the full
+  // reasoning; parity executes both.
+  if (goal === 'authority'
+      && (focus === 'experience' || focus === 'opinion' || focus === 'story')
+      && (outcome === 'remember_me' || outcome === 'follow')) {
+    goalDirective = GOAL_DIRECTIVE_INLINE.personal_brand
+    resolutions.push('authority+personal_focus+remember → personal-brand directive')
+  }
+
   if (substanceFloor < SUBSTANCE_FLOOR) {
     substanceFloor = SUBSTANCE_FLOOR
     resolutions.push('substance floor clamped to the system minimum')
