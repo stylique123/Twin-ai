@@ -39,6 +39,40 @@ const spoken = (b: Blueprint): string[] =>
     .scenes.filter((s) => s.show_in_teleprompter)
     .map((s) => s.dialogue ?? '')
 
+describe('only the opening beat can be the beat scene 1 already speaks', () => {
+  // ⚠️ THE SECOND CASUALTY, FOUND BY COUNTING THE LABELS IN PRODUCTION. A real
+  // blueprint labelled its SECOND beat "Hook Qualification" and its line was
+  // "If your brand relies on online sales, you need to see this" — words that
+  // appear nowhere in the hook. It was deleted for the word in its name.
+  it('keeps a mid-script beat whose label merely contains the word', () => {
+    const b = {
+      hook_options: ['Standard size guides are dead. If you sell clothes online, watch this.'],
+      script: [
+        { section: 'Hook', line: 'Standard size guides are dead. If you sell clothes online, watch this.' },
+        { section: 'Hook Qualification', line: 'If your brand relies on online sales, you need to see this.' },
+        { section: 'Proof', line: 'Returns dropped by a third.' },
+      ],
+    } as unknown as Blueprint
+    expect(spoken(b).some((l) => l.includes('If your brand relies on online sales'))).toBe(true)
+  })
+
+  it('still removes a REWORDED duplicate of the hook wherever it sits', () => {
+    // ⚖️ THE PROPERTY THAT MUST SURVIVE THE NARROWING. The label rule was made
+    // opening-only; the content rule was not, because a beat that says the hook
+    // again in different words is a duplicate at any position — and that is the
+    // case a label test never caught anyway.
+    const b = {
+      hook_options: ['Three ways people lose money without noticing'],
+      script: [
+        { section: 'Setup', line: 'Here is the situation.' },
+        { section: 'Restatement', line: 'Three ways people lose money without even noticing it.' },
+        { section: 'Proof', line: 'Start with the first one.' },
+      ],
+    } as unknown as Blueprint
+    expect(spoken(b).some((l) => l.includes('without even noticing'))).toBe(false)
+  })
+})
+
 describe('a re-hook beat survives to the teleprompter', () => {
   it('keeps the beat the creator has to say out loud', () => {
     // ⚠️ THE EXACT PRODUCTION LABEL.

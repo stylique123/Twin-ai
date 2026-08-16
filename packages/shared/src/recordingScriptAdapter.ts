@@ -198,12 +198,40 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
     // re-hook beat so the middle never sags"), the mechanism record carries
     // `rehookAfterItem` to place it, and the adapter deleted it on arrival.
     //
+    // MEASURED ACROSS PRODUCTION: 25 of 40 blueprints carry a re-hook beat —
+    // "Re-hook" (20), "Rehook" (3), "Re-hook (Myth 2 Intro)", "Rehook Point C".
+    // Every one of them lost that beat on the way to the teleprompter.
+    //
     // ⚖️ TESTED BEFORE THE HOOK TEST, NOT FOLDED INTO IT. "Re-hook" must win
     // over "hook" regardless of how the label is spelled, and a hyphen makes
     // `\bhook\b` match again — so the exclusion is stated once, positively,
-    // rather than encoded as a cleverer boundary.
+    // rather than encoded as a cleverer boundary. It is kept even though the
+    // first-beat rule below would also spare it: "a re-hook is never the hook"
+    // is a different claim from "only the opening beat can be the hook", and
+    // both are true.
+    // ⚖️ AND THE LABEL RULE ONLY APPLIES TO THE OPENING BEAT.
+    //
+    // The section test was doing two jobs and only one of them was sound.
+    // Scene 1 displaces exactly ONE script entry — the one it speaks — and a
+    // beat in the middle is not that entry no matter what its label says. So a
+    // label may only retire a beat while nothing has been spoken yet;
+    // `looksLikeHook` still runs everywhere, because a REWORDED duplicate of
+    // the hook is a real duplicate wherever it appears, and catching that is
+    // what the filter was written for.
+    //
+    // MEASURED: this deleted a second beat too. A blueprint labelled its
+    // second beat "Hook Qualification" — "If your brand relies on online
+    // sales, you need to see this" — words that appear nowhere in the hook.
+    // Deleted for the word in its name.
     const rehook = /\bre[\s-]?hook/i.test(seg.section || '')
-    if (!rehook && (/hook|opener/i.test(seg.section || '') || looksLikeHook(l))) {
+    // ⚠️ "NOTHING KEPT YET" IS NOT ENOUGH — the hook beat itself is not kept,
+    // so after it is retired `usable` is still empty and the NEXT beat looked
+    // like the opening one too. That is exactly how "Hook Qualification" at
+    // position two was deleted. The opening slot is claimed once, and
+    // `hookIdx` is the record of it having been claimed.
+    const isFirstUsable = usable.length === 0 && hookIdx === null
+    const labelledHook = !rehook && isFirstUsable && /hook|opener/i.test(seg.section || '')
+    if (labelledHook || looksLikeHook(l)) {
       // The FIRST hook-like line is the one scene 1 displaced; a later one is a
       // re-hook whose plan entry is not scene 1's to take.
       if (hookIdx === null) hookIdx = idx
