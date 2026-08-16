@@ -201,25 +201,12 @@ export async function saveDNA(dna: CreatorDNA): Promise<Profile> {
 
 // ---- Blueprint generation (real AI via edge function) -------------------
 
-/** What a video is FOR. Mirrors `GOAL_LINES` in generate-blueprint, which is the
- *  authority on what each one instructs the writer to do. `sell` and `leads` are
- *  the two that permit a commercial CTA. */
-export const VIDEO_GOALS = [
-  'followers', 'authority', 'educate', 'leads', 'sell', 'entertain', 'personal_brand',
-] as const
-export type VideoGoal = (typeof VIDEO_GOALS)[number]
-
-/** Short labels for the create screen. The prompt lines live server-side; these
- *  are what a creator picking one actually reads. */
-export const VIDEO_GOAL_LABELS: Record<VideoGoal, string> = {
-  followers: 'Grow my audience',
-  authority: 'Build authority',
-  educate: 'Teach something',
-  leads: 'Start conversations',
-  sell: 'Sell my offer',
-  entertain: 'Entertain',
-  personal_brand: 'Build my personal brand',
-}
+// ⚠️ THE GOAL ENUM MOVED TO `videoIntent.ts`, AND MOVING IT WAS THE POINT.
+// Two lists of the same seven values sat in two files with a comment naming the
+// edge function as "the authority" and no test holding them together — which is
+// how "Start conversations" and "Get leads" came to share one key that granted
+// commercial-CTA intent. One definition, one place, re-exported from the index.
+import type { VideoGoal } from './videoIntent'
 
 export interface GenerateInput {
   /** Answers to a prior READINESS_INCOMPLETE refusal, keyed by field. Sending
