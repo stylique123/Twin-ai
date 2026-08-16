@@ -5,7 +5,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
-import { generateBlueprint, ingestReference, getJob, findGenerationByKey } from '../../lib/api'
+import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
+import { assessReadiness } from '../../lib/api'
 import type { VideoGoal } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE } from '../../lib/api'
@@ -253,6 +254,60 @@ export default function V2Building() {
         // the creator is told what to change instead of what went wrong.
         const halt = (cause: keyof typeof REFERENCE_UNREAD_TEXT) => {
           if (alive) { setUnusableRef(REFERENCE_UNREAD_TEXT[cause]); setActive(0) }
+        }
+
+        // ── ASK BEFORE THE WAIT, NOT AFTER IT ──────────────────────────
+        //
+        // ⚠️ THE ORDER WAS BACKWARDS AND A CREATOR FELT IT. The readiness
+        // questions are returned by the SERVER, and the server is not called
+        // until the reference has been ingested — `ingestReference` plus a poll
+        // of up to 60 x 1.2s. So the creator watched a two-minute progress bar,
+        // was then asked two questions, and pressing "Build my video plan"
+        // started the bar again. The questions are about the creator's own
+        // intent; not one of them needs the reference read.
+        //
+        // ⚖️ SO THEY ARE ASKED FIRST, FROM ONE CHEAP ROW. `listBrandVoices` is a
+        // single indexed read — milliseconds against two minutes — and it
+        // carries the brief and profile the verdict needs.
+        //
+        // ⚖️ THE SERVER GATE STAYS. This is a courtesy layer that saves the
+        // wait; the refusal that protects the charge still lives beside
+        // `spend_credits`, where no caller — an old client, a direct POST — can
+        // route around it.
+        if (!askQuestions && !Object.keys(answersRef.current).length) {
+          try {
+            const voices = await listBrandVoices()
+            const v = voices.find((x) => x.is_default) ?? voices[0] ?? null
+            const vBrief = ((v as { pre_script_brief?: Record<string, unknown> } | null)
+              ?.pre_script_brief ?? {}) as Record<string, unknown>
+            const str = (x: unknown) => (typeof x === 'string' ? x : undefined)
+            const verdict = assessReadiness({
+              goal: state.goal ?? str(vBrief.goal) ?? null,
+              angle: state.reference_note || refUrl || str(vBrief.idea) || null,
+              offer: str(vBrief.offer) ?? str(v?.profile?.offer) ?? null,
+              relationship: str(vBrief.promotes) ?? null,
+              cta: str(vBrief.cta) ?? null,
+              audience: str(vBrief.audience) ?? str(v?.profile?.audience) ?? null,
+              referenceRead: Boolean(refUrl),
+              hasCreatorKnowledge: Boolean(v?.profile),
+            })
+            const missing = verdict.fields
+              .filter((f) => f.state === 'MISSING_REQUIRED' && f.question)
+              .map((f) => ({ field: f.field, question: f.question as string }))
+            if (missing.length && alive) {
+              // No spend, no ingest, no wait — and `active` stays at 0 so the
+              // bar does not pretend work is happening behind the card.
+              setAskQuestions(missing)
+              setActive(0)
+              setIngesting(false)
+              return
+            }
+          } catch (e) {
+            // ⚖️ A FAILED PRE-CHECK MUST NOT BLOCK A BUILD. The server asks the
+            // same question authoritatively a moment later; losing the courtesy
+            // is a slower path, not a broken one.
+            console.warn('[build] readiness pre-check skipped', e)
+          }
         }
 
         // An unreadable host never even reaches the worker. This used to sail

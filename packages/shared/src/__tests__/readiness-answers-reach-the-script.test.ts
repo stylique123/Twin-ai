@@ -92,3 +92,46 @@ describe('the two questions are not the same question', () => {
     expect(EDGE).not.toMatch(/What does it actually do\? Give me the details/)
   })
 })
+
+// ── ASKED BEFORE THE WAIT, NOT AFTER IT ────────────────────────────────────
+//
+// ⚠️ THE ORDER WAS BACKWARDS. The questions come from the SERVER, and the
+// server is not called until the reference is ingested — `ingestReference` plus
+// a poll of up to 60 x 1.2s. So the creator watched a two-minute bar, was then
+// asked two questions, and pressing "Build my video plan" started the bar
+// again. Not one of those questions needs the reference read.
+describe('the questions come before the two-minute wait', () => {
+  const BUILD = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..',
+      'apps', 'web', 'src', 'pages', 'v2', 'V2Building.tsx'), 'utf8')
+
+  it('runs the pre-check BEFORE the ingest starts', () => {
+    // ⚠️ ORDER IS THE ENTIRE FIX — after the ingest it changes nothing.
+    expect(BUILD.indexOf('const verdict = assessReadiness('))
+      .toBeLessThan(BUILD.indexOf('await ingestReference(refUrl)'))
+  })
+
+  it('returns without ingesting when something is missing', () => {
+    const block = BUILD.slice(BUILD.indexOf('const verdict = assessReadiness('),
+      BUILD.indexOf('await ingestReference(refUrl)'))
+    expect(block).toMatch(/setAskQuestions\(missing\)/)
+    expect(block).toMatch(/return/)
+  })
+
+  it('asks ONCE — answers already given must not re-trigger it', () => {
+    // ⚖️ Without this the submit would bounce straight back to the same card.
+    expect(BUILD).toMatch(/if \(!askQuestions && !Object\.keys\(answersRef\.current\)\.length\)/)
+  })
+
+  it('a failed pre-check does NOT block the build', () => {
+    // ⚖️ The server asks the same question authoritatively a moment later.
+    // Losing the courtesy is a slower path, not a broken one.
+    const block = BUILD.slice(BUILD.indexOf('const verdict = assessReadiness('))
+    expect(block.slice(0, block.indexOf('An unreadable host'))).toMatch(/catch \(e\)/)
+  })
+
+  it('does not pretend work is happening behind the card', () => {
+    const block = BUILD.slice(BUILD.indexOf('if (missing.length && alive)'))
+    expect(block.slice(0, 300)).toMatch(/setIngesting\(false\)/)
+  })
+})
