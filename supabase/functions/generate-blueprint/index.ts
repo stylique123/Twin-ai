@@ -895,6 +895,25 @@ function compatibilityVerdicts(input: CompatInput): Array<{ dimension: string; v
   return out
 }
 
+// ⚠️ THE SECOND MISSING NAME, FOUND BY THE SAME GUARD CHANGE. This constant
+// lives in packages/shared/src/compatibilityGate.ts and was never inlined beside
+// the code that spreads it — `observed.push(...STRUCTURAL_DIMENSIONS)` is a
+// VALUE position, so it is a ReferenceError the moment a reference with beats
+// reaches this function, exactly as `readMechanism` was.
+//
+// ⚖️ AT MODULE LEVEL, WHERE THE SHARED COPY HAS IT. Declaring it inside the
+// function would make the two bodies differ and `compatibilityGateParity` reads
+// them line for line — a parity test that has to be loosened to accept a fix is
+// a parity test that stops catching the next drift.
+//
+// ⚖️ DELIBERATELY SHORT, AND THE OMISSIONS ARE THE POINT: `setting`,
+// `camera_work` and `creator_identity` are NOT here, because a transcript
+// cannot see a room, a lens or a face, and claiming otherwise would put a
+// verdict on something nobody looked at.
+const STRUCTURAL_DIMENSIONS: readonly string[] = [
+  'hook_mechanism', 'structure', 'sequencing', 'pacing',
+]
+
 function readReferenceObservations(
   structure: StoredRefStructure | null | undefined,
   creatorEnergy?: 'high' | 'calm' | null,
@@ -1164,6 +1183,102 @@ const SPOKEN_SOURCES: ReadonlySet<string> = new Set(['transcript', 'asked'])
 /** Null source means UNRECORDED, not caption — pre-0122 rows must not be demoted. */
 function wasSpoken(item: { source?: string | null }): boolean {
   return SPOKEN_SOURCES.has(String(item?.source ?? ''))
+}
+
+// ── REFERENCE MECHANISM, INLINED ───────────────────────────────────────────
+//
+// ⚠️ THIS FUNCTION WAS CALLED TWICE AND DEFINED NOWHERE, AND THAT IS THE SNAG.
+//
+// `readMechanism` lives in packages/shared/src/referenceMechanism.ts. Edge
+// functions cannot import @twinai/shared, so at runtime Deno raised
+// `ReferenceError: readMechanism is not defined` — AFTER the writer had already
+// returned a complete blueprint and the creator had already been charged. The
+// outer catch refunded and returned "We hit a snag".
+//
+// It is exactly the two production failures on 2026-08-16, both recorded in
+// `script_attempts` with outcome `succeeded` and `generation_id` NULL:
+//   run f2734f43…  writer settled 12:59:23.005, no generation row
+//   run fcd16a55…  writer settled 13:02:05.058, refunded 13:02:05.684
+//
+// It had never fired before because the block that calls it — the selection and
+// beat-audit counters — had never once executed in production until that day.
+//
+// ⚠️ AND THE PARSE GUARD SAW IT AND PASSED. `tsc` reported TS2304 "Cannot find
+// name 'readMechanism'" on both call sites, and the guard classified TS2304 as
+// advisory on the reasoning that types are erased at deploy. True of a type
+// error; false of this one — TS2304 means the identifier DOES NOT EXIST, and
+// erasing types does not create it. The guard now treats it as fatal, which is
+// the fix that stops the next one rather than this one.
+//
+// ⚖️ INLINED RATHER THAN DELETED. The two call sites are real readers: the
+// container-supply measurement and the reference-claim-leak count. Removing the
+// calls would silence the ReferenceError by throwing away the measurements.
+// Held identical to the shared copy by `referenceMechanismParity.test.ts`.
+const MECH_MIN_COUNT = 2
+const MECH_MAX_COUNT = 12
+const MECH_NUMBER_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+  seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+}
+
+interface InlineMechanism {
+  enumeration: { isEnumerated: boolean; count: number | null; unit: string | null }
+  hookPromise: string | null
+  rehookAfterItem: number | null
+  beatDebts: string[]
+}
+
+function mechText(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() !== '' ? v.trim() : null
+}
+
+function mechCoerceCount(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isInteger(v) && v >= MECH_MIN_COUNT && v <= MECH_MAX_COUNT) return v
+  if (typeof v === 'string') {
+    const t = v.trim().toLowerCase()
+    const word = MECH_NUMBER_WORDS[t]
+    if (word !== undefined && word >= MECH_MIN_COUNT && word <= MECH_MAX_COUNT) return word
+    const n = Number(t)
+    if (Number.isInteger(n) && n >= MECH_MIN_COUNT && n <= MECH_MAX_COUNT) return n
+  }
+  return null
+}
+
+function emptyMechanism(): InlineMechanism {
+  return {
+    enumeration: { isEnumerated: false, count: null, unit: null },
+    hookPromise: null,
+    rehookAfterItem: null,
+    beatDebts: [],
+  }
+}
+
+/** Anything unreadable degrades to "not enumerated", which withholds the check
+ *  rather than inventing a count. */
+function readMechanism(raw: unknown): InlineMechanism {
+  const out = emptyMechanism()
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out
+  const src = raw as Record<string, unknown>
+  const enumSrc = (src.enumeration ?? {}) as Record<string, unknown>
+  const count = mechCoerceCount(enumSrc.count)
+  // ⚠️ THE FLAG ARRIVES AS THE STRING "true", NOT THE BOOLEAN — the response
+  // schema types every mechanism field as string and the prompt asks for it in
+  // quotes. Reading only the boolean made this false on every real generation.
+  const flag = enumSrc.is_enumerated ?? enumSrc.isEnumerated
+  const isEnumerated = flag === true
+    || (typeof flag === 'string' && flag.trim().toLowerCase() === 'true')
+  out.enumeration = {
+    isEnumerated: isEnumerated && count !== null,
+    count: isEnumerated ? count : null,
+    unit: mechText(enumSrc.unit),
+  }
+  out.hookPromise = mechText(src.hook_promise ?? src.hookPromise)
+  out.rehookAfterItem = mechCoerceCount(src.rehook_after_item ?? src.rehookAfterItem)
+  const debts = src.beat_debts ?? src.beatDebts
+  out.beatDebts = Array.isArray(debts)
+    ? debts.filter((d): d is string => typeof d === 'string' && d.trim() !== '').map((d) => d.trim())
+    : []
+  return out
 }
 
 // ── PER-VIDEO INTENT, INLINED ──────────────────────────────────────────────

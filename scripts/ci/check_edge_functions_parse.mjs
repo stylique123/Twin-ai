@@ -54,17 +54,85 @@
 // keeps the guard's verdict a property of the SOURCE rather than of the
 // toolchain that happened to run it.
 import { execFileSync } from 'node:child_process'
-import { readdirSync, existsSync } from 'node:fs'
+import { readdirSync, existsSync, readFileSync } from 'node:fs'
+import { transformSync } from 'esbuild'
 
 const FUNCTIONS_DIR = 'supabase/functions'
 
-/** Does this diagnostic mean the file cannot ship? Syntax, or a dead-zone read. */
+// Expected structurally, because this is Deno source read by the Node
+// toolchain. These are NOT defects — the identifiers and modules genuinely
+// exist at deploy, in a runtime this compiler knows nothing about.
+const DENO_NOISE = [
+  /Cannot find name 'Deno'/,
+  /Cannot find module '(jsr|npm|https?):/,
+  /import path can only end with a '\.ts' extension/,
+]
+
+/**
+ * Did this missing name survive TYPE ERASURE?
+ *
+ * ⚠️ TS2304 IS TWO DIFFERENT BUGS WEARING ONE CODE, and only one of them ships.
+ *   `const x: Missing = …`      a TYPE position. esbuild deletes it. Harmless.
+ *   `push(...MISSING)`          a VALUE position. It survives, and Deno raises
+ *                               ReferenceError the first time the line runs.
+ * Failing on both would make this guard reject every Deno file that annotates
+ * with a type the Node toolchain cannot see; failing on neither is what let
+ * `readMechanism` reach production and refund two paid generations.
+ *
+ * ⚖️ SO ASK THE TOOL THAT ACTUALLY DECIDES. esbuild is what strips types at
+ * deploy: transform the file and look for the identifier in the OUTPUT. If it is
+ * still there, the deployed function will evaluate it. This is not a heuristic
+ * about colons and angle brackets — it is the same erasure the runtime gets.
+ */
+const erasedCache = new Map()
+function survivesTypeErasure(line) {
+  const m = /^(.+?)\(\d+,\d+\): error TS2304: Cannot find name '([^']+)'/.exec(line)
+  if (!m) return true // unparseable — fail closed, a missing name is the dangerous default
+  const [, file, name] = m
+  try {
+    if (!erasedCache.has(file)) {
+      erasedCache.set(file, transformSync(readFileSync(file, 'utf8'), {
+        loader: 'ts', format: 'esm', target: 'es2022',
+      }).code)
+    }
+    return new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
+      .test(erasedCache.get(file))
+  } catch {
+    // A file esbuild cannot transform is a worse problem than this one, and the
+    // syntactic family above will already have failed it. Fail closed.
+    return true
+  }
+}
+
+/** Does this diagnostic mean the file cannot ship? Syntax, a dead-zone read, or
+ *  an identifier that does not exist. */
 const isFatal = (line) => {
   const m = /error TS(\d+):/.exec(line)
   if (!m) return false
+  // A Deno-only name or module is not a missing identifier; it is this compiler
+  // reading source written for another runtime.
+  if (DENO_NOISE.some((r) => r.test(line))) return false
   const code = Number(m[1])
   // TS1000-1999 is the syntactic family: the file is not a program.
   if (code >= 1000 && code < 2000) return true
+  // ⚠️ TS2304 — "Cannot find name". THIS SHIPPED, AND IT COST TWO PAID SCRIPTS.
+  //
+  // `readMechanism` was called twice in generate-blueprint and defined nowhere:
+  // it lives in @twinai/shared, which an edge function cannot import. tsc said
+  // so, on both call sites, and this guard printed it as advisory and passed —
+  // on the reasoning that types are erased at deploy and failing on type errors
+  // would make the verdict a property of the runner.
+  //
+  // ⚖️ THAT REASONING IS RIGHT FOR TYPE ERRORS AND WRONG FOR THIS ONE. TS2304 is
+  // not a type error. It says the IDENTIFIER DOES NOT EXIST, and erasing types
+  // does not bring one into being — the deployed function raises
+  // `ReferenceError` the first time that line runs. It belongs with TS2448 and
+  // TS2454, which are already fatal for exactly the same reason: a compile-time
+  // diagnostic that is really a runtime crash.
+  //
+  // Measured cost: two generations on 2026-08-16 with a SUCCEEDED writer, no
+  // generation row, and a refunded credit against a script that existed.
+  if (code === 2304) return survivesTypeErasure(line)
   // Block-scoped binding used before declaration / before assignment. Types are
   // erased at deploy; these still throw at runtime.
   return code === 2448 || code === 2454
@@ -104,14 +172,6 @@ try {
 
 const headlines = out.split('\n').filter((l) => /error TS\d+:/.test(l) && !/^\s/.test(l))
 const fatal = headlines.filter(isFatal)
-// Expected structurally, because this is Deno source read by the Node
-// toolchain. Dropped from the advisory PRINT only — they were never fatal, so
-// this changes readability and not the verdict.
-const DENO_NOISE = [
-  /Cannot find name 'Deno'/,
-  /Cannot find module '(jsr|npm|https?):/,
-  /import path can only end with a '\.ts' extension/,
-]
 const advisory = headlines
   .filter((l) => !isFatal(l))
   .filter((l) => !DENO_NOISE.some((r) => r.test(l)))
@@ -119,9 +179,12 @@ const advisory = headlines
 if (fatal.length > 0) {
   console.error(`edge-functions-parse guard: FAILED — ${fatal.length} error(s) that stop a deploy.\n`)
   for (const l of fatal) console.error(`  ${l}`)
-  console.error('\nThe two causes that have already happened in this repo:')
+  console.error('\nThe three causes that have already happened in this repo:')
   console.error('  * a backtick in prose inside a template literal closes it — write "field", not a backticked field')
   console.error('  * TS2448/TS2454: a binding read above its own declaration in the same block')
+  console.error('  * TS2304: a name that does not exist here — usually a helper that lives in')
+  console.error('    @twinai/shared, which an edge function CANNOT import. Inline it and add a')
+  console.error('    parity test. This shipped once and refunded two paid generations.')
   process.exit(1)
 }
 
