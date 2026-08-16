@@ -125,7 +125,7 @@ describe('the answers have a reader, and the right ones persist', () => {
   it('the client renders the questions and can submit them', () => {
     expect(WEB).toMatch(/READINESS_INCOMPLETE_CODE/)
     expect(WEB).toMatch(/setAskQuestions/)
-    expect(WEB).toMatch(/readiness_answers: answersRef\.current/)
+    expect(WEB).toMatch(/readiness_answers: readinessAnswers/)
   })
 
   it('a retry re-arms the build, or the answers are collected and never sent', () => {

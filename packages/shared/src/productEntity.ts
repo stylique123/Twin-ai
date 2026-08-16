@@ -454,9 +454,15 @@ export interface EntityClaimRules {
   commercialCta: 'allowed' | 'only_if_intended' | 'forbidden'
 }
 
-/** What THIS video is for. Profile intent is a default; the video decides
- *  (§16a). Absent means nobody chose, and nobody choosing is not a sale. */
-export type VideoIntent = 'sell' | 'engage'
+/** Whether THIS video intends to sell. Profile intent is a default; the video
+ *  decides (§16a). Absent means nobody chose, and nobody choosing is not a sale.
+ *
+ *  ⚠️ RENAMED FROM `VideoIntent`, WHICH WAS WIDER THAN THE THING. It has exactly
+ *  one reader — `mayWriteCommercialCta` — and it answers exactly one question:
+ *  is this a selling video. The name now says that, and it stops colliding with
+ *  the compiled per-video intent record in `videoIntent.ts`, which is a
+ *  different concept that happened to want the same word. */
+export type CommercialIntent = 'sell' | 'engage'
 
 /**
  * May this script write a purchase or signup CTA?
@@ -468,11 +474,11 @@ export type VideoIntent = 'sell' | 'engage'
  */
 export function mayWriteCommercialCta(
   rules: EntityClaimRules,
-  videoIntent?: VideoIntent | null,
+  commercialIntent?: CommercialIntent | null,
 ): boolean {
   if (rules.commercialCta === 'forbidden') return false
   if (rules.commercialCta === 'allowed') return true
-  return videoIntent === 'sell'
+  return commercialIntent === 'sell'
 }
 
 export function claimRulesFor(

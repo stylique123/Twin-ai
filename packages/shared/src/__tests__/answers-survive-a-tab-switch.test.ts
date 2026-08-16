@@ -38,7 +38,10 @@ describe('typed answers survive the tab being reclaimed', () => {
   it('restores the OPEN QUESTIONS too, so it does not silently rebuild', () => {
     // ⚖️ Without this the restored page has no card, sees no answers, and goes
     // straight back to building — which is exactly what was reported.
-    expect(BUILD).toMatch(/useState<ReadinessQuestion\[\] \| null>\(\s*\n?\s*\(\) => recallAsk\(/)
+    // ⚠️ THE TYPE WIDENED WHEN THE THREE INTENT QUESTIONS JOINED THE CARD —
+    // `AskItem` is a readiness question OR a chip question. The property under
+    // test is unchanged: the OPEN QUESTIONS are restored, whatever kind.
+    expect(BUILD).toMatch(/useState<AskItem\[\] \| null>\(\s*\n?\s*\(\) => recallAsk\(/)
   })
 })
 
@@ -54,7 +57,7 @@ describe('what it keeps and what it drops', () => {
   it('records the questions wherever they are opened — both paths', () => {
     // The client pre-check and the server refusal each open the card; one of
     // them not recording would restore a half state.
-    const hits = BUILD.match(/rememberAsk\((key|buildKey\(state\)), (missing|qs|null)\)/g) ?? []
+    const hits = BUILD.match(/rememberAsk\((key|buildKey\(state\)), (ask|qs|null)\)/g) ?? []
     expect(hits.length).toBeGreaterThanOrEqual(3)
   })
 

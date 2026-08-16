@@ -18,6 +18,10 @@ export * from './styleCompiler'
 export * from './premiseCompatibility'
 export * from './contentHistory'
 export * from './generationReadiness'
+// The three per-video intent questions and their compilation. Exported here
+// because the create screen, the building screen and the readiness gate all need
+// the same enums, and a second copy is what this module exists to end.
+export * from './videoIntent'
 export * from './galleryRank'
 export * from './referenceEvidence'
 export * from './referenceAnalysis'
