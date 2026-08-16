@@ -106,6 +106,44 @@ export function transcriptBudgetFor(platform: string | null | undefined): number
     ? FREE_TRANSCRIPT_BUDGET : TRANSCRIPT_BUDGET
 }
 
+/** Hard ceiling on the candidate pool, whatever the budget asks for.
+ *
+ *  ⚖️ THE PROFILE SCRAPE IS BILLED PER ITEM even where TRANSCRIPTION is free, so
+ *  an unbounded pool would turn a free platform's generous budget into a real
+ *  bill. 50 is the breadth a full research scrape was already run at against
+ *  nine real creators (650 posts, 0 failures), so it is a proven ceiling rather
+ *  than a guessed one. */
+const MAX_SCRAPE_POOL = 50
+
+/** How many posts to SCRAPE, so the transcript budget has something to choose from.
+ *
+ *  ⚠️ THE BUDGET WAS UNREACHABLE AND THE INSTRUMENT PROVED IT. `scrape_dna`
+ *  called `scrapeProfile(handle, platform)` with no limit, and that parameter
+ *  defaults to 12. So a TikTok scan carrying `FREE_TRANSCRIPT_BUDGET = 25`
+ *  reported `videos_offered: 12` in production — the free budget could never be
+ *  spent, because the scrape only ever handed it twelve candidates. The
+ *  measurement that was supposed to decide whether 10 should become 15 was
+ *  reading a number governed by a default argument in a different file.
+ *
+ *  ⚖️ A POOL EQUAL TO THE BUDGET IS NOT A POOL. `selectVideosToTranscribe`
+ *  chooses across four axes — reach, stance, recency, density — and every one of
+ *  them is inert when the candidate count equals the budget, because taking all
+ *  of them is the only option. The stance axis in particular exists to find the
+ *  videos that carry a POSITION rather than a spectacle, and it can only do that
+ *  if there are videos it is allowed to reject. Doubling gives every axis
+ *  something to discard.
+ *
+ *  ⚖️ THIS DOES NOT RAISE ANY TRANSCRIPT BUDGET. The number of videos
+ *  transcribed — the paid part — is unchanged at 10 and 25. What changes is how
+ *  many the selector gets to look at before spending them, which is the cheap
+ *  half of the pipeline: a caption costs a scrape item, a transcript costs an
+ *  Actor run. Three measured scans put the marginal substance of videos 6+ at
+ *  12, 2 and 0 items, so the case for spending MORE transcripts is weak; the
+ *  case for spending the same ones BETTER is what this serves. */
+export function scrapePoolFor(platform: string | null | undefined): number {
+  return Math.min(transcriptBudgetFor(platform) * 2, MAX_SCRAPE_POOL)
+}
+
 /** Captions that suggest the video contains a POSITION rather than a spectacle.
  *
  *  ⚖️ REACH IS A PROXY FOR WHAT GOT VIEWS, NOT FOR WHAT CONTAINS AN ARGUMENT —

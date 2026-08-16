@@ -52,7 +52,12 @@ describe('the scan actually passes it', () => {
   })
 
   it('imports it rather than hard-coding a number', () => {
-    expect(SCAN).toMatch(/import \{ selectVideosToTranscribe, transcriptBudgetFor \}/)
+    // ⚖️ THE CLAIM IS "IMPORTED, NOT HARD-CODED" — not "these two names in this
+    // order". Pinning the exact import list made this fail when `scrapePoolFor`
+    // joined it, which is a passing test breaking on a change it has no opinion
+    // about. Assert what the name is and where it comes from.
+    expect(SCAN).toMatch(/import \{[^}]*\btranscriptBudgetFor\b[^}]*\} from '\.\.\/transcriptSelection\.js'/)
+    expect(SCAN).not.toMatch(/transcriptBudgetFor\s*=\s*\d/)
   })
 })
 
