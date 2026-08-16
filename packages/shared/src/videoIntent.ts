@@ -19,6 +19,13 @@
 // INSTRUCTED does not.
 
 import type { EvidenceLevel } from './knowledgeResolver'
+// ⚠️ IMPORTED, NEVER RESTATED. The first draft of this module wrote its own
+// default floor of 4 while the selector's is 6 — so an UNANSWERED question
+// would have quietly lowered the substance guarantee on every generation, which
+// is precisely the failure the clamp below claims to prevent. The test passed,
+// because it compared the module against its own wrong constant instead of
+// against the system's. One definition, imported.
+import { SUBSTANCE_FLOOR } from './knowledgeSelection'
 
 // ── Q1 · WHAT DO YOU WANT THIS VIDEO TO ACHIEVE? ───────────────────────────
 //
@@ -173,18 +180,24 @@ const OUTCOME_PAYOFF: Record<ViewerOutcome, string> = {
  *  one that must be enjoyed or remembered can be. The default floor is what the
  *  selector already used, so an unanswered question changes nothing. */
 const OUTCOME_FLOOR: Record<ViewerOutcome, number> = {
-  learn: 6,
-  change_mind: 6,
-  feel_inspired: 4,
-  remember_me: 5,
-  comment: 4,
-  share: 4,
-  follow: 4,
-  check_out_offer: 5,
-  convert: 6,
+  // Cannot be built from coverage rows: a method, a turned mind, or a decision
+  // to spend money all need material the creator actually has.
+  learn: 8,
+  change_mind: 8,
+  convert: 8,
+  // Need a specific to land, but not a full method.
+  remember_me: 7,
+  check_out_offer: 7,
+  // ⚖️ NO RAISE, AND THAT IS AN ANSWER RATHER THAN AN OVERSIGHT. A video meant
+  // to be enjoyed, shared or replied to can rest on lighter material without
+  // failing its own payoff, so it keeps the system's standing guarantee.
+  feel_inspired: SUBSTANCE_FLOOR,
+  comment: SUBSTANCE_FLOOR,
+  share: SUBSTANCE_FLOOR,
+  follow: SUBSTANCE_FLOOR,
 }
 
-const DEFAULT_FLOOR = 4
+const DEFAULT_FLOOR = SUBSTANCE_FLOOR
 
 /** Which goals express a commercial ask. `conversations` is deliberately NOT
  *  one of them — that is the whole reason it was split from `leads`. */
@@ -349,9 +362,11 @@ export function outcomeEvidenceNeed(outcome: ViewerOutcome | null): EvidenceLeve
  * intent" tells the model something nobody said.
  */
 export function renderVideoIntent(intent: VideoIntent): string {
-  const parts: string[] = []
-  if (intent.goalDirective) parts.push(`- WHAT THIS VIDEO IS FOR: ${intent.goalDirective}`)
-  if (intent.payoffDirective) parts.push(`- HOW IT MUST END: ${intent.payoffDirective}`)
-  if (!parts.length) return ''
-  return `\nVIDEO INTENT — the creator asked for this specific video, and these are decisions rather than suggestions.\n${parts.join('\n')}`
+  // ⚠️ THE GOAL DIRECTIVE IS NOT RENDERED HERE, AND THAT IS THE CONTRACT.
+  // `goalDirective` already has exactly one reader — the `- Goal:` line of the
+  // CREATOR DNA block — and emitting it again would put the same instruction in
+  // two places. Two copies of one instruction is how three copies of the CTA
+  // rule agreed with each other while sixteen purchase CTAs shipped.
+  if (!intent.payoffDirective) return ''
+  return `\nHOW THIS VIDEO MUST END — the creator chose what the viewer should leave with, so this is a decision rather than a suggestion.\n- ${intent.payoffDirective}`
 }

@@ -49,7 +49,11 @@ describe('the answers reach THIS generation, not just the next one', () => {
   it('carries a FREE-TEXT goal as prose instead of dropping it', () => {
     // ⚠️ `videoGoal` only accepts a GOAL_LINES key, so "grow my audience and
     // build authority" would be discarded by a `??` chain that type-checks.
-    expect(EDGE).toMatch(/!GOAL_LINES\[String\(answers\.goal\)\]/)
+    // ⚠️ TESTED AGAINST THE ENUM NOW, NOT AGAINST A MAP OF PROMPT LINES.
+    // `GOAL_LINES` is gone: the set of accepted answers used to be defined by
+    // whichever keys someone had written a sentence for, which is a set that
+    // drifts every time the copy is edited.
+    expect(EDGE).toMatch(/!isVideoGoalInline\(String\(answers\.goal\)\)/)
     expect(EDGE).toMatch(/brief\.idea = \[brief\.idea, String\(answers\.goal\)\]/)
   })
 })

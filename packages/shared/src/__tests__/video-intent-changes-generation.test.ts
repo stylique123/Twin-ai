@@ -12,6 +12,11 @@ import {
   VIDEO_GOAL_LABELS, CONTENT_FOCUS_LABELS, VIEWER_OUTCOME_LABELS,
   compileVideoIntent, preferKinds, renderVideoIntent, outcomeEvidenceNeed,
 } from '../videoIntent'
+// ⚠️ THE SYSTEM'S FLOOR, NOT A LITERAL. Asserting against `4` is how the first
+// draft of this file passed while the module silently LOWERED the substance
+// guarantee on every unanswered generation: the test compared the module
+// against its own wrong constant instead of against the selector's.
+import { SUBSTANCE_FLOOR } from '../knowledgeSelection'
 
 const c = (goal?: string, focus?: string, outcome?: string) =>
   compileVideoIntent({ goal, focus, outcome })
@@ -149,9 +154,23 @@ describe('Q3 — the outcome changes SUBSTANCE and the ENDING, not the tone', ()
     }
   })
 
-  it('an unset outcome leaves the floor exactly where it was', () => {
-    expect(c().substanceFloor).toBe(4)
+  it('an unset outcome leaves the floor exactly where the SELECTOR had it', () => {
+    expect(c().substanceFloor).toBe(SUBSTANCE_FLOOR)
     expect(c().payoffDirective).toBeNull()
+  })
+
+  it('raises above the system floor for the outcomes that need it', () => {
+    // ⚖️ The point of the question: a video that must teach a method or earn a
+    // purchase needs MORE than the standing guarantee, not the same.
+    for (const o of ['learn', 'change_mind', 'convert'] as const) {
+      expect(c(undefined, undefined, o).substanceFloor).toBeGreaterThan(SUBSTANCE_FLOOR)
+    }
+  })
+
+  it('leaves the lighter payoffs on the standing guarantee', () => {
+    for (const o of ['share', 'comment', 'follow', 'feel_inspired'] as const) {
+      expect(c(undefined, undefined, o).substanceFloor).toBe(SUBSTANCE_FLOOR)
+    }
   })
 
   it('names the evidence a payoff actually demands', () => {
@@ -262,8 +281,18 @@ describe('what it must never do', () => {
     // ⚖️ A paragraph of pasted labels is decoration, and decoration has been
     // measured not to move the output.
     const out = renderVideoIntent(c('authority', 'expertise', 'learn'))
-    expect(out).toMatch(/NARROW AND DEEP/)
+    expect(out).toMatch(/END ON THE PAYOFF/)
     expect(out).not.toMatch(/My expertise or ideas/)
     expect(out).not.toMatch(/Learn something useful/)
+  })
+
+  it('does NOT render the goal directive — it already has a reader', () => {
+    // ⚠️ ONE FIELD, ONE READER. `goalDirective` is the `- Goal:` line of the
+    // CREATOR DNA block. Emitting it here too would put one instruction in two
+    // places, which is how three copies of the CTA rule agreed with each other
+    // while sixteen purchase CTAs shipped.
+    expect(renderVideoIntent(c('authority'))).toBe('')
+    expect(renderVideoIntent(c('authority', 'expertise', 'learn')))
+      .not.toMatch(/NARROW AND DEEP/)
   })
 })

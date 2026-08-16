@@ -75,7 +75,14 @@ describe('the edge copy matches shared', () => {
   })
 
   it('applies it where the prompt is built, not somewhere decorative', () => {
-    expect(EDGE).toMatch(/const speakable = selectSpeakable\(relevanceOrdered, 10\)/)
+    // ⚠️ THE ORDER IT IS APPLIED TO IS NOW THE FOCUS-PREFERRED ONE, and the cut
+    // still happens here. `preferKindsInline` reorders BEFORE the selection is
+    // taken — reordering after it would change nothing, because the ten rows
+    // would already have been chosen. The floor is passed rather than defaulted
+    // so the viewer-outcome answer can raise it.
+    expect(EDGE).toMatch(/const speakable = selectSpeakable\(focusOrdered, 10, intent\.substanceFloor\)/)
+    expect(EDGE.indexOf('const focusOrdered = preferKindsInline(relevanceOrdered'))
+      .toBeLessThan(EDGE.indexOf('const speakable = selectSpeakable(focusOrdered'))
     // ⚠️ THE OLD LINE MUST BE GONE, not merely bypassed. A surviving
     // `.slice(0, 10)` on the relevance order is the defect intact.
     const code = EDGE.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')

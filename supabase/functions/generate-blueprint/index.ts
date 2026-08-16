@@ -1166,6 +1166,162 @@ function wasSpoken(item: { source?: string | null }): boolean {
   return SPOKEN_SOURCES.has(String(item?.source ?? ''))
 }
 
+// ── PER-VIDEO INTENT, INLINED ──────────────────────────────────────────────
+//
+// Inlined from `packages/shared/src/videoIntent.ts`, where the reasoning lives.
+// Deno deploy cannot import @twinai/shared, so the two copies are held identical
+// by `videoIntentParity.test.ts`, which EXECUTES both rather than comparing
+// their text — a comment drift is fine, a behaviour drift is not.
+const VIDEO_GOALS_INLINE = [
+  'followers', 'authority', 'educate', 'conversations', 'leads', 'sell',
+  'entertain', 'personal_brand',
+] as const
+const CONTENT_FOCUS_INLINE = [
+  'expertise', 'product', 'experience', 'opinion', 'review', 'story',
+  'reference_adapted', 'trending',
+] as const
+const VIEWER_OUTCOMES_INLINE = [
+  'learn', 'change_mind', 'feel_inspired', 'remember_me', 'comment', 'share',
+  'follow', 'check_out_offer', 'convert',
+] as const
+
+function isVideoGoalInline(v: unknown): boolean {
+  return typeof v === 'string' && (VIDEO_GOALS_INLINE as readonly string[]).includes(v)
+}
+
+const GOAL_DIRECTIVE_INLINE: Record<string, string> = {
+  followers: 'GROW THE AUDIENCE. Reach and shareability come first: pick the angle with the widest entry point, keep the required prior knowledge near zero, and earn a follow or a share rather than a purchase.',
+  authority: 'BUILD AUTHORITY. The viewer must trust this creator more at the end than at the start. Go NARROW AND DEEP on one thing rather than broad across three, and prefer a specific they could not get from a summary.',
+  educate: 'TEACH SOMETHING USABLE. The viewer should be able to DO the thing by the end. One complete idea beats three partial ones, and the steps must survive being followed by someone who is not watching twice.',
+  conversations: 'START A CONVERSATION. The video should leave a real question open — a genuine disagreement, a choice, or an experience others will want to match. Do NOT resolve everything, and do NOT ask for a sale.',
+  leads: 'OPEN A CONVERSATION THAT LEADS SOMEWHERE. Deliver enough that a next step is worth taking, and make the ask a step TOWARD the creator — a comment, a DM, a link — never a purchase on the spot.',
+  sell: 'SELL THE OFFER. Earn it first: the offer must be the natural conclusion of value already delivered, not an interruption. Name it plainly at the end.',
+  entertain: 'ENTERTAIN. Attention and rewatch are the point. Do not bolt a commercial ask onto a video whose job is to be enjoyed, and do not slow down to teach.',
+  personal_brand: 'BUILD THE PERSON, not just the information. Carry their stance and their story. A generic explainer fails this goal even when every fact in it is correct.',
+}
+
+const FOCUS_PREFERS_INLINE: Record<string, readonly string[]> = {
+  expertise: ['framework', 'opinion', 'claim'],
+  product: ['product', 'claim', 'fact'],
+  experience: ['experience', 'example'],
+  opinion: ['opinion', 'claim'],
+  review: ['product', 'experience', 'claim'],
+  story: ['experience', 'example'],
+  reference_adapted: [],
+  trending: [],
+}
+
+const OUTCOME_PAYOFF_INLINE: Record<string, string> = {
+  learn: 'END ON THE PAYOFF, NOT THE ASK. The last beat completes the thing being taught; the viewer must be able to act on it without rewatching.',
+  change_mind: 'END ON THE TURN. The viewer arrived believing something else, so the last beat must name what changed and why it holds — a summary is not a turn.',
+  feel_inspired: 'END ON THE POSSIBILITY, made concrete. Inspiration that names nothing specific is a mood, and moods do not survive the scroll.',
+  remember_me: 'END ON WHAT ONLY THIS PERSON COULD HAVE SAID. The last line should be unmistakably theirs — their stance, their phrasing, their enemy.',
+  comment: 'END ON A REAL QUESTION. Not "what do you think" — something with a genuine split in it, that a viewer has an answer to before they finish reading it.',
+  share: 'END ON WHAT MAKES THE VIEWER LOOK GOOD FOR SENDING IT. A share is a social act: give them the line they would want attached to their name.',
+  follow: 'END ON THE PROMISE OF MORE, and make it specific — what the next video does for them, not "follow for more".',
+  check_out_offer: 'END BY POINTING AT THE OFFER WITHOUT ASKING FOR MONEY. Curiosity, not commitment: what it is and who it is for, then stop.',
+  convert: 'END ON THE ASK, PLAINLY. Name the offer, name the step, and make the step small enough to take from a phone.',
+}
+
+const OUTCOME_FLOOR_INLINE: Record<string, number> = {
+  learn: 8, change_mind: 8, convert: 8,
+  remember_me: 7, check_out_offer: 7,
+  feel_inspired: SUBSTANCE_FLOOR, comment: SUBSTANCE_FLOOR,
+  share: SUBSTANCE_FLOOR, follow: SUBSTANCE_FLOOR,
+}
+
+const SELLING_GOALS_INLINE: ReadonlySet<string> = new Set(['sell', 'leads'])
+const SELLING_OUTCOMES_INLINE: ReadonlySet<string> = new Set(['convert'])
+
+interface VideoIntentInline {
+  goal: string | null
+  focus: string | null
+  outcome: string | null
+  goalDirective: string | null
+  wantsSale: boolean
+  payoffDirective: string | null
+  prefersKinds: readonly string[]
+  substanceFloor: number
+  wantsProductSubstance: boolean
+  wantsOwnExperience: boolean
+  resolutions: readonly string[]
+}
+
+/** Never throws: it runs inside a paid generation. */
+function compileVideoIntentInline(answers: {
+  goal?: unknown; focus?: unknown; outcome?: unknown
+}): VideoIntentInline {
+  const goal = isVideoGoalInline(answers.goal) ? String(answers.goal) : null
+  const focus = typeof answers.focus === 'string'
+    && (CONTENT_FOCUS_INLINE as readonly string[]).includes(answers.focus)
+    ? answers.focus : null
+  const outcome = typeof answers.outcome === 'string'
+    && (VIEWER_OUTCOMES_INLINE as readonly string[]).includes(answers.outcome)
+    ? answers.outcome : null
+  const resolutions: string[] = []
+
+  let goalDirective = goal ? GOAL_DIRECTIVE_INLINE[goal] : null
+  let payoffDirective = outcome ? OUTCOME_PAYOFF_INLINE[outcome] : null
+  let substanceFloor = outcome ? OUTCOME_FLOOR_INLINE[outcome] : SUBSTANCE_FLOOR
+  const prefersKinds = focus ? FOCUS_PREFERS_INLINE[focus] : []
+
+  if (goal === 'sell' && (focus === 'expertise' || focus === 'experience')
+      && (outcome === 'learn' || outcome === 'change_mind')) {
+    goalDirective = 'SELL THE OFFER, BUT TEACH FIRST AND TEACH FULLY. The creator has asked for a video that both sells and genuinely instructs, and the instruction is the part that earns the ask. Deliver the complete idea, then close softly: name the offer once, at the end, as the obvious next step for someone who wants more of exactly this. Do NOT interrupt the teaching to pitch.'
+    payoffDirective = 'END ON THE COMPLETED LESSON, THEN ONE SOFT COMMERCIAL LINE. The viewer must be able to act on what they learned whether or not they ever look at the offer.'
+    resolutions.push('sell+teaching_focus+learning_outcome → teach first, soft commercial close')
+  }
+  if (goal === 'entertain' && outcome === 'convert') {
+    goalDirective = 'ENTERTAIN THROUGHOUT, AND CONVERT ONLY AT THE END. The body of this video earns its attention by being enjoyed, not by being useful. The creator has asked for a commercial ending anyway, so make the turn deliberate and quick rather than pretending the video was a pitch all along.'
+    resolutions.push('entertain+convert → entertaining body, deliberate commercial turn at the end')
+  }
+  if (goal && !SELLING_GOALS_INLINE.has(goal) && outcome && SELLING_OUTCOMES_INLINE.has(outcome)
+      && goal !== 'entertain') {
+    resolutions.push(`${goal}+convert → body serves the goal, ending carries the ask`)
+  }
+  if (goal === 'followers' && focus === 'expertise') {
+    goalDirective = 'GROW THE AUDIENCE WITH ONE SHARP IDEA. The creator has chosen their own expertise as the material, so do not water it down for reach — instead pick the single most surprising thing in it and make THAT the entry point. Depth is the hook here, not the obstacle.'
+    resolutions.push('followers+expertise → one sharp idea as the wide entry point')
+  }
+  if (substanceFloor < SUBSTANCE_FLOOR) {
+    substanceFloor = SUBSTANCE_FLOOR
+    resolutions.push('substance floor clamped to the system minimum')
+  }
+
+  return {
+    goal, focus, outcome, goalDirective,
+    wantsSale: (goal !== null && SELLING_GOALS_INLINE.has(goal))
+      || (outcome !== null && SELLING_OUTCOMES_INLINE.has(outcome)),
+    payoffDirective, prefersKinds, substanceFloor,
+    wantsProductSubstance: focus === 'product' || focus === 'review',
+    wantsOwnExperience: focus === 'experience' || focus === 'story',
+    resolutions,
+  }
+}
+
+/** A STABLE PARTITION, NOT A SORT — relevance order survives within each kind. */
+function preferKindsInline<T extends { kind: string }>(
+  ranked: readonly T[], prefers: readonly string[],
+): T[] {
+  if (!prefers.length) return [...ranked]
+  const rank = new Map(prefers.map((k, i) => [k, i]))
+  const groups: T[][] = prefers.map(() => [])
+  const rest: T[] = []
+  for (const item of ranked) {
+    const i = rank.get(item.kind)
+    if (i === undefined) rest.push(item)
+    else groups[i].push(item)
+  }
+  return [...groups.flat(), ...rest]
+}
+
+function renderVideoIntentInline(intent: VideoIntentInline): string {
+  // The goal directive is NOT rendered here — it already has one reader, the
+  // `- Goal:` line of CREATOR DNA. See the shared copy for the reasoning.
+  if (!intent.payoffDirective) return ''
+  return `\nHOW THIS VIDEO MUST END — the creator chose what the viewer should leave with, so this is a decision rather than a suggestion.\n- ${intent.payoffDirective}`
+}
+
 // ⚠️ A BARE INTEGER IS NOT A FIGURE. "3 ways to do X" is a count; "3x" and
 // "$40k" are the measurements a numbers channel is built on.
 const FIGURE = new RegExp(
@@ -2361,7 +2517,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string; goal?: string; readiness_answers?: Record<string, string> }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; readiness_answers?: Record<string, string> }
   try {
     body = await req.json()
   } catch {
@@ -2897,16 +3053,25 @@ Deno.serve(async (req: Request) => {
   if (readyPresent(answers.relationship)) brief.promotes = String(answers.relationship).slice(0, 240)
   if (readyPresent(answers.claims)) brief.productFacts = String(answers.claims).slice(0, 2000)
   if (readyPresent(answers.audience)) brief.audience = String(answers.audience).slice(0, 240)
-  // ⚖️ `goal` IS AN ENUM DOWNSTREAM AND THE ANSWER IS FREE TEXT. `videoGoal` only
-  // accepts a `GOAL_LINES` key, so "grow my audience and build authority" would
-  // be silently discarded by a `??` chain that type-checks. It lands in `idea`
-  // instead, which the prompt reads as the video's subject — the answer reaches
-  // the writer as what it is, prose, rather than being dropped for not being an
-  // enum.
-  if (readyPresent(answers.goal) && !GOAL_LINES[String(answers.goal)]) {
+  // ⚖️ `goal` IS AN ENUM DOWNSTREAM AND THE ANSWER IS FREE TEXT. The compiler
+  // only accepts a known `VIDEO_GOALS` value, so "grow my audience and build
+  // authority" would be silently discarded by a `??` chain that type-checks. It
+  // lands in `idea` instead, which the prompt reads as the video's subject — the
+  // answer reaches the writer as what it is, prose, rather than being dropped
+  // for not being an enum.
+  //
+  // ⚠️ TESTED AGAINST THE ENUM, NOT AGAINST A MAP OF PROMPT LINES. The old form
+  // read `GOAL_LINES`, which meant the set of accepted answers was defined by
+  // whichever keys someone had written a sentence for. `isVideoGoalInline` is
+  // the membership test itself, held identical to the shared copy by a parity
+  // test that executes both.
+  if (readyPresent(answers.goal) && !isVideoGoalInline(String(answers.goal))) {
     brief.idea = [brief.idea, String(answers.goal)].filter(Boolean).join(' — ').slice(0, 400)
   } else if (readyPresent(answers.goal)) {
-    brief.goal = String(answers.goal)
+    // ⚠️ THE ANSWER IS FED FORWARD, NOT STORED AND FORGOTTEN. `brief.goal` is no
+    // longer read by the prompt — its only writer omitted it, so the read was
+    // dead — so an enum answer here has to reach the request itself.
+    body.goal = String(answers.goal)
   }
   if (readyPresent(answers.angle)) {
     brief.idea = [brief.idea, String(answers.angle)].filter(Boolean).join(' — ').slice(0, 400)
@@ -3028,37 +3193,29 @@ Deno.serve(async (req: Request) => {
     // The inferred values still stand behind it. They are a reading of the
     // creator's public content, which is a real signal when they never answered
     // — just never a better one than the answer itself.
-    const GOAL_LINES: Record<string, string> = {
-      followers: 'GROW THE AUDIENCE. Reach and shareability come first — the ending should earn a follow or a share, not a purchase.',
-      authority: 'BUILD AUTHORITY. The viewer must trust this creator more at the end than at the start; prefer depth and specifics over breadth.',
-      educate: 'TEACH SOMETHING USABLE. The viewer should be able to DO the thing by the end — one complete idea beats three partial ones.',
-      leads: 'GENERATE LEADS. The payoff should open a conversation; the CTA asks for a step toward them (comment, DM, link), not a sale on the spot.',
-      sell: 'SELL THE OFFER. Make the offer the natural conclusion of the value just delivered, and name it plainly in the CTA.',
-      entertain: 'ENTERTAIN. Attention and rewatch are the point — do not bolt a commercial ask onto a video whose job is to be enjoyed.',
-      personal_brand: 'BUILD THE PERSON, not just the information. Carry their stance and their story; a generic explainer fails this goal even when it is accurate.',
-    }
-    // THE GOAL IS A PROPERTY OF THE VIDEO, NOT OF THE PERSON, which is why the
-    // REQUEST wins over the stored brief.
+    // ⚠️ `GOAL_LINES` IS GONE, AND SO IS THE READER THAT HAD NO WRITER.
     //
-    // ⚠️ `brief.goal` was READ HERE AND WRITTEN BY NOTHING. `savePreScriptBrief`
-    // is its only writer and deliberately omits it, so `videoGoal` was always
-    // absent, `sellIntent` was always false, and EVERY script — including one
-    // for a founder who onboarded to sell — carried "NOT a selling video, do NOT
-    // write a purchase CTA". The consumer registry passed the whole time,
-    // because it checks that a reader EXISTS, not that a writer does.
+    // The goal used to reach the writer through exactly two channels: the line
+    // interpolated below, and the `goalWantsSale` boolean. Twelve other
+    // decisions — concept, angle, retrieval, substance depth, the ending — were
+    // made without ever consulting what the video was for. `compileVideoIntent`
+    // replaces the map with a record whose every field has ONE named reader,
+    // and those readers are wired in below at the points that actually decide.
     //
-    // ⚖️ Per-video rather than per-voice: one creator makes awareness videos AND
-    // sell videos from the same voice, and making the second require editing
-    // their profile is the wrong shape. `fidelity` and `tone` already ride the
-    // request for exactly this reason. The stored brief stays as a fallback so a
-    // caller that sends nothing keeps its old behaviour rather than silently
-    // changing meaning.
-    const videoGoal = (body.goal && GOAL_LINES[body.goal]) ? body.goal
-      : (brief.goal && GOAL_LINES[brief.goal]) ? brief.goal
-        : null
-    const goal = videoGoal
-      ? GOAL_LINES[videoGoal]
-      : (vp?.goal ?? dna.goal ?? 'turn attention into trust')
+    // ⚠️ `brief.goal` IS NO LONGER READ. `savePreScriptBrief` is its only writer
+    // and deliberately omits it, so the branch was dead for the whole life of
+    // this function — three fields meant "goal" and one of them could never
+    // hold a value. Deleting it is the migration; adding a fourth channel on top
+    // of a dead third would have been the bug.
+    const intent = compileVideoIntentInline({
+      goal: body.goal, focus: body.focus, outcome: body.outcome,
+    })
+    const videoGoal = intent.goal
+    // ⚖️ THE INFERRED VALUES STILL STAND BEHIND IT, unchanged. They are a reading
+    // of the creator's public content, which is a real signal when nobody
+    // answered — just never a better one than the answer itself.
+    const goal = intent.goalDirective
+      ?? (vp?.goal ?? dna.goal ?? 'turn attention into trust')
     const tone = vp?.tone ?? dna.voice ?? 'direct, warm, a little punchy'
     const editing = vp?.editing_style ?? dna.editing_style ?? 'fast jump cuts, burned-in captions'
     const platforms = voice?.platform
@@ -3256,7 +3413,18 @@ Deno.serve(async (req: Request) => {
       ...scored.filter((x) => x.hit > 0).sort((a, b) => b.hit - a.hit).map((x) => x.k),
       ...scored.filter((x) => x.hit === 0).map((x) => x.k),
     ]
-    const speakable = selectSpeakable(relevanceOrdered, 10)
+    // ⚠️ WHERE Q2 ACTUALLY LANDS. Until now an `experience` row and a `covered`
+    // row competed on keyword overlap alone, and nothing in the system could
+    // express "build this video out of what I have DONE". `preferKindsInline` is
+    // a STABLE PARTITION, not a sort: relevance still chooses WHICH experience,
+    // the focus only decides that an experience takes a slot before a coverage
+    // row does. An unanswered focus is the identity function.
+    const focusOrdered = preferKindsInline(relevanceOrdered, intent.prefersKinds)
+    // ⚠️ AND WHERE Q3 LANDS. The floor is how many of the ten slots must be real
+    // substance. A video that has to teach a method or earn a purchase needs
+    // more than the standing guarantee; one meant to be enjoyed does not. The
+    // compiler clamps it so no answer can ever ask for LESS.
+    const speakable = selectSpeakable(focusOrdered, 10, intent.substanceFloor)
     const coveredRows = kRows.filter((k) => k.kind === 'covered')
     const aRows = Array.isArray(audienceRows) ? audienceRows : []
     const knowledgeParts: string[] = []
@@ -3338,7 +3506,17 @@ Deno.serve(async (req: Request) => {
         ? 'attributed'
         : 'forbidden'
 
-    const goalWantsSale = videoGoal === 'sell' || videoGoal === 'leads'
+    // ⚠️ READS THE COMPILED FIELD, NOT THE ENUM. `conversations` used to BE
+    // `leads`, and `leads` sets this — so a creator asking for replies was
+    // granting themselves a pitch. The split lives in the compiler; this reader
+    // must not restate the membership test or the two will drift apart, which
+    // is exactly how three copies of the CTA rule once agreed with each other
+    // while sixteen purchase CTAs shipped.
+    //
+    // ⚖️ AND IT IS STILL ONLY THE CREATOR'S HALF. `sellIntent` below requires a
+    // commercial tie on record; ownership never licensed a pitch and no answer
+    // here creates a tie that does not exist.
+    const goalWantsSale = intent.wantsSale
     // ⚖️ SILENCE IS NOT PERMISSION, AND NEITHER IS OWNERSHIP. Owning something
     // is a standing fact; selling it IN THIS VIDEO is a per-video decision.
     // ~85-95% of a typical creator's short-form sells nothing, so "they have a
@@ -3690,12 +3868,12 @@ ${fenced('derived structure', ref.structure ? JSON.stringify(ref.structure).slic
 ${fenced('reference transcript', clip(ref.text ?? '', 6000))}
 - Creator's angle/note:
 ${fenced("creator's note", reference_note || '(none provided)')}
-- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}`
+- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${renderVideoIntentInline(intent)}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
 ${fenced("creator's note", reference_note || '(none provided)')}
-- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}`
+- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${renderVideoIntentInline(intent)}`
 
     // The DNA is fenced too. It reads like our own text, but every field in it
     // was synthesized from captions we scraped — so it is exactly as
