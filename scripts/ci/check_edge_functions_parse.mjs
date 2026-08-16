@@ -54,8 +54,7 @@
 // keeps the guard's verdict a property of the SOURCE rather than of the
 // toolchain that happened to run it.
 import { execFileSync } from 'node:child_process'
-import { readdirSync, existsSync, readFileSync } from 'node:fs'
-import { transformSync } from 'esbuild'
+import { readdirSync, existsSync } from 'node:fs'
 
 const FUNCTIONS_DIR = 'supabase/functions'
 
@@ -83,6 +82,13 @@ const DENO_NOISE = [
  * deploy: transform the file and look for the identifier in the OUTPUT. If it is
  * still there, the deployed function will evaluate it. This is not a heuristic
  * about colons and angle brackets — it is the same erasure the runtime gets.
+ *
+ * ⚠️ SHELLED OUT, NOT IMPORTED, AND THAT IS THIS FILE'S EXISTING CONTRACT. The
+ * first version did `import { transformSync } from 'esbuild'` and passed
+ * locally, where node_modules exists — and failed in CI, where this job checks
+ * out the repo and installs nothing. `tsc` above is invoked through `npx` for
+ * exactly that reason. A guard that needs an install is a guard that stops
+ * running the moment someone adds a cheaper job.
  */
 const erasedCache = new Map()
 function survivesTypeErasure(line) {
@@ -91,15 +97,16 @@ function survivesTypeErasure(line) {
   const [, file, name] = m
   try {
     if (!erasedCache.has(file)) {
-      erasedCache.set(file, transformSync(readFileSync(file, 'utf8'), {
-        loader: 'ts', format: 'esm', target: 'es2022',
-      }).code)
+      erasedCache.set(file, execFileSync('npx', ['--yes', 'esbuild', file], {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+      }))
     }
     return new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
       .test(erasedCache.get(file))
   } catch {
-    // A file esbuild cannot transform is a worse problem than this one, and the
-    // syntactic family above will already have failed it. Fail closed.
+    // esbuild unavailable or the file will not transform. Fail closed: a missing
+    // VALUE is the failure that cost two paid generations, and a guard that
+    // waves it through because a tool was missing is not a guard.
     return true
   }
 }
