@@ -192,7 +192,23 @@ export default function App() {
     location.pathname.startsWith('/result') ||
     location.pathname.startsWith('/billing') ||
     location.pathname.startsWith('/settings') ||
-    location.pathname.startsWith('/metrics')
+    location.pathname.startsWith('/metrics') ||
+    // ⚠️ THESE TWO WERE MISSING AND THE SYMPTOM WAS THE ONE DOCUMENTED ABOVE.
+    // Both render inside <Protected><AppShell><Page> exactly like every route
+    // in this list, but neither was in it — so navigating to them from another
+    // app page flipped the AnimatePresence key from 'app' to the pathname,
+    // forcing a `mode="wait"` exit before the incoming page could mount. A click
+    // during that exit stranded the screen black, which is precisely what the
+    // /v2 comment above was written about. Reported from production as "the
+    // Products tab is completely blank, black screen and glitches".
+    //
+    // ⚖️ A ROUTE ADDED TO THE APP MUST BE ADDED HERE TOO. The list is a manual
+    // mirror of "is this route inside the shell", and the mirror silently
+    // drifted twice. `products-route-is-in-app.test.ts` now derives the answer
+    // from the routes themselves so the next omission fails a test instead of
+    // reaching a creator as a black screen.
+    location.pathname.startsWith('/products') ||
+    location.pathname.startsWith('/edit')
 
   return (
     <div className="min-h-screen">
