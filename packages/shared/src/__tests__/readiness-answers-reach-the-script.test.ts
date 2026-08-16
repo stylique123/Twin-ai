@@ -118,13 +118,17 @@ describe('the questions come before the two-minute wait', () => {
   it('returns without ingesting when something is missing', () => {
     const block = BUILD.slice(BUILD.indexOf('const verdict = assessReadiness('),
       BUILD.indexOf('await ingestReference(refUrl)'))
-    expect(block).toMatch(/setAskQuestions\(missing\)/)
+    expect(block).toMatch(/setAskQuestions\(ask\)/)
     expect(block).toMatch(/return/)
   })
 
   it('asks ONCE — answers already given must not re-trigger it', () => {
     // ⚖️ Without this the submit would bounce straight back to the same card.
-    expect(BUILD).toMatch(/if \(!askQuestions && !Object\.keys\(answersRef\.current\)\.length\)/)
+    // ⚠️ THE GATE ASKS "IS ANYTHING STILL UNANSWERED" NOW, not "has anything
+    // been answered". The old form skipped the pre-check the moment one answer
+    // existed — correct when every question was a repair, wrong once three are
+    // asked for every video.
+    expect(BUILD).toMatch(/if \(!askQuestions && !\(intentAnswered && Object\.keys\(answersRef\.current\)\.length\)\)/)
   })
 
   it('a failed pre-check does NOT block the build', () => {
@@ -139,7 +143,7 @@ describe('the questions come before the two-minute wait', () => {
     // took a fixed 300 characters and broke the moment a line was added inside
     // the branch — asserting a layout where it meant a property, which is the
     // mistake this repo has now recorded three times.
-    const start = BUILD.indexOf('if (missing.length && alive)')
+    const start = BUILD.indexOf('if (ask.length && alive)')
     const block = BUILD.slice(start, BUILD.indexOf('\n            }', start))
     expect(block).toMatch(/setIngesting\(false\)/)
     expect(block).toMatch(/setActive\(0\)/)

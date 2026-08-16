@@ -7,7 +7,10 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
 import { assessReadiness } from '../../lib/api'
-import type { VideoGoal } from '@twinai/shared'
+import {
+  VIDEO_GOALS, VIDEO_GOAL_LABELS, CONTENT_FOCUS, CONTENT_FOCUS_LABELS,
+  VIEWER_OUTCOMES, VIEWER_OUTCOME_LABELS, type VideoGoal,
+} from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE } from '../../lib/api'
 import { READINESS_INCOMPLETE_CODE } from '../../lib/api'
@@ -140,17 +143,73 @@ function recallAnswers(key: string): Record<string, string> {
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, string> : {}
   } catch { return {} }
 }
-function rememberAsk(key: string, qs: ReadinessQuestion[] | null): void {
+// ── THE THREE THINGS ONLY THE CREATOR KNOWS ABOUT *THIS* VIDEO ────────────
+//
+// ⚠️ MOVED OUT OF ADVANCED SETTINGS, AND THE MOVE IS THE FIX. "What this video
+// is for" sat in a collapsed panel two clicks from the button, beside two
+// EXECUTION preferences — so it defaulted to unset for almost everyone, and an
+// unset goal meant every script was told "NOT a selling video", including one
+// written for a founder who onboarded to sell.
+//
+// ⚖️ THREE QUESTIONS, EACH ANSWERING SOMETHING THE OTHERS DO NOT, and each one
+// wired to a different decision rather than to a different sentence:
+//   goal    -> the creative directive (breadth vs depth, selling pressure)
+//   focus   -> which knowledge is RETRIEVED at all
+//   outcome -> the substance floor and how the video ends
+// A chip apiece, so all three cost three taps rather than a form.
+//
+// ⚖️ AND NOTHING HERE ASKS WHAT TWIN ALREADY KNOWS. Audience, niche, formats,
+// habitual CTAs and the offer are scraped, stored, or asked once at onboarding.
+// These are the three facts no scan can ever recover, because they are about a
+// video that does not exist yet.
+interface ChipQuestion {
+  field: 'video_goal' | 'content_focus' | 'viewer_outcome'
+  question: string
+  options: readonly { value: string; label: string }[]
+}
+
+const INTENT_QUESTIONS: readonly ChipQuestion[] = [
+  {
+    field: 'video_goal',
+    question: 'What do you want this video to achieve?',
+    options: VIDEO_GOALS.map((g) => ({ value: g, label: VIDEO_GOAL_LABELS[g] })),
+  },
+  {
+    field: 'content_focus',
+    question: 'What do you want this video to focus on?',
+    options: CONTENT_FOCUS.map((f) => ({ value: f, label: CONTENT_FOCUS_LABELS[f] })),
+  },
+  {
+    field: 'viewer_outcome',
+    question: 'What should the viewer leave with?',
+    options: VIEWER_OUTCOMES.map((o) => ({ value: o, label: VIEWER_OUTCOME_LABELS[o] })),
+  },
+]
+
+const INTENT_FIELDS: ReadonlySet<string> = new Set(INTENT_QUESTIONS.map((q) => q.field))
+
+/** A question the card can render: free text, or chips. */
+type AskItem = ReadinessQuestion | ChipQuestion
+const isChip = (q: AskItem): q is ChipQuestion =>
+  Array.isArray((q as ChipQuestion).options)
+
+/** ⚠️ A RESTORED ANSWER IS UNTRUSTED INPUT. sessionStorage can hold a value
+ *  written by an older build whose enum has since changed, and a cast would
+ *  send it anyway. Unknown reads as unanswered, which is the safe state. */
+const asOneOf = <T extends string>(all: readonly T[], v: string | undefined): T | undefined =>
+  (v && (all as readonly string[]).includes(v)) ? v as T : undefined
+
+function rememberAsk(key: string, qs: AskItem[] | null): void {
   try {
     if (qs?.length) sessionStorage.setItem(askSlot(key), JSON.stringify(qs))
     else sessionStorage.removeItem(askSlot(key))
   } catch { /* storage off */ }
 }
-function recallAsk(key: string): ReadinessQuestion[] | null {
+function recallAsk(key: string): AskItem[] | null {
   try {
     const raw = sessionStorage.getItem(askSlot(key))
     const parsed = raw ? JSON.parse(raw) : null
-    return Array.isArray(parsed) && parsed.length ? parsed as ReadinessQuestion[] : null
+    return Array.isArray(parsed) && parsed.length ? parsed as AskItem[] : null
   } catch { return null }
 }
 
@@ -175,7 +234,7 @@ export default function V2Building() {
   // a void, which is the one thing this project never ships.
   // ⚠️ RESTORED, NOT RESET. A tab the browser reclaimed comes back to the card
   // it left — with the questions still open and the words still in the boxes.
-  const [askQuestions, setAskQuestions] = useState<ReadinessQuestion[] | null>(
+  const [askQuestions, setAskQuestions] = useState<AskItem[] | null>(
     () => recallAsk(buildKey((loc.state || {}) as BuildState)))
   const [askAnswers, setAskAnswers] = useState<Record<string, string>>(
     () => recallAnswers(buildKey((loc.state || {}) as BuildState)))
@@ -321,7 +380,13 @@ export default function V2Building() {
         // wait; the refusal that protects the charge still lives beside
         // `spend_credits`, where no caller — an old client, a direct POST — can
         // route around it.
-        if (!askQuestions && !Object.keys(answersRef.current).length) {
+        // ⚠️ THE GATE NOW ASKS "IS ANYTHING STILL UNANSWERED", not "has
+        // anything been answered". The old form skipped the whole pre-check the
+        // moment a single answer existed, which was correct when every question
+        // was a repair and wrong now that three of them are always asked.
+        const intentAnswered = INTENT_QUESTIONS.every(
+          (q) => (answersRef.current[q.field] ?? '').trim())
+        if (!askQuestions && !(intentAnswered && Object.keys(answersRef.current).length)) {
           try {
             const voices = await listBrandVoices()
             const v = voices.find((x) => x.is_default) ?? voices[0] ?? null
@@ -338,14 +403,26 @@ export default function V2Building() {
               referenceRead: Boolean(refUrl),
               hasCreatorKnowledge: Boolean(v?.profile),
             })
-            const missing = verdict.fields
+            const missing: AskItem[] = verdict.fields
               .filter((f) => f.state === 'MISSING_REQUIRED' && f.question)
               .map((f) => ({ field: f.field, question: f.question as string }))
-            if (missing.length && alive) {
+            // ⚠️ THE INTENT QUESTIONS ARE ASKED FOR EVERY VIDEO, not only when
+            // something is missing. They are not a repair for an incomplete
+            // profile — they are about a video that does not exist yet, so
+            // there is nothing to be complete about. Asked FIRST because they
+            // are three taps and the readiness ones are typing.
+            //
+            // ⚖️ ONLY THE ONES NOT ALREADY ANSWERED FOR THIS BUILD. A tab
+            // reclaimed mid-answer restores what was picked, and re-asking it
+            // would throw the creator's own answer away in front of them.
+            const unanswered = INTENT_QUESTIONS.filter(
+              (q) => !(answersRef.current[q.field] ?? '').trim())
+            const ask: AskItem[] = [...unanswered, ...missing]
+            if (ask.length && alive) {
               // No spend, no ingest, no wait — and `active` stays at 0 so the
               // bar does not pretend work is happening behind the card.
-              rememberAsk(key, missing)
-              setAskQuestions(missing)
+              rememberAsk(key, ask)
+              setAskQuestions(ask)
               setActive(0)
               setIngesting(false)
               return
@@ -454,13 +531,32 @@ export default function V2Building() {
         if (unread) { halt(unread); return }
         if (transcript_id) rememberTranscript(key, transcript_id)
         startPacing()
+        // ⚖️ SPLIT AT THE POINT OF SEND, from one stored map. Two maps in
+        // sessionStorage would be two things a reclaimed tab could restore out
+        // of step with each other.
+        const intentAnswers: Record<string, string> = {}
+        const readinessAnswers: Record<string, string> = {}
+        for (const [k, v] of Object.entries(answersRef.current)) {
+          if (INTENT_FIELDS.has(k)) intentAnswers[k] = v
+          else readinessAnswers[k] = v
+        }
         const gen = await generateBlueprint({
           reference_url: refUrl,
           reference_note: state.reference_note || '',
           fidelity: state.fidelity ?? 'balanced',
           tone: state.tone,
-          goal: state.goal,
-          ...(Object.keys(answersRef.current).length ? { readiness_answers: answersRef.current } : {}),
+          // ⚠️ THE THREE INTENT ANSWERS RIDE THE REQUEST, NOT `readiness_answers`.
+          // Readiness answers are creator-stable facts that get persisted to the
+          // brief so they are never asked twice; these are per-VIDEO and must
+          // not be written to a profile — the next video gets its own answers.
+          // `state.goal` is gone with the Advanced Settings picker.
+          // ⚖️ NARROWED THROUGH THE ENUMS RATHER THAN CAST. A cast would let a
+          // stale sessionStorage value from an older build reach the request as
+          // a goal that no longer exists.
+          goal: asOneOf(VIDEO_GOALS, intentAnswers.video_goal),
+          focus: asOneOf(CONTENT_FOCUS, intentAnswers.content_focus),
+          outcome: asOneOf(VIEWER_OUTCOMES, intentAnswers.viewer_outcome),
+          ...(Object.keys(readinessAnswers).length ? { readiness_answers: readinessAnswers } : {}),
           // Same intent → same key → the server returns the build it already
           // made instead of charging for it twice (0119).
           idempotency_key: key,
@@ -544,32 +640,70 @@ export default function V2Building() {
           <div className="glass gradient-border p-7">
             <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft"><LogoMark size={22} /></span>
             <h2 className="mt-4 text-center font-display text-2xl">
-              {askQuestions.length === 1 ? 'One quick thing' : 'A couple of quick things'}
+              {askQuestions.some(isChip) ? 'What is this video for?' : 'A couple of quick things'}
             </h2>
             <p className="mt-2 text-center text-sm leading-relaxed text-stone">
-              No remix has been used. Twin would rather ask than guess — a guess here
-              ends up as a claim in your voice.
+              {askQuestions.some(isChip)
+                // ⚖️ THE CARD IS NO LONGER ONLY A REFUSAL. Three of these are
+                // asked for every video, so leading with "no remix has been
+                // used" would read as an accusation on the happy path.
+                ? 'No remix has been used yet. Three taps — Twin decides how to make it, you decide what it is for.'
+                : 'No remix has been used. Twin would rather ask than guess — a guess here ends up as a claim in your voice.'}
             </p>
             <div className="mt-6 space-y-4">
               {askQuestions.map((q) => (
-                <label key={q.field} className="block">
+                <div key={q.field} className="block">
                   <span className="text-sm leading-relaxed text-cream">{q.question}</span>
-                  <input
-                    type="text"
-                    autoComplete="off"
-                    value={askAnswers[q.field] ?? ''}
-                    onChange={(ev) => setAskAnswers((a) => {
-                      // ⚠️ SAVED ON EVERY KEYSTROKE, because the event that
-                      // loses them is not a submit — it is a background tab
-                      // being reclaimed with no warning and no unload.
-                      const next = { ...a, [q.field]: ev.target.value }
-                      rememberAnswers(buildKey(state), next)
-                      return next
-                    })}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
-                    placeholder="Your answer"
-                  />
-                </label>
+                  {isChip(q) ? (
+                    // ⚖️ CHIPS, NOT A TEXT BOX. These three have a fixed set of
+                    // answers that map to decisions downstream; free text would
+                    // have to be interpreted, and an interpretation is a guess
+                    // wearing the creator's words.
+                    <div className="mt-2.5 flex flex-wrap gap-2">
+                      {q.options.map((o) => {
+                        const active = (askAnswers[q.field] ?? '') === o.value
+                        return (
+                          <button
+                            key={o.value}
+                            type="button"
+                            aria-pressed={active}
+                            onClick={() => setAskAnswers((a) => {
+                              // Tapping the active chip clears it, so a mis-tap
+                              // is one tap to undo rather than a reload.
+                              const next = { ...a, [q.field]: active ? '' : o.value }
+                              rememberAnswers(buildKey(state), next)
+                              return next
+                            })}
+                            className={cn(
+                              'rounded-full border px-3 py-1.5 text-[13px] transition-colors',
+                              active
+                                ? 'border-coral/50 bg-coral/[0.08] text-cream'
+                                : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20 hover:bg-white/[0.04]',
+                            )}
+                          >
+                            {o.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      autoComplete="off"
+                      value={askAnswers[q.field] ?? ''}
+                      onChange={(ev) => setAskAnswers((a) => {
+                        // ⚠️ SAVED ON EVERY KEYSTROKE, because the event that
+                        // loses them is not a submit — it is a background tab
+                        // being reclaimed with no warning and no unload.
+                        const next = { ...a, [q.field]: ev.target.value }
+                        rememberAnswers(buildKey(state), next)
+                        return next
+                      })}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+                      placeholder="Your answer"
+                    />
+                  )}
+                </div>
               ))}
             </div>
             <button
