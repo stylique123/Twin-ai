@@ -10,7 +10,7 @@
 //          (optional) supabase secrets set GEMINI_MODEL=gemini-3.1-pro
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
-import { buildLinkAllowlist, sanitizeBlueprintLinks } from '../_shared/outputLinks.ts'
+import { buildLinkAllowlist, sanitizeBlueprintLinks, type LinkAllowlist } from '../_shared/outputLinks.ts'
 
 // Internal credits per recreation. Adjustable via the RECREATION_COST secret so we
 // can quietly change the credit<->video rate later WITHOUT a code change and
@@ -2952,6 +2952,28 @@ Deno.serve(async (req: Request) => {
   // clean 500 with an unhandled one. The run id is what joins a failed run to
   // its `script_attempts` rows, so the failure record is worth far more with it.
   let runIdForFailure: string | null = null
+  // ⚠️ THE SCRIPT THE CREATOR ALREADY PAID FOR, HELD WHERE THE CATCH CAN REACH IT.
+  //
+  // On 2026-08-16 a run spent at 13:01:18.5, the writer SUCCEEDED at 13:02:05.0,
+  // and the credit was refunded at 13:02:05.6 — 626ms later, with a complete
+  // blueprint in memory and "We hit a snag" on the creator's screen. The model
+  // was never the problem.
+  //
+  // ⚖️ WHY THIS IS STRUCTURAL AND NOT ANOTHER TRY/CATCH. The region between the
+  // writer returning and the row being inserted grew from 55 lines on 9 August
+  // to 792. Every one of them can throw, and every one of them is ANALYSIS —
+  // counting, auditing, repairing. None of it is a prerequisite for the script
+  // being worth having. Guarding them one at a time is a race between the people
+  // adding checks and the people remembering to wrap them, and the checks are
+  // winning; a creator's paid generation must not depend on who wins.
+  //
+  // ⚖️ A FROZEN COPY, NOT THE LIVE OBJECT. The analysis region MUTATES the
+  // blueprint in place — creator-state rewrites lines, entitlement repair
+  // rewrites beats, substance downgrades are assignments. A throw halfway
+  // through leaves the live object in a state no code intended, and shipping
+  // that is worse than shipping the writer's own output. This is the blueprint
+  // as the writer produced it, structurally normalised and nothing more.
+  let rescue: { bp: unknown; allow: LinkAllowlist; runId: string } | null = null
   let refunded = false
   const refundOnce = async (reason: string) => {
     if (refunded) return
@@ -3797,6 +3819,23 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         script_lines_affected: templated.linesAffected,
       }))
     }
+    // ⚠️ THE RESCUE POINT. Everything above this line is the writer's output made
+    // structurally sound — dashes stripped, hooks normalised, spoken placeholders
+    // dropped. Everything BELOW it is analysis, and analysis may not cost a
+    // creator the script they paid for. See the declaration for the measured
+    // failure this exists to end.
+    //
+    // ⚖️ THE CLONE IS THE POINT, and `structuredClone` rather than a JSON
+    // round-trip because the round-trip is itself a throw site — the one thing
+    // this line must never be. Taken here, before the first mutation, so the
+    // rescued script is the writer's own work rather than a half-repaired object.
+    //
+    // ⚖️ LINK SANITISATION IS NOT SKIPPED — the allowlist is carried, and the
+    // catch runs the same `sanitizeBlueprintLinks` the success path does. That
+    // pass is an injection defence, not an improvement, and it is documented as
+    // never throwing for exactly this reason. Nothing else below is a safety
+    // prerequisite: the checks repair a script, they do not license one.
+    rescue = { bp: structuredClone(templated.bp), allow: linkAllow, runId: scriptRunId }
     // WHERE THE CONTENT CAME FROM, COUNTED — and the declaration checked against
     // what the prompt actually carried. ⚖️ `speakable` and not `kRows`: checking
     // against the fuller store would excuse exactly the fabrication this exists
@@ -4645,6 +4684,110 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
 
     return json(gen)
   } catch (err) {
+    // ── THE PAID SCRIPT IS SAVED BEFORE ANYTHING IS REFUNDED ─────────────────
+    //
+    // ⚠️ A REFUND IS NOT A REPAIR. It returns the credit and destroys the work,
+    // and the creator's complaint was never "you charged me" — it was "it said
+    // we hit a snag". When a complete blueprint exists, handing it over is the
+    // better outcome on every axis: they get the video they asked for, and the
+    // credit they spent bought something.
+    //
+    // ⚖️ ONLY WHEN THE WRITER ACTUALLY SUCCEEDED. `rescue` is null for every
+    // failure BEFORE the model returned — auth, readiness, the reference stop, a
+    // provider error, unparseable JSON. Those refund exactly as they always did.
+    // This path exists for one shape: a valid script, and a throw somewhere in
+    // the 792 lines that were only ever meant to describe it.
+    if (rescue) {
+      try {
+        // The same injection defence the success path runs, on the same
+        // allowlist, documented as never throwing. Skipping it to save a script
+        // would trade a lost generation for a spoken link nobody vouched for.
+        const { blueprint: rescuedBp, removals } = sanitizeBlueprintLinks(rescue.bp, rescue.allow)
+        const { data: saved, error: rescueInsErr } = await admin
+          .from('generations')
+          .insert({
+            user_id: user.id,
+            reference_url,
+            reference_note,
+            fidelity,
+            blueprint: rescuedBp,
+            reference_analysis: referenceAnalysis,
+            brand_voice_id: voice?.id ?? null,
+            transcript_id: transcript_id || null,
+            // The credit stands, because the creator is getting the script.
+            credits_spent: BLUEPRINT_COST,
+            idempotency_key: idempotency_key || null,
+            // ⚖️ NULL, NOT ZERO, AND THE DISTINCTION IS THE WHOLE VALUE OF THESE
+            // COLUMNS. The analysis is what threw, so its counters were never
+            // computed — writing 0 would enter "the writer cited nothing" into
+            // the record that the next selection decision reads back.
+            selection: null,
+            beat_audit: null,
+          })
+          .select('*')
+          .single()
+        if (!rescueInsErr && saved) {
+          // ⚠️ LOUD AND DURABLE. A rescue is a SUCCESS for the creator and a
+          // DEFECT for us: it means the analysis region threw on real traffic.
+          // Silently returning the script would hide the very failure this was
+          // built to expose, and the run would look healthy in every count.
+          await admin
+            .from('ops_events')
+            .insert({
+              kind: 'generation_rescued',
+              severity: 'warning',
+              user_id: user.id,
+              detail: {
+                fn: 'generate-blueprint',
+                run_id: rescue.runId,
+                generation_id: saved.id,
+                links_stripped: removals.length,
+                error: (err instanceof Error ? err.message : String(err)).slice(0, 600),
+              },
+            })
+            .then(() => {}, () => {})
+          console.warn(JSON.stringify({
+            event: 'generation_rescued',
+            run_id: rescue.runId,
+            generation_id: saved.id,
+            error: err instanceof Error ? err.message : String(err),
+          }))
+          if (saved.id) {
+            await admin.from('script_attempts')
+              .update({ generation_id: saved.id })
+              .eq('run_id', rescue.runId)
+              .then(({ error }) => { if (error) console.warn('attempts not linked:', error.message) })
+          }
+          return json(saved)
+        }
+        // ⚖️ A DUPLICATE MEANS THE OTHER REQUEST ALREADY DELIVERED ONE. Return
+        // the winner rather than a snag, and fall through to the refund so the
+        // loser's credit comes back — the same rule the success path applies.
+        if ((rescueInsErr as { code?: string } | null)?.code === '23505' && idempotency_key) {
+          const { data: won } = await admin
+            .from('generations')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('idempotency_key', idempotency_key)
+            .maybeSingle()
+          if (won) {
+            if (!refunded) {
+              refunded = true
+              await admin.rpc('refund_credits', {
+                p_user: ownerId, p_amount: BLUEPRINT_COST, p_reason: 'blueprint_refund_duplicate',
+              }).then(() => {}, () => {})
+            }
+            return json(won)
+          }
+        }
+        console.error('rescue insert failed', rescueInsErr)
+      } catch (rescueErr) {
+        // ⚖️ THE RESCUE MAY NEVER BE THE REASON A REFUND DOES NOT HAPPEN. If
+        // saving the script fails too, the creator is owed their credit and the
+        // original error is still what gets recorded below.
+        console.error('rescue failed', rescueErr instanceof Error ? rescueErr.message : rescueErr)
+      }
+    }
     // Refund credits if anything after the spend failed. Log loudly if the
     // refund itself fails so it can be reconciled manually (never silently eat it).
     const { error: refundErr } = refunded ? { error: null } : await admin.rpc('refund_credits', {
