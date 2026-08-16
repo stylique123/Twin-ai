@@ -4,6 +4,21 @@ import { transcribeFromUrl } from '../media.js'
 import { transcriptBudgetFor } from '../transcriptSelection.js'
 import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions } from '../voice.js'
 
+// ⚖️ THE SAME NORMALISATION `transcribe.ts` USES, and it must stay the same: the
+// key is what lets one video pasted by several people hit one cached row, so two
+// spellings of it would quietly split the cache in half.
+function ownUrlKey(raw: string): string {
+  try {
+    const u = new URL(raw)
+    const host = u.hostname.toLowerCase().replace(/^www\./, '')
+    const v = u.searchParams.get('v')
+    const path = u.pathname.replace(/\/+$/, '').toLowerCase()
+    return host + path + (v ? `?v=${v.toLowerCase()}` : '')
+  } catch {
+    return raw.toLowerCase().trim()
+  }
+}
+
 // Handles `build_voice` jobs — the audio upgrade for a brand voice.
 // payload: { brand_voice_id, handle, platform, urls: string[] }
 // Transcribes the creator's top videos and re-synthesizes the voice from their
@@ -53,7 +68,47 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
       // stamped — the three-state rule this repo keeps relearning.
       bump(t.source ?? 'unrecorded')
       if (t.paidBecause) bump(`paid_because_${t.paidBecause}`)
-      if (t.text && t.text.trim().length > 20) transcripts.push(t.text.trim())
+      if (t.text && t.text.trim().length > 20) {
+        const text = t.text.trim()
+        transcripts.push(text)
+        // ⚠️ PERSIST WHAT WAS ALREADY PAID FOR (0135). This loop is the ONLY
+        // place a creator's own speech exists, and it used to live exactly as
+        // long as this function ran: the profile and the knowledge were written,
+        // the transcript itself was dropped. `public.transcripts` therefore held
+        // nothing but `ingest` rows — other people's reference videos — so any
+        // reader asking "how does this creator actually talk" found a table full
+        // of strangers.
+        //
+        // ⚖️ AND IT IS STAMPED `own`, which is the whole point. The style
+        // compiler in `generate-blueprint` filters on `subject = 'own'` before
+        // compiling a voice, so an unstamped row is invisible to it and a
+        // MIS-stamped one would teach the writer a stranger's cadence.
+        //
+        // ⚖️ BEST EFFORT, ALWAYS. A storage failure must never cost the voice
+        // upgrade this job exists to perform — the transcript has already done
+        // its primary work by the time we get here.
+        try {
+          await db.from('transcripts').insert({
+            owner_id: job.owner_id,
+            source_url: url,
+            url_key: ownUrlKey(url),
+            platform: p.platform ?? null,
+            language: t.language,
+            duration_sec: t.duration_sec,
+            text,
+            words: t.words,
+            segments: t.segments,
+            subject: 'own',
+          })
+          bump('stored')
+        } catch (err) {
+          // Counted, not swallowed: a store that silently fails is how the
+          // table stayed empty while the scans looked successful.
+          bump('store_failed')
+          console.error('build_voice: could not persist own transcript', url,
+            err instanceof Error ? err.message : err)
+        }
+      }
     } catch (err) {
       // ⚖️ A FAILED TRANSCRIPT IS NOT A FREE ONE. It may already have spent an
       // Apify call before throwing, so it is counted apart rather than ignored.
