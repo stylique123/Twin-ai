@@ -944,6 +944,172 @@ function readReferenceObservations(
 // out of proportion — but the count is what says whether the sharpened
 // instruction worked, and the creator surface waits on it.
 const NON_PROOF = /^(?:n\/?a|none|nil|null|no(?:ne)? needed|not applicable|proof|tbd|-+|\.+)$/i
+// ── CONTENT HISTORY (inlined from packages/shared/src/contentHistory.ts) ────
+//
+// ⚠️ THE WRITER HAS NEVER SEEN A SCRIPT THIS SYSTEM ALREADY WROTE for this
+// person. Measured on all 39 production generations: of the 11 owners with more
+// than one, exactly ONE repeats a format and ONE repeats a hook opening, and no
+// creator has more than three videos. So this supplies FACTS and issues NO
+// instruction — a "do not repeat" line would be inert (every prompt rule
+// measured here was) and premature (it would push a creator's second video away
+// from a format that worked, on one data point).
+const MIN_PRIOR_VIDEOS = 2
+const MAX_PRIOR_SHOWN = 8
+
+function renderContentHistoryInline(
+  prior: Array<{ formatLabel?: string | null; hook?: string | null; premise?: string | null }>,
+): string {
+  const clean = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim()
+  const rows = prior
+    .filter((p) => clean(p.formatLabel) || clean(p.hook) || clean(p.premise))
+    .slice(0, MAX_PRIOR_SHOWN)
+  if (rows.length < MIN_PRIOR_VIDEOS) return ''
+  const lines = rows.map((p, i) => {
+    const bits: string[] = []
+    if (clean(p.formatLabel)) bits.push(`format: ${clean(p.formatLabel)}`)
+    if (clean(p.premise)) bits.push(`premise: ${clean(p.premise).slice(0, 160)}`)
+    if (clean(p.hook)) bits.push(`opened: "${clean(p.hook).slice(0, 120)}"`)
+    return `${i + 1}. ${bits.join(' · ')}`
+  })
+  return `ALREADY MADE FOR THIS CREATOR (${rows.length} most recent, newest first).
+These are facts about their existing catalogue, not a list to avoid.
+${lines.join('\n')}`
+}
+
+// ── PREMISE COMPATIBILITY (inlined from packages/shared/src/premiseCompatibility.ts)
+//
+// ⚠️ THE STRUCTURE TRANSFERS; THE AUTOBIOGRAPHY DOES NOT. A reference opening
+// "5 things I stopped doing" hands the writer a shape and a claim fused
+// together, and the safety checks downstream only catch the claim after a whole
+// premise has been built on it. Deciding before the premise costs nothing.
+const PREMISE_WINDOW_CHARS = 400
+const MIN_PREMISE_CHARS = 40
+const EXPERIENTIAL_VERB = [
+  'stopped', 'quit', 'started', 'built', 'made', 'tried', 'tested', 'bought',
+  'sold', 'launched', 'failed', 'learned', 'spent', 'lost', 'earned', 'hired',
+  'fired', 'left', 'moved', 'switched', 'deleted', 'cancelled', 'canceled',
+  'ran', 'used', 'wrote', 'shipped', 'raised', 'grew', 'doubled',
+].join('|')
+const FIRST_PERSON_ACT = new RegExp(
+  String.raw`\b(?:i|we)\s+(?:just\s+|finally\s+|actually\s+|once\s+)?(?:${EXPERIENTIAL_VERB})\b`, 'i')
+const FIRST_PERSON_ACT_INVERTED = new RegExp(
+  String.raw`\b(?:things?|ways?|lessons?|mistakes?|reasons?|what|how|why)\b[^.?!]{0,40}?` +
+  String.raw`\b(?:i|we)\s+(?:${EXPERIENTIAL_VERB})\b`, 'i')
+
+function premiseDemandInline(referenceText: string | null | undefined): 'narrator_experience' | 'none' | 'unknown' {
+  const text = String(referenceText ?? '').replace(/\s+/g, ' ').trim()
+  if (text.length < MIN_PREMISE_CHARS) return 'unknown'
+  const opening = text.slice(0, PREMISE_WINDOW_CHARS)
+  return (FIRST_PERSON_ACT.test(opening) || FIRST_PERSON_ACT_INVERTED.test(opening))
+    ? 'narrator_experience' : 'none'
+}
+
+// ⚖️ AN UNKNOWN DEMAND EMITS NOTHING. A reference we could not read is not a
+// reference that makes no personal claim.
+function premiseInstructionInline(referenceText: string | null | undefined, hasExperience: boolean): string {
+  if (premiseDemandInline(referenceText) !== 'narrator_experience') return ''
+  if (hasExperience) {
+    return 'REFERENCE PREMISE — IT IS A FIRST-PERSON ACCOUNT.\n'
+      + 'Transfer its STRUCTURE and its framing. Its autobiography is NOT transferable: '
+      + 'you may write the creator into it only where a supplied knowledge item says they '
+      + 'did that thing. Where none does, move the claim off their biography — '
+      + '"5 things I stopped doing" becomes "5 things to stop doing" — and keep the count '
+      + 'and the shape intact.'
+  }
+  return 'REFERENCE PREMISE — IT IS A FIRST-PERSON ACCOUNT, AND THIS CREATOR HAS NO '
+    + 'FIRST-HAND EXPERIENCE ON RECORD.\n'
+    + 'Transfer the STRUCTURE only. Do NOT write any sentence claiming the creator did, '
+    + 'tried, quit, built or bought the thing — there is nothing on record to ground it '
+    + 'and inventing it is the worst failure available here. Rewrite the premise in the '
+    + 'second person or as a claim about the world, keeping the count and the shape: '
+    + '"5 things I stopped doing" becomes "5 things founders should stop doing".'
+}
+
+// ── STYLE COMPILER (inlined from packages/shared/src/styleCompiler.ts) ──────
+//
+// ⚠️ INLINED BECAUSE EDGE FUNCTIONS CANNOT IMPORT `@twinai/shared`, and kept
+// honest by `style-compiler-parity.test.ts`, which runs both copies over the
+// same fixtures and compares the rendered block byte for byte.
+//
+// ⚖️ IT COMPILES BEHAVIOUR, NOT ADJECTIVES. "Median sentence 9 words; 62% address
+// the viewer as you" is executable. "Direct" is agreeable. And it renders NOTHING
+// below 40 sentences: a style profile is the most confident-sounding thing this
+// system can emit, and it sounds exactly as confident when computed from three.
+const STYLE_MIN_SENTENCES = 40
+const STYLE_SHORT_WORDS = 12
+const STYLE_CONTRACTION = /\b\w+['’](?:s|t|re|ve|ll|d|m)\b/gi
+const STYLE_SECOND_PERSON = /\b(you|your|you['’]re|yours|yourself)\b/i
+const STYLE_FIRST_PERSON = /\b(i|i['’]m|i['’]ve|my|me|we|our)\b/i
+
+// Caption text is hard-wrapped mid-sentence, so the wrap is stripped before
+// punctuation decides a boundary — otherwise this measures the caption width.
+function sentencesOfInline(text: string): string[] {
+  return text.replace(/\s*\n+\s*/g, ' ').split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim()).filter((s) => /\w/.test(s))
+}
+
+interface InlineStyle {
+  sentences: number; medianSentenceWords: number; shortSentenceShare: number
+  secondPersonShare: number; questionShare: number; firstPersonShare: number
+  contractionRate: number; opener: 'claim' | 'question' | 'address' | 'mixed' | 'unknown'
+  reportable: boolean
+}
+
+function compileStyleInline(samples: string[]): InlineStyle {
+  const empty: InlineStyle = {
+    sentences: 0, medianSentenceWords: 0, shortSentenceShare: 0, secondPersonShare: 0,
+    questionShare: 0, firstPersonShare: 0, contractionRate: 0, opener: 'unknown', reportable: false,
+  }
+  const texts = samples.map((s) => String(s ?? '').trim()).filter(Boolean)
+  if (!texts.length) return empty
+  const all: string[] = []
+  const openers: Array<'claim' | 'question' | 'address'> = []
+  for (const t of texts) {
+    const ss = sentencesOfInline(t)
+    if (!ss.length) continue
+    all.push(...ss)
+    const first = ss[0]
+    openers.push(/\?\s*$/.test(first) ? 'question'
+      : STYLE_SECOND_PERSON.test(first.split(/\s+/).slice(0, 4).join(' ')) ? 'address' : 'claim')
+  }
+  if (!all.length) return empty
+  const lens = all.map((s) => s.split(/\s+/).filter((w) => /\w/.test(w)).length)
+  const sorted = [...lens].sort((a, b) => a - b)
+  const m = Math.floor(sorted.length / 2)
+  const med = sorted.length % 2 ? sorted[m] : Math.round((sorted[m - 1] + sorted[m]) / 2)
+  const share = (n: number) => Math.round((n / all.length) * 100) / 100
+  const distinct = new Set(openers)
+  return {
+    sentences: all.length,
+    medianSentenceWords: med,
+    shortSentenceShare: share(lens.filter((n) => n <= STYLE_SHORT_WORDS).length),
+    secondPersonShare: share(all.filter((s) => STYLE_SECOND_PERSON.test(s)).length),
+    questionShare: share(all.filter((s) => /\?\s*$/.test(s)).length),
+    firstPersonShare: share(all.filter((s) => STYLE_FIRST_PERSON.test(s)).length),
+    contractionRate: Math.round((all.join(' ').match(STYLE_CONTRACTION)?.length ?? 0) / all.length * 100) / 100,
+    opener: distinct.size === 1 ? openers[0] : 'mixed',
+    reportable: all.length >= STYLE_MIN_SENTENCES,
+  }
+}
+
+function renderStyleRulesInline(style: InlineStyle): string {
+  if (!style.reportable) return ''
+  const pct = (n: number) => `${Math.round(n * 100)}%`
+  const lines = [
+    `- Sentence length: median ${style.medianSentenceWords} words; ${pct(style.shortSentenceShare)} of their sentences run ${STYLE_SHORT_WORDS} words or fewer. Match this distribution, do not average it.`,
+    `- Direct address: ${pct(style.secondPersonShare)} of their sentences speak to the viewer as "you".`,
+    `- Questions: ${pct(style.questionShare)} of their sentences are questions.`,
+    `- First person: ${pct(style.firstPersonShare)} carry I/we — their own experience.`,
+    `- Contractions: ${style.contractionRate} per sentence.`,
+  ]
+  if (style.opener !== 'mixed' && style.opener !== 'unknown') {
+    lines.push(`- They open on a ${style.opener}, every time in the samples measured.`)
+  }
+  return `HOW THEY ACTUALLY WRITE — MEASURED FROM ${style.sentences} SENTENCES OF THEIR OWN RECORDED SPEECH.
+These are observations of this creator, not style advice. Write to them.
+${lines.join('\n')}`
+}
+
 const SUBSTANCE_ENUM = /^(?:creator_knowledge|creator_experience|creator_opinion|product_dna|general|needs_user)$/i
 const NAMES_A_SOURCE = /^(?:the\s+)?(?:creator'\s?s?\b|creators'\b|creator\s+(?:experience|knowledge|expertise|opinion)\b|general (?:knowledge|observation)\b|product_dna\b|reference structure\b|specific knowledge\b)/i
 const NAMES_AN_EFFECT = /^(?:establishes?|sets? up|provides?|guides?|engages?|introduces?|explains?|concludes?|reinforces?|builds?|creates?|delivers?|summari[sz]es?|transitions?|highlights?|emphasi[sz]es?)\b/i
@@ -2836,6 +3002,61 @@ Deno.serve(async (req: Request) => {
     // posts, blog) more than a sparse video scan. If they pasted writing samples,
     // they're the single strongest voice signal — feed them verbatim (bounded).
     const voiceSamples = String((vp as { voice_samples?: string } | null)?.voice_samples ?? dna.voice_samples ?? '').trim().slice(0, 3000)
+    // ⚠️ AND THAT FIELD IS EMPTY FOR EVERY CREATOR IN PRODUCTION: 0 of 38
+    // profiles, 0 of 37 voices. The block above declares itself the strongest
+    // signal in this prompt and has never once been populated, because filling it
+    // means a creator pasting their own writing into Settings.
+    //
+    // ⚖️ SO MEASURE THE SPEECH WE ALREADY HAVE. `transcripts` holds the creator's
+    // own posts, transcribed by the DNA scan — and 50 of 58 rows are somebody
+    // else's video pasted as a reference, which is why this read filters on
+    // `subject = 'own'` (0135) rather than on owner alone. Compiling a reference
+    // into this block would tell the model a stranger's cadence was the creator's,
+    // under a label instructing it to weight that above everything else.
+    //
+    // ⚠️ NULL `subject` IS EXCLUDED, NOT INCLUDED. A row predating 0135 that no
+    // reference URL matched is unresolved, not own.
+    // ⚠️ WHAT THIS CREATOR ALREADY HAS. No exclusion is needed and none is
+    // written: the row for THIS generation is inserted after the writer returns
+    // (see the `.insert` far below), so every row this read can see is genuinely
+    // prior work. An idempotent replay returns the stored blueprint before
+    // reaching here, so it never re-enters this path either.
+    let historyBlock = ''
+    try {
+      const { data: priorRows } = await admin
+        .from('generations')
+        .select('id, selected_hook, blueprint, created_at')
+        .eq('user_id', ownerId)
+        .order('created_at', { ascending: false })
+        .limit(MAX_PRIOR_SHOWN)
+      historyBlock = renderContentHistoryInline((priorRows ?? []).map((r) => {
+        const bp = (r?.blueprint ?? {}) as Record<string, any>
+        return {
+          formatLabel: bp?.reference_read?.format_label ?? null,
+          premise: bp?.concept?.premise ?? null,
+          hook: r?.selected_hook ?? bp?.hook_options?.[0] ?? null,
+        }
+      }))
+    } catch {
+      // Thinner, never wronger — the same treatment the knowledge read gets.
+      historyBlock = ''
+    }
+    let styleRules = ''
+    try {
+      const { data: ownSpeech } = await admin
+        .from('transcripts')
+        .select('text')
+        .eq('owner_id', ownerId)
+        .eq('subject', 'own')
+        .order('created_at', { ascending: false })
+        .limit(8)
+      styleRules = renderStyleRulesInline(
+        compileStyleInline((ownSpeech ?? []).map((r) => String(r?.text ?? ''))))
+    } catch {
+      // A failed read makes the script thinner, never wronger — the same
+      // treatment the knowledge read gets, for the same reason.
+      styleRules = ''
+    }
     // WRITE-TIME ENRICHMENT. Even a thin scan must still write IN-VOICE, so we
     // never feed the model "(none captured)" for the fields that decide whether a
     // script sounds like THIS creator. A creator's real hooks ARE their opener
@@ -3375,12 +3596,19 @@ Deno.serve(async (req: Request) => {
 - Do: ${(vp.dos ?? []).join('; ')}
 - Don't: ${(vp.donts ?? []).join('; ')}
 - Voice summary: ${vp.summary ?? ''}` : ''}${voiceSamples ? `
-- HOW THEY ACTUALLY WRITE (verbatim samples — match this EXACT cadence, diction, sentence length and rhythm; weight this above every other signal, it is the most reliable evidence of their true voice): ${voiceSamples}` : ''}
+- HOW THEY ACTUALLY WRITE (verbatim samples — match this EXACT cadence, diction, sentence length and rhythm; weight this above every other signal, it is the most reliable evidence of their true voice): ${voiceSamples}` : ''}${styleRules ? `
+${styleRules}` : ''}
 - Platforms (publish_plan MUST use ONLY these, one entry each): ${platforms.join(', ')}${paletteHex ? `
 - Brand colors (the creator's real palette, hex): ${paletteHex}. Weave these into the BACKGROUND, props and wardrobe of each beat's setup so the shoot looks on-brand (e.g. a backdrop, object, or outfit in these colors). Do NOT name hex codes in the script the creator speaks.` : ''}`
 
     // When we have the real transcript, override the format-pattern caveat: the
     // model IS now reading the actual video, so reference_read must describe THIS clip.
+        // ⚠️ DECIDED BEFORE THE PREMISE, WHICH IS THE ONLY PLACE IT IS CHEAP.
+        // `evidenceLevel`'s rule, lifted: an `experience` the creator STATED is
+        // first-hand; an opinion known only because the video exists is not.
+        const creatorHasExperience = knowledgeRows.some(
+          (k) => String(k?.kind) === 'experience' && String(k?.basis) === 'stated')
+        const premiseInstruction = premiseInstructionInline(ref?.text ?? null, creatorHasExperience)
         const referenceBlock =
       ref && (ref.structure || ref.text)
         ? `REFERENCE (REAL — analyzed from the actual video. Base reference_read.why_it_works and retention_map on THIS specific video below, not on a generic format pattern.)
@@ -3392,12 +3620,12 @@ ${fenced('derived structure', ref.structure ? JSON.stringify(ref.structure).slic
 ${fenced('reference transcript', clip(ref.text ?? '', 6000))}
 - Creator's angle/note:
 ${fenced("creator's note", reference_note || '(none provided)')}
-- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)`
+- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
 ${fenced("creator's note", reference_note || '(none provided)')}
-- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)`
+- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}`
 
     // The DNA is fenced too. It reads like our own text, but every field in it
     // was synthesized from captions we scraped — so it is exactly as
@@ -3460,7 +3688,9 @@ This is the video's position. Every field below must serve it. If the reference'
 
     const userPrompt = `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
-${positionBlock}${referenceBlock}
+${positionBlock}${referenceBlock}${historyBlock ? `
+
+${fenced("this creator's existing catalogue", historyBlock)}` : ''}
 ${claimsBlock}
 Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
 - beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each one should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds, not a guess after the fact, and beats should differ in length when their jobs differ. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.

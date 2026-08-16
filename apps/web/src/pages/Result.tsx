@@ -17,6 +17,7 @@ const UPLOAD_URLS: Record<string, string> = {
 }
 import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo, getOutputBundle, resolveFinishedOutputsResult, loadCapabilities, approvalState, approvalBlockReason } from '../lib/api'
 import { explainFailure } from '../lib/api'
+import { creatorPick, defaultCapture, freeformEntry } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
 import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
@@ -474,7 +475,13 @@ export default function Result() {
         setChosenHook(initial)
         // Capture the default the first time, so the gallery's learning signal isn't
         // empty when a creator shoots without explicitly tapping a hook (was 1/15).
-        if (id && !g?.selected_hook && initial) void updateGenerationChoice(id, { selected_hook: initial })
+        // ⚠️ AND SAY THAT IT IS A DEFAULT. Filling the column made the signal
+        // non-empty by writing something nobody picked; 14 of 23 production rows
+        // equal option[0] and cannot be told apart from this write. `hook_choice`
+        // is what lets a reader ask for choices and get choices (0134).
+        if (id && !g?.selected_hook && initial) {
+          void updateGenerationChoice(id, { selected_hook: initial, hook_choice: defaultCapture(0) })
+        }
       })
       .catch(() => {
         // Load error (network / RLS) → leave gen null for the not-found state
@@ -534,7 +541,18 @@ export default function Result() {
   // use THIS hook. Optimistic — the UI updates immediately.
   const pickHook = (h: string) => {
     setChosenHook(h)
-    if (id) void updateGenerationChoice(id, { selected_hook: h })
+    // ⚖️ THE INDEX COMES FROM THE OPTIONS ON SCREEN, not from re-deriving it
+    // later: only this moment knows a human tapped anything. A hook that is
+    // somehow not among the options records as freeform rather than as a pick
+    // at a fabricated position.
+    const opts = (gen?.blueprint?.hook_options ?? []) as string[]
+    const i = opts.indexOf(h)
+    if (id) {
+      void updateGenerationChoice(id, {
+        selected_hook: h,
+        hook_choice: i >= 0 ? creatorPick(i) : freeformEntry(),
+      })
+    }
   }
   // "Post now" → reveal the posting options (the "Where to post" tab on both layouts).
   const goPost = () => {

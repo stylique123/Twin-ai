@@ -145,6 +145,27 @@ async function canonicalise(
  * fallback logs, because a permanent silent fallback means the new path never
  * runs and nobody notices.
  */
+/** How many extracted rows one scan may write.
+ *
+ *  ⚠️ IT WAS A BARE `.slice(0, 40)` IN TWO FILES, and it became live the moment
+ *  the extractor stopped reading three transcripts and started reading fifteen.
+ *  A creator whose scan now yields a hundred items would have had sixty of them
+ *  discarded by a number neither file named — the fourth instance in this repo
+ *  of a silent downstream cap absorbing an upstream raise. The first three:
+ *  `.slice(0, 5)` in the build_voice consumer (made two budget raises inert),
+ *  `.slice(0, 12000)` in the extractor (read 3 of 25 videos), and the
+ *  `TRANSCRIPT_BUDGET` whose justification was measuring that cap.
+ *
+ *  ⚖️ RAISED IN PROPORTION TO WHAT NOW REACHES IT. Five extraction batches at a
+ *  realistic twenty items each is a hundred; 120 clears that with room and stays
+ *  a bound rather than a licence. The rows are small and the insert path already
+ *  merges repeats, so the cost of the raise is storage measured in kilobytes.
+ *
+ *  ⚠️ AND IT IS ONE CONSTANT IMPORTED TWICE, not two numbers that agree today.
+ *  Two places deciding how much material survives, one of them silent, is the
+ *  exact shape of every instance above. */
+export const KNOWLEDGE_ROWS_PER_SCAN = 120
+
 export async function insertKnowledge(
   db: RpcCapableDb,
   rows: Array<Record<string, unknown>>,

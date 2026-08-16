@@ -345,30 +345,92 @@ export function clampCaptionBasis(items: RawKnowledgeItem[]): RawKnowledgeItem[]
   return items.map((i) => (i?.basis === 'demonstrated' ? i : { ...i, basis: 'demonstrated' }))
 }
 
+/** How much spoken text one extraction call may carry.
+ *
+ *  ⚖️ UNCHANGED FROM THE ORIGINAL CAP ON PURPOSE. 12,000 characters is a window
+ *  the model demonstrably reads well; what was wrong was that it applied to the
+ *  whole corpus instead of to one call. Widening the window and batching at once
+ *  would move two things and leave neither attributable. */
+export const EXTRACT_WINDOW_CHARS = 12_000
+
+/** ⚠️ A BOUND ON SPEND, AND THE ONLY REASON THIS IS NOT UNLIMITED. Each batch is
+ *  a Gemini call. Five covers roughly fifteen average transcripts — comfortably
+ *  past the free TikTok budget's usual yield — and a creator with more than that
+ *  gets a warning line naming exactly how many were left unread, rather than the
+ *  silence this replaces. */
+export const EXTRACT_MAX_BATCHES = 5
+
 export async function extractKnowledgeFromAudio(
   handle: string,
   platform: string,
   transcripts: string[],
 ): Promise<RawKnowledgeItem[]> {
   if (!transcripts.length) return []
-  const corpus = transcripts
-    .map((t, i) => `--- VIDEO ${i + 1} (spoken) ---\n${t}`)
-    .join('\n\n')
-    .slice(0, 12000)
 
-  const prompt = `CREATOR: @${handle} on ${platform}
+  // ⚠️ A `.slice(0, 12000)` HERE THREW AWAY MOST OF WHAT THE SCAN PAID FOR, and
+  // it is the same defect as the `.slice(0, 5)` in `voice.ts`'s consumer that
+  // made both transcript-budget raises inert: two places deciding how much
+  // material gets used, one of them silent.
+  //
+  // Production transcripts average 3,622 characters, so a 12,000-character
+  // corpus is THREE videos. TikTok creators have 25 transcribed for free; 22 of
+  // them were discarded before the extractor ever saw them, on a platform where
+  // the whole point of the raise was that the material costs nothing.
+  //
+  // ⚖️ IT ALSO MADE THE YIELD FIGURE WRONG. "One to two-and-a-half substance
+  // items per transcribed video" divides by videos TRANSCRIBED, not videos READ.
+  // garyvee's scan produced 25 items from what was recorded as ten videos; if
+  // three reached the extractor, the real rate is several times higher and the
+  // number that justified holding the budget was measuring this cap.
+  //
+  // ⚖️ SO IT BATCHES RATHER THAN WIDENING ONE CALL. A single enormous prompt
+  // trades one silent loss for another — attention spread thin over 25 videos
+  // returns fewer items per video, and nothing would say so. Each batch is a
+  // window the model can actually read, and every transcript lands in exactly
+  // one of them.
+  const batches: string[] = []
+  let current: string[] = []
+  let size = 0
+  for (const [i, t] of transcripts.entries()) {
+    const block = `--- VIDEO ${i + 1} (spoken) ---\n${t}`
+    if (size + block.length > EXTRACT_WINDOW_CHARS && current.length) {
+      batches.push(current.join('\n\n')); current = []; size = 0
+    }
+    current.push(block); size += block.length + 2
+    if (batches.length >= EXTRACT_MAX_BATCHES - 1 && size >= EXTRACT_WINDOW_CHARS) break
+  }
+  if (current.length && batches.length < EXTRACT_MAX_BATCHES) batches.push(current.join('\n\n'))
+
+  // ⚠️ SAID OUT LOUD WHEN MATERIAL IS STILL DROPPED. A bound that silently
+  // discards is the thing this whole comment is about.
+  const read = batches.join('\n\n').split('--- VIDEO ').length - 1
+  if (read < transcripts.length) {
+    console.warn(`extract_knowledge: read ${read} of ${transcripts.length} transcripts (batch cap)`)
+  }
+
+  const items: RawKnowledgeItem[] = []
+  try {
+    for (const corpus of batches) {
+      const prompt = `CREATOR: @${handle} on ${platform}
 SPOKEN TRANSCRIPTS:
 ${corpus}
 
 Record what this creator knows, believes, has done, and has already covered.`
-
-  try {
-    const out = (await geminiJson(KNOWLEDGE_SYSTEM, prompt, knowledgeSchema, 40_000)) as { items?: RawKnowledgeItem[] }
-    return Array.isArray(out?.items) ? out.items : []
+      const out = (await geminiJson(KNOWLEDGE_SYSTEM, prompt, knowledgeSchema, 40_000)) as { items?: RawKnowledgeItem[] }
+      if (Array.isArray(out?.items)) items.push(...out.items)
+    }
+    // ⚖️ NO DEDUPE HERE. `canonicaliseRepeats` and the merge in
+    // `knowledgeInsert` already collapse repeats across the whole store, and a
+    // second, different rule at this seam is how two answers to one question
+    // start disagreeing.
+    return items
   } catch {
     // ⚖️ Knowledge is an ENRICHMENT of the voice build, never a gate on it. A
     // creator whose extraction failed must still get their voice; failing the
     // whole job here would trade a working feature for a new one.
-    return []
+    //
+    // ⚖️ AND A LATER BATCH FAILING KEEPS THE EARLIER ONES. Returning [] would
+    // discard work that succeeded because work that followed it did not.
+    return items
   }
 }

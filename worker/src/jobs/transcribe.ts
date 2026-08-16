@@ -55,6 +55,13 @@ export async function handleTranscribe(job: Job): Promise<Record<string, unknown
       words: t.words,
       segments: t.segments,
       structure,
+      // ⚠️ WHOSE VOICE THIS IS, RECORDED WHERE IT IS STILL KNOWN (0135). This
+      // function is the only place that can tell: `ingest` is a reference being
+      // analysed, `transcribe` is one of the creator's own posts picked by the
+      // DNA scan. One line later the rows are identical, and a voice compiler
+      // reading the wrong ones would teach the writer a stranger's cadence under
+      // a label that says to weight it above every other signal.
+      subject: job.type === 'ingest' ? 'reference' : 'own',
     })
     .select('id')
     .single()
