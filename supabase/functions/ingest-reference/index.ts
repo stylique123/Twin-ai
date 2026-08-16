@@ -59,9 +59,42 @@ Deno.serve(async (req: Request) => {
   if (!allowedUrl(url)) {
     return json({ error: 'For now we can analyze TikTok, Instagram, and YouTube links.' }, 400)
   }
-  const platform = ['tiktok', 'instagram', 'youtube', 'other'].includes(body.platform ?? '')
-    ? body.platform!
-    : null
+  // ⚠️ THE URL WINS, AND ASKING THE CALLER LOST 44 OF 51 ROWS. This read only
+  // `body.platform`, and the client never sent one — so production stored a NULL
+  // platform on 44 of 51 reference transcripts, 34 of which carry "youtube" in
+  // the source URL, and the studio showed the creator a chip reading "unknown"
+  // beside a youtube.com link.
+  //
+  // ⚖️ A DERIVABLE FACT MUST NOT BE A PARAMETER. Anything a caller can omit,
+  // some caller will omit. Deriving it HERE also repairs every existing client
+  // without shipping one, which asking nicely would not.
+  //
+  // ⚖️ AND THE URL BEATS A CONTRADICTING CLAIM. A caller sending `tiktok` for a
+  // youtube.com link is wrong, and storing that would put a platform on a row
+  // the link itself refutes. The claim is consulted only when the URL yields
+  // nothing — which is how `other` survives for a link we cannot classify.
+  //
+  // Mirrors `resolveReferencePlatform` in packages/shared/src/referencePlatform.ts;
+  // held identical by `referencePlatformParity.test.ts`, which executes both.
+  const platform = (() => {
+    const HOSTS: ReadonlyArray<readonly [string, string]> = [
+      ['tiktok.com', 'tiktok'],
+      ['instagram.com', 'instagram'],
+      ['youtube.com', 'youtube'],
+      ['youtu.be', 'youtube'],
+    ]
+    let host = ''
+    try { host = new URL(url).hostname.toLowerCase() } catch { host = '' }
+    for (const [domain, p] of HOSTS) {
+      // Host-anchored, never a substring: `evil.com/?q=youtube.com` must not match.
+      if (host === domain || host.endsWith('.' + domain)) return p
+    }
+    const claimed = String(body.platform ?? '').trim().toLowerCase()
+    if (['tiktok', 'instagram', 'youtube', 'other'].includes(claimed)) return claimed
+    // ⚖️ NULL, NOT 'other'. "We could not tell" and "the creator said it is
+    // something else" are different facts; only the second is an answer.
+    return null
+  })()
 
   // CACHE: if this exact reference was already transcribed + structured recently,
   // clone it into the caller's own row (server-side) and return a job that's

@@ -68,7 +68,7 @@ describe('the three questions open with the remix', () => {
 
   it('asks them BEFORE the two-minute ingest, like the readiness ones', () => {
     expect(BUILD.indexOf('const unanswered = INTENT_QUESTIONS.filter('))
-      .toBeLessThan(BUILD.indexOf('await ingestReference(refUrl)'))
+      .toBeLessThan(BUILD.indexOf('await ingestReference('))
   })
 
   it('does NOT re-ask one already answered for this build', () => {

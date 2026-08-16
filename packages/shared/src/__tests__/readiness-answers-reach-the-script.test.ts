@@ -124,12 +124,12 @@ describe('the questions come before the two-minute wait', () => {
   it('runs the pre-check BEFORE the ingest starts', () => {
     // ⚠️ ORDER IS THE ENTIRE FIX — after the ingest it changes nothing.
     expect(BUILD.indexOf('const verdict = assessReadiness('))
-      .toBeLessThan(BUILD.indexOf('await ingestReference(refUrl)'))
+      .toBeLessThan(BUILD.indexOf('await ingestReference('))
   })
 
   it('returns without ingesting when something is missing', () => {
     const block = BUILD.slice(BUILD.indexOf('const verdict = assessReadiness('),
-      BUILD.indexOf('await ingestReference(refUrl)'))
+      BUILD.indexOf('await ingestReference('))
     expect(block).toMatch(/setAskQuestions\(ask\)/)
     expect(block).toMatch(/return/)
   })

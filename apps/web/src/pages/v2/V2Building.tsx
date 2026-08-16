@@ -15,6 +15,7 @@ import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../l
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE } from '../../lib/api'
 import { READINESS_INCOMPLETE_CODE } from '../../lib/api'
 import type { ReadinessQuestion } from '../../lib/api'
+import { isSupportedReference, platformFromUrl } from '@twinai/shared'
 import { useAuth } from '../../context/AuthContext'
 import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
@@ -40,18 +41,12 @@ const STEP_PCT = [12, 34, 58, 80, 94, 100]
 // creeps toward this ceiling instead: never still, never claiming to be done.
 const LAST_STEP_CEILING = 99
 
-// The hosts ingest-reference can actually fetch + transcribe (mirrors its
-// SSRF allow-list). A link to one of these gets truly READ; anything else
-// (or a described idea) falls back to pattern-mode generation.
-const SUPPORTED = ['tiktok.com', 'instagram.com', 'youtube.com', 'youtu.be']
-function isSupportedRef(url: string): boolean {
-  try {
-    const h = new URL(url.trim()).hostname.toLowerCase()
-    return SUPPORTED.some((d) => h === d || h.endsWith('.' + d))
-  } catch {
-    return false
-  }
-}
+// ⚠️ THE HOST LIST MOVED TO @twinai/shared, because there were two of them and
+// only one was ever consulted. This copy answered "is it supported?" while the
+// PLATFORM was taken from a parameter the client never sent — so 44 of 51
+// reference transcripts stored a NULL platform and the studio showed the
+// creator "unknown" beside a youtube.com link. One derivation now answers both.
+const isSupportedRef = (url: string): boolean => isSupportedReference(url)
 
 interface BuildState {
   reference_url?: string
@@ -454,7 +449,7 @@ export default function V2Building() {
         if (willIngest && !transcript_id) {
           setIngesting(true)
           try {
-            const { jobId, transcriptId } = await ingestReference(refUrl)
+            const { jobId, transcriptId } = await ingestReference(refUrl, platformFromUrl(refUrl) ?? undefined)
             transcript_id = transcriptId // cache hit → immediate
             if (!transcript_id) {
               // Starts as the timeout, because that is what an answer that
