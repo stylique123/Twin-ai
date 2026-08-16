@@ -2904,6 +2904,12 @@ Deno.serve(async (req: Request) => {
   // in the same request. Without a latch a script that failed the gate and then
   // lost the race would be refunded twice, which is a credit the creator never
   // paid for and a hole nobody would notice until the ledger did.
+  // ⚠️ HOISTED SO THE FAILURE HANDLER CAN SEE IT. `scriptRunId` is created deep
+  // inside the try below, which puts it out of scope in the catch — referencing
+  // it there would throw a ReferenceError INSIDE the error path and replace a
+  // clean 500 with an unhandled one. The run id is what joins a failed run to
+  // its `script_attempts` rows, so the failure record is worth far more with it.
+  let runIdForFailure: string | null = null
   let refunded = false
   const refundOnce = async (reason: string) => {
     if (refunded) return
@@ -3710,6 +3716,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // generation rather than two. Minted here rather than in the recorder because
     // the generation row below has to be able to name the same run.
     const scriptRunId = crypto.randomUUID()
+    runIdForFailure = scriptRunId
     const raw = await callModel(apiKey, SYSTEM, userPrompt, blueprintSchema,
       attemptRecorder(admin, ownerId, scriptRunId))
 
@@ -4050,6 +4057,24 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     } catch (err) {
       console.error('reference_transfer_shadow_failed', err instanceof Error ? err.message : err)
     }
+    // ⚠️ A MEASUREMENT MUST NOT BE ABLE TO KILL THE THING IT MEASURES, and this
+    // one could. `selection` (0130) and `beat_audit` (0131) are counters — they
+    // exist so questions about production can be answered later. Everything
+    // between here and the end of `beat_audit` ran UNGUARDED, so a single throw
+    // in a counting helper discarded a script the model had already written and
+    // the creator had already waited for.
+    //
+    // ⚠️ AND IT DID. On 2026-08-16 two generations died 626ms after a SUCCEEDED
+    // writer — refund at 13:02:05.684 against a model call that settled at
+    // 13:02:05.058 — with no generation row and nothing durable saying why.
+    // These counters had never once executed in production before that day, and
+    // the failing region is where the newest untested code lives.
+    //
+    // ⚖️ NULL ON FAILURE, WHICH IS ALREADY THE CONTRACT. Both columns are
+    // nullable and NULL means "not measured" — never zero. Losing a count is a
+    // gap in a graph; losing the script is the product failing in front of a
+    // creator, and the two are not close.
+    try {
     // ⚖️ COMPUTED ONCE AND USED TWICE — logged for live debugging, stored for
     // counting. Recomputing it at insert time would risk the stored value
     // describing a different selection from the logged one.
@@ -4128,6 +4153,21 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       event: 'beat_substance',
       ...beatAudit,
     }))
+    } catch (err) {
+      // ⚠️ LOUD, DURABLE, AND NON-FATAL. The console line alone is what made the
+      // original failure undiagnosable: edge logs expire and were unreadable when
+      // it mattered. `ops_events` is the table an operator already watches.
+      selectionSnapshot = null
+      beatAudit = null
+      const detail = err instanceof Error ? err.message : String(err)
+      console.error('generation_instrumentation_failed', detail)
+      await admin.from('ops_events').insert({
+        kind: 'generation_instrumentation_failed',
+        severity: 'warning',
+        user_id: user.id,
+        detail: { fn: 'generate-blueprint', error: detail.slice(0, 500) },
+      }).then(() => {}, () => {})
+    }
     if (issues.length) {
       // Reported, never rewritten. There are no alternate script lines to fall
       // back to, and silently deleting a beat would hand the creator a video
@@ -4579,7 +4619,32 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         .insert({ kind: 'refund_failed', severity: 'critical', user_id: user.id, detail: { fn: 'generate-blueprint', amount: BLUEPRINT_COST, error: String((refundErr as { message?: string }).message ?? refundErr) } })
         .then(() => {}, () => {})
     }
+    // ⚠️ THE FAILURE THAT LEFT NO TRACE. This line was the ONLY record a failed
+    // generation produced, and edge logs expire in days — on 2026-08-16 they were
+    // also unreadable, so two real failures could not be diagnosed at all. The
+    // model call has had a durable record since 0129 (`script_attempts`); the RUN
+    // never did, which is the half that matters when the writer succeeds and
+    // something after it throws.
+    //
+    // ⚖️ `ops_events` IS THE TABLE AN OPERATOR ALREADY WATCHES — the same one the
+    // refund failure above writes to — so this needs no new column, no migration
+    // and no reader that does not exist yet.
+    const failDetail = err instanceof Error
+      ? `${err.message}${err.stack ? ` :: ${err.stack.split('\n').slice(1, 4).join(' | ')}` : ''}`
+      : String(err)
     console.error('generate-blueprint error:', err)
+    await admin
+      .from('ops_events')
+      .insert({
+        kind: 'generation_failed',
+        severity: 'error',
+        user_id: user.id,
+        // Bounded for the same reason `script_attempts.failure_detail` is: a
+        // provider can return a very long body, and losing the record of a
+        // failure because the failure was verbose is the worst trade available.
+        detail: { fn: 'generate-blueprint', run_id: runIdForFailure, error: failDetail.slice(0, 600) },
+      })
+      .then(() => {}, () => {})
     return json({ error: 'Generation failed. Your credits were not charged.' }, 500)
   }
 })
