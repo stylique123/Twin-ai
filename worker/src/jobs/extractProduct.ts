@@ -13,9 +13,22 @@
 // copy is persuasive, and asking it to self-assess would make the whole split
 // decorative.
 import { db, type Job } from '../db.js'
-import { geminiJson } from '../gemini.js'
+import { geminiJson, type InlineImage } from '../gemini.js'
+
+/** Capped: each image is a full-resolution photo inlined into the request, so an
+ *  unbounded list is a timeout and a bill. Four views of one object is already
+ *  more than the question needs. */
+const MAX_IMAGES = 4
+
+/** The stored extension decides the mime type the model is told. The upload
+ *  endpoint only ever writes these three. */
+function mimeFor(path: string): string {
+  const p = path.toLowerCase()
+  return p.endsWith('.jpg') || p.endsWith('.jpeg') ? 'image/jpeg'
+    : p.endsWith('.webp') ? 'image/webp' : 'image/png'
+}
 import { modelForTask } from '../modelRouting.js'
-import { readExtractedFact, EXTRACTED_FIELDS, EXTRACTION_SOURCES,
+import { readExtractedFact, EXTRACTED_FIELDS, EXTRACTION_SOURCES, imageFactAllowed,
   type ExtractedFact, type ExtractedField, type ExtractionSource }
   from './productExtractionContract.js'
 import { mergeExtraction, needsAttention, describeChange }
@@ -213,20 +226,36 @@ export async function handleExtractProduct(job: Job): Promise<Record<string, unk
   const payload = (job.payload ?? {}) as Record<string, unknown>
   const entityId = typeof payload.entity_id === 'string' ? payload.entity_id : ''
   const url = typeof payload.url === 'string' ? payload.url.trim() : ''
-  if (!entityId || !url) throw new Error('extract_product needs entity_id and url')
+  // ⚠️ EITHER SOURCE IS ENOUGH, AND THAT IS A CHANGE. This demanded a URL, so a
+  // job carrying only photographs failed before it started — and plenty of
+  // products have no page worth reading.
+  const imagePaths = Array.isArray(payload.image_paths)
+    ? payload.image_paths.filter((p): p is string => typeof p === 'string' && p.trim() !== '')
+    : []
+  if (!entityId || (!url && imagePaths.length === 0)) {
+    throw new Error('extract_product needs entity_id and either a url or image_paths')
+  }
   // ⚠️ HTTPS ONLY. A creator-supplied URL is untrusted input, and this process
   // holds service-role credentials — `file://`, `http://` to a private address,
   // and anything else non-HTTPS are refused rather than fetched.
-  if (!/^https:\/\//i.test(url)) throw new Error('extract_product needs an https URL')
+  if (url && !/^https:\/\//i.test(url)) throw new Error('extract_product needs an https URL')
 
   // The entity's own registered URL, so `sourceFor` can tell "this is the page
   // for the thing you registered" from "some page on the internet".
+  // ⚠️ `owner_id` IS SELECTED FOR THE IMAGE READ, NOT FOR TIDINESS. Storage paths
+  // are only honoured inside the owner's own folder, and without this the check
+  // has nothing to compare against.
   const { data: entity } = await db.from('product_entities')
-    .select('product_url').eq('id', entityId).maybeSingle()
+    .select('product_url, owner_id').eq('id', entityId).maybeSingle()
   const productUrl = (entity as { product_url?: string | null } | null)?.product_url ?? null
+  const ownerId = (entity as { owner_id?: string | null } | null)?.owner_id ?? ''
 
-  const text = await fetchPageText(url)
-  if (!text || text.length < 80) {
+  const text = url ? await fetchPageText(url) : null
+  // ⚠️ THE UNREADABLE-PAGE BRANCH MUST NOT SWALLOW AN IMAGE-ONLY JOB. It writes
+  // `knowledge: []` and returns, which for a creator who supplied photographs and
+  // no link would read as "we looked at your photos and found nothing" — while
+  // never having opened one.
+  if ((!text || text.length < 80) && imagePaths.length === 0) {
     // ⚖️ AN UNREADABLE PAGE IS RECORDED AS EMPTY, NOT LEFT NULL. Null means
     // "never extracted" and would show the creator "add a link" for a link they
     // already added; `[]` means "we read it and got nothing", which is what
@@ -254,18 +283,70 @@ export async function handleExtractProduct(job: Job): Promise<Record<string, unk
   // into a fixed schema is an EXTRACT, the same class `structure.ts` uses for
   // reference-structure extraction, and its env override is the one an operator
   // would reach for to cut cost on schema-constrained work.
+  // ── THE PHOTOGRAPHS, IF ANY ─────────────────────────────────────────────
+  //
+  // ⚠️ OWNER-PREFIXED OR NOT READ. Every storage reader in this tree refuses a
+  // path outside the owner's own folder, and this is the one that would
+  // otherwise hand another account's file to a model.
+  //
+  // ⚖️ A FAILED IMAGE IS SKIPPED, NOT FATAL. The creator may have supplied four
+  // photos and a link; losing one to a transient storage error should cost that
+  // photo, not the whole extraction they are waiting on.
+  const images: InlineImage[] = []
+  for (const path of imagePaths.slice(0, MAX_IMAGES)) {
+    if (!path.startsWith(`${ownerId}/`)) {
+      console.warn('extract_product: refusing a path outside the owner folder')
+      continue
+    }
+    try {
+      const dl = await db.storage.from('edits').download(path)
+      if (dl.error || !dl.data) { console.warn('extract_product: image unreadable', path); continue }
+      const buf = Buffer.from(await dl.data.arrayBuffer())
+      images.push({ mimeType: mimeFor(path), data: buf.toString('base64') })
+    } catch (e) {
+      console.warn('extract_product: image failed', path, e instanceof Error ? e.message : e)
+    }
+  }
+
+  // ⚖️ ONE CALL, BOTH SOURCES, AND THE PROMPT SAYS WHICH IS WHICH. A model given
+  // a page and photographs with no distinction will happily attribute a price it
+  // saw in a screenshot to the page it was told to read — and that fact would
+  // carry the PAGE's provenance, which is the exact laundering this split exists
+  // to prevent.
+  const imageRule = images.length > 0
+    ? `\n\nThe creator also supplied ${images.length} PHOTOGRAPH(S) of the product. From the images you may report ONLY: name, category, description - what the thing IS and what it LOOKS LIKE. You must NOT report a price, plan, guarantee, benefit, claim or call to action from an image, even if you can read one in the picture. A number visible in a photograph is not a stated price.`
+    : ''
   const out = await geminiJson(
-    SYSTEM, `PAGE (${url}):\n${text}`, SCHEMA, 60_000, undefined, modelForTask('extract'),
+    SYSTEM,
+    `${url ? `PAGE (${url}):\n${text}` : 'No page was supplied; work from the photographs alone.'}${imageRule}`,
+    SCHEMA, 60_000, undefined, modelForTask('extract'), images,
   ) as { facts?: Array<{ field?: string; value?: string }> }
 
   const now = new Date().toISOString()
   const facts: ExtractedFact[] = []
+  // ⚖️ WHEN THERE IS NO PAGE, THE PROVENANCE IS THE PHOTOGRAPH. `sourceFor` reads
+  // a URL, and with none it would degrade to `marketing_copy` — which is both
+  // wrong and far too permissive here: marketing copy may state a price, and a
+  // photograph may not.
+  const factSource = (!url && images.length > 0) ? 'creator_image' : source
   for (const raw of out?.facts ?? []) {
+    const field = String(raw?.field ?? '')
+    // ⚠️ THE PROMPT ASKS AND THIS ENFORCES, AND THE DIFFERENCE IS THE WHOLE
+    // POINT. A model told not to read a price off a photograph will mostly
+    // comply; "mostly" is not a permission system. `imageFactAllowed` is the
+    // decidable rule, applied to what actually came back.
+    if (factSource === 'creator_image' && !imageFactAllowed(field as never)) {
+      console.warn('extract_product: dropped an image-sourced', field)
+      continue
+    }
     const f = readExtractedFact({
-      field: String(raw?.field ?? '') as never,
+      field: field as never,
       value: String(raw?.value ?? ''),
-      source,
-      sourceUrl: url,
+      source: factSource,
+      // ⚖️ NO SOURCE URL FOR A PHOTOGRAPH. Writing the page's URL onto a fact
+      // that came from an image is the laundering this split exists to stop —
+      // and with no page there is no honest value to write.
+      sourceUrl: factSource === 'creator_image' ? null : url,
       now,
     })
     if (f) facts.push(f)

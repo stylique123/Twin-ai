@@ -85,7 +85,15 @@ describe('the extractor is never asked to grade itself', () => {
     // they already added. `[]` means "we read it and got nothing" — which is
     // what happened, and what they need to know. Same `unset ≠ false` rule.
     const job = readFileSync(join(REPO, 'worker/src/jobs/extractProduct.ts'), 'utf8')
-    const branch = job.slice(job.indexOf("if (!text || text.length"))
+    // ⚠️ THE CONDITION GREW A SECOND CLAUSE AND THE ANCHOR FOLLOWED IT. The
+    // branch is now guarded by `&& imagePaths.length === 0`, because an
+    // image-only job has no page to read and this branch would otherwise write
+    // "we looked and found nothing" without having opened a single photograph.
+    // `indexOf` returning -1 made the old anchor slice an empty string, which
+    // passes no assertion and would have failed silently the other way round.
+    const at = job.indexOf('if ((!text || text.length')
+    expect(at, 'could not find the unreadable-page branch').toBeGreaterThan(-1)
+    const branch = job.slice(at)
     expect(branch.slice(0, branch.indexOf('return'))).toMatch(/knowledge: \[\]/)
   })
 })

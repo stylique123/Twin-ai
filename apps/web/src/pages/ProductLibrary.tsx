@@ -39,7 +39,7 @@ import { useEffect, useState } from 'react'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation,
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
-  requestProductExtraction, confirmProductFacts,
+  requestProductExtraction, confirmProductFacts, uploadProductImage,
   listBrandVoices, OwnedEntityExistsError, ProductLibraryFullError,
   isStale, factAgeDays,
   bestSuggestion,
@@ -325,6 +325,10 @@ export default function ProductLibrary() {
      *  starts from a page is telling us WHICH thing they mean; storing it on the
      *  mint is what lets Twin read it without asking them to find it twice. */
     productUrl?: string | null
+    /** ⚖️ PATHS, NOT FILES. The upload has already happened by the time this
+     *  runs — a claim that also had to carry bytes could fail halfway and leave
+     *  a product minted with photographs nobody can find. */
+    imagePaths?: string[]
   }) {
     // ⚠️ AN EMPTY OWNER ID MUST NOT REACH THE INSERT. RLS is owner-scoped, so a
     // blank id fails somewhere deep with a policy error that reads as a bug in
@@ -349,8 +353,9 @@ export default function ProductLibrary() {
         // convenience that runs on the worker minutes later, and a reader that
         // could undo an attestation would be the wrong shape entirely.
         const url = (a.productUrl ?? '').trim()
-        if (url) {
-          try { await requestProductExtraction(ownerId, created.id, url) }
+        const imgs = a.imagePaths ?? []
+        if (url || imgs.length > 0) {
+          try { await requestProductExtraction(ownerId, created.id, url, imgs) }
           catch { setErr('Added, but we could not start reading that page. You can retry from the product below.') }
         }
         // Drop it from the suggestions — it is claimed now, and leaving it there
@@ -895,10 +900,16 @@ function StartFromLink({ onCancel, onClaim, busy }: {
   busy: boolean
   onClaim: (a: {
     relationship: EntityRelationship; personalUse: PersonalUse
-    type: EntityType; name: string; productUrl?: string | null
+    type: EntityType; name: string; productUrl?: string | null; imagePaths?: string[]
   }) => void
 }) {
   const [url, setUrl] = useState('')
+  // ⚖️ UPLOADED AS THEY ARE PICKED, NOT ON SUBMIT. A submit that also had to
+  // carry several megabytes can fail halfway, and the creator would be told
+  // their product could not be added when the real problem was one photo.
+  const [imagePaths, setImagePaths] = useState<string[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [imgErr, setImgErr] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [relationship, setRelationship] = useState<EntityRelationship | null>(null)
   const [type, setType] = useState<EntityType | null>(null)
@@ -912,9 +923,30 @@ function StartFromLink({ onCancel, onClaim, busy }: {
   // ⚠️ A NAME IS REQUIRED ONLY WHEN THERE IS NO LINK. With one, extraction
   // supplies it; without one, nothing else will, and a nameless entity reaches
   // the prompt as "the product".
-  const named = link !== '' || name.trim() !== ''
-  const ready = named && linkLooksReal && relationship !== null
+  // ⚠️ PHOTOS COUNT AS SOMETHING TO INSPECT. A product with no page and three
+  // pictures is a complete submission; demanding a name for it would make the
+  // typing mandatory again in the one case where the pictures say more.
+  const named = link !== '' || imagePaths.length > 0 || name.trim() !== ''
+  const ready = named && linkLooksReal && !uploading && relationship !== null
     && type !== null && personalUse !== null
+
+  const addPhotos = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setUploading(true); setImgErr(null)
+    try {
+      for (const file of Array.from(files).slice(0, 4 - imagePaths.length)) {
+        const dataUrl: string = await new Promise((res, rej) => {
+          const r = new FileReader()
+          r.onload = () => res(String(r.result)); r.onerror = rej
+          r.readAsDataURL(file)
+        })
+        const path = await uploadProductImage(dataUrl)
+        setImagePaths((prev) => [...prev, path])
+      }
+    } catch (e) {
+      setImgErr(e instanceof Error ? e.message : 'That image could not be uploaded.')
+    } finally { setUploading(false) }
+  }
 
   return (
     <div className="mt-3 space-y-3 rounded-lg bg-white/[0.03] p-3">
@@ -957,6 +989,34 @@ function StartFromLink({ onCancel, onClaim, busy }: {
         />
       </div>
 
+      {/* ⚖️ PHOTOGRAPHS ESTABLISH WHAT A THING IS AND WHAT IT LOOKS LIKE, and
+          nothing else — not its price, not what it does for anyone. The wording
+          says so plainly, because a creator who uploads a pricing screenshot
+          expecting Twin to learn the price should find that out here rather than
+          from a script that never mentions it. */}
+      <div>
+        <span className="text-xs font-medium uppercase tracking-wide text-stone">
+          Photos of it (optional)
+        </span>
+        <p className="mt-1 text-xs text-stone">
+          Up to four. Twin uses these to know what it looks like, so a scene can show it.
+          It will not take prices or promises from a picture.
+        </p>
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          multiple
+          disabled={uploading || imagePaths.length >= 4}
+          onChange={(e) => { void addPhotos(e.target.files); e.target.value = '' }}
+          className="mt-2 block w-full text-xs text-stone file:mr-3 file:rounded-lg file:border file:border-white/15 file:bg-white/5 file:px-3 file:py-1.5 file:text-xs file:text-cream"
+        />
+        {uploading && <p className="mt-1 text-xs text-stone">Uploading…</p>}
+        {imagePaths.length > 0 && (
+          <p className="mt-1 text-xs text-teal">{imagePaths.length} photo{imagePaths.length === 1 ? '' : 's'} ready</p>
+        )}
+        {imgErr && <p className="mt-1 text-xs text-coral">{imgErr}</p>}
+      </div>
+
       <Choices
         label="What is it?"
         options={TYPE_CHOICES}
@@ -988,10 +1048,10 @@ function StartFromLink({ onCancel, onClaim, busy }: {
           disabled={!ready || busy}
           onClick={() => onClaim({
             relationship: relationship!, personalUse: personalUse!, type: type!,
-            name: name.trim(), productUrl: link || null,
+            name: name.trim(), productUrl: link || null, imagePaths,
           })}
           className="btn-gradient rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
-        >{busy ? 'Adding…' : link ? 'Add it and read the page' : 'Add it'}</button>
+        >{busy ? 'Adding…' : (link || imagePaths.length > 0) ? 'Add it and take a look' : 'Add it'}</button>
         <button
           type="button"
           onClick={onCancel}

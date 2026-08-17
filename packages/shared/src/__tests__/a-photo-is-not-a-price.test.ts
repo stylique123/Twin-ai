@@ -79,3 +79,78 @@ describe('the vocabulary', () => {
       .not.toBe(EXTRACTION_SOURCES.indexOf('user_confirmed'))
   })
 })
+
+// ── AND THE RULE IS ENFORCED, NOT MERELY REQUESTED ────────────────────────
+//
+// ⚠️ THE PROMPT ASKS THE MODEL NOT TO READ A PRICE OFF A PHOTOGRAPH, and a model
+// told that will mostly comply. "Mostly" is not a permission system. The worker
+// applies `imageFactAllowed` to what actually came back, which is the decidable
+// half of the same rule.
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+const REPO2 = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
+const JOB = readFileSync(join(REPO2, 'worker/src/jobs/extractProduct.ts'), 'utf8')
+const FN = readFileSync(join(REPO2, 'supabase/functions/product-image/index.ts'), 'utf8')
+const CFG = readFileSync(join(REPO2, 'supabase/config.toml'), 'utf8')
+
+describe('the worker enforces what the prompt asks', () => {
+  it('drops an image-sourced fact the rule refuses', () => {
+    expect(JOB).toMatch(/if \(factSource === 'creator_image' && !imageFactAllowed\(/)
+  })
+
+  it('tags a photograph as a photograph rather than as marketing copy', () => {
+    // ⚠️ `sourceFor` READS A URL, and with none it degrades to `marketing_copy` —
+    // both wrong and far too permissive, because marketing copy may state a
+    // price and a photograph may not.
+    expect(JOB).toMatch(/const factSource = \(!url && images\.length > 0\) \? 'creator_image' : source/)
+  })
+
+  it('never writes the page URL onto a fact that came from an image', () => {
+    // ⚖️ That is the laundering the whole split exists to stop.
+    expect(JOB).toMatch(/sourceUrl: factSource === 'creator_image' \? null : url/)
+  })
+
+  it('refuses a storage path outside the owner folder', () => {
+    expect(JOB).toMatch(/if \(!path\.startsWith\(`\$\{ownerId\}\/`\)\)/)
+    expect(JOB).toMatch(/select\('product_url, owner_id'\)/)
+  })
+
+  it('caps how many images one job will inline', () => {
+    expect(JOB).toMatch(/imagePaths\.slice\(0, MAX_IMAGES\)/)
+  })
+
+  it('does not let an image-only job fall into the unreadable-page branch', () => {
+    // ⚠️ That branch writes "we read it and got nothing" — which for a creator
+    // who supplied photographs and no link would be a lie about work never done.
+    expect(JOB).toMatch(/&& imagePaths\.length === 0\) \{/)
+    expect(JOB).toMatch(/const text = url \? await fetchPageText\(url\) : null/)
+  })
+})
+
+describe('the upload endpoint', () => {
+  it('requires a signed-in caller', () => {
+    // ⚠️ It writes with the service role on the caller's behalf. Without JWT
+    // verification it would file an upload under whatever the body claimed.
+    expect(CFG).toMatch(/\[functions\.product-image\]\s*\n(?:#[^\n]*\n)*verify_jwt = true/)
+    expect(FN).toMatch(/if \(!user\) return json\(\{ error: 'Not authenticated' \}, 401\)/)
+  })
+
+  it('writes under the owner’s own folder, which the worker later verifies', () => {
+    expect(FN).toMatch(/\$\{user\.id\}\/products\//)
+  })
+
+  it('allow-lists the content type rather than passing it through', () => {
+    // ⚖️ The stored type is what the worker hands the model as mimeType, so an
+    // unrecognised value is refused rather than defaulted.
+    expect(FN).toMatch(/image\/webp/)
+    expect(FN).toMatch(/Please upload a PNG, JPEG or WebP image/)
+  })
+
+  it('is a separate endpoint from the logo upload', () => {
+    // ⚖️ A logo is branding applied to renders; these are evidence that feeds the
+    // claim rules. One endpoint would mean one path prefix.
+    expect(FN).not.toMatch(/brandkit/)
+  })
+})
