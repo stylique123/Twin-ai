@@ -62,7 +62,20 @@ import type { Provenanced } from './authority'
 // that plan broadly. The test for any future field is the same: if two options
 // behave differently anywhere downstream, they stay distinct in canonical truth.
 
-export const CANONICAL_ROLES = ['creator', 'founder', 'service_provider', 'professional'] as const
+// ⚠️ `brand` IS ITS OWN ROLE, AND IT WAS BRIEFLY NOT. It was mapped to `founder`
+// on the grounds that the coarse question — "is the commercial entity theirs" —
+// answers yes. That is a semantic lie even while no consumer exploits it: a
+// planner reading `founder` has every reason to conclude a human founder is
+// speaking, and this whole layer exists so future consumers can TRUST a canonical
+// value rather than check what it really meant.
+//
+// ⚖️ THE DISTINCTION IS REAL AND WILL BE NEEDED. A brand account may say "we",
+// "our product" and make company-level claims it is authorised for; it may not
+// say "I built this", "when I started", "in my experience" — personal-founder
+// authority nobody at a company account can assert on the company's behalf. That
+// separates brand teams, agencies running brand accounts, spokespeople and UGC
+// written for companies from an actual founder speaking.
+export const CANONICAL_ROLES = ['creator', 'founder', 'service_provider', 'professional', 'brand'] as const
 export type CanonicalRole = (typeof CANONICAL_ROLES)[number]
 
 export const CANONICAL_BUSINESS = ['none', 'software', 'physical', 'service'] as const
@@ -88,15 +101,10 @@ const ROLE_OF: Record<BriefWorkKind, CanonicalRole> = {
   // the broad bucket for "the commercial entity is theirs"; what they actually
   // sell stays in `workKind`, which is where the writer reads it.
   ecommerce: 'founder',
-  // ⚠️ THE ONE MAPPING I AM LEAST SURE OF, AND IT IS FLAGGED RATHER THAN HIDDEN.
-  // A brand account is not a person — not a founder speaking, not a practitioner
-  // — and none of the four roles is really it. It sits here because the broad
-  // question ("is the commercial entity theirs?") answers yes, and because
-  // `workKind: 'brand'` still carries the instruction that actually matters:
-  // write in the brand's voice, avoid first-person claims only a named person
-  // could make. If the abstraction turns out to be load-bearing for a brand
-  // team, the answer is a fifth role, not a quieter mapping.
-  brand: 'founder',
+  // ⚖️ ITS OWN ROLE, DECIDED RATHER THAN APPROXIMATED. See the note above
+  // `CANONICAL_ROLES`: the compiler dragged us into the necessary conversation
+  // and the honest answer is that a brand is not a founder.
+  brand: 'brand',
   saas: 'founder',
   local_service: 'service_provider',
   // ⚖️ `other` CARRIES THE CREATOR'S OWN SENTENCE and the role cannot be derived

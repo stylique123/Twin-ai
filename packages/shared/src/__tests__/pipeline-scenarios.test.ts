@@ -25,8 +25,9 @@
 // should not be merged, because a suite that answers both answers neither
 // clearly.
 import { describe, expect, it } from 'vitest'
-import { compileVideoIntent } from '../videoIntent'
+import { compileVideoIntent, CONTENT_FOCUS, CONTENT_FOCUS_LABELS } from '../videoIntent'
 import { claimRulesFor, mayWriteCommercialCta } from '../productEntity'
+import { extractionTrust } from '../productExtraction'
 import { assembleCreatorProfile, toPlannerView, toWriterView } from '../profileAssembler'
 import { validateCreativeDecisionPlan, isCertified } from '../creativeDecisionPlan'
 
@@ -274,8 +275,18 @@ describe('the ledger is empty', () => {
     // ⚖️ THE NEXT PENDING LAYER RAISES IT AGAIN. Container Plan, research and the
     // judge will each arrive as named skips, and this number is how they stay
     // visible rather than becoming an architectural lifestyle choice.
-    const skippedAssertions = 0
-    expect(skippedAssertions).toBe(0)
+    // ⚠️ IT WENT BACK UP, AND THAT IS THE MECHANISM WORKING RATHER THAN FAILING.
+    // Scenarios 7 and 8 name layers that do not exist yet — the Container Plan,
+    // the research stage, and a product-conflict state — so their assertions are
+    // SKIPS with the missing component named, never absences. Six is the debt;
+    // when a component lands, its skips become illegal and this number falls.
+    //
+    // ⚖️ AND THE SKIPS ARE NOT DECORATION. Writing Scenario 7 is what found
+    // `prefersKinds` empty for `trending`: the one focus that cannot be answered
+    // from stored knowledge asks retrieval for nothing. That defect was invisible
+    // until somebody wrote the scenario that needed it.
+    const skippedAssertions = 6
+    expect(skippedAssertions).toBe(6)
   })
 })
 
@@ -394,5 +405,209 @@ describe('Scenario 5 — the role abstracts, the work kind survives', () => {
     expect(lines).toMatch(/saas: '/)
     expect(lines).toMatch(/ecommerce: '/)
     expect(lines).toMatch(/PHYSICAL PRODUCT/)
+  })
+})
+
+// ── SCENARIO 1 — SAAS FOUNDER SELLING THEIR OWN PRODUCT ───────────────────
+//
+// ⚖️ THE GOLDEN PATH, AND THE BEST REGRESSION CASE IN THIS FILE, because it
+// crosses nearly every authority boundary at once: CreatorProfile, Product DNA,
+// user intent, reference DNA, CTA and the writer. When this breaks, something
+// load-bearing broke.
+//
+// ⚠️ THE REFERENCE IS DELIBERATELY FROM ANOTHER NICHE — "3 mistakes destroying
+// your gym progress" for a SaaS founder. That is the whole point: STRUCTURE may
+// cross a niche boundary and BUSINESS TRUTH may not. A system that copies the
+// three-mistake escalation is working; one that mentions a gym fact because the
+// reference did has confused a shape with a claim.
+describe('Scenario 1 — SaaS founder, own product, cross-niche reference', () => {
+  const answers = {
+    workKind: 'saas', audience: 'founders', audienceKnowledge: 'beginners',
+    commercialTies: ['own_product'], contentGoals: ['authority'],
+  } as never
+  const profile = assembleCreatorProfile({ answers, defaultCta: 'Try Twin free', now: NOW })
+
+  it('PROFILE — every field is the creator\'s own answer, at full resolution', () => {
+    expect(profile.role!.value).toBe('founder')
+    expect(profile.workKind!.value).toBe('saas')
+    expect(profile.workKind!.source).toBe('user_answer')
+    expect(profile.audienceLevel!.value).toBe('beginner')
+    expect(profile.audienceLevel!.source).toBe('user_answer')
+    expect(profile.relationship!.value).toBe('OWN_PRODUCT')
+    expect(profile.relationship!.source).toBe('user_answer')
+  })
+
+  it('PROFILE — and it does NOT carry the product\'s truth', () => {
+    // ⚠️ THE BOUNDARY THIS SCENARIO EXISTS TO PIN. The profile may know the
+    // creator owns something; what that thing costs, does or claims belongs to
+    // Product DNA. A profile that grew a `price` would become a second source of
+    // product truth, and two sources is how they disagree.
+    const p = profile as unknown as Record<string, unknown>
+    expect(p).not.toHaveProperty('price')
+    expect(p).not.toHaveProperty('product')
+    expect(p).not.toHaveProperty('features')
+  })
+
+  it('CDP — an owner selling their own product is certified', () => {
+    const plan = {
+      objective: 'sell' as const, focus: 'product' as const, products: ['twin-ai'],
+      ownershipLanguage: true, commercialCta: true, disclosureRequired: false,
+      cta: 'Try Twin free',
+    }
+    expect(validateCreativeDecisionPlan(plan, toPlannerView(profile))).toEqual([])
+  })
+
+  it('CDP — ownership language is permitted here and nowhere adjacent', () => {
+    // ⚖️ THE SAME PLAN, ONE ANSWER DIFFERENT, IS REFUSED. That is what makes the
+    // permission meaningful rather than incidental.
+    const affiliate = assembleCreatorProfile({
+      answers: { ...(answers as object), commercialTies: ['affiliate'] } as never, now: NOW })
+    const plan = {
+      objective: 'sell' as const, focus: 'product' as const, products: ['twin-ai'],
+      ownershipLanguage: true, commercialCta: true, disclosureRequired: true, cta: null,
+    }
+    expect(validateCreativeDecisionPlan(plan, toPlannerView(affiliate)).map((v) => v.code))
+      .toContain('OWNERSHIP_WITHOUT_OWNED_PRODUCT')
+  })
+
+  it('CDP — the CTA is the creator\'s own words, carried not invented', () => {
+    expect(toPlannerView(profile).defaultCta).toBe('Try Twin free')
+    expect(profile.defaultCta!.source).toBe('user_answer')
+  })
+
+  it('SCRIPT — the writer gets the trade, so the nouns are a founder\'s', () => {
+    // ⚖️ `saas` RATHER THAN JUST `founder`: users, workflows and adoption rather
+    // than customers, orders and margins. The distinction the widening kept.
+    expect(toWriterView(profile).workKind).toBe('saas')
+    expect(BLUEPRINT).toMatch(/saas: '/)
+  })
+
+  it('SCRIPT — a beginner audience changes how much is explained', () => {
+    expect(toWriterView(profile).audienceLevel).toBe('beginner')
+    expect(BLUEPRINT).toMatch(/They are NEW to this/)
+  })
+
+  it('SCRIPT — structure may cross the niche and claims may not', () => {
+    // ⚠️ THE CROSS-NICHE RULE, PINNED WHERE IT LIVES. The reference contributes
+    // a shape; its subject matter and its facts stay with it.
+    expect(BLUEPRINT).toMatch(/REFERENCE_USE_DIRECTIVE|referenceUseDirective/)
+    expect(BLUEPRINT).toMatch(/do not (?:copy|reuse)|never copy|not a script to copy/i)
+  })
+
+  it('SCRIPT — and the writer cannot see the relationship it would reason from', () => {
+    const w = toWriterView(profile) as Record<string, unknown>
+    expect(w).not.toHaveProperty('relationship')
+  })
+})
+
+// ── SCENARIO 7 — CURRENT OR TRENDING CONTENT NEEDS RESEARCH ───────────────
+//
+// ⚠️ THE DIFFERENCE BETWEEN CREATIVE GENERATION AND FACTUAL RETRIEVAL. "3 AI
+// tools creators are sleeping on right now" cannot be answered from model
+// memory: which tools exist, what they do today and whether anybody is actually
+// sleeping on them are facts with a date on them.
+//
+// ⚖️ AND THE FAILURE IS DECIDABLE BEFORE ANY PROSE EXISTS. If the focus is
+// current and the plan says no research is required, the test fails at the plan
+// — which is precisely why CDP was pulled forward.
+describe('Scenario 7 — trending content requires research', () => {
+  it('INPUT — "something trending or current" is a real answer creators pick', () => {
+    expect(CONTENT_FOCUS).toContain('trending')
+    expect(CONTENT_FOCUS_LABELS.trending).toMatch(/trending or current/i)
+  })
+
+  it('PROFILE — nothing magical happens; it must not manufacture current facts', () => {
+    // ⚠️ THE PROFILE IS UNCHANGED BY THE FOCUS, and that is correct. Identity,
+    // audience and voice are stable facts; what is true this week is not one.
+    const p = assembleCreatorProfile({
+      answers: { workKind: 'creator', audience: 'founders' } as never, now: NOW })
+    const raw = p as unknown as Record<string, unknown>
+    expect(raw).not.toHaveProperty('currentTools')
+    expect(raw).not.toHaveProperty('trends')
+    expect(p.role!.value).toBe('creator')
+  })
+
+  it('RETRIEVAL — and today it asks for NOTHING, which is the defect', () => {
+    // ⚠️ FOUND BY WRITING THIS SCENARIO. `KIND_PREFERENCE.trending` is `[]`, so
+    // picking "something trending or current" tilts retrieval toward no kind of
+    // knowledge at all — the creator names the one focus that CANNOT be answered
+    // from what we already store, and the system responds by looking no harder.
+    //
+    // ⚖️ EMPTY IS RIGHT FOR `reference_adapted` AND WRONG HERE. There, empty
+    // means "the shape comes from the reference, the substance from anywhere";
+    // here it means "current facts, sourced from nothing" — and the fix is not a
+    // retrieval tilt but a research stage, which is why the skip below names it.
+    const trending = compileVideoIntent({ goal: 'authority', focus: 'trending' })
+    expect(trending.prefersKinds).toEqual([])
+    // ⚖️ EVERY OTHER SUBSTANCE FOCUS ASKS FOR SOMETHING, which is what makes the
+    // empty one a gap rather than a style.
+    expect(compileVideoIntent({ goal: 'authority', focus: 'expertise' }).prefersKinds.length)
+      .toBeGreaterThan(0)
+  })
+
+  it.skip('CDP — sets research_required = true for a current focus [Container Plan + research]', () => {
+    // ⚠️ NOT BUILT. The plan has no `researchRequired` field and no research
+    // stage exists to satisfy it, so asserting it now would test a fiction.
+    // When the Container Plan lands, this becomes the check that a current-facts
+    // video cannot be marked resolved from model memory.
+  })
+
+  it.skip('CONTAINER PLAN — each current item is RESEARCH_REQUIRED unless Product DNA supplies it [Container Plan]', () => {
+    // ⚖️ THE INTERESTING CASE IS THE MIXED ONE: one slot resolved from a product
+    // the creator owns, the rest still requiring retrieval.
+  })
+
+  it.skip('SCRIPT — the writer does not run until required current facts resolve [research]', () => {
+    // ⚠️ THE WHOLE POINT. Invented popularity, releases, pricing and rankings are
+    // the failure mode, and they are only preventable BEFORE the writer is called.
+  })
+})
+
+// ── SCENARIO 8 — THE PRODUCT'S FACTS CONTRADICT EACH OTHER ────────────────
+//
+// ⚠️ WE HAVE DATA IS NOT WE HAVE USABLE TRUTH. A stored price of $39 and a fresh
+// reading of $49 are two pieces of evidence, and picking one silently is how a
+// creator says a number on camera that stopped being true months ago.
+//
+// ⚖️ AND A MODEL MUST NOT ADJUDICATE IT. "$49 seems more recent" is a guess
+// wearing a decision's clothes; freshness and source are what resolve this, in
+// code, with both readings still inspectable afterwards.
+describe('Scenario 8 — stale product truth, and the conflict it creates', () => {
+  it('PROFILE — the price is not the profile\'s to own, which is the assertion', () => {
+    // ⚠️ A NEGATIVE ASSERTION WORTH HAVING. If a price ever appears here, there
+    // are two sources of product truth and they will disagree.
+    const p = assembleCreatorProfile({
+      answers: { workKind: 'saas', commercialTies: ['own_product'] } as never, now: NOW })
+    expect(p as unknown as Record<string, unknown>).not.toHaveProperty('price')
+  })
+
+  it('PRODUCT — a figure with a number in it is never usable without confirmation', () => {
+    // ⚖️ THE MECHANISM THAT ALREADY EXISTS. Pricing claims come back
+    // `needs_confirmation`, so a changed price cannot reach a script on the
+    // extractor's authority alone — whichever reading is newer.
+    expect(extractionTrust({ field: 'price', value: '$49/month', source: 'pricing_page' }))
+      .toBe('needs_confirmation')
+    // ⚖️ AND THE OLDER READING IS NO MORE USABLE THAN THE NEWER ONE. Neither
+    // side of a conflict gets to be true by being first or by being latest.
+    expect(extractionTrust({ field: 'price', value: '$39/month', source: 'pricing_page' }))
+      .toBe('needs_confirmation')
+  })
+
+  it.skip('PRODUCT — two readings of one field are recorded as a CONFLICT, both inspectable [product conflict state]', () => {
+    // ⚠️ NOT BUILT. Today a re-extraction replaces the fact list; there is no
+    // state that says "these disagree". Silently overwriting is the defect this
+    // scenario names, and it is invisible until somebody reads a stale number
+    // aloud.
+  })
+
+  it.skip('CDP — a video that needs the price is BLOCKED while the price is unresolved [CDP + product conflict]', () => {
+    // ⚖️ NOT "PICK THE STORED ONE" AND NOT "PICK THE NEWER ONE". Blocked, with a
+    // remedy the creator can act on — the shape the sell/no-offer refusal
+    // already uses.
+  })
+
+  it.skip('SCRIPT — says neither figure until one is authoritative [CDP + writer]', () => {
+    // ⚖️ AND MAY RESTRUCTURE AROUND IT — "check their current pricing" — when
+    // that still serves the plan rather than papering over a gap.
   })
 })

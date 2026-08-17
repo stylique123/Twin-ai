@@ -120,40 +120,40 @@ describe('unanswered is not answered', () => {
   })
 })
 
-describe('the role a brand team gets, and the day it stops being safe', () => {
-  // ⚠️ THE ONE MAPPING NOBODY IS SURE OF. A brand account is not a person — not
-  // a founder speaking, not an individual practitioner — and none of the four
-  // canonical roles is really it. It sits at `founder` because the only question
-  // the abstraction answers, "is the commercial entity theirs", is yes.
+describe('a brand account is not a founder', () => {
+  // ⚠️ IT WAS BRIEFLY MAPPED TO `founder`, guarded by a test asserting nothing
+  // downstream exploited the difference. That protected a known-wrong
+  // representation instead of fixing it — and a planner reading `founder` has
+  // every reason to conclude a human founder is speaking.
   //
-  // ⚖️ AND THAT IS SAFE ONLY WHILE NOTHING BRANCHES ON THE ROLE FOR PERSONAL
-  // AUTHORITY. The moment a consumer decides first-person or credibility framing
-  // from `primaryRole`, a brand team inherits founder-ish "I built this" — the
-  // false-claim class this codebase spent a week closing. This test is here so
-  // that day is DETECTED rather than remembered.
-  it('keeps the distinction where it actually changes the writing', () => {
-    const brand = of({ workKind: 'brand' })
-    const founder = of({ workKind: 'founder' })
-    expect(brand.role!.value).toBe(founder.role!.value)
-    // ⚖️ THE COLLAPSE IS SURVIVABLE BECAUSE `workKind` DID NOT COLLAPSE. The
-    // writer reads this, and `brand` carries "write in the brand's voice, avoid
-    // first-person claims only a named person could make".
-    expect(toWriterView(brand).workKind).not.toBe(toWriterView(founder).workKind)
+  // ⚖️ SO THE ROLE EXISTS. This is the cheapest moment it could have been added,
+  // and the rule that forced it is the one this module already runs on: a total
+  // map must make somebody DECIDE what a new option means, and brand means
+  // something different from founder.
+  it('gets its own canonical role', () => {
+    expect(of({ workKind: 'brand' }).role!.value).toBe('brand')
+    expect(of({ workKind: 'founder' }).role!.value).toBe('founder')
+    expect(of({ workKind: 'saas' }).role!.value).toBe('founder')
   })
 
-  it('and the role never becomes the source of a personal claim', () => {
-    // ⚠️ THE TRIPWIRE. `mayUseOwnershipLanguage` is the permission that puts a
-    // first-person claim in somebody's mouth, and it must be derived from the
-    // RELATIONSHIP the creator asserted — never from what kind of work they do.
-    // If this ever reads the role, a brand team speaks as a founder, and the
-    // answer is a fifth canonical role rather than a quieter mapping.
-    const brand = of({ workKind: 'brand' })
-    expect(toPlannerView(brand).mayUseOwnershipLanguage).toBe(false)
-    const owning = of({ workKind: 'brand', commercialTies: ['own_product'] })
-    expect(toPlannerView(owning).mayUseOwnershipLanguage).toBe(true)
-    // ⚖️ SAME ROLE, DIFFERENT PERMISSION — which proves the permission is coming
-    // from the relationship and not from the role.
-    expect(toPlannerView(brand).role).toBe(toPlannerView(owning).role)
+  it('and the planner can tell them apart', () => {
+    // ⚖️ THE POINT OF THE FIFTH ROLE. A brand may say "we" and "our product"
+    // where authorised; it may not say "I built this" or "when I started" —
+    // personal-founder authority nobody at a company account can assert.
+    expect(toPlannerView(of({ workKind: 'brand' })).role)
+      .not.toBe(toPlannerView(of({ workKind: 'founder' })).role)
+  })
+
+  it('while the writer still gets the trade, not just the role', () => {
+    expect(toWriterView(of({ workKind: 'brand' })).workKind).toBe('brand')
+  })
+
+  it('and ownership language still comes from the relationship, never the role', () => {
+    // ⚠️ THE RULE THAT DOES NOT CHANGE. A new role must not become a new source
+    // of permission — that is the confusion the whole authority model refuses.
+    expect(toPlannerView(of({ workKind: 'brand' })).mayUseOwnershipLanguage).toBe(false)
+    expect(toPlannerView(of({ workKind: 'brand', commercialTies: ['own_product'] }))
+      .mayUseOwnershipLanguage).toBe(true)
   })
 })
 
