@@ -3,6 +3,9 @@ import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Penc
 import { useAuth } from '../context/AuthContext'
 import { saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit, uploadBrandLogo, getWorkspace, createWorkspaceInvite, removeWorkspaceMember, type WorkspaceState } from '../lib/api'
 import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
+import { contentProfile, brandKitStatus, productDnaStatus, loadProductEntities } from '@twinai/shared'
+import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
+import { readOnboardingDraft, profileAnswersOf } from '../lib/onboardingDraft'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
@@ -62,6 +65,10 @@ export default function Settings() {
   const [brandKit, setBrandKit] = useState<BrandKit>({})
   const [kitSaved, setKitSaved] = useState(false)
   const [kitErr, setKitErr] = useState(false)
+  // ⚠️ A COUNT, NOT THE ROWS. Nothing on this card needs a product's contents —
+  // only whether anything has been claimed — and loading the library to render a
+  // status word would make an unrelated failure able to blank this card.
+  const [entityCount, setEntityCount] = useState<number | null>(null)
   const loadVoice = useCallback(() => {
     setVoiceErr(false); setVoiceLoading(true)
     listBrandVoices()
@@ -89,6 +96,17 @@ export default function Settings() {
       .finally(() => setVoiceLoading(false))
   }, [])
   useEffect(() => { loadVoice() }, [loadVoice])
+  // ⚖️ A FAILED LOAD LEAVES THE COUNT null AND THE CARD SAYS SO, rather than
+  // reporting zero. "We could not check" and "you have none" are different facts,
+  // and rendering the second for the first is how a creator gets told to claim a
+  // product they already claimed.
+  useEffect(() => {
+    let alive = true
+    loadProductEntities()
+      .then((rows) => { if (alive) setEntityCount(rows.length) })
+      .catch(() => { if (alive) setEntityCount(null) })
+    return () => { alive = false }
+  }, [])
   const saveKit = async (next: BrandKit) => {
     setBrandKit(next)
     if (!defaultVoiceId) return
@@ -183,6 +201,42 @@ export default function Settings() {
   }
   const higherPlans = PLANS.filter((p) => p.price > plan.price)
 
+  // ── WHAT TWIN KNOWS, SPLIT BY WHAT IT CONTROLS ────────────────────────────
+  //
+  // ⚠️ THE ANSWERS COME FROM THE ONBOARDING DRAFT, WHICH IS LOCAL-STORAGE ONLY
+  // AND NEVER PERSISTED SERVER-SIDE. On a second device there is nothing to read,
+  // so this reports a lower number than the truth — which is the safe direction
+  // (it under-claims what Twin knows rather than over-claiming), but it is a real
+  // gap and the fix is to persist the answers, not to assume them here.
+  const profileAnswers = (() => {
+    const id = profile?.id
+    if (!id) return null
+    try {
+      const d = readOnboardingDraft(localStorage, id)
+      return d ? profileAnswersOf(d) : null
+    } catch { return null }
+  })()
+  const content = contentProfile({
+    answers: profileAnswers,
+    dnaReady: activeVoice?.status === 'ready',
+    // ⚠️ NOT `dna.goal`. The goal is what the creator wants the video to achieve;
+    // the CTA is the sentence they want said at the end. Mapping one onto the
+    // other would mark this satisfied by an answer to a different question — and
+    // there is currently no field that asks it, so the gap is honest and points
+    // at work that is genuinely missing.
+    cta: null,
+  })
+  const productDna = productDnaStatus(profileAnswers?.commercialTies ?? null, entityCount ?? 0)
+  // ⚖️ `palette_source: 'manual'` IS THE ONLY THING THAT MAKES COLOURS A BRAND.
+  // An auto-extracted palette is a reading, and this card must not report a
+  // reading as a decision — the same line `brandSnapshot` draws for the editor.
+  const kitStatus = brandKitStatus({
+    primaryHex: brandKit.palette?.primary ?? null,
+    secondaryHex: brandKit.palette?.secondary ?? null,
+    logoPath: brandKit.logo_path ?? null,
+    paletteSource: brandKit.palette_source ?? null,
+  })
+
   const saveDna = async () => {
     setSavingDna(true); setErr(null)
     try {
@@ -207,6 +261,22 @@ export default function Settings() {
         {err && (
           <div className="mt-6 rounded-card border border-coral/30 bg-coral/10 px-4 py-3 text-sm text-coral">{err}</div>
         )}
+
+        {/* ── FOUR OBLIGATIONS, ONE NUMBER ──────────────────────────────────
+            ⚠️ THE BANNER THIS REPLACES SAID "your profile is incomplete" AND
+            COUNTED A LOGO TOWARD IT. A creator with every creative answer
+            resolved and no brand colours was told Twin did not know enough to
+            write for them, which was false — and the fix on offer was to invent
+            a palette, which is the one thing `brandSnapshot` refuses to treat as
+            brand truth. The obligations are separate here because they are
+            separate: only the first one changes a script. */}
+        <Reveal delay={0.03}>
+          <ProfileStatus
+            content={content}
+            productDna={productDna}
+            brandKit={kitStatus}
+          />
+        </Reveal>
 
         {/* Account */}
         <Reveal delay={0.05}>
@@ -693,5 +763,94 @@ function TeamSeats() {
         </div>
       )}
     </section>
+  )
+}
+
+/** WHAT TWIN KNOWS, SPLIT BY WHAT IT CONTROLS.
+ *
+ *  ⚠️ ONE PERCENTAGE AND THREE STATES, AND THE SHAPE IS THE ARGUMENT. Only the
+ *  first of these changes a script; the other three change what the editor may
+ *  render, what a script may claim about an offer, and what the Director Plan may
+ *  ask a person to physically do. Folding them into one number is what let the
+ *  old banner tell a fully-answered creator they were 70% known.
+ *
+ *  ⚖️ AND NOTHING HERE IS WORDED AS A DEFICIENCY. "Not set up" is a true and
+ *  unembarrassing state; a percentage attached to it would imply a shortfall that
+ *  costs the creator nothing.
+ */
+function ProfileStatus({ content, productDna, brandKit }: {
+  content: ContentProfile
+  productDna: ProductDnaStatus
+  brandKit: BrandKitStatus
+}) {
+  return (
+    <section className="glass mt-8 p-5 sm:p-6">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="eyebrow !text-sand">What Twin knows about you</p>
+        <span className="font-display text-2xl leading-none">{content.percent}%</span>
+      </div>
+      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/8">
+        <div className="h-full rounded-full bg-signature" style={{ width: `${content.percent}%` }} />
+      </div>
+      <p className="mt-2 text-xs text-stone">
+        This is what your scripts are written from. Colours and logos are separate — they
+        never change what a script says.
+      </p>
+
+      {content.gaps.length > 0 && (
+        <ul className="mt-4 space-y-2">
+          {content.gaps.map((g) => (
+            <li key={g.id} className="rounded-lg border border-white/10 px-3 py-2">
+              <p className="text-sm text-cream">{g.label}</p>
+              {/* ⚖️ WHAT IT UNLOCKS, NOT WHAT IS MISSING. A creator can decide
+                  whether to spend thirty seconds on this; "incomplete" only tells
+                  them they are behind. */}
+              <p className="mt-0.5 text-xs text-stone">Adding this changes {g.unlocks}.</p>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <StatusLine
+          title="Products you sell"
+          state={productDna === 'ready' ? 'Ready' : productDna === 'not_needed' ? 'Not needed' : 'Not added'}
+          tone={productDna === 'missing' ? 'open' : 'done'}
+          note={productDna === 'not_needed'
+            // ⚠️ NOT "you have not added a product". They told us there is none;
+            // repeating the ask is the product arguing with them.
+            ? 'You told us you do not sell anything, so there is nothing to add.'
+            : productDna === 'ready'
+              ? 'Your scripts can talk about it, using only what you confirmed.'
+              : 'Add one if you want your scripts to talk about what you sell.'}
+        />
+        <StatusLine
+          title="Brand Kit"
+          state={brandKit === 'ready' ? 'Ready' : 'Not set up'}
+          tone={brandKit === 'ready' ? 'done' : 'open'}
+          note="Add colours and a logo if you want Twin to use your branding in supported visuals."
+        />
+      </div>
+    </section>
+  )
+}
+
+/** ⚖️ `open` IS NOT A WARNING COLOUR. Nothing here is wrong — these are things
+ *  that exist or do not, and painting an unset kit amber would reintroduce the
+ *  guilt the percentage used to carry. */
+function StatusLine({ title, state, note, tone }: {
+  title: string; state: string; note: string; tone: 'done' | 'open'
+}) {
+  return (
+    <div className="rounded-lg border border-white/10 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-cream">{title}</p>
+        <span className={cn(
+          'rounded-full px-2 py-0.5 text-[11px]',
+          tone === 'done' ? 'bg-teal/15 text-teal' : 'bg-white/8 text-stone',
+        )}>{state}</span>
+      </div>
+      <p className="mt-1 text-xs leading-snug text-stone">{note}</p>
+    </div>
   )
 }

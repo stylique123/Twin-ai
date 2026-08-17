@@ -9,6 +9,7 @@ import {
   type OwnServiceKind, type CapabilityAnswer,
 } from './api'
 import type { Platform, VoiceProfile } from './types'
+import type { CreatorProfileAnswers } from '@twinai/shared'
 
 export const ONBOARDING_DRAFT_VERSION = 2
 const KEY_PREFIX = 'twinai_onboarding_draft_v2:'
@@ -275,4 +276,26 @@ export function clearOnboardingDraft(storage: Storage, userId: string): void {
   // Safe cleanup for users completing a legacy in-progress flow.
   storage.removeItem(LEGACY_VOICE_KEY)
   storage.removeItem(LEGACY_DRAFT_KEY)
+}
+
+/** The six onboarding answers, in the shape the shared readers expect.
+ *
+ *  ⚠️ LIFTED OUT OF `Onboarding.tsx` RATHER THAN RETYPED. Settings needs the same
+ *  projection to report what Twin knows, and a second hand-written copy would
+ *  drift the moment a question is added — the profile meter would then quietly
+ *  measure a different set of answers from the one onboarding collects. */
+export function profileAnswersOf(draft: OnboardingDraft): CreatorProfileAnswers {
+  return {
+    workKind: draft.workKind,
+    audience: draft.audienceSeg,
+    audienceKnowledge: draft.audienceKnowledge,
+    contentGoals: draft.contentGoals,
+    desiredFormats: draft.desiredFormats,
+    formatExploration: draft.formatExploration,
+    commercialTies: draft.commercialTies,
+    ownProductKind: draft.ownProductKind,
+    ownServiceKind: draft.ownServiceKind,
+    canRecordScreen: draft.screenCapability,
+    canShowProduct: draft.productCapability,
+  }
 }

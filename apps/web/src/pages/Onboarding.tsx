@@ -11,7 +11,7 @@ import {
   asksOwnProductKind, asksOwnServiceKind, MAX_CONTENT_GOALS,
   AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE, DESIRED_FORMATS, FORMAT_EXPLORATION,
   COMMERCIAL_TIES, OWN_PRODUCT_KINDS, OWN_SERVICE_KINDS, CAPABILITY_ANSWERS,
-  type ProfileQuestionId, type CreatorProfileAnswers, type AudienceSegment,
+  type ProfileQuestionId, type AudienceSegment,
   type AudienceKnowledge, type DesiredFormat, type FormatExploration,
   type CommercialTie, type OwnProductKind, type OwnServiceKind, type CapabilityAnswer,
 } from '../lib/api'
@@ -82,6 +82,7 @@ import {
   writeOnboardingDraft,
   type OnboardingDraft,
   emptyProfileAnswers,
+  profileAnswersOf,
 } from '../lib/onboardingDraft'
 
 const PLATFORMS: Platform[] = ['tiktok', 'instagram', 'youtube', 'other']
@@ -1605,21 +1606,6 @@ const CAPABILITY_LABEL: Record<CapabilityAnswer, string> = {
 }
 
 /** The answers the adaptive rules read, lifted off the draft. */
-function profileAnswersOf(draft: OnboardingDraft): CreatorProfileAnswers {
-  return {
-    workKind: draft.workKind,
-    audience: draft.audienceSeg,
-    audienceKnowledge: draft.audienceKnowledge,
-    contentGoals: draft.contentGoals,
-    desiredFormats: draft.desiredFormats,
-    formatExploration: draft.formatExploration,
-    commercialTies: draft.commercialTies,
-    ownProductKind: draft.ownProductKind,
-    ownServiceKind: draft.ownServiceKind,
-    canRecordScreen: draft.screenCapability,
-    canShowProduct: draft.productCapability,
-  }
-}
 
 function Chips<T extends string>({ values, label, chosen, onPick }: {
   values: readonly T[]
