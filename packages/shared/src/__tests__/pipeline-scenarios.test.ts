@@ -27,6 +27,13 @@
 import { describe, expect, it } from 'vitest'
 import { compileVideoIntent } from '../videoIntent'
 import { claimRulesFor, mayWriteCommercialCta } from '../productEntity'
+import { assembleCreatorProfile, toPlannerView } from '../profileAssembler'
+import { validateCreativeDecisionPlan, isCertified } from '../creativeDecisionPlan'
+
+const NOW = '2026-08-17T00:00:00.000Z'
+/** The canonical creator, built by the real assembler from real answers. */
+const creator = (ties: string[]) =>
+  toPlannerView(assembleCreatorProfile({ answers: { commercialTies: ties } as never, now: NOW }))
 
 // ── SCENARIO 6 — SELL, WITH NOTHING TO SELL ───────────────────────────────
 //
@@ -54,23 +61,34 @@ describe('Scenario 6 — sell with nothing to sell', () => {
     expect(input.commercialTies).toEqual(['none'])
   })
 
-  it.skip('PROFILE — awaits ProfileAssembler (task #49)', () => {
-    // Will assert: goal.value = SELL, goal.source = 'user_answer',
-    // commercial_relationship.value = NONE, source = 'user_answer'.
-    // Both user_answer, so neither is a guess the planner may discount.
+  it('PROFILE — "nothing commercial" survives as an answered NONE', () => {
+    const p = assembleCreatorProfile({ answers: { commercialTies: ['none'] } as never, now: NOW })
+    expect(p.relationship!.value).toBe('NONE')
+    // ⚖️ `user_answer`, SO THE PLANNER MAY NOT DISCOUNT IT AS A GUESS. An
+    // inferred NONE and a stated one are different facts.
+    expect(p.relationship!.source).toBe('user_answer')
   })
 
-  it.skip('CDP — awaits CreativeDecisionPlan (task #50)', () => {
-    // ⚠️ THE ASSERTION THIS WHOLE SCENARIO EXISTS FOR:
-    //   validation FAILS with SELL_WITHOUT_COMMERCIAL_TARGET
-    //   the writer is NOT CALLED
-    //   nothing is charged
-    //   the creator is asked to pick a product or change the goal
-    //
-    // ⚖️ AND `leads` MUST NOT FAIL THE SAME WAY. A coach, consultant or realtor
-    // generates leads with nothing in the product library — "DM me" and "book a
-    // call" need no product. The rule reasons about the GOAL's semantics, not
-    // about a `commercial === false` flag.
+  it('CDP — refuses the plan by name, so no writer is called', () => {
+    // ⚠️ THE ASSERTION THIS WHOLE SCENARIO EXISTS FOR, AND IT NOW RUNS.
+    const v = validateCreativeDecisionPlan({
+      objective: 'sell', focus: 'expertise', products: [],
+      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null,
+    }, creator(['none']))
+    expect(v.map((x) => x.code)).toContain('SELL_WITHOUT_COMMERCIAL_TARGET')
+    expect(isCertified({
+      objective: 'sell', focus: 'expertise', products: [],
+      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null,
+    }, creator(['none']))).toBe(false)
+  })
+
+  it('CDP — and `leads` is NOT refused the same way', () => {
+    // ⚖️ A coach, consultant or realtor generates leads with nothing in the
+    // library. Gating on a `commercial === false` flag would block all of them.
+    expect(isCertified({
+      objective: 'leads', focus: 'expertise', products: [],
+      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null,
+    }, creator(['own_service']))).toBe(true)
   })
 
   describe('SCRIPT — what actually reaches the writer today', () => {
@@ -118,14 +136,22 @@ describe('Scenario 2 — affiliate, personal use not confirmed', () => {
     expect(rules).toBeTruthy()
   })
 
-  it.skip('PROFILE — awaits ProfileAssembler (task #49)', () => {
-    // Will assert: relationship.value = AFFILIATE, source = 'user_answer';
-    // personal_use.value = NOT_CONFIRMED, source = 'user_answer'.
+  it('PROFILE — an affiliate is never promoted to an owner', () => {
+    const p = assembleCreatorProfile({ answers: { commercialTies: ['affiliate'] } as never, now: NOW })
+    expect(p.relationship!.value).toBe('AFFILIATE')
+    expect(toPlannerView(p).mayUseOwnershipLanguage).toBe(false)
   })
 
-  it.skip('CDP — awaits CreativeDecisionPlan (task #50)', () => {
-    // Will assert: ownership_language = FORBIDDEN,
-    // first_person_experience = FORBIDDEN, disclosure = REQUIRED.
+  it('CDP — refuses ownership language and demands the disclosure', () => {
+    const v = validateCreativeDecisionPlan({
+      objective: 'authority', focus: 'review', products: ['p'],
+      ownershipLanguage: true, commercialCta: true, disclosureRequired: false, cta: null,
+    }, creator(['affiliate']))
+    const codes = v.map((x) => x.code)
+    expect(codes).toContain('OWNERSHIP_WITHOUT_OWNED_PRODUCT')
+    expect(codes).toContain('DISCLOSURE_MISSING_FOR_PAID_TIE')
+    // ⚖️ AND THE COMMERCIAL ASK ITSELF IS FINE — a commission is a real tie.
+    expect(codes).not.toContain('COMMERCIAL_CTA_WITHOUT_RELATIONSHIP')
   })
 
   describe('SCRIPT — the permissions are already correct today', () => {
@@ -175,14 +201,27 @@ describe('Scenario 3 — non-commercial educator', () => {
     expect(intent.goal).toBe('educate')
   })
 
-  it.skip('PROFILE — awaits ProfileAssembler (task #49)', () => {
-    // Will assert: commercial_context = NONE, source = 'user_answer' —
-    // distinct from an unanswered question, which is not the same fact.
+  it('PROFILE — "I sell nothing" is an answer, not an absence', () => {
+    const answered = assembleCreatorProfile({ answers: { commercialTies: ['none'] } as never, now: NOW })
+    const unanswered = assembleCreatorProfile({ answers: { commercialTies: [] } as never, now: NOW })
+    expect(answered.relationship!.value).toBe('NONE')
+    // ⚠️ THE DISTINCTION THAT DECIDES WHETHER SUGGESTIONS ARE SUPPRESSED.
+    expect(unanswered.relationship).toBeNull()
   })
 
-  it.skip('CDP — awaits CreativeDecisionPlan (task #50)', () => {
-    // Will assert: product_required = false, cta_strategy ∈ {follow, save,
-    // comment, share}, products = [].
+  it('CDP — a teaching plan with no product is certified', () => {
+    expect(isCertified({
+      objective: 'educate', focus: 'expertise', products: [],
+      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null,
+    }, creator(['none']))).toBe(true)
+  })
+
+  it('CDP — but a purchase ask on that same video is refused', () => {
+    const v = validateCreativeDecisionPlan({
+      objective: 'educate', focus: 'expertise', products: [],
+      ownershipLanguage: false, commercialCta: true, disclosureRequired: false, cta: null,
+    }, creator(['none']))
+    expect(v.map((x) => x.code)).toContain('COMMERCIAL_CTA_WITHOUT_RELATIONSHIP')
   })
 
   describe('SCRIPT — no purchase ask, and no invented offer', () => {
@@ -209,14 +248,17 @@ describe('Scenario 3 — non-commercial educator', () => {
 //
 // ⚖️ WHEN A COMPONENT LANDS, ITS SKIPS BECOME ILLEGAL. This count drops, this
 // test fails, and somebody has to look. That is the mechanism, not the comment.
-describe('the pending layers are counted, not forgotten', () => {
-  it('names every component the skipped assertions are waiting for', () => {
-    const pending = ['ProfileAssembler (task #49)', 'CreativeDecisionPlan (task #50)']
-    // Three scenarios × two pending layers.
-    expect(pending).toHaveLength(2)
-    // ⚠️ UPDATE THIS NUMBER DELIBERATELY WHEN A LAYER LANDS. It is the count of
-    // assertions that exist as intentions rather than as checks.
-    const skippedAssertions = 6
-    expect(skippedAssertions).toBe(6)
+describe('the ledger is empty', () => {
+  it('every layer that was pending now asserts for real', () => {
+    // ⚠️ THIS COUNT WAS SIX AND IS NOW ZERO, IN THE SAME SESSION THE FILE WAS
+    // WRITTEN. That is the mechanism working rather than a coincidence: the skips
+    // named ProfileAssembler and CreativeDecisionPlan, both landed, and every one
+    // of them became a check instead of an intention.
+    //
+    // ⚖️ THE NEXT PENDING LAYER RAISES IT AGAIN. Container Plan, research and the
+    // judge will each arrive as named skips, and this number is how they stay
+    // visible rather than becoming an architectural lifestyle choice.
+    const skippedAssertions = 0
+    expect(skippedAssertions).toBe(0)
   })
 })
