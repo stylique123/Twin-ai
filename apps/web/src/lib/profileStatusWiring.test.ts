@@ -61,3 +61,34 @@ describe('nobody is interrupted about a logo again', () => {
     expect(REMINDER).toMatch(/hasn’t read your account yet/)
   })
 })
+
+describe('the CTA is the creator’s to type, and only theirs', () => {
+  it('reads their stored wording rather than deriving one', () => {
+    // ⚠️ `cta: null` WAS HARDCODED, which made the item permanently unfillable —
+    // an honest gap while no field existed, and a bug the moment one did.
+    expect(SETTINGS).toMatch(/cta: defaultCta/)
+    expect(SETTINGS).toMatch(/readStoredBrief\(def\?\.pre_script_brief\)\.defaultCta/)
+    // ⚠️ THE MAPPING I WAS ASKED NOT TO MAKE. A goal is what the video should
+    // achieve; a CTA is the sentence said at the end. Deriving one from the other
+    // would satisfy the meter with an answer to a different question.
+    expect(SETTINGS).not.toMatch(/cta: dna\.goal|cta: .*goal/)
+  })
+
+  it('writes only what a person typed, on blur rather than per keystroke', () => {
+    // ⚖️ Every intermediate value of a sentence being typed would otherwise be
+    // stored as a confirmed preference.
+    expect(SETTINGS).toMatch(/savePreScriptBrief\(defaultVoiceId, \{ defaultCta: next\.trim\(\) \}\)/)
+    expect(SETTINGS).toMatch(/onBlur=\{\(e\) => onCtaCommit\(e\.target\.value\)\}/)
+  })
+
+  it('distinguishes not-loaded from set-to-nothing', () => {
+    // ⚠️ RENDERING "not loaded" AS AN EMPTY BOX would show a blank to somebody
+    // who has a CTA — and a save from that box would erase it.
+    expect(SETTINGS).toMatch(/disabled=\{cta === null\}/)
+  })
+
+  it('says what happens when it is left blank', () => {
+    // ⚖️ Twin writing one is not a penalty and should not read as a warning.
+    expect(SETTINGS).toMatch(/Twin will\s*\n?\s*write one that fits each video/)
+  })
+})

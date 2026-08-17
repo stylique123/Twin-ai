@@ -5,7 +5,7 @@ import { saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKi
 import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import {
   contentProfile, brandKitStatus, productDnaStatus, loadProductEntities,
-  resolveProfileAnswers, readStoredBrief,
+  resolveProfileAnswers, readStoredBrief, savePreScriptBrief,
 } from '@twinai/shared'
 import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
 import { readOnboardingDraft, profileAnswersOf } from '../lib/onboardingDraft'
@@ -72,6 +72,12 @@ export default function Settings() {
   // only whether anything has been claimed — and loading the library to render a
   // status word would make an unrelated failure able to blank this card.
   const [entityCount, setEntityCount] = useState<number | null>(null)
+  // ⚠️ null MEANS "NOT LOADED YET", '' MEANS "LOADED AND THEY HAVE NOT SET ONE".
+  // Rendering the second as the first would show an empty box to somebody who
+  // has a CTA, and a save from that box would erase it.
+  const [defaultCta, setDefaultCta] = useState<string | null>(null)
+  const [ctaSaved, setCtaSaved] = useState(false)
+  const [ctaErr, setCtaErr] = useState(false)
   const loadVoice = useCallback(() => {
     setVoiceErr(false); setVoiceLoading(true)
     listBrandVoices()
@@ -80,6 +86,7 @@ export default function Settings() {
         setActiveVoice(def)
         if (def?.id) setDefaultVoiceId(def.id)
         if (def?.brand_kit) setBrandKit(def.brand_kit)
+        setDefaultCta(String(readStoredBrief(def?.pre_script_brief).defaultCta ?? ''))
         if (def?.profile) {
           const vp = def.profile as VoiceProfile
           setVoiceProfile(vp)
@@ -110,6 +117,19 @@ export default function Settings() {
       .catch(() => { if (alive) setEntityCount(null) })
     return () => { alive = false }
   }, [])
+  // ⚖️ SAVED ON BLUR, NOT PER KEYSTROKE. Every intermediate value of a sentence
+  // somebody is still typing would otherwise be written as their confirmed CTA,
+  // and a half-typed one is exactly the kind of not-quite-an-answer the whole
+  // three-state discipline exists to keep out of the column.
+  const saveCta = async (next: string) => {
+    if (!defaultVoiceId) return
+    setCtaErr(false)
+    try {
+      await savePreScriptBrief(defaultVoiceId, { defaultCta: next.trim() })
+      setCtaSaved(true); setTimeout(() => setCtaSaved(false), 1500)
+    } catch { setCtaErr(true) }
+  }
+
   const saveKit = async (next: BrandKit) => {
     setBrandKit(next)
     if (!defaultVoiceId) return
@@ -235,7 +255,7 @@ export default function Settings() {
     // other would mark this satisfied by an answer to a different question — and
     // there is currently no field that asks it, so the gap is honest and points
     // at work that is genuinely missing.
-    cta: null,
+    cta: defaultCta,
   })
   const productDna = productDnaStatus(profileAnswers?.commercialTies ?? null, entityCount ?? 0)
   // ⚖️ `palette_source: 'manual'` IS THE ONLY THING THAT MAKES COLOURS A BRAND.
@@ -286,6 +306,11 @@ export default function Settings() {
             content={content}
             productDna={productDna}
             brandKit={kitStatus}
+            cta={defaultCta}
+            onCtaChange={setDefaultCta}
+            onCtaCommit={(v) => void saveCta(v)}
+            ctaSaved={ctaSaved}
+            ctaErr={ctaErr}
           />
         </Reveal>
 
@@ -789,10 +814,17 @@ function TeamSeats() {
  *  unembarrassing state; a percentage attached to it would imply a shortfall that
  *  costs the creator nothing.
  */
-function ProfileStatus({ content, productDna, brandKit }: {
+function ProfileStatus({
+  content, productDna, brandKit, cta, onCtaChange, onCtaCommit, ctaSaved, ctaErr,
+}: {
   content: ContentProfile
   productDna: ProductDnaStatus
   brandKit: BrandKitStatus
+  cta: string | null
+  onCtaChange: (v: string) => void
+  onCtaCommit: (v: string) => void
+  ctaSaved: boolean
+  ctaErr: boolean
 }) {
   return (
     <section className="glass mt-8 p-5 sm:p-6">
@@ -821,6 +853,32 @@ function ProfileStatus({ content, productDna, brandKit }: {
           ))}
         </ul>
       )}
+
+      {/* ⚠️ ASKED ONCE, HERE, RATHER THAN AS A FOURTH ONBOARDING QUESTION. It is
+          the one gap a creator can close in ten seconds, and it is the only place
+          their own wording can enter — Twin writes a CTA when there is none, but
+          a generated sentence is never stored as their preference. */}
+      <div className="mt-5">
+        <label className="block text-sm text-cream" htmlFor="default-cta">
+          What do you usually want viewers to do next?
+        </label>
+        <p className="mt-0.5 text-xs text-stone">
+          Your words, used at the end of your videos. Leave it blank and Twin will
+          write one that fits each video.
+        </p>
+        <input
+          id="default-cta"
+          type="text"
+          value={cta ?? ''}
+          disabled={cta === null}
+          onChange={(e) => onCtaChange(e.target.value)}
+          onBlur={(e) => onCtaCommit(e.target.value)}
+          placeholder="Try Twin free"
+          className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+        />
+        {ctaSaved && <p className="mt-1 text-xs text-teal">Saved</p>}
+        {ctaErr && <p className="mt-1 text-xs text-coral">Could not save that — try again.</p>}
+      </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <StatusLine
