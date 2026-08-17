@@ -19,46 +19,57 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { PROFILE_QUESTION_IDS } from '../creatorProfileQuestions'
 
 const SRC = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..',
     'apps', 'web', 'src', 'pages', 'Onboarding.tsx'), 'utf8')
 
-/** The scan screen — everything between BuildingStep and the confirm step. */
-const BUILDING = SRC.slice(SRC.indexOf('function BuildingStep('), SRC.indexOf('function ConfirmStep('))
-const CONFIRM = SRC.slice(SRC.indexOf('function ConfirmStep('))
+// ⚠️ THE SLICE MOVED WHEN THE QUESTIONS DID. The scan screen no longer inlines
+// its questions: `BuildingStep` renders whatever `profileQuestionsFor` says
+// applies, and the wording lives in `ProfileQuestion` further down the file. The
+// claims below are unchanged — where they are enforced is not.
+const BUILDING = SRC.slice(SRC.indexOf('function ProfileQuestion('))
+const CONFIRM = SRC.slice(SRC.indexOf('function ConfirmStep('), SRC.indexOf('function ProfileQuestion('))
 
 describe('the three are asked while the scan is running', () => {
   it('asks all three on the scan screen', () => {
-    expect(BUILDING).toMatch(/Do your videos feature any products\?/)
-    expect(BUILDING).toMatch(/Can you record your screen\?/)
-    expect(BUILDING).toMatch(/Can you hold something up to the camera\?/)
+    expect(BUILDING).toMatch(/Do you make content about anything you sell or promote\?/)
+    expect(BUILDING).toMatch(/Can you record your screen when Twin needs it\?/)
+    expect(BUILDING).toMatch(/Can you usually show the product on camera\?/)
   })
 
   it('asks them as ONE step, not three', () => {
     // ⚖️ Someone deciding whether they show products has already decided
     // whether they can hold one up. Three separate steps would make a creator
     // answer the same thought three times.
-    expect(BUILDING).toMatch(/qIndex === 3 &&/)
-    expect(BUILDING).not.toMatch(/qIndex === 4/)
+    //
+    // The step is now `capabilities`, and `PROFILE_QUESTION_IDS` names it once —
+    // which is the same claim enforced where the order is actually decided.
+    expect(PROFILE_QUESTION_IDS.filter((id) => id === 'capabilities')).toHaveLength(1)
   })
 
   it('asks them LAST, after what the creator does', () => {
-    // ⚠️ THE ORDERING THIS FILE EXISTS TO PROTECT. `q4AsksOwnership(workKind)`
-    // decides the wording, and workKind is question three — so a fourth
-    // position is not cosmetic, it is what makes the question answerable.
-    expect(SRC).toMatch(/const SCAN_QUESTION_COUNT = 4/)
-    expect(BUILDING.indexOf('qIndex === 2')).toBeLessThan(BUILDING.indexOf('qIndex === 3'))
-    expect(BUILDING).toMatch(/q4AsksOwnership\(draft\.workKind\)/)
+    // ⚠️ THE ORDERING THIS FILE EXISTS TO PROTECT. What a creator can film is
+    // only answerable once they have said what they do and what they sell —
+    // `asksScreenCapability` reads both — so last is not cosmetic.
+    expect(PROFILE_QUESTION_IDS[PROFILE_QUESTION_IDS.length - 1]).toBe('capabilities')
+    expect(PROFILE_QUESTION_IDS.indexOf('workKind'))
+      .toBeLessThan(PROFILE_QUESTION_IDS.indexOf('capabilities'))
+    expect(PROFILE_QUESTION_IDS.indexOf('commercialTies'))
+      .toBeLessThan(PROFILE_QUESTION_IDS.indexOf('capabilities'))
   })
 
   it('lets every one of them be un-answered', () => {
     // ⚠️ `can_record_screen = false` PERMANENTLY HIDES A SURFACE. "They never
-    // said" must never become "they said no", so tapping the chosen chip again
+    // said" must never become "they said no", so tapping the chosen answer again
     // clears it — the property a screen without a toggle-off would destroy.
-    expect(BUILDING).toMatch(/canRecordScreen: draft\.canRecordScreen === v \? null : v/)
-    expect(BUILDING).toMatch(/canFilmObjects: draft\.canFilmObjects === v \? null : v/)
-    expect(BUILDING).toMatch(/q4: draft\.q4 === k \? null : k/)
+    expect(BUILDING).toMatch(/draft\.screenCapability === v \? null : v/)
+    expect(BUILDING).toMatch(/draft\.productCapability === v \? null : v/)
+    // ⚖️ AND THE DERIVED BOOLEANS FOLLOW IT. "Sometimes" must land as null in
+    // the fields every existing reader consults, never as false.
+    expect(BUILDING).toMatch(/canRecordScreen: next === 'yes' \? true : next === 'no' \? false : null/)
+    expect(BUILDING).toMatch(/canFilmObjects: next === 'yes' \? true : next === 'no' \? false : null/)
   })
 })
 
