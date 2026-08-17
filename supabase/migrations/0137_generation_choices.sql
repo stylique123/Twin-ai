@@ -38,7 +38,18 @@ create table if not exists public.generation_choices (
 
   -- ⚠️ NULLABLE AND MEANT TO BE. Most videos promote nothing, and a NOT NULL here
   -- would force a placeholder that later reads as a product.
-  selected_product_id uuid references public.product_entities(id) on delete set null,
+  -- ⚠️ THE FOREIGN KEY IS ADDED SEPARATELY, IN 0138, AND NOT BECAUSE IT IS
+  -- OPTIONAL. `product_entities` cannot exist when this loop runs on staging —
+  -- 0120 is excluded there because `brand_voices`, its FK target, is a FIXTURE
+  -- APPLIED AFTER the migration loop. Declaring the reference here made this
+  -- whole migration fail on staging, which took the TABLE down with it and left
+  -- the insert path with no automated exercise anywhere.
+  --
+  -- ⚖️ SO THE SPLIT BUYS COVERAGE WITHOUT WEAKENING PRODUCTION. Staging applies
+  -- this file and really inserts rows; production additionally carries the
+  -- constraint from 0138. Dropping the FK outright to suit the staging ordering
+  -- is what 0120's own exclusion calls the tail wagging the dog.
+  selected_product_id uuid,
 
   created_at timestamptz not null default now(),
 

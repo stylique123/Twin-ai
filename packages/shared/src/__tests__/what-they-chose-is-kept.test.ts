@@ -102,7 +102,27 @@ describe('what the table refuses', () => {
   })
 
   it('lets a product be absent, because most videos promote nothing', () => {
-    expect(MIG).toMatch(/selected_product_id uuid references public\.product_entities\(id\) on delete set null/)
+    expect(MIG).toMatch(/selected_product_id uuid,/)
+  })
+
+  it('keeps the foreign key in production, in a file staging may skip', () => {
+    // ⚠️ DECLARING IT INLINE FAILED THE WHOLE MIGRATION ON STAGING and took the
+    // TABLE with it: `product_entities` cannot exist there, because 0120 is
+    // excluded for its own FK-ordering reason. The table then had no automated
+    // exercise anywhere — the uncollected cost the coverage guard is about.
+    //
+    // ⚖️ SPLITTING IS NOT WEAKENING. The constraint is identical and production
+    // keeps it; only the file it lives in is skippable. Dropping it outright to
+    // suit the staging ordering is what 0120's exclusion calls the tail wagging
+    // the dog.
+    const dir = join(REPO, 'supabase/migrations')
+    const fk = readdirSync(dir).find((x) => x.includes('generation_choices_product_fk'))
+    expect(fk, 'no migration adds the FK').toBeTruthy()
+    const FK = readFileSync(join(dir, fk!), 'utf8')
+    expect(FK).toMatch(/references public\.product_entities\(id\) on delete set null/)
+    // Idempotent against production, where the constraint already exists.
+    expect(FK).toMatch(/from pg_constraint/)
+    expect(FK).toMatch(/to_regclass\('public\.product_entities'\) is null/)
   })
 
   it('does not claim to record a default that does not exist', () => {
