@@ -66,6 +66,21 @@ create policy generation_choices_select_own on public.generation_choices
 
 grant select on public.generation_choices to authenticated;
 
+-- ⚠️ AND THE DEFAULTS MUST BE TAKEN BACK, WHICH GRANTING SELECT DOES NOT DO.
+-- Verified on production immediately after creating this table: `authenticated`
+-- held INSERT, UPDATE, DELETE and TRUNCATE, because Supabase's default
+-- privileges grant ALL on new public tables and a narrower `grant select` adds
+-- to them rather than replacing them.
+--
+-- ⚖️ RLS ALREADY DENIED THOSE WRITES — no policy means no permission — so this is
+-- defence in depth rather than a live hole. It is worth having anyway: the
+-- table-level grant plus one accidentally permissive policy added later is a
+-- writable audit table, and a table that records what happened must not be
+-- writable by the people it records. `generations` does exactly this, revoking
+-- and re-granting column by column.
+revoke insert, update, delete, truncate on public.generation_choices from authenticated;
+revoke all on public.generation_choices from anon;
+
 -- ⚖️ NO `changed_from_default` COLUMN, AND THE REASON IS NOT OVERSIGHT. It was
 -- asked for, and it answers a good question: is Twin's recommended default
 -- actually useful? But Twin does not currently pre-select or recommend a goal —

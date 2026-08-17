@@ -115,3 +115,24 @@ describe('what the table refuses', () => {
     expect(MIG).toMatch(/NO `changed_from_default` COLUMN/)
   })
 })
+
+describe('the write grants that arrive without being asked for', () => {
+  it('revokes the defaults Supabase hands out on a new table', () => {
+    // ⚠️ MEASURED ON PRODUCTION IMMEDIATELY AFTER CREATING IT: `authenticated`
+    // held INSERT, UPDATE, DELETE and TRUNCATE. `grant select` ADDS to the
+    // default privileges rather than replacing them, so a migration that only
+    // grants what it wants leaves everything it did not mention in place.
+    //
+    // ⚖️ RLS already denied those writes, so this is defence in depth — but a
+    // table-level write grant plus one permissive policy added later is a
+    // writable audit table, and this one exists to record what actually
+    // happened. `generations` sets the precedent: revoke, then re-grant.
+    expect(MIG).toMatch(/revoke insert, update, delete, truncate on public\.generation_choices from authenticated/)
+    expect(MIG).toMatch(/revoke all on public\.generation_choices from anon/)
+  })
+
+  it('grants back only reading', () => {
+    expect(MIG).toMatch(/grant select on public\.generation_choices to authenticated/)
+    expect(MIG).not.toMatch(/grant (insert|update|delete|all) on public\.generation_choices/)
+  })
+})
