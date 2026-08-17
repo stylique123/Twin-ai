@@ -56,7 +56,11 @@ as $function$
              -- parenthesised aside here silently truncates the list it reads.
              'audienceKnowledge', 'contentGoals', 'desiredFormats',
              'formatExploration', 'commercialTies',
-             'ownProductKind', 'ownServiceKind'
+             'ownProductKind', 'ownServiceKind',
+             -- The creator's own CTA wording. Read by `cta.ts`, which never
+             -- writes a generated sentence into it — so a value here is always
+             -- something a person typed.
+             'defaultCta'
            )
         )
         -- Every scalar answer is a NON-EMPTY string. An empty one reads as

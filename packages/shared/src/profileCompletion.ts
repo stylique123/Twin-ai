@@ -32,6 +32,7 @@
 // answered. When a reader is retired, its item leaves the meter with it.
 
 import type { CreatorProfileAnswers, CommercialTie } from './creatorProfileQuestions'
+import { hasConfirmedCta } from './cta'
 
 /** Where an answer is consumed. Not decoration — see the rule above. */
 export type ProfileReader =
@@ -132,7 +133,10 @@ function satisfied(item: ProfileItem, input: ProfileInput): boolean {
     case 'promotes': return filled(a?.contentGoals) && filled(a?.workKind)
     case 'formats': return filled(a?.desiredFormats)
     case 'productContext': return filled(a?.commercialTies)
-    case 'cta': return filled(input.cta)
+    // ⚠️ ASKED OF `cta.ts` RATHER THAN CHECKED HERE, so the meter cannot tick to
+    // 100% off a sentence Twin wrote for itself. That is exactly how the old
+    // palette meter came to report brand colours nobody chose.
+    case 'cta': return hasConfirmedCta(input.cta)
     case 'dnaReady': return input.dnaReady === true
     default: return false
   }

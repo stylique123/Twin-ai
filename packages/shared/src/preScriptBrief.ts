@@ -260,6 +260,8 @@ export interface BriefAnswers {
   commercialTies?: readonly string[] | null
   ownProductKind?: string | null
   ownServiceKind?: string | null
+  /** ⚠️ USER-TYPED ONLY. `cta.ts` refuses to write a generated sentence here. */
+  defaultCta?: string | null
   /** Q1 */
   goal?: BriefGoal | null
   /** Q2 — the chosen audience, plus the free text §8a requires of every "Other"
@@ -438,6 +440,11 @@ export const BRIEF_STORED_KEYS = [
   // them for the one creator who said they sell nothing.
   'audienceKnowledge', 'contentGoals', 'desiredFormats',
   'formatExploration', 'commercialTies', 'ownProductKind', 'ownServiceKind',
+  // ⚖️ THE CREATOR'S OWN CTA WORDING, AND ONLY EVER THEIRS. A generated line is
+  // produced per video and never written back here — see `cta.ts`. That is what
+  // makes provenance structural: a field generated text cannot reach cannot
+  // later be mistaken for a preference somebody expressed.
+  'defaultCta',
 ] as const
 
 /** ⚠️ THE MULTI-SELECTS, NAMED ONCE. The CHECK admits arrays for exactly these
@@ -485,7 +492,7 @@ export function sanitizeBriefForWrite(answers: BriefAnswers): Record<string, unk
       .map((x) => x.trim())
     if (clean.length > 0) out[k] = clean
   }
-  for (const k of ['audienceKnowledge', 'formatExploration', 'ownProductKind', 'ownServiceKind'] as const) {
+  for (const k of ['audienceKnowledge', 'formatExploration', 'ownProductKind', 'ownServiceKind', 'defaultCta'] as const) {
     const v = (answers as Record<string, unknown>)[k]
     if (typeof v === 'string' && v.trim() !== '') out[k] = v.trim()
   }
