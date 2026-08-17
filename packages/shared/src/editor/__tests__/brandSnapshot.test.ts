@@ -65,3 +65,57 @@ describe('brandSnapshot: reads the real brand + is honestly aware of what it has
     expect(JSON.stringify(a)).toBe(JSON.stringify(b))
   })
 })
+
+// ── BLACK AND WHITE ARE NOT A BRAND TWIN LEARNED ──────────────────────────
+//
+// ⚠️ MEASURED ON A REAL VOICE. `primary #000000, secondary #FFFFFF,
+// palette_source: auto` — and Settings rendered two swatches as though Twin had
+// learned that creator's colours. That is the palette extractor's FAILURE case
+// wearing the costume of an answer, and the creator reported it as exactly that:
+// placeholder pixels sneaking into business logic.
+describe('a contentless auto palette is not a palette', () => {
+  it('refuses black and white read automatically', () => {
+    const s = projectBrandSnapshot({}, {
+      palette: { primary: '#000000', secondary: '#FFFFFF', highlight: '#FF0000' },
+      palette_source: 'auto',
+    })
+    // ⚖️ NOT refused — the red highlight is a real reading, and one real hue
+    // makes the palette evidence rather than a default.
+    expect(s.visual.colorsSource).toBe('auto')
+  })
+
+  it('refuses a palette where every colour is a grey', () => {
+    const s = projectBrandSnapshot({}, {
+      palette: { primary: '#000000', secondary: '#FFFFFF' },
+      palette_source: 'auto',
+    })
+    expect(s.visual.colorsSource).toBe('none')
+  })
+
+  it('treats near-greys the same as pure black and white', () => {
+    // ⚠️ #111111 and #FAFAFA are as contentless as #000000 — an extractor that
+    // returns "almost black" has found no more than one returning black.
+    const s = projectBrandSnapshot({}, {
+      palette: { primary: '#111111', secondary: '#FAFAFA' },
+      palette_source: 'auto',
+    })
+    expect(s.visual.colorsSource).toBe('none')
+  })
+
+  it('KEEPS a black and white palette the creator chose', () => {
+    // ⚖️ AN ACHROMATIC BRAND IS A REAL BRAND. This refuses a guess, never an
+    // assertion — a creator who picked black and white has picked it.
+    const s = projectBrandSnapshot({}, {
+      palette: { primary: '#000000', secondary: '#FFFFFF' },
+      palette_source: 'manual',
+    })
+    expect(s.visual.colorsSource).toBe('manual')
+  })
+
+  it('keeps any palette carrying a real hue', () => {
+    for (const primary of ['#EAB308', '#78B833', '#8FB8D9']) {
+      const s = projectBrandSnapshot({}, { palette: { primary, secondary: '#FFFFFF' }, palette_source: 'auto' })
+      expect(s.visual.colorsSource, primary).toBe('auto')
+    }
+  })
+})
