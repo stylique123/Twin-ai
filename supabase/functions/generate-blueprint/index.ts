@@ -1742,6 +1742,40 @@ function findEntailmentGaps(
   return out
 }
 
+/**
+ * FIGURES SPOKEN ABOUT THE PRODUCT THAT NO STORED PRODUCT FACT CARRIES.
+ *
+ * ⚠️ MIRRORS `findProductClaimGaps` IN packages/shared/src/productClaimCheck.ts,
+ * and exists for the defect that guard names: a script can state a price the
+ * product record contradicts while every existing counter reads clean, because
+ * the beat cites the product and the product exists. Nothing asked where the
+ * NUMBER came from.
+ *
+ * ⚖️ IT REUSES `claimedValues` ABOVE — the same normalisation both this and the
+ * creator-knowledge check depend on, so 50k and 50,000 stay one figure in both.
+ *
+ * ⚖️ AND AN EMPTY FACT SET SUPPRESSES IT. A product Twin has never read has no
+ * figures to contradict, and a counter that fires loudest where it knows least
+ * teaches an operator to ignore it.
+ */
+function findProductClaimGaps(
+  script: readonly { line?: unknown; substance?: unknown }[],
+  factValues: readonly string[],
+): Array<{ beat: number; value: string }> {
+  const supported = new Set<string>()
+  for (const raw of factValues) for (const v of claimedValues(raw)) supported.add(v)
+  if (supported.size === 0) return []
+  const out: Array<{ beat: number; value: string }> = []
+  script.forEach((b, i) => {
+    // ⚠️ `product_dna` is the substance vocabulary's word — see SUBSTANCE_ENUM.
+    if (b?.substance !== 'product_dna') return
+    for (const v of claimedValues(typeof b?.line === 'string' ? b.line : '')) {
+      if (!supported.has(v)) out.push({ beat: i + 1, value: v })
+    }
+  })
+  return out
+}
+
 const PROGRESS_CHECK =
   /\b(?:still with me|still here|you'?re (?:still )?(?:with me|watching)|halfway (?:there|through|done)|ready for the (?:last|next|final)|are you (?:still )?(?:there|watching)|if you'?re still watching)\b/i
 
@@ -4589,6 +4623,23 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // creator would say", so removing them is probably right — but every
     // enforcement shipped without measurement today had to be walked back, and
     // the count is what says how often the case is clean enough to act on.
+    // ⚖️ THE VALUES THE PRODUCT RECORD ACTUALLY HOLDS. `knowledge` is the
+    // extracted-fact list `productExtraction` writes; both trust levels count,
+    // because the question here is whether a figure came from the product at
+    // all, and whether an unconfirmed fact may be SPOKEN is a different gate
+    // that already exists.
+    //
+    // ⚠️ BUILT ABOVE THE COUNTING REGION ON PURPOSE. A parity guard asserts that
+    // the block from `progressChecks` to the audit log neither rewrites a line
+    // nor filters anything — it must COUNT and nothing else. This list is
+    // derived from the product record rather than from the script, so it belongs
+    // outside that region; moving it here keeps the guard's claim literally true
+    // instead of widening the guard to admit a filter it was written to forbid.
+    const productFactValues: string[] = Array.isArray((ownedEntity as { knowledge?: unknown } | null)?.knowledge)
+      ? ((ownedEntity as { knowledge: Array<{ value?: unknown }> }).knowledge)
+        .map((f) => (typeof f?.value === 'string' ? f.value : ''))
+        .filter((v) => v !== '')
+      : []
     let progressChecks = 0
     if (Array.isArray(declared)) {
       for (const b of declared) {
@@ -4616,6 +4667,20 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // across many generations, which is only possible if the count survives.
       entailment_gaps: findEntailmentGaps(
         (Array.isArray(declared) ? declared : []) as Array<Record<string, unknown>>).length,
+      // ⚠️ THE SAME QUESTION, ASKED OF THE OTHER AUTHORITY. `entailment_gaps`
+      // catches a figure whose CREATOR-knowledge citation does not carry it;
+      // this catches a figure spoken about the PRODUCT that no stored product
+      // fact carries — a price the record contradicts, said while every existing
+      // counter reads clean because the beat cites the product and the product
+      // exists.
+      //
+      // ⚖️ COUNTED BEFORE IT IS ENFORCED, deliberately and in that order. How
+      // often this happens is not known, and a refusal built on a guess about
+      // frequency is how a safety check becomes the thing people route around.
+      // The count is what makes the next decision evidential.
+      product_claim_gaps: findProductClaimGaps(
+        (Array.isArray(declared) ? declared : []) as Array<Record<string, unknown>>,
+        productFactValues).length,
       proof_quality: proofQualityCounts(
         (templated.bp as { beat_plan?: unknown })?.beat_plan),
     }

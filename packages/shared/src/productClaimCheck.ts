@@ -50,6 +50,11 @@
 
 import { canonicalValue, claimedValues } from './claimEntailment'
 
+/** The substance value a beat carries when the product record is its source.
+ *  Named rather than inlined so the edge copy and this one cannot disagree
+ *  about the one string that decides whether the check runs at all. */
+export const PRODUCT_SUBSTANCE = 'product_dna'
+
 /** The shape this reads off a stored product fact. Structural rather than
  *  importing `ExtractedFact`, so a caller holding user-confirmed values or a
  *  plain list of strings can ask too. */
@@ -109,7 +114,12 @@ export function findProductClaimGaps(
   if (supported.size === 0) return []
   const out: ProductClaimGap[] = []
   script.forEach((b, i) => {
-    if (b?.substance !== 'product') return
+    // ⚠️ `product_dna`, NOT `product`. The first draft tested the wrong string
+    // and would have been dead code — a guard that never fires reads exactly
+    // like a guard that finds nothing. `SUBSTANCE_ENUM` is the vocabulary:
+    // creator_knowledge | creator_experience | creator_opinion | product_dna |
+    // general | needs_user.
+    if (b?.substance !== PRODUCT_SUBSTANCE) return
     const line = typeof b?.line === 'string' ? b.line : ''
     for (const v of claimedValues(line)) {
       if (!supported.has(v)) out.push({ beat: i + 1, value: v, line })
