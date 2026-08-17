@@ -47,11 +47,39 @@ describe('every onboarding value has a canonical meaning', () => {
 })
 
 describe('the answer survives assembly unchanged', () => {
-  it('keeps the original beside the canonical value', () => {
+  it('keeps the creator\'s answer at full resolution, and derives the role on top', () => {
+    // ⚠️ THE CORRECTION THAT MADE THIS MODULE HONEST. Ten work kinds were being
+    // collapsed to four roles with the original discarded — but the writer's ten
+    // instructions each change what gets written, so the collapse was deleting
+    // user-confirmed meaning and expecting the writer to recover it. It cannot.
     const p = of({ workKind: 'saas' })
+    expect(p.workKind!.value).toBe('saas')
+    expect(p.workKind!.source).toBe('user_answer')
+    // ⚖️ AND THE ABSTRACTION SAYS IT IS ONE. A derived role stamped `user_answer`
+    // could authorise things nobody asserted.
     expect(p.role!.value).toBe('founder')
-    expect(p.role!.rawValue).toBe('saas')
-    expect(p.role!.source).toBe('user_answer')
+    expect(p.role!.source).toBe('inferred')
+    expect(p.role!.source === 'inferred' && p.role!.derivedFrom).toBe('workKind')
+  })
+
+  it('two work kinds may share a role and still write differently', () => {
+    // ⚠️ THE WHOLE REASON BOTH FIELDS EXIST. A SaaS founder talks about users,
+    // workflows and adoption; an ecommerce founder about customers, orders and
+    // margins. Same broad role, different nouns — and a writer handed only the
+    // role writes generic founder copy for both.
+    const saas = of({ workKind: 'saas' })
+    const shop = of({ workKind: 'ecommerce' })
+    expect(toWriterView(saas).role).toBe(toWriterView(shop).role)
+    expect(toWriterView(saas).workKind).not.toBe(toWriterView(shop).workKind)
+  })
+
+  it('no distinction is lost on the way in', () => {
+    // ⚖️ THE RULE, AS A CHECK: canonicalisation may ADD abstractions and may not
+    // DISCARD distinctions. Every onboarding work kind must survive to the writer
+    // as itself — if two ever need to collapse, it is because they behave
+    // identically everywhere, and that is a deletion somebody makes on purpose.
+    const seen = new Set(BRIEF_WORK_KINDS.map((k) => toWriterView(of({ workKind: k })).workKind))
+    expect(seen.size).toBe(BRIEF_WORK_KINDS.length)
   })
 
   it('trims a CTA without rewriting it', () => {

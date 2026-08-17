@@ -45,7 +45,24 @@ import type { Provenanced } from './authority'
 // behaviour genuinely branches four ways — and `primaryRole` keeps the
 // distinction the collapse would otherwise throw away.
 
-export const CANONICAL_ROLES = ['creator', 'founder', 'expert', 'business'] as const
+// ⚖️ CANONICALISATION MAY ADD ABSTRACTIONS. IT MUST NOT DISCARD DISTINCTIONS
+// THAT HAVE NAMED DOWNSTREAM BEHAVIOUR.
+//
+// ⚠️ THIS MODULE BRIEFLY GOT THAT BACKWARDS. Ten work kinds were collapsed to
+// four roles and the original thrown away — but the writer's ten `WORK_KIND_LINES`
+// each change what gets written: a SaaS founder talks about users, workflows and
+// adoption; an ecommerce founder about customers, orders and margins; a
+// consultant about clients, engagements and outcomes. Those are different nouns,
+// different examples and sometimes a different CTA, not cosmetics. Deleting the
+// distinction here and hoping the writer recovers it later is asking a machine
+// to un-lose information somebody deliberately dropped.
+//
+// ⚖️ SO BOTH ARE KEPT. `workKind` is the creator's confirmed answer at full
+// resolution; `primaryRole` is the abstraction derived FROM it, for consumers
+// that plan broadly. The test for any future field is the same: if two options
+// behave differently anywhere downstream, they stay distinct in canonical truth.
+
+export const CANONICAL_ROLES = ['creator', 'founder', 'service_provider', 'professional'] as const
 export type CanonicalRole = (typeof CANONICAL_ROLES)[number]
 
 export const CANONICAL_BUSINESS = ['none', 'software', 'physical', 'service'] as const
@@ -64,13 +81,27 @@ export type CanonicalRelationship = (typeof CANONICAL_RELATIONSHIPS)[number]
 const ROLE_OF: Record<BriefWorkKind, CanonicalRole> = {
   creator: 'creator',
   founder: 'founder',
-  coach: 'expert',
-  freelancer: 'expert',
-  professional: 'expert',
-  ecommerce: 'business',
-  brand: 'business',
+  coach: 'service_provider',
+  freelancer: 'service_provider',
+  professional: 'professional',
+  // ⚠️ SOMEBODY WHO RUNS A SHOP IS RUNNING A BUSINESS THEY BUILT. `founder` is
+  // the broad bucket for "the commercial entity is theirs"; what they actually
+  // sell stays in `workKind`, which is where the writer reads it.
+  ecommerce: 'founder',
+  // ⚠️ THE ONE MAPPING I AM LEAST SURE OF, AND IT IS FLAGGED RATHER THAN HIDDEN.
+  // A brand account is not a person — not a founder speaking, not a practitioner
+  // — and none of the four roles is really it. It sits here because the broad
+  // question ("is the commercial entity theirs?") answers yes, and because
+  // `workKind: 'brand'` still carries the instruction that actually matters:
+  // write in the brand's voice, avoid first-person claims only a named person
+  // could make. If the abstraction turns out to be load-bearing for a brand
+  // team, the answer is a fifth role, not a quieter mapping.
+  brand: 'founder',
   saas: 'founder',
-  local_service: 'business',
+  local_service: 'service_provider',
+  // ⚖️ `other` CARRIES THE CREATOR'S OWN SENTENCE and the role cannot be derived
+  // from a free-text answer. `creator` is the least-licensing bucket, which is
+  // the right way to be wrong.
   other: 'creator',
 }
 
@@ -123,6 +154,12 @@ const TIE_PRECEDENCE: readonly CommercialTie[] = [
 // ── THE CANONICAL CREATOR ─────────────────────────────────────────────────
 
 export interface CreatorProfile {
+  /** ⚠️ THE CREATOR'S ANSWER AT FULL RESOLUTION, and the field the writer reads.
+   *  Ten values, because ten of them change what a script says. */
+  workKind: Provenanced<BriefWorkKind> | null
+  /** ⚖️ DERIVED FROM `workKind`, NEVER ASKED. It carries `source: 'inferred'`
+   *  with `derivedFrom: 'workKind'`, so a reader can tell a computed abstraction
+   *  from something a person asserted — and recompute it if the answer changes. */
   role: Provenanced<CanonicalRole> | null
   businessType: Provenanced<CanonicalBusiness> | null
   audienceSegment: Provenanced<AudienceSegment> | null
@@ -152,6 +189,13 @@ const confirmed = <T>(value: T, raw: unknown, now: string): Provenanced<T> => ({
   value, rawValue: raw, source: 'user_answer', updatedAt: now,
 })
 
+/** ⚖️ AN ABSTRACTION COMPUTED FROM AN ANSWER IS NOT ITSELF AN ANSWER. Stamping
+ *  a derived role `user_answer` would let it authorise things the creator never
+ *  said — the exact confusion `mayUseOwnershipLanguage` refuses one file over. */
+const derived = <T>(value: T, from: string, now: string): Provenanced<T> => ({
+  value, source: 'inferred', derivedFrom: from, updatedAt: now,
+})
+
 /**
  * Build the canonical creator from what the creator actually said.
  *
@@ -179,7 +223,8 @@ export function assembleCreatorProfile(input: AssembleInput): CreatorProfile {
     : null
 
   return {
-    role: workKind ? confirmed(ROLE_OF[workKind], workKind, now) : null,
+    workKind: workKind ? confirmed(workKind, workKind, now) : null,
+    role: workKind ? derived(ROLE_OF[workKind], 'workKind', now) : null,
     businessType: workKind ? confirmed(BUSINESS_OF[workKind], workKind, now) : null,
     audienceSegment: a.audience ? confirmed(a.audience, a.audience, now) : null,
     audienceLevel: knowledge ? confirmed(LEVEL_OF[knowledge], knowledge, now) : null,
@@ -203,6 +248,11 @@ export function assembleCreatorProfile(input: AssembleInput): CreatorProfile {
 
 export interface WriterView {
   role: CanonicalRole | null
+  /** ⚠️ THE HIGH-RESOLUTION ANSWER, BECAUSE THIS IS WHERE IT EARNS ITS KEEP. The
+   *  role says founder-led rather than creator-led; the work kind decides whether
+   *  the nouns are users and adoption, orders and margins, or clients and
+   *  engagements. A writer given only the role writes generic founder copy. */
+  workKind: BriefWorkKind | null
   audienceSegment: AudienceSegment | null
   audienceLevel: CanonicalLevel | null
 }
@@ -214,6 +264,7 @@ export interface WriterView {
 export function toWriterView(p: CreatorProfile): WriterView {
   return {
     role: p.role?.value ?? null,
+    workKind: p.workKind?.value ?? null,
     audienceSegment: p.audienceSegment?.value ?? null,
     audienceLevel: p.audienceLevel?.value ?? null,
   }

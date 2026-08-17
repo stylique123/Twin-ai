@@ -27,7 +27,7 @@
 import { describe, expect, it } from 'vitest'
 import { compileVideoIntent } from '../videoIntent'
 import { claimRulesFor, mayWriteCommercialCta } from '../productEntity'
-import { assembleCreatorProfile, toPlannerView } from '../profileAssembler'
+import { assembleCreatorProfile, toPlannerView, toWriterView } from '../profileAssembler'
 import { validateCreativeDecisionPlan, isCertified } from '../creativeDecisionPlan'
 
 const NOW = '2026-08-17T00:00:00.000Z'
@@ -332,5 +332,67 @@ describe('Scenario 4 — audience level changes depth, not subject', () => {
   it('and it changes DEPTH rather than licensing a different topic', () => {
     // ⚖️ The concept is decided upstream. This says how far down to start.
     expect(BLUEPRINT).toMatch(/changes depth, not subject|CHANGES DEPTH, NOT SUBJECT/i)
+  })
+})
+
+// ── SCENARIO 5 — SAME ROLE, DIFFERENT TRADE ───────────────────────────────
+//
+// ⚠️ THE LOSSY-COMPRESSION FAILURE, PINNED AT EVERY LAYER. A SaaS founder and an
+// ecommerce founder are both founders, and they do not write the same script:
+// one talks about users, workflows and adoption, the other about customers,
+// orders and margins. An assembler that kept only the role would hand the writer
+// the same object for both, and no amount of prompt engineering downstream can
+// recover a distinction that was deleted upstream.
+//
+// ⚖️ SO THE PROFILE KEEPS BOTH, AND THE PROJECTIONS DECIDE WHO SEES WHICH. Broad
+// planning reads the role; the writer reads the trade.
+describe('Scenario 5 — the role abstracts, the work kind survives', () => {
+  const saas = assembleCreatorProfile({ answers: { workKind: 'saas' } as never, now: NOW })
+  const shop = assembleCreatorProfile({ answers: { workKind: 'ecommerce' } as never, now: NOW })
+
+  it('INPUT — two creators answered two different things', () => {
+    expect(saas.workKind!.rawValue).toBe('saas')
+    expect(shop.workKind!.rawValue).toBe('ecommerce')
+  })
+
+  it('PROFILE — the answer is confirmed, the role is derived and says so', () => {
+    expect(saas.workKind!.source).toBe('user_answer')
+    expect(saas.role!.source).toBe('inferred')
+    expect(saas.role!.source === 'inferred' && saas.role!.derivedFrom).toBe('workKind')
+  })
+
+  it('CDP — broad strategy may treat them alike, and legitimately does', () => {
+    // ⚖️ THE ABSTRACTION EARNING ITS PLACE. Nothing about certifying a plan turns
+    // on whether the founder ships software or parcels.
+    expect(toPlannerView(saas).role).toBe(toPlannerView(shop).role)
+    expect(isCertified({
+      objective: 'sell', focus: 'expertise', products: ['p'],
+      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null,
+    }, toPlannerView(saas))).toBe(true)
+  })
+
+  it('WRITER VIEW — and the writer is told which trade it is', () => {
+    expect(toWriterView(saas).workKind).toBe('saas')
+    expect(toWriterView(shop).workKind).toBe('ecommerce')
+    expect(toWriterView(saas).workKind).not.toBe(toWriterView(shop).workKind)
+  })
+
+  it('WRITER VIEW — but never the commercial relationship', () => {
+    // ⚠️ WIDENING THE PROFILE MUST NOT WIDEN THE WRITER'S AUTHORITY. More
+    // resolution about WHAT THEY DO is not more permission about what they may
+    // claim, and the projection is what keeps those two apart.
+    const w = toWriterView(saas) as Record<string, unknown>
+    expect(w).not.toHaveProperty('relationship')
+    expect(w).not.toHaveProperty('mayUseOwnershipLanguage')
+  })
+
+  it('SCRIPT — the writer has a distinct instruction for each trade', () => {
+    // ⚖️ THE ASSERTION THAT MAKES THE DISTINCTION LOAD-BEARING RATHER THAN
+    // DECORATIVE. If these lines ever collapse into one, keeping two work kinds
+    // stops being justified — and this fails, which is the intended alarm.
+    const lines = BLUEPRINT.slice(BLUEPRINT.indexOf('WORK_KIND_LINES'))
+    expect(lines).toMatch(/saas: '/)
+    expect(lines).toMatch(/ecommerce: '/)
+    expect(lines).toMatch(/PHYSICAL PRODUCT/)
   })
 })
