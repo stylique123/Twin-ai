@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
+import { loadProductEntities } from '../../lib/api'
+import type { ProductEntityRecord } from '../../lib/api'
 import { assessReadiness, isCommercialField } from '../../lib/api'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import {
@@ -209,6 +211,15 @@ export default function V2Building() {
   // answer would unblock the build; this one has no question — the goal and what
   // the creator has to sell disagree, and only they can settle which was wrong.
   const [contradiction, setContradiction] = useState<{ message: string; remedies: string[] } | null>(null)
+  /** ⚠️ THE OFFER QUESTION WAS A BLANK TEXT BOX FOR A THING WE ALREADY KNOW. A
+   *  creator who registered a product then had to type its name from memory, and
+   *  whatever they typed — a nickname, a typo, a different product — became what
+   *  the script pointed at, with no link back to the entity carrying its facts,
+   *  its permissions and its photos.
+   *
+   *  ⚖️ SO THE ANSWER IS A CARD, AND TYPING IS THE FALLBACK. Null means the
+   *  library has not been read yet, which is not the same as an empty library. */
+  const [products, setProducts] = useState<ProductEntityRecord[] | null>(null)
   // ⚖️ A REFUSAL THAT ASKS, NOT ONE THAT APOLOGISES. The server could not settle
   // 1-3 inputs it needs to write confidently, so it declined to charge. This is
   // the reader for those questions — without it the server would be asking into
@@ -719,6 +730,20 @@ export default function V2Building() {
   // other item fires from an inferred offer and is answered in the creator's own
   // words. Introducing a second, parallel notion of "which block is this" would
   // be a field that can disagree with the renderer.
+  // ⚖️ LOADED ONLY WHEN SOMETHING IS BEING ASKED. On the ordinary path — no
+  // questions, the build just runs — the library is never read, because a fetch
+  // nobody's answer depends on is a fetch that can only slow a build down.
+  useEffect(() => {
+    if (!askQuestions?.some((q) => q.field === 'offer') || products !== null) return
+    let alive = true
+    loadProductEntities()
+      .then((rows) => { if (alive) setProducts(rows) })
+      // ⚖️ A FAILED READ FALLS BACK TO TYPING RATHER THAN BLOCKING THE ANSWER.
+      // [] would claim the creator has no products, which is a different thing.
+      .catch(() => { if (alive) setProducts([]) })
+    return () => { alive = false }
+  }, [askQuestions, products])
+
   const decisions = (askQuestions ?? []).filter(isChip)
   const commercial = (askQuestions ?? []).filter((q) => !isChip(q))
   const hasTwoBlocks = decisions.length > 0 && commercial.length > 0
@@ -814,6 +839,66 @@ export default function V2Building() {
                       })}
                     </div>
                   ))}
+                </>
+              ) : q.field === 'offer' && (products?.length ?? 0) > 0 ? (
+                // ⚠️ THE ONE QUESTION WHOSE ANSWER WE ALREADY HAVE. Asking a
+                // creator to retype a product they registered is asking them to
+                // be their own database — and the string they type has no way
+                // back to the entity that carries the product's facts, its
+                // permissions and its photos.
+                <>
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  {(products ?? []).map((pr) => {
+                    const label = (pr.name ?? '').trim() || 'Unnamed product'
+                    const active = (askAnswers[q.field] ?? '') === label
+                    return (
+                      <button
+                        key={pr.id}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setAskAnswers((a) => {
+                          const next = { ...a, [q.field]: active ? '' : label }
+                          rememberAnswers(buildKey(state), next)
+                          return next
+                        })}
+                        className={cn(
+                          'rounded-xl border px-3.5 py-2 text-left text-[13px] transition-colors',
+                          active
+                            ? 'border-coral/50 bg-coral/[0.08] text-cream'
+                            : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20 hover:bg-white/[0.04]',
+                        )}
+                      >
+                        <span className="block leading-tight">{label}</span>
+                        {/* ⚖️ WHAT TWIN KNOWS ABOUT IT, SO THE CHOICE IS
+                            INFORMED. A creator with two products picks better
+                            knowing one has been read and the other has not. */}
+                        <span className="mt-0.5 block text-[11px] leading-snug text-stone">
+                          {pr.knowledge === null
+                            ? 'Twin has not read this one yet'
+                            : pr.knowledge.length === 0
+                              ? 'Nothing usable found on its page'
+                              : `${pr.knowledge.length} thing${pr.knowledge.length === 1 ? '' : 's'} Twin can say about it`}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                {/* ⚖️ TYPING STAYS, BECAUSE THE LIBRARY IS NOT THE ONLY TRUTH.
+                    A creator may be pointing this video at something they have
+                    not registered, and a picker with no way out would make the
+                    Product Library the price of answering a question. */}
+                <input
+                  type="text"
+                  autoComplete="off"
+                  value={askAnswers[q.field] ?? ''}
+                  onChange={(ev) => setAskAnswers((a) => {
+                    const next = { ...a, [q.field]: ev.target.value }
+                    rememberAnswers(buildKey(state), next)
+                    return next
+                  })}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+                  placeholder="Or type something else"
+                />
                 </>
               ) : (
                 <input
