@@ -1090,9 +1090,21 @@ function ConfirmStep({
               onChange={(e) => { setProduct(e.target.value); setOfferTouched(true) }}
               placeholder="e.g. Twin — it edits your videos for you"
             />
+            {/* ⚠️ THE NOTICE SAID THE OPPOSITE OF WHAT THE CODE DOES, AND THE
+                NOTICE IS WHAT A CREATOR BELIEVES. "It becomes the call to action
+                on every video" is false for an untouched guess: `offer` is
+                written only when `offerTouched`, so a guess nobody edits is
+                stored as null and reaches no script.
+                MEASURED: a real account was shown "A radical mindset shift
+                towards patience, self-awareness…" under that sentence. That is
+                a THEME, not an offer — and being told it would drive every CTA
+                is exactly the alarm a creator should feel about a claim they
+                never made. The behaviour was already right; the sentence was
+                manufacturing the fear. */}
             {!offerTouched && product && (
               <p className="mt-1 text-[11px] text-amber">
-                We guessed this from your posts — worth a look, it becomes the call to action on every video.
+                We guessed this from your posts. We will not use it until you edit it —
+                fix it if it is wrong, or leave it and Twin stays quiet about your offer.
               </p>
             )}
           </Labeled>
