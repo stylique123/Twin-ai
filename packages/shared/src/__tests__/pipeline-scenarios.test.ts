@@ -91,11 +91,27 @@ describe('Scenario 6 — sell with nothing to sell', () => {
     }, creator(['own_service']))).toBe(true)
   })
 
-  describe('SCRIPT — what actually reaches the writer today', () => {
-    // ⚠️ THESE ASSERTIONS PIN A DEFECT, DELIBERATELY. They record that the
-    // contradiction is real and reaches the prompt, so that fixing it FAILS THIS
-    // FILE and forces somebody to update it on purpose. A characterisation test
-    // that nobody has to revisit is a defect nobody has to fix.
+  it('PRODUCTION — and the refusal is wired, not merely validated', () => {
+    // ⚠️ THE HALF THAT WAS MISSING, AND THE REASON THIS ASSERTION IS SEPARATE
+    // FROM THE CDP ONE ABOVE. `validateCreativeDecisionPlan` was correct and ran
+    // nowhere; production still built the contradicting prompt. A module that is
+    // built, tested and green while behaviour is unchanged is the exact failure
+    // mode this file was written to make visible, so the pipeline layer gets its
+    // own check rather than borrowing the unit's.
+    //
+    // ⚖️ AND ABOVE THE CHARGE. Refusing after `spend_credits` would bill somebody
+    // for discovering a contradiction in our own inputs.
+    const refusal = BLUEPRINT.indexOf("code: 'SELL_WITHOUT_COMMERCIAL_TARGET'")
+    expect(refusal).toBeGreaterThan(-1)
+    expect(refusal).toBeLessThan(BLUEPRINT.indexOf("admin.rpc('spend_credits'"))
+  })
+
+  describe('SCRIPT — what the components still say in isolation', () => {
+    // ⚠️ THESE ASSERTIONS PIN THE CONTRADICTION AT COMPONENT LEVEL, DELIBERATELY.
+    // The combination no longer reaches a writer — the refusal above stops it —
+    // but neither component was changed, because neither is wrong. Deleting these
+    // would lose the record of WHY the refusal exists, and the day somebody
+    // "simplifies" one of them, this is what says the other one disagrees.
     it('the goal instructs a pitch on its own authority', () => {
       const intent = compileVideoIntent({ goal: 'sell', focus: 'expertise' })
       expect(intent.goalDirective).toMatch(/SELL THE OFFER/)
