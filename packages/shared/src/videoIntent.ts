@@ -216,6 +216,38 @@ const FOCUS_PREFERS: Record<ContentFocus, readonly string[]> = {
   trending: [],
 }
 
+// ── WHAT A GOAL IMPLIES WHEN NOBODY WAS ASKED ─────────────────────────────
+//
+// ⚠️ "What should the viewer leave with" LEFT THE SCREEN, AND ITS BEHAVIOUR DID
+// NOT. It was the third of three questions and it was largely downstream of the
+// first: somebody who wants to sell wants the viewer to act, somebody who wants
+// to teach wants them to learn. Asking both made the creator answer the same
+// thought twice — but the answer drives the CTA payoff and the substance floor,
+// and deleting a question is not a licence to delete what it decided.
+//
+// ⚖️ SO THE GOAL IMPLIES AN OUTCOME, AND AN IMPLICATION IS NOT AN ANSWER. The
+// derived value fills `payoffDirective` and `substanceFloor` — the two things
+// that would otherwise silently fall back to the system default. It does NOT
+// feed `wantsSale`, which stays computed from what the creator actually SAID.
+// An inference must not create an obligation, and a pitch is the obligation
+// that rule exists for: `sell` already carries its own selling intent, so
+// nothing is lost by refusing to let a derived `convert` add one.
+const GOAL_IMPLIES_OUTCOME: Record<VideoGoal, ViewerOutcome> = {
+  followers: 'share',
+  authority: 'remember_me',
+  educate: 'learn',
+  conversations: 'comment',
+  leads: 'check_out_offer',
+  sell: 'convert',
+  entertain: 'feel_inspired',
+  // ⚖️ RETIRED FROM THE SCREEN, STILL REACHABLE INTERNALLY — routed from
+  // authority + a personal focus + remember/follow. Being remembered IS the
+  // point of a personal-brand video, so it implies the outcome it was routed
+  // from. The compiler refused this change until the value was decided, which
+  // is the Record earning its place.
+  personal_brand: 'remember_me',
+}
+
 const OUTCOME_PAYOFF: Record<ViewerOutcome, string> = {
   learn: 'END ON THE PAYOFF, NOT THE ASK. The last beat completes the thing being taught; the viewer must be able to act on it without rewatching.',
   change_mind: 'END ON THE TURN. The viewer arrived believing something else, so the last beat must name what changed and why it holds — a summary is not a turn.',
@@ -294,8 +326,15 @@ export function compileVideoIntent(answers: {
   const resolutions: string[] = []
 
   let goalDirective = goal ? GOAL_DIRECTIVE[goal] : null
-  let payoffDirective = outcome ? OUTCOME_PAYOFF[outcome] : null
-  let substanceFloor = outcome ? OUTCOME_FLOOR[outcome] : DEFAULT_FLOOR
+  // ⚠️ THE STATED ANSWER FIRST, ALWAYS. A creator who answered outranks any
+  // implication of their goal — and `statedOutcome` is kept separate below so
+  // the derived value can never be mistaken for something they said.
+  const impliedOutcome = outcome ?? (goal ? GOAL_IMPLIES_OUTCOME[goal] : null)
+  if (!outcome && impliedOutcome) {
+    resolutions.push(`goal ${goal} → payoff and substance floor taken from ${impliedOutcome}`)
+  }
+  let payoffDirective = impliedOutcome ? OUTCOME_PAYOFF[impliedOutcome] : null
+  let substanceFloor = impliedOutcome ? OUTCOME_FLOOR[impliedOutcome] : DEFAULT_FLOOR
   const prefersKinds = focus ? FOCUS_PREFERS[focus] : []
 
   // ── CONFLICTS, RESOLVED EXPLICITLY AND NAMED ──────────────────────────────
@@ -529,36 +568,18 @@ export const INTENT_QUESTIONS: readonly IntentQuestion[] = [
       { value: 'trending', label: 'Something happening now', hint: 'A trend, new topic or recent update' },
     ],
   },
-  {
-    field: 'viewer_outcome',
-    question: 'What do you want people to do or feel after watching?',
-    options: [
-      { value: 'learn', label: 'Learn something' },
-      { value: 'change_mind', label: 'See something differently' },
-      { value: 'feel_inspired', label: 'Feel something' },
-      { value: 'remember_me', label: 'Remember me', hint: 'Make the video feel distinct and personal' },
-      // ⚠️ GROUPED ON SCREEN, DISTINCT UNDERNEATH. A comment, a share and a
-      // follow are three different endings — "give them the line they would want
-      // attached to their name" is not "leave a real question open". Collapsing
-      // them internally would have thrown two payoffs away to save two chips, so
-      // the grouping is visual and the second tap keeps the behaviour.
-      {
-        value: 'comment',
-        label: 'Get engagement',
-        hint: 'Comments, shares or follows',
-        options: [
-          { value: 'comment', label: 'Comment' },
-          { value: 'share', label: 'Share it' },
-          { value: 'follow', label: 'Follow me' },
-        ],
-      },
-      // ⚖️ SOFT INTEREST AND DIRECT CONVERSION STAY APART. One points at the
-      // offer without asking for money; the other names the step. They produce
-      // genuinely different endings.
-      { value: 'check_out_offer', label: 'Check out what I offer' },
-      { value: 'convert', label: 'Buy, sign up or contact me' },
-    ],
-  },
+  // ⚠️ "WHAT SHOULD THE VIEWER LEAVE WITH" USED TO SIT HERE, AND ITS BEHAVIOUR
+  // DID NOT LEAVE WITH IT. It was largely downstream of the goal — somebody who
+  // wants to sell wants the viewer to act, somebody who wants to teach wants
+  // them to learn — so asking both made a creator answer one thought twice on a
+  // screen that was already too long.
+  //
+  // ⚖️ THE ENUM, THE PAYOFF DIRECTIVES AND THE SUBSTANCE FLOORS ALL SURVIVE.
+  // `VIEWER_OUTCOMES` is still the vocabulary, `GOAL_IMPLIES_OUTCOME` supplies a
+  // value when nobody was asked, and a caller that DOES state an outcome still
+  // outranks the implication. A question can leave the screen without its
+  // decisions leaving the system; deleting the behaviour would have been the
+  // easy half and the wrong one.
   // ⚠️ THE ONLY QUESTION HERE THAT IS ABOUT THE REFERENCE. The three above are
   // about the creator and are identical whether somebody pasted a listicle or a
   // confession — so the amount of the reference to keep, the one thing that

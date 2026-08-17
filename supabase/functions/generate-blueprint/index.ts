@@ -1363,6 +1363,23 @@ const KEEPS_REFERENCE_TOPIC_INLINE: Record<string, boolean> = {
   structure: false, idea_structure: true, stay_close: true, inspiration: false,
 }
 
+// ⚠️ INLINED, AND THE REASON IT EXISTS IS THE SAME ON BOTH SIDES: the outcome
+// question left the remix screen and its behaviour did not. The goal implies an
+// outcome so the CTA payoff and the substance floor keep working; it never feeds
+// `wantsSale`, which stays computed from what the creator actually said.
+const GOAL_IMPLIES_OUTCOME_INLINE: Record<string, string> = {
+  followers: 'share',
+  authority: 'remember_me',
+  educate: 'learn',
+  conversations: 'comment',
+  leads: 'check_out_offer',
+  sell: 'convert',
+  entertain: 'feel_inspired',
+  // Retired from the screen, still routed internally from authority + a
+  // personal focus + remember/follow.
+  personal_brand: 'remember_me',
+}
+
 const SELLING_GOALS_INLINE: ReadonlySet<string> = new Set(['sell', 'leads'])
 const SELLING_OUTCOMES_INLINE: ReadonlySet<string> = new Set(['convert'])
 
@@ -1400,8 +1417,14 @@ function compileVideoIntentInline(answers: {
   const resolutions: string[] = []
 
   let goalDirective = goal ? GOAL_DIRECTIVE_INLINE[goal] : null
-  let payoffDirective = outcome ? OUTCOME_PAYOFF_INLINE[outcome] : null
-  let substanceFloor = outcome ? OUTCOME_FLOOR_INLINE[outcome] : SUBSTANCE_FLOOR
+  // The stated answer always outranks the implication; `outcome` above stays
+  // the record of what was actually said.
+  const impliedOutcome = outcome ?? (goal ? GOAL_IMPLIES_OUTCOME_INLINE[goal] : null)
+  if (!outcome && impliedOutcome) {
+    resolutions.push(`goal ${goal} → payoff and substance floor taken from ${impliedOutcome}`)
+  }
+  let payoffDirective = impliedOutcome ? OUTCOME_PAYOFF_INLINE[impliedOutcome] : null
+  let substanceFloor = impliedOutcome ? OUTCOME_FLOOR_INLINE[impliedOutcome] : SUBSTANCE_FLOOR
   const prefersKinds = focus ? FOCUS_PREFERS_INLINE[focus] : []
 
   if (goal === 'sell' && (focus === 'expertise' || focus === 'experience')

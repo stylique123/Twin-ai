@@ -291,7 +291,15 @@ describe('what it must never do', () => {
     // CREATOR DNA block. Emitting it here too would put one instruction in two
     // places, which is how three copies of the CTA rule agreed with each other
     // while sixteen purchase CTAs shipped.
-    expect(renderVideoIntent(c('authority'))).toBe('')
+    // ⚖️ THE CLAIM IS UNCHANGED; WHAT THE BLOCK CONTAINS IS NOT. A goal alone
+    // used to render nothing here. It now renders the PAYOFF, because the
+    // outcome question left the screen and the goal implies one — so emptiness
+    // is no longer the way to check that the goal DIRECTIVE stayed out. Assert
+    // the directive's own words are absent instead, which is what "one field,
+    // one reader" actually says.
+    const goalOnly = renderVideoIntent(c('authority'))
+    expect(goalOnly).not.toMatch(/BUILD TRUST/i)
+    expect(goalOnly).toMatch(/HOW THIS VIDEO MUST END/)
     expect(renderVideoIntent(c('authority', 'expertise', 'learn')))
       .not.toMatch(/NARROW AND DEEP/)
   })
