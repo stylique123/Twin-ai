@@ -59,6 +59,7 @@ export * from './productSuggestionConfidence'
 // The six onboarding questions asked while the scan runs, and what they change.
 export * from './creatorProfileQuestions'
 export * from './authority'
+export * from './profileAssembler'
 export * from './cta'
 export * from './profileCompletion'
 export * from './compatibilityGate'
