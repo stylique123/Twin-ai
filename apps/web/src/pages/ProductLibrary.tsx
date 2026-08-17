@@ -41,7 +41,7 @@ import {
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
   requestProductExtraction, confirmProductFacts, uploadProductImage,
   listBrandVoices, OwnedEntityExistsError, ProductLibraryFullError,
-  isStale, factAgeDays,
+  isStale, factAgeDays, SOURCE_LABEL, sourceWarrantsAttention,
   bestSuggestion,
   type ProductSuggestion,
 } from '@twinai/shared'
@@ -845,33 +845,42 @@ export default function ProductLibrary() {
 function FactAge({ fact }: { fact: ProductFact }) {
   const stale = isStale(fact, new Date())
   const days = factAgeDays(fact, new Date())
-  if (!stale) {
-    return fact.sourceUrl ? (
-      <a
-        href={fact.sourceUrl}
-        target="_blank"
-        rel="noreferrer noopener"
-        className="ml-1.5 text-xs text-stone/70 underline decoration-dotted"
-      >source</a>
-    ) : null
-  }
+  if (!stale) return <FactOrigin fact={fact} />
   return (
     <span className="ml-1.5 whitespace-nowrap text-xs text-amber-700">
       {Number.isFinite(days)
         ? `read ${Math.round(days)} days ago — worth re-checking`
         : 'age unknown — worth re-checking'}
-      {fact.sourceUrl && (
-        <>
-          {' '}
-          <a
-            href={fact.sourceUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="underline decoration-dotted"
-          >source</a>
-        </>
-      )}
+      <FactOrigin fact={fact} />
     </span>
+  )
+}
+
+/** WHERE THIS CAME FROM, SAID IN WORDS.
+ *
+ *  ⚠️ THE WORD "source" ON A LINK ANSWERED THE WRONG QUESTION. It told a creator
+ *  that an origin EXISTS and never what it was, and a fact with no link — one
+ *  read off a photograph they uploaded, or one they typed themselves — said
+ *  nothing at all. The review test is "where did every critical fact come
+ *  from, within seconds", and a link labelled `source` fails it.
+ *
+ *  ⚖️ AND TWO ORIGINS EARN A SECOND LOOK RATHER THAN A REFUSAL. Marketing copy
+ *  is written to persuade and a photograph is a machine's reading of an image;
+ *  both are usable and neither is a claim the page itself made. Marking them is
+ *  a prompt to check, not a block — the trust split already decides what may
+ *  reach the writer, and saying it twice in two different vocabularies is how
+ *  two rules come to disagree. */
+function FactOrigin({ fact }: { fact: ProductFact }) {
+  const label = SOURCE_LABEL[fact.source]
+  const tone = sourceWarrantsAttention(fact.source) ? 'text-amber-700' : 'text-stone/70'
+  if (!fact.sourceUrl) return <span className={`ml-1.5 text-xs ${tone}`}>{label}</span>
+  return (
+    <a
+      href={fact.sourceUrl}
+      target="_blank"
+      rel="noreferrer noopener"
+      className={`ml-1.5 text-xs underline decoration-dotted ${tone}`}
+    >{label}</a>
   )
 }
 
