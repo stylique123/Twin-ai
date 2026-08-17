@@ -4117,6 +4117,34 @@ Deno.serve(async (req: Request) => {
         ? `\n- What they do: this creator ${WORK_KIND_LINES[brief.workKind]}`
         : '')
 
+    // ── WHAT THE AUDIENCE ALREADY KNOWS ──────────────────────────────────
+    //
+    // ⚠️ THE WRITER WAS TOLD WHO THE AUDIENCE IS AND NEVER WHAT THEY KNOW. Those
+    // are different facts and the second one decides how much of a script is
+    // spent explaining. A specialist audience given the basics reads as
+    // condescension; a beginner denied them cannot follow at all — and the same
+    // topic, the same voice and the same product facts produce both.
+    //
+    // ⚖️ IT CHANGES DEPTH, NOT SUBJECT. This must not become a licence to pick a
+    // different topic for an expert audience: the concept is decided upstream and
+    // this only says how far down to start.
+    //
+    // ⚠️ AND IT IS THE ONLY ONE OF THE SIX ONBOARDING ANSWERS THAT WAS GENUINELY
+    // MISSING FROM THE WRITER. I claimed several times that a script could not
+    // tell an affiliate from an owner; checking rather than asserting showed
+    // `promotes` already carries that with per-relationship instructions. This
+    // one really had no script consumer.
+    const AUDIENCE_LEVEL_LINES: Record<string, string> = {
+      beginners: 'They are NEW to this. Define a term the first time it appears, use one concrete everyday example per idea, and do not assume any prior step has been done.',
+      basics: 'They know the basics. Skip definitions of common terms, and spend the time on the part that is actually hard rather than on set-up.',
+      experienced: 'They are EXPERIENCED. Do not explain fundamentals, do not define common terms, and go straight to the specific, non-obvious part — an explanation they did not need reads as condescension.',
+      mixed: 'Their level is mixed. Lead with the substance an experienced viewer wants, and carry a beginner with one plain-language aside rather than a full explanation.',
+    }
+    const audienceLevelRaw = typeof brief.audienceKnowledge === 'string' ? brief.audienceKnowledge : ''
+    const audienceLevelLine = AUDIENCE_LEVEL_LINES[audienceLevelRaw]
+      ? `\n- What they already know: ${AUDIENCE_LEVEL_LINES[audienceLevelRaw]}`
+      : ''
+
     const povLine = povList.length
       ? povList.join(' | ')
       : 'NONE STORED. Infer 1-2 stances this creator would plausibly hold from their niche, tone and vocabulary, and carry them through the script. Stay on-brand; do not fabricate specific facts or numbers.'
@@ -4164,7 +4192,7 @@ Deno.serve(async (req: Request) => {
     const creatorDna = `CREATOR DNA${vp ? ` (learned from @${voice!.handle} on ${voice!.platform})` : ''}
 - Niche: ${niche}${subNiche ? `
 - Specific angle (what their audience searches for): ${subNiche}` : ''}
-- Audience: ${audienceResolved}
+- Audience: ${audienceResolved}${audienceLevelLine}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
 - Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${knowledgeBlock}

@@ -262,3 +262,59 @@ describe('the ledger is empty', () => {
     expect(skippedAssertions).toBe(0)
   })
 })
+
+// ── SCENARIO 4 — THE SAME VIDEO FOR AN EXPERT AND A BEGINNER ──────────────
+//
+// ⚠️ THE WRITER WAS TOLD WHO THE AUDIENCE IS AND NEVER WHAT THEY KNOW. Those are
+// different facts and the second decides how much of a script is spent
+// explaining: a specialist given the basics reads as condescension, a beginner
+// denied them cannot follow, and the same topic and voice produce both.
+//
+// ⚖️ AND THIS WAS THE ONLY ONE OF THE SIX ONBOARDING ANSWERS GENUINELY MISSING
+// FROM THE WRITER. I asserted several times that a script could not tell an
+// affiliate from an owner; checking the edge rather than repeating myself showed
+// `brief.promotes` already carries that, with per-relationship instructions and a
+// non-optional disclosure. The registry entry that claimed otherwise was
+// corrected rather than built upon.
+import { readFileSync as readEdge } from 'node:fs'
+import { fileURLToPath as urlToPath } from 'node:url'
+import { dirname as dir, join as joinPath } from 'node:path'
+
+const BLUEPRINT = readEdge(
+  joinPath(dir(urlToPath(import.meta.url)), '..', '..', '..', '..',
+    'supabase', 'functions', 'generate-blueprint', 'index.ts'), 'utf8')
+
+describe('Scenario 4 — audience level changes depth, not subject', () => {
+  it('INPUT — the answer is one of four levels', () => {
+    expect(BLUEPRINT).toMatch(/beginners:|basics:|experienced:|mixed:/)
+  })
+
+  it('PROFILE — it survives assembly as a canonical level', () => {
+    const p = assembleCreatorProfile({
+      answers: { audienceKnowledge: 'experienced' } as never, now: NOW })
+    expect(p.audienceLevel!.value).toBe('expert')
+    expect(p.audienceLevel!.source).toBe('user_answer')
+  })
+
+  it('SCRIPT — the writer is told what they already know', () => {
+    expect(BLUEPRINT).toMatch(/What they already know/)
+    expect(BLUEPRINT).toMatch(/\$\{audienceLevelLine\}/)
+  })
+
+  it('SCRIPT — and an expert is protected from being explained to', () => {
+    // ⚠️ THE FAILURE THAT IS EASY TO MISS BECAUSE THE SCRIPT STILL READS FINE.
+    // Nothing is false; it is simply written for somebody else.
+    expect(BLUEPRINT).toMatch(/reads as condescension/)
+  })
+
+  it('SCRIPT — the line is absent when the question was never answered', () => {
+    // ⚖️ Silence spends no prompt on an absence, and never invents a level.
+    expect(BLUEPRINT).toMatch(/AUDIENCE_LEVEL_LINES\[audienceLevelRaw\]\s*\n?\s*\? `/)
+    expect(BLUEPRINT).toMatch(/: ''/)
+  })
+
+  it('and it changes DEPTH rather than licensing a different topic', () => {
+    // ⚖️ The concept is decided upstream. This says how far down to start.
+    expect(BLUEPRINT).toMatch(/changes depth, not subject|CHANGES DEPTH, NOT SUBJECT/i)
+  })
+})
