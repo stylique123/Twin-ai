@@ -564,6 +564,33 @@ export default function V2Building() {
       } catch (e) {
         if (ticker) clearInterval(ticker)
         if (!alive) return
+        // ── THE SERVER MAY HAVE FINISHED THE THING THIS REQUEST LOST ─────
+        //
+        // ⚠️ REPORTED AS "it stopped at 40%", AND THE DATABASE AGREES. Every
+        // script_attempt on this project has settled `succeeded` — including
+        // one that produced a generation while the creator watched a bar sit
+        // still. The build is ONE long request, ~50-70 seconds; a backgrounded
+        // tab, a sleeping phone or a dropped connection kills the socket, and
+        // the work carries on server-side to completion. The creator is charged
+        // for a script they are never shown.
+        //
+        // ⚖️ THE LOOKUP ALREADY EXISTED AND RAN IN ONLY ONE PLACE — on mount,
+        // before building. That covers a reload and nothing else. It never ran
+        // for the case it was written for, because a creator whose bar froze
+        // stays on the page rather than reloading it.
+        //
+        // ⚖️ IDEMPOTENCY IS WHAT MAKES THIS SAFE. `key` is the same value the
+        // server keyed the charge on, so this can only ever find the build this
+        // request paid for.
+        try {
+          const rescued = await findGenerationByKey(key)
+          if (rescued) {
+            if (alive) { setActive(STEPS.length); setPct(100); nav(`/result/${rescued.id}`, { replace: true }) }
+            return
+          }
+        } catch (lookupErr) {
+          console.warn('[build] post-failure lookup failed', lookupErr)
+        }
         // The server's own hard stop. Reached only when this screen's checks
         // did not fire first — a client older than the server, or a read that
         // looked fine here and produced nothing there. It is a refusal, not a
@@ -591,6 +618,38 @@ export default function V2Building() {
     return () => { alive = false; if (ticker) clearInterval(ticker) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [retryNonce])
+
+  // ── A HIDDEN TAB MUST NOT COST A SCRIPT ───────────────────────────────
+  //
+  // ⚠️ REPORTED TWICE, AS TWO SYMPTOMS OF ONE THING: "it stopped at 40%", and
+  // "when I go to another tab it does not carry on in the background". Both are
+  // the same request. The build is a single ~50-70 second fetch that the browser
+  // is free to throttle or drop when the tab is not visible, and when the socket
+  // dies quietly nothing rejects — so the catch above never runs and the bar
+  // simply stops where the pacing ticker left it.
+  //
+  // ⚖️ THE WORK NEVER STOPPED. `generate-blueprint` runs server-side to
+  // completion and settles its own charge, which is why every script_attempt in
+  // production reads `succeeded`. What was lost is only the answer, and the
+  // answer is addressable by the same idempotency key the charge used.
+  //
+  // ⚖️ SO COMING BACK IS THE TRIGGER. On every return to the tab, while this
+  // screen still believes it is building, ask whether the build already exists.
+  // It is one indexed read on a user gesture, it cannot double-charge, and a
+  // failure leaves the screen exactly as it was.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      // Nothing to recover if the screen has already settled into an outcome.
+      if (error || unusableRef || askQuestions) return
+      const key = buildKey(state)
+      void findGenerationByKey(key)
+        .then((done) => { if (done) { setActive(STEPS.length); setPct(100); nav(`/result/${done.id}`, { replace: true }) } })
+        .catch((e) => console.warn('[build] visibility lookup failed', e))
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [state, error, unusableRef, askQuestions, nav])
 
   const echo = state.reference_url ? 'From your reference link' : 'From your idea'
   const shownPct = Math.round(pct)
