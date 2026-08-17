@@ -33,7 +33,10 @@ import {
   sceneOverrunSec, overrunWorthShowing,
   type RecordingScene, type RecordingScript, type ScriptEditResult,
 } from '../lib/api'
-import { describeEdit, type ScriptEditRecord } from '@twinai/shared'
+import {
+  describeEdit, planSetups, startsSetup, setupStrip,
+  type ScriptEditRecord, type SetupPlan,
+} from '@twinai/shared'
 import { recordScriptEdit } from '../lib/scriptEdits'
 import type { Blueprint } from '../lib/types'
 import { cn } from '../lib/cn'
@@ -140,8 +143,65 @@ export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, f
     return null
   }
 
+  return <Editor
+    script={script} setupPlan={planSetups(script.scenes)}
+    hasTake={hasTake} edited={edited} commit={commit} />
+}
+
+/**
+ * THE SETUP STRIP, AND THE SCENE THE CREATOR IS ACTUALLY LOOKING AT.
+ *
+ * ⚠️ A STRIP THAT FAILS TO UPDATE IS WORSE THAN THE REPETITION IT REPLACED. Five
+ * copies of the room are noise; one confident line naming the wrong room is a
+ * person filming in the wrong place. So the strip follows the scroll rather than
+ * being stated once at the top — a top banner disappears exactly when the
+ * creator is several scenes deep and wondering where the phone was supposed to
+ * be, which is the moment it was needed.
+ *
+ * ⚖️ IT FOLLOWS THE TOPMOST VISIBLE SCENE, NOT THE MOST VISIBLE ONE. The scene
+ * being read is the one at the top of the viewport; picking by largest area
+ * makes the strip flip back and forth around a boundary while a person stands
+ * still.
+ */
+function Editor({ script, setupPlan, hasTake, edited, commit }: {
+  script: RecordingScript
+  setupPlan: SetupPlan
+  hasTake?: boolean
+  edited: boolean
+  commit: (result: ScriptEditResult, edit: ScriptEditRecord | null) => Promise<string | null>
+}) {
+  const [activeScene, setActiveScene] = useState<number | null>(null)
+  const activeSetupId = activeScene == null
+    ? (setupPlan.setups[0]?.id ?? null)
+    // ⚖️ A SILENT INSERT MAPS TO NULL AND MUST NOT BLANK THE STRIP. It belongs to
+    // no room, so the room the creator is standing in has not changed — the last
+    // spoken scene's setup is still the true answer.
+    : (setupPlan.setupIdOf[activeScene] ?? lastSetupAtOrBefore(setupPlan, activeScene))
+
+  useEffect(() => {
+    const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-scene-number]'))
+    if (cards.length === 0) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting)
+        if (visible.length === 0) return
+        const top = visible.reduce((a, b) =>
+          (a.boundingClientRect.top <= b.boundingClientRect.top ? a : b))
+        const n = Number((top.target as HTMLElement).dataset.sceneNumber)
+        if (Number.isFinite(n)) setActiveScene(n)
+      },
+      // Anchored near the top of the viewport: the scene being READ, not the one
+      // filling the most pixels.
+      { rootMargin: '-8% 0px -70% 0px', threshold: 0 },
+    )
+    cards.forEach((c) => io.observe(c))
+    return () => io.disconnect()
+  }, [script.generation_id, script.scenes.length])
+
   return (
     <div className="space-y-6">
+      <SetupStrip plan={setupPlan} activeSetupId={activeSetupId} />
+
       {hasTake && edited && (
         <div className="flex items-start gap-2 rounded-card border border-amber/25 bg-amber/[0.05] p-3">
           <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber" />
@@ -156,6 +216,8 @@ export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, f
       <SceneCard
         key="hook"
         label="Hook"
+        sceneNumber={script.scenes[0]?.scene_number ?? 1}
+        plan={setupPlan}
         text={script.hook}
         guidance={script.scenes[0]}
         onSave={(text) => commit(applyHookEdit(script, text),
@@ -174,6 +236,8 @@ export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, f
           <SceneCard
             key={s.scene_number}
             label={`Scene ${s.scene_number}`}
+            sceneNumber={s.scene_number}
+            plan={setupPlan}
             text={s.dialogue}
             guidance={s}
             onSave={(text) => commit(applyDialogueEdit(script, s.scene_number, text),
@@ -222,8 +286,50 @@ function BeatLength({ scene }: { scene?: RecordingScene }) {
   )
 }
 
-function SceneCard({ label, text, guidance, onSave }: {
+/** The setup in force at this scene, when the scene itself belongs to none.
+ *
+ *  ⚖️ A SILENT INSERT DOES NOT MOVE ANYONE. Scrolling past a cutaway must not
+ *  blank the strip — the creator is standing exactly where they were, and an
+ *  empty strip would read as "no setup decided" at the moment they are checking
+ *  where to stand. */
+function lastSetupAtOrBefore(plan: SetupPlan, sceneNumber: number): string | null {
+  // ⚖️ THE LATEST SCENE, NOT THE LATEST SETUP. `plan.setups` is in
+  // first-appearance order, so a script that goes A → B → A and is scrolled to a
+  // cutaway after the return would report B if this iterated setups in order.
+  let best: { n: number; id: string } | null = null
+  for (const setup of plan.setups) {
+    for (const n of setup.sceneNumbers) {
+      if (n <= sceneNumber && (best === null || n > best.n)) best = { n, id: setup.id }
+    }
+  }
+  return best?.id ?? null
+}
+
+/** The compact, always-visible answer to "where am I supposed to be standing".
+ *
+ *  ⚠️ ONE LINE, DELIBERATELY. It is read at a glance by someone holding a phone
+ *  at arm's length; a paragraph here would be scrolled past like the five copies
+ *  it replaces. The full description stays on the card that opens the setup. */
+function SetupStrip({ plan, activeSetupId }: { plan: SetupPlan; activeSetupId: string | null }) {
+  const setup = plan.setups.find((s) => s.id === activeSetupId)
+  // ⚖️ NOTHING IS SHOWN WHEN NOTHING WAS DECIDED. An empty strip stating "Setup
+  // A" with no room behind it is furniture.
+  if (!setup) return null
+  const parts = setupStrip(setup)
+  return (
+    <div className="sticky top-2 z-20 rounded-full border border-white/10 bg-ink2/90 px-4 py-2 shadow-glass backdrop-blur-md">
+      <p className="truncate text-[11px] text-sand">
+        <span className="font-semibold text-amber">{parts[0]}</span>
+        {parts.slice(1).map((p) => <span key={p}> · {p}</span>)}
+      </p>
+    </div>
+  )
+}
+
+function SceneCard({ label, sceneNumber, plan, text, guidance, onSave }: {
   label: string
+  sceneNumber: number
+  plan: SetupPlan
   text: string
   guidance?: RecordingScene
   onSave: (text: string) => Promise<string | null>
@@ -247,8 +353,25 @@ function SceneCard({ label, text, guidance, onSave }: {
     if (!err) setEditing(false)
   }
 
+  const opensSetup = startsSetup(plan, sceneNumber)
+  const setup = plan.setups.find((s) => s.id === plan.setupIdOf[sceneNumber])
+
   return (
-    <div className="rounded-card border border-white/5 bg-ink2/85 p-6 shadow-glass backdrop-blur-md">
+    <div
+      data-scene-number={sceneNumber}
+      className="rounded-card border border-white/5 bg-ink2/85 p-6 shadow-glass backdrop-blur-md"
+    >
+      {/* ⚠️ THE SCENE THAT MOVES SAYS SO, IN FULL. The strip is a glance; this is
+          the record. A creator who is about to change where they stand must read
+          it on the card they are standing at, not infer it from a line that
+          changed above them while they scrolled. */}
+      {opensSetup && setup && (
+        <p className="mb-4 rounded-lg border border-amber/20 bg-amber/[0.06] px-3 py-2 text-xs text-sand">
+          <span className="font-semibold text-amber">Setup {setup.id}</span>
+          {' · '}{setup.background}
+          {setup.framing && <> · {setup.framing}</>}
+        </p>
+      )}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="rounded-full border border-white/5 bg-ink2/40 px-3 py-1 text-[11px] font-semibold tracking-wide text-sand">
@@ -302,7 +425,7 @@ function SceneCard({ label, text, guidance, onSave }: {
         <p className="mt-4 font-display text-lg leading-relaxed text-cream">“{text}”</p>
       )}
 
-      {guidance && <Guidance scene={guidance} />}
+      {guidance && <Guidance scene={guidance} inSetup={plan.setupIdOf[sceneNumber] != null} />}
     </div>
   )
 }
@@ -324,11 +447,19 @@ function SilentCard({ scene }: { scene: RecordingScene }) {
   )
 }
 
-function Guidance({ scene }: { scene: RecordingScene }) {
+/** ⚖️ THE CARD SHOWS WHAT CHANGES, AND THE SETUP CARRIES WHAT DOES NOT. Where to
+ *  film and how it is framed ARE the setup — repeating them per scene is the
+ *  five-identical-rooms problem this was reported as. Movement is never dropped:
+ *  it is different on every beat, and it is the line the repetition was burying.
+ *
+ *  ⚠️ `inSetup` IS FALSE FOR A SILENT INSERT AND FOR A SCENE WITH NO SETUP AT
+ *  ALL, and both keep every row. No strip speaks for them, so dropping a row
+ *  would delete the only place that instruction appears. */
+function Guidance({ scene, inSetup = false }: { scene: RecordingScene; inSetup?: boolean }) {
   const rows = [
-    { icon: Video, color: 'text-amber', label: 'Where to film', value: scene.background },
+    ...(inSetup ? [] : [{ icon: Video, color: 'text-amber', label: 'Where to film', value: scene.background }]),
     { icon: User, color: 'text-coral', label: 'How to stand & move', value: scene.movement },
-    { icon: SlidersHorizontal, color: 'text-teal', label: 'Framing', value: scene.camera_framing },
+    ...(inSetup ? [] : [{ icon: SlidersHorizontal, color: 'text-teal', label: 'Framing', value: scene.camera_framing }]),
   ].filter((r) => r.value && r.value.trim() !== '')
   if (rows.length === 0) return null
   return (

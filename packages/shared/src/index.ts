@@ -49,5 +49,8 @@ export * from './knowledgeSelection'
 export * from './knowledgeResolver'
 export * from './spokenPlaceholders'
 export * from './shotDirection'
+// Which setup each scene is filmed in — the recorder's sticky strip and the
+// scene cards both read this rather than re-comparing background strings.
+export * from './setupPlan'
 export * from './compatibilityGate'
 export * from './editor/index'
