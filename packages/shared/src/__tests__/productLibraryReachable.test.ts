@@ -42,8 +42,19 @@ describe('the page is never read-only', () => {
     // ⚠️ THE EXACT REGRESSION. One `<ClaimForm>` lives inside the suggestions
     // list (claiming a suggestion) and at least one outside it (adding from
     // scratch). If the outside one disappears, the dead end is back.
-    const total = (PAGE.match(/<ClaimForm/g) ?? []).length
-    const inside = (suggestionsBlock().match(/<ClaimForm/g) ?? []).length
+    // ⚠️ THE ADD PATH IS NO LONGER `ClaimForm`. Adding a product now starts from
+    // a LINK — `StartFromLink` — because asking a creator to summarise their own
+    // product into a blank box made the least reliable source the authoritative
+    // one. `ClaimForm` survives for claiming a suggestion, where the text is
+    // already on screen.
+    //
+    // ⚖️ THE CLAIM IS UNCHANGED AND IS THE WHOLE POINT: a creator with NO
+    // suggestion must still have a way in. Counting only `ClaimForm` would now
+    // report the dead end as fixed only by accident of which component is used,
+    // so the check counts EITHER attestation form outside the block.
+    const FORMS = /<(?:ClaimForm|StartFromLink)/g
+    const total = (PAGE.match(FORMS) ?? []).length
+    const inside = (suggestionsBlock().match(FORMS) ?? []).length
     expect(total).toBeGreaterThan(inside)
     expect(total - inside).toBeGreaterThanOrEqual(1)
   })

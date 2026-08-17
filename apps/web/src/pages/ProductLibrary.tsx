@@ -321,6 +321,10 @@ export default function ProductLibrary() {
 
   async function claim(s: ProductSuggestion | null, a: {
     relationship: EntityRelationship; personalUse: PersonalUse; type: EntityType; name: string
+    /** ⚖️ THE LINK IS PART OF THE ATTESTATION, NOT A LATER EDIT. A creator who
+     *  starts from a page is telling us WHICH thing they mean; storing it on the
+     *  mint is what lets Twin read it without asking them to find it twice. */
+    productUrl?: string | null
   }) {
     // ⚠️ AN EMPTY OWNER ID MUST NOT REACH THE INSERT. RLS is owner-scoped, so a
     // blank id fails somewhere deep with a policy error that reads as a bug in
@@ -339,6 +343,16 @@ export default function ProductLibrary() {
       const created = await claimProductEntity(ownerId, voiceId, a)
       if (created) {
         setEntities((prev) => [...(prev ?? []), created])
+        // ⚠️ EXTRACTION IS QUEUED, NOT AWAITED, AND ITS FAILURE IS NOT THE
+        // CLAIM'S. The product now exists because a person said it is theirs —
+        // that is the part that had to succeed. Reading the page is a
+        // convenience that runs on the worker minutes later, and a reader that
+        // could undo an attestation would be the wrong shape entirely.
+        const url = (a.productUrl ?? '').trim()
+        if (url) {
+          try { await requestProductExtraction(ownerId, created.id, url) }
+          catch { setErr('Added, but we could not start reading that page. You can retry from the product below.') }
+        }
         // Drop it from the suggestions — it is claimed now, and leaving it there
         // invites a second claim of the same thing.
         if (s) setSuggestions((prev) => prev.filter((x) => x.id !== s.id))
@@ -486,7 +500,18 @@ export default function ProductLibrary() {
       {addingNew && (
         <section className="rounded-xl border border-white/10 p-4">
           <h2 className="text-sm font-semibold">Add a product</h2>
-          <ClaimForm
+          {/* ── GIVE TWIN SOMETHING TO INSPECT ──────────────────────────────
+              ⚠️ THE OLD FLOW ASKED A CREATOR TO DESCRIBE THEIR OWN PRODUCT INTO
+              A BLANK BOX, which is both the slowest way in and the least
+              accurate: people summarise their product differently every time,
+              and the summary is what the writer then had to work from.
+              ⚖️ A LINK IS ONE PASTE AND IT IS THE THING ITSELF. Twin reads the
+              page and comes back with what it found; the creator corrects only
+              what matters. The questions that remain are the two that cannot be
+              read off a page at all — what their relationship to it is, and
+              whether they have used it — because those are permissions, and a
+              permission read off a web page is a permission nobody granted. */}
+          <StartFromLink
             busy={claimBusy}
             onCancel={() => setAddingNew(false)}
             onClaim={(a) => void claim(null, a)}
@@ -842,5 +867,173 @@ function FactAge({ fact }: { fact: ProductFact }) {
         </>
       )}
     </span>
+  )
+}
+
+/** START FROM THE THING ITSELF.
+ *
+ *  ⚠️ THE OLD WAY IN WAS A BLANK NAME BOX, and it asked the creator to be the
+ *  extractor: summarise your own product, in a sentence, from memory. People
+ *  describe their product differently every time they are asked, and whatever
+ *  they typed became the only thing the writer knew — so the least reliable
+ *  possible source was also the authoritative one.
+ *
+ *  ⚖️ SO THE LINK COMES FIRST AND THE TYPING IS OPTIONAL. Twin reads the page and
+ *  reports what it found; the creator corrects what is wrong. The name is left
+ *  blank on purpose when a link is given — extraction fills it, and a guessed
+ *  name typed in a hurry would outrank the real one.
+ *
+ *  ⚠️ TWO QUESTIONS SURVIVE, AND THEY ARE THE TWO A PAGE CANNOT ANSWER.
+ *  `relationship` decides whether commercial language is permitted at all, and
+ *  `personalUse` decides whether "I use this" may be said. Both are PERMISSIONS.
+ *  A web page can tell us what a product is; it cannot tell us that this person
+ *  sells it, and reading either off a URL would be an entitlement granted by a
+ *  paste. That is the escalation this whole page exists to refuse.
+ */
+function StartFromLink({ onCancel, onClaim, busy }: {
+  onCancel: () => void
+  busy: boolean
+  onClaim: (a: {
+    relationship: EntityRelationship; personalUse: PersonalUse
+    type: EntityType; name: string; productUrl?: string | null
+  }) => void
+}) {
+  const [url, setUrl] = useState('')
+  const [name, setName] = useState('')
+  const [relationship, setRelationship] = useState<EntityRelationship | null>(null)
+  const [type, setType] = useState<EntityType | null>(null)
+  const [personalUse, setPersonalUse] = useState<PersonalUse | null>(null)
+
+  const link = url.trim()
+  // ⚖️ REFUSED HERE SO THE CREATOR IS TOLD NOW, not after a job fails silently
+  // on the worker minutes later. `requestProductExtraction` refuses the same
+  // shape; this is the copy that reaches a person.
+  const linkLooksReal = link === '' || /^https:\/\/\S+\.\S+/i.test(link)
+  // ⚠️ A NAME IS REQUIRED ONLY WHEN THERE IS NO LINK. With one, extraction
+  // supplies it; without one, nothing else will, and a nameless entity reaches
+  // the prompt as "the product".
+  const named = link !== '' || name.trim() !== ''
+  const ready = named && linkLooksReal && relationship !== null
+    && type !== null && personalUse !== null
+
+  return (
+    <div className="mt-3 space-y-3 rounded-lg bg-white/[0.03] p-3">
+      <div>
+        <label className="text-xs font-medium uppercase tracking-wide text-stone" htmlFor="product-link">
+          Paste a link to it
+        </label>
+        <p className="mt-1 text-xs text-stone">
+          Its website, store page, or app listing. Twin will read it and tell you what it
+          found — you only correct what is wrong.
+        </p>
+        <input
+          id="product-link"
+          type="url"
+          inputMode="url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://…"
+          className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+        />
+        {!linkLooksReal && (
+          <p className="mt-1 text-xs text-coral">That does not look like a full link. It should start with https://</p>
+        )}
+      </div>
+
+      {/* ⚖️ OFFERED, NOT REQUIRED, AND ONLY WHEN THERE IS NO LINK TO READ. Some
+          products have no page — a service, a community, something not launched —
+          and refusing those would make the link the price of entry. */}
+      <div>
+        <label className="text-xs font-medium uppercase tracking-wide text-stone" htmlFor="product-name">
+          {link ? 'Or give it a name (optional)' : 'What do you call it?'}
+        </label>
+        <input
+          id="product-name"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={link ? 'Twin will read this from the page' : 'e.g. Twin'}
+          className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+        />
+      </div>
+
+      <Choices
+        label="What is it?"
+        options={TYPE_CHOICES}
+        chosen={type}
+        onPick={(v) => setType(v)}
+      />
+
+      {/* ⚠️ THE TWO PERMISSION QUESTIONS. Neither is derivable from the other and
+          neither is readable off a page — see this component's own note. */}
+      <Choices
+        label="What is your relationship to it?"
+        options={RELATIONSHIP_CHOICES}
+        chosen={relationship}
+        onPick={(v) => setRelationship(v)}
+      />
+      <Choices
+        label="Have you actually used it yourself?"
+        options={[
+          { value: 'CONFIRMED' as PersonalUse, label: 'Yes, I have used it' },
+          { value: 'DENIED' as PersonalUse, label: 'No, I have not' },
+        ]}
+        chosen={personalUse}
+        onPick={(v) => setPersonalUse(v)}
+      />
+
+      <div className="flex gap-2 pt-1">
+        <button
+          type="button"
+          disabled={!ready || busy}
+          onClick={() => onClaim({
+            relationship: relationship!, personalUse: personalUse!, type: type!,
+            name: name.trim(), productUrl: link || null,
+          })}
+          className="btn-gradient rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+        >{busy ? 'Adding…' : link ? 'Add it and read the page' : 'Add it'}</button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-stone"
+        >Cancel</button>
+      </div>
+      {link && (
+        <p className="text-xs text-stone">
+          Reading the page takes a few minutes and happens in the background. Nothing it
+          finds is used in a script until you confirm it.
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** A labelled row of single-choice chips. Extracted because three of them in one
+ *  form is where copy-paste starts producing three slightly different behaviours. */
+function Choices<T extends string>({ label, options, chosen, onPick }: {
+  label: string
+  options: Array<{ value: T; label: string }>
+  chosen: T | null
+  onPick: (v: T) => void
+}) {
+  return (
+    <div>
+      <span className="text-xs font-medium uppercase tracking-wide text-stone">{label}</span>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            aria-pressed={chosen === o.value}
+            onClick={() => onPick(o.value)}
+            className={
+              chosen === o.value
+                ? 'rounded-full border border-signature/50 bg-signature/10 px-3 py-1.5 text-xs text-cream'
+                : 'rounded-full border border-white/10 bg-white/[0.02] px-3 py-1.5 text-xs text-sand hover:border-white/25'
+            }
+          >{o.label}</button>
+        ))}
+      </div>
+    </div>
   )
 }
