@@ -116,3 +116,53 @@ describe('only the creator’s wording is stored', () => {
     expect(sanitizeBriefForWrite({ defaultCta: '   ' })).not.toHaveProperty('defaultCta')
   })
 })
+
+// ── AND THE ANSWER REACHES THE SCRIPT ─────────────────────────────────────
+//
+// ⚠️ `answers.cta` UNBLOCKED THE READINESS GATE AND WAS THEN DROPPED. It was not
+// merged into the brief, not persisted, and never interpolated into the prompt —
+// so a creator answered "What should viewers do after watching?" and the script
+// still ended on whatever the model chose. Same asked-and-discarded failure that
+// `brief_consumers.json` exists to prevent, one layer above the brief.
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+const EDGE = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..',
+    'supabase', 'functions', 'generate-blueprint', 'index.ts'), 'utf8')
+
+describe('the writer is told the creator’s own CTA', () => {
+  it('stops re-asking somebody who already told us', () => {
+    // ⚠️ `brief.cta` IS NOT A STORED KEY, so this fallback was always undefined
+    // and every commercial video asked again.
+    expect(EDGE).toMatch(/answers\.cta \?\? brief\.defaultCta \?\? brief\.cta/)
+  })
+
+  it('merges the answer into THIS generation, not only the next one', () => {
+    // ⚖️ The brief is read before the questions are asked, so persisting alone
+    // would fix the following video and leave the paid one unchanged.
+    expect(EDGE).toMatch(/if \(readyPresent\(answers\.cta\)\) brief\.defaultCta =/)
+    expect(EDGE).toMatch(/if \(readyPresent\(answers\.cta\)\) stable\.defaultCta =/)
+  })
+
+  it('puts their wording in the prompt and tells the model not to smooth it', () => {
+    expect(EDGE).toMatch(/THE CREATOR'S OWN CALL TO ACTION/)
+    expect(EDGE).toMatch(/\$\{ctaWordingLine\}/)
+    expect(EDGE).toMatch(/Do NOT paraphrase it/)
+  })
+
+  it('still refuses a commercial ask on a video that may not carry one', () => {
+    // ⚠️ THE CREATOR'S CTA DOES NOT OUTRANK THE COMMERCIAL PERMISSION. Their
+    // wording is theirs; whether a purchase ask is allowed at all is decided by
+    // the relationship, and this line must not become a way around that.
+    expect(EDGE).toMatch(/unless this video may not carry a commercial ask at all/)
+  })
+
+  it('only a typed sentence can reach the column', () => {
+    // ⚖️ Nothing generated flows into `answers.cta` or `defaultCta` — provenance
+    // is structural, so there is no flag to set wrongly.
+    const region = EDGE.slice(EDGE.indexOf('stable.defaultCta'), EDGE.indexOf('stable.defaultCta') + 400)
+    expect(region).not.toMatch(/GENERATED_TEXT|resolveCta/)
+  })
+})

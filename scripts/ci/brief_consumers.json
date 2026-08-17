@@ -110,8 +110,9 @@
    "unwiredReason": "As ownProductKind. It shapes what is asked, not what is written."
   },
   "defaultCta": {
-   "readBy": [],
-   "unwiredReason": "Read by cta.ts, which resolves the CTA for a video, and by profileCompletion, which counts only a creator-typed CTA. The blueprint does not consult it yet, so the last line of a script is still chosen without the creator's own wording — that is the reader this is waiting for, and it is the point of the field."
+   "readBy": [
+    "supabase/functions/generate-blueprint/index.ts"
+   ]
   }
  }
 }

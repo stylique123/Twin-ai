@@ -3255,7 +3255,11 @@ Deno.serve(async (req: Request) => {
     && !readyPresent(readyRel)) {
     readyMissing.push({ field: 'relationship', question: 'What is your relationship to it — do you own it, earn from it, are you paid to feature it, or are you just covering it?' })
   }
-  if (readyCommercial && !readyPresent(answers.cta ?? brief.cta)) {
+  // ⚠️ `brief.cta` IS NOT A STORED KEY AND NEVER WAS, so this fallback has always
+  // been undefined and every commercial video re-asked a creator who had already
+  // told us. `defaultCta` is the real column — see `cta.ts` — and it holds only
+  // text a person typed, which is exactly the standard this gate wants.
+  if (readyCommercial && !readyPresent(answers.cta ?? brief.defaultCta ?? brief.cta)) {
     readyMissing.push({ field: 'cta', question: 'What should viewers do after watching?' })
   }
   if (readyPromoting && readyFacts.length === 0 && !readyPresent(answers.claims)) {
@@ -3326,6 +3330,11 @@ Deno.serve(async (req: Request) => {
   if (readyPresent(answers.offer)) stable.offer = String(answers.offer).slice(0, 240)
   if (readyPresent(answers.relationship)) stable.promotes = String(answers.relationship).slice(0, 240)
   if (readyPresent(answers.claims)) stable.productFacts = String(answers.claims).slice(0, 2000)
+  // ⚖️ A CTA TYPED HERE IS STILL THE CREATOR'S OWN WORDING, so it earns the same
+  // standing as one typed in Settings — the provenance rule is about WHO wrote
+  // the sentence, not which screen it was typed on. A generated line never
+  // reaches this code path, so nothing Twin invented can land in the column.
+  if (readyPresent(answers.cta)) stable.defaultCta = String(answers.cta).slice(0, 240)
   // ⚠️ THE ANSWERS MUST REACH *THIS* SCRIPT, AND THEY DID NOT. `brief` was read
   // before the questions were asked, and every prompt field below resolves
   // through it — `offer` is `brief.offer ?? vp?.offer ?? dna.product`. Persisting
@@ -3343,6 +3352,13 @@ Deno.serve(async (req: Request) => {
   if (readyPresent(answers.offer)) brief.offer = String(answers.offer).slice(0, 240)
   if (readyPresent(answers.relationship)) brief.promotes = String(answers.relationship).slice(0, 240)
   if (readyPresent(answers.claims)) brief.productFacts = String(answers.claims).slice(0, 2000)
+  // ⚠️ THE ANSWER REACHED THE GATE AND NOTHING ELSE. `answers.cta` unblocked the
+  // readiness check and was then dropped: not merged here, not persisted, never
+  // in the prompt. A creator answered "What should viewers do after watching?"
+  // and the script ended on whatever the model chose. This is the same
+  // asked-and-discarded failure `brief_consumers.json` exists to prevent, one
+  // layer up from the brief.
+  if (readyPresent(answers.cta)) brief.defaultCta = String(answers.cta).slice(0, 240)
   if (readyPresent(answers.audience)) brief.audience = String(answers.audience).slice(0, 240)
   // ⚖️ `goal` IS AN ENUM DOWNSTREAM AND THE ANSWER IS FREE TEXT. The compiler
   // only accepts a known `VIDEO_GOALS` value, so "grow my audience and build
@@ -3823,6 +3839,15 @@ Deno.serve(async (req: Request) => {
     // Behaviour is unchanged for every relationship; the dead arm implied a
     // state that cannot happen and misled the next reader about the model.
     const sellIntent = commercialCta === 'only_if_intended' && goalWantsSale
+    // ⚖️ THE CREATOR'S OWN WORDS, WHERE THEY EXIST, AND NOWHERE ELSE. This is
+    // wording a person typed — in Settings or in the readiness questions — so the
+    // model is told to use it rather than to invent one. Twin still chooses the
+    // MECHANISM and still refuses a commercial ask on a non-commercial video; what
+    // it no longer does is write a sentence over the top of theirs.
+    const typedCta = readyPresent(brief.defaultCta) ? String(brief.defaultCta).slice(0, 240) : ''
+    const ctaWordingLine = typedCta
+      ? `\n- THE CREATOR'S OWN CALL TO ACTION: "${typedCta}". Use their wording for the closing ask unless this video may not carry a commercial ask at all, in which case ask for engagement instead. Do NOT paraphrase it into something smoother — it is theirs.`
+      : ''
     const ctaIntentLine = sellIntent
       ? '\n- CTA INTENT: this creator\'s goal is commercial and they have a commercial tie to what is being promoted, so a purchase or signup CTA is appropriate here.'
       : commercialCta === 'forbidden' && goalWantsSale
@@ -4142,7 +4167,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${knowledgeBlock}
+- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${knowledgeBlock}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
