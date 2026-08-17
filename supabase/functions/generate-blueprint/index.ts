@@ -2867,6 +2867,65 @@ Deno.serve(async (req: Request) => {
     .eq('source', 'asked')
     .order('created_at', { ascending: false })
     .limit(20)
+  // ── A READY VOICE WITH NO KNOWLEDGE REPAIRS ITSELF ──────────────────────
+  //
+  // ⚠️ MEASURED: a brand voice sat at `ready` with ZERO knowledge rows and no
+  // scan job had ever been enqueued for it — the cache handed over a profile and
+  // skipped the scan. `start-dna` now enqueues one for new voices, but that
+  // repairs nobody who already has the empty voice, and the only remedy on offer
+  // was "know to press refresh in Settings", which is not a remedy. It is a
+  // creator being asked to diagnose us.
+  //
+  // ⚖️ SO THE NEXT GENERATION SCHEDULES THE MISSING SCAN. It cannot help THIS
+  // script — the job runs on the worker, minutes later — and it means the video
+  // after this one is written from real material instead of none.
+  //
+  // ⚠️ ONLY WHEN THERE IS NOTHING AND NOTHING IS ALREADY QUEUED. A voice with
+  // knowledge is not repaired, and a duplicate job would scan the same account
+  // twice at real cost. `maybeSingle` on an existing job is the whole guard.
+  //
+  // ⚖️ AND IT NEVER BLOCKS OR FAILS THE GENERATION. A repair that can break a
+  // paid script is worse than the gap it closes, so every error here is
+  // swallowed after being logged.
+  if ((rankedRows?.length ?? 0) === 0 && (askedRows?.length ?? 0) === 0 && voice?.id && voice?.handle) {
+    try {
+      const { data: existingScan } = await admin
+        .from('jobs')
+        .select('id')
+        .in('type', ['scrape_dna', 'build_dna'])
+        .contains('payload', { brand_voice_id: voice.id })
+        .limit(1)
+        .maybeSingle()
+      if (!existingScan) {
+        await admin.from('jobs').insert({
+          owner_id: ownerId,
+          type: 'scrape_dna',
+          status: 'queued',
+          max_attempts: 3,
+          payload: {
+            brand_voice_id: voice.id,
+            handle: voice.handle,
+            platform: voice.platform ?? 'tiktok',
+            owner_id: ownerId,
+          },
+        })
+        console.warn(JSON.stringify({
+          event: 'empty_voice_scan_enqueued',
+          brand_voice_id: voice.id,
+          handle: voice.handle,
+        }))
+        await admin.from('ops_events').insert({
+          kind: 'empty_voice_scan_enqueued',
+          severity: 'warning',
+          user_id: user.id,
+          detail: { brand_voice_id: voice.id, handle: voice.handle },
+        }).then(() => {}, () => {})
+      }
+    } catch (e) {
+      console.error('empty_voice_repair_failed', String((e as Error)?.message ?? e))
+    }
+  }
+
   // ⚖️ DEDUPED BY IDENTITY, because a stated row with a high enough `times_seen`
   // can legitimately appear in both reads and must not be supplied twice —
   // duplicate supply inflates every count downstream that reasons about it.

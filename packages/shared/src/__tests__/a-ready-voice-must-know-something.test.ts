@@ -86,3 +86,55 @@ describe('what a refresh must still do', () => {
     expect(START_DNA).toMatch(/cacheDays > 0 && !isRefresh/)
   })
 })
+
+// ── AND AN ALREADY-EMPTY VOICE REPAIRS ITSELF ─────────────────────────────
+//
+// ⚠️ THE START-DNA FIX HELPS NOBODY WHO ALREADY HAS THE EMPTY VOICE. It stops
+// the next account being created this way; it does nothing for the account that
+// already is. The only remedy on offer was "know to press refresh in Settings",
+// which is not a remedy — it is a creator being asked to diagnose us.
+//
+// ⚖️ SO THE NEXT GENERATION SCHEDULES THE MISSING SCAN. It cannot help THAT
+// script — the job runs on the worker, minutes later — and it means the video
+// after it is written from real material rather than none.
+const BLUEPRINT = readFileSync(join(FN, 'generate-blueprint', 'index.ts'), 'utf8')
+
+describe('a voice with no knowledge schedules its own scan', () => {
+  it('enqueues the scan the account never got', () => {
+    expect(BLUEPRINT).toMatch(/event: 'empty_voice_scan_enqueued'/)
+    expect(BLUEPRINT).toMatch(/type: 'scrape_dna'/)
+  })
+
+  it('only when there is genuinely nothing', () => {
+    // ⚠️ A voice WITH knowledge must not be re-scanned. Both reads have to be
+    // empty — the ranked one and the asked one — or a creator whose only rows
+    // came from answering questions would be scanned on every generation.
+    expect(BLUEPRINT).toMatch(
+      /\(rankedRows\?\.length \?\? 0\) === 0 && \(askedRows\?\.length \?\? 0\) === 0/)
+  })
+
+  it('never queues a second scan behind an existing one', () => {
+    // ⚠️ A SCAN COSTS REAL MONEY. Without this the repair fires on every
+    // generation until the first job finishes, which is the cheapest possible
+    // way to turn a fix into an incident.
+    expect(BLUEPRINT).toMatch(/\.in\('type', \['scrape_dna', 'build_dna'\]\)/)
+    expect(BLUEPRINT).toMatch(/if \(!existingScan\)/)
+  })
+
+  it('cannot fail the generation it runs inside', () => {
+    // ⚖️ A REPAIR THAT CAN BREAK A PAID SCRIPT IS WORSE THAN THE GAP IT CLOSES.
+    const region = BLUEPRINT.slice(
+      BLUEPRINT.indexOf('A READY VOICE WITH NO KNOWLEDGE REPAIRS ITSELF'),
+      BLUEPRINT.indexOf('DEDUPED BY IDENTITY'))
+    expect(region).toMatch(/try \{/)
+    expect(region).toMatch(/catch \(e\) \{/)
+    expect(region).toMatch(/empty_voice_repair_failed/)
+  })
+
+  it('leaves a durable record, not just a console line', () => {
+    // ⚖️ Edge logs expire. `ops_events` is the table an operator already
+    // watches, and this is the signal that says how often the empty-shell voice
+    // reached a real generation.
+    expect(BLUEPRINT).toMatch(/kind: 'empty_voice_scan_enqueued'/)
+  })
+})
