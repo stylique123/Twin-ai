@@ -154,7 +154,12 @@ export function projectBrandSnapshot(
   // ⚖️ AND IT REFUSES ONLY WHEN NOTHING SURVIVES. A palette carrying one real
   // hue plus black and white is a real reading — the hue is the signal — so the
   // test is that EVERY colour present is achromatic, not that any of them is.
-  const achromatic = (h: string | undefined): boolean => {
+  // ⚠️ `string | null`, NOT `string | undefined`. `hex()` returns null for a
+  // missing or invalid colour, and the first version of this signature took
+  // undefined — which type-checks nowhere and cost a Vercel deploy. The build
+  // itself passed: esbuild strips types, so only `tsc` catches it, and I ran the
+  // build without the typecheck.
+  const achromatic = (h: string | null): boolean => {
     if (!h) return true
     const m = /^#?([0-9a-f]{6})$/i.exec(h.trim())
     if (!m) return true
