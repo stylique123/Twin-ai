@@ -281,6 +281,22 @@ export function compileVideoIntent(answers: {
   // answer may ask for MORE substance; none may ask for less, because no intent
   // a creator can express is a reason to hand them a thinner script than the
   // system would have written on its own.
+  // ⚠️ `personal_brand` LEFT THE UI AND KEPT ITS DIRECTIVE. "Build my personal
+  // brand" is marketing language a normal creator should not have to decode, so
+  // it is no longer a visible option — but the behaviour it bought is real and
+  // deleting it would have been an amputation rather than a simplification.
+  //
+  // ⚖️ SO IT IS ROUTED, NOT REMOVED. A creator asking to be trusted, out of
+  // their own experience or opinion, and remembered or followed, is describing a
+  // personal-brand video in plain English without using the phrase. That
+  // combination now compiles to the directive the label used to select.
+  if (goal === 'authority'
+      && (focus === 'experience' || focus === 'opinion' || focus === 'story')
+      && (outcome === 'remember_me' || outcome === 'follow')) {
+    goalDirective = GOAL_DIRECTIVE.personal_brand
+    resolutions.push('authority+personal_focus+remember → personal-brand directive')
+  }
+
   if (substanceFloor < DEFAULT_FLOOR) {
     substanceFloor = DEFAULT_FLOOR
     resolutions.push('substance floor clamped to the system minimum')
@@ -369,4 +385,113 @@ export function renderVideoIntent(intent: VideoIntent): string {
   // rule agreed with each other while sixteen purchase CTAs shipped.
   if (!intent.payoffDirective) return ''
   return `\nHOW THIS VIDEO MUST END — the creator chose what the viewer should leave with, so this is a decision rather than a suggestion.\n- ${intent.payoffDirective}`
+}
+
+// ── WHAT THE CREATOR ACTUALLY READS ────────────────────────────────────────
+//
+// ⚠️ THE HARD RULE THIS SECTION EXISTS FOR. Every question and option is plain
+// everyday English. A first-time creator with no marketing knowledge understands
+// each choice in under two seconds. No internal product terms, no jargon, no
+// options that need explanation to tell apart. The creator must never have to
+// know what "authority", "content focus", "viewer outcome", "entitlement",
+// "reference adaptation" or "product relationship" mean — those are Twin's
+// problems. Ask human questions; map the answers to the internal modes here.
+//
+// ⚖️ SIMPLIFY THE LABELS, KEEP THE BEHAVIOUR. Several plain labels may point at
+// one internal value, and an internal value may have no label at all — but a
+// directive is never deleted just because its wording left the screen. Merge
+// only where the downstream behaviour is genuinely identical; where it changes
+// concept, hook, substance, payoff or CTA, the distinction survives underneath.
+//
+// ⚖️ WHAT IS DELIBERATELY NOT SHOWN, and why each one is safe:
+//   personal_brand  routed from authority + a personal focus + remember/follow.
+//   story           merges into "Something I've experienced" — both already
+//                   prefer the same knowledge kinds, so the merge is free.
+//   review          merges into the product option on screen, and survives as an
+//                   internal mode because it prefers experience where plain
+//                   `product` does not. Reachable when the system infers it.
+
+export interface IntentOption {
+  /** The internal value. */
+  value: string
+  /** Two to four plain words. */
+  label: string
+  /** One short sentence, only where it genuinely helps tell two apart. */
+  hint?: string
+  /** Sub-options revealed after this one is chosen. Used where several
+   *  behaviours are worth keeping but not worth three top-level chips. */
+  options?: readonly IntentOption[]
+}
+
+export interface IntentQuestion {
+  field: 'video_goal' | 'content_focus' | 'viewer_outcome'
+  question: string
+  options: readonly IntentOption[]
+}
+
+export const INTENT_QUESTIONS: readonly IntentQuestion[] = [
+  {
+    field: 'video_goal',
+    question: 'What do you want this video to do for you?',
+    options: [
+      { value: 'followers', label: 'Reach more people', hint: 'Get more views and grow your audience' },
+      { value: 'authority', label: 'Show I know my stuff', hint: 'Build trust and credibility' },
+      { value: 'educate', label: 'Teach something', hint: 'Help people learn something useful' },
+      { value: 'conversations', label: 'Get people talking', hint: 'Start comments and conversations' },
+      // ⚖️ KEPT APART ON PURPOSE. Making people interested and asking them to buy
+      // now are different videos, and only the second may carry a purchase CTA.
+      { value: 'leads', label: 'Get customers or leads', hint: 'Make people interested in buying or contacting you' },
+      { value: 'sell', label: 'Sell something', hint: 'Ask people to buy or sign up now' },
+      { value: 'entertain', label: 'Entertain people', hint: 'Make something fun, interesting or memorable' },
+    ],
+  },
+  {
+    field: 'content_focus',
+    question: 'What should this video be about?',
+    options: [
+      { value: 'expertise', label: 'Something I know well', hint: 'My advice, expertise or ideas' },
+      { value: 'experience', label: "Something I've experienced", hint: 'Something I did, learned, tried or went through' },
+      { value: 'opinion', label: 'Something I believe', hint: 'My opinion, or something I disagree with' },
+      { value: 'product', label: 'A product or service', hint: 'Something I sell, promote, review or work with' },
+      { value: 'reference_adapted', label: 'This reference idea', hint: 'Keep the main idea, but make it fit me' },
+      { value: 'trending', label: 'Something happening now', hint: 'A trend, new topic or recent update' },
+    ],
+  },
+  {
+    field: 'viewer_outcome',
+    question: 'What do you want people to do or feel after watching?',
+    options: [
+      { value: 'learn', label: 'Learn something' },
+      { value: 'change_mind', label: 'See something differently' },
+      { value: 'feel_inspired', label: 'Feel something' },
+      { value: 'remember_me', label: 'Remember me', hint: 'Make the video feel distinct and personal' },
+      // ⚠️ GROUPED ON SCREEN, DISTINCT UNDERNEATH. A comment, a share and a
+      // follow are three different endings — "give them the line they would want
+      // attached to their name" is not "leave a real question open". Collapsing
+      // them internally would have thrown two payoffs away to save two chips, so
+      // the grouping is visual and the second tap keeps the behaviour.
+      {
+        value: 'comment',
+        label: 'Get engagement',
+        hint: 'Comments, shares or follows',
+        options: [
+          { value: 'comment', label: 'Comment' },
+          { value: 'share', label: 'Share it' },
+          { value: 'follow', label: 'Follow me' },
+        ],
+      },
+      // ⚖️ SOFT INTEREST AND DIRECT CONVERSION STAY APART. One points at the
+      // offer without asking for money; the other names the step. They produce
+      // genuinely different endings.
+      { value: 'check_out_offer', label: 'Check out what I offer' },
+      { value: 'convert', label: 'Buy, sign up or contact me' },
+    ],
+  },
+]
+
+/** Every value a creator can reach on screen, including sub-options. */
+export function reachableIntentValues(field: IntentQuestion['field']): string[] {
+  const q = INTENT_QUESTIONS.find((x) => x.field === field)
+  if (!q) return []
+  return q.options.flatMap((o) => (o.options ? o.options.map((c) => c.value) : [o.value]))
 }

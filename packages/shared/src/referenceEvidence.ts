@@ -46,7 +46,7 @@ export const EVIDENCE_TYPES = [
   // §3's explicit gap list. These are emitted as `unknown` so a downstream
   // decision that needs one is refused rather than guessing.
   'shot_semantics', 'camera_distance_movement', 'subject_framing',
-  'caption_layout_cadence', 'transition_types', 'b_roll_function',
+  'caption_layout_cadence', 'transition_types',
   'zoom_frequency_intensity', 'music_energy_beat_alignment',
   'silence_and_visual_waste',
 ] as const
@@ -55,7 +55,7 @@ export type EvidenceType = (typeof EVIDENCE_TYPES)[number]
 /** §3: extraction is extended only where a downstream decision needs evidence. */
 export const MISSING_EVIDENCE_TYPES: readonly EvidenceType[] = [
   'shot_semantics', 'camera_distance_movement', 'subject_framing',
-  'caption_layout_cadence', 'transition_types', 'b_roll_function',
+  'caption_layout_cadence', 'transition_types',
   'zoom_frequency_intensity', 'music_energy_beat_alignment',
   'silence_and_visual_waste',
 ]

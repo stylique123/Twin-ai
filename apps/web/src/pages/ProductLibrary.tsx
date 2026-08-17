@@ -132,13 +132,13 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
   const ready = name.trim() !== '' && relationship !== null && type !== null && personalUse !== null
 
   return (
-    <div className="mt-3 space-y-3 rounded-lg bg-ink/5 p-3">
+    <div className="mt-3 space-y-3 rounded-lg bg-white/[0.03] p-3">
       <div>
-        <label className="text-xs font-medium uppercase tracking-wide text-ink/50">
+        <label className="text-xs font-medium uppercase tracking-wide text-stone">
           What do you call it?
         </label>
         <input
-          className="mt-1 w-full rounded-lg border border-ink/15 px-3 py-2 text-sm"
+          className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
           value={name}
           placeholder="The name you use on camera"
           onChange={(ev) => setName(ev.target.value)}
@@ -146,7 +146,7 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
       </div>
 
       <fieldset>
-        <legend className="text-xs font-medium uppercase tracking-wide text-ink/50">
+        <legend className="text-xs font-medium uppercase tracking-wide text-stone">
           What is it?
         </legend>
         <div className="mt-1 flex flex-wrap gap-2">
@@ -154,16 +154,19 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
             <button
               key={t.value}
               type="button"
+              aria-pressed={type === t.value}
               onClick={() => setType(t.value)}
               className={`rounded-full border px-3 py-1 text-xs ${
-                type === t.value ? 'border-ink bg-ink text-white' : 'border-ink/20'}`}
+                type === t.value
+                  ? 'border-coral/50 bg-coral/[0.08] text-cream'
+                  : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20'}`}
             >{t.label}</button>
           ))}
         </div>
       </fieldset>
 
       <fieldset>
-        <legend className="text-xs font-medium uppercase tracking-wide text-ink/50">
+        <legend className="text-xs font-medium uppercase tracking-wide text-stone">
           Your relationship to it
         </legend>
         <div className="mt-1 space-y-1">
@@ -186,7 +189,7 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
             having used it, and a commission establishes less still. This is the
             answer that licenses "I use this every day"; the one above licenses
             commercial language. They are different permissions. */}
-        <legend className="text-xs font-medium uppercase tracking-wide text-ink/50">
+        <legend className="text-xs font-medium uppercase tracking-wide text-stone">
           Do you actually use it yourself?
         </legend>
         <div className="mt-1 flex gap-2">
@@ -195,9 +198,12 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
               <button
                 key={v}
                 type="button"
+                aria-pressed={personalUse === v}
                 onClick={() => setPersonalUse(v)}
                 className={`rounded-full border px-3 py-1 text-xs ${
-                  personalUse === v ? 'border-ink bg-ink text-white' : 'border-ink/20'}`}
+                  personalUse === v
+                    ? 'border-coral/50 bg-coral/[0.08] text-cream'
+                    : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20'}`}
               >{label}</button>
             ))}
         </div>
@@ -210,9 +216,9 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
           onClick={() => ready && onClaim({
             relationship: relationship!, personalUse: personalUse!, type: type!, name,
           })}
-          className="rounded-lg bg-ink px-3 py-1.5 text-sm text-white disabled:opacity-40"
+          className="btn-gradient rounded-lg px-3 py-1.5 text-sm disabled:opacity-40"
         >{busy ? 'Adding…' : 'Add to my products'}</button>
-        <button type="button" onClick={onCancel} className="px-3 py-1.5 text-sm text-ink/60">
+        <button type="button" onClick={onCancel} className="px-3 py-1.5 text-sm text-sand">
           Cancel
         </button>
       </div>
@@ -405,13 +411,13 @@ export default function ProductLibrary() {
   if (err && entities === null) {
     return <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>
   }
-  if (entities === null) return <p className="text-sm text-ink/60">Loading your products…</p>
+  if (entities === null) return <p className="text-sm text-sand">Loading your products…</p>
 
   return (
     <div className="mx-auto max-w-3xl space-y-8 px-4 py-6">
       <header>
         <h1 className="text-2xl font-semibold">Product Library</h1>
-        <p className="mt-1 text-sm text-ink/60">
+        <p className="mt-1 text-sm text-sand">
           What your scripts are allowed to show and say about the things you make or promote.
         </p>
       </header>
@@ -419,7 +425,7 @@ export default function ProductLibrary() {
       {err && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
 
       {entities.length === 0 && !addingNew && (
-        <div className="rounded-lg border border-ink/10 px-4 py-6 text-sm text-ink/70">
+        <div className="rounded-lg border border-white/10 px-4 py-6 text-sm text-sand">
           <p>
             You have not registered a product yet. Until you do, your scripts will not assume
             you have one — they will not invent a product for you, and they will not build a
@@ -432,14 +438,14 @@ export default function ProductLibrary() {
               no product and offered no way to fix that. */}
           <button
             type="button"
-            className="mt-4 rounded-lg bg-ink px-3 py-1.5 text-sm text-white"
+            className="mt-4 btn-gradient rounded-lg px-3 py-1.5 text-sm"
             onClick={() => setAddingNew(true)}
           >Add a product</button>
         </div>
       )}
 
       {addingNew && (
-        <section className="rounded-xl border border-ink/10 p-4">
+        <section className="rounded-xl border border-white/10 p-4">
           <h2 className="text-sm font-semibold">Add a product</h2>
           <ClaimForm
             busy={claimBusy}
@@ -452,18 +458,18 @@ export default function ProductLibrary() {
       {entities.length > 0 && !addingNew && (
         <button
           type="button"
-          className="rounded-lg border border-ink/20 px-3 py-1.5 text-sm"
+          className="rounded-lg border border-white/15 px-3 py-1.5 text-sm"
           onClick={() => setAddingNew(true)}
         >Add another product</button>
       )}
 
       {entities.map((e) => (
-        <section key={e.id} className="rounded-xl border border-ink/10 p-4">
-          <label className="block text-xs font-medium uppercase tracking-wide text-ink/50">
+        <section key={e.id} className="rounded-xl border border-white/10 p-4">
+          <label className="block text-xs font-medium uppercase tracking-wide text-stone">
             Name
           </label>
           <input
-            className="mt-1 w-full rounded-lg border border-ink/15 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
             defaultValue={e.name ?? ''}
             placeholder="What you call it on camera"
             onBlur={(ev) => {
@@ -472,11 +478,11 @@ export default function ProductLibrary() {
             }}
           />
 
-          <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-ink/50">
+          <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-stone">
             Link
           </label>
           <input
-            className="mt-1 w-full rounded-lg border border-ink/15 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
             defaultValue={e.productUrl ?? ''}
             placeholder="https://"
             onBlur={(ev) => {
@@ -486,7 +492,7 @@ export default function ProductLibrary() {
           />
 
           <fieldset className="mt-4">
-            <legend className="text-xs font-medium uppercase tracking-wide text-ink/50">
+            <legend className="text-xs font-medium uppercase tracking-wide text-stone">
               Can you put it on screen?
             </legend>
             <div className="mt-2 space-y-1">
@@ -501,7 +507,7 @@ export default function ProductLibrary() {
                   />
                   <span>
                     {o.label}
-                    <span className="block text-xs text-ink/50">{o.note}</span>
+                    <span className="block text-xs text-stone">{o.note}</span>
                   </span>
                 </label>
               ))}
@@ -512,20 +518,20 @@ export default function ProductLibrary() {
               ⚖️ NULL AND EMPTY SAY DIFFERENT THINGS. "Never extracted" offers a
               link; "read it and found nothing" says so, rather than pretending
               nobody ever tried. Same `unset ≠ false` rule as everywhere else. */}
-          <div className="mt-4 rounded-lg border border-ink/10 p-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-ink/50">
+          <div className="mt-4 rounded-lg border border-white/10 p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-stone">
               What Twin knows about it
             </p>
 
             {e.knowledge === null ? (
               <>
-                <p className="mt-1 text-sm text-ink/60">
+                <p className="mt-1 text-sm text-sand">
                   Paste a link to its page and Twin will read it, so your scripts can say
                   what it actually does instead of guessing.
                 </p>
                 <div className="mt-2 flex gap-2">
                   <input
-                    className="w-full rounded-lg border border-ink/15 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
                     placeholder="https://"
                     value={learnUrl[e.id] ?? ''}
                     onChange={(ev) => setLearnUrl((p) => ({ ...p, [e.id]: ev.target.value }))}
@@ -533,18 +539,18 @@ export default function ProductLibrary() {
                   <button
                     type="button"
                     disabled={learning === e.id || (learnUrl[e.id] ?? '').trim() === ''}
-                    className="whitespace-nowrap rounded-lg bg-ink px-3 py-1.5 text-sm text-white disabled:opacity-40"
+                    className="whitespace-nowrap btn-gradient rounded-lg px-3 py-1.5 text-sm disabled:opacity-40"
                     onClick={() => void learn(e.id)}
                   >{learning === e.id ? 'Reading…' : 'Read the page'}</button>
                 </div>
                 {learning === e.id && (
-                  <p className="mt-2 text-xs text-ink/50">
+                  <p className="mt-2 text-xs text-stone">
                     This keeps running if you leave — come back and it will be here.
                   </p>
                 )}
               </>
             ) : e.knowledge.length === 0 ? (
-              <p className="mt-1 text-sm text-ink/60">
+              <p className="mt-1 text-sm text-sand">
                 Twin read that page and could not find anything usable on it. You can still
                 describe the product yourself.
               </p>
@@ -553,7 +559,7 @@ export default function ProductLibrary() {
                 <ul className="mt-2 space-y-1">
                   {e.knowledge.filter((f) => f.trust === 'usable').map((f) => (
                     <li key={`u-${f.field}-${f.value}`} className="text-sm">
-                      <span className="text-ink/50">{f.field}: </span>{f.value}
+                      <span className="text-stone">{f.field}: </span>{f.value}
                       <FactAge fact={f} />
                     </li>
                   ))}
@@ -566,7 +572,7 @@ export default function ProductLibrary() {
                         they are true. Confirming is per fact — one tap that
                         approved a dozen claims would be the escalation the claim
                         flow already refuses. */}
-                    <p className="text-xs text-ink/70">
+                    <p className="text-xs text-sand">
                       Twin found these but will not say them until you confirm each one —
                       they claim a number or a result.
                     </p>
@@ -574,7 +580,7 @@ export default function ProductLibrary() {
                       {e.knowledge.filter((f) => f.trust === 'needs_confirmation').map((f) => (
                         <li key={`n-${f.field}-${f.value}`} className="flex items-start justify-between gap-2 text-sm">
                           <span>
-                            <span className="text-ink/50">{f.field}: </span>{f.value}
+                            <span className="text-stone">{f.field}: </span>{f.value}
                             <FactAge fact={f} />
                           </span>
                           <button
@@ -594,22 +600,22 @@ export default function ProductLibrary() {
           {/* ⚖️ READ-ONLY, AND SAID SO PLAINLY. A greyed-out control with no
               explanation reads as broken; naming why it cannot change here tells
               the creator what to do instead. */}
-          <div className="mt-4 rounded-lg bg-ink/5 px-3 py-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-ink/50">
+          <div className="mt-4 rounded-lg bg-white/[0.03] px-3 py-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-stone">
               Your relationship to it
             </p>
             <p className="mt-1 text-sm">
               {RELATIONSHIP_LABEL[e.relationship] ?? e.relationship}
               {e.personalUse === 'CONFIRMED' && ' — and you use it yourself'}
             </p>
-            <p className="mt-1 text-xs text-ink/50">
+            <p className="mt-1 text-xs text-stone">
               This decides what your scripts may claim, so it is not editable here.
               Ask us to change it and we will record what changed and when.
             </p>
           </div>
 
           <div className="mt-3 flex items-center justify-between">
-            <p className="h-4 text-xs text-ink/50">
+            <p className="h-4 text-xs text-stone">
               {savingId === e.id ? 'Saving…' : saved === e.id ? 'Saved.' : ''}
             </p>
             {removingId === e.id ? (
@@ -621,7 +627,7 @@ export default function ProductLibrary() {
               // every entity that has been used even once — so archive leads and
               // delete is the smaller, explicitly destructive choice.
               <span className="text-xs">
-                <span className="text-ink/60">
+                <span className="text-sand">
                   Archiving stops Twin using it in new videos; your existing scripts keep
                   their record of it. Removing deletes it entirely.
                 </span>
@@ -637,14 +643,14 @@ export default function ProductLibrary() {
                 >Delete for good</button>
                 <button
                   type="button"
-                  className="ml-2 text-ink/50"
+                  className="ml-2 text-stone"
                   onClick={() => setRemovingId(null)}
                 >Keep</button>
               </span>
             ) : (
               <button
                 type="button"
-                className="text-xs text-ink/50 underline"
+                className="text-xs text-stone underline"
                 onClick={() => setRemovingId(e.id)}
               >Archive or remove</button>
             )}
@@ -655,16 +661,16 @@ export default function ProductLibrary() {
       {(archivedAll ?? []).filter((a) => a.archivedAt).length > 0 && (
         <section>
           <h2 className="text-lg font-semibold">Archived</h2>
-          <p className="mt-1 text-sm text-ink/60">
+          <p className="mt-1 text-sm text-sand">
             Twin will not use these in new videos. Scripts you have already made keep their
             record of them.
           </p>
           <ul className="mt-3 space-y-2">
             {(archivedAll ?? []).filter((a) => a.archivedAt).map((a) => (
-              <li key={a.id} className="flex items-center justify-between rounded-lg border border-ink/10 px-3 py-2 text-sm">
+              <li key={a.id} className="flex items-center justify-between rounded-lg border border-white/10 px-3 py-2 text-sm">
                 <span>
                   {a.name ?? 'Unnamed product'}
-                  <span className="block text-xs text-ink/50">
+                  <span className="block text-xs text-stone">
                     {RELATIONSHIP_LABEL[a.relationship] ?? a.relationship}
                   </span>
                 </span>
@@ -682,16 +688,16 @@ export default function ProductLibrary() {
       {suggestions.length > 0 && (
         <section>
           <h2 className="text-lg font-semibold">Products you have mentioned</h2>
-          <p className="mt-1 text-sm text-ink/60">
+          <p className="mt-1 text-sm text-sand">
             Picked up from your own videos. We have not assumed any of these are yours —
             tell us which are and what your relationship to them is, and your scripts can
             start using them.
           </p>
           <ul className="mt-3 space-y-2">
             {suggestions.map((s) => (
-              <li key={s.id} className="rounded-lg border border-ink/10 px-3 py-2 text-sm">
+              <li key={s.id} className="rounded-lg border border-white/10 px-3 py-2 text-sm">
                 <p>{s.text}</p>
-                <p className="mt-1 text-xs text-ink/50">
+                <p className="mt-1 text-xs text-stone">
                   {s.basis === 'stated' ? 'You said this' : 'From a video description'}
                   {s.timesSeen > 1 && ` · mentioned ${s.timesSeen} times`}
                 </p>
@@ -705,7 +711,7 @@ export default function ProductLibrary() {
                 ) : (
                   <button
                     type="button"
-                    className="mt-2 rounded-lg border border-ink/20 px-3 py-1 text-xs"
+                    className="mt-2 rounded-lg border border-white/15 px-3 py-1 text-xs"
                     onClick={() => setClaimingId(s.id)}
                   >This is mine</button>
                 )}
@@ -716,7 +722,7 @@ export default function ProductLibrary() {
               could write `OWN_PRODUCT` directly and save four taps; that would be
               an entitlement granted by a gesture that asserted nothing, which is
               the escalation this whole page refuses. See `ClaimForm`. */}
-          <p className="mt-3 text-xs text-ink/50">
+          <p className="mt-3 text-xs text-stone">
             Nothing here is added to your products until you answer for it. Anything we
             missed, you can add yourself.
           </p>
@@ -752,7 +758,7 @@ function FactAge({ fact }: { fact: ProductFact }) {
         href={fact.sourceUrl}
         target="_blank"
         rel="noreferrer noopener"
-        className="ml-1.5 text-xs text-ink/35 underline decoration-dotted"
+        className="ml-1.5 text-xs text-stone/70 underline decoration-dotted"
       >source</a>
     ) : null
   }

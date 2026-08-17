@@ -1398,6 +1398,18 @@ function compileVideoIntentInline(answers: {
     goalDirective = 'GROW THE AUDIENCE WITH ONE SHARP IDEA. The creator has chosen their own expertise as the material, so do not water it down for reach — instead pick the single most surprising thing in it and make THAT the entry point. Depth is the hook here, not the obstacle.'
     resolutions.push('followers+expertise → one sharp idea as the wide entry point')
   }
+  // ⚠️ `personal_brand` LEFT THE UI AND KEPT ITS DIRECTIVE. Routed rather than
+  // removed: a creator asking to be trusted, out of their own experience or
+  // opinion, and remembered or followed, is describing a personal-brand video in
+  // plain English without using the phrase. See the shared copy for the full
+  // reasoning; parity executes both.
+  if (goal === 'authority'
+      && (focus === 'experience' || focus === 'opinion' || focus === 'story')
+      && (outcome === 'remember_me' || outcome === 'follow')) {
+    goalDirective = GOAL_DIRECTIVE_INLINE.personal_brand
+    resolutions.push('authority+personal_focus+remember → personal-brand directive')
+  }
+
   if (substanceFloor < SUBSTANCE_FLOOR) {
     substanceFloor = SUBSTANCE_FLOOR
     resolutions.push('substance floor clamped to the system minimum')
@@ -2021,13 +2033,6 @@ const blueprintSchema = obj(
       },
       ['titles', 'thumbnail'],
     ),
-    b_roll_stats: obj(
-      {
-        original_b_roll_count: str,
-        suggested_b_roll_count: str,
-      },
-      ['original_b_roll_count', 'suggested_b_roll_count']
-    ),
     // DECIDED BEFORE THE WORDS, and required so it cannot be skipped.
     //
     // Scene length used to be an accident: the adapter made one scene per script
@@ -2081,7 +2086,6 @@ const blueprintSchema = obj(
           // different owners entirely.
           background: str,
           location: str,
-          broll_request: str,
           editor_intent: str,
           wardrobe: str,
           cuts_info: str,
@@ -2095,7 +2099,7 @@ const blueprintSchema = obj(
           substance: str,
           substance_evidence: str,
         },
-        ['section', 'line', 'direction', 'background', 'location', 'broll_request', 'editor_intent', 'wardrobe', 'cuts_info', 'action_posing', 'substance', 'substance_evidence'],
+        ['section', 'line', 'direction', 'background', 'location', 'editor_intent', 'wardrobe', 'cuts_info', 'action_posing', 'substance', 'substance_evidence'],
       ),
     ),
     shot_list: arr(
@@ -2105,11 +2109,9 @@ const blueprintSchema = obj(
           framing: str,
           notes: str,
           shot_type: str,
-          b_roll_type: str,
-          b_roll_visual: str,
           spoken_text: str,
         },
-        ['shot', 'framing', 'notes', 'shot_type', 'b_roll_type', 'b_roll_visual', 'spoken_text'],
+        ['shot', 'framing', 'notes', 'shot_type', 'spoken_text'],
       ),
     ),
     captions: arr(str),
@@ -2130,7 +2132,6 @@ const blueprintSchema = obj(
     'reference_read',
     'concept',
     'packaging',
-    'b_roll_stats',
     'beat_plan',
     'visual_hook',
     'hook_options',
@@ -2198,7 +2199,6 @@ HOOKS (the single most important field):
 
 - WHERE TO BE IS FOUR FIELDS, NOT ONE. Each has a different owner and a different failure mode, and collapsing them is how a creator gets told to stand inside footage that does not exist:
   * location: WHERE THE CREATOR PHYSICALLY STANDS, and nothing else. Achievable direction only — "clean neutral wall, facing the brightest window" works in any room at any hour. NEVER assumed inventory ("the walnut chair beside your lamp", "your fully renovated kitchen"), NEVER footage, NEVER an edit instruction.
-  * broll_request: footage to supply. Ask only for what one person with a phone can actually produce — no renovation timelapses, no motion graphics, no animated charts.
   * editor_intent: cutaway and return timing, for the EDIT. This is never a place to stand.
   * wardrobe: what the creator wears.
   * NEVER PUT A HEX COLOUR IN location OR wardrobe. The brand palette belongs to packaging and thumbnails. "A black t-shirt to emphasize the brand colors (#000000)" is not something a person can carry out, and it is removed automatically — write the direction without it.
@@ -2235,11 +2235,8 @@ SCRIPT & HOOK INTEGRATION:
 
 SHOT LIST & ASSET SPECIFICATION (B-ROLL & TALKING HEADS):
 - shot_list: specify all shots required to construct the final edit (talking heads, B-roll overlay inserts, and the cover/thumbnail frame).
-- shot_type: specify either 'talking_head' (camera on creator speaking), 'b_roll' (overlay/cutaway footage), or 'cover_frame' (the thumbnail image/first frame).
-- b_roll_type: if shot_type is 'b_roll', specify 'replicate' (real footage from the reference video that we want to copy, e.g. "real footage of endless cardboard boxes") or 'stock' (standard B-roll/stock video that fits the topic). If it is a talking head or cover frame, set to 'none'.
-- b_roll_visual: if shot_type is 'b_roll', write a detailed visual description of the overlay footage to display. For talking head or cover frames, set to an empty string.
+- shot_type: specify either 'talking_head' (camera on creator speaking) or 'cover_frame' (the thumbnail image/first frame). There is no third option: Twin does not plan overlay or cutaway footage, so never invent a shot the creator has no way to supply.
 - spoken_text: if this shot contains spoken lines (voiceover/narrative spoken during the B-roll overlay, or talking head lines), specify the exact spoken dialogue lines here. If this shot is a silent B-roll overlay or a cover thumbnail frame, set spoken_text to an empty string. This ensures some B-roll lines have spoken dialogue, while others remain silent.
-- b_roll_stats: in the main object, estimate the total B-roll overlays in the original reference video (original_b_roll_count) and recommend the total number of B-roll overlays to use in our suggested recreation (suggested_b_roll_count).
 
 CAPTIONS (burned-in, for our own renderer):
 - Short, 3 to 6 words each, punchy, matched to the spoken line. These are the on-screen kinetic captions.
@@ -3042,8 +3039,27 @@ Deno.serve(async (req: Request) => {
     typeof x === 'string' ? x.trim() !== '' && x.trim().toLowerCase() !== 'unspecified' : x != null
   const readyGoal = String(answers.goal ?? body.goal ?? brief.goal ?? '')
   const readyCommercial = readyGoal.toLowerCase().includes('sell') || readyGoal.toLowerCase().includes('leads')
+  // ⚠️ THE READINESS GATE READS ONLY WHAT THE CREATOR SAID, AND IT USED TO READ
+  // THE SCAN'S GUESS. Measured on a real account: AlexHormozi's scan wrote the
+  // offer "Free, high-level business frameworks and scaling strategies", their
+  // own `brief.offer` was null, and their `promotes` answer was
+  // `nothing_to_sell`. The chain below fell through to `vp.offer`, set
+  // `readyPromoting`, and put two mandatory questions on the remix card asking
+  // this creator to describe a commercial relationship to a product that does
+  // not exist — contradicting an answer they gave at onboarding.
+  //
+  // ⚖️ AN INFERENCE MUST NOT CREATE AN OBLIGATION. The scan prompt FORBIDS a
+  // blank offer, so a guess exists for every creator, which made the question
+  // unavoidable for all of them rather than targeted at the few who promote.
+  // `readyOffer` keeps the full chain because the CTA still needs a fallback;
+  // only the REQUIREMENT narrows to the creator's own words.
   const readyOffer = answers.offer ?? brief.offer ?? (vp?.offer as string | undefined) ?? (dna.product as string | undefined)
-  const readyPromoting = readyPresent(readyOffer) || readyCommercial
+  const readyOfferStated = answers.offer ?? brief.offer
+  // ⚖️ AND "NOTHING TO SELL" IS AN ANSWER, NOT A GAP. A creator who said so at
+  // onboarding must never be asked what they promote.
+  const readyNothingToSell = String(brief.promotes ?? '') === 'nothing_to_sell'
+  const readyPromoting = !readyNothingToSell
+    && (readyPresent(readyOfferStated) || readyCommercial)
   // ⚖️ EITHER AUTHORITY SETTLES IT. `product_entities.relationship` covers the
   // creator's OWN product; `brief.promotes` is where an affiliate or sponsor
   // tie to SOMEBODY ELSE'S product is recorded. Reading only the first would
@@ -3064,7 +3080,11 @@ Deno.serve(async (req: Request) => {
       : `What does ${n} actually do? Specific features, numbers or outcomes this video is allowed to state.`
   }
   const readyMissing: Array<{ field: string; question: string }> = []
-  if (!readyPresent(readyGoal)) readyMissing.push({ field: 'goal', question: 'What should this video do FOR YOU? (grow audience, get leads, sell something, build authority)' })
+  // ⚠️ THE GOAL IS NOT ASKED HERE ANY MORE — the remix card's three intent chips
+  // ask it in plain English before the build starts, and asking it again put one
+  // question on the card twice: a chip row, and a text box in marketing language.
+  // `readyGoal` is still READ below, because it decides whether this video is a
+  // commercial act; it is simply no longer a reason to refuse.
   if (readyPromoting && !readyPresent(readyOffer)) readyMissing.push({ field: 'offer', question: 'Which product or offer should this video point at?' })
   // ⚖️ NO SUBJECT AT ALL. A readable reference gives the video a subject, and an
   // UNREADABLE one already returned above — so at this line a present

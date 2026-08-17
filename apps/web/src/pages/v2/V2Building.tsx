@@ -8,13 +8,14 @@ import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lu
 import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
 import { assessReadiness } from '../../lib/api'
 import {
-  VIDEO_GOALS, VIDEO_GOAL_LABELS, CONTENT_FOCUS, CONTENT_FOCUS_LABELS,
-  VIEWER_OUTCOMES, VIEWER_OUTCOME_LABELS, type VideoGoal,
+  VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES,
+  INTENT_QUESTIONS, type IntentQuestion, type VideoGoal,
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE } from '../../lib/api'
 import { READINESS_INCOMPLETE_CODE } from '../../lib/api'
 import type { ReadinessQuestion } from '../../lib/api'
+import { isSupportedReference, platformFromUrl } from '@twinai/shared'
 import { useAuth } from '../../context/AuthContext'
 import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
@@ -40,18 +41,12 @@ const STEP_PCT = [12, 34, 58, 80, 94, 100]
 // creeps toward this ceiling instead: never still, never claiming to be done.
 const LAST_STEP_CEILING = 99
 
-// The hosts ingest-reference can actually fetch + transcribe (mirrors its
-// SSRF allow-list). A link to one of these gets truly READ; anything else
-// (or a described idea) falls back to pattern-mode generation.
-const SUPPORTED = ['tiktok.com', 'instagram.com', 'youtube.com', 'youtu.be']
-function isSupportedRef(url: string): boolean {
-  try {
-    const h = new URL(url.trim()).hostname.toLowerCase()
-    return SUPPORTED.some((d) => h === d || h.endsWith('.' + d))
-  } catch {
-    return false
-  }
-}
+// ⚠️ THE HOST LIST MOVED TO @twinai/shared, because there were two of them and
+// only one was ever consulted. This copy answered "is it supported?" while the
+// PLATFORM was taken from a parameter the client never sent — so 44 of 51
+// reference transcripts stored a NULL platform and the studio showed the
+// creator "unknown" beside a youtube.com link. One derivation now answers both.
+const isSupportedRef = (url: string): boolean => isSupportedReference(url)
 
 interface BuildState {
   reference_url?: string
@@ -145,46 +140,16 @@ function recallAnswers(key: string): Record<string, string> {
 }
 // ── THE THREE THINGS ONLY THE CREATOR KNOWS ABOUT *THIS* VIDEO ────────────
 //
-// ⚠️ MOVED OUT OF ADVANCED SETTINGS, AND THE MOVE IS THE FIX. "What this video
-// is for" sat in a collapsed panel two clicks from the button, beside two
-// EXECUTION preferences — so it defaulted to unset for almost everyone, and an
-// unset goal meant every script was told "NOT a selling video", including one
-// written for a founder who onboarded to sell.
+// ⚠️ THE QUESTIONS AND THEIR PLAIN-ENGLISH LABELS LIVE IN @twinai/shared, beside
+// the enums they map onto. They were defined here, which meant the wording and
+// the behaviour it selects could drift apart silently — and the wording is the
+// part a creator actually experiences.
 //
-// ⚖️ THREE QUESTIONS, EACH ANSWERING SOMETHING THE OTHERS DO NOT, and each one
-// wired to a different decision rather than to a different sentence:
-//   goal    -> the creative directive (breadth vs depth, selling pressure)
-//   focus   -> which knowledge is RETRIEVED at all
-//   outcome -> the substance floor and how the video ends
-// A chip apiece, so all three cost three taps rather than a form.
-//
-// ⚖️ AND NOTHING HERE ASKS WHAT TWIN ALREADY KNOWS. Audience, niche, formats,
-// habitual CTAs and the offer are scraped, stored, or asked once at onboarding.
-// These are the three facts no scan can ever recover, because they are about a
-// video that does not exist yet.
-interface ChipQuestion {
-  field: 'video_goal' | 'content_focus' | 'viewer_outcome'
-  question: string
-  options: readonly { value: string; label: string }[]
-}
-
-const INTENT_QUESTIONS: readonly ChipQuestion[] = [
-  {
-    field: 'video_goal',
-    question: 'What do you want this video to achieve?',
-    options: VIDEO_GOALS.map((g) => ({ value: g, label: VIDEO_GOAL_LABELS[g] })),
-  },
-  {
-    field: 'content_focus',
-    question: 'What do you want this video to focus on?',
-    options: CONTENT_FOCUS.map((f) => ({ value: f, label: CONTENT_FOCUS_LABELS[f] })),
-  },
-  {
-    field: 'viewer_outcome',
-    question: 'What should the viewer leave with?',
-    options: VIEWER_OUTCOMES.map((o) => ({ value: o, label: VIEWER_OUTCOME_LABELS[o] })),
-  },
-]
+// ⚖️ AND THE CARD CARRIES NO MAPPING LOGIC. A grouped option's sub-choices, the
+// values that are deliberately unreachable on screen, and the routing that keeps
+// a retired label's behaviour alive are all decided in one place. This file
+// renders what it is given.
+type ChipQuestion = IntentQuestion
 
 const INTENT_FIELDS: ReadonlySet<string> = new Set(INTENT_QUESTIONS.map((q) => q.field))
 
@@ -198,6 +163,17 @@ const isChip = (q: AskItem): q is ChipQuestion =>
  *  send it anyway. Unknown reads as unanswered, which is the safe state. */
 const asOneOf = <T extends string>(all: readonly T[], v: string | undefined): T | undefined =>
   (v && (all as readonly string[]).includes(v)) ? v as T : undefined
+
+// ⚠️ HOW MANY QUESTIONS MAY SHARE ONE CARD. Reported with a screenshot: three
+// chip rows and three free-text boxes, twenty-five options, in one scroll. The
+// three intent chips are the normal path; a readiness question is an exception
+// and more than one at a time is a form.
+//
+// ⚖️ THE CHIPS ARE NEVER TRIMMED — they are the contract, and dropping one would
+// silently unask a question whose answer changes retrieval. Only the free-text
+// tail is capped, and what is dropped is asked by the server a moment later if
+// it truly blocks.
+const MAX_TEXT_QUESTIONS = 1
 
 function rememberAsk(key: string, qs: AskItem[] | null): void {
   try {
@@ -396,7 +372,14 @@ export default function V2Building() {
             const verdict = assessReadiness({
               goal: state.goal ?? str(vBrief.goal) ?? null,
               angle: state.reference_note || refUrl || str(vBrief.idea) || null,
-              offer: str(vBrief.offer) ?? str(v?.profile?.offer) ?? null,
+              // ⚠️ THE CREATOR'S OWN WORDS ONLY. `profile.offer` is the scan's
+              // guess and the scan prompt forbids a blank, so passing it here
+              // made every creator "promoting" and put two mandatory product
+              // questions on the card — including for one whose stored answer
+              // was `nothing_to_sell`.
+              offer: str(vBrief.offer) ?? null,
+              // ⚖️ "Nothing to sell" is an ANSWER. Passing it through as the
+              // relationship keeps `assessReadiness` from treating it as a gap.
               relationship: str(vBrief.promotes) ?? null,
               cta: str(vBrief.cta) ?? null,
               audience: str(vBrief.audience) ?? str(v?.profile?.audience) ?? null,
@@ -417,7 +400,9 @@ export default function V2Building() {
             // would throw the creator's own answer away in front of them.
             const unanswered = INTENT_QUESTIONS.filter(
               (q) => !(answersRef.current[q.field] ?? '').trim())
-            const ask: AskItem[] = [...unanswered, ...missing]
+            // ⚖️ CAPPED, NOT DISCARDED. `assessReadiness` already orders these
+            // by what unblocks the most, so the first is the one worth asking.
+            const ask: AskItem[] = [...unanswered, ...missing.slice(0, MAX_TEXT_QUESTIONS)]
             if (ask.length && alive) {
               // No spend, no ingest, no wait — and `active` stays at 0 so the
               // bar does not pretend work is happening behind the card.
@@ -447,7 +432,7 @@ export default function V2Building() {
         if (willIngest && !transcript_id) {
           setIngesting(true)
           try {
-            const { jobId, transcriptId } = await ingestReference(refUrl)
+            const { jobId, transcriptId } = await ingestReference(refUrl, platformFromUrl(refUrl) ?? undefined)
             transcript_id = transcriptId // cache hit → immediate
             if (!transcript_id) {
               // Starts as the timeout, because that is what an answer that
@@ -659,33 +644,86 @@ export default function V2Building() {
                     // answers that map to decisions downstream; free text would
                     // have to be interpreted, and an interpretation is a guess
                     // wearing the creator's words.
+                    // ⚖️ A FRAGMENT: the chip branch is two siblings now — the
+                    // options row, and the sub-options row it can reveal.
+                    <>
                     <div className="mt-2.5 flex flex-wrap gap-2">
                       {q.options.map((o) => {
-                        const active = (askAnswers[q.field] ?? '') === o.value
+                        // A grouped option is chosen when ANY of its children is.
+                        const kids = o.options ?? []
+                        const picked = askAnswers[q.field] ?? ''
+                        const active = kids.length
+                          ? kids.some((c) => c.value === picked)
+                          : picked === o.value
                         return (
                           <button
                             key={o.value}
                             type="button"
                             aria-pressed={active}
+                            title={o.hint}
                             onClick={() => setAskAnswers((a) => {
                               // Tapping the active chip clears it, so a mis-tap
-                              // is one tap to undo rather than a reload.
-                              const next = { ...a, [q.field]: active ? '' : o.value }
+                              // is one tap to undo rather than a reload. A group
+                              // opens on its FIRST child, which the second row
+                              // then lets the creator change — so one tap is
+                              // always a complete answer.
+                              const next = {
+                                ...a,
+                                [q.field]: active ? '' : (kids[0]?.value ?? o.value),
+                              }
                               rememberAnswers(buildKey(state), next)
                               return next
                             })}
                             className={cn(
-                              'rounded-full border px-3 py-1.5 text-[13px] transition-colors',
+                              'rounded-full border px-3.5 py-2 text-left text-[13px] transition-colors',
                               active
                                 ? 'border-coral/50 bg-coral/[0.08] text-cream'
                                 : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20 hover:bg-white/[0.04]',
                             )}
                           >
-                            {o.label}
+                            <span className="block leading-tight">{o.label}</span>
+                            {/* ⚖️ THE HINT IS THE DISAMBIGUATION, so it only
+                                appears where two labels could be confused. */}
+                            {o.hint && (
+                              <span className="mt-0.5 block text-[11px] leading-snug text-stone">{o.hint}</span>
+                            )}
                           </button>
                         )
                       })}
                     </div>
+                    {/* ⚠️ THE SECOND LEVEL, REVEALED ONLY WHEN ITS GROUP IS OPEN.
+                        Comment, share and follow are three different endings and
+                        collapsing them internally would have thrown two payoffs
+                        away to save two chips. Grouping is visual; the behaviour
+                        stays whole. */}
+                    {q.options.filter((o) => o.options?.length
+                      && o.options.some((c) => c.value === (askAnswers[q.field] ?? '')))
+                      .map((group) => (
+                        <div key={`${group.value}-sub`} className="mt-2 flex flex-wrap gap-2 pl-1">
+                          {(group.options ?? []).map((c) => {
+                            const on = (askAnswers[q.field] ?? '') === c.value
+                            return (
+                              <button
+                                key={c.value}
+                                type="button"
+                                aria-pressed={on}
+                                onClick={() => setAskAnswers((a) => {
+                                  const next = { ...a, [q.field]: c.value }
+                                  rememberAnswers(buildKey(state), next)
+                                  return next
+                                })}
+                                className={cn(
+                                  'rounded-full border px-3 py-1.5 text-[12px] transition-colors',
+                                  on
+                                    ? 'border-coral/40 bg-coral/[0.06] text-cream'
+                                    : 'border-white/8 bg-white/[0.015] text-stone hover:border-white/15',
+                                )}
+                              >{c.label}</button>
+                            )
+                          })}
+                        </div>
+                      ))}
+                    </>
                   ) : (
                     <input
                       type="text"
@@ -711,7 +749,18 @@ export default function V2Building() {
               // Every question must be answered: each one is here because
               // guessing it would put a claim in the creator's mouth, so a
               // partial answer would send us back to the same refusal.
-              disabled={askQuestions.some((q) => !(askAnswers[q.field] ?? '').trim())}
+              // ⚠️ ONLY THE CHIPS BLOCK, AND THE OLD RULE WAS AN UNESCAPABLE CARD.
+              // Requiring every question meant a creator who picked all three
+              // chips and left the free-text boxes empty could not click this
+              // button at all — and those boxes fire from an INFERRED offer, so
+              // for most creators they were unanswerable as well as mandatory.
+              //
+              // ⚖️ THE CHIPS ARE THE CONTRACT. They are three taps, always
+              // answerable, and they are what the build actually needs. A
+              // readiness question left blank is a thinner script; a card that
+              // cannot be dismissed is no script at all.
+              disabled={askQuestions.some(
+                (q) => isChip(q) && !(askAnswers[q.field] ?? '').trim())}
               onClick={() => {
                 answersRef.current = { ...answersRef.current, ...askAnswers }
                 // ⚖️ THE ANSWERS OUTLIVE THE CARD, THE CARD DOES NOT. Keeping

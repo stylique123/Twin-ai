@@ -85,7 +85,6 @@ export const TYPE_LABEL: Partial<Record<EvidenceType, string>> = {
   subject_framing: 'Framing',
   caption_layout_cadence: 'Caption design',
   transition_types: 'Transitions',
-  b_roll_function: 'B-roll purpose',
   zoom_frequency_intensity: 'Zooms',
   music_energy_beat_alignment: 'Music',
   silence_and_visual_waste: 'Pacing of dead space',
