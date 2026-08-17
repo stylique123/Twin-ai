@@ -14,7 +14,7 @@ import {
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE } from '../../lib/api'
-import { READINESS_INCOMPLETE_CODE } from '../../lib/api'
+import { READINESS_INCOMPLETE_CODE, SELL_WITHOUT_TARGET_CODE } from '../../lib/api'
 import type { ReadinessQuestion } from '../../lib/api'
 import { isSupportedReference, platformFromUrl } from '@twinai/shared'
 import { useAuth } from '../../context/AuthContext'
@@ -205,6 +205,10 @@ export default function V2Building() {
   // is a decision about the INPUT, taken before any credit is spent, so the copy
   // says what to do next rather than apologising for a failure.
   const [unusableRef, setUnusableRef] = useState<string | null>(null)
+  // ⚖️ A CONTRADICTION, NOT A MISSING INPUT. Readiness asks a question because an
+  // answer would unblock the build; this one has no question — the goal and what
+  // the creator has to sell disagree, and only they can settle which was wrong.
+  const [contradiction, setContradiction] = useState<{ message: string; remedies: string[] } | null>(null)
   // ⚖️ A REFUSAL THAT ASKS, NOT ONE THAT APOLOGISES. The server could not settle
   // 1-3 inputs it needs to write confidently, so it declined to charge. This is
   // the reader for those questions — without it the server would be asking into
@@ -632,6 +636,15 @@ export default function V2Building() {
           setActive(0)
           return
         }
+        // Also not a failure and not a charge, and NOT answerable here.
+        if ((e as { code?: string } | null)?.code === SELL_WITHOUT_TARGET_CODE) {
+          setContradiction({
+            message: e instanceof Error ? e.message : 'This video is set to sell, but there is nothing to sell.',
+            remedies: (e as { remedies?: string[] }).remedies ?? [],
+          })
+          setActive(0)
+          return
+        }
         // Not a failure and not a charge — the build is waiting on the creator.
         if ((e as { code?: string } | null)?.code === READINESS_INCOMPLETE_CODE) {
           const qs = (e as { questions?: ReadinessQuestion[] }).questions ?? []
@@ -671,7 +684,7 @@ export default function V2Building() {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
       // Nothing to recover if the screen has already settled into an outcome.
-      if (error || unusableRef || askQuestions) return
+      if (error || unusableRef || contradiction || askQuestions) return
       const key = buildKey(state)
       void findGenerationByKey(key)
         .then((done) => { if (done) { setActive(STEPS.length); setPct(100); nav(`/result/${done.id}`, { replace: true }) } })
@@ -679,7 +692,7 @@ export default function V2Building() {
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [state, error, unusableRef, askQuestions, nav])
+  }, [state, error, unusableRef, contradiction, askQuestions, nav])
 
   const echo = state.reference_url ? 'From your reference link' : 'From your idea'
   const shownPct = Math.round(pct)
@@ -917,6 +930,24 @@ export default function V2Building() {
             >
               Create my version
             </button>
+            <button onClick={() => nav('/v2', { replace: true })} className="btn-ghost mt-3 w-full">Start over</button>
+          </div>
+        ) : contradiction ? (
+          // ⚠️ THE SELL/NO-OFFER CONTRADICTION, SHOWN AS WHAT IT IS. Before this
+          // it reached the writer as two opposing instructions in one prompt and
+          // the model picked one, so the creator paid for a script that either
+          // pitched nothing or sold something they had never told us about.
+          <div className="glass gradient-border p-7 text-center">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft"><LogoMark size={22} /></span>
+            <h2 className="mt-4 font-display text-2xl">Nothing to sell yet</h2>
+            <p className="mt-2 text-sm leading-relaxed text-stone">{contradiction.message}</p>
+            {contradiction.remedies.length > 0 && (
+              <ul className="mt-4 space-y-1.5 text-left text-sm text-sand">
+                {contradiction.remedies.map((r) => <li key={r}>· {r}</li>)}
+              </ul>
+            )}
+            <p className="mt-3 text-xs leading-relaxed text-stone/80">No remix was used.</p>
+            <button onClick={() => nav('/products')} className="btn-gradient mt-6 w-full">Open my Product Library</button>
             <button onClick={() => nav('/v2', { replace: true })} className="btn-ghost mt-3 w-full">Start over</button>
           </div>
         ) : unusableRef ? (

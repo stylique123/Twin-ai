@@ -3398,6 +3398,55 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // ── THE PLAN IS CERTIFIED, NOT TRUSTED ────────────────────────────────────
+  //
+  // ⚠️ THE SELL/NO-OFFER CONTRADICTION, DECIDED HERE RATHER THAN IN A PROMPT.
+  // A creator whose goal is "sell something" with nothing to sell produces two
+  // instructions in one prompt: the goal directive says SELL THE OFFER and name
+  // it plainly, and the relationship line says NO COMMERCIAL CTA whatever the
+  // stated goal. Both are correct in isolation; a model handed the pair picks
+  // one, and nobody decided which. `pipeline-scenarios.test.ts` pins that.
+  //
+  // ⚖️ SO THE COMBINATION IS REFUSED, ABOVE `spend_credits`, WITH THE WORDS THE
+  // CREATOR CAN ACT ON. Nothing is charged for discovering a contradiction in
+  // our own inputs — the same trade the readiness gate already makes one screen
+  // earlier.
+  //
+  // ⚠️ AND ONLY `sell` GATES ON A PRODUCT. `leads` is the trap: a coach, a
+  // consultant or a realtor generates leads with an empty library, because "DM
+  // me" and "book a call" need no product entity. `sell` asks the viewer to buy
+  // a THING, and a thing that does not exist cannot be bought.
+  //
+  // Mirrors `validateCreativeDecisionPlan` in
+  // packages/shared/src/creativeDecisionPlan.ts, inlined because Deno cannot
+  // import the shared package, and held identical by `cdpEdgeParity.test.ts`.
+  const CDP_COMMERCIAL_RELATIONSHIPS = ['OWN_PRODUCT', 'OWN_SERVICE', 'AFFILIATE', 'SPONSOR']
+  const cdpObjective = String(body.goal ?? '')
+  // ⚖️ THREE THINGS COUNT AS SOMETHING TO SELL, and an affiliate tie counts as
+  // much as ownership — an affiliate may not say "ours" and may absolutely say
+  // "go and get it". Reading only the owned row would refuse them a video they
+  // are entitled to.
+  const cdpHasTarget = Boolean(ownedEntity)
+    || csEntities.some((e) => CDP_COMMERCIAL_RELATIONSHIPS.includes(String(e.relationship ?? '').toUpperCase()))
+    || readyPresent(brief.offer)
+  if (cdpObjective === 'sell' && !cdpHasTarget) {
+    console.log(JSON.stringify({
+      event: 'cdp_refused',
+      code: 'SELL_WITHOUT_COMMERCIAL_TARGET',
+      user_id: user.id,
+      voice_id: voice?.id ?? null,
+    }))
+    return json({
+      code: 'SELL_WITHOUT_COMMERCIAL_TARGET',
+      error: 'You asked for a video that sells, but nothing is selected to sell.',
+      remedies: [
+        'Pick a product or service for this video',
+        'Add one to your Product Library',
+        'Change what this video is for',
+      ],
+    }, 409)
+  }
+
   // Spend credits atomically BEFORE the model call. Refund on failure.
   const { error: spendErr } = await admin.rpc('spend_credits', {
     p_user: ownerId,
