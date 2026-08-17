@@ -12,8 +12,9 @@
 import { readFileSync } from 'node:fs'
 // ⚠️ IMPORTED, NEVER RESTATED. This file carried its own copy of the sell
 // pattern AND its own goal-only permission rule — the fourth and fifth copies
-// of a rule production had already replaced. `check_cta_permission_authority`
-// found it. One authority, imported, or the copies drift apart again.
+// of a rule production had already replaced. One authority, imported, or the
+// copies drift apart again — `no-goal-grants-a-commercial-ask.test.ts` fails if
+// this file ever restates it.
 import { SELL, mayPitch, relationshipFor } from './score-matrix.mjs'
 
 // Every check reads the SPOKEN fields, never the metadata beside them. A run
