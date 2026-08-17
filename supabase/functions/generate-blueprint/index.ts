@@ -5225,6 +5225,50 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         .update({ generation_id: gen.id })
         .eq('run_id', scriptRunId)
         .then(({ error }) => { if (error) console.warn('attempts not linked:', error.message) })
+
+      // ── WHAT THE CREATOR CHOSE, KEPT (0137) ──────────────────────────────
+      //
+      // ⚠️ 41 GENERATIONS HAD PRODUCED ZERO RECORDS OF THIS. The goal, focus and
+      // reference preference reached the writer and were then gone — absent from
+      // `generations`, `blueprint` and `beat_audit` alike. So "does anyone ever
+      // pick `authority`?" had no answer, and neither did "how often is `sell`
+      // chosen with nothing to sell", which is the rate a pending safety fix
+      // needs before it can be built on evidence rather than a guess.
+      //
+      // ⚖️ AFTER THE GENERATION EXISTS, AND IT CANNOT FAIL THE BUILD. The row is
+      // an observation about a script that already succeeded and was already
+      // charged for; losing the observation is a gap in analytics, while
+      // throwing here would lose the creator their paid script. A warning is the
+      // correct severity, and the FK means a deleted video takes its choice with
+      // it rather than leaving an orphan to be counted.
+      await admin.from('generation_choices')
+        .insert({
+          generation_id: gen.id,
+          owner_id: user.id,
+          // ⚖️ WHAT WAS ACTUALLY CHOSEN, INCLUDING NOTHING. A creator who picked
+          // no goal is a real and interesting case — it is the silence the
+          // intent compiler treats as "no directive" — so it is stored as null
+          // rather than defaulted into looking like a choice.
+          // ⚠️ FROM THE REQUEST, NOT FROM THE LOCAL `goal`. In this scope `goal`
+          // is `intent.goalDirective` — a paragraph of instructions to the model,
+          // not the enum the creator picked — so reading it here would have
+          // filled this table with essays and made every count meaningless. The
+          // edge parse check does not catch that: the name resolves, to the
+          // wrong thing.
+          //
+          // ⚖️ STORED AS SENT, NOT NARROWED TO THE CURRENT ENUM. A value retired
+          // between the choice and the query is exactly the history worth
+          // keeping, and dropping it would silently under-count the past. Length
+          // is capped because this is untrusted request input.
+          selected_goal: typeof body.goal === 'string' && body.goal.trim() !== ''
+            ? body.goal.trim().slice(0, 64) : null,
+          selected_focus: typeof body.focus === 'string' && body.focus.trim() !== ''
+            ? body.focus.trim().slice(0, 64) : null,
+          reference_use: typeof body.reference_use === 'string' && body.reference_use.trim() !== ''
+            ? body.reference_use.trim().slice(0, 64) : null,
+          selected_product_id: ownedEntity?.id ?? null,
+        })
+        .then(({ error }) => { if (error) console.warn('choices not recorded:', error.message) })
     }
     // THE RACE THE REPLAY CHECK CANNOT CATCH. Two requests carrying the same key
     // can both pass the lookup above before either has inserted — a double-click
