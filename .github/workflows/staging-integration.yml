@@ -374,6 +374,13 @@ jobs:
           # matrix without staging ever applying it, while its own PR said
           # "draft until the staging matrix runs the migration". Renumbering
           # past 0117 is what forced this decision to be made explicitly.
+          # 0140 and 0141 finish what 0139 started, and 0141's rule is the one
+          # `check_client_write_grants.sql` asserts immediately after — the
+          # migration and the guard are deliberately the same sentence, so a
+          # future policy change cannot leave one of them stale. Both applied to
+          # staging by hand first. 0140 exists because row security does NOT gate
+          # TRUNCATE, which is the assumption 0139 got wrong.
+          #
           # 0139 revokes write grants that RLS already refuses, on twelve tables
           # written only by the service role. APPLIED rather than excluded, and
           # APPLIED TO STAGING BY HAND FIRST to prove it can be — staging has
@@ -381,10 +388,17 @@ jobs:
           # `to_regclass` precisely so a missing table is skipped rather than
           # aborting. Excusing it would leave the one environment that could
           # catch a grant drift permanently unable to see one.
-          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component 0102_editor_review_gate 0104_brand_glossary 0110_reference_analysis_provenance 0111_approval_binds_output 0114_delete_a_video_deletes_it 0118_drop_legacy_takes_insert_policy 0119_blueprint_idempotency 0127_script_edits 0128_creator_questions_put 0129_script_attempts 0130_generation_selection 0131_generation_beat_audit 0132_director_failure_detail 0134_hook_choice_provenance 0136_brief_carries_the_six_answers 0137_generation_choices 0139_revoke_writes_nobody_uses; do
+          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component 0102_editor_review_gate 0104_brand_glossary 0110_reference_analysis_provenance 0111_approval_binds_output 0114_delete_a_video_deletes_it 0118_drop_legacy_takes_insert_policy 0119_blueprint_idempotency 0127_script_edits 0128_creator_questions_put 0129_script_attempts 0130_generation_selection 0131_generation_beat_audit 0132_director_failure_detail 0134_hook_choice_provenance 0136_brief_carries_the_six_answers 0137_generation_choices 0139_revoke_writes_nobody_uses 0140_no_client_may_truncate 0141_a_grant_needs_a_policy; do
             echo "== applying $f =="
             psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f.sql"
           done
+          # ⚖️ THE INVARIANT, ASSERTED AGAINST A REAL SCHEMA RATHER THAN AGAINST
+          # THE MIGRATION FILES. A guard that read the .sql would pass on a
+          # database nobody had applied them to — which is the exact class of
+          # failure the coverage guard above exists for. This runs last, after
+          # every migration, so it sees the schema the matrix is about to test.
+          echo "== asserting client write grants =="
+          psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f scripts/ci/check_client_write_grants.sql
           # STAGING-ONLY fixture, never a migration: staging is a purpose-built
           # editor test bed with no brand tables, and the Phase-7 Boot Manifest now
           # pins the brand snapshot CONTENT, so every editor_v2 job reads
