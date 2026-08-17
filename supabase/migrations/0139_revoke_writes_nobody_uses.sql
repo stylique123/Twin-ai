@@ -14,26 +14,37 @@
 -- go wrong; right now only one does.
 --
 -- These twelve are written exclusively by the service role, which BYPASSES RLS
--- and is unaffected by anything below. `TRUNCATE` in particular has no legitimate
--- client caller anywhere in this product.
+-- and is unaffected by anything below. `TRUNCATE` in particular has no
+-- legitimate client caller anywhere in this product.
 --
--- REVOKE, NOT `GRANT SELECT`. An earlier migration in this repo learned that
+-- ⚖️ REVOKE, NOT `GRANT SELECT`. An earlier migration in this repo learned that
 -- `grant select` ADDS a privilege rather than replacing the set — writing the
 -- narrow grant would have left every write grant in place while reading as if it
 -- had removed them.
-
-revoke insert, update, delete, truncate on table public.admin_audit_log from anon, authenticated;
-revoke insert, update, delete, truncate on table public.billing_events from anon, authenticated;
-revoke insert, update, delete, truncate on table public.credit_events from anon, authenticated;
-revoke insert, update, delete, truncate on table public.dna_claims from anon, authenticated;
-revoke insert, update, delete, truncate on table public.edit_review_overlays from anon, authenticated;
-revoke insert, update, delete, truncate on table public.jobs from anon, authenticated;
-revoke insert, update, delete, truncate on table public.rate_events from anon, authenticated;
-revoke insert, update, delete, truncate on table public.referrals from anon, authenticated;
-revoke insert, update, delete, truncate on table public.script_attempts from anon, authenticated;
-revoke insert, update, delete, truncate on table public.subscriptions from anon, authenticated;
-revoke insert, update, delete, truncate on table public.transcripts from anon, authenticated;
-revoke insert, update, delete, truncate on table public.workspace_invites from anon, authenticated;
+--
+-- ⚠️ AND IT SKIPS A TABLE THAT IS NOT THERE, WHICH IS WHY THIS IS A LOOP RATHER
+-- THAN TWELVE STATEMENTS. Staging has five of these twelve; the rest belong to
+-- billing, admin and workspace features it has never needed. A flat `revoke`
+-- would abort the whole migration on the first absent table, which would force
+-- this to be EXCLUDED from the staging matrix — and an excluded migration is one
+-- staging can never rehearse. A grant cannot exist on a table that does not
+-- exist, so skipping is not a weakened check; it is the same check, correctly
+-- scoped to what is present.
+do $$
+declare
+  t text;
+begin
+  foreach t in array array[
+    'admin_audit_log', 'billing_events', 'credit_events', 'dna_claims',
+    'edit_review_overlays', 'jobs', 'rate_events', 'referrals',
+    'script_attempts', 'subscriptions', 'transcripts', 'workspace_invites'
+  ] loop
+    if to_regclass('public.' || t) is not null then
+      execute format(
+        'revoke insert, update, delete, truncate on table public.%I from anon, authenticated', t);
+    end if;
+  end loop;
+end $$;
 
 -- SELECT IS DELIBERATELY UNTOUCHED. Several of these are read by the client
 -- under an owner-scoped read policy — a creator sees their own credit events and
