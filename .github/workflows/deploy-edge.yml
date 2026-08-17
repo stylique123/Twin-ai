@@ -46,9 +46,13 @@ jobs:
           # security decision — say why in the same commit.
           #   ci-bootstrap — vends the project's service-role key to CI.
           STAGING_ONLY="ci-bootstrap"
+          # product-image — the Product Library's photo upload. Production: the
+          # client has no insert policy on the `edits` bucket, so this
+          # service-role hop is the only way a creator's own photograph of their
+          # product reaches storage. Owner-prefixed path, content-type allow-list.
           PROD="admin admin-metrics billing billing-webhook brand-logo brand-truth clip-asset \
                 dna-poll editor-output generate-blueprint generate-thumbnail ingest-reference \
-                referral review social source-asset start-dna start-editor-v2"
+                product-image referral review social source-asset start-dna start-editor-v2"
 
           unclassified=""
           for d in supabase/functions/*/; do
