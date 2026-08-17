@@ -83,7 +83,7 @@
   },
   "commercialTies": {
    "readBy": [],
-   "unwiredReason": "Read by the PROFILE SURFACE, not by the writer: profileCompletion gates the 'what you sell' item and productDnaStatus, and productSuggestionConfidence uses it to suppress suggestions for a creator who said they sell nothing. generate-blueprint does not consult it, so a script still cannot tell an affiliate from an owner. Wiring it there is what makes a sponsored video disclose."
+   "unwiredReason": "Read by the PROFILE SURFACE only: profileCompletion gates the 'what you sell' item and productDnaStatus, and productSuggestionConfidence uses it to suppress suggestions for a creator who said they sell nothing. ⚠️ AN EARLIER VERSION OF THIS REASON CLAIMED a script 'cannot tell an affiliate from an owner', AND THAT WAS WRONG — checked against the edge rather than asserted. `brief.promotes` already reaches the prompt with per-relationship instructions, including the non-optional disclosure for affiliate and sponsor, and the claimed entity carries ownership. So this key is a SECOND CHANNEL for a fact the writer already has. ⚖️ Wiring it as-is would add a second interpretation of one fact, which is the drift the ProfileAssembler exists to end; the right consumer is the canonical CreatorProfile, where `promotes` and this answer are reconciled once."
   },
   "contentGoals": {
    "readBy": [],
@@ -94,8 +94,9 @@
    "unwiredReason": "Read by profileCompletion for the formats item. Nothing recommends references from it yet, which is the reader it is waiting for."
   },
   "audienceKnowledge": {
-   "readBy": [],
-   "unwiredReason": "Stored by onboarding and read only by creatorProfileQuestions, to decide which later questions to ask. No script consumer: the writer is told who the audience IS but not what they already KNOW, so it cannot yet skip an explanation a specialist audience does not need."
+   "readBy": [
+    "supabase/functions/generate-blueprint/index.ts"
+   ]
   },
   "formatExploration": {
    "readBy": [],

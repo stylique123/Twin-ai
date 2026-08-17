@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
+import { loadProductEntities } from '../../lib/api'
+import type { ProductEntityRecord } from '../../lib/api'
 import { assessReadiness, isCommercialField } from '../../lib/api'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import {
@@ -14,7 +16,7 @@ import {
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE } from '../../lib/api'
-import { READINESS_INCOMPLETE_CODE } from '../../lib/api'
+import { READINESS_INCOMPLETE_CODE, SELL_WITHOUT_TARGET_CODE } from '../../lib/api'
 import type { ReadinessQuestion } from '../../lib/api'
 import { isSupportedReference, platformFromUrl } from '@twinai/shared'
 import { useAuth } from '../../context/AuthContext'
@@ -205,6 +207,19 @@ export default function V2Building() {
   // is a decision about the INPUT, taken before any credit is spent, so the copy
   // says what to do next rather than apologising for a failure.
   const [unusableRef, setUnusableRef] = useState<string | null>(null)
+  // ⚖️ A CONTRADICTION, NOT A MISSING INPUT. Readiness asks a question because an
+  // answer would unblock the build; this one has no question — the goal and what
+  // the creator has to sell disagree, and only they can settle which was wrong.
+  const [contradiction, setContradiction] = useState<{ message: string; remedies: string[] } | null>(null)
+  /** ⚠️ THE OFFER QUESTION WAS A BLANK TEXT BOX FOR A THING WE ALREADY KNOW. A
+   *  creator who registered a product then had to type its name from memory, and
+   *  whatever they typed — a nickname, a typo, a different product — became what
+   *  the script pointed at, with no link back to the entity carrying its facts,
+   *  its permissions and its photos.
+   *
+   *  ⚖️ SO THE ANSWER IS A CARD, AND TYPING IS THE FALLBACK. Null means the
+   *  library has not been read yet, which is not the same as an empty library. */
+  const [products, setProducts] = useState<ProductEntityRecord[] | null>(null)
   // ⚖️ A REFUSAL THAT ASKS, NOT ONE THAT APOLOGISES. The server could not settle
   // 1-3 inputs it needs to write confidently, so it declined to charge. This is
   // the reader for those questions — without it the server would be asking into
@@ -632,6 +647,15 @@ export default function V2Building() {
           setActive(0)
           return
         }
+        // Also not a failure and not a charge, and NOT answerable here.
+        if ((e as { code?: string } | null)?.code === SELL_WITHOUT_TARGET_CODE) {
+          setContradiction({
+            message: e instanceof Error ? e.message : 'This video is set to sell, but there is nothing to sell.',
+            remedies: (e as { remedies?: string[] }).remedies ?? [],
+          })
+          setActive(0)
+          return
+        }
         // Not a failure and not a charge — the build is waiting on the creator.
         if ((e as { code?: string } | null)?.code === READINESS_INCOMPLETE_CODE) {
           const qs = (e as { questions?: ReadinessQuestion[] }).questions ?? []
@@ -671,7 +695,7 @@ export default function V2Building() {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
       // Nothing to recover if the screen has already settled into an outcome.
-      if (error || unusableRef || askQuestions) return
+      if (error || unusableRef || contradiction || askQuestions) return
       const key = buildKey(state)
       void findGenerationByKey(key)
         .then((done) => { if (done) { setActive(STEPS.length); setPct(100); nav(`/result/${done.id}`, { replace: true }) } })
@@ -679,7 +703,7 @@ export default function V2Building() {
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [state, error, unusableRef, askQuestions, nav])
+  }, [state, error, unusableRef, contradiction, askQuestions, nav])
 
   const echo = state.reference_url ? 'From your reference link' : 'From your idea'
   const shownPct = Math.round(pct)
@@ -706,6 +730,20 @@ export default function V2Building() {
   // other item fires from an inferred offer and is answered in the creator's own
   // words. Introducing a second, parallel notion of "which block is this" would
   // be a field that can disagree with the renderer.
+  // ⚖️ LOADED ONLY WHEN SOMETHING IS BEING ASKED. On the ordinary path — no
+  // questions, the build just runs — the library is never read, because a fetch
+  // nobody's answer depends on is a fetch that can only slow a build down.
+  useEffect(() => {
+    if (!askQuestions?.some((q) => q.field === 'offer') || products !== null) return
+    let alive = true
+    loadProductEntities()
+      .then((rows) => { if (alive) setProducts(rows) })
+      // ⚖️ A FAILED READ FALLS BACK TO TYPING RATHER THAN BLOCKING THE ANSWER.
+      // [] would claim the creator has no products, which is a different thing.
+      .catch(() => { if (alive) setProducts([]) })
+    return () => { alive = false }
+  }, [askQuestions, products])
+
   const decisions = (askQuestions ?? []).filter(isChip)
   const commercial = (askQuestions ?? []).filter((q) => !isChip(q))
   const hasTwoBlocks = decisions.length > 0 && commercial.length > 0
@@ -801,6 +839,66 @@ export default function V2Building() {
                       })}
                     </div>
                   ))}
+                </>
+              ) : q.field === 'offer' && (products?.length ?? 0) > 0 ? (
+                // ⚠️ THE ONE QUESTION WHOSE ANSWER WE ALREADY HAVE. Asking a
+                // creator to retype a product they registered is asking them to
+                // be their own database — and the string they type has no way
+                // back to the entity that carries the product's facts, its
+                // permissions and its photos.
+                <>
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  {(products ?? []).map((pr) => {
+                    const label = (pr.name ?? '').trim() || 'Unnamed product'
+                    const active = (askAnswers[q.field] ?? '') === label
+                    return (
+                      <button
+                        key={pr.id}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setAskAnswers((a) => {
+                          const next = { ...a, [q.field]: active ? '' : label }
+                          rememberAnswers(buildKey(state), next)
+                          return next
+                        })}
+                        className={cn(
+                          'rounded-xl border px-3.5 py-2 text-left text-[13px] transition-colors',
+                          active
+                            ? 'border-coral/50 bg-coral/[0.08] text-cream'
+                            : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20 hover:bg-white/[0.04]',
+                        )}
+                      >
+                        <span className="block leading-tight">{label}</span>
+                        {/* ⚖️ WHAT TWIN KNOWS ABOUT IT, SO THE CHOICE IS
+                            INFORMED. A creator with two products picks better
+                            knowing one has been read and the other has not. */}
+                        <span className="mt-0.5 block text-[11px] leading-snug text-stone">
+                          {pr.knowledge === null
+                            ? 'Twin has not read this one yet'
+                            : pr.knowledge.length === 0
+                              ? 'Nothing usable found on its page'
+                              : `${pr.knowledge.length} thing${pr.knowledge.length === 1 ? '' : 's'} Twin can say about it`}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                {/* ⚖️ TYPING STAYS, BECAUSE THE LIBRARY IS NOT THE ONLY TRUTH.
+                    A creator may be pointing this video at something they have
+                    not registered, and a picker with no way out would make the
+                    Product Library the price of answering a question. */}
+                <input
+                  type="text"
+                  autoComplete="off"
+                  value={askAnswers[q.field] ?? ''}
+                  onChange={(ev) => setAskAnswers((a) => {
+                    const next = { ...a, [q.field]: ev.target.value }
+                    rememberAnswers(buildKey(state), next)
+                    return next
+                  })}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+                  placeholder="Or type something else"
+                />
                 </>
               ) : (
                 <input
@@ -917,6 +1015,24 @@ export default function V2Building() {
             >
               Create my version
             </button>
+            <button onClick={() => nav('/v2', { replace: true })} className="btn-ghost mt-3 w-full">Start over</button>
+          </div>
+        ) : contradiction ? (
+          // ⚠️ THE SELL/NO-OFFER CONTRADICTION, SHOWN AS WHAT IT IS. Before this
+          // it reached the writer as two opposing instructions in one prompt and
+          // the model picked one, so the creator paid for a script that either
+          // pitched nothing or sold something they had never told us about.
+          <div className="glass gradient-border p-7 text-center">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft"><LogoMark size={22} /></span>
+            <h2 className="mt-4 font-display text-2xl">Nothing to sell yet</h2>
+            <p className="mt-2 text-sm leading-relaxed text-stone">{contradiction.message}</p>
+            {contradiction.remedies.length > 0 && (
+              <ul className="mt-4 space-y-1.5 text-left text-sm text-sand">
+                {contradiction.remedies.map((r) => <li key={r}>· {r}</li>)}
+              </ul>
+            )}
+            <p className="mt-3 text-xs leading-relaxed text-stone/80">No remix was used.</p>
+            <button onClick={() => nav('/products')} className="btn-gradient mt-6 w-full">Open my Product Library</button>
             <button onClick={() => nav('/v2', { replace: true })} className="btn-ghost mt-3 w-full">Start over</button>
           </div>
         ) : unusableRef ? (

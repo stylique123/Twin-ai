@@ -36,12 +36,14 @@
 // still costs an explicit assertion. What the suggestion saves is typing, which
 // is the difference between a page nobody fills in and one they finish.
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation,
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
   requestProductExtraction, confirmProductFacts, uploadProductImage,
   listBrandVoices, OwnedEntityExistsError, ProductLibraryFullError,
-  isStale, factAgeDays,
+  isStale, factAgeDays, SOURCE_LABEL, sourceWarrantsAttention,
+  signEditUrls,
   bestSuggestion,
   type ProductSuggestion,
 } from '@twinai/shared'
@@ -228,6 +230,26 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
   )
 }
 
+/** ⚖️ FOUR, MATCHING THE ADD FORM. One number, so "you can add four" and "you
+ *  may add two more" can never disagree. */
+const PHOTO_SLOTS = 4
+
+/** The creator's own photographs of a product, in the order they gave them.
+ *
+ *  ⚠️ ONLY PHOTOGRAPHS, NEVER PAGE BANDS. `evidence.sections` holds both — a
+ *  captured page is stored the same way — and showing a screenshot of somebody's
+ *  store page back to them under the heading "Your photos" would be a lie about
+ *  where it came from, which is the whole failure the provenance work exists to
+ *  stop. `form: 'images'` is what distinguishes them. */
+function photoPathsOf(e: ProductEntityRecord): string[] {
+  const ev = e.evidence
+  if (!ev || ev === 'declined' || ev.form !== 'images') return []
+  return [...ev.sections]
+    .sort((a, b) => a.order - b.order)
+    .map((x) => x.imagePath)
+    .filter(Boolean)
+}
+
 export default function ProductLibrary() {
   const [entities, setEntities] = useState<ProductEntityRecord[] | null>(null)
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([])
@@ -236,7 +258,12 @@ export default function ProductLibrary() {
   const [saved, setSaved] = useState<string | null>(null)
   const [claimingId, setClaimingId] = useState<string | null>(null)
   // `addingNew` is the same attestation with no suggestion behind it.
-  const [addingNew, setAddingNew] = useState(false)
+  /** ⚠️ SETTINGS PROMISES "Add a product →" AND MUST NOT LAND SOMEBODY ON A LIST
+   *  TO FIND THE BUTTON AGAIN. A deep link with no reader is the same dead
+   *  affordance the Settings rebuild exists to remove — it just fails one screen
+   *  later, where it is harder to notice. */
+  const [params] = useSearchParams()
+  const [addingNew, setAddingNew] = useState(params.get('add') === '1')
   // Removal is confirmed in place rather than with a window.confirm, so the
   // consequence can be SPELLED OUT — a browser dialog cannot say what is lost.
   const [removingId, setRemovingId] = useState<string | null>(null)
@@ -248,6 +275,17 @@ export default function ProductLibrary() {
   const [claimBusy, setClaimBusy] = useState(false)
   const { session } = useAuth()
   const [voiceId, setVoiceId] = useState<string | null>(null)
+  // ⚠️ THE ARCHIVED LIST USED TO SIT BELOW EVERYTHING, so a creator with four
+  // products scrolled past four full editors to reach it — and the suggestions,
+  // the one part of the page that asks for a decision, sat below THAT.
+  //
+  // ⚖️ TABS IN PLAIN ENGLISH, NOT "Active"/"Archived". "In use" and "Not in use"
+  // say what Twin will do with them, which is the only thing the distinction
+  // means; the internal word is `archived_at` and the creator never needs it.
+  const [tab, setTab] = useState<'live' | 'retired'>('live')
+  /** Storage path → signed URL, for photos already attached to a product. */
+  const [thumbs, setThumbs] = useState<Record<string, string>>({})
+  const [addingPhotoTo, setAddingPhotoTo] = useState<string | null>(null)
 
   // ── ONE SUGGESTION, WITH ITS EVIDENCE, OR NONE ────────────────────────────
   //
@@ -272,6 +310,54 @@ export default function ProductLibrary() {
   })()
   const picked = bestSuggestion(suggestions, ties)
 
+  /** ⚖️ SIGNING FAILS QUIETLY, PER PATH. A picture that will not sign is a
+   *  missing thumbnail; it must never blank the product it belongs to. */
+  async function signThumbs(rows: readonly ProductEntityRecord[]) {
+    const paths = rows.flatMap((r) => photoPathsOf(r))
+    if (paths.length === 0) return
+    try {
+      const signed = await signEditUrls(paths)
+      setThumbs((prev) => ({ ...prev, ...signed }))
+    } catch { /* a thumbnail is a convenience */ }
+  }
+
+  /** Add photos to a product that already exists.
+   *
+   *  ⚠️ THE GALLERY WAS WRITE-ONCE. Photos could only be attached while adding
+   *  the product; afterwards there was no way in, so a creator who shot better
+   *  pictures a week later had to delete and re-add the thing — losing its
+   *  facts, its confirmations and its history to change a picture.
+   *
+   *  ⚖️ AND UPLOADING RE-READS. New pictures are new evidence; storing them
+   *  without extraction would leave the writer working from the old set while
+   *  the page showed the new one, which is the worst of both. */
+  async function addPhotosTo(entity: ProductEntityRecord, files: FileList | null) {
+    const ownerId = session?.user?.id
+    if (!ownerId || !files || files.length === 0) return
+    const existing = photoPathsOf(entity)
+    const room = PHOTO_SLOTS - existing.length
+    if (room <= 0) return
+    setAddingPhotoTo(entity.id); setErr(null)
+    try {
+      const added: string[] = []
+      for (const file of Array.from(files).slice(0, room)) {
+        const dataUrl: string = await new Promise((res, rej) => {
+          const r = new FileReader()
+          r.onload = () => res(String(r.result)); r.onerror = rej
+          r.readAsDataURL(file)
+        })
+        added.push(await uploadProductImage(dataUrl))
+      }
+      if (added.length === 0) return
+      await requestProductExtraction(ownerId, entity.id, entity.productUrl ?? '', [...existing, ...added])
+      const signed = await signEditUrls(added)
+      setThumbs((prev) => ({ ...prev, ...signed }))
+      setSaved(entity.id)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'That photo could not be added.')
+    } finally { setAddingPhotoTo(null) }
+  }
+
   useEffect(() => {
     let alive = true
     ;(async () => {
@@ -279,6 +365,12 @@ export default function ProductLibrary() {
         const rows = await loadProductEntities()
         if (!alive) return
         setEntities(rows)
+        // ⚖️ THE PHOTOS EXISTED AND NOBODY COULD SEE THEM. A creator uploaded up
+        // to four pictures at add time, extraction read them, and the page then
+        // showed only the words it got out of them — so "did my photo arrive"
+        // was unanswerable, and re-uploading the same picture was the only way
+        // to find out. `edits` is private, so they have to be signed to render.
+        void signThumbs(rows)
         // ⚖️ SUGGESTIONS ARE LOADED SEPARATELY AND MAY FAIL ALONE. They are a
         // convenience; the entities are the page. A knowledge-table error must
         // not blank out the products a creator actually registered.
@@ -482,7 +574,23 @@ export default function ProductLibrary() {
 
       {err && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
 
-      {entities.length === 0 && !addingNew && (
+      {/* ⚖️ THE SECOND TAB APPEARS ONLY WHEN THERE IS SOMETHING IN IT. A creator
+          who has never retired a product should not be shown an empty room and
+          asked to wonder what belongs in it. */}
+      {(archivedAll ?? []).filter((a) => a.archivedAt).length > 0 && (
+        <div className="flex gap-1 rounded-lg bg-white/[0.04] p-1 text-sm">
+          {([['live', 'In use'], ['retired', 'Not in use']] as const).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setTab(k)}
+              className={`flex-1 rounded-md px-3 py-1.5 ${tab === k ? 'bg-white/10 text-white' : 'text-sand'}`}
+            >{label}</button>
+          ))}
+        </div>
+      )}
+
+      {tab === 'live' && entities.length === 0 && !addingNew && (
         <div className="rounded-lg border border-white/10 px-4 py-6 text-sm text-sand">
           <p>
             You have not registered a product yet. Until you do, your scripts will not assume
@@ -524,7 +632,7 @@ export default function ProductLibrary() {
         </section>
       )}
 
-      {entities.length > 0 && !addingNew && (
+      {tab === 'live' && entities.length > 0 && !addingNew && (
         <button
           type="button"
           className="rounded-lg border border-white/15 px-3 py-1.5 text-sm"
@@ -532,7 +640,7 @@ export default function ProductLibrary() {
         >Add another product</button>
       )}
 
-      {entities.map((e) => (
+      {(tab === 'live' ? entities : []).map((e) => (
         <section key={e.id} className="rounded-xl border border-white/10 p-4">
           <label className="block text-xs font-medium uppercase tracking-wide text-stone">
             Name
@@ -582,6 +690,50 @@ export default function ProductLibrary() {
               ))}
             </div>
           </fieldset>
+
+          {/* ── WHAT IT LOOKS LIKE ───────────────────────────────────────
+              ⚠️ THE PHOTOS WERE WRITE-ONCE AND INVISIBLE. They could be attached
+              only while adding the product, and afterwards the page showed the
+              WORDS extraction got out of them and never the pictures — so "did
+              my photo arrive" had no answer, and changing one meant deleting the
+              product and losing its facts, confirmations and history.
+              ⚖️ SLOTS RATHER THAN A COUNTER. Four squares say how many there are
+              and how many are left in one glance, without a sentence doing
+              arithmetic at the creator. */}
+          <div className="mt-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-stone">Photos of it</p>
+            <p className="mt-1 text-xs text-stone">
+              Your own pictures of the thing. Twin reads them for what it can see, and
+              never states a price or a claim from a photo.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {photoPathsOf(e).map((path, i) => (
+                <div key={path} className="h-16 w-16 overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
+                  {thumbs[path]
+                    ? <img src={thumbs[path]} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
+                    : <span className="grid h-full w-full place-items-center text-[10px] text-stone">…</span>}
+                </div>
+              ))}
+              {photoPathsOf(e).length < PHOTO_SLOTS && (
+                <label className="grid h-16 w-16 cursor-pointer place-items-center rounded-lg border border-dashed border-white/20 text-xs text-sand">
+                  {addingPhotoTo === e.id ? '…' : '+'}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    multiple
+                    className="hidden"
+                    disabled={addingPhotoTo === e.id}
+                    onChange={(ev) => { void addPhotosTo(e, ev.target.files); ev.target.value = '' }}
+                  />
+                </label>
+              )}
+            </div>
+            {addingPhotoTo === e.id && (
+              <p className="mt-2 text-xs text-stone">
+                Uploading, then re-reading everything you have given us about this product.
+              </p>
+            )}
+          </div>
 
           {/* ── WHAT TWIN KNOWS ABOUT THIS PRODUCT ───────────────────────
               ⚖️ NULL AND EMPTY SAY DIFFERENT THINGS. "Never extracted" offers a
@@ -727,10 +879,9 @@ export default function ProductLibrary() {
         </section>
       ))}
 
-      {(archivedAll ?? []).filter((a) => a.archivedAt).length > 0 && (
+      {tab === 'retired' && (
         <section>
-          <h2 className="text-lg font-semibold">Archived</h2>
-          <p className="mt-1 text-sm text-sand">
+          <p className="text-sm text-sand">
             Twin will not use these in new videos. Scripts you have already made keep their
             record of them.
           </p>
@@ -845,33 +996,42 @@ export default function ProductLibrary() {
 function FactAge({ fact }: { fact: ProductFact }) {
   const stale = isStale(fact, new Date())
   const days = factAgeDays(fact, new Date())
-  if (!stale) {
-    return fact.sourceUrl ? (
-      <a
-        href={fact.sourceUrl}
-        target="_blank"
-        rel="noreferrer noopener"
-        className="ml-1.5 text-xs text-stone/70 underline decoration-dotted"
-      >source</a>
-    ) : null
-  }
+  if (!stale) return <FactOrigin fact={fact} />
   return (
     <span className="ml-1.5 whitespace-nowrap text-xs text-amber-700">
       {Number.isFinite(days)
         ? `read ${Math.round(days)} days ago — worth re-checking`
         : 'age unknown — worth re-checking'}
-      {fact.sourceUrl && (
-        <>
-          {' '}
-          <a
-            href={fact.sourceUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="underline decoration-dotted"
-          >source</a>
-        </>
-      )}
+      <FactOrigin fact={fact} />
     </span>
+  )
+}
+
+/** WHERE THIS CAME FROM, SAID IN WORDS.
+ *
+ *  ⚠️ THE WORD "source" ON A LINK ANSWERED THE WRONG QUESTION. It told a creator
+ *  that an origin EXISTS and never what it was, and a fact with no link — one
+ *  read off a photograph they uploaded, or one they typed themselves — said
+ *  nothing at all. The review test is "where did every critical fact come
+ *  from, within seconds", and a link labelled `source` fails it.
+ *
+ *  ⚖️ AND TWO ORIGINS EARN A SECOND LOOK RATHER THAN A REFUSAL. Marketing copy
+ *  is written to persuade and a photograph is a machine's reading of an image;
+ *  both are usable and neither is a claim the page itself made. Marking them is
+ *  a prompt to check, not a block — the trust split already decides what may
+ *  reach the writer, and saying it twice in two different vocabularies is how
+ *  two rules come to disagree. */
+function FactOrigin({ fact }: { fact: ProductFact }) {
+  const label = SOURCE_LABEL[fact.source]
+  const tone = sourceWarrantsAttention(fact.source) ? 'text-amber-700' : 'text-stone/70'
+  if (!fact.sourceUrl) return <span className={`ml-1.5 text-xs ${tone}`}>{label}</span>
+  return (
+    <a
+      href={fact.sourceUrl}
+      target="_blank"
+      rel="noreferrer noopener"
+      className={`ml-1.5 text-xs underline decoration-dotted ${tone}`}
+    >{label}</a>
   )
 }
 

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw, Plus, Users, Copy, Link2, Info } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit, uploadBrandLogo, getWorkspace, createWorkspaceInvite, removeWorkspaceMember, type WorkspaceState } from '../lib/api'
 import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import {
   contentProfile, brandKitStatus, productDnaStatus, loadProductEntities,
+  setupAreas, setupSummary, type SetupArea, type SetupState,
   resolveProfileAnswers, readStoredBrief, savePreScriptBrief,
 } from '@twinai/shared'
 import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
@@ -247,6 +249,18 @@ export default function Settings() {
       draft,
     })
   })()
+  // ⚠️ THE PAGE RAN FROM PROFILE INTELLIGENCE INTO CREDIT PACKS INTO BRANDING
+  // INTO THE WHOLE DNA RECORD, in one column, so the next useful action was
+  // something you had to find rather than something you were told. Tabs are the
+  // smallest change that gives the page a shape: what Twin knows, how it looks,
+  // what it costs, and who you are.
+  const [tab, setTab] = useState<'twin' | 'brand' | 'plan' | 'account'>('twin')
+  const nav = useNavigate()
+  /** ⚖️ COLLAPSED BY DEFAULT, AND IT IS THE SAME RECORD EITHER WAY. Folding is
+   *  not hiding: the summary answers "does this sound like me", which is the
+   *  question people actually open this page with. */
+  const [dnaOpen, setDnaOpen] = useState(false)
+
   const content = contentProfile({
     answers: profileAnswers,
     dnaReady: activeVoice?.status === 'ready',
@@ -268,6 +282,41 @@ export default function Settings() {
     paletteSource: brandKit.palette_source ?? null,
   })
 
+  // ⚖️ THE STATUS IS READ, NOT DECIDED HERE. `setupAreas` is in shared with its
+  // own tests; a status computed in this component is one no test can reach and
+  // one the next screen would compute differently.
+  const areas = setupAreas({
+    answers: profileAnswers,
+    dnaReady: activeVoice?.status === 'ready',
+    // ⚖️ CONFIRMED MEANS THE CREATOR HAS TOUCHED IT. `voice` is the field this page
+    // lets them edit, so a non-empty one is the closest thing to an approval we
+    // actually hold — and it is a reading of real state rather than a flag we set
+    // ourselves when the scan finished.
+    dnaConfirmed: activeVoice?.status === 'ready' && Boolean(dna?.voice?.trim()),
+    cta: defaultCta,
+    productCount: entityCount ?? 0,
+    brandKit: {
+      primaryHex: brandKit.palette?.primary ?? null,
+      secondaryHex: brandKit.palette?.secondary ?? null,
+      logoPath: brandKit.logo_path ?? null,
+      paletteSource: brandKit.palette_source ?? null,
+    },
+  })
+  const summary = setupSummary(areas)
+  /** ⚖️ ONE PLACE THAT KNOWS WHERE EACH ACTION GOES. A card whose button has no
+   *  destination is the defect this rebuild is for, so the mapping is total and
+   *  the compiler enforces it. */
+  const goTo = (a: SetupArea) => {
+    switch (a.action) {
+      case 'add_product': return nav('/products?add=1')
+      case 'manage_products': return nav('/products')
+      case 'setup_brand_kit': return setTab('brand')
+      case 'view_dna': return setTab('twin')
+      case 'edit_profile': return nav('/onboarding')
+      case 'edit_cta': return setTab('twin')
+    }
+  }
+
   const saveDna = async () => {
     setSavingDna(true); setErr(null)
     try {
@@ -283,7 +332,7 @@ export default function Settings() {
   return (
     <main className="relative min-h-screen overflow-clip">
       <Aurora className="opacity-60" />
-      <div className="relative mx-auto max-w-2xl px-5 py-12 lg:py-16">
+      <div className="relative mx-auto max-w-5xl px-5 py-12 lg:py-16">
         <Reveal>
           <p className="eyebrow">Account</p>
           <h1 className="mt-3 font-display text-4xl tracking-tight sm:text-5xl">Settings</h1>
@@ -301,7 +350,98 @@ export default function Settings() {
             a palette, which is the one thing `brandSnapshot` refuses to treat as
             brand truth. The obligations are separate here because they are
             separate: only the first one changes a script. */}
+        {/* ── TABS: WHAT TWIN KNOWS · HOW IT LOOKS · WHAT IT COSTS · WHO YOU ARE ──
+            ⚠️ THE OLD PAGE SCROLLED FROM PROFILE INTELLIGENCE INTO CREDIT PACKS
+            INTO BRANDING INTO THE FULL DNA RECORD. There was no conceptual
+            hierarchy, so the next useful action was something a creator had to
+            find. */}
+        <Reveal delay={0.02}>
+          <div className="mt-7 flex gap-1 overflow-x-auto rounded-xl bg-white/[0.04] p-1 text-sm">
+            {([
+              ['twin', 'Your Twin'],
+              ['brand', 'Logo & colours'],
+              ['plan', 'Plan'],
+              ['account', 'Account'],
+            ] as const).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setTab(k)}
+                aria-current={tab === k}
+                className={`shrink-0 rounded-lg px-3.5 py-2 transition-colors ${
+                  tab === k ? 'bg-white/10 text-cream' : 'text-sand hover:text-cream'}`}
+              >{label}</button>
+            ))}
+          </div>
+        </Reveal>
+
+        {/* ── THE SETUP HERO: ONE COUNT, ONE NEXT STEP ────────────────────────
+            ⚖️ AND IT GETS OUT OF THE WAY WHEN THE WORK IS DONE. A permanent
+            "100%!" is a demand that has stopped meaning anything, so a finished
+            setup collapses to a sentence rather than a bar. */}
+        {tab === 'twin' && (
         <Reveal delay={0.03}>
+          <section className="glass mt-6 p-5 sm:p-6">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="eyebrow !text-sand">Your Twin setup</p>
+              <p className="font-heading text-cream">{summary.headline}</p>
+            </div>
+            {summary.total > 0 && summary.ready < summary.total && (
+              <div className="mt-3 flex gap-1.5" aria-hidden>
+                {/* ⚖️ SEGMENTS, NOT A PERCENTAGE. "3 of 4" is inspectable; a bar
+                    at 74% invites the question nobody can answer. */}
+                {areas.filter((a) => a.counts && a.state !== 'not_needed').map((a) => (
+                  <span
+                    key={a.id}
+                    className={`h-1.5 flex-1 rounded-full ${
+                      a.state === 'ready' ? 'bg-teal' : 'bg-white/12'}`}
+                  />
+                ))}
+              </div>
+            )}
+            {summary.next ? (
+              <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                <p className="eyebrow !text-stone">Next step</p>
+                <p className="mt-1.5 font-heading text-cream">{summary.next.title}</p>
+                <p className="mt-1 text-sm leading-relaxed text-sand">{summary.next.detail}</p>
+                <button
+                  type="button"
+                  onClick={() => goTo(summary.next!)}
+                  className="btn-gradient mt-4 rounded-lg px-3.5 py-2 text-sm"
+                >{summary.next.actionLabel} →</button>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm leading-relaxed text-sand">
+                Your voice, audience, goals and commercial context are all set.
+              </p>
+            )}
+
+            {/* ⚠️ EVERY CARD IS GENUINELY INTERACTIVE. The old page had panels
+                that looked tappable and went nowhere, which is worse than a plain
+                list: it costs somebody an attempt to find out. */}
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              {areas.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => goTo(a)}
+                  className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-left transition-colors hover:border-white/20 hover:bg-white/[0.04]"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-heading text-sm text-cream">{a.title}</span>
+                    <StateChip state={a.state} />
+                  </div>
+                  <span className="mt-1.5 block text-xs leading-relaxed text-stone">{a.detail}</span>
+                  <span className="mt-2.5 block text-xs text-sand underline">{a.actionLabel}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        </Reveal>
+        )}
+
+        {tab === 'twin' && (
+        <Reveal delay={0.04}>
           <ProfileStatus
             content={content}
             productDna={productDna}
@@ -313,8 +453,10 @@ export default function Settings() {
             ctaErr={ctaErr}
           />
         </Reveal>
+        )}
 
         {/* Account */}
+        {tab === 'account' && (
         <Reveal delay={0.05}>
           <section className="glass mt-8 p-5 sm:p-6">
             <div className="flex items-center gap-2.5">
@@ -339,12 +481,17 @@ export default function Settings() {
           </section>
         </Reveal>
 
+        )}
+
         {/* Team seats */}
+        {tab === 'account' && (
         <Reveal delay={0.07}>
           <TeamSeats />
         </Reveal>
+        )}
 
         {/* Plan */}
+        {tab === 'plan' && (
         <Reveal delay={0.1}>
           <section className="glass mt-5 p-5 sm:p-6">
             <div className="flex items-center gap-2.5">
@@ -388,8 +535,11 @@ export default function Settings() {
           </section>
         </Reveal>
 
+        )}
+
         {/* Add-ons — expansion revenue, surfaced so growing accounts can spend more
             without changing tier. */}
+        {tab === 'plan' && (
         <Reveal delay={0.12}>
           <section className="glass mt-5 p-5 sm:p-6">
             <div className="flex items-center gap-2.5">
@@ -417,8 +567,11 @@ export default function Settings() {
           </section>
         </Reveal>
 
+        )}
+
         {/* Brand kit — the creator's real colors + logo. Palette steers blueprint
             suggestions today; the rebuilt editor will consume the kit for renders. */}
+        {tab === 'brand' && (
         <Reveal delay={0.13}>
           <section className="glass mt-5 p-5 sm:p-6">
             <div className="flex items-center justify-between gap-2.5">
@@ -429,7 +582,15 @@ export default function Settings() {
               {kitSaved && <span className="inline-flex items-center gap-1 text-xs text-teal"><Check className="h-3.5 w-3.5" /> Saved</span>}
               {kitErr && <span className="text-xs text-coral">Couldn’t save — change it again to retry.</span>}
             </div>
-            <p className="mt-2 text-sm text-stone">Your real brand colors and logo — used across your blueprints and videos.</p>
+            {/* ⚖️ SAYS WHAT IT ACTUALLY CHANGES. Claiming "used across your
+                blueprints and videos" oversells it: the palette steers packaging
+                and thumbnail direction and the editor's supported styling, and it
+                changes no word of a script. Overstating what a setting does is
+                how a creator concludes the whole page is decorative. */}
+            <p className="mt-2 text-sm text-stone">
+              Your real colours and logo. They steer packaging, thumbnails and supported
+              visual styling — they do not change what your scripts say.
+            </p>
             {!defaultVoiceId ? (
               <p className="mt-4 text-sm text-stone/70">Scan a brand voice first to set a brand kit.</p>
             ) : (
@@ -447,7 +608,12 @@ export default function Settings() {
                     </div>
                   )}
                   <div className="flex flex-wrap gap-5">
-                    {([['primary', 'Primary'], ['secondary', 'Secondary']] as const).map(([key, label]) => {
+                    {/* ⚠️ THREE SLOTS, BECAUSE THREE ARE READ. `highlight` is
+                        consumed by `brandSnapshot` and by the blueprint's
+                        `paletteHex`, and Settings offered no way to set it — a
+                        field with two readers and no writer, which is the same
+                        asked-and-discarded defect in reverse. */}
+                    {([['primary', 'Primary'], ['secondary', 'Secondary'], ['highlight', 'Highlight']] as const).map(([key, label]) => {
                       // Only show a swatch for a colour the creator has ACTUALLY set
                       // (scanned or hand-picked). Never fabricate a default hex — an
                       // unset colour showed a fake teal that looked like "a colour I
@@ -506,9 +672,45 @@ export default function Settings() {
           </section>
         </Reveal>
 
-        {/* Creator DNA */}
+        )}
+
+        {/* ── YOUR VOICE: A SUMMARY, WITH THE RECORD BEHIND IT ────────────────
+            ⚠️ THE FULL DNA RECORD OCCUPIED HALF A KILOMETRE OF SETTINGS. Every
+            visit meant scrolling past niche, audience, vocabulary, POV, hooks and
+            pacing to reach anything else — which is most of why the page read as
+            a document rather than a place where things happen.
+            ⚖️ NOTHING IS REMOVED, ONLY FOLDED. It is the same canonical record,
+            one tap away, and the summary above it is the part a creator actually
+            checks: does this sound like me? */}
+        {tab === 'twin' && (
         <Reveal delay={0.15}>
           <section className="glass mt-5 p-5 sm:p-6">
+            {!dnaOpen && (
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="eyebrow !text-sand">Your voice</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-cream">
+                    {(dna.voice ?? '').trim() || 'Twin has not learned how you sound yet.'}
+                  </p>
+                  <p className="mt-1 truncate text-xs text-stone">
+                    {[dna.niche, dna.audience].map((x) => (x ?? '').trim()).filter(Boolean).join(' · ')
+                      || 'Scan your account and Twin will fill this in.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDnaOpen(true)}
+                  className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream"
+                >View everything</button>
+              </div>
+            )}
+            {dnaOpen && (
+            <>
+            <button
+              type="button"
+              onClick={() => setDnaOpen(false)}
+              className="mb-4 text-xs text-sand underline"
+            >← Back to the summary</button>
             <div className="flex items-center justify-between gap-2.5">
               <div className="flex items-center gap-2.5">
                 <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/5"><ShieldCheck className="h-4 w-4 text-coral" /></span>
@@ -610,10 +812,15 @@ export default function Settings() {
                 </div>
               </div>
             )}
+            </>
+            )}
           </section>
         </Reveal>
 
+        )}
+
         {/* Sign out */}
+        {tab === 'account' && (
         <Reveal delay={0.2}>
           <section className="mt-5 flex items-center justify-between rounded-card border border-white/8 bg-white/[0.02] p-5">
             <div>
@@ -623,6 +830,7 @@ export default function Settings() {
             <button onClick={signOut} className="btn-ghost text-sm"><LogOut className="h-4 w-4" /> Sign out</button>
           </section>
         </Reveal>
+        )}
       </div>
 
       {/* Plan-comparison upgrade modal (SaaS-style): explains each plan, then
@@ -826,6 +1034,9 @@ function ProfileStatus({
   ctaSaved: boolean
   ctaErr: boolean
 }) {
+  const ctaText = (cta ?? '').trim()
+  const [ctaOpen, setCtaOpen] = useState(false)
+  const [ctaDraft, setCtaDraft] = useState(ctaText)
   return (
     <section className="glass mt-8 p-5 sm:p-6">
       <div className="flex items-baseline justify-between gap-3">
@@ -854,31 +1065,73 @@ function ProfileStatus({
         </ul>
       )}
 
-      {/* ⚠️ ASKED ONCE, HERE, RATHER THAN AS A FOURTH ONBOARDING QUESTION. It is
-          the one gap a creator can close in ten seconds, and it is the only place
-          their own wording can enter — Twin writes a CTA when there is none, but
-          a generated sentence is never stored as their preference. */}
-      <div className="mt-5">
-        <label className="block text-sm text-cream" htmlFor="default-cta">
-          What do you usually want viewers to do next?
-        </label>
-        <p className="mt-0.5 text-xs text-stone">
-          Your words, used at the end of your videos. Leave it blank and Twin will
-          write one that fits each video.
-        </p>
-        <input
-          id="default-cta"
-          type="text"
-          value={cta ?? ''}
-          disabled={cta === null}
-          onChange={(e) => onCtaChange(e.target.value)}
-          onBlur={(e) => onCtaCommit(e.target.value)}
-          placeholder="Try Twin free"
-          className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
-        />
-        {ctaSaved && <p className="mt-1 text-xs text-teal">Saved</p>}
-        {ctaErr && <p className="mt-1 text-xs text-coral">Could not save that — try again.</p>}
+      {/* ⚠️ A PERMANENTLY EDITABLE NAKED INPUT ON A SETTINGS PAGE IS NOT A
+          SETTING, it is a form field somebody has to notice, decide about, and
+          then wonder whether it saved. What a creator wants here is to SEE their
+          answer and change it deliberately.
+          ⚖️ ASKED ONCE, AND ONLY THEIR OWN WORDING IS STORED. Twin writes a CTA
+          when there is none; a generated sentence never becomes their preference. */}
+      <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm text-cream">What viewers should do after your videos</p>
+            <p className="mt-1 truncate text-sm text-sand">
+              {ctaText
+                ? `“${ctaText}”`
+                // ⚠️ NOT AN ERROR STATE. Plenty of creators do not want every
+                // video to end with an ask, and saying so plainly is the
+                // difference between a choice and an omission.
+                : 'No usual ending — Twin writes one to fit each video.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => { setCtaDraft(ctaText); setCtaOpen(true) }}
+            className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream"
+          >{ctaText ? 'Edit' : 'Add one'}</button>
+        </div>
+        {ctaSaved && <p className="mt-2 text-xs text-teal">Saved</p>}
+        {ctaErr && <p className="mt-2 text-xs text-coral">Could not save that — try again.</p>}
       </div>
+
+      {ctaOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-5" role="dialog" aria-modal>
+          <div className="glass w-full max-w-md p-5">
+            <p className="font-heading text-cream">Your usual ending</p>
+            <p className="mt-1 text-sm leading-relaxed text-sand">
+              What should Twin usually ask viewers to do? You can change it for any
+              single video.
+            </p>
+            <input
+              autoFocus
+              type="text"
+              value={ctaDraft}
+              onChange={(e) => setCtaDraft(e.target.value)}
+              placeholder="Try Twin free"
+              className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+            />
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => { onCtaChange(ctaDraft); onCtaCommit(ctaDraft); setCtaOpen(false) }}
+                className="btn-gradient rounded-lg px-3.5 py-2 text-sm"
+              >Save</button>
+              {/* ⚖️ AN EXPLICIT "NO" IS AN ANSWER AND MUST BE STORABLE. Clearing
+                  the box and leaving is ambiguous — this is not. */}
+              <button
+                type="button"
+                onClick={() => { onCtaChange(''); onCtaCommit(''); setCtaOpen(false) }}
+                className="btn-ghost rounded-lg px-3.5 py-2 text-sm"
+              >I don't have a usual ending</button>
+              <button
+                type="button"
+                onClick={() => setCtaOpen(false)}
+                className="rounded-lg px-3.5 py-2 text-sm text-stone"
+              >Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <StatusLine
@@ -907,6 +1160,22 @@ function ProfileStatus({
 /** ⚖️ `open` IS NOT A WARNING COLOUR. Nothing here is wrong — these are things
  *  that exist or do not, and painting an unset kit amber would reintroduce the
  *  guilt the percentage used to carry. */
+/** ⚖️ FIVE STATES, FIVE WORDS A CREATOR ALREADY KNOWS. `optional` and
+ *  `not_needed` read differently on purpose — one is something they could do,
+ *  the other is something that does not apply to them, and collapsing either
+ *  into "missing" is how a page starts nagging for work that cannot help. */
+function StateChip({ state }: { state: SetupState }) {
+  const map: Record<SetupState, { label: string; cls: string }> = {
+    ready: { label: 'Ready', cls: 'bg-teal/15 text-teal' },
+    needs_setup: { label: 'Needs setup', cls: 'bg-amber-500/15 text-amber-400' },
+    needs_review: { label: 'Worth a look', cls: 'bg-amber-500/10 text-amber-300' },
+    optional: { label: 'Optional', cls: 'bg-white/8 text-stone' },
+    not_needed: { label: 'Not needed', cls: 'bg-white/8 text-stone' },
+  }
+  const { label, cls } = map[state]
+  return <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${cls}`}>{label}</span>
+}
+
 function StatusLine({ title, state, note, tone }: {
   title: string; state: string; note: string; tone: 'done' | 'open'
 }) {

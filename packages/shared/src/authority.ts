@@ -102,7 +102,13 @@ export interface EvidenceCount { seen: number; of: number }
 export type Provenanced<T> =
   | { value: T; rawValue?: unknown; source: 'user_answer'; updatedAt: string }
   | { value: T; source: 'observed'; evidence: EvidenceCount; updatedAt: string }
-  | { value: T; source: 'inferred'; updatedAt: string }
+  /** ⚖️ `derivedFrom` NAMES THE FIELD IT WAS COMPUTED FROM, and it is the
+   *  difference between an inference somebody can audit and one they must take
+   *  on trust. A primary role derived from a stated work kind is recomputable —
+   *  change the answer, change the role — where a free-floating `inferred` is a
+   *  value with no way back to its cause. Optional, because not every inference
+   *  has a single named parent. */
+  | { value: T; source: 'inferred'; derivedFrom?: string; updatedAt: string }
   | { value: T; source: 'imported'; sourceRef: SourceRef; updatedAt: string }
 
 /** ⚖️ THE VOCABULARY IS `dnaProvenance`'s, EXTENDED BY EXACTLY ONE MEMBER. Two

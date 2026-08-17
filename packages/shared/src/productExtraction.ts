@@ -178,6 +178,37 @@ export function extractionTrust(input: {
   return 'usable'
 }
 
+
+/** WHERE A FACT CAME FROM, IN WORDS A CREATOR CAN ACT ON.
+ *
+ *  ⚠️ THE PAGE SHOWED FACTS AND NEVER THEIR ORIGIN, and that became a real gap
+ *  the moment photographs joined web pages as a source. A creator looking at
+ *  "$39/month" has no way to tell whether it came from their own pricing page,
+ *  from marketing copy, or from a picture — and those licence completely
+ *  different things.
+ *
+ *  ⚖️ A TOTAL RECORD, so a new source cannot reach a screen unlabelled. The
+ *  failure mode of a lookup with a fallback here is a fact whose origin renders
+ *  as blank, which reads as "no source" rather than "we forgot to name it".
+ */
+export const SOURCE_LABEL: Record<ExtractionSource, string> = {
+  official_product_page: 'From the product page',
+  documentation: 'From the documentation',
+  pricing_page: 'From the pricing page',
+  listing: 'From a store listing',
+  marketing_copy: 'From marketing copy',
+  user_confirmed: 'You told us this',
+  creator_image: 'From your photo',
+}
+
+/** ⚖️ WHICH ORIGINS A CREATOR SHOULD LOOK AT TWICE. Marketing copy is written to
+ *  persuade and a photograph is a reading of a picture; neither is a statement
+ *  somebody stands behind. This drives emphasis on the page, never a refusal —
+ *  the refusals live in `extractionTrust` and `imageFactAllowed`. */
+export function sourceWarrantsAttention(source: ExtractionSource): boolean {
+  return source === 'marketing_copy' || source === 'creator_image'
+}
+
 /** One extracted fact with everything needed to decide whether it may be used. */
 export interface ExtractedFact {
   field: ExtractedField

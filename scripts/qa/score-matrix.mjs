@@ -171,7 +171,8 @@ const add = (a, b) => Object.fromEntries(Object.keys(a).map((k) => [k, a[k] + b[
 // compared against measures the difference between two scorers.
 /** ⚖️ THE ONE PLACE THAT DECIDES WHETHER A PITCH IS ALLOWED. Mirrors
  *  generate-blueprint's `commercialCta`. Exported so no scorer grows a fourth
- *  copy — `check_cta_permission_authority.mjs` refuses one. */
+ *  copy — `no-goal-grants-a-commercial-ask.test.ts` refuses one, and checks
+ *  this predicate agrees with the CDP validator rather than merely existing. */
 export const mayPitch = (rel) => rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
   || rel === 'AFFILIATE' || rel === 'SPONSOR'
 

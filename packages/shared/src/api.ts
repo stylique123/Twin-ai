@@ -324,6 +324,11 @@ export async function getJob(id: string): Promise<IngestJob | null> {
 export interface ReadinessQuestion { field: string; question: string }
 /** Nothing was charged; 1-3 answers unblock the build. */
 export const READINESS_INCOMPLETE_CODE = 'READINESS_INCOMPLETE'
+/** ⚖️ NOTHING WAS CHARGED, AND NO ANSWER UNBLOCKS IT. Unlike readiness, this is
+ *  not a missing input — the goal and the library CONTRADICT each other, and the
+ *  creator has to change one of them. So it carries remedies rather than
+ *  questions: things to go and do, not boxes to fill in here. */
+export const SELL_WITHOUT_TARGET_CODE = 'SELL_WITHOUT_COMMERCIAL_TARGET'
 
 export async function generateBlueprint(input: GenerateInput): Promise<Generation> {
   // Calls the Supabase Edge Function `generate-blueprint`, which runs the
@@ -339,6 +344,7 @@ export async function generateBlueprint(input: GenerateInput): Promise<Generatio
     let msg = (error as { message?: string }).message ?? 'Generation failed'
     let code: string | undefined
     let questions: ReadinessQuestion[] | undefined
+    let remedies: string[] | undefined
     const ctx = (error as { context?: Response }).context
     if (ctx && typeof ctx.json === 'function') {
       try {
@@ -357,13 +363,20 @@ export async function generateBlueprint(input: GenerateInput): Promise<Generatio
         // sentence — and this project's standing rule is that a question ships
         // with its reader or it does not ship.
         if (Array.isArray(body?.questions)) questions = body.questions
+        // ⚖️ SAME RULE, OTHER SHAPE. A refusal that names three things the
+        // creator could do is worth nothing if the client shows only the
+        // sentence — the remedies ARE the way out.
+        if (Array.isArray(body?.remedies)) remedies = body.remedies.map(String)
       } catch {
         /* fall back to msg */
       }
     }
-    const err = new Error(msg) as Error & { code?: string; questions?: ReadinessQuestion[] }
+    const err = new Error(msg) as Error & {
+      code?: string; questions?: ReadinessQuestion[]; remedies?: string[]
+    }
     if (code) err.code = code
     if (questions) err.questions = questions
+    if (remedies) err.remedies = remedies
     throw err
   }
   return data as Generation
