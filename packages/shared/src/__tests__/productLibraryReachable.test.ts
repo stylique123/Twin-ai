@@ -37,6 +37,12 @@ function suggestionsBlock(): string {
   return PAGE.slice(start)
 }
 
+/** ⚖️ THE ANCHOR, NAMED ONCE. It has moved twice — a suggestions guard, then a
+ *  tab filter — and each time the CLAIMS below were still true while the string
+ *  that located them was not. A named constant is one edit instead of four, and
+ *  it makes the anchor's fragility visible rather than repeated. */
+const ENTITY_LIST = '.map((e) => ('
+
 describe('the page is never read-only', () => {
   it('renders the attestation form OUTSIDE the suggestions block', () => {
     // ⚠️ THE EXACT REGRESSION. One `<ClaimForm>` lives inside the suggestions
@@ -62,7 +68,7 @@ describe('the page is never read-only', () => {
   it('the EMPTY state offers a way out of itself', () => {
     // A creator with no entities and no suggestions must still see an action.
     const empty = PAGE.slice(PAGE.indexOf('entities.length === 0'))
-    expect(empty.slice(0, empty.indexOf('{entities.map'))).toMatch(/Add a product/)
+    expect(empty.slice(0, empty.indexOf(ENTITY_LIST))).toMatch(/Add a product/)
   })
 
   it('the form does not REQUIRE a suggestion to exist', () => {
@@ -79,7 +85,7 @@ describe('a claimed product can be withdrawn', () => {
   it('every entity offers removal', () => {
     // ⚠️ ONCE CLAIMED, PERMANENT was the shipped behaviour. A creator who stops
     // selling something could not stop their scripts being licensed to sell it.
-    const row = PAGE.slice(PAGE.indexOf('{entities.map('))
+    const row = PAGE.slice(PAGE.indexOf(ENTITY_LIST))
     expect(row).toMatch(/setRemovingId\(e\.id\)/)
     expect(row).toMatch(/void remove\(e\.id\)/)
   })
@@ -92,7 +98,7 @@ describe('a claimed product can be withdrawn', () => {
     // IT RATHER THAN BEING LOOSENED. There are now TWO ways out and the copy has
     // to distinguish them, so what is pinned is that both consequences are
     // stated: archiving stops future use and keeps the record, deleting does not.
-    const row = PAGE.slice(PAGE.indexOf('{entities.map('))
+    const row = PAGE.slice(PAGE.indexOf(ENTITY_LIST))
     expect(row).toMatch(/stops Twin using it in new videos/)
     expect(row).toMatch(/existing scripts keep/)
     expect(row).toMatch(/Removing deletes it entirely/)
@@ -101,7 +107,7 @@ describe('a claimed product can be withdrawn', () => {
   it('offers ARCHIVE as the primary way out, with delete as the smaller choice', () => {
     // ⚖️ The spec prefers archive wherever scripts may already reference the
     // entity — which is every entity that has been used even once.
-    const row = PAGE.slice(PAGE.indexOf('{entities.map('))
+    const row = PAGE.slice(PAGE.indexOf(ENTITY_LIST))
     const archive = row.indexOf('void archive(e.id)')
     const del = row.indexOf('void remove(e.id)')
     expect(archive).toBeGreaterThan(-1)
