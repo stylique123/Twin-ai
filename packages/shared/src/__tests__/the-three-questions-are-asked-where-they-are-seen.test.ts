@@ -151,7 +151,11 @@ describe('the three questions open with the remix', () => {
     // ⚖️ They are not a repair for an incomplete profile. They are about a video
     // that does not exist yet, so there is nothing to be complete about.
     expect(BUILD).toMatch(/const unanswered = INTENT_QUESTIONS\.filter\(/)
-    expect(BUILD).toMatch(/\[\.\.\.unanswered, \.\.\.missing\.slice\(0, MAX_TEXT_QUESTIONS\)\]/)
+    // ⚖️ THE CLAIM IS UNCHANGED. `unanswered` still leads the list, so the
+    // intent chips are asked for every video. What follows them is now
+    // `relevant` rather than `missing` — the same readiness questions with the
+    // commercial ones dropped when this video sells nothing.
+    expect(BUILD).toMatch(/\[\.\.\.unanswered, \.\.\.relevant\.slice\(0, MAX_TEXT_QUESTIONS\)\]/)
   })
 
   it('CAPS the free-text tail, which is what made the card a form', () => {

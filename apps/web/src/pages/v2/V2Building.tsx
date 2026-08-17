@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
-import { assessReadiness } from '../../lib/api'
+import { assessReadiness, isCommercialField } from '../../lib/api'
+import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   INTENT_QUESTIONS, type IntentQuestion, type VideoGoal,
@@ -402,7 +403,31 @@ export default function V2Building() {
               (q) => !(answersRef.current[q.field] ?? '').trim())
             // ⚖️ CAPPED, NOT DISCARDED. `assessReadiness` already orders these
             // by what unblocks the most, so the first is the one worth asking.
-            const ask: AskItem[] = [...unanswered, ...missing.slice(0, MAX_TEXT_QUESTIONS)]
+            // ── AND NOT THE COMMERCIAL ONES, IF THIS VIDEO SELLS NOTHING ──
+            //
+            // ⚠️ REPORTED FROM A SCREENSHOT: a relationship question, a claims
+            // question and "what does the OFFER do?" on a card belonging to
+            // somebody with an empty Product Library who had just chosen "build
+            // authority" and "a hot take". `assessReadiness` resolves those
+            // itself when the PROFILE says nothing is promoted — but the verdict
+            // above is computed before the creator answers the chips beside it,
+            // so this video's own answer never reached it.
+            //
+            // ⚖️ ONLY WHEN THEY HAVE ACTUALLY ANSWERED. An unanswered card says
+            // nothing about commerce, and suppressing on silence would hide a
+            // question from somebody who simply had not tapped yet. The server
+            // gate is unchanged either way — this drops a question we would have
+            // asked early, never one that protects a charge.
+            const answeredIntent = compileVideoIntent({
+              goal: answersRef.current.video_goal,
+              focus: answersRef.current.content_focus,
+            })
+            const decidedCommercially = Boolean(
+              (answersRef.current.video_goal ?? '').trim() && (answersRef.current.content_focus ?? '').trim())
+            const relevant = decidedCommercially && !showsCommercialBlock(answeredIntent)
+              ? missing.filter((m) => !isCommercialField(m.field))
+              : missing
+            const ask: AskItem[] = [...unanswered, ...relevant.slice(0, MAX_TEXT_QUESTIONS)]
             if (ask.length && alive) {
               // No spend, no ingest, no wait — and `active` stays at 0 so the
               // bar does not pretend work is happening behind the card.

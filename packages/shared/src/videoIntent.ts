@@ -624,3 +624,25 @@ export function reachableIntentValues(field: IntentQuestion['field']): string[] 
   if (!q) return []
   return q.options.flatMap((o) => (o.options ? o.options.map((c) => c.value) : [o.value]))
 }
+
+// ── WHEN THE COMMERCIAL BLOCK IS WORTH SHOWING ────────────────────────────
+//
+// ⚠️ THE REMIX CARD ASKED EVERY CREATOR ABOUT THEIR OFFER. A relationship
+// question, a claims question and "what does the OFFER do?" appeared on a card
+// belonging to somebody whose stored answer was "nothing of anyone else's" —
+// and the questionnaire is the thing that screen exists to avoid.
+//
+// ⚖️ TWO SIGNALS, AND EITHER IS ENOUGH. A goal of selling or generating leads
+// means the video ends in an ask; a focus on a product or a review means the
+// video is ABOUT a thing. Both need to know what is being promoted, and neither
+// implies the other — somebody can review a product they do not sell, and sell
+// without the video being about the product.
+//
+// ⚠️ IT DECIDES WHAT TO ASK, NEVER WHAT IS PERMITTED. Showing this block grants
+// nothing: the entity's relationship still decides what a script may claim, and
+// a creator who reaches it and picks nothing has said "no product", which is an
+// answer. Hiding it likewise forbids nothing — it only declines to ask a
+// question with no bearing on the video in front of them.
+export function showsCommercialBlock(intent: Pick<VideoIntent, 'wantsSale' | 'wantsProductSubstance'>): boolean {
+  return intent.wantsSale || intent.wantsProductSubstance
+}

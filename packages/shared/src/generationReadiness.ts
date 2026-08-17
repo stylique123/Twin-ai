@@ -336,3 +336,23 @@ export function isBillableScript(
   }
   return { billable: true, reason: null, discovery }
 }
+
+// ── THE QUESTIONS THAT ONLY MATTER WHEN SOMETHING IS BEING PROMOTED ───────
+//
+// ⚠️ THESE FOUR WERE ASKED OF SOMEBODY WITH NOTHING TO SELL. `assessReadiness`
+// resolves them by itself when the stored profile says nothing is promoted —
+// but the remix card asks its own three questions in the SAME breath, so the
+// creator can be told "build authority, hot take, no product" and shown an
+// offer question next to it, because the verdict was computed before they
+// answered.
+//
+// ⚖️ NAMED HERE RATHER THAN IN THE COMPONENT. Which fields are commercial is a
+// fact about the readiness vocabulary, and a list of strings kept in a screen is
+// a list that stops matching the enum it was copied from.
+export const COMMERCIAL_READINESS_FIELDS: readonly ReadinessField[] = [
+  'offer', 'relationship', 'cta', 'claims',
+]
+
+export function isCommercialField(field: string): boolean {
+  return (COMMERCIAL_READINESS_FIELDS as readonly string[]).includes(field)
+}
