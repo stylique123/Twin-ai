@@ -449,7 +449,21 @@ const SCAN_GOALS = [
 
 // Three, and the code must agree with itself about that: the counter, the
 // last-question test and "Skip all" all read this rather than a literal.
-const SCAN_QUESTION_COUNT = 3
+// ⚠️ FOUR, AND THE FOURTH IS THREE QUESTIONS IN ONE CARD.
+//
+// What a creator can put on screen was asked in two places that never met: the
+// products question sat in the middle of the confirm screen, and the two filming
+// questions sat in a collapsed section further down, with unrelated fields
+// between them. They are one subject — what can actually appear in your video —
+// and a creator answering the first has already thought about the other two.
+//
+// ⚖️ AND THEY COME AFTER "WHAT DO YOU DO", WHICH IS WHY THEY ARE LAST HERE. The
+// filming pair used to be the ONLY thing asked during the scan, so the first
+// thing Twin ever wanted to know was somebody's camera setup, before it had
+// established what they do or whether they sell anything. Moving them back onto
+// this screen keeps that fixed: they are question four, after the work kind that
+// decides how question four is even worded.
+const SCAN_QUESTION_COUNT = 4
 
 function BuildingStep({
   draft,
@@ -720,6 +734,95 @@ function BuildingStep({
                   </button>
                 ))}
               </div>
+            </>
+          )}
+          {qIndex === 3 && (
+            <>
+              <p className="mt-2 text-base font-medium text-cream">What can appear in your videos?</p>
+              {/* ⚖️ ONE CARD, THREE ANSWERS, BECAUSE IT IS ONE THOUGHT. Someone
+                  deciding whether they show products has already decided whether
+                  they can hold one up. Splitting these across two screens made a
+                  creator answer the same question twice, in different words. */}
+              <p className="mt-1 text-[11px] text-stone">
+                {q4AsksOwnership(draft.workKind)
+                  ? 'You can only speak for something you own, so this changes what a script may promise.'
+                  : 'Someone else’s product means no ownership language, and a disclosure where one is owed.'}
+              </p>
+              <p className="mt-3 text-xs text-sand">
+                {q4AsksOwnership(draft.workKind)
+                  ? 'Do your videos feature any products?'
+                  : 'Anything in your videos that isn’t yours?'}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {Q4_ANSWERS.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    aria-pressed={draft.q4 === k}
+                    onClick={() => onDraftChange({ ...draft, q4: draft.q4 === k ? null : k })}
+                    className={cn(
+                      'rounded-full border px-3 py-1.5 text-xs transition',
+                      draft.q4 === k
+                        ? 'border-coral bg-coral/15 text-cream'
+                        : 'border-white/15 text-sand hover:bg-white/5',
+                    )}
+                  >
+                    {Q4_LABEL[k]}
+                  </button>
+                ))}
+              </div>
+
+              {/* ⚠️ TAPPING THE CHOSEN CHIP AGAIN CLEARS IT, AND THAT MATTERS
+                  MORE HERE THAN ANYWHERE. `canRecordScreen = false` permanently
+                  hides a capture surface, so "they never said" must never become
+                  "they said no" — which is exactly what a screen that cannot be
+                  un-answered would produce on a mis-tap. */}
+              <p className="mt-4 text-xs text-sand">Can you record your screen?</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {([true, false] as const).map((v) => (
+                  <button
+                    key={String(v)}
+                    type="button"
+                    aria-pressed={draft.canRecordScreen === v}
+                    onClick={() => onDraftChange({
+                      ...draft, canRecordScreen: draft.canRecordScreen === v ? null : v,
+                    })}
+                    className={cn(
+                      'rounded-full border px-3 py-1.5 text-xs transition',
+                      draft.canRecordScreen === v
+                        ? 'border-coral bg-coral/15 text-cream'
+                        : 'border-white/15 text-sand hover:bg-white/5',
+                    )}
+                  >{v ? 'Yes' : 'No'}</button>
+                ))}
+              </div>
+
+              <p className="mt-4 text-xs text-sand">Can you hold something up to the camera?</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {([true, false] as const).map((v) => (
+                  <button
+                    key={String(v)}
+                    type="button"
+                    aria-pressed={draft.canFilmObjects === v}
+                    onClick={() => onDraftChange({
+                      ...draft, canFilmObjects: draft.canFilmObjects === v ? null : v,
+                    })}
+                    className={cn(
+                      'rounded-full border px-3 py-1.5 text-xs transition',
+                      draft.canFilmObjects === v
+                        ? 'border-coral bg-coral/15 text-cream'
+                        : 'border-white/15 text-sand hover:bg-white/5',
+                    )}
+                  >{v ? 'Yes' : 'No'}</button>
+                ))}
+              </div>
+              {/* ⚖️ THE TWO GATES RUN IN OPPOSITE DIRECTIONS, so the promise is
+                  written twice rather than templated: no to the first HIDES a
+                  capture surface; no to the second only withholds SUGGESTIONS. */}
+              <p className="mt-2 text-[11px] leading-relaxed text-stone">
+                Say no and we stop suggesting shots you cannot film. Skip either and nothing
+                is decided — we just will not offer it yet.
+              </p>
             </>
           )}
           {/* THE CREATOR MOVES THE QUESTIONS, NOTHING ELSE DOES.
@@ -1218,6 +1321,11 @@ function ConfirmStep({
             "Nothing of anyone else's" additionally means ideas-only and no
             Product DNA at all — which is why the helper line changes with
             `q4AsksOwnership`. */}
+        <Section
+          title="What can appear in your videos?"
+          hint="What a script may promise, and which shots Twin is allowed to ask you for."
+          badge={q4 === null || canRecordScreen === null || canFilmObjects === null ? 'Not answered' : null}
+        >
         <Labeled label={q4AsksOwnership(workKind)
           ? 'Do your videos feature any products?'
           : 'Anything else in your videos that isn’t yours?'}>
@@ -1243,11 +1351,17 @@ function ConfirmStep({
               : 'Someone else’s product means no ownership language, and a disclosure where one is owed.'}
           </p>
         </Labeled>
-        {/* HOW THEY CAN SHOOT IT — last, and that ordering is the point.
-            These two used to be the ONLY questions asked while the scan ran,
-            so the first thing Twin wanted to know was someone's filming setup,
-            before it had established what they do or whether they sell
-            anything. They belong after both.
+        {/* HOW THEY CAN SHOOT IT — IN THE SAME PLACE AS WHAT THEY SHOOT.
+            These two sat in their own collapsed section further down the page,
+            with unrelated fields between them and the products question, so one
+            subject was asked in two places that never met. They are one thought:
+            somebody deciding whether they show products has already decided
+            whether they can hold one up.
+
+            They still come AFTER the products question, and that ordering is the
+            point. They used to be the ONLY questions asked while the scan ran,
+            so the first thing Twin wanted to know was someone's camera setup,
+            before it had established what they do or whether they sell anything.
 
             SKIPPING IS A REAL ANSWER AND IT IS NOT "NO". Tapping the chosen
             chip again clears it back to unanswered, and nothing is written for
@@ -1260,12 +1374,7 @@ function ConfirmStep({
             HIDES a capture surface; `can_film_objects = false` withholds
             footage SUGGESTIONS. Saying no to the second removes advice, not
             ability, so the sentence has to promise the right thing. */}
-        <Section
-          title="How can you film?"
-          hint="Two answers that decide which shots Twin is allowed to ask you for."
-          badge={canRecordScreen === null || canFilmObjects === null ? 'Not answered' : null}
-        >
-          <p className="text-xs text-sand">Can you record your screen?</p>
+          <p className="mt-5 text-xs text-sand">Can you record your screen?</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {([true, false] as const).map((v) => (
               <button
