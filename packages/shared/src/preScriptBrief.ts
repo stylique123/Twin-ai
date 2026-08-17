@@ -53,8 +53,21 @@ export type BriefGoal = (typeof BRIEF_GOALS)[number]
 
 /** Q3. What you do — the answer that decides where subject matter and business
  *  truth come from, and whether the claims question is asked at all. */
+// ⚠️ `founder`, `coach` AND `freelancer` WERE ALL LANDING ON `other` OR
+// `professional`, AND THEY ARE NOT THE SAME BUSINESS. A founder talking about AI
+// and a creator reviewing AI products can share a niche and still need opposite
+// scripts: one is speaking for a thing they own, the other about things they do
+// not. A coach sells expertise with no object to film; an agency sells capacity.
+// Collapsing them into `other` threw away the fact that decides whether a video
+// can show anything at all.
+//
+// ⚖️ ADDING A VALUE HERE IS NOT FREE, WHICH IS THE POINT. `PRODUCT_EVIDENCE_FORM`
+// is a total Record over this union, so the compiler refuses a new kind until
+// somebody has decided what that person is asked to hand over. That is the
+// cheapest place in the codebase to be forced to think.
 export const BRIEF_WORK_KINDS = [
-  'creator', 'professional', 'ecommerce', 'brand', 'saas', 'local_service', 'other',
+  'creator', 'founder', 'coach', 'freelancer',
+  'professional', 'ecommerce', 'brand', 'saas', 'local_service', 'other',
 ] as const
 export type BriefWorkKind = (typeof BRIEF_WORK_KINDS)[number]
 
@@ -169,6 +182,15 @@ export const PRODUCT_EVIDENCE_FORM: Record<BriefWorkKind, ProductEvidenceForm> =
   ecommerce: 'images',
   creator: 'either',
   other: 'either',
+  // ⚖️ THE THREE NEW KINDS, DECIDED RATHER THAN DEFAULTED. A founder's product
+  // is whatever they built, so `either` — a physical-goods founder and a
+  // software founder are both ordinary. A coach and a freelancer sell expertise
+  // and capacity: there is no object, and asking for photos of a service is how
+  // a creator learns the questions are not serious. Their offer already lives on
+  // a page, so `link`.
+  founder: 'either',
+  coach: 'link',
+  freelancer: 'link',
 }
 
 /**

@@ -52,5 +52,7 @@ export * from './shotDirection'
 // Which setup each scene is filmed in — the recorder's sticky strip and the
 // scene cards both read this rather than re-comparing background strings.
 export * from './setupPlan'
+// The six onboarding questions asked while the scan runs, and what they change.
+export * from './creatorProfileQuestions'
 export * from './compatibilityGate'
 export * from './editor/index'

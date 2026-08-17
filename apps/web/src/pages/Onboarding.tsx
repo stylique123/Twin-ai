@@ -14,13 +14,21 @@ import { Aurora } from '../components/Aurora'
 
 /** The chooser's words. Kept beside the screen rather than in the contract: the
  *  ids are the contract, and how they are phrased to a person is not. */
+// ⚖️ PLAIN ENGLISH, AND THE INTERNAL NAME IS NEVER THE LABEL. `saas` reads as
+// "Software", `local_service` as "Local business" — a creator should not have to
+// know which noun the codebase picked. The three new kinds are here because
+// founders, coaches and freelancers were all landing on "Something else", which
+// told Twin nothing about a person who has a great deal to say.
 const WORK_KIND_LABEL: Record<BriefWorkKind, string> = {
-  creator: 'Creator',
+  creator: 'Creator / influencer',
+  founder: 'Founder / business owner',
+  coach: 'Coach / consultant',
+  freelancer: 'Freelancer / agency',
   professional: 'Licensed professional',
-  ecommerce: 'Ecommerce',
-  brand: 'Brand / in-house',
+  ecommerce: 'Ecommerce / brand',
+  brand: 'Brand / content team',
   saas: 'Software',
-  local_service: 'Local service',
+  local_service: 'Local business',
   other: 'Something else',
 }
 // Q4, REWRITTEN — it now asks ONLY about things the creator does NOT own.
