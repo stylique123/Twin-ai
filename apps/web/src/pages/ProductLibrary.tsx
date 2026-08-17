@@ -415,11 +415,25 @@ export default function ProductLibrary() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-8 px-4 py-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Product Library</h1>
-        <p className="mt-1 text-sm text-sand">
-          What your scripts are allowed to show and say about the things you make or promote.
-        </p>
+      {/* ⚠️ THE ACTION WAS ONLY REACHABLE FROM AN EMPTY STATE HALF A SCREEN
+          DOWN, UNDER A PARAGRAPH. A creator who scrolled past it, or who had one
+          product already, had to hunt for the way to add another. The primary
+          thing you can do on a page belongs beside its title. */}
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Product Library</h1>
+          <p className="mt-1 text-sm text-sand">
+            The things you sell or promote, and what your scripts are allowed to say and
+            show about each one.
+          </p>
+        </div>
+        {!addingNew && (
+          <button
+            type="button"
+            className="btn-gradient shrink-0 rounded-lg px-3 py-1.5 text-sm"
+            onClick={() => setAddingNew(true)}
+          >Add a product</button>
+        )}
       </header>
 
       {err && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
@@ -687,11 +701,16 @@ export default function ProductLibrary() {
 
       {suggestions.length > 0 && (
         <section>
-          <h2 className="text-lg font-semibold">Products you have mentioned</h2>
+          <h2 className="text-lg font-semibold">Things you talked about in your videos</h2>
+          {/* ⚠️ THE HEADING WAS THE ONLY EXPLANATION AND IT SOUNDED LIKE A LIST
+              OF PRODUCTS THE CREATOR ALREADY HAD. What it actually is: sentences
+              lifted from their own transcripts, owned by nobody, doing nothing
+              until someone claims one. Both facts have to be said, because a
+              list that looks finished invites no action. */}
           <p className="mt-1 text-sm text-sand">
-            Picked up from your own videos. We have not assumed any of these are yours —
-            tell us which are and what your relationship to them is, and your scripts can
-            start using them.
+            These are sentences from your own videos — we have not added any of them to
+            your products, and none of them affect your scripts yet. If one of these is
+            yours, say so and we will ask a few questions about it.
           </p>
           <ul className="mt-3 space-y-2">
             {suggestions.map((s) => (
@@ -709,11 +728,16 @@ export default function ProductLibrary() {
                     onClaim={(a) => void claim(s, a)}
                   />
                 ) : (
+                  // ⚖️ THE LABEL NOW SAYS WHAT THE TAP DOES. "This is mine"
+                  // reads as the claim itself, and it is not one — it opens four
+                  // questions, which is the whole point of the page. A button
+                  // that promises more than it performs is how a creator decides
+                  // the page is broken when nothing appears to happen.
                   <button
                     type="button"
-                    className="mt-2 rounded-lg border border-white/15 px-3 py-1 text-xs"
+                    className="mt-2 rounded-lg border border-white/15 px-3 py-1 text-xs text-cream hover:border-white/30"
                     onClick={() => setClaimingId(s.id)}
-                  >This is mine</button>
+                  >This one is mine — add it</button>
                 )}
               </li>
             ))}
