@@ -52,6 +52,8 @@ export * from './shotDirection'
 // Which setup each scene is filmed in — the recorder's sticky strip and the
 // scene cards both read this rather than re-comparing background strings.
 export * from './setupPlan'
+// Figures spoken about a product must trace to a stored product fact.
+export * from './productClaimCheck'
 // The six onboarding questions asked while the scan runs, and what they change.
 export * from './creatorProfileQuestions'
 export * from './compatibilityGate'
