@@ -345,7 +345,7 @@ export default function V2Building() {
         // questions are returned by the SERVER, and the server is not called
         // until the reference has been ingested — `ingestReference` plus a poll
         // of up to 60 x 1.2s. So the creator watched a two-minute progress bar,
-        // was then asked two questions, and pressing "Build my video plan"
+        // was then asked two questions, and pressing the build button
         // started the bar again. The questions are about the creator's own
         // intent; not one of them needs the reference read.
         //
@@ -693,6 +693,135 @@ export default function V2Building() {
   // "try a different reference".
   const isVoiceIssue = /voice/i.test(error ?? '')
 
+  // ── THE CARD IS TWO BLOCKS, AND THEY ARE NOT THE SAME KIND OF THING ───────
+  //
+  // ⚖️ THE DECISIONS ARE ASKED OF EVERY VIDEO; THE COMMERCIAL BLOCK IS ASKED OF
+  // ALMOST NONE. Stacking them into one undifferentiated list made a card that
+  // is normally three taps look like a form, because the two free-text boxes
+  // below the chips read as more work rather than as a different subject that
+  // only appears when Twin already believes there is an offer to talk about.
+  //
+  // ⚠️ THE SPLIT IS ON `isChip`, WHICH IS THE EXISTING DISTINCTION AND NOT A NEW
+  // ONE. Chips are the fixed-enum decisions that drive the intent record; every
+  // other item fires from an inferred offer and is answered in the creator's own
+  // words. Introducing a second, parallel notion of "which block is this" would
+  // be a field that can disagree with the renderer.
+  const decisions = (askQuestions ?? []).filter(isChip)
+  const commercial = (askQuestions ?? []).filter((q) => !isChip(q))
+  const hasTwoBlocks = decisions.length > 0 && commercial.length > 0
+
+  /** ⚖️ ONE RENDERER, TWO COLUMNS. The blocks differ in what they ask and
+   *  where they sit, never in how a question behaves — so the chip logic, the
+   *  sub-option row and the keystroke-level save live here once. Copying them
+   *  per column is how two lists drift into two behaviours. */
+  const renderAsk = (q: AskItem) => (
+            <div key={q.field} className="block">
+              <span className="text-sm leading-relaxed text-cream">{q.question}</span>
+              {isChip(q) ? (
+                // ⚖️ CHIPS, NOT A TEXT BOX. These three have a fixed set of
+                // answers that map to decisions downstream; free text would
+                // have to be interpreted, and an interpretation is a guess
+                // wearing the creator's words.
+                // ⚖️ A FRAGMENT: the chip branch is two siblings now — the
+                // options row, and the sub-options row it can reveal.
+                <>
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  {q.options.map((o) => {
+                    // A grouped option is chosen when ANY of its children is.
+                    const kids = o.options ?? []
+                    const picked = askAnswers[q.field] ?? ''
+                    const active = kids.length
+                      ? kids.some((c) => c.value === picked)
+                      : picked === o.value
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        aria-pressed={active}
+                        title={o.hint}
+                        onClick={() => setAskAnswers((a) => {
+                          // Tapping the active chip clears it, so a mis-tap
+                          // is one tap to undo rather than a reload. A group
+                          // opens on its FIRST child, which the second row
+                          // then lets the creator change — so one tap is
+                          // always a complete answer.
+                          const next = {
+                            ...a,
+                            [q.field]: active ? '' : (kids[0]?.value ?? o.value),
+                          }
+                          rememberAnswers(buildKey(state), next)
+                          return next
+                        })}
+                        className={cn(
+                          'rounded-full border px-3.5 py-2 text-left text-[13px] transition-colors',
+                          active
+                            ? 'border-coral/50 bg-coral/[0.08] text-cream'
+                            : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20 hover:bg-white/[0.04]',
+                        )}
+                      >
+                        <span className="block leading-tight">{o.label}</span>
+                        {/* ⚖️ THE HINT IS THE DISAMBIGUATION, so it only
+                            appears where two labels could be confused. */}
+                        {o.hint && (
+                          <span className="mt-0.5 block text-[11px] leading-snug text-stone">{o.hint}</span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+                {/* ⚠️ THE SECOND LEVEL, REVEALED ONLY WHEN ITS GROUP IS OPEN.
+                    Comment, share and follow are three different endings and
+                    collapsing them internally would have thrown two payoffs
+                    away to save two chips. Grouping is visual; the behaviour
+                    stays whole. */}
+                {q.options.filter((o) => o.options?.length
+                  && o.options.some((c) => c.value === (askAnswers[q.field] ?? '')))
+                  .map((group) => (
+                    <div key={`${group.value}-sub`} className="mt-2 flex flex-wrap gap-2 pl-1">
+                      {(group.options ?? []).map((c) => {
+                        const on = (askAnswers[q.field] ?? '') === c.value
+                        return (
+                          <button
+                            key={c.value}
+                            type="button"
+                            aria-pressed={on}
+                            onClick={() => setAskAnswers((a) => {
+                              const next = { ...a, [q.field]: c.value }
+                              rememberAnswers(buildKey(state), next)
+                              return next
+                            })}
+                            className={cn(
+                              'rounded-full border px-3 py-1.5 text-[12px] transition-colors',
+                              on
+                                ? 'border-coral/40 bg-coral/[0.06] text-cream'
+                                : 'border-white/8 bg-white/[0.015] text-stone hover:border-white/15',
+                            )}
+                          >{c.label}</button>
+                        )
+                      })}
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <input
+                  type="text"
+                  autoComplete="off"
+                  value={askAnswers[q.field] ?? ''}
+                  onChange={(ev) => setAskAnswers((a) => {
+                    // ⚠️ SAVED ON EVERY KEYSTROKE, because the event that
+                    // loses them is not a submit — it is a background tab
+                    // being reclaimed with no warning and no unload.
+                    const next = { ...a, [q.field]: ev.target.value }
+                    rememberAnswers(buildKey(state), next)
+                    return next
+                  })}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+                  placeholder="Your answer"
+                />
+              )}
+            </div>
+  )
+
   return (
     // Brand canvas, vertically centered in the space BETWEEN the app chrome (top
     // bar + tab bar, ~8rem on phone) so the card sits clean and the nav/tab bar stay
@@ -705,7 +834,11 @@ export default function V2Building() {
         <div className="absolute right-1/4 bottom-1/4 h-[18rem] w-[18rem] rounded-full bg-teal/10 blur-[130px]" />
       </div>
 
-      <div className="relative w-full max-w-md">
+      {/* ⚖️ THE CARD WIDENS ONLY WHEN THERE ARE TWO COLUMNS TO PUT IN IT. Every
+          other state here — building, refused, errored — is a single narrow
+          column, and stretching it to three inches of whitespace on a desktop
+          to keep one class name simple would make every one of them worse. */}
+      <div className={cn('relative w-full max-w-md', hasTwoBlocks && 'lg:max-w-3xl')}>
         {askQuestions ? (
           // NOT an error, and the copy leads with the thing that protects the
           // creator: nothing was charged. Twin declined to write a script it
@@ -724,114 +857,29 @@ export default function V2Building() {
                 ? 'No remix has been used yet. Three taps — Twin decides how to make it, you decide what it is for.'
                 : 'No remix has been used. Twin would rather ask than guess — a guess here ends up as a claim in your voice.'}
             </p>
-            <div className="mt-6 space-y-4">
-              {askQuestions.map((q) => (
-                <div key={q.field} className="block">
-                  <span className="text-sm leading-relaxed text-cream">{q.question}</span>
-                  {isChip(q) ? (
-                    // ⚖️ CHIPS, NOT A TEXT BOX. These three have a fixed set of
-                    // answers that map to decisions downstream; free text would
-                    // have to be interpreted, and an interpretation is a guess
-                    // wearing the creator's words.
-                    // ⚖️ A FRAGMENT: the chip branch is two siblings now — the
-                    // options row, and the sub-options row it can reveal.
-                    <>
-                    <div className="mt-2.5 flex flex-wrap gap-2">
-                      {q.options.map((o) => {
-                        // A grouped option is chosen when ANY of its children is.
-                        const kids = o.options ?? []
-                        const picked = askAnswers[q.field] ?? ''
-                        const active = kids.length
-                          ? kids.some((c) => c.value === picked)
-                          : picked === o.value
-                        return (
-                          <button
-                            key={o.value}
-                            type="button"
-                            aria-pressed={active}
-                            title={o.hint}
-                            onClick={() => setAskAnswers((a) => {
-                              // Tapping the active chip clears it, so a mis-tap
-                              // is one tap to undo rather than a reload. A group
-                              // opens on its FIRST child, which the second row
-                              // then lets the creator change — so one tap is
-                              // always a complete answer.
-                              const next = {
-                                ...a,
-                                [q.field]: active ? '' : (kids[0]?.value ?? o.value),
-                              }
-                              rememberAnswers(buildKey(state), next)
-                              return next
-                            })}
-                            className={cn(
-                              'rounded-full border px-3.5 py-2 text-left text-[13px] transition-colors',
-                              active
-                                ? 'border-coral/50 bg-coral/[0.08] text-cream'
-                                : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20 hover:bg-white/[0.04]',
-                            )}
-                          >
-                            <span className="block leading-tight">{o.label}</span>
-                            {/* ⚖️ THE HINT IS THE DISAMBIGUATION, so it only
-                                appears where two labels could be confused. */}
-                            {o.hint && (
-                              <span className="mt-0.5 block text-[11px] leading-snug text-stone">{o.hint}</span>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                    {/* ⚠️ THE SECOND LEVEL, REVEALED ONLY WHEN ITS GROUP IS OPEN.
-                        Comment, share and follow are three different endings and
-                        collapsing them internally would have thrown two payoffs
-                        away to save two chips. Grouping is visual; the behaviour
-                        stays whole. */}
-                    {q.options.filter((o) => o.options?.length
-                      && o.options.some((c) => c.value === (askAnswers[q.field] ?? '')))
-                      .map((group) => (
-                        <div key={`${group.value}-sub`} className="mt-2 flex flex-wrap gap-2 pl-1">
-                          {(group.options ?? []).map((c) => {
-                            const on = (askAnswers[q.field] ?? '') === c.value
-                            return (
-                              <button
-                                key={c.value}
-                                type="button"
-                                aria-pressed={on}
-                                onClick={() => setAskAnswers((a) => {
-                                  const next = { ...a, [q.field]: c.value }
-                                  rememberAnswers(buildKey(state), next)
-                                  return next
-                                })}
-                                className={cn(
-                                  'rounded-full border px-3 py-1.5 text-[12px] transition-colors',
-                                  on
-                                    ? 'border-coral/40 bg-coral/[0.06] text-cream'
-                                    : 'border-white/8 bg-white/[0.015] text-stone hover:border-white/15',
-                                )}
-                              >{c.label}</button>
-                            )
-                          })}
-                        </div>
-                      ))}
-                    </>
-                  ) : (
-                    <input
-                      type="text"
-                      autoComplete="off"
-                      value={askAnswers[q.field] ?? ''}
-                      onChange={(ev) => setAskAnswers((a) => {
-                        // ⚠️ SAVED ON EVERY KEYSTROKE, because the event that
-                        // loses them is not a submit — it is a background tab
-                        // being reclaimed with no warning and no unload.
-                        const next = { ...a, [q.field]: ev.target.value }
-                        rememberAnswers(buildKey(state), next)
-                        return next
-                      })}
-                      className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
-                      placeholder="Your answer"
-                    />
-                  )}
+            {/* ⚖️ TWO COLUMNS ONLY WHERE THERE IS ROOM, AND ONLY WHEN THERE ARE
+                TWO BLOCKS. On a phone this is the same single stack it always
+                was; the split exists because on a desktop the three decisions
+                and the offer questions were separated by a scroll. */}
+            <div className={cn('mt-6', hasTwoBlocks && 'lg:grid lg:grid-cols-2 lg:gap-8')}>
+              <div className="space-y-4">
+                {hasTwoBlocks && (
+                  <span className="block text-[11px] uppercase tracking-wide text-stone/70">What this video is for</span>
+                )}
+                {decisions.map(renderAsk)}
+              </div>
+              {commercial.length > 0 && (
+                <div className="mt-6 space-y-4 lg:mt-0">
+                  {/* ⚠️ NAMED AS OPTIONAL IN THE HEADING ITSELF, because these
+                      boxes fire from an INFERRED offer and the button does not
+                      wait for them. A creator who cannot answer one must be able
+                      to see that without discovering it by clicking. */}
+                  <span className="block text-[11px] uppercase tracking-wide text-stone/70">
+                    About what you sell <span className="normal-case tracking-normal text-stone/50">— optional</span>
+                  </span>
+                  {commercial.map(renderAsk)}
                 </div>
-              ))}
+              )}
             </div>
             <button
               type="button"
@@ -867,7 +915,7 @@ export default function V2Building() {
               }}
               className="btn-gradient mt-6 w-full disabled:opacity-40"
             >
-              Build my video plan
+              Create my version
             </button>
             <button onClick={() => nav('/v2', { replace: true })} className="btn-ghost mt-3 w-full">Start over</button>
           </div>
