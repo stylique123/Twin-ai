@@ -5,6 +5,7 @@ import {
   readOnboardingDraft,
   writeOnboardingDraft,
   type OnboardingDraft,
+  emptyProfileAnswers,
 } from './onboardingDraft'
 
 class MemoryStorage implements Storage {
@@ -22,6 +23,7 @@ const draft = (userId = 'user-a'): OnboardingDraft => ({
   userId,
   voiceId: 'voice-a',
   platform: 'instagram',
+  ...emptyProfileAnswers(),
   workKind: null, workKindOther: null,
   forbiddenClaims: null,
   q4: null,

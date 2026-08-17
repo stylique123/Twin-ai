@@ -1,4 +1,13 @@
-import { Q4_ANSWERS, readLegacyPromotes, type BriefWorkKind, type Q4Answer } from './api'
+import {
+  Q4_ANSWERS, readLegacyPromotes,
+  AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE, DESIRED_FORMATS, FORMAT_EXPLORATION,
+  COMMERCIAL_TIES, OWN_PRODUCT_KINDS, OWN_SERVICE_KINDS, CAPABILITY_ANSWERS,
+  BRIEF_GOALS,
+  type BriefWorkKind, type Q4Answer, type BriefGoal,
+  type AudienceSegment, type AudienceKnowledge, type DesiredFormat,
+  type FormatExploration, type CommercialTie, type OwnProductKind,
+  type OwnServiceKind, type CapabilityAnswer,
+} from './api'
 import type { Platform, VoiceProfile } from './types'
 
 export const ONBOARDING_DRAFT_VERSION = 2
@@ -20,6 +29,32 @@ export interface OnboardingDraft {
   // all, and `forbiddenClaims` is the one answer no model can infer — see
   // packages/shared/src/preScriptBrief.ts.
   workKind: BriefWorkKind | null
+  // ── THE SIX QUESTIONS ASKED WHILE THE SCAN RUNS ─────────────────────────
+  //
+  // ⚖️ THE CHOOSER THAT REPLACED A TEXT BOX. `audience` above is the free-text
+  // field this supersedes; it stays because a draft written before this carries
+  // a sentence somebody typed, and discarding an answer to make a migration
+  // tidy is the one thing a migration may not do. New drafts fill `audienceSeg`
+  // and the writer prefers it — see `compileCreatorProfile`.
+  audienceSeg: AudienceSegment | null
+  audienceKnowledge: AudienceKnowledge | null
+  /** Up to two, and `[]` is a real answer meaning "asked, chose nothing". */
+  contentGoals: BriefGoal[]
+  desiredFormats: DesiredFormat[]
+  formatExploration: FormatExploration | null
+  commercialTies: CommercialTie[]
+  ownProductKind: OwnProductKind | null
+  ownServiceKind: OwnServiceKind | null
+  // ⚠️ THREE-STATE, WHERE `canRecordScreen` AND `canFilmObjects` BELOW ARE
+  // BOOLEANS. "Sometimes" is what most people mean and neither boolean could
+  // hold it. The booleans are kept and DERIVED from these, because every
+  // existing reader — the director's shot gate, the capability rows, the
+  // brief — is written against them, and a rename that touches all of those in
+  // one change is how a capability quietly flips for somebody who never
+  // answered. yes → true, no → false, sometimes → null: no dependency, still
+  // suggestible, which is exactly what null already meant.
+  screenCapability: CapabilityAnswer | null
+  productCapability: CapabilityAnswer | null
   // The sentence a creator types when no chip describes them. The contract has
   // required it for `other` since the brief was written and the UI never had a
   // box for it, so `other` reached the script as a word that describes nobody.
@@ -73,6 +108,50 @@ export function onboardingDraftKey(userId: string): string {
   return `${KEY_PREFIX}${userId}`
 }
 
+/**
+ * The six answers, before anybody has answered them.
+ *
+ * ⚖️ ONE SOURCE, BECAUSE THREE LITERALS CONSTRUCT A DRAFT. A new field added to
+ * the interface is a compile error in all three, and the temptation at that
+ * point is to paste the defaults — after which the three copies drift, and the
+ * one that drifts is a fresh draft claiming somebody answered something.
+ *
+ * Every default is the UNANSWERED value, never a plausible one: an empty list
+ * here means "not asked yet", and the readers are written to tell that apart
+ * from an explicit empty answer.
+ */
+export function emptyProfileAnswers(): Pick<OnboardingDraft,
+  'audienceSeg' | 'audienceKnowledge' | 'contentGoals' | 'desiredFormats' |
+  'formatExploration' | 'commercialTies' | 'ownProductKind' | 'ownServiceKind' |
+  'screenCapability' | 'productCapability'> {
+  return {
+    audienceSeg: null,
+    audienceKnowledge: null,
+    contentGoals: [],
+    desiredFormats: [],
+    formatExploration: null,
+    commercialTies: [],
+    ownProductKind: null,
+    ownServiceKind: null,
+    screenCapability: null,
+    productCapability: null,
+  }
+}
+
+/** ⚖️ ONE HELPER PAIR RATHER THAN TEN INLINE `includes` CHECKS. The validation
+ *  rule is identical for every chooser, and ten copies is ten chances for one of
+ *  them to be written as a cast. */
+function oneOf<T extends string>(raw: unknown, allowed: readonly T[]): T | null {
+  return typeof raw === 'string' && (allowed as readonly string[]).includes(raw) ? (raw as T) : null
+}
+
+/** ⚠️ FILTERS, NEVER REFUSES. One unrecognised entry must not discard the rest
+ *  of somebody's answer, and a non-array is simply nothing chosen. */
+function manyOf<T extends string>(raw: unknown, allowed: readonly T[]): T[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter((v): v is T => typeof v === 'string' && (allowed as readonly string[]).includes(v))
+}
+
 function parseDraft(raw: string | null, userId: string): OnboardingDraft | null {
   if (!raw) return null
   try {
@@ -94,6 +173,22 @@ function parseDraft(raw: string | null, userId: string): OnboardingDraft | null 
       product: value.product ?? value.profile?.offer ?? '',
       goal: value.goal ?? '',
       workKind: value.workKind ?? null,
+      // ⚠️ VALIDATED, NOT CAST — the same rule `q4` follows below, and for the
+      // same reason: a draft is localStorage, so a hand-edited or stale value
+      // would render as a selected chip and then travel into the brief as an
+      // answer the creator never gave. A list filters to the members it
+      // recognises rather than being refused whole, because one bad entry must
+      // not discard five good ones.
+      audienceSeg: oneOf(value.audienceSeg, AUDIENCE_SEGMENTS),
+      audienceKnowledge: oneOf(value.audienceKnowledge, AUDIENCE_KNOWLEDGE),
+      contentGoals: manyOf(value.contentGoals, BRIEF_GOALS),
+      desiredFormats: manyOf(value.desiredFormats, DESIRED_FORMATS),
+      formatExploration: oneOf(value.formatExploration, FORMAT_EXPLORATION),
+      commercialTies: manyOf(value.commercialTies, COMMERCIAL_TIES),
+      ownProductKind: oneOf(value.ownProductKind, OWN_PRODUCT_KINDS),
+      ownServiceKind: oneOf(value.ownServiceKind, OWN_SERVICE_KINDS),
+      screenCapability: oneOf(value.screenCapability, CAPABILITY_ANSWERS),
+      productCapability: oneOf(value.productCapability, CAPABILITY_ANSWERS),
       workKindOther: typeof value.workKindOther === 'string' ? value.workKindOther : null,
       forbiddenClaims: value.forbiddenClaims ?? null,
       // VALIDATED, not cast. A draft is localStorage — a value outside the
@@ -157,6 +252,7 @@ export function readOnboardingDraft(storage: Storage, userId: string): Onboardin
     workKind: null,
     workKindOther: null,
     forbiddenClaims: null,
+    ...emptyProfileAnswers(),
     q4: null,
     ownsEntity: null,
     canFilmObjects: null,
