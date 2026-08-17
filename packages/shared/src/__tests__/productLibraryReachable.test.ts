@@ -23,9 +23,16 @@ import { describe, expect, it } from 'vitest'
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
 const PAGE = readFileSync(join(REPO, 'apps/web/src/pages/ProductLibrary.tsx'), 'utf8')
 
-/** The JSX region that only renders when suggestions exist. */
+/** The JSX region that only renders when there is a suggestion to show.
+ *
+ *  ⚠️ THE ANCHOR MOVED WHEN THE PAGE STOPPED RENDERING EVERY EXTRACTED ROW. It
+ *  was `{suggestions.length > 0 &&` — a section of every candidate — and is now
+ *  `{picked &&`, the single ranked one. The CLAIM below did not change and must
+ *  not: whatever the suggestion block is called, an attestation form has to
+ *  exist outside it, or a creator with no suggestion has no way in. Narrowing
+ *  the suggestions made that MORE load-bearing, not less. */
 function suggestionsBlock(): string {
-  const start = PAGE.indexOf('{suggestions.length > 0 &&')
+  const start = PAGE.indexOf('{picked && (')
   expect(start).toBeGreaterThan(-1)
   return PAGE.slice(start)
 }

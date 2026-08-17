@@ -42,8 +42,10 @@ import {
   requestProductExtraction, confirmProductFacts,
   listBrandVoices, OwnedEntityExistsError, ProductLibraryFullError,
   isStale, factAgeDays,
+  bestSuggestion,
   type ProductSuggestion,
 } from '@twinai/shared'
+import { readOnboardingDraft } from '../lib/onboardingDraft'
 import type {
   ProductEntityRecord, Showability, EntityRelationship, EntityType, PersonalUse,
   ExtractedFact as ProductFact,
@@ -246,6 +248,29 @@ export default function ProductLibrary() {
   const [claimBusy, setClaimBusy] = useState(false)
   const { session } = useAuth()
   const [voiceId, setVoiceId] = useState<string | null>(null)
+
+  // ── ONE SUGGESTION, WITH ITS EVIDENCE, OR NONE ────────────────────────────
+  //
+  // ⚠️ THE PAGE USED TO RENDER EVERY ROW THE EXTRACTOR PRODUCED. Reported from a
+  // real account: five cards, of which a content-series title, Zoom, an opinion
+  // about posting frequency and a claim about growing a TikTok account. The rule
+  // behind them amounted to "this noun appeared in a video, so perhaps commerce
+  // has occurred", and `bestSuggestion` is the rule that replaces it — a named
+  // commercial RELATIONSHIP, corroborated, or silence.
+  //
+  // ⚠️ THE TIES COME FROM THE ONBOARDING DRAFT AND ARE OFTEN ABSENT, which is
+  // correct rather than convenient: they are held in local storage and never
+  // persisted server-side, so on a second device there is nothing to read. An
+  // empty list means "the question was never reached", NOT "I sell nothing", and
+  // `suggestionsAllowed` treats those differently — so a missing draft permits
+  // the suggestion instead of silently suppressing it. The creator who ANSWERED
+  // "nothing commercial" is the only one this filter silences.
+  const ties = (() => {
+    const id = session?.user?.id
+    if (!id) return null
+    try { return readOnboardingDraft(localStorage, id)?.commercialTies ?? null } catch { return null }
+  })()
+  const picked = bestSuggestion(suggestions, ties)
 
   useEffect(() => {
     let alive = true
@@ -699,26 +724,36 @@ export default function ProductLibrary() {
         </section>
       )}
 
-      {suggestions.length > 0 && (
+      {picked && (
         <section>
-          <h2 className="text-lg font-semibold">Things you talked about in your videos</h2>
+          <h2 className="text-lg font-semibold">Is this something you sell?</h2>
           {/* ⚠️ THE HEADING WAS THE ONLY EXPLANATION AND IT SOUNDED LIKE A LIST
               OF PRODUCTS THE CREATOR ALREADY HAD. What it actually is: sentences
               lifted from their own transcripts, owned by nobody, doing nothing
               until someone claims one. Both facts have to be said, because a
               list that looks finished invites no action. */}
+          {/* ⚠️ THE OLD HEADING WAS "Things you talked about in your videos" OVER
+              FIVE CARDS, and the five were a content-series title, Zoom, an
+              opinion about how often to post, and a claim about growing a TikTok
+              account. A wall of guesses is not a shortlist — it is an audit the
+              creator has to perform, and every wrong row costs more trust than a
+              right one earns. One candidate, with its evidence, is a question a
+              person can answer in two seconds. */}
           <p className="mt-1 text-sm text-sand">
-            These are sentences from your own videos — we have not added any of them to
-            your products, and none of them affect your scripts yet. If one of these is
-            yours, say so and we will ask a few questions about it.
+            This came out of your own videos. Nothing has been added to your products
+            and it is not affecting your scripts. If it is yours, say so and we will
+            ask a few questions about it.
           </p>
           <ul className="mt-3 space-y-2">
-            {suggestions.map((s) => (
+            {[picked.item].map((s) => (
               <li key={s.id} className="rounded-lg border border-white/10 px-3 py-2 text-sm">
                 <p>{s.text}</p>
+                {/* ⚖️ THE SUGGESTION EXPLAINS ITSELF. A card that shows its
+                    evidence can be judged; one that just asserts can only be
+                    trusted or ignored, and a creator who has been shown one bad
+                    guess will choose ignored for every later one. */}
                 <p className="mt-1 text-xs text-stone">
-                  {s.basis === 'stated' ? 'You said this' : 'From a video description'}
-                  {s.timesSeen > 1 && ` · mentioned ${s.timesSeen} times`}
+                  Why we are asking: {picked.verdict.reasons.join(' · ')}
                 </p>
                 {claimingId === s.id ? (
                   <ClaimForm
@@ -746,8 +781,12 @@ export default function ProductLibrary() {
               could write `OWN_PRODUCT` directly and save four taps; that would be
               an entitlement granted by a gesture that asserted nothing, which is
               the escalation this whole page refuses. See `ClaimForm`. */}
+          {/* ⚖️ AND THE OTHER CANDIDATES ARE NOT MENTIONED, NOT EVEN AS A COUNT.
+              "3 more we are unsure about" is the wall again, wearing a disclosure
+              — it invites the creator to go and adjudicate our uncertainty, which
+              is the work this page exists to do for them. Add is two inches away. */}
           <p className="mt-3 text-xs text-stone">
-            Nothing here is added to your products until you answer for it. Anything we
+            Nothing is added to your products until you answer for it. Anything we
             missed, you can add yourself.
           </p>
         </section>
