@@ -242,6 +242,24 @@ export function asksProductEvidence(
 }
 
 export interface BriefAnswers {
+  // ── THE SIX ONBOARDING ANSWERS ────────────────────────────────────────────
+  //
+  // ⚠️ THESE HAD NO SERVER-SIDE HOME AND LIVED IN LOCAL STORAGE. Three readers —
+  // the Content Profile meter, the Product DNA state and the suggestion filter —
+  // therefore reported a creator who had answered every question as one who had
+  // answered none, on any device but the one they onboarded on.
+  //
+  // ⚖️ THE TYPES ARE `string` RATHER THAN THE NARROW UNIONS ON PURPOSE. This is
+  // the STORED shape, and a value read back from a row written by an older build
+  // is untrusted input — `creatorProfileQuestions` owns the narrowing, and a cast
+  // here would hand a retired enum member to a reader as though it were current.
+  audienceKnowledge?: string | null
+  contentGoals?: readonly string[] | null
+  desiredFormats?: readonly string[] | null
+  formatExploration?: string | null
+  commercialTies?: readonly string[] | null
+  ownProductKind?: string | null
+  ownServiceKind?: string | null
   /** Q1 */
   goal?: BriefGoal | null
   /** Q2 — the chosen audience, plus the free text §8a requires of every "Other"
@@ -411,7 +429,21 @@ export function otherWithoutText(answers: BriefAnswers): boolean {
 export const BRIEF_STORED_KEYS = [
   'goal', 'audience', 'workKind', 'workKindOther', 'offer',
   'forbiddenClaims', 'promotes', 'alsoWantsToMake', 'productEvidence',
+  // ⚠️ THE SIX ONBOARDING ANSWERS, WHICH HAD NO SERVER-SIDE HOME AT ALL. They
+  // lived in local storage, so three readers — the Content Profile meter, the
+  // Product DNA state and the suggestion filter — all reported a creator who had
+  // answered everything as one who had answered nothing on a second device.
+  // ⚖️ AND ONE OF THEM FAILED UNSAFELY: `commercialTies` carries "nothing
+  // commercial", the answer that SUPPRESSES suggestions, so losing it re-enabled
+  // them for the one creator who said they sell nothing.
+  'audienceKnowledge', 'contentGoals', 'desiredFormats',
+  'formatExploration', 'commercialTies', 'ownProductKind', 'ownServiceKind',
 ] as const
+
+/** ⚠️ THE MULTI-SELECTS, NAMED ONCE. The CHECK admits arrays for exactly these
+ *  keys and non-empty strings everywhere else; a list that disagrees with the
+ *  constraint would fail at write time, in production, on somebody's onboarding. */
+export const BRIEF_ARRAY_KEYS = ['contentGoals', 'desiredFormats', 'commercialTies'] as const
 
 /**
  * What is safe to WRITE — and the whole of the three-state discipline at the
@@ -443,6 +475,20 @@ export function sanitizeBriefForWrite(answers: BriefAnswers): Record<string, unk
   if (answers.workKind) out.workKind = answers.workKind
   text('audience'); text('workKindOther'); text('offer'); text('forbiddenClaims')
   text('promotes'); text('alsoWantsToMake')
+  // ⚖️ AN EMPTY ARRAY IS REFUSED FOR THE REASON AN EMPTY STRING IS: `[]` and
+  // absent are the same fact to every reader, and storing the first creates a
+  // state that means "unanswered" while counting as answered.
+  for (const k of BRIEF_ARRAY_KEYS) {
+    const v = (answers as Record<string, unknown>)[k]
+    if (!Array.isArray(v)) continue
+    const clean = v.filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+      .map((x) => x.trim())
+    if (clean.length > 0) out[k] = clean
+  }
+  for (const k of ['audienceKnowledge', 'formatExploration', 'ownProductKind', 'ownServiceKind'] as const) {
+    const v = (answers as Record<string, unknown>)[k]
+    if (typeof v === 'string' && v.trim() !== '') out[k] = v.trim()
+  }
   const pe = answers.productEvidence
   if (pe === 'declined') out.productEvidence = 'declined'
   // An evidence record with no sections is the log of an attempt, not an
@@ -465,6 +511,11 @@ export function readStoredBrief(raw: unknown): BriefAnswers {
     if (k === 'productEvidence') {
       if (v === 'declined') out.productEvidence = 'declined'
       else if (v && typeof v === 'object') out.productEvidence = v as BriefAnswers['productEvidence']
+      continue
+    }
+    if (Array.isArray(v)) {
+      const clean = v.filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+      if (clean.length > 0) (out as Record<string, unknown>)[k] = clean
       continue
     }
     if (typeof v === 'string' && v.trim() !== '') {

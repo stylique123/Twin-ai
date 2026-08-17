@@ -230,3 +230,45 @@ export function productDnaStatus(
 export function productionFact(value: unknown): ProductionFact {
   return value === true ? 'yes' : value === false ? 'no' : 'unknown'
 }
+
+// ── WHERE THE ANSWERS COME FROM, AND IN WHAT ORDER ────────────────────────
+//
+// ⚠️ THE STORED BRIEF WINS, AND THE LOCAL DRAFT IS A FALLBACK RATHER THAN A
+// PEER. The draft is a half-finished form on one device; the brief is what the
+// creator confirmed. Merging them field-by-field with the draft on top would let
+// an abandoned edit — a chip tapped and never submitted — outrank the answer
+// they actually gave, on the device where they happened to abandon it.
+//
+// ⚖️ BUT THE DRAFT IS NOT IGNORED, BECAUSE ONBOARDING IS NOT INSTANT. Between
+// answering and the write landing there is a window where only the draft holds
+// the answers, and reading nothing there would make the meter drop to zero
+// mid-onboarding — which is when a creator is most likely to be looking at it.
+export interface ProfileAnswerSources {
+  /** `readStoredBrief(voice.pre_script_brief)` — what the creator confirmed. */
+  stored?: Partial<CreatorProfileAnswers> | null
+  /** The local onboarding draft, if this device has one. */
+  draft?: Partial<CreatorProfileAnswers> | null
+}
+
+const present = (v: unknown): boolean =>
+  Array.isArray(v) ? v.length > 0 : typeof v === 'string' ? v.trim() !== '' : v != null
+
+/**
+ * ⚖️ PER-FIELD, NOT WHOLE-OBJECT. A stored brief written before a question
+ * existed has no key for it, and preferring the whole stored object would then
+ * discard a draft answer to a question the brief predates — reporting a gap the
+ * creator has already filled in front of us.
+ */
+export function resolveProfileAnswers(
+  src: ProfileAnswerSources,
+): CreatorProfileAnswers {
+  const out: Record<string, unknown> = {}
+  for (const key of new Set([
+    ...Object.keys(src.draft ?? {}), ...Object.keys(src.stored ?? {}),
+  ])) {
+    const stored = (src.stored as Record<string, unknown> | null | undefined)?.[key]
+    const draft = (src.draft as Record<string, unknown> | null | undefined)?.[key]
+    out[key] = present(stored) ? stored : draft
+  }
+  return out as CreatorProfileAnswers
+}

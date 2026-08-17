@@ -169,3 +169,49 @@ describe('unrecorded is not none', () => {
     expect(p.percent).toBe(100)
   })
 })
+
+// ── WHERE THE ANSWERS COME FROM ───────────────────────────────────────────
+//
+// ⚠️ UNTIL 0136 THE SIX ANSWERS HAD NO SERVER-SIDE HOME, so the meter read a
+// local draft and reported a creator who had answered everything as one who had
+// answered nothing on any other device. The stored brief is the fix; this pins
+// how the two sources combine, because getting THAT wrong reintroduces the bug
+// in a subtler form.
+import { resolveProfileAnswers } from '../profileCompletion'
+
+describe('the confirmed answer beats the half-finished form', () => {
+  it('prefers the stored brief over the local draft', () => {
+    const a = resolveProfileAnswers({
+      stored: { commercialTies: ['own_product'] },
+      draft: { commercialTies: ['none'] },
+    })
+    expect(a.commercialTies).toEqual(['own_product'])
+  })
+
+  it('but per field, so a question the brief predates is not discarded', () => {
+    // ⚠️ WHOLE-OBJECT PRECEDENCE WOULD THROW AWAY A DRAFT ANSWER TO A QUESTION
+    // THE STORED BRIEF NEVER HELD, reporting a gap the creator has just filled
+    // in front of us. A brief written before a question existed has no key.
+    const a = resolveProfileAnswers({
+      stored: { commercialTies: ['affiliate'] },
+      draft: { commercialTies: ['none'], desiredFormats: ['talking_head'] },
+    })
+    expect(a.commercialTies).toEqual(['affiliate'])
+    expect(a.desiredFormats).toEqual(['talking_head'])
+  })
+
+  it('falls back to the draft mid-onboarding, before the write lands', () => {
+    // ⚖️ Reading nothing here would drop the meter to zero in the window between
+    // answering and the write — which is exactly when a creator is looking at it.
+    expect(resolveProfileAnswers({ stored: null, draft: { workKind: 'creator' } }).workKind)
+      .toBe('creator')
+    expect(resolveProfileAnswers({ stored: {}, draft: null })).toEqual({})
+  })
+
+  it('treats an empty array in the brief as absent, not as an answer', () => {
+    // The CHECK refuses to store one, but a row written before it could hold it.
+    expect(resolveProfileAnswers({
+      stored: { commercialTies: [] }, draft: { commercialTies: ['none'] },
+    }).commercialTies).toEqual(['none'])
+  })
+})

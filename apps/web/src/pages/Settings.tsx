@@ -3,7 +3,10 @@ import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Penc
 import { useAuth } from '../context/AuthContext'
 import { saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit, uploadBrandLogo, getWorkspace, createWorkspaceInvite, removeWorkspaceMember, type WorkspaceState } from '../lib/api'
 import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
-import { contentProfile, brandKitStatus, productDnaStatus, loadProductEntities } from '@twinai/shared'
+import {
+  contentProfile, brandKitStatus, productDnaStatus, loadProductEntities,
+  resolveProfileAnswers, readStoredBrief,
+} from '@twinai/shared'
 import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
 import { readOnboardingDraft, profileAnswersOf } from '../lib/onboardingDraft'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
@@ -210,11 +213,19 @@ export default function Settings() {
   // gap and the fix is to persist the answers, not to assume them here.
   const profileAnswers = (() => {
     const id = profile?.id
-    if (!id) return null
+    let draft = null
     try {
-      const d = readOnboardingDraft(localStorage, id)
-      return d ? profileAnswersOf(d) : null
-    } catch { return null }
+      const d = id ? readOnboardingDraft(localStorage, id) : null
+      draft = d ? profileAnswersOf(d) : null
+    } catch { draft = null }
+    // ⚖️ THE CONFIRMED ANSWER BEATS THE HALF-FINISHED FORM, per field. A stored
+    // brief written before a question existed has no key for it, so preferring
+    // the whole stored object would discard a draft answer to a question the
+    // brief predates — reporting a gap the creator just filled in front of us.
+    return resolveProfileAnswers({
+      stored: readStoredBrief(activeVoice?.pre_script_brief) as never,
+      draft,
+    })
   })()
   const content = contentProfile({
     answers: profileAnswers,
