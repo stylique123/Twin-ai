@@ -134,6 +134,36 @@ describe('the brand tab is honest about what it changes', () => {
   })
 })
 
+describe('editing the profile happens here, not somewhere else', () => {
+  it('opens a drawer rather than navigating to onboarding', () => {
+    // ⚠️ CHANGING ONE ANSWER MEANT RE-WALKING A FLOW FINISHED WEEKS AGO. So
+    // nobody changed anything, and the profile silently aged.
+    expect(PAGE).toMatch(/case 'edit_profile': return setProfileOpen\(true\)/)
+    expect(PAGE).not.toMatch(/case 'edit_profile': return nav\('\/onboarding'\)/)
+  })
+
+  it('offers the two answers the pipeline actually branches on', () => {
+    // ⚖️ NOT THE WHOLE QUESTIONNAIRE. What they know decides how much a script
+    // explains; the commercial tie decides what it may claim. Reprinting the
+    // rest would rebuild the wall of forms this page was rescued from.
+    const d = PAGE.slice(PAGE.indexOf('{profileOpen && ('))
+    expect(d.slice(0, 4000)).toMatch(/audienceKnowledge:/)
+    expect(d.slice(0, 4000)).toMatch(/commercialTies:/)
+  })
+
+  it('treats "nothing commercial" as exclusive', () => {
+    // ⚠️ HOLDING IT BESIDE A REAL TIE IS A CONTRADICTION, and the pipeline would
+    // have to pick one — the class of decision this batch moved into code.
+    expect(PAGE).toMatch(/v === 'none'/)
+    expect(PAGE).toMatch(/ties\.filter\(\(t\) => t !== 'none'\)/)
+  })
+
+  it('and the full questionnaire is still reachable for anyone who wants it', () => {
+    // ⚖️ FOLDING IS NOT REMOVING, here as with the DNA record.
+    expect(PAGE).toMatch(/Go through all the questions again/)
+  })
+})
+
 describe('the five states reach the screen as five different things', () => {
   it('each has its own words', () => {
     const chip = PAGE.slice(PAGE.indexOf('function StateChip'))
