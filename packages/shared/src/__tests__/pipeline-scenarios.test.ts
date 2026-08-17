@@ -25,11 +25,12 @@
 // should not be merged, because a suite that answers both answers neither
 // clearly.
 import { describe, expect, it } from 'vitest'
-import { compileVideoIntent, CONTENT_FOCUS, CONTENT_FOCUS_LABELS } from '../videoIntent'
+import { compileVideoIntent, CONTENT_FOCUS, CONTENT_FOCUS_LABELS, VIDEO_GOALS } from '../videoIntent'
 import { claimRulesFor, mayWriteCommercialCta } from '../productEntity'
 import { extractionTrust } from '../productExtraction'
 import { assembleCreatorProfile, toPlannerView, toWriterView } from '../profileAssembler'
 import { validateCreativeDecisionPlan, isCertified } from '../creativeDecisionPlan'
+import { mayUseOwnershipLanguage, mayClaimPersonalUse, mayAdaptObservedTrait } from '../authority'
 
 const NOW = '2026-08-17T00:00:00.000Z'
 /** The canonical creator, built by the real assembler from real answers. */
@@ -285,8 +286,8 @@ describe('the ledger is empty', () => {
     // `prefersKinds` empty for `trending`: the one focus that cannot be answered
     // from stored knowledge asks retrieval for nothing. That defect was invisible
     // until somebody wrote the scenario that needed it.
-    const skippedAssertions = 6
-    expect(skippedAssertions).toBe(6)
+    const skippedAssertions = 7
+    expect(skippedAssertions).toBe(7)
   })
 })
 
@@ -609,5 +610,182 @@ describe('Scenario 8 — stale product truth, and the conflict it creates', () =
   it.skip('SCRIPT — says neither figure until one is authoritative [CDP + writer]', () => {
     // ⚖️ AND MAY RESTRUCTURE AROUND IT — "check their current pricing" — when
     // that still serves the plan rather than papering over a gap.
+  })
+})
+
+// ── SCENARIO 9 — A SPONSORED VIDEO'S DISCLOSURE SURVIVES TO THE PROSE ─────
+//
+// ⚠️ CDP CAN CORRECTLY REQUIRE A DISCLOSURE AND THE WRITER CAN STILL DELETE IT.
+// Not maliciously — helpfully, while improving the pacing, because a legal
+// sentence reads like a speed bump to anything optimising for flow. So the plan
+// requiring it and the prompt demanding it are two different guarantees, and
+// only the second one reaches a viewer.
+//
+// ⚖️ THE PLAN LAYER IS NOT ENOUGH ON ITS OWN, WHICH IS WHY THIS SCENARIO SPANS
+// BOTH. A disclosure that exists in a decision and not in a script protects
+// nobody.
+describe('Scenario 9 — the disclosure a paid tie owes', () => {
+  const sponsor = creator(['sponsor'])
+
+  it('PROFILE — a paid tie is recorded as one, from the creator\'s own answer', () => {
+    expect(sponsor.relationship).toBe('SPONSOR')
+  })
+
+  it('CDP — a sponsored plan without a disclosure is refused', () => {
+    const v = validateCreativeDecisionPlan({
+      objective: 'sell', focus: 'product', products: ['p'],
+      ownershipLanguage: false, commercialCta: true, disclosureRequired: false, cta: null,
+    }, sponsor)
+    expect(v.map((x) => x.code)).toContain('DISCLOSURE_MISSING_FOR_PAID_TIE')
+  })
+
+  it('CDP — and it is a property of the arrangement, not of the goal', () => {
+    // ⚠️ EVERY GOAL OWES IT. A creator who is paid to feature something owes the
+    // disclosure on an entertaining video exactly as much as on a selling one.
+    for (const goal of VIDEO_GOALS) {
+      const v = validateCreativeDecisionPlan({
+        objective: goal, focus: null, products: ['p'],
+        ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null,
+      }, sponsor)
+      expect(v.map((x) => x.code), goal).toContain('DISCLOSURE_MISSING_FOR_PAID_TIE')
+    }
+  })
+
+  it('SCRIPT — the prompt demands it in words that refuse a pacing trade', () => {
+    // ⚖️ "not optional and not a pacing decision" IS DOING REAL WORK. A softer
+    // instruction is one a model may weigh against flow, and it will.
+    expect(BLUEPRINT).toMatch(/MUST be disclosed in the script/)
+    expect(BLUEPRINT).toMatch(/not optional and not a pacing decision/)
+  })
+
+  it('SCRIPT — an affiliate is told to disclose too, in its own line', () => {
+    // ⚠️ TWO ARRANGEMENTS, TWO INSTRUCTIONS. Collapsing them would make one of
+    // them wrong, and the wrong one puts a false claim in somebody's mouth.
+    expect(BLUEPRINT).toMatch(/disclose the affiliate relationship/)
+  })
+
+  it.skip('SCRIPT — the produced prose actually contains a disclosure [judge]', () => {
+    // ⚠️ THE ONLY ASSERTION THAT WOULD FULLY CLOSE THIS. Everything above proves
+    // the instruction was SENT; none of it proves the sentence came back. That
+    // needs a check on the output, which is the judge's job and does not exist.
+  })
+})
+
+// ── SCENARIO 10 — THE SCANNED ACCOUNT IS NOT THE CREATOR'S ACCOUNT ────────
+//
+// ⚠️ NOTHING STOPS SOMEBODY SCANNING A HANDLE THEY ADMIRE. The DNA that comes
+// back is real, useful and entirely observed: pacing, structure, format, the
+// shape of a hook. What it is not is a set of assertions by the person now
+// holding the account.
+//
+// ⚖️ SO OBSERVATION MAY GUIDE STYLE AND MAY AUTHORISE NOTHING. Ownership,
+// personal experience, a commercial relationship and any autobiographical claim
+// all require somebody to have said so — and this is the scenario where the two
+// come apart most obviously.
+describe('Scenario 10 — observed style, borrowed account, zero authority', () => {
+  it('PROFILE — a scan fills no answer, so every stated field stays null', () => {
+    // ⚠️ THE ASSEMBLER TAKES ANSWERS, NOT OBSERVATIONS, on purpose. Merging the
+    // two paths in one function is how an inference acquires an assertion's
+    // authority.
+    const p = assembleCreatorProfile({ answers: {} as never, now: NOW })
+    expect(p.relationship).toBeNull()
+    expect(p.role).toBeNull()
+    expect(p.defaultCta).toBeNull()
+  })
+
+  it('CDP — nothing observed may authorise ownership language', () => {
+    const observed = {
+      value: 'OWN_PRODUCT', source: 'observed' as const,
+      evidence: { seen: 40 }, updatedAt: NOW,
+    }
+    expect(mayUseOwnershipLanguage(observed)).toBe(false)
+    // ⚖️ AND NOT AT ANY VOLUME OF EVIDENCE. Forty sightings of somebody calling a
+    // product theirs is forty observations, not one assertion.
+    expect(mayUseOwnershipLanguage({ ...observed, evidence: { seen: 4000 } })).toBe(false)
+  })
+
+  it('CDP — nor personal experience, which is asked separately', () => {
+    expect(mayClaimPersonalUse({
+      value: 'CONFIRMED', source: 'observed', evidence: { seen: 20 }, updatedAt: NOW,
+    })).toBe(false)
+  })
+
+  it('CDP — a plan built on borrowed observation fails by name', () => {
+    const v = validateCreativeDecisionPlan({
+      objective: 'sell', focus: 'product', products: ['p'],
+      ownershipLanguage: true, commercialCta: true, disclosureRequired: false, cta: null,
+    }, creator([]))
+    expect(v.map((x) => x.code)).toContain('OWNERSHIP_WITHOUT_OWNED_PRODUCT')
+    expect(v.map((x) => x.code)).toContain('COMMERCIAL_CTA_WITHOUT_RELATIONSHIP')
+  })
+
+  it('SCRIPT — and style may still be adapted, because that part is legitimate', () => {
+    // ⚖️ THE SCENARIO IS NOT "REFUSE EVERYTHING". A repeated stylistic trait is
+    // exactly what observation is FOR; the line is between how a video sounds
+    // and what it claims.
+    expect(mayAdaptObservedTrait({
+      value: 'short punchy sentences', source: 'observed',
+      evidence: { seen: 12 }, updatedAt: NOW,
+    })).toBe(true)
+    // ⚠️ ONE SIGHTING IS A COINCIDENCE, and imitating it copies a single video.
+    expect(mayAdaptObservedTrait({
+      value: 'shouted intro', source: 'observed', evidence: { seen: 1 }, updatedAt: NOW,
+    })).toBe(false)
+  })
+})
+
+// ── SCENARIO 11 — A PER-VIDEO ANSWER MUST REACH *THIS* VIDEO ──────────────
+//
+// ⚠️ THIS DEFECT CLASS HAS ALREADY SHIPPED ONCE. A creator answered the readiness
+// questions, the answers unblocked the gate, and the script was written from the
+// stale stored values — so they watched a script ignore the thing they had just
+// typed, having paid for it.
+//
+// ⚖️ AND THE OPPOSITE FAILURE IS AS BAD. A per-video answer that overwrites the
+// profile makes the NEXT video inherit a choice nobody meant to make twice. The
+// rule is: the override wins for this generation, and only facts that are stable
+// properties of the creator are persisted.
+describe('Scenario 11 — the override reaches this video and stops there', () => {
+  it('INPUT — the answers are merged into the brief this generation reads', () => {
+    // ⚠️ THE FIX FOR THE SHIPPED DEFECT. `brief` is the seam every downstream
+    // reader goes through, so merging there is what makes an answer load-bearing
+    // rather than merely stored.
+    expect(BLUEPRINT).toMatch(/brief\.offer = String\(answers\.offer\)/)
+    expect(BLUEPRINT).toMatch(/brief\.defaultCta = String\(answers\.cta\)/)
+  })
+
+  it('PROFILE — only stable facts are written back to the creator', () => {
+    // ⚖️ OFFER, RELATIONSHIP AND PRODUCT FACTS ARE PROPERTIES OF THE CREATOR OR
+    // THE THING. They are worth keeping; re-asking them every video is the
+    // ritual the readiness gate exists to avoid.
+    const stable = BLUEPRINT.slice(BLUEPRINT.indexOf('const stable: Record<string, string> = {}'))
+    const block = stable.slice(0, stable.indexOf('brief.offer ='))
+    expect(block).toMatch(/stable\.offer/)
+    expect(block).toMatch(/stable\.promotes/)
+    expect(block).toMatch(/stable\.productFacts/)
+  })
+
+  it('PROFILE — and the per-video ones are NOT', () => {
+    // ⚠️ THE HALF THAT PREVENTS SILENT INHERITANCE. The same voice makes
+    // authority videos AND selling videos; persisting this video's goal would
+    // make the next one start from the wrong answer with nobody told.
+    const stable = BLUEPRINT.slice(BLUEPRINT.indexOf('const stable: Record<string, string> = {}'))
+    const block = stable.slice(0, stable.indexOf('brief.offer ='))
+    expect(block).not.toMatch(/stable\.goal/)
+    expect(block).not.toMatch(/stable\.angle/)
+  })
+
+  it('CDP — a goal answered per video is the goal this plan is certified against', () => {
+    // ⚖️ THE OVERRIDE IS THE INPUT TO CERTIFICATION, not a decoration on top of
+    // it. A plan certified against the stored goal while the writer follows the
+    // typed one is two systems disagreeing about what the video is.
+    expect(BLUEPRINT).toMatch(/body\.goal = String\(answers\.goal\)/)
+    expect(BLUEPRINT).toMatch(/cdpObjective = String\(body\.goal/)
+  })
+
+  it('SCRIPT — and a CTA typed at the remix card carries the creator\'s authority', () => {
+    // ⚠️ THE PROVENANCE RULE IS ABOUT WHO WROTE THE SENTENCE, not which screen
+    // it was typed on. A generated line never reaches this path.
+    expect(BLUEPRINT).toMatch(/A CTA TYPED HERE IS STILL THE CREATOR'S OWN WORDING/)
   })
 })
