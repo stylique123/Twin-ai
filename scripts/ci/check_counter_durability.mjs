@@ -167,6 +167,7 @@ const EVENTS = {
   // already writes.
   empty_voice_scan_enqueued: { kind: 'incident', why: 'A ready voice with no knowledge; the missing scan was scheduled from a generation.' },
   readiness_incomplete: { kind: 'incident', why: 'Generation attempted before the brief was ready.' },
+  cdp_refused: { kind: 'incident', why: 'A goal and a library that contradict each other, refused before the charge. Per occurrence, because each one is a creator who set out to sell and was stopped — if the rate is high the answer is a better Product Library, not a softer rule.' },
   readiness_answers_not_persisted: { kind: 'incident', why: 'Brief answers that did not survive the write.' },
   knowledge_insert_failed: { kind: 'incident', why: 'A knowledge write that did not land.' },
   knowledge_kind_rejected: { kind: 'incident', why: 'An extracted item whose kind the schema refuses.' },
