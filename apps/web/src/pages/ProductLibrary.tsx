@@ -36,6 +36,7 @@
 // still costs an explicit assertion. What the suggestion saves is typing, which
 // is the difference between a page nobody fills in and one they finish.
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation,
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
@@ -257,7 +258,12 @@ export default function ProductLibrary() {
   const [saved, setSaved] = useState<string | null>(null)
   const [claimingId, setClaimingId] = useState<string | null>(null)
   // `addingNew` is the same attestation with no suggestion behind it.
-  const [addingNew, setAddingNew] = useState(false)
+  /** ⚠️ SETTINGS PROMISES "Add a product →" AND MUST NOT LAND SOMEBODY ON A LIST
+   *  TO FIND THE BUTTON AGAIN. A deep link with no reader is the same dead
+   *  affordance the Settings rebuild exists to remove — it just fails one screen
+   *  later, where it is harder to notice. */
+  const [params] = useSearchParams()
+  const [addingNew, setAddingNew] = useState(params.get('add') === '1')
   // Removal is confirmed in place rather than with a window.confirm, so the
   // consequence can be SPELLED OUT — a browser dialog cannot say what is lost.
   const [removingId, setRemovingId] = useState<string | null>(null)
