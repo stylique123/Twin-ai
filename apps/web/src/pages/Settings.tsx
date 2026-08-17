@@ -582,7 +582,15 @@ export default function Settings() {
               {kitSaved && <span className="inline-flex items-center gap-1 text-xs text-teal"><Check className="h-3.5 w-3.5" /> Saved</span>}
               {kitErr && <span className="text-xs text-coral">Couldn’t save — change it again to retry.</span>}
             </div>
-            <p className="mt-2 text-sm text-stone">Your real brand colors and logo — used across your blueprints and videos.</p>
+            {/* ⚖️ SAYS WHAT IT ACTUALLY CHANGES. Claiming "used across your
+                blueprints and videos" oversells it: the palette steers packaging
+                and thumbnail direction and the editor's supported styling, and it
+                changes no word of a script. Overstating what a setting does is
+                how a creator concludes the whole page is decorative. */}
+            <p className="mt-2 text-sm text-stone">
+              Your real colours and logo. They steer packaging, thumbnails and supported
+              visual styling — they do not change what your scripts say.
+            </p>
             {!defaultVoiceId ? (
               <p className="mt-4 text-sm text-stone/70">Scan a brand voice first to set a brand kit.</p>
             ) : (
@@ -600,7 +608,12 @@ export default function Settings() {
                     </div>
                   )}
                   <div className="flex flex-wrap gap-5">
-                    {([['primary', 'Primary'], ['secondary', 'Secondary']] as const).map(([key, label]) => {
+                    {/* ⚠️ THREE SLOTS, BECAUSE THREE ARE READ. `highlight` is
+                        consumed by `brandSnapshot` and by the blueprint's
+                        `paletteHex`, and Settings offered no way to set it — a
+                        field with two readers and no writer, which is the same
+                        asked-and-discarded defect in reverse. */}
+                    {([['primary', 'Primary'], ['secondary', 'Secondary'], ['highlight', 'Highlight']] as const).map(([key, label]) => {
                       // Only show a swatch for a colour the creator has ACTUALLY set
                       // (scanned or hand-picked). Never fabricate a default hex — an
                       // unset colour showed a fake teal that looked like "a colour I

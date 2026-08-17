@@ -111,6 +111,29 @@ describe('editing is deliberate, and the record is folded', () => {
   })
 })
 
+describe('the brand tab is honest about what it changes', () => {
+  it('offers every palette slot that something downstream reads', () => {
+    // ⚠️ `highlight` HAD TWO READERS AND NO WRITER. `brandSnapshot` and the
+    // blueprint's `paletteHex` both consume it, and Settings offered no way to
+    // set it — the asked-and-discarded defect, running in reverse.
+    expect(PAGE).toMatch(/\['highlight', 'Highlight'\]/)
+  })
+
+  it('does not claim to change what scripts say', () => {
+    // ⚖️ OVERSTATING WHAT A SETTING DOES IS HOW SOMEBODY CONCLUDES THE WHOLE
+    // PAGE IS DECORATIVE. The palette steers packaging, thumbnails and supported
+    // visual styling; it changes no word of a script.
+    expect(PAGE).toMatch(/they do not change what your scripts say/)
+    expect(PAGE).not.toMatch(/used across your blueprints and videos/)
+  })
+
+  it('and never renders a colour the creator did not choose', () => {
+    // ⚠️ AN UNSET COLOUR ONCE SHOWED A FABRICATED TEAL, which reads as "a colour
+    // I do not have". Unset renders an empty chip instead.
+    expect(PAGE).toMatch(/border-dashed/)
+  })
+})
+
 describe('the five states reach the screen as five different things', () => {
   it('each has its own words', () => {
     const chip = PAGE.slice(PAGE.indexOf('function StateChip'))
