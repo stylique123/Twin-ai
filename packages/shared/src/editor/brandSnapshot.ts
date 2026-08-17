@@ -139,7 +139,41 @@ export function projectBrandSnapshot(
   const pHex = hex(palette?.primary), sHex = hex(palette?.secondary), hHex = hex(palette?.highlight)
   const anyColor = pHex ?? sHex ?? hHex
   const rawSrc = typeof kit?.palette_source === 'string' ? kit.palette_source : undefined
-  const colorsSource: ColorsSource = anyColor && rawSrc !== 'pending' ? (rawSrc === 'manual' ? 'manual' : 'auto') : 'none'
+  // ── AN AUTO GREYSCALE PALETTE IS THE ABSENCE OF EVIDENCE ────────────────
+  //
+  // ⚠️ MEASURED: a real voice stored `primary #000000, secondary #FFFFFF` with
+  // `palette_source: auto`, and Settings rendered two swatches as though Twin had
+  // learned that creator's brand. Black and white are what the extractor returns
+  // when it found nothing distinctive — the failure case wearing the costume of
+  // an answer, and the creator reported it as exactly that.
+  //
+  // ⚖️ AUTO ONLY. A creator who CHOOSES black and white has chosen it, and an
+  // achromatic brand is a real brand — so a `manual` palette is untouched
+  // whatever its colours. This refuses a guess, never an assertion.
+  //
+  // ⚖️ AND IT REFUSES ONLY WHEN NOTHING SURVIVES. A palette carrying one real
+  // hue plus black and white is a real reading — the hue is the signal — so the
+  // test is that EVERY colour present is achromatic, not that any of them is.
+  // ⚠️ `string | null`, NOT `string | undefined`. `hex()` returns null for a
+  // missing or invalid colour, and the first version of this signature took
+  // undefined — which type-checks nowhere and cost a Vercel deploy. The build
+  // itself passed: esbuild strips types, so only `tsc` catches it, and I ran the
+  // build without the typecheck.
+  const achromatic = (h: string | null): boolean => {
+    if (!h) return true
+    const m = /^#?([0-9a-f]{6})$/i.exec(h.trim())
+    if (!m) return true
+    const n = parseInt(m[1], 16)
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
+    // Greys sit within a few points on every channel; #111111 and #FAFAFA are
+    // as contentless as pure black and white.
+    return Math.max(r, g, b) - Math.min(r, g, b) <= 12
+  }
+  const onlyGreys = achromatic(pHex) && achromatic(sHex) && achromatic(hHex)
+  const autoAndContentless = rawSrc !== 'manual' && onlyGreys
+  const colorsSource: ColorsSource = anyColor && rawSrc !== 'pending' && !autoAndContentless
+    ? (rawSrc === 'manual' ? 'manual' : 'auto')
+    : 'none'
   const emitColors = colorsSource !== 'none'
 
   // Caption: prefer an exact catalog id; else derive deterministically from the kit's

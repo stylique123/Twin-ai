@@ -187,11 +187,53 @@ Deno.serve(async (req: Request) => {
       .gte('created_at', cutoff)
       .maybeSingle()
     if (cached?.profile) {
+      // ⚠️ THE CACHE HOLDS HALF THE ARTEFACT, AND IT USED TO RETURN AS IF IT
+      // HELD ALL OF IT. MEASURED IN PRODUCTION: brand voice d8049e9b sat at
+      // `ready` with ZERO `creator_knowledge` rows while every other ready voice
+      // had between 2 and 51. It was a second account scanning a handle somebody
+      // had scanned days earlier — cache hit, profile copied, `job_id: null`, no
+      // scan ever enqueued.
+      //
+      // The consequence reached the teleprompter. `creator_knowledge` is what
+      // the entitlement check draws on, so with none of it every substantive
+      // beat failed and `generate-blueprint` correctly refused to fabricate —
+      // writing "Only you can supply this. What would you actually say here?"
+      // as the spoken line on THREE OF SIX SCENES of a paid generation. The
+      // creator saw a confident voice summary, signature phrases and recurring
+      // CTAs rendered over an empty table.
+      //
+      // ⚖️ THE COMMENT ABOVE SAYS "zero quality change (same posts, same
+      // profile)" AND THAT WAS TRUE WHEN IT WAS WRITTEN. The profile was the
+      // whole artefact then. Knowledge extraction was added later, keyed to the
+      // VOICE rather than to the handle, so the cache silently began reusing one
+      // half of a thing that had become two. An accurate note that stops being
+      // accurate reads exactly like one that never was.
+      //
+      // ⚖️ SO THE PROFILE STILL ARRIVES INSTANTLY AND THE SCAN STILL RUNS. The
+      // creator is not made to wait for something we already have, and the voice
+      // is not left claiming knowledge it does not hold. Marking it ready keeps
+      // them unblocked; the queued scan fills the knowledge behind them.
       await admin
         .from('brand_voices')
         .update({ status: 'ready', profile: cached.profile, error: null })
         .eq('id', voiceId)
-      return json({ brand_voice_id: voiceId, job_id: null, status: 'ready', cached: true })
+      const { data: knowledgeJob } = await admin
+        .from('jobs')
+        .insert({
+          owner_id: user.id,
+          type: 'scrape_dna',
+          status: 'queued',
+          max_attempts: 3,
+          payload: { brand_voice_id: voiceId, handle, platform, owner_id: user.id },
+        })
+        .select('id')
+        .single()
+      return json({
+        brand_voice_id: voiceId,
+        job_id: knowledgeJob?.id ?? null,
+        status: 'ready',
+        cached: true,
+      })
     }
   }
 

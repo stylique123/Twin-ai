@@ -84,6 +84,18 @@ describe('the edge decides CTAs from the relationship, not just the goal', () =>
   it('the block actually reaches the prompt', () => {
     // A block that is computed and never interpolated is the defect this whole
     // file exists for, one level down.
-    expect(EDGE).toMatch(/\$\{ctaIntentLine\}\$\{claimRulesBlock\}/)
+    //
+    // ⚠️ THE CLAIM IS "EACH REACHES THE PROMPT", NOT "THESE TWO ARE ADJACENT".
+    // Pinning them as neighbours made inserting a third CTA line between them a
+    // test failure, which is a false alarm — nothing about correctness depends on
+    // what sits between them, and a guard that fires on a safe edit teaches
+    // people to edit the guard.
+    for (const block of ['ctaIntentLine', 'claimRulesBlock']) {
+      // Interpolated into the prompt template, not merely computed above it.
+      expect(EDGE, block).toMatch(new RegExp(`\\$\\{${block}\\}`))
+    }
+    // Order still matters: intent decides whether a commercial ask is allowed at
+    // all, and the claim rules qualify what may be said once it is.
+    expect(EDGE.indexOf('${ctaIntentLine}')).toBeLessThan(EDGE.indexOf('${claimRulesBlock}'))
   })
 })

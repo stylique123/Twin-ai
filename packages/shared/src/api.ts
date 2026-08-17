@@ -206,7 +206,7 @@ export async function saveDNA(dna: CreatorDNA): Promise<Profile> {
 // edge function as "the authority" and no test holding them together — which is
 // how "Start conversations" and "Get leads" came to share one key that granted
 // commercial-CTA intent. One definition, one place, re-exported from the index.
-import type { VideoGoal, ContentFocus, ViewerOutcome } from './videoIntent'
+import type { VideoGoal, ContentFocus, ViewerOutcome, ReferenceUse } from './videoIntent'
 
 export interface GenerateInput {
   /** Answers to a prior READINESS_INCOMPLETE refusal, keyed by field. Sending
@@ -234,6 +234,10 @@ export interface GenerateInput {
   // would invite a caller to send half of it and a reader to guess the rest.
   focus?: ContentFocus
   outcome?: ViewerOutcome
+  // ⚖️ THE FOURTH, AND THE ONLY ONE ABOUT THE REFERENCE RATHER THAN THE CREATOR.
+  // Snake-cased to match the wire, like every other field here: the three above
+  // are single words, and this is the first that would have to choose.
+  reference_use?: ReferenceUse
   // Optional: when the reference was analyzed by the worker (real transcript),
   // pass its transcript_id so the blueprint is built from the actual video.
   transcript_id?: string
@@ -1274,6 +1278,24 @@ export async function uploadBrandLogo(dataUrl: string): Promise<string> {
   return (data as { path: string }).path
 }
 
+/** Upload one photo of a product and get back its storage path.
+ *
+ *  ⚖️ THE PATH IS NOT EVIDENCE UNTIL SOMETHING READS IT. Storing an image grants
+ *  nothing on its own — `extract_product` reads the paths and `imageFactAllowed`
+ *  decides what the result may establish. A caller that uploads and never queues
+ *  the extraction has produced a file, not a fact.
+ */
+export async function uploadProductImage(dataUrl: string): Promise<string> {
+  const content_type = dataUrl.startsWith('data:image/jpeg') ? 'image/jpeg'
+    : dataUrl.startsWith('data:image/webp') ? 'image/webp'
+      : 'image/png'
+  const { data, error } = await supabase.functions.invoke('product-image', {
+    body: { image_base64: dataUrl, content_type },
+  })
+  if (error) throw new Error(await readInvokeError(error))
+  return (data as { path: string }).path
+}
+
 // Brand kit: caption-style + highlight-color defaults for a workspace's renders.
 export async function saveBrandKit(brandId: string, kit: import('./types').BrandKit): Promise<void> {
   const { error } = await supabase.from('brand_voices').update({ brand_kit: kit }).eq('id', brandId)
@@ -1502,18 +1524,37 @@ function readStoredFact(raw: unknown): ExtractedFact | null {
  *  rather than the job, so a reload picks the result up wherever it got to. */
 export async function requestProductExtraction(
   ownerId: string, entityId: string, url: string,
+  /** ⚖️ IMAGES ARE A SECOND SOURCE, NOT A SUBSTITUTE FOR THE URL. A creator may
+   *  have both — a store page and their own photos — and they establish
+   *  different things: the page states the offer, the photos show the object.
+   *  Passing them together is what lets one job produce both. */
+  imagePaths: readonly string[] = [],
 ): Promise<void> {
   const clean = url.trim()
   // ⚠️ REFUSED HERE AS WELL AS IN THE WORKER. The worker's check is the one that
   // protects the credentialed process; this one exists so the creator is told
   // immediately rather than watching a job fail silently.
-  if (!/^https:\/\//i.test(clean)) throw new Error('Please paste a full https:// link.')
+  // ⚠️ IMAGES ALONE ARE A COMPLETE SOURCE. Plenty of products have no page worth
+  // reading — a service, a community, something unlaunched — and demanding a URL
+  // for those would make the link the price of admission to the whole feature.
+  // ⚖️ A URL THAT IS PRESENT MUST STILL BE REAL. This refuses a malformed link
+  // rather than quietly dropping it, because a silently ignored link looks
+  // exactly like a link that was read and found nothing.
+  if (clean === '' && imagePaths.length === 0) {
+    throw new Error('Add a link or at least one photo so Twin has something to read.')
+  }
+  if (clean !== '' && !/^https:\/\//i.test(clean)) throw new Error('Please paste a full https:// link.')
   const { error } = await supabase.from('jobs').insert({
     owner_id: ownerId,
     type: 'extract_product',
     status: 'queued',
     max_attempts: 3,
-    payload: { entity_id: entityId, url: clean },
+    // ⚠️ ONLY REAL PATHS, AND NEVER AN EMPTY ARRAY. An empty list and an absent
+    // key mean the same thing to the worker, and storing the first would create
+    // a fourth state that reads as "images were supplied" to anyone counting.
+    payload: imagePaths.length > 0
+      ? { entity_id: entityId, url: clean, image_paths: imagePaths.filter((p) => typeof p === 'string' && p.trim() !== '') }
+      : { entity_id: entityId, url: clean },
   })
   if (error) throw error
 }

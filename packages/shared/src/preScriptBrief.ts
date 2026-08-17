@@ -53,8 +53,21 @@ export type BriefGoal = (typeof BRIEF_GOALS)[number]
 
 /** Q3. What you do — the answer that decides where subject matter and business
  *  truth come from, and whether the claims question is asked at all. */
+// ⚠️ `founder`, `coach` AND `freelancer` WERE ALL LANDING ON `other` OR
+// `professional`, AND THEY ARE NOT THE SAME BUSINESS. A founder talking about AI
+// and a creator reviewing AI products can share a niche and still need opposite
+// scripts: one is speaking for a thing they own, the other about things they do
+// not. A coach sells expertise with no object to film; an agency sells capacity.
+// Collapsing them into `other` threw away the fact that decides whether a video
+// can show anything at all.
+//
+// ⚖️ ADDING A VALUE HERE IS NOT FREE, WHICH IS THE POINT. `PRODUCT_EVIDENCE_FORM`
+// is a total Record over this union, so the compiler refuses a new kind until
+// somebody has decided what that person is asked to hand over. That is the
+// cheapest place in the codebase to be forced to think.
 export const BRIEF_WORK_KINDS = [
-  'creator', 'professional', 'ecommerce', 'brand', 'saas', 'local_service', 'other',
+  'creator', 'founder', 'coach', 'freelancer',
+  'professional', 'ecommerce', 'brand', 'saas', 'local_service', 'other',
 ] as const
 export type BriefWorkKind = (typeof BRIEF_WORK_KINDS)[number]
 
@@ -169,6 +182,15 @@ export const PRODUCT_EVIDENCE_FORM: Record<BriefWorkKind, ProductEvidenceForm> =
   ecommerce: 'images',
   creator: 'either',
   other: 'either',
+  // ⚖️ THE THREE NEW KINDS, DECIDED RATHER THAN DEFAULTED. A founder's product
+  // is whatever they built, so `either` — a physical-goods founder and a
+  // software founder are both ordinary. A coach and a freelancer sell expertise
+  // and capacity: there is no object, and asking for photos of a service is how
+  // a creator learns the questions are not serious. Their offer already lives on
+  // a page, so `link`.
+  founder: 'either',
+  coach: 'link',
+  freelancer: 'link',
 }
 
 /**
@@ -220,6 +242,26 @@ export function asksProductEvidence(
 }
 
 export interface BriefAnswers {
+  // ── THE SIX ONBOARDING ANSWERS ────────────────────────────────────────────
+  //
+  // ⚠️ THESE HAD NO SERVER-SIDE HOME AND LIVED IN LOCAL STORAGE. Three readers —
+  // the Content Profile meter, the Product DNA state and the suggestion filter —
+  // therefore reported a creator who had answered every question as one who had
+  // answered none, on any device but the one they onboarded on.
+  //
+  // ⚖️ THE TYPES ARE `string` RATHER THAN THE NARROW UNIONS ON PURPOSE. This is
+  // the STORED shape, and a value read back from a row written by an older build
+  // is untrusted input — `creatorProfileQuestions` owns the narrowing, and a cast
+  // here would hand a retired enum member to a reader as though it were current.
+  audienceKnowledge?: string | null
+  contentGoals?: readonly string[] | null
+  desiredFormats?: readonly string[] | null
+  formatExploration?: string | null
+  commercialTies?: readonly string[] | null
+  ownProductKind?: string | null
+  ownServiceKind?: string | null
+  /** ⚠️ USER-TYPED ONLY. `cta.ts` refuses to write a generated sentence here. */
+  defaultCta?: string | null
   /** Q1 */
   goal?: BriefGoal | null
   /** Q2 — the chosen audience, plus the free text §8a requires of every "Other"
@@ -389,7 +431,26 @@ export function otherWithoutText(answers: BriefAnswers): boolean {
 export const BRIEF_STORED_KEYS = [
   'goal', 'audience', 'workKind', 'workKindOther', 'offer',
   'forbiddenClaims', 'promotes', 'alsoWantsToMake', 'productEvidence',
+  // ⚠️ THE SIX ONBOARDING ANSWERS, WHICH HAD NO SERVER-SIDE HOME AT ALL. They
+  // lived in local storage, so three readers — the Content Profile meter, the
+  // Product DNA state and the suggestion filter — all reported a creator who had
+  // answered everything as one who had answered nothing on a second device.
+  // ⚖️ AND ONE OF THEM FAILED UNSAFELY: `commercialTies` carries "nothing
+  // commercial", the answer that SUPPRESSES suggestions, so losing it re-enabled
+  // them for the one creator who said they sell nothing.
+  'audienceKnowledge', 'contentGoals', 'desiredFormats',
+  'formatExploration', 'commercialTies', 'ownProductKind', 'ownServiceKind',
+  // ⚖️ THE CREATOR'S OWN CTA WORDING, AND ONLY EVER THEIRS. A generated line is
+  // produced per video and never written back here — see `cta.ts`. That is what
+  // makes provenance structural: a field generated text cannot reach cannot
+  // later be mistaken for a preference somebody expressed.
+  'defaultCta',
 ] as const
+
+/** ⚠️ THE MULTI-SELECTS, NAMED ONCE. The CHECK admits arrays for exactly these
+ *  keys and non-empty strings everywhere else; a list that disagrees with the
+ *  constraint would fail at write time, in production, on somebody's onboarding. */
+export const BRIEF_ARRAY_KEYS = ['contentGoals', 'desiredFormats', 'commercialTies'] as const
 
 /**
  * What is safe to WRITE — and the whole of the three-state discipline at the
@@ -421,6 +482,20 @@ export function sanitizeBriefForWrite(answers: BriefAnswers): Record<string, unk
   if (answers.workKind) out.workKind = answers.workKind
   text('audience'); text('workKindOther'); text('offer'); text('forbiddenClaims')
   text('promotes'); text('alsoWantsToMake')
+  // ⚖️ AN EMPTY ARRAY IS REFUSED FOR THE REASON AN EMPTY STRING IS: `[]` and
+  // absent are the same fact to every reader, and storing the first creates a
+  // state that means "unanswered" while counting as answered.
+  for (const k of BRIEF_ARRAY_KEYS) {
+    const v = (answers as Record<string, unknown>)[k]
+    if (!Array.isArray(v)) continue
+    const clean = v.filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+      .map((x) => x.trim())
+    if (clean.length > 0) out[k] = clean
+  }
+  for (const k of ['audienceKnowledge', 'formatExploration', 'ownProductKind', 'ownServiceKind', 'defaultCta'] as const) {
+    const v = (answers as Record<string, unknown>)[k]
+    if (typeof v === 'string' && v.trim() !== '') out[k] = v.trim()
+  }
   const pe = answers.productEvidence
   if (pe === 'declined') out.productEvidence = 'declined'
   // An evidence record with no sections is the log of an attempt, not an
@@ -443,6 +518,11 @@ export function readStoredBrief(raw: unknown): BriefAnswers {
     if (k === 'productEvidence') {
       if (v === 'declined') out.productEvidence = 'declined'
       else if (v && typeof v === 'object') out.productEvidence = v as BriefAnswers['productEvidence']
+      continue
+    }
+    if (Array.isArray(v)) {
+      const clean = v.filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+      if (clean.length > 0) (out as Record<string, unknown>)[k] = clean
       continue
     }
     if (typeof v === 'string' && v.trim() !== '') {

@@ -94,6 +94,11 @@ export interface BrandVoice {
   // column was not selected, `{}` means nothing was ever answered, and a key set
   // to null means that one question was skipped. None of them is `false`.
   default_capability_flags?: Record<string, boolean | null> | null
+  // ⚠️ OPTIONAL, AND ABSENT IS NOT EMPTY. The column is not in every select, so
+  // `undefined` means "not asked for" while `null` means "the creator has
+  // answered nothing" — and `readStoredBrief` maps both to `{}` only because it
+  // is the reader's job to collapse them, not the type's job to hide them.
+  pre_script_brief?: Record<string, unknown> | null
   error: string | null
   created_at: string
   updated_at: string

@@ -127,6 +127,19 @@ export const EXCLUDED = {
     + 'ordering would be the tail wagging the dog. The editor never reads '
     + '`product_entities` either — entities reach it through the blueprint prompt, the '
     + 'same route the brief takes in 0109 above. ⚠️ MANUAL APPLY: excluding it here means nothing applies it anywhere, so it was applied to production BY HAND on 2026-08-11 (verified: the table exists with RLS on). Any future migration excluded here carries the same debt.',
+  '0138_generation_choices_product_fk':
+    'Adds the `generation_choices.selected_product_id` FK to `product_entities`, '
+    + 'which is itself excluded above for the staging FK-ordering reason. It is a '
+    + 'SEPARATE FILE precisely so the exclusion stops at the constraint instead of '
+    + 'swallowing the table: 0137 declared the reference inline, failed on staging, '
+    + 'and took `generation_choices` down with it — leaving the insert path with no '
+    + 'automated exercise anywhere, which is the uncollected cost this guard exists '
+    + 'to name. Split out, staging applies 0137 and really inserts rows; only the '
+    + 'constraint is skipped. \u26a0\ufe0f MANUAL APPLY: the constraint is already present in '
+    + 'production, because the table was applied there by hand on 2026-08-17 with the '
+    + 'reference inline (verified: table exists, RLS on, `authenticated` holds SELECT '
+    + 'only after the default write grants were revoked). The file guards on '
+    + '`pg_constraint`, so it is a no-op against that state rather than an error.',
   '0124_product_entity_archive':
     'Adds `archived_at` to `product_entities`, which is itself excluded above for the '
     + 'staging FK-ordering reason — a column cannot be applied to a table staging does '

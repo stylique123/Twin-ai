@@ -23,9 +23,16 @@ import { describe, expect, it } from 'vitest'
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
 const PAGE = readFileSync(join(REPO, 'apps/web/src/pages/ProductLibrary.tsx'), 'utf8')
 
-/** The JSX region that only renders when suggestions exist. */
+/** The JSX region that only renders when there is a suggestion to show.
+ *
+ *  ⚠️ THE ANCHOR MOVED WHEN THE PAGE STOPPED RENDERING EVERY EXTRACTED ROW. It
+ *  was `{suggestions.length > 0 &&` — a section of every candidate — and is now
+ *  `{picked &&`, the single ranked one. The CLAIM below did not change and must
+ *  not: whatever the suggestion block is called, an attestation form has to
+ *  exist outside it, or a creator with no suggestion has no way in. Narrowing
+ *  the suggestions made that MORE load-bearing, not less. */
 function suggestionsBlock(): string {
-  const start = PAGE.indexOf('{suggestions.length > 0 &&')
+  const start = PAGE.indexOf('{picked && (')
   expect(start).toBeGreaterThan(-1)
   return PAGE.slice(start)
 }
@@ -35,8 +42,19 @@ describe('the page is never read-only', () => {
     // ⚠️ THE EXACT REGRESSION. One `<ClaimForm>` lives inside the suggestions
     // list (claiming a suggestion) and at least one outside it (adding from
     // scratch). If the outside one disappears, the dead end is back.
-    const total = (PAGE.match(/<ClaimForm/g) ?? []).length
-    const inside = (suggestionsBlock().match(/<ClaimForm/g) ?? []).length
+    // ⚠️ THE ADD PATH IS NO LONGER `ClaimForm`. Adding a product now starts from
+    // a LINK — `StartFromLink` — because asking a creator to summarise their own
+    // product into a blank box made the least reliable source the authoritative
+    // one. `ClaimForm` survives for claiming a suggestion, where the text is
+    // already on screen.
+    //
+    // ⚖️ THE CLAIM IS UNCHANGED AND IS THE WHOLE POINT: a creator with NO
+    // suggestion must still have a way in. Counting only `ClaimForm` would now
+    // report the dead end as fixed only by accident of which component is used,
+    // so the check counts EITHER attestation form outside the block.
+    const FORMS = /<(?:ClaimForm|StartFromLink)/g
+    const total = (PAGE.match(FORMS) ?? []).length
+    const inside = (suggestionsBlock().match(FORMS) ?? []).length
     expect(total).toBeGreaterThan(inside)
     expect(total - inside).toBeGreaterThanOrEqual(1)
   })

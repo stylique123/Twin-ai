@@ -87,6 +87,50 @@ export const VIEWER_OUTCOMES = [
 ] as const
 export type ViewerOutcome = (typeof VIEWER_OUTCOMES)[number]
 
+// ── HOW MUCH OF THE REFERENCE THE CREATOR ACTUALLY WANTED ─────────────────
+//
+// ⚠️ THE ONLY QUESTION ON THE REMIX SCREEN THAT IS ABOUT THE REFERENCE. Goal,
+// focus and outcome are all about the CREATOR, and they are the same three
+// whether somebody pasted a three-item listicle or a personal story. So the
+// amount of the reference to keep — the one thing that changes with every link
+// — was the one thing nobody was asked, and the transfer layer had to guess what
+// "remix this" meant.
+//
+// ⚖️ IT IS A DIAL, NOT A PERMISSION. No setting here lets the reference become
+// an authority for product facts, unsupported claims, creator identity, lived
+// experience, ownership or exact wording. Those are refused at every value,
+// which is why `stay_close` can exist at all: it is the most faithful setting
+// available and it is still bounded by what may be transferred.
+export const REFERENCE_USE = ['structure', 'idea_structure', 'stay_close', 'inspiration'] as const
+export type ReferenceUse = (typeof REFERENCE_USE)[number]
+
+/** What each setting instructs the writer to carry across.
+ *
+ *  ⚖️ WRITTEN AS WHAT TO KEEP AND WHAT TO REPLACE, not as an adjective. "Stay
+ *  close" tells a model nothing it can act on; "keep the beat order and the hook
+ *  mechanism, replace every subject" is a decidable instruction. */
+export const REFERENCE_USE_DIRECTIVE: Record<ReferenceUse, string> = {
+  structure:
+    'TAKE THE MECHANICS, NOT THE SUBJECT. Keep the beat order, the hook mechanism and the escalation, and replace what every beat is ABOUT with the creator\'s own material.',
+  idea_structure:
+    'TAKE THE CENTRAL IDEA AND THE MECHANICS. Keep what the reference is arguing and how it argues it, and re-ground every example, number and story in the creator\'s own world.',
+  stay_close:
+    'STAY AS CLOSE AS THE FACTS ALLOW. Preserve the format, the beat count and the topic where the creator can honestly speak to it — and the moment a beat would need a fact they do not have, re-ground that beat rather than borrowing the reference\'s.',
+  inspiration:
+    'TAKE ONLY THE STRONGEST MECHANIC. Use the one device that makes the reference work and build a freer video around it; the beat order and the topic are not binding.',
+}
+
+/** ⚖️ HOW MUCH TOPIC SURVIVES, as a separate question from how much STRUCTURE
+ *  does. A creator asking to stay close is asking for both; one asking for the
+ *  structure is explicitly asking for a different subject. Reading them as one
+ *  dial is what made "use the structure" quietly keep the reference's topic. */
+export const KEEPS_REFERENCE_TOPIC: Record<ReferenceUse, boolean> = {
+  structure: false,
+  idea_structure: true,
+  stay_close: true,
+  inspiration: false,
+}
+
 export const VIEWER_OUTCOME_LABELS: Record<ViewerOutcome, string> = {
   learn: 'Learn something useful',
   change_mind: 'Change their mind',
@@ -110,6 +154,8 @@ export interface VideoIntent {
   goal: VideoGoal | null
   focus: ContentFocus | null
   outcome: ViewerOutcome | null
+  /** The fourth answer — how much of the reference to carry across. */
+  referenceUse: ReferenceUse | null
 
   /** ONE READER: the creative directive line in the prompt. Replaces GOAL_LINES. */
   goalDirective: string | null
@@ -118,6 +164,13 @@ export interface VideoIntent {
   wantsSale: boolean
   /** ONE READER: the CTA payoff directive. */
   payoffDirective: string | null
+  /** ONE READER: the transfer instruction in the prompt's reference block. */
+  referenceUseDirective: string | null
+  /** ONE READER: the premise stage, which otherwise assumes the reference topic
+   *  is available to adapt. False means the creator asked for a different
+   *  subject, and keeping the reference's would be answering a question they
+   *  did not ask. */
+  keepsReferenceTopic: boolean
 
   /** ONE READER: the knowledge ranking. Kinds listed first are preferred when
    *  relevance ties; an empty list means "leave the ranking alone". */
@@ -161,6 +214,38 @@ const FOCUS_PREFERS: Record<ContentFocus, readonly string[]> = {
   // question the creator did not ask.
   reference_adapted: [],
   trending: [],
+}
+
+// ── WHAT A GOAL IMPLIES WHEN NOBODY WAS ASKED ─────────────────────────────
+//
+// ⚠️ "What should the viewer leave with" LEFT THE SCREEN, AND ITS BEHAVIOUR DID
+// NOT. It was the third of three questions and it was largely downstream of the
+// first: somebody who wants to sell wants the viewer to act, somebody who wants
+// to teach wants them to learn. Asking both made the creator answer the same
+// thought twice — but the answer drives the CTA payoff and the substance floor,
+// and deleting a question is not a licence to delete what it decided.
+//
+// ⚖️ SO THE GOAL IMPLIES AN OUTCOME, AND AN IMPLICATION IS NOT AN ANSWER. The
+// derived value fills `payoffDirective` and `substanceFloor` — the two things
+// that would otherwise silently fall back to the system default. It does NOT
+// feed `wantsSale`, which stays computed from what the creator actually SAID.
+// An inference must not create an obligation, and a pitch is the obligation
+// that rule exists for: `sell` already carries its own selling intent, so
+// nothing is lost by refusing to let a derived `convert` add one.
+const GOAL_IMPLIES_OUTCOME: Record<VideoGoal, ViewerOutcome> = {
+  followers: 'share',
+  authority: 'remember_me',
+  educate: 'learn',
+  conversations: 'comment',
+  leads: 'check_out_offer',
+  sell: 'convert',
+  entertain: 'feel_inspired',
+  // ⚖️ RETIRED FROM THE SCREEN, STILL REACHABLE INTERNALLY — routed from
+  // authority + a personal focus + remember/follow. Being remembered IS the
+  // point of a personal-brand video, so it implies the outcome it was routed
+  // from. The compiler refused this change until the value was decided, which
+  // is the Record earning its place.
+  personal_brand: 'remember_me',
 }
 
 const OUTCOME_PAYOFF: Record<ViewerOutcome, string> = {
@@ -214,6 +299,9 @@ const isFocus = (v: unknown): v is ContentFocus =>
 const isOutcome = (v: unknown): v is ViewerOutcome =>
   typeof v === 'string' && (VIEWER_OUTCOMES as readonly string[]).includes(v)
 
+const isReferenceUse = (v: unknown): v is ReferenceUse =>
+  typeof v === 'string' && (REFERENCE_USE as readonly string[]).includes(v)
+
 /**
  * Turn three answers into one record with named readers.
  *
@@ -229,15 +317,24 @@ export function compileVideoIntent(answers: {
   goal?: unknown
   focus?: unknown
   outcome?: unknown
+  referenceUse?: unknown
 }): VideoIntent {
   const goal = isGoal(answers.goal) ? answers.goal : null
   const focus = isFocus(answers.focus) ? answers.focus : null
   const outcome = isOutcome(answers.outcome) ? answers.outcome : null
+  const referenceUse = isReferenceUse(answers.referenceUse) ? answers.referenceUse : null
   const resolutions: string[] = []
 
   let goalDirective = goal ? GOAL_DIRECTIVE[goal] : null
-  let payoffDirective = outcome ? OUTCOME_PAYOFF[outcome] : null
-  let substanceFloor = outcome ? OUTCOME_FLOOR[outcome] : DEFAULT_FLOOR
+  // ⚠️ THE STATED ANSWER FIRST, ALWAYS. A creator who answered outranks any
+  // implication of their goal — and `statedOutcome` is kept separate below so
+  // the derived value can never be mistaken for something they said.
+  const impliedOutcome = outcome ?? (goal ? GOAL_IMPLIES_OUTCOME[goal] : null)
+  if (!outcome && impliedOutcome) {
+    resolutions.push(`goal ${goal} → payoff and substance floor taken from ${impliedOutcome}`)
+  }
+  let payoffDirective = impliedOutcome ? OUTCOME_PAYOFF[impliedOutcome] : null
+  let substanceFloor = impliedOutcome ? OUTCOME_FLOOR[impliedOutcome] : DEFAULT_FLOOR
   const prefersKinds = focus ? FOCUS_PREFERS[focus] : []
 
   // ── CONFLICTS, RESOLVED EXPLICITLY AND NAMED ──────────────────────────────
@@ -302,10 +399,24 @@ export function compileVideoIntent(answers: {
     resolutions.push('substance floor clamped to the system minimum')
   }
 
+  // ⚠️ UNANSWERED IS NOT `structure`. A creator who never saw this question has
+  // not asked for the subject to be replaced, and defaulting to any value would
+  // put a transfer instruction in the prompt on their behalf. Null leaves the
+  // reference block exactly as it was before this answer existed.
+  if (referenceUse) {
+    resolutions.push(`reference use ${referenceUse} → ${KEEPS_REFERENCE_TOPIC[referenceUse] ? 'topic may carry across' : 'subject is replaced'}`)
+  }
+
   return {
     goal,
     focus,
     outcome,
+    referenceUse,
+    referenceUseDirective: referenceUse ? REFERENCE_USE_DIRECTIVE[referenceUse] : null,
+    // ⚖️ TRUE WHEN UNANSWERED, because that is the behaviour every generation
+    // has had until now: the premise stage has always been free to adapt the
+    // reference's topic. Only an explicit answer narrows it.
+    keepsReferenceTopic: referenceUse === null ? true : KEEPS_REFERENCE_TOPIC[referenceUse],
     goalDirective,
     // ⚖️ EITHER HALF OF THE CREATOR'S REQUEST COUNTS, and NEITHER is sufficient.
     // `sellIntent` still requires a commercial tie on record; this only says the
@@ -424,7 +535,7 @@ export interface IntentOption {
 }
 
 export interface IntentQuestion {
-  field: 'video_goal' | 'content_focus' | 'viewer_outcome'
+  field: 'video_goal' | 'content_focus' | 'viewer_outcome' | 'reference_use'
   question: string
   options: readonly IntentOption[]
 }
@@ -457,34 +568,52 @@ export const INTENT_QUESTIONS: readonly IntentQuestion[] = [
       { value: 'trending', label: 'Something happening now', hint: 'A trend, new topic or recent update' },
     ],
   },
+  // ⚠️ "WHAT SHOULD THE VIEWER LEAVE WITH" USED TO SIT HERE, AND ITS BEHAVIOUR
+  // DID NOT LEAVE WITH IT. It was largely downstream of the goal — somebody who
+  // wants to sell wants the viewer to act, somebody who wants to teach wants
+  // them to learn — so asking both made a creator answer one thought twice on a
+  // screen that was already too long.
+  //
+  // ⚖️ THE ENUM, THE PAYOFF DIRECTIVES AND THE SUBSTANCE FLOORS ALL SURVIVE.
+  // `VIEWER_OUTCOMES` is still the vocabulary, `GOAL_IMPLIES_OUTCOME` supplies a
+  // value when nobody was asked, and a caller that DOES state an outcome still
+  // outranks the implication. A question can leave the screen without its
+  // decisions leaving the system; deleting the behaviour would have been the
+  // easy half and the wrong one.
+  // ⚠️ THE ONLY QUESTION HERE THAT IS ABOUT THE REFERENCE. The three above are
+  // about the creator and are identical whether somebody pasted a listicle or a
+  // confession — so the amount of the reference to keep, the one thing that
+  // changes with every link, was never asked and the transfer layer had to guess
+  // what "remix this" meant.
+  //
+  // ⚖️ PLAIN ENGLISH, AND NO SETTING IS A PERMISSION. "Keep it close" is the
+  // most faithful option available and it still may not carry the reference's
+  // product facts, claims, identity, lived experience or exact words across —
+  // those are refused at every value.
   {
-    field: 'viewer_outcome',
-    question: 'What do you want people to do or feel after watching?',
+    field: 'reference_use',
+    question: 'How much of the original should Twin keep?',
     options: [
-      { value: 'learn', label: 'Learn something' },
-      { value: 'change_mind', label: 'See something differently' },
-      { value: 'feel_inspired', label: 'Feel something' },
-      { value: 'remember_me', label: 'Remember me', hint: 'Make the video feel distinct and personal' },
-      // ⚠️ GROUPED ON SCREEN, DISTINCT UNDERNEATH. A comment, a share and a
-      // follow are three different endings — "give them the line they would want
-      // attached to their name" is not "leave a real question open". Collapsing
-      // them internally would have thrown two payoffs away to save two chips, so
-      // the grouping is visual and the second tap keeps the behaviour.
       {
-        value: 'comment',
-        label: 'Get engagement',
-        hint: 'Comments, shares or follows',
-        options: [
-          { value: 'comment', label: 'Comment' },
-          { value: 'share', label: 'Share it' },
-          { value: 'follow', label: 'Follow me' },
-        ],
+        value: 'structure',
+        label: 'Just how it is built',
+        hint: 'Same shape and hook style, but about my own thing',
       },
-      // ⚖️ SOFT INTEREST AND DIRECT CONVERSION STAY APART. One points at the
-      // offer without asking for money; the other names the step. They produce
-      // genuinely different endings.
-      { value: 'check_out_offer', label: 'Check out what I offer' },
-      { value: 'convert', label: 'Buy, sign up or contact me' },
+      {
+        value: 'idea_structure',
+        label: 'The idea and how it is built',
+        hint: 'Same point, made with my own examples',
+      },
+      {
+        value: 'stay_close',
+        label: 'Keep it close',
+        hint: 'Stay near the original wherever I can honestly say it',
+      },
+      {
+        value: 'inspiration',
+        label: 'Just the good bit',
+        hint: 'Take what makes it work and go my own way',
+      },
     ],
   },
 ]
@@ -494,4 +623,26 @@ export function reachableIntentValues(field: IntentQuestion['field']): string[] 
   const q = INTENT_QUESTIONS.find((x) => x.field === field)
   if (!q) return []
   return q.options.flatMap((o) => (o.options ? o.options.map((c) => c.value) : [o.value]))
+}
+
+// ── WHEN THE COMMERCIAL BLOCK IS WORTH SHOWING ────────────────────────────
+//
+// ⚠️ THE REMIX CARD ASKED EVERY CREATOR ABOUT THEIR OFFER. A relationship
+// question, a claims question and "what does the OFFER do?" appeared on a card
+// belonging to somebody whose stored answer was "nothing of anyone else's" —
+// and the questionnaire is the thing that screen exists to avoid.
+//
+// ⚖️ TWO SIGNALS, AND EITHER IS ENOUGH. A goal of selling or generating leads
+// means the video ends in an ask; a focus on a product or a review means the
+// video is ABOUT a thing. Both need to know what is being promoted, and neither
+// implies the other — somebody can review a product they do not sell, and sell
+// without the video being about the product.
+//
+// ⚠️ IT DECIDES WHAT TO ASK, NEVER WHAT IS PERMITTED. Showing this block grants
+// nothing: the entity's relationship still decides what a script may claim, and
+// a creator who reaches it and picks nothing has said "no product", which is an
+// answer. Hiding it likewise forbids nothing — it only declines to ask a
+// question with no bearing on the video in front of them.
+export function showsCommercialBlock(intent: Pick<VideoIntent, 'wantsSale' | 'wantsProductSubstance'>): boolean {
+  return intent.wantsSale || intent.wantsProductSubstance
 }

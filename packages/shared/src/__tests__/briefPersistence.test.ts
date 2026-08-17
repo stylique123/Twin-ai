@@ -9,7 +9,7 @@
 // to every reader, and storing the empty one creates a state that reads as
 // "unanswered" while counting as "answered" to whoever checks for the key.
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import {
@@ -91,7 +91,21 @@ describe('the TypeScript vocabulary and the SQL CHECK cannot drift', () => {
   // Two lists that must agree is the shape of a drift bug: a tenth question
   // added to one and not the other is either a write that fails a constraint in
   // production, or a key the database accepts and no reader understands.
-  const sql = readFileSync(resolve(REPO, 'supabase/migrations/0109_pre_script_brief.sql'), 'utf8')
+  // ⚠️ THE PREDICATE IS OWNED BY THE LAST MIGRATION THAT DEFINES IT, NOT BY
+  // 0109. This read was pinned to 0109 by filename, so when 0136 widened the key
+  // set for the six onboarding answers the test failed against a database that
+  // would have accepted the write — a false alarm pointing at the wrong file.
+  // ⚖️ THE CLAIM IS UNCHANGED AND STILL THE POINT: two lists that must agree is
+  // the shape of a drift bug. Only the question of WHICH SQL is currently in
+  // force has been fixed, and reading the latest definer keeps it correct through
+  // the next widening too.
+  const sql = (() => {
+    const dir = resolve(REPO, 'supabase/migrations')
+    const owning = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
+      .filter((f) => readFileSync(resolve(dir, f), 'utf8').includes('function public.is_pre_script_brief'))
+    expect(owning.length).toBeGreaterThan(0)
+    return readFileSync(resolve(dir, owning[owning.length - 1]), 'utf8')
+  })()
 
   it('every stored key is named in the migration', () => {
     for (const k of BRIEF_STORED_KEYS) expect(sql).toContain(`'${k}'`)
@@ -106,10 +120,20 @@ describe('the TypeScript vocabulary and the SQL CHECK cannot drift', () => {
     expect([...named].sort()).toEqual([...BRIEF_STORED_KEYS].sort())
   })
 
-  it('grants UPDATE on the column it adds', () => {
+  it('grants UPDATE on the column, in the migration that adds it', () => {
     // `brand_voices` revoked table-level UPDATE long ago and grants it back one
     // column at a time, so a column without this line is unwritable and fails
     // with a bare 42501 naming nothing. It has happened twice in this tree.
-    expect(sql).toMatch(/grant update \(pre_script_brief\) on public\.brand_voices to authenticated/)
+    //
+    // ⚠️ THIS READS THE ADDING MIGRATION, NOT THE LATEST DEFINER. The grant is
+    // made once, where the column is created; a later migration that only
+    // redefines the CHECK has no business re-granting, and asserting against it
+    // would demand a redundant statement — or worse, teach someone to add one.
+    const dir = resolve(REPO, 'supabase/migrations')
+    const adder = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
+      .find((f) => /add column[^;]*pre_script_brief/i.test(readFileSync(resolve(dir, f), 'utf8')))
+    expect(adder, 'no migration adds the column').toBeTruthy()
+    expect(readFileSync(resolve(dir, adder!), 'utf8'))
+      .toMatch(/grant update \(pre_script_brief\) on public\.brand_voices to authenticated/)
   })
 })

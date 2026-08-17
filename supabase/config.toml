@@ -68,6 +68,12 @@ verify_jwt = true
 [functions.brand-logo]
 verify_jwt = true
 
+# ⚠️ verify_jwt MATTERS HERE. This endpoint writes to storage with the service
+# role on the caller's behalf; without JWT verification it would accept an
+# unauthenticated upload and file it under whatever user the body claimed.
+[functions.product-image]
+verify_jwt = true
+
 [functions.referral]
 verify_jwt = true
 

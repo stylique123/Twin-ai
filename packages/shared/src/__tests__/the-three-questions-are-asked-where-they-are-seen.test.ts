@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import {
-  VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES,
+  VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   INTENT_QUESTIONS, reachableIntentValues, compileVideoIntent,
 } from '../videoIntent'
 
@@ -57,7 +57,7 @@ describe('the three questions open with the remix', () => {
     // ⚠️ THEY USED TO LIVE IN THE COMPONENT, which meant the WORDING and the
     // behaviour it selects could drift apart silently — and the wording is the
     // part a creator actually experiences.
-    for (const f of ['video_goal', 'content_focus', 'viewer_outcome']) {
+    for (const f of ['video_goal', 'content_focus', 'reference_use']) {
       expect(INTENT_QUESTIONS.some((q) => q.field === f), f).toBe(true)
     }
     expect(BUILD).toMatch(/INTENT_QUESTIONS/)
@@ -68,8 +68,14 @@ describe('the three questions open with the remix', () => {
   it('every visible value is one the compiler accepts', () => {
     // ⚖️ A chip whose value the server discards is a question that lies.
     for (const q of INTENT_QUESTIONS) {
+      // ⚖️ EXHAUSTIVE BY CONSTRUCTION. A new question added without a mapping
+      // here would otherwise be silently checked against the outcome list and
+      // pass or fail for the wrong reason — this failed loudly when
+      // `reference_use` arrived, which is exactly what it is for.
       const all = q.field === 'video_goal' ? VIDEO_GOALS
-        : q.field === 'content_focus' ? CONTENT_FOCUS : VIEWER_OUTCOMES
+        : q.field === 'content_focus' ? CONTENT_FOCUS
+          : q.field === 'viewer_outcome' ? VIEWER_OUTCOMES
+            : REFERENCE_USE
       for (const v of reachableIntentValues(q.field)) {
         expect(all as readonly string[], `${q.field}/${v}`).toContain(v)
       }
@@ -97,16 +103,40 @@ describe('the three questions open with the remix', () => {
     expect(goals).toContain('sell')
   })
 
-  it('keeps comment, share and follow reachable under one visible chip', () => {
-    // ⚖️ Grouped on screen, distinct underneath — three different endings.
-    const outcomes = reachableIntentValues('viewer_outcome')
-    for (const v of ['comment', 'share', 'follow']) expect(outcomes).toContain(v)
-    const q = INTENT_QUESTIONS.find((x) => x.field === 'viewer_outcome')!
-    expect(q.options.filter((o) => o.options?.length)).toHaveLength(1)
+  it('retires the outcome QUESTION and keeps every one of its decisions', () => {
+    // ⚠️ THE QUESTION LEFT THE SCREEN; ITS BEHAVIOUR DID NOT. "What should the
+    // viewer leave with" was largely downstream of the goal — somebody selling
+    // wants the viewer to act, somebody teaching wants them to learn — so
+    // asking both made a creator answer one thought twice.
+    expect(INTENT_QUESTIONS.some((q) => q.field === 'viewer_outcome')).toBe(false)
+
+    // ⚖️ AND EVERY OUTCOME STILL DECIDES SOMETHING. comment, share, follow and
+    // remember_me were each kept apart on screen for a reason; the reason was
+    // the payoff and the substance floor, and both are still reached — now via
+    // the goal that implies them.
+    for (const [goal, floorAtLeast] of [
+      ['conversations', 6], ['followers', 6], ['authority', 7], ['educate', 8], ['sell', 8],
+    ] as const) {
+      const intent = compileVideoIntent({ goal })
+      expect(intent.payoffDirective, goal).toBeTruthy()
+      expect(intent.substanceFloor, goal).toBeGreaterThanOrEqual(floorAtLeast)
+    }
   })
 
-  it('keeps remember_me, relabelled rather than deleted', () => {
-    expect(reachableIntentValues('viewer_outcome')).toContain('remember_me')
+  it('still lets a caller STATE an outcome, which outranks the implication', () => {
+    // ⚖️ The enum is not retired, only the chips. A stated answer wins.
+    const stated = compileVideoIntent({ goal: 'entertain', outcome: 'learn' })
+    expect(stated.outcome).toBe('learn')
+    expect(stated.substanceFloor).toBe(8)
+  })
+
+  it('never lets a DERIVED outcome create a selling intent', () => {
+    // ⚠️ AN INFERENCE MUST NOT CREATE AN OBLIGATION, and a pitch is the
+    // obligation this rule exists for. `sell` already carries its own selling
+    // intent, so refusing the derived `convert` costs nothing — while a goal
+    // like `entertain` must never acquire one it was not given.
+    expect(compileVideoIntent({ goal: 'entertain' }).wantsSale).toBe(false)
+    expect(compileVideoIntent({ goal: 'educate' }).wantsSale).toBe(false)
   })
 
   it('retires personal_brand from the SCREEN and keeps its behaviour', () => {
@@ -121,7 +151,11 @@ describe('the three questions open with the remix', () => {
     // ⚖️ They are not a repair for an incomplete profile. They are about a video
     // that does not exist yet, so there is nothing to be complete about.
     expect(BUILD).toMatch(/const unanswered = INTENT_QUESTIONS\.filter\(/)
-    expect(BUILD).toMatch(/\[\.\.\.unanswered, \.\.\.missing\.slice\(0, MAX_TEXT_QUESTIONS\)\]/)
+    // ⚖️ THE CLAIM IS UNCHANGED. `unanswered` still leads the list, so the
+    // intent chips are asked for every video. What follows them is now
+    // `relevant` rather than `missing` — the same readiness questions with the
+    // commercial ones dropped when this video sells nothing.
+    expect(BUILD).toMatch(/\[\.\.\.unanswered, \.\.\.relevant\.slice\(0, MAX_TEXT_QUESTIONS\)\]/)
   })
 
   it('CAPS the free-text tail, which is what made the card a form', () => {

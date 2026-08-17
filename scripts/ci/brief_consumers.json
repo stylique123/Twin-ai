@@ -10,7 +10,7 @@
   "product it could name is never offered to it.",
   "",
   "That is a worse state than not asking. A question spends the creator's",
-  "attention and buys a promise \u2014 implicit but unmistakable \u2014 that the answer",
+  "attention and buys a promise — implicit but unmistakable — that the answer",
   "changes what they get. An answer nothing reads breaks that promise silently,",
   "and silence is why it survived: every individual PR that added a question was",
   "correct, tested, and shipped green.",
@@ -20,20 +20,20 @@
   "fails the build when this file and the repository disagree.",
   "",
   "WHY UNWIRED KEYS ARE DECLARED RATHER THAN TOLERATED. A guard that simply",
-  "demanded a reader for every key could not land until every key had one \u2014 so it",
+  "demanded a reader for every key could not land until every key had one — so it",
   "would land last, after the next asked-and-discarded fact had already been",
   "added, which is precisely the failure it exists to prevent. Instead the debt is",
   "written down: `readBy: []` plus an `unwiredReason` naming what is missing.",
   "",
-  "THE EXEMPTION EXPIRES BY ITSELF. The guard verifies both directions \u2014 a key",
+  "THE EXEMPTION EXPIRES BY ITSELF. The guard verifies both directions — a key",
   "declared unwired must have NO reader in supabase/functions. The moment someone",
   "wires one up, this file is wrong and the build says so. An exemption that",
   "quietly stays true after it stops being true is how the original bug got in."
  ],
  "$fields": [
-  "readBy      \u2014 paths under supabase/functions that must contain the key.",
+  "readBy      — paths under supabase/functions that must contain the key.",
   "              Every path must exist AND mention the key; a stale entry fails.",
-  "unwiredReason \u2014 required when readBy is empty. Says what is missing, not that",
+  "unwiredReason — required when readBy is empty. Says what is missing, not that",
   "              nothing is missing. Delete it in the same PR that adds a reader."
  ],
  "keys": {
@@ -80,6 +80,39 @@
   "alsoWantsToMake": {
    "readBy": [],
    "unwiredReason": "Asked on confirm and read by nothing. Either give it a consumer or stop asking it."
+  },
+  "commercialTies": {
+   "readBy": [],
+   "unwiredReason": "Read by the PROFILE SURFACE, not by the writer: profileCompletion gates the 'what you sell' item and productDnaStatus, and productSuggestionConfidence uses it to suppress suggestions for a creator who said they sell nothing. generate-blueprint does not consult it, so a script still cannot tell an affiliate from an owner. Wiring it there is what makes a sponsored video disclose."
+  },
+  "contentGoals": {
+   "readBy": [],
+   "unwiredReason": "Read by profileCompletion for the goal and subject items. The writer never sees it — the per-video goal in videoIntent is what currently reaches a script, and this standing answer does not yet narrow retrieval."
+  },
+  "desiredFormats": {
+   "readBy": [],
+   "unwiredReason": "Read by profileCompletion for the formats item. Nothing recommends references from it yet, which is the reader it is waiting for."
+  },
+  "audienceKnowledge": {
+   "readBy": [],
+   "unwiredReason": "Stored by onboarding and read only by creatorProfileQuestions, to decide which later questions to ask. No script consumer: the writer is told who the audience IS but not what they already KNOW, so it cannot yet skip an explanation a specialist audience does not need."
+  },
+  "formatExploration": {
+   "readBy": [],
+   "unwiredReason": "Same shape as audienceKnowledge — it steers which questions get asked and reaches no script consumer."
+  },
+  "ownProductKind": {
+   "readBy": [],
+   "unwiredReason": "Read by creatorProfileQuestions to branch the product questions and by productEntity when minting the owned entity. No edge reader: the writer learns about a product from the claimed entity, not from this."
+  },
+  "ownServiceKind": {
+   "readBy": [],
+   "unwiredReason": "As ownProductKind. It shapes what is asked, not what is written."
+  },
+  "defaultCta": {
+   "readBy": [
+    "supabase/functions/generate-blueprint/index.ts"
+   ]
   }
  }
 }

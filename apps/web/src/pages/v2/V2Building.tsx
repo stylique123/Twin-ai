@@ -6,9 +6,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
-import { assessReadiness } from '../../lib/api'
+import { assessReadiness, isCommercialField } from '../../lib/api'
+import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import {
-  VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES,
+  VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   INTENT_QUESTIONS, type IntentQuestion, type VideoGoal,
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
@@ -344,7 +345,7 @@ export default function V2Building() {
         // questions are returned by the SERVER, and the server is not called
         // until the reference has been ingested — `ingestReference` plus a poll
         // of up to 60 x 1.2s. So the creator watched a two-minute progress bar,
-        // was then asked two questions, and pressing "Build my video plan"
+        // was then asked two questions, and pressing the build button
         // started the bar again. The questions are about the creator's own
         // intent; not one of them needs the reference read.
         //
@@ -402,7 +403,31 @@ export default function V2Building() {
               (q) => !(answersRef.current[q.field] ?? '').trim())
             // ⚖️ CAPPED, NOT DISCARDED. `assessReadiness` already orders these
             // by what unblocks the most, so the first is the one worth asking.
-            const ask: AskItem[] = [...unanswered, ...missing.slice(0, MAX_TEXT_QUESTIONS)]
+            // ── AND NOT THE COMMERCIAL ONES, IF THIS VIDEO SELLS NOTHING ──
+            //
+            // ⚠️ REPORTED FROM A SCREENSHOT: a relationship question, a claims
+            // question and "what does the OFFER do?" on a card belonging to
+            // somebody with an empty Product Library who had just chosen "build
+            // authority" and "a hot take". `assessReadiness` resolves those
+            // itself when the PROFILE says nothing is promoted — but the verdict
+            // above is computed before the creator answers the chips beside it,
+            // so this video's own answer never reached it.
+            //
+            // ⚖️ ONLY WHEN THEY HAVE ACTUALLY ANSWERED. An unanswered card says
+            // nothing about commerce, and suppressing on silence would hide a
+            // question from somebody who simply had not tapped yet. The server
+            // gate is unchanged either way — this drops a question we would have
+            // asked early, never one that protects a charge.
+            const answeredIntent = compileVideoIntent({
+              goal: answersRef.current.video_goal,
+              focus: answersRef.current.content_focus,
+            })
+            const decidedCommercially = Boolean(
+              (answersRef.current.video_goal ?? '').trim() && (answersRef.current.content_focus ?? '').trim())
+            const relevant = decidedCommercially && !showsCommercialBlock(answeredIntent)
+              ? missing.filter((m) => !isCommercialField(m.field))
+              : missing
+            const ask: AskItem[] = [...unanswered, ...relevant.slice(0, MAX_TEXT_QUESTIONS)]
             if (ask.length && alive) {
               // No spend, no ingest, no wait — and `active` stays at 0 so the
               // bar does not pretend work is happening behind the card.
@@ -541,6 +566,11 @@ export default function V2Building() {
           goal: asOneOf(VIDEO_GOALS, intentAnswers.video_goal),
           focus: asOneOf(CONTENT_FOCUS, intentAnswers.content_focus),
           outcome: asOneOf(VIEWER_OUTCOMES, intentAnswers.viewer_outcome),
+          // ⚖️ THE ONE ANSWER ABOUT THE REFERENCE RATHER THAN THE CREATOR.
+          // Narrowed through the enum like the other three, so a stale value
+          // from an older build cannot reach the request as a setting that no
+          // longer exists.
+          reference_use: asOneOf(REFERENCE_USE, intentAnswers.reference_use),
           ...(Object.keys(readinessAnswers).length ? { readiness_answers: readinessAnswers } : {}),
           // Same intent → same key → the server returns the build it already
           // made instead of charging for it twice (0119).
@@ -564,6 +594,33 @@ export default function V2Building() {
       } catch (e) {
         if (ticker) clearInterval(ticker)
         if (!alive) return
+        // ── THE SERVER MAY HAVE FINISHED THE THING THIS REQUEST LOST ─────
+        //
+        // ⚠️ REPORTED AS "it stopped at 40%", AND THE DATABASE AGREES. Every
+        // script_attempt on this project has settled `succeeded` — including
+        // one that produced a generation while the creator watched a bar sit
+        // still. The build is ONE long request, ~50-70 seconds; a backgrounded
+        // tab, a sleeping phone or a dropped connection kills the socket, and
+        // the work carries on server-side to completion. The creator is charged
+        // for a script they are never shown.
+        //
+        // ⚖️ THE LOOKUP ALREADY EXISTED AND RAN IN ONLY ONE PLACE — on mount,
+        // before building. That covers a reload and nothing else. It never ran
+        // for the case it was written for, because a creator whose bar froze
+        // stays on the page rather than reloading it.
+        //
+        // ⚖️ IDEMPOTENCY IS WHAT MAKES THIS SAFE. `key` is the same value the
+        // server keyed the charge on, so this can only ever find the build this
+        // request paid for.
+        try {
+          const rescued = await findGenerationByKey(key)
+          if (rescued) {
+            if (alive) { setActive(STEPS.length); setPct(100); nav(`/result/${rescued.id}`, { replace: true }) }
+            return
+          }
+        } catch (lookupErr) {
+          console.warn('[build] post-failure lookup failed', lookupErr)
+        }
         // The server's own hard stop. Reached only when this screen's checks
         // did not fire first — a client older than the server, or a read that
         // looked fine here and produced nothing there. It is a refusal, not a
@@ -592,6 +649,38 @@ export default function V2Building() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [retryNonce])
 
+  // ── A HIDDEN TAB MUST NOT COST A SCRIPT ───────────────────────────────
+  //
+  // ⚠️ REPORTED TWICE, AS TWO SYMPTOMS OF ONE THING: "it stopped at 40%", and
+  // "when I go to another tab it does not carry on in the background". Both are
+  // the same request. The build is a single ~50-70 second fetch that the browser
+  // is free to throttle or drop when the tab is not visible, and when the socket
+  // dies quietly nothing rejects — so the catch above never runs and the bar
+  // simply stops where the pacing ticker left it.
+  //
+  // ⚖️ THE WORK NEVER STOPPED. `generate-blueprint` runs server-side to
+  // completion and settles its own charge, which is why every script_attempt in
+  // production reads `succeeded`. What was lost is only the answer, and the
+  // answer is addressable by the same idempotency key the charge used.
+  //
+  // ⚖️ SO COMING BACK IS THE TRIGGER. On every return to the tab, while this
+  // screen still believes it is building, ask whether the build already exists.
+  // It is one indexed read on a user gesture, it cannot double-charge, and a
+  // failure leaves the screen exactly as it was.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      // Nothing to recover if the screen has already settled into an outcome.
+      if (error || unusableRef || askQuestions) return
+      const key = buildKey(state)
+      void findGenerationByKey(key)
+        .then((done) => { if (done) { setActive(STEPS.length); setPct(100); nav(`/result/${done.id}`, { replace: true }) } })
+        .catch((e) => console.warn('[build] visibility lookup failed', e))
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [state, error, unusableRef, askQuestions, nav])
+
   const echo = state.reference_url ? 'From your reference link' : 'From your idea'
   const shownPct = Math.round(pct)
   // Only a supported host is actually watched/transcribed; a described idea or an
@@ -603,6 +692,135 @@ export default function V2Building() {
   // A voice-not-ready failure has a specific fix (set up your brand voice), not just
   // "try a different reference".
   const isVoiceIssue = /voice/i.test(error ?? '')
+
+  // ── THE CARD IS TWO BLOCKS, AND THEY ARE NOT THE SAME KIND OF THING ───────
+  //
+  // ⚖️ THE DECISIONS ARE ASKED OF EVERY VIDEO; THE COMMERCIAL BLOCK IS ASKED OF
+  // ALMOST NONE. Stacking them into one undifferentiated list made a card that
+  // is normally three taps look like a form, because the two free-text boxes
+  // below the chips read as more work rather than as a different subject that
+  // only appears when Twin already believes there is an offer to talk about.
+  //
+  // ⚠️ THE SPLIT IS ON `isChip`, WHICH IS THE EXISTING DISTINCTION AND NOT A NEW
+  // ONE. Chips are the fixed-enum decisions that drive the intent record; every
+  // other item fires from an inferred offer and is answered in the creator's own
+  // words. Introducing a second, parallel notion of "which block is this" would
+  // be a field that can disagree with the renderer.
+  const decisions = (askQuestions ?? []).filter(isChip)
+  const commercial = (askQuestions ?? []).filter((q) => !isChip(q))
+  const hasTwoBlocks = decisions.length > 0 && commercial.length > 0
+
+  /** ⚖️ ONE RENDERER, TWO COLUMNS. The blocks differ in what they ask and
+   *  where they sit, never in how a question behaves — so the chip logic, the
+   *  sub-option row and the keystroke-level save live here once. Copying them
+   *  per column is how two lists drift into two behaviours. */
+  const renderAsk = (q: AskItem) => (
+            <div key={q.field} className="block">
+              <span className="text-sm leading-relaxed text-cream">{q.question}</span>
+              {isChip(q) ? (
+                // ⚖️ CHIPS, NOT A TEXT BOX. These three have a fixed set of
+                // answers that map to decisions downstream; free text would
+                // have to be interpreted, and an interpretation is a guess
+                // wearing the creator's words.
+                // ⚖️ A FRAGMENT: the chip branch is two siblings now — the
+                // options row, and the sub-options row it can reveal.
+                <>
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  {q.options.map((o) => {
+                    // A grouped option is chosen when ANY of its children is.
+                    const kids = o.options ?? []
+                    const picked = askAnswers[q.field] ?? ''
+                    const active = kids.length
+                      ? kids.some((c) => c.value === picked)
+                      : picked === o.value
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        aria-pressed={active}
+                        title={o.hint}
+                        onClick={() => setAskAnswers((a) => {
+                          // Tapping the active chip clears it, so a mis-tap
+                          // is one tap to undo rather than a reload. A group
+                          // opens on its FIRST child, which the second row
+                          // then lets the creator change — so one tap is
+                          // always a complete answer.
+                          const next = {
+                            ...a,
+                            [q.field]: active ? '' : (kids[0]?.value ?? o.value),
+                          }
+                          rememberAnswers(buildKey(state), next)
+                          return next
+                        })}
+                        className={cn(
+                          'rounded-full border px-3.5 py-2 text-left text-[13px] transition-colors',
+                          active
+                            ? 'border-coral/50 bg-coral/[0.08] text-cream'
+                            : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20 hover:bg-white/[0.04]',
+                        )}
+                      >
+                        <span className="block leading-tight">{o.label}</span>
+                        {/* ⚖️ THE HINT IS THE DISAMBIGUATION, so it only
+                            appears where two labels could be confused. */}
+                        {o.hint && (
+                          <span className="mt-0.5 block text-[11px] leading-snug text-stone">{o.hint}</span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+                {/* ⚠️ THE SECOND LEVEL, REVEALED ONLY WHEN ITS GROUP IS OPEN.
+                    Comment, share and follow are three different endings and
+                    collapsing them internally would have thrown two payoffs
+                    away to save two chips. Grouping is visual; the behaviour
+                    stays whole. */}
+                {q.options.filter((o) => o.options?.length
+                  && o.options.some((c) => c.value === (askAnswers[q.field] ?? '')))
+                  .map((group) => (
+                    <div key={`${group.value}-sub`} className="mt-2 flex flex-wrap gap-2 pl-1">
+                      {(group.options ?? []).map((c) => {
+                        const on = (askAnswers[q.field] ?? '') === c.value
+                        return (
+                          <button
+                            key={c.value}
+                            type="button"
+                            aria-pressed={on}
+                            onClick={() => setAskAnswers((a) => {
+                              const next = { ...a, [q.field]: c.value }
+                              rememberAnswers(buildKey(state), next)
+                              return next
+                            })}
+                            className={cn(
+                              'rounded-full border px-3 py-1.5 text-[12px] transition-colors',
+                              on
+                                ? 'border-coral/40 bg-coral/[0.06] text-cream'
+                                : 'border-white/8 bg-white/[0.015] text-stone hover:border-white/15',
+                            )}
+                          >{c.label}</button>
+                        )
+                      })}
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <input
+                  type="text"
+                  autoComplete="off"
+                  value={askAnswers[q.field] ?? ''}
+                  onChange={(ev) => setAskAnswers((a) => {
+                    // ⚠️ SAVED ON EVERY KEYSTROKE, because the event that
+                    // loses them is not a submit — it is a background tab
+                    // being reclaimed with no warning and no unload.
+                    const next = { ...a, [q.field]: ev.target.value }
+                    rememberAnswers(buildKey(state), next)
+                    return next
+                  })}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+                  placeholder="Your answer"
+                />
+              )}
+            </div>
+  )
 
   return (
     // Brand canvas, vertically centered in the space BETWEEN the app chrome (top
@@ -616,7 +834,11 @@ export default function V2Building() {
         <div className="absolute right-1/4 bottom-1/4 h-[18rem] w-[18rem] rounded-full bg-teal/10 blur-[130px]" />
       </div>
 
-      <div className="relative w-full max-w-md">
+      {/* ⚖️ THE CARD WIDENS ONLY WHEN THERE ARE TWO COLUMNS TO PUT IN IT. Every
+          other state here — building, refused, errored — is a single narrow
+          column, and stretching it to three inches of whitespace on a desktop
+          to keep one class name simple would make every one of them worse. */}
+      <div className={cn('relative w-full max-w-md', hasTwoBlocks && 'lg:max-w-3xl')}>
         {askQuestions ? (
           // NOT an error, and the copy leads with the thing that protects the
           // creator: nothing was charged. Twin declined to write a script it
@@ -635,114 +857,29 @@ export default function V2Building() {
                 ? 'No remix has been used yet. Three taps — Twin decides how to make it, you decide what it is for.'
                 : 'No remix has been used. Twin would rather ask than guess — a guess here ends up as a claim in your voice.'}
             </p>
-            <div className="mt-6 space-y-4">
-              {askQuestions.map((q) => (
-                <div key={q.field} className="block">
-                  <span className="text-sm leading-relaxed text-cream">{q.question}</span>
-                  {isChip(q) ? (
-                    // ⚖️ CHIPS, NOT A TEXT BOX. These three have a fixed set of
-                    // answers that map to decisions downstream; free text would
-                    // have to be interpreted, and an interpretation is a guess
-                    // wearing the creator's words.
-                    // ⚖️ A FRAGMENT: the chip branch is two siblings now — the
-                    // options row, and the sub-options row it can reveal.
-                    <>
-                    <div className="mt-2.5 flex flex-wrap gap-2">
-                      {q.options.map((o) => {
-                        // A grouped option is chosen when ANY of its children is.
-                        const kids = o.options ?? []
-                        const picked = askAnswers[q.field] ?? ''
-                        const active = kids.length
-                          ? kids.some((c) => c.value === picked)
-                          : picked === o.value
-                        return (
-                          <button
-                            key={o.value}
-                            type="button"
-                            aria-pressed={active}
-                            title={o.hint}
-                            onClick={() => setAskAnswers((a) => {
-                              // Tapping the active chip clears it, so a mis-tap
-                              // is one tap to undo rather than a reload. A group
-                              // opens on its FIRST child, which the second row
-                              // then lets the creator change — so one tap is
-                              // always a complete answer.
-                              const next = {
-                                ...a,
-                                [q.field]: active ? '' : (kids[0]?.value ?? o.value),
-                              }
-                              rememberAnswers(buildKey(state), next)
-                              return next
-                            })}
-                            className={cn(
-                              'rounded-full border px-3.5 py-2 text-left text-[13px] transition-colors',
-                              active
-                                ? 'border-coral/50 bg-coral/[0.08] text-cream'
-                                : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20 hover:bg-white/[0.04]',
-                            )}
-                          >
-                            <span className="block leading-tight">{o.label}</span>
-                            {/* ⚖️ THE HINT IS THE DISAMBIGUATION, so it only
-                                appears where two labels could be confused. */}
-                            {o.hint && (
-                              <span className="mt-0.5 block text-[11px] leading-snug text-stone">{o.hint}</span>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                    {/* ⚠️ THE SECOND LEVEL, REVEALED ONLY WHEN ITS GROUP IS OPEN.
-                        Comment, share and follow are three different endings and
-                        collapsing them internally would have thrown two payoffs
-                        away to save two chips. Grouping is visual; the behaviour
-                        stays whole. */}
-                    {q.options.filter((o) => o.options?.length
-                      && o.options.some((c) => c.value === (askAnswers[q.field] ?? '')))
-                      .map((group) => (
-                        <div key={`${group.value}-sub`} className="mt-2 flex flex-wrap gap-2 pl-1">
-                          {(group.options ?? []).map((c) => {
-                            const on = (askAnswers[q.field] ?? '') === c.value
-                            return (
-                              <button
-                                key={c.value}
-                                type="button"
-                                aria-pressed={on}
-                                onClick={() => setAskAnswers((a) => {
-                                  const next = { ...a, [q.field]: c.value }
-                                  rememberAnswers(buildKey(state), next)
-                                  return next
-                                })}
-                                className={cn(
-                                  'rounded-full border px-3 py-1.5 text-[12px] transition-colors',
-                                  on
-                                    ? 'border-coral/40 bg-coral/[0.06] text-cream'
-                                    : 'border-white/8 bg-white/[0.015] text-stone hover:border-white/15',
-                                )}
-                              >{c.label}</button>
-                            )
-                          })}
-                        </div>
-                      ))}
-                    </>
-                  ) : (
-                    <input
-                      type="text"
-                      autoComplete="off"
-                      value={askAnswers[q.field] ?? ''}
-                      onChange={(ev) => setAskAnswers((a) => {
-                        // ⚠️ SAVED ON EVERY KEYSTROKE, because the event that
-                        // loses them is not a submit — it is a background tab
-                        // being reclaimed with no warning and no unload.
-                        const next = { ...a, [q.field]: ev.target.value }
-                        rememberAnswers(buildKey(state), next)
-                        return next
-                      })}
-                      className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
-                      placeholder="Your answer"
-                    />
-                  )}
+            {/* ⚖️ TWO COLUMNS ONLY WHERE THERE IS ROOM, AND ONLY WHEN THERE ARE
+                TWO BLOCKS. On a phone this is the same single stack it always
+                was; the split exists because on a desktop the three decisions
+                and the offer questions were separated by a scroll. */}
+            <div className={cn('mt-6', hasTwoBlocks && 'lg:grid lg:grid-cols-2 lg:gap-8')}>
+              <div className="space-y-4">
+                {hasTwoBlocks && (
+                  <span className="block text-[11px] uppercase tracking-wide text-stone/70">What this video is for</span>
+                )}
+                {decisions.map(renderAsk)}
+              </div>
+              {commercial.length > 0 && (
+                <div className="mt-6 space-y-4 lg:mt-0">
+                  {/* ⚠️ NAMED AS OPTIONAL IN THE HEADING ITSELF, because these
+                      boxes fire from an INFERRED offer and the button does not
+                      wait for them. A creator who cannot answer one must be able
+                      to see that without discovering it by clicking. */}
+                  <span className="block text-[11px] uppercase tracking-wide text-stone/70">
+                    About what you sell <span className="normal-case tracking-normal text-stone/50">— optional</span>
+                  </span>
+                  {commercial.map(renderAsk)}
                 </div>
-              ))}
+              )}
             </div>
             <button
               type="button"
@@ -778,7 +915,7 @@ export default function V2Building() {
               }}
               className="btn-gradient mt-6 w-full disabled:opacity-40"
             >
-              Build my video plan
+              Create my version
             </button>
             <button onClick={() => nav('/v2', { replace: true })} className="btn-ghost mt-3 w-full">Start over</button>
           </div>

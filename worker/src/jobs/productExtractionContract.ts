@@ -75,6 +75,20 @@ export const EXTRACTION_SOURCES = [
   'marketing_copy',
   /** The creator told us directly. Outranks every page. */
   'user_confirmed',
+  // ── A PHOTOGRAPH THE CREATOR SUPPLIED ──────────────────────────────────
+  //
+  // ⚖️ A THIRD KIND OF EVIDENCE, NOT A STRONGER PAGE. An image establishes that
+  // a thing EXISTS and WHAT IT LOOKS LIKE — which is precisely what the Director
+  // Plan needs to decide whether a scene may show it. It establishes nothing
+  // about price, benefit or result.
+  //
+  // ⚠️ AND A VISION MODEL WILL HAPPILY READ "$29/mo" OFF A SCREENSHOT. That
+  // figure is a reading of a picture, not a stated price, and letting it through
+  // as a fact would put a number in a script that no page and no person ever
+  // asserted. It is the palette defect again — a machine's reading promoted to
+  // an assertion — so `imageFactAllowed` below refuses those fields outright
+  // rather than merely marking them for confirmation.
+  'creator_image',
 ] as const
 export type ExtractionSource = (typeof EXTRACTION_SOURCES)[number]
 
@@ -132,12 +146,38 @@ const OUTCOME = /\b(?:guarantee\w*|proven|clinically|scientifically|doubles?|tri
  * waits. Nothing here can move a value from `needs_confirmation` back to
  * `usable` — that direction is what a permission escalation looks like.
  */
+/** ⚖️ WHAT A PICTURE CAN AND CANNOT ESTABLISH. Identity and appearance only.
+ *  Everything else — a price, a plan, a guarantee, a benefit, an outcome — needs
+ *  a page that states it or a person who says it.
+ *
+ *  ⚠️ THIS IS A REFUSAL, NOT A DOWNGRADE. `needs_confirmation` would put the
+ *  figure in front of the creator with a tick box, and a plausible number beside
+ *  a photo of their own product is the easiest thing in the world to approve
+ *  without checking. The honest treatment is that it never becomes a fact. */
+const IMAGE_FIELDS: ReadonlySet<string> = new Set([
+  'name', 'category', 'description',
+])
+
+export function imageFactAllowed(field: ExtractedField): boolean {
+  return IMAGE_FIELDS.has(field)
+}
+
 export function extractionTrust(input: {
   field: ExtractedField
   value: string
   source: ExtractionSource
 }): ExtractionTrust {
   if (input.source === 'user_confirmed') return 'usable'
+
+  // ⚠️ A PHOTO NEVER ARRIVES AS `usable`, EVEN FOR WHAT IT CAN ESTABLISH. A
+  // vision model naming a product from a box is usually right and sometimes
+  // confidently wrong, and the cost of a wrong NAME is every later script
+  // calling the thing something it is not. One tap fixes it; nothing catches it
+  // afterwards.
+  // ⚖️ FIELDS OUTSIDE `imageFactAllowed` should never reach here at all — the
+  // extractor drops them — so this is the second line of defence rather than the
+  // first, and it fails closed.
+  if (input.source === 'creator_image') return 'needs_confirmation'
 
   // ⚠️ MARKETING COPY IS NEVER USABLE UNCONFIRMED, WHATEVER IT SAYS. It is the
   // one source whose PURPOSE is persuasion, so even its plain-looking sentences

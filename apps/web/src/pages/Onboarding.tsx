@@ -5,7 +5,16 @@ import { Loader2, Check, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { pollDna, saveCapabilityDefaults, savePreScriptBrief, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
 import type { Platform, Profile, VoiceProfile } from '../lib/types'
-import { asksForbiddenClaims, BRIEF_WORK_KINDS, type BriefWorkKind } from '../lib/api'
+import { asksForbiddenClaims, BRIEF_WORK_KINDS, BRIEF_GOALS, type BriefWorkKind, type BriefGoal } from '../lib/api'
+import {
+  profileQuestionsFor, asksScreenCapability, asksProductCapability,
+  asksOwnProductKind, asksOwnServiceKind, MAX_CONTENT_GOALS,
+  AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE, DESIRED_FORMATS, FORMAT_EXPLORATION,
+  COMMERCIAL_TIES, OWN_PRODUCT_KINDS, OWN_SERVICE_KINDS, CAPABILITY_ANSWERS,
+  type ProfileQuestionId, type AudienceSegment,
+  type AudienceKnowledge, type DesiredFormat, type FormatExploration,
+  type CommercialTie, type OwnProductKind, type OwnServiceKind, type CapabilityAnswer,
+} from '../lib/api'
 import {
   Q4_ANSWERS, mintFromWorkKind, mintsOwnedEntity, q4AsksOwnership,
   saveMintedEntity, type EntityType, type Q4Answer,
@@ -14,13 +23,21 @@ import { Aurora } from '../components/Aurora'
 
 /** The chooser's words. Kept beside the screen rather than in the contract: the
  *  ids are the contract, and how they are phrased to a person is not. */
+// ⚖️ PLAIN ENGLISH, AND THE INTERNAL NAME IS NEVER THE LABEL. `saas` reads as
+// "Software", `local_service` as "Local business" — a creator should not have to
+// know which noun the codebase picked. The three new kinds are here because
+// founders, coaches and freelancers were all landing on "Something else", which
+// told Twin nothing about a person who has a great deal to say.
 const WORK_KIND_LABEL: Record<BriefWorkKind, string> = {
-  creator: 'Creator',
+  creator: 'Creator / influencer',
+  founder: 'Founder / business owner',
+  coach: 'Coach / consultant',
+  freelancer: 'Freelancer / agency',
   professional: 'Licensed professional',
-  ecommerce: 'Ecommerce',
-  brand: 'Brand / in-house',
+  ecommerce: 'Ecommerce / brand',
+  brand: 'Brand / content team',
   saas: 'Software',
-  local_service: 'Local service',
+  local_service: 'Local business',
   other: 'Something else',
 }
 // Q4, REWRITTEN — it now asks ONLY about things the creator does NOT own.
@@ -64,6 +81,8 @@ import {
   readOnboardingDraft,
   writeOnboardingDraft,
   type OnboardingDraft,
+  emptyProfileAnswers,
+  profileAnswersOf,
 } from '../lib/onboardingDraft'
 
 const PLATFORMS: Platform[] = ['tiktok', 'instagram', 'youtube', 'other']
@@ -128,6 +147,7 @@ export default function Onboarding() {
       voiceId,
       platform,
       profile,
+      ...emptyProfileAnswers(),
       workKind: null,
       workKindOther: null,
       forbiddenClaims: null,
@@ -199,9 +219,18 @@ export default function Onboarding() {
       const next: OnboardingDraft = {
         ...current,
         profile,
-        audience: current.audience.trim() || profile.audience || '',
+        // ⚠️ THE CHOOSER SEEDS THE BOX, SO ONE FACT HAS ONE ORIGIN. The confirm
+        // screen still shows free-text "who you're talking to" and "your goal",
+        // and a creator who has just tapped "Founders" and "Build trust" must
+        // not then find those boxes empty — an answer that vanishes reads as an
+        // answer that was not recorded. The typed value always wins; this only
+        // fills a blank, and the scan's guess remains the last resort.
+        audience: current.audience.trim()
+          || (current.audienceSeg ? AUDIENCE_LABEL[current.audienceSeg] : '')
+          || profile.audience || '',
         product: current.product.trim() || profile.offer || '',
-        goal: current.goal,
+        goal: current.goal.trim()
+          || current.contentGoals.map((g) => CONTENT_GOAL_LABEL[g]).join(' and '),
       }
       safeWriteDraft(next)
       return next
@@ -434,22 +463,12 @@ function HandleStep({
 // --- Step 2: live progress while the scan runs -----------------------------
 const SCAN_STAGES = ['Fetching your posts', 'Reading captions & hooks', 'Synthesizing your voice']
 
-// Q1's options. Stored as the free text `goal` the brief already carries, so
-// this adds a CHOOSER over an existing field rather than a second authority for
-// the same fact — a chip and a text box that both mean "goal" would drift, and
-// the one that lost would be the creator's.
-const SCAN_GOALS = [
-  'Grow audience',
-  'Build authority',
-  'Educate',
-  'Generate leads',
-  'Drive sales',
-  'Entertain',
-] as const
-
-// Three, and the code must agree with itself about that: the counter, the
-// last-question test and "Skip all" all read this rather than a literal.
-const SCAN_QUESTION_COUNT = 3
+// ⚖️ THE COUNT IS NO LONGER A CONSTANT, AND THAT IS THE FEATURE. It is whatever
+// `profileQuestionsFor` says applies to this person: five for a creator with
+// nothing to sell, six for a founder with software to demonstrate. A fixed six
+// would be a round number bought with irrelevant questions, and an irrelevant
+// question is worse than a missing one — it teaches somebody the set is not
+// serious, which is how the one that mattered gets skipped too.
 
 function BuildingStep({
   draft,
@@ -481,7 +500,13 @@ function BuildingStep({
   // hands over, whichever it is.
   const [qIndex, setQIndex] = useState(0)
   const [readyProfile, setReadyProfile] = useState<VoiceProfile | null>(null)
-  const questionsDone = qIndex >= SCAN_QUESTION_COUNT
+  // ⚠️ THE LIST IS RECOMPUTED FROM THE ANSWERS, so it can SHRINK under the
+  // creator mid-flow: somebody who picks "nothing commercial" at question five
+  // removes question six while standing on question five. `questionsDone`
+  // compares against the live length rather than a constant for exactly that
+  // reason — a fixed count would leave them on a screen that no longer exists.
+  const asked = profileQuestionsFor(profileAnswersOf(draft))
+  const questionsDone = qIndex >= asked.length
 
   // Hand over exactly once, and only when BOTH halves are finished.
   useEffect(() => {
@@ -662,66 +687,13 @@ function BuildingStep({
         // question is the only thing here only the creator can do.
         <div className="mt-5 rounded-card border border-amber/25 bg-amber/[0.06] p-4 sm:p-5">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
-            While we read · {qIndex + 1} of {SCAN_QUESTION_COUNT}
+            While we read · {qIndex + 1} of {asked.length}
           </p>
-          {qIndex === 0 && (
-            <>
-              <p className="mt-2 text-base font-medium text-cream">What should your content achieve?</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {SCAN_GOALS.map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => onDraftChange({ ...draft, goal: draft.goal === g ? '' : g })}
-                    className={cn(
-                      'rounded-full border px-3 py-1.5 text-xs transition',
-                      draft.goal === g
-                        ? 'border-coral bg-coral/15 text-cream'
-                        : 'border-white/15 text-sand hover:bg-white/5',
-                    )}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          {qIndex === 1 && (
-            <>
-              <p className="mt-2 text-base font-medium text-cream">Who are you making these for?</p>
-              <input
-                className="field mt-3"
-                value={draft.audience}
-                onChange={(e) => onDraftChange({ ...draft, audience: e.target.value })}
-                placeholder="e.g. working parents who want passive income"
-              />
-              {/* A category is not an audience. "People interested in X" gives the
-                  writer nothing to aim at, and the difference shows in the script. */}
-              <p className="mt-2 text-[11px] text-stone">One line about the person, not a category.</p>
-            </>
-          )}
-          {qIndex === 2 && (
-            <>
-              <p className="mt-2 text-base font-medium text-cream">What best describes what you do?</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {BRIEF_WORK_KINDS.map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => onDraftChange({ ...draft, workKind: draft.workKind === k ? null : k })}
-                    className={cn(
-                      'rounded-full border px-3 py-1.5 text-xs transition',
-                      draft.workKind === k
-                        ? 'border-coral bg-coral/15 text-cream'
-                        : 'border-white/15 text-sand hover:bg-white/5',
-                    )}
-                  >
-                    {WORK_KIND_LABEL[k]}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+          <ProfileQuestion
+            id={asked[qIndex]}
+            draft={draft}
+            onDraftChange={onDraftChange}
+          />
           {/* THE CREATOR MOVES THE QUESTIONS, NOTHING ELSE DOES.
               Skipping is unpunished: a required question on a waiting screen
               turns a wait into a toll, and all three are asked again on the
@@ -732,11 +704,11 @@ function BuildingStep({
               onClick={() => setQIndex((i) => i + 1)}
               className="btn-gradient flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold"
             >
-              {qIndex + 1 === SCAN_QUESTION_COUNT ? 'Done' : 'Next'}
+              {qIndex + 1 >= asked.length ? 'Done' : 'Next'}
             </button>
             <button
               type="button"
-              onClick={() => setQIndex(SCAN_QUESTION_COUNT)}
+              onClick={() => setQIndex(asked.length)}
               className="shrink-0 px-2 py-2 text-xs text-stone hover:text-cream"
             >
               Skip all
@@ -1119,9 +1091,21 @@ function ConfirmStep({
               onChange={(e) => { setProduct(e.target.value); setOfferTouched(true) }}
               placeholder="e.g. Twin — it edits your videos for you"
             />
+            {/* ⚠️ THE NOTICE SAID THE OPPOSITE OF WHAT THE CODE DOES, AND THE
+                NOTICE IS WHAT A CREATOR BELIEVES. "It becomes the call to action
+                on every video" is false for an untouched guess: `offer` is
+                written only when `offerTouched`, so a guess nobody edits is
+                stored as null and reaches no script.
+                MEASURED: a real account was shown "A radical mindset shift
+                towards patience, self-awareness…" under that sentence. That is
+                a THEME, not an offer — and being told it would drive every CTA
+                is exactly the alarm a creator should feel about a claim they
+                never made. The behaviour was already right; the sentence was
+                manufacturing the fear. */}
             {!offerTouched && product && (
               <p className="mt-1 text-[11px] text-amber">
-                We guessed this from your posts — worth a look, it becomes the call to action on every video.
+                We guessed this from your posts. We will not use it until you edit it —
+                fix it if it is wrong, or leave it and Twin stays quiet about your offer.
               </p>
             )}
           </Labeled>
@@ -1218,6 +1202,11 @@ function ConfirmStep({
             "Nothing of anyone else's" additionally means ideas-only and no
             Product DNA at all — which is why the helper line changes with
             `q4AsksOwnership`. */}
+        <Section
+          title="What can appear in your videos?"
+          hint="What a script may promise, and which shots Twin is allowed to ask you for."
+          badge={q4 === null || canRecordScreen === null || canFilmObjects === null ? 'Not answered' : null}
+        >
         <Labeled label={q4AsksOwnership(workKind)
           ? 'Do your videos feature any products?'
           : 'Anything else in your videos that isn’t yours?'}>
@@ -1243,11 +1232,17 @@ function ConfirmStep({
               : 'Someone else’s product means no ownership language, and a disclosure where one is owed.'}
           </p>
         </Labeled>
-        {/* HOW THEY CAN SHOOT IT — last, and that ordering is the point.
-            These two used to be the ONLY questions asked while the scan ran,
-            so the first thing Twin wanted to know was someone's filming setup,
-            before it had established what they do or whether they sell
-            anything. They belong after both.
+        {/* HOW THEY CAN SHOOT IT — IN THE SAME PLACE AS WHAT THEY SHOOT.
+            These two sat in their own collapsed section further down the page,
+            with unrelated fields between them and the products question, so one
+            subject was asked in two places that never met. They are one thought:
+            somebody deciding whether they show products has already decided
+            whether they can hold one up.
+
+            They still come AFTER the products question, and that ordering is the
+            point. They used to be the ONLY questions asked while the scan ran,
+            so the first thing Twin wanted to know was someone's camera setup,
+            before it had established what they do or whether they sell anything.
 
             SKIPPING IS A REAL ANSWER AND IT IS NOT "NO". Tapping the chosen
             chip again clears it back to unanswered, and nothing is written for
@@ -1260,12 +1255,7 @@ function ConfirmStep({
             HIDES a capture surface; `can_film_objects = false` withholds
             footage SUGGESTIONS. Saying no to the second removes advice, not
             ability, so the sentence has to promise the right thing. */}
-        <Section
-          title="How can you film?"
-          hint="Two answers that decide which shots Twin is allowed to ask you for."
-          badge={canRecordScreen === null || canFilmObjects === null ? 'Not answered' : null}
-        >
-          <p className="text-xs text-sand">Can you record your screen?</p>
+          <p className="mt-5 text-xs text-sand">Can you record your screen?</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {([true, false] as const).map((v) => (
               <button
@@ -1522,5 +1512,291 @@ function ChipList({ label, items, onChange }: { label: string; items: string[]; 
         />
       </div>
     </div>
+  )
+}
+
+// ── THE SIX QUESTIONS, IN PLAIN ENGLISH ───────────────────────────────────
+//
+// ⚖️ THE LABELS LIVE BESIDE THE SCREEN, THE BEHAVIOUR LIVES IN SHARED. Every
+// value below comes from an enum the compiler reads, so a chip whose value the
+// compiler discards cannot be rendered — that is a question that lies. What is
+// local is only the WORDING, which is the part a creator experiences and the
+// part that must never say `own_product`, `talking_head` or `stay_close`.
+const AUDIENCE_LABEL: Record<AudienceSegment, string> = {
+  consumers: 'Everyday people',
+  founders: 'Founders / business owners',
+  professionals: 'Professionals in my field',
+  creators: 'Other creators',
+  companies: 'Companies / teams',
+  students: 'Students / people learning',
+  enthusiasts: 'Hobbyists / enthusiasts',
+  mixed: 'A mix of people',
+}
+
+const KNOWLEDGE_LABEL: Record<AudienceKnowledge, string> = {
+  beginners: 'Mostly beginners',
+  basics: 'They know the basics',
+  experienced: 'Mostly experienced',
+  mixed: 'A mix',
+}
+
+const CONTENT_GOAL_LABEL: Record<BriefGoal, string> = {
+  followers: 'Reach more people',
+  authority: 'Build trust in what I know',
+  educate: 'Teach people',
+  leads: 'Get leads or clients',
+  sell: 'Sell what I offer',
+  entertain: 'Entertain people',
+  personal_brand: 'Build my name',
+}
+
+const FORMAT_LABEL: Record<DesiredFormat, string> = {
+  talking_head: 'Talking to camera',
+  educational: 'Explaining things',
+  founder: 'Behind the business',
+  review: 'Reviews & comparisons',
+  product: 'Showing a product',
+  story: 'Stories & experiences',
+  opinion: 'Opinions & takes',
+  pov: 'POV / simple skits',
+  trend: 'Trends & current topics',
+  walking: 'Walking & casual talking',
+  recommend: 'Let Twin suggest',
+}
+
+const EXPLORATION_LABEL: Record<FormatExploration, string> = {
+  stay_close: 'Mostly what I already make',
+  fit_goals: 'Whatever fits my goals',
+  try_new: 'Help me try new things',
+  mixed: 'A mix',
+}
+
+const TIE_LABEL: Record<CommercialTie, string> = {
+  own_product: 'Something I sell',
+  own_service: 'A service I offer',
+  affiliate: 'Products I earn commission on',
+  sponsor: 'Sponsored products',
+  review: 'Things I review',
+  none: 'Nothing commercial',
+}
+
+const PRODUCT_KIND_LABEL: Record<OwnProductKind, string> = {
+  software: 'Software or an app',
+  physical: 'A physical product',
+  digital: 'A digital product',
+  course: 'A course',
+  marketplace: 'A marketplace or store',
+  other: 'Something else',
+}
+
+const SERVICE_KIND_LABEL: Record<OwnServiceKind, string> = {
+  consulting: 'Consulting',
+  coaching: 'Coaching',
+  agency: 'Agency work',
+  freelance: 'Freelance work',
+  training: 'Training',
+  community: 'A community',
+  other: 'Something else',
+}
+
+const CAPABILITY_LABEL: Record<CapabilityAnswer, string> = {
+  yes: 'Yes',
+  sometimes: 'Sometimes',
+  no: 'No',
+}
+
+/** The answers the adaptive rules read, lifted off the draft. */
+
+function Chips<T extends string>({ values, label, chosen, onPick }: {
+  values: readonly T[]
+  label: Record<T, string>
+  /** A single value, or the list for a multi-select. */
+  chosen: T | readonly T[] | null
+  onPick: (v: T) => void
+}) {
+  const isOn = (v: T) => (Array.isArray(chosen) ? (chosen as readonly T[]).includes(v) : chosen === v)
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {values.map((v) => (
+        <button
+          key={v}
+          type="button"
+          aria-pressed={isOn(v)}
+          onClick={() => onPick(v)}
+          className={cn(
+            'rounded-full border px-3 py-1.5 text-xs transition',
+            isOn(v) ? 'border-coral bg-coral/15 text-cream' : 'border-white/15 text-sand hover:bg-white/5',
+          )}
+        >{label[v]}</button>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * ⚠️ EVERY CHIP TOGGLES OFF. A mis-tap on a waiting screen is common, and on
+ * the capability questions it is expensive — `no` permanently hides a surface —
+ * so tapping the chosen answer again returns to unanswered everywhere, rather
+ * than only where somebody remembered to write it.
+ */
+function ProfileQuestion({ id, draft, onDraftChange }: {
+  id: ProfileQuestionId | undefined
+  draft: OnboardingDraft
+  onDraftChange: (next: OnboardingDraft) => void
+}) {
+  if (!id) return null
+  const set = (patch: Partial<OnboardingDraft>) => onDraftChange({ ...draft, ...patch })
+  const toggle = <T extends string>(list: readonly T[], v: T): T[] =>
+    list.includes(v) ? list.filter((x) => x !== v) : [...list, v]
+  const ask = (text: string) => <p className="mt-2 text-base font-medium text-cream">{text}</p>
+  const note = (text: string) => <p className="mt-2 text-[11px] text-stone">{text}</p>
+
+  if (id === 'workKind') {
+    return (
+      <>
+        {ask('What best describes what you do?')}
+        <Chips
+          values={BRIEF_WORK_KINDS} label={WORK_KIND_LABEL} chosen={draft.workKind}
+          onPick={(k) => set({ workKind: draft.workKind === k ? null : k })}
+        />
+      </>
+    )
+  }
+
+  if (id === 'audience') {
+    return (
+      <>
+        {ask('Who do you mainly want to reach?')}
+        <Chips
+          values={AUDIENCE_SEGMENTS} label={AUDIENCE_LABEL} chosen={draft.audienceSeg}
+          onPick={(a) => set({ audienceSeg: draft.audienceSeg === a ? null : a })}
+        />
+        {/* ⚖️ THE SECOND HALF CHANGES DEPTH, NOT TONE. The same subject for
+            beginner founders and expert founders is two different videos. */}
+        <p className="mt-4 text-xs text-sand">How much do they already know?</p>
+        <Chips
+          values={AUDIENCE_KNOWLEDGE} label={KNOWLEDGE_LABEL} chosen={draft.audienceKnowledge}
+          onPick={(k) => set({ audienceKnowledge: draft.audienceKnowledge === k ? null : k })}
+        />
+      </>
+    )
+  }
+
+  if (id === 'contentGoals') {
+    const full = draft.contentGoals.length >= MAX_CONTENT_GOALS
+    return (
+      <>
+        {ask('What do you want your content to help you do?')}
+        <Chips
+          values={BRIEF_GOALS} label={CONTENT_GOAL_LABEL} chosen={draft.contentGoals}
+          onPick={(g) => {
+            // ⚠️ THE CAP IS ENFORCED BY REFUSING THE THIRD TAP, NOT BY SILENTLY
+            // DROPPING ONE. A chip that appears to select and then vanishes
+            // reads as a bug; a chip that does not light up reads as a limit.
+            const chosen = draft.contentGoals.includes(g)
+            if (!chosen && full) return
+            set({ contentGoals: toggle(draft.contentGoals, g) })
+          }}
+        />
+        {note(full ? 'Two is the limit — tap one to swap it.' : 'Pick up to two.')}
+      </>
+    )
+  }
+
+  if (id === 'desiredFormats') {
+    return (
+      <>
+        {ask('What kinds of videos do you want Twin to help you make?')}
+        <Chips
+          values={DESIRED_FORMATS} label={FORMAT_LABEL} chosen={draft.desiredFormats}
+          onPick={(f) => set({ desiredFormats: toggle(draft.desiredFormats, f) })}
+        />
+        {/* ⚖️ NOT DERIVABLE FROM THE LIST ABOVE. Somebody can pick three formats
+            they already make and still want to be pushed. */}
+        <p className="mt-4 text-xs text-sand">Should Twin stay close to what you already do?</p>
+        <Chips
+          values={FORMAT_EXPLORATION} label={EXPLORATION_LABEL} chosen={draft.formatExploration}
+          onPick={(e) => set({ formatExploration: draft.formatExploration === e ? null : e })}
+        />
+      </>
+    )
+  }
+
+  if (id === 'commercialTies') {
+    return (
+      <>
+        {ask('Do you make content about anything you sell or promote?')}
+        <Chips
+          values={COMMERCIAL_TIES} label={TIE_LABEL} chosen={draft.commercialTies}
+          onPick={(t) => {
+            // ⚠️ "NOTHING COMMERCIAL" IS EXCLUSIVE, IN BOTH DIRECTIONS. Chosen
+            // alongside a real tie it means nothing, and leaving both selected
+            // would make the adaptive rules read a contradiction.
+            if (t === 'none') {
+              set({ commercialTies: draft.commercialTies.includes('none') ? [] : ['none'] })
+              return
+            }
+            const next = toggle(draft.commercialTies.filter((x) => x !== 'none'), t)
+            set({ commercialTies: next })
+          }}
+        />
+        {asksOwnProductKind(profileAnswersOf(draft)) && (
+          <>
+            <p className="mt-4 text-xs text-sand">What kind of thing do you sell?</p>
+            <Chips
+              values={OWN_PRODUCT_KINDS} label={PRODUCT_KIND_LABEL} chosen={draft.ownProductKind}
+              onPick={(k) => set({ ownProductKind: draft.ownProductKind === k ? null : k })}
+            />
+          </>
+        )}
+        {asksOwnServiceKind(profileAnswersOf(draft)) && (
+          <>
+            <p className="mt-4 text-xs text-sand">What kind of service?</p>
+            <Chips
+              values={OWN_SERVICE_KINDS} label={SERVICE_KIND_LABEL} chosen={draft.ownServiceKind}
+              onPick={(k) => set({ ownServiceKind: draft.ownServiceKind === k ? null : k })}
+            />
+          </>
+        )}
+        {note('This only tells Twin what kind of thing exists — you claim the actual product later.')}
+      </>
+    )
+  }
+
+  // `capabilities` — only reached when at least one half applies.
+  const answers = profileAnswersOf(draft)
+  return (
+    <>
+      {ask('What can Twin ask you to show when you record?')}
+      {asksScreenCapability(answers) && (
+        <>
+          <p className="mt-3 text-xs text-sand">Can you record your screen when Twin needs it?</p>
+          <Chips
+            values={CAPABILITY_ANSWERS} label={CAPABILITY_LABEL} chosen={draft.screenCapability}
+            onPick={(v) => {
+              const next = draft.screenCapability === v ? null : v
+              // ⚠️ THE BOOLEAN IS DERIVED, NEVER TYPED TWICE. Every existing
+              // reader is written against `canRecordScreen`, and "sometimes"
+              // becomes null there: no scene may depend on it, and nothing is
+              // hidden — which is exactly what null already meant.
+              set({ screenCapability: next, canRecordScreen: next === 'yes' ? true : next === 'no' ? false : null })
+            }}
+          />
+        </>
+      )}
+      {asksProductCapability(answers) && (
+        <>
+          <p className="mt-4 text-xs text-sand">Can you usually show the product on camera?</p>
+          <Chips
+            values={CAPABILITY_ANSWERS} label={CAPABILITY_LABEL} chosen={draft.productCapability}
+            onPick={(v) => {
+              const next = draft.productCapability === v ? null : v
+              set({ productCapability: next, canFilmObjects: next === 'yes' ? true : next === 'no' ? false : null })
+            }}
+          />
+        </>
+      )}
+      {note('Say no and we stop suggesting shots you cannot film. Skip it and nothing is decided.')}
+    </>
   )
 }

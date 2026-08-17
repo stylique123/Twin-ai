@@ -1345,6 +1345,41 @@ const OUTCOME_FLOOR_INLINE: Record<string, number> = {
   share: SUBSTANCE_FLOOR, follow: SUBSTANCE_FLOOR,
 }
 
+// ⚠️ INLINED FROM `videoIntent.ts` AND PARITY-TESTED. Edge functions cannot
+// import @twinai/shared, so this is a deliberate copy — the parity test executes
+// BOTH copies against every value rather than comparing their text.
+const REFERENCE_USE_INLINE: readonly string[] = ['structure', 'idea_structure', 'stay_close', 'inspiration']
+const REFERENCE_USE_DIRECTIVE_INLINE: Record<string, string> = {
+  structure:
+    'TAKE THE MECHANICS, NOT THE SUBJECT. Keep the beat order, the hook mechanism and the escalation, and replace what every beat is ABOUT with the creator\'s own material.',
+  idea_structure:
+    'TAKE THE CENTRAL IDEA AND THE MECHANICS. Keep what the reference is arguing and how it argues it, and re-ground every example, number and story in the creator\'s own world.',
+  stay_close:
+    'STAY AS CLOSE AS THE FACTS ALLOW. Preserve the format, the beat count and the topic where the creator can honestly speak to it — and the moment a beat would need a fact they do not have, re-ground that beat rather than borrowing the reference\'s.',
+  inspiration:
+    'TAKE ONLY THE STRONGEST MECHANIC. Use the one device that makes the reference work and build a freer video around it; the beat order and the topic are not binding.',
+}
+const KEEPS_REFERENCE_TOPIC_INLINE: Record<string, boolean> = {
+  structure: false, idea_structure: true, stay_close: true, inspiration: false,
+}
+
+// ⚠️ INLINED, AND THE REASON IT EXISTS IS THE SAME ON BOTH SIDES: the outcome
+// question left the remix screen and its behaviour did not. The goal implies an
+// outcome so the CTA payoff and the substance floor keep working; it never feeds
+// `wantsSale`, which stays computed from what the creator actually said.
+const GOAL_IMPLIES_OUTCOME_INLINE: Record<string, string> = {
+  followers: 'share',
+  authority: 'remember_me',
+  educate: 'learn',
+  conversations: 'comment',
+  leads: 'check_out_offer',
+  sell: 'convert',
+  entertain: 'feel_inspired',
+  // Retired from the screen, still routed internally from authority + a
+  // personal focus + remember/follow.
+  personal_brand: 'remember_me',
+}
+
 const SELLING_GOALS_INLINE: ReadonlySet<string> = new Set(['sell', 'leads'])
 const SELLING_OUTCOMES_INLINE: ReadonlySet<string> = new Set(['convert'])
 
@@ -1352,7 +1387,10 @@ interface VideoIntentInline {
   goal: string | null
   focus: string | null
   outcome: string | null
+  referenceUse: string | null
   goalDirective: string | null
+  referenceUseDirective: string | null
+  keepsReferenceTopic: boolean
   wantsSale: boolean
   payoffDirective: string | null
   prefersKinds: readonly string[]
@@ -1364,7 +1402,7 @@ interface VideoIntentInline {
 
 /** Never throws: it runs inside a paid generation. */
 function compileVideoIntentInline(answers: {
-  goal?: unknown; focus?: unknown; outcome?: unknown
+  goal?: unknown; focus?: unknown; outcome?: unknown; referenceUse?: unknown
 }): VideoIntentInline {
   const goal = isVideoGoalInline(answers.goal) ? String(answers.goal) : null
   const focus = typeof answers.focus === 'string'
@@ -1373,11 +1411,20 @@ function compileVideoIntentInline(answers: {
   const outcome = typeof answers.outcome === 'string'
     && (VIEWER_OUTCOMES_INLINE as readonly string[]).includes(answers.outcome)
     ? answers.outcome : null
+  const referenceUse = typeof answers.referenceUse === 'string'
+    && REFERENCE_USE_INLINE.includes(answers.referenceUse)
+    ? answers.referenceUse : null
   const resolutions: string[] = []
 
   let goalDirective = goal ? GOAL_DIRECTIVE_INLINE[goal] : null
-  let payoffDirective = outcome ? OUTCOME_PAYOFF_INLINE[outcome] : null
-  let substanceFloor = outcome ? OUTCOME_FLOOR_INLINE[outcome] : SUBSTANCE_FLOOR
+  // The stated answer always outranks the implication; `outcome` above stays
+  // the record of what was actually said.
+  const impliedOutcome = outcome ?? (goal ? GOAL_IMPLIES_OUTCOME_INLINE[goal] : null)
+  if (!outcome && impliedOutcome) {
+    resolutions.push(`goal ${goal} → payoff and substance floor taken from ${impliedOutcome}`)
+  }
+  let payoffDirective = impliedOutcome ? OUTCOME_PAYOFF_INLINE[impliedOutcome] : null
+  let substanceFloor = impliedOutcome ? OUTCOME_FLOOR_INLINE[impliedOutcome] : SUBSTANCE_FLOOR
   const prefersKinds = focus ? FOCUS_PREFERS_INLINE[focus] : []
 
   if (goal === 'sell' && (focus === 'expertise' || focus === 'experience')
@@ -1416,7 +1463,11 @@ function compileVideoIntentInline(answers: {
   }
 
   return {
-    goal, focus, outcome, goalDirective,
+    goal, focus, outcome, referenceUse, goalDirective,
+    referenceUseDirective: referenceUse ? REFERENCE_USE_DIRECTIVE_INLINE[referenceUse] : null,
+    // ⚖️ TRUE WHEN UNANSWERED — adapting the reference's topic is what every
+    // generation has always done. Only an explicit answer narrows it.
+    keepsReferenceTopic: referenceUse === null ? true : KEEPS_REFERENCE_TOPIC_INLINE[referenceUse],
     wantsSale: (goal !== null && SELLING_GOALS_INLINE.has(goal))
       || (outcome !== null && SELLING_OUTCOMES_INLINE.has(outcome)),
     payoffDirective, prefersKinds, substanceFloor,
@@ -1684,6 +1735,40 @@ function findEntailmentGaps(
     const cited = typeof b?.substance_evidence === 'string' ? b.substance_evidence : ''
     if (cited.trim() === '') return
     const supported = claimedValues(cited)
+    for (const v of claimedValues(typeof b?.line === 'string' ? b.line : '')) {
+      if (!supported.has(v)) out.push({ beat: i + 1, value: v })
+    }
+  })
+  return out
+}
+
+/**
+ * FIGURES SPOKEN ABOUT THE PRODUCT THAT NO STORED PRODUCT FACT CARRIES.
+ *
+ * ⚠️ MIRRORS `findProductClaimGaps` IN packages/shared/src/productClaimCheck.ts,
+ * and exists for the defect that guard names: a script can state a price the
+ * product record contradicts while every existing counter reads clean, because
+ * the beat cites the product and the product exists. Nothing asked where the
+ * NUMBER came from.
+ *
+ * ⚖️ IT REUSES `claimedValues` ABOVE — the same normalisation both this and the
+ * creator-knowledge check depend on, so 50k and 50,000 stay one figure in both.
+ *
+ * ⚖️ AND AN EMPTY FACT SET SUPPRESSES IT. A product Twin has never read has no
+ * figures to contradict, and a counter that fires loudest where it knows least
+ * teaches an operator to ignore it.
+ */
+function findProductClaimGaps(
+  script: readonly { line?: unknown; substance?: unknown }[],
+  factValues: readonly string[],
+): Array<{ beat: number; value: string }> {
+  const supported = new Set<string>()
+  for (const raw of factValues) for (const v of claimedValues(raw)) supported.add(v)
+  if (supported.size === 0) return []
+  const out: Array<{ beat: number; value: string }> = []
+  script.forEach((b, i) => {
+    // ⚠️ `product_dna` is the substance vocabulary's word — see SUBSTANCE_ENUM.
+    if (b?.substance !== 'product_dna') return
     for (const v of claimedValues(typeof b?.line === 'string' ? b.line : '')) {
       if (!supported.has(v)) out.push({ beat: i + 1, value: v })
     }
@@ -2782,6 +2867,77 @@ Deno.serve(async (req: Request) => {
     .eq('source', 'asked')
     .order('created_at', { ascending: false })
     .limit(20)
+  // ── A READY VOICE WITH NO KNOWLEDGE REPAIRS ITSELF ──────────────────────
+  //
+  // ⚠️ MEASURED: a brand voice sat at `ready` with ZERO knowledge rows and no
+  // scan job had ever been enqueued for it — the cache handed over a profile and
+  // skipped the scan. `start-dna` now enqueues one for new voices, but that
+  // repairs nobody who already has the empty voice, and the only remedy on offer
+  // was "know to press refresh in Settings", which is not a remedy. It is a
+  // creator being asked to diagnose us.
+  //
+  // ⚖️ SO THE NEXT GENERATION SCHEDULES THE MISSING SCAN. It cannot help THIS
+  // script — the job runs on the worker, minutes later — and it means the video
+  // after this one is written from real material instead of none.
+  //
+  // ⚠️ ONLY WHEN THERE IS NOTHING AND NOTHING IS ALREADY QUEUED. A voice with
+  // knowledge is not repaired, and a duplicate job would scan the same account
+  // twice at real cost. `maybeSingle` on an existing job is the whole guard.
+  //
+  // ⚖️ AND IT NEVER BLOCKS OR FAILS THE GENERATION. A repair that can break a
+  // paid script is worse than the gap it closes, so every error here is
+  // swallowed after being logged.
+  if ((rankedRows?.length ?? 0) === 0 && (askedRows?.length ?? 0) === 0 && voice?.id && voice?.handle) {
+    try {
+      // ⚠️ `build_voice` BELONGS IN THIS LIST AND WAS MISSING, WHICH I LEARNED
+      // BY BEING FOOLED BY IT. Building a voice is TWO stages: `scrape_dna`
+      // finishes with captions only, and `build_voice` runs behind it to
+      // transcribe and extract. Between them a fully healthy account reads as
+      // nine caption rows and nothing else — I measured a real voice in that
+      // ninety-second window and reported a defect that did not exist.
+      //
+      // ⚖️ SO A REPAIR MUST NOT FIRE INTO A PIPELINE THAT IS STILL RUNNING. The
+      // first version checked only the scan jobs, which happened to be safe here
+      // because `scrape_dna` is still on the row — but a voice whose scan row was
+      // ever pruned would have been re-scanned while its own extraction was
+      // mid-flight, at real cost, to fix nothing.
+      const { data: existingScan } = await admin
+        .from('jobs')
+        .select('id')
+        .in('type', ['scrape_dna', 'build_dna', 'build_voice'])
+        .contains('payload', { brand_voice_id: voice.id })
+        .limit(1)
+        .maybeSingle()
+      if (!existingScan) {
+        await admin.from('jobs').insert({
+          owner_id: ownerId,
+          type: 'scrape_dna',
+          status: 'queued',
+          max_attempts: 3,
+          payload: {
+            brand_voice_id: voice.id,
+            handle: voice.handle,
+            platform: voice.platform ?? 'tiktok',
+            owner_id: ownerId,
+          },
+        })
+        console.warn(JSON.stringify({
+          event: 'empty_voice_scan_enqueued',
+          brand_voice_id: voice.id,
+          handle: voice.handle,
+        }))
+        await admin.from('ops_events').insert({
+          kind: 'empty_voice_scan_enqueued',
+          severity: 'warning',
+          user_id: user.id,
+          detail: { brand_voice_id: voice.id, handle: voice.handle },
+        }).then(() => {}, () => {})
+      }
+    } catch (e) {
+      console.error('empty_voice_repair_failed', String((e as Error)?.message ?? e))
+    }
+  }
+
   // ⚖️ DEDUPED BY IDENTITY, because a stated row with a high enough `times_seen`
   // can legitimately appear in both reads and must not be supplied twice —
   // duplicate supply inflates every count downstream that reasons about it.
@@ -3099,7 +3255,11 @@ Deno.serve(async (req: Request) => {
     && !readyPresent(readyRel)) {
     readyMissing.push({ field: 'relationship', question: 'What is your relationship to it — do you own it, earn from it, are you paid to feature it, or are you just covering it?' })
   }
-  if (readyCommercial && !readyPresent(answers.cta ?? brief.cta)) {
+  // ⚠️ `brief.cta` IS NOT A STORED KEY AND NEVER WAS, so this fallback has always
+  // been undefined and every commercial video re-asked a creator who had already
+  // told us. `defaultCta` is the real column — see `cta.ts` — and it holds only
+  // text a person typed, which is exactly the standard this gate wants.
+  if (readyCommercial && !readyPresent(answers.cta ?? brief.defaultCta ?? brief.cta)) {
     readyMissing.push({ field: 'cta', question: 'What should viewers do after watching?' })
   }
   if (readyPromoting && readyFacts.length === 0 && !readyPresent(answers.claims)) {
@@ -3170,6 +3330,11 @@ Deno.serve(async (req: Request) => {
   if (readyPresent(answers.offer)) stable.offer = String(answers.offer).slice(0, 240)
   if (readyPresent(answers.relationship)) stable.promotes = String(answers.relationship).slice(0, 240)
   if (readyPresent(answers.claims)) stable.productFacts = String(answers.claims).slice(0, 2000)
+  // ⚖️ A CTA TYPED HERE IS STILL THE CREATOR'S OWN WORDING, so it earns the same
+  // standing as one typed in Settings — the provenance rule is about WHO wrote
+  // the sentence, not which screen it was typed on. A generated line never
+  // reaches this code path, so nothing Twin invented can land in the column.
+  if (readyPresent(answers.cta)) stable.defaultCta = String(answers.cta).slice(0, 240)
   // ⚠️ THE ANSWERS MUST REACH *THIS* SCRIPT, AND THEY DID NOT. `brief` was read
   // before the questions were asked, and every prompt field below resolves
   // through it — `offer` is `brief.offer ?? vp?.offer ?? dna.product`. Persisting
@@ -3187,6 +3352,13 @@ Deno.serve(async (req: Request) => {
   if (readyPresent(answers.offer)) brief.offer = String(answers.offer).slice(0, 240)
   if (readyPresent(answers.relationship)) brief.promotes = String(answers.relationship).slice(0, 240)
   if (readyPresent(answers.claims)) brief.productFacts = String(answers.claims).slice(0, 2000)
+  // ⚠️ THE ANSWER REACHED THE GATE AND NOTHING ELSE. `answers.cta` unblocked the
+  // readiness check and was then dropped: not merged here, not persisted, never
+  // in the prompt. A creator answered "What should viewers do after watching?"
+  // and the script ended on whatever the model chose. This is the same
+  // asked-and-discarded failure `brief_consumers.json` exists to prevent, one
+  // layer up from the brief.
+  if (readyPresent(answers.cta)) brief.defaultCta = String(answers.cta).slice(0, 240)
   if (readyPresent(answers.audience)) brief.audience = String(answers.audience).slice(0, 240)
   // ⚖️ `goal` IS AN ENUM DOWNSTREAM AND THE ANSWER IS FREE TEXT. The compiler
   // only accepts a known `VIDEO_GOALS` value, so "grow my audience and build
@@ -3344,6 +3516,7 @@ Deno.serve(async (req: Request) => {
     // of a dead third would have been the bug.
     const intent = compileVideoIntentInline({
       goal: body.goal, focus: body.focus, outcome: body.outcome,
+      referenceUse: body.reference_use,
     })
     const videoGoal = intent.goal
     // ⚖️ THE INFERRED VALUES STILL STAND BEHIND IT, unchanged. They are a reading
@@ -3666,6 +3839,15 @@ Deno.serve(async (req: Request) => {
     // Behaviour is unchanged for every relationship; the dead arm implied a
     // state that cannot happen and misled the next reader about the model.
     const sellIntent = commercialCta === 'only_if_intended' && goalWantsSale
+    // ⚖️ THE CREATOR'S OWN WORDS, WHERE THEY EXIST, AND NOWHERE ELSE. This is
+    // wording a person typed — in Settings or in the readiness questions — so the
+    // model is told to use it rather than to invent one. Twin still chooses the
+    // MECHANISM and still refuses a commercial ask on a non-commercial video; what
+    // it no longer does is write a sentence over the top of theirs.
+    const typedCta = readyPresent(brief.defaultCta) ? String(brief.defaultCta).slice(0, 240) : ''
+    const ctaWordingLine = typedCta
+      ? `\n- THE CREATOR'S OWN CALL TO ACTION: "${typedCta}". Use their wording for the closing ask unless this video may not carry a commercial ask at all, in which case ask for engagement instead. Do NOT paraphrase it into something smoother — it is theirs.`
+      : ''
     const ctaIntentLine = sellIntent
       ? '\n- CTA INTENT: this creator\'s goal is commercial and they have a commercial tie to what is being promoted, so a purchase or signup CTA is appropriate here.'
       : commercialCta === 'forbidden' && goalWantsSale
@@ -3871,6 +4053,30 @@ Deno.serve(async (req: Request) => {
     ].filter(Boolean).join('\n')
     const doNotUseBlock = `\n- DO NOT USE — ruled out before writing began, and a reason to include them anyway is not one you may find:\n${doNotUse}`
 
+    // ── HOW MUCH OF THE REFERENCE THE CREATOR ASKED FOR ────────────────────
+    //
+    // ⚠️ THE WRITER WAS GUESSING WHAT "REMIX" MEANT. Goal, focus and outcome are
+    // all about the creator and are identical whatever was pasted, so nothing in
+    // this prompt said whether to keep the reference's shape, its idea, or only
+    // its best device — and every generation had to pick for the creator.
+    //
+    // ⚖️ IT SITS UNDER THE DO-NOT-USE BLOCK, NOT OVER IT. This dial says how
+    // much to carry across; the block above says what may never be carried at
+    // any setting. Placing it after keeps the order of authority visible in the
+    // prompt itself: `stay_close` is bounded by those rules rather than an
+    // exception to them.
+    //
+    // ⚖️ SILENT WHEN UNANSWERED. A creator who never saw the question has not
+    // asked for their subject to be replaced, and a default sentence here would
+    // answer on their behalf.
+    const referenceUseBlock = intent.referenceUseDirective
+      ? `\n- HOW MUCH OF THE REFERENCE TO KEEP — the creator chose this for THIS video:\n  * ${intent.referenceUseDirective}${
+        intent.keepsReferenceTopic
+          ? ''
+          : '\n  * THE SUBJECT IS NOT THE REFERENCE\'S. They asked for the mechanics, so the topic must come from their own material — reusing what the reference was ABOUT answers a question they did not ask.'
+      }`
+      : ''
+
     // WHAT THE CREATOR DOES FOR A LIVING.
     //
     // Asked at `during_scan`, validated against BRIEF_WORK_KINDS, stored — and
@@ -3961,7 +4167,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${claimRulesBlock}${doNotUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${knowledgeBlock}
+- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${knowledgeBlock}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
@@ -4513,6 +4719,69 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // creator would say", so removing them is probably right — but every
     // enforcement shipped without measurement today had to be walked back, and
     // the count is what says how often the case is clean enough to act on.
+    // ⚖️ THE VALUES THE PRODUCT RECORD ACTUALLY HOLDS. `knowledge` is the
+    // extracted-fact list `productExtraction` writes; both trust levels count,
+    // because the question here is whether a figure came from the product at
+    // all, and whether an unconfirmed fact may be SPOKEN is a different gate
+    // that already exists.
+    //
+    // ⚠️ BUILT ABOVE THE COUNTING REGION ON PURPOSE. A parity guard asserts that
+    // the block from `progressChecks` to the audit log neither rewrites a line
+    // nor filters anything — it must COUNT and nothing else. This list is
+    // derived from the product record rather than from the script, so it belongs
+    // outside that region; moving it here keeps the guard's claim literally true
+    // instead of widening the guard to admit a filter it was written to forbid.
+    // ── WAS THE VOICE STILL BEING BUILT WHEN THIS SCRIPT WAS WRITTEN? ─────
+    //
+    // ⚠️ THE WINDOW IS REAL AND IT IS NOT SMALL. Building a voice is two stages:
+    // `scrape_dna` settles in ~110s with CAPTION knowledge only, and
+    // `build_voice` runs behind it to transcribe and extract — the half that
+    // carries opinions, experiences and frameworks. On a real account the gap
+    // was ninety seconds, and inside it the voice held 9 caption rows and 0
+    // transcript rows. Four minutes later it held 44 and 27.
+    //
+    // ⚖️ A GENERATION IN THAT WINDOW IS THIN AND NOBODY COULD EVER TELL. The
+    // script is written from half the material, it looks like an ordinary weak
+    // script, and every counter reads clean — so the thinness gets attributed to
+    // the writer, the selector, or the creator's material. It is none of those.
+    // Recording the fact is what makes a thin script explainable instead of
+    // mysterious, and it is the difference between a metric and a guess.
+    //
+    // ⚠️ RECORDED, NOT REFUSED. Blocking a paid generation because a background
+    // job is running would trade a thin script for no script, and the creator
+    // asked for a script. This is instrumentation, and the decision about
+    // whether to wait belongs to somebody reading the numbers.
+    let voiceBuildInFlight = false
+    if (voice?.id) {
+      try {
+        const { data: liveBuild } = await admin
+          .from('jobs')
+          .select('id')
+          .in('type', ['scrape_dna', 'build_dna', 'build_voice'])
+          .in('status', ['queued', 'running'])
+          .contains('payload', { brand_voice_id: voice.id })
+          .limit(1)
+          .maybeSingle()
+        voiceBuildInFlight = !!liveBuild
+        if (voiceBuildInFlight) {
+          console.warn(JSON.stringify({
+            event: 'generation_during_voice_build',
+            brand_voice_id: voice.id,
+            knowledge_rows: (rankedRows?.length ?? 0) + (askedRows?.length ?? 0),
+          }))
+        }
+      } catch (e) {
+        // ⚖️ An instrumentation read must never decide whether a paid script
+        // happens. Unknown stays false, which is the pre-existing behaviour.
+        console.error('voice_build_probe_failed', String((e as Error)?.message ?? e))
+      }
+    }
+
+    const productFactValues: string[] = Array.isArray((ownedEntity as { knowledge?: unknown } | null)?.knowledge)
+      ? ((ownedEntity as { knowledge: Array<{ value?: unknown }> }).knowledge)
+        .map((f) => (typeof f?.value === 'string' ? f.value : ''))
+        .filter((v) => v !== '')
+      : []
     let progressChecks = 0
     if (Array.isArray(declared)) {
       for (const b of declared) {
@@ -4540,6 +4809,23 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // across many generations, which is only possible if the count survives.
       entailment_gaps: findEntailmentGaps(
         (Array.isArray(declared) ? declared : []) as Array<Record<string, unknown>>).length,
+      // ⚠️ THE SAME QUESTION, ASKED OF THE OTHER AUTHORITY. `entailment_gaps`
+      // catches a figure whose CREATOR-knowledge citation does not carry it;
+      // this catches a figure spoken about the PRODUCT that no stored product
+      // fact carries — a price the record contradicts, said while every existing
+      // counter reads clean because the beat cites the product and the product
+      // exists.
+      //
+      // ⚖️ COUNTED BEFORE IT IS ENFORCED, deliberately and in that order. How
+      // often this happens is not known, and a refusal built on a guess about
+      // frequency is how a safety check becomes the thing people route around.
+      // The count is what makes the next decision evidential.
+      // ⚠️ TRUE MEANS THIS SCRIPT WAS WRITTEN FROM AN INCOMPLETE VOICE. Read it
+      // before blaming the writer for a thin result.
+      voice_build_in_flight: voiceBuildInFlight,
+      product_claim_gaps: findProductClaimGaps(
+        (Array.isArray(declared) ? declared : []) as Array<Record<string, unknown>>,
+        productFactValues).length,
       proof_quality: proofQualityCounts(
         (templated.bp as { beat_plan?: unknown })?.beat_plan),
     }
@@ -4939,6 +5225,50 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         .update({ generation_id: gen.id })
         .eq('run_id', scriptRunId)
         .then(({ error }) => { if (error) console.warn('attempts not linked:', error.message) })
+
+      // ── WHAT THE CREATOR CHOSE, KEPT (0137) ──────────────────────────────
+      //
+      // ⚠️ 41 GENERATIONS HAD PRODUCED ZERO RECORDS OF THIS. The goal, focus and
+      // reference preference reached the writer and were then gone — absent from
+      // `generations`, `blueprint` and `beat_audit` alike. So "does anyone ever
+      // pick `authority`?" had no answer, and neither did "how often is `sell`
+      // chosen with nothing to sell", which is the rate a pending safety fix
+      // needs before it can be built on evidence rather than a guess.
+      //
+      // ⚖️ AFTER THE GENERATION EXISTS, AND IT CANNOT FAIL THE BUILD. The row is
+      // an observation about a script that already succeeded and was already
+      // charged for; losing the observation is a gap in analytics, while
+      // throwing here would lose the creator their paid script. A warning is the
+      // correct severity, and the FK means a deleted video takes its choice with
+      // it rather than leaving an orphan to be counted.
+      await admin.from('generation_choices')
+        .insert({
+          generation_id: gen.id,
+          owner_id: user.id,
+          // ⚖️ WHAT WAS ACTUALLY CHOSEN, INCLUDING NOTHING. A creator who picked
+          // no goal is a real and interesting case — it is the silence the
+          // intent compiler treats as "no directive" — so it is stored as null
+          // rather than defaulted into looking like a choice.
+          // ⚠️ FROM THE REQUEST, NOT FROM THE LOCAL `goal`. In this scope `goal`
+          // is `intent.goalDirective` — a paragraph of instructions to the model,
+          // not the enum the creator picked — so reading it here would have
+          // filled this table with essays and made every count meaningless. The
+          // edge parse check does not catch that: the name resolves, to the
+          // wrong thing.
+          //
+          // ⚖️ STORED AS SENT, NOT NARROWED TO THE CURRENT ENUM. A value retired
+          // between the choice and the query is exactly the history worth
+          // keeping, and dropping it would silently under-count the past. Length
+          // is capped because this is untrusted request input.
+          selected_goal: typeof body.goal === 'string' && body.goal.trim() !== ''
+            ? body.goal.trim().slice(0, 64) : null,
+          selected_focus: typeof body.focus === 'string' && body.focus.trim() !== ''
+            ? body.focus.trim().slice(0, 64) : null,
+          reference_use: typeof body.reference_use === 'string' && body.reference_use.trim() !== ''
+            ? body.reference_use.trim().slice(0, 64) : null,
+          selected_product_id: ownedEntity?.id ?? null,
+        })
+        .then(({ error }) => { if (error) console.warn('choices not recorded:', error.message) })
     }
     // THE RACE THE REPLAY CHECK CANNOT CATCH. Two requests carrying the same key
     // can both pass the lookup above before either has inserted — a double-click

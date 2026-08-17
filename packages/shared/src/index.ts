@@ -49,5 +49,17 @@ export * from './knowledgeSelection'
 export * from './knowledgeResolver'
 export * from './spokenPlaceholders'
 export * from './shotDirection'
+// Which setup each scene is filmed in — the recorder's sticky strip and the
+// scene cards both read this rather than re-comparing background strings.
+export * from './setupPlan'
+// Figures spoken about a product must trace to a stored product fact.
+export * from './productClaimCheck'
+// Only a named thing with real commercial evidence may be suggested as a product.
+export * from './productSuggestionConfidence'
+// The six onboarding questions asked while the scan runs, and what they change.
+export * from './creatorProfileQuestions'
+export * from './authority'
+export * from './cta'
+export * from './profileCompletion'
 export * from './compatibilityGate'
 export * from './editor/index'

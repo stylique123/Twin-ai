@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { listBrandVoices, type BrandVoice } from '../lib/api'
-import { Palette, ImageIcon, Sparkles, X } from 'lucide-react'
+import { Sparkles, X } from 'lucide-react'
 
 // Brand-completeness reminder. Twin NEVER invents a brand it can't confirm — no
 // random colors, no guessed logo. When the creator's colors / logo / voice can't be
@@ -52,7 +52,7 @@ export function BrandReminder() {
         const def = voices.find((v) => (v as { is_default?: boolean }).is_default) ?? voices[0] ?? null
         const g = computeGaps(def)
         setGaps(g)
-        if ((g.colors || g.logo || g.voice) && sessionStorage.getItem(DISMISS_KEY) !== '1') setShowModal(true)
+        if (g.voice && sessionStorage.getItem(DISMISS_KEY) !== '1') setShowModal(true)
       })
       .catch(() => { /* never block the app on a brand read */ })
     return () => { alive = false }
@@ -60,15 +60,22 @@ export function BrandReminder() {
 
   const dismiss = () => { sessionStorage.setItem(DISMISS_KEY, '1'); setDismissed(true); setShowModal(false) }
 
-  const incomplete = gaps && (gaps.colors || gaps.logo || gaps.voice)
+  // ── ONLY THE GAP THAT ACTUALLY STOPS A SCRIPT INTERRUPTS ──────────────────
+  //
+  // ⚠️ THIS FIRED A FULL-SCREEN MODAL AT ANYONE MISSING COLOURS OR A LOGO. A
+  // creator with every creative answer resolved was stopped on sign-in and told
+  // to "finish your brand" — for two things that cannot change one word of a
+  // script. That is the guilt the profile model exists to remove, and worse, the
+  // way to make it stop was to type in a palette, which is precisely the
+  // invented brand data `brandSnapshot` refuses to treat as truth.
+  //
+  // ⚖️ A MISSING VOICE IS DIFFERENT IN KIND, NOT DEGREE. Without it there is
+  // nothing of the creator's to write from, so the interruption buys them
+  // something. Colours and a logo are now a quiet status on the Settings card —
+  // stated, never nagged.
+  const incomplete = gaps && gaps.voice
   // Don't show on Settings itself — that's where they fix it.
   if (!incomplete || pathname.startsWith('/settings')) return null
-
-  const missing: string[] = []
-  if (gaps!.voice) missing.push('brand voice')
-  if (gaps!.colors) missing.push('colours')
-  if (gaps!.logo) missing.push('logo')
-  const missingLabel = missing.length === 1 ? missing[0] : missing.slice(0, -1).join(', ') + ' and ' + missing[missing.length - 1]
 
   // First appearance this session: a clear popup that explains + routes to Settings.
   if (showModal && !dismissed) {
@@ -76,15 +83,15 @@ export function BrandReminder() {
       <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
         <div className="w-full max-w-md rounded-2xl border border-white/10 bg-ink2 p-6 shadow-2xl">
           <div className="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-amber/15"><Sparkles className="h-5 w-5 text-amber" /></div>
-          <h2 className="text-lg font-bold text-cream">Finish your brand so your videos look like you</h2>
+          <h2 className="text-lg font-bold text-cream">Twin hasn’t read your account yet</h2>
           <p className="mt-2 text-sm text-sand">
-            Twin only uses a brand it can confirm — it will <span className="text-cream">never invent colours or a logo</span>.
-            We couldn’t confirm your <span className="text-cream">{missingLabel}</span> (a scan can be blocked by Instagram/TikTok, or you may not have set it yet).
-            Add it in Settings and it’ll be used on every video.
+            Until it has, your scripts have <span className="text-cream">nothing of yours to draw on</span> — Twin
+            will not invent opinions or stories for you. A scan can be blocked by Instagram or TikTok, or you may
+            not have started one yet.
           </p>
           <div className="mt-5 flex gap-3">
             <Link to="/settings" onClick={dismiss} className="flex-1 rounded-xl bg-signature px-4 py-2.5 text-center text-sm font-semibold text-ink transition-opacity hover:opacity-90">
-              Set up my brand
+              Read my account
             </Link>
             <button onClick={dismiss} className="rounded-xl border border-white/10 px-4 py-2.5 text-sm text-stone transition-colors hover:text-cream">
               Later
@@ -98,10 +105,10 @@ export function BrandReminder() {
   // After dismiss: a slim, persistent reminder until the brand is completed.
   return (
     <div className="flex items-center gap-3 border-b border-amber/20 bg-amber/[0.06] px-4 py-2.5 text-sm">
-      {gaps!.colors ? <Palette className="h-4 w-4 shrink-0 text-amber" /> : <ImageIcon className="h-4 w-4 shrink-0 text-amber" />}
+      <Sparkles className="h-4 w-4 shrink-0 text-amber" />
       <span className="min-w-0 flex-1 text-sand">
-        Twin doesn’t have your <span className="text-cream">{missingLabel}</span> yet — it won’t guess.{' '}
-        <Link to="/settings" className="font-semibold text-amber underline-offset-2 hover:underline">Add it in Settings</Link>
+        Twin hasn’t read your account yet, so your scripts have nothing of yours to draw on.{' '}
+        <Link to="/settings" className="font-semibold text-amber underline-offset-2 hover:underline">Start a scan</Link>
       </span>
       <button onClick={dismiss} aria-label="Dismiss" className="shrink-0 rounded-lg p-1 text-stone transition-colors hover:text-cream"><X className="h-4 w-4" /></button>
     </div>

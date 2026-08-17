@@ -114,7 +114,7 @@ describe('the two questions are not the same question', () => {
 // ⚠️ THE ORDER WAS BACKWARDS. The questions come from the SERVER, and the
 // server is not called until the reference is ingested — `ingestReference` plus
 // a poll of up to 60 x 1.2s. So the creator watched a two-minute bar, was then
-// asked two questions, and pressing "Build my video plan" started the bar
+// asked two questions, and pressing the build button started the bar
 // again. Not one of those questions needs the reference read.
 describe('the questions come before the two-minute wait', () => {
   const BUILD = readFileSync(
