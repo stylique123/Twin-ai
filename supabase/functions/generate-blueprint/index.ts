@@ -2889,10 +2889,22 @@ Deno.serve(async (req: Request) => {
   // swallowed after being logged.
   if ((rankedRows?.length ?? 0) === 0 && (askedRows?.length ?? 0) === 0 && voice?.id && voice?.handle) {
     try {
+      // ⚠️ `build_voice` BELONGS IN THIS LIST AND WAS MISSING, WHICH I LEARNED
+      // BY BEING FOOLED BY IT. Building a voice is TWO stages: `scrape_dna`
+      // finishes with captions only, and `build_voice` runs behind it to
+      // transcribe and extract. Between them a fully healthy account reads as
+      // nine caption rows and nothing else — I measured a real voice in that
+      // ninety-second window and reported a defect that did not exist.
+      //
+      // ⚖️ SO A REPAIR MUST NOT FIRE INTO A PIPELINE THAT IS STILL RUNNING. The
+      // first version checked only the scan jobs, which happened to be safe here
+      // because `scrape_dna` is still on the row — but a voice whose scan row was
+      // ever pruned would have been re-scanned while its own extraction was
+      // mid-flight, at real cost, to fix nothing.
       const { data: existingScan } = await admin
         .from('jobs')
         .select('id')
-        .in('type', ['scrape_dna', 'build_dna'])
+        .in('type', ['scrape_dna', 'build_dna', 'build_voice'])
         .contains('payload', { brand_voice_id: voice.id })
         .limit(1)
         .maybeSingle()
@@ -4694,6 +4706,52 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // derived from the product record rather than from the script, so it belongs
     // outside that region; moving it here keeps the guard's claim literally true
     // instead of widening the guard to admit a filter it was written to forbid.
+    // ── WAS THE VOICE STILL BEING BUILT WHEN THIS SCRIPT WAS WRITTEN? ─────
+    //
+    // ⚠️ THE WINDOW IS REAL AND IT IS NOT SMALL. Building a voice is two stages:
+    // `scrape_dna` settles in ~110s with CAPTION knowledge only, and
+    // `build_voice` runs behind it to transcribe and extract — the half that
+    // carries opinions, experiences and frameworks. On a real account the gap
+    // was ninety seconds, and inside it the voice held 9 caption rows and 0
+    // transcript rows. Four minutes later it held 44 and 27.
+    //
+    // ⚖️ A GENERATION IN THAT WINDOW IS THIN AND NOBODY COULD EVER TELL. The
+    // script is written from half the material, it looks like an ordinary weak
+    // script, and every counter reads clean — so the thinness gets attributed to
+    // the writer, the selector, or the creator's material. It is none of those.
+    // Recording the fact is what makes a thin script explainable instead of
+    // mysterious, and it is the difference between a metric and a guess.
+    //
+    // ⚠️ RECORDED, NOT REFUSED. Blocking a paid generation because a background
+    // job is running would trade a thin script for no script, and the creator
+    // asked for a script. This is instrumentation, and the decision about
+    // whether to wait belongs to somebody reading the numbers.
+    let voiceBuildInFlight = false
+    if (voice?.id) {
+      try {
+        const { data: liveBuild } = await admin
+          .from('jobs')
+          .select('id')
+          .in('type', ['scrape_dna', 'build_dna', 'build_voice'])
+          .in('status', ['queued', 'running'])
+          .contains('payload', { brand_voice_id: voice.id })
+          .limit(1)
+          .maybeSingle()
+        voiceBuildInFlight = !!liveBuild
+        if (voiceBuildInFlight) {
+          console.warn(JSON.stringify({
+            event: 'generation_during_voice_build',
+            brand_voice_id: voice.id,
+            knowledge_rows: (rankedRows?.length ?? 0) + (askedRows?.length ?? 0),
+          }))
+        }
+      } catch (e) {
+        // ⚖️ An instrumentation read must never decide whether a paid script
+        // happens. Unknown stays false, which is the pre-existing behaviour.
+        console.error('voice_build_probe_failed', String((e as Error)?.message ?? e))
+      }
+    }
+
     const productFactValues: string[] = Array.isArray((ownedEntity as { knowledge?: unknown } | null)?.knowledge)
       ? ((ownedEntity as { knowledge: Array<{ value?: unknown }> }).knowledge)
         .map((f) => (typeof f?.value === 'string' ? f.value : ''))
@@ -4737,6 +4795,9 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // often this happens is not known, and a refusal built on a guess about
       // frequency is how a safety check becomes the thing people route around.
       // The count is what makes the next decision evidential.
+      // ⚠️ TRUE MEANS THIS SCRIPT WAS WRITTEN FROM AN INCOMPLETE VOICE. Read it
+      // before blaming the writer for a thin result.
+      voice_build_in_flight: voiceBuildInFlight,
       product_claim_gaps: findProductClaimGaps(
         (Array.isArray(declared) ? declared : []) as Array<Record<string, unknown>>,
         productFactValues).length,

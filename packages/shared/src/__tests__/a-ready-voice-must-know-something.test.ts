@@ -117,7 +117,10 @@ describe('a voice with no knowledge schedules its own scan', () => {
     // ⚠️ A SCAN COSTS REAL MONEY. Without this the repair fires on every
     // generation until the first job finishes, which is the cheapest possible
     // way to turn a fix into an incident.
-    expect(BLUEPRINT).toMatch(/\.in\('type', \['scrape_dna', 'build_dna'\]\)/)
+    // ⚖️ THE LIST GREW TO THREE AND THE CLAIM DID NOT CHANGE. `build_voice` is
+    // the second stage; a repair that ignored it would re-scan a voice whose own
+    // extraction was mid-flight, at real cost, to fix nothing.
+    expect(BLUEPRINT).toMatch(/\.in\('type', \['scrape_dna', 'build_dna', 'build_voice'\]\)/)
     expect(BLUEPRINT).toMatch(/if \(!existingScan\)/)
   })
 
@@ -136,5 +139,51 @@ describe('a voice with no knowledge schedules its own scan', () => {
     // watches, and this is the signal that says how often the empty-shell voice
     // reached a real generation.
     expect(BLUEPRINT).toMatch(/kind: 'empty_voice_scan_enqueued'/)
+  })
+})
+
+// ── BUILDING A VOICE IS TWO STAGES, AND THE GAP IS VISIBLE ────────────────
+//
+// ⚠️ I WAS FOOLED BY THIS WINDOW MYSELF, AND REPORTED A DEFECT THAT DID NOT
+// EXIST. `scrape_dna` settles in ~110s with CAPTION knowledge only; `build_voice`
+// runs behind it and adds the transcript half — the opinions, experiences and
+// frameworks the writer needs. On a real account the gap was ninety seconds, and
+// inside it the voice read 9 caption rows and 0 transcript rows. Four minutes
+// later: 44 and 27.
+//
+// ⚖️ SO A SCRIPT WRITTEN IN THAT WINDOW IS THIN AND NOTHING SAID WHY. It looks
+// like an ordinary weak script and every counter reads clean, so the thinness
+// gets blamed on the writer, the selector, or the creator's material. It is none
+// of those.
+describe('a generation written from a half-built voice says so', () => {
+  it('probes for a build that is still running', () => {
+    expect(BLUEPRINT).toMatch(/\.in\('status', \['queued', 'running'\]\)/)
+    expect(BLUEPRINT).toMatch(/event: 'generation_during_voice_build'/)
+  })
+
+  it('records it on the beat audit, where it is durable', () => {
+    // ⚖️ The rate is the question — whether the two-stage build needs a gate —
+    // and a log line expires long before anyone asks it.
+    expect(BLUEPRINT).toMatch(/voice_build_in_flight: voiceBuildInFlight/)
+  })
+
+  it('records rather than refuses', () => {
+    // ⚠️ Blocking a paid generation because a background job is running trades a
+    // thin script for NO script, and the creator asked for a script.
+    const region = BLUEPRINT.slice(
+      BLUEPRINT.indexOf('WAS THE VOICE STILL BEING BUILT'),
+      BLUEPRINT.indexOf('productFactValues'))
+    expect(region).not.toMatch(/return json\(|throw /)
+  })
+
+  it('cannot fail the generation it runs inside', () => {
+    expect(BLUEPRINT).toMatch(/voice_build_probe_failed/)
+  })
+
+  it('counts build_voice as a live build, not only the scan', () => {
+    // ⚠️ THE MISS THAT MADE THE WINDOW INVISIBLE. `build_voice` is the stage
+    // that produces the substance half; omitting it from both the repair guard
+    // and this probe is what let a mid-build voice look simply empty.
+    expect(BLUEPRINT).toMatch(/\.in\('type', \['scrape_dna', 'build_dna', 'build_voice'\]\)/)
   })
 })

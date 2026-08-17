@@ -64,6 +64,18 @@ const EVENTS = {
     stored: 'generations.beat_audit',
     why: "What the writer did with it, including G8's entailment_gaps. Stored by 0131.",
   },
+  // ⚖️ A COUNTER, NOT AN INCIDENT, AND THE DISTINCTION IS THE POINT. One
+  // generation during a voice build is not a defect — the creator asked for a
+  // script and got one. What matters is the RATE: if a meaningful share of
+  // generations land in the window between `scrape_dna` settling and
+  // `build_voice` finishing, the two-stage build needs a wait or a warning; if
+  // almost none do, it needs neither. A per-occurrence log answers the wrong
+  // question, and it expires before anyone asks this one.
+  generation_during_voice_build: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'Written from a half-built voice — captions in, transcripts not yet. The rate decides whether the two-stage build needs a gate.',
+  },
 
   // ── RATES WE KNOWINGLY DO NOT PERSIST YET ───────────────────────────────
   //
@@ -145,6 +157,14 @@ const EVENTS = {
   // has a durable home in `ops_events` (kind: empty_voice_scan_enqueued) as well
   // as the log, because the number that matters is how many accounts were in
   // that state, and edge logs expire long before anyone asks.
+  // ⚖️ A COUNTER, NOT AN INCIDENT, AND THE DISTINCTION IS THE POINT. One
+  // generation during a voice build is not a defect — the creator asked for a
+  // script and got one. What matters is the RATE: if a meaningful share of
+  // generations land in that window, the two-stage build needs a wait or a
+  // warning, and if almost none do, it needs neither. A per-occurrence log
+  // answers the wrong question. It is stored on the beat audit
+  // (`voice_build_in_flight`), which is the durable home every generation
+  // already writes.
   empty_voice_scan_enqueued: { kind: 'incident', why: 'A ready voice with no knowledge; the missing scan was scheduled from a generation.' },
   readiness_incomplete: { kind: 'incident', why: 'Generation attempted before the brief was ready.' },
   readiness_answers_not_persisted: { kind: 'incident', why: 'Brief answers that did not survive the write.' },
