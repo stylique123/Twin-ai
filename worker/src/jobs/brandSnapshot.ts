@@ -74,7 +74,30 @@ export function projectBrandSnapshot(profile: RawBrandProfileLike | null | undef
   const pHex = hex(palette?.primary), sHex = hex(palette?.secondary), hHex = hex(palette?.highlight)
   const anyColor = pHex ?? sHex ?? hHex
   const rawSrc = typeof kit?.palette_source === 'string' ? kit.palette_source : undefined
-  const colorsSource: ColorsSource = anyColor && rawSrc !== 'pending' ? (rawSrc === 'manual' ? 'manual' : 'auto') : 'none'
+  // ── AN AUTO GREYSCALE PALETTE IS THE ABSENCE OF EVIDENCE ────────────────
+  //
+  // ⚠️ THE SHARED COPY IS THE ORIGINAL AND THIS ONE IS EXECUTED BY THE PARITY
+  // TEST, WHICH IS HOW I FOUND OUT. I changed the rule in
+  // `packages/shared/src/editor/brandSnapshot.ts` and left this untouched; the
+  // two projections then disagreed byte-for-byte on the same input, and the
+  // editor reads THIS one. Any change to one must be made to the other.
+  //
+  // ⚖️ AUTO ONLY, AND ONLY WHEN NOTHING SURVIVES. A creator who chooses black
+  // and white has chosen it, and a palette carrying one real hue beside black
+  // and white is a real reading. This refuses a guess, never an assertion.
+  const achromatic = (h: string | null): boolean => {
+    if (!h) return true
+    const m = /^#?([0-9a-f]{6})$/i.exec(h.trim())
+    if (!m) return true
+    const n = parseInt(m[1], 16)
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
+    return Math.max(r, g, b) - Math.min(r, g, b) <= 12
+  }
+  const onlyGreys = achromatic(pHex) && achromatic(sHex) && achromatic(hHex)
+  const autoAndContentless = rawSrc !== 'manual' && onlyGreys
+  const colorsSource: ColorsSource = anyColor && rawSrc !== 'pending' && !autoAndContentless
+    ? (rawSrc === 'manual' ? 'manual' : 'auto')
+    : 'none'
   const emitColors = colorsSource !== 'none'
   const kitPreset = kit?.caption_preset_id
   const captionStyle = nfc(kit?.caption_style, TONE_MAX_CHARS) || editingStyle
