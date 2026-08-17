@@ -256,6 +256,10 @@ export default function Settings() {
   // what it costs, and who you are.
   const [tab, setTab] = useState<'twin' | 'brand' | 'plan' | 'account'>('twin')
   const nav = useNavigate()
+  /** ⚖️ COLLAPSED BY DEFAULT, AND IT IS THE SAME RECORD EITHER WAY. Folding is
+   *  not hiding: the summary answers "does this sound like me", which is the
+   *  question people actually open this page with. */
+  const [dnaOpen, setDnaOpen] = useState(false)
 
   const content = contentProfile({
     answers: profileAnswers,
@@ -657,10 +661,43 @@ export default function Settings() {
 
         )}
 
-        {/* Creator DNA */}
+        {/* ── YOUR VOICE: A SUMMARY, WITH THE RECORD BEHIND IT ────────────────
+            ⚠️ THE FULL DNA RECORD OCCUPIED HALF A KILOMETRE OF SETTINGS. Every
+            visit meant scrolling past niche, audience, vocabulary, POV, hooks and
+            pacing to reach anything else — which is most of why the page read as
+            a document rather than a place where things happen.
+            ⚖️ NOTHING IS REMOVED, ONLY FOLDED. It is the same canonical record,
+            one tap away, and the summary above it is the part a creator actually
+            checks: does this sound like me? */}
         {tab === 'twin' && (
         <Reveal delay={0.15}>
           <section className="glass mt-5 p-5 sm:p-6">
+            {!dnaOpen && (
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="eyebrow !text-sand">Your voice</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-cream">
+                    {(dna.voice ?? '').trim() || 'Twin has not learned how you sound yet.'}
+                  </p>
+                  <p className="mt-1 truncate text-xs text-stone">
+                    {[dna.niche, dna.audience].map((x) => (x ?? '').trim()).filter(Boolean).join(' · ')
+                      || 'Scan your account and Twin will fill this in.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDnaOpen(true)}
+                  className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream"
+                >View everything</button>
+              </div>
+            )}
+            {dnaOpen && (
+            <>
+            <button
+              type="button"
+              onClick={() => setDnaOpen(false)}
+              className="mb-4 text-xs text-sand underline"
+            >← Back to the summary</button>
             <div className="flex items-center justify-between gap-2.5">
               <div className="flex items-center gap-2.5">
                 <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/5"><ShieldCheck className="h-4 w-4 text-coral" /></span>
@@ -761,6 +798,8 @@ export default function Settings() {
                   <button onClick={() => { setDna({ ...EMPTY_DNA, ...(profile?.dna ?? {}) }); setEditingDna(false) }} className="btn-ghost text-sm">Cancel</button>
                 </div>
               </div>
+            )}
+            </>
             )}
           </section>
         </Reveal>
@@ -982,6 +1021,9 @@ function ProfileStatus({
   ctaSaved: boolean
   ctaErr: boolean
 }) {
+  const ctaText = (cta ?? '').trim()
+  const [ctaOpen, setCtaOpen] = useState(false)
+  const [ctaDraft, setCtaDraft] = useState(ctaText)
   return (
     <section className="glass mt-8 p-5 sm:p-6">
       <div className="flex items-baseline justify-between gap-3">
@@ -1010,31 +1052,73 @@ function ProfileStatus({
         </ul>
       )}
 
-      {/* ⚠️ ASKED ONCE, HERE, RATHER THAN AS A FOURTH ONBOARDING QUESTION. It is
-          the one gap a creator can close in ten seconds, and it is the only place
-          their own wording can enter — Twin writes a CTA when there is none, but
-          a generated sentence is never stored as their preference. */}
-      <div className="mt-5">
-        <label className="block text-sm text-cream" htmlFor="default-cta">
-          What do you usually want viewers to do next?
-        </label>
-        <p className="mt-0.5 text-xs text-stone">
-          Your words, used at the end of your videos. Leave it blank and Twin will
-          write one that fits each video.
-        </p>
-        <input
-          id="default-cta"
-          type="text"
-          value={cta ?? ''}
-          disabled={cta === null}
-          onChange={(e) => onCtaChange(e.target.value)}
-          onBlur={(e) => onCtaCommit(e.target.value)}
-          placeholder="Try Twin free"
-          className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
-        />
-        {ctaSaved && <p className="mt-1 text-xs text-teal">Saved</p>}
-        {ctaErr && <p className="mt-1 text-xs text-coral">Could not save that — try again.</p>}
+      {/* ⚠️ A PERMANENTLY EDITABLE NAKED INPUT ON A SETTINGS PAGE IS NOT A
+          SETTING, it is a form field somebody has to notice, decide about, and
+          then wonder whether it saved. What a creator wants here is to SEE their
+          answer and change it deliberately.
+          ⚖️ ASKED ONCE, AND ONLY THEIR OWN WORDING IS STORED. Twin writes a CTA
+          when there is none; a generated sentence never becomes their preference. */}
+      <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm text-cream">What viewers should do after your videos</p>
+            <p className="mt-1 truncate text-sm text-sand">
+              {ctaText
+                ? `“${ctaText}”`
+                // ⚠️ NOT AN ERROR STATE. Plenty of creators do not want every
+                // video to end with an ask, and saying so plainly is the
+                // difference between a choice and an omission.
+                : 'No usual ending — Twin writes one to fit each video.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => { setCtaDraft(ctaText); setCtaOpen(true) }}
+            className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream"
+          >{ctaText ? 'Edit' : 'Add one'}</button>
+        </div>
+        {ctaSaved && <p className="mt-2 text-xs text-teal">Saved</p>}
+        {ctaErr && <p className="mt-2 text-xs text-coral">Could not save that — try again.</p>}
       </div>
+
+      {ctaOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-5" role="dialog" aria-modal>
+          <div className="glass w-full max-w-md p-5">
+            <p className="font-heading text-cream">Your usual ending</p>
+            <p className="mt-1 text-sm leading-relaxed text-sand">
+              What should Twin usually ask viewers to do? You can change it for any
+              single video.
+            </p>
+            <input
+              autoFocus
+              type="text"
+              value={ctaDraft}
+              onChange={(e) => setCtaDraft(e.target.value)}
+              placeholder="Try Twin free"
+              className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+            />
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => { onCtaChange(ctaDraft); onCtaCommit(ctaDraft); setCtaOpen(false) }}
+                className="btn-gradient rounded-lg px-3.5 py-2 text-sm"
+              >Save</button>
+              {/* ⚖️ AN EXPLICIT "NO" IS AN ANSWER AND MUST BE STORABLE. Clearing
+                  the box and leaving is ambiguous — this is not. */}
+              <button
+                type="button"
+                onClick={() => { onCtaChange(''); onCtaCommit(''); setCtaOpen(false) }}
+                className="btn-ghost rounded-lg px-3.5 py-2 text-sm"
+              >I don't have a usual ending</button>
+              <button
+                type="button"
+                onClick={() => setCtaOpen(false)}
+                className="rounded-lg px-3.5 py-2 text-sm text-stone"
+              >Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <StatusLine

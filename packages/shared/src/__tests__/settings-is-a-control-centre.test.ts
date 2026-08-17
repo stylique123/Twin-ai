@@ -83,6 +83,34 @@ describe('the page has a shape', () => {
   })
 })
 
+describe('editing is deliberate, and the record is folded', () => {
+  it('the CTA is a summary with an edit, not a naked input on the page', () => {
+    // ⚠️ A PERMANENTLY EDITABLE FIELD IS NOT A SETTING. It is something to
+    // notice, decide about, and then wonder whether it saved.
+    expect(PAGE).toMatch(/setCtaOpen\(true\)/)
+    expect(PAGE).toMatch(/role="dialog"/)
+  })
+
+  it('and "I have no usual ending" is storable as an answer', () => {
+    // ⚖️ CLEARING A BOX AND LEAVING IS AMBIGUOUS; THIS IS NOT. Plenty of
+    // creators do not want every video to end with an ask.
+    expect(PAGE).toMatch(/I don't have a usual ending/)
+    expect(PAGE).toMatch(/No usual ending — Twin writes one to fit each video/)
+  })
+
+  it('the full DNA record is folded behind a summary', () => {
+    // ⚠️ IT OCCUPIED HALF A KILOMETRE OF SETTINGS. Every visit meant scrolling
+    // past niche, audience, vocabulary, POV, hooks and pacing to reach anything
+    // else — most of why the page read as a document.
+    expect(PAGE).toMatch(/const \[dnaOpen, setDnaOpen\] = useState\(false\)/)
+    expect(PAGE).toMatch(/View everything/)
+  })
+
+  it('folding is not hiding — the same record is one tap away', () => {
+    expect(PAGE).toMatch(/Back to the summary/)
+  })
+})
+
 describe('the five states reach the screen as five different things', () => {
   it('each has its own words', () => {
     const chip = PAGE.slice(PAGE.indexOf('function StateChip'))
