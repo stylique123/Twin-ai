@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import {
-  VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES,
+  VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   INTENT_QUESTIONS, reachableIntentValues, compileVideoIntent,
 } from '../videoIntent'
 
@@ -68,8 +68,14 @@ describe('the three questions open with the remix', () => {
   it('every visible value is one the compiler accepts', () => {
     // ⚖️ A chip whose value the server discards is a question that lies.
     for (const q of INTENT_QUESTIONS) {
+      // ⚖️ EXHAUSTIVE BY CONSTRUCTION. A new question added without a mapping
+      // here would otherwise be silently checked against the outcome list and
+      // pass or fail for the wrong reason — this failed loudly when
+      // `reference_use` arrived, which is exactly what it is for.
       const all = q.field === 'video_goal' ? VIDEO_GOALS
-        : q.field === 'content_focus' ? CONTENT_FOCUS : VIEWER_OUTCOMES
+        : q.field === 'content_focus' ? CONTENT_FOCUS
+          : q.field === 'viewer_outcome' ? VIEWER_OUTCOMES
+            : REFERENCE_USE
       for (const v of reachableIntentValues(q.field)) {
         expect(all as readonly string[], `${q.field}/${v}`).toContain(v)
       }

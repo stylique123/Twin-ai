@@ -8,7 +8,7 @@ import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lu
 import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
 import { assessReadiness } from '../../lib/api'
 import {
-  VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES,
+  VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   INTENT_QUESTIONS, type IntentQuestion, type VideoGoal,
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
@@ -541,6 +541,11 @@ export default function V2Building() {
           goal: asOneOf(VIDEO_GOALS, intentAnswers.video_goal),
           focus: asOneOf(CONTENT_FOCUS, intentAnswers.content_focus),
           outcome: asOneOf(VIEWER_OUTCOMES, intentAnswers.viewer_outcome),
+          // ⚖️ THE ONE ANSWER ABOUT THE REFERENCE RATHER THAN THE CREATOR.
+          // Narrowed through the enum like the other three, so a stale value
+          // from an older build cannot reach the request as a setting that no
+          // longer exists.
+          reference_use: asOneOf(REFERENCE_USE, intentAnswers.reference_use),
           ...(Object.keys(readinessAnswers).length ? { readiness_answers: readinessAnswers } : {}),
           // Same intent → same key → the server returns the build it already
           // made instead of charging for it twice (0119).

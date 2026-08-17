@@ -87,6 +87,50 @@ export const VIEWER_OUTCOMES = [
 ] as const
 export type ViewerOutcome = (typeof VIEWER_OUTCOMES)[number]
 
+// ── HOW MUCH OF THE REFERENCE THE CREATOR ACTUALLY WANTED ─────────────────
+//
+// ⚠️ THE ONLY QUESTION ON THE REMIX SCREEN THAT IS ABOUT THE REFERENCE. Goal,
+// focus and outcome are all about the CREATOR, and they are the same three
+// whether somebody pasted a three-item listicle or a personal story. So the
+// amount of the reference to keep — the one thing that changes with every link
+// — was the one thing nobody was asked, and the transfer layer had to guess what
+// "remix this" meant.
+//
+// ⚖️ IT IS A DIAL, NOT A PERMISSION. No setting here lets the reference become
+// an authority for product facts, unsupported claims, creator identity, lived
+// experience, ownership or exact wording. Those are refused at every value,
+// which is why `stay_close` can exist at all: it is the most faithful setting
+// available and it is still bounded by what may be transferred.
+export const REFERENCE_USE = ['structure', 'idea_structure', 'stay_close', 'inspiration'] as const
+export type ReferenceUse = (typeof REFERENCE_USE)[number]
+
+/** What each setting instructs the writer to carry across.
+ *
+ *  ⚖️ WRITTEN AS WHAT TO KEEP AND WHAT TO REPLACE, not as an adjective. "Stay
+ *  close" tells a model nothing it can act on; "keep the beat order and the hook
+ *  mechanism, replace every subject" is a decidable instruction. */
+export const REFERENCE_USE_DIRECTIVE: Record<ReferenceUse, string> = {
+  structure:
+    'TAKE THE MECHANICS, NOT THE SUBJECT. Keep the beat order, the hook mechanism and the escalation, and replace what every beat is ABOUT with the creator\'s own material.',
+  idea_structure:
+    'TAKE THE CENTRAL IDEA AND THE MECHANICS. Keep what the reference is arguing and how it argues it, and re-ground every example, number and story in the creator\'s own world.',
+  stay_close:
+    'STAY AS CLOSE AS THE FACTS ALLOW. Preserve the format, the beat count and the topic where the creator can honestly speak to it — and the moment a beat would need a fact they do not have, re-ground that beat rather than borrowing the reference\'s.',
+  inspiration:
+    'TAKE ONLY THE STRONGEST MECHANIC. Use the one device that makes the reference work and build a freer video around it; the beat order and the topic are not binding.',
+}
+
+/** ⚖️ HOW MUCH TOPIC SURVIVES, as a separate question from how much STRUCTURE
+ *  does. A creator asking to stay close is asking for both; one asking for the
+ *  structure is explicitly asking for a different subject. Reading them as one
+ *  dial is what made "use the structure" quietly keep the reference's topic. */
+export const KEEPS_REFERENCE_TOPIC: Record<ReferenceUse, boolean> = {
+  structure: false,
+  idea_structure: true,
+  stay_close: true,
+  inspiration: false,
+}
+
 export const VIEWER_OUTCOME_LABELS: Record<ViewerOutcome, string> = {
   learn: 'Learn something useful',
   change_mind: 'Change their mind',
@@ -110,6 +154,8 @@ export interface VideoIntent {
   goal: VideoGoal | null
   focus: ContentFocus | null
   outcome: ViewerOutcome | null
+  /** The fourth answer — how much of the reference to carry across. */
+  referenceUse: ReferenceUse | null
 
   /** ONE READER: the creative directive line in the prompt. Replaces GOAL_LINES. */
   goalDirective: string | null
@@ -118,6 +164,13 @@ export interface VideoIntent {
   wantsSale: boolean
   /** ONE READER: the CTA payoff directive. */
   payoffDirective: string | null
+  /** ONE READER: the transfer instruction in the prompt's reference block. */
+  referenceUseDirective: string | null
+  /** ONE READER: the premise stage, which otherwise assumes the reference topic
+   *  is available to adapt. False means the creator asked for a different
+   *  subject, and keeping the reference's would be answering a question they
+   *  did not ask. */
+  keepsReferenceTopic: boolean
 
   /** ONE READER: the knowledge ranking. Kinds listed first are preferred when
    *  relevance ties; an empty list means "leave the ranking alone". */
@@ -214,6 +267,9 @@ const isFocus = (v: unknown): v is ContentFocus =>
 const isOutcome = (v: unknown): v is ViewerOutcome =>
   typeof v === 'string' && (VIEWER_OUTCOMES as readonly string[]).includes(v)
 
+const isReferenceUse = (v: unknown): v is ReferenceUse =>
+  typeof v === 'string' && (REFERENCE_USE as readonly string[]).includes(v)
+
 /**
  * Turn three answers into one record with named readers.
  *
@@ -229,10 +285,12 @@ export function compileVideoIntent(answers: {
   goal?: unknown
   focus?: unknown
   outcome?: unknown
+  referenceUse?: unknown
 }): VideoIntent {
   const goal = isGoal(answers.goal) ? answers.goal : null
   const focus = isFocus(answers.focus) ? answers.focus : null
   const outcome = isOutcome(answers.outcome) ? answers.outcome : null
+  const referenceUse = isReferenceUse(answers.referenceUse) ? answers.referenceUse : null
   const resolutions: string[] = []
 
   let goalDirective = goal ? GOAL_DIRECTIVE[goal] : null
@@ -302,10 +360,24 @@ export function compileVideoIntent(answers: {
     resolutions.push('substance floor clamped to the system minimum')
   }
 
+  // ⚠️ UNANSWERED IS NOT `structure`. A creator who never saw this question has
+  // not asked for the subject to be replaced, and defaulting to any value would
+  // put a transfer instruction in the prompt on their behalf. Null leaves the
+  // reference block exactly as it was before this answer existed.
+  if (referenceUse) {
+    resolutions.push(`reference use ${referenceUse} → ${KEEPS_REFERENCE_TOPIC[referenceUse] ? 'topic may carry across' : 'subject is replaced'}`)
+  }
+
   return {
     goal,
     focus,
     outcome,
+    referenceUse,
+    referenceUseDirective: referenceUse ? REFERENCE_USE_DIRECTIVE[referenceUse] : null,
+    // ⚖️ TRUE WHEN UNANSWERED, because that is the behaviour every generation
+    // has had until now: the premise stage has always been free to adapt the
+    // reference's topic. Only an explicit answer narrows it.
+    keepsReferenceTopic: referenceUse === null ? true : KEEPS_REFERENCE_TOPIC[referenceUse],
     goalDirective,
     // ⚖️ EITHER HALF OF THE CREATOR'S REQUEST COUNTS, and NEITHER is sufficient.
     // `sellIntent` still requires a commercial tie on record; this only says the
@@ -424,7 +496,7 @@ export interface IntentOption {
 }
 
 export interface IntentQuestion {
-  field: 'video_goal' | 'content_focus' | 'viewer_outcome'
+  field: 'video_goal' | 'content_focus' | 'viewer_outcome' | 'reference_use'
   question: string
   options: readonly IntentOption[]
 }
@@ -485,6 +557,42 @@ export const INTENT_QUESTIONS: readonly IntentQuestion[] = [
       // genuinely different endings.
       { value: 'check_out_offer', label: 'Check out what I offer' },
       { value: 'convert', label: 'Buy, sign up or contact me' },
+    ],
+  },
+  // ⚠️ THE ONLY QUESTION HERE THAT IS ABOUT THE REFERENCE. The three above are
+  // about the creator and are identical whether somebody pasted a listicle or a
+  // confession — so the amount of the reference to keep, the one thing that
+  // changes with every link, was never asked and the transfer layer had to guess
+  // what "remix this" meant.
+  //
+  // ⚖️ PLAIN ENGLISH, AND NO SETTING IS A PERMISSION. "Keep it close" is the
+  // most faithful option available and it still may not carry the reference's
+  // product facts, claims, identity, lived experience or exact words across —
+  // those are refused at every value.
+  {
+    field: 'reference_use',
+    question: 'How much of the original should Twin keep?',
+    options: [
+      {
+        value: 'structure',
+        label: 'Just how it is built',
+        hint: 'Same shape and hook style, but about my own thing',
+      },
+      {
+        value: 'idea_structure',
+        label: 'The idea and how it is built',
+        hint: 'Same point, made with my own examples',
+      },
+      {
+        value: 'stay_close',
+        label: 'Keep it close',
+        hint: 'Stay near the original wherever I can honestly say it',
+      },
+      {
+        value: 'inspiration',
+        label: 'Just the good bit',
+        hint: 'Take what makes it work and go my own way',
+      },
     ],
   },
 ]

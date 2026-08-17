@@ -1345,6 +1345,24 @@ const OUTCOME_FLOOR_INLINE: Record<string, number> = {
   share: SUBSTANCE_FLOOR, follow: SUBSTANCE_FLOOR,
 }
 
+// ⚠️ INLINED FROM `videoIntent.ts` AND PARITY-TESTED. Edge functions cannot
+// import @twinai/shared, so this is a deliberate copy — the parity test executes
+// BOTH copies against every value rather than comparing their text.
+const REFERENCE_USE_INLINE: readonly string[] = ['structure', 'idea_structure', 'stay_close', 'inspiration']
+const REFERENCE_USE_DIRECTIVE_INLINE: Record<string, string> = {
+  structure:
+    'TAKE THE MECHANICS, NOT THE SUBJECT. Keep the beat order, the hook mechanism and the escalation, and replace what every beat is ABOUT with the creator\'s own material.',
+  idea_structure:
+    'TAKE THE CENTRAL IDEA AND THE MECHANICS. Keep what the reference is arguing and how it argues it, and re-ground every example, number and story in the creator\'s own world.',
+  stay_close:
+    'STAY AS CLOSE AS THE FACTS ALLOW. Preserve the format, the beat count and the topic where the creator can honestly speak to it — and the moment a beat would need a fact they do not have, re-ground that beat rather than borrowing the reference\'s.',
+  inspiration:
+    'TAKE ONLY THE STRONGEST MECHANIC. Use the one device that makes the reference work and build a freer video around it; the beat order and the topic are not binding.',
+}
+const KEEPS_REFERENCE_TOPIC_INLINE: Record<string, boolean> = {
+  structure: false, idea_structure: true, stay_close: true, inspiration: false,
+}
+
 const SELLING_GOALS_INLINE: ReadonlySet<string> = new Set(['sell', 'leads'])
 const SELLING_OUTCOMES_INLINE: ReadonlySet<string> = new Set(['convert'])
 
@@ -1352,7 +1370,10 @@ interface VideoIntentInline {
   goal: string | null
   focus: string | null
   outcome: string | null
+  referenceUse: string | null
   goalDirective: string | null
+  referenceUseDirective: string | null
+  keepsReferenceTopic: boolean
   wantsSale: boolean
   payoffDirective: string | null
   prefersKinds: readonly string[]
@@ -1364,7 +1385,7 @@ interface VideoIntentInline {
 
 /** Never throws: it runs inside a paid generation. */
 function compileVideoIntentInline(answers: {
-  goal?: unknown; focus?: unknown; outcome?: unknown
+  goal?: unknown; focus?: unknown; outcome?: unknown; referenceUse?: unknown
 }): VideoIntentInline {
   const goal = isVideoGoalInline(answers.goal) ? String(answers.goal) : null
   const focus = typeof answers.focus === 'string'
@@ -1373,6 +1394,9 @@ function compileVideoIntentInline(answers: {
   const outcome = typeof answers.outcome === 'string'
     && (VIEWER_OUTCOMES_INLINE as readonly string[]).includes(answers.outcome)
     ? answers.outcome : null
+  const referenceUse = typeof answers.referenceUse === 'string'
+    && REFERENCE_USE_INLINE.includes(answers.referenceUse)
+    ? answers.referenceUse : null
   const resolutions: string[] = []
 
   let goalDirective = goal ? GOAL_DIRECTIVE_INLINE[goal] : null
@@ -1416,7 +1440,11 @@ function compileVideoIntentInline(answers: {
   }
 
   return {
-    goal, focus, outcome, goalDirective,
+    goal, focus, outcome, referenceUse, goalDirective,
+    referenceUseDirective: referenceUse ? REFERENCE_USE_DIRECTIVE_INLINE[referenceUse] : null,
+    // ⚖️ TRUE WHEN UNANSWERED — adapting the reference's topic is what every
+    // generation has always done. Only an explicit answer narrows it.
+    keepsReferenceTopic: referenceUse === null ? true : KEEPS_REFERENCE_TOPIC_INLINE[referenceUse],
     wantsSale: (goal !== null && SELLING_GOALS_INLINE.has(goal))
       || (outcome !== null && SELLING_OUTCOMES_INLINE.has(outcome)),
     payoffDirective, prefersKinds, substanceFloor,
@@ -3344,6 +3372,7 @@ Deno.serve(async (req: Request) => {
     // of a dead third would have been the bug.
     const intent = compileVideoIntentInline({
       goal: body.goal, focus: body.focus, outcome: body.outcome,
+      referenceUse: body.reference_use,
     })
     const videoGoal = intent.goal
     // ⚖️ THE INFERRED VALUES STILL STAND BEHIND IT, unchanged. They are a reading
@@ -3871,6 +3900,30 @@ Deno.serve(async (req: Request) => {
     ].filter(Boolean).join('\n')
     const doNotUseBlock = `\n- DO NOT USE — ruled out before writing began, and a reason to include them anyway is not one you may find:\n${doNotUse}`
 
+    // ── HOW MUCH OF THE REFERENCE THE CREATOR ASKED FOR ────────────────────
+    //
+    // ⚠️ THE WRITER WAS GUESSING WHAT "REMIX" MEANT. Goal, focus and outcome are
+    // all about the creator and are identical whatever was pasted, so nothing in
+    // this prompt said whether to keep the reference's shape, its idea, or only
+    // its best device — and every generation had to pick for the creator.
+    //
+    // ⚖️ IT SITS UNDER THE DO-NOT-USE BLOCK, NOT OVER IT. This dial says how
+    // much to carry across; the block above says what may never be carried at
+    // any setting. Placing it after keeps the order of authority visible in the
+    // prompt itself: `stay_close` is bounded by those rules rather than an
+    // exception to them.
+    //
+    // ⚖️ SILENT WHEN UNANSWERED. A creator who never saw the question has not
+    // asked for their subject to be replaced, and a default sentence here would
+    // answer on their behalf.
+    const referenceUseBlock = intent.referenceUseDirective
+      ? `\n- HOW MUCH OF THE REFERENCE TO KEEP — the creator chose this for THIS video:\n  * ${intent.referenceUseDirective}${
+        intent.keepsReferenceTopic
+          ? ''
+          : '\n  * THE SUBJECT IS NOT THE REFERENCE\'S. They asked for the mechanics, so the topic must come from their own material — reusing what the reference was ABOUT answers a question they did not ask.'
+      }`
+      : ''
+
     // WHAT THE CREATOR DOES FOR A LIVING.
     //
     // Asked at `during_scan`, validated against BRIEF_WORK_KINDS, stored — and
@@ -3961,7 +4014,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${claimRulesBlock}${doNotUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${knowledgeBlock}
+- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${knowledgeBlock}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `

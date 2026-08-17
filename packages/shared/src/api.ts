@@ -206,7 +206,7 @@ export async function saveDNA(dna: CreatorDNA): Promise<Profile> {
 // edge function as "the authority" and no test holding them together — which is
 // how "Start conversations" and "Get leads" came to share one key that granted
 // commercial-CTA intent. One definition, one place, re-exported from the index.
-import type { VideoGoal, ContentFocus, ViewerOutcome } from './videoIntent'
+import type { VideoGoal, ContentFocus, ViewerOutcome, ReferenceUse } from './videoIntent'
 
 export interface GenerateInput {
   /** Answers to a prior READINESS_INCOMPLETE refusal, keyed by field. Sending
@@ -234,6 +234,10 @@ export interface GenerateInput {
   // would invite a caller to send half of it and a reader to guess the rest.
   focus?: ContentFocus
   outcome?: ViewerOutcome
+  // ⚖️ THE FOURTH, AND THE ONLY ONE ABOUT THE REFERENCE RATHER THAN THE CREATOR.
+  // Snake-cased to match the wire, like every other field here: the three above
+  // are single words, and this is the first that would have to choose.
+  reference_use?: ReferenceUse
   // Optional: when the reference was analyzed by the worker (real transcript),
   // pass its transcript_id so the blueprint is built from the actual video.
   transcript_id?: string
