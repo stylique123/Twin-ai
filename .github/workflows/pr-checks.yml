@@ -82,13 +82,44 @@ jobs:
       # uses, and copies the result onto the runner, rather than hardcoding a
       # Debian package URL/version that could silently drift out of sync with the
       # Dockerfile. Docker ships preinstalled on GitHub-hosted runners.
+      #
+      # ⚠️ EVERY CALL HERE IS BOUNDED, BECAUSE A HUNG PULL LOOKS EXACTLY LIKE A
+      # SLOW TEST RUN. Measured twice on one commit: this step sat 30+ minutes in
+      # the `docker run` with no output and no test ever started, so the PR read
+      # as "unit-tests in progress" for an hour while nothing was being tested.
+      # Silence is not a pass anywhere else in this repo and it must not be one
+      # here. The timeouts change no byte of what gets installed — they only
+      # decide how long we wait before calling the fetch failed.
+      #
+      # ⚖️ AND THE SOURCE OF THE FONTS IS UNCHANGED ON PURPOSE. Reaching for an
+      # Ubuntu apt package or a pinned Debian URL would make an outage disappear
+      # by shipping DIFFERENT BYTES than the deploy image — the exact drift the
+      # note above exists to prevent. A retry is allowed to fix a flaky network;
+      # nothing is allowed to fix it by changing what we install.
       - name: Install ffmpeg; fetch the caption fonts from the ACTUAL deploy image
+        timeout-minutes: 12
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+          set -euo pipefail
+          timeout 300 sudo apt-get update -qq
+          timeout 300 sudo apt-get install -y -qq --no-install-recommends ffmpeg
           D=/usr/share/fonts/truetype/dejavu
           sudo mkdir -p "$D"
-          docker run --rm -v "$D:/out" node:22-bookworm-slim bash -c \
-            "apt-get update -qq && apt-get install -y -qq --no-install-recommends fonts-dejavu-core && cp /usr/share/fonts/truetype/dejavu/*.ttf /out/"
+          for attempt in 1 2 3; do
+            echo "font fetch attempt $attempt"
+            if timeout 240 docker run --rm -v "$D:/out" node:22-bookworm-slim bash -c \
+              "apt-get update -qq && apt-get install -y -qq --no-install-recommends fonts-dejavu-core && cp /usr/share/fonts/truetype/dejavu/*.ttf /out/"; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then
+              echo "::error::could not fetch the caption fonts from node:22-bookworm-slim after 3 attempts"
+              exit 1
+            fi
+            sleep $((attempt * 20))
+          done
+          # A silent no-op copy would leave the renderer tests running on whatever
+          # fonts the runner happens to have — the failure this whole step exists
+          # to rule out. So prove the bytes landed.
+          ls -1 "$D"/*.ttf > /dev/null
       - name: Install + test @twinai/shared
         run: |
           npm ci
