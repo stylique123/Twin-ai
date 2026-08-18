@@ -82,7 +82,14 @@ async function edge(client, body) {
     headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: auth },
     body: JSON.stringify(body),
   })
-  return { status: res.status, body: await res.json().catch(() => ({})) }
+  // ⚠️ THE ERROR BODY USED TO BE SWALLOWED HERE TOO. A non-JSON gateway page — a
+  // platform 429, a 502 from the edge runtime — became `{}`, so the assertion
+  // reported `code=undefined` and blamed the function for a throttle. See
+  // `phase2.mjs` for the failure that found this.
+  const text = await res.text()
+  let parsed = null
+  try { parsed = JSON.parse(text) } catch { /* not JSON — keep the text */ }
+  return { status: res.status, body: parsed ?? {}, raw: parsed ? null : text.trim() }
 }
 const createIntent = (client, genId, attemptId, contentType, sizeBytes) =>
   edge(client, { action: 'create', capture: { origin: 'upload', recording_script_sha256: null, recorder_clock: 'none', accepted_segments: [] }, generation_id: genId, recording_attempt_id: attemptId, content_type: contentType, size_bytes: sizeBytes })

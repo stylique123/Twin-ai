@@ -45,13 +45,22 @@ async function main() {
       headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: await authHeader(client) },
       body: JSON.stringify(body),
     })
-    return { status: res.status, body: await res.json().catch(() => ({})) }
+    // ⚠️ THE ERROR BODY USED TO BE SWALLOWED HERE TOO. A non-JSON gateway page — a
+  // platform 429, a 502 from the edge runtime — became `{}`, so the assertion
+  // reported `code=undefined` and blamed the function for a throttle. See
+  // `phase2.mjs` for the failure that found this.
+  const text = await res.text()
+  let parsed = null
+  try { parsed = JSON.parse(text) } catch { /* not JSON — keep the text */ }
+  return { status: res.status, body: parsed ?? {}, raw: parsed ? null : text.trim() }
   }
 
   // Missing env value → disabled, 503, stable code.
   const r1 = await call({ generation_id: randomUUID(), source_asset_id: randomUUID(), idempotency_key: randomUUID() })
   check('disabled: valid-shaped request → 503 editor_not_available',
-    r1.status === 503 && r1.body.code === 'editor_not_available', `status=${r1.status} code=${r1.body.code}`)
+    r1.status === 503 && r1.body.code === 'editor_not_available',
+    r1.raw ? `status=${r1.status} code=${r1.body.code} body=${JSON.stringify(r1.raw.slice(0, 160))}`
+      : `status=${r1.status} code=${r1.body.code}`)
 
   // The client cannot override the gate from the request.
   const r2 = await call({

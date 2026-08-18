@@ -46,6 +46,11 @@
 // that cannot be argued with.
 
 /** §7a's seven, in the order they are always returned. */
+// ⚠️ EIGHT NOW, NOT SEVEN. `commercial_fit` was living inside
+// `content_availability` and does not belong there: whether Twin CAN fill a
+// format and whether this creator is ALLOWED to make it are different
+// questions with different answers. An affiliate can fill every slot of "why we
+// built this" and must still not make it.
 export const GALLERY_SIGNALS = [
   'dna_match',
   'goal_match',
@@ -53,6 +58,7 @@ export const GALLERY_SIGNALS = [
   'recreate_feasibility',
   'structure_transferability',
   'content_availability',
+  'commercial_fit',
   'freshness',
 ] as const
 export type GallerySignalId = (typeof GALLERY_SIGNALS)[number]
@@ -147,6 +153,12 @@ export function rankSignals(facts: GalleryFacts): GallerySignal[] {
       status: 'not_checked',
       reason: 'We have not checked whether you have something to fill this format with.',
       needs: "the format's containers, and what the creator has to put in them",
+    },
+    {
+      id: 'commercial_fit',
+      status: 'not_checked',
+      reason: 'We have not checked whether this suits what you sell.',
+      needs: "the reference's commercial posture — whether the pattern is an owner's, an affiliate's or a reviewer's — plus the creator's relationship, which the profile already carries",
     },
     {
       id: 'freshness',

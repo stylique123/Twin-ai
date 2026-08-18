@@ -1,7 +1,10 @@
 // The rules this file holds:
 //
-//   1. All seven signals come back, always, in a stable order. A shorter list
-//      would let one niche comparison look like a seven-signal judgement.
+//   1. All EIGHT signals come back, always, in a stable order. A shorter list
+//      would let one niche comparison look like a full judgement.
+//      (`commercial_fit` was added when it became clear it had been living
+//      inside content_availability: whether Twin CAN fill a format and whether
+//      this creator is ALLOWED to make it are different questions.)
 //   2. Nothing produces a number a creator could read as a rating (§1.2).
 //   3. A cross-niche reference is NOT a mismatch — it is unchecked.
 //   4. An absent reach figure is not the smallest reach.
@@ -15,7 +18,7 @@ const facts = (over: Partial<GalleryFacts> = {}): GalleryFacts => ({
   nicheRelation: 'same_niche', reach: 1000, likes: 100, ...over,
 })
 
-describe('all seven, always, in order', () => {
+describe('all eight, always, in order', () => {
   it('returns every signal whatever the facts', () => {
     for (const rel of ['same_sub_niche', 'same_niche', 'related', 'unrelated', 'unknown'] as NicheRelation[]) {
       const s = rankSignals(facts({ nicheRelation: rel }))
@@ -23,10 +26,13 @@ describe('all seven, always, in order', () => {
     }
   })
 
-  it('six are not_checked and each says what it needs', () => {
+  it('seven are not_checked and each says what it needs', () => {
     const s = rankSignals(facts())
     const blocked = blockedSignals(s)
-    expect(blocked).toHaveLength(6)
+    // ⚠️ THE COUNT IS THE POINT. It went 6 -> 7 when commercial_fit was named,
+    // and it must fall as each one is genuinely built. A test that stopped
+    // counting would let the dark signals accumulate quietly.
+    expect(blocked).toHaveLength(7)
     // A blocked signal with no `needs` is an open question pretending to be a
     // task. Every one of these names the field that unblocks it.
     for (const b of blocked) expect(b.needs!.length).toBeGreaterThan(20)
