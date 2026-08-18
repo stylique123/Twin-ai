@@ -194,8 +194,12 @@ describe('the three questions open with the remix', () => {
   it('reuses the SAME per-keystroke persistence, not a second one', () => {
     // ⚠️ Two maps in sessionStorage are two things a reclaimed tab can restore
     // out of step with each other.
+    // ⚖️ NOW ASSERTED AS "THE CHIPS CALL THE ONE SAVE PATH". `answer` merges and
+    // persists in a single function, so a chip that calls it cannot be storing
+    // into a second map — there is only one.
     const chip = BUILD.slice(BUILD.indexOf('isChip(q) ? ('))
-    expect(chip.slice(0, 3000)).toMatch(/rememberAnswers\(buildKey\(state\), next\)/)
+    expect(chip.slice(0, 3000)).toMatch(/answer\(q\.field, /)
+    expect(BUILD.match(/rememberAnswers\(buildKey\(state\), next\)/g)).toHaveLength(1)
   })
 })
 

@@ -175,6 +175,7 @@ const EVENTS = {
   creator_knowledge_source_column_absent: { kind: 'incident', why: '0122 unapplied — the selector cannot see source.' },
   scrape_dna_empty: { kind: 'incident', why: 'A scan that found nothing. Honesty about a failed scan, per scan.' },
   scrape_dna_read_failed: { kind: 'incident', why: 'A scan that could not read the account.' },
+  scrape_dna_reader_failed: { kind: 'incident', why: 'The READER reported a failure of its own — an Apify Actor that times out writes an error into its dataset and exits zero, which used to reach a creator as "your account is private or empty". Per occurrence, because each one is a public account being told it is not.' },
   scrape_dna_unsupported_platform: { kind: 'incident', why: 'A platform the worker does not handle.' },
   profile_scrape_free_failed: { kind: 'incident', why: 'The free profile path failed; a paid one may follow.' },
   profile_scrape_free_empty: { kind: 'incident', why: 'The free profile path returned nothing.' },

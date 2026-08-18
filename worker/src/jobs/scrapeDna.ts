@@ -1,5 +1,5 @@
 import { db, type Job } from '../db.js'
-import { scrapeProfile, UnsupportedPlatformError, type ScrapedPost } from '../media.js'
+import { scrapeProfile, UnsupportedPlatformError, ProfileReadFailedError, type ScrapedPost } from '../media.js'
 import { assessScanTarget } from '../scanTarget.js'
 import { selectVideosToTranscribe, transcriptBudgetFor, scrapePoolFor } from '../transcriptSelection.js'
 import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
@@ -175,6 +175,20 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
         `We can't scan ${platform} accounts yet. Connect a TikTok or YouTube account, or set up your voice manually.`,
       )
     }
+    // ⚠️ THE READER SAID IT COULD NOT READ, AND THAT IS OURS TO OWN. An Apify
+    // Actor that times out writes an error INTO ITS DATASET and exits zero, so
+    // this used to arrive as "no posts" and get reported as a private or empty
+    // account. It reached a creator whose account was public with thousands of
+    // posts. A read failure is transient and ours; an empty account is neither.
+    if (err instanceof ProfileReadFailedError) {
+      console.error(JSON.stringify({
+        event: 'scrape_dna_reader_failed', handle, platform, detail: err.detail.slice(0, 300),
+      }))
+      return await fail(
+        `We couldn't finish reading @${handle} just now — that is on our side, not your account. ` +
+          `Try again in a minute, or set up your voice manually.`,
+      )
+    }
     const detail = err instanceof Error ? err.message : String(err)
     const impersonation = /impersonat|secondary user ID/i.test(detail)
     console.error(JSON.stringify({
@@ -207,10 +221,23 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
       // from being unable to read the page at all.
       resolved_handle: profileFacts?.resolvedHandle ?? null,
       post_count: profileFacts?.postCount ?? null,
+      // ⚠️ THE FIELD THAT SEPARATES TWO OPPOSITE CAUSES. Reported against a
+      // large, public, obviously non-empty Instagram account: the reader
+      // returned posts and every one was dropped for having no caption where it
+      // looked. `raw_count: 0` is the account; anything higher is us.
+      raw_count: profileFacts?.rawCount ?? null,
     }))
+    // ⚖️ AND THE CREATOR IS TOLD WHICH ONE IT WAS. "Make it public for a moment"
+    // is useless advice to somebody whose account is already public with
+    // thousands of posts, and it quietly blames them for our defect.
+    const read = profileFacts?.rawCount ?? 0
     return await fail(
-      `We couldn't read any public posts from @${handle}. If that account is private or empty, make it public ` +
-        `for a moment, try a different public account, or set up your voice manually.`,
+      read > 0
+        ? `We found @${handle} and read ${read} post${read === 1 ? '' : 's'}, but none of them had ` +
+          `text we could learn a voice from. This one is on us — try another account for now, or set ` +
+          `up your voice manually.`
+        : `We couldn't read any public posts from @${handle}. If that account is private or empty, make it public ` +
+          `for a moment, try a different public account, or set up your voice manually.`,
     )
   }
 

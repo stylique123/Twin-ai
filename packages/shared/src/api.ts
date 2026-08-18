@@ -7,6 +7,8 @@ import {
 import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
 import { sanitizeBriefForWrite, readStoredBrief, type BriefAnswers } from './preScriptBrief'
 import type { HookChoice } from './hookChoice'
+import { readStoredReferenceProfile, type StoredProfileRow } from './storedReferenceProfile'
+import type { ReferenceProfile } from './referenceProfile'
 import {
   emptyRestrictions, isEntityRelationship, isEntityType, isPersonalUse, isShowability,
   attestedEntity, isOwned,
@@ -1370,7 +1372,14 @@ export interface GalleryItem {
   why: string | null
   reach: string | null
   likes: string | null
-  visibility: 'public' | 'private'
+  // ⚠️ `hidden` IS A THIRD STATE AND NOT A SYNONYM FOR `private`. Private means
+  // A CREATOR'S OWN ITEM, visible to them; hidden means WITHDRAWN FROM THE FEED
+  // by an operator — 689 scraped `/explore/tags/` rows that are hashtag pages
+  // rather than videos. Collapsing them into `private` would lose that
+  // distinction the first time anyone queried the table. No client sees one:
+  // the RLS read policy admits `visibility = 'public' or owner_id = auth.uid()`,
+  // and these have no owner.
+  visibility: 'public' | 'private' | 'hidden'
   created_at: string
   // 0106. Three-state, ALWAYS: true, false, and nobody-has-assessed-this-card.
   // Every scraped row is null until something looks, and null read as false
@@ -1390,6 +1399,43 @@ export async function listGalleryItems(): Promise<GalleryItem[]> {
     .limit(200)
   if (error) return []
   return (data ?? []) as GalleryItem[]
+}
+
+/**
+ * What the transcript batch learned about these videos.
+ *
+ * ⚠️ ONE QUERY PER PAGE OF CARDS, NOT ONE PER CARD. The gallery renders up to
+ * 200 references; a per-card read would be 200 round trips to colour in a list
+ * that has already rendered, and the ranking cannot run until they all land.
+ *
+ * ⚖️ A MISSING ROW IS THE NORMAL CASE AND NOT AN ERROR. Thirty-five videos of
+ * 9,504 have been assessed, so almost every card comes back absent — the map
+ * simply has no entry, and `readStoredReferenceProfile` turns that into an
+ * unassessed profile which decides nothing.
+ */
+export async function loadReferenceProfiles(
+  urls: readonly string[],
+): Promise<Map<string, ReferenceProfile>> {
+  const out = new Map<string, ReferenceProfile>()
+  const unique = [...new Set(urls.filter((u) => typeof u === 'string' && u.length > 0))]
+  // Chunked because a URL list goes into the query string, and one oversized
+  // request would fail the whole page rather than one slice of it.
+  for (let i = 0; i < unique.length; i += 100) {
+    const chunk = unique.slice(i, i + 100)
+    const { data, error } = await supabase
+      .from('reference_content_profiles')
+      .select('url, schema_version, profile, error')
+      .in('url', chunk)
+    // ⚠️ A FAILED READ LEAVES THE GALLERY EXACTLY AS IT IS TODAY. The assessment
+    // is an enrichment; losing it must never cost a creator the feed itself.
+    if (error) continue
+    for (const row of (data ?? []) as StoredProfileRow[]) {
+      const url = typeof row.url === 'string' ? row.url : null
+      if (url === null) continue
+      out.set(url, readStoredReferenceProfile(row, url))
+    }
+  }
+  return out
 }
 
 // NOTE: user-contributed gallery items (submit/delete) are intentionally not

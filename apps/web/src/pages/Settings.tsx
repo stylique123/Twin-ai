@@ -1151,6 +1151,12 @@ function ProfileStatus({
   ctaSaved: boolean
   ctaErr: boolean
 }) {
+  // ⚠️ `null` IS NOT `''`, AND COLLAPSING THEM TELLS A CREATOR SOMETHING FALSE.
+  // Null means the voice has not loaded yet; empty means they said they have no
+  // usual ending. `(cta ?? '').trim()` made the page announce "No usual ending"
+  // to somebody who has one, and offer them "Add one" — and a save from that
+  // state would have overwritten the answer they already gave.
+  const ctaLoaded = cta !== null
   const ctaText = (cta ?? '').trim()
   const [ctaOpen, setCtaOpen] = useState(false)
   const [ctaDraft, setCtaDraft] = useState(ctaText)
@@ -1193,7 +1199,9 @@ function ProfileStatus({
           <div className="min-w-0">
             <p className="text-sm text-cream">What viewers should do after your videos</p>
             <p className="mt-1 truncate text-sm text-sand">
-              {ctaText
+              {!ctaLoaded
+                ? 'Loading your usual ending…'
+                : ctaText
                 ? `“${ctaText}”`
                 // ⚠️ NOT AN ERROR STATE. Plenty of creators do not want every
                 // video to end with an ask, and saying so plainly is the
@@ -1203,8 +1211,9 @@ function ProfileStatus({
           </div>
           <button
             type="button"
+            disabled={cta === null}
             onClick={() => { setCtaDraft(ctaText); setCtaOpen(true) }}
-            className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream"
+            className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream disabled:opacity-40"
           >{ctaText ? 'Edit' : 'Add one'}</button>
         </div>
         {ctaSaved && <p className="mt-2 text-xs text-teal">Saved</p>}

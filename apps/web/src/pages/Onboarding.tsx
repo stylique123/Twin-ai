@@ -500,13 +500,24 @@ function BuildingStep({
   // hands over, whichever it is.
   const [qIndex, setQIndex] = useState(0)
   const [readyProfile, setReadyProfile] = useState<VoiceProfile | null>(null)
-  // ⚠️ THE LIST IS RECOMPUTED FROM THE ANSWERS, so it can SHRINK under the
-  // creator mid-flow: somebody who picks "nothing commercial" at question five
-  // removes question six while standing on question five. `questionsDone`
-  // compares against the live length rather than a constant for exactly that
-  // reason — a fixed count would leave them on a screen that no longer exists.
+  // ⚠️ FINISHING IS SOMETHING THE CREATOR DOES, NOT SOMETHING A COMPARISON
+  // DECIDES. `qIndex >= asked.length` LOOKED equivalent and was not: the list is
+  // recomputed from the answers and SHRINKS under them — answering question one
+  // can remove a later question — so the comparison flipped to true while
+  // somebody was still reading question two. With a parked profile waiting, that
+  // handed the screen over mid-answer, which is exactly the interruption the
+  // parking was built to prevent. Reported from a real run: five questions
+  // announced, three seen, the rest gone.
+  //
+  // ⚖️ SO THE ONLY TWO WAYS OUT ARE `Done` AND `Skip all`, both of them taps.
+  // The scan may finish whenever it likes; it waits.
+  const [finished, setFinished] = useState(false)
   const asked = profileQuestionsFor(profileAnswersOf(draft))
-  const questionsDone = qIndex >= asked.length
+  // ⚠️ AND A SHRINKING LIST CLAMPS RATHER THAN SKIPS. Standing on question five
+  // when the list becomes four means seeing question four, not being thrown out
+  // of the set entirely.
+  const qAt = Math.min(qIndex, Math.max(asked.length - 1, 0))
+  const questionsDone = finished || asked.length === 0
 
   // Hand over exactly once, and only when BOTH halves are finished.
   useEffect(() => {
@@ -687,10 +698,10 @@ function BuildingStep({
         // question is the only thing here only the creator can do.
         <div className="mt-5 rounded-card border border-amber/25 bg-amber/[0.06] p-4 sm:p-5">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
-            While we read · {qIndex + 1} of {asked.length}
+            While we read · {qAt + 1} of {asked.length}
           </p>
           <ProfileQuestion
-            id={asked[qIndex]}
+            id={asked[qAt]}
             draft={draft}
             onDraftChange={onDraftChange}
           />
@@ -701,14 +712,20 @@ function BuildingStep({
           <div className="mt-4 flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setQIndex((i) => i + 1)}
+              onClick={() => {
+                // The LAST question hands over; every other one advances. Read
+                // off the live list, so a list that shrank still ends where the
+                // creator can see it ending.
+                if (qAt + 1 >= asked.length) setFinished(true)
+                else setQIndex(qAt + 1)
+              }}
               className="btn-gradient flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold"
             >
-              {qIndex + 1 >= asked.length ? 'Done' : 'Next'}
+              {qAt + 1 >= asked.length ? 'Done' : 'Next'}
             </button>
             <button
               type="button"
-              onClick={() => setQIndex(asked.length)}
+              onClick={() => setFinished(true)}
               className="shrink-0 px-2 py-2 text-xs text-stone hover:text-cream"
             >
               Skip all
