@@ -11,6 +11,7 @@
     "web": "npm run dev -w @twinai/web",
     "web:build": "npm run build -w @twinai/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "eval": "node eval/run.mjs"
+    "eval": "node eval/run.mjs",
+    "assess-references": "node --experimental-strip-types scripts/assess-references.mjs"
   }
 }

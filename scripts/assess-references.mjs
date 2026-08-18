@@ -12,15 +12,27 @@
 // expensive mistake; a driver whose easiest invocation is "do everything" makes
 // that mistake the default.
 //
-//   node scripts/assess-references.mjs                  # dry run, pilot of 400
-//   node scripts/assess-references.mjs --go              # enqueue the pilot
-//   node scripts/assess-references.mjs --size 500 --go
-//   node scripts/assess-references.mjs --all --go        # the rest, after the pilot
-//   node scripts/assess-references.mjs --report          # read the results back
+// ⚠️ NEEDS `--experimental-strip-types` (Node 22+), because it imports the
+// shared TypeScript source directly. There is no build step to run first.
+//
+//   node --experimental-strip-types scripts/assess-references.mjs           # dry run, 400
+//   node --experimental-strip-types scripts/assess-references.mjs --go      # enqueue
+//   node --experimental-strip-types scripts/assess-references.mjs --report  # results
+//   node --experimental-strip-types scripts/assess-references.mjs --size 500 --go
+//   node --experimental-strip-types scripts/assess-references.mjs --all --go
 //
 // Requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
 import { createClient } from '@supabase/supabase-js'
-import { pilotSample } from '../packages/shared/dist/pilotSample.js'
+// ⚠️ THE TYPESCRIPT SOURCE, NOT A BUILD OUTPUT. `@twinai/shared` is consumed as
+// source everywhere (`"exports": "./src/index.ts"`) and has no build script, so
+// an import of `dist/` was a path that could never exist — it sent somebody to
+// run `npm run build -w @twinai/shared`, which fails with "Missing script".
+//
+// ⚖️ RUN THIS FILE WITH `node --experimental-strip-types`, which Node 22 supports
+// natively. Copying `pilotSample` in here instead would have been the other way
+// out, and it would put the selection rules in two places — the drift this repo
+// keeps paying to remove.
+import { pilotSample } from '../packages/shared/src/pilotSample.ts'
 
 const arg = (name, fallback = null) => {
   const i = process.argv.indexOf(`--${name}`)
