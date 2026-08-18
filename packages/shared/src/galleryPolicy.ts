@@ -120,8 +120,16 @@ export function eligibility(ref: ReferenceProfile, me: GalleryCreatorView): Elig
         explain: 'This one is built from personal stories only you can tell.',
       }
     }
-    const productSlots = slots.value.filter((s) => s.kind === 'product')
-    if (productSlots.length > 0 && me.productCount === 0 && me.relationship === 'NONE') {
+    // ⚠️ BOTH COMMERCIAL SLOT KINDS, AND THE SECOND ONE WAS MISSED FOR A WHILE.
+    // This read only `product` until the four-creator fixture caught it: adding
+    // `tool_or_software` to the schema created a second way to need something to
+    // sell, and a refusal that knows about one of two kinds is a refusal that
+    // silently stopped covering half its cases. "3 AI tools every founder needs"
+    // is exactly as unfinishable for somebody with nothing to sell as three
+    // physical products would be.
+    const commercialSlots = slots.value.filter(
+      (s) => s.kind === 'product' || s.kind === 'tool_or_software')
+    if (commercialSlots.length > 0 && me.productCount === 0 && me.relationship === 'NONE') {
       return {
         eligible: false,
         reason: 'commercially_unavailable',
