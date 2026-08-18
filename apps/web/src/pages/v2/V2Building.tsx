@@ -236,6 +236,23 @@ export default function V2Building() {
   // then generate without them.
   const answersRef = useRef<Record<string, string>>(
     recallAnswers(buildKey((loc.state || {}) as BuildState)))
+  /** Record one answer and persist it in the same breath.
+   *
+   *  ⚠️ FIVE AFFORDANCES ANSWER THESE QUESTIONS — a chip, a sub-chip, a product
+   *  chip, the "or type something else" box and the plain text box — and each
+   *  one had its own copy of "merge, then remember". Five copies of a save is
+   *  five chances for the next affordance to be added without one, and the event
+   *  that loses an answer is not a submit: it is a background tab reclaimed with
+   *  no warning and no unload.
+   *
+   *  ⚖️ SO THE SAVE IS THE FUNCTION, NOT A LINE INSIDE EACH HANDLER. A new
+   *  control cannot forget to persist, because setting an answer is what
+   *  persisting IS. */
+  const answer = (field: string, value: string): void => setAskAnswers((a) => {
+    const next = { ...a, [field]: value }
+    rememberAnswers(buildKey(state), next)
+    return next
+  })
   const [retryNonce, setRetryNonce] = useState(0)
   const started = useRef(false)
   // Set ONLY by the explicit Cancel button — so leaving via the nav (Library,
@@ -777,19 +794,14 @@ export default function V2Building() {
                         type="button"
                         aria-pressed={active}
                         title={o.hint}
-                        onClick={() => setAskAnswers((a) => {
+                        onClick={() => {
                           // Tapping the active chip clears it, so a mis-tap
                           // is one tap to undo rather than a reload. A group
                           // opens on its FIRST child, which the second row
                           // then lets the creator change — so one tap is
                           // always a complete answer.
-                          const next = {
-                            ...a,
-                            [q.field]: active ? '' : (kids[0]?.value ?? o.value),
-                          }
-                          rememberAnswers(buildKey(state), next)
-                          return next
-                        })}
+                          answer(q.field, active ? '' : (kids[0]?.value ?? o.value))
+                        }}
                         className={cn(
                           'rounded-full border px-3.5 py-2 text-left text-[13px] transition-colors',
                           active
@@ -823,11 +835,7 @@ export default function V2Building() {
                             key={c.value}
                             type="button"
                             aria-pressed={on}
-                            onClick={() => setAskAnswers((a) => {
-                              const next = { ...a, [q.field]: c.value }
-                              rememberAnswers(buildKey(state), next)
-                              return next
-                            })}
+                            onClick={() => answer(q.field, c.value)}
                             className={cn(
                               'rounded-full border px-3 py-1.5 text-[12px] transition-colors',
                               on
@@ -856,11 +864,7 @@ export default function V2Building() {
                         key={pr.id}
                         type="button"
                         aria-pressed={active}
-                        onClick={() => setAskAnswers((a) => {
-                          const next = { ...a, [q.field]: active ? '' : label }
-                          rememberAnswers(buildKey(state), next)
-                          return next
-                        })}
+                        onClick={() => answer(q.field, active ? '' : label)}
                         className={cn(
                           'rounded-xl border px-3.5 py-2 text-left text-[13px] transition-colors',
                           active
@@ -891,11 +895,7 @@ export default function V2Building() {
                   type="text"
                   autoComplete="off"
                   value={askAnswers[q.field] ?? ''}
-                  onChange={(ev) => setAskAnswers((a) => {
-                    const next = { ...a, [q.field]: ev.target.value }
-                    rememberAnswers(buildKey(state), next)
-                    return next
-                  })}
+                  onChange={(ev) => answer(q.field, ev.target.value)}
                   className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
                   placeholder="Or type something else"
                 />
@@ -905,14 +905,11 @@ export default function V2Building() {
                   type="text"
                   autoComplete="off"
                   value={askAnswers[q.field] ?? ''}
-                  onChange={(ev) => setAskAnswers((a) => {
-                    // ⚠️ SAVED ON EVERY KEYSTROKE, because the event that
-                    // loses them is not a submit — it is a background tab
-                    // being reclaimed with no warning and no unload.
-                    const next = { ...a, [q.field]: ev.target.value }
-                    rememberAnswers(buildKey(state), next)
-                    return next
-                  })}
+                  // ⚠️ SAVED ON EVERY KEYSTROKE, because the event that loses
+                  // them is not a submit — it is a background tab being
+                  // reclaimed with no warning and no unload. `answer` is what
+                  // makes that true for every control at once.
+                  onChange={(ev) => answer(q.field, ev.target.value)}
                   className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
                   placeholder="Your answer"
                 />

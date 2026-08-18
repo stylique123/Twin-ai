@@ -62,8 +62,14 @@ describe('the offer question offers what the creator already registered', () => 
     // ⚖️ THE EVENT THAT LOSES AN ANSWER IS NOT A SUBMIT — it is a background tab
     // reclaimed with no warning. A picker that skipped this would lose exactly
     // the answers the text box keeps.
+    // ⚖️ BOTH CONTROLS — the product chip and the "or type something else" box —
+    // go through the one save path. Counting `rememberAnswers` inside the block
+    // stopped working when the copies were folded into `answer`, and the count
+    // was never the property anyway: what matters is that neither control sets
+    // an answer without persisting it, which is now true by construction.
     const block = PAGE.slice(PAGE.indexOf("q.field === 'offer' && (products"))
-    expect(block.slice(0, 3200).match(/rememberAnswers\(buildKey\(state\), next\)/g) ?? [])
-      .toHaveLength(2)
+    expect((block.slice(0, 3200).match(/answer\(q\.field, /g) ?? []).length)
+      .toBeGreaterThanOrEqual(2)
+    expect(block.slice(0, 3200)).not.toMatch(/setAskAnswers\(/)
   })
 })

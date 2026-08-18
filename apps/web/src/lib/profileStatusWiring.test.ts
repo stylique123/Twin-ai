@@ -74,21 +74,34 @@ describe('the CTA is the creator’s to type, and only theirs', () => {
     expect(SETTINGS).not.toMatch(/cta: dna\.goal|cta: .*goal/)
   })
 
-  it('writes only what a person typed, on blur rather than per keystroke', () => {
-    // ⚖️ Every intermediate value of a sentence being typed would otherwise be
+  it('writes only what a person typed, and only when they say so', () => {
+    // ⚖️ EVERY INTERMEDIATE VALUE OF A SENTENCE BEING TYPED would otherwise be
     // stored as a confirmed preference.
+    //
+    // ⚠️ THIS ASSERTION WAS REWRITTEN, NOT RELAXED. It used to pin an `onBlur`
+    // commit on a naked input; the screen now edits in a dialog with an explicit
+    // Save, which is a STRONGER version of the same property — so the test
+    // follows the property rather than the markup it was first written against.
     expect(SETTINGS).toMatch(/savePreScriptBrief\(defaultVoiceId, \{ defaultCta: next\.trim\(\) \}\)/)
-    expect(SETTINGS).toMatch(/onBlur=\{\(e\) => onCtaCommit\(e\.target\.value\)\}/)
+    // The box edits a DRAFT; nothing commits from a keystroke.
+    expect(SETTINGS).toMatch(/onChange=\{\(e\) => setCtaDraft\(e\.target\.value\)\}/)
+    expect(SETTINGS).not.toMatch(/onChange=\{[^}]*onCtaCommit/)
+    // And an explicit "I have no usual ending" is storable, which a cleared box
+    // and a walk away is not.
+    expect(SETTINGS).toMatch(/onCtaCommit\(''\)/)
   })
 
   it('distinguishes not-loaded from set-to-nothing', () => {
-    // ⚠️ RENDERING "not loaded" AS AN EMPTY BOX would show a blank to somebody
-    // who has a CTA — and a save from that box would erase it.
+    // ⚠️ RENDERING "not loaded" AS "no usual ending" TELLS A CREATOR WHO HAS ONE
+    // THAT THEY DO NOT, and offers to "Add one" over the top of their answer.
+    // `(cta ?? '').trim()` did exactly that until this test caught it.
+    expect(SETTINGS).toMatch(/const ctaLoaded = cta !== null/)
     expect(SETTINGS).toMatch(/disabled=\{cta === null\}/)
+    expect(SETTINGS).toMatch(/!ctaLoaded\s*\n?\s*\? 'Loading your usual ending/)
   })
 
   it('says what happens when it is left blank', () => {
     // ⚖️ Twin writing one is not a penalty and should not read as a warning.
-    expect(SETTINGS).toMatch(/Twin will\s*\n?\s*write one that fits each video/)
+    expect(SETTINGS).toMatch(/Twin writes one to fit each video/)
   })
 })

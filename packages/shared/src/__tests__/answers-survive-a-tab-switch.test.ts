@@ -21,8 +21,15 @@ const BUILD = readFileSync(
 describe('typed answers survive the tab being reclaimed', () => {
   it('writes on every keystroke, not on submit or blur', () => {
     // ⚠️ THE WHOLE POINT. A discarded tab fires no unload.
-    const onChange = BUILD.slice(BUILD.indexOf('onChange={(ev) => setAskAnswers'))
-    expect(onChange.slice(0, 500)).toMatch(/rememberAnswers\(buildKey\(state\), next\)/)
+    //
+    // ⚖️ ASSERTED ON THE ONE SAVE PATH RATHER THAN INSIDE EACH HANDLER. Five
+    // affordances used to carry their own copy of "merge, then remember", which
+    // is five chances for the sixth to be added without one. `answer` makes
+    // persisting what SETTING an answer is, so a control cannot forget — and
+    // every control now routes through it.
+    const helper = BUILD.slice(BUILD.indexOf('const answer = (field: string, value: string)'))
+    expect(helper.slice(0, 300)).toMatch(/rememberAnswers\(buildKey\(state\), next\)/)
+    expect(BUILD).toMatch(/onChange=\{\(ev\) => answer\(q\.field, ev\.target\.value\)\}/)
   })
 
   it('restores them into the FORM on mount', () => {
