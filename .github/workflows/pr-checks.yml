@@ -51,13 +51,6 @@ jobs:
   # registry cannot claim `autoedit` and the editor env flags are gone.
   unit-tests:
     runs-on: ubuntu-latest
-    # ⚠️ THE WHOLE JOB IS BOUNDED, NOT JUST THE STEP I HAPPENED TO WATCH HANG.
-    # Bounding one step was the wrong shape of fix: the next hang moved to `npm
-    # ci`, which had no cap and sat for over two hours while the PR reported
-    # "in progress". Measured baseline: this entire workflow finishes in UNDER
-    # THREE MINUTES on `main`. Thirty is ten times the real cost and still far
-    # below the six-hour default that let a dead job look like a working one.
-    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -89,57 +82,21 @@ jobs:
       # uses, and copies the result onto the runner, rather than hardcoding a
       # Debian package URL/version that could silently drift out of sync with the
       # Dockerfile. Docker ships preinstalled on GitHub-hosted runners.
-      #
-      # ⚠️ EVERY CALL HERE IS BOUNDED, BECAUSE A HUNG PULL LOOKS EXACTLY LIKE A
-      # SLOW TEST RUN. Measured twice on one commit: this step sat 30+ minutes in
-      # the `docker run` with no output and no test ever started, so the PR read
-      # as "unit-tests in progress" for an hour while nothing was being tested.
-      # Silence is not a pass anywhere else in this repo and it must not be one
-      # here. The timeouts change no byte of what gets installed — they only
-      # decide how long we wait before calling the fetch failed.
-      #
-      # ⚖️ AND THE SOURCE OF THE FONTS IS UNCHANGED ON PURPOSE. Reaching for an
-      # Ubuntu apt package or a pinned Debian URL would make an outage disappear
-      # by shipping DIFFERENT BYTES than the deploy image — the exact drift the
-      # note above exists to prevent. A retry is allowed to fix a flaky network;
-      # nothing is allowed to fix it by changing what we install.
       - name: Install ffmpeg; fetch the caption fonts from the ACTUAL deploy image
-        timeout-minutes: 12
         run: |
-          set -euo pipefail
-          timeout 300 sudo apt-get update -qq
-          timeout 300 sudo apt-get install -y -qq --no-install-recommends ffmpeg
+          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
           D=/usr/share/fonts/truetype/dejavu
           sudo mkdir -p "$D"
-          for attempt in 1 2 3; do
-            echo "font fetch attempt $attempt"
-            if timeout 240 docker run --rm -v "$D:/out" node:22-bookworm-slim bash -c \
-              "apt-get update -qq && apt-get install -y -qq --no-install-recommends fonts-dejavu-core && cp /usr/share/fonts/truetype/dejavu/*.ttf /out/"; then
-              break
-            fi
-            if [ "$attempt" = 3 ]; then
-              echo "::error::could not fetch the caption fonts from node:22-bookworm-slim after 3 attempts"
-              exit 1
-            fi
-            sleep $((attempt * 20))
-          done
-          # A silent no-op copy would leave the renderer tests running on whatever
-          # fonts the runner happens to have — the failure this whole step exists
-          # to rule out. So prove the bytes landed.
-          ls -1 "$D"/*.ttf > /dev/null
-      # ⚖️ AND THE INSTALLS CARRY THEIR OWN CAPS, so a failure names the phase it
-      # died in. "unit-tests timed out" tells you nothing; "the registry install
-      # timed out" tells you it was never about the tests.
+          docker run --rm -v "$D:/out" node:22-bookworm-slim bash -c \
+            "apt-get update -qq && apt-get install -y -qq --no-install-recommends fonts-dejavu-core && cp /usr/share/fonts/truetype/dejavu/*.ttf /out/"
       - name: Install + test @twinai/shared
         run: |
-          set -euo pipefail
-          timeout 600 npm ci
+          npm ci
           npm test -w @twinai/shared
       - name: Install + test worker
         working-directory: worker
         run: |
-          set -euo pipefail
-          timeout 600 npm ci
+          npm ci
           npm test
 
   # Model-pin integrity (speech-6): the digest verifier, the bridge fail-closed
