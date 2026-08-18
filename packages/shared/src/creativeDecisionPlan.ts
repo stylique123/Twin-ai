@@ -22,12 +22,61 @@
 // before a writer is called and before anybody is charged.
 
 import type { VideoGoal, ContentFocus } from './videoIntent'
-import type { CanonicalRelationship, PlannerView } from './profileAssembler'
+import type { CanonicalRelationship, CanonicalLevel, PlannerView } from './profileAssembler'
+import type { ContainerType, HookMechanism } from './referenceContentProfile'
+import type { ProductionMode } from './referenceProfile'
 
-/** What the video is for, decided once. */
+/** How present the creator's own product is allowed to be.
+ *
+ *  ⚠️ THE SMALL FIELD THAT STOPS EVERY FOUNDER VIDEO BECOMING AN ADVERT. A
+ *  product library is something the writer MAY use, not something it must
+ *  mention; without this field the only signals are "products exist" and "the
+ *  goal is not sell", and a model handed both writes a commercial anyway.
+ *
+ *  ⚖️ FOUR STEPS, BECAUSE "MENTION IT OR DO NOT" IS NOT THE REAL RANGE. A tool
+ *  used as one example among three is a different video from one the whole
+ *  script is about, and both are different from a passing credential. */
+export const PRODUCT_ROLES = ['none', 'example', 'supporting', 'primary'] as const
+export type ProductRole = (typeof PRODUCT_ROLES)[number]
+
+/** What the video is for, decided once.
+ *
+ * ⚠️ EVERY FIELD HERE IS A DECISION, AND NONE OF THEM IS PROSE. The plan says
+ * what is being made; it never says a sentence that could reach a viewer. A
+ * string that turns up in the finished script would make this stage a writer,
+ * and then two stages would be writing.
+ *
+ * ⚖️ CONTENT SOURCES ARE DELIBERATELY ABSENT. "Where does this fact come from"
+ * is a property of a SLOT, not of a plan — slot 1 from the product library,
+ * slot 3 research-required — and a plan-level list would have to be re-matched
+ * to slots by whoever read it. The container resolver carries it per slot,
+ * which is the only place the answer is unambiguous. */
 export interface CreativeDecisionPlan {
   objective: VideoGoal
   focus: ContentFocus | null
+  /** ⚠️ THIS CHANGES WORDING, NOT A LABEL IN A PROMPT. Beginner explains its
+   *  terms; expert skips the introduction entirely. Null means unasked, and the
+   *  writer is told to pitch for a mixed room rather than guessing. */
+  audienceLevel: CanonicalLevel | null
+  /** What the video is about, and the specific take on it. Both are short
+   *  noun phrases decided by the premise selector — never a sentence. */
+  topic: string | null
+  angle: string | null
+  /** How it will be made and roughly how long. `null` means undecided rather
+   *  than "whatever the writer likes". */
+  format: ProductionMode | null
+  targetSeconds: number | null
+  /** How this reference organises attention, and how it opens. Taken from the
+   *  reference's own assessed structure rather than chosen freshly, which is
+   *  what makes the adaptation a transfer instead of an imitation. */
+  structure: ContainerType | null
+  hookStrategy: HookMechanism | null
+  /** ⚖️ HOW PRESENT THE PRODUCT MAY BE, decided before prose. */
+  productRole: ProductRole
+  /** Things this script may not do, in the creator's own terms — a claim they
+   *  will not make, a competitor they will not name. Carried so the writer and
+   *  the validator read the SAME list. */
+  restrictions: readonly string[]
   /** Product entity ids this video may speak about. Empty is a real answer. */
   products: readonly string[]
   /** ⚖️ THE PERMISSIONS, RESOLVED — not the evidence for them. Downstream stages
@@ -48,6 +97,7 @@ export const CDP_ERRORS = [
   'OWNERSHIP_WITHOUT_OWNED_PRODUCT',
   'COMMERCIAL_CTA_WITHOUT_RELATIONSHIP',
   'DISCLOSURE_MISSING_FOR_PAID_TIE',
+  'PRODUCT_ROLE_WITHOUT_PRODUCT',
 ] as const
 export type CdpErrorCode = (typeof CDP_ERRORS)[number]
 
@@ -57,6 +107,39 @@ export interface CdpViolation {
   message: string
   /** What they can actually do about it. Never an instruction to "fix the plan". */
   remedies: readonly string[]
+}
+
+/**
+ * A plan with every decision at its undecided value.
+ *
+ * ⚠️ SPREAD THIS RATHER THAN WRITING A LITERAL. A fixture or a caller that
+ * builds a plan by hand silently omits every field added after it was written,
+ * and an omitted DECISION reads as `undefined` at the point that obeys it —
+ * which is how a new field ships enforced nowhere.
+ *
+ * ⚖️ `productRole` DEFAULTS TO `none`, not to whatever the products list
+ * implies. Selecting a product makes it available to the writer; it does not
+ * ask for a video about it.
+ */
+export function blankPlan(objective: VideoGoal): CreativeDecisionPlan {
+  return {
+    objective,
+    focus: null,
+    audienceLevel: null,
+    topic: null,
+    angle: null,
+    format: null,
+    targetSeconds: null,
+    structure: null,
+    hookStrategy: null,
+    productRole: 'none',
+    restrictions: [],
+    products: [],
+    ownershipLanguage: false,
+    commercialCta: false,
+    disclosureRequired: false,
+    cta: null,
+  }
 }
 
 /**
@@ -135,6 +218,22 @@ export function validateCreativeDecisionPlan(
       code: 'COMMERCIAL_CTA_WITHOUT_RELATIONSHIP',
       message: 'This plan would ask viewers to buy something you have no stake in.',
       remedies: ['Tell us your relationship to it', 'Ask for a follow or a comment instead'],
+    })
+  }
+
+  // ⚠️ A ROLE FOR A PRODUCT THAT IS NOT IN THE PLAN. The writer would be told
+  // to build the video around something it was never given, and the most likely
+  // repair is the worst one: inventing a product to fill the hole.
+  // A plan that never settled a role has not asked for one — an absent
+  // decision is not the same as a decision to feature something.
+  if (plan.productRole && plan.productRole !== 'none' && !hasProduct) {
+    out.push({
+      code: 'PRODUCT_ROLE_WITHOUT_PRODUCT',
+      message: 'This plan builds the video around a product, and none is selected.',
+      remedies: [
+        'Pick which product this video is about',
+        'Let the script talk about the topic without a product',
+      ],
     })
   }
 

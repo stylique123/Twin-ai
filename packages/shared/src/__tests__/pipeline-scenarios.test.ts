@@ -29,7 +29,7 @@ import { compileVideoIntent, CONTENT_FOCUS, CONTENT_FOCUS_LABELS, VIDEO_GOALS } 
 import { claimRulesFor, mayWriteCommercialCta } from '../productEntity'
 import { extractionTrust } from '../productExtraction'
 import { assembleCreatorProfile, toPlannerView, toWriterView } from '../profileAssembler'
-import { validateCreativeDecisionPlan, isCertified } from '../creativeDecisionPlan'
+import { validateCreativeDecisionPlan, isCertified, blankPlan } from '../creativeDecisionPlan'
 import { mayUseOwnershipLanguage, mayClaimPersonalUse, mayAdaptObservedTrait } from '../authority'
 
 const NOW = '2026-08-17T00:00:00.000Z'

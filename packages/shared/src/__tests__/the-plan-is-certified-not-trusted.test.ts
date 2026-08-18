@@ -13,6 +13,7 @@
 // charged — not in a prompt the model may weigh against a contradicting line.
 import { describe, expect, it } from 'vitest'
 import {
+  blankPlan,
   validateCreativeDecisionPlan, isCertified, CDP_ERRORS,
   type CreativeDecisionPlan,
 } from '../creativeDecisionPlan'
@@ -24,13 +25,8 @@ const creatorWith = (ties: string[]) =>
   toPlannerView(assembleCreatorProfile({ answers: { commercialTies: ties } as never, now }))
 
 const plan = (over: Partial<CreativeDecisionPlan> = {}): CreativeDecisionPlan => ({
-  objective: 'educate',
+  ...blankPlan('educate'),
   focus: 'expertise',
-  products: [],
-  ownershipLanguage: false,
-  commercialCta: false,
-  disclosureRequired: false,
-  cta: null,
   ...over,
 })
 
