@@ -120,6 +120,43 @@ describe('unanswered is not answered', () => {
   })
 })
 
+describe('a brand account is not a founder', () => {
+  // ⚠️ IT WAS BRIEFLY MAPPED TO `founder`, guarded by a test asserting nothing
+  // downstream exploited the difference. That protected a known-wrong
+  // representation instead of fixing it — and a planner reading `founder` has
+  // every reason to conclude a human founder is speaking.
+  //
+  // ⚖️ SO THE ROLE EXISTS. This is the cheapest moment it could have been added,
+  // and the rule that forced it is the one this module already runs on: a total
+  // map must make somebody DECIDE what a new option means, and brand means
+  // something different from founder.
+  it('gets its own canonical role', () => {
+    expect(of({ workKind: 'brand' }).role!.value).toBe('brand')
+    expect(of({ workKind: 'founder' }).role!.value).toBe('founder')
+    expect(of({ workKind: 'saas' }).role!.value).toBe('founder')
+  })
+
+  it('and the planner can tell them apart', () => {
+    // ⚖️ THE POINT OF THE FIFTH ROLE. A brand may say "we" and "our product"
+    // where authorised; it may not say "I built this" or "when I started" —
+    // personal-founder authority nobody at a company account can assert.
+    expect(toPlannerView(of({ workKind: 'brand' })).role)
+      .not.toBe(toPlannerView(of({ workKind: 'founder' })).role)
+  })
+
+  it('while the writer still gets the trade, not just the role', () => {
+    expect(toWriterView(of({ workKind: 'brand' })).workKind).toBe('brand')
+  })
+
+  it('and ownership language still comes from the relationship, never the role', () => {
+    // ⚠️ THE RULE THAT DOES NOT CHANGE. A new role must not become a new source
+    // of permission — that is the confusion the whole authority model refuses.
+    expect(toPlannerView(of({ workKind: 'brand' })).mayUseOwnershipLanguage).toBe(false)
+    expect(toPlannerView(of({ workKind: 'brand', commercialTies: ['own_product'] }))
+      .mayUseOwnershipLanguage).toBe(true)
+  })
+})
+
 describe('the most permissive tie wins, and tap order never decides', () => {
   it('reads an owner who also has affiliate links as an owner', () => {
     // ⚠️ REDUCING THEM TO AFFILIATE WOULD FORBID "we built this" ABOUT THEIR OWN

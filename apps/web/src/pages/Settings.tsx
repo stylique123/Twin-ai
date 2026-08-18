@@ -260,6 +260,8 @@ export default function Settings() {
    *  not hiding: the summary answers "does this sound like me", which is the
    *  question people actually open this page with. */
   const [dnaOpen, setDnaOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [savingProfile, setSavingProfile] = useState(false)
 
   const content = contentProfile({
     answers: profileAnswers,
@@ -312,9 +314,26 @@ export default function Settings() {
       case 'manage_products': return nav('/products')
       case 'setup_brand_kit': return setTab('brand')
       case 'view_dna': return setTab('twin')
-      case 'edit_profile': return nav('/onboarding')
+      // ⚠️ IT USED TO LEAVE SETTINGS ENTIRELY. Sending somebody to onboarding to
+      // change one answer means re-walking a flow they finished weeks ago, and
+      // the thing they wanted to change was two chips.
+      case 'edit_profile': return setProfileOpen(true)
       case 'edit_cta': return setTab('twin')
     }
+  }
+
+  /** ⚖️ THE SAME TWO ANSWERS THE PIPELINE ACTUALLY BRANCHES ON. What they know
+   *  decides how much a script explains; the commercial tie decides what it may
+   *  claim. Both are the creator's own assertion, so editing them here carries
+   *  exactly the authority it carried at onboarding — `user_answer` either way. */
+  const saveProfileAnswers = async (patch: Record<string, unknown>) => {
+    if (!defaultVoiceId) return
+    setSavingProfile(true)
+    try {
+      await savePreScriptBrief(defaultVoiceId, patch)
+      await loadVoice()
+    } catch { setErr('Could not save that answer. Try again.') }
+    finally { setSavingProfile(false) }
   }
 
   const saveDna = async () => {
@@ -438,6 +457,104 @@ export default function Settings() {
             </div>
           </section>
         </Reveal>
+        )}
+
+        {/* ── EDIT PROFILE, WITHOUT LEAVING THE PAGE ─────────────────────────
+            ⚠️ THE CARD USED TO SEND SOMEBODY TO ONBOARDING. Changing one answer
+            meant re-walking a flow they finished weeks ago, to alter what is
+            really two chips — so most people never changed anything, and the
+            profile silently aged.
+            ⚖️ ONLY THE TWO THE PIPELINE BRANCHES ON. What they know decides how
+            much a script explains; the commercial tie decides what it may claim.
+            The rest of onboarding is either already visible on this page or does
+            not change behaviour, and a settings drawer that reprints an entire
+            questionnaire is the wall of forms this rebuild exists to remove. */}
+        {profileOpen && (
+          <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-5" role="dialog" aria-modal>
+            <div className="glass max-h-[85vh] w-full max-w-lg overflow-y-auto p-5">
+              <p className="font-heading text-cream">What Twin writes from</p>
+              <p className="mt-1 text-sm leading-relaxed text-sand">
+                These two change your scripts more than anything else here.
+              </p>
+
+              <p className="mt-5 text-sm text-cream">How much does your audience already know?</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {([
+                  ['beginners', 'They are new to this'],
+                  ['basics', 'They know the basics'],
+                  ['experienced', 'They know it well'],
+                  ['mixed', 'A bit of everything'],
+                ] as const).map(([v, label]) => {
+                  const on = profileAnswers?.audienceKnowledge === v
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      aria-pressed={on}
+                      disabled={savingProfile}
+                      onClick={() => void saveProfileAnswers({ audienceKnowledge: on ? null : v })}
+                      className={`rounded-full border px-3.5 py-2 text-[13px] ${
+                        on ? 'border-coral/50 bg-coral/[0.08] text-cream'
+                          : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20'}`}
+                    >{label}</button>
+                  )
+                })}
+              </div>
+
+              <p className="mt-5 text-sm text-cream">Do you sell or promote anything?</p>
+              <p className="mt-0.5 text-xs text-stone">
+                This decides what your scripts are allowed to claim. Pick everything that is true.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {([
+                  ['own_product', 'I sell my own product'],
+                  ['own_service', 'I sell my own service'],
+                  ['affiliate', 'I earn a commission'],
+                  ['sponsor', 'I get paid to feature things'],
+                  ['review', 'I just cover things'],
+                  ['none', 'Nothing commercial'],
+                ] as const).map(([v, label]) => {
+                  const ties = profileAnswers?.commercialTies ?? []
+                  const on = ties.includes(v)
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      aria-pressed={on}
+                      disabled={savingProfile}
+                      onClick={() => {
+                        // ⚖️ "NOTHING COMMERCIAL" IS EXCLUSIVE. Holding it beside a
+                        // real tie is a contradiction, and the pipeline would have
+                        // to pick one — which is the class of decision this whole
+                        // batch moved out of the model and into code.
+                        const next = v === 'none'
+                          ? (on ? [] : ['none'])
+                          : on ? ties.filter((t) => t !== v)
+                            : [...ties.filter((t) => t !== 'none'), v]
+                        void saveProfileAnswers({ commercialTies: next })
+                      }}
+                      className={`rounded-full border px-3.5 py-2 text-[13px] ${
+                        on ? 'border-coral/50 bg-coral/[0.08] text-cream'
+                          : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20'}`}
+                    >{label}</button>
+                  )
+                })}
+              </div>
+
+              <div className="mt-6 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => nav('/onboarding')}
+                  className="text-xs text-sand underline"
+                >Go through all the questions again</button>
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen(false)}
+                  className="btn-gradient rounded-lg px-3.5 py-2 text-sm"
+                >{savingProfile ? 'Saving…' : 'Done'}</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {tab === 'twin' && (
