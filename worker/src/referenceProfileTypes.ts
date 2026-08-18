@@ -44,6 +44,14 @@ export const CTA_MECHANISMS = [
 ] as const
 export type CtaMechanism = (typeof CTA_MECHANISMS)[number]
 
+/** ⚠️ AND THE RELATIONSHIP VOCABULARY, COPIED FROM `profileAssembler.ts`. It is
+ *  the CREATOR's own list, reused for the reference so the gallery compares like
+ *  with like; the parity test holds this copy to that module. */
+export const CANONICAL_RELATIONSHIPS = [
+  'OWN_PRODUCT', 'OWN_SERVICE', 'AFFILIATE', 'SPONSOR', 'REVIEW_ONLY', 'NONE',
+] as const
+export type CanonicalRelationship = (typeof CANONICAL_RELATIONSHIPS)[number]
+
 // ── WHO IT IS FOR ─────────────────────────────────────────────────────────
 
 /** ⚖️ HOW MUCH THE VIEWER ALREADY KNOWS, which decides how much a script must
@@ -188,6 +196,29 @@ export interface ContentSlot {
   required: boolean
 }
 
+/**
+ * What stance the video takes toward the thing it discusses.
+ *
+ * ⚠️ THE VOCABULARY IS THE CREATOR'S OWN, REUSED AND NOT COPIED. The gallery's
+ * question is a COMPARISON — "could this creator honestly make this video" — and
+ * a comparison between two different vocabularies is a mapping table waiting to
+ * drift. `CANONICAL_RELATIONSHIPS` already asks exactly this of the creator, so
+ * it asks it of the reference too.
+ *
+ * ⚖️ AND IT IS THE FIELD THAT MAKES THE AFFILIATE REFUSAL POSSIBLE. "Why we
+ * built this" is an OWNER's sentence. An affiliate recreating it puts a false
+ * ownership claim in their own mouth, and until this field existed the gallery
+ * had no way to tell that pattern apart from a review — so the refusal was named
+ * as missing rather than faked. This is the field it was waiting for.
+ *
+ * ⚠️ `not_checked` MUST STAY THE DEFAULT AND MUST REFUSE NOTHING. Every card is
+ * unassessed today; a posture guessed from a container would refuse real videos
+ * on a hunch, which is worse than the gap it closes.
+ */
+export interface CommercialFacts {
+  posture: Assessed<CanonicalRelationship>
+}
+
 export interface RequirementFacts {
   contentSlots: Assessed<readonly ContentSlot[]>
   personalExperienceRequired: Assessed<Requirement>
@@ -233,6 +264,7 @@ export interface ReferenceContentProfile {
   hook: HookFacts
   structure: StructureFacts
   requirements: RequirementFacts
+  commercial: CommercialFacts
   transfer: TransferFacts
   /** Whether a transcript was actually available. Distinguishes "assessed and
    *  quiet" from "never had a source", which the re-queue predicate needs. */
@@ -275,6 +307,9 @@ export function emptyContentProfile(
       personalExperienceRequired: unchecked(TRANSCRIPT),
       productsRequired: unchecked(TRANSCRIPT),
       externalFactsRequired: unchecked(TRANSCRIPT),
+    },
+    commercial: {
+      posture: unchecked('what the speaker claims about the thing they discuss'),
     },
     transfer: {
       structureTransferability: 'not_checked',
