@@ -27,8 +27,12 @@ describe('worker job registry has no old editor', () => {
       // it says. Listed here for the same reason purge_media is: a job type
       // that appeared in the registry without a line in this test would be a
       // capability nobody chose.
-      'build_voice', 'editor_v2', 'extract_product', 'ingest', 'purge_media',
-      'scrape_dna', 'validate_clip', 'validate_source',
+      // assess_reference reads ONE gallery video's transcript and stores what
+      // its structure requires. Enqueued by scripts/assess-references.mjs — and
+      // `transcribe` below is the cautionary tale for why that matters: it was
+      // registered, claimed, and enqueued by nothing at all.
+      'assess_reference', 'build_voice', 'editor_v2', 'extract_product', 'ingest',
+      'purge_media', 'scrape_dna', 'validate_clip', 'validate_source',
     ])
     expect(handlers).not.toHaveProperty('autoedit')
     expect(handlers).not.toHaveProperty('transcribe')

@@ -64,6 +64,24 @@ const ALLOWED_REGISTRY = [
   // this guard exists to force — a job type that appeared without touching this
   // line would be a second deploy path arriving by accident.
   'extract_product',
+  // assess_reference reads ONE gallery video's transcript and stores what its
+  // structure REQUIRES — container, beats, and the content slots that decide
+  // whether Twin could finish a script from it. It belongs on this host for the
+  // same reasons extract_product and scrape_dna do: it shells out to yt-dlp and
+  // whisper, it is slow, and it must survive a browser tab closing.
+  //
+  // IT RENDERS NOTHING, which is the test this list actually applies. It writes
+  // rows to reference_content_profiles and encodes no media; the gallery reads
+  // those rows. A second rendering path would appear as a top-level type doing
+  // composition work, and this is not one.
+  //
+  // As an EXTRA it failed the build, which is what sent someone to read this
+  // comment — working exactly as designed. As a MISSING entry,
+  // scripts/assess-references.mjs would enqueue thousands of jobs no worker
+  // claims, they would age out unclaimed, and the batch would report zero
+  // progress with the script, the migration and the handler all looking correct
+  // — the same quiet failure purge_media and validate_clip are listed to prevent.
+  'assess_reference',
 ]
 
 // Second-deploy manifests. Vercel (web app) is intentionally NOT here.
