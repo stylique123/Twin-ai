@@ -60,7 +60,12 @@ export interface AssessableCard {
   why?: string | null
 }
 
-export interface ReferenceAssessment {
+/** ⚠️ NAMED FOR WHAT IT ASSESSES, because `ReferenceAssessment` was already
+ *  taken by `editor/referenceCheck.ts` — and that one answers a different
+ *  question entirely: whether a reference may be USED at all. This one answers
+ *  what it would take to FILM. Two concepts under one name is how a reader comes
+ *  to think a permission check and a production check are the same thing. */
+export interface ProductionAssessment {
   /** `true` where a marker established it. NEVER `false` — see the asymmetry. */
   requiresFilmingObjects: boolean | null
   requiresScreenRecording: boolean | null
@@ -118,7 +123,7 @@ const hits = (text: string, markers: readonly string[]): string[] =>
  * and to leave every other card exactly as unassessed as it was, rather than
  * dressing a guess as a measurement.
  */
-export function assessFromText(card: AssessableCard): ReferenceAssessment {
+export function assessFromText(card: AssessableCard): ProductionAssessment {
   const text = haystack(card)
   const objects = hits(text, OBJECT_MARKERS)
   const screen = hits(text, SCREEN_MARKERS)
@@ -135,6 +140,6 @@ export function assessFromText(card: AssessableCard): ReferenceAssessment {
  *  "looked at" — a card nobody could read is still a card nobody has assessed,
  *  and marking it examined would hide it from the vision pass that could
  *  actually answer it. */
-export function isConclusive(a: ReferenceAssessment): boolean {
+export function isConclusive(a: ProductionAssessment): boolean {
   return a.requiresFilmingObjects === true || a.requiresScreenRecording === true
 }
