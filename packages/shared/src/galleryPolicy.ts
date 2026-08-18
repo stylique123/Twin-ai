@@ -72,7 +72,7 @@ export interface Eligibility {
  * `productionModeMatch` already runs on.
  */
 export function eligibility(ref: ReferenceProfile, me: GalleryCreatorView): Eligibility {
-  const mode = ref.production.primaryMode
+  const mode = ref.visual.primaryMode
   if (isKnown(mode) && mode.value === 'other_unsupported') {
     return {
       eligible: false,
@@ -90,7 +90,7 @@ export function eligibility(ref: ReferenceProfile, me: GalleryCreatorView): Elig
   // commercial refusal here is the one both sides can actually answer: a
   // product-shaped format for somebody who told us they sell nothing.
 
-  const slots = ref.structure.slots
+  const slots = ref.content.requirements.contentSlots
   if (isKnown(slots)) {
     const personal = slots.value.filter((s) => s.kind === 'personal_experience')
     // ⚠️ TWIN CANNOT INVENT A PERSONAL FAILURE, and a gallery that ranked "my
@@ -181,8 +181,8 @@ export function compareForCreator(
   if (fmt !== 0) return fmt
 
   // 5. STRUCTURE TRANSFERABILITY
-  const tr = both(RANK_TRANSFER[a.profile.structure.structureTransferability],
-                  RANK_TRANSFER[b.profile.structure.structureTransferability])
+  const tr = both(RANK_TRANSFER[a.profile.content.transfer.structureTransferability],
+                  RANK_TRANSFER[b.profile.content.transfer.structureTransferability])
   if (tr !== 0) return tr
 
   // 6 + 7. NICHE, THEN REACH — today's comparator, unchanged and last.
@@ -203,7 +203,7 @@ function goalRank(ref: ReferenceProfile, me: GalleryCreatorView): number {
 }
 
 function formatRank(ref: ReferenceProfile, me: GalleryCreatorView): number {
-  const m = ref.production.primaryMode
+  const m = ref.visual.primaryMode
   if (!isKnown(m) || me.preferredFormats.length === 0) return 99
   return me.preferredFormats.includes(m.value) ? 0 : 1
 }
