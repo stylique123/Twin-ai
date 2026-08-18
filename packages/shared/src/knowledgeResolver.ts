@@ -43,6 +43,9 @@ import type { CreatorKnowledge, KnowledgeItem } from './creatorKnowledge'
 // ⚖️ Imports DOWN into a module with no imports of its own, which is what makes
 // one shared rule possible without a cycle. See the note at `claimStrength.ts`.
 import { claimStrength } from './claimStrength'
+import type { ContainerTemplate, TemplateBeat } from './containerTemplates'
+import type { ContentSlotKind } from './referenceContentProfile'
+import type { FillableEntity } from './slotFill'
 
 export const EVIDENCE_LEVELS = ['coverage', 'opinion', 'experience'] as const
 export type EvidenceLevel = (typeof EVIDENCE_LEVELS)[number]
@@ -180,6 +183,105 @@ export function resolveAll(
   opts: { productKnown?: boolean; researchable?: boolean } = {},
 ): Resolution[] {
   return containers.map((c) => resolveContainer(c, knowledge, opts))
+}
+
+// ── A TEMPLATE'S HOLES, RESOLVED AGAINST A LIBRARY ────────────────────────
+//
+// ⚠️ THIS RESOLVER COULD SAY "product_dna" AND NOT WHICH PRODUCT. `productKnown`
+// is a boolean and the match is a regex over the beat's description, which is
+// enough to route a beat and not enough to fill it: "3 AI tools every founder
+// needs" resolved three times to `product_dna` and left the writer to pick three
+// tools — which it does by inventing them, or by naming the same one three times.
+//
+// ⚖️ SO THE ASSIGNMENT IS ONE ENTITY TO ONE SLOT, and it is the same arithmetic
+// `slotFill` does for the gallery card. Two different answers to "can this
+// product fill this hole" is how a card promises what a script cannot deliver,
+// so the rules are deliberately identical — narrowest slot first, archived and
+// NONE-relationship entities excluded.
+
+/** ⚠️ IDENTICAL TO `slotFill`'s SET, ON PURPOSE. A reference recommending three
+ *  apps cannot be filled by three candles. */
+const TOOL_TYPES: ReadonlySet<string> = new Set(['SAAS', 'APP', 'MARKETPLACE', 'DIGITAL_PRODUCT'])
+
+/** What a template beat needs, expressed as this module's evidence ladder.
+ *
+ *  ⚖️ `personal_experience` MAPS TO `experience` AND NOTHING WEAKER. That is the
+ *  rung that licenses "I" plus a personal history, and filling it from coverage
+ *  is the most expensive error this system can make. */
+const NEED_FOR_KIND: Record<ContentSlotKind, SubstanceNeed> = {
+  product: 'coverage',
+  tool_or_software: 'coverage',
+  personal_experience: 'experience',
+  current_fact: 'coverage',
+  claim: 'opinion',
+  example: 'coverage',
+}
+
+export interface TemplateResolution extends Resolution {
+  /** The template beat this answers. */
+  label: string
+  /** The entity assigned to it, when the slot takes one and one was free. */
+  entityId: string | null
+}
+
+export interface ResolveTemplateOptions {
+  /** The creator's live library — the same records the gallery card matched. */
+  entities?: readonly FillableEntity[]
+  researchable?: boolean
+}
+
+/**
+ * Resolve every hole in a container template.
+ *
+ * ⚠️ NOTHING UNRESOLVED REACHES THE WRITER, and the cheapest moment to discover
+ * a video cannot be made is before anybody is charged for it. Beats that take a
+ * product are assigned an actual entity; the rest fall through to the evidence
+ * ladder, which already knows what to do when nothing fills them.
+ */
+export function resolveTemplate(
+  template: ContainerTemplate,
+  knowledge: CreatorKnowledge,
+  opts: ResolveTemplateOptions = {},
+): TemplateResolution[] {
+  const entities = opts.entities ?? []
+  const needing = template.beats.filter(
+    (b): b is TemplateBeat & { needs: ContentSlotKind } => b.needs !== null)
+
+  // ⚖️ NARROWEST FIRST. A tool slot can only take a tool; a product slot takes
+  // anything usable. Filling the permissive one first can spend the only SaaS on
+  // it and report a shortfall while a complete assignment existed.
+  const byNarrowness = [...needing].sort((a, b) =>
+    (a.needs === 'tool_or_software' ? 0 : 1) - (b.needs === 'tool_or_software' ? 0 : 1))
+  const taken = new Set<string>()
+  const assigned = new Map<string, string>()
+  for (const beat of byNarrowness) {
+    if (beat.needs !== 'product' && beat.needs !== 'tool_or_software') continue
+    const match = entities.find((e) =>
+      !taken.has(e.id)
+      && e.archivedAt === null && e.relationship !== 'NONE'
+      && (beat.needs === 'product' || TOOL_TYPES.has(e.type)))
+    if (match) { taken.add(match.id); assigned.set(beat.label, match.id) }
+  }
+
+  return needing.map((beat) => {
+    const entityId = assigned.get(beat.label) ?? null
+    const container: Container = {
+      id: beat.label,
+      about: beat.purpose,
+      needs: NEED_FOR_KIND[beat.needs],
+    }
+    // ⚠️ AN ASSIGNED ENTITY IS A RESOLVED SLOT, FULL STOP. The creator holds it
+    // and Twin knows which one it is, so there is nothing left to look up and
+    // nothing to ask them.
+    if (entityId !== null) {
+      return { container, source: 'product_dna', evidence: [], fallback: null, label: beat.label, entityId }
+    }
+    const r = resolveContainer(container, knowledge, {
+      productKnown: false,
+      researchable: opts.researchable,
+    })
+    return { ...r, label: beat.label, entityId: null }
+  })
 }
 
 /**
