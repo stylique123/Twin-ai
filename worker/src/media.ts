@@ -206,6 +206,54 @@ async function apifyDataset(actor: string, input: unknown, timeoutMs = 300_000):
   }
 }
 
+/** An Apify run that reports a failure IN ITS DATASET rather than by failing.
+ *
+ * ⚠️ THE SHAPE THAT MADE A PUBLIC ACCOUNT LOOK PRIVATE. The Instagram Actor
+ * succeeds, exits 0, and writes ONE item that is not a post:
+ *
+ *   { error: 'no_items', errorDescription: 'Empty or private data for provided
+ *     input', requestErrorMessages: ['Error: request timed out after 30 seconds'] }
+ *
+ * Every item was being mapped to a post, so this became a post with no caption,
+ * was dropped by the caption filter, and surfaced to the creator as "we couldn't
+ * read any public posts — if that account is private or empty, make it public".
+ * The account was public with thousands of posts. The Actor had TIMED OUT.
+ *
+ * ⚖️ AND THE ACTOR'S OWN WORDING IS NOT TO BE TRUSTED EITHER. It labels a
+ * timeout "Empty or private data", which is a guess about a cause it does not
+ * know. Passing that through to a creator turns our infrastructure problem into
+ * an accusation about their account. */
+const isErrorItem = (e: Record<string, unknown>): boolean =>
+  typeof e.error === 'string' && e.error.trim() !== ''
+
+/** The read failed on OUR side. Distinct from a genuinely empty account, which
+ *  is a fact about the creator and needs the opposite message. */
+export class ProfileReadFailedError extends Error {
+  readonly detail: string
+  constructor(detail: string) {
+    super(`profile read failed: ${detail}`)
+    this.name = 'ProfileReadFailedError'
+    this.detail = detail
+  }
+}
+
+/** Split a dataset into real records and the run's own error report. */
+function partitionItems(items: Record<string, unknown>[]): {
+  records: Record<string, unknown>[]; failure: string | null
+} {
+  const records = items.filter((e) => !isErrorItem(e))
+  const errs = items.filter(isErrorItem)
+  if (records.length > 0 || errs.length === 0) return { records, failure: null }
+  const first = errs[0]
+  // ⚠️ THE UNDERLYING MESSAGE IS PREFERRED OVER THE ACTOR'S LABEL, because
+  // "request timed out after 30 seconds" is the true cause and "Empty or
+  // private data" is the Actor guessing at one.
+  const why = Array.isArray(first.requestErrorMessages) && first.requestErrorMessages.length > 0
+    ? String(first.requestErrorMessages[0])
+    : String(first.errorDescription ?? first.error ?? 'unknown')
+  return { records, failure: why.split('\n')[0].slice(0, 200) }
+}
+
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 const nullableInt = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const nonEmpty = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? v.trim().replace(/^@/, '') : null)
@@ -223,8 +271,13 @@ async function tiktokProfileViaApify(handle: string, limit: number) {
     shouldDownloadCovers: false,
     downloadSubtitlesOptions: 'NEVER_DOWNLOAD_SUBTITLES',
   })
-  const author = (items[0]?.authorMeta ?? {}) as Record<string, unknown>
-  const posts: ScrapedPost[] = items
+  const authorSource = items.find((e) => !isErrorItem(e)) ?? {}
+  const author = (authorSource.authorMeta ?? {}) as Record<string, unknown>
+  // ⚠️ AN ERROR REPORT IS NOT A POST — the same rule on every Actor-backed
+  // reader, because the shape is the Actor platform's, not Instagram's.
+  const { records, failure } = partitionItems(items)
+  if (failure !== null) throw new ProfileReadFailedError(failure)
+  const posts: ScrapedPost[] = records
     .map((e) => {
       const text = String(e.text ?? '').replace(/\s+/g, ' ').trim()
       const meta = (e.videoMeta ?? {}) as Record<string, unknown>
@@ -242,7 +295,7 @@ async function tiktokProfileViaApify(handle: string, limit: number) {
     // discarding everything and reading nothing must not look identical.
     .filter((p) => p.text.length > 0)
   const facts: ScrapedProfileFacts = {
-    rawCount: items.length,
+    rawCount: records.length,
     resolvedHandle: nonEmpty(author.name),
     displayName: nonEmpty(author.nickName),
     audience: nullableInt(author.fans),
@@ -261,8 +314,11 @@ async function youtubeChannelViaApify(handle: string, limit: number) {
     maxResultStreams: 0,
     sortVideosBy: 'NEWEST',
   })
-  const first = items[0] ?? {}
-  const posts: ScrapedPost[] = items
+  // ⚠️ AN ERROR REPORT IS NOT A POST. See `partitionItems`.
+  const { records, failure } = partitionItems(items)
+  if (failure !== null) throw new ProfileReadFailedError(failure)
+  const first = records[0] ?? {}
+  const posts: ScrapedPost[] = records
     .map((e) => {
       const text = String(e.title ?? '').replace(/\s+/g, ' ').trim()
       return {
@@ -281,7 +337,7 @@ async function youtubeChannelViaApify(handle: string, limit: number) {
     // discarding everything and reading nothing must not look identical.
     .filter((p) => p.text.length > 0)
   const facts: ScrapedProfileFacts = {
-    rawCount: items.length,
+    rawCount: records.length,
     resolvedHandle: nonEmpty(first.channelUsername),
     displayName: nonEmpty(first.channelName),
     audience: nullableInt(first.numberOfSubscribers),
@@ -298,8 +354,13 @@ async function instagramProfileViaApify(handle: string, limit: number) {
     resultsLimit: limit,
     addParentData: false,
   })
-  const first = items[0] ?? {}
-  const posts: ScrapedPost[] = items
+  // ⚠️ AN ERROR REPORT IS NOT A POST. This is the function the defect was found
+  // in: the Actor timed out on a large public account, wrote one error item, and
+  // every downstream layer read it as a caption-less post.
+  const { records, failure } = partitionItems(items)
+  if (failure !== null) throw new ProfileReadFailedError(failure)
+  const first = records[0] ?? {}
+  const posts: ScrapedPost[] = records
     .map((e) => {
       const text = String(e.caption ?? '').replace(/\s+/g, ' ').trim()
       return {
@@ -316,7 +377,7 @@ async function instagramProfileViaApify(handle: string, limit: number) {
     // discarding everything and reading nothing must not look identical.
     .filter((p) => p.text.length > 0)
   const facts: ScrapedProfileFacts = {
-    rawCount: items.length,
+    rawCount: records.length,
     // ⚖️ THE HANDLE THE POSTS ACTUALLY CAME FROM. This is what lets
     // `assessScanTarget` catch a profile URL that resolved to someone else —
     // the specific hazard that made refusing Instagram the right call until an

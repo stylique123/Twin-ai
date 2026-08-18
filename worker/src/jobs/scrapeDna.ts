@@ -1,5 +1,5 @@
 import { db, type Job } from '../db.js'
-import { scrapeProfile, UnsupportedPlatformError, type ScrapedPost } from '../media.js'
+import { scrapeProfile, UnsupportedPlatformError, ProfileReadFailedError, type ScrapedPost } from '../media.js'
 import { assessScanTarget } from '../scanTarget.js'
 import { selectVideosToTranscribe, transcriptBudgetFor, scrapePoolFor } from '../transcriptSelection.js'
 import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
@@ -173,6 +173,20 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
       }))
       return await fail(
         `We can't scan ${platform} accounts yet. Connect a TikTok or YouTube account, or set up your voice manually.`,
+      )
+    }
+    // ⚠️ THE READER SAID IT COULD NOT READ, AND THAT IS OURS TO OWN. An Apify
+    // Actor that times out writes an error INTO ITS DATASET and exits zero, so
+    // this used to arrive as "no posts" and get reported as a private or empty
+    // account. It reached a creator whose account was public with thousands of
+    // posts. A read failure is transient and ours; an empty account is neither.
+    if (err instanceof ProfileReadFailedError) {
+      console.error(JSON.stringify({
+        event: 'scrape_dna_reader_failed', handle, platform, detail: err.detail.slice(0, 300),
+      }))
+      return await fail(
+        `We couldn't finish reading @${handle} just now — that is on our side, not your account. ` +
+          `Try again in a minute, or set up your voice manually.`,
       )
     }
     const detail = err instanceof Error ? err.message : String(err)
