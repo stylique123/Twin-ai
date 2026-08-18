@@ -184,14 +184,14 @@ dump.
 
 | # | item | state |
 |---|---|---|
-| 1 | Small CDP schema — goal, audience, topic, angle, format, length, products, hook, structure, CTA, restrictions, sources | **next** |
-| 2 | Container taxonomy — 10–15 containers, each with a template | not built |
-| 3 | Container resolver — every slot filled or explicitly research-required | not built |
-| 4 | Content-source routing — product / creator / research | not built |
-| 5 | Writer receives resolved inputs only | not built |
-| 6 | Speech-polish pass — may not add claims, change facts, CTA or premise | not built |
-| 7 | Simple validator — binary checks, then three judgements | not built |
-| 8 | Six scenario tests | not built |
+| 1 | Small CDP schema — extended, not cut: it held eight permission fields and no decisions | **done** |
+| 2 | Container taxonomy — 14 templates with their holes named; `other` deliberately has none | **done** |
+| 3 | Container resolver — `resolveTemplate` adds entity assignment to the existing `knowledgeResolver` | **done** |
+| 4 | Content-source routing — class + attribution per slot | **done** |
+| 5 | Writer receives resolved inputs only — `WriterInput`, five keys, proven off the serialised payload | **done in shared; NOT yet wired into `generate-blueprint`** |
+| 6 | Speech-polish contract + speakability measurement | **done in shared; the model call is not built** |
+| 7 | Validator — 9 binary checks, 3 word-verdicts, `isGeneric` | **done** |
+| 8 | Six scenario tests, end to end through the chain | **done** |
 | 9 | A real creator records 10 videos | **not started — and it gates everything** |
 | 10 | Inspect spoken-script differences | after 9 |
 
@@ -262,5 +262,6 @@ completed.** A script admired in Review and never recorded is not good enough.
 
 | date | change |
 |---|---|
+| 2026-08-18 | Steps 1–8 built. Two corrections worth keeping: the CDP was smaller than the target rather than bloated, and the container resolver already existed — a second one was written and deleted before it shipped. |
 | 2026-08-18 | §4a added — the scripting rebuild, in the owner's stated order. |
 | 2026-08-18 | Written. Consolidates the phase plan, the track plan and the ledger into one status page, because "what is left" could not be answered without reading three documents totalling ~5,000 lines. |
