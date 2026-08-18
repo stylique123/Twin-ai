@@ -127,6 +127,14 @@ export interface ScrapedProfileFacts {
   displayName: string | null
   audience: number | null
   postCount: number | null
+  /** ⚠️ HOW MANY POSTS THE SOURCE ACTUALLY RETURNED, BEFORE ANY FILTERING.
+   *  "The account is private or empty" and "we read twelve posts and threw all
+   *  twelve away" produce the same empty array and need opposite responses —
+   *  the first is the creator's to fix, the second is ours. Reported against a
+   *  real failure on a large public Instagram account whose posts carried no
+   *  caption text where the reader looked for it. `null` where a source cannot
+   *  say. */
+  rawCount: number | null
 }
 
 export async function scrapeTikTokProfile(
@@ -152,6 +160,8 @@ export async function scrapeTikTokProfile(
     // so reading it here would report "12 posts" for every prolific account and
     // — worse — a real 0 would be indistinguishable from a page that failed.
     postCount: int(data.playlist_count),
+    // How many the reader actually got back this run, before any filtering.
+    rawCount: entries.length,
   }
   return { posts: buildPosts(entries), facts }
 }
@@ -227,8 +237,12 @@ async function tiktokProfileViaApify(handle: string, limit: number) {
         cover: typeof meta.coverUrl === 'string' ? meta.coverUrl : undefined,
       }
     })
+    // ⚖️ A CAPTION IS WHAT THE VOICE IS LEARNED FROM, so a post without one
+    // teaches nothing — but the COUNT of what was dropped is kept below, because
+    // discarding everything and reading nothing must not look identical.
     .filter((p) => p.text.length > 0)
   const facts: ScrapedProfileFacts = {
+    rawCount: items.length,
     resolvedHandle: nonEmpty(author.name),
     displayName: nonEmpty(author.nickName),
     audience: nullableInt(author.fans),
@@ -262,8 +276,12 @@ async function youtubeChannelViaApify(handle: string, limit: number) {
         cover: typeof e.thumbnailUrl === 'string' ? e.thumbnailUrl : undefined,
       }
     })
+    // ⚖️ A CAPTION IS WHAT THE VOICE IS LEARNED FROM, so a post without one
+    // teaches nothing — but the COUNT of what was dropped is kept below, because
+    // discarding everything and reading nothing must not look identical.
     .filter((p) => p.text.length > 0)
   const facts: ScrapedProfileFacts = {
+    rawCount: items.length,
     resolvedHandle: nonEmpty(first.channelUsername),
     displayName: nonEmpty(first.channelName),
     audience: nullableInt(first.numberOfSubscribers),
@@ -293,8 +311,12 @@ async function instagramProfileViaApify(handle: string, limit: number) {
         cover: typeof e.displayUrl === 'string' ? e.displayUrl : undefined,
       }
     })
+    // ⚖️ A CAPTION IS WHAT THE VOICE IS LEARNED FROM, so a post without one
+    // teaches nothing — but the COUNT of what was dropped is kept below, because
+    // discarding everything and reading nothing must not look identical.
     .filter((p) => p.text.length > 0)
   const facts: ScrapedProfileFacts = {
+    rawCount: items.length,
     // ⚖️ THE HANDLE THE POSTS ACTUALLY CAME FROM. This is what lets
     // `assessScanTarget` catch a profile URL that resolved to someone else —
     // the specific hazard that made refusing Instagram the right call until an

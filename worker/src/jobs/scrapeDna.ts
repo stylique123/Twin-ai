@@ -207,10 +207,23 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
       // from being unable to read the page at all.
       resolved_handle: profileFacts?.resolvedHandle ?? null,
       post_count: profileFacts?.postCount ?? null,
+      // ⚠️ THE FIELD THAT SEPARATES TWO OPPOSITE CAUSES. Reported against a
+      // large, public, obviously non-empty Instagram account: the reader
+      // returned posts and every one was dropped for having no caption where it
+      // looked. `raw_count: 0` is the account; anything higher is us.
+      raw_count: profileFacts?.rawCount ?? null,
     }))
+    // ⚖️ AND THE CREATOR IS TOLD WHICH ONE IT WAS. "Make it public for a moment"
+    // is useless advice to somebody whose account is already public with
+    // thousands of posts, and it quietly blames them for our defect.
+    const read = profileFacts?.rawCount ?? 0
     return await fail(
-      `We couldn't read any public posts from @${handle}. If that account is private or empty, make it public ` +
-        `for a moment, try a different public account, or set up your voice manually.`,
+      read > 0
+        ? `We found @${handle} and read ${read} post${read === 1 ? '' : 's'}, but none of them had ` +
+          `text we could learn a voice from. This one is on us — try another account for now, or set ` +
+          `up your voice manually.`
+        : `We couldn't read any public posts from @${handle}. If that account is private or empty, make it public ` +
+          `for a moment, try a different public account, or set up your voice manually.`,
     )
   }
 
