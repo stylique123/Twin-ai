@@ -34,6 +34,14 @@ import { parseContentExtraction, NOT_DETERMINED } from '../referenceExtraction.j
  */
 const MAX_TRANSCRIPT_CHARS = 24_000
 
+/** Below this, there is no speech worth reading.
+ *
+ *  ⚖️ 120 CHARACTERS IS ROUGHLY ONE SENTENCE. A video with less than that is
+ *  music, dance or text-on-screen — real content, but not content a TRANSCRIPT
+ *  pass can read. The frames pass is what would see it, and saying so is more
+ *  useful than an eighteen-field rejection list that looks like a model failure. */
+const MIN_TRANSCRIPT_CHARS = 120
+
 const SYSTEM = `You read one short-form video transcript and report its STRUCTURE.
 
 You are not summarising and you are not reviewing. Another system decides whether
@@ -67,21 +75,114 @@ RULES, and the response is machine-checked against them:
    allowed to recreate the video, so a wrong owner claim hides a good reference
    from them.`
 
-/** The vocabularies, spelled out for the model. Kept beside the prompt because a
- *  list the model cannot see is a list it cannot obey — while the CHECK on it
- *  lives in the shared validator, which is what actually enforces this. */
+/**
+ * The response shape, fully specified.
+ *
+ * ⚠️ THIS IS A `responseSchema`, NOT A HINT. Gemini returns ONLY what the schema
+ * describes, so the first version — every field declared `{ type: 'object' }`
+ * with no inner properties — gave it no shape to fill and it returned empty
+ * objects. The pilot's first four videos came back with all eighteen fields
+ * `saw: "undefined"`, which read exactly like "the model refused to answer" and
+ * was in fact "the request never asked".
+ *
+ * ⚖️ SO EVERY FIELD IS SPELLED OUT, INCLUDING ITS ENUM. That does double duty:
+ * the model cannot return a word outside the vocabulary in the first place, and
+ * `parseContentExtraction` still rejects one if it does. A schema and a check
+ * are not redundant here — the schema shapes the request, the check defends
+ * against the response.
+ */
+const ASSESSED = (valueSchema: unknown): unknown => ({
+  type: 'object',
+  properties: { value: valueSchema, evidence: { type: 'string' } },
+  required: ['value', 'evidence'],
+})
+const STR = { type: 'string' }
+const enumOf = (values: readonly string[]): unknown => ({ type: 'string', enum: values })
+
 const SCHEMA = {
   type: 'object',
   properties: {
-    topic: { type: 'object' },
-    subtopic: { type: 'object' },
-    audience: { type: 'object' },
-    likelyGoals: { type: 'object' },
-    hook: { type: 'object' },
-    structure: { type: 'object' },
-    requirements: { type: 'object' },
-    commercial: { type: 'object' },
-    transfer: { type: 'object' },
+    topic: ASSESSED(STR),
+    subtopic: ASSESSED(STR),
+    audience: {
+      type: 'object',
+      properties: {
+        likelySegment: ASSESSED(STR),
+        sophistication: ASSESSED(enumOf(['beginner', 'intermediate', 'advanced', 'mixed'])),
+      },
+    },
+    likelyGoals: ASSESSED({
+      type: 'array',
+      items: enumOf(['growth', 'authority', 'education', 'conversation', 'leads', 'sales', 'entertainment']),
+    }),
+    hook: {
+      type: 'object',
+      properties: {
+        mechanism: ASSESSED(enumOf(['question', 'negative_claim', 'curiosity_gap', 'contradiction',
+          'statistic', 'promise', 'story_open', 'direct_address', 'demonstration', 'other'])),
+        promise: ASSESSED(STR),
+      },
+    },
+    structure: {
+      type: 'object',
+      properties: {
+        containerType: ASSESSED(enumOf(['numbered_list', 'mistakes', 'confession', 'before_after',
+          'unpopular_opinion', 'tutorial', 'reaction', 'comparison', 'story', 'myth_busting',
+          'problem_solution', 'prediction', 'framework', 'recommendation', 'other'])),
+        beats: ASSESSED({
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              role: enumOf(['hook', 'setup', 'item', 'turn', 'evidence', 'rehook', 'payoff', 'cta']),
+              startSec: { type: 'number' },
+              endSec: { type: 'number' },
+              summary: STR,
+            },
+            required: ['role', 'summary'],
+          },
+        }),
+        rehookPosition: ASSESSED({ type: 'integer' }),
+        payoffType: ASSESSED(enumOf(['answer', 'reveal', 'summary', 'result', 'none'])),
+        ctaMechanism: ASSESSED(enumOf(['follow', 'comment', 'share', 'save', 'link', 'book', 'buy',
+          'implicit', 'none'])),
+      },
+    },
+    requirements: {
+      type: 'object',
+      properties: {
+        contentSlots: ASSESSED({
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              kind: enumOf(['product', 'tool_or_software', 'personal_experience', 'claim',
+                'example', 'current_fact']),
+              label: STR,
+            },
+            required: ['kind', 'label'],
+          },
+        }),
+        personalExperienceRequired: ASSESSED(enumOf(['required', 'optional', 'not_required'])),
+        productsRequired: ASSESSED({ type: 'integer' }),
+        externalFactsRequired: ASSESSED(enumOf(['required', 'optional', 'not_required'])),
+      },
+    },
+    commercial: {
+      type: 'object',
+      properties: {
+        posture: ASSESSED(enumOf(['OWN_PRODUCT', 'OWN_SERVICE', 'AFFILIATE', 'SPONSOR',
+          'REVIEW_ONLY', 'NONE'])),
+      },
+    },
+    transfer: {
+      type: 'object',
+      properties: {
+        structureTransferability: enumOf(['high', 'medium', 'low']),
+        topicDependence: ASSESSED(enumOf(['low', 'medium', 'high'])),
+        reasons: { type: 'array', items: STR },
+      },
+    },
   },
 }
 
@@ -140,6 +241,24 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
   }
 
   const full = transcript.text ?? ''
+
+  // ⚠️ A SILENT VIDEO IS A FINDING, NOT A QUESTION FOR A MODEL. The pilot's
+  // first results included transcripts of three and five characters — music-led
+  // TikToks with no speech. Sending those to Gemini spends a call to be told
+  // nothing, on a library where they may be common. Recorded as assessed with a
+  // reason, so the next run does not pay to rediscover them.
+  if (full.trim().length < MIN_TRANSCRIPT_CHARS) {
+    await db.from('reference_content_profiles').upsert({
+      url, platform, profile: {}, rejections: [], fields_accepted: 0,
+      transcript_source: transcript.source ?? null,
+      paid_because: transcript.paidBecause ?? null,
+      transcript_chars: full.length,
+      error: `no_speech: transcript was ${full.trim().length} characters`,
+      assessed_at: assessedAt,
+    }, { onConflict: 'url' })
+    return { url, skipped: 'no_speech', transcript_chars: full.length }
+  }
+
   const text = full.slice(0, MAX_TRANSCRIPT_CHARS)
 
   const raw = await geminiJson(
