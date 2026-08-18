@@ -25,7 +25,7 @@
 // nobody has actually put to the transcript.
 
 import type { Assessed } from './assessed'
-import { unchecked, indeterminate } from './assessed'
+import { unchecked, indeterminate, isKnown } from './assessed'
 import {
   CONTAINER_TYPES, HOOK_MECHANISMS, PAYOFF_TYPES, SOPHISTICATION, LIKELY_GOALS,
   REQUIREMENT, CONTENT_SLOT_KINDS, BEAT_ROLES,
@@ -129,6 +129,25 @@ const nonEmptyString = (v: unknown): string | null =>
 const wholeNumber = (v: unknown): number | null =>
   typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null
 
+/** The value the model must send when a video never re-hooks.
+ *
+ *  ⚠️ A `responseSchema` OF `{ type: 'integer' }` CANNOT CARRY `null`, so the
+ *  prompt asked for an answer the request made illegal. The model did the only
+ *  two things left to it: omit the field (12 of 35 in the pilot) or invent a
+ *  negative (3 more). Both were recorded as failures of the model, and neither
+ *  was one. */
+export const NO_REHOOK = -1
+
+/** ⚠️ BOXED, BECAUSE `null` IS BOTH A LEGAL ANSWER AND `readField`'s REJECTION
+ *  SIGNAL. "There is no re-hook" is an observation about the video; returning a
+ *  bare `null` would have it filed as "the model said something unusable", and
+ *  the two must not share a representation. */
+const rehookIndex = (v: unknown): { at: number | null } | null => {
+  if (v === null || v === NO_REHOOK) return { at: null }
+  const n = wholeNumber(v)
+  return n === null ? null : { at: n }
+}
+
 const goalList = (v: unknown): readonly typeof LIKELY_GOALS[number][] | null => {
   if (!Array.isArray(v) || v.length === 0) return null
   const out = v.filter((g): g is typeof LIKELY_GOALS[number] =>
@@ -163,8 +182,18 @@ const beatList = (v: unknown): readonly Beat[] | null => {
   return out
 }
 
+/** ⚠️ AN EMPTY LIST IS A REAL ANSWER HERE, UNLIKE EVERY OTHER LIST IN THIS FILE.
+ *  "This video needs nothing supplied" is what a piece of pure commentary looks
+ *  like, and the pilot rejected six of thirty-five videos for saying exactly
+ *  that. A rejection turns the highest-leverage field into `not_checked`, which
+ *  makes `slotFill` return "no opinion" about a video we HAVE read — and puts it
+ *  back in the re-run queue to be asked the same question again.
+ *
+ *  ⚖️ THE EVIDENCE RULE IS WHAT KEEPS THIS HONEST. `readField` still discards an
+ *  empty list with nothing behind it, so "needs nothing" has to be asserted
+ *  against a quote rather than arrived at by giving up. */
 const slotList = (v: unknown): readonly ContentSlot[] | null => {
-  if (!Array.isArray(v) || v.length === 0) return null
+  if (!Array.isArray(v)) return null
   const out: ContentSlot[] = []
   for (const [i, s] of v.entries()) {
     if (!isRecord(s)) return null
@@ -215,9 +244,11 @@ export function parseContentExtraction(
   // ⚠️ A REHOOK MUST POINT AT A BEAT THAT EXISTS. An index into a list the same
   // response failed to produce is not a position, and stored as one it would
   // make the teleprompter's beat-deletion bug reachable from data.
-  let rehook = readField<number | null>(
-    structure.rehookPosition, 'structure.rehookPosition', at,
-    (v) => (v === null ? null : wholeNumber(v)), rejections)
+  const boxedRehook = readField(
+    structure.rehookPosition, 'structure.rehookPosition', at, rehookIndex, rejections)
+  let rehook: Assessed<number | null> = isKnown(boxedRehook)
+    ? { ...boxedRehook, value: boxedRehook.value.at }
+    : boxedRehook
   if (rehook.basis === 'observed' && typeof rehook.value === 'number') {
     const n = beats.basis === 'observed' ? beats.value.length : 0
     if (rehook.value >= n) {

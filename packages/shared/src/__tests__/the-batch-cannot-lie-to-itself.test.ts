@@ -8,7 +8,7 @@
 // written, an invented container is indistinguishable from an observed one — so
 // the only safe direction to fail is "we did not learn this".
 import { describe, expect, it } from 'vitest'
-import { parseContentExtraction, NOT_DETERMINED } from '../referenceExtraction'
+import { parseContentExtraction, NOT_DETERMINED, NO_REHOOK } from '../referenceExtraction'
 import { pilotSample, isTranscribable, stableOrder, type SampleCandidate } from '../pilotSample'
 import { isKnown, worthChecking } from '../assessed'
 
@@ -114,6 +114,37 @@ describe('a rehook must point at a beat that exists', () => {
     expect(isKnown(p) && p.value).toBe(1)
   })
 
+  it('and "this video never re-hooks" is an answer, not a failure', () => {
+    // ⚠️ THE PILOT'S LARGEST REJECTION BUCKET, AND THE MODEL WAS RIGHT EVERY
+    // TIME. The prompt asked for "an index, or null if the video never
+    // re-hooks", while the responseSchema said `{ type: 'integer' }` — so the
+    // only correct answer was one the request had made illegal. 15 of 35 videos
+    // were recorded as model failures for saying it anyway.
+    for (const said of [NO_REHOOK, null]) {
+      const r = parse({ structure: { beats, rehookPosition: ok(said) } })
+      const p = r.profile.structure.rehookPosition
+      expect(isKnown(p), String(said)).toBe(true)
+      expect(isKnown(p) && p.value).toBeNull()
+      expect(reasonFor(r, 'structure.rehookPosition')).toBeUndefined()
+    }
+  })
+
+  it('but a known absence still needs evidence like anything else', () => {
+    // ⚖️ OTHERWISE "no re-hook" BECOMES THE FREE ANSWER. A model that stops
+    // reading would reach for it, and the field would fill with confident
+    // absences nobody looked for.
+    const r = parse({ structure: { beats, rehookPosition: { value: NO_REHOOK, evidence: '  ' } } })
+    expect(isKnown(r.profile.structure.rehookPosition)).toBe(false)
+    expect(reasonFor(r, 'structure.rehookPosition')).toBe('no_evidence')
+  })
+
+  it('and a still-absent field is not read as an absence of re-hook', () => {
+    // ⚠️ SILENCE IS NOT "NO". The whole point of the sentinel is that the model
+    // has to SAY it; a field nobody answered stays not_checked.
+    const r = parse({ structure: { beats } })
+    expect(worthChecking(r.profile.structure.rehookPosition)).toBe(true)
+  })
+
   it('a beat ending before it starts is a parse error wearing a number', () => {
     const bad = ok([{ role: 'hook', startSec: 20, endSec: 3, summary: 'x' }])
     expect(isKnown(parse({ structure: { beats: bad } }).profile.structure.beats)).toBe(false)
@@ -148,6 +179,38 @@ describe('the count and the slots must agree, and the slots win', () => {
     })
     const n = r.profile.requirements.productsRequired
     expect(isKnown(n) && n.value).toBe(2)
+  })
+
+  it('an empty slot list is a real answer about a video we read', () => {
+    // ⚠️ SIX OF THIRTY-FIVE PILOT VIDEOS SAID THIS AND WERE REFUSED. "Nothing
+    // has to be supplied to remake this" is what pure commentary looks like;
+    // filing it as `not_checked` throws away the answer, tells `slotFill` to
+    // have no opinion about a video we HAVE read, and queues it to be asked the
+    // same question a second time at the same price.
+    const r = parse({ requirements: { contentSlots: ok([], 'the speaker only reacts') } })
+    const slots = r.profile.requirements.contentSlots
+    expect(isKnown(slots)).toBe(true)
+    expect(isKnown(slots) && slots.value).toEqual([])
+    expect(reasonFor(r, 'requirements.contentSlots')).toBeUndefined()
+  })
+
+  it('and an empty list with nothing behind it is still refused', () => {
+    const r = parse({ requirements: { contentSlots: { value: [], evidence: '' } } })
+    expect(isKnown(r.profile.requirements.contentSlots)).toBe(false)
+    expect(reasonFor(r, 'requirements.contentSlots')).toBe('no_evidence')
+  })
+
+  it('a product count above zero contradicts an empty slot list', () => {
+    // ⚖️ THE NEW ANSWER MUST NOT OPEN A NEW WAY TO DISAGREE WITH ITSELF.
+    const r = parse({
+      requirements: { contentSlots: ok([], 'nothing named'), productsRequired: ok(2) },
+    })
+    expect(isKnown(r.profile.requirements.productsRequired)).toBe(false)
+    expect(reasonFor(r, 'requirements.productsRequired')).toBe('contradicts_slots')
+  })
+
+  it('but an empty beat list is still a failure, because every video has a hook', () => {
+    expect(isKnown(parse({ structure: { beats: ok([], 'x') } }).profile.structure.beats)).toBe(false)
   })
 
   it('and a slot with no label is not a slot', () => {

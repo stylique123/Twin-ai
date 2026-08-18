@@ -56,7 +56,7 @@ describe('worker ↔ shared extraction parity', () => {
     // ⚠️ THESE ARE THE RULES THAT DECIDE WHETHER A CLAIM IS BELIEVED. `readField`
     // is the one that refuses a value with no evidence; if it drifts, the batch
     // starts storing confident nonsense and no other test notices.
-    for (const fn of ['readField', 'parseContentExtraction', 'beatList', 'slotList']) {
+    for (const fn of ['readField', 'parseContentExtraction', 'beatList', 'slotList', 'rehookIndex']) {
       expect(lift(WORKER, 'the worker', fn), fn).toBe(lift(SHARED, 'shared', fn))
     }
   })

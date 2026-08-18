@@ -18,7 +18,7 @@ import { db, type Job } from '../db.js'
 import { transcribeFromUrl } from '../media.js'
 import { geminiJson } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
-import { parseContentExtraction, NOT_DETERMINED } from '../referenceExtraction.js'
+import { parseContentExtraction, NOT_DETERMINED, NO_REHOOK } from '../referenceExtraction.js'
 
 /** How much transcript the model is shown.
  *
@@ -142,6 +142,10 @@ const SCHEMA = {
             required: ['role', 'summary'],
           },
         }),
+        // ⚠️ NO `null` IN A responseSchema. `{ type: 'integer' }` left the model
+        // no way to say "this video never re-hooks", so it omitted the field or
+        // invented a negative — 15 of 35 pilot videos, all filed as model
+        // failures. -1 is the sentinel that makes the answer sayable.
         rehookPosition: ASSESSED({ type: 'integer' }),
         payoffType: ASSESSED(enumOf(['answer', 'reveal', 'summary', 'result', 'none'])),
         ctaMechanism: ASSESSED(enumOf(['follow', 'comment', 'share', 'save', 'link', 'book', 'buy',
@@ -199,11 +203,14 @@ likelyGoals[]: growth authority education conversation leads sales entertainment
 audience.sophistication: beginner intermediate advanced mixed
 contentSlots[].kind: product tool_or_software personal_experience claim example
   current_fact
+  An EMPTY contentSlots list is a real answer: it means a version of this video
+  needs nothing supplied. Give the evidence for that as you would for any value.
 personalExperienceRequired / externalFactsRequired: required optional not_required
 commercial.posture: OWN_PRODUCT OWN_SERVICE AFFILIATE SPONSOR REVIEW_ONLY NONE
 transfer.structureTransferability: high medium low
 transfer.topicDependence: low medium high
-rehookPosition: an index into beats, or null if the video never re-hooks.
+rehookPosition: an index into beats, or ${NO_REHOOK} if the video never
+  re-hooks. ${NO_REHOOK} is a real answer, and most short videos deserve it.
 productsRequired: a whole number; 0 is a real answer.`
 
 interface Payload { url?: unknown; platform?: unknown; force?: unknown }
