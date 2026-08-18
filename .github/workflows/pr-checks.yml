@@ -51,6 +51,13 @@ jobs:
   # registry cannot claim `autoedit` and the editor env flags are gone.
   unit-tests:
     runs-on: ubuntu-latest
+    # ⚠️ THE WHOLE JOB IS BOUNDED, NOT JUST THE STEP I HAPPENED TO WATCH HANG.
+    # Bounding one step was the wrong shape of fix: the next hang moved to `npm
+    # ci`, which had no cap and sat for over two hours while the PR reported
+    # "in progress". Measured baseline: this entire workflow finishes in UNDER
+    # THREE MINUTES on `main`. Thirty is ten times the real cost and still far
+    # below the six-hour default that let a dead job look like a working one.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -120,14 +127,19 @@ jobs:
           # fonts the runner happens to have — the failure this whole step exists
           # to rule out. So prove the bytes landed.
           ls -1 "$D"/*.ttf > /dev/null
+      # ⚖️ AND THE INSTALLS CARRY THEIR OWN CAPS, so a failure names the phase it
+      # died in. "unit-tests timed out" tells you nothing; "the registry install
+      # timed out" tells you it was never about the tests.
       - name: Install + test @twinai/shared
         run: |
-          npm ci
+          set -euo pipefail
+          timeout 600 npm ci
           npm test -w @twinai/shared
       - name: Install + test worker
         working-directory: worker
         run: |
-          npm ci
+          set -euo pipefail
+          timeout 600 npm ci
           npm test
 
   # Model-pin integrity (speech-6): the digest verifier, the bridge fail-closed
