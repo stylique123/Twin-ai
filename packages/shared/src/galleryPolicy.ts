@@ -53,7 +53,13 @@ export const INELIGIBLE_REASONS = [
   'unsupported_production',
   'commercially_unavailable',
   'needs_personal_experience',
+  'needs_ownership',
 ] as const
+
+/** ⚖️ THE POSTURES THAT SPEAK AS AN OWNER. `SPONSOR` is deliberately absent: a
+ *  sponsored video says "these people paid me", which an affiliate or a reviewer
+ *  can say too. Only the two ownership claims cannot be borrowed. */
+const OWNER_POSTURES: ReadonlySet<string> = new Set(['OWN_PRODUCT', 'OWN_SERVICE'])
 export type IneligibleReason = (typeof INELIGIBLE_REASONS)[number]
 
 export interface Eligibility {
@@ -81,14 +87,25 @@ export function eligibility(ref: ReferenceProfile, me: GalleryCreatorView): Elig
     }
   }
 
-  // ⚠️ THE COMMERCIAL REFUSAL THAT IS NOT BUILT, AND IS NAMED RATHER THAN FAKED.
-  // "Why we built this" needs an owner, and an affiliate borrowing it puts a
-  // false claim in somebody's mouth. Deciding that requires the REFERENCE's
-  // commercial posture — whether the pattern is an owner's, an affiliate's or a
-  // reviewer's — and `ReferenceProfile` has no such field yet. Inferring it from
-  // the container would be a guess with a type's confidence, so the only
-  // commercial refusal here is the one both sides can actually answer: a
-  // product-shaped format for somebody who told us they sell nothing.
+  // ⚠️ THE OWNERSHIP REFUSAL. "Why we built this" is an OWNER's sentence, and an
+  // affiliate recreating it puts a false ownership claim in their own mouth —
+  // the founding defect in its purest form, since the script would be perfectly
+  // in their voice and describe a company they do not have.
+  //
+  // ⚖️ REFUSED ONLY WHEN BOTH SIDES ARE KNOWN, which is the same two-sided rule
+  // `productionModeMatch` runs on. An unassessed reference refuses nobody — that
+  // is every card today — and a creator who was never asked about their
+  // relationship is never refused either, because silence is not "I own
+  // nothing".
+  const posture = ref.content.commercial.posture
+  if (isKnown(posture) && OWNER_POSTURES.has(posture.value)
+      && me.relationship !== null && !OWNER_POSTURES.has(me.relationship)) {
+    return {
+      eligible: false,
+      reason: 'needs_ownership',
+      explain: 'This one only works if the product is yours — it is built around the person who made it.',
+    }
+  }
 
   const slots = ref.content.requirements.contentSlots
   if (isKnown(slots)) {

@@ -23,6 +23,7 @@ const WORKER_PROFILE = readFileSync(join(REPO, 'worker/src/referenceProfileTypes
 const SHARED_ASSESSED = readFileSync(join(REPO, 'packages/shared/src/assessed.ts'), 'utf8')
 const WORKER_ASSESSED = readFileSync(join(REPO, 'worker/src/assessedTypes.ts'), 'utf8')
 const SHARED_CTA = readFileSync(join(REPO, 'packages/shared/src/cta.ts'), 'utf8')
+const SHARED_ASSEMBLER = readFileSync(join(REPO, 'packages/shared/src/profileAssembler.ts'), 'utf8')
 
 /** Lift a function body by name, so a drift is a failure and not a rewrite. */
 function lift(src: string, where: string, name: string): string {
@@ -47,7 +48,7 @@ function lift(src: string, where: string, name: string): string {
 function vocab(src: string, name: string): string[] | null {
   const i = src.indexOf(`${name} = [`)
   if (i < 0) return null
-  return src.slice(i, src.indexOf('] as const', i)).match(/'[a-z_]+'/g)
+  return src.slice(i, src.indexOf('] as const', i)).match(/'[A-Za-z_]+'/g)
 }
 
 describe('worker ↔ shared extraction parity', () => {
@@ -98,6 +99,15 @@ describe('worker ↔ shared extraction parity', () => {
     // here against the real owner rather than against the other copy, or the two
     // copies could agree with each other and both be wrong.
     expect(vocab(WORKER_PROFILE, 'CTA_MECHANISMS')).toEqual(vocab(SHARED_CTA, 'CTA_MECHANISMS'))
+  })
+
+  it('and the relationship vocabulary is profileAssembler\'s, for the same reason', () => {
+    // ⚠️ THIS ONE DECIDES A REFUSAL, NOT A RANKING. If the worker's copy drifted
+    // by one member, a reference could be stored with a posture the gallery's
+    // OWNER_POSTURES set never matches — and the ownership refusal would quietly
+    // stop firing, which looks exactly like "no owner-shaped videos exist".
+    expect(vocab(WORKER_PROFILE, 'CANONICAL_RELATIONSHIPS'))
+      .toEqual(vocab(SHARED_ASSEMBLER, 'CANONICAL_RELATIONSHIPS'))
   })
 })
 

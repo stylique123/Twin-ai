@@ -58,7 +58,14 @@ RULES, and the response is machine-checked against them:
    A slot's label is its ROLE in the structure (relatable_item, surprising_item,
    strongest_item), never the original's actual content.
 5. beats carry startSec/endSec where the transcript has timings, null where it
-   does not. Never invent a timestamp.`
+   does not. Never invent a timestamp.
+6. commercial.posture is what the SPEAKER claims about the thing they discuss.
+   Say OWN_PRODUCT or OWN_SERVICE only where they speak as its maker ("when we
+   built this", "our customers"). Someone enthusiastic about a tool they use is
+   not its owner — that is AFFILIATE, SPONSOR or REVIEW_ONLY, and NONE where the
+   video sells nothing at all. This field decides whether another creator is
+   allowed to recreate the video, so a wrong owner claim hides a good reference
+   from them.`
 
 /** The vocabularies, spelled out for the model. Kept beside the prompt because a
  *  list the model cannot see is a list it cannot obey — while the CHECK on it
@@ -73,6 +80,7 @@ const SCHEMA = {
     hook: { type: 'object' },
     structure: { type: 'object' },
     requirements: { type: 'object' },
+    commercial: { type: 'object' },
     transfer: { type: 'object' },
   },
 }
@@ -91,6 +99,7 @@ audience.sophistication: beginner intermediate advanced mixed
 contentSlots[].kind: product tool_or_software personal_experience claim example
   current_fact
 personalExperienceRequired / externalFactsRequired: required optional not_required
+commercial.posture: OWN_PRODUCT OWN_SERVICE AFFILIATE SPONSOR REVIEW_ONLY NONE
 transfer.structureTransferability: high medium low
 transfer.topicDependence: low medium high
 rehookPosition: an index into beats, or null if the video never re-hooks.

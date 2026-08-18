@@ -12,6 +12,7 @@ import { unchecked, indeterminate } from './assessedTypes.js'
 import {
   CONTAINER_TYPES, HOOK_MECHANISMS, PAYOFF_TYPES, SOPHISTICATION, LIKELY_GOALS,
   REQUIREMENT, CONTENT_SLOT_KINDS, BEAT_ROLES, CTA_MECHANISMS,
+  CANONICAL_RELATIONSHIPS,
   emptyContentProfile,
   type ReferenceContentProfile, type Beat, type ContentSlot,
 } from './referenceProfileTypes.js'
@@ -187,6 +188,7 @@ export function parseContentExtraction(
   const structure = isRecord(raw.structure) ? raw.structure : {}
   const requirements = isRecord(raw.requirements) ? raw.requirements : {}
   const transfer = isRecord(raw.transfer) ? raw.transfer : {}
+  const commercial = isRecord(raw.commercial) ? raw.commercial : {}
 
   const beats = readField(structure.beats, 'structure.beats', at, beatList, rejections)
   const contentSlots = readField(
@@ -265,6 +267,15 @@ export function parseContentExtraction(
         requirements.externalFactsRequired, 'requirements.externalFactsRequired', at,
         oneOf(REQUIREMENT), rejections),
     },
+    commercial: {
+      // ⚠️ THE ONE FIELD WHOSE WRONG ANSWER REFUSES A VIDEO RATHER THAN JUST
+      // MISRANKING IT. An invented `OWN_PRODUCT` hides a perfectly good
+      // reference from an affiliate, so it goes through exactly the same
+      // evidence rule as everything else: no quote, no posture.
+      posture: readField(
+        commercial.posture, 'commercial.posture', at,
+        oneOf(CANONICAL_RELATIONSHIPS), rejections),
+    },
     transfer: {
       structureTransferability: oneOf(['high', 'medium', 'low'] as const)(transfer.structureTransferability)
         ?? 'not_checked',
@@ -285,7 +296,8 @@ export function parseContentExtraction(
     profile.structure.rehookPosition, profile.structure.payoffType,
     profile.structure.ctaMechanism, profile.requirements.contentSlots,
     profile.requirements.personalExperienceRequired, profile.requirements.productsRequired,
-    profile.requirements.externalFactsRequired, profile.transfer.topicDependence,
+    profile.requirements.externalFactsRequired, profile.commercial.posture,
+    profile.transfer.topicDependence,
   ].filter((f) => f.basis === 'observed').length
 
   return { profile, rejections, fieldsAccepted: accepted }

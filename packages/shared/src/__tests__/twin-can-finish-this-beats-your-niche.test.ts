@@ -143,3 +143,57 @@ describe('hard filters need a known fact on BOTH sides', () => {
     expect(eligibility(withSlots, unasked).eligible).toBe(true)
   })
 })
+
+describe('an owner\'s sentence cannot be borrowed', () => {
+  // ⚠️ THE FOUNDING DEFECT IN ITS PUREST FORM. "Why we built this" recreated by
+  // an affiliate produces a script that is perfectly in their voice and describes
+  // a company they do not have — voice-accurate and content-false at once.
+  const owned = (p: string): ReferenceProfile => {
+    const r = emptyReferenceProfile('o')
+    return {
+      ...r,
+      content: {
+        ...r.content,
+        commercial: { posture: observed(p as never, '"when we were building this, we..."') },
+      },
+    }
+  }
+
+  it('refuses an owner-shaped reference for an affiliate', () => {
+    const affiliate: GalleryCreatorView = { ...me, relationship: 'AFFILIATE' }
+    const r = eligibility(owned('OWN_PRODUCT'), affiliate)
+    expect(r.eligible).toBe(false)
+    expect(r.reason).toBe('needs_ownership')
+  })
+
+  it('and for a reviewer, who is the same problem wearing another word', () => {
+    expect(eligibility(owned('OWN_SERVICE'), { ...me, relationship: 'REVIEW_ONLY' }).eligible)
+      .toBe(false)
+  })
+
+  it('but allows it for somebody who actually owns something', () => {
+    expect(eligibility(owned('OWN_PRODUCT'), { ...me, relationship: 'OWN_PRODUCT' }).eligible)
+      .toBe(true)
+    expect(eligibility(owned('OWN_PRODUCT'), { ...me, relationship: 'OWN_SERVICE' }).eligible)
+      .toBe(true)
+  })
+
+  it('never refuses on an unassessed reference, which is every card today', () => {
+    // ⚖️ THE PROPERTY THAT MATTERS MORE THAN THE RULE. Until the batch runs, this
+    // field is `not_checked` everywhere; if silence refused anybody, shipping it
+    // would empty the gallery.
+    const affiliate: GalleryCreatorView = { ...me, relationship: 'AFFILIATE' }
+    expect(eligibility(emptyReferenceProfile('x'), affiliate).eligible).toBe(true)
+  })
+
+  it('and never refuses a creator who was simply never asked', () => {
+    // ⚠️ SILENCE IS NOT "I OWN NOTHING". The same three-state rule as everywhere.
+    expect(eligibility(owned('OWN_PRODUCT'), { ...me, relationship: null }).eligible).toBe(true)
+  })
+
+  it('a sponsored reference is not an ownership claim', () => {
+    // ⚖️ "THESE PEOPLE PAID ME" IS SAYABLE BY AN AFFILIATE TOO. Only the two
+    // ownership postures cannot be borrowed, so SPONSOR must not refuse.
+    expect(eligibility(owned('SPONSOR'), { ...me, relationship: 'AFFILIATE' }).eligible).toBe(true)
+  })
+})
