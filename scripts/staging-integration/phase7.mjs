@@ -80,7 +80,14 @@ async function callEdge(client, fn, body) {
   const headers = { 'Content-Type': 'application/json', apikey: ANON }
   if (client) headers.Authorization = await authHeader(client)
   const res = await fetch(`${URL}/functions/v1/${fn}`, { method: 'POST', headers, body: JSON.stringify(body) })
-  return { status: res.status, body: await res.json().catch(() => ({})) }
+  // ⚠️ THE ERROR BODY USED TO BE SWALLOWED HERE TOO. A non-JSON gateway page — a
+  // platform 429, a 502 from the edge runtime — became `{}`, so the assertion
+  // reported `code=undefined` and blamed the function for a throttle. See
+  // `phase2.mjs` for the failure that found this.
+  const text = await res.text()
+  let parsed = null
+  try { parsed = JSON.parse(text) } catch { /* not JSON — keep the text */ }
+  return { status: res.status, body: parsed ?? {}, raw: parsed ? null : text.trim() }
 }
 async function putSigned(signedUrl, buf, ct) {
   const res = await fetch(signedUrl, { method: 'PUT', headers: { 'x-upsert': 'true', 'content-type': ct }, body: buf })

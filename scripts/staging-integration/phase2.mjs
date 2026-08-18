@@ -69,7 +69,32 @@ async function callEdge(client, fn, body) {
     headers.Authorization = await authHeader(client)
   }
   const res = await fetch(`${URL}/functions/v1/${fn}`, { method: 'POST', headers, body: JSON.stringify(body) })
-  return { status: res.status, body: await res.json().catch(() => ({})) }
+  // ⚠️ THE ERROR BODY USED TO BE SWALLOWED. `res.json().catch(() => ({}))`
+  // turns any non-JSON response into `{}`, so a gateway page — a 429 from the
+  // platform's rate limiter, a 502 from the edge runtime — arrived at the
+  // assertion as `code=undefined` with nothing else. The check then blamed the
+  // function under test for a throttle, and the only way to find out otherwise
+  // was to go and read the platform logs by hand.
+  //
+  // ⚖️ SO THE RAW TEXT IS KEPT WHEN IT IS NOT JSON. It costs one variable and it
+  // is the difference between "something returned 502" and "the platform
+  // rate-limited us"; a gate that cannot say which teaches people to re-run
+  // instead of read, and that is how a real failure eventually gets waved
+  // through.
+  const text = await res.text()
+  let parsed = null
+  try { parsed = JSON.parse(text) } catch { /* not JSON — keep the text */ }
+  return { status: res.status, body: parsed ?? {}, raw: parsed ? null : text.trim() }
+}
+
+/** Why a call failed, in one string, without losing what the wire actually said.
+ *
+ *  ⚖️ THE RAW SNIPPET ONLY APPEARS WHEN THERE IS NO JSON TO READ, so an ordinary
+ *  refusal still reads `status=409 code=source_not_ready` and an infrastructure
+ *  failure stops pretending to be one. */
+const why = (r) => {
+  const base = `status=${r.status} code=${r.body?.code}`
+  return r.raw ? `${base} body=${JSON.stringify(r.raw.slice(0, 160))}` : base
 }
 const startEdit = (client, generationId, sourceAssetId, idempotencyKey, extra = {}) =>
   callEdge(client, 'start-editor-v2', { generation_id: generationId, source_asset_id: sourceAssetId, idempotency_key: idempotencyKey, ...extra })
@@ -242,10 +267,10 @@ async function main() {
   {
     const rGen = await startEdit(cOwner, genB, srcB, key1) // key1 is bound to genA/srcA
     check('G1 key reused with different generation+source → 409/idempotency_key_conflict',
-      rGen.status === 409 && rGen.body.code === 'idempotency_key_conflict', `status=${rGen.status} code=${rGen.body.code}`)
+      rGen.status === 409 && rGen.body.code === 'idempotency_key_conflict', why(rGen))
     const rSrc = await startEdit(cOwner, genA, srcB, key1) // same gen, different source
     check('G1 key reused with different source → 409/idempotency_key_conflict',
-      rSrc.status === 409 && rSrc.body.code === 'idempotency_key_conflict', `status=${rSrc.status} code=${rSrc.body.code}`)
+      rSrc.status === 409 && rSrc.body.code === 'idempotency_key_conflict', why(rSrc))
     check('G1 conflict created no project for source B', (await projectsFor('source_asset_id', srcB)).length === 0)
   }
   // Job payload is IDs ONLY — no paths, URLs, cuts, prompts, or options.
@@ -283,7 +308,7 @@ async function main() {
     for (const [label, g, s, wantStatus, wantCode] of cases) {
       const r = await startEdit(cOwner, g, s, randomUUID())
       check(`G2 ${label} → ${wantStatus}/${wantCode}`, r.status === wantStatus && r.body.code === wantCode,
-        `status=${r.status} code=${r.body.code}`)
+        why(r))
       const projs = await projectsFor('generation_id', g)
       check(`G2 ${label} created NO project`, projs.length === 0, `rows=${projs.length}`)
     }
@@ -295,11 +320,11 @@ async function main() {
     })
     const rUp = await startEdit(cOwner, genUp, up.body.assetId, randomUUID())
     check('G2 uploading source → 409/source_not_ready', rUp.status === 409 && rUp.body.code === 'source_not_ready',
-      `status=${rUp.status} code=${rUp.body.code}`)
+      why(rUp))
     // missing source
     const rMiss = await startEdit(cOwner, genA, randomUUID(), randomUUID())
     check('G2 missing source → 404/source_not_found', rMiss.status === 404 && rMiss.body.code === 'source_not_found',
-      `status=${rMiss.status} code=${rMiss.body.code}`)
+      why(rMiss))
     // asset of a kind other than source (service-minted music asset)
     const { data: musicRow, error: musicErr } = await admin.from('media_assets').insert({
       owner_id: owner.id, generation_id: genA, kind: 'music', bucket: 'takes',
@@ -309,13 +334,13 @@ async function main() {
     if (musicRow) {
       const rKind = await startEdit(cOwner, genA, musicRow.id, randomUUID())
       check('G2 non-source kind → 409/not_a_source', rKind.status === 409 && rKind.body.code === 'not_a_source',
-        `status=${rKind.status} code=${rKind.body.code}`)
+        why(rKind))
     }
     // deleted source
     await admin.from('media_assets').update({ status: 'deleted' }).eq('id', srcRejected)
     const rDel = await startEdit(cOwner, genRejected, srcRejected, randomUUID())
     check('G2 deleted source → 409/source_deleted', rDel.status === 409 && rDel.body.code === 'source_deleted',
-      `status=${rDel.status} code=${rDel.body.code}`)
+      why(rDel))
     // editor_eligible=false with audio (explicit flag beats has_audio)
     const genFlag = await newGen(owner.id)
     const srcFlag = await sourceFlow(cOwner, genFlag, fix.good, 'video/webm')
@@ -325,7 +350,7 @@ async function main() {
     await admin.from('media_assets').update({ metadata: { ...(fl?.metadata ?? {}), editor_eligible: false } }).eq('id', srcFlag)
     const rFlag = await startEdit(cOwner, genFlag, srcFlag, randomUUID())
     check('G2 editor_eligible=false → 409/source_not_editor_eligible',
-      rFlag.status === 409 && rFlag.body.code === 'source_not_editor_eligible', `status=${rFlag.status} code=${rFlag.body.code}`)
+      rFlag.status === 409 && rFlag.body.code === 'source_not_editor_eligible', why(rFlag))
     // foreign source: outsider tries to start on the owner's asset/generation
     const rForeign = await startEdit(cOutsider, genA, srcA, randomUUID())
     check('G2 unrelated user denied (404, no oracle)', rForeign.status === 404, `status=${rForeign.status}`)
@@ -367,7 +392,7 @@ async function main() {
     check('G3 setup: fourth source ready', d4?.status === 'ready')
     const rb4 = await startEdit(cOwner, genD, srcD, randomUUID())
     check('G3 fourth ACTIVE project refused (429/too_many_active_projects)',
-      rb4.status === 429 && rb4.body.code === 'too_many_active_projects', `status=${rb4.status} code=${rb4.body.code}`)
+      rb4.status === 429 && rb4.body.code === 'too_many_active_projects', why(rb4))
     // Rate limit (10/min): dedicated user hammers with an ineligible call so
     // nothing is created; expect a 429 with the rate-limit message.
     let sawRate = false
