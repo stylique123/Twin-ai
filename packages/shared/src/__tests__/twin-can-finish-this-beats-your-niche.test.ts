@@ -31,6 +31,22 @@ const card = (id: string, rel: NicheRelation, reach: number | null,
               over: Partial<RankableReference> = {}): RankableReference =>
   ({ profile: emptyReferenceProfile(id), facts: facts(rel, reach), ...over })
 
+/** A profile whose content slots are KNOWN — the only state the hard filters
+ *  act on, since an unassessed card must never be refused. */
+const slotted = (id: string, kind: string, label: string, evidence: string): ReferenceProfile => {
+  const p = emptyReferenceProfile(id)
+  return {
+    ...p,
+    content: {
+      ...p.content,
+      requirements: {
+        ...p.content.requirements,
+        contentSlots: observed([{ id: '1', kind: kind as never, label, required: true }], evidence),
+      },
+    },
+  }
+}
+
 const observed = <T,>(value: T, evidence: string) =>
   ({ value, basis: 'observed' as const, evidence, assessedAt: NOW })
 
@@ -89,7 +105,7 @@ describe('the ordering the module was written for', () => {
 describe('hard filters need a known fact on BOTH sides', () => {
   const withMode = (m: string): ReferenceProfile => {
     const p = emptyReferenceProfile('m')
-    return { ...p, production: { ...p.production, primaryMode: observed(m as never, 'multi-camera, three speakers') } }
+    return { ...p, visual: { ...p.visual, primaryMode: observed(m as never, 'multi-camera, three speakers') } }
   }
 
   it('refuses a production Twin cannot help recreate', () => {
@@ -107,18 +123,14 @@ describe('hard filters need a known fact on BOTH sides', () => {
   it('refuses a format built from personal stories Twin cannot invent', () => {
     // ⚖️ "MY THREE BIGGEST FAILURES" — ranking it ready would promise a video
     // Twin cannot honestly write.
-    const p = emptyReferenceProfile('s')
-    const withSlots = { ...p, structure: { ...p.structure, slots: observed(
-      [{ id: '1', kind: 'personal_experience' as const, label: 'a failure' }], 'three first-person anecdotes') } }
+    const withSlots = slotted('s', 'personal_experience', 'a failure', 'three first-person anecdotes')
     const r = eligibility(withSlots, me)
     expect(r.eligible).toBe(false)
     expect(r.reason).toBe('needs_personal_experience')
   })
 
   it('refuses a product format for somebody who says they sell nothing', () => {
-    const p = emptyReferenceProfile('p')
-    const withSlots = { ...p, structure: { ...p.structure, slots: observed(
-      [{ id: '1', kind: 'product' as const, label: 'tool one' }], 'three products named') } }
+    const withSlots = slotted('p', 'product', 'tool one', 'three products named')
     const seller: GalleryCreatorView = { ...me, relationship: 'NONE', productCount: 0 }
     expect(eligibility(withSlots, seller).reason).toBe('commercially_unavailable')
   })
@@ -126,9 +138,7 @@ describe('hard filters need a known fact on BOTH sides', () => {
   it('but not for somebody who simply has not answered yet', () => {
     // ⚠️ SILENCE IS NOT "I SELL NOTHING". The rule this codebase runs on, at the
     // one place where getting it wrong hides most of the gallery.
-    const p = emptyReferenceProfile('p')
-    const withSlots = { ...p, structure: { ...p.structure, slots: observed(
-      [{ id: '1', kind: 'product' as const, label: 'tool one' }], 'three products named') } }
+    const withSlots = slotted('p', 'product', 'tool one', 'three products named')
     const unasked: GalleryCreatorView = { ...me, relationship: null, productCount: 0 }
     expect(eligibility(withSlots, unasked).eligible).toBe(true)
   })
