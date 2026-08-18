@@ -149,6 +149,87 @@ explains a card per slot.
 
 ---
 
+## 4a. THE SCRIPTING REBUILD — the ordered track (owner's spec, 2026-08-18)
+
+**One target, and everything else is plumbing:** *a good Twin script says
+something worth saying, is true, fits the creator, and is easy to speak aloud.*
+
+⚠️ **THE DIAGNOSIS THAT SETS THE ORDER.** The problem is no longer "the writer
+needs a better instruction". It is that **the writer is asked to invent content
+nobody supplied**. A generic script is usually not bad prose — it is prose with
+nothing specific inside it. So content resolution comes BEFORE prose, and no
+further week goes into the raw writer prompt ahead of it.
+
+### The pipeline
+
+```
+CreatorProfile + VideoIntent + ReferenceContentProfile + ProductLibrary
+        ↓  PREMISE SELECTOR      topic · angle · why_this_creator · why_this_audience
+        ↓  SMALL CDP             decisions only, no prose
+        ↓  CONTAINER RESOLVER    every slot filled, with its source
+        ↓  RESEARCH              only where a slot demands it
+        ↓  WRITER                resolved inputs only — five things, not ninety-four
+        ↓  SPEECH POLISHER       easier to say, same facts
+        ↓  VALIDATOR             binary checks, three judgements
+        ↓  FINAL SCRIPT
+```
+
+### The writer gets five things, not the account
+
+`creatorStyle` · `audience` · `decisionPlan` · `resolvedContent` ·
+`referenceStructure`. No raw onboarding, no whole DNA blob, no Product Library
+dump.
+
+### Build order
+
+| # | item | state |
+|---|---|---|
+| 1 | Small CDP schema — goal, audience, topic, angle, format, length, products, hook, structure, CTA, restrictions, sources | **next** |
+| 2 | Container taxonomy — 10–15 containers, each with a template | not built |
+| 3 | Container resolver — every slot filled or explicitly research-required | not built |
+| 4 | Content-source routing — product / creator / research | not built |
+| 5 | Writer receives resolved inputs only | not built |
+| 6 | Speech-polish pass — may not add claims, change facts, CTA or premise | not built |
+| 7 | Simple validator — binary checks, then three judgements | not built |
+| 8 | Six scenario tests | not built |
+| 9 | A real creator records 10 videos | **not started — and it gates everything** |
+| 10 | Inspect spoken-script differences | after 9 |
+
+### Rules this track carries
+
+- **Facts and opinions are separate classes**: `verified_fact`,
+  `user_confirmed`, `creator_opinion`, `researched_fact`, `safe_inference`,
+  `forbidden`. The writer may never turn an opinion into a factual claim.
+- **Audience level changes wording, in the Style Compiler** — beginner explains
+  terms, familiar moves faster, expert skips the introduction. Not a line near
+  the top of a 12,000-token prompt.
+- **DNA is behavioural, not adjectival.** "Open directly; avoid long setup" is
+  followable; "Tone: bold" is not.
+- **Write for speech**: mostly 6–16 words, fragments allowed, no nested clauses
+  or essay transitions.
+- **`product_role` — `none` / `example` / `supporting` / `primary`** — the one
+  small field that stops every founder video becoming an advert.
+- **The specificity test**: could this script go unchanged to 100 other
+  creators? If yes it fails.
+- **No score out of ten.** Binary where possible; `pass` / `weak` / `fail` for
+  the three that cannot be.
+
+### The six scenarios that decide whether it is real
+
+Own SaaS + sell · Own SaaS + authority (must not become an advert) · Affiliate
+with no confirmed use (must never invent "I've used it") · Expert educator
+(must skip the basics) · Non-commercial creator (must never invent an offer) ·
+Cross-niche reference (transfers structure, replaces content).
+
+### Success, measured on ten real attempts
+
+Relevance 8/10 · usefulness 8/10 · voice 7/10+ · speakability 8/10 · **zero**
+serious invented facts · pre-record edits under 20% of words, eventually 10–15%
+· and the one that matters most: **script → recording started → recording
+completed.** A script admired in Review and never recorded is not good enough.
+
+---
+
 ## 5. STANDING RULES — these outrank convenience
 
 - **No B-roll.** An explicit product scope decision, not an omission.
@@ -181,4 +262,5 @@ explains a card per slot.
 
 | date | change |
 |---|---|
+| 2026-08-18 | §4a added — the scripting rebuild, in the owner's stated order. |
 | 2026-08-18 | Written. Consolidates the phase plan, the track plan and the ledger into one status page, because "what is left" could not be answered without reading three documents totalling ~5,000 lines. |
