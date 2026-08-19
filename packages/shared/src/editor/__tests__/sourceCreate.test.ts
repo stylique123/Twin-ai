@@ -122,9 +122,10 @@ describe('handleSourceAssetRequest: request-level boundaries (item 8)', () => {
     const createSourceAsset = vi.fn(async () => ({ data: { asset_id: 'a', storage_path: 'p/q/a.webm', status: 'uploading' }, error: null }))
     const signUpload = vi.fn(async () => ({ token: 't', signedUrl: 'u' }))
     const finalize = vi.fn(async () => ({ status: 200, body: { ok: true, status: 'validating' } }))
+    const recordUploadAttempt = vi.fn(async () => ({ status: 200, body: { ok: true } }))
     const d: RequestDeps & { _: Record<string, ReturnType<typeof vi.fn>> } = {
-      getUser, checkRateLimit, createSourceAsset, signUpload, finalize,
-      _: { getUser, checkRateLimit, createSourceAsset, signUpload, finalize }, ...over,
+      getUser, checkRateLimit, createSourceAsset, signUpload, finalize, recordUploadAttempt,
+      _: { getUser, checkRateLimit, createSourceAsset, signUpload, finalize, recordUploadAttempt }, ...over,
     }
     return d
   }
@@ -276,5 +277,115 @@ describe('sourceCreate: RPC error mapping (stable status + message, incl. round-
     expect(mapCreateError('script_snapshot_too_large')).toMatch(/too long/i)
     // never leaks the raw SQL for a generic error
     expect(mapCreateError('null value in column "x" violates not-null')).toBe('Could not start the upload — try again.')
+  })
+})
+
+// THE ENDPOINT THAT MUST NOT BECOME A WRITE HOLE WITH A REST FAÇADE.
+//
+// ⚠️ 0139–0141 CLOSED THE CLIENT'S ABILITY TO SET ASSET STATE, and the fastest
+// way to reopen it is a well-meaning reporting endpoint that also happens to
+// take `status`. The allowlist is the entire security property here, so it is
+// tested field by field rather than in aggregate.
+describe('upload_attempt: the allowlist IS the boundary', () => {
+  const OWNER = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+  const ASSET = '44444444-4444-4444-4444-444444444444'
+  function deps() {
+    const getUser = vi.fn(async () => ({ id: OWNER }))
+    const recordUploadAttempt = vi.fn(async () => ({ status: 200, body: { ok: true } }))
+    const d = {
+      getUser,
+      checkRateLimit: vi.fn(async () => true),
+      createSourceAsset: vi.fn(async () => ({ data: null, error: null })),
+      signUpload: vi.fn(async () => null),
+      finalize: vi.fn(async () => ({ status: 200, body: {} })),
+      recordUploadAttempt,
+      _: { getUser, recordUploadAttempt },
+    } as unknown as RequestDeps & { _: Record<string, ReturnType<typeof vi.fn>> }
+    return d
+  }
+  const ok = { action: 'upload_attempt', asset_id: ASSET, outcome: 'failed' }
+
+  it('refuses EVERY media_assets field by name, and never reaches the writer', async () => {
+    // ⚠️ THESE SIX ARE THE ONES THE OWNER NAMED. A silent drop would teach a
+    // client the field was accepted, so each is a 400 that says which.
+    for (const evil of ['status', 'duration', 'mime_type', 'storage_path', 'processing_state', 'owner_id']) {
+      const d = deps()
+      const r = await handleSourceAssetRequest({ ...ok, [evil]: 'x' }, d)
+      expect(r.status, evil).toBe(400)
+      expect(String(r.body.error), evil).toContain(evil)
+      expect((d._.recordUploadAttempt as { mock: { calls: unknown[] } }).mock.calls.length, evil).toBe(0)
+    }
+  })
+
+  it('requires authentication before it looks at anything', async () => {
+    const d = deps()
+    ;(d as unknown as { getUser: unknown }).getUser = vi.fn(async () => null)
+    expect((await handleSourceAssetRequest(ok, d)).status).toBe(401)
+  })
+
+  it('takes ownership from the session, never from the body', async () => {
+    const d = deps()
+    await handleSourceAssetRequest(ok, d)
+    const args = (d._.recordUploadAttempt as { mock: { calls: unknown[][] } }).mock.calls[0]
+    expect(args[0]).toBe(OWNER)
+    expect(args[1]).toBe(ASSET)
+  })
+
+  it('rejects an unknown outcome rather than storing a word nothing reads', async () => {
+    for (const bad of ['stalled', 'done', '', 'PROGRESSING']) {
+      const d = deps()
+      expect((await handleSourceAssetRequest({ ...ok, outcome: bad }, d)).status, bad).toBe(400)
+    }
+    for (const good of ['progressing', 'failed', 'abandoned']) {
+      const d = deps()
+      expect((await handleSourceAssetRequest({ ...ok, outcome: good }, d)).status, good).toBe(200)
+    }
+  })
+
+  it('rejects nonsense numbers instead of storing them', async () => {
+    const bads = [
+      { bytes_sent: -1 }, { bytes_sent: 1.5 }, { bytes_sent: '100' },
+      { attempt_number: 0 }, { attempt_number: 1001 }, { attempt_number: 2.5 },
+      { started_at: 'yesterday' }, { last_progress_at: 12345 },
+      { failure_code: '' }, { failure_code: 7 },
+    ]
+    for (const b of bads) {
+      const d = deps()
+      expect((await handleSourceAssetRequest({ ...ok, ...b }, d)).status, JSON.stringify(b)).toBe(400)
+    }
+  })
+
+  it('lets every allowed field through, normalized', async () => {
+    const d = deps()
+    const r = await handleSourceAssetRequest({
+      ...ok, outcome: 'progressing',
+      started_at: '2026-08-19T10:00:00Z', last_progress_at: '2026-08-19T10:05:00.000Z',
+      bytes_sent: 1024, attempt_number: 2, failure_code: '  net::ERR_TIMED_OUT  ',
+    }, d)
+    expect(r.status).toBe(200)
+    const report = (d._.recordUploadAttempt as { mock: { calls: unknown[][] } }).mock.calls[0][2]
+    expect(report).toEqual({
+      started_at: '2026-08-19T10:00:00.000Z',
+      last_progress_at: '2026-08-19T10:05:00.000Z',
+      bytes_sent: 1024, attempt_number: 2,
+      outcome: 'progressing', failure_code: 'net::ERR_TIMED_OUT',
+    })
+  })
+
+  it('treats every optional field as genuinely optional', async () => {
+    // ⚖️ A CLIENT IN TROUBLE MAY KNOW ALMOST NOTHING. Demanding a full report
+    // from a dying page is how we end up with no report at all.
+    const d = deps()
+    expect((await handleSourceAssetRequest(ok, d)).status).toBe(200)
+    expect((d._.recordUploadAttempt as { mock: { calls: unknown[][] } }).mock.calls[0][2]).toEqual({
+      started_at: null, last_progress_at: null, bytes_sent: null,
+      attempt_number: null, outcome: 'failed', failure_code: null,
+    })
+  })
+
+  it('still requires a real asset_id', async () => {
+    const d = deps()
+    expect((await handleSourceAssetRequest({ ...ok, asset_id: 'nope' }, d)).status).toBe(400)
+    expect((d._.recordUploadAttempt as { mock: { calls: unknown[] } }).mock.calls.length).toBe(0)
   })
 })

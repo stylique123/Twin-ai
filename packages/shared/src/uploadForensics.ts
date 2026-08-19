@@ -41,6 +41,16 @@ export const UPLOAD_OUTCOMES = [
    *  yet is an upload in progress, not a failure, and calling it one is how a
    *  funnel reports its own live traffic as breakage. */
   'in_flight',
+  /** ⚖️ NO BYTES, PAST THE GRACE PERIOD, AND NOBODY SAID WHY. 0149 gave the
+   *  client a way to report what it saw; a row with no report is one that
+   *  never got to send one — the tab closed, the process died, the network
+   *  went. That is a stalled upload of UNKNOWN cause, and elapsed time alone
+   *  may never promote it to either a fault or an abandonment. */
+  'stalled',
+  /** ⚠️ THE CREATOR SAID SO. Reachable ONLY from a client report carrying
+   *  `outcome: 'abandoned'` — never from a clock. The client is the only party
+   *  that knows it gave up, so its word is the only thing that establishes it. */
+  'creator_abandoned',
   /** ⚠️ NOT A DUMPING GROUND — it is what the missing timing fields cost. Every
    *  row that lands here is an argument for adding them. */
   'unknown',
@@ -53,15 +63,24 @@ export const OUR_FAULT: ReadonlySet<UploadOutcome> = new Set<UploadOutcome>([
 ])
 
 /**
- * ⚖️ AND NONE OF THEM IS "THE CREATOR ABANDONED IT". That verdict is deliberately
- * absent from this union, because nothing we currently record can support it. A
- * creator who closed the tab mid-upload and a creator whose upload hung produce
- * IDENTICAL rows. Offering an `abandoned` value would invite somebody to pick it,
- * and the first person to do so would be guessing with a confident-looking word.
+ * ⚖️ AND `stalled` IS NOT ONE OF THEM, WHICH IS THE WHOLE CORRECTION. It is the
+ * bucket for "no bytes, no report, and no idea", and putting it in OUR_FAULT
+ * would restore by the back door exactly the inference 0149 was built to
+ * replace: reading a clock and calling the result a cause.
+ *
+ * ⚠️ `creator_abandoned` IS NOT OURS EITHER, and is reachable only from a report.
+ *
+ * ⚖️ THE VERDICT NOW EXISTS BECAUSE THE EVIDENCE DOES. Before 0149 a closed tab
+ * and a hung upload left IDENTICAL rows, so no honest classifier could name
+ * either — `CANNOT_YET_DISTINGUISH` said so. `media_upload_attempts` is the
+ * client saying which one happened. What has NOT changed is the rule: absent
+ * that report, the answer is still `stalled`, still not a fault, and still not
+ * an abandonment.
  */
 export const CANNOT_YET_DISTINGUISH =
-  'A closed tab and a hung upload leave identical rows. `upload_started_at`, '
-  + '`last_chunk_at` and `retry_count` are what would separate them.'
+  'Without a client report a closed tab and a hung upload still leave identical '
+  + 'rows. `media_upload_attempts` (0149) is what separates them, and a row with '
+  + 'no report stays `stalled` rather than being guessed at.'
 
 export interface UploadRow {
   status: string
@@ -76,7 +95,16 @@ export interface UploadRow {
   createdAt: string
   /** Supplied, not read, so a classification is reproducible. */
   asOf: string
+  /**
+   * ⚠️ THE LATEST CLIENT REPORT, WHEN THERE IS ONE — the newest row in
+   * `media_upload_attempts` for this asset. Absent means nobody reported, which
+   * is itself the common case and must not be read as a report of success.
+   */
+  report?: AttemptOutcome | null
 }
+
+/** What the client said it was doing. Mirrors 0149's `outcome` check constraint. */
+export type AttemptOutcome = 'progressing' | 'failed' | 'abandoned'
 
 /**
  * How long a row may sit before "still uploading" stops being credible.
@@ -102,14 +130,29 @@ export function classifyUpload(row: UploadRow): UploadOutcome {
 
   if (!row.objectExists) {
     // ⚖️ A FRESH ROW IS STILL GOING. Only once past the grace period does an
-    // absent object become evidence of anything.
-    return fresh ? 'in_flight' : 'upload_never_landed'
+    // absent object become evidence of anything — and even then, of what?
+    if (fresh) return 'in_flight'
+    // ⚠️ THE REPORT DECIDES, NOT THE CLOCK. This is the correction: elapsed time
+    // establishes that the upload is no longer happening, and nothing more. What
+    // stopped it is a separate fact, and only the client knows it.
+    if (row.report === 'abandoned') return 'creator_abandoned'
+    if (row.report === 'failed') return 'upload_never_landed'
+    // A client still reporting progress past the grace period is a client that
+    // has not given up, however slow it is.
+    if (row.report === 'progressing') return 'in_flight'
+    return 'stalled'
   }
 
   // Bytes are there. Do they add up?
   if (row.declaredBytes !== null && row.storedBytes !== null
     && row.storedBytes < row.declaredBytes) {
-    return fresh ? 'in_flight' : 'upload_partial'
+    if (fresh || row.report === 'progressing') return 'in_flight'
+    // ⚖️ PARTIAL BYTES ARE THEMSELVES THE EVIDENCE. Unlike the no-object case,
+    // a short object proves the transport ran and stopped mid-way — so this
+    // verdict does not need a report to be honest. An explicit `abandoned`
+    // report still outranks it, because the creator is describing their own act.
+    if (row.report === 'abandoned') return 'creator_abandoned'
+    return 'upload_partial'
   }
 
   // Whole bytes present. Did finalize run?

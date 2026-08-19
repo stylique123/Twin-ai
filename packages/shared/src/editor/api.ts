@@ -14,6 +14,7 @@
 // legacy direct-bucket upload — if this flow fails, the caller keeps the Blob
 // and retries the SAME attempt (same asset, same path); it never silently
 // switches persistence systems.
+import { reportUploadAttempt, failureCode } from './uploadAttemptReport'
 import { getClient, uploadToSignedTarget, type TakeFile } from '../api'
 import type { EditEvent, EditorOutput, EditProject, EditProjectStatus, MediaAsset, MediaAssetStatus, SourceUploadIntent } from './contracts'
 
@@ -120,11 +121,34 @@ export async function uploadSourceRecording(
     onProgress?.(1)
     return intent
   }
-  await uploadToSignedTarget(
-    { bucket: intent.bucket, path: intent.path, token: intent.token, signedUrl: intent.signedUrl, contentType: file.contentType },
-    file,
-    onProgress,
-  )
+  // ⚠️ WHAT THE CLIENT SAW, RECORDED WHERE ONLY THE CLIENT CAN SEE IT. Two
+  // production takes sit at `uploading` with no object and no explanation, and
+  // `uploadForensics` can only call them `stalled` because nothing was ever
+  // reported. These three variables are the report.
+  const startedAt = Date.now()
+  let lastProgressAt: number | null = null
+  let bytesSent = 0
+  try {
+    await uploadToSignedTarget(
+      { bucket: intent.bucket, path: intent.path, token: intent.token, signedUrl: intent.signedUrl, contentType: file.contentType },
+      file,
+      (fraction) => {
+        if (fraction >= 0) {
+          lastProgressAt = Date.now()
+          bytesSent = Math.round(fraction * file.sizeBytes)
+        }
+        onProgress?.(fraction)
+      },
+    )
+  } catch (e) {
+    // ⚖️ REPORTED, NOT SWALLOWED — the throw still happens. This adds evidence
+    // to a failure the creator is about to be told about anyway; it does not
+    // change what they are told, and it is not awaited.
+    reportUploadAttempt(intent.assetId, {
+      outcome: 'failed', startedAt, lastProgressAt, bytesSent, failureCode: failureCode(e),
+    })
+    throw e
+  }
   await finalizeSourceUpload(intent.assetId)
   return intent
 }

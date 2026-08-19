@@ -242,6 +242,14 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
     const why = e instanceof Error ? e.message : String(e)
     await db.from('reference_content_profiles').upsert({
       url, platform, profile: {}, rejections: [], fields_accepted: 0,
+      // ⚠️ CLEARED, NOT LEFT ALONE — THIS ONE COST A WRONG CONCLUSION. An upsert
+      // only writes the columns it names, so a failure used to leave the
+      // transcript columns from a PREVIOUS run standing beside a fresh error.
+      // Three recovered rows then read "1021 chars, local_whisper, plus an
+      // error", which looks like a partial success and is not: the download
+      // threw and nothing was transcribed. It was read that way, out loud,
+      // before the code said otherwise.
+      transcript_chars: null, transcript_source: null, download_route: null,
       error: why.slice(0, 500), assessed_at: assessedAt,
     }, { onConflict: 'url' })
     return { url, error: why.slice(0, 200) }
@@ -259,6 +267,10 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
       url, platform, profile: {}, rejections: [], fields_accepted: 0,
       transcript_source: transcript.source ?? null,
       paid_because: transcript.paidBecause ?? null,
+      // ⚖️ A SILENT VIDEO STILL COST WHATEVER ITS DOWNLOAD COST. Leaving the
+      // route off no_speech rows would under-count paid routing by exactly the
+      // bucket that is 85 rows wide.
+      download_route: transcript.downloadRoute ?? null,
       transcript_chars: full.length,
       error: `no_speech: transcript was ${full.trim().length} characters`,
       assessed_at: assessedAt,
@@ -298,6 +310,7 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
     // keep reporting the old failure, or the resume query re-queues it forever.
     error: null,
     assessed_at: assessedAt,
+    download_route: transcript.downloadRoute ?? null,
   }, { onConflict: 'url' })
   if (wrote) throw new Error(`assess_reference: could not store the profile: ${wrote.message}`)
 

@@ -224,11 +224,96 @@ export async function runSourceCreate(
   return executePreparedCreate(plan.rpcArgs, ownerId, deps)
 }
 
+// ⚠️ THE ALLOWLIST IS THE WHOLE POINT. `media_assets` fields — status, duration,
+// mime_type, storage_path, processing_state — are the server's to derive, and a
+// client that can set them has the write hole 0139–0141 closed, reopened with a
+// tasteful REST façade. Anything outside this set is a 400, not an ignored key:
+// silently dropping a field teaches a client it was accepted.
+const ATTEMPT_BODY_KEYS = new Set([
+  'action', 'asset_id',
+  'started_at', 'last_progress_at', 'bytes_sent', 'attempt_number',
+  'outcome', 'failure_code',
+])
+export const ATTEMPT_OUTCOMES = new Set(['progressing', 'failed', 'abandoned'])
+
+export interface AttemptReport {
+  started_at: string | null
+  last_progress_at: string | null
+  bytes_sent: number | null
+  attempt_number: number | null
+  outcome: string
+  failure_code: string | null
+}
+
+export function isoOrNull(v: unknown, field: string): { value: string | null } | { error: string } {
+  if (v === undefined || v === null) return { value: null }
+  if (typeof v !== 'string' || Number.isNaN(Date.parse(v))) {
+    return { error: `${field} must be an ISO timestamp` }
+  }
+  return { value: new Date(v).toISOString() }
+}
+
+/**
+ * ⚖️ VALIDATES THE REPORT, NOT THE CLAIM INSIDE IT. `bytes_sent` is what the
+ * client says it sent; nothing here treats that as how many bytes landed. The
+ * object in storage answers that question, and it answers it independently —
+ * which is why the two are worth holding side by side.
+ */
+export function buildAttemptReport(b: Record<string, unknown>): { report: AttemptReport } | { error: { status: number; message: string } } {
+  for (const k of Object.keys(b)) {
+    if (!ATTEMPT_BODY_KEYS.has(k)) return { error: { status: 400, message: `Unexpected field: ${k}` } }
+  }
+  const outcome = String(b.outcome ?? '')
+  if (!ATTEMPT_OUTCOMES.has(outcome)) {
+    return { error: { status: 400, message: 'outcome must be progressing, failed or abandoned' } }
+  }
+  const started = isoOrNull(b.started_at, 'started_at')
+  if ('error' in started) return { error: { status: 400, message: started.error } }
+  const progress = isoOrNull(b.last_progress_at, 'last_progress_at')
+  if ('error' in progress) return { error: { status: 400, message: progress.error } }
+
+  let bytes: number | null = null
+  if (b.bytes_sent !== undefined && b.bytes_sent !== null) {
+    if (typeof b.bytes_sent !== 'number' || !Number.isInteger(b.bytes_sent) || b.bytes_sent < 0) {
+      return { error: { status: 400, message: 'bytes_sent must be a non-negative integer' } }
+    }
+    bytes = b.bytes_sent
+  }
+  let attempt: number | null = null
+  if (b.attempt_number !== undefined && b.attempt_number !== null) {
+    if (typeof b.attempt_number !== 'number' || !Number.isInteger(b.attempt_number)
+      || b.attempt_number < 1 || b.attempt_number > 1000) {
+      return { error: { status: 400, message: 'attempt_number must be an integer between 1 and 1000' } }
+    }
+    attempt = b.attempt_number
+  }
+  let failure: string | null = null
+  if (b.failure_code !== undefined && b.failure_code !== null) {
+    if (typeof b.failure_code !== 'string' || b.failure_code.trim() === '') {
+      return { error: { status: 400, message: 'failure_code must be a non-empty string when present' } }
+    }
+    // Bounded rather than rejected: a long code is a client bug, and losing the
+    // whole report over it would lose the evidence we built this for.
+    failure = b.failure_code.trim().slice(0, 200)
+  }
+  return {
+    report: {
+      started_at: started.value,
+      last_progress_at: progress.value,
+      bytes_sent: bytes,
+      attempt_number: attempt,
+      outcome,
+      failure_code: failure,
+    },
+  }
+}
+
 const FINALIZE_BODY_KEYS = new Set(['action', 'asset_id'])
 export interface RequestDeps extends CreateDeps {
   getUser(): Promise<{ id: string } | null>
   checkRateLimit(ownerId: string): Promise<boolean> // true = allowed
   finalize(ownerId: string, assetId: string): Promise<CreateResult>
+  recordUploadAttempt(ownerId: string, assetId: string, report: AttemptReport): Promise<CreateResult>
 }
 export async function handleSourceAssetRequest(body: unknown, deps: RequestDeps): Promise<CreateResult> {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -258,6 +343,17 @@ export async function handleSourceAssetRequest(body: unknown, deps: RequestDeps)
     return deps.finalize(user.id, assetId)
   }
 
+  // ⚠️ REPORTING AN ATTEMPT MUST NEVER CHANGE THE ASSET. This action writes one
+  // append-only row and touches `media_assets` not at all — so a client that
+  // lies can only make its own forensics wrong, never move an asset's state.
+  if (b.action === 'upload_attempt') {
+    const assetId = String(b.asset_id ?? '').trim()
+    if (!UUID_RE.test(assetId)) return { status: 400, body: { error: 'asset_id (uuid) is required' } }
+    const built = buildAttemptReport(b)
+    if ('error' in built) return { status: built.error.status, body: { error: built.error.message } }
+    return deps.recordUploadAttempt(user.id, assetId, built.report)
+  }
+
   return { status: 400, body: { error: 'Unknown action' } }
 }
 // <<< EDGE-CORE-END
@@ -281,6 +377,25 @@ Deno.serve(async (req: Request) => {
     const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(path, { upsert: true })
     if (error || !data) return null
     return { token: data.token, signedUrl: data.signedUrl }
+  }
+
+  // ⚖️ OWNERSHIP IS CHECKED AGAINST THE ASSET, NOT TAKEN FROM THE BODY. The row
+  // is written with privileged access precisely so the client never holds a
+  // direct write to it — the report is evidence, and evidence a reporter can
+  // forge freely is not evidence.
+  async function recordUploadAttempt(
+    ownerId: string, assetId: string, report: AttemptReport,
+  ): Promise<CreateResult> {
+    const { data: asset } = await admin
+      .from('media_assets').select('id, owner_id').eq('id', assetId).eq('owner_id', ownerId).maybeSingle()
+    if (!asset) return { status: 404, body: { error: 'Asset not found' } }
+    const { error } = await admin.from('media_upload_attempts')
+      .insert({ asset_id: assetId, owner_id: ownerId, ...report })
+    // ⚠️ A FAILED REPORT IS NOT A FAILED UPLOAD. The client is usually calling
+    // this while it is already in trouble; making it handle a second failure
+    // helps nobody, so the shape stays the same and the loss stays server-side.
+    if (error) return { status: 500, body: { error: 'Could not record the attempt.' } }
+    return { status: 200, body: { ok: true } }
   }
 
   // The finalize product authority: verify ownership + that the object really exists,
@@ -325,6 +440,7 @@ Deno.serve(async (req: Request) => {
     createSourceAsset: (args) => admin.rpc('editor_create_source_asset', args),
     signUpload,
     finalize,
+    recordUploadAttempt,
   })
   return json(result.body, result.status)
 })
