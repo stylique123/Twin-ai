@@ -11,16 +11,22 @@
 // fields produced five different creators; a gallery that read those fields
 // directly would make a sixth.
 //
-// ── WHAT THIS FILE REFUSES TO GUESS ───────────────────────────────────────
+// ── WHAT THIS FILE STILL REFUSES TO GUESS ─────────────────────────────────
 //
-// ⚠️ `preferredFormats` COMES BACK EMPTY, ON PURPOSE, AND THAT IS NOT AN
-// OVERSIGHT. It means "what they WANT Twin to help them make", and the only
-// format data Twin holds is `brandTruth.formats` — what they ALREADY make,
-// observed from a scan. `creatorProfileQuestions` names the trap in words:
-// "a leap between desired and observed formats would be a guess dressed as a
-// preference." Someone who has posted forty talking-heads may be here precisely
-// because they want to stop. So the format group stays dark until a question
-// asks, and `compareForCreator` SKIPS an empty list rather than ranking on it.
+// ⚠️ `preferredFormats` MEANS "WHAT THEY WANT TWIN TO HELP THEM MAKE", AND IT IS
+// NOW READ FROM THE QUESTION THAT ASKS EXACTLY THAT. It used to come back empty
+// with a comment explaining that the only format data Twin held was
+// `brandTruth.formats` — what they ALREADY make, observed from a scan. That was
+// true when it was written; `desiredFormats` has since been asked, answered and
+// stored, and the empty list had quietly become a stale decision rather than a
+// principled one. The format group was dark for no remaining reason.
+//
+// ⚖️ WHAT HAS NOT CHANGED IS THE REFUSAL UNDERNEATH IT. Observed formats are
+// STILL never promoted to preferences: someone who has posted forty
+// talking-heads may be here precisely because they want to stop, and this
+// projection reads the answer or nothing at all. `compareForCreator` skips an
+// empty list rather than ranking on it, so an unasked creator and one who chose
+// "Let Twin suggest" both see the whole gallery.
 
 import type { CreatorProfile } from './profileAssembler'
 import type { GalleryCreatorView } from './galleryPolicy'
@@ -65,8 +71,8 @@ export function galleryCreatorView(input: GalleryViewInput): GalleryCreatorView 
   const { profile, capabilities, entities } = input
   return {
     goals: profile?.goals?.value ?? [],
-    // See the header. Not derived, not inferred, not "close enough".
-    preferredFormats: [],
+    // See the header: the creator's own answer, or nothing. Never the scan.
+    preferredFormats: profile?.preferredFormats?.value ?? [],
     relationship: profile?.relationship?.value ?? null,
     productCount: usableProductCount(entities),
     canFilmObjects: capabilities?.can_film_objects.value ?? null,
