@@ -78,8 +78,11 @@ export interface Eligibility {
  * `productionModeMatch` already runs on.
  */
 export function eligibility(ref: ReferenceProfile, me: GalleryCreatorView): Eligibility {
+  // ⚖️ `null` IS NOT A REFUSAL. An unassessed reference refuses nobody — the
+  // same two-sided rule as everything else on this screen — and the visual pass
+  // now says "no knowledge" with a bare null rather than an `Assessed` state.
   const mode = ref.visual.primaryMode
-  if (isKnown(mode) && mode.value === 'other_unsupported') {
+  if (mode !== null && mode.value === 'other_unsupported') {
     return {
       eligible: false,
       reason: 'unsupported_production',
@@ -229,6 +232,6 @@ function goalRank(ref: ReferenceProfile, me: GalleryCreatorView): number {
 
 function formatRank(ref: ReferenceProfile, me: GalleryCreatorView): number {
   const m = ref.visual.primaryMode
-  if (!isKnown(m) || me.preferredFormats.length === 0) return 99
+  if (m === null || me.preferredFormats.length === 0) return 99
   return me.preferredFormats.includes(m.value) ? 0 : 1
 }

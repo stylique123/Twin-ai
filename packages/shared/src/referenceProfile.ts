@@ -25,8 +25,7 @@
 // every consumer can see which half it is standing on — and the gallery can rank
 // on content long before a single frame has been looked at.
 
-import type { Assessed } from './assessed'
-import { unchecked, countObserved } from './assessed'
+import { countObserved } from './assessed'
 import type { ReferenceContentProfile } from './referenceContentProfile'
 import { emptyContentProfile } from './referenceContentProfile'
 
@@ -59,62 +58,125 @@ export type Feasibility = (typeof FEASIBILITY)[number]
  * without a separate home for the visual claim there is nowhere to draw that
  * line.
  */
+/**
+ * ⚠️ EVIDENCE IS PART OF THE FIELD, NOT METADATA BESIDE IT. An earlier draft put
+ * the frame citation next to the claim, which is exactly how a claim gets read
+ * without its proof: one destructuring, one `?? ` and the observation is loose
+ * in the codebase with nothing attached. Making the value unreachable except
+ * through the object that carries its frames means downstream code CANNOT
+ * accidentally use a visual claim it has not been shown the basis for.
+ */
+export type FrameCitation = readonly [number] | readonly [number, number]
+
+export interface VisualObservation<T> {
+  value: T
+  evidence: { frames: FrameCitation }
+}
+
+/**
+ * ⚠️ WHAT A SINGLE STILL CAN AND CANNOT ESTABLISH. Without this, a model can cite
+ * "frame 3" for "the creator walks toward the camera" — a claim no one frame can
+ * support — and the citation check passes while the claim is fiction.
+ *
+ * ⚖️ `temporal` AND `transition` IMPOSE THE SAME ARITY TODAY, and the labels are
+ * kept apart anyway because the CLAIMS differ and the checks will diverge the
+ * moment frames carry timestamps: a transition needs two samples close enough
+ * together for motion between them to be observable, and "changes location" does
+ * not. Collapsing them now would mean re-deriving that distinction later from
+ * field names, which is how a rule gets rebuilt wrong.
+ */
+export const CLAIM_CLASSES = ['static', 'temporal', 'transition'] as const
+export type ClaimClass = (typeof CLAIM_CLASSES)[number]
+
+/**
+ * What the frames pass can answer.
+ *
+ * ⚠️ EVERY FIELD IS `VisualObservation<T> | null`, AND null MEANS NO KNOWLEDGE.
+ * Not false, not "fine", not a default. A parser failure, a missing field and a
+ * claim whose evidence did not support it all land here identically, because
+ * they are the same fact downstream: we do not know.
+ *
+ * ⚖️ "NOTHING REQUIRED" IS A SUCCESSFUL ASSESSMENT, and it is the common case. A
+ * `requirements.secondPerson` of `{ value: false, evidence: … }` is a real
+ * finding that lets the gallery say a video IS recreatable — which is the only
+ * reason this pass earns its cost.
+ */
 export interface ReferenceVisualProfile {
-  primaryMode: Assessed<ProductionMode>
+  primaryMode: VisualObservation<ProductionMode> | null
   people: {
     /** More than one person on camera is the single biggest recreation blocker
      *  for a solo creator, so it is its own field rather than folded into a
      *  score that can average it away. */
-    count: Assessed<'one' | 'multiple'>
+    count: VisualObservation<'one' | 'multiple'> | null
   }
   setting: {
-    changes: Assessed<boolean>
-    complexity: Assessed<'simple' | 'moderate' | 'complex'>
+    changes: VisualObservation<boolean> | null
+    complexity: VisualObservation<'simple' | 'moderate' | 'complex'> | null
   }
   performance: {
-    talkingHead: Assessed<boolean>
-    walking: Assessed<boolean>
-    acting: Assessed<boolean>
-    productInteraction: Assessed<boolean>
-    screenInteraction: Assessed<boolean>
+    talkingHead: VisualObservation<boolean> | null
+    walking: VisualObservation<boolean> | null
+    acting: VisualObservation<boolean> | null
+    productInteraction: VisualObservation<boolean> | null
+    screenInteraction: VisualObservation<boolean> | null
   }
   camera: {
-    framingChanges: Assessed<boolean>
-    positionChanges: Assessed<boolean>
+    framingChanges: VisualObservation<boolean> | null
+    positionChanges: VisualObservation<boolean> | null
   }
   requirements: {
-    physicalProduct: Assessed<boolean>
-    secondPerson: Assessed<boolean>
-    multipleLocations: Assessed<boolean>
-    unusualProps: Assessed<boolean>
+    physicalProduct: VisualObservation<boolean> | null
+    secondPerson: VisualObservation<boolean> | null
+    multipleLocations: VisualObservation<boolean> | null
+    unusualProps: VisualObservation<boolean> | null
   }
-  /** Whether frames were actually looked at, distinguishing "assessed and
-   *  inconclusive" from "never sampled". */
-  framesSampled: boolean
+  // ── FOUR COUNTERS, BECAUSE "COMPLETED" AND "INFORMATIVE" ARE NOT THE SAME ──
+  //
+  // ⚠️ ONE `framesSampled: boolean` CONFLATED ALL OF THESE, and the conflation is
+  // the bug: a pass that ran on four frames and could read nothing looks exactly
+  // like a pass that ran well, and both look like a pass that never happened.
+  /** The pass executed. Says nothing about what it learned. */
+  visualPassRan: boolean
+  /** How many frames the model was actually shown. `0` with `visualPassRan` true
+   *  is a contradiction this type permits and `extractVisualProfile` never
+   *  produces — no frames means the response is discarded. */
+  framesSampled: number
+  /** Fields that came back with a value AND evidence that supports it. */
+  fieldsObserved: number
+  /** Fields the response could not answer usably. Worth asking again. */
+  fieldsUnreadable: number
+  /** ⚖️ ASKED, AND THE FRAMES GENUINELY CANNOT SAY. Field paths the model
+   *  explicitly reported as undeterminable. Separated from `fieldsUnreadable`
+   *  because re-running these costs a call to reach the same nothing, and
+   *  without the distinction the batch pays forever for questions already
+   *  settled. */
+  indeterminate: readonly string[]
 }
-
-const FRAMES = 'a visual pass over sampled frames of the video'
 
 export function emptyVisualProfile(): ReferenceVisualProfile {
   return {
-    primaryMode: unchecked(FRAMES),
-    people: { count: unchecked(FRAMES) },
-    setting: { changes: unchecked(FRAMES), complexity: unchecked(FRAMES) },
+    primaryMode: null,
+    people: { count: null },
+    setting: { changes: null, complexity: null },
     performance: {
-      talkingHead: unchecked(FRAMES),
-      walking: unchecked(FRAMES),
-      acting: unchecked(FRAMES),
-      productInteraction: unchecked(FRAMES),
-      screenInteraction: unchecked(FRAMES),
+      talkingHead: null,
+      walking: null,
+      acting: null,
+      productInteraction: null,
+      screenInteraction: null,
     },
-    camera: { framingChanges: unchecked(FRAMES), positionChanges: unchecked(FRAMES) },
+    camera: { framingChanges: null, positionChanges: null },
     requirements: {
-      physicalProduct: unchecked(FRAMES),
-      secondPerson: unchecked(FRAMES),
-      multipleLocations: unchecked(FRAMES),
-      unusualProps: unchecked(FRAMES),
+      physicalProduct: null,
+      secondPerson: null,
+      multipleLocations: null,
+      unusualProps: null,
     },
-    framesSampled: false,
+    visualPassRan: false,
+    framesSampled: 0,
+    fieldsObserved: 0,
+    fieldsUnreadable: 0,
+    indeterminate: [],
   }
 }
 
@@ -159,15 +221,12 @@ export function observedFieldCount(p: ReferenceProfile): { content: number; visu
       c.requirements.productsRequired, c.requirements.externalFactsRequired,
       c.transfer.topicDependence,
     ]),
-    visual: countObserved([
-      p.visual.primaryMode, p.visual.people.count,
-      p.visual.setting.changes, p.visual.setting.complexity,
-      p.visual.performance.talkingHead, p.visual.performance.walking,
-      p.visual.performance.acting, p.visual.performance.productInteraction,
-      p.visual.performance.screenInteraction,
-      p.visual.camera.framingChanges, p.visual.camera.positionChanges,
-      p.visual.requirements.physicalProduct, p.visual.requirements.secondPerson,
-      p.visual.requirements.multipleLocations, p.visual.requirements.unusualProps,
-    ]),
+    // ⚖️ READ OFF THE COUNTER RATHER THAN RECOUNTED. The visual pass computes
+    // `fieldsObserved` at the moment it decides each field, where it also knows
+    // WHY a field is absent. Walking the fields again here would be a second
+    // implementation of the same question, free to disagree with the first —
+    // and an observation with evidence is no longer an `Assessed`, so the old
+    // shared counter cannot express it anyway.
+    visual: p.visual.fieldsObserved,
   }
 }

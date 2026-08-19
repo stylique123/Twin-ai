@@ -42,7 +42,11 @@ describe('a row the batch wrote is read as knowledge', () => {
     // that filled the visual half from a transcript would erase the distinction
     // the two-pass split exists to preserve.
     const p = readStoredReferenceProfile(good(), 'r')
-    expect(isKnown(p.visual.primaryMode)).toBe(false)
+    // ⚖️ `null`, NOT AN UNKNOWN `Assessed`. A visual claim now carries its frame
+    // citation inside it, so "we have not looked" has no shape at all rather
+    // than a shape with an empty value.
+    expect(p.visual.primaryMode).toBeNull()
+    expect(p.visual.visualPassRan).toBe(false)
   })
 })
 
