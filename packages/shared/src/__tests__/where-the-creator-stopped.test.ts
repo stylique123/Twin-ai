@@ -9,6 +9,8 @@ import { describe, expect, it } from 'vitest'
 import {
   readFunnel, droppedAt, totals, FUNNEL_STAGES, STALE_AFTER_MS,
   PUBLISH_INTENT_LABELS, PUBLISH_INTENTS,
+  SCRIPT_INTENTS, SCRIPT_INTENT_LABELS, NO_RECORD_REASONS, NO_RECORD_REASON_LABELS,
+  NOT_A_SCRIPT_REJECTION,
 } from '../recordingFunnel'
 
 const T0 = Date.parse('2026-08-19T00:00:00.000Z')
@@ -38,8 +40,10 @@ describe('a stage that has not happened yet is not a stage that failed', () => {
       generatedAt: iso(0), recordingStartedAt: iso(MIN), recordingCompletedAt: iso(2 * MIN),
       asOf: iso(STALE_AFTER_MS + 3 * MIN),
     })
-    expect(state(r, 'export_completed')).toBe('dropped')
-    expect(state(r, 'publish_intent')).toBe('pending')
+    // ⚠️ The take uploaded and no edit project was ever created — which is
+    // exactly what production shows, and why these are separate stages.
+    expect(state(r, 'edit_project_created')).toBe('dropped')
+    expect(state(r, 'export_completed')).toBe('pending')
     expect(r.filter((x) => x.state === 'dropped')).toHaveLength(1)
   })
 })
@@ -89,9 +93,10 @@ describe('an edit before recording is a different signal from an edit after', ()
 describe('the whole journey', () => {
   it('reports every stage reached when the creator finished and answered', () => {
     const r = readFunnel({
-      generatedAt: iso(0), firstEditAt: iso(MIN), recordingStartedAt: iso(2 * MIN),
-      recordingCompletedAt: iso(3 * MIN), exportCompletedAt: iso(4 * MIN),
-      publishIntent: 'would_post', asOf: iso(5 * MIN),
+      generatedAt: iso(0), firstEditAt: iso(MIN), scriptIntent: 'would_record',
+      scriptIntentAt: iso(90_000), recordingStartedAt: iso(2 * MIN),
+      recordingCompletedAt: iso(3 * MIN), editProjectCreatedAt: iso(3.5 * MIN),
+      exportCompletedAt: iso(4 * MIN), publishIntent: 'would_post', asOf: iso(5 * MIN),
     })
     expect(r.every((x) => x.state === 'reached')).toBe(true)
     expect(droppedAt(r)).toBeNull()
@@ -109,8 +114,10 @@ describe('the whole journey', () => {
     // of this test asserted "pending everywhere" and the implementation was
     // right where the expectation was lazy.
     const r = readFunnel({ asOf: iso(0) })
-    expect(state(r, 'script_edited')).toBe('not_applicable')
-    expect(r.filter((x) => x.stage !== 'script_edited').every((x) => x.state === 'pending')).toBe(true)
+    for (const opt of ['script_edited', 'script_intent', 'publish_intent']) {
+      expect(state(r, opt), opt).toBe('not_applicable')
+    }
+    expect(r.filter((x) => x.state === 'pending').length).toBeGreaterThan(0)
     expect(droppedAt(r)).toBeNull()
   })
 })
@@ -169,5 +176,77 @@ describe('the stage list itself', () => {
       .toBeLessThan(FUNNEL_STAGES.indexOf('recording_started'))
     expect(FUNNEL_STAGES.indexOf('recording_completed'))
       .toBeLessThan(FUNNEL_STAGES.indexOf('export_completed'))
+  })
+})
+
+// ── THE EVENT THAT MAKES THE DROP READABLE ───────────────────────────────────
+//
+// ⚠️ A FUNNEL SAYS WHERE PEOPLE DIED, NEVER WHAT KILLED THEM. 39 of 41 not
+// opening the camera is equally consistent with a bad script, an irrelevant
+// premise, an intimidating record button, no time, and somebody clicking around
+// at 2am. Those need opposite fixes, so the number is unactionable without a
+// stated reason at the seam.
+describe('would you make this video — asked at the script, before the camera', () => {
+  it('is OPTIONAL, so a question we never asked is not a creator who quit', () => {
+    // ⚠️ Left required this would report "dropped at script_intent" for 39 people
+    // who were never shown anything, hiding that what they did was not film.
+    const r = readFunnel({ generatedAt: iso(0), asOf: iso(STALE_AFTER_MS + MIN) })
+    expect(state(r, 'script_intent')).toBe('not_applicable')
+    expect(droppedAt(r)).toBe('recording_started')
+  })
+
+  it('records the answer when it was actually asked', () => {
+    const r = readFunnel({
+      generatedAt: iso(0), scriptIntent: 'would_not_record', asOf: iso(MIN),
+    })
+    expect(state(r, 'script_intent')).toBe('reached')
+  })
+
+  it('separates browsing from creative rejection', () => {
+    // ⚖️ Somebody who says "I'm just looking around" is not evidence the writer
+    // failed. Pooling them is how a quality metric gets dominated by tourists.
+    expect(NOT_A_SCRIPT_REJECTION.has('just_exploring')).toBe(true)
+    expect(NOT_A_SCRIPT_REJECTION.has('no_time')).toBe(true)
+    expect(NOT_A_SCRIPT_REJECTION.has('script_generic')).toBe(false)
+    expect(NOT_A_SCRIPT_REJECTION.has('not_my_voice')).toBe(false)
+    expect(NOT_A_SCRIPT_REJECTION.has('topic_not_relevant')).toBe(false)
+  })
+
+  it('offers reasons that each send us somewhere different', () => {
+    // Gallery / writer / product-and-premise / production / neither.
+    for (const r of ['topic_not_relevant', 'script_generic', 'not_my_voice',
+      'cannot_film_it', 'recording_too_hard'] as const) {
+      expect(NO_RECORD_REASONS).toContain(r)
+    }
+  })
+
+  it('is a different question from publish intent, not an earlier copy of it', () => {
+    // ⚠️ By the time publish intent is asked, everyone who rejected the SCRIPT is
+    // already gone and uncounted. One cannot diagnose the other.
+    expect(SCRIPT_INTENTS).not.toEqual(PUBLISH_INTENTS)
+    expect(FUNNEL_STAGES.indexOf('script_intent'))
+      .toBeLessThan(FUNNEL_STAGES.indexOf('recording_started'))
+    expect(FUNNEL_STAGES.indexOf('publish_intent'))
+      .toBeGreaterThan(FUNNEL_STAGES.indexOf('export_completed'))
+  })
+
+  it('reads to a creator in plain English, naming no subsystem', () => {
+    for (const k of NO_RECORD_REASONS) {
+      expect(NO_RECORD_REASON_LABELS[k]).not.toMatch(/gallery|resolver|slot|beat|voice DNA|product library/i)
+    }
+    expect(SCRIPT_INTENT_LABELS.would_record).toBe('Yes, let’s record')
+  })
+})
+
+describe('a rejected take is not a missing export', () => {
+  it('separates edit_project_created from export_completed', () => {
+    // ⚠️ PRODUCTION: one take rejected for `duration_unknown`, two stuck
+    // uploading, zero edit projects, zero exports. Pooled, that reads as "nobody
+    // exports" and hides that we REFUSED the only take anybody finished.
+    const r = readFunnel({
+      generatedAt: iso(0), recordingStartedAt: iso(MIN), recordingCompletedAt: iso(2 * MIN),
+      asOf: iso(STALE_AFTER_MS + 3 * MIN),
+    })
+    expect(droppedAt(r)).toBe('edit_project_created')
   })
 })

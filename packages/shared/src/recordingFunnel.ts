@@ -8,10 +8,16 @@
 // currently unobserved.
 //
 // ⚖️ SO THIS COUNTS STAGES, NOT SCRIPTS. "How good was the script" is a question
-// we already ask six ways. "Did they record it" is one we have never asked, and
-// it is the one that separates a writing problem from a recording-friction
-// problem — which need opposite fixes and are indistinguishable from the
-// generation table alone.
+// we already ask six ways. "Did they record it" is one we have never asked.
+//
+// ⚠️ AND A FUNNEL SAYS WHERE PEOPLE DIED, NEVER WHAT KILLED THEM. I wrote
+// "Twin's problem is recording friction, not script quality" off the first run
+// of this and it does not follow. 39 of 41 never opening the camera is
+// consistent with a bad script, an irrelevant premise, an intimidating record
+// button, no time, or somebody who was only ever clicking around. Those need
+// opposite fixes. `script_intent` exists because the drop is unattributable
+// without it, and it is the single most valuable event this product does not
+// yet collect.
 //
 // ⚠️ AND IT IS DERIVED, NOT A NEW SOURCE OF TRUTH. Every stage but the last is
 // already recorded somewhere: `generations`, `script_edits`,
@@ -35,8 +41,20 @@ export const FUNNEL_STAGES = [
   'reference_selected',
   'script_generated',
   'script_edited',
+  // ⚠️ THE EVENT THAT MAKES THE DROP READABLE. Everything above is Twin acting;
+  // everything below is the creator acting. This is the seam, and it is where
+  // 95% are lost — so it is the one place a stated reason converts an
+  // unattributable number into a cause.
+  'script_intent',
   'recording_started',
   'recording_completed',
+  // ⚖️ SPLIT OUT FROM `export_completed` BECAUSE THEY FAIL SEPARATELY. A take
+  // that uploads and is then REJECTED by validation never creates an edit
+  // project — which is exactly what production shows: one recording rejected for
+  // `duration_unknown`, two stuck uploading, zero edit projects ever. Pooling
+  // them would have reported "nobody exports" and hidden that we refused the
+  // only take anybody finished.
+  'edit_project_created',
   'export_completed',
   'publish_intent',
 ] as const
@@ -59,8 +77,18 @@ export type FunnelStage = (typeof FUNNEL_STAGES)[number]
 export const STAGE_STATES = ['reached', 'pending', 'dropped', 'not_applicable'] as const
 export type StageState = (typeof STAGE_STATES)[number]
 
-/** Stages a creator may skip without it meaning anything went wrong. */
-export const OPTIONAL_STAGES: ReadonlySet<FunnelStage> = new Set<FunnelStage>(['script_edited'])
+/**
+ * Stages a creator may skip without it meaning anything went wrong.
+ *
+ * ⚠️ BOTH INTENT STAGES ARE HERE BECAUSE WE ASK THEM, THE CREATOR DOES NOT
+ * REACH THEM. A question nobody was shown is our omission, not their
+ * abandonment — and left required it would absorb the drop and report "dropped
+ * at script_intent" for 39 people who were never asked anything, hiding the
+ * fact that what they actually did was not open the camera. That is the same
+ * mistake `script_edited` made on the first run of this file.
+ */
+export const OPTIONAL_STAGES: ReadonlySet<FunnelStage> =
+  new Set<FunnelStage>(['script_edited', 'script_intent', 'publish_intent'])
 
 /**
  * How long a stage may sit untouched before silence means abandonment.
@@ -71,6 +99,68 @@ export const OPTIONAL_STAGES: ReadonlySet<FunnelStage> = new Set<FunnelStage>(['
  * with, rather than buried as a magic number.
  */
 export const STALE_AFTER_MS = 48 * 60 * 60 * 1000
+
+/**
+ * WOULD YOU MAKE THIS VIDEO? — asked at the script, before the camera.
+ *
+ * ⚠️ THIS IS NOT `publish_intent` EARLIER. "Would you post this finished video"
+ * and "would you bother filming this script" are different judgements about
+ * different artefacts, and publish intent cannot diagnose an upstream script
+ * rejection — by the time it is asked, everyone who rejected the script is
+ * already gone and uncounted.
+ */
+export const SCRIPT_INTENTS = ['would_record', 'would_edit_first', 'would_not_record'] as const
+export type ScriptIntent = (typeof SCRIPT_INTENTS)[number]
+
+export const SCRIPT_INTENT_LABELS: Record<ScriptIntent, string> = {
+  would_record: 'Yes, let’s record',
+  would_edit_first: 'Maybe — I want to change something',
+  would_not_record: 'No',
+}
+
+/**
+ * WHY NOT — and the options are the actual competing explanations, not a
+ * satisfaction scale.
+ *
+ * ⚖️ EACH ONE SENDS US SOMEWHERE DIFFERENT. Irrelevant topic is a Gallery
+ * problem; generic or off-voice is a writer problem; "I don't have what I need"
+ * is a Product Library and premise-compatibility problem; "too hard to record"
+ * is a production problem; "not right now" and "just looking" are neither and
+ * must be separable, or ordinary browsing gets counted as creative rejection and
+ * every quality number is poisoned by it.
+ */
+export const NO_RECORD_REASONS = [
+  'topic_not_relevant',
+  'script_generic',
+  'not_my_voice',
+  'cannot_film_it',
+  'recording_too_hard',
+  'no_time',
+  'just_exploring',
+  'other',
+] as const
+export type NoRecordReason = (typeof NO_RECORD_REASONS)[number]
+
+/** ⚠️ PLAIN ENGLISH. A creator reads these, so nothing here names a subsystem. */
+export const NO_RECORD_REASON_LABELS: Record<NoRecordReason, string> = {
+  topic_not_relevant: 'This topic isn’t right for me',
+  script_generic: 'It feels generic',
+  not_my_voice: 'It doesn’t sound like me',
+  cannot_film_it: 'I don’t have what I’d need to film it',
+  recording_too_hard: 'Recording looks like too much work',
+  no_time: 'Not right now',
+  just_exploring: 'I’m just looking around',
+  other: 'Something else',
+}
+
+/**
+ * ⚠️ TWO OF THESE ARE NOT REJECTIONS OF THE SCRIPT AND MUST NEVER BE COUNTED AS
+ * ONE. Somebody browsing at 2am who says "just looking" is not evidence the
+ * writer failed; pooling them is how a quality metric gets quietly dominated by
+ * tourist traffic.
+ */
+export const NOT_A_SCRIPT_REJECTION: ReadonlySet<NoRecordReason> =
+  new Set<NoRecordReason>(['no_time', 'just_exploring'])
 
 /** What the creator would actually do with it — the one thing no table knows. */
 export const PUBLISH_INTENTS = ['would_post', 'needs_changes', 'would_not_post'] as const
@@ -94,7 +184,10 @@ export interface FunnelInput {
   generatedAt?: string | null
   /** Earliest script edit, whenever it happened. */
   firstEditAt?: string | null
+  scriptIntent?: ScriptIntent | null
+  scriptIntentAt?: string | null
   recordingStartedAt?: string | null
+  editProjectCreatedAt?: string | null
   recordingCompletedAt?: string | null
   exportCompletedAt?: string | null
   publishIntent?: PublishIntent | null
@@ -129,8 +222,10 @@ export function readFunnel(input: FunnelInput): StageResult[] {
     reference_selected: ms(input.referenceSelectedAt) ?? ms(input.generatedAt),
     script_generated: ms(input.generatedAt),
     script_edited: ms(input.firstEditAt),
+    script_intent: input.scriptIntent ? (ms(input.scriptIntentAt) ?? ms(input.generatedAt)) : null,
     recording_started: ms(input.recordingStartedAt),
     recording_completed: ms(input.recordingCompletedAt),
+    edit_project_created: ms(input.editProjectCreatedAt),
     export_completed: ms(input.exportCompletedAt),
     publish_intent: input.publishIntent ? (ms(input.exportCompletedAt) ?? now) : null,
   }
