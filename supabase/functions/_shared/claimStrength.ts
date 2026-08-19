@@ -1,0 +1,187 @@
+// ⚠️ DERIVED FILE — DO NOT EDIT. The source of truth is
+// `packages/shared/src/claimStrength.ts`. Edge functions cannot import
+// `@twinai/shared` under Deno deploy, so the copy is kept honest by
+// `scripts/ci/check_resolver_parity.mjs`.
+//
+// ⚖️ THIS FILE HAS NO ALLOWED DIFFERENCE — the shared module imports nothing,
+// so everything below the marker is byte-for-byte identical.
+//
+// ⚠️ AND THE SENSITIVITY IS THE POINT. A stale copy of this detector once saw 2
+// history beats where this one saw 22, running the check its own comment calls
+// "THE MOST EXPENSIVE ERROR" at a tenth of its sensitivity. That is what a
+// hand-copied rule costs, and why this one is generated.
+
+export const CLAIM_STRENGTHS = [
+  /** "Let's talk about X." Naming a subject. Anyone may do this. */
+  'discussion',
+  /** "X is overrated." A position held. Needs to have been heard saying it. */
+  'position',
+  /** "I bought X and stopped." A life event. Needs to be on record. */
+  'history',
+] as const
+export type ClaimStrength = (typeof CLAIM_STRENGTHS)[number]
+
+// ⚠️ MEASURED AGAINST REAL SPEECH, AFTER BEING WRONG ABOUT IT.
+//
+// These patterns shipped tested only against sentences I wrote — in the shapes
+// they already matched. Run against the first real transcripts pulled for these
+// creators they scored 31 of 32 first-person sentences as `discussion`, and in
+// production that verdict is what lets a beat speak on coverage-only evidence.
+// Over 1,436 generated beats, 118 of the 145 first-person ones were waved
+// through, including a fabricated history — "My 3D prints used to be so
+// brittle, but then I started doing this one thing".
+//
+// The fixture is now 37 VERBATIM lines from real transcripts and real
+// generations, hand-labelled with reasons, in
+// `__tests__/fixtures/realSpeech.ts`. A pattern change that does not move that
+// file is not evidence of anything.
+
+/** First-person LIFE EVENTS — STRUCTURAL, not lexical.
+ *
+ *  ⚠️ THE VERB LIST WAS THE PROBLEM. Tuned against 39 real lines it scored
+ *  39/39 and then 14/25 on two creators it had never seen: "I've added a Ryzen
+ *  7", "I was looking for a laptop", "I've talked to their representatives" —
+ *  all ordinary, all missed. A list cannot close over open-class speech.
+ *
+ *  ⚖️ THE AUXILIARY CARRIES THE TENSE, NOT THE VERB. `I've <anything>` and
+ *  `I was <anything>` are histories whatever fills the slot. Keying on that
+ *  took held-out accuracy from 14/25 to 23/25 with ZERO narration false
+ *  positives, and moved the escalation blast radius over 223 stored scripts
+ *  from 4% of beats to 6% — while the refund bar moved by one script. */
+const HISTORY =
+  /\bI(?:'ve| have| had| was| were)\s+\w+|\bI\s+\w+ed\b|\bI (?:\w+ly |already |just |recently |finally |once )*(?:bought|owned|used|switched|returned|tested|quit|regret(?:ted)?|stopped|took|got|made|went|saw|thought|began|ran|kept|told|found|woke|paid|built|broke|felt|knew|meant|left|wrote|spent|sold|read|held|gave|came|did|didn'?t|couldn'?t|wasn'?t|never)\b|\bI used to\b|\bmy own\b|\bthat I have\b|\bwhen I (?:got|bought|switched|tried)\b|\bI (?:\w+ly )?(?:haven'?t|hadn'?t|didn'?t|wasn'?t|couldn'?t)\b/i
+
+/** ⚖️ A POSITION IS NOT A HISTORY, and collapsing them would fail every honest
+ *  talking-head script. "I think foldables are overrated" asserts a belief; "I
+ *  bought a foldable and returned it" asserts an event. The first needs to have
+ *  been heard; the second needs to have happened. */
+//  ⚠️ THE ADVERB SLOT IS LOAD-BEARING. The first version matched `I think` and
+//  missed "I STILL think wired sounds better" — which then fell through to
+//  `discussion` and was waved past on coverage-only evidence. A stated position
+//  that reads as mere discussion is the same escalation this file exists to
+//  stop, running in the other direction.
+/** The unambiguous core of HISTORY — a rhetorical wrapper may not hide one of
+ *  these. "Let me tell you, I bought three of them" is still a purchase. */
+const HISTORY_STRICT =
+  /\bI(?:'ve| have)\s+(?:bought|owned|used|switched|returned|tested|tried)\b|\bI used to\b|\bI (?:bought|owned|switched|returned|tested|quit|regret(?:ted)?)\b/i
+
+/** ⚠️ "I told you guys I'd give away three PCs" is a promise they made; "what if
+ *  I told you…" is a hook. The SAME two words, opposite meanings — so the
+ *  declarative form guards only the NARRATION branch, never the rhetorical one,
+ *  where `told you` is the exact string being excluded. */
+const DECLARED_PROMISE = /\bI told you (?:guys |all |folks )?(?:I|that|about)\b/i
+
+/** "My take is…", "My answer is yes", "My verdict: skip it."
+ *
+ *  ⚠️ RARE AND SEVERE, AND BOTH HALVES ARE THE REASON. Measured across 2,857
+ *  beats in four runs this fires TWICE (0.07%) — but each time it is a stance
+ *  put in the creator's mouth that scored `discussion`, meaning "carries no
+ *  claim about this person", which is the verdict that lets a beat speak on
+ *  coverage-only evidence. A pattern earns its place by what it catches, not by
+ *  how often. */
+const MY_STANCE = /\bmy (?:take|answer|verdict|call|advice)\b\s*(?:is|was|:|—|-)/i
+
+/** "As someone who's built stores and made viral AI ads…"
+ *
+ *  ⚠️ A CLAIMED CAREER IS THE MOST EXPENSIVE THING THIS FILE CAN MISS, and this
+ *  scored `discussion`. One match in 2,857 beats — and it invented a business
+ *  history for a creator on a line they would read to camera.
+ *
+ *  ⚖️ `who's` IS AMBIGUOUS AND THAT DECIDES THE SHAPE. "who's built" is HAS
+ *  built; "who's passionate about tech" is IS passionate — a stance, not a life
+ *  event. So the contraction is only accepted before a past participle, while
+ *  the unambiguous "who has" takes anything. Reading `who's` as perfect in all
+ *  cases would turn every self-description into a fabricated history.  */
+const CREDENTIAL = /\bas someone who has\s+\w+|\bas someone who'(?:s)\s+(?:\w+ed|built|spent|run|made|been|grown|sold|worked|shipped|launched|managed|owned|tested)\b/i
+
+/** "my WHOOP", "my Fitbit Air", "my HomeKit setup" — a NAMED thing they own.
+ *
+ *  ⚠️ A WHOLE CLASS THE DETECTOR MISSED, and finding it refuted my own claim
+ *  that returns had flattened. `my own` was covered; `my <thing>` was not. Over
+ *  2,857 beats, 34 (1.19%) assert a possession and score `discussion` — an
+ *  order of magnitude more common than the last three patterns added, and each
+ *  one puts a specific object in a creator's hands on camera:
+ *
+ *      "Next, the second item, my Fitbit Air."
+ *      "The third item is my WHOOP."
+ *
+ *  If they do not own a WHOOP, that is a fabricated product claim being read to
+ *  an audience, and `evidenceLevel` should have to license it.
+ *
+ *  ⚖️ ONLY THE NAMED HALF, DELIBERATELY. This catches 4 of the 34. The other 30
+ *  are lowercase — "my electric bike", "my proof", "my smart home projects" —
+ *  and separating those from "my approach", "my goals", "my life" needs an
+ *  open-ended list of concrete nouns. A pattern that guessed would fire on every
+ *  abstraction a creator mentions, which is the crying-wolf failure that has
+ *  cost this file twice already. The residual class is recorded rather than
+ *  half-caught; it needs the product-entity check, not a bigger regex. */
+const NAMED_POSSESSION = /\bmy [A-Z][A-Za-z0-9]*/
+
+const POSITION =
+  /\bI (?:\w+ly |still |always |usually |often |sometimes )*(?:think|reckon|believe|feel|like|love|hate|prefer|recommend|rate|adore|enjoy|swear by|rely on|care|don'?t care|would argue)\b|\bI(?:'m| am) (?:\w+ly |not |so |a )*(?:shocked|glad|terrified|surprised|impressed|disappointed|excited|worried|sold|convinced|obsessed|sure|not sure|fan)\b|\bI(?:'d| would)?(?:'?m)? (?:never|not)\b|\bI would ?n'?t\b|\bI wouldn't\b|\bI(?:'m| am) (?:staying away|steering clear|skipping|avoiding|passing)\b|\b(?:hard |soft )?pass(?: for me)?\b|\ba pass for me\b|\bI'?d skip\b|\bI'?d\b|\bmy favou?rite\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? |\bI'?m not going to lie\b|\bno-?brainer\b/i
+
+/** ⚖️ NARRATION COMMITS THE CREATOR TO NOTHING. "I'm going to show you three
+ *  things" describes the video, not the person, and escalating it would block
+ *  the opening line of most scripts in the corpus — a worse failure than the
+ *  gap being closed. Checked AFTER history, so "I told you guys I'd give away
+ *  three PCs" stays the promise it is. */
+const NARRATION =
+  /\bI(?:'m| am)?\s*(?:'ll |will |going to |gonna |about to )|\bI'll\b|\bI(?:'m| am) (?:talking|showing|telling|explaining|breaking|walking)\b|\bI can(?:'t|not) show\b|\bI don'?t know if (?:any of )?you\b|\blet me know\b|\blet me show\b|\bin (?:today'?s|this|the next|our) video\b|\bcurious to hear\b|\bwhat (?:do )?you (?:guys )?think\b|\bin the comments\b|\b(?:items|things|products|ways|tips|gadgets|reasons)\s+(?:that\s+)?I\s+(?:\w+ly\s+|just\s+|recently\s+)*found\b/i
+
+/** Self-introduction — "I'm Nathan Espinoza". ⚠️ CASE-SENSITIVE ON PURPOSE:
+ *  written as `[A-Z]` under an `i` flag it matched any letter, and swallowed
+ *  "I'm shocked", "I'm glad", "I'm not terrified" as narration. */
+const SELF_INTRO = /\bI'm [A-Z][a-z]+/
+
+/**
+ * How strong is this sentence's claim about the creator?
+ *
+ * ⚖️ HISTORY IS CHECKED FIRST because "I used to think I needed every camera
+ * accessory" matches both patterns, and it is a history: it asserts a past
+ * state of the creator's life, not merely a present opinion.
+ */
+/** ⚠️ RHETORICAL FRAMES ADDRESSED TO THE VIEWER, checked BEFORE history.
+ *  "What if I told you…" is one of the most common hooks in short-form, and the
+ *  widened history pattern read `told you` as a past speech act about the
+ *  creator's life. Measuring the widening's blast radius before shipping it is
+ *  what caught this — the same crying-wolf failure the sell pattern had. */
+const RHETORICAL =
+  /\bwhat if I told you\b|\blet me tell you\b|\bI'?ll tell you\b/i
+
+/** ⚠️ A TYPOGRAPHIC APOSTROPHE SILENTLY DEFEATED EVERY PATTERN BELOW.
+ *
+ * Every rule here spells contractions with U+0027 — `I've`, `I'll`, `don't`.
+ * The writer emits U+2019 whenever it feels like prose, and 29 of 705 beats in
+ * the last matrix contain one. The two are different characters, so:
+ *
+ *     "I've been using this for months."  -> history
+ *     "I’ve been using this for months."  -> discussion
+ *
+ * The same sentence, the same claim, and the most expensive check in the system
+ * waved the second one through. Nothing in the corpus made this visible because
+ * the fixtures were typed with straight quotes — a detector measured only
+ * against text we wrote is the exact failure `realSpeech.ts` exists to prevent,
+ * reappearing one layer down as an encoding assumption.
+ *
+ * ⚖️ NORMALISED AT THE ENTRY POINT, NOT PATTERN BY PATTERN. Adding `['’]` to
+ * every contraction across five regexes is five chances to miss one, and the
+ * next pattern added would start the cycle again. */
+const straighten = (s: string): string => s.replace(/[’ʼ‘´`]/g, "'")
+
+export function claimStrength(line: string): ClaimStrength {
+  const s = straighten(String(line ?? ''))
+  // A rhetorical frame recounts nothing — unless it wraps an unambiguous one.
+  if (RHETORICAL.test(s) && !HISTORY_STRICT.test(s)) return 'discussion'
+  // ⚖️ NARRATION BEFORE HISTORY, because a structural tense rule fires on
+  // "in today's video, I wanted to make a review" — an intention about the
+  // upload, not an event in a life. It never beats a stance: "I'm going to tell
+  // you why I'd never buy one" is a position wearing an announcement.
+  if ((NARRATION.test(s) || SELF_INTRO.test(s)) && !POSITION.test(s) && !HISTORY_STRICT.test(s) && !DECLARED_PROMISE.test(s)) return 'discussion'
+  // A claimed credential is a life event however the sentence is framed, so it
+  // is checked before narration can wave the line through.
+  if (CREDENTIAL.test(s) || NAMED_POSSESSION.test(s)) return 'history'
+  if (HISTORY.test(s) && !NARRATION.test(s)) return 'history'
+  if (POSITION.test(s) || MY_STANCE.test(s)) return 'position'
+  if (HISTORY.test(s)) return 'history'
+  return 'discussion'
+}

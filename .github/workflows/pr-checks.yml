@@ -352,6 +352,12 @@ jobs:
           # the honest version.
           node scripts/ci/check_script_validator_parity.mjs --selftest
           node scripts/ci/check_script_validator_parity.mjs
+          # The substance rules decide whether a beat is GROUNDED, and the cost
+          # of hand-copying them is measured rather than theoretical: a stale
+          # copy of the first-person detector once saw 2 history beats where
+          # `claimStrength` saw 22, for months, with a passing suite.
+          node scripts/ci/check_resolver_parity.mjs --selftest
+          node scripts/ci/check_resolver_parity.mjs
       # ⚠️ THREE COUNTERS IN TWO DAYS MEASURED NOTHING, in three unrelated
       # subsystems, each found by accident while writing the query that would
       # have read it. Each was fixed as an instance; this is the guard on the
