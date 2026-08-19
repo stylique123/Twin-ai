@@ -100,7 +100,29 @@ jobs:
         timeout-minutes: 10
         run: |
           set -eu
-          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg espeak-ng
+          # ⚠️ APT WAS THE CULPRIT, NOT THE REGISTRY — SETTLED BY EVIDENCE, NOT GUESSED.
+          # The font cache HIT on the failing run ("Cache restored from key:
+          # dejavu-...") so the docker pull never ran, and the step still timed
+          # out at ten minutes. The hang is here, in apt, and it is intermittent:
+          # the same command took 28 seconds on the previous head.
+          #
+          # ⚖️ EACH ATTEMPT IS BOUNDED SEPARATELY, which is the whole point. An
+          # unbounded apt that hangs consumes the entire step budget, so a retry
+          # after it would never run. Three tries of three minutes fits inside
+          # the ten-minute cap with room for the rest of the step.
+          apt_get_retry() {
+            for attempt in 1 2 3; do
+              if timeout 180 sudo apt-get update -qq \
+                 && timeout 180 sudo apt-get install -y -qq --no-install-recommends "$@"; then
+                return 0
+              fi
+              echo "apt attempt $attempt failed or timed out; retrying"
+              sleep 5
+            done
+            echo "::error::apt could not install: $* (3 bounded attempts)"
+            return 1
+          }
+          apt_get_retry ffmpeg espeak-ng
           D=/usr/share/fonts/truetype/dejavu
           sudo mkdir -p "$D"
           if ls "$HOME/dejavu-cache"/*.ttf >/dev/null 2>&1; then
