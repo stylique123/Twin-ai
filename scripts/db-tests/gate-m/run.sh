@@ -23,7 +23,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 MIG142="$REPO/supabase/migrations/0142_reference_content_profiles.sql"
 MIG143="$REPO/supabase/migrations/0143_a_failure_may_not_erase_a_success.sql"
-for f in "$MIG142" "$MIG143"; do [ -f "$f" ] || { echo "FATAL: $f not found"; exit 1; }; done
+MIG146="$REPO/supabase/migrations/0146_a_freeze_must_be_writable.sql"
+for f in "$MIG142" "$MIG143" "$MIG146"; do [ -f "$f" ] || { echo "FATAL: $f not found"; exit 1; }; done
 
 if [ -z "${PGBIN:-}" ]; then
   for d in /usr/lib/postgresql/*/bin /opt/homebrew/opt/postgresql@16/bin /usr/local/opt/postgresql@16/bin; do
@@ -51,6 +52,7 @@ end $$;
 SQL
 psql -q -v ON_ERROR_STOP=1 -f "$MIG142"
 psql -q -v ON_ERROR_STOP=1 -f "$MIG143"
+psql -q -v ON_ERROR_STOP=1 -f "$MIG146"
 
 fail(){ echo "GATE-M FAIL: $1"; exit 1; }
 ok(){ echo "  ok: $1"; }
@@ -133,5 +135,51 @@ psql -q -v ON_ERROR_STOP=1 -c "
 [ "$(q "select recovery_batch from public.reference_content_profiles where url='u://3'")" = "proof_410_damage" ] \
   || fail "a failed recovery attempt cleared the recovery marker"
 ok "the newest failure is kept and the row stays a recovery target"
+
+# ── 0146: THE FREEZE THAT SILENTLY DID NOTHING ───────────────────────────
+#
+# ⚠️ FOUND IN PRODUCTION, NOT HERE, WHICH IS THE POINT OF ADDING IT. `update …
+# set recovery_batch = 'proof_410_damage'` on all 38 damaged rows reported
+# "UPDATE 38" and left every one of them NULL: 0143's failure branch reverted
+# the column to its OLD value. The freeze protecting the evidence of the
+# incident was eaten by the fix for the incident.
+echo "6. A FREEZE IS WRITABLE — the marker lands on a damaged row"
+psql -q -v ON_ERROR_STOP=1 -c "
+  delete from public.reference_content_profiles where url = 'u://4';
+  insert into public.reference_content_profiles (url, platform, schema_version, profile, fields_accepted, error)
+  values ('u://4', 'tiktok', 1, '{}'::jsonb, 0, 'yt-dlp exited 1: blocked');
+  update public.reference_content_profiles set recovery_batch = 'proof_410_damage' where url = 'u://4';"
+[ "$(q "select recovery_batch from public.reference_content_profiles where url='u://4'")" = "proof_410_damage" ] \
+  || fail "the freeze was silently discarded — 0146 has regressed"
+ok "a damaged row can be marked for recovery"
+
+# ⚖️ A BOOKKEEPING WRITE IS NOT AN ASSESSMENT, and logging it as one made the
+# record useless: 38 `failure` rows at a single instant could equally be the
+# damage or the freeze that marked it.
+echo "7. A LABEL IS NOT AN ATTEMPT — bookkeeping writes nothing to the log"
+BEFORE=$(q "select count(*) from public.reference_assessment_attempts where url='u://4'")
+psql -q -v ON_ERROR_STOP=1 -c "
+  update public.reference_content_profiles set recovery_batch = 'some_other_batch' where url = 'u://4';"
+[ "$(q "select count(*) from public.reference_assessment_attempts where url='u://4'")" = "$BEFORE" ] \
+  || fail "a bookkeeping write was logged as an assessment attempt"
+ok "relabelling a row does not invent an assessment"
+
+# ⚠️ AND THE SIDE DOOR STAYS SHUT. The danger in carving out an exemption is
+# that somebody rides another column in on it. Setting the marker AND clearing
+# the error in one statement is an ASSESSMENT — it must go through the merge
+# rules, not through the label branch.
+echo "8. MUTATION CONTROL — the exemption is not a side door"
+psql -q -v ON_ERROR_STOP=1 -c "
+  delete from public.reference_content_profiles where url = 'u://5';
+  insert into public.reference_content_profiles (url, platform, schema_version, profile, fields_accepted, error)
+  values ('u://5', 'tiktok', 1, '{\"topic\":\"kept\"}'::jsonb, 18, null);
+  update public.reference_content_profiles
+     set recovery_batch = 'sneaky', error = 'a failure riding in on a label'
+   where url = 'u://5';"
+[ "$(q "select error from public.reference_content_profiles where url='u://5'")" = "" ] \
+  || fail "a failure destroyed a success by travelling with a recovery_batch change"
+[ "$(q "select recovery_batch from public.reference_content_profiles where url='u://5'")" = "" ] \
+  || fail "the label branch let a rejected assessment write part of itself"
+ok "a failure cannot reach a good row by changing the label too"
 
 echo "gate-M: all cases passed"
