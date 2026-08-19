@@ -82,6 +82,46 @@ export type TranscriptSource =
 /** Why a paid route ran. Absent on free routes. */
 export type PaidBecause = 'no_captions' | 'free_path_failed'
 
+// WHICH ROUTE READ THIS VIDEO — recorded, never inferred.
+//
+// ⚠️ THE ECONOMIC QUESTION IS "WHAT FRACTION OF TIKTOKS NEED PAID ROUTING", and
+// nothing can answer it after the fact if the successful route was not written
+// down. A silent fallback chain reports one number — "it worked" — and hides the
+// only number that decides whether a 4,297-URL gallery is affordable.
+//
+// ⚖️ TIKTOK ONLY, DELIBERATELY. YouTube and Instagram have their own routes for
+// their own reasons and are NOT part of this ladder. One datacenter IP being
+// bullied by TikTok is not an argument for an "all platforms via Apify"
+// abstraction, and building one would hide three different cost stories behind
+// a single word.
+export const DOWNLOAD_ROUTES = [
+  /** yt-dlp from our own IP, explicitly impersonating a real browser. Free. */
+  'local_impersonated',
+  /** yt-dlp through Apify's residential proxy. Paid per GB of egress, and it
+   *  keeps the local pipeline — local media, local whisper, local frames. */
+  'residential_proxy',
+  /** ⚠️ TIER 3, LAST RESORT. An Actor performs the whole per-video extraction,
+   *  so it is paid per video and it leaves our pipeline entirely. For individual
+   *  high-value URLs that survive both rungs above — never a bulk default. */
+  'apify_actor',
+] as const
+export type DownloadRoute = (typeof DOWNLOAD_ROUTES)[number]
+
+/**
+ * ⚖️ THE IMPERSONATION TARGET, ASKED FOR RATHER THAN ASSUMED.
+ *
+ * ⚠️ THE IMAGE HAS HAD 37 USABLE TARGETS SINCE 33a7b7b AND ASKED FOR NONE OF
+ * THEM. `--list-impersonate-targets` reports the capability; the download never
+ * passed `--impersonate`, so every TikTok fetch went out as plain yt-dlp. That
+ * is the same failure the curl-cffi ceiling was: a dependency present, installed,
+ * importable — and not effective, because nothing invoked it.
+ *
+ * `chrome` rather than a pinned version, because yt-dlp resolves it to the best
+ * available target and pinning one would break the day that target moves — which
+ * is exactly how the unbounded floor broke us in the other direction.
+ */
+export const IMPERSONATE_TARGET = 'chrome'
+
 export interface Transcript {
   language: string
   duration_sec: number
@@ -93,6 +133,9 @@ export interface Transcript {
    *  one as free would report a cost of zero for routes never measured. */
   source?: TranscriptSource
   paidBecause?: PaidBecause
+  /** ⚠️ ABSENT MEANS UNRECORDED, NOT FREE — the same rule `source` follows.
+   *  Only the TikTok ladder sets this. */
+  downloadRoute?: DownloadRoute
 }
 
 export interface ScrapedPost {
@@ -762,9 +805,22 @@ export async function transcribeFromUrl(rawUrl: string): Promise<Transcript> {
   const outPath = join(dir, 'transcript.json')
   try {
     // 1. Download audio only (no video) — cheaper + faster than full media.
+    //
+    // ⚠️ `--impersonate` IS THE POINT OF THIS LINE. Without it yt-dlp sends its
+    // own TLS fingerprint, TikTok answers with something the extractor cannot
+    // parse, and the error reads "Unexpected response from webpage request" —
+    // which sounds like TikTok changed their page and is actually us being
+    // identified. The image has carried 37 usable targets since 33a7b7b and
+    // asked for none of them.
+    //
+    // ⚖️ AND IT IS RUNG ONE OF A NAMED LADDER, NOT A RETRY. If this fails the
+    // next rung is the residential proxy and the one after is an Actor, each
+    // costing more than the last — so which rung succeeded is recorded on the
+    // row rather than collapsed into "it worked".
     await run(
       'yt-dlp',
       ['-f', 'bestaudio/best', '-x', '--audio-format', 'm4a', '--no-playlist',
+       '--impersonate', IMPERSONATE_TARGET,
        '--max-filesize', '200M', '-o', audioPath, rawUrl],
       120_000,
     )
@@ -782,7 +838,11 @@ export async function transcribeFromUrl(rawUrl: string): Promise<Transcript> {
     )
     // ⚠️ THE TIKTOK ROUTE. yt-dlp + local whisper, free per video and bounded
     // only by this box's CPU — the one platform whose budget is already raised.
-    return { ...(JSON.parse(await readFile(outPath, 'utf8')) as Transcript), source: 'local_whisper' }
+    return {
+      ...(JSON.parse(await readFile(outPath, 'utf8')) as Transcript),
+      source: 'local_whisper',
+      downloadRoute: 'local_impersonated',
+    }
   } finally {
     // Discard raw media + working files no matter what.
     await rm(dir, { recursive: true, force: true }).catch(() => {})
