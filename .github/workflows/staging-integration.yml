@@ -64,6 +64,17 @@ jobs:
         with:
           node-version: 22
 
+      - name: Caption font pin (the cache key IS the digest)
+        id: fontpin
+        run: |
+          set -eu
+          k=$(python3 -c "import json;c=json.load(open('worker/render_catalog_v1.json'))['fonts'];print('-'.join(c[f]['sha256'][:16] for f in sorted(c)))")
+          echo "key=$k" >> "$GITHUB_OUTPUT"
+      - name: Restore the pinned caption fonts
+        uses: actions/cache@v4
+        with:
+          path: ~/dejavu-cache
+          key: dejavu-${{ steps.fontpin.outputs.key }}
       - name: Install ffmpeg + espeak-ng (fixtures & audio extraction) + caption fonts
         # fonts-dejavu-core is REQUIRED by Phase 8: the worker refuses a caption
         # font that is absent or does not match its pinned digest, so a runner
@@ -78,12 +89,30 @@ jobs:
         # image and SAME install command the Dockerfile uses and copies the result
         # onto the runner, rather than hardcoding a Debian package URL/version that
         # could silently drift out of sync with the Dockerfile.
+        #
+        # ⚠️ AND IT IS CACHED BY DIGEST, because on 2026-08-19 this exact step hung
+        # past 30 minutes here and in `unit-tests` simultaneously, on two runners,
+        # while every registry-free job finished inside two minutes. The key is
+        # built from the catalog's own sha256s, so re-pinning the fonts changes
+        # the key and forces a refetch — a stale cache cannot outlive its pin. The
+        # digest assert immediately below is what makes restoring from a mutable
+        # store as trustworthy as fetching from the image.
+        timeout-minutes: 10
         run: |
+          set -eu
           sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg espeak-ng
           D=/usr/share/fonts/truetype/dejavu
           sudo mkdir -p "$D"
-          docker run --rm -v "$D:/out" node:22-bookworm-slim bash -c \
-            "apt-get update -qq && apt-get install -y -qq --no-install-recommends fonts-dejavu-core && cp /usr/share/fonts/truetype/dejavu/*.ttf /out/"
+          if ls "$HOME/dejavu-cache"/*.ttf >/dev/null 2>&1; then
+            echo "fonts restored from cache (key ${{ steps.fontpin.outputs.key }})"
+            sudo cp "$HOME/dejavu-cache"/*.ttf "$D/"
+          else
+            docker run --rm -v "$D:/out" node:22-bookworm-slim bash -c \
+              "apt-get update -qq && apt-get install -y -qq --no-install-recommends fonts-dejavu-core && cp /usr/share/fonts/truetype/dejavu/*.ttf /out/"
+            mkdir -p "$HOME/dejavu-cache"
+            sudo cp "$D"/*.ttf "$HOME/dejavu-cache/"
+            sudo chown "$(id -u):$(id -g)" "$HOME/dejavu-cache"/*.ttf
+          fi
 
       - name: Assert the CI caption fonts match the pinned catalog digests
         # If the runner's fonts differ from the catalog, Phase 8 would fail deep
