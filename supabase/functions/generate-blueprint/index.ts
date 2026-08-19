@@ -12,6 +12,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { buildLinkAllowlist, sanitizeBlueprintLinks, type LinkAllowlist } from '../_shared/outputLinks.ts'
 import { templateFor } from '../_shared/containerTemplates.ts'
+import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
 
 // Internal credits per recreation. Adjustable via the RECREATION_COST secret so we
 // can quietly change the credit<->video rate later WITHOUT a code change and
@@ -150,6 +151,47 @@ function dropSpokenPlaceholders<T>(bp: T): { bp: T; hooksDropped: number; linesA
     }
   } catch { /* never fail a generation on a cosmetic pass */ }
   return { bp, hooksDropped, linesAffected }
+}
+
+/**
+ * How sayable was the script we actually shipped?
+ *
+ * ⚠️ OBSERVE ONLY, AND DELIBERATELY SO. The thresholds in `speechPolish` were
+ * derived from one worked example. Enforcing them on traffic they have never
+ * been measured against would start refusing scripts on a rule nobody checked —
+ * the same mistake as a weighted score deciding an order it was never validated
+ * for. First we find out what production looks like; then we decide.
+ *
+ * ⚖️ IT READS THE SPOKEN LINES ONLY. Scene directions, `[SHOW: …]` clips and
+ * section labels are not said out loud, and counting them would report a
+ * speakability nobody experiences.
+ *
+ * ⚠️ AND IT CANNOT FAIL A GENERATION. This is an observation about a script that
+ * already succeeded and was already charged for.
+ */
+function speechAudit(bp: unknown): {
+  share: number | null
+  sentences: number
+  hard_long: number
+  issues: Array<{ code: string; sentence: string }>
+} | null {
+  try {
+    const b = bp as { script?: Array<{ line?: unknown }> }
+    if (!Array.isArray(b?.script)) return null
+    const spoken = b.script
+      .map((s) => (typeof s?.line === 'string' ? s.line.trim() : ''))
+      .filter((l) => l !== '')
+    if (spoken.length === 0) return null
+    const text = spoken.join(' ')
+    const issues = speechIssues(text)
+    return {
+      share: speakableShare(text),
+      sentences: spokenSentences(text).length,
+      hard_long: issues.filter((i) => i.code === 'sentence_too_long').length,
+      // Capped: a reading is for counting, not for storing the script twice.
+      issues: issues.slice(0, 20).map((i) => ({ code: i.code, sentence: i.sentence })),
+    }
+  } catch { return null }
 }
 
 // Inlined from `packages/shared/src/knowledgeResolver.ts`, where the rules and
@@ -5278,6 +5320,20 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       }))
     }
 
+    // ⚖️ MEASURED ON WHAT SHIPS, not on the raw model output. The link strip and
+    // the placeholder drop both change spoken lines, so a reading taken before
+    // them describes a script no creator ever sees.
+    const speech = speechAudit(blueprint)
+    if (speech && speech.hard_long > 0) {
+      console.warn(JSON.stringify({
+        event: 'script_hard_to_say',
+        user_id: user.id,
+        hard_long: speech.hard_long,
+        of: speech.sentences,
+        share: speech.share,
+      }))
+    }
+
     // ── THE QUALITY GATE: DID WE PRODUCE SOMETHING WORTH CHARGING FOR? ────────
     //
     // ⚖️ THE INCENTIVE THIS SETS, DELIBERATELY. Without it, a bad generation is
@@ -5348,6 +5404,10 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         // G8 counter runs on every generation and its readings expired with the
         // edge logs, so the question it exists to answer could never accumulate.
         beat_audit: beatAudit,
+        // ⚠️ THE REWRITE NOBODY REPORTS (0145). A creator who retypes a line
+        // before saying it leaves no event behind, so the most common failure
+        // this product has is also the only one with no data. Observe only.
+        speech_audit: speech,
       })
       .select('*')
       .single()
@@ -5501,6 +5561,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
             // the record that the next selection decision reads back.
             selection: null,
             beat_audit: null,
+            // ⚖️ THIS ONE IS COMPUTED, AND THE DIFFERENCE IS NOT AN INCONSISTENCY.
+            // `selection` and `beat_audit` describe the analysis that threw, so
+            // there is genuinely nothing to record. Speakability is read off the
+            // script text alone, which exists — and a rescued script is exactly
+            // the one most likely to be hard to say, so writing null here would
+            // blind the reading to its most interesting case.
+            speech_audit: speechAudit(rescuedBp),
           })
           .select('*')
           .single()

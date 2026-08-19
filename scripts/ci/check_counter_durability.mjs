@@ -138,6 +138,15 @@ const EVENTS = {
   spoken_placeholders_or_empty_promises: { kind: 'incident', why: 'A placeholder that reached a spoken line.' },
   placeholder_beats_asked: { kind: 'incident', why: 'Beats sent back to the creator as questions.' },
   blueprint_links_stripped: { kind: 'incident', why: 'A destination the creator never vouched for, removed.' },
+  // ⚖️ A COUNTER RATHER THAN AN INCIDENT, because one long sentence in one
+  // script is not a defect worth waking anybody for — the RATE is the finding.
+  // A creator who retypes a line before saying it leaves no complaint, no
+  // refund and no event, so this is the only trace the failure has.
+  script_hard_to_say: {
+    kind: 'counter',
+    stored: 'generations.speech_audit',
+    why: 'How sayable the shipped script was. Observe only; stored by 0145.',
+  },
   product_claim_escalated: { kind: 'incident', why: 'A product claim raised past what evidence supports.' },
   entitlement_blocked: { kind: 'incident', why: 'A claim the creator is not entitled to make.' },
   entitlement_repair: { kind: 'incident', why: 'What the entitlement repair rewrote.' },

@@ -284,6 +284,12 @@ jobs:
           # reference was assessed as.
           node scripts/ci/check_container_templates_parity.mjs --selftest
           node scripts/ci/check_container_templates_parity.mjs
+          # The speakability thresholds are DERIVED — 22 words is half again the
+          # top of the spoken band, chosen so it catches the 25-word essay
+          # sentence the file is named after. An edge copy that drifts looser
+          # keeps reporting a healthier script than we shipped.
+          node scripts/ci/check_speech_polish_parity.mjs --selftest
+          node scripts/ci/check_speech_polish_parity.mjs
       # ⚠️ THREE COUNTERS IN TWO DAYS MEASURED NOTHING, in three unrelated
       # subsystems, each found by accident while writing the query that would
       # have read it. Each was fixed as an instance; this is the guard on the
