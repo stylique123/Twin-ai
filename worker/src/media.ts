@@ -82,6 +82,8 @@ export type TranscriptSource =
 /** Why a paid route ran. Absent on free routes. */
 export type PaidBecause = 'no_captions' | 'free_path_failed'
 
+import { downloadArgsFor, routeName, type DownloadRoute } from './downloadRoute.js'
+
 // WHICH ROUTE READ THIS VIDEO — recorded, never inferred.
 //
 // ⚠️ THE ECONOMIC QUESTION IS "WHAT FRACTION OF TIKTOKS NEED PAID ROUTING", and
@@ -105,7 +107,7 @@ export const DOWNLOAD_ROUTES = [
    *  high-value URLs that survive both rungs above — never a bulk default. */
   'apify_actor',
 ] as const
-export type DownloadRoute = (typeof DOWNLOAD_ROUTES)[number]
+export type DownloadRouteName = (typeof DOWNLOAD_ROUTES)[number]
 
 /**
  * ⚖️ THE IMPERSONATION TARGET, ASKED FOR RATHER THAN ASSUMED.
@@ -135,7 +137,7 @@ export interface Transcript {
   paidBecause?: PaidBecause
   /** ⚠️ ABSENT MEANS UNRECORDED, NOT FREE — the same rule `source` follows.
    *  Only the TikTok ladder sets this. */
-  downloadRoute?: DownloadRoute
+  downloadRoute?: DownloadRouteName
 }
 
 export interface ScrapedPost {
@@ -780,7 +782,10 @@ async function instagramTranscriptViaApify(rawUrl: string): Promise<Transcript> 
 // ALWAYS discard the raw media afterwards (analyze-and-discard / privacy).
 // YouTube + Instagram are the exceptions: we fetch transcripts via Apify (see
 // above) because both bot-block yt-dlp from datacenter IPs.
-export async function transcribeFromUrl(rawUrl: string): Promise<Transcript> {
+export async function transcribeFromUrl(
+  rawUrl: string,
+  route: DownloadRoute = { kind: 'local_impersonated' },
+): Promise<Transcript> {
   const u = assertAllowedUrl(rawUrl)
   if (isYouTube(u)) {
     // Free first (YouTube doesn't block us), Apify only as a paid fallback.
@@ -817,12 +822,19 @@ export async function transcribeFromUrl(rawUrl: string): Promise<Transcript> {
     // next rung is the residential proxy and the one after is an Actor, each
     // costing more than the last — so which rung succeeded is recorded on the
     // row rather than collapsed into "it worked".
+    // ⚠️ THE ROUTE IS RENDERED, NOT DECIDED, HERE. `downloadArgsFor` adds
+    // `--proxy` only for the residential rung and throws rather than silently
+    // downgrading if the password is missing — a row stamped `residential_proxy`
+    // that actually ran locally would poison the only measurement this exists for.
+    // `--impersonate` is kept on EVERY rung: the proxy changes which IP asks, not
+    // how the TLS handshake looks.
     await run(
       'yt-dlp',
       ['-f', 'bestaudio/best', '-x', '--audio-format', 'm4a', '--no-playlist',
        '--impersonate', IMPERSONATE_TARGET,
+       ...downloadArgsFor(route, env.apifyProxyPassword),
        '--max-filesize', '200M', '-o', audioPath, rawUrl],
-      120_000,
+      180_000,
     )
     // 2. Transcribe via the Python faster-whisper wrapper (prints JSON).
     await run(
@@ -841,7 +853,7 @@ export async function transcribeFromUrl(rawUrl: string): Promise<Transcript> {
     return {
       ...(JSON.parse(await readFile(outPath, 'utf8')) as Transcript),
       source: 'local_whisper',
-      downloadRoute: 'local_impersonated',
+      downloadRoute: routeName(route) as DownloadRouteName,
     }
   } finally {
     // Discard raw media + working files no matter what.

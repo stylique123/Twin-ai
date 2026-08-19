@@ -15,6 +15,7 @@
 // recorded as such, because otherwise it is indistinguishable from one never
 // attempted and every later run pays again to rediscover it.
 import { db, type Job } from '../db.js'
+import { parseRoute } from '../downloadRoute.js'
 import { transcribeFromUrl } from '../media.js'
 import { geminiJson } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
@@ -213,7 +214,7 @@ rehookPosition: an index into beats, or ${NO_REHOOK} if the video never
   re-hooks. ${NO_REHOOK} is a real answer, and most short videos deserve it.
 productsRequired: a whole number; 0 is a real answer.`
 
-interface Payload { url?: unknown; platform?: unknown; force?: unknown }
+interface Payload { url?: unknown; platform?: unknown; force?: unknown; route?: unknown }
 
 export async function handleAssessReference(job: Job): Promise<Record<string, unknown>> {
   const p = (job.payload ?? {}) as Payload
@@ -232,9 +233,14 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
 
   const assessedAt = new Date().toISOString()
 
+  // ⚠️ THE ROUTE COMES FROM THE JOB, AND DEFAULTS TO THE FREE RUNG. An
+  // unreadable or absent route resolves to `local_impersonated` — a malformed
+  // payload must never be the reason we start paying for residential egress.
+  const route = parseRoute(p.route)
+
   let transcript
   try {
-    transcript = await transcribeFromUrl(url)
+    transcript = await transcribeFromUrl(url, route)
   } catch (e) {
     // ⚠️ RECORDED, NOT THROWN. A host the allowlist refuses, a deleted video, a
     // clip with no speech — all are real properties of the library, and the run
