@@ -36,6 +36,8 @@ import type {
 } from './creatorProfileQuestions'
 import type { BriefWorkKind, BriefGoal } from './preScriptBrief'
 import type { Provenanced } from './authority'
+import type { ProductionMode } from './referenceProfile'
+import { preferredModes } from './desiredFormatModes'
 
 // ── THE CANONICAL VOCABULARY ──────────────────────────────────────────────
 //
@@ -179,6 +181,15 @@ export interface CreatorProfile {
   relationship: Provenanced<CanonicalRelationship> | null
   /** The creator's own closing words, when they typed some. */
   defaultCta: Provenanced<string> | null
+  /** ⚠️ WHAT THEY WANT TO MAKE — NEVER WHAT THEY HAVE MADE. The whole reason
+   *  this field exists separately from `brandTruth.formats` is that somebody
+   *  with forty talking-heads in the archive may be here to stop making them.
+   *
+   *  ⚖️ `null` IS UNASKED AND `[]` IS "DO NOT NARROW IT". A creator who tapped
+   *  "Let Twin suggest" answered the question and declined to constrain the
+   *  gallery; that is a different fact from never seeing the question, and the
+   *  ranker skips both while the UI can only be honest about one. */
+  preferredFormats: Provenanced<readonly ProductionMode[]> | null
 }
 
 /** ⚠️ EVERY FIELD IS NULLABLE AND null MEANS UNANSWERED, NOT "no". The three-state
@@ -222,6 +233,7 @@ export function assembleCreatorProfile(input: AssembleInput): CreatorProfile {
   const ties = a.commercialTies ?? null
   const goals = a.contentGoals ?? null
   const cta = typeof input.defaultCta === 'string' ? input.defaultCta.trim() : ''
+  const modes = preferredModes(a.desiredFormats)
 
   // ⚠️ THE FIRST TIE IN PRECEDENCE ORDER, NOT THE FIRST THE CREATOR TAPPED. Tap
   // order is an accident of the interface and must never decide what a script
@@ -241,6 +253,12 @@ export function assembleCreatorProfile(input: AssembleInput): CreatorProfile {
     goals: goals && goals.length > 0 ? confirmed(goals, goals, now) : null,
     relationship: tie ? confirmed(RELATIONSHIP_OF[tie], tie, now) : null,
     defaultCta: cta !== '' ? confirmed(cta, input.defaultCta, now) : null,
+    // ⚖️ `confirmed`, NOT `derived`, AND THE DISTINCTION MATTERS HERE MORE THAN
+    // ANYWHERE. `role` is inferred from `workKind` and says so. This is the
+    // creator's own answer, translated from the words they were shown into the
+    // words the ranker uses — `rawValue` keeps what they actually tapped, so a
+    // reader can always get back to it.
+    preferredFormats: modes ? confirmed(modes, a.desiredFormats, now) : null,
   }
 }
 

@@ -28,7 +28,12 @@ const observed = <T,>(value: T, evidence: string): Assessed<T> =>
   ({ value, basis: 'observed', evidence, assessedAt: AT })
 
 /** Every assessed field in a profile, flattened, so a test can say "all of
- *  them" without listing them and going stale the next time one is added. */
+ *  them" without listing them and going stale the next time one is added.
+ *
+ *  ⚠️ CONTENT ONLY, NOW. The visual half no longer uses `Assessed` — a visual
+ *  claim is a `VisualObservation` that carries its frame citation inside it, and
+ *  `null` is its "no knowledge". The two passes deliberately no longer share a
+ *  shape, because only one of them can point at the thing it saw. */
 const allFields = (p: ReferenceProfile): Assessed<unknown>[] => {
   const out: Assessed<unknown>[] = []
   const walk = (node: unknown): void => {
@@ -48,7 +53,7 @@ describe('an unassessed card is a valid profile, because that is every card', ()
 
   it('every field starts not_checked', () => {
     const fields = allFields(p)
-    expect(fields.length).toBeGreaterThan(20)
+    expect(fields.length).toBeGreaterThan(15)
     for (const f of fields) expect(f.basis).toBe('not_checked')
   })
 
@@ -71,7 +76,12 @@ describe('an unassessed card is a valid profile, because that is every card', ()
   it('and reports itself as unassessed rather than as assessed-with-nothing', () => {
     expect(observedFieldCount(p)).toEqual({ content: 0, visual: 0 })
     expect(p.content.transcriptAvailable).toBe(false)
-    expect(p.visual.framesSampled).toBe(false)
+    // ⚖️ THREE FACTS, NOT ONE FLAG. A pass that never ran, a pass that ran on no
+    // frames, and a pass that ran and learned nothing were all one boolean until
+    // the frame contract landed, and "completed" was being read as "informative".
+    expect(p.visual.visualPassRan).toBe(false)
+    expect(p.visual.framesSampled).toBe(0)
+    expect(p.visual.fieldsObserved).toBe(0)
   })
 
   it('keeps the scraped niche as-is, and infers nothing from it', () => {
@@ -79,7 +89,9 @@ describe('an unassessed card is a valid profile, because that is every card', ()
     // of it would have invented an answer for 689 cards nobody looked at.
     expect(p.content.niche).toBe('Beauty')
     expect(p.content.topic.basis).toBe('not_checked')
-    expect(p.visual.requirements.physicalProduct.basis).toBe('not_checked')
+    // `null` is absence of knowledge — never `false`, which would tell a creator
+    // who cannot film objects that a product montage is a perfect fit.
+    expect(p.visual.requirements.physicalProduct).toBeNull()
   })
 })
 
@@ -201,9 +213,12 @@ describe('the visual half exists, empty, and stays that way until frames are rea
     // saying "let me show you" is not a screen recording observed, and without a
     // separate home for the visual claim there is nowhere to draw that line.
     const v = emptyVisualProfile()
-    expect(v.framesSampled).toBe(false)
-    expect(v.primaryMode.basis).toBe('not_checked')
-    expect(v.primaryMode.basis === 'not_checked' && v.primaryMode.needs).toMatch(/frames/)
+    expect(v.visualPassRan).toBe(false)
+    expect(v.framesSampled).toBe(0)
+    expect(v.primaryMode).toBeNull()
+    // ⚖️ AND NOTHING IS SETTLED EITHER. An unrun pass has not answered a single
+    // question, so every field is still worth asking.
+    expect(v.indeterminate).toEqual([])
   })
 
   it('and keeps "a production Twin cannot help with" as a real answer', () => {

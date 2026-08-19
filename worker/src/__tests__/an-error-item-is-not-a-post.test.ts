@@ -21,12 +21,19 @@ const JOB = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), '..', 'jobs', 'scrapeDna.ts'), 'utf8')
 
 describe('every Actor-backed reader partitions before it maps', () => {
-  it('all three call partitionItems and refuse on failure', () => {
+  // ⚖️ THE ASSERTION MOVED WHEN THE THREE COPIES BECAME ONE HELPER, and the
+  // property it protects did not. Counting three `partitionItems(items)` calls
+  // was only ever a proxy for "no reader maps a dataset it has not partitioned";
+  // now that `readProfileRecords` is the single door, the direct check is
+  // stronger: a reader that calls `apifyDataset` itself has walked around it.
+  it('no reader reaches the Actor except through the partitioning helper', () => {
     // ⚖️ THE SHAPE IS THE ACTOR PLATFORM'S, NOT INSTAGRAM'S, so TikTok and
     // YouTube have exactly the same hole. Fixing only the reader that was
     // reported would leave two.
-    expect((SRC.match(/partitionItems\(items\)/g) ?? []).length).toBe(3)
-    expect((SRC.match(/throw new ProfileReadFailedError\(failure\)/g) ?? []).length).toBe(3)
+    expect((SRC.match(/readProfileRecords\(env\./g) ?? []).length).toBe(3)
+    // One call site — inside the helper — and nowhere else.
+    expect((SRC.match(/await apifyDataset\(/g) ?? []).length).toBe(1)
+    expect(SRC).toMatch(/throw new ProfileReadFailedError\(last\)/)
   })
 
   it('and nothing maps over the raw items any more', () => {

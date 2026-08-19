@@ -138,6 +138,39 @@ const EVENTS = {
   spoken_placeholders_or_empty_promises: { kind: 'incident', why: 'A placeholder that reached a spoken line.' },
   placeholder_beats_asked: { kind: 'incident', why: 'Beats sent back to the creator as questions.' },
   blueprint_links_stripped: { kind: 'incident', why: 'A destination the creator never vouched for, removed.' },
+  // ⚖️ A COUNTER RATHER THAN AN INCIDENT, because one long sentence in one
+  // script is not a defect worth waking anybody for — the RATE is the finding.
+  // A creator who retypes a line before saying it leaves no complaint, no
+  // refund and no event, so this is the only trace the failure has.
+  // ⚖️ A DEBT NAMED RATHER THAN A COLUMN ADDED. Each line is one failed profile
+  // read, which is a defect on its own — but the number actually worth having is
+  // the RATIO: how often does the second attempt succeed where the first did
+  // not? That is what says whether retrying is load-bearing or theatre. It is
+  // not persisted yet because one retry is a strictly better outcome than the
+  // zero we shipped before, and a column for a rate nobody has read once is the
+  // mistake this guard exists to prevent in the other direction.
+  //
+  // ⚠️ PROMOTE THIS THE MOMENT THE RETRY IS USED TO JUSTIFY ANYTHING — a longer
+  // Actor timeout, a third attempt, or a claim that scans are reliable now.
+  profile_read_failed: {
+    kind: 'counter_ephemeral',
+    why: 'One line per failed profile read, with the attempt number and whether it '
+      + 'was judged retryable. The rate that matters (does attempt 2 rescue attempt 1?) '
+      + 'is diagnostic today; promote it before the retry justifies any other change.',
+  },
+  // ⚖️ A COUNTER, NOT AN INCIDENT. One script failing one decidable check is not
+  // worth waking anybody; the RATE across traffic is the finding, and it is the
+  // first measurement this product has ever had of its founding defect.
+  script_report_failed_checks: {
+    kind: 'counter',
+    stored: 'generations.script_report',
+    why: 'Which decidable checks the shipped script failed, and which could not be asked. Observe only; stored by 0147.',
+  },
+  script_hard_to_say: {
+    kind: 'counter',
+    stored: 'generations.speech_audit',
+    why: 'How sayable the shipped script was. Observe only; stored by 0145.',
+  },
   product_claim_escalated: { kind: 'incident', why: 'A product claim raised past what evidence supports.' },
   entitlement_blocked: { kind: 'incident', why: 'A claim the creator is not entitled to make.' },
   entitlement_repair: { kind: 'incident', why: 'What the entitlement repair rewrote.' },
@@ -175,6 +208,8 @@ const EVENTS = {
   creator_knowledge_source_column_absent: { kind: 'incident', why: '0122 unapplied — the selector cannot see source.' },
   scrape_dna_empty: { kind: 'incident', why: 'A scan that found nothing. Honesty about a failed scan, per scan.' },
   scrape_dna_read_failed: { kind: 'incident', why: 'A scan that could not read the account.' },
+  container_template_applied: { kind: 'counter_ephemeral', why: 'How often an assessed reference actually gave the writer a named shape. A rate, not an incident: it is the measure of whether the transcript pass is reaching the script, and it belongs on a dashboard rather than in a row per generation.' },
+  container_template_absent: { kind: 'counter_ephemeral', why: 'And why it did not — reference_not_assessed, container_not_assessed, no_template_for_container, read_failed. Four causes that need four different responses, kept apart so the ratio is diagnosable rather than merely low.' },
   downloader_probe: { kind: 'incident', why: 'What the CONTAINER can do, asked at boot rather than inferred from requirements.txt. Emitted once per worker start; zero impersonation targets is the line that would have explained a wave of TikTok failures before anybody read 38 error rows.' },
   scrape_dna_reader_failed: { kind: 'incident', why: 'The READER reported a failure of its own — an Apify Actor that times out writes an error into its dataset and exits zero, which used to reach a creator as "your account is private or empty". Per occurrence, because each one is a public account being told it is not.' },
   scrape_dna_unsupported_platform: { kind: 'incident', why: 'A platform the worker does not handle.' },

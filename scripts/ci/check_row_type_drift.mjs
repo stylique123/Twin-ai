@@ -141,6 +141,29 @@ const MODELS = [
       // citation does not carry" is a sentence for us to act on, not one to show
       // a creator about a script they are about to film.
       'beat_audit',
+      // ⚖️ HOW SAYABLE THE SHIPPED SCRIPT WAS (0145), AND DELIBERATELY NOT A
+      // NUMBER A CREATOR SEES. It is an OBSERVE-ONLY reading — the thresholds
+      // were derived from a single worked example and have never been measured
+      // against production traffic, so it gates nothing and must persuade
+      // nobody. Showing "your script is 41% speakable" would hand somebody a
+      // score we do not yet trust about a video they are about to film, and it
+      // would turn an internal measurement into a verdict on their writing.
+      //
+      // ⚠️ THE COLUMN EXISTS BECAUSE THE FAILURE HAS NO OTHER TRACE. A creator
+      // who retypes a line before saying it files no complaint and emits no
+      // event; without this the question "are our scripts speakable?" can only
+      // ever be answered from fixtures.
+      'speech_audit',
+      // ⚖️ WHICH DECIDABLE CHECKS THE SHIPPED SCRIPT PASSED (0147), AND SERVER-
+      // ONLY FOR THE SAME REASON AS `speech_audit`: it is an OBSERVE-ONLY report
+      // on rules never measured against production traffic. "Your script failed
+      // 2 of 9 checks" is a verdict we have not earned the right to show, handed
+      // to somebody about a video they are about to film.
+      //
+      // ⚠️ AND ITS `not_run` ENTRIES ARE AN INTERNAL WORKLIST, NOT NEWS. They say
+      // which questions this caller cannot yet ask — a fact about our pipeline,
+      // not about their script.
+      'script_report',
       // A CAPABILITY, not a field. Anyone holding this token can view the
       // generation without logging in, which is the entire design of the
       // login-free review link. The client obtains one through

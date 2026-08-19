@@ -82,13 +82,91 @@ jobs:
       # uses, and copies the result onto the runner, rather than hardcoding a
       # Debian package URL/version that could silently drift out of sync with the
       # Dockerfile. Docker ships preinstalled on GitHub-hosted runners.
-      - name: Install ffmpeg; fetch the caption fonts from the ACTUAL deploy image
+      # ⚠️ A REGISTRY FETCH IS AN OUTAGE WAITING TO HAPPEN, AND ON 2026-08-19 IT
+      # WAS ONE. This step hung past 30 minutes in TWO jobs on TWO runners at the
+      # same time, while every job that touched no registry finished inside two
+      # minutes. Nothing was wrong with the tests; the suite simply could not
+      # start.
+      #
+      # ⚖️ THE CACHE KEY IS THE PIN ITSELF, which is what makes this safe rather
+      # than merely faster. The key is built from the sha256 digests in
+      # `render_catalog_v1.json`, so re-pinning the fonts changes the key and the
+      # next run refetches — a stale cache cannot outlive the pin it was keyed by.
+      #
+      # ⚠️ AND THE DIGEST ASSERT BELOW IS NOT OPTIONAL NOW, IT IS THE GUARD. A
+      # cache is a mutable store; without checking the restored bytes against the
+      # catalog, a poisoned or truncated entry would sail straight into a render.
+      # `unit-tests` did not assert before this change — it does now.
+      - name: Caption font pin (the cache key IS the digest)
+        id: fontpin
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+          set -eu
+          k=$(python3 -c "import json;c=json.load(open('worker/render_catalog_v1.json'))['fonts'];print('-'.join(c[f]['sha256'][:16] for f in sorted(c)))")
+          echo "key=$k" >> "$GITHUB_OUTPUT"
+      - name: Restore the pinned caption fonts
+        uses: actions/cache@v4
+        with:
+          path: ~/dejavu-cache
+          key: dejavu-${{ steps.fontpin.outputs.key }}
+      # ⚖️ BOUNDED, BECAUSE A HANG THAT COSTS 30 MINUTES IS WORSE THAN A FAILURE
+      # THAT COSTS 10. The registry either answers promptly or it is not
+      # answering, and a red run naming the step beats a queue nobody can read.
+      - name: Install ffmpeg; fetch the caption fonts from the ACTUAL deploy image
+        timeout-minutes: 10
+        run: |
+          set -eu
+          # ⚠️ APT WAS THE CULPRIT, NOT THE REGISTRY — SETTLED BY EVIDENCE, NOT GUESSED.
+          # The font cache HIT on the failing run ("Cache restored from key:
+          # dejavu-...") so the docker pull never ran, and the step still timed
+          # out at ten minutes. The hang is here, in apt, and it is intermittent:
+          # the same command took 28 seconds on the previous head.
+          #
+          # ⚖️ EACH ATTEMPT IS BOUNDED SEPARATELY, which is the whole point. An
+          # unbounded apt that hangs consumes the entire step budget, so a retry
+          # after it would never run. Three tries of three minutes fits inside
+          # the ten-minute cap with room for the rest of the step.
+          apt_get_retry() {
+            for attempt in 1 2 3; do
+              if timeout 180 sudo apt-get update -qq \
+                 && timeout 180 sudo apt-get install -y -qq --no-install-recommends "$@"; then
+                return 0
+              fi
+              echo "apt attempt $attempt failed or timed out; retrying"
+              sleep 5
+            done
+            echo "::error::apt could not install: $* (3 bounded attempts)"
+            return 1
+          }
+          apt_get_retry ffmpeg
           D=/usr/share/fonts/truetype/dejavu
           sudo mkdir -p "$D"
-          docker run --rm -v "$D:/out" node:22-bookworm-slim bash -c \
-            "apt-get update -qq && apt-get install -y -qq --no-install-recommends fonts-dejavu-core && cp /usr/share/fonts/truetype/dejavu/*.ttf /out/"
+          if ls "$HOME/dejavu-cache"/*.ttf >/dev/null 2>&1; then
+            echo "fonts restored from cache (key ${{ steps.fontpin.outputs.key }})"
+            sudo cp "$HOME/dejavu-cache"/*.ttf "$D/"
+          else
+            docker run --rm -v "$D:/out" node:22-bookworm-slim bash -c \
+              "apt-get update -qq && apt-get install -y -qq --no-install-recommends fonts-dejavu-core && cp /usr/share/fonts/truetype/dejavu/*.ttf /out/"
+            mkdir -p "$HOME/dejavu-cache"
+            sudo cp "$D"/*.ttf "$HOME/dejavu-cache/"
+            sudo chown "$(id -u):$(id -g)" "$HOME/dejavu-cache"/*.ttf
+          fi
+      - name: Assert the CI caption fonts match the pinned catalog digests
+        # ⚠️ THE CACHE'S GUARD. Restored bytes are checked against the catalog
+        # exactly as freshly-fetched ones are, so the two paths are
+        # indistinguishable to everything downstream — which is the only way a
+        # cache is allowed to stand in for a fetch.
+        run: |
+          set -eu
+          d=/usr/share/fonts/truetype/dejavu
+          for f in DejaVuSans.ttf DejaVuSans-Bold.ttf; do
+            want=$(python3 -c "import json,sys;print(json.load(open('worker/render_catalog_v1.json'))['fonts'][sys.argv[1]]['sha256'])" "$f")
+            got=$(sha256sum "$d/$f" | cut -d' ' -f1)
+            if [ "$want" != "$got" ]; then
+              echo "::error::CI caption font $f does not match the pinned catalog digest (catalog $want, runner $got)."
+              exit 1
+            fi
+            echo "font pinned: $f $got"
+          done
       - name: Install + test @twinai/shared
         run: |
           npm ci
@@ -278,6 +356,30 @@ jobs:
         run: |
           node scripts/ci/check_brand_truth_parity.mjs --selftest
           node scripts/ci/check_brand_truth_parity.mjs
+          # The container templates decide what a script is ASKED to contain,
+          # and drift here is silent: the writer is handed a stale shape, which
+          # reads perfectly well and is a different video from the one the
+          # reference was assessed as.
+          node scripts/ci/check_container_templates_parity.mjs --selftest
+          node scripts/ci/check_container_templates_parity.mjs
+          # The speakability thresholds are DERIVED — 22 words is half again the
+          # top of the spoken band, chosen so it catches the 25-word essay
+          # sentence the file is named after. An edge copy that drifts looser
+          # keeps reporting a healthier script than we shipped.
+          node scripts/ci/check_speech_polish_parity.mjs --selftest
+          node scripts/ci/check_speech_polish_parity.mjs
+          # The validator decides whether a shipped script is RECORDED as sound.
+          # An edge copy where `not_run` had quietly become `pass` would report a
+          # coverage production never had, while every shared test kept proving
+          # the honest version.
+          node scripts/ci/check_script_validator_parity.mjs --selftest
+          node scripts/ci/check_script_validator_parity.mjs
+          # The substance rules decide whether a beat is GROUNDED, and the cost
+          # of hand-copying them is measured rather than theoretical: a stale
+          # copy of the first-person detector once saw 2 history beats where
+          # `claimStrength` saw 22, for months, with a passing suite.
+          node scripts/ci/check_resolver_parity.mjs --selftest
+          node scripts/ci/check_resolver_parity.mjs
       # ⚠️ THREE COUNTERS IN TWO DAYS MEASURED NOTHING, in three unrelated
       # subsystems, each found by accident while writing the query that would
       # have read it. Each was fixed as an instance; this is the guard on the

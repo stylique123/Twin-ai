@@ -78,7 +78,7 @@ describe('a refusal is shown, not silently subtracted', () => {
   const affiliate = galleryCreatorView({
     profile: {
       workKind: null, role: null, businessType: null, audienceSegment: null,
-      audienceLevel: null, goals: null, defaultCta: null,
+      audienceLevel: null, goals: null, defaultCta: null, preferredFormats: null,
       relationship: { value: 'AFFILIATE', rawValue: 'AFFILIATE', source: 'user_answer', updatedAt: AT },
     },
     capabilities: null,

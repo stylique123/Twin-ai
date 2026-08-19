@@ -1,51 +1,56 @@
-// RESOLVE THE SUBSTANCE BEFORE WRITING THE PROSE.
+// ⚠️ DERIVED FILE — DO NOT EDIT. The source of truth is
+// `packages/shared/src/knowledgeResolver.ts`, where the rules and their tests
+// live. Kept honest by `scripts/ci/check_resolver_parity.mjs`.
 //
-// ── THE RUN THIS EXISTS FOR ───────────────────────────────────────────────
+// ── WHY THIS FILE EXISTS AT ALL ───────────────────────────────────────────
 //
-// A phone reviewer, given a working structure, got back this:
+// ⚠️ `generate-blueprint` CARRIED FIVE HAND-INLINED COPIES OF THESE RULES, each
+// held to the original by its own ad-hoc parity test. They were not adaptations:
+// the edge's `suppliedLevel` was `evidenceLevel` line for line. They existed
+// because the shared module demanded a full `KnowledgeItem` — including
+// `confidence`, which none of these functions reads — and a prompt's knowledge
+// block only carries `{ kind, text, basis }`. Narrowing the input to
+// `SubstanceItem` removed the reason to copy; this file removes the copies.
 //
-//   "I bought the new [Phone Model], and while everyone's talking about the
-//    camera and screen, there's something inside..."
-//   "This [Specific Component/Design] is actually key to [Benefit]"
-//   "Now compare that to [Previous Model/Competitor Phone]"
+// ── THE ALLOWED DIFFERENCES ───────────────────────────────────────────────
 //
-// Every structural check passed. The hook shape worked, the pacing worked, the
-// comparison beat was in the right place, no claim was faked and nothing was
-// sold. And the script is worthless, because the creator cannot film it.
-//
-// ⚖️ THE DEFECT IS ORDER, NOT PROMPTING. Writing happened before anyone asked
-// where the facts in each slot were going to come from. A container that says
-// "compare with a competitor" needs a resolved competitor BEFORE prose is
-// written about it — otherwise the writer does the only thing left and describes
-// the shape of the sentence it would write if it knew something.
-//
-// So this runs between Creator Knowledge and the writer, and answers, per
-// container: what belongs here, where does it come from, how strong is that
-// evidence, and if nothing resolves it — what do we do instead of guessing.
-//
-// ── THE EVIDENCE LADDER ───────────────────────────────────────────────────
-//
-// Not every sentence about a creator is equally safe to say in their voice, and
-// treating one text like another is how a title becomes a quote.
-//
-//   coverage    They made a video about it. From titles and captions. Safe to
-//               say they COVERED it; says nothing about what they concluded.
-//   opinion     They said it. From speech. A position that may be voiced.
-//   experience  They did it. First-person: bought it, used it for six months,
-//               switched away from it, regretted it. The strongest, and the only
-//               level that licenses "I" plus a personal history.
-//
-// A container needing personal experience cannot be filled from coverage, and a
-// resolver that pretends otherwise produces the most expensive error this system
-// can make: a first-person claim the creator never made.
+// The shared file imports five modules. Two resolve here (`claimStrength`,
+// `containerTemplates` are both in `_shared`); the other three are TYPE-ONLY and
+// are inlined below. Everything from the marker down is compared character for
+// character.
 
-import type { CreatorKnowledge, KnowledgeItem } from './creatorKnowledge'
-// ⚖️ Imports DOWN into a module with no imports of its own, which is what makes
-// one shared rule possible without a cycle. See the note at `claimStrength.ts`.
-import { claimStrength } from './claimStrength'
-import type { ContainerTemplate, TemplateBeat } from './containerTemplates'
-import type { ContentSlotKind } from './referenceContentProfile'
-import type { FillableEntity } from './slotFill'
+import { claimStrength } from './claimStrength.ts'
+import type { ContainerTemplate, TemplateBeat } from './containerTemplates.ts'
+
+// ── INLINED TYPES (the allowed difference) ────────────────────────────────
+type KnowledgeSource = 'caption' | 'transcript' | 'user' | 'previous_video'
+type KnowledgeBasis = 'stated' | 'demonstrated' | 'inferred'
+type KnowledgeKind =
+  | 'fact' | 'opinion' | 'topic' | 'example' | 'experience' | 'framework'
+  | 'claim' | 'product' | 'covered'
+interface KnowledgeItem {
+  kind: KnowledgeKind
+  text: string
+  basis: KnowledgeBasis
+  source?: KnowledgeSource
+  confidence: number
+  /** ⚠️ READ BY `rankedKnowledge`. Omitting it here compiled fine until the
+   *  compiler was asked — which is the whole argument for typechecking a
+   *  derived copy rather than eyeballing it. */
+  timesSeen: number
+  sourceRef?: string | null
+}
+interface AudienceQuestion { question: string; timesSeen?: number }
+interface CreatorKnowledge { items: KnowledgeItem[]; audience: AudienceQuestion[] }
+type ContentSlotKind = string
+interface FillableEntity {
+  id: string
+  type: string
+  relationship: string
+  /** ⚖️ `archivedAt`, NOT `archived`. Null means live; a withdrawn product must
+   *  not fill a slot. I guessed a boolean and the compiler refused it. */
+  archivedAt: string | null
+}
 
 export const EVIDENCE_LEVELS = ['coverage', 'opinion', 'experience'] as const
 export type EvidenceLevel = (typeof EVIDENCE_LEVELS)[number]
