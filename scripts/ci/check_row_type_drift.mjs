@@ -154,6 +154,16 @@ const MODELS = [
       // event; without this the question "are our scripts speakable?" can only
       // ever be answered from fixtures.
       'speech_audit',
+      // ⚖️ WHICH DECIDABLE CHECKS THE SHIPPED SCRIPT PASSED (0147), AND SERVER-
+      // ONLY FOR THE SAME REASON AS `speech_audit`: it is an OBSERVE-ONLY report
+      // on rules never measured against production traffic. "Your script failed
+      // 2 of 9 checks" is a verdict we have not earned the right to show, handed
+      // to somebody about a video they are about to film.
+      //
+      // ⚠️ AND ITS `not_run` ENTRIES ARE AN INTERNAL WORKLIST, NOT NEWS. They say
+      // which questions this caller cannot yet ask — a fact about our pipeline,
+      // not about their script.
+      'script_report',
       // A CAPABILITY, not a field. Anyone holding this token can view the
       // generation without logging in, which is the entire design of the
       // login-free review link. The client obtains one through

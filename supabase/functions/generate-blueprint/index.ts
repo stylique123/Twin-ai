@@ -13,6 +13,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { buildLinkAllowlist, sanitizeBlueprintLinks, type LinkAllowlist } from '../_shared/outputLinks.ts'
 import { templateFor } from '../_shared/containerTemplates.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
+import { validateWhatWeCan } from '../_shared/scriptValidator.ts'
 
 // Internal credits per recreation. Adjustable via the RECREATION_COST secret so we
 // can quietly change the credit<->video rate later WITHOUT a code change and
@@ -169,6 +170,19 @@ function dropSpokenPlaceholders<T>(bp: T): { bp: T; hooksDropped: number; linesA
  * ⚠️ AND IT CANNOT FAIL A GENERATION. This is an observation about a script that
  * already succeeded and was already charged for.
  */
+/** The words a creator will actually say, in order. One reader, because the
+ *  speech audit and the script report must be describing the same script. */
+function spokenText(bp: unknown): string {
+  try {
+    const b = bp as { script?: Array<{ line?: unknown }> }
+    if (!Array.isArray(b?.script)) return ''
+    return b.script
+      .map((s) => (typeof s?.line === 'string' ? s.line.trim() : ''))
+      .filter((l) => l !== '')
+      .join(' ')
+  } catch { return '' }
+}
+
 function speechAudit(bp: unknown): {
   share: number | null
   sentences: number
@@ -5324,6 +5338,59 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // the placeholder drop both change spoken lines, so a reading taken before
     // them describes a script no creator ever sees.
     const speech = speechAudit(blueprint)
+
+    // ── THE SCRIPT REPORT: SEVEN CHECKS RUN, TWO THAT CANNOT ─────────────────
+    //
+    // ⚠️ THE PLAN IS BUILT FROM WHAT THIS FUNCTION ACTUALLY KNOWS, not from a
+    // placeholder. The objective is the creator's answer, the level is their
+    // stated audience knowledge, the CTA is the one they typed, and ownership
+    // language is permitted only where an owned entity exists. Every field is a
+    // real answer; a validator run against invented inputs reports on a video
+    // nobody made.
+    //
+    // ⚠️ AND TWO CHECKS COME BACK `not_run`, WHICH IS THE HONEST ANSWER RATHER
+    // THAN A GAP. `all_slots_filled` and `no_unsupported_claim` compare the
+    // script against the content resolved for each beat — and this function has
+    // none: it hands the container's beats to the model as prose and lets it
+    // fill them from a knowledge block. Passing an empty content list would
+    // report "0 slots empty, no opinion asserted", two confident passes on
+    // questions nobody asked. Those two states are the worklist for when the
+    // resolver stack reaches the edge.
+    //
+    // ⚖️ OBSERVE ONLY, LIKE THE SPEECH AUDIT BESIDE IT. These checks have never
+    // been measured against production traffic, and a gate built on an unmeasured
+    // rule refuses good work.
+    const scriptReport = (() => {
+      try {
+        const LEVEL: Record<string, string | null> = {
+          beginners: 'beginner', basics: 'intermediate', experienced: 'expert', mixed: null,
+        }
+        const known = typeof brief.audienceKnowledge === 'string' ? brief.audienceKnowledge : ''
+        const spoken = spokenText(blueprint)
+        if (spoken === '') return null
+        const r = validateWhatWeCan(spoken, {
+          objective: String(body.goal ?? ''),
+          audienceLevel: LEVEL[known] ?? null,
+          cta: readyPresent(brief.defaultCta) ? String(brief.defaultCta).slice(0, 240) : null,
+          // ⚖️ THE PERMISSION, NOT THE WISH. "We built this" is allowed only for
+          // somebody who did, and the owned entity is the only evidence of that
+          // this function holds.
+          ownershipLanguage: Boolean(ownedEntity),
+        }, { referenceTranscript: ref?.text ?? null })
+        return {
+          failed: r.failed.map((c) => ({ code: c.code, detail: c.detail ?? null })),
+          not_run: r.notRun,
+          passed: r.checks.filter((c) => c.state === 'pass').length,
+        }
+      } catch { return null }
+    })()
+    if (scriptReport && scriptReport.failed.length > 0) {
+      console.warn(JSON.stringify({
+        event: 'script_report_failed_checks',
+        user_id: user.id,
+        codes: scriptReport.failed.map((f) => f.code),
+      }))
+    }
     if (speech && speech.hard_long > 0) {
       console.warn(JSON.stringify({
         event: 'script_hard_to_say',
@@ -5408,6 +5475,10 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         // before saying it leaves no event behind, so the most common failure
         // this product has is also the only one with no data. Observe only.
         speech_audit: speech,
+        // ⚠️ WHICH DECIDABLE CHECKS THE SHIPPED SCRIPT PASSED, AND WHICH COULD
+        // NOT BE ASKED (0147). Observe only; `not_run` is a coverage gap stated
+        // rather than hidden.
+        script_report: scriptReport,
       })
       .select('*')
       .single()

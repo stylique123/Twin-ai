@@ -158,6 +158,14 @@ const EVENTS = {
       + 'was judged retryable. The rate that matters (does attempt 2 rescue attempt 1?) '
       + 'is diagnostic today; promote it before the retry justifies any other change.',
   },
+  // ⚖️ A COUNTER, NOT AN INCIDENT. One script failing one decidable check is not
+  // worth waking anybody; the RATE across traffic is the finding, and it is the
+  // first measurement this product has ever had of its founding defect.
+  script_report_failed_checks: {
+    kind: 'counter',
+    stored: 'generations.script_report',
+    why: 'Which decidable checks the shipped script failed, and which could not be asked. Observe only; stored by 0147.',
+  },
   script_hard_to_say: {
     kind: 'counter',
     stored: 'generations.speech_audit',

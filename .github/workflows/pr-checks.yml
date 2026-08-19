@@ -346,6 +346,12 @@ jobs:
           # keeps reporting a healthier script than we shipped.
           node scripts/ci/check_speech_polish_parity.mjs --selftest
           node scripts/ci/check_speech_polish_parity.mjs
+          # The validator decides whether a shipped script is RECORDED as sound.
+          # An edge copy where `not_run` had quietly become `pass` would report a
+          # coverage production never had, while every shared test kept proving
+          # the honest version.
+          node scripts/ci/check_script_validator_parity.mjs --selftest
+          node scripts/ci/check_script_validator_parity.mjs
       # ⚠️ THREE COUNTERS IN TWO DAYS MEASURED NOTHING, in three unrelated
       # subsystems, each found by accident while writing the query that would
       # have read it. Each was fixed as an instance; this is the guard on the

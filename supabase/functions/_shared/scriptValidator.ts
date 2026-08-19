@@ -1,26 +1,34 @@
-// BINARY WHERE IT CAN BE, AND HONEST WHERE IT CANNOT.
+// ⚠️ DERIVED FILE — DO NOT EDIT. The source of truth is
+// `packages/shared/src/scriptValidator.ts`, where the checks and their tests
+// live. Edge functions cannot import `@twinai/shared` under Deno deploy, so the
+// copy is kept honest by `scripts/ci/check_script_validator_parity.mjs`.
 //
-// ⚠️ "RATE THIS SCRIPT 1–100" IS THE FAILURE MODE THIS FILE EXISTS TO AVOID.
-// An 8.74 is a number nobody can argue with, nobody can act on, and nobody
-// checked — the same defect as the weighted gallery score that ordered a feed by
-// arithmetic nobody had measured. Most of what matters here is DECIDABLE: either
-// the CTA matches the plan or it does not; either every slot was filled or one
-// was not.
+// ── THE ONE ALLOWED DIFFERENCE ────────────────────────────────────────────
 //
-// ⚖️ SO THERE ARE TWO KINDS OF CHECK AND THEY ARE KEPT APART. Nine checks are
-// computed from the script, the plan and the supplied content — no model, no
-// opinion. Three are judgements a person or a model has to make, and they are
-// PASS / WEAK / FAIL rather than a number, because "weak" is a word somebody can
-// disagree with and 6.2 is not.
+// The shared file imports four things the edge bundler cannot resolve. They are
+// inlined below, and EVERYTHING FROM THE MARKER DOWN is compared character for
+// character.
 //
-// ⚠️ AND THE SPECIFICITY TEST IS THE ONE WORTH THE MOST. Could this script be
-// sent unchanged to a hundred other creators? If yes, it failed, however
-// pleasant it reads — that is the founding defect stated as a check.
+// ⚖️ THE INLINED SHAPES ARE DELIBERATELY STRUCTURAL AND LOOSE, because this
+// function is called through `validateWhatWeCan`, which never touches
+// `WriterInput` or `mayStateAsFact` — those exist here only so `validateScript`
+// still type-checks in the copy. Drift in them cannot change any answer the edge
+// actually computes; drift below the marker can, and that is what is guarded.
 
-import type { CreativeDecisionPlan } from './creativeDecisionPlan'
-import type { WriterInput } from './writerInput'
-import { mayStateAsFact } from './writerInput'
-import { speechIssues, speakableShare } from './speechPolish'
+import { speechIssues, speakableShare } from './speechPolish.ts'
+
+type CreativeDecisionPlan = {
+  objective: string
+  audienceLevel: string | null
+  cta: string | null
+  ownershipLanguage: boolean
+}
+type WriterSlotLike = { content: string; classification: string; attribution: string | null }
+type WriterInput = { decisionPlan: CreativeDecisionPlan; content: readonly WriterSlotLike[] }
+
+const STATEABLE_AS_FACT_EDGE: ReadonlySet<string> =
+  new Set(['verified_fact', 'user_confirmed', 'researched_fact'])
+const mayStateAsFact = (c: string): boolean => STATEABLE_AS_FACT_EDGE.has(c)
 
 export const SCRIPT_CHECKS = [
   'goal_visible',
