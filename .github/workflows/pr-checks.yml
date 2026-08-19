@@ -449,6 +449,15 @@ jobs:
       # would cut to using a duration nothing measured.
       - name: Gate-K (the clip capture RPCs — one attempt one asset, and ready means probed)
         run: bash scripts/db-tests/gate-k/run.sh
+      # Gate-M: 0143, written after a forced re-run destroyed 38 good
+      # assessments. A TikTok block turned 38 of 40 re-reads into download
+      # errors, the handler upserted each error onto its `url`, and the profiles
+      # they replaced were gone. Nothing errored; the queue drained; the table
+      # simply held less than it had an hour earlier. The invariant already
+      # existed in words for generations — "a paid success must never be lost" —
+      # and this table never inherited it.
+      - name: Gate-M (a failed retry may not erase a good assessment)
+        run: bash scripts/db-tests/gate-m/run.sh
       # Gate-L: 0109 stores §8a.1's brief, which was being asked and discarded —
       # a doctor's "never say cure" lived in a localStorage draft and nothing
       # else. Both ways of getting it wrong look like working: an empty string

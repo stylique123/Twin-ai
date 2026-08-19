@@ -40,6 +40,15 @@ const arg = (name, fallback = null) => {
 }
 const flag = (name) => process.argv.includes(`--${name}`)
 
+/** ⚠️ EIGHTEEN, AND EVERY REPORT SAID SEVENTEEN. A re-assessed row came back
+ *  with `fields_accepted: 18` under a report that prints "of 17", which is
+ *  nonsense on its face and had been printed for the whole pilot. The
+ *  measurements were right; the yardstick was short. */
+const ASSESSABLE_FIELDS = 18
+
+/** How many rows a forced run may touch before the result has been read. */
+const CANARY_SIZE = 3
+
 const url = process.env.SUPABASE_URL
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY
 if (!url || !key) {
@@ -85,7 +94,7 @@ async function report() {
   const paid = done.filter((r) => r.paid_because).length
 
   console.log(`\nassessed ${done.length}, failed ${failed.length}`)
-  console.log(`mean fields accepted: ${done.length ? (done.reduce((a, r) => a + r.fields_accepted, 0) / done.length).toFixed(1) : 0} of 17`)
+  console.log(`mean fields accepted: ${done.length ? (done.reduce((a, r) => a + r.fields_accepted, 0) / done.length).toFixed(1) : 0} of ${ASSESSABLE_FIELDS}`)
   console.log('\ntranscript source:')
   for (const [k, v] of [...bySource].sort((a, b) => b[1] - a[1])) console.log(`  ${k ?? 'unrecorded'}: ${v}`)
   console.log(`  billed routes: ${paid} (${done.length ? ((paid / done.length) * 100).toFixed(1) : 0}%)`)
@@ -139,12 +148,38 @@ async function main() {
     return
   }
 
+  // ⚠️ A FORCED BULK RUN DESTROYED 38 GOOD ASSESSMENTS ONCE. A TikTok block
+  // turned 40 re-reads into 38 download errors, each one upserted over the
+  // profile it was meant to improve. Nothing errored. The queue drained.
+  //
+  // ⚖️ SO A BULK FORCE MUST CANARY FIRST. Three rows, read the result, then the
+  // rest — because the difference between "the fix works" and "the downloader
+  // is blocked" is invisible until something actually runs, and by then a bulk
+  // run has already spent the library.
+  if (flag('force') && queue.length > CANARY_SIZE && !flag('canary-passed')) {
+    console.error(
+      `\nREFUSED: a forced run over ${queue.length} rows without a canary.\n` +
+      `  1. node --experimental-strip-types scripts/assess-references.mjs --force --size ${CANARY_SIZE} --go\n` +
+      `  2. --report, and confirm the rows came back ASSESSED rather than failed\n` +
+      `  3. re-run this with --canary-passed\n` +
+      `A forced re-read replaces what is already there, so a downloader that is\n` +
+      `failing turns a bulk run into a bulk deletion.`)
+    process.exit(3)
+  }
+
   // Chunked so one oversized insert cannot fail the whole enqueue.
   let queued = 0
   for (let i = 0; i < queue.length; i += 200) {
     const chunk = queue.slice(i, i + 200).map((u) => ({
       type: 'assess_reference',
-      payload: { url: u, platform: platformOf.get(u) ?? 'unknown' },
+      payload: {
+        url: u,
+        platform: platformOf.get(u) ?? 'unknown',
+        // ⚖️ ONLY WHEN ASKED. Without this the handler skips an assessed row,
+        // which is the safe default and the reason the queue was never
+        // destructive until somebody passed force by hand.
+        ...(flag('force') ? { force: true } : {}),
+      },
     }))
     const { error } = await db.from('jobs').insert(chunk)
     if (error) throw new Error(`enqueue failed at ${i}: ${error.message}`)

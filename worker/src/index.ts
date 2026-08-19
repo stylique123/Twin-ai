@@ -10,6 +10,7 @@ import { handlers } from './jobs/index.js'
 import { beginJobScope } from './jobs/editorCancel.js'
 import { env } from './env.js'
 import { capabilitySummary, darkCapabilityWarnings, readCapabilities } from './capabilities.js'
+import { probeDownloader } from './downloaderProbe.js'
 import { isLeaseLost, isPermanent } from './errors.js'
 import { redact } from './sanitizeError.js'
 
@@ -142,6 +143,26 @@ async function main() {
   // scans TikTok — reduced capability is a legitimate state and crashing on it
   // would turn a missing optional key into an outage.
   for (const line of darkCapabilityWarnings(caps)) log('warn', line)
+
+  // ⚠️ WHAT THE CONTAINER CAN DO, WHICH IS A DIFFERENT QUESTION FROM WHAT IT WAS
+  // CONFIGURED TO DO. `curl-cffi` is pinned in requirements.txt precisely so
+  // TikTok can be impersonated, and a forced re-run still printed "no
+  // impersonate target is available" on every download. A declared dependency
+  // is not an installed one. Only the running image can answer this, and until
+  // this line nothing asked it.
+  //
+  // ⚖️ AWAITED BEFORE THE LOOP, so the answer is in the log ABOVE the first job
+  // rather than interleaved with it — the operator reading a wave of TikTok
+  // failures should find the cause above them, not have to search for it.
+  probeDownloader().then((probe) => {
+    log(probe.tiktokReadable ? 'info' : 'warn', 'downloader_probe', {
+      event: 'downloader_probe',
+      yt_dlp: probe.ytDlp,
+      impersonate_targets: probe.impersonateTargets,
+      tiktok_readable: probe.tiktokReadable,
+      detail: probe.detail,
+    })
+  }).catch((e) => log('warn', 'downloader_probe failed', { error: String(e) }))
   // Graceful shutdown: finish the current job, then exit.
   for (const sig of ['SIGTERM', 'SIGINT']) {
     process.on(sig, () => {
