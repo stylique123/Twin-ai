@@ -32,7 +32,7 @@ describe('generation never sees a withdrawn entity', () => {
   it('the LIBRARY read filters archived rows too', () => {
     // ⚠️ Grounding must not resolve a claim against a product the creator
     // retired — a citation to a withdrawn entity reads as verified.
-    const read = EDGE.slice(EDGE.indexOf(".select('name, relationship')"))
+    const read = EDGE.slice(EDGE.indexOf(".select('id, name, type, relationship, knowledge')"))
     expect(read.slice(0, read.indexOf('.limit(200)'))).toMatch(/\.is\('archived_at', null\)/)
   })
 

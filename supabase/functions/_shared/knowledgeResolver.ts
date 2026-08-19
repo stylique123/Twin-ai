@@ -243,11 +243,39 @@ const NEED_FOR_KIND: Record<ContentSlotKind, SubstanceNeed> = {
   example: 'coverage',
 }
 
+/**
+ * WHICH MECHANISM DECIDED THIS SLOT.
+ *
+ * ⚠️ NOT A RESTATEMENT OF `source`. `source` is the CATEGORY of material
+ * (`product_dna`, `creator_knowledge`, …); this is the ROUTE by which the slot
+ * arrived at it. A `product_dna` slot filled by assigning an entity the creator
+ * owns and one filled from the evidence ladder are the same category and
+ * different decisions, and an audit that cannot tell them apart cannot answer
+ * "why does this beat say this".
+ *
+ * ⚖️ IT IS DERIVABLE TODAY — `entityId !== null` implies assignment — and it is
+ * still stated. The same reason `fieldsObserved` is read off the visual profile
+ * rather than recounted: a consumer that re-derives a decision is a second
+ * implementation free to disagree with the first.
+ */
+export const RESOLVED_BY = ['entity_assignment', 'evidence_ladder', 'unresolved'] as const
+export type ResolvedBy = (typeof RESOLVED_BY)[number]
+
+export interface SlotProvenance {
+  by: ResolvedBy
+  /** ⚠️ THE CONCRETE THINGS, NOT A COUNT. An entity id, or the exact knowledge
+   *  texts that carried the slot. A number here would be a claim nobody can
+   *  check; these are what a person can go and look at. */
+  from: readonly string[]
+}
+
 export interface TemplateResolution extends Resolution {
   /** The template beat this answers. */
   label: string
   /** The entity assigned to it, when the slot takes one and one was free. */
   entityId: string | null
+  /** How this slot came to be decided — see `SlotProvenance`. */
+  provenance: SlotProvenance
 }
 
 export interface ResolveTemplateOptions {
@@ -300,13 +328,24 @@ export function resolveTemplate(
     // and Twin knows which one it is, so there is nothing left to look up and
     // nothing to ask them.
     if (entityId !== null) {
-      return { container, source: 'product_dna', evidence: [], fallback: null, label: beat.label, entityId }
+      return {
+        container, source: 'product_dna', evidence: [], fallback: null,
+        label: beat.label, entityId,
+        provenance: { by: 'entity_assignment', from: [entityId] },
+      }
     }
     const r = resolveContainer(container, knowledge, {
       productKnown: false,
       researchable: opts.researchable,
     })
-    return { ...r, label: beat.label, entityId: null }
+    // ⚖️ `unresolved` IS THE HONEST WORD FOR A SLOT NOTHING FILLED, and it is
+    // kept distinct from a slot the ladder filled weakly. `fallback` already
+    // says what to do instead; this says that nothing was found.
+    const by: ResolvedBy = r.evidence.length > 0 ? 'evidence_ladder' : 'unresolved'
+    return {
+      ...r, label: beat.label, entityId: null,
+      provenance: { by, from: r.evidence.map((e) => e.text) },
+    }
   })
 }
 
