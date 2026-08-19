@@ -33,13 +33,24 @@ describe('the probe asks the binary, not the repository', () => {
   })
 
   it('and says what to do when there are none', async () => {
+    // ⚠️ TWO CAUSES, TWO MESSAGES — AND THIS TEST CONFLATED THEM ON ITS FIRST
+    // RUN. `tiktokReadable` is false both when yt-dlp is ABSENT (this CI runner)
+    // and when yt-dlp is present with ZERO targets (the worker image). Only the
+    // second is a curl-cffi problem, and asserting curl-cffi for both is the
+    // same defect this whole session has been removing: one message for two
+    // causes that need opposite responses.
     const probe = await probeDownloader()
-    if (!probe.tiktokReadable) {
-      // ⚠️ THE MESSAGE NAMES THE DEPENDENCY AND THE FILE. "impersonation
-      // unavailable" sends somebody reading source; naming curl-cffi and
-      // requirements.txt is a fix.
+    if (probe.ytDlp && !probe.tiktokReadable) {
+      // THE IMAGE CASE. The message names the dependency and the file, because
+      // "impersonation unavailable" sends somebody reading source.
       expect(probe.detail).toMatch(/curl-cffi/)
       expect(probe.detail).toMatch(/TikTok/)
+    }
+    if (!probe.ytDlp) {
+      // THE ABSENT CASE. Naming curl-cffi here would send an operator to fix a
+      // dependency of a binary that is not installed.
+      expect(probe.detail).toMatch(/yt-dlp could not be run/)
+      expect(probe.detail).not.toMatch(/curl-cffi/)
     }
   })
 })
