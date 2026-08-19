@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   classifyDownloadFailure, mayRetryViaProxy, DOWNLOAD_FAILURES, RETRYABLE_VIA_PROXY,
-  CLASSIFIER_SOURCES, type DownloadFailure,
+  CLASSIFIER_SOURCES, phaseOf, DOWNLOAD_PHASES, type DownloadFailure,
 } from '../downloadFailure'
 
 describe('the real production error is classified as a challenge, not a mystery', () => {
@@ -164,5 +164,54 @@ describe('a code remembers who assigned it', () => {
     // them predates this file. Backfilling them as `worker` would convert a
     // manual reading into apparent instrument data.
     expect([...CLASSIFIER_SOURCES]).toEqual(['worker', 'offline'])
+  })
+})
+
+// WHETHER RUNG TWO MOVED THE WALL.
+//
+// ⚠️ "THE PROXY FAILED" WOULD POOL TWO OPPOSITE RESULTS. If residential routing
+// turns a `challenge` failure into a `media_download` failure, the proxy did NOT
+// fail — it carried us through TikTok's challenge layer and a different boundary
+// is now in front of us. Those want opposite next steps.
+describe('phase says WHERE it stopped', () => {
+  it('files all three local canaries at the challenge layer', () => {
+    expect(phaseOf('yt-dlp exited 1: ERROR: [TikTok] 123: Unexpected response from webpage request'))
+      .toBe('challenge')
+    expect(phaseOf('Please wait... Unable to extract challenge data')).toBe('challenge')
+  })
+
+  it('checks challenge markers BEFORE webpage ones', () => {
+    // ⚠️ THE ORDERING THAT MATTERS MOST. A challenge failure's text also contains
+    // "download webpage"; filing it as a connection problem would make the
+    // canary report that residential routing changed nothing when it had in fact
+    // moved the boundary.
+    expect(phaseOf('Unable to download webpage: Unexpected response from webpage request'))
+      .toBe('challenge')
+  })
+
+  it('separates a transport failure from a challenge failure', () => {
+    // ⚖️ THE OUTCOME WORTH WATCHING FOR. Getting here means the proxy WORKED.
+    expect(phaseOf('Unable to download video data: HTTP Error 403')).toBe('media_download')
+    expect(phaseOf('fragment 3 not found, retrying')).toBe('media_download')
+    expect(phaseOf('no video formats found')).toBe('media_url')
+    expect(phaseOf('Unable to extract aweme detail info')).toBe('metadata')
+  })
+
+  it('files a genuine connection problem at the webpage', () => {
+    expect(phaseOf('CONNECT tunnel failed, response 403')).toBe('webpage')
+    expect(phaseOf('yt-dlp timed out after 180000ms')).toBe('webpage')
+  })
+
+  it('calls silence success, not an unknown', () => {
+    // ⚠️ No error means the bytes landed. The trace on a success path is what
+    // makes elapsed/bytes comparable across rungs.
+    expect(phaseOf('')).toBe('complete')
+    expect(phaseOf(null)).toBe('complete')
+  })
+
+  it('every phase is one of the declared six', () => {
+    for (const raw of ['', 'nonsense', 'HTTP Error 500', 'fragment', 'challenge data']) {
+      expect(DOWNLOAD_PHASES).toContain(phaseOf(raw))
+    }
   })
 })

@@ -111,6 +111,77 @@ export function classifyDownloadFailure(raw: unknown): DownloadFailure {
   return 'UNKNOWN_DOWNLOAD_FAILURE'
 }
 
+// WHERE THE FAILURE HAPPENED, NOT JUST THAT IT DID.
+//
+// ⚠️ "PROXY FAILED" WOULD POOL TWO OPPOSITE RESULTS. If residential routing turns
+// "Unexpected response from webpage request" into "media URL found, download
+// began, then 403 from the CDN", the proxy did NOT fail — it carried us THROUGH
+// TikTok's challenge layer and we hit a different boundary with its own
+// behaviour. Collapsing both into one verdict throws away the single most useful
+// thing the canary can tell us: whether rung two MOVED the wall.
+//
+// ⚖️ SIX PHASES, IN THE ORDER THE EXTRACTOR WALKS THEM. Not a tracing cathedral
+// — just enough resolution to say which step was the last one reached.
+export const DOWNLOAD_PHASES = [
+  /** Never got a page at all — connection refused, tunnel 403, DNS, timeout. */
+  'webpage',
+  /** Page arrived; yt-dlp's JS challenge solver could not find or solve the
+   *  blob. This is where all three local canaries died. */
+  'challenge',
+  /** Past the challenge; the aweme/API detail call failed. */
+  'metadata',
+  /** Metadata read; no playable format could be resolved from it. */
+  'media_url',
+  /** A format was chosen and the transfer itself failed — a DIFFERENT boundary
+   *  from the challenge, often a different host entirely. */
+  'media_download',
+  /** Bytes on disk. */
+  'complete',
+] as const
+export type DownloadPhase = (typeof DOWNLOAD_PHASES)[number]
+
+/**
+ * ⚠️ ORDERED MOST-SPECIFIC FIRST, because a late-phase message often contains
+ * early-phase words. "Unable to download webpage" appears in a challenge failure
+ * too, so the challenge markers are checked before the webpage ones — otherwise
+ * every challenge failure would be filed as a connection problem and the canary
+ * would report that residential routing changed nothing.
+ */
+export function phaseOf(raw: unknown): DownloadPhase {
+  const s = (typeof raw === 'string' ? raw : raw instanceof Error ? raw.message : '').toLowerCase()
+  if (s.trim() === '') return 'complete'
+  if (s.includes('unexpected response from webpage request')
+    || s.includes('unable to extract challenge data')
+    || s.includes('please wait')) return 'challenge'
+  if (s.includes('unable to extract aweme detail')
+    || s.includes('api json')) return 'metadata'
+  if (s.includes('no video formats found')
+    || s.includes('requested format is not available')) return 'media_url'
+  if (s.includes('fragment')
+    || s.includes('unable to download video data')
+    || s.includes('content too short')) return 'media_download'
+  if (s.includes('unable to download webpage')
+    || s.includes('tunnel')
+    || s.includes('connection')
+    || s.includes('timed out')) return 'webpage'
+  return 'webpage'
+}
+
+/**
+ * The whole trace, small on purpose.
+ *
+ * ⚠️ `sessionHash` NOT `sessionId`-with-credentials — it answers "were these
+ * requests one residential attempt?" without storing the URL or the password.
+ */
+export interface DownloadTrace {
+  route: string
+  session_hash: string | null
+  failure_code: DownloadFailure | null
+  phase: DownloadPhase
+  elapsed_ms: number
+  bytes_downloaded: number
+}
+
 // WHO CLASSIFIED THIS, RECORDED SO A MEASUREMENT CANNOT ACQUIRE A FICTIONAL
 // CHILDHOOD.
 //

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdtemp, rm, readFile } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { env } from './env.js'
@@ -83,6 +83,7 @@ export type TranscriptSource =
 export type PaidBecause = 'no_captions' | 'free_path_failed'
 
 import { downloadArgsFor, routeName, type DownloadRoute } from './downloadRoute.js'
+import { phaseOf, classifyDownloadFailure, type DownloadTrace } from './downloadFailure.js'
 
 // WHICH ROUTE READ THIS VIDEO — recorded, never inferred.
 //
@@ -138,6 +139,8 @@ export interface Transcript {
   /** ⚠️ ABSENT MEANS UNRECORDED, NOT FREE — the same rule `source` follows.
    *  Only the TikTok ladder sets this. */
   downloadRoute?: DownloadRouteName
+  /** ⚠️ Only the TikTok ladder sets this; absent means unrecorded, not free. */
+  trace?: DownloadTrace
 }
 
 export interface ScrapedPost {
@@ -782,6 +785,12 @@ async function instagramTranscriptViaApify(rawUrl: string): Promise<Transcript> 
 // ALWAYS discard the raw media afterwards (analyze-and-discard / privacy).
 // YouTube + Instagram are the exceptions: we fetch transcripts via Apify (see
 // above) because both bot-block yt-dlp from datacenter IPs.
+/** Bytes actually on disk, or 0 — never throws, because a trace must not be the
+ *  reason an error is lost. */
+async function statBytes(path: string): Promise<number> {
+  try { return (await stat(path)).size } catch { return 0 }
+}
+
 export async function transcribeFromUrl(
   rawUrl: string,
   route: DownloadRoute = { kind: 'local_impersonated' },
@@ -828,14 +837,38 @@ export async function transcribeFromUrl(
     // that actually ran locally would poison the only measurement this exists for.
     // `--impersonate` is kept on EVERY rung: the proxy changes which IP asks, not
     // how the TLS handshake looks.
-    await run(
-      'yt-dlp',
-      ['-f', 'bestaudio/best', '-x', '--audio-format', 'm4a', '--no-playlist',
-       '--impersonate', IMPERSONATE_TARGET,
-       ...downloadArgsFor(route, env.apifyProxyPassword),
-       '--max-filesize', '200M', '-o', audioPath, rawUrl],
-      180_000,
-    )
+    const startedMs = Date.now()
+    try {
+      await run(
+        'yt-dlp',
+        ['-f', 'bestaudio/best', '-x', '--audio-format', 'm4a', '--no-playlist',
+         '--impersonate', IMPERSONATE_TARGET,
+         ...downloadArgsFor(route, env.apifyProxyPassword),
+         '--max-filesize', '200M', '-o', audioPath, rawUrl],
+        180_000,
+      )
+    } catch (e) {
+      // ⚠️ THE TRACE TRAVELS WITH THE FAILURE. Without it the caller can only
+      // record THAT the download failed; the canary needs to know WHERE, because
+      // residential routing turning a `challenge` failure into a `media_download`
+      // failure means the proxy worked and a different boundary is now the wall.
+      throw Object.assign(
+        e instanceof Error ? e : new Error(String(e)),
+        {
+          trace: {
+            route: routeName(route),
+            session_hash: route.kind === 'residential_proxy' ? route.sessionId : null,
+            failure_code: classifyDownloadFailure(e),
+            phase: phaseOf(e),
+            elapsed_ms: Date.now() - startedMs,
+            // ⚖️ WHATEVER LANDED BEFORE IT DIED, not an assumed zero. A partial
+            // file is the difference between "never got through" and "got
+            // through and was cut off".
+            bytes_downloaded: await statBytes(audioPath),
+          } satisfies DownloadTrace,
+        },
+      )
+    }
     // 2. Transcribe via the Python faster-whisper wrapper (prints JSON).
     await run(
       'python3',
@@ -854,6 +887,14 @@ export async function transcribeFromUrl(
       ...(JSON.parse(await readFile(outPath, 'utf8')) as Transcript),
       source: 'local_whisper',
       downloadRoute: routeName(route) as DownloadRouteName,
+      trace: {
+        route: routeName(route),
+        session_hash: route.kind === 'residential_proxy' ? route.sessionId : null,
+        failure_code: null,
+        phase: 'complete',
+        elapsed_ms: Date.now() - startedMs,
+        bytes_downloaded: await statBytes(audioPath),
+      },
     }
   } finally {
     // Discard raw media + working files no matter what.

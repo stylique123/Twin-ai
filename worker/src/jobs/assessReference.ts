@@ -246,6 +246,11 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
     // clip with no speech — all are real properties of the library, and the run
     // that discovers them should be the last one that has to.
     const why = e instanceof Error ? e.message : String(e)
+    // ⚠️ WHERE IT STOPPED, NOT JUST THAT IT DID. The trace rides on the thrown
+    // error from the download itself, because only that code knows the phase,
+    // the elapsed time and how many bytes actually landed. Absent for non-TikTok
+    // routes, which have their own paths and their own reasons.
+    const trace = (e as { trace?: unknown }).trace ?? null
     await db.from('reference_content_profiles').upsert({
       url, platform, profile: {}, rejections: [], fields_accepted: 0,
       // ⚠️ CLEARED, NOT LEFT ALONE — THIS ONE COST A WRONG CONCLUSION. An upsert
@@ -256,6 +261,10 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
       // threw and nothing was transcribed. It was read that way, out loud,
       // before the code said otherwise.
       transcript_chars: null, transcript_source: null, download_route: null,
+      // ⚖️ THE TRACE SURVIVES A FAILURE — it is the ONLY thing that does. Clearing
+      // it here alongside the transcript columns would delete the evidence the
+      // canary exists to collect.
+      download_trace: trace,
       error: why.slice(0, 500), assessed_at: assessedAt,
     }, { onConflict: 'url' })
     return { url, error: why.slice(0, 200) }
@@ -277,6 +286,7 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
       // route off no_speech rows would under-count paid routing by exactly the
       // bucket that is 85 rows wide.
       download_route: transcript.downloadRoute ?? null,
+      download_trace: transcript.trace ?? null,
       transcript_chars: full.length,
       error: `no_speech: transcript was ${full.trim().length} characters`,
       assessed_at: assessedAt,
@@ -317,6 +327,7 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
     error: null,
     assessed_at: assessedAt,
     download_route: transcript.downloadRoute ?? null,
+    download_trace: transcript.trace ?? null,
   }, { onConflict: 'url' })
   if (wrote) throw new Error(`assess_reference: could not store the profile: ${wrote.message}`)
 
