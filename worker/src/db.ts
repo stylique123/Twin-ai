@@ -53,6 +53,28 @@ export async function updateJobProgress(id: string, progress: { phase: string; p
 // Liveness heartbeat: record that this worker is alive so a dead/wedged worker is
 // visible (system_health + the check-worker-liveness cron alert). Best-effort — a
 // failed heartbeat must never affect job processing.
+/**
+ * Record what this container can actually do, once, at boot.
+ *
+ * ⚠️ THE PROBE'S ANSWER WAS UNREADABLE BY THE PERSON WHO NEEDED IT. It went to
+ * stdout on the VPS, and the reason the probe was written at all was that
+ * nobody could get a shell on the VPS. A diagnostic that requires the access it
+ * exists to replace is not a diagnostic.
+ *
+ * ⚖️ BEST-EFFORT, LIKE THE HEARTBEAT ITSELF. A worker that cannot write its
+ * capabilities must still run — the alternative is an outage caused by the
+ * thing that was supposed to explain outages.
+ */
+export async function recordDownloaderCapability(probe: unknown): Promise<void> {
+  try {
+    await db.from('worker_heartbeat').upsert({
+      worker_id: env.workerId,
+      last_seen_at: new Date().toISOString(),
+      downloader: probe as never,
+    })
+  } catch { /* best-effort, exactly as `heartbeat` below */ }
+}
+
 export async function heartbeat(): Promise<void> {
   try {
     await db.from('worker_heartbeat').upsert({ worker_id: env.workerId, last_seen_at: new Date().toISOString() })

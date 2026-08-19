@@ -5,7 +5,7 @@
 // horizontally scalable: run N replicas, they won't collide.
 
 import { writeFileSync } from 'node:fs'
-import { db, claimJob, completeJob, deadLetterJob, failJob, heartbeat } from './db.js'
+import { db, claimJob, completeJob, deadLetterJob, failJob, heartbeat, recordDownloaderCapability } from './db.js'
 import { handlers } from './jobs/index.js'
 import { beginJobScope } from './jobs/editorCancel.js'
 import { env } from './env.js'
@@ -161,6 +161,18 @@ async function main() {
       impersonate_targets: probe.impersonateTargets,
       tiktok_readable: probe.tiktokReadable,
       detail: probe.detail,
+    })
+    // ⚠️ AND WRITTEN WHERE IT CAN BE READ. The log line is for whoever is
+    // tailing the container. The row is for everybody else — which on this
+    // project is everybody, because the probe exists precisely because nobody
+    // has a shell on this box. A diagnostic that requires the access it was
+    // built to replace is not a diagnostic.
+    void recordDownloaderCapability({
+      yt_dlp: probe.ytDlp,
+      impersonate_targets: probe.impersonateTargets,
+      tiktok_readable: probe.tiktokReadable,
+      detail: probe.detail,
+      probed_at: new Date().toISOString(),
     })
   }).catch((e) => log('warn', 'downloader_probe failed', { error: String(e) }))
   // Graceful shutdown: finish the current job, then exit.
