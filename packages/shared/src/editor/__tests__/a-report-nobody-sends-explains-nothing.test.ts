@@ -84,3 +84,39 @@ describe('the body it builds', () => {
     expect(failureCode(undefined)).toBeNull()
   })
 })
+
+// APPEND-ONLY IS A GRANT, NOT A POLICY.
+//
+// ⚠️ THIS SHIPPED WRONG AND CI CAUGHT IT. 0149 enabled RLS and gave the table a
+// SELECT-only policy, which reads like enough and is not: row security is NEVER
+// consulted for TRUNCATE, so the default grant a new table inherits is the whole
+// permission. "Evidence a client can empty in one statement" is not evidence.
+//
+// ⚖️ AND 0140 EXPECTED TO COVER THIS. It revoked TRUNCATE from every public
+// table and said "the next table created will inherit the same default grant and
+// this should already cover it" — but a migration runs once, so it covered the
+// tables that existed then and nothing since. This test exists so the line
+// cannot be deleted and rediscovered by a fifty-minute staging run.
+describe('0149 closes the TRUNCATE hole RLS cannot', () => {
+  const SQL = readFileSync(
+    join(HERE, '..', '..', '..', '..', '..', 'supabase', 'migrations', '0149_what_the_client_saw.sql'),
+    'utf8',
+  )
+
+  it('revokes TRUNCATE from both client roles', () => {
+    expect(SQL).toMatch(/revoke truncate on table public\.media_upload_attempts from anon, authenticated;/)
+  })
+
+  it('still grants no write policy of any kind', () => {
+    // ⚠️ The SELECT policy is the only one. An INSERT policy here would let a
+    // client write a report about an attempt that never happened.
+    const policies = SQL.match(/create policy/g) ?? []
+    expect(policies).toHaveLength(1)
+    expect(SQL).toMatch(/for select using \(auth\.uid\(\) = owner_id\)/)
+  })
+
+  it('says WHY, so the next table does not repeat it', () => {
+    expect(SQL).toMatch(/RLS DOES NOT GATE/)
+    expect(SQL).toMatch(/0140 DID NOT COVER IT/)
+  })
+})

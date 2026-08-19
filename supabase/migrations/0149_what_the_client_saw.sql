@@ -67,5 +67,21 @@ create policy media_upload_attempts_select_own on public.media_upload_attempts
 -- report cannot be amended after the fact, and a later report is a NEW ROW —
 -- which is also how `attempt_number` stays meaningful.
 
+-- ⚠️ RLS DOES NOT GATE `TRUNCATE`, AND THE SELECT-ONLY POLICY ABOVE IS NOT
+-- ENOUGH WITHOUT THIS. A newly created table carries a default TRUNCATE grant
+-- for the client roles, row security is never consulted for it, and "append-only
+-- evidence a client can empty in one statement" is not append-only. This is the
+-- whole permission, with nothing behind it.
+--
+-- ⚖️ AND 0140 DID NOT COVER IT, THOUGH IT EXPECTED TO. That migration revoked
+-- TRUNCATE from every public table and reasoned that "the next table created
+-- will inherit the same default grant and this should already cover it" — but a
+-- migration is a one-time event, not a standing policy, so it covered every
+-- table that existed IN 2026-08 AND NOTHING SINCE. This table is the proof, and
+-- it was caught by `check_client_write_grants.sql` in CI rather than by anybody
+-- noticing. Every future table needs its own revoke until that guard is what
+-- creates them.
+revoke truncate on table public.media_upload_attempts from anon, authenticated;
+
 comment on table public.media_upload_attempts is
   'Append-only client reports of what an upload attempt did. Evidence, not state; media_assets keeps current/derived state. See packages/shared/src/uploadForensics.ts.';
