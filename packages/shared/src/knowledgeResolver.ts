@@ -58,7 +58,28 @@ export type EvidenceLevel = (typeof EVIDENCE_LEVELS)[number]
  * made the video, and nobody heard them state the position — so it is COVERAGE,
  * not opinion. Reading the kind alone would promote every headline into a stance.
  */
-export function evidenceLevel(item: KnowledgeItem): EvidenceLevel {
+/**
+ * The narrowest thing these rules actually read.
+ *
+ * ⚠️ THE FIVE HAND-INLINED COPIES IN `generate-blueprint` EXIST BECAUSE OF THIS
+ * TYPE'S ABSENCE. The edge function holds `{ kind, text, basis }` — that is all
+ * a prompt's knowledge block carries — and could not satisfy `KnowledgeItem`,
+ * which additionally demands `confidence`. So the rules were copied by hand
+ * instead of imported, five times, each held to this file by its own ad-hoc
+ * parity test.
+ *
+ * ⚖️ AND NOTHING WAS LOST BY NARROWING, because nothing was being read. Checked
+ * rather than assumed: across `evidenceLevel`, `groundingDepth`,
+ * `substanceIssues` and `creatorDepth`, the only fields touched are `kind`,
+ * `basis` and `text`. `confidence` is untouched — which is just as well, since
+ * it is currently 1.0 on every row and nothing may rank on it.
+ *
+ * ⚠️ `KnowledgeItem` REMAINS ASSIGNABLE, so every existing caller is unaffected.
+ * This widens what the rules ACCEPT without widening what they BELIEVE.
+ */
+export type SubstanceItem = Pick<KnowledgeItem, 'kind' | 'text' | 'basis'>
+
+export function evidenceLevel(item: SubstanceItem): EvidenceLevel {
   if (item.kind === 'experience' && item.basis === 'stated') return 'experience'
   if (item.basis === 'stated') return 'opinion'
   // `demonstrated` and `inferred` both land here: the video exists, the position
@@ -468,7 +489,7 @@ function tracesToText(cited: string, supplied: readonly string[]): boolean {
  *  items are objects, and giving them separate matchers would let the same
  *  citation pass one check and fail the other for no reason a reader could
  *  defend. */
-function tracesTo(cited: string, supplied: readonly KnowledgeItem[]): boolean {
+function tracesTo(cited: string, supplied: readonly SubstanceItem[]): boolean {
   return tracesToText(cited, supplied.map((i) => i.text))
 }
 
@@ -505,7 +526,7 @@ export type GroundingDepth = 'proposition' | 'subject' | 'none'
 
 export function groundingDepth(
   cited: string,
-  supplied: readonly KnowledgeItem[],
+  supplied: readonly SubstanceItem[],
 ): GroundingDepth {
   if (!tracesTo(cited, supplied)) return 'none'
   // ⚖️ ANY propositional hit wins. `tracesTo` already accepts a citation that
@@ -524,7 +545,7 @@ export function groundingDepth(
  */
 export function substanceIssues(
   beats: readonly DeclaredBeat[] | null | undefined,
-  supplied: readonly KnowledgeItem[],
+  supplied: readonly SubstanceItem[],
   /**
    * The PRODUCT FACTS the prompt carried, if it is known what they were.
    *
@@ -654,7 +675,7 @@ const PROPOSITIONAL_KINDS: ReadonlySet<string> = new Set([
  * profile can never reach `high` — which is the correct reading of cohort 1,
  * where every creator was caption-only and 0 of 57 creator-state claims grounded.
  */
-export function creatorDepth(supplied: readonly KnowledgeItem[]): 'high' | 'medium' | 'low' {
+export function creatorDepth(supplied: readonly SubstanceItem[]): 'high' | 'medium' | 'low' {
   const propositional = supplied.filter((k) => PROPOSITIONAL_KINDS.has(k.kind))
   const stated = propositional.filter((k) => k.basis === 'stated')
   if (stated.length >= 3) return 'high'
