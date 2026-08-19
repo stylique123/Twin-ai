@@ -175,6 +175,8 @@ const EVENTS = {
   creator_knowledge_source_column_absent: { kind: 'incident', why: '0122 unapplied — the selector cannot see source.' },
   scrape_dna_empty: { kind: 'incident', why: 'A scan that found nothing. Honesty about a failed scan, per scan.' },
   scrape_dna_read_failed: { kind: 'incident', why: 'A scan that could not read the account.' },
+  container_template_applied: { kind: 'counter_ephemeral', why: 'How often an assessed reference actually gave the writer a named shape. A rate, not an incident: it is the measure of whether the transcript pass is reaching the script, and it belongs on a dashboard rather than in a row per generation.' },
+  container_template_absent: { kind: 'counter_ephemeral', why: 'And why it did not — reference_not_assessed, container_not_assessed, no_template_for_container, read_failed. Four causes that need four different responses, kept apart so the ratio is diagnosable rather than merely low.' },
   downloader_probe: { kind: 'incident', why: 'What the CONTAINER can do, asked at boot rather than inferred from requirements.txt. Emitted once per worker start; zero impersonation targets is the line that would have explained a wave of TikTok failures before anybody read 38 error rows.' },
   scrape_dna_reader_failed: { kind: 'incident', why: 'The READER reported a failure of its own — an Apify Actor that times out writes an error into its dataset and exits zero, which used to reach a creator as "your account is private or empty". Per occurrence, because each one is a public account being told it is not.' },
   scrape_dna_unsupported_platform: { kind: 'incident', why: 'A platform the worker does not handle.' },

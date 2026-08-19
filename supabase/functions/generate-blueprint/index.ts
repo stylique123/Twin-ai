@@ -11,6 +11,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { buildLinkAllowlist, sanitizeBlueprintLinks, type LinkAllowlist } from '../_shared/outputLinks.ts'
+import { templateFor } from '../_shared/containerTemplates.ts'
 
 // Internal credits per recreation. Adjustable via the RECREATION_COST secret so we
 // can quietly change the credit<->video rate later WITHOUT a code change and
@@ -4275,6 +4276,63 @@ ${styleRules}` : ''}
         const creatorHasExperience = knowledgeRows.some(
           (k) => String(k?.kind) === 'experience' && String(k?.basis) === 'stated')
         const premiseInstruction = premiseInstructionInline(ref?.text ?? null, creatorHasExperience)
+        // ── THE SHAPE, WITH ITS HOLES NAMED ──────────────────────────
+        //
+        // ⚠️ THE WRITER HAS ALWAYS INVENTED THE BEAT PLAN. It is handed a
+        // transcript and a derived structure and asked to decide the shape
+        // itself — so "adapt this mistakes video" becomes whatever shape the
+        // model reaches for, and the ORDER that makes a round-up watchable
+        // (recognisable → surprising → strongest, re-hook before the last) is
+        // rediscovered or not, per generation.
+        //
+        // ⚖️ THE TRANSCRIPT PASS NOW KNOWS WHICH SHAPE THIS REFERENCE IS, so
+        // the template's named holes can be stated instead of hoped for. This
+        // is ADDITIVE: an unassessed reference — which is still almost all of
+        // them — emits nothing and the writer behaves exactly as it does today.
+        let containerBlock = ''
+        try {
+          const { data: assessed } = await admin
+            .from('reference_content_profiles')
+            .select('profile')
+            .eq('url', reference_url)
+            .is('error', null)
+            .maybeSingle()
+          const container = (assessed?.profile as
+            { structure?: { containerType?: { value?: string; basis?: string } } } | null)
+            ?.structure?.containerType
+          // ⚠️ ONLY A KNOWN CONTAINER COUNTS. `not_checked` and `indeterminate`
+          // carry no value, and reading one as a shape would put a confident
+          // beat plan behind a field nobody answered.
+          const known = container
+            && (container.basis === 'observed' || container.basis === 'inferred')
+            && typeof container.value === 'string'
+          const tpl = known ? templateFor(container.value as never) : null
+          if (tpl) {
+            containerBlock = `\n\nTHE SHAPE THIS REFERENCE USES — ${tpl.container}: ${tpl.summary}
+Its beats, in order, and what each one is FOR. Follow this ORDER: it is the part
+of the reference worth borrowing, and it is what keeps somebody watching to the
+end. Fill each beat with THIS creator's own substance from the knowledge above —
+never with the reference's content.
+${tpl.beats.map((b, i) => `  ${i + 1}. ${b.label} (${b.role}) — ${b.purpose}${b.needs ? ` [needs: ${b.needs}]` : ''}`).join('\n')}
+A beat marked [needs: product] or [needs: tool_or_software] requires something
+the creator actually has; if the knowledge above supplies none, write that beat
+about the topic in general rather than naming a product they never mentioned.`
+            console.log(JSON.stringify({
+              event: 'container_template_applied', container: tpl.container, beats: tpl.beats.length,
+            }))
+          } else {
+            console.log(JSON.stringify({
+              event: 'container_template_absent',
+              reason: assessed ? (known ? 'no_template_for_container' : 'container_not_assessed') : 'reference_not_assessed',
+            }))
+          }
+        } catch (e) {
+          // ⚖️ AN ENRICHMENT, NEVER A GATE. A read that fails must cost the
+          // creator nothing — they get today's prompt, which is what every
+          // generation before this line got.
+          console.log(JSON.stringify({ event: 'container_template_absent', reason: 'read_failed', detail: String(e).slice(0, 120) }))
+        }
+
         const referenceBlock =
       ref && (ref.structure || ref.text)
         ? `REFERENCE (REAL — analyzed from the actual video. Base reference_read.why_it_works and retention_map on THIS specific video below, not on a generic format pattern.)
@@ -4286,12 +4344,12 @@ ${fenced('derived structure', ref.structure ? JSON.stringify(ref.structure).slic
 ${fenced('reference transcript', clip(ref.text ?? '', 6000))}
 - Creator's angle/note:
 ${fenced("creator's note", reference_note || '(none provided)')}
-- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${renderVideoIntentInline(intent)}`
+- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${renderVideoIntentInline(intent)}${containerBlock}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
 ${fenced("creator's note", reference_note || '(none provided)')}
-- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${renderVideoIntentInline(intent)}`
+- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${renderVideoIntentInline(intent)}${containerBlock}`
 
     // The DNA is fenced too. It reads like our own text, but every field in it
     // was synthesized from captions we scraped — so it is exactly as
