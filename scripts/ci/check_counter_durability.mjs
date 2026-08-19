@@ -129,6 +129,34 @@ const EVENTS = {
     why: 'Completion marker; the generations row is the durable record.',
   },
 
+  // ⚠️ THE TWO COUNTERS THAT SAY WHETHER THE RECORDING FIX WORKED. A creator
+  // recorded twice on 2026-08-09 and Twin refused both takes; one reached
+  // validation and was rejected `duration_unknown` for a browser WebM that had
+  // simply never written its Segment duration. `media_assets.metadata` already
+  // carries the rejection record for a take that fails, so the DURABLE half is
+  // there — what these two add is the recovery, which leaves no other trace: a
+  // take that is rescued produces no incident, no rejection row and no
+  // complaint, and would be indistinguishable from one whose header was fine.
+  //
+  // ⚖️ AND `then` IS ON THE EVENT ON PURPOSE. Recovering the duration and
+  // ACCEPTING is the fix working; recovering it and then failing `too_short` is
+  // the fix working AND the take genuinely being bad. Pooling them would let a
+  // regression that decodes garbage look like a success.
+  source_duration_decoded: {
+    kind: 'counter_ephemeral',
+    why: 'A header with no duration, measured by decoding, carrying `then` — accepted, or which real bound it went on to fail. '
+      + '⚠️ A DEBT NAMED RATHER THAN A COLUMN ADDED, and named because the first version of this entry claimed '
+      + '`media_assets.metadata` as its home and the guard refused it: a REJECTED take records itself there, but a RESCUED '
+      + 'one leaves no row anywhere and would be indistinguishable from a take whose header was fine. So the recovery rate '
+      + 'lives only in the log and expires with it. That is acceptable while the question is "did the fix work at all" on '
+      + 'three known takes; it stops being acceptable the moment anybody wants a trend, and the home is then '
+      + '`media_assets.metadata.duration_recovered`.',
+  },
+  source_duration_undecodable: {
+    kind: 'incident',
+    why: 'A source whose length could not be measured even by decoding. Rare by construction, and the only case where refusing a take is honest.',
+  },
+
   // ── INCIDENTS: one occurrence matters, and a log is the right home ───────
   substance_unsupported: { kind: 'incident', why: 'A beat citing something not supplied. Reported per generation, never rewritten.' },
   reference_claim_leak: { kind: 'incident', why: "The reference's own measured claim reaching a script." },
