@@ -401,6 +401,13 @@ jobs:
           # `claimStrength` saw 22, for months, with a passing suite.
           node scripts/ci/check_resolver_parity.mjs --selftest
           node scripts/ci/check_resolver_parity.mjs
+          # ⚠️ AN IMPORTABLE DEPENDENCY IS NOT A COMPATIBLE ONE — the rung the
+          # curl-cffi chain was missing. `curl-cffi>=0.7.0` let pip resolve to
+          # 0.16.0, which installs, imports, and is REFUSED by yt-dlp, so every
+          # impersonation target read "(unavailable)" and 70 reference
+          # assessments died on it with the dependency present.
+          node scripts/ci/check_impersonation_pin.mjs --selftest
+          node scripts/ci/check_impersonation_pin.mjs
       # ⚠️ THREE COUNTERS IN TWO DAYS MEASURED NOTHING, in three unrelated
       # subsystems, each found by accident while writing the query that would
       # have read it. Each was fixed as an instance; this is the guard on the

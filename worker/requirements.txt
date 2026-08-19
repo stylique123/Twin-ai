@@ -39,7 +39,9 @@ requests==2.33.1         # imported by faster_whisper.utils (not always
 # path is the exactly-pinned stack above), so its freshness cannot affect
 # Phase-5 reproducibility.
 yt-dlp>=2025.1.15
-# ⚠️ TIKTOK REQUIRES IMPERSONATION, AND THIS IMAGE NEVER HAD IT. Plain
+# ⚠️ TIKTOK REQUIRES IMPERSONATION, AND THIS IMAGE HAD THE DEPENDENCY AND STILL
+# COULD NOT USE IT. That correction matters, because "never had it" sent two
+# rounds of work at the wrong problem. Plain
 # `yt-dlp` installs with no impersonation backend, so its TikTok extractor
 # prints "attempting impersonation, but no impersonate target is available"
 # and then fails with "Unable to extract secondary user ID" — and, worse, first
@@ -57,5 +59,28 @@ yt-dlp>=2025.1.15
 # It stopped because TikTok began requiring impersonation and nothing here ever
 # installed a backend for it — which is why moving TikTok to a paid Apify actor
 # would have bought, at real per-scan cost, what one dependency provides.
-curl-cffi>=0.7.0
+#
+# ⚠️ THE CEILING IS THE WHOLE FIX, AND ITS ABSENCE IS WHY THIS WAS BROKEN FOR
+# MONTHS WITH THE DEPENDENCY INSTALLED. This read `curl-cffi>=0.7.0` — an
+# open-ended floor — so pip resolved to the newest release, 0.16.0, and yt-dlp
+# 2026.07.04 refuses it:
+#
+#     ImportError: Only curl_cffi versions 0.5.10 and 0.10.x through 0.15.x
+#     are supported
+#
+# So `pip3 install` succeeded, `import curl_cffi` succeeded, and every
+# impersonation target still printed "(unavailable)". A declared dependency is
+# not an installed one; an installed one is not an IMPORTABLE one; and — this
+# is the rung nobody had reached — an importable one is not a COMPATIBLE one.
+#
+# ⚖️ MEASURED, NOT REASONED. On 0.16.0 yt-dlp lists 5 targets, all unavailable,
+# and `probeDownloader` counts 0. On 0.15.0 it lists 37 usable targets and the
+# probe counts 37. Same yt-dlp, same machine, one pin apart.
+#
+# ⚖️ AND THE CEILING MUST MOVE WITH yt-dlp, NOT WITH curl-cffi. yt-dlp is
+# deliberately on a floor above (its TikTok extractor must be free to chase
+# anti-bot changes), so when it widens its supported window this bound is what
+# has to be raised to follow. `check_impersonation_pin.mjs` fails the build if
+# the ceiling is ever dropped.
+curl-cffi>=0.10,<0.16
 youtube-transcript-api>=0.6.2
