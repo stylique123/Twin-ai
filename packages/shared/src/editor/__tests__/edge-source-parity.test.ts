@@ -41,8 +41,13 @@ const FUNCS: Array<{ name: string; shared: string }> = [
   { name: 'executePreparedCreate', shared: sourceCreateSrc },
   { name: 'runSourceCreate', shared: sourceCreateSrc },
   { name: 'handleSourceAssetRequest', shared: sourceCreateSrc },
+  { name: 'isoOrNull', shared: sourceCreateSrc },
+  { name: 'buildAttemptReport', shared: sourceCreateSrc },
 ]
-const SETS = ['CREATE_BODY_KEYS', 'CAPTURE_SNAKE_KEYS', 'SEGMENT_SNAKE_KEYS', 'FINALIZE_BODY_KEYS']
+const SETS = ['CREATE_BODY_KEYS', 'CAPTURE_SNAKE_KEYS', 'SEGMENT_SNAKE_KEYS', 'FINALIZE_BODY_KEYS',
+  // ⚠️ THE ALLOWLIST THAT KEEPS THE WRITE HOLE CLOSED. If this one drifts, the
+  // edge starts accepting a field shared believes it rejects.
+  'ATTEMPT_BODY_KEYS', 'ATTEMPT_OUTCOMES']
 
 describe('edge ↔ shared source-invariant parity (no drift)', () => {
   it('the edge inlines each edge-core function byte-identically to shared', () => {
