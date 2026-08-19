@@ -17,6 +17,27 @@ export const supabase = createClient(
 // policy involved, so every object provably has a media_assets intent row.
 // XHR gives upload.onprogress; any failure falls back to supabase-js
 // uploadToSignedUrl so the critical path never regresses.
+/**
+ * How long a single upload PUT may take, from how big it is.
+ *
+ * ⚠️ XHR's DEFAULT TIMEOUT IS ZERO, MEANING NEVER, and combined with the missing
+ * `ontimeout`/`onabort` handlers below that produced a promise which never
+ * settled. Production shows exactly that: two takes — 59.8MB and 123.7MB —
+ * stuck at `uploading` since 2026-08-09 with NO object in storage. The only
+ * take that ever reached storage was 5.8MB.
+ *
+ * ⚖️ SCALED, NOT FIXED, because a fixed timeout is wrong at both ends: generous
+ * enough for a 200MB take on hotel wifi is generous enough to leave somebody
+ * watching a dead spinner for an hour on a 5MB one. 90s of headroom plus ~8s
+ * per MB is roughly 1Mbps sustained, which is pessimistic on purpose — the cost
+ * of being too patient is a slow failure, and the cost of being too strict is
+ * killing an upload that would have finished.
+ */
+export function uploadTimeoutMs(bytes: number): number {
+  const mb = Math.max(0, Number(bytes) || 0) / (1024 * 1024)
+  return Math.min(30 * 60_000, Math.round(90_000 + mb * 8_000))
+}
+
 async function uploadSignedWithProgress(
   target: { bucket: string; path: string; token: string; signedUrl: string; contentType: string },
   blob: Blob,
@@ -29,9 +50,19 @@ async function uploadSignedWithProgress(
         xhr.open('PUT', target.signedUrl)
         xhr.setRequestHeader('x-upsert', 'true')
         xhr.setRequestHeader('content-type', target.contentType)
+        // ⚠️ EVERY TERMINAL PATH MUST SETTLE THIS PROMISE. It used to handle
+        // `onload` and `onerror` only, so a timeout or an abort fired NEITHER
+        // and the promise hung forever — the upload never finalized, the asset
+        // stayed `uploading`, and `UploadOnce` (which clears its slot only in
+        // `.catch()`) could never let the retry button run either. The creator
+        // was left watching a dead progress bar with no way forward. Two real
+        // takes are stuck in production in exactly that state.
+        xhr.timeout = uploadTimeoutMs(blob.size)
         xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total) }
         xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`upload ${xhr.status}`)))
         xhr.onerror = () => reject(new Error('upload network error'))
+        xhr.ontimeout = () => reject(new Error(`upload timed out after ${xhr.timeout}ms`))
+        xhr.onabort = () => reject(new Error('upload aborted'))
         xhr.send(blob)
       })
       onProgress?.(1)

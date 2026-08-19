@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { probeDownloader } from '../downloaderProbe'
+import { probeDownloader, readTargets } from '../downloaderProbe'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const INDEX = readFileSync(join(HERE, '..', 'index.ts'), 'utf8')
@@ -77,5 +77,65 @@ describe('the dependency the probe exists to check is still declared', () => {
     // BECOMES WRONG — it would be absent by intent rather than broken by
     // accident, and it would send an operator hunting the wrong problem.
     expect(REQS).toMatch(/^curl-cffi/m)
+  })
+})
+
+// ── THE PROBE HAD THE BUG IT WAS WRITTEN TO CATCH ────────────────────────────
+//
+// ⚠️ `--list-impersonate-targets` LISTS WHAT yt-dlp KNOWS ABOUT, NOT WHAT IT CAN
+// USE. Captured verbatim from a container with curl-cffi absent, every row is
+// marked "(unavailable)" — and the original probe counted four of them and
+// reported "4 impersonation targets available". It would have declared the
+// TikTok path healthy during the exact re-run where 38 of 40 downloads printed
+// "no impersonate target is available".
+//
+// ⚖️ WHICH IS WHY THE PARSER IS NOW A PURE FUNCTION. A parsing bug behind a
+// `spawn` is only reachable on a box that reproduces it, so it survived being
+// written by the same person who wrote the paragraph explaining the very
+// distinction it missed. These fixtures make it reachable everywhere.
+describe('readTargets counts what works, not what is listed', () => {
+  const UNAVAILABLE = `[info] Available impersonate targets
+Client    OS   Source
+--------------------------------------------
+Tor       -    curl_cffi>=0.11 (unavailable)
+Edge      -    curl_cffi (unavailable)
+Firefox   -    curl_cffi>=0.10 (unavailable)
+Safari    -    curl_cffi (unavailable)
+Chrome    -    curl_cffi (unavailable)
+`
+
+  const WORKING = `[info] Available impersonate targets
+Client    OS       Source
+--------------------------------------------
+chrome    windows  curl_cffi
+chrome    macos    curl_cffi
+edge      windows  curl_cffi
+safari    macos    curl_cffi
+`
+
+  it('counts ZERO usable when every listed target says (unavailable)', () => {
+    // THE REGRESSION. The old parser returned 4 here.
+    expect(readTargets(UNAVAILABLE)).toEqual({ usable: 0, listedButUnusable: 5 })
+  })
+
+  it('counts real targets when they are genuinely available', () => {
+    expect(readTargets(WORKING).usable).toBe(4)
+    expect(readTargets(WORKING).listedButUnusable).toBe(0)
+  })
+
+  it('distinguishes "listed but unusable" from "none listed at all"', () => {
+    // ⚠️ TWO ZEROS, TWO CAUSES, TWO FIXES. All-unavailable is a missing
+    // curl-cffi in the image; nothing listed is a yt-dlp that cannot impersonate
+    // at all. An operator sent to the wrong one wastes the outage.
+    expect(readTargets('[info] Available impersonate targets\nClient  OS  Source\n'))
+      .toEqual({ usable: 0, listedButUnusable: 0 })
+  })
+
+  it('never counts the header or the separator rule as a target', () => {
+    expect(readTargets(WORKING).usable + readTargets(WORKING).listedButUnusable).toBe(4)
+  })
+
+  it('is not confused by case, because the table has used both', () => {
+    expect(readTargets('Chrome  -  curl_cffi\nchrome  -  curl_cffi\n').usable).toBe(2)
   })
 })

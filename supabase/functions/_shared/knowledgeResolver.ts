@@ -105,8 +105,19 @@ export type ResolutionSource = (typeof RESOLUTION_SOURCES)[number]
 export interface Container {
   /** The beat this is, in the reference's own terms: "overlooked feature". */
   id: string
-  /** What it is FOR — used to match knowledge to it. */
+  /** What it is FOR — in the template's own words. Used to RANK candidates, and
+   *  deliberately no longer to reject them; see `resolveContainer`. */
   about: string
+  /** ⚠️ WHAT KIND OF MATERIAL CAN PERFORM THIS JOB. The template defines a
+   *  narrative role; the creator's knowledge defines content. This is the
+   *  bridge, and it is expressed in metadata both sides already carry rather
+   *  than in words they would have to share. Absent means any kind that is
+   *  strong enough will do. */
+  accepts?: ReadonlySet<string>
+  /** ⚠️ A BEAT THAT LICENSES "I" CANNOT BE FILLED BY SOMETHING MERELY OBSERVED.
+   *  Strength alone does not capture this: an item can rank as `experience` and
+   *  still be a thing we watched rather than a thing they told us. */
+  requiresStated?: boolean
   /** The weakest evidence that can honestly fill it. A comparison beat needs
    *  `coverage` (which competitor); "I used it for six months" needs
    *  `experience`, and nothing weaker will do. */
@@ -163,23 +174,61 @@ const NEED_RANK: Record<Exclude<SubstanceNeed, 'none'>, number> = { coverage: 0,
 export function resolveContainer(
   container: Container,
   knowledge: CreatorKnowledge,
-  opts: { productKnown?: boolean; researchable?: boolean } = {},
+  opts: {
+    productKnown?: boolean
+    researchable?: boolean
+    /** Item texts already spent on an earlier beat of the same template. */
+    exclude?: ReadonlySet<string>
+    /** How many items may fill this one beat. Defaults to 3; a template passes
+     *  1 so material is spread across beats rather than pooled in the first. */
+    maxEvidence?: number
+  } = {},
 ): Resolution {
   if (container.needs === 'none') {
     return { container, source: 'creator_knowledge', evidence: [], fallback: null }
   }
   const want = NEED_RANK[container.needs]
   const wanted = terms(container.about)
+  // ⚠️ LEXICAL OVERLAP RANKS; IT NO LONGER REJECTS. Measured over production —
+  // 19 creators x 14 templates, 836 beats — the old filter discarded 661 items
+  // that were strong enough to use. Fill was 12.6% and NOT ONE template of 266
+  // came out fully resolved, so `slotsReady` was false everywhere and
+  // `validateScript` could never run. Replacing it with the semantic test below
+  // took fill to 64.2% and fully-resolved templates to 40.6%.
+  //
+  // ⚖️ BECAUSE IT WAS COMPARING THE WRONG TWO THINGS. `about` is a template's
+  // generic structural prose — "the strongest item, saved for last" — and the
+  // creator's knowledge is domain-specific. "The strongest item" is not supposed
+  // to resemble "raise prices before increasing ad spend": one is a ROLE IN A
+  // STRUCTURE, the other is content that could occupy that role. Absence of
+  // shared nouns says almost nothing about fit; presence of them still says
+  // something, which is the profile of a tiebreak rather than a gate.
+  //
+  // ⚖️ AND THE RELEVANCE TEST ALREADY HAPPENED UPSTREAM. Callers pass knowledge
+  // already ranked against what the video is about, so this was a second,
+  // near-random topic filter over an already-filtered set.
   const matches = knowledge.items
     .filter((i) => i.basis !== 'inferred')
     .filter((i) => RANK[evidenceLevel(i)] >= want)
+    // The semantic requirement, which is what the lexical test was failing to do.
+    .filter((i) => container.accepts === undefined || container.accepts.has(i.kind))
+    .filter((i) => !container.requiresStated || i.basis === 'stated')
+    // ⚠️ NOTHING IS SAID TWICE. Without this every beat in a template resolves to
+    // the same strongest item and the script repeats one sentence in five
+    // different costumes.
+    .filter((i) => !opts.exclude?.has(i.text))
     .map((i) => ({ i, hit: [...terms(i.text)].filter((w) => wanted.has(w)).length }))
-    .filter((x) => x.hit > 0)
     .sort((a, b) => b.hit - a.hit || b.i.timesSeen - a.i.timesSeen)
     .map((x) => x.i)
 
   if (matches.length > 0) {
-    return { container, source: 'creator_knowledge', evidence: matches.slice(0, 3), fallback: null }
+    // ⚖️ HOW MUCH MATERIAL ONE BEAT MAY SPEND. Three is right for a container
+    // resolved on its own — more supporting evidence is strictly better. Inside
+    // a template it is wrong: with ten ranked items and five hungry beats, the
+    // first two beats eat the pool and the rest report a shortfall that the
+    // creator's knowledge could have covered. Measured, that was the difference
+    // between 45.2% and 64.2% fill. `resolveTemplate` passes 1.
+    return { container, source: 'creator_knowledge', evidence: matches.slice(0, opts.maxEvidence ?? 3), fallback: null }
   }
   if (opts.productKnown && /product|feature|price|spec/i.test(container.about)) {
     return { container, source: 'product_dna', evidence: [], fallback: null }
@@ -234,7 +283,36 @@ const TOOL_TYPES: ReadonlySet<string> = new Set(['SAAS', 'APP', 'MARKETPLACE', '
  *  ⚖️ `personal_experience` MAPS TO `experience` AND NOTHING WEAKER. That is the
  *  rung that licenses "I" plus a personal history, and filling it from coverage
  *  is the most expensive error this system can make. */
-const NEED_FOR_KIND: Record<ContentSlotKind, SubstanceNeed> = {
+/**
+ * WHICH KINDS OF MATERIAL CAN PERFORM EACH NARRATIVE JOB.
+ *
+ * ⚠️ THIS IS THE HALF `NEED_FOR_KIND` THROWS AWAY. That map answers "how strong
+ * must the evidence be" and collapses six slot kinds into three ranks —
+ * `product`, `current_fact` and `example` all become `coverage` and are then
+ * indistinguishable. Strength was never the whole requirement: a beat asking for
+ * a worked example and a beat asking for a live fact want different MATERIAL,
+ * not differently-strong material.
+ *
+ * ⚖️ EXPRESSED IN METADATA BOTH SIDES ALREADY CARRY, so it costs no model call
+ * and stays auditable. The template says what job a beat performs; the item's
+ * `kind` says what it is; this decides which can do which. That is the
+ * abstraction the lexical test was standing in for and failing at.
+ */
+const SLOT_ACCEPTS: Record<ContentSlotKind, ReadonlySet<string>> = {
+  // ⚖️ ONLY A LIVED THING FILLS A LIVED BEAT, and `requiresStated` below adds
+  // that it must be something they TOLD us, not something we watched.
+  personal_experience: new Set(['experience']),
+  claim: new Set(['claim', 'opinion', 'framework']),
+  example: new Set(['example', 'experience', 'product']),
+  current_fact: new Set(['fact', 'topic']),
+  product: new Set(['product']),
+  tool_or_software: new Set(['product']),
+}
+
+/** Beats that license first-person, where observation is not enough. */
+const SLOT_REQUIRES_STATED: ReadonlySet<ContentSlotKind> = new Set(['personal_experience'])
+
+const NEED_FOR_KIND: Record<ContentSlotKind, Exclude<SubstanceNeed, 'none'>> = {
   product: 'coverage',
   tool_or_software: 'coverage',
   personal_experience: 'experience',
@@ -243,11 +321,39 @@ const NEED_FOR_KIND: Record<ContentSlotKind, SubstanceNeed> = {
   example: 'coverage',
 }
 
+/**
+ * WHICH MECHANISM DECIDED THIS SLOT.
+ *
+ * ⚠️ NOT A RESTATEMENT OF `source`. `source` is the CATEGORY of material
+ * (`product_dna`, `creator_knowledge`, …); this is the ROUTE by which the slot
+ * arrived at it. A `product_dna` slot filled by assigning an entity the creator
+ * owns and one filled from the evidence ladder are the same category and
+ * different decisions, and an audit that cannot tell them apart cannot answer
+ * "why does this beat say this".
+ *
+ * ⚖️ IT IS DERIVABLE TODAY — `entityId !== null` implies assignment — and it is
+ * still stated. The same reason `fieldsObserved` is read off the visual profile
+ * rather than recounted: a consumer that re-derives a decision is a second
+ * implementation free to disagree with the first.
+ */
+export const RESOLVED_BY = ['entity_assignment', 'evidence_ladder', 'unresolved'] as const
+export type ResolvedBy = (typeof RESOLVED_BY)[number]
+
+export interface SlotProvenance {
+  by: ResolvedBy
+  /** ⚠️ THE CONCRETE THINGS, NOT A COUNT. An entity id, or the exact knowledge
+   *  texts that carried the slot. A number here would be a claim nobody can
+   *  check; these are what a person can go and look at. */
+  from: readonly string[]
+}
+
 export interface TemplateResolution extends Resolution {
   /** The template beat this answers. */
   label: string
   /** The entity assigned to it, when the slot takes one and one was free. */
   entityId: string | null
+  /** How this slot came to be decided — see `SlotProvenance`. */
+  provenance: SlotProvenance
 }
 
 export interface ResolveTemplateOptions {
@@ -289,6 +395,36 @@ export function resolveTemplate(
     if (match) { taken.add(match.id); assigned.set(beat.label, match.id) }
   }
 
+  // ⚠️ NARROWEST NEED FIRST, AND FOR THE SAME REASON THE ENTITY PASS SORTS. An
+  // experience beat can only be filled by experience-level material; a claim
+  // beat will happily take it. Resolving in template order lets the permissive
+  // beat spend the creator's only lived item and leaves the beat that REQUIRED
+  // one unresolved, reporting a shortfall while a complete assignment existed.
+  const byNeed = [...needing].sort((a, b) =>
+    NEED_RANK[NEED_FOR_KIND[b.needs]] - NEED_RANK[NEED_FOR_KIND[a.needs]])
+  // ⚠️ NOTHING IS SAID TWICE ACROSS A TEMPLATE. Resolved per beat in isolation,
+  // every beat picks the same strongest item and the script says one thing five
+  // times in different costumes.
+  const spent = new Set<string>()
+  const resolved = new Map<string, Resolution>()
+  for (const beat of byNeed) {
+    if (assigned.has(beat.label)) continue
+    const r = resolveContainer({
+      id: beat.label,
+      about: beat.purpose,
+      needs: NEED_FOR_KIND[beat.needs],
+      accepts: SLOT_ACCEPTS[beat.needs],
+      requiresStated: SLOT_REQUIRES_STATED.has(beat.needs),
+    }, knowledge, {
+      productKnown: false, researchable: opts.researchable, exclude: spent, maxEvidence: 1,
+    })
+    for (const e of r.evidence) spent.add(e.text)
+    resolved.set(beat.label, r)
+  }
+
+  // ⚖️ EMITTED IN TEMPLATE ORDER, not resolution order. The order beats are
+  // RESOLVED in is an allocation detail; the order they are WRITTEN in is what
+  // keeps somebody watching, and a caller reading this list is reading a script.
   return needing.map((beat) => {
     const entityId = assigned.get(beat.label) ?? null
     const container: Container = {
@@ -300,13 +436,22 @@ export function resolveTemplate(
     // and Twin knows which one it is, so there is nothing left to look up and
     // nothing to ask them.
     if (entityId !== null) {
-      return { container, source: 'product_dna', evidence: [], fallback: null, label: beat.label, entityId }
+      return {
+        container, source: 'product_dna', evidence: [], fallback: null,
+        label: beat.label, entityId,
+        provenance: { by: 'entity_assignment', from: [entityId] },
+      }
     }
-    const r = resolveContainer(container, knowledge, {
-      productKnown: false,
-      researchable: opts.researchable,
-    })
-    return { ...r, label: beat.label, entityId: null }
+    const r = resolved.get(beat.label)
+      ?? resolveContainer(container, knowledge, { productKnown: false, researchable: opts.researchable })
+    // ⚖️ `unresolved` IS THE HONEST WORD FOR A SLOT NOTHING FILLED, and it is
+    // kept distinct from a slot the ladder filled weakly. `fallback` already
+    // says what to do instead; this says that nothing was found.
+    const by: ResolvedBy = r.evidence.length > 0 ? 'evidence_ladder' : 'unresolved'
+    return {
+      ...r, label: beat.label, entityId: null,
+      provenance: { by, from: r.evidence.map((e) => e.text) },
+    }
   })
 }
 

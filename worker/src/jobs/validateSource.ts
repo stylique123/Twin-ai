@@ -110,7 +110,7 @@ export type ProbeAssessment =
       audioCodec: string | null
       sizeBytes: number | null
     }
-  | { ok: false; code: string; detail: string }
+  | { ok: false; code: string; detail: string; indeterminate?: boolean }
 
 /**
  * The duration ffprobe reported, in ms — or NULL when it reported none.
@@ -155,6 +155,55 @@ export function probeDurationMs(probe: ProbeResult): number | null {
     ?? fromTag(video?.tags?.duration)
 }
 
+/**
+ * The last video packet's presentation time, in ms — the length of a file whose
+ * container never wrote one down.
+ *
+ * ⚠️ PURE, SO THE PARSING IS TESTABLE WITHOUT FFMPEG. The I/O half runs the
+ * command; this reads what came back, and reading it wrongly is the failure mode
+ * that would put us straight back where we started.
+ *
+ * ⚖️ THE LAST PTS IS A FLOOR, NOT THE EXACT LENGTH — it omits the final frame's
+ * own duration. That is the right direction to be wrong in: it can only make a
+ * clip look very slightly SHORTER than it is, so it can never sneak something
+ * over the maximum, and the minimum it could trip is 500ms against a frame
+ * worth ~33ms.
+ */
+export function durationFromPacketDump(stdout: string): number | null {
+  let best: number | null = null
+  for (const line of String(stdout ?? '').split('\n')) {
+    const t = line.trim()
+    if (t === '' || t === 'N/A') continue
+    const n = Number(t)
+    // ⚠️ Packets are not strictly ordered by PTS when B-frames are present, so
+    // this takes the MAXIMUM rather than the last line.
+    if (Number.isFinite(n) && n >= 0 && (best === null || n > best)) best = n
+  }
+  return best === null ? null : Math.round(best * 1000)
+}
+
+/**
+ * Measure a file whose header does not say how long it is.
+ *
+ * ⚖️ BOUNDED, BECAUSE THIS DECODES THE WHOLE FILE. Sources are capped at 200MB
+ * upstream; a two-minute ceiling is generous for that and stops a pathological
+ * file holding a worker. A timeout here returns null and the caller rejects with
+ * the honest reason rather than hanging the queue.
+ */
+export async function measureDurationByDecoding(local: string): Promise<number | null> {
+  try {
+    const { stdout } = await run(
+      'ffprobe',
+      ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'packet=pts_time',
+       '-of', 'csv=p=0', local],
+      { timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
+    )
+    return durationFromPacketDump(stdout)
+  } catch {
+    return null
+  }
+}
+
 // Pure assessment of an ffprobe result against the source bounds — separated
 // from I/O so the accept/reject rules are unit-testable without ffmpeg.
 export function assessProbe(probe: ProbeResult, limits: SourceLimits): ProbeAssessment {
@@ -162,24 +211,32 @@ export function assessProbe(probe: ProbeResult, limits: SourceLimits): ProbeAsse
   const audio = probe.streams?.find((s) => s.codec_type === 'audio')
   if (!video) return { ok: false, code: 'no_video_stream', detail: 'file contains no video stream' }
 
-  const durationMs = probeDurationMs(probe)
-  // "NOT REPORTED" IS NOT "TOO SHORT", and conflating them told the creator
-  // something false about their own recording. This read `format.duration ?? '0'`
-  // and rejected as `too_short`, so a container that does not carry a duration
-  // produced "your video is too short" for a perfectly good sixty-second take.
+  // ⚠️ THE PRE-MORTEM WAS RIGHT AND IT HAS NOW HAPPENED. This comment used to
+  // end "it has still not been checked against a real device; what this does is
+  // make sure that when it IS checked, the failure names its own cause." It was
+  // checked, on 2026-08-09, by a real creator: asset
+  // 4d2c7f36-5974-4367-901c-b6ca6bbffaf9, a 5.8MB video/webm, REJECTED
+  // `duration_unknown`. They had already recorded once that evening — a 59MB
+  // take seven minutes earlier — so they filmed twice and Twin refused them
+  // both times. Naming the cause was necessary and is not sufficient.
   //
-  // THAT IS THE EXPECTED SHAPE OF A PHONE RECORDING, which is why it matters
-  // rather than being pedantry. A `MediaRecorder` WebM is written as a live
-  // stream: the Segment duration is not known when the header goes out and is
-  // frequently never patched in, so ffprobe reports `format.duration` absent or
-  // "N/A" — and `Number('N/A')` is NaN, which took the same branch as zero.
-  // The pre-mortem calls this "the single cheapest thing left to check" and it
-  // has still not been checked against a real device; what this does is make
-  // sure that when it IS checked, the failure names its own cause.
+  // "NOT REPORTED" IS NOT "TOO SHORT", and it is not "unusable" either. A
+  // `MediaRecorder` WebM is written as a live stream: the Segment duration is
+  // not known when the header goes out and is frequently never patched in, so
+  // ffprobe reports `format.duration` absent or "N/A". That is the EXPECTED
+  // shape of a browser recording, not a corrupt file — the frames are all
+  // there and the length is measurable by decoding them.
+  //
+  // ⚖️ SO ABSENCE IS `indeterminate`, NOT A VERDICT. This function stays pure
+  // and cannot decode anything itself; it says "I could not measure this from
+  // the header, measure it properly" and the caller runs the deep probe. Only
+  // when THAT also fails does a creator hear that their recording was refused.
+  // A rule that cannot see the answer must not be allowed to announce one.
+  const durationMs = probeDurationMs(probe)
   if (durationMs === null) {
     return {
-      ok: false, code: 'duration_unknown',
-      detail: 'the container reports no duration (format, stream, or DURATION tag) — cannot validate length',
+      ok: false, code: 'duration_unknown', indeterminate: true,
+      detail: 'the container reports no duration (format, stream, or DURATION tag) — decode to measure it',
     }
   }
   if (durationMs < limits.minDurationMs) {
@@ -296,11 +353,45 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
       return await reject(assetId, 'probe_failed', `not decodable media: ${String(e).slice(0, 200)}`)
     }
 
-    const verdict = assessProbe(probe, {
+    const limits = {
       minDurationMs: env.sourceMinDurationMs,
       maxDurationMs: env.sourceMaxDurationMs,
       maxPixels: env.sourceMaxPixels,
-    })
+    }
+    let verdict = assessProbe(probe, limits)
+
+    // ⚠️ A HEADER THAT DOES NOT SAY HOW LONG THE VIDEO IS HAS NOT SAID IT IS
+    // UNUSABLE. Browser `MediaRecorder` WebM routinely omits the Segment
+    // duration, and on 2026-08-09 that refused a real creator's second take of
+    // the evening. The frames are there; the length is measurable by decoding
+    // them, and the creator should never learn that any of this happened.
+    if (!verdict.ok && verdict.indeterminate) {
+      const measured = await measureDurationByDecoding(local)
+      if (measured !== null) {
+        // ⚖️ RE-ASSESSED THROUGH THE SAME RULES, not waved through. A decoded
+        // duration is still a duration: a genuinely two-frame recording must
+        // still fail `too_short`, and a fifteen-minute one must still fail
+        // `too_long`. Only the MEASUREMENT changed, never the bar.
+        verdict = assessProbe(
+          { ...probe, format: { ...(probe.format ?? {}), duration: String(measured / 1000) } },
+          limits,
+        )
+        console.log(JSON.stringify({
+          event: 'source_duration_decoded',
+          asset_id: assetId,
+          container: probe.format?.format_name ?? null,
+          measured_ms: measured,
+          // Whether recovering the duration actually saved the take, or whether
+          // it went on to fail a real bound. Both are worth counting.
+          then: verdict.ok ? 'accepted' : `rejected:${verdict.code}`,
+        }))
+      } else {
+        console.warn(JSON.stringify({
+          event: 'source_duration_undecodable', asset_id: assetId,
+          container: probe.format?.format_name ?? null,
+        }))
+      }
+    }
     if (!verdict.ok) return await reject(assetId, verdict.code, verdict.detail)
 
     // Source Capture Manifest (Phase 7 exit correction, Constitution §5.1): if

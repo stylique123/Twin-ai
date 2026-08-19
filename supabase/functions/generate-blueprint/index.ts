@@ -12,9 +12,11 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { buildLinkAllowlist, sanitizeBlueprintLinks, type LinkAllowlist } from '../_shared/outputLinks.ts'
 import { templateFor } from '../_shared/containerTemplates.ts'
+import { buildSlots, filledFrom, slotsReady } from '../_shared/writerInput.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
-import { validateWhatWeCan } from '../_shared/scriptValidator.ts'
+import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import {
+  resolveTemplate,
   evidenceLevel, groundingDepth, creatorDepth, substanceIssues, isProgressCheck,
   SUBSTANCE_SOURCES, type SubstanceItem,
 } from '../_shared/knowledgeResolver.ts'
@@ -2856,9 +2858,14 @@ Deno.serve(async (req: Request) => {
   // the whole generation over a strictly-conservative input would trade a real
   // outage for a theoretical one — but it is logged, because "we asked and the
   // read failed" and "they have no library" must not look the same in the logs.
+  // ⚠️ THE SELECT WIDENED BECAUSE THE RESOLVER READS MORE THAN THE NAME CHECK
+  // DID. `resolveTemplate` assigns an entity to a beat by `type` (a tool slot
+  // takes only a tool) and identifies it by `id`; `knowledge` is what the entity
+  // can actually SAY once assigned. Asking for two columns and resolving against
+  // four would mean inventing the other two.
   const { data: libraryRows, error: libraryErr } = await admin
     .from('product_entities')
-    .select('name, relationship')
+    .select('id, name, type, relationship, knowledge')
     .eq('owner_id', ownerId)
     // Grounding must not resolve a claim against a product the creator retired.
     .is('archived_at', null)
@@ -2869,6 +2876,48 @@ Deno.serve(async (req: Request) => {
     // A nameless entity cannot match anything, and `namesSameThing` refuses an
     // empty string anyway — dropping them here keeps the logged count honest.
     .filter((e) => e.name.trim() !== '')
+
+  // THE SAME ROWS, IN THE TWO SHAPES THE RESOLVER STACK ASKS FOR.
+  //
+  // ⚖️ `archivedAt: null` IS A FACT ABOUT THIS READ, NOT AN ASSUMPTION. The
+  // query filters `archived_at is null`, so every row here is live by
+  // construction — and `resolveTemplate` re-checks it anyway, which is the
+  // correct redundancy: the rule that refuses a withdrawn product should not
+  // depend on every caller having remembered to filter.
+  const fillableEntities = (libraryRows ?? []).map((r) => {
+    const e = r as { id?: unknown; type?: unknown; relationship?: unknown }
+    return {
+      id: String(e.id ?? ''),
+      type: String(e.type ?? ''),
+      relationship: String(e.relationship ?? 'NONE'),
+      archivedAt: null,
+    }
+  }).filter((e) => e.id !== '')
+
+  // ⚠️ ONLY WHAT THE CREATOR ALREADY CONFIRMED. `trust === 'usable'` is the same
+  // gate the product-facts block above applies, and it is the whole difference
+  // between a beat that names a product and a beat that makes a claim about one.
+  // An entity whose facts are all unverified contributes NOTHING here, which
+  // makes its beat unfilled — the honest answer, and the one that stops the
+  // writer rather than letting it improvise a capability.
+  const entitySay = new Map<string, { text: string; attribution: string }>()
+  for (const r of libraryRows ?? []) {
+    const e = r as { id?: unknown; name?: unknown; knowledge?: unknown }
+    const id = String(e.id ?? '')
+    const name = String(e.name ?? '').trim()
+    if (id === '' || name === '') continue
+    const facts = (Array.isArray(e.knowledge) ? e.knowledge : [])
+      .filter((f) => (f as { trust?: unknown })?.trust === 'usable')
+      .map((f) => {
+        const k = f as { field?: unknown; value?: unknown }
+        const value = String(k.value ?? '').trim()
+        return value === '' ? '' : `${String(k.field ?? 'fact')}: ${value}`
+      })
+      .filter((t) => t !== '')
+      .slice(0, 12)
+    if (facts.length === 0) continue
+    entitySay.set(id, { text: facts.join('. '), attribution: name })
+  }
 
   const dna = profile?.dna ?? {}
   const vp = voice?.profile ?? null
@@ -4147,6 +4196,12 @@ ${styleRules}` : ''}
         // is ADDITIVE: an unassessed reference — which is still almost all of
         // them — emits nothing and the writer behaves exactly as it does today.
         let containerBlock = ''
+        // ⚖️ DECLARED OUT HERE BECAUSE THE VALIDATOR IS OUT HERE. The two checks
+        // that have been reporting `not_run` need the slots this block resolves,
+        // and they run long after it — after the model has answered. `null`
+        // means the resolver never ran (no template, or the read failed), which
+        // is deliberately distinct from "ran and resolved nothing".
+        let resolvedSlots: ReturnType<typeof buildSlots> | null = null
         try {
           const { data: assessed } = await admin
             .from('reference_content_profiles')
@@ -4174,8 +4229,83 @@ ${tpl.beats.map((b, i) => `  ${i + 1}. ${b.label} (${b.role}) — ${b.purpose}${
 A beat marked [needs: product] or [needs: tool_or_software] requires something
 the creator actually has; if the knowledge above supplies none, write that beat
 about the topic in general rather than naming a product they never mentioned.`
+            const resolutions = resolveTemplate(
+              tpl,
+              {
+                items: speakable.map((k) => ({
+                  kind: String(k.kind ?? ''),
+                  text: String(k.text ?? ''),
+                  basis: String(k.basis ?? ''),
+                  source: String(k.source ?? 'user'),
+                  timesSeen: Number(k.times_seen ?? 0),
+                })) as never,
+                audience: aRows.map((a) => ({
+                  question: String(a.summary ?? ''), timesSeen: Number(a.asked ?? 0),
+                })),
+              },
+              // ⚖️ `researchable: false` BECAUSE THIS FUNCTION DOES NO RESEARCH.
+              // Saying otherwise would let a beat resolve to `research` and be
+              // counted as filled by a step that never runs.
+              { entities: fillableEntities, researchable: false },
+            )
+            // ── WHAT EACH BEAT IS ACTUALLY FILLED WITH ───────────────────────
+            //
+            // ⚠️ RESOLVING AND THEN NOT SAYING SO WOULD ONLY GRADE THE SCRIPT,
+            // NOT IMPROVE IT. The block above asks the model to find each beat's
+            // substance in a flat knowledge list, which is the step where a
+            // voice-accurate, content-empty script is born: everything is
+            // plausible, nothing is anybody's. The resolver has already decided
+            // which item answers which beat, so the assignment is stated.
+            //
+            // ⚖️ AND AN UNFILLED BEAT IS NAMED AS UNFILLED, with the fallback
+            // the resolver chose. `research` is rendered as generalise here on
+            // purpose — this function does no research, so instructing the model
+            // to go and find a fact would be instructing it to invent one.
+            // "Ask the creator" is likewise not available mid-generation. What
+            // is left is the honest weaker beat, which is the whole reason
+            // `generalise` exists as a fallback rather than a placeholder.
+            const filledText = filledFrom(resolutions, entitySay)
+            const beatLines = resolutions.map((r) => {
+              const got = filledText.get(r.label)
+              if (got) {
+                const from = got.attribution ? ` [they said this — source: ${got.attribution}]` : ''
+                return `  - ${r.label}: SAY THIS, in their words: ${got.text}${from}`
+              }
+              const fb = r.fallback
+              const how = fb && fb.kind === 'generalise'
+                ? fb.framing
+                : 'write it about the topic in general'
+              return `  - ${r.label}: NOTHING THEY HAVE SAID FILLS THIS. Do not invent a fact, a`
+                + ` product or an experience for it — ${how}.`
+            })
+            if (beatLines.length > 0) {
+              containerBlock += `\n\nWHAT EACH OF THOSE BEATS IS FILLED WITH. This is not a
+suggestion list: it is what this creator has actually said, matched to the beat
+it answers. Use the supplied line for that beat. Where a beat says nothing fills
+it, that is a fact about this creator's knowledge and NOT an invitation to
+improvise one — a confident sentence about something they never said is the
+single worst thing this script can contain.
+${beatLines.join('\n')}`
+            }
+            // ── THE SAME BEATS, RESOLVED RATHER THAN HOPED FOR ──────────────
+            //
+            // ⚠️ THE PROMPT ABOVE ASKS THE MODEL TO FILL EACH BEAT FROM THE
+            // KNOWLEDGE BLOCK, AND NOTHING CHECKS WHETHER IT COULD. That is the
+            // gap `all_slots_filled` was written for and could not answer,
+            // because answering it needs a record of what was available per
+            // beat — which is exactly what `resolveTemplate` produces.
+            //
+            // ⚖️ RESOLVED AGAINST `speakable`, NOT THE WHOLE STORE. `speakable`
+            // is what the writer was actually handed; resolving against the
+            // fuller set would mark a beat filled by an item the model never
+            // received, and the check would then be measuring a prompt nobody
+            // sent.
+            resolvedSlots = buildSlots(resolutions, filledText)
             console.log(JSON.stringify({
               event: 'container_template_applied', container: tpl.container, beats: tpl.beats.length,
+              slots_resolved: resolvedSlots.filter((x) => x.content.trim() !== '').length,
+              slots_total: resolvedSlots.length,
+              by: resolutions.map((r) => r.provenance.by),
             }))
           } else {
             console.log(JSON.stringify({
@@ -5174,7 +5304,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         const known = typeof brief.audienceKnowledge === 'string' ? brief.audienceKnowledge : ''
         const spoken = spokenText(blueprint)
         if (spoken === '') return null
-        const r = validateWhatWeCan(spoken, {
+        const plan = {
           objective: String(body.goal ?? ''),
           audienceLevel: LEVEL[known] ?? null,
           cta: readyPresent(brief.defaultCta) ? String(brief.defaultCta).slice(0, 240) : null,
@@ -5182,11 +5312,32 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
           // somebody who did, and the owned entity is the only evidence of that
           // this function holds.
           ownershipLanguage: Boolean(ownedEntity),
-        }, { referenceTranscript: ref?.text ?? null })
+        }
+        const opts = { referenceTranscript: ref?.text ?? null }
+        // ⚠️ THE TWO CHECKS GRADUATE ONLY WHEN THERE IS SOMETHING TO CHECK.
+        // `validateScript` reads the resolved slots; `validateWhatWeCan` says
+        // `not_run` because there are none. Choosing between them by whether the
+        // slots exist AND are all filled is the point: a half-resolved template
+        // would let `all_slots_filled` "fail" on beats the writer was never
+        // asked to fill from slots in the first place — the prompt still hands
+        // it the knowledge block — and a fabricated failure is as dishonest as
+        // a fabricated pass.
+        const r = resolvedSlots !== null && slotsReady(resolvedSlots)
+          ? validateScript(spoken, { decisionPlan: plan, content: resolvedSlots }, opts)
+          : validateWhatWeCan(spoken, plan, opts)
+        const o = outcomeOf(r)
         return {
-          failed: r.failed.map((c) => ({ code: c.code, detail: c.detail ?? null })),
-          not_run: r.notRun,
-          passed: r.checks.filter((c) => c.state === 'pass').length,
+          failed: o.failed,
+          not_run: o.notRun,
+          passed: o.passed,
+          // ⚖️ WHICH REPORT THIS IS, RECORDED RATHER THAN INFERRED. `not_run`
+          // being empty is not proof the slots were real — a future check could
+          // graduate for another reason — and a stored report nobody can trace
+          // to the path that produced it is a number without a question.
+          slots: resolvedSlots === null ? null : resolvedSlots.length,
+          slots_filled: resolvedSlots === null
+            ? null
+            : resolvedSlots.filter((x) => x.content.trim() !== '').length,
         }
       } catch { return null }
     })()

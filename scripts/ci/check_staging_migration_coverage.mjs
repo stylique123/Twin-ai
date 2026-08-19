@@ -72,6 +72,13 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0148_would_you_actually_post_this':
+    'The creator\'s own "would you post this?" answer. The staging matrix exercises the '
+    + 'editor pipeline and never asks a human anything, so it cannot exercise this table. '
+    + '⚠️ THIS IS A DEBT: it must be applied to production by hand BEFORE any UI writes '
+    + 'to `publish_intents`. Nothing reads or writes it yet — the funnel in '
+    + 'packages/shared/src/recordingFunnel.ts treats a missing answer as `pending`, which '
+    + 'is the same thing it says about a creator who has not been asked.',
   '0105_outcome_log':
     'Self-reported post outcomes. The editor never reads them, and staging has no posts.',
   '0106_clips_and_reference_requirements':

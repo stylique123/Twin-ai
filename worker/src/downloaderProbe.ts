@@ -51,6 +51,39 @@ function exec(cmd: string, args: string[], timeoutMs: number): Promise<string> {
 }
 
 /**
+ * What the binary can ACTUALLY use, read off its own table.
+ *
+ * ⚠️ SPLIT OUT SO IT CAN BE TESTED AGAINST REAL OUTPUT. The bug below was a
+ * parsing bug, and a parsing bug behind a `spawn` is only reachable on a box
+ * that happens to reproduce it — which is how it survived being written by the
+ * same person who wrote the comment explaining the distinction it missed.
+ */
+export function readTargets(raw: string): { usable: number; listedButUnusable: number } {
+  // ⚠️ THE PROBE HAD THIS EXACT BUG, WHICH IS WORTH SAYING PLAINLY. It counted
+  // every row naming a client and reported "4 impersonation targets available"
+  // on a box where all four read:
+  //
+  //     Chrome  -  curl_cffi (unavailable)
+  //
+  // `--list-impersonate-targets` lists what yt-dlp KNOWS ABOUT, and marks what
+  // it cannot actually use. So the check written to catch "declared but not
+  // effective" was itself fooled by declared-but-not-effective, and would have
+  // reported a healthy TikTok path during the very re-run where 38 of 40
+  // downloads failed with "no impersonate target is available".
+  //
+  // ⚖️ AVAILABILITY IS THE WHOLE QUESTION, so `(unavailable)` is what decides it
+  // and the client name is only how a row is recognised as a row.
+  const rows = raw
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => /^(chrome|edge|safari|firefox|tor)/i.test(l))
+  const targets = rows.filter((l) => !/\(unavailable\)/i.test(l))
+  const n = targets.length
+  const listedButUnusable = rows.length - n
+  return { usable: n, listedButUnusable }
+}
+
+/**
  * Ask the binary what it can do, rather than asking the repository what we
  * intended it to do.
  *
@@ -69,20 +102,19 @@ export async function probeDownloader(): Promise<DownloaderProbe> {
       detail: `yt-dlp could not be run: ${e instanceof Error ? e.message : String(e)}`,
     }
   }
-  // Each target is a row in a table; the header and any separator rows are not
-  // targets. Counting rows that name a client is enough to tell "some" from
-  // "none", and none is the only value that changes what we do.
-  const targets = raw
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => /^(chrome|edge|safari|firefox)/i.test(l))
-  const n = targets.length
+  const { usable: n, listedButUnusable } = readTargets(raw)
   return {
     ytDlp: true,
     impersonateTargets: n,
     tiktokReadable: n > 0,
     detail: n > 0
       ? `${n} impersonation targets available`
-      : 'NO impersonation targets — TikTok reads will fail. curl-cffi is declared in requirements.txt but is not effective in this image.',
+      // ⚠️ THE TWO ZEROS ARE DIFFERENT AND GET DIFFERENT SENTENCES. Nothing
+      // listed at all is a yt-dlp too old to impersonate; rows listed and all
+      // unusable is curl-cffi missing from the image — which is the case this
+      // probe was written for, and the one an operator can actually fix.
+      : listedButUnusable > 0
+        ? `NO usable impersonation targets — TikTok reads will fail. yt-dlp lists ${listedButUnusable} target(s) but marks every one "(unavailable)": curl-cffi is declared in requirements.txt and is NOT effective in this image.`
+        : 'NO impersonation targets — TikTok reads will fail. This yt-dlp lists none at all, so it cannot impersonate regardless of curl-cffi.',
   }
 }

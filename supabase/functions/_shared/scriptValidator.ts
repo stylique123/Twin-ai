@@ -196,6 +196,23 @@ function planChecks(
 }
 
 /**
+ * The narrowest thing the checks actually read.
+ *
+ * ⚠️ THE SAME LESSON `SubstanceItem` TAUGHT, APPLIED BEFORE IT COSTS ANYTHING.
+ * `knowledgeResolver` demanded a full `KnowledgeItem` while reading three of its
+ * fields, and six hand-copies grew at the edge because callers could not satisfy
+ * the signature. This function reads `decisionPlan` and `content` and nothing
+ * else — checked, not assumed — so demanding a whole `WriterInput` would put
+ * `generate-blueprint` in exactly that position: it holds its own `InlineStyle`
+ * and cannot produce a `StyleProfile`, so it would either fabricate one or copy
+ * the checks.
+ *
+ * ⚖️ `WriterInput` REMAINS ASSIGNABLE. This widens what the checks accept
+ * without widening what they inspect.
+ */
+export type ScriptSubject = Pick<WriterInput, 'decisionPlan' | 'content'>
+
+/**
  * Every decidable check, run in one pass.
  *
  * ⚠️ RETURNS ALL OF THEM, PASSED AND FAILED. A report that listed only failures
@@ -204,7 +221,7 @@ function planChecks(
  */
 export function validateScript(
   script: string,
-  input: WriterInput,
+  input: ScriptSubject,
   opts: { referenceTranscript?: string | null } = {},
 ): ScriptReport {
   const text = String(script ?? '')
@@ -288,10 +305,49 @@ export function validateWhatWeCan(
  * they attested to. A script with none of those is generic however well it
  * reads, and saying so is more useful than a score.
  */
-export function isGeneric(input: WriterInput): boolean {
+export function isGeneric(input: Pick<WriterInput, 'content'>): boolean {
   return !input.content.some((s) =>
     s.attribution !== null
     && (s.classification === 'user_confirmed'
       || s.classification === 'researched_fact'
       || s.classification === 'verified_fact'))
+}
+
+/**
+ * The two report shapes, rendered into the one record a caller stores.
+ *
+ * ⚠️ `ScriptReport` AND `PartialReport` DIFFER ON PURPOSE — `passed: boolean`
+ * against `state: 'pass'|'fail'|'not_run'`, and `blocked: false` as a literal
+ * the partial form can never widen. Merging them would cost that guarantee. But
+ * a caller that can receive either then has to branch on shape, and a caller
+ * branching on shape is a caller about to get it wrong somewhere: this exists so
+ * exactly one place knows both, and it sits beside the types it reads.
+ *
+ * ⚖️ AN EMPTY `notRun` IS AN ASSERTION, NOT A DEFAULT. A full report returns one
+ * because every check genuinely ran — which, for `all_slots_filled` and
+ * `no_unsupported_claim`, is the whole thing the resolver stack was built to
+ * make true.
+ */
+export interface ScriptOutcome {
+  failed: readonly { code: ScriptCheckCode; detail: string | null }[]
+  notRun: readonly ScriptCheckCode[]
+  passed: number
+  blocked: boolean
+}
+
+export function outcomeOf(r: ScriptReport | PartialReport): ScriptOutcome {
+  if ('notRun' in r) {
+    return {
+      failed: r.failed.map((c) => ({ code: c.code, detail: c.detail ?? null })),
+      notRun: r.notRun,
+      passed: r.checks.filter((c) => c.state === 'pass').length,
+      blocked: r.blocked,
+    }
+  }
+  return {
+    failed: r.failed.map((c) => ({ code: c.code, detail: c.detail ?? null })),
+    notRun: [],
+    passed: r.checks.filter((c) => c.passed).length,
+    blocked: r.blocked,
+  }
 }
