@@ -102,6 +102,39 @@ COPY requirements.txt requirements-opencv.txt ./
 RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt \
     && pip3 install --no-cache-dir --break-system-packages --require-hashes -r requirements-opencv.txt
 
+# ⚠️ ASK THE IMAGE WHETHER IMPERSONATION ACTUALLY WORKS, AND REFUSE TO SHIP IF
+# IT DOES NOT. `pip install` succeeding proves nothing here: `curl-cffi>=0.7.0`
+# installed cleanly, imported cleanly, and yt-dlp refused it —
+#
+#   ImportError: Only curl_cffi versions 0.5.10 and 0.10.x through 0.15.x
+#   are supported
+#
+# — so every target printed "(unavailable)", TikTok reads failed, and 70
+# production reference assessments died on a dependency that was present the
+# whole time. A green build shipped a broken downloader for months.
+#
+# ⚖️ THE TWO PINS ARE COUPLED AND NOTHING ELSE CHECKS THAT. yt-dlp is on a
+# deliberate floor with no ceiling so its extractors can chase anti-bot changes;
+# curl-cffi now has a ceiling matching yt-dlp's supported window. A yt-dlp move
+# can therefore invalidate the curl-cffi range with both pins still "satisfied".
+# This is the only place that notices, and it notices at BUILD time rather than
+# in production — which is where `probeDownloader` would otherwise report it,
+# after a creator has already been told their account looks private.
+RUN set -eu; \
+    targets="$(yt-dlp --list-impersonate-targets 2>&1 || true)"; \
+    usable="$(printf '%s\n' "$targets" \
+      | sed 's/^[[:space:]]*//' \
+      | grep -Ei '^(chrome|edge|safari|firefox|tor)' \
+      | grep -vc '(unavailable)' || true)"; \
+    echo "yt-dlp $(yt-dlp --version) | curl_cffi $(python3 -c 'import curl_cffi;print(curl_cffi.__version__)') | usable impersonation targets: $usable"; \
+    if [ "$usable" -lt 1 ]; then \
+      echo "ERROR: no USABLE impersonation targets — TikTok reads would fail in this image."; \
+      echo "The dependency may be installed and importable and still refused; check the"; \
+      echo "curl-cffi ceiling in requirements.txt against this yt-dlp's supported window:"; \
+      printf '%s\n' "$targets"; \
+      exit 1; \
+    fi
+
 # Runtime node deps ONLY (no dev deps in the shipped image).
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
