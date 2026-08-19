@@ -112,7 +112,7 @@ jobs:
       # THAT COSTS 10. The registry either answers promptly or it is not
       # answering, and a red run naming the step beats a queue nobody can read.
       - name: Install ffmpeg; fetch the caption fonts from the ACTUAL deploy image
-        timeout-minutes: 13
+        timeout-minutes: 25
         run: |
           set -eu
           # ⚠️ APT WAS THE CULPRIT, NOT THE REGISTRY — SETTLED BY EVIDENCE, NOT GUESSED.
@@ -121,41 +121,40 @@ jobs:
           # out at ten minutes. The hang is here, in apt, and it is intermittent:
           # the same command took 28 seconds on the previous head.
           #
-          # ⚖️ EACH ATTEMPT IS BOUNDED SEPARATELY, which is the whole point. An
-          # unbounded apt that hangs consumes the entire step budget, so a retry
-          # after it would never run.
+          # ⚠️ AND THE MIRROR ITSELF GOES AWAY, WHICH IS A THIRD FAILURE MODE.
+          # The previous version assumed `apt-get update` was the only thing that
+          # hangs and that `install` would then be served from the runner's
+          # existing lists. On 2026-08-19 15:36 the install-only attempt burned
+          # its full 120s too — because `install` still has to DOWNLOAD the .deb,
+          # and it was the archive that was unreachable, not just the index.
+          # Skipping `update` is still right (it is redundant work on the happy
+          # path, and 27s vs 9m24s proved that), but it cannot rescue an
+          # unreachable mirror.
           #
-          # ⚠️ AND `apt-get update` IS THE PART THAT HANGS — measured, not
-          # assumed. On 2026-08-19 this failed three times in a row, each attempt
-          # lasting ~186s: exactly the 180s `update` bound plus overhead, meaning
-          # `install` never ran once in nine minutes. The bounded retry did its
-          # job — a named failure instead of a silent ten-minute hang — but
-          # retrying the hanging thing three times is still nine minutes spent
-          # waiting on a mirror that is not answering.
-          #
-          # ⚖️ SO THE FIRST ATTEMPT SKIPS `update` ENTIRELY. GitHub's runner image
-          # ships with populated package lists, and `install` usually succeeds
-          # against them without touching a mirror index at all. That turns the
-          # common case into seconds and reaches the network only when the
-          # cached lists genuinely cannot satisfy the request. Refreshing an
-          # index we may not need is what put the failure on the critical path.
+          # ⚖️ SO THE ANSWER TO A FLAPPING MIRROR IS PATIENCE, NOT CLEVERNESS.
+          # This flapped three times today: 51s at 11:44, 27s at 14:19, dead at
+          # 15:36. A budget that gives up after 7.5 minutes turns a transient
+          # outage into a blocked merge, and merges are the thing being
+          # protected. Three refreshes with widening backoff spans ~20 minutes,
+          # which covers the outages seen so far.
           apt_get_retry() {
             if timeout 120 sudo apt-get install -y -qq --no-install-recommends "$@"; then
               echo "installed from the runner's existing package lists (no apt-get update needed)"
               return 0
             fi
             echo "install from cached lists failed; refreshing the index"
-            backoff=10
-            for attempt in 1 2; do
-              if timeout 150 sudo apt-get update -qq \
-                 && timeout 120 sudo apt-get install -y -qq --no-install-recommends "$@"; then
+            backoff=15
+            for attempt in 1 2 3; do
+              if timeout 180 sudo apt-get update -qq \
+                 && timeout 180 sudo apt-get install -y -qq --no-install-recommends "$@"; then
+                echo "installed after $attempt refresh(es)"
                 return 0
               fi
               echo "apt attempt $attempt failed or timed out; retrying in ${backoff}s"
               sleep "$backoff"
               backoff=$((backoff * 2))
             done
-            echo "::error::apt could not install: $* (cached lists + 2 bounded refreshes)"
+            echo "::error::apt could not install: $* (cached lists + 3 bounded refreshes over ~20min)"
             return 1
           }
           apt_get_retry ffmpeg
