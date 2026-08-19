@@ -14,6 +14,11 @@ import { buildLinkAllowlist, sanitizeBlueprintLinks, type LinkAllowlist } from '
 import { templateFor } from '../_shared/containerTemplates.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
 import { validateWhatWeCan } from '../_shared/scriptValidator.ts'
+import {
+  evidenceLevel, groundingDepth, creatorDepth, substanceIssues, isProgressCheck,
+  SUBSTANCE_SOURCES, type SubstanceItem,
+} from '../_shared/knowledgeResolver.ts'
+import { claimStrength, type ClaimStrength } from '../_shared/claimStrength.ts'
 
 // Internal credits per recreation. Adjustable via the RECREATION_COST secret so we
 // can quietly change the credit<->video rate later WITHOUT a code change and
@@ -208,98 +213,33 @@ function speechAudit(bp: unknown): {
   } catch { return null }
 }
 
-// Inlined from `packages/shared/src/knowledgeResolver.ts`, where the rules and
-// their 21 tests live. Edge functions cannot import @twinai/shared under Deno
-// deploy, so the parity is kept by the edge-source-parity test rather than by
-// the module system.
+// ── THE BOUNDARY: UNTRUSTED JSON BECOMES A TYPED SubstanceItem, ONCE ────────
 //
-// ⚖️ A DECLARATION NOBODY CHECKS IS A COMMENT. Asking the writer to say where
-// each beat's content came from is worth nothing on its own — the same model
-// that would invent a position will happily label the invention
-// `creator_knowledge`. What makes the field load-bearing is checking the claim
-// against the exact knowledge this prompt carried.
-const SUBSTANCE_STOP = new Set(['this', 'that', 'with', 'from', 'they', 'them', 'what', 'when',
-  'have', 'about', 'video', 'thing', 'things', 'your', 'their', 'more', 'than'])
-function substanceTerms(s: string): Set<string> {
-  return new Set(String(s).toLowerCase().split(/[^a-z0-9]+/)
-    .filter((w) => w.length > 3 && !SUBSTANCE_STOP.has(w)))
-}
-/** First-person personal history — ONE detector, the measured one.
- *
- *  ⚠️ THIS WAS A SECOND COPY AND IT WAS TEN TIMES BLINDER. It held the narrow
- *  verb list that `claimStrength` below replaced with a structural rule after
- *  measuring against real speech; over the last matrix it saw 2 history beats
- *  where `claimStrength` saw 22. Its "narrow on purpose" rationale was that
- *  "I think" is stance rather than history — still true, and `claimStrength`
- *  already returns `position` for exactly that. The reason survived; the
- *  implementation serving it did not. Mirrors `isFirstPersonHistory` in
- *  packages/shared/src/knowledgeResolver.ts. */
-const isFirstPersonHistory = (line: string): boolean => claimStrength(line) === 'history'
-type SuppliedKnowledge = { kind: string; text: string; basis: string }
-/** Same ladder as the shared module: a title is coverage however confident it
- *  sounds; only speech is opinion, and only first-person speech is experience. */
-function suppliedLevel(k: SuppliedKnowledge): 'coverage' | 'opinion' | 'experience' {
-  if (k.kind === 'experience' && k.basis === 'stated') return 'experience'
-  if (k.basis === 'stated') return 'opinion'
-  return 'coverage'
-}
-// ⚠️ The knowledge block below renders each item as `* (product) X`, so the
-// writer cites it back with that prefix. Left in, the literal kind word joins
-// the term set and a short citation can never reach a two-term match — a
-// correctly cited beat gets reported as a fabrication. Measured: 18 of 18
-// flagged claims in a 60-run matrix were exactly this.
-const KIND_PREFIX = /^\s*\((?:fact|opinion|topic|example|experience|framework|claim|product|covered)\)\s*/i
-// A beat may rest on more than one item and the writer cites them as a list —
-// "ChatGPT, AI ads for dropshipping". Measured whole, that is two items' worth
-// of terms and no single stored item can match enough of them. Each part is
-// traced independently; any part supporting the beat is enough, because the
-// question is "does this beat rest on something real".
-function tracesToText(cited: string, supplied: readonly string[]): boolean {
-  const parts = cited.split(/[,;]/).map((x) => x.replace(KIND_PREFIX, '').trim()).filter(Boolean)
-  return (parts.length ? parts : [cited]).some((part) => {
-    const c = substanceTerms(part)
-    if (c.size === 0) return false
-    return supplied.some((text) => {
-      const t = substanceTerms(String(text))
-      return [...c].filter((w) => t.has(w)).length >= Math.min(2, c.size)
-    })
-  })
-}
-// ⚖️ ONE TRACING RULE, TWO SOURCES. Separate matchers would let the same
-// citation pass one check and fail the other for no defensible reason.
-function tracesTo(cited: string, supplied: readonly SuppliedKnowledge[]): boolean {
-  return tracesToText(cited, supplied.map((i) => String(i.text)))
-}
-// ⚠️ `product_dna` WAS ACCEPTED ON THE MODEL'S WORD while creator_knowledge was
-// verified. Across 112 real runs for 8 creators with NO product DNA supplied,
-// 70 beats declared `product_dna` anyway — 9.9% of every beat — and the count
-// GREW by half in the run that tightened the CTA and claim rules. Pressure
-// follows the unchecked path, so an unchecked declared source is a drain.
+// ⚠️ SIX COPIES OF THESE RULES LIVED HERE, and none of them had diverged in
+// logic — they differed only by local type names and defensive `String()`
+// calls, because this function receives JSON and the shared module receives
+// typed values. The copies existed because `knowledgeResolver` demanded a full
+// `KnowledgeItem` (including `confidence`, which no rule reads) and a prompt's
+// knowledge block only carries `{ kind, text, basis }`. `SubstanceItem` closed
+// that gap; this coercion is what replaces the copies.
 //
-// ⚖️ THREE STATES. `undefined` runs no product check; `[]` means the prompt
-// carried none, which makes the claim IMPOSSIBLE rather than unsupported.
-/** Kinds that name a SUBJECT rather than assert anything. Mirrors
- *  SUBJECT_KINDS in packages/shared/src/knowledgeResolver.ts. */
-const SUBJECT_KINDS: ReadonlySet<string> = new Set(['topic', 'product', 'covered'])
-
-/** How deep a citation's grounding goes — did it reach something the creator
- *  SAID, or only the name of something they talk about?
- *
- *  ⚠️ A MEASUREMENT, NOT A GATE. 28% of `creator_knowledge` beats in the last
- *  matrix cite a bare subject ("3D printing", "Unihertz"). Every layer handles
- *  those correctly and only 1 of 75 dressed an invented specific as creator
- *  knowledge — nothing leaks. What is wrong is that `beat_substance` counts
- *  them as creator-grounded alongside beats resting on something actually said,
- *  so the number this layer exists to move cannot show content-emptiness
- *  improving. Acting on the split is an owner-level call; reporting it is not. */
-function groundingDepth(
-  cited: string,
-  supplied: readonly SuppliedKnowledge[],
-): 'proposition' | 'subject' | 'none' {
-  if (!tracesTo(cited, supplied)) return 'none'
-  const reached = supplied.filter((k) => tracesTo(cited, [k]))
-  return reached.some((k) => !SUBJECT_KINDS.has(String(k.kind))) ? 'proposition' : 'subject'
-}
+// ⚖️ THE DEFENSIVENESS MOVES OUT OF THE RULES AND ON TO THE BOUNDARY, where it
+// belongs. Coercing once here means the shared rules stay pure and there is
+// exactly one place that decides what an untrusted item becomes.
+//
+// ⚠️ THE CAST IS SAFE AND THAT IS CHECKABLE, not a hope: every rule downstream
+// tests `SET.has(kind)` or `basis === 'stated'`. None switches exhaustively on
+// the union, so a `kind` outside it simply matches nothing — which is the same
+// answer the hand-written copies gave.
+const asSubstance = (v: unknown): SubstanceItem[] =>
+  (Array.isArray(v) ? v : []).map((raw) => {
+    const k = raw as { kind?: unknown; text?: unknown; basis?: unknown }
+    return {
+      kind: String(k?.kind ?? ''),
+      text: String(k?.text ?? ''),
+      basis: String(k?.basis ?? ''),
+    }
+  }) as SubstanceItem[]
 
 // ── CREATOR-STATE CLAIMS: TWIN MAY IMITATE A VOICE, NEVER INVENT A LIFE ──────
 //
@@ -739,9 +679,6 @@ function creatorStateAction(
   return { mode, safety, act: safety === 'SAFE_ERASURE' ? 'rewrite' : 'ask' }
 }
 
-/** The five sources a beat may declare. Anything else is unaccounted for. */
-const SUBSTANCE_SOURCES: ReadonlySet<string> =
-  new Set(['creator_knowledge', 'product_dna', 'general', 'needs_user', 'none'])
 
 // ── WHERE SUBSTANCE SHOULD HAVE COME FROM, MEASURED AGAINST WHERE IT CAME ───
 //
@@ -763,16 +700,6 @@ const SUBSTANCE_SOURCES: ReadonlySet<string> =
 // currently computed. Passing a guess would manufacture refusals; leaving it
 // unset means this run measures the OTHER four routes honestly and the concept
 // route stays visibly unbuilt rather than quietly approximated.
-const PROPOSITIONAL_KINDS: ReadonlySet<string> = new Set([
-  'opinion', 'experience', 'framework', 'claim', 'example', 'fact',
-])
-function creatorDepth(supplied: readonly SuppliedKnowledge[]): 'high' | 'medium' | 'low' {
-  const propositional = supplied.filter((k) => PROPOSITIONAL_KINDS.has(k.kind))
-  const stated = propositional.filter((k) => k.basis === 'stated')
-  if (stated.length >= 3) return 'high'
-  if (propositional.length >= 3 || stated.length >= 1) return 'medium'
-  return 'low'
-}
 interface RoutingContext {
   depth: 'high' | 'medium' | 'low'
   aboutOwnProduct: boolean
@@ -1833,69 +1760,6 @@ function findProductClaimGaps(
   return out
 }
 
-const PROGRESS_CHECK =
-  /\b(?:still with me|still here|you'?re (?:still )?(?:with me|watching)|halfway (?:there|through|done)|ready for the (?:last|next|final)|are you (?:still )?(?:there|watching)|if you'?re still watching)\b/i
-
-// Mirrors `substanceIssues` in packages/shared/src/knowledgeResolver.ts.
-function substanceIssues(
-  beats: unknown,
-  supplied: readonly SuppliedKnowledge[],
-  productFacts?: readonly string[] | null,
-): Array<{ code: string; beat: number; detail: string }> {
-  if (!Array.isArray(beats)) return []
-  const out: Array<{ code: string; beat: number; detail: string }> = []
-  beats.forEach((raw, i) => {
-    const b = raw as { substance?: unknown; substance_evidence?: unknown; line?: unknown }
-    const source = typeof b?.substance === 'string' ? b.substance : ''
-    const cited = typeof b?.substance_evidence === 'string' ? b.substance_evidence.trim() : ''
-    const line = typeof b?.line === 'string' ? b.line : ''
-    // ⚠️ AN OMITTED DECLARATION IS THE CHEAPEST WAY OUT OF EVERY CHECK BELOW.
-    // Both branches key on `source` matching a known value, so a beat with no
-    // `substance` matches neither and is waved through without its citation
-    // ever being read. It is required in the response schema above and it still
-    // happened: 1 beat in 705 across the last matrix. Named, not escalated —
-    // see the fuller note in packages/shared/src/knowledgeResolver.ts.
-    if (!SUBSTANCE_SOURCES.has(source)) {
-      out.push({ code: 'undeclared_substance', beat: i,
-        detail: source === ''
-          ? 'Beat declares no substance at all, so neither citation check can run on it.'
-          : `Beat declares substance "${source.slice(0, 40)}", which is not one of the five sources.` })
-    }
-    if (source === 'creator_knowledge') {
-      if (cited === '') {
-        out.push({ code: 'undeclared_evidence', beat: i,
-          detail: 'Beat claims creator knowledge and names nothing it used.' })
-      } else if (!tracesTo(cited, supplied)) {
-        out.push({ code: 'unsupported_creator_claim', beat: i,
-          detail: `Beat cites "${cited.slice(0, 80)}", which is not in the knowledge this prompt carried.` })
-      }
-    }
-    if (source === 'product_dna' && productFacts != null) {
-      if (productFacts.length === 0) {
-        out.push({ code: 'impossible_product_claim', beat: i,
-          detail: 'Beat claims product facts, and the prompt carried none. There is no such source to have used.' })
-      } else if (cited === '') {
-        out.push({ code: 'undeclared_evidence', beat: i,
-          detail: 'Beat claims product facts and names nothing it used.' })
-      } else if (!tracesToText(cited, productFacts)) {
-        out.push({ code: 'unsupported_product_claim', beat: i,
-          detail: `Beat cites "${cited.slice(0, 80)}", which is not among the product facts this prompt carried.` })
-      }
-    }
-    // ⚖️ THE MOST EXPENSIVE ERROR, CHECKED SEPARATELY. A personal history is a
-    // claim about the creator's life, and nothing but experience-level evidence
-    // licenses it — not research, not a title, not a rephrasing.
-    if (isFirstPersonHistory(line)) {
-      const licensed = supplied.some((k) => suppliedLevel(k) === 'experience'
-        && (cited === '' ? true : tracesTo(cited, [k])))
-      if (!licensed) {
-        out.push({ code: 'unearned_first_person', beat: i,
-          detail: 'Beat speaks a personal history, and nothing on record says the creator did it.' })
-      }
-    }
-  })
-  return out
-}
 
 
 
@@ -1972,78 +1836,15 @@ function packagingPromptLine(p: Packaging | null | undefined, minSample = 20): s
 // topic"; what the line says is "he owned these and loved them". Eleven such
 // lines shipped past a green matrix because nobody compared the STRENGTH of the
 // claim against the LEVEL of the evidence.
-const CLAIM_HISTORY =
-  /\bI(?:'ve| have| had| was| were)\s+\w+|\bI\s+\w+ed\b|\bI (?:\w+ly |already |just |recently |finally |once )*(?:bought|owned|used|switched|returned|tested|quit|regret(?:ted)?|stopped|took|got|made|went|saw|thought|began|ran|kept|told|found|woke|paid|built|broke|felt|knew|meant|left|wrote|spent|sold|read|held|gave|came|did|didn'?t|couldn'?t|wasn'?t|never)\b|\bI used to\b|\bmy own\b|\bthat I have\b|\bwhen I (?:got|bought|switched|tried)\b|\bI (?:\w+ly )?(?:haven'?t|hadn'?t|didn'?t|wasn'?t|couldn'?t)\b/i
-/** "My take is…" / "My verdict:" — a stance put in their mouth. Mirrors
- *  MY_STANCE in packages/shared/src/claimStrength.ts. */
-const CLAIM_MY_STANCE = /\bmy (?:take|answer|verdict|call|advice)\b\s*(?:is|was|:|—|-)/i
-/** "as someone who's built stores" — a claimed career, the most expensive thing
- *  this file can miss. `who's` is only read as perfect before a past participle,
- *  because "who's passionate" is a stance. Mirrors CREDENTIAL in shared. */
-const CLAIM_CREDENTIAL = /\bas someone who has\s+\w+|\bas someone who'(?:s)\s+(?:\w+ed|built|spent|run|made|been|grown|sold|worked|shipped|launched|managed|owned|tested)\b/i
-/** "my WHOOP", "my Fitbit Air" — a NAMED thing they claim to own. 34 beats in
- *  2,857 assert a possession and scored `discussion`; this catches the named
- *  half. The lowercase half ("my electric bike") needs the product-entity check,
- *  not a bigger regex. Mirrors NAMED_POSSESSION in shared. */
-const CLAIM_NAMED_POSSESSION = /\bmy [A-Z][A-Za-z0-9]*/
-const CLAIM_POSITION =
-  /\bI (?:\w+ly |still |always |usually |often |sometimes )*(?:think|reckon|believe|feel|like|love|hate|prefer|recommend|rate|adore|enjoy|swear by|rely on|care|don'?t care|would argue)\b|\bI(?:'m| am) (?:\w+ly |not |so |a )*(?:shocked|glad|terrified|surprised|impressed|disappointed|excited|worried|sold|convinced|obsessed|sure|not sure|fan)\b|\bI(?:'d| would)?(?:'?m)? (?:never|not)\b|\bI would ?n'?t\b|\bI wouldn't\b|\bI(?:'m| am) (?:staying away|steering clear|skipping|avoiding|passing)\b|\b(?:hard |soft )?pass(?: for me)?\b|\ba pass for me\b|\bI'?d skip\b|\bI'?d\b|\bmy favou?rite\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? |\bI'?m not going to lie\b|\bno-?brainer\b/i
-
-type ClaimStrength = 'discussion' | 'position' | 'history'
-/** History first: "I used to think I needed every accessory" matches both and is
- *  a history — it asserts a past state of the creator's life. */
-// ⚖️ Narration commits the creator to nothing — see the shared module for
-// the measurement that forced this. Checked AFTER history.
-const CLAIM_NARRATION =
-  /\bI(?:'m| am)?\s*(?:'ll |will |going to |gonna |about to )|\bI'll\b|\bI(?:'m| am) (?:talking|showing|telling|explaining|breaking|walking)\b|\bI can(?:'t|not) show\b|\bI don'?t know if (?:any of )?you\b|\blet me know\b|\blet me show\b|\bin (?:today'?s|this|the next|our) video\b|\bcurious to hear\b|\bwhat (?:do )?you (?:guys )?think\b|\bin the comments\b|\b(?:items|things|products|ways|tips|gadgets|reasons)\s+(?:that\s+)?I\s+(?:\w+ly\s+|just\s+|recently\s+)*found\b/i
-/** ⚠️ CASE-SENSITIVE: `[A-Z]` under an `i` flag matches any letter, and
- *  swallowed "I'm shocked" / "I'm glad" as narration. */
-const CLAIM_SELF_INTRO =
-  /\bI'm [A-Z][a-z]+/
-/** ⚠️ Rhetorical frames, checked BEFORE history — "what if I told you" is
- *  one of short-form's commonest hooks and `told you` read as a life event.
- *  See the shared module for the blast-radius measurement that caught it. */
-const CLAIM_RHETORICAL =
-  /\bwhat if I told you\b|\blet me tell you\b|\bI'?ll tell you\b/i
-/** The unambiguous core: a rhetorical wrapper may not hide a real one. */
-const CLAIM_HISTORY_STRICT =
-  /\bI(?:'ve| have)\s+(?:bought|owned|used|switched|returned|tested|tried)\b|\bI used to\b|\bI (?:bought|owned|switched|returned|tested|quit|regret(?:ted)?)\b/i
-/** ⚠️ "I told you guys I'd give away three PCs" is a promise they made;
- *  "what if I told you…" is a hook. Same two words, opposite meanings — so
- *  this guards the NARRATION branch only, never the rhetorical one. */
-const CLAIM_DECLARED_PROMISE =
-  /\bI told you (?:guys |all |folks )?(?:I|that|about)\b/i
-/** ⚠️ A TYPOGRAPHIC APOSTROPHE SILENTLY DEFEATED EVERY CLAIM PATTERN. The rules
- *  spell contractions with U+0027; the writer emits U+2019 whenever it feels
- *  like prose, and 29 of 705 beats in the last matrix carry one. "I've been
- *  using this" scored `history` and "I’ve been using this" scored `discussion` —
- *  the same claim, waved through. Normalised at the entry point rather than per
- *  pattern. Mirrors `straighten` in packages/shared/src/claimStrength.ts. */
-const straighten = (s: string): string => s.replace(/[’ʼ‘´`]/g, "'")
-
-function claimStrength(line: string): ClaimStrength {
-  const t = straighten(String(line ?? ''))
-  if (CLAIM_RHETORICAL.test(t) && !CLAIM_HISTORY_STRICT.test(t)) return 'discussion'
-  // Narration BEFORE history: a structural tense rule fires on "in today's
-  // video, I wanted to make a review" — an intention about the upload, not an
-  // event in a life. It never beats a stance or a promise actually made.
-  if ((CLAIM_NARRATION.test(t) || CLAIM_SELF_INTRO.test(t))
-    && !CLAIM_POSITION.test(t) && !CLAIM_HISTORY_STRICT.test(t) && !CLAIM_DECLARED_PROMISE.test(t)) return 'discussion'
-  if (CLAIM_CREDENTIAL.test(t) || CLAIM_NAMED_POSSESSION.test(t)) return 'history'
-  if (CLAIM_HISTORY.test(t) && !CLAIM_NARRATION.test(t)) return 'history'
-  if (CLAIM_POSITION.test(t) || CLAIM_MY_STANCE.test(t)) return 'position'
-  if (CLAIM_HISTORY.test(t)) return 'history'
-  return 'discussion'
-}
 const NEED: Record<ClaimStrength, number> = { discussion: 0, position: 1, history: 2 }
 const LEVEL_RANK: Record<string, number> = { coverage: 0, opinion: 1, experience: 2 }
 
 /** Strongest level the SUPPLIED knowledge reaches. `null` = nothing supplied,
  *  which is not coverage and must not be rounded up to it. */
-function bestAvailableLevel(supplied: readonly SuppliedKnowledge[]): string | null {
+function bestAvailableLevel(supplied: readonly SubstanceItem[]): string | null {
   let best: string | null = null
   for (const i of supplied) {
-    const l = suppliedLevel(i)
+    const l = evidenceLevel(i)
     if (best === null || LEVEL_RANK[l] > LEVEL_RANK[best]) best = l
   }
   return best
@@ -2088,7 +1889,7 @@ interface EntitlementFail { index: number; line: string; repair: string; ask: st
 /** Every beat whose claim outruns the evidence. Empty for an honest script. */
 function entitlementFailures(
   beats: unknown,
-  supplied: readonly SuppliedKnowledge[],
+  supplied: readonly SubstanceItem[],
 ): EntitlementFail[] {
   if (!Array.isArray(beats)) return []
   const available = bestAvailableLevel(supplied)
@@ -4554,9 +4355,10 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // ⚖️ THE KNOWLEDGE THE PROMPT ACTUALLY CARRIED, shared by both checks.
     // Checking either against the fuller store would license claims the writer
     // could not have known.
-    const suppliedForCheck = speakable.map((k) => ({
-      kind: String(k.kind), text: String(k.text), basis: String(k.basis),
-    }))
+    // ⚖️ THE ONE BOUNDARY. This line already did exactly what `asSubstance`
+    // does; making it the caller means there is a single place in this function
+    // where untrusted knowledge becomes a typed `SubstanceItem`.
+    const suppliedForCheck = asSubstance(speakable)
     // THE PRODUCT FACTS THE PROMPT CARRIED — derived from the block that was
     // actually built above, never from the brief. `evidenceBlock` is the whole
     // of what the writer was told about the product; if a fact is not in it,
@@ -4735,7 +4537,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       console.error('creator_state_observe_failed', err instanceof Error ? err.message : err)
     }
 
-    const issues = substanceIssues(declared, suppliedForCheck, productFactsForCheck)
+    const issues = substanceIssues(declared as Parameters<typeof substanceIssues>[0], suppliedForCheck, productFactsForCheck)
     const bySource: Record<string, number> = {}
     if (Array.isArray(declared)) {
       for (const b of declared) {
@@ -4978,8 +4780,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       for (const b of declared) {
         const r = b as { line?: unknown; substance?: unknown }
         const line = typeof r?.line === 'string' ? r.line : ''
-        const sub = String(r?.substance ?? 'none').trim().toLowerCase()
-        if (PROGRESS_CHECK.test(line) && (sub === 'none' || sub === '')) progressChecks++
+        // ⚖️ THE SHARED PREDICATE, AND IT IS EXACTLY EQUIVALENT. It applies the
+        // same pattern and normalises `substance` with the identical
+        // `String(x ?? 'none').trim().toLowerCase()` this line used to do by
+        // hand — verified before the swap, because a counter that quietly starts
+        // counting more is a metric that breaks its own history.
+        if (isProgressCheck(line, r?.substance as string | null | undefined)) progressChecks++
       }
     }
     // ⚖️ COMPUTED ONCE, LOGGED AND STORED — the same discipline 0130 uses, for
