@@ -29,6 +29,7 @@ import { DeclaredClips } from '../components/DeclaredClips'
 import { CoverButton } from '../components/CoverDialog'
 import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
+import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
@@ -681,6 +682,14 @@ export default function Result() {
               )}
             </div>
           </div>
+
+          {/* ⚠️ ASKED ONLY WHERE THERE IS SOMETHING TO ANSWER ABOUT. A creator
+              still deciding whether to film has not seen the video and cannot
+              say whether they would post it; asking then collects a guess and
+              teaches them to dismiss us. `finished` is the same condition the
+              Post button reads, so the question appears exactly when posting
+              becomes a real choice. */}
+          {finished && <WouldYouPostThis generationId={gen.id} />}
 
           <motion.div
             initial={{ opacity: 0, y: 12 }}
