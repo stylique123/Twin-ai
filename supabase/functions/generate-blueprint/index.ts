@@ -4229,19 +4229,6 @@ ${tpl.beats.map((b, i) => `  ${i + 1}. ${b.label} (${b.role}) — ${b.purpose}${
 A beat marked [needs: product] or [needs: tool_or_software] requires something
 the creator actually has; if the knowledge above supplies none, write that beat
 about the topic in general rather than naming a product they never mentioned.`
-            // ── THE SAME BEATS, RESOLVED RATHER THAN HOPED FOR ──────────────
-            //
-            // ⚠️ THE PROMPT ABOVE ASKS THE MODEL TO FILL EACH BEAT FROM THE
-            // KNOWLEDGE BLOCK, AND NOTHING CHECKS WHETHER IT COULD. That is the
-            // gap `all_slots_filled` was written for and could not answer,
-            // because answering it needs a record of what was available per
-            // beat — which is exactly what `resolveTemplate` produces.
-            //
-            // ⚖️ RESOLVED AGAINST `speakable`, NOT THE WHOLE STORE. `speakable`
-            // is what the writer was actually handed; resolving against the
-            // fuller set would mark a beat filled by an item the model never
-            // received, and the check would then be measuring a prompt nobody
-            // sent.
             const resolutions = resolveTemplate(
               tpl,
               {
@@ -4261,7 +4248,59 @@ about the topic in general rather than naming a product they never mentioned.`
               // counted as filled by a step that never runs.
               { entities: fillableEntities, researchable: false },
             )
-            resolvedSlots = buildSlots(resolutions, filledFrom(resolutions, entitySay))
+            // ── WHAT EACH BEAT IS ACTUALLY FILLED WITH ───────────────────────
+            //
+            // ⚠️ RESOLVING AND THEN NOT SAYING SO WOULD ONLY GRADE THE SCRIPT,
+            // NOT IMPROVE IT. The block above asks the model to find each beat's
+            // substance in a flat knowledge list, which is the step where a
+            // voice-accurate, content-empty script is born: everything is
+            // plausible, nothing is anybody's. The resolver has already decided
+            // which item answers which beat, so the assignment is stated.
+            //
+            // ⚖️ AND AN UNFILLED BEAT IS NAMED AS UNFILLED, with the fallback
+            // the resolver chose. `research` is rendered as generalise here on
+            // purpose — this function does no research, so instructing the model
+            // to go and find a fact would be instructing it to invent one.
+            // "Ask the creator" is likewise not available mid-generation. What
+            // is left is the honest weaker beat, which is the whole reason
+            // `generalise` exists as a fallback rather than a placeholder.
+            const filledText = filledFrom(resolutions, entitySay)
+            const beatLines = resolutions.map((r) => {
+              const got = filledText.get(r.label)
+              if (got) {
+                const from = got.attribution ? ` [they said this — source: ${got.attribution}]` : ''
+                return `  - ${r.label}: SAY THIS, in their words: ${got.text}${from}`
+              }
+              const fb = r.fallback
+              const how = fb && fb.kind === 'generalise'
+                ? fb.framing
+                : 'write it about the topic in general'
+              return `  - ${r.label}: NOTHING THEY HAVE SAID FILLS THIS. Do not invent a fact, a`
+                + ` product or an experience for it — ${how}.`
+            })
+            if (beatLines.length > 0) {
+              containerBlock += `\n\nWHAT EACH OF THOSE BEATS IS FILLED WITH. This is not a
+suggestion list: it is what this creator has actually said, matched to the beat
+it answers. Use the supplied line for that beat. Where a beat says nothing fills
+it, that is a fact about this creator's knowledge and NOT an invitation to
+improvise one — a confident sentence about something they never said is the
+single worst thing this script can contain.
+${beatLines.join('\n')}`
+            }
+            // ── THE SAME BEATS, RESOLVED RATHER THAN HOPED FOR ──────────────
+            //
+            // ⚠️ THE PROMPT ABOVE ASKS THE MODEL TO FILL EACH BEAT FROM THE
+            // KNOWLEDGE BLOCK, AND NOTHING CHECKS WHETHER IT COULD. That is the
+            // gap `all_slots_filled` was written for and could not answer,
+            // because answering it needs a record of what was available per
+            // beat — which is exactly what `resolveTemplate` produces.
+            //
+            // ⚖️ RESOLVED AGAINST `speakable`, NOT THE WHOLE STORE. `speakable`
+            // is what the writer was actually handed; resolving against the
+            // fuller set would mark a beat filled by an item the model never
+            // received, and the check would then be measuring a prompt nobody
+            // sent.
+            resolvedSlots = buildSlots(resolutions, filledText)
             console.log(JSON.stringify({
               event: 'container_template_applied', container: tpl.container, beats: tpl.beats.length,
               slots_resolved: resolvedSlots.filter((x) => x.content.trim() !== '').length,
