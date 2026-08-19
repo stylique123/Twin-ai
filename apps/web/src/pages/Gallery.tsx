@@ -6,7 +6,12 @@ import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Tilt } from '../components/Tilt'
 import { useAuth } from '../context/AuthContext'
-import { listGalleryItems, listBrandVoices, logEvent, type GalleryItem } from '../lib/api'
+import {
+  listGalleryItems, listBrandVoices, logEvent, loadReferenceProfiles,
+  loadProductEntities, galleryCreatorView, emptyReferenceProfile,
+  type GalleryItem, type ReferenceProfile, type FillableEntity,
+} from '../lib/api'
+import { decideGallery } from '../lib/galleryDecisions'
 import { cn } from '../lib/cn'
 
 // Base niches we always seed the filter with. The live list GROWS beyond these
@@ -250,6 +255,15 @@ export default function Gallery() {
   // distinct from a loaded voice that answered nothing, which it also reports as
   // not_checked but for a stated reason. Neither ever reads as "cannot".
   const [voiceFlags, setVoiceFlags] = useState<Record<string, boolean | null> | null>(null)
+  // ⚠️ WHAT THE TRANSCRIPT PASS LEARNED, FOR THE CARDS ACTUALLY ON THIS PAGE.
+  // Empty until it loads and empty forever for an unassessed library — which is
+  // still most of it — and `decideGallery` treats a missing profile as "decide
+  // nothing" rather than as a bad score.
+  const [profiles, setProfiles] = useState<ReadonlyMap<string, ReferenceProfile>>(new Map())
+  // ⚖️ THE CREATOR'S OWN LIBRARY, because "your products cover all 3" is a
+  // statement about THEM. `null` while loading is not `[]`: an empty library is
+  // an answer, and a loading one is not.
+  const [entities, setEntities] = useState<FillableEntity[] | null>(null)
   const touched = useRef(false)
 
   useEffect(() => {
@@ -258,8 +272,23 @@ export default function Gallery() {
         const cards = items.filter((i) => i.visibility === 'public').map(fromDb)
         COMMUNITY_CACHE = cards
         setCommunity(cards)
+        // ⚖️ ONE QUERY FOR THE WHOLE PAGE, AFTER the cards are on screen. The
+        // assessment colours the ordering; it must never delay the gallery
+        // appearing, and a page that waited for it would be slower than the one
+        // it replaces for the 97% of cards that have no assessment yet.
+        void loadReferenceProfiles(cards.map((c) => c.url))
+          .then(setProfiles)
+          .catch(() => { /* unassessed is the normal case; keep today's order */ })
       })
       .catch(() => { if (!COMMUNITY_CACHE) setCommunity([]) })
+    // ⚠️ THE CREATOR'S LIBRARY, LOADED ONCE. `slotFill` matches against these,
+    // and a failure must leave the gallery exactly as it is rather than empty
+    // it: an enrichment that can break the page is not an enrichment.
+    loadProductEntities()
+      .then((rows) => setEntities(rows.map((e) => ({
+        id: e.id, type: e.type, relationship: e.relationship, archivedAt: e.archivedAt ?? null,
+      }) as FillableEntity)))
+      .catch(() => setEntities([]))
     // Pull the creator's real niche from their default brand voice.
     listBrandVoices()
       .then((vs) => {
@@ -371,6 +400,31 @@ export default function Gallery() {
     return m
   }, [factsById])
 
+  // ⚠️ THE PROJECTION THE POLICY TAKES, BUILT AT LAST. Every rule in
+  // `galleryPolicy` reads a `GalleryCreatorView` and until now nothing outside a
+  // test produced one — the refusals and the seven priority groups had never run
+  // on a real person.
+  //
+  // ⚖️ AND EVERY UNKNOWN STAYS UNKNOWN. A creator whose voice has not loaded has
+  // `null` capabilities and no relationship, which makes each refusal SKIP; the
+  // gallery they see is exactly today's.
+  const me = useMemo(() => galleryCreatorView({
+    profile: null,
+    capabilities: voiceFlags === null ? null : resolveCapabilities(null, voiceFlags),
+    entities: entities ?? [],
+  }), [voiceFlags, entities])
+
+  const decisions = useMemo(() => decideGallery({
+    cards: all.map((c) => ({ id: c.id, url: c.url })),
+    profiles,
+    facts: factsById,
+    me,
+    entities: entities ?? [],
+    // ⚠️ THE CARD'S OWN NICHE TRAVELS INTO THE BLANK PROFILE, so an unassessed
+    // reference is still a reference about something rather than a nameless one.
+    blank: (card) => emptyReferenceProfile(card.id, all.find((c) => c.id === card.id)?.niche ?? null),
+  }), [all, profiles, factsById, me, entities])
+
   const shown = useMemo(() => {
     let out = all
     if (q.trim()) {
@@ -389,13 +443,27 @@ export default function Gallery() {
     // wants a number, so the comparator's position in the sorted list becomes
     // one — the ranking itself stays a comparison rather than a score, and no
     // number derived here is ever shown.
-    const byFit = [...out].sort((a, b) =>
-      compareByFit(factsById.get(a.id) ?? UNKNOWN_FACTS, factsById.get(b.id) ?? UNKNOWN_FACTS))
+    // ⚠️ A CARD THE CREATOR COULD NOT HONESTLY MAKE IS NOT OFFERED. The refusal
+    // is not a hidden filter: the drawer says which one it was and why, and an
+    // unassessed reference refuses nobody — which is still almost every card.
+    const refused = new Set(decisions.refused.map((c) => c.id))
+    out = out.filter((c) => !refused.has(c.id))
+    // ⚖️ THE ASSESSED ORDER WHERE THERE IS ONE, TODAY'S COMPARATOR WHERE THERE
+    // IS NOT. `decideGallery` runs `compareForCreator`, which SKIPS every
+    // unknown and falls through to `compareByFit` — so a page of unassessed
+    // cards sorts exactly as it does now, and that is what makes this safe to
+    // ship before the batch finishes.
+    const assessedRank = new Map(decisions.order.map((c, i) => [c.id, i]))
+    const byFit = [...out].sort((a, b) => {
+      const ra = assessedRank.get(a.id), rb = assessedRank.get(b.id)
+      if (ra !== undefined && rb !== undefined) return ra - rb
+      return compareByFit(factsById.get(a.id) ?? UNKNOWN_FACTS, factsById.get(b.id) ?? UNKNOWN_FACTS)
+    })
     const place = new Map(byFit.map((c, i) => [c.id, byFit.length - i]))
     const relevanceOf = (c: Card) =>
       (isForYou ? (3 - rank(c)) * 1_000_000 : 0) + (place.get(c.id) ?? 0)
     return diversify(out, relevanceOf)
-  }, [all, myNiche, mySubNiche, niche, q, searchBlobs, related, factsById])
+  }, [all, myNiche, mySubNiche, niche, q, searchBlobs, related, factsById, decisions])
 
   // Only the cards actually on screen need a thumbnail. YouTube thumbnails derive
   // straight from the video id; TikTok needs an oembed round-trip; Instagram keeps
@@ -538,6 +606,22 @@ export default function Gallery() {
                         {(cardReasons(signalsById.get(c.id) ?? []) [0]) && (
                           <p className="text-[10px] leading-snug text-stone">
                             {cardReasons(signalsById.get(c.id) ?? [])[0]}
+                          </p>
+                        )}
+                        {/* ⚠️ THE SENTENCE THE WHOLE TRACK EXISTS TO SAY.
+                            "Same niche as yours" is a statement about a video.
+                            "Your products cover all 3" is a statement about
+                            whether a finished script is on the other side of
+                            the click — the only question somebody staring at a
+                            gallery is actually asking.
+                            ⚖️ AND IT IS ABSENT WHERE NOTHING IS KNOWN.
+                            `slotFillSummary` returns null for an unassessed
+                            reference, which is still almost every card, and a
+                            "0 of 0" there would be a confident negative about
+                            a video nobody has read. */}
+                        {decisions.byId.get(c.id)?.readiness && (
+                          <p className="text-[10px] font-semibold leading-snug text-teal">
+                            {decisions.byId.get(c.id)!.readiness}
                           </p>
                         )}
                         <button onClick={(e) => { e.stopPropagation(); remix(c) }} className="btn-gradient mt-0.5 flex w-full items-center justify-center gap-1.5 !py-2 text-xs">
