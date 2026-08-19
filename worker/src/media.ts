@@ -3,6 +3,7 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { env } from './env.js'
+import { readVerdict } from './profileReadVerdict.js'
 
 // --- SSRF guard ------------------------------------------------------------
 // The worker downloads user-supplied URLs with yt-dlp, so we ONLY allow the
@@ -254,6 +255,36 @@ function partitionItems(items: Record<string, unknown>[]): {
   return { records, failure: why.split('\n')[0].slice(0, 200) }
 }
 
+/** Read a profile dataset, asking twice when the first answer was not about the
+ *  creator.
+ *
+ *  ⚠️ EXACTLY ONE EXTRA ATTEMPT. A transient timeout clears on the second try
+ *  or it is not transient; a loop here would turn one bad afternoon into an
+ *  unbounded bill, and the third attempt has never been the one that works.
+ *
+ *  ⚖️ THE SECOND FAILURE IS THE ONE REPORTED, and both are logged. Reporting
+ *  the first would describe a state we already know we could not reproduce. */
+async function readProfileRecords(
+  actor: string,
+  input: unknown,
+  where: string,
+): Promise<{ items: Record<string, unknown>[]; records: Record<string, unknown>[] }> {
+  let last = ''
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const items = await apifyDataset(actor, input)
+    const { records, failure } = partitionItems(items)
+    if (failure === null) return { items, records }
+    last = failure
+    const verdict = readVerdict(failure)
+    console.warn(JSON.stringify({
+      event: 'profile_read_failed', where, attempt, verdict, detail: failure,
+    }))
+    if (verdict === 'permanent') break
+  }
+  throw new ProfileReadFailedError(last)
+}
+
+
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 const nullableInt = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const nonEmpty = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? v.trim().replace(/^@/, '') : null)
@@ -261,7 +292,11 @@ const tags = (text: string) =>
   Array.from(new Set((text.match(/#[\p{L}\p{N}_]+/gu) ?? []).map((t) => t.slice(1)))).slice(0, 6)
 
 async function tiktokProfileViaApify(handle: string, limit: number) {
-  const items = await apifyDataset(env.apifyTiktokProfileActor, {
+  // ⚠️ AN ERROR REPORT IS NOT A POST — the same rule on every Actor-backed
+  // reader, because the shape is the Actor platform's, not Instagram's. And a
+  // failure that is not about this creator is asked again once before it is
+  // allowed to end their scan.
+  const { items, records } = await readProfileRecords(env.apifyTiktokProfileActor, {
     profiles: [handle.replace(/^@/, '')],
     profileScrapeSections: ['videos'],
     profileSorting: 'latest',
@@ -270,13 +305,9 @@ async function tiktokProfileViaApify(handle: string, limit: number) {
     shouldDownloadVideos: false,
     shouldDownloadCovers: false,
     downloadSubtitlesOptions: 'NEVER_DOWNLOAD_SUBTITLES',
-  })
+  }, 'tiktok')
   const authorSource = items.find((e) => !isErrorItem(e)) ?? {}
   const author = (authorSource.authorMeta ?? {}) as Record<string, unknown>
-  // ⚠️ AN ERROR REPORT IS NOT A POST — the same rule on every Actor-backed
-  // reader, because the shape is the Actor platform's, not Instagram's.
-  const { records, failure } = partitionItems(items)
-  if (failure !== null) throw new ProfileReadFailedError(failure)
   const posts: ScrapedPost[] = records
     .map((e) => {
       const text = String(e.text ?? '').replace(/\s+/g, ' ').trim()
@@ -305,7 +336,9 @@ async function tiktokProfileViaApify(handle: string, limit: number) {
 }
 
 async function youtubeChannelViaApify(handle: string, limit: number) {
-  const items = await apifyDataset(env.apifyYoutubeChannelActor, {
+  // ⚠️ AN ERROR REPORT IS NOT A POST. See `partitionItems`; and see
+  // `readProfileRecords` for why a transient one is asked again first.
+  const { records } = await readProfileRecords(env.apifyYoutubeChannelActor, {
     startUrls: [{ url: `https://www.youtube.com/@${handle.replace(/^@/, '')}` }],
     maxResults: limit,
     // MUST equal maxResults — see the note in env.ts. A shorts-first channel
@@ -313,10 +346,7 @@ async function youtubeChannelViaApify(handle: string, limit: number) {
     maxResultsShorts: limit,
     maxResultStreams: 0,
     sortVideosBy: 'NEWEST',
-  })
-  // ⚠️ AN ERROR REPORT IS NOT A POST. See `partitionItems`.
-  const { records, failure } = partitionItems(items)
-  if (failure !== null) throw new ProfileReadFailedError(failure)
+  }, 'youtube')
   const first = records[0] ?? {}
   const posts: ScrapedPost[] = records
     .map((e) => {
@@ -348,17 +378,17 @@ async function youtubeChannelViaApify(handle: string, limit: number) {
 
 async function instagramProfileViaApify(handle: string, limit: number) {
   const h = handle.replace(/^@/, '')
-  const items = await apifyDataset(env.apifyInstagramProfileActor, {
+  // ⚠️ AN ERROR REPORT IS NOT A POST. This is the function the defect was found
+  // in: the Actor timed out on a large public account, wrote one error item, and
+  // every downstream layer read it as a caption-less post. Partitioning stopped
+  // that becoming a fake post; `readProfileRecords` stops the timeout itself
+  // ending the scan on the first try.
+  const { records } = await readProfileRecords(env.apifyInstagramProfileActor, {
     directUrls: [`https://www.instagram.com/${h}/`],
     resultsType: 'posts',
     resultsLimit: limit,
     addParentData: false,
-  })
-  // ⚠️ AN ERROR REPORT IS NOT A POST. This is the function the defect was found
-  // in: the Actor timed out on a large public account, wrote one error item, and
-  // every downstream layer read it as a caption-less post.
-  const { records, failure } = partitionItems(items)
-  if (failure !== null) throw new ProfileReadFailedError(failure)
+  }, 'instagram')
   const first = records[0] ?? {}
   const posts: ScrapedPost[] = records
     .map((e) => {

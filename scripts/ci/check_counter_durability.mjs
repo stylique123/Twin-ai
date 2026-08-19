@@ -142,6 +142,22 @@ const EVENTS = {
   // script is not a defect worth waking anybody for — the RATE is the finding.
   // A creator who retypes a line before saying it leaves no complaint, no
   // refund and no event, so this is the only trace the failure has.
+  // ⚖️ A DEBT NAMED RATHER THAN A COLUMN ADDED. Each line is one failed profile
+  // read, which is a defect on its own — but the number actually worth having is
+  // the RATIO: how often does the second attempt succeed where the first did
+  // not? That is what says whether retrying is load-bearing or theatre. It is
+  // not persisted yet because one retry is a strictly better outcome than the
+  // zero we shipped before, and a column for a rate nobody has read once is the
+  // mistake this guard exists to prevent in the other direction.
+  //
+  // ⚠️ PROMOTE THIS THE MOMENT THE RETRY IS USED TO JUSTIFY ANYTHING — a longer
+  // Actor timeout, a third attempt, or a claim that scans are reliable now.
+  profile_read_failed: {
+    kind: 'counter_ephemeral',
+    why: 'One line per failed profile read, with the attempt number and whether it '
+      + 'was judged retryable. The rate that matters (does attempt 2 rescue attempt 1?) '
+      + 'is diagnostic today; promote it before the retry justifies any other change.',
+  },
   script_hard_to_say: {
     kind: 'counter',
     stored: 'generations.speech_audit',
