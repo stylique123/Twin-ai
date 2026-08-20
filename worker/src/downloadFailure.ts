@@ -39,6 +39,13 @@ export const DOWNLOAD_FAILURES = [
   /** We ran out of time. Says nothing about whether the host would have served
    *  us — which is exactly why it is not pooled with the blocks. */
   'DOWNLOAD_TIMEOUT',
+  /** ⚠️ THE PROXY ITSELF REFUSED, SO WE NEVER SPOKE TO TIKTOK. `CONNECT tunnel
+   *  failed` is the egress path saying no — our proxy, not the host. Whatever
+   *  status rides along with it (403, 590) is the PROXY's answer, and reading it
+   *  as evidence about TikTok's opinion of our IP is a category error with a
+   *  bill attached: it would send a failure whose cause is the proxy back
+   *  through that same proxy. Deliberately NOT in RETRYABLE_VIA_PROXY. */
+  'PROXY_TRANSPORT_FAILED',
   /** ⚖️ NOT A DUMPING GROUND, AND NOT A LICENCE TO SPEND. Unrecognised means
    *  unrecognised; it does not graduate to paid routing, because "we do not know
    *  why this failed" is not evidence that an IP would fix it. */
@@ -93,6 +100,24 @@ export function classifyDownloadFailure(raw: unknown): DownloadFailure {
     || s.includes('log in for access') || s.includes('log into an account')
     || s.includes('do not have permission to view')
     || s.includes('may not be comfortable for some audiences')) return 'PRIVATE_OR_UNAVAILABLE'
+
+  // ⚠️ CHECKED BEFORE THE BLOCK CODES, AND THIS REVERSES AN EARLIER DECISION.
+  // A test previously asserted that "CONNECT tunnel failed, response 403"
+  // classifies TIKTOK_IP_BLOCKED, on the reasoning that a 403 is positive
+  // evidence the host refused us. On a proxied route that reasoning does not
+  // hold: a failed CONNECT means the tunnel was never established, so nothing
+  // was ever sent to TikTok and the 403 is the PROXY's answer, not the host's.
+  // Production produced the case that makes the difference visible — a
+  // `ProxyError(... CONNECT tunnel failed, response 590)` on a residential
+  // canary, filed UNKNOWN because 590 matches no status pattern at all.
+  //
+  // ⚖️ AND THE DIRECTION OF THE ERROR MATTERS. Classifying it as a host block
+  // would make it payable, sending a failure CAUSED BY the proxy back through
+  // that same proxy. This code is not retryable, so the worst case of getting it
+  // wrong is a video we decline to spend on rather than a spend loop.
+  if (s.includes('connect tunnel failed')
+    || s.includes('proxyerror')
+    || s.includes('could not connect to proxy')) return 'PROXY_TRANSPORT_FAILED'
 
   if (s.includes('impersonate target is available')
     || s.includes('impersonation is not supported')

@@ -115,10 +115,19 @@ describe('precedence collisions resolve to the intended owner', () => {
       'TIKTOK_IP_BLOCKED', '403 beats timeout — and therefore DOES graduate'],
     ['no impersonate target is available',
       'IMPERSONATION_UNAVAILABLE', 'a dependency problem no proxy can fix'],
-    // The real error this container produced against a blocking proxy: it names
-    // a webpage failure AND a 403. The 403 is the reason.
+    // ⚠️ THIS EXPECTATION CHANGED, AND THE REASON IS WORTH KEEPING. It formerly
+    // asserted TIKTOK_IP_BLOCKED, on the reasoning that a 403 is positive
+    // evidence the host refused us. A failed CONNECT means the tunnel was never
+    // established — nothing reached TikTok, and the 403 is the PROXY's answer.
+    // Reading it as the host's opinion of our IP would send a proxy failure back
+    // through the proxy that caused it.
     ['Unable to download webpage: Failed to perform, curl: (56) CONNECT tunnel failed, response 403',
-      'TIKTOK_IP_BLOCKED', '403 beats the generic webpage-failure string'],
+      'PROXY_TRANSPORT_FAILED', 'a failed CONNECT never reached the host, so the status is the proxy\'s'],
+    // ⚖️ THE ROW FROM PRODUCTION THAT FORCED THE QUESTION. 590 matches no status
+    // pattern, so this fell all the way to UNKNOWN — a residential canary
+    // counted as an unexplained failure when the proxy had plainly refused.
+    ['yt-dlp exited 1: (caused by ProxyError(\'Failed to perform, curl: (56) CONNECT tunnel failed, response 590.\'))',
+      'PROXY_TRANSPORT_FAILED', 'a proxy refusal is named, not filed as a mystery'],
   ]
   for (const [raw, expected, why] of cases) {
     it(why, () => { expect(classifyDownloadFailure(raw)).toBe(expected) })
@@ -129,6 +138,30 @@ describe('precedence collisions resolve to the intended owner', () => {
     // makes every slow download billable.
     expect(mayRetryViaProxy(classifyDownloadFailure('yt-dlp timed out after 120000ms'))).toBe(false)
     expect(mayRetryViaProxy(classifyDownloadFailure('timed out ... HTTP Error 403'))).toBe(true)
+  })
+})
+
+describe('a proxy failure never pays the proxy', () => {
+  // ⚠️ THE LOOP THIS PREVENTS. If the residential proxy refuses the tunnel and
+  // we call that a host block, the failure graduates to paid routing — through
+  // the proxy that just refused. Every retry bills and none can succeed.
+  for (const raw of [
+    'CONNECT tunnel failed, response 590',
+    'CONNECT tunnel failed, response 403',
+    "ProxyError('Failed to perform, curl: (56) CONNECT tunnel failed')",
+    'could not connect to proxy proxy.apify.com',
+  ]) {
+    it(`is not payable: ${raw.slice(0, 40)}`, () => {
+      expect(classifyDownloadFailure(raw)).toBe('PROXY_TRANSPORT_FAILED')
+      expect(mayRetryViaProxy(classifyDownloadFailure(raw))).toBe(false)
+    })
+  }
+
+  it('still lets a genuine host block through', () => {
+    // ⚖️ THE CHECK MUST NOT HAVE EATEN THE CASE IT SITS IN FRONT OF. A 403 with
+    // no tunnel failure is still TikTok refusing us, and still payable.
+    expect(classifyDownloadFailure('HTTP Error 403: Forbidden')).toBe('TIKTOK_IP_BLOCKED')
+    expect(mayRetryViaProxy(classifyDownloadFailure('HTTP Error 403: Forbidden'))).toBe(true)
   })
 })
 
