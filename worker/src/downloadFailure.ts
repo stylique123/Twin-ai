@@ -39,6 +39,21 @@ export const DOWNLOAD_FAILURES = [
   /** We ran out of time. Says nothing about whether the host would have served
    *  us — which is exactly why it is not pooled with the blocks. */
   'DOWNLOAD_TIMEOUT',
+  /** ⚠️ TIKTOK ANSWERED WITH A STATUS CODE YT-DLP ITSELF DOES NOT MAP. The
+   *  extractor knows exactly three (tiktok.py:989-994): 10216 private post and
+   *  10222 private account, both raised as login-required; 10204 raised as "Your
+   *  IP address is blocked from accessing this post". Everything else falls to a
+   *  generic `Video not available, status code N`, which is TikTok telling us
+   *  something specific in a language nobody has translated.
+   *
+   *  ⚖️ SO IT IS COUNTED, NOT GUESSED AT. Filing the whole family as
+   *  PRIVATE_OR_UNAVAILABLE would suppress a class that might be payable; filing
+   *  it as a block would spend money on one that is probably permanent. A code of
+   *  its own keeps it honest AND countable — if code 10231 turns out to be forty
+   *  rows, that is a number somebody can go investigate, where forty rows inside
+   *  UNKNOWN_DOWNLOAD_FAILURE are invisible. Deliberately NOT retryable: an
+   *  untranslated status is not evidence that an IP would fix it. */
+  'TIKTOK_STATUS_UNMAPPED',
   /** ⚠️ THE PROXY ITSELF REFUSED, SO WE NEVER SPOKE TO TIKTOK. `CONNECT tunnel
    *  failed` is the egress path saying no — our proxy, not the host. Whatever
    *  status rides along with it (403, 590) is the PROXY's answer, and reading it
@@ -137,6 +152,12 @@ export function classifyDownloadFailure(raw: unknown): DownloadFailure {
     || s.includes('rate-limit') || s.includes('rate limit')
     || s.includes('captcha') || s.includes('blocked')
     || s.includes('too many requests')) return 'TIKTOK_IP_BLOCKED'
+
+  // ⚠️ AFTER THE BLOCK CHECK, DELIBERATELY. Status 10204 is raised by yt-dlp as
+  // "Your IP address is blocked from accessing this post" — real, positive
+  // evidence that graduates to paid routing — and it must not be swallowed by
+  // the generic status matcher sitting in front of it.
+  if (/video not available, status code \d+/.test(s)) return 'TIKTOK_STATUS_UNMAPPED'
 
   if (s.includes('timed out') || s.includes('timeout')) return 'DOWNLOAD_TIMEOUT'
 

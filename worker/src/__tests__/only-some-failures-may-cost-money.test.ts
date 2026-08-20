@@ -141,6 +141,43 @@ describe('precedence collisions resolve to the intended owner', () => {
   })
 })
 
+describe('the TikTok status codes, read from the extractor rather than guessed', () => {
+  // ⚠️ GROUND TRUTH IS tiktok.py:989-994, NOT INTUITION. yt-dlp maps exactly
+  // three status codes and raises a generic message for everything else. These
+  // assertions encode that mapping so a future edit cannot quietly re-file one
+  // family as another — which, for 10204, would mean losing the only TikTok
+  // status that is genuinely worth paying to retry.
+
+  it('10204 is an IP block in yt-dlp\'s own words, and stays payable', () => {
+    const raw = 'ERROR: [TikTok] 123: Your IP address is blocked from accessing this post'
+    expect(classifyDownloadFailure(raw)).toBe('TIKTOK_IP_BLOCKED')
+    expect(mayRetryViaProxy(classifyDownloadFailure(raw))).toBe(true)
+  })
+
+  it('10216 and 10222 surface as login-required, and are never payable', () => {
+    // The exact sentence `raise_login_required` is given at tiktok.py:992.
+    const raw = 'ERROR: [TikTok] 123: You do not have permission to view this post. Log into an account that has access'
+    expect(classifyDownloadFailure(raw)).toBe('PRIVATE_OR_UNAVAILABLE')
+    expect(mayRetryViaProxy(classifyDownloadFailure(raw))).toBe(false)
+  })
+
+  it('an unmapped status is counted as unmapped, not sorted into a neighbour', () => {
+    // ⚖️ THE ROW FROM PRODUCTION. Code 10231 is in none of yt-dlp's three
+    // branches, so it fell to the generic message and then to UNKNOWN — where a
+    // whole family of TikTok answers would have been invisible.
+    const raw = 'yt-dlp exited 1: ERROR: [TikTok] 7419349447294864673: Video not available, status code 10231'
+    expect(classifyDownloadFailure(raw)).toBe('TIKTOK_STATUS_UNMAPPED')
+    // Not payable: an untranslated status is not evidence that an IP would fix it.
+    expect(mayRetryViaProxy(classifyDownloadFailure(raw))).toBe(false)
+  })
+
+  it('does not eat a block that happens to mention a status', () => {
+    // Precedence: positive block evidence beats the generic status matcher.
+    expect(classifyDownloadFailure('Video not available, status code 10204: blocked'))
+      .toBe('TIKTOK_IP_BLOCKED')
+  })
+})
+
 describe('a proxy failure never pays the proxy', () => {
   // ⚠️ THE LOOP THIS PREVENTS. If the residential proxy refuses the tunnel and
   // we call that a host block, the failure graduates to paid routing — through
