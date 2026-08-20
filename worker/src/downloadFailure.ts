@@ -77,10 +77,22 @@ export function classifyDownloadFailure(raw: unknown): DownloadFailure {
     || s.includes('unable to extract challenge data')) return 'TIKTOK_CHALLENGE_FAILED'
 
   // ⚖️ CHECKED BEFORE THE BLOCK CODES. A login wall is about the video.
+  // ⚠️ THE LAST FOUR ARRIVED FROM PRODUCTION, NOT FROM IMAGINATION. The first
+  // backlog tranche filed three rows as UNKNOWN_DOWNLOAD_FAILURE; two were login
+  // walls this list did not recognise — "This post may not be comfortable for
+  // some audiences. Log in for access." and "You do not have permission to view
+  // this post. Log into an account that has access." Neither says "private" or
+  // "login required". No money was at risk (UNKNOWN is not payable), but they
+  // were counted as mysteries rather than as what they are: videos nothing we
+  // buy will open. An age/sensitivity gate is a permanent unavailability for a
+  // logged-out downloader, and we do not log in.
   if (s.includes('login required') || s.includes('requiring login')
     || s.includes('private') || s.includes('this video is unavailable')
     || s.includes('video has been removed') || s.includes('account is private')
-    || s.includes('not available in your country')) return 'PRIVATE_OR_UNAVAILABLE'
+    || s.includes('not available in your country')
+    || s.includes('log in for access') || s.includes('log into an account')
+    || s.includes('do not have permission to view')
+    || s.includes('may not be comfortable for some audiences')) return 'PRIVATE_OR_UNAVAILABLE'
 
   if (s.includes('impersonate target is available')
     || s.includes('impersonation is not supported')

@@ -209,6 +209,23 @@ describe('phase says WHERE it stopped', () => {
     expect(phaseOf(null)).toBe('complete')
   })
 
+  it('recognises the login walls production actually sent (2026-08 backlog)', () => {
+    // ⚠️ VERBATIM FROM `download_trace.raw_error`, not paraphrased. Both were
+    // filed UNKNOWN_DOWNLOAD_FAILURE by the first backlog tranche because the
+    // wall list only knew the words "private" and "login required". They are
+    // permanently unavailable to a logged-out downloader, and no route we can
+    // buy changes that — so the code must say so rather than say "mystery".
+    const walls = [
+      'yt-dlp exited 1: ERROR: [TikTok] 7654886192583806239: This post may not be comfortable for some audiences. Log in for access. Use --cookies-from-browser or --cookies for the authentication.',
+      'yt-dlp exited 1: ERROR: [TikTok] 7666764170959899926: You do not have permission to view this post. Log into an account that has access. Use --cookies-from-browser or --cookies for the authentication.',
+    ]
+    for (const raw of walls) {
+      expect(classifyDownloadFailure(raw)).toBe('PRIVATE_OR_UNAVAILABLE')
+      // ⚖️ AND THE POINT OF THE CODE: it must never become payable.
+      expect(RETRYABLE_VIA_PROXY.has(classifyDownloadFailure(raw))).toBe(false)
+    }
+  })
+
   it('every phase is one of the declared six', () => {
     for (const raw of ['', 'nonsense', 'HTTP Error 500', 'fragment', 'challenge data']) {
       expect(DOWNLOAD_PHASES).toContain(phaseOf(raw))
