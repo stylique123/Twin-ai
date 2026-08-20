@@ -24,6 +24,8 @@ const SHARED_ASSESSED = readFileSync(join(REPO, 'packages/shared/src/assessed.ts
 const WORKER_ASSESSED = readFileSync(join(REPO, 'worker/src/assessedTypes.ts'), 'utf8')
 const SHARED_CTA = readFileSync(join(REPO, 'packages/shared/src/cta.ts'), 'utf8')
 const SHARED_ASSEMBLER = readFileSync(join(REPO, 'packages/shared/src/profileAssembler.ts'), 'utf8')
+const SHARED_VISUAL = readFileSync(join(REPO, 'packages/shared/src/visualExtraction.ts'), 'utf8')
+const WORKER_VISUAL_PROMPT = readFileSync(join(REPO, 'worker/src/visualPrompt.ts'), 'utf8')
 
 /** Lift a function body by name, so a drift is a failure and not a rewrite. */
 function lift(src: string, where: string, name: string): string {
@@ -50,6 +52,38 @@ function vocab(src: string, name: string): string[] | null {
   if (i < 0) return null
   return src.slice(i, src.indexOf('] as const', i)).match(/'[A-Za-z_]+'/g)
 }
+
+/** The dotted paths of `VISUAL_FIELDS`, in declaration order. The generic
+ *  `vocab` helper cannot read these: its member pattern is [A-Za-z_]+ and every
+ *  path here contains a dot. */
+function visualPaths(src: string, open: string): string[] {
+  const i = src.indexOf(open)
+  if (i < 0) throw new Error(`could not find ${open}`)
+  const block = src.slice(i, src.indexOf('\n]', i))
+  // First quoted string on each entry line — the path, not the claim class.
+  return [...block.matchAll(/^\s*(?:\[\s*)?'([a-zA-Z.]+)'/gm)].map((m) => m[1])
+}
+
+describe('the frames prompt asks for every field the parser reads', () => {
+  // ⚠️ A FIELD IN THE CONTRACT AND NOT IN THE PROMPT IS INVISIBLE. It comes back
+  // absent, `readField` files it `missing`, and the profile reports it as a
+  // field the FRAMES could not establish — when in truth nobody asked. That is
+  // the `unset ≠ false` collision wearing a new hat, and it would silently cap
+  // `fieldsObserved` on every video in the batch.
+  it('worker VISUAL_FIELD_PATHS matches shared VISUAL_FIELDS, in order', () => {
+    const shared = visualPaths(SHARED_VISUAL, 'VISUAL_FIELDS: readonly (readonly [string, ClaimClass])[] = [')
+    const worker = visualPaths(WORKER_VISUAL_PROMPT, 'VISUAL_FIELD_PATHS: readonly string[] = [')
+    expect(worker).toEqual(shared)
+    expect(shared.length).toBeGreaterThan(0)
+  })
+
+  it('every path has a question', () => {
+    const shared = visualPaths(SHARED_VISUAL, 'VISUAL_FIELDS: readonly (readonly [string, ClaimClass])[] = [')
+    for (const path of shared) {
+      expect(WORKER_VISUAL_PROMPT, `no question for ${path}`).toContain(`'${path}':`)
+    }
+  })
+})
 
 describe('worker ↔ shared extraction parity', () => {
   it('every validation function is character-identical', () => {

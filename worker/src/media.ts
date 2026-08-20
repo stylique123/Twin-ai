@@ -799,6 +799,85 @@ async function statBytes(path: string): Promise<number> {
   try { return (await stat(path)).size } catch { return 0 }
 }
 
+/**
+ * ⚠️ ONE DOWNLOADER, NOT TWO. The frames pass (#56) needs the same video the
+ * transcript pass needs, from the same host, past the same anti-bot layer. Built
+ * separately it would acquire its own yt-dlp line, drift from this one the first
+ * time either is tuned, and — the part that actually costs money — produce route
+ * and failure evidence that cannot be pooled with the transcript ladder's,
+ * because the two would be measuring different requests.
+ *
+ * ⚖️ SO THE MEDIUM IS A PARAMETER AND EVERYTHING ELSE IS SHARED. `audio` keeps
+ * the cheap `bestaudio` extraction; `video` asks for a bounded mp4 because you
+ * cannot sample frames from an m4a. Route rendering, impersonation, the size cap
+ * and the trace are identical by construction rather than by review.
+ */
+type DownloadMedium = 'audio' | 'video'
+
+const MEDIUM_ARGS: Record<DownloadMedium, readonly string[]> = {
+  audio: ['-f', 'bestaudio/best', '-x', '--audio-format', 'm4a'],
+  // ⚖️ CAPPED AT 720p DELIBERATELY. Frames are downscaled for the vision model
+  // anyway, and pulling a 1080p60 master to make four stills spends bandwidth on
+  // pixels nothing reads — on the residential rung that bandwidth is metered.
+  video: ['-f', 'bv*[height<=720]+ba/b[height<=720]/b', '--merge-output-format', 'mp4'],
+}
+
+export async function downloadReference(
+  rawUrl: string,
+  route: DownloadRoute,
+  opts: { medium: DownloadMedium; outPath: string; timeoutMs?: number },
+): Promise<DownloadTrace> {
+  const startedMs = Date.now()
+  try {
+    await run(
+      'yt-dlp',
+      [...MEDIUM_ARGS[opts.medium], '--no-playlist',
+       // ⚠️ `--impersonate` ON EVERY RUNG. The proxy changes which IP asks; it
+       // does not change how the TLS handshake looks. Its value here is
+       // determinism and observability, not that it is the fix — the fix was the
+       // extractor version.
+       '--impersonate', IMPERSONATE_TARGET,
+       // ⚠️ THE ROUTE IS RENDERED, NOT DECIDED, HERE. `downloadArgsFor` adds
+       // `--proxy` only for the residential rung and throws rather than silently
+       // downgrading if the password is missing — a row stamped
+       // `residential_proxy` that actually ran locally would poison the only
+       // measurement this exists for.
+       ...downloadArgsFor(route, env.apifyProxyPassword),
+       '--max-filesize', '200M', '-o', opts.outPath, rawUrl],
+      opts.timeoutMs ?? 180_000,
+    )
+  } catch (e) {
+    // ⚠️ THE TRACE TRAVELS WITH THE FAILURE. Without it the caller can only
+    // record THAT the download failed; the ladder needs to know WHERE, because
+    // residential routing turning a `challenge` failure into a `media_download`
+    // failure means the proxy worked and a different boundary is now the wall.
+    throw Object.assign(
+      e instanceof Error ? e : new Error(String(e)),
+      {
+        trace: {
+          route: routeName(route),
+          session_hash: route.kind === 'residential_proxy' ? route.sessionId : null,
+          failure_code: classifyDownloadFailure(e),
+          phase: phaseOf(e),
+          elapsed_ms: Date.now() - startedMs,
+          // ⚖️ WHATEVER LANDED BEFORE IT DIED, not an assumed zero. A partial
+          // file is the difference between "never got through" and "got through
+          // and was cut off".
+          bytes_downloaded: await statBytes(opts.outPath),
+        } satisfies DownloadTrace,
+      },
+    )
+  }
+  return {
+    route: routeName(route),
+    session_hash: route.kind === 'residential_proxy' ? route.sessionId : null,
+    failure_code: null,
+    phase: 'complete',
+    elapsed_ms: Date.now() - startedMs,
+    bytes_downloaded: await statBytes(opts.outPath),
+  }
+}
+
 export async function transcribeFromUrl(
   rawUrl: string,
   route: DownloadRoute = { kind: 'local_impersonated' },
@@ -826,57 +905,11 @@ export async function transcribeFromUrl(
   const audioPath = join(dir, 'audio.m4a')
   const outPath = join(dir, 'transcript.json')
   try {
-    // 1. Download audio only (no video) — cheaper + faster than full media.
-    //
-    // ⚠️ `--impersonate` IS THE POINT OF THIS LINE. Without it yt-dlp sends its
-    // own TLS fingerprint, TikTok answers with something the extractor cannot
-    // parse, and the error reads "Unexpected response from webpage request" —
-    // which sounds like TikTok changed their page and is actually us being
-    // identified. The image has carried 37 usable targets since 33a7b7b and
-    // asked for none of them.
-    //
-    // ⚖️ AND IT IS RUNG ONE OF A NAMED LADDER, NOT A RETRY. If this fails the
-    // next rung is the residential proxy and the one after is an Actor, each
-    // costing more than the last — so which rung succeeded is recorded on the
-    // row rather than collapsed into "it worked".
-    // ⚠️ THE ROUTE IS RENDERED, NOT DECIDED, HERE. `downloadArgsFor` adds
-    // `--proxy` only for the residential rung and throws rather than silently
-    // downgrading if the password is missing — a row stamped `residential_proxy`
-    // that actually ran locally would poison the only measurement this exists for.
-    // `--impersonate` is kept on EVERY rung: the proxy changes which IP asks, not
-    // how the TLS handshake looks.
-    const startedMs = Date.now()
-    try {
-      await run(
-        'yt-dlp',
-        ['-f', 'bestaudio/best', '-x', '--audio-format', 'm4a', '--no-playlist',
-         '--impersonate', IMPERSONATE_TARGET,
-         ...downloadArgsFor(route, env.apifyProxyPassword),
-         '--max-filesize', '200M', '-o', audioPath, rawUrl],
-        180_000,
-      )
-    } catch (e) {
-      // ⚠️ THE TRACE TRAVELS WITH THE FAILURE. Without it the caller can only
-      // record THAT the download failed; the canary needs to know WHERE, because
-      // residential routing turning a `challenge` failure into a `media_download`
-      // failure means the proxy worked and a different boundary is now the wall.
-      throw Object.assign(
-        e instanceof Error ? e : new Error(String(e)),
-        {
-          trace: {
-            route: routeName(route),
-            session_hash: route.kind === 'residential_proxy' ? route.sessionId : null,
-            failure_code: classifyDownloadFailure(e),
-            phase: phaseOf(e),
-            elapsed_ms: Date.now() - startedMs,
-            // ⚖️ WHATEVER LANDED BEFORE IT DIED, not an assumed zero. A partial
-            // file is the difference between "never got through" and "got
-            // through and was cut off".
-            bytes_downloaded: await statBytes(audioPath),
-          } satisfies DownloadTrace,
-        },
-      )
-    }
+    // 1. Download audio only (no video) — cheaper + faster than full media,
+    // through the SAME downloader the frames pass uses. See `downloadReference`:
+    // the medium is the only thing that differs, so route rendering,
+    // impersonation, the size cap and the trace cannot drift apart.
+    const trace = await downloadReference(rawUrl, route, { medium: 'audio', outPath: audioPath })
     // 2. Transcribe via the Python faster-whisper wrapper (prints JSON).
     await run(
       'python3',
@@ -895,14 +928,10 @@ export async function transcribeFromUrl(
       ...(JSON.parse(await readFile(outPath, 'utf8')) as Transcript),
       source: 'local_whisper',
       downloadRoute: routeName(route) as DownloadRouteName,
-      trace: {
-        route: routeName(route),
-        session_hash: route.kind === 'residential_proxy' ? route.sessionId : null,
-        failure_code: null,
-        phase: 'complete',
-        elapsed_ms: Date.now() - startedMs,
-        bytes_downloaded: await statBytes(audioPath),
-      },
+      // ⚖️ THE DOWNLOAD'S OWN TRACE, not one re-derived after transcription.
+      // Re-measuring `elapsed_ms` here would fold whisper's CPU time into a
+      // number the route economics reads as network cost.
+      trace,
     }
   } finally {
     // Discard raw media + working files no matter what.
