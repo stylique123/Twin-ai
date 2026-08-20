@@ -22,6 +22,7 @@ import { modelForTask } from '../modelRouting.js'
 import { parseContentExtraction, NOT_DETERMINED, NO_REHOOK } from '../referenceExtraction.js'
 import { frameSampleTargets } from '../referenceProfileTypes.js'
 import { runVisualPass } from '../visualPass.js'
+import { readCachedTranscript, writeCachedTranscript } from '../transcriptCache.js'
 
 /** How much transcript the model is shown.
  *
@@ -251,9 +252,23 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
   // payload must never be the reason we start paying for residential egress.
   const route = parseRoute(p.route)
 
+  // ⚠️ A RETRY MUST NOT RE-DOWNLOAD THE VIDEO. The worker retries this whole
+  // function, so a Gemini refusal — the thing that failed 145 jobs on a 250-call
+  // daily quota — used to re-download and re-transcribe up to four more times to
+  // reach the same wall. What was said in the video is a FACT and does not
+  // change; only our opinion about it is worth retrying.
+  //
+  // ⚖️ `force` BYPASSES THIS, and that is the whole point of `force`: it means
+  // "do it all again", including the acquisition. A caller who suspects the
+  // transcript itself is wrong has exactly one flag to reach for.
   let transcript
+  const cached = p.force === true ? null : await readCachedTranscript(url)
+  if (cached) {
+    console.log(JSON.stringify({ event: 'transcript_cache_hit', url,
+      chars: cached.chars, captured_at: cached.capturedAt }))
+  }
   try {
-    transcript = await transcribeFromUrl(url, route)
+    transcript = cached ? cached.transcript : await transcribeFromUrl(url, route)
   } catch (e) {
     // ⚠️ RECORDED, NOT THROWN. A host the allowlist refuses, a deleted video, a
     // clip with no speech — all are real properties of the library, and the run
@@ -282,6 +297,12 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
     }, { onConflict: 'url' })
     return { url, error: why.slice(0, 200) }
   }
+
+  // ⚖️ WRITTEN BEFORE ANYTHING CAN FAIL AFTER IT. The no-speech branch, the
+  // model call and the profile write all sit below this line, and every one of
+  // them is a way to end this attempt — so storing the transcript at the first
+  // moment it exists is what makes the retry cheap rather than merely intended.
+  if (!cached) await writeCachedTranscript(url, transcript)
 
   const full = transcript.text ?? ''
 
