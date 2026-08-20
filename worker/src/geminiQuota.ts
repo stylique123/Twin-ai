@@ -34,6 +34,22 @@
 // request content; keeping it forever would put transcript fragments in an error
 // column. Only the named fields below are extracted.
 
+// ⚠️ RETRYINFO IS ADVISORY. QUOTA CLASS IS AUTHORITATIVE FOR POLICY.
+//
+// This is the rule most likely to be "simplified" back out by a future reader,
+// because "Google told us when to retry, so retry then" is an obviously
+// reasonable sentence. It is also wrong, and we have the evidence: Google
+// attaches `RetryInfo { retryDelay: "43s" }` to a per-DAY exhaustion. The hint
+// says when the API will next ACCEPT a request; it does not say the exhausted
+// allowance will have returned. Obeying it re-downloads the video, re-runs
+// whisper, and is refused again 43 seconds later — repeatedly.
+//
+// ⚖️ SO THE PRECEDENCE IS FIXED AND TESTED: `planRetry` reads the CLASS first
+// and only consults `retryDelayMs` once the class is known not to be daily. If
+// you are here to collapse those two branches into one, the test
+// "does not retry a daily quota, even when RetryInfo suggests seconds" is the
+// thing you will have to delete, and it is named that way on purpose.
+
 /** Exactly the fields a retry or a spend decision needs. */
 export interface GeminiQuotaError {
   httpStatus: number
@@ -184,6 +200,8 @@ export const MAX_INLINE_RETRY_MS = 90_000
  * confirm a wall we already found.
  */
 export function planRetry(e: GeminiQuotaError, attempt: number): RetryPlan {
+  // ⚠️ CLASS FIRST, HINT SECOND — see the header. Reordering these two blocks is
+  // the specific regression this file exists to prevent.
   const cls = classifyQuota(e)
 
   if (cls === 'daily') {

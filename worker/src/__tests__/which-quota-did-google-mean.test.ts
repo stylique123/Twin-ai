@@ -158,6 +158,34 @@ describe('deciding whether to ask again', () => {
     expect(plan.reason).toContain('daily quota exhausted')
   })
 
+  it('treats RetryInfo as ADVISORY and the quota class as AUTHORITATIVE', () => {
+    // ⚠️ THE PRECEDENCE, ASSERTED AS A RULE RATHER THAN AS A SIDE EFFECT. The
+    // same 43s hint produces OPPOSITE decisions depending only on the class:
+    // refused on a per-day quota, obeyed on a per-minute one. A future
+    // simplification to "Google told us when to retry" makes these two cases
+    // agree, and this test is what will fail.
+    const hint = { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '43s' }
+    const withClass = (quotaId: string) => parseGeminiError(429, JSON.stringify({
+      error: {
+        code: 429, status: 'RESOURCE_EXHAUSTED',
+        details: [
+          { '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaId }] },
+          hint,
+        ],
+      },
+    }))
+
+    const daily = withClass('GenerateRequestsPerDayPerProjectPerModel-FreeTier')
+    const minute = withClass('GenerateRequestsPerMinutePerProjectPerModel')
+
+    // Identical hint, identical delay parsed, opposite policy.
+    expect(daily.retryDelayMs).toBe(43_000)
+    expect(minute.retryDelayMs).toBe(43_000)
+    expect(planRetry(daily, 0).retry).toBe(false)
+    expect(planRetry(minute, 0).retry).toBe(true)
+    expect(planRetry(minute, 0).delayMs).toBe(43_000)
+  })
+
   it('obeys RetryInfo when the quota is not daily', () => {
     const e = parseGeminiError(429, JSON.stringify({
       error: {
