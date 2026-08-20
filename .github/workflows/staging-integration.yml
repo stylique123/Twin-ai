@@ -75,6 +75,24 @@ jobs:
         with:
           path: ~/dejavu-cache
           key: dejavu-${{ steps.fontpin.outputs.key }}
+      # ⚠️ SEPARATE CACHES ON PURPOSE. ffmpeg and espeak-ng are independent, so a
+      # change to one must not invalidate the other, and a miss on one must not
+      # re-download both. They are two keys because they are two problems.
+      #
+      # ⚖️ THE MIRROR LEAVES THE HOT PATH. On a hit the .deb bytes are already on
+      # disk and dpkg installs them offline — no `apt-get update`, no download.
+      # apt failed six times on 2026-08-19 and each failure blocked a merge for
+      # twenty minutes; this is what stops somebody else's uptime gating ours.
+      - name: Restore the ffmpeg .deb artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.apt-artifacts/ffmpeg
+          key: aptdebs-ffmpeg-${{ runner.os }}-${{ runner.arch }}-v1
+      - name: Restore the espeak-ng .deb artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.apt-artifacts/espeak-ng
+          key: aptdebs-espeak-ng-${{ runner.os }}-${{ runner.arch }}-v1
       - name: Install ffmpeg + espeak-ng (fixtures & audio extraction) + caption fonts
         # fonts-dejavu-core is REQUIRED by Phase 8: the worker refuses a caption
         # font that is absent or does not match its pinned digest, so a runner
@@ -142,7 +160,26 @@ jobs:
             echo "::error::apt could not install: $* (cached lists + 3 bounded refreshes over ~20min)"
             return 1
           }
-          apt_get_retry ffmpeg espeak-ng
+          # ⚠️ CACHE FIRST, MIRROR ONLY ON A MISS — and the retry above is still
+          # the miss path, because a miss is exactly when the mirror might be
+          # down. Each set is tried independently: ffmpeg hitting while espeak-ng
+          # misses is a normal, useful outcome, and pooling them would throw away
+          # the half that worked.
+          . scripts/ci/apt_artifact_cache.sh
+          for set_name in ffmpeg espeak-ng; do
+            if apt_artifacts_install "$set_name"; then continue; fi
+            echo "$set_name not cached (or failed verification) — falling back to the mirror"
+            apt_get_retry "$set_name"
+            # Populate the cache for next time. Best-effort: a download failure
+            # here must not fail a run whose packages are already installed.
+            apt_artifacts_fetch "$set_name" || echo "::warning::could not populate the $set_name artifact cache"
+          done
+          # ⚖️ ASSERTED, NOT ASSUMED. Whichever path installed them, the binaries
+          # must actually be here — a cache that silently installs nothing would
+          # otherwise surface as a confusing failure eight phases later.
+          command -v ffmpeg >/dev/null || { echo "::error::ffmpeg is not on PATH after install"; exit 1; }
+          command -v espeak-ng >/dev/null || { echo "::error::espeak-ng is not on PATH after install"; exit 1; }
+          echo "ffmpeg: $(ffmpeg -version | head -1)"
           D=/usr/share/fonts/truetype/dejavu
           sudo mkdir -p "$D"
           if ls "$HOME/dejavu-cache"/*.ttf >/dev/null 2>&1; then
