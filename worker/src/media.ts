@@ -141,6 +141,14 @@ export interface Transcript {
   downloadRoute?: DownloadRouteName
   /** ⚠️ Only the TikTok ladder sets this; absent means unrecorded, not free. */
   trace?: DownloadTrace
+  /** ⚠️ WHICH WORD-TIMING RUNG PRODUCED THIS. whisper_transcribe.py tries
+   *  forced-align → stable-ts → plain faster-whisper and swallows each failure,
+   *  so a ladder permanently stuck on its bottom rung is indistinguishable from
+   *  one working as designed unless it says so. Neither refiner's dependency is
+   *  in requirements.txt today, so the honest expected value is
+   *  'faster_whisper'. Absent means the helper predates the field — NOT that
+   *  the tightest rung ran. */
+  refiner?: 'forced_align' | 'stable_ts' | 'faster_whisper'
 }
 
 export interface ScrapedPost {

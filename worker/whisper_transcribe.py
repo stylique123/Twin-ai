@@ -7,10 +7,23 @@ Tries a ladder of refiners, tightest first, and falls back on ANY failure:
   2. stable-ts — DTW-refined word timings.
   3. plain faster-whisper — the proven, guaranteed path.
 Because faster-whisper is the guaranteed fallback, every refiner can only IMPROVE
-timing or no-op — none can ever break captions. The forced-align tier reuses
-torchaudio (already in the image for Silero-VAD), so it adds NO heavy new deps
-(no whisperx/pyannote dependency tree). Invoked as a subprocess so the heavy ML
-stays isolated.
+timing or no-op — none can ever break captions. Invoked as a subprocess so the
+heavy ML stays isolated.
+
+⚠️ WHICH RUNG ACTUALLY RUNS IS A QUESTION ABOUT THE IMAGE, NOT ABOUT THIS FILE.
+Neither `torch`/`torchaudio` nor `stable_whisper` is in worker/requirements.txt.
+An earlier version of this docstring asserted that forced alignment "reuses
+torchaudio (already in the image for Silero-VAD)" and so "adds NO heavy new
+deps". That was wrong on both halves: Silero VAD here runs under onnxruntime,
+not torch, and torch was never installed. So in the shipped image BOTH refiner
+tiers raise ImportError on every call, the loop swallows it, and every caption
+is timed by plain faster-whisper. The ladder is correct code sitting on
+dependencies that are not present.
+
+⚖️ SO THE ANSWER IS REPORTED, NOT ASSUMED. `main` records the tier that actually
+produced the output as `refiner` in the JSON and on stderr. Whether to install
+torch (~800MB of image) to light rung one is a cost decision for the owner; what
+is NOT acceptable is a comment claiming a tier that never executes.
 """
 import argparse
 import json
@@ -180,6 +193,15 @@ def transcribe_faster(args, compute_type, lang):
     }
 
 
+# Stable, caller-facing names for the ladder rungs. Keyed on the function name so
+# renaming a function cannot silently change what a persisted transcript claims.
+REFINER_NAMES = {
+    "transcribe_forced_align": "forced_align",
+    "transcribe_stable": "stable_ts",
+    "transcribe_faster": "faster_whisper",
+}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--audio", required=True)
@@ -196,10 +218,11 @@ def main() -> int:
 
     # Refiner ladder, tightest first: wav2vec2 forced alignment → stable-ts. Each
     # falls back on ANY failure so captions never break.
-    out = None
+    out, refiner = None, None
     for refine in (transcribe_forced_align, transcribe_stable):
         try:
             out = refine(args, compute_type, lang)
+            refiner = REFINER_NAMES[refine.__name__]
             break
         except Exception as e:  # noqa: BLE001 — any failure must fall back, never crash captions
             print(f"{refine.__name__} unavailable: {e}", file=sys.stderr)
@@ -210,6 +233,14 @@ def main() -> int:
         if out is None:
             print(f"media too long: > {args.max_seconds}s", file=sys.stderr)
             return 2
+        refiner = "faster_whisper"
+
+    # ⚠️ SAY WHICH RUNG RAN. Every refiner failure is a benign stderr notice, so a
+    # ladder permanently stuck on its bottom rung looks exactly like a ladder
+    # working as designed. This field is the difference, and it travels with the
+    # transcript instead of living only in a container log nobody has a shell for.
+    out["refiner"] = refiner
+    print(json.dumps({"event": "transcribe_refiner", "refiner": refiner}), file=sys.stderr)
 
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False)
