@@ -12,13 +12,16 @@
 // correct, and `creator_abandoned` would remain a value no row can ever hold.
 // So the report is wired into the upload path in the same change that adds it.
 //
-// ⚠️ WHAT THIS DOES NOT YET DO, SAID PLAINLY: a creator who closes the tab
-// mid-upload still sends nothing. Reporting from `pagehide` needs a
-// `fetch(..., { keepalive: true })` beacon, because an ordinary request is
-// cancelled with the page — and a report that lands only when the tab happens
-// to unload slowly would produce a biased dataset, which is worse than none.
-// So `creator_abandoned` currently has no emitter, and until it does, a closed
-// tab stays `stalled` rather than being quietly counted as something else.
+// ⚖️ AND THE TAB-CLOSE CASE IS NOW COVERED, WHICH IT WAS NOT WHEN THIS FILE WAS
+// WRITTEN. This header used to say `creator_abandoned` had no emitter, because
+// an ordinary request is cancelled with the page it reports about — and a report
+// that landed only when a tab happened to close slowly would systematically
+// under-count fast exits, which is worse than no data because it looks like
+// evidence. `uploadAbandonBeacon.ts` closes that gap with a
+// `fetch(keepalive: true)` armed on `pagehide` and DISARMED on every terminal
+// path, so a finished upload can never report an abandonment on the next
+// navigation. `sendBeacon` was rejected for it: it cannot set headers, so
+// authenticating it would mean putting a JWT in a URL.
 //
 // ⚠️ REPORTING MUST NEVER COST THE CREATOR ANYTHING. This runs while the upload
 // is already failing. Every call is fire-and-forget, every failure is swallowed,

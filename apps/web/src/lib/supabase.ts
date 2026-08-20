@@ -78,6 +78,26 @@ async function uploadSignedWithProgress(
   onProgress?.(1)
 }
 
+/** The access token the client already holds, without an await.
+ *
+ *  ⚠️ `getSession()` IS ASYNC AND THIS RUNS DURING `pagehide`, where a promise
+ *  is a thing nobody will resolve. supabase-js keeps the session in localStorage
+ *  under a project-scoped key; reading it directly is the only synchronous
+ *  option, and a miss returns null rather than a guess — the caller then arms
+ *  nothing instead of arming a beacon that would 401. */
+function cachedAccessToken(): string | null {
+  try {
+    if (typeof localStorage === 'undefined' || !url) return null
+    const ref = new URL(url).hostname.split('.')[0]
+    const raw = localStorage.getItem(`sb-${ref}-auth-token`)
+    if (!raw) return null
+    const tok = (JSON.parse(raw) as { access_token?: unknown })?.access_token
+    return typeof tok === 'string' && tok !== '' ? tok : null
+  } catch {
+    return null
+  }
+}
+
 // Wire the web platform into the shared API layer (used by @twinai/shared/api).
 // Importing this module (done early via AuthContext) initializes it once.
 initApi({
@@ -85,4 +105,17 @@ initApi({
   appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
   uploadSigned: (target, file, onProgress) =>
     uploadSignedWithProgress(target, file.blob as Blob, onProgress),
+  // ⚠️ READ AT SEND TIME, NOT AT INIT. The access token rotates; capturing it
+  // once at startup would arm every later upload with a credential that expired
+  // hours ago — and the failure would appear only as an abandonment that never
+  // got recorded, which is indistinguishable from the silence we are fixing.
+  //
+  // ⚖️ SYNCHRONOUS ON PURPOSE. This is called inside a `pagehide` handler, where
+  // an await is a promise nobody will ever resolve. `getSession()` is async, so
+  // the token comes from the cached session the client already holds.
+  beaconTarget: () => {
+    const token = cachedAccessToken()
+    if (!url || !anon || !token) return null
+    return { url: `${url}/functions/v1/source-asset`, accessToken: token, apiKey: anon }
+  },
 })
