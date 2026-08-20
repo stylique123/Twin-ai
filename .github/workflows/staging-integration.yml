@@ -167,18 +167,16 @@ jobs:
           # the half that worked.
           . scripts/ci/apt_artifact_cache.sh
           for set_name in ffmpeg espeak-ng; do
-            if apt_artifacts_install "$set_name"; then continue; fi
-            echo "$set_name not cached (or failed verification) — falling back to the mirror"
-            apt_get_retry "$set_name"
-            # Populate the cache for next time. Best-effort: a download failure
-            # here must not fail a run whose packages are already installed.
-            apt_artifacts_fetch "$set_name" || echo "::warning::could not populate the $set_name artifact cache"
+            apt_ensure "$set_name" "$set_name"
           done
-          # ⚖️ ASSERTED, NOT ASSUMED. Whichever path installed them, the binaries
-          # must actually be here — a cache that silently installs nothing would
-          # otherwise surface as a confusing failure eight phases later.
+          # ⚖️ ASSERTED, NOT ASSUMED, AND FUNCTIONALLY. `command -v` proves a path
+          # exists, not that the install is healthy: a half-configured dpkg run
+          # can leave the binary on PATH and unable to start. Running each tool
+          # is the assertion that survives either route.
           command -v ffmpeg >/dev/null || { echo "::error::ffmpeg is not on PATH after install"; exit 1; }
           command -v espeak-ng >/dev/null || { echo "::error::espeak-ng is not on PATH after install"; exit 1; }
+          ffmpeg -version >/dev/null || { echo "::error::ffmpeg is on PATH but will not run"; exit 1; }
+          espeak-ng --version >/dev/null || { echo "::error::espeak-ng is on PATH but will not run"; exit 1; }
           echo "ffmpeg: $(ffmpeg -version | head -1)"
           D=/usr/share/fonts/truetype/dejavu
           sudo mkdir -p "$D"

@@ -168,12 +168,12 @@ jobs:
           # ⚠️ CACHE FIRST, MIRROR ONLY ON A MISS. The retry above stays as the
           # miss path — a miss is exactly when the mirror might be down.
           . scripts/ci/apt_artifact_cache.sh
-          if ! apt_artifacts_install ffmpeg; then
-            echo "ffmpeg not cached (or failed verification) — falling back to the mirror"
-            apt_get_retry ffmpeg
-            apt_artifacts_fetch ffmpeg || echo "::warning::could not populate the ffmpeg artifact cache"
-          fi
+          apt_ensure ffmpeg ffmpeg
+          # ⚖️ FUNCTIONAL, NOT MERELY PRESENT. `command -v` proves a path exists;
+          # a half-configured dpkg run can leave the binary on PATH and unable to
+          # start.
           command -v ffmpeg >/dev/null || { echo "::error::ffmpeg is not on PATH after install"; exit 1; }
+          ffmpeg -version >/dev/null || { echo "::error::ffmpeg is on PATH but will not run"; exit 1; }
           echo "ffmpeg: $(ffmpeg -version | head -1)"
           D=/usr/share/fonts/truetype/dejavu
           sudo mkdir -p "$D"
