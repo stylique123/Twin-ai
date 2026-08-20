@@ -11,6 +11,7 @@ import { beginJobScope } from './jobs/editorCancel.js'
 import { env } from './env.js'
 import { capabilitySummary, darkCapabilityWarnings, readCapabilities } from './capabilities.js'
 import { probeDownloader } from './downloaderProbe.js'
+import { probeAlignment, alignmentSummary } from './alignmentCapabilities.js'
 import { isLeaseLost, isPermanent } from './errors.js'
 import { redact } from './sanitizeError.js'
 
@@ -184,6 +185,18 @@ async function main() {
       probed_at: new Date().toISOString(),
     })
   }).catch((e) => log('warn', 'downloader_probe failed', { error: String(e) }))
+
+  // ⚠️ AND WHAT THIS IMAGE CAN DO TO A TIMESTAMP. Same lesson as the downloader
+  // probe, different dependency: `whisper_transcribe.py` described a three-tier
+  // refiner ladder while two tiers raised ImportError on every call. A docstring
+  // cannot be queried; this line can.
+  //
+  // ⚖️ `acousticAlignment=unavailable` IS THE EXPECTED, DECIDED ANSWER — torch is
+  // declined until a measured bad-cut rate justifies it. Seeing it in the log is
+  // confirmation, not an alarm. `unknown` is the line worth reading twice.
+  probeAlignment().then((caps) => {
+    log('info', 'alignment_probe', { event: 'alignment_probe', ...caps, summary: alignmentSummary(caps) })
+  }).catch((e) => log('warn', 'alignment_probe failed', { error: String(e) }))
   // Graceful shutdown: finish the current job, then exit.
   for (const sig of ['SIGTERM', 'SIGINT']) {
     process.on(sig, () => {
