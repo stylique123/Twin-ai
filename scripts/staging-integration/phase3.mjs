@@ -90,9 +90,14 @@ async function callEdge(client, fn, body) {
 }
 
 // ---- Phase-1 source pipeline (real chain) to mint ready sources ------------
+// ⚠️ A STATUS IS NOT A DIAGNOSIS. This returned the bare number, so a storage
+// refusal reached the operator as `signed PUT 400` and nothing else. Storage
+// says WHY in the body (expired token, mismatched path, upsert refused);
+// throwing it away turns a one-line answer into a re-run. Phases 4-8 already
+// return {status, body}; this is the same shape.
 async function putSigned(signedUrl, buf, contentType) {
   const res = await fetch(signedUrl, { method: 'PUT', headers: { 'x-upsert': 'true', 'content-type': contentType }, body: buf })
-  return res.status
+  return { status: res.status, body: res.ok ? '' : (await res.text().catch(() => '')).slice(0, 200) }
 }
 async function sourceFlow(client, genId, buf, contentType = 'video/webm') {
   const c = await callEdge(client, 'source-asset', {
@@ -101,7 +106,7 @@ async function sourceFlow(client, genId, buf, contentType = 'video/webm') {
   })
   if (c.status !== 200) throw new Error(`source create ${c.status}: ${JSON.stringify(c.body)}`)
   const p = await putSigned(c.body.signedUrl, buf, contentType)
-  if (p >= 300) throw new Error(`signed PUT ${p}`)
+  if (p.status >= 300) throw new Error(`signed PUT ${p.status} ${p.body}`)
   const f = await callEdge(client, 'source-asset', { action: 'finalize', asset_id: c.body.assetId })
   if (f.status !== 200) throw new Error(`finalize ${f.status}: ${JSON.stringify(f.body)}`)
   return c.body.assetId

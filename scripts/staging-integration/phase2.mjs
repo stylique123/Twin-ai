@@ -100,9 +100,19 @@ const startEdit = (client, generationId, sourceAssetId, idempotencyKey, extra = 
   callEdge(client, 'start-editor-v2', { generation_id: generationId, source_asset_id: sourceAssetId, idempotency_key: idempotencyKey, ...extra })
 
 // ---- Phase-1 source pipeline (real chain) to mint ready/rejected assets ----
+// ⚠️ A STATUS IS NOT A DIAGNOSIS. This returned the bare number, so a storage
+// refusal reached the operator as `signed PUT 400` and nothing else — the same
+// mistake `why()` above exists to prevent for edge calls, left standing on the
+// one hop that talks to Storage rather than to our own functions. Storage says
+// WHY in the body (expired token, mismatched path, upsert refused); throwing it
+// away turns a one-line answer into a re-run.
 async function putSigned(signedUrl, buf, contentType) {
   const res = await fetch(signedUrl, { method: 'PUT', headers: { 'x-upsert': 'true', 'content-type': contentType }, body: buf })
-  return res.status
+  if (res.status >= 300) {
+    const raw = await res.text().catch(() => '')
+    return { status: res.status, body: raw.slice(0, 200) }
+  }
+  return { status: res.status, body: '' }
 }
 async function sourceFlow(client, genId, buf, contentType) {
   const c = await callEdge(client, 'source-asset', {
@@ -111,7 +121,7 @@ async function sourceFlow(client, genId, buf, contentType) {
   })
   if (c.status !== 200) throw new Error(`source create ${c.status}: ${JSON.stringify(c.body)}`)
   const p = await putSigned(c.body.signedUrl, buf, contentType)
-  if (p >= 300) throw new Error(`signed PUT ${p}`)
+  if (p.status >= 300) throw new Error(`signed PUT ${p.status} ${p.body}`)
   const f = await callEdge(client, 'source-asset', { action: 'finalize', asset_id: c.body.assetId })
   if (f.status !== 200) throw new Error(`finalize ${f.status}: ${JSON.stringify(f.body)}`)
   return c.body.assetId
