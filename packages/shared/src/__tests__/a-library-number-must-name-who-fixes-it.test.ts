@@ -40,6 +40,55 @@ describe('each bucket names a different owner', () => {
     }
   })
 
+  it('prefers the normalised code over the prose when the row carries one', () => {
+    // ⚠️ THE DEFERRAL THIS FILE'S HEADER RECORDED IS OVER. `failure_code` now
+    // exists and is populated, so who fixes a reference no longer depends on
+    // yt-dlp's wording surviving an upstream edit.
+    expect(classifyReference({ error: 'anything at all', failureCode: 'TIKTOK_CHALLENGE_FAILED' }))
+      .toBe('downloader_failure')
+    expect(classifyReference({ error: 'anything at all', failureCode: 'MEDIA_NOT_FOUND' }))
+      .toBe('unsupported_or_unavailable')
+  })
+
+  it('separates a blocked IP from a broken image, because only one is buyable', () => {
+    // ⚖️ THE NUMBER THAT DECIDES A PURCHASE. "How many references would a
+    // different IP recover?" is exactly the size of route_blocked; pooling it
+    // with downloader_failure makes that question unanswerable.
+    expect(classifyReference({ error: 'x', failureCode: 'TIKTOK_IP_BLOCKED' })).toBe('route_blocked')
+    expect(classifyReference({ error: 'x', failureCode: 'IMPERSONATION_UNAVAILABLE' })).toBe('downloader_failure')
+    // ⚠️ A PROXY THAT REFUSED IS NOT THE HOST BLOCKING US. Filing it as
+    // route_blocked would inflate the case for buying more proxy using failures
+    // the proxy itself caused.
+    expect(classifyReference({ error: 'x', failureCode: 'PROXY_TRANSPORT_FAILED' })).toBe('downloader_failure')
+  })
+
+  it('an untranslated status asks for no work until somebody translates it', () => {
+    expect(classifyReference({ error: 'x', failureCode: 'TIKTOK_STATUS_UNMAPPED' }))
+      .toBe('unsupported_or_unavailable')
+    expect(classifyReference({ error: 'x', failureCode: 'UNKNOWN_DOWNLOAD_FAILURE' }))
+      .toBe('unsupported_or_unavailable')
+  })
+
+  it('an unmapped code falls through to prose rather than inventing a bucket', () => {
+    expect(classifyReference({ error: 'no audio url found', failureCode: 'SOMETHING_NEW' }))
+      .toBe('downloader_failure')
+    expect(classifyReference({ error: 'weird', failureCode: 'SOMETHING_NEW' }))
+      .toBe('unsupported_or_unavailable')
+  })
+
+  it('still reads a silent video as visual-only even when a code is present', () => {
+    // ⚠️ THE ORDERING THAT MATTERS. A no_speech row's DOWNLOAD SUCCEEDED — there
+    // was nothing to hear — so the error IS the finding and the code is not the
+    // field to read. This is the bucket that is the whole argument for #56.
+    expect(classifyReference({ error: 'no_speech: transcript was 3 characters', failureCode: null }))
+      .toBe('visual_only_candidate')
+  })
+
+  it('legacy rows with no code keep working, because most of the library is legacy', () => {
+    expect(classifyReference({ error: 'no impersonate target is available' })).toBe('downloader_failure')
+    expect(classifyReference({ error: null })).toBe('transcript_readable')
+  })
+
   it('an UNRECOGNISED error asks for no work rather than pretending to be fixable', () => {
     // ⚖️ The matching is on human sentences and is fragile against rewording.
     // An unmatched error must never masquerade as something we know how to fix,
