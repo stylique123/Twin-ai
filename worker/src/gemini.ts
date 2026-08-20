@@ -1,5 +1,6 @@
 import { env } from './env.js'
 import { modelForTask } from './modelRouting.js'
+import { parseGeminiError, planRetry, quotaSummary } from './geminiQuota.js'
 
 // Minimal Gemini JSON client for the worker (structure derivation, later steps).
 // Provider is isolated here so it can be swapped without touching job handlers.
@@ -66,7 +67,35 @@ export async function geminiJson(
         { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.geminiKey }, body },
       )
       if (res.ok) break
-      if ((res.status === 429 || res.status >= 500) && attempt < 2) {
+
+      // ⚠️ A 429 IS NOT A 500, AND THIS LOOP USED TO TREAT THEM IDENTICALLY.
+      // A server error is transient by nature and worth a blind backoff. A quota
+      // refusal is a STATEMENT about an allowance, and Google says which one in
+      // `error.details[]` — including how long to wait. Retrying a per-DAY
+      // exhaustion three times at 1s and 4s is not resilience: in this pipeline
+      // every attempt re-downloads the video and re-runs whisper, so it spends
+      // real acquisition to rediscover a wall that will not move until the quota
+      // resets.
+      //
+      // ⚖️ AND THE BODY IS READ BEFORE IT IS THROWN, ONCE. `res.text()` can only
+      // be consumed once, so the old code's "retry, then on the last attempt
+      // read the body" shape meant the diagnostic was only ever available for
+      // the attempt that had already given up.
+      if (res.status === 429) {
+        const quota = parseGeminiError(res.status, await res.text())
+        const plan = planRetry(quota, attempt)
+        if (plan.retry) {
+          await new Promise((r) => setTimeout(r, plan.delayMs))
+          continue
+        }
+        // ⚠️ THE DISCRIMINATING FIELDS GO FIRST. Whatever truncates this
+        // downstream keeps the front of the string, and the front is now the
+        // quota class and its id rather than a sentence identical across every
+        // quota Google has.
+        throw new Error(`${quotaSummary(quota)} — ${plan.reason}`)
+      }
+
+      if (res.status >= 500 && attempt < 2) {
         await new Promise((r) => setTimeout(r, 1000 * (attempt + 1) * (attempt + 1)))
         continue
       }
