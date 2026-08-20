@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest'
 import { frameSchedule, DEFAULT_FRAME_COUNT, SCHEDULE_BASES } from '../frameSample.js'
 import { FIELD_QUESTIONS, visualPrompt } from '../visualPrompt.js'
+import { NOT_DETERMINED } from '../referenceExtraction.js'
 
 describe('the sampling schedule', () => {
   it('never lands on the first or last frame', () => {
@@ -77,7 +78,13 @@ describe('the visual prompt', () => {
     // ⚖️ THE FIELD THIS PASS MOST NEEDS. A settled "the frames cannot say"
     // retires the question; a plausible guess costs a wrong gallery promise.
     const p = visualPrompt(4)
-    expect(p).toContain('"value": "not_determined"')
+    // ⚠️ THE EXACT SENTINEL THE PARSER TESTS FOR, interpolated rather than
+    // typed. A first draft of the prompt said "not_determined" while
+    // `referenceExtraction` defines 'NOT_DETERMINED', so every honest refusal
+    // would have been read as a malformed answer — the schema's most useful
+    // response turned into a rejection statistic. This assertion is the reason
+    // that cannot come back.
+    expect(p).toContain(`"value": "${NOT_DETERMINED}"`)
     expect(p).toMatch(/correct and useful answer/)
   })
 

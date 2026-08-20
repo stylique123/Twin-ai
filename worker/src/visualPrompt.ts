@@ -21,6 +21,8 @@
 // two here would make `visualPassRan` mean "something produced these fields"
 // rather than "frames were read".
 
+import { NOT_DETERMINED } from './referenceExtraction.js'
+
 // ⚠️ DERIVED FROM `packages/shared/src/visualExtraction.ts` — the paths only.
 // The worker has NO runtime dependency on @twinai/shared (see
 // referenceExtraction.ts); importing it here would break the Docker build that
@@ -112,7 +114,7 @@ Rules about evidence, which are checked and not negotiable:
 - To claim something is simply PRESENT or TRUE IN VIEW — how many people, what the setting is like, someone speaking to camera, a product in hand — one frame is enough: cite [n].
 
 If the frames genuinely cannot answer a question, reply exactly:
-  { "value": "not_determined" }
+  { "value": "${NOT_DETERMINED}" }
 That is a correct and useful answer. It is much better than a plausible guess. Do not invent a second person, a second location, or a product that is not visible.
 
 Answer every question. Return ONE JSON object whose keys are the dotted paths below, nested to match the paths (for example "people": { "count": { ... } }).
