@@ -15,6 +15,7 @@
 // recorded as such, because otherwise it is indistinguishable from one never
 // attempted and every later run pays again to rediscover it.
 import { db, type Job } from '../db.js'
+import { parseRoute } from '../downloadRoute.js'
 import { transcribeFromUrl } from '../media.js'
 import { geminiJson } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
@@ -213,7 +214,7 @@ rehookPosition: an index into beats, or ${NO_REHOOK} if the video never
   re-hooks. ${NO_REHOOK} is a real answer, and most short videos deserve it.
 productsRequired: a whole number; 0 is a real answer.`
 
-interface Payload { url?: unknown; platform?: unknown; force?: unknown }
+interface Payload { url?: unknown; platform?: unknown; force?: unknown; route?: unknown }
 
 export async function handleAssessReference(job: Job): Promise<Record<string, unknown>> {
   const p = (job.payload ?? {}) as Payload
@@ -232,14 +233,24 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
 
   const assessedAt = new Date().toISOString()
 
+  // ⚠️ THE ROUTE COMES FROM THE JOB, AND DEFAULTS TO THE FREE RUNG. An
+  // unreadable or absent route resolves to `local_impersonated` — a malformed
+  // payload must never be the reason we start paying for residential egress.
+  const route = parseRoute(p.route)
+
   let transcript
   try {
-    transcript = await transcribeFromUrl(url)
+    transcript = await transcribeFromUrl(url, route)
   } catch (e) {
     // ⚠️ RECORDED, NOT THROWN. A host the allowlist refuses, a deleted video, a
     // clip with no speech — all are real properties of the library, and the run
     // that discovers them should be the last one that has to.
     const why = e instanceof Error ? e.message : String(e)
+    // ⚠️ WHERE IT STOPPED, NOT JUST THAT IT DID. The trace rides on the thrown
+    // error from the download itself, because only that code knows the phase,
+    // the elapsed time and how many bytes actually landed. Absent for non-TikTok
+    // routes, which have their own paths and their own reasons.
+    const trace = (e as { trace?: unknown }).trace ?? null
     await db.from('reference_content_profiles').upsert({
       url, platform, profile: {}, rejections: [], fields_accepted: 0,
       // ⚠️ CLEARED, NOT LEFT ALONE — THIS ONE COST A WRONG CONCLUSION. An upsert
@@ -250,6 +261,10 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
       // threw and nothing was transcribed. It was read that way, out loud,
       // before the code said otherwise.
       transcript_chars: null, transcript_source: null, download_route: null,
+      // ⚖️ THE TRACE SURVIVES A FAILURE — it is the ONLY thing that does. Clearing
+      // it here alongside the transcript columns would delete the evidence the
+      // canary exists to collect.
+      download_trace: trace,
       error: why.slice(0, 500), assessed_at: assessedAt,
     }, { onConflict: 'url' })
     return { url, error: why.slice(0, 200) }
@@ -271,6 +286,7 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
       // route off no_speech rows would under-count paid routing by exactly the
       // bucket that is 85 rows wide.
       download_route: transcript.downloadRoute ?? null,
+      download_trace: transcript.trace ?? null,
       transcript_chars: full.length,
       error: `no_speech: transcript was ${full.trim().length} characters`,
       assessed_at: assessedAt,
@@ -311,6 +327,7 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
     error: null,
     assessed_at: assessedAt,
     download_route: transcript.downloadRoute ?? null,
+    download_trace: transcript.trace ?? null,
   }, { onConflict: 'url' })
   if (wrote) throw new Error(`assess_reference: could not store the profile: ${wrote.message}`)
 

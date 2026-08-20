@@ -46,8 +46,19 @@ describe('which rung read it is recorded, not inferred', () => {
     expect(rungs).toEqual(['local_impersonated', 'residential_proxy', 'apify_actor'])
   })
 
-  it('stamps the free rung when the local download succeeds', () => {
-    expect(MEDIA).toMatch(/downloadRoute: 'local_impersonated'/)
+  it('stamps the route that ACTUALLY ran, not a hard-coded one', () => {
+    // ⚠️ THIS ASSERTION CHANGED WITH THE LADDER. It used to pin the literal
+    // 'local_impersonated', which was right when there was one rung. Now that a
+    // paid rung exists, a hard-coded stamp would be the worst possible bug: every
+    // row would claim the free route however it was actually fetched, and the
+    // economics question ("what fraction needs paid routing?") would read 100%
+    // local forever.
+    expect(MEDIA).toMatch(/downloadRoute: routeName\(route\)/)
+    expect(MEDIA).not.toMatch(/downloadRoute: '[a-z_]+'/)
+  })
+
+  it('defaults the route to the free rung when a caller supplies none', () => {
+    expect(MEDIA).toMatch(/route: DownloadRoute = \{ kind: 'local_impersonated' \}/)
   })
 
   it('persists the route on BOTH the success and the no-speech paths', () => {
