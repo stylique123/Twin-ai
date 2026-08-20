@@ -92,8 +92,20 @@ function stratify(rows) {
   const clean = rows.filter((r) => !r.error)
   const withBeats = take(clean.filter((r) => hasUsableBeats(r.profile)).sort(byUrl))
   const withoutBeats = take(clean.filter((r) => !hasUsableBeats(r.profile)).sort(byUrl))
-  // Longest first here, deliberately — this stratum IS the extreme.
-  const long = take([...clean].sort((a, b) => (b.transcript_chars ?? 0) - (a.transcript_chars ?? 0)))
+  // ⚠️ `long` OVERLAPS THE OTHERS ON PURPOSE, AND ITS FIRST VERSION DID NOT —
+  // WHICH MADE IT DEAD. It was built like the others, claiming rows exclusively,
+  // and drawn last: with_beats and without_beats between them hold EVERY clean
+  // row, so `long` was empty by construction on every possible input. A stratum
+  // that cannot contribute is worse than a missing one, because it appears in
+  // the design and in the shortfall report and reads as though duration was
+  // tested.
+  //
+  // ⚖️ THE FIX IS TO STOP PRETENDING IT IS A PEER CATEGORY. Length is a
+  // DIFFERENT DIMENSION from "did the content pass find beats" — a long video is
+  // necessarily also one or the other — so `long` is drawn from the clean set
+  // WITHOUT claiming exclusivity, and `draw` de-duplicates by url so no video is
+  // ever enqueued twice.
+  const long = [...clean].sort((a, b) => (b.transcript_chars ?? 0) - (a.transcript_chars ?? 0))
   return { no_speech: noSpeech, with_beats: withBeats, without_beats: withoutBeats, long }
 }
 
@@ -103,12 +115,21 @@ function draw(strata, size) {
   const names = Object.keys(strata)
   const out = []
   const shortfall = {}
+  // ⚠️ DE-DUPLICATED HERE, because `long` deliberately overlaps the beats arms.
+  // Without this a long video would be enqueued twice — two downloads, two
+  // model calls, and a second row overwriting the first's evidence.
+  const chosen = new Set()
   for (let i = 0; out.length < size; i++) {
     let progressed = false
     for (const n of names) {
       if (out.length >= size) break
       const row = strata[n][i]
-      if (row) { out.push({ ...row, stratum: n }); progressed = true }
+      // `progressed` counts REACHING a row, not accepting it: a stratum whose
+      // remaining rows are all duplicates must not stall the loop forever.
+      if (row) {
+        progressed = true
+        if (!chosen.has(row.url)) { chosen.add(row.url); out.push({ ...row, stratum: n }) }
+      }
     }
     // ⚠️ NO INFINITE LOOP WHEN THE LIBRARY IS SMALLER THAN THE ASK.
     if (!progressed) break
@@ -158,11 +179,25 @@ function selftest() {
   ok('a beat with no finite startSec is NOT usable beats', st.without_beats.some((r) => r.url === 'e'))
   ok('not_checked basis is NOT usable beats', st.without_beats.some((r) => r.url === 'd'))
   ok('a real beat lands in with_beats', st.with_beats.map((r) => r.url).join() === 'b')
-  // ⚠️ NO ROW APPEARS IN TWO STRATA. Double-counting would make a 32-row pilot
-  // silently smaller than it claims.
-  const all = [...st.no_speech, ...st.with_beats, ...st.without_beats, ...st.long].map((r) => r.url)
-  ok('strata are disjoint', new Set(all).size === all.length)
+  // ⚠️ THE GUARANTEE THAT MATTERS IS AT THE DRAW, NOT IN THE STRATA. This used
+  // to assert the four lists were disjoint — and that assertion is exactly what
+  // made `long` dead: satisfying it required `long` to claim rows exclusively,
+  // which it can never do, because every long video is also a with_beats or a
+  // without_beats video. Length is a different DIMENSION, not a fifth category.
+  // What must never happen is the same video enqueued twice, and that is a
+  // property of `draw`.
+  const bigDraw = draw(st, 99)
+  const urls = bigDraw.rows.map((r) => r.url)
+  ok('no video is drawn twice, even though long overlaps', new Set(urls).size === urls.length)
+  ok('the beats arms are still exclusive of each other',
+    st.with_beats.every((w) => !st.without_beats.some((x) => x.url === w.url)))
   ok('ordering is by url, not by assessment time', st.no_speech[0].url === 'a')
+
+  // ⚠️ THE ASSERTION THAT WAS MISSING, AND ITS ABSENCE HID A DEAD STRATUM.
+  // "disjoint" and "an empty stratum is named" were both true while `long` was
+  // empty on every possible input. A stratum must be shown to be REACHABLE.
+  ok('long is reachable — it contributes at least one row', st.long.length >= 1)
+  ok('long holds the longest clean row', st.long[0].url === 'd')
 
   const drawn = draw(st, 3)
   ok('draws exactly what was asked for when supply allows', drawn.rows.length === 3)
