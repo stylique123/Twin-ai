@@ -24,6 +24,10 @@ const SHARED_ASSESSED = readFileSync(join(REPO, 'packages/shared/src/assessed.ts
 const WORKER_ASSESSED = readFileSync(join(REPO, 'worker/src/assessedTypes.ts'), 'utf8')
 const SHARED_CTA = readFileSync(join(REPO, 'packages/shared/src/cta.ts'), 'utf8')
 const SHARED_ASSEMBLER = readFileSync(join(REPO, 'packages/shared/src/profileAssembler.ts'), 'utf8')
+const SHARED_VISUAL = readFileSync(join(REPO, 'packages/shared/src/visualExtraction.ts'), 'utf8')
+const SHARED_PROFILE_TYPES = readFileSync(join(REPO, 'packages/shared/src/referenceProfile.ts'), 'utf8')
+const WORKER_VISUAL_PROMPT = readFileSync(join(REPO, 'worker/src/visualPrompt.ts'), 'utf8')
+const WORKER_VISUAL = readFileSync(join(REPO, 'worker/src/visualExtractionRules.ts'), 'utf8')
 
 /** Lift a function body by name, so a drift is a failure and not a rewrite. */
 function lift(src: string, where: string, name: string): string {
@@ -35,7 +39,11 @@ function lift(src: string, where: string, name: string): string {
     // Matching only the first would silently skip the rest — and in a parity
     // test, a skipped function is agreement that was never checked.
     const found = [
-      `function ${name}(`, `function ${name}<`, `const ${name} = `,
+      // ⚠️ AND THE ANNOTATED FORM, `const X: Type = `. Without it this helper
+      // THROWS on a const that carries a type — the honest failure, but it also
+      // means such a const simply never gets a parity check written for it.
+      // `BECAUSE` is one, and it is a table of sentences creators read.
+      `function ${name}(`, `function ${name}<`, `const ${name} = `, `const ${name}: `,
     ].map((m) => src.indexOf(m)).filter((n) => n >= 0)
     return found.length === 0 ? -1 : Math.min(...found)
   })()
@@ -50,6 +58,80 @@ function vocab(src: string, name: string): string[] | null {
   if (i < 0) return null
   return src.slice(i, src.indexOf('] as const', i)).match(/'[A-Za-z_]+'/g)
 }
+
+/** The dotted paths of `VISUAL_FIELDS`, in declaration order. The generic
+ *  `vocab` helper cannot read these: its member pattern is [A-Za-z_]+ and every
+ *  path here contains a dot. */
+function visualPaths(src: string, open: string): string[] {
+  const i = src.indexOf(open)
+  if (i < 0) throw new Error(`could not find ${open}`)
+  const block = src.slice(i, src.indexOf('\n]', i))
+  // First quoted string on each entry line — the path, not the claim class.
+  return [...block.matchAll(/^\s*(?:\[\s*)?'([a-zA-Z.]+)'/gm)].map((m) => m[1])
+}
+
+describe('worker ↔ shared VISUAL parity', () => {
+  // ⚠️ THE RULES THAT DECIDE WHETHER A VISUAL CLAIM IS BELIEVABLE EXIST TWICE,
+  // and the copy that will run over thousands of references is the worker's.
+  // Every one of these functions is a decision about what a still can prove; a
+  // drift in any of them is a claim admitted or rejected on the wrong grounds,
+  // silently, on every video in the batch.
+  it('every visual rule is character-identical', () => {
+    for (const fn of ['readCitation', 'citationSupports', 'readField', 'extractVisualProfile', 'recreationBlockers', 'brief', 'isRecord', 'asBoolean', 'oneOf']) {
+      expect(lift(WORKER_VISUAL, 'the worker', fn), fn).toBe(lift(SHARED_VISUAL, 'shared', fn))
+    }
+  })
+
+  it('the claim-class table is identical, including order', () => {
+    // ⚖️ THE LOAD-BEARING PART. `setting.changes` classed `static` would let one
+    // frame prove a location change; `people.count` classed `temporal` would
+    // reject a correct reading of a single frame. Both errors are silent.
+    const OPEN = 'VISUAL_FIELDS: readonly (readonly [string, ClaimClass])[] = ['
+    expect(visualPaths(WORKER_VISUAL, OPEN)).toEqual(visualPaths(SHARED_VISUAL, OPEN))
+    // The classes themselves, in the same order — a path list alone would not
+    // catch `static` becoming `temporal`.
+    const classes = (src: string) => {
+      const i = src.indexOf(OPEN)
+      const block = src.slice(i, src.indexOf('] as const', i))
+      return [...block.matchAll(/'(static|temporal|transition)'/g)].map((m) => m[1])
+    }
+    expect(classes(WORKER_VISUAL)).toEqual(classes(SHARED_VISUAL))
+    expect(classes(SHARED_VISUAL).length).toBe(15)
+  })
+
+  it('the blocker vocabulary and its plain-English reasons are identical', () => {
+    // ⚠️ THESE STRINGS ARE READ BY CREATORS. A worker copy that drifted would
+    // put a different sentence on a card than the one the tests cover.
+    expect(vocab(WORKER_VISUAL, 'BLOCKER_CODES')).toEqual(vocab(SHARED_VISUAL, 'BLOCKER_CODES'))
+    expect(lift(WORKER_VISUAL, 'the worker', 'BECAUSE')).toBe(lift(SHARED_VISUAL, 'shared', 'BECAUSE'))
+  })
+
+  it('the empty profile is identical, because null means no knowledge', () => {
+    expect(lift(WORKER_VISUAL, 'the worker', 'emptyVisualProfile'))
+      .toBe(lift(SHARED_PROFILE_TYPES, 'shared', 'emptyVisualProfile'))
+  })
+})
+
+describe('the frames prompt asks for every field the parser reads', () => {
+  // ⚠️ A FIELD IN THE CONTRACT AND NOT IN THE PROMPT IS INVISIBLE. It comes back
+  // absent, `readField` files it `missing`, and the profile reports it as a
+  // field the FRAMES could not establish — when in truth nobody asked. That is
+  // the `unset ≠ false` collision wearing a new hat, and it would silently cap
+  // `fieldsObserved` on every video in the batch.
+  it('worker VISUAL_FIELD_PATHS matches shared VISUAL_FIELDS, in order', () => {
+    const shared = visualPaths(SHARED_VISUAL, 'VISUAL_FIELDS: readonly (readonly [string, ClaimClass])[] = [')
+    const worker = visualPaths(WORKER_VISUAL_PROMPT, 'VISUAL_FIELD_PATHS: readonly string[] = [')
+    expect(worker).toEqual(shared)
+    expect(shared.length).toBeGreaterThan(0)
+  })
+
+  it('every path has a question', () => {
+    const shared = visualPaths(SHARED_VISUAL, 'VISUAL_FIELDS: readonly (readonly [string, ClaimClass])[] = [')
+    for (const path of shared) {
+      expect(WORKER_VISUAL_PROMPT, `no question for ${path}`).toContain(`'${path}':`)
+    }
+  })
+})
 
 describe('worker ↔ shared extraction parity', () => {
   it('every validation function is character-identical', () => {

@@ -20,6 +20,8 @@ import { transcribeFromUrl } from '../media.js'
 import { geminiJson } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
 import { parseContentExtraction, NOT_DETERMINED, NO_REHOOK } from '../referenceExtraction.js'
+import { frameSampleTargets } from '../referenceProfileTypes.js'
+import { runVisualPass } from '../visualPass.js'
 
 /** How much transcript the model is shown.
  *
@@ -214,7 +216,18 @@ rehookPosition: an index into beats, or ${NO_REHOOK} if the video never
   re-hooks. ${NO_REHOOK} is a real answer, and most short videos deserve it.
 productsRequired: a whole number; 0 is a real answer.`
 
-interface Payload { url?: unknown; platform?: unknown; force?: unknown; route?: unknown }
+interface Payload {
+  url?: unknown; platform?: unknown; force?: unknown; route?: unknown
+  /** ⚠️ OPT-IN, AND EXACTLY `true`. The frames pass costs a SECOND download —
+   *  the transcript ladder pulls bestaudio and frames need pixels — so nothing
+   *  about the 3,000-row backlog changes unless somebody asks for it on purpose.
+   *  A truthy-but-not-true value (the string "false", 1, {}) must not enable
+   *  spending; the same rule `parseRoute` follows for the paid rungs. */
+  frames?: unknown
+  /** How many stills. Absent means DEFAULT_FRAME_COUNT — the pilot's job is to
+   *  argue with that number, not this file's. */
+  frameCount?: unknown
+}
 
 export async function handleAssessReference(job: Job): Promise<Record<string, unknown>> {
   const p = (job.payload ?? {}) as Payload
@@ -312,6 +325,25 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
     transcriptAvailable: full.trim().length > 0,
   })
 
+  // ⚠️ THE FRAMES PASS RUNS AFTER THE CONTENT PASS, NOT BESIDE IT, because it
+  // reads the content pass's OUTPUT. `frameSampleTargets` turns the beats into
+  // the timestamps worth looking at — the hook, the rehook, the payoff — and it
+  // is the reader that justifies storing `Beat.startSec` at all. Sampling four
+  // arbitrary percentages while those timestamps sat in the same function would
+  // strand the field and buy worse frames.
+  //
+  // ⚖️ AND IT NEVER FAILS THE JOB. `runVisualPass` throws for nothing: an
+  // unavailable video, no samplable frames and a model that answered rubbish are
+  // all rows. A transcript that succeeded must not be discarded because the
+  // second pass had a bad day — that is the `0143_a_failure_may_not_erase_a_
+  // success` rule, applied one layer up.
+  const visual = p.frames === true
+    ? await runVisualPass(url, route, {
+        count: typeof p.frameCount === 'number' ? p.frameCount : undefined,
+        at: frameSampleTargets(profile),
+      })
+    : null
+
   const { error: wrote } = await db.from('reference_content_profiles').upsert({
     url,
     platform,
@@ -319,6 +351,19 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
     profile,
     rejections,
     fields_accepted: fieldsAccepted,
+    // ⚠️ WRITTEN ONLY WHEN THE PASS RAN. A pass that could not look leaves these
+    // null and does NOT stamp `visual_assessed_at`, so a later run knows to try
+    // again — "we looked and learned nothing" and "we never looked" are
+    // different rows, and 97% of the library is the second one.
+    ...(visual?.ran
+      ? {
+          visual_profile: visual.visual_profile,
+          visual_rejections: visual.visual_rejections,
+          frames_sampled: visual.frames_sampled,
+          frame_schedule_basis: visual.frame_schedule_basis,
+          visual_assessed_at: assessedAt,
+        }
+      : {}),
     transcript_source: transcript.source ?? null,
     paid_because: transcript.paidBecause ?? null,
     transcript_chars: full.length,
@@ -341,5 +386,15 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
     // is what makes the remaining ~3,500 a number rather than a guess.
     paid_because: transcript.paidBecause ?? null,
     truncated: full.length > MAX_TRANSCRIPT_CHARS,
+    // ⚠️ REPORTED EVEN WHEN IT DID NOT RUN, and with the reason. A pilot that
+    // can only see successes cannot tell "frames are not worth it" from "frames
+    // never got a chance", which is the difference between a decision and a
+    // shrug.
+    ...(visual === null ? {} : {
+      visual_ran: visual.ran,
+      frames_sampled: visual.frames_sampled,
+      frame_schedule_basis: visual.frame_schedule_basis,
+      visual_failure_code: visual.failure_code,
+    }),
   }
 }

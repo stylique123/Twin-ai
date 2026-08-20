@@ -28,6 +28,13 @@ export const LIBRARY_HEALTH = [
   'visual_only_candidate',
   /** OURS, and fixable today: the downloader could not fetch the media. */
   'downloader_failure',
+  /** ⚠️ THE ONLY BUCKET A PAID ROUTE COULD EMPTY, WHICH IS WHY IT IS ITS OWN.
+   *  A host that blocked our IP is not a broken image and not a dead video —
+   *  filing it under either makes the routing ladder's whole question
+   *  unanswerable. "How many references would residential egress recover?" is
+   *  the number that decides whether to spend on the remaining thousands, and it
+   *  is exactly the size of this bucket. */
+  'route_blocked',
   /** Genuinely unavailable — private, deleted, region-locked, off-allowlist.
    *  Nothing we build changes these. */
   'unsupported_or_unavailable',
@@ -43,6 +50,7 @@ export const HEALTH_OWNER: Record<LibraryHealth, string> = {
   transcript_readable: 'nobody — this one worked',
   visual_only_candidate: 'the frames pass (#56); no amount of transcript work reaches these',
   downloader_failure: 'the worker image — curl-cffi must be effective, not merely declared',
+  route_blocked: 'the routing ladder — these are the only failures a different IP could fix, and the size of this bucket is what justifies (or refuses) paying for one',
   unsupported_or_unavailable: 'nobody — the video is gone or was never reachable',
   not_attempted: 'the batch runner; this is backlog, not breakage',
 }
@@ -52,6 +60,37 @@ export interface ProfileRow {
   error?: string | null
   /** Absent when the URL has never been attempted. */
   attempted?: boolean
+  /** ⚠️ THE FIX THIS FILE ASKED FOR, NOW THAT IT EXISTS. `download_trace.
+   *  failure_code`, written by the worker's classifier. Absent on every row
+   *  assessed before 0151 — which is most of the library — so the prose
+   *  matching below stays as the fallback rather than being deleted. */
+  failureCode?: string | null
+}
+
+/** ⚖️ ONE PLACE THAT MAPS A NORMALISED CODE TO WHO FIXES IT. The codes live in
+ *  worker/src/downloadFailure.ts and are the worker's own vocabulary; this is
+ *  the only translation of them into library health, so a new code that nobody
+ *  maps here falls through to the prose path and then to
+ *  `unsupported_or_unavailable` — the bucket that asks for no work. That is the
+ *  safe direction: an unmapped code must never invent a job for somebody. */
+const HEALTH_BY_CODE: Record<string, LibraryHealth> = {
+  // Anti-bot layers and a dependency that could not impersonate: ours.
+  TIKTOK_CHALLENGE_FAILED: 'downloader_failure',
+  IMPERSONATION_UNAVAILABLE: 'downloader_failure',
+  DOWNLOAD_TIMEOUT: 'downloader_failure',
+  // The host said no to THIS IP. The only class a different egress could fix.
+  TIKTOK_IP_BLOCKED: 'route_blocked',
+  // ⚠️ THE PROXY REFUSED, WHICH IS NOT THE HOST'S OPINION OF US. Filing it under
+  // route_blocked would inflate the number that argues for buying more proxy.
+  PROXY_TRANSPORT_FAILED: 'downloader_failure',
+  // Gone, walled, or never there. Nothing we build or buy changes these.
+  MEDIA_NOT_FOUND: 'unsupported_or_unavailable',
+  PRIVATE_OR_UNAVAILABLE: 'unsupported_or_unavailable',
+  // ⚖️ AN UNTRANSLATED TIKTOK STATUS ASKS FOR NO WORK UNTIL SOMEBODY TRANSLATES
+  // IT. Counting it as route_blocked would argue for spending on a failure
+  // nobody has understood.
+  TIKTOK_STATUS_UNMAPPED: 'unsupported_or_unavailable',
+  UNKNOWN_DOWNLOAD_FAILURE: 'unsupported_or_unavailable',
 }
 
 /**
@@ -71,12 +110,25 @@ export function classifyReference(row: ProfileRow): LibraryHealth {
   if (e === '') return 'transcript_readable'
   const lower = e.toLowerCase()
 
-  // ⚖️ NO SPEECH IS CHECKED FIRST, because it is the bucket most likely to be
-  // misread as breakage and the one whose misreading costs the most: it is the
-  // whole argument for the frames pass.
+  // ⚖️ NO SPEECH IS STILL CHECKED BEFORE THE CODE, because a silent video is not
+  // a download failure at all — the download SUCCEEDED and there was nothing to
+  // hear. Its row carries a `no_speech` error and a successful trace, so reading
+  // the code first would be reading the wrong field.
   if (lower.includes('no_speech')
     || lower.includes('no captions')
     || lower.includes('no speech')) return 'visual_only_candidate'
+
+  // ⚠️ THE CODE WINS WHEN IT EXISTS. This file's header called prose matching
+  // "fragile against rewording" and named `failure_code` as the right fix while
+  // deferring it; the column now exists and is populated, so the deferral is
+  // over. The prose path below is NOT deleted — most of the library was assessed
+  // before the code existed, and deleting it would silently re-file thousands of
+  // historical rows into the no-work bucket.
+  const code = typeof row.failureCode === 'string' ? row.failureCode.trim() : ''
+  if (code !== '') {
+    const mapped = HEALTH_BY_CODE[code]
+    if (mapped) return mapped
+  }
 
   if (lower.includes('impersonat')
     || lower.includes('curl')

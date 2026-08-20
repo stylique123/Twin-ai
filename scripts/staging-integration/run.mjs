@@ -95,9 +95,14 @@ const createIntent = (client, genId, attemptId, contentType, sizeBytes) =>
   edge(client, { action: 'create', capture: { origin: 'upload', recording_script_sha256: null, recorder_clock: 'none', accepted_segments: [] }, generation_id: genId, recording_attempt_id: attemptId, content_type: contentType, size_bytes: sizeBytes })
 const finalize = (client, assetId) => edge(client, { action: 'finalize', asset_id: assetId })
 
+// ⚠️ A STATUS IS NOT A DIAGNOSIS. This returned the bare number, so a storage
+// refusal reached the operator as `signed PUT 400` and nothing else. Storage
+// says WHY in the body (expired token, mismatched path, upsert refused);
+// throwing it away turns a one-line answer into a re-run. Phases 4-8 already
+// return {status, body}; this is the same shape.
 async function putSigned(signedUrl, buf, contentType) {
   const res = await fetch(signedUrl, { method: 'PUT', headers: { 'x-upsert': 'true', 'content-type': contentType }, body: buf })
-  return res.status
+  return { status: res.status, body: res.ok ? '' : (await res.text().catch(() => '')).slice(0, 200) }
 }
 
 // The full client flow (what the browser runs): intent → signed PUT → finalize.
@@ -106,7 +111,7 @@ async function fullFlow(client, genId, attemptId, buf, contentType) {
   if (c.status !== 200) throw new Error(`create ${c.status}: ${JSON.stringify(c.body)}`)
   if (c.body.status === 'ready') return { intent: c.body, finalizeStatus: 200 }
   const p = await putSigned(c.body.signedUrl, buf, contentType)
-  if (p >= 300) throw new Error(`signed PUT ${p}`)
+  if (p.status >= 300) throw new Error(`signed PUT ${p.status} ${p.body}`)
   const f = await finalize(client, c.body.assetId)
   return { intent: c.body, finalizeStatus: f.status, finalizeBody: f.body }
 }
@@ -258,7 +263,7 @@ async function main() {
     const fresh2 = await login(ownerT3.email)
     const s3 = await createIntent(fresh2, genT3, attemptT3, 'video/webm', webm.byteLength)
     const p = await putSigned(s3.body.signedUrl, webm, 'video/webm')
-    check('T3b re-issued token re-uploads the same object', p < 300, `status=${p}`)
+    check('T3b re-issued token re-uploads the same object', p.status < 300, `status=${p.status} ${p.body}`)
     // (c) refresh AFTER upload, BEFORE finalize: finalize from yet another session.
     const fresh3 = await login(ownerT3.email)
     const f = await finalize(fresh3, s1.body.assetId)
@@ -288,7 +293,7 @@ async function main() {
     // (d) finalize checks the REAL uploaded bytes, not the claimed size.
     const pt = await putSigned(x.body.signedUrl, Buffer.alloc(700, 1), 'video/webm')
     const f2 = await finalize(cT6, x.body.assetId)
-    check('T6d finalize refuses a sub-minimum object', pt < 300 && f2.status === 409, `put=${pt} fin=${f2.status}`)
+    check('T6d finalize refuses a sub-minimum object', pt.status < 300 && f2.status === 409, `put=${pt.status} ${pt.body} fin=${f2.status}`)
     // (e) token expiry is bounded (platform signs a JWT with exp ≈ 2h).
     try {
       const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString())
@@ -304,7 +309,7 @@ async function main() {
     const f = await finalize(cT6, assetT6f)
     check('T6f setup: finalize ok', f.status === 200)
     const replay = await putSigned(c.body.signedUrl, fix['noaudio.webm'], 'video/webm')
-    check('T6f replayed token still writes the object (the attack is real)', replay < 300, `status=${replay}`)
+    check('T6f replayed token still writes the object (the attack is real)', replay.status < 300, `status=${replay.status} ${replay.body}`)
   }
 
   console.log('== T2 setup: landscape mp4 flow enqueued ==')

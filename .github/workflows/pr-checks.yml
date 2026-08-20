@@ -108,6 +108,14 @@ jobs:
         with:
           path: ~/dejavu-cache
           key: dejavu-${{ steps.fontpin.outputs.key }}
+      # ⚖️ SAME KEY AS THE STAGING MATRIX ON PURPOSE — one populated cache serves
+      # both workflows, so a PR check warms what the staging run then hits.
+      # pr-checks needs only ffmpeg; espeak-ng is the staging matrix's.
+      - name: Restore the ffmpeg .deb artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.apt-artifacts/ffmpeg
+          key: aptdebs-ffmpeg-${{ runner.os }}-${{ runner.arch }}-v1
       # ⚖️ BOUNDED, BECAUSE A HANG THAT COSTS 30 MINUTES IS WORSE THAN A FAILURE
       # THAT COSTS 10. The registry either answers promptly or it is not
       # answering, and a red run naming the step beats a queue nobody can read.
@@ -157,7 +165,16 @@ jobs:
             echo "::error::apt could not install: $* (cached lists + 3 bounded refreshes over ~20min)"
             return 1
           }
-          apt_get_retry ffmpeg
+          # ⚠️ CACHE FIRST, MIRROR ONLY ON A MISS. The retry above stays as the
+          # miss path — a miss is exactly when the mirror might be down.
+          . scripts/ci/apt_artifact_cache.sh
+          if ! apt_artifacts_install ffmpeg; then
+            echo "ffmpeg not cached (or failed verification) — falling back to the mirror"
+            apt_get_retry ffmpeg
+            apt_artifacts_fetch ffmpeg || echo "::warning::could not populate the ffmpeg artifact cache"
+          fi
+          command -v ffmpeg >/dev/null || { echo "::error::ffmpeg is not on PATH after install"; exit 1; }
+          echo "ffmpeg: $(ffmpeg -version | head -1)"
           D=/usr/share/fonts/truetype/dejavu
           sudo mkdir -p "$D"
           if ls "$HOME/dejavu-cache"/*.ttf >/dev/null 2>&1; then

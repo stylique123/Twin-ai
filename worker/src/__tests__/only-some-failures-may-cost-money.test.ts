@@ -115,10 +115,19 @@ describe('precedence collisions resolve to the intended owner', () => {
       'TIKTOK_IP_BLOCKED', '403 beats timeout — and therefore DOES graduate'],
     ['no impersonate target is available',
       'IMPERSONATION_UNAVAILABLE', 'a dependency problem no proxy can fix'],
-    // The real error this container produced against a blocking proxy: it names
-    // a webpage failure AND a 403. The 403 is the reason.
+    // ⚠️ THIS EXPECTATION CHANGED, AND THE REASON IS WORTH KEEPING. It formerly
+    // asserted TIKTOK_IP_BLOCKED, on the reasoning that a 403 is positive
+    // evidence the host refused us. A failed CONNECT means the tunnel was never
+    // established — nothing reached TikTok, and the 403 is the PROXY's answer.
+    // Reading it as the host's opinion of our IP would send a proxy failure back
+    // through the proxy that caused it.
     ['Unable to download webpage: Failed to perform, curl: (56) CONNECT tunnel failed, response 403',
-      'TIKTOK_IP_BLOCKED', '403 beats the generic webpage-failure string'],
+      'PROXY_TRANSPORT_FAILED', 'a failed CONNECT never reached the host, so the status is the proxy\'s'],
+    // ⚖️ THE ROW FROM PRODUCTION THAT FORCED THE QUESTION. 590 matches no status
+    // pattern, so this fell all the way to UNKNOWN — a residential canary
+    // counted as an unexplained failure when the proxy had plainly refused.
+    ['yt-dlp exited 1: (caused by ProxyError(\'Failed to perform, curl: (56) CONNECT tunnel failed, response 590.\'))',
+      'PROXY_TRANSPORT_FAILED', 'a proxy refusal is named, not filed as a mystery'],
   ]
   for (const [raw, expected, why] of cases) {
     it(why, () => { expect(classifyDownloadFailure(raw)).toBe(expected) })
@@ -129,6 +138,67 @@ describe('precedence collisions resolve to the intended owner', () => {
     // makes every slow download billable.
     expect(mayRetryViaProxy(classifyDownloadFailure('yt-dlp timed out after 120000ms'))).toBe(false)
     expect(mayRetryViaProxy(classifyDownloadFailure('timed out ... HTTP Error 403'))).toBe(true)
+  })
+})
+
+describe('the TikTok status codes, read from the extractor rather than guessed', () => {
+  // ⚠️ GROUND TRUTH IS tiktok.py:989-994, NOT INTUITION. yt-dlp maps exactly
+  // three status codes and raises a generic message for everything else. These
+  // assertions encode that mapping so a future edit cannot quietly re-file one
+  // family as another — which, for 10204, would mean losing the only TikTok
+  // status that is genuinely worth paying to retry.
+
+  it('10204 is an IP block in yt-dlp\'s own words, and stays payable', () => {
+    const raw = 'ERROR: [TikTok] 123: Your IP address is blocked from accessing this post'
+    expect(classifyDownloadFailure(raw)).toBe('TIKTOK_IP_BLOCKED')
+    expect(mayRetryViaProxy(classifyDownloadFailure(raw))).toBe(true)
+  })
+
+  it('10216 and 10222 surface as login-required, and are never payable', () => {
+    // The exact sentence `raise_login_required` is given at tiktok.py:992.
+    const raw = 'ERROR: [TikTok] 123: You do not have permission to view this post. Log into an account that has access'
+    expect(classifyDownloadFailure(raw)).toBe('PRIVATE_OR_UNAVAILABLE')
+    expect(mayRetryViaProxy(classifyDownloadFailure(raw))).toBe(false)
+  })
+
+  it('an unmapped status is counted as unmapped, not sorted into a neighbour', () => {
+    // ⚖️ THE ROW FROM PRODUCTION. Code 10231 is in none of yt-dlp's three
+    // branches, so it fell to the generic message and then to UNKNOWN — where a
+    // whole family of TikTok answers would have been invisible.
+    const raw = 'yt-dlp exited 1: ERROR: [TikTok] 7419349447294864673: Video not available, status code 10231'
+    expect(classifyDownloadFailure(raw)).toBe('TIKTOK_STATUS_UNMAPPED')
+    // Not payable: an untranslated status is not evidence that an IP would fix it.
+    expect(mayRetryViaProxy(classifyDownloadFailure(raw))).toBe(false)
+  })
+
+  it('does not eat a block that happens to mention a status', () => {
+    // Precedence: positive block evidence beats the generic status matcher.
+    expect(classifyDownloadFailure('Video not available, status code 10204: blocked'))
+      .toBe('TIKTOK_IP_BLOCKED')
+  })
+})
+
+describe('a proxy failure never pays the proxy', () => {
+  // ⚠️ THE LOOP THIS PREVENTS. If the residential proxy refuses the tunnel and
+  // we call that a host block, the failure graduates to paid routing — through
+  // the proxy that just refused. Every retry bills and none can succeed.
+  for (const raw of [
+    'CONNECT tunnel failed, response 590',
+    'CONNECT tunnel failed, response 403',
+    "ProxyError('Failed to perform, curl: (56) CONNECT tunnel failed')",
+    'could not connect to proxy proxy.apify.com',
+  ]) {
+    it(`is not payable: ${raw.slice(0, 40)}`, () => {
+      expect(classifyDownloadFailure(raw)).toBe('PROXY_TRANSPORT_FAILED')
+      expect(mayRetryViaProxy(classifyDownloadFailure(raw))).toBe(false)
+    })
+  }
+
+  it('still lets a genuine host block through', () => {
+    // ⚖️ THE CHECK MUST NOT HAVE EATEN THE CASE IT SITS IN FRONT OF. A 403 with
+    // no tunnel failure is still TikTok refusing us, and still payable.
+    expect(classifyDownloadFailure('HTTP Error 403: Forbidden')).toBe('TIKTOK_IP_BLOCKED')
+    expect(mayRetryViaProxy(classifyDownloadFailure('HTTP Error 403: Forbidden'))).toBe(true)
   })
 })
 
@@ -207,6 +277,23 @@ describe('phase says WHERE it stopped', () => {
     // makes elapsed/bytes comparable across rungs.
     expect(phaseOf('')).toBe('complete')
     expect(phaseOf(null)).toBe('complete')
+  })
+
+  it('recognises the login walls production actually sent (2026-08 backlog)', () => {
+    // ⚠️ VERBATIM FROM `download_trace.raw_error`, not paraphrased. Both were
+    // filed UNKNOWN_DOWNLOAD_FAILURE by the first backlog tranche because the
+    // wall list only knew the words "private" and "login required". They are
+    // permanently unavailable to a logged-out downloader, and no route we can
+    // buy changes that — so the code must say so rather than say "mystery".
+    const walls = [
+      'yt-dlp exited 1: ERROR: [TikTok] 7654886192583806239: This post may not be comfortable for some audiences. Log in for access. Use --cookies-from-browser or --cookies for the authentication.',
+      'yt-dlp exited 1: ERROR: [TikTok] 7666764170959899926: You do not have permission to view this post. Log into an account that has access. Use --cookies-from-browser or --cookies for the authentication.',
+    ]
+    for (const raw of walls) {
+      expect(classifyDownloadFailure(raw)).toBe('PRIVATE_OR_UNAVAILABLE')
+      // ⚖️ AND THE POINT OF THE CODE: it must never become payable.
+      expect(RETRYABLE_VIA_PROXY.has(classifyDownloadFailure(raw))).toBe(false)
+    }
   })
 
   it('every phase is one of the declared six', () => {

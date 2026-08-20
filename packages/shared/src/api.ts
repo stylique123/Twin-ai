@@ -41,9 +41,30 @@ let _uploadSigned: UploadSigned | undefined
 // `uploadTake` is deliberately absent: the only upload the platform injects now
 // is the signed-target one, because that is the only path that carries capture
 // provenance. Re-adding a raw bucket uploader here re-opens what 0118 closed.
-export function initApi(opts: { client: SupabaseClient; appOrigin?: string; uploadSigned?: UploadSigned }): void {
+/** ⚠️ THE UNLOAD BEACON NEEDS A URL AND KEYS THAT ONLY THE APP KNOWS. It cannot
+ *  go through `functions.invoke` — that request is cancelled with the page — so
+ *  it is a raw `fetch(keepalive: true)` and needs the pieces `invoke` normally
+ *  hides. Supplied by the platform at init rather than read from `import.meta`
+ *  here, because this package is also imported by non-browser callers.
+ *
+ *  ⚖️ RETURNS `null` WHEN UNCONFIGURED, and the caller then arms nothing. A
+ *  beacon that silently posts to an empty URL would look wired and report
+ *  nothing, which is the exact failure `uploadAbandonBeacon`'s header is about. */
+let _beacon: (() => { url: string; accessToken: string; apiKey: string } | null) | null = null
+
+export function beaconTarget(): { url: string; accessToken: string; apiKey: string } | null {
+  try { return _beacon ? _beacon() : null } catch { return null }
+}
+
+export function initApi(opts: {
+  client: SupabaseClient
+  appOrigin?: string
+  uploadSigned?: UploadSigned
+  beaconTarget?: () => { url: string; accessToken: string; apiKey: string } | null
+}): void {
   _sb = opts.client
   _appOrigin = opts.appOrigin ?? ''
+  _beacon = opts.beaconTarget ?? null
   _uploadSigned = opts.uploadSigned
 }
 

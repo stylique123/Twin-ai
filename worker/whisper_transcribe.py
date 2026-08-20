@@ -1,16 +1,36 @@
 #!/usr/bin/env python3
 """Transcription wrapper with word-level timestamps.
 
-Tries a ladder of refiners, tightest first, and falls back on ANY failure:
-  1. wav2vec2 FORCED ALIGNMENT (WhisperX-style) — faster-whisper transcript +
-     torchaudio CTC forced_align for frame-accurate word boundaries (English).
-  2. stable-ts — DTW-refined word timings.
-  3. plain faster-whisper — the proven, guaranteed path.
-Because faster-whisper is the guaranteed fallback, every refiner can only IMPROVE
-timing or no-op — none can ever break captions. The forced-align tier reuses
-torchaudio (already in the image for Silero-VAD), so it adds NO heavy new deps
-(no whisperx/pyannote dependency tree). Invoked as a subprocess so the heavy ML
-stays isolated.
+⚠️ THIS IS ONE CAPABILITY, NOT A THREE-TIER LADDER. An earlier version of this
+file described a refiner ladder — wav2vec2 forced alignment, then stable-ts,
+then plain faster-whisper — and asserted that the first tier reused a torchaudio
+the image supposedly already carried for Silero VAD, and therefore cost no new
+dependencies. Both halves of that were false: Silero VAD here runs under
+onnxruntime, and neither torch nor stable_whisper has ever been in
+requirements.txt. So both refiners raised
+ImportError on every call, the loop swallowed it, and every caption in
+production was timed by plain faster-whisper while the docstring described
+something tighter.
+
+⚖️ THE SHAPE IS THE FIX, NOT THE WORDING. A structure that still reads as three
+live rungs is how the next reader concludes somebody wired it. So the refiners
+are now SKIPPED EXPLICITLY unless their imports are present, the skip is
+reported by name, and the tier that actually produced the output is stamped on
+the JSON as `refiner`. `alignmentCapabilities.ts` is the same statement on the
+TypeScript side, and it deliberately keeps three DIFFERENT questions apart:
+
+  vadSnap            "where can I cut without mutilating speech?"  (available)
+  wordTiming         "when was this word spoken, roughly?"         (available)
+  acousticAlignment  "where exactly did this word begin and end?"  (declined)
+
+⚖️ `acousticAlignment` IS DECLINED ON PURPOSE, PENDING MEASUREMENT. Installing
+torch (~800MB, unmeasured in this image) would spend the most expensive
+dependency available on a quality defect nobody has counted. The order is:
+measure whether automatic cuts audibly clip speech, then try a bounded
+nearest-silence snap with the VAD already installed, and only then reconsider
+alignment against a measured residual.
+
+Invoked as a subprocess so the heavy ML stays isolated.
 """
 import argparse
 import json
@@ -180,6 +200,35 @@ def transcribe_faster(args, compute_type, lang):
     }
 
 
+# Stable, caller-facing names for the ladder rungs. Keyed on the function name so
+# renaming a function cannot silently change what a persisted transcript claims.
+def _importable(mod: str) -> bool:
+    """⚠️ IMPORT, NOT `pip show`. A declared dependency is not an installed one,
+    an installed one is not importable, and an importable one is not compatible.
+    Only the interpreter can answer this, and only by trying."""
+    import importlib.util
+    try:
+        return importlib.util.find_spec(mod) is not None
+    except Exception:  # noqa: BLE001 — a broken meta-path finder is still "no"
+        return False
+
+
+# What each refiner needs, so its absence can be REPORTED rather than inferred
+# from an exception that looks like a decline. Mirrors REQUIRES in
+# worker/src/alignmentCapabilities.ts.
+REFINER_REQUIRES = {
+    "forced_align": ("torch", "torchaudio"),
+    "stable_ts": ("stable_whisper",),
+    "faster_whisper": ("faster_whisper",),
+}
+
+REFINER_NAMES = {
+    "transcribe_forced_align": "forced_align",
+    "transcribe_stable": "stable_ts",
+    "transcribe_faster": "faster_whisper",
+}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--audio", required=True)
@@ -196,13 +245,27 @@ def main() -> int:
 
     # Refiner ladder, tightest first: wav2vec2 forced alignment → stable-ts. Each
     # falls back on ANY failure so captions never break.
-    out = None
+    out, refiner = None, None
     for refine in (transcribe_forced_align, transcribe_stable):
+        name = REFINER_NAMES[refine.__name__]
+        # ⚠️ SKIPPED EXPLICITLY, NOT ATTEMPTED AND SWALLOWED. Calling a refiner
+        # whose dependency is absent produced an ImportError that looked exactly
+        # like a refiner that ran and declined — which is how a permanently dead
+        # tier passed for a working one. Asking first makes "not installed" and
+        # "installed but this clip defeated it" two different lines in the log.
+        missing = [m for m in REFINER_REQUIRES[name] if not _importable(m)]
+        if missing:
+            print(json.dumps({"event": "refiner_skipped", "refiner": name,
+                              "reason": "dependency_absent", "missing": missing}),
+                  file=sys.stderr)
+            continue
         try:
             out = refine(args, compute_type, lang)
+            refiner = name
             break
-        except Exception as e:  # noqa: BLE001 — any failure must fall back, never crash captions
-            print(f"{refine.__name__} unavailable: {e}", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001 — a refiner that FAILS must still fall back
+            print(json.dumps({"event": "refiner_failed", "refiner": name,
+                              "reason": str(e)[:200]}), file=sys.stderr)
 
     if out is None:
         # The proven path is the guaranteed fallback.
@@ -210,6 +273,14 @@ def main() -> int:
         if out is None:
             print(f"media too long: > {args.max_seconds}s", file=sys.stderr)
             return 2
+        refiner = "faster_whisper"
+
+    # ⚠️ SAY WHICH RUNG RAN. Every refiner failure is a benign stderr notice, so a
+    # ladder permanently stuck on its bottom rung looks exactly like a ladder
+    # working as designed. This field is the difference, and it travels with the
+    # transcript instead of living only in a container log nobody has a shell for.
+    out["refiner"] = refiner
+    print(json.dumps({"event": "transcribe_refiner", "refiner": refiner}), file=sys.stderr)
 
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False)

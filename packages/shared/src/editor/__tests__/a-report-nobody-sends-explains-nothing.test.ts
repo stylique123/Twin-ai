@@ -39,9 +39,22 @@ describe('the upload path actually reports', () => {
   })
 
   it('names the emitter it does NOT have rather than implying coverage', () => {
-    // ⚠️ `creator_abandoned` has no caller yet. Saying so is the difference
+    // ⚠️ `creator_abandoned` NOW HAS AN EMITTER, and this assertion moved with
+    // it rather than being deleted. The rule it enforces is unchanged: the
+    // header must state the CURRENT truth about who sends this outcome, because
+    // a stale "not wired yet" is how a working path gets rebuilt and a stale
+    // "wired" is how a missing one goes unnoticed. Saying so is the difference
     // between a known gap and a silent one.
-    expect(REPORTER).toMatch(/creator_abandoned` currently has no emitter/)
+    expect(REPORTER).not.toMatch(/currently has no emitter/)
+    expect(REPORTER).toMatch(/uploadAbandonBeacon\.ts` closes that gap/)
+    // ⚖️ AND THE EMITTER MUST ACTUALLY BE REACHED. A beacon module that exists
+    // and is never armed is the same failure in a smaller costume — which is
+    // what this whole file was written about.
+    const API = readFileSync(join(HERE, '..', 'api.ts'), 'utf8')
+    expect(API).toContain('armAbandonBeacon')
+    expect(API).toContain("outcome: 'abandoned'")
+    // Disarmed on BOTH terminal paths: the throw, and the success before finalize.
+    expect(API.match(/\n\s*disarm\(\)/g) ?? []).toHaveLength(2)
     expect(REPORTER).toMatch(/keepalive: true/)
   })
 })

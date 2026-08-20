@@ -14,7 +14,9 @@
 // legacy direct-bucket upload — if this flow fails, the caller keeps the Blob
 // and retries the SAME attempt (same asset, same path); it never silently
 // switches persistence systems.
-import { reportUploadAttempt, failureCode } from './uploadAttemptReport'
+import { reportUploadAttempt, failureCode, attemptBody } from './uploadAttemptReport'
+import { armAbandonBeacon } from './uploadAbandonBeacon'
+import { beaconTarget } from '../api'
 import { getClient, uploadToSignedTarget, type TakeFile } from '../api'
 import type { EditEvent, EditorOutput, EditProject, EditProjectStatus, MediaAsset, MediaAssetStatus, SourceUploadIntent } from './contracts'
 
@@ -128,6 +130,18 @@ export async function uploadSourceRecording(
   const startedAt = Date.now()
   let lastProgressAt: number | null = null
   let bytesSent = 0
+  // ⚠️ THE ONLY MOMENT `creator_abandoned` IS TRUE IS THE MOMENT THE PAGE LEAVES,
+  // which is also the moment an ordinary request is cancelled. Armed here and
+  // disarmed on EVERY terminal path below — an upload that finished without
+  // disarming would report an abandonment on the next navigation, putting a
+  // fabricated row beside a real success. That is worse than the silence it
+  // replaces, because it is a confident wrong answer.
+  const target = beaconTarget()
+  const disarm = target
+    ? armAbandonBeacon(target, () => attemptBody(intent.assetId, {
+        outcome: 'abandoned', startedAt, lastProgressAt, bytesSent,
+      }))
+    : () => {}
   try {
     await uploadToSignedTarget(
       { bucket: intent.bucket, path: intent.path, token: intent.token, signedUrl: intent.signedUrl, contentType: file.contentType },
@@ -144,11 +158,16 @@ export async function uploadSourceRecording(
     // ⚖️ REPORTED, NOT SWALLOWED — the throw still happens. This adds evidence
     // to a failure the creator is about to be told about anyway; it does not
     // change what they are told, and it is not awaited.
+    disarm()
     reportUploadAttempt(intent.assetId, {
       outcome: 'failed', startedAt, lastProgressAt, bytesSent, failureCode: failureCode(e),
     })
     throw e
   }
+  // ⚖️ DISARMED BEFORE FINALIZE, NOT AFTER. The bytes are up; a page that closes
+  // during finalize did not abandon the UPLOAD, and saying it did would file a
+  // successful transfer as a creator walking away.
+  disarm()
   await finalizeSourceUpload(intent.assetId)
   return intent
 }

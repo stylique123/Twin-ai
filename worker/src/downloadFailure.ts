@@ -39,6 +39,28 @@ export const DOWNLOAD_FAILURES = [
   /** We ran out of time. Says nothing about whether the host would have served
    *  us — which is exactly why it is not pooled with the blocks. */
   'DOWNLOAD_TIMEOUT',
+  /** ⚠️ TIKTOK ANSWERED WITH A STATUS CODE YT-DLP ITSELF DOES NOT MAP. The
+   *  extractor knows exactly three (tiktok.py:989-994): 10216 private post and
+   *  10222 private account, both raised as login-required; 10204 raised as "Your
+   *  IP address is blocked from accessing this post". Everything else falls to a
+   *  generic `Video not available, status code N`, which is TikTok telling us
+   *  something specific in a language nobody has translated.
+   *
+   *  ⚖️ SO IT IS COUNTED, NOT GUESSED AT. Filing the whole family as
+   *  PRIVATE_OR_UNAVAILABLE would suppress a class that might be payable; filing
+   *  it as a block would spend money on one that is probably permanent. A code of
+   *  its own keeps it honest AND countable — if code 10231 turns out to be forty
+   *  rows, that is a number somebody can go investigate, where forty rows inside
+   *  UNKNOWN_DOWNLOAD_FAILURE are invisible. Deliberately NOT retryable: an
+   *  untranslated status is not evidence that an IP would fix it. */
+  'TIKTOK_STATUS_UNMAPPED',
+  /** ⚠️ THE PROXY ITSELF REFUSED, SO WE NEVER SPOKE TO TIKTOK. `CONNECT tunnel
+   *  failed` is the egress path saying no — our proxy, not the host. Whatever
+   *  status rides along with it (403, 590) is the PROXY's answer, and reading it
+   *  as evidence about TikTok's opinion of our IP is a category error with a
+   *  bill attached: it would send a failure whose cause is the proxy back
+   *  through that same proxy. Deliberately NOT in RETRYABLE_VIA_PROXY. */
+  'PROXY_TRANSPORT_FAILED',
   /** ⚖️ NOT A DUMPING GROUND, AND NOT A LICENCE TO SPEND. Unrecognised means
    *  unrecognised; it does not graduate to paid routing, because "we do not know
    *  why this failed" is not evidence that an IP would fix it. */
@@ -77,10 +99,40 @@ export function classifyDownloadFailure(raw: unknown): DownloadFailure {
     || s.includes('unable to extract challenge data')) return 'TIKTOK_CHALLENGE_FAILED'
 
   // ⚖️ CHECKED BEFORE THE BLOCK CODES. A login wall is about the video.
+  // ⚠️ THE LAST FOUR ARRIVED FROM PRODUCTION, NOT FROM IMAGINATION. The first
+  // backlog tranche filed three rows as UNKNOWN_DOWNLOAD_FAILURE; two were login
+  // walls this list did not recognise — "This post may not be comfortable for
+  // some audiences. Log in for access." and "You do not have permission to view
+  // this post. Log into an account that has access." Neither says "private" or
+  // "login required". No money was at risk (UNKNOWN is not payable), but they
+  // were counted as mysteries rather than as what they are: videos nothing we
+  // buy will open. An age/sensitivity gate is a permanent unavailability for a
+  // logged-out downloader, and we do not log in.
   if (s.includes('login required') || s.includes('requiring login')
     || s.includes('private') || s.includes('this video is unavailable')
     || s.includes('video has been removed') || s.includes('account is private')
-    || s.includes('not available in your country')) return 'PRIVATE_OR_UNAVAILABLE'
+    || s.includes('not available in your country')
+    || s.includes('log in for access') || s.includes('log into an account')
+    || s.includes('do not have permission to view')
+    || s.includes('may not be comfortable for some audiences')) return 'PRIVATE_OR_UNAVAILABLE'
+
+  // ⚠️ CHECKED BEFORE THE BLOCK CODES, AND THIS REVERSES AN EARLIER DECISION.
+  // A test previously asserted that "CONNECT tunnel failed, response 403"
+  // classifies TIKTOK_IP_BLOCKED, on the reasoning that a 403 is positive
+  // evidence the host refused us. On a proxied route that reasoning does not
+  // hold: a failed CONNECT means the tunnel was never established, so nothing
+  // was ever sent to TikTok and the 403 is the PROXY's answer, not the host's.
+  // Production produced the case that makes the difference visible — a
+  // `ProxyError(... CONNECT tunnel failed, response 590)` on a residential
+  // canary, filed UNKNOWN because 590 matches no status pattern at all.
+  //
+  // ⚖️ AND THE DIRECTION OF THE ERROR MATTERS. Classifying it as a host block
+  // would make it payable, sending a failure CAUSED BY the proxy back through
+  // that same proxy. This code is not retryable, so the worst case of getting it
+  // wrong is a video we decline to spend on rather than a spend loop.
+  if (s.includes('connect tunnel failed')
+    || s.includes('proxyerror')
+    || s.includes('could not connect to proxy')) return 'PROXY_TRANSPORT_FAILED'
 
   if (s.includes('impersonate target is available')
     || s.includes('impersonation is not supported')
@@ -100,6 +152,12 @@ export function classifyDownloadFailure(raw: unknown): DownloadFailure {
     || s.includes('rate-limit') || s.includes('rate limit')
     || s.includes('captcha') || s.includes('blocked')
     || s.includes('too many requests')) return 'TIKTOK_IP_BLOCKED'
+
+  // ⚠️ AFTER THE BLOCK CHECK, DELIBERATELY. Status 10204 is raised by yt-dlp as
+  // "Your IP address is blocked from accessing this post" — real, positive
+  // evidence that graduates to paid routing — and it must not be swallowed by
+  // the generic status matcher sitting in front of it.
+  if (/video not available, status code \d+/.test(s)) return 'TIKTOK_STATUS_UNMAPPED'
 
   if (s.includes('timed out') || s.includes('timeout')) return 'DOWNLOAD_TIMEOUT'
 
