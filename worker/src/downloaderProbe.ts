@@ -34,6 +34,15 @@ export interface DownloaderProbe {
   impersonateTargets: number
   /** True when TikTok can realistically be read. */
   tiktokReadable: boolean
+  /** ⚠️ WHAT IS ACTUALLY RUNNING, BECAUSE requirements.txt DOES NOT SAY.
+   *  Docker keys the pip layer on that file's contents, so a FLOOR like
+   *  `yt-dlp>=...` only re-resolves when the file changes — between edits the
+   *  image is frozen at whatever was newest on the last edit. On 2026-08-20 the
+   *  running worker was on 2026.07.04 while 2026.08.19 had been out for hours,
+   *  and finding that out required reading a Docker build log for the word
+   *  CACHED. A running worker should be able to say what it is. */
+  ytDlpVersion: string | null
+  curlCffiVersion: string | null
   /** One line, safe to log. */
   detail: string
 }
@@ -93,12 +102,23 @@ export function readTargets(raw: string): { usable: number; listedButUnusable: n
  * which is precisely the gap that let a declared dependency look installed.
  */
 export async function probeDownloader(): Promise<DownloaderProbe> {
+  // ⚖️ VERSIONS ARE BEST-EFFORT AND NEVER FATAL. They are diagnostics; a probe
+  // that failed to boot a worker because it could not read a version string
+  // would be worse than the ambiguity it set out to remove.
+  const version = async (cmd: string, args: string[]) => {
+    try { return (await exec(cmd, args, 10_000)).trim().split('\n')[0] || null } catch { return null }
+  }
+  const ytDlpVersion = await version('yt-dlp', ['--version'])
+  const curlCffiVersion = await version('python3',
+    ['-c', 'import curl_cffi;print(curl_cffi.__version__)'])
+
   let raw: string
   try {
     raw = await exec('yt-dlp', ['--list-impersonate-targets'], 20_000)
   } catch (e) {
     return {
       ytDlp: false, impersonateTargets: 0, tiktokReadable: false,
+      ytDlpVersion, curlCffiVersion,
       detail: `yt-dlp could not be run: ${e instanceof Error ? e.message : String(e)}`,
     }
   }
@@ -106,6 +126,8 @@ export async function probeDownloader(): Promise<DownloaderProbe> {
   return {
     ytDlp: true,
     impersonateTargets: n,
+    ytDlpVersion,
+    curlCffiVersion,
     tiktokReadable: n > 0,
     detail: n > 0
       ? `${n} impersonation targets available`
