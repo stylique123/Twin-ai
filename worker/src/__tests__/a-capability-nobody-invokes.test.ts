@@ -82,3 +82,50 @@ describe('a failure stops looking like a partial success', () => {
     expect(upsert).toContain('download_route: null')
   })
 })
+
+// A FLOOR PLUS A CACHED LAYER IS AN ACCIDENTAL PIN.
+//
+// ⚠️ 2026-08-20: THE RUNNING WORKER WAS ON yt-dlp 2026.07.04 WHILE 2026.08.19
+// HAD BEEN OUT FOR HOURS. requirements.txt said `yt-dlp>=2025.1.15` — a floor,
+// which reads like "always newest" — but Docker keys the pip layer on that
+// file's contents, so pip only re-resolves when the file changes. Between edits
+// the image is frozen at whatever was newest on the last edit. Finding this out
+// required reading a Docker build log for the word CACHED.
+//
+// ⚖️ SO THE RUNNING WORKER MUST SAY WHAT IT IS. Same lesson as curl-cffi one
+// rung further out: the declaration and the running image can disagree, and only
+// the running image is the truth.
+describe('the probe reports what is actually installed', () => {
+  const PROBE = readFileSync(join(HERE, '..', 'downloaderProbe.ts'), 'utf8')
+  const INDEX = readFileSync(join(HERE, '..', 'index.ts'), 'utf8')
+
+  it('reads both versions from the binaries, not from requirements.txt', () => {
+    expect(PROBE).toMatch(/yt-dlp', \['--version'\]/)
+    expect(PROBE).toMatch(/import curl_cffi;print\(curl_cffi\.__version__\)/)
+  })
+
+  it('writes them to the heartbeat ROW, not only the log line', () => {
+    // ⚠️ The row is the one everybody can read — nobody has a shell on that box.
+    const write = INDEX.slice(INDEX.indexOf('recordDownloaderCapability'))
+    expect(write).toMatch(/yt_dlp_version: probe\.ytDlpVersion/)
+    expect(write).toMatch(/curl_cffi_version: probe\.curlCffiVersion/)
+  })
+
+  it('treats a missing version as null rather than failing the probe', () => {
+    // ⚖️ Diagnostics must not be able to take a worker down. A probe that
+    // refused to boot because it could not read a version string would be worse
+    // than the ambiguity it was written to remove.
+    expect(PROBE).toMatch(/catch \{ return null \}/)
+  })
+
+  it('requires a yt-dlp floor new enough to carry the blockbuster headers', () => {
+    // ⚠️ 2026.08.19 adds `_generate_blockbuster_headers()` on the TikTok webpage
+    // request — the exact call that failed on all six canaries. Dropping below
+    // it silently reinstates the failure.
+    const REQ = readFileSync(join(HERE, '..', '..', 'requirements.txt'), 'utf8')
+    const m = REQ.match(/^yt-dlp>=(\d{4})\.(\d{1,2})\.(\d{1,2})/m)
+    expect(m, 'yt-dlp floor not found').toBeTruthy()
+    const [y, mo, d] = [Number(m![1]), Number(m![2]), Number(m![3])]
+    expect(Date.UTC(y, mo - 1, d)).toBeGreaterThanOrEqual(Date.UTC(2026, 7, 19))
+  })
+})

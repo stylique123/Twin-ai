@@ -158,6 +158,8 @@ async function main() {
     log(probe.tiktokReadable ? 'info' : 'warn', 'downloader_probe', {
       event: 'downloader_probe',
       yt_dlp: probe.ytDlp,
+      yt_dlp_version: probe.ytDlpVersion,
+      curl_cffi_version: probe.curlCffiVersion,
       impersonate_targets: probe.impersonateTargets,
       tiktok_readable: probe.tiktokReadable,
       detail: probe.detail,
@@ -169,6 +171,13 @@ async function main() {
     // built to replace is not a diagnostic.
     void recordDownloaderCapability({
       yt_dlp: probe.ytDlp,
+      // ⚠️ THE VERSIONS BELONG IN THE ROW, NOT ONLY THE LOG. requirements.txt
+      // states a FLOOR; Docker caches the pip layer on that file's contents, so
+      // what is installed can lag the floor by weeks without anything saying so.
+      // This is the field that answers "what is production actually running?"
+      // without reading a build log for the word CACHED.
+      yt_dlp_version: probe.ytDlpVersion,
+      curl_cffi_version: probe.curlCffiVersion,
       impersonate_targets: probe.impersonateTargets,
       tiktok_readable: probe.tiktokReadable,
       detail: probe.detail,
