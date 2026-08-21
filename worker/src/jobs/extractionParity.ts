@@ -71,6 +71,19 @@ export interface ArmConfig {
 const digestOf = (v: unknown): string =>
   createHash('sha256').update(typeof v === 'string' ? v : JSON.stringify(v)).digest('hex').slice(0, 16)
 
+/** What gemini.ts will ACTUALLY use for a given budget argument.
+ *
+ *  ⚠️ COMPARED BY RESOLVED VALUE, NOT BY SOURCE SYNTAX. `undefined` and an
+ *  explicit 2048 are the same behaviour and must not be reported as a difference
+ *  — the experiment cares what the model was given, not how two callers happened
+ *  to spell it. The mirror error is worse and is what this whole assertion
+ *  exists for: `undefined` and `0` LOOK similar and are 2048 apart. */
+export function resolveThinkingBudget(
+  budget: number | undefined, environment: NodeJS.ProcessEnv = process.env,
+): number {
+  return budget ?? Number(environment.GEMINI_THINKING_BUDGET ?? '2048')
+}
+
 /**
  * Refuse to run unless the arms differ ONLY by model id.
  *
@@ -92,7 +105,11 @@ export function assertArmsDifferOnlyByModel(
     throw new Error('extraction_parity: modelB must differ from modelA — a trial of one model against itself measures nothing')
   }
   if (allowAsymmetry) return
-  const differing = (Object.keys(a) as (keyof ArmConfig)[]).filter((k) => a[k] !== b[k])
+  // ⚖️ RESOLVED, NOT LITERAL. See resolveThinkingBudget: absent and an explicit
+  // 2048 are the same experiment.
+  const resolved = (c: ArmConfig) => ({ ...c, thinkingBudget: resolveThinkingBudget(c.thinkingBudget) })
+  const ra = resolved(a), rb = resolved(b)
+  const differing = (Object.keys(ra) as (keyof ArmConfig)[]).filter((k) => ra[k] !== rb[k])
   if (differing.length > 0) {
     throw new Error(
       `extraction_parity: the arms differ in ${differing.join(', ')} as well as the model. `
@@ -120,6 +137,37 @@ async function runArm(model: string, text: string, url: string, thinkingBudget?:
       profile: null, rejections: null, fieldsAccepted: null,
       error: (e instanceof Error ? e.message : String(e)).slice(0, 500),
     }
+  }
+}
+
+/** Refuse to continue if a stored trial for this key was run under a different
+ *  manifest.
+ *
+ *  ⚖️ A MISSING ROW IS NOT A MISMATCH. The first run of a trial has nothing to
+ *  disagree with, and treating absence as a failure would make the eval
+ *  unrunnable. `unknown` is not `different` — the same three-state discipline
+ *  the rest of this codebase keeps. */
+export async function assertManifestUnchanged(
+  url: string, manifest: Record<string, unknown>,
+): Promise<void> {
+  const { data, error } = await db.from('extraction_parity_trials')
+    .select('manifest')
+    .eq('url', url).eq('model_a', manifest.model_a as string)
+    .eq('model_b', manifest.model_b as string)
+    .eq('asymmetric', manifest.asymmetric as boolean)
+    .maybeSingle()
+  // A read that failed tells us nothing about the manifest; it must not be read
+  // as agreement OR as disagreement.
+  if (error || !data || !data.manifest) return
+  const stored = data.manifest as Record<string, unknown>
+  const moved = Object.keys(manifest).filter((k) => String(stored[k]) !== String(manifest[k]))
+  if (moved.length > 0) {
+    throw new Error(
+      `extraction_parity: this trial already ran under a different manifest — ${moved.join(', ')} `
+      + 'changed. A trial id names one experiment; overwriting it would replace the answer to one '
+      + 'question with the answer to another. Delete the stored trial deliberately, or run the new '
+      + 'configuration as its own experiment.',
+    )
   }
 }
 
@@ -154,6 +202,39 @@ export async function handleExtractionParity(job: Job): Promise<Record<string, u
   }
   assertArmsDifferOnlyByModel(modelA, modelB, armA, armB, allowAsymmetry)
 
+  // ⚠️ THE MANIFEST IS THE EXPERIMENT'S IDENTITY, and it is pinned before either
+  // arm runs. A retry or a partially resumed batch must not be able to change
+  // what is being compared underneath the same trial — that would silently turn
+  // one experiment into a mixture of two, and the row would look fine.
+  const manifest = {
+    model_a: modelA, model_b: modelB,
+    thinking_resolved: resolveThinkingBudget(thinkingA),
+    timeout_ms: TIMEOUT_MS,
+    system_sha: armA.systemSha, vocabulary_sha: armA.promptSha, schema_sha: armA.schemaSha,
+    asymmetric: allowAsymmetry,
+  }
+
+  // ⚖️ READABLE ON PURPOSE. Logs are not the source of truth — the row is — but
+  // when something goes sideways at 2am a readable line is the last primitive
+  // tool anybody has.
+  console.log([
+    'PARITY TRIAL ACCEPTED',
+    `  A: ${modelA}`,
+    `  B: ${modelB}`,
+    `  thinking:   ${allowAsymmetry ? `A=${resolveThinkingBudget(thinkingA)} B=${resolveThinkingBudget(thinkingB)}` : 'identical'}`,
+    `  timeout:    ${allowAsymmetry ? 'see manifest' : 'identical'}`,
+    `  system:     ${manifest.system_sha}`,
+    `  vocabulary: ${manifest.vocabulary_sha}`,
+    `  schema:     ${manifest.schema_sha}`,
+    `  asymmetric: ${allowAsymmetry}`,
+  ].join('\n'))
+
+  // ⚠️ AND IT MAY NOT MOVE. An existing trial for this key whose manifest
+  // disagrees means the question changed between runs; overwriting it would
+  // replace an answer to one question with an answer to another under the same
+  // id. Refuse and say which field moved.
+  await assertManifestUnchanged(url, manifest)
+
   // ⚖️ ONE ACQUISITION. The cache means a trial on an already-read reference
   // costs no download at all, which is the whole point of 0153.
   const cached = await readCachedTranscript(url)
@@ -186,6 +267,7 @@ export async function handleExtractionParity(job: Job): Promise<Record<string, u
     // from a commit date. null on arm A means 'production's own resolution'.
     thinking_budget_a: thinkingA ?? null, thinking_budget_b: thinkingB ?? null,
     asymmetric: allowAsymmetry,
+    manifest,
     profile_a: a.profile, profile_b: b.profile,
     rejections_a: a.rejections, rejections_b: b.rejections,
     fields_accepted_a: a.fieldsAccepted, fields_accepted_b: b.fieldsAccepted,

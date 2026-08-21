@@ -67,6 +67,64 @@ describe('the first parity trial isolates the model id', () => {
   })
 })
 
+describe('thinking config is compared by RESOLVED value, not source syntax', () => {
+  it('treats absent and an explicit 2048 as the same experiment', async () => {
+    const { assertArmsDifferOnlyByModel, resolveThinkingBudget } = await load()
+    // ⚖️ THE EXPERIMENT CARES WHAT THE MODEL WAS GIVEN, not how two callers
+    // happened to spell it. gemini.ts resolves absent to 2048, so refusing this
+    // pair would block a perfectly valid single-variable trial.
+    expect(resolveThinkingBudget(undefined, {} as NodeJS.ProcessEnv)).toBe(2048)
+    expect(resolveThinkingBudget(2048, {} as NodeJS.ProcessEnv)).toBe(2048)
+    expect(() => assertArmsDifferOnlyByModel('pro', 'lite', cfg(), cfg({ thinkingBudget: 2048 }), false))
+      .not.toThrow()
+  })
+
+  it('still refuses absent vs 0 — they LOOK similar and are 2048 apart', async () => {
+    const { assertArmsDifferOnlyByModel } = await load()
+    expect(() => assertArmsDifferOnlyByModel('pro', 'lite', cfg(), cfg({ thinkingBudget: 0 }), false))
+      .toThrow(/thinkingBudget/)
+  })
+
+  it('follows GEMINI_THINKING_BUDGET when it is set, because gemini.ts does', async () => {
+    const { resolveThinkingBudget } = await load()
+    expect(resolveThinkingBudget(undefined, { GEMINI_THINKING_BUDGET: '512' } as NodeJS.ProcessEnv)).toBe(512)
+  })
+})
+
+describe('the manifest names one experiment', () => {
+  it('is written into the trial row, not only used in the assertion', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { fileURLToPath } = await import('node:url')
+    const { dirname, join } = await import('node:path')
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '..', 'jobs', 'extractionParity.ts'), 'utf8')
+    // Provenance that requires a git archaeology dig is provenance nobody performs.
+    expect(src).toMatch(/manifest,\s*$/m)
+    expect(src).toContain('system_sha: armA.systemSha')
+  })
+
+  it('is pinned before either arm runs', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { fileURLToPath } = await import('node:url')
+    const { dirname, join } = await import('node:path')
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '..', 'jobs', 'extractionParity.ts'), 'utf8')
+    expect(src.indexOf('await assertManifestUnchanged(url, manifest)'))
+      .toBeLessThan(src.indexOf('await runArm(modelA'))
+  })
+
+  it('treats a missing stored trial as unknown, never as a mismatch', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { fileURLToPath } = await import('node:url')
+    const { dirname, join } = await import('node:path')
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '..', 'jobs', 'extractionParity.ts'), 'utf8')
+    // ⚠️ A first run has nothing to disagree with. Treating absence as failure
+    // would make the eval unrunnable — `unknown` is not `different`.
+    expect(src).toContain('if (error || !data || !data.manifest) return')
+  })
+})
+
 describe('what the job does by default', () => {
   it('gives arm B arm A’s thinking budget rather than a cheaper one', async () => {
     const { readFileSync } = await import('node:fs')
