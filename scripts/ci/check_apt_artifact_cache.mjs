@@ -128,7 +128,7 @@ if (process.argv.includes('--selftest')) {
     const bad = tryInstall(root, 'goodbytes', 'false')
     check('a VALID cache whose install fails returns non-zero', bad.verdict, 'refused')
     check('and never claims it installed from the cache',
-      /route=cache_hit/.test(bad.out) ? 'claimed' : 'silent', 'silent')
+      /apt_cache_installed/.test(bad.out) ? 'claimed' : 'silent', 'silent')
 
     // ── TEST C — THE POSITIVE HIT PATH, the half the suite never had ───────
     //
@@ -137,8 +137,44 @@ if (process.argv.includes('--selftest')) {
     // cache can ever be USED.
     const good = tryInstall(root, 'goodbytes', 'true')
     check('a valid cache with a working install is accepted', good.verdict, 'accepted')
-    const hits = (good.out.match(/route=cache_hit/g) ?? []).length
-    check('and emits the cache_hit route line exactly once', String(hits), '1')
+    const said = (good.out.match(/apt_cache_installed/g) ?? []).length
+    check('and reports the install exactly once', String(said), '1')
+
+    // ⚠️ AND IT DOES NOT NAME A ROUTE. The first version printed
+    // `route=cache_hit` here, so apt_ensure's warm path emitted BOTH that and
+    // `route=cache_warmed_then_installed` — observed in the very first real run.
+    // A route is a property of the path taken, which only the caller knows.
+    check('and names no route of its own',
+      /apt_route/.test(good.out) ? 'named one' : 'silent', 'silent')
+  }
+
+  // ── TEST D — ONE ROUTE LINE PER SET PER RUN ─────────────────────────────
+  //
+  // ⚠️ MEASURED FROM THE FIRST REAL RUN, WHICH LOGGED TWO. `grep -c
+  // route=cache_hit` is how anybody will answer "is the cache working", so a
+  // warm that also reports a hit is a measurement that lies in the direction of
+  // good news — the failure mode this whole task exists to remove.
+  {
+    const bin = join(root, 'ensurebin')
+    mkdirSync(bin, { recursive: true })
+    // apt "downloads" one package into whatever archive dir it is handed.
+    writeFileSync(join(bin, 'sudo'), '#!/usr/bin/env bash\nexec "$@"\n', { mode: 0o755 })
+    writeFileSync(join(bin, 'apt-get'),
+      '#!/usr/bin/env bash\nfor a in "$@"; do case "$a" in -o) shift;; Dir::Cache::archives=*) d="${a#*=}";; esac; done\n'
+      + 'if [ -n "${d:-}" ]; then mkdir -p "$d"; printf x > "$d/warm.deb"; fi\nexit 0\n', { mode: 0o755 })
+
+    let out = ''
+    try {
+      out = String(execFileSync('bash', ['-c',
+        `set -uo pipefail; export APT_ARTIFACT_CACHE_ROOT="${root}"; export APT_DPKG_CMD="true"; `
+        + `export PATH="${bin}:$PATH"; apt_get_retry() { return 0; }; . "${HELPER}"; apt_ensure warmset warmpkg`,
+      ], { stdio: 'pipe' }))
+    } catch (e) { out = String(e.stdout ?? '') + String(e.stderr ?? '') }
+
+    const routes = out.match(/apt_route set=\S+ route=\S+/g) ?? []
+    check('a warm-then-install emits exactly one apt_route line', String(routes.length), '1')
+    check('and that line says it warmed, not that it hit',
+      routes[0] ?? '(none)', 'apt_route set=warmset route=cache_warmed_then_installed')
   }
 
   rmSync(root, { recursive: true, force: true })

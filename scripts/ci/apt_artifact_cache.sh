@@ -134,7 +134,14 @@ apt_artifacts_install() {
       return 1
     fi
   fi
-  echo "apt_route set=$set_name route=cache_hit"
+  # ⚠️ THIS DOES NOT NAME THE ROUTE, AND THE FIRST VERSION DID. It printed
+  # `route=cache_hit` on every successful install — including the one apt_ensure
+  # performs immediately after WARMING the cache. The very first real run
+  # therefore logged both `route=cache_hit` and `route=cache_warmed_then_installed`
+  # for ffmpeg, so a later `grep -c route=cache_hit` would have over-counted hits
+  # and under-counted warms. A route is a property of the PATH TAKEN, which only
+  # the caller knows; this function knows only that bytes on disk installed.
+  echo "apt_cache_installed set=$set_name artifacts=${#debs[@]}"
 }
 
 # THE ONE ORDERING, IN ONE PLACE.
@@ -155,6 +162,7 @@ apt_artifacts_install() {
 apt_ensure() {
   local set_name="$1"; shift
   if apt_artifacts_install "$set_name"; then
+    echo "apt_route set=$set_name route=cache_hit"
     return 0
   fi
   # A stale index is the ordinary reason a first warm cannot resolve packages,
