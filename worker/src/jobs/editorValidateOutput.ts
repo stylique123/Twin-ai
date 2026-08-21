@@ -272,8 +272,31 @@ export interface OutputValidation {
   toleranceMs: number
 }
 
+/** What the duration check saw, handed out BEFORE it decides.
+ *
+ *  ⚠️ THE FAILING CASE IS THE ONE WORTH KEEPING, so this is delivered before the
+ *  tolerance comparison throws. A hook placed after the check would record only
+ *  the renders nobody needs to investigate. */
+export interface DurationObservation {
+  predictedMs: number
+  actualMs: number
+  deltaMs: number
+  toleranceMs: number
+  fpsNum: number
+  fpsDen: number
+  withinTolerance: boolean
+}
+
+/** ⚖️ A CALLBACK RATHER THAN A `db` IMPORT. This module is pure and is unit
+ *  tested without a database; reaching for the client here would make every test
+ *  need one. It also makes the safety property structural instead of
+ *  disciplinary: a reporter CANNOT suppress the throw, because the throw happens
+ *  after it returns and does not consult it. */
+export type ObserveDuration = (o: DurationObservation) => void
+
 export function validateProbedOutput(
   probe: ProbeResult, plan: EditPlanV1, profile: OutputProfile, bytes: number,
+  observe?: ObserveDuration,
 ): OutputValidation {
   const streams = Array.isArray(probe.streams) ? probe.streams : []
   const video = streams.find((s) => s.codec_type === 'video')
@@ -339,6 +362,30 @@ export function validateProbedOutput(
 
   const toleranceMs = profile.durationToleranceMs
   const durationDeltaMs = durationMs - plan.output.durationMs
+
+  // ⚠️ REPORTED BEFORE THE VERDICT, NOT AFTER IT. This number has always been
+  // computed here and then thrown away — on success it evaporated, on failure it
+  // survived only inside the error string below. The one time it mattered, the
+  // only way to ask "is this drifting or was it a one-off" was to re-run a
+  // 40-minute matrix.
+  //
+  // ⚖️ AND A REPORTER MAY NOT RESCUE A BAD RENDER OR SINK A GOOD ONE. Its
+  // exceptions are swallowed here; the verdict below is reached either way.
+  // Evidence must not decide the thing it is evidence of.
+  if (observe) {
+    try {
+      observe({
+        predictedMs: plan.output.durationMs,
+        actualMs: durationMs,
+        deltaMs: durationDeltaMs,
+        toleranceMs,
+        fpsNum: rate.num,
+        fpsDen: rate.den,
+        withinTolerance: Math.abs(durationDeltaMs) <= toleranceMs,
+      })
+    } catch { /* see above */ }
+  }
+
   if (Math.abs(durationDeltaMs) > toleranceMs) {
     bad(
       `the output runs ${durationMs}ms but the plan promised ${plan.output.durationMs}ms ` +
@@ -454,6 +501,10 @@ export interface ValidateOutputRequest {
   watch?: CancelWatch
   ffprobeBin?: string
   ffmpegBin?: string
+  /** Where the duration observation goes. Optional so every existing caller and
+   *  test keeps working unchanged, and absent means nobody is recording — not
+   *  that nothing happened. */
+  observeDuration?: ObserveDuration
 }
 
 export async function validateRenderedOutput(
@@ -466,7 +517,7 @@ export async function validateRenderedOutput(
   if (!existsSync(req.outputPath)) bad('the output file is missing', 'output_decode_failed')
   const bytes = statSync(req.outputPath).size
   const probe = await probeFile(req.outputPath, catalog, { watch: req.watch, ffprobeBin: req.ffprobeBin }, deps)
-  const result = validateProbedOutput(probe, req.plan, profile, bytes)
+  const result = validateProbedOutput(probe, req.plan, profile, bytes, req.observeDuration)
   validateCaptionsAgainstOutput(req.plan, result.measurements.durationMs)
 
   // The structural checks above pass on a file whose audio is silence, or is
