@@ -30,6 +30,10 @@ import { SYSTEM, SCHEMA, VOCAB, MAX_TRANSCRIPT_CHARS } from './assessReference.j
  *  assessReference's own floor. */
 const MIN_TRANSCRIPT_CHARS = 120
 
+/** ⚖️ ONE TIMEOUT, SHARED. A per-arm timeout would be another way for the arms
+ *  to differ without anybody deciding to differ them. */
+const TIMEOUT_MS = 90_000
+
 interface Payload {
   url?: unknown
   /** Defaults to whatever `extract` resolves to today, so arm A is production. */
@@ -40,11 +44,63 @@ interface Payload {
    *  what production does — and arm B names its own. */
   thinkingBudgetA?: unknown
   thinkingBudgetB?: unknown
+  /** ⚠️ THE ESCAPE HATCH FOR A DELIBERATE FOLLOW-UP, and nothing else. Absent
+   *  means the arms must be identical apart from the model. */
+  allowAsymmetry?: unknown
   /** The challenger. Named explicitly — there is no "the flash model" constant
    *  here, because a model id guessed from memory is the chosen-not-measured
    *  mistake this eval exists to avoid. */
   modelB?: unknown
   route?: unknown
+}
+
+/** Everything about an arm EXCEPT which model runs it.
+ *
+ *  ⚠️ THIS TYPE EXISTS SO THE SYMMETRY CHECK HAS SOMETHING TO COMPARE. A trial
+ *  whose arms differ in more than the model id cannot answer "do the models
+ *  differ" — it answers "do these two configurations differ", which is a
+ *  different question wearing the same numbers. */
+export interface ArmConfig {
+  thinkingBudget: number | undefined
+  timeoutMs: number
+  systemSha: string
+  promptSha: string
+  schemaSha: string
+}
+
+const digestOf = (v: unknown): string =>
+  createHash('sha256').update(typeof v === 'string' ? v : JSON.stringify(v)).digest('hex').slice(0, 16)
+
+/**
+ * Refuse to run unless the arms differ ONLY by model id.
+ *
+ * ⚠️ REFUSE, NOT WARN. A warning on a batch job is read by nobody and the
+ * resulting numbers look exactly like valid ones. The first version of this
+ * eval gave arm B a thinking budget of 0 while arm A inherited production's
+ * 2048 — a deliberate choice, and still the wrong FIRST experiment: it
+ * confounded the model with its configuration. Isolate the model id, then vary
+ * configuration in a second trial if the first one loses.
+ *
+ * ⚖️ ASYMMETRY IS REACHABLE, BUT ONLY ON PURPOSE. `allowAsymmetry` exists for
+ * exactly that follow-up, and it is recorded on the row so a later reader can
+ * never mistake a configuration experiment for a model experiment.
+ */
+export function assertArmsDifferOnlyByModel(
+  modelA: string, modelB: string, a: ArmConfig, b: ArmConfig, allowAsymmetry: boolean,
+): void {
+  if (modelA === modelB) {
+    throw new Error('extraction_parity: modelB must differ from modelA — a trial of one model against itself measures nothing')
+  }
+  if (allowAsymmetry) return
+  const differing = (Object.keys(a) as (keyof ArmConfig)[]).filter((k) => a[k] !== b[k])
+  if (differing.length > 0) {
+    throw new Error(
+      `extraction_parity: the arms differ in ${differing.join(', ')} as well as the model. `
+      + 'The first parity trial must isolate the model id as the only variable — otherwise the '
+      + 'result answers "do these two configurations differ", not "do these two models differ". '
+      + 'Pass allowAsymmetry:true ONLY for a deliberate follow-up experiment, which is recorded as such.',
+    )
+  }
 }
 
 /** One arm. Returns its own failure rather than throwing, so a model that
@@ -53,7 +109,7 @@ interface Payload {
 async function runArm(model: string, text: string, url: string, thinkingBudget?: number) {
   try {
     const raw = await geminiJson(SYSTEM, `${VOCAB}\n\nTranscript:\n${text}`, SCHEMA,
-      90_000, thinkingBudget, model)
+      TIMEOUT_MS, thinkingBudget, model)
     const { profile, rejections, fieldsAccepted } = parseContentExtraction(raw, {
       referenceId: url, niche: null, assessedAt: new Date().toISOString(),
       transcriptAvailable: true,
@@ -75,15 +131,28 @@ export async function handleExtractionParity(job: Job): Promise<Record<string, u
   const modelA = typeof p.modelA === 'string' && p.modelA.trim() !== ''
     ? p.modelA.trim() : modelForTask('extract')
   const modelB = typeof p.modelB === 'string' ? p.modelB.trim() : ''
-  // ⚖️ ARM B DEFAULTS TO MINIMAL THINKING, WHICH IS THE POINT OF TESTING IT.
-  // Google's own guidance for high-volume extraction and classification is the
-  // minimal setting; running the cheap model with 2048 tokens of reasoning would
-  // measure a configuration nobody would deploy at 2,647-URL scale, and would
-  // flatter it into the bargain.
+  // ⚖️ ARM B INHERITS ARM A'S THINKING CONFIGURATION BY DEFAULT. The first
+  // parity trial isolates the model id; giving the cheap model a different
+  // thinking budget would confound the two and produce a number that cannot
+  // answer either question. A follow-up trial may vary it deliberately, and must
+  // say so via allowAsymmetry.
   const thinkingA = typeof p.thinkingBudgetA === 'number' ? p.thinkingBudgetA : undefined
-  const thinkingB = typeof p.thinkingBudgetB === 'number' ? p.thinkingBudgetB : 0
+  const thinkingB = typeof p.thinkingBudgetB === 'number' ? p.thinkingBudgetB : thinkingA
+  const allowAsymmetry = p.allowAsymmetry === true
   if (modelB === '') throw new Error('extraction_parity: payload.modelB is required')
-  if (modelB === modelA) throw new Error('extraction_parity: modelB must differ from modelA')
+
+  // ⚠️ ASSERTED BEFORE THE DOWNLOAD, NOT BEFORE THE MODEL CALL. An asymmetric
+  // trial that discovers itself after acquiring the video has already spent the
+  // expensive part to learn something a comparison could have told it for free.
+  const armA: ArmConfig = {
+    thinkingBudget: thinkingA, timeoutMs: TIMEOUT_MS,
+    systemSha: digestOf(SYSTEM), promptSha: digestOf(VOCAB), schemaSha: digestOf(SCHEMA),
+  }
+  const armB: ArmConfig = {
+    thinkingBudget: thinkingB, timeoutMs: TIMEOUT_MS,
+    systemSha: digestOf(SYSTEM), promptSha: digestOf(VOCAB), schemaSha: digestOf(SCHEMA),
+  }
+  assertArmsDifferOnlyByModel(modelA, modelB, armA, armB, allowAsymmetry)
 
   // ⚖️ ONE ACQUISITION. The cache means a trial on an already-read reference
   // costs no download at all, which is the whole point of 0153.
@@ -115,17 +184,20 @@ export async function handleExtractionParity(job: Job): Promise<Record<string, u
     model_a: modelA, model_b: modelB,
     // Recorded, so 'which configuration was compared' never has to be inferred
     // from a commit date. null on arm A means 'production's own resolution'.
-    thinking_budget_a: thinkingA ?? null, thinking_budget_b: thinkingB,
+    thinking_budget_a: thinkingA ?? null, thinking_budget_b: thinkingB ?? null,
+    asymmetric: allowAsymmetry,
     profile_a: a.profile, profile_b: b.profile,
     rejections_a: a.rejections, rejections_b: b.rejections,
     fields_accepted_a: a.fieldsAccepted, fields_accepted_b: b.fieldsAccepted,
     error_a: a.error, error_b: b.error,
-  }, { onConflict: 'url,model_a,model_b' })
+  }, { onConflict: 'url,model_a,model_b,asymmetric' })
   if (wrote) throw new Error(`extraction_parity: could not store the trial: ${wrote.message}`)
 
   return {
     url, model_a: modelA, model_b: modelB,
-    thinking_a: thinkingA ?? null, thinking_b: thinkingB,
+    thinking_a: thinkingA ?? null, thinking_b: thinkingB ?? null,
+    asymmetric: allowAsymmetry,
+    identical: ['system', 'vocabulary', 'schema', 'input', 'thinking', 'timeout', 'parser', 'validator'],
     fields_a: a.fieldsAccepted, fields_b: b.fieldsAccepted,
     rejected_a: a.rejections?.length ?? null, rejected_b: b.rejections?.length ?? null,
     error_a: a.error, error_b: b.error,
