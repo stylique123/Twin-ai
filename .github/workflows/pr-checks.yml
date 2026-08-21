@@ -390,6 +390,15 @@ jobs:
         run: |
           node scripts/ci/check_shadowed_globals.mjs --selftest
           node scripts/ci/check_shadowed_globals.mjs
+      # A bucket that names no size limit and no mime list accepts anything the
+      # service key reaches, whatever the table grants say. Writing this guard
+      # found that production's `takes` bucket carries a mime list NO MIGRATION
+      # EVER SET -- so a rebuild from the ledger would come up accepting any
+      # file type, in the bucket creators' raw recordings land in.
+      - name: Storage bucket limits (an unfenced bucket accepts anything)
+        run: |
+          node scripts/ci/check_storage_bucket_limits.mjs --selftest
+          node scripts/ci/check_storage_bucket_limits.mjs
       # The pilot's draw decides what the labelling session sees, so a draw
       # nobody can re-run is a sample nobody can argue with. The selftest needs
       # no credentials, which is the only reason it can run here at all.
