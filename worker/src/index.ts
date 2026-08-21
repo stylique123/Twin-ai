@@ -6,6 +6,9 @@
 
 import { writeFileSync } from 'node:fs'
 import { db, claimJob, completeJob, deadLetterJob, failJob, heartbeat, recordDownloaderCapability } from './db.js'
+import {
+  evaluateSchemaHealth, claimableTypes, healthChanged, type SchemaHealth,
+} from './schemaCapabilities.js'
 import { handlers } from './jobs/index.js'
 import { beginJobScope } from './jobs/editorCancel.js'
 import { env } from './env.js'
@@ -33,8 +36,50 @@ function log(level: string, msg: string, extra: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ t: new Date().toISOString(), level, msg, worker: env.workerId, ...extra }))
 }
 
+// ⚠️ WHAT THE PRODUCTION SCHEMA CAN ACTUALLY DO. Six migrations reached main
+// unapplied in one day, and twice a job type claimed work it could only throw
+// on while the queue reported it as pending. `null` until the first check —
+// which is NOT "healthy", it is "nobody has asked yet".
+let schemaHealth: SchemaHealth | null = null
+
+/** ⚖️ FIVE MINUTES, so a migration applied by hand HEALS THE WORKER without a
+ *  redeploy. A startup-only check would leave the job type blocked until
+ *  somebody restarted the container, which turns a two-minute fix into a
+ *  deploy. */
+const SCHEMA_RECHECK_MS = 5 * 60_000
+let lastSchemaCheck = 0
+
+async function refreshSchemaHealth(reason: string): Promise<void> {
+  const next = await evaluateSchemaHealth(env.jobTypes)
+  lastSchemaCheck = Date.now()
+  // ⚖️ SPEAK ONLY WHEN SOMETHING CHANGED. A re-check every five minutes that
+  // re-logged the same incident would become a chorus nobody reads, which is
+  // how a real incident hides among its own repetitions.
+  if (healthChanged(schemaHealth, next)) {
+    const blockedTypes = Object.keys(next.blocked)
+    log(next.status === 'healthy' ? 'info' : 'error', 'schema_health', {
+      event: 'schema_health',
+      status: next.status,
+      reason,
+      blocked_job_types: next.blocked,
+      // The recovery case matters as much as the failure: an operator who
+      // applied the migration needs to see the worker notice.
+      recovered: schemaHealth !== null && blockedTypes.length === 0,
+    })
+  }
+  schemaHealth = next
+}
+
 async function tick(): Promise<boolean> {
-  const job = await claimJob(env.jobTypes)
+  // ⚠️ NEVER CLAIM WORK THAT CANNOT SUCCEED. A blocked type is removed from the
+  // claim list entirely, so the queue does not fill with jobs that fail on every
+  // attempt while looking like pending work.
+  if (Date.now() - lastSchemaCheck >= SCHEMA_RECHECK_MS) await refreshSchemaHealth('periodic')
+  const types = schemaHealth ? claimableTypes(env.jobTypes, schemaHealth) : env.jobTypes
+  // ⚖️ AN EMPTY CLAIM LIST IS IDLE, NOT DEAD. The worker keeps beating and
+  // keeps re-checking, so it recovers on its own the moment the schema does.
+  if (types.length === 0) return false
+  const job = await claimJob(types)
   if (!job) return false
 
   const handler = handlers[job.type]
@@ -144,6 +189,17 @@ async function main() {
   // scans TikTok — reduced capability is a legitimate state and crashing on it
   // would turn a missing optional key into an outage.
   for (const line of darkCapabilityWarnings(caps)) log('warn', line)
+
+  // ⚠️ AWAITED, AND IT NEVER REFUSES TO BOOT. A worker that will not start on a
+  // missing table converts a silent data gap into a full outage — strictly
+  // worse than the defect it guards. Same rule readCapabilities follows for a
+  // missing APIFY_TOKEN: reduced capability is a legitimate state.
+  //
+  // ⚖️ CI CANNOT DO THIS CHECK. migration-reconcile.yml REFUSES if its DB url
+  // ever points at production, so the only place holding legitimate production
+  // access is this process. The check lives where the access already is.
+  await refreshSchemaHealth('startup').catch((e) =>
+    log('warn', 'schema_health check failed', { error: String(e) }))
 
   // ⚠️ WHAT THE CONTAINER CAN DO, WHICH IS A DIFFERENT QUESTION FROM WHAT IT WAS
   // CONFIGURED TO DO. `curl-cffi` is pinned in requirements.txt precisely so
