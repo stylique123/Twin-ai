@@ -82,6 +82,25 @@ const ALLOWED_REGISTRY = [
   // progress with the script, the migration and the handler all looking correct
   // — the same quiet failure purge_media and validate_clip are listed to prevent.
   'assess_reference',
+  // extraction_parity asks TWO models the same extraction question about ONE
+  // transcript and stores both answers side by side. It belongs on this host for
+  // the same reasons assess_reference does: it shells out to yt-dlp and whisper,
+  // it is slow, and it must survive a browser tab closing.
+  //
+  // IT RENDERS NOTHING and it CHANGES NO ROUTING. Both models are named per
+  // call; modelForTask is untouched and `decide` stays frozen. It writes rows to
+  // extraction_parity_trials and encodes no media.
+  //
+  // WHY IT EXISTS AT ALL: model_routing_v1.json records that the routing looks
+  // inverted — the Director on flash, the schema-constrained extractor on pro —
+  // and says the next move is an eval rather than an edit. This is that eval.
+  //
+  // As an EXTRA it failed the build, which is what sent someone to read this
+  // comment — working exactly as designed. As a MISSING entry it would be worse
+  // than useless: the handler was registered without this line once already, and
+  // its first job sat `queued` forever because the worker never asked for the
+  // type. A dead-letter is loud; a job nobody claims is silent.
+  'extraction_parity',
 ]
 
 // Second-deploy manifests. Vercel (web app) is intentionally NOT here.
