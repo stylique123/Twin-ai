@@ -36,7 +36,7 @@ import { readCachedTranscript, writeCachedTranscript } from '../transcriptCache.
  *  off its first eight minutes" stays answerable — and if the pilot shows the cap
  *  is distorting long-form containers, that is a finding, not a mystery.
  */
-const MAX_TRANSCRIPT_CHARS = 24_000
+export const MAX_TRANSCRIPT_CHARS = 24_000
 
 /** Below this, there is no speech worth reading.
  *
@@ -46,7 +46,12 @@ const MAX_TRANSCRIPT_CHARS = 24_000
  *  useful than an eighteen-field rejection list that looks like a model failure. */
 const MIN_TRANSCRIPT_CHARS = 120
 
-const SYSTEM = `You read one short-form video transcript and report its STRUCTURE.
+// ⚠️ EXPORTED SO THE PARITY EVAL ASKS THE EXACT SAME QUESTION. A second copy of
+// the prompt, schema or vocabulary would make an A/B measure the copy rather
+// than production — the same "derived vs re-declared" error that put a wrong
+// NOT_DETERMINED sentinel in the visual prompt and filed every honest refusal
+// as malformed.
+export const SYSTEM = `You read one short-form video transcript and report its STRUCTURE.
 
 You are not summarising and you are not reviewing. Another system decides whether
 a creator can recreate this video; your only job is to describe what the video is
@@ -103,7 +108,7 @@ const ASSESSED = (valueSchema: unknown): unknown => ({
 const STR = { type: 'string' }
 const enumOf = (values: readonly string[]): unknown => ({ type: 'string', enum: values })
 
-const SCHEMA = {
+export const SCHEMA = {
   type: 'object',
   properties: {
     topic: ASSESSED(STR),
@@ -194,7 +199,7 @@ const SCHEMA = {
   },
 }
 
-const VOCAB = `Vocabularies:
+export const VOCAB = `Vocabularies:
 containerType: numbered_list mistakes confession before_after unpopular_opinion
   tutorial reaction comparison story myth_busting problem_solution prediction
   framework recommendation other
