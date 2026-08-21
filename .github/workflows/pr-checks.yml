@@ -404,6 +404,14 @@ jobs:
       # no credentials, which is the only reason it can run here at all.
       - name: Frame-pilot cohort selection (deterministic, one per creator, both bands)
         run: node scripts/frame-pilot-cohort.mjs --selftest
+      # A gate failure asks one question: re-run, or investigate? A staging run
+      # died with "PROBE ERROR: Error: Gateway Timeout" and nothing else -- a
+      # platform 504 during setup, before any assertion, on a diff that could
+      # not have caused it. The classifier must NOT call the disabled-gate
+      # probe's deliberate 503 an outage, which is the case that makes this
+      # worth testing.
+      - name: Staging harness failure classifier (re-run, or investigate?)
+        run: node scripts/staging-integration/failure.mjs --selftest
       # The packet decides which claims a human is ever asked about and when the
       # accuracy number may be looked at. Both are logic, both are pure, and
       # both are wrong silently -- a claim path nobody asks about scores the
