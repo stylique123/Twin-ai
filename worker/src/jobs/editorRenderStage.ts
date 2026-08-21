@@ -41,6 +41,7 @@ import {
   RenderCancelledError, RenderTimeoutError, fileSha256,
 } from './editorRender.js'
 import { validateRenderedOutput } from './editorValidateOutput.js'
+import { recordRenderAttempt } from './renderAttempts.js'
 import { renderAssDocument, assertNoOverrideBlock, assDocumentSha256 } from './assCaptions.js'
 import { resolveCaptionColours, type CaptionColourRejection } from './captionColours.js'
 import {
@@ -193,6 +194,13 @@ function writeAssDocument(
  */
 export async function runRenderingStage(
   job: Job, projectId: string, dir: string, session: VerifiedSourceSession,
+  /** ⚠️ THREADED IN, NOT RE-DERIVED. `appliedCuts` is the compiling stage's own
+   *  cutStats figure — the same number `cuts_measured` publishes. Counting the
+   *  plan's segments here would produce a DIFFERENT number wearing the same
+   *  name, and two sources for one fact is how a measurement stops being
+   *  comparable with itself. Absent on a job resumed past compiling, which is a
+   *  real "we do not know" rather than a zero. */
+  appliedCuts: number | null = null,
 ): Promise<RenderStageOutcome> {
   const { proj, asset } = await loadEligibleSource(projectId, 'render')
   const watch: CancelWatch = watchCancellation(projectId)
@@ -236,7 +244,21 @@ export async function runRenderingStage(
     const { coverPath, bytes: coverBytes } = await extractCover(outputPath, plan, workDir, { watch })
 
     // VALIDATE BEFORE PUBLISHING. Nothing unmeasured reaches a durable path.
-    const validation = await validateRenderedOutput({ outputPath, coverPath, plan, watch })
+    const validation = await validateRenderedOutput({
+      outputPath, coverPath, plan, watch,
+      // ⚖️ THE OBSERVATION ARRIVES BEFORE THE VERDICT, so a render about to be
+      // REJECTED for its duration still leaves a row. That is the case the
+      // table exists for: the delta used to survive only inside the thrown
+      // error's message.
+      observeDuration: (o) => {
+        void recordRenderAttempt({
+          renderJobId: job.id,
+          editProjectId: projectId,
+          appliedCuts,
+          segmentCount: plan.timeline.segments.length,
+        }, o)
+      },
+    })
     if (watch.cancelled()) throw new RenderStageCancelledError('after_validate')
 
     // Only now does anything leave the machine. The paths come from the

@@ -726,7 +726,10 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
         // Phase 8 Batch 8.5: the REAL rendering stage. Reserve, render,
         // validate, THEN publish — nothing unmeasured reaches a durable path.
         try {
-          rendered = await runRenderingStage(job, projectId, dir, session)
+          rendered = await runRenderingStage(job, projectId, dir, session,
+            // The compiling stage's own figure, or null when this invocation
+            // resumed past compiling and genuinely does not know it.
+            compiled?.cutStats.appliedCuts ?? null)
         } catch (err) {
           if (await cancelledMidStage(err)) return { cancelled: true, at_stage: stage, stages_ran: ranStages }
           if (!isLeaseLost(err)) {
