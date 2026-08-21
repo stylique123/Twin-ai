@@ -160,20 +160,34 @@ if (!url || !key) { console.error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY ar
 const db = createClient(url, key, { auth: { persistSession: false } })
 
 const { data: rows, error } = await db.from('reference_content_profiles')
-  .select('url, transcript_chars, visual_profile, frames_sampled')
+  .select('url, transcript_chars, visual_profile, frames_sampled, visual_failure_code')
   .like('error', 'no_speech%')
 if (error) { console.error(error.message); process.exit(1) }
 
 if (flag('report')) {
   const looked = rows.filter((r) => r.frames_sampled !== null)
   const withClaims = looked.filter((r) => r.visual_profile !== null)
+  const failed = rows.filter((r) => r.visual_failure_code !== null)
+  // ⚠️ WHY IT FAILED, BROKEN OUT. "8 references yielded nothing" has at least
+  // three causes with three different next actions: FFMPEG_MISSING is a broken
+  // box, an IP_BLOCKED is a download route, and NO_FRAMES_SAMPLED is a genuine
+  // property of the video. Reporting one total would send somebody to fix the
+  // wrong thing, or worse, to conclude the visual pass cannot read this library.
+  const byCode = {}
+  for (const r of failed) byCode[r.visual_failure_code] = (byCode[r.visual_failure_code] ?? 0) + 1
   console.log(JSON.stringify({
     no_speech_population: rows.length,
-    // ⚖️ THREE NUMBERS, NOT ONE RATE. Cost is not yield: a pass that ran and saw
-    // nothing is a different fact from one that never ran.
+    // ⚖️ FOUR NUMBERS, NOT ONE RATE. Cost is not yield, and a pass that ran and
+    // saw nothing is a different fact from one that tried and could not, which
+    // is a different fact again from one that never ran.
     looked_at: looked.length,
     produced_claims: withClaims.length,
     produced_nothing: looked.length - withClaims.length,
+    tried_and_failed: failed.length,
+    failures_by_code: byCode,
+    // ⚠️ THE REMAINDER IS NOT A RESULT. Everything neither looked at nor failed
+    // is simply un-attempted, and naming it stops it being read as a yield.
+    never_attempted: rows.length - looked.length - failed.length,
   }, null, 2))
   process.exit(0)
 }
