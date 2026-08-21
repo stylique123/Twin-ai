@@ -632,19 +632,25 @@ jobs:
                          where table_schema='public' and table_name='extraction_parity_trials'
                            and grantee in ('anon','authenticated'))
                 then raise exception 'extraction_parity_trials grants a client role (0155)'; end if;
-              -- 0156: without `asymmetric` on the uniqueness key, a deliberate
+              -- 0156: without arms_asymmetric on the uniqueness key, a deliberate
               -- follow-up trial upserts over the symmetric baseline it exists to
               -- be compared against, and the baseline vanishes silently.
+              -- NOTE: no backticks anywhere in this heredoc. This block is
+              -- interpolated by the shell before psql ever sees it, so a
+              -- backtick-quoted word in a SQL COMMENT is COMMAND SUBSTITUTED --
+              -- which is exactly what happened here: a backtick-quoted asymmetric produced
+              -- "asymmetric: command not found" and the comment silently
+              -- became empty.
               if not exists (select 1 from information_schema.columns
                              where table_schema='public' and table_name='extraction_parity_trials'
-                               and column_name='asymmetric')
-                then raise exception 'extraction_parity_trials is missing asymmetric (0156)'; end if;
+                               and column_name='arms_asymmetric')
+                then raise exception 'extraction_parity_trials is missing arms_asymmetric (0156)'; end if;
               if not exists (
                 select 1 from pg_index i
                 join pg_class c on c.oid = i.indexrelid
                 where c.relname = 'extraction_parity_trials_one_per_url_pair'
                   and (select count(*) from unnest(i.indkey)) = 4)
-                then raise exception 'the parity uniqueness key does not include asymmetric (0156)'; end if;
+                then raise exception 'the parity uniqueness key does not include arms_asymmetric (0156)'; end if;
               -- 0157: without the manifest a trial cannot say what was held
               -- identical, and the immutability check has nothing to compare
               -- against — a resumed batch could silently become a mixture of
