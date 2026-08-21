@@ -37,10 +37,31 @@ set -euo pipefail
 
 CACHE_ROOT="${APT_ARTIFACT_CACHE_ROOT:-$HOME/.apt-artifacts}"
 
+# ⚖️ THE INSTALL COMMAND IS INJECTABLE, AND THAT IS WHAT MAKES THE HIT PATH
+# TESTABLE. Actually running `sudo dpkg -i` needs root and a Debian runner, so
+# for years only the REFUSALS were tested — the half that says no. A cache that
+# wrongly says YES was never exercised, which is precisely the defect this file
+# shipped with. Overriding this in a test costs nothing and mutates nothing.
+APT_DPKG_CMD="${APT_DPKG_CMD:-sudo dpkg}"
+
 # Download a package set into its own cache directory, and record what landed.
+#
+# ⚠️ ZERO ARTIFACTS IS A FAILURE, AND IT USED TO BE A SHELL ACCIDENT. If the
+# packages are ALREADY INSTALLED, apt considers them satisfied and
+# `--download-only` downloads NOTHING. `sha256sum ./*.deb` then ran on an
+# unmatched glob — sha256sum received the literal string `./*.deb`, errored, and
+# the subshell returned non-zero, which the caller's `|| echo "::warning::"`
+# swallowed. The cache could therefore never populate, forever, and the only
+# trace was a warning nobody reads. Counting real files first is the difference
+# between a cache that reports a miss and a cache that pretends.
 apt_artifacts_fetch() {
   local set_name="$1"; shift
   local dir="$CACHE_ROOT/$set_name"
+  # ⚖️ CLEAR THIS SET'S OWN ARTIFACTS, AND ONLY THIS SET'S. A failed second warm
+  # must not leave last week's .debs beside this week's and then digest the
+  # Frankenstein package set that results — a digest over a mixture verifies
+  # perfectly and installs something nobody chose.
+  rm -rf "$dir"
   mkdir -p "$dir"
   # ⚠️ `--download-only` INTO OUR OWN ARCHIVE DIR, so nothing is installed yet and
   # nothing lands in the system cache that a later step might clear.
@@ -49,8 +70,20 @@ apt_artifacts_fetch() {
   sudo chown -R "$(id -u):$(id -g)" "$dir"
   # `partial/` and `lock` are apt's bookkeeping, not artifacts.
   rm -rf "$dir/partial" "$dir/lock"
-  ( cd "$dir" && sha256sum ./*.deb | sort -k2 > .sha256 )
-  echo "cached $(ls -1 "$dir"/*.deb 2>/dev/null | wc -l) .deb(s) for $set_name"
+
+  local debs
+  shopt -s nullglob
+  debs=("$dir"/*.deb)
+  shopt -u nullglob
+  if (( ${#debs[@]} == 0 )); then
+    echo "::warning::no .deb artifacts downloaded for $set_name — the cache was NOT warmed (are the packages already installed?)"
+    return 1
+  fi
+
+  # The digest is computed from the concrete array, never from a glob that might
+  # not have matched.
+  ( cd "$dir" && sha256sum "${debs[@]##*/}" | sort -k2 > .sha256 )
+  echo "apt_cache_warmed set=$set_name artifacts=${#debs[@]}"
 }
 
 # Install a package set from its cache, verifying every byte first.
@@ -75,10 +108,69 @@ apt_artifacts_install() {
   # mirror to plan, which is the whole thing being avoided. The .debs already
   # include their dependencies (apt resolved them when the cache was built), so
   # dpkg has everything it needs locally.
-  sudo dpkg -i "$dir"/*.deb >/dev/null 2>&1 || {
-    # A partial dpkg run can leave unconfigured packages; this fixes them up
-    # WITHOUT the network when it can.
-    sudo dpkg --configure -a >/dev/null 2>&1 || true
-  }
-  echo "installed $set_name from the artifact cache (no mirror contact)"
+  #
+  # ⚠️ THE SUCCESS LINE USED TO BE UNCONDITIONAL, AND THAT IS THE WHOLE BUG. The
+  # old body ended `|| { dpkg --configure -a || true; }` and then printed
+  # "installed … from the artifact cache" whatever had happened. A cache that
+  # failed to install reported success, this function returned 0, and the
+  # caller's network fallback — which exists precisely for this — never ran. The
+  # invariant now is: verify bytes, install bytes, PROVE the install succeeded,
+  # and only then return 0. Nothing that decides whether the caller falls back is
+  # allowed to be `|| true`.
+  local debs
+  shopt -s nullglob
+  debs=("$dir"/*.deb)
+  shopt -u nullglob
+  if ! $APT_DPKG_CMD -i "${debs[@]}" >/dev/null 2>&1; then
+    # A partial dpkg run can leave unconfigured packages; recovery is allowed to
+    # try, WITHOUT the network — but it must succeed, and the retry must then
+    # actually install.
+    if ! $APT_DPKG_CMD --configure -a >/dev/null 2>&1; then
+      echo "::warning::apt artifact cache for $set_name failed to install and dpkg --configure -a could not recover — falling back to the network"
+      return 1
+    fi
+    if ! $APT_DPKG_CMD -i "${debs[@]}" >/dev/null 2>&1; then
+      echo "::warning::apt artifact cache for $set_name still failed to install after recovery — falling back to the network"
+      return 1
+    fi
+  fi
+  echo "apt_route set=$set_name route=cache_hit"
+}
+
+# THE ONE ORDERING, IN ONE PLACE.
+#
+# ⚠️ THE MISS PATH MUST BUILD THE EXACT ARTIFACT THE HIT PATH INSTALLS, AND IT
+# DID NOT. The old callers ran `apt_get_retry` (which INSTALLS) and only then
+# `apt_artifacts_fetch`, by which point apt considered the packages satisfied and
+# downloaded nothing. Warming and cached installation were never exercised
+# together, so the cache could look correct on every run and serve nothing on
+# any of them.
+#
+# ⚖️ SO WARM, THEN INSTALL FROM WHAT WAS WARMED. On a miss this downloads the
+# .debs and immediately installs those same bytes — the identical code path a
+# later cache hit takes. The network fallback stays as the last rung, because a
+# miss is exactly when the mirror might be down.
+#
+# Requires the caller to define `apt_get_retry` (the bounded mirror install).
+apt_ensure() {
+  local set_name="$1"; shift
+  if apt_artifacts_install "$set_name"; then
+    return 0
+  fi
+  # A stale index is the ordinary reason a first warm cannot resolve packages,
+  # and it is cheap to rule out once before spending the fallback.
+  if apt_artifacts_fetch "$set_name" "$@" \
+     || { timeout 180 sudo apt-get update -qq && apt_artifacts_fetch "$set_name" "$@"; }; then
+    if apt_artifacts_install "$set_name"; then
+      echo "apt_route set=$set_name route=cache_warmed_then_installed"
+      return 0
+    fi
+  fi
+  # ⚠️ SAID OUT LOUD, NOT INFERRED FROM SILENCE. A run that reaches here left the
+  # cache cold, and the next run will pay the mirror again.
+  echo "apt_route set=$set_name route=cache_miss_network_fallback"
+  if ! command -v apt_get_retry >/dev/null 2>&1; then
+    echo "::error::apt_ensure needs apt_get_retry to be defined by the caller"; return 1
+  fi
+  apt_get_retry "$@"
 }
