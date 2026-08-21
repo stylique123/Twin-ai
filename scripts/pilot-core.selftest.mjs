@@ -1,0 +1,87 @@
+#!/usr/bin/env node
+// The pilot's deciding logic, checked without credentials.
+import {
+  manifestDigest, freezeManifest, assertManifestUnchanged, pilotState, progressOf,
+  attrition, briefFor69, TERMINAL, selectCohort, aggregate, friction, flattenClaims,
+} from './pilot-core.mjs'
+
+let failed = 0
+const ok = (n, c) => { if (c === true) console.log(`  ok: ${n}`); else { console.error(`selftest: ${n} — FAILED`); failed++ } }
+const row = (url, chars) => ({ url, transcript_chars: chars })
+
+// ── the frozen sample ──
+const cohort = [row('https://www.tiktok.com/@a/video/1', 0), row('https://www.tiktok.com/@b/video/2', 40)]
+const m = freezeManifest(cohort, 8)
+ok('freezes what was drawn, not what was asked for', m.size_requested === 8 && m.size_frozen === 2)
+ok('records the band split so a later reader can judge the draw',
+  m.bands.chars_zero === 1 && m.bands.chars_tiny === 1)
+// ⚠️ ORDER MUST NOT CHANGE THE DIGEST, or a re-read of the same sample looks edited.
+ok('the digest is order-independent',
+  manifestDigest(['b', 'a']) === manifestDigest(['a', 'b']))
+ok('an unchanged sample passes', assertManifestUnchanged(m, m.urls) === null)
+// ⚖️ THE #72 LESSON: choosing after seeing results is post-hoc subsetting.
+ok('a SUBSTITUTED url is refused', assertManifestUnchanged(m, ['https://www.tiktok.com/@a/video/1', 'https://x/9']) !== null)
+ok('a DROPPED url is refused', assertManifestUnchanged(m, [m.urls[0]]) !== null)
+ok('the refusal explains rather than just failing',
+  String(assertManifestUnchanged(m, ['x'])).includes('post-hoc'))
+
+// ── terminal states ──
+ok('nothing yet is running, not a result', pilotState(undefined) === 'running')
+ok('claims present is ready', pilotState({ visual_profile: {}, frames_sampled: 4 }) === 'READY_FOR_LABEL')
+// ⚠️ LOOKED-AND-SAW-NOTHING vs COULD-NOT-LOOK. Merging them answers the pilot's
+// question with the box's problems.
+ok('frames but no claims is UNREADABLE',
+  pilotState({ visual_profile: null, frames_sampled: 4 }) === 'UNREADABLE')
+ok('a failure code with no frames is FAILED',
+  pilotState({ visual_profile: null, frames_sampled: null, visual_failure_code: 'FFMPEG_MISSING' }) === 'FAILED')
+ok('a bare row with neither is still running', pilotState({ visual_profile: null, frames_sampled: null }) === 'running')
+ok('running is not terminal', !TERMINAL.includes('running'))
+
+const prog = progressOf([
+  { url: m.urls[0], visual_profile: {}, frames_sampled: 4 },
+], m)
+ok('progress counts what is missing as running', prog.ready === 1 && prog.running === 1 && prog.done === false)
+ok('done only when every frozen url is terminal', progressOf([
+  { url: m.urls[0], visual_profile: {}, frames_sampled: 4 },
+  { url: m.urls[1], visual_profile: null, frames_sampled: null, visual_failure_code: 'IP_BLOCKED' },
+], m).done === true)
+
+// ── attrition ──
+const att = attrition(progressOf([
+  { url: m.urls[0], visual_profile: {}, frames_sampled: 4 },
+  { url: m.urls[1], visual_profile: null, frames_sampled: null, visual_failure_code: 'IP_BLOCKED' },
+], m))
+// ⚠️ THE DENOMINATOR IS THE FROZEN SAMPLE. 1 of 2 must not read as 100%.
+ok('rates are over what was SELECTED', att.assessed_of_selected === 0.5 && att.selected === 2)
+ok('failures are broken out by code', att.failures_by_code.IP_BLOCKED === 1)
+ok('an unreadable reference gets its own code, not UNKNOWN',
+  attrition(progressOf([{ url: m.urls[0], visual_profile: null, frames_sampled: 4 }], m))
+    .failures_by_code.NO_CLAIMS_FROM_FRAMES === 1)
+
+// ── the #69 brief ──
+const quiet = briefFor69({ claims_answered: 20, median_ms_per_claim: 4000, slowest_ms: 9000,
+  backtracks: 0, evidence_frame_changes: 0, skipped: 0 }, { wrong_evidence_rate: 0, claims_unlabelled: 0 })
+// ⚠️ AN EMPTY BRIEF IS A RESULT, not a failure to look.
+ok('a clean session proposes NOTHING', quiet.items.length === 0)
+ok('and says so in words', quiet.verdict.includes('does not need building'))
+
+const noisy = briefFor69({ claims_answered: 20, median_ms_per_claim: 30_000, slowest_ms: 60_000,
+  backtracks: 5, evidence_frame_changes: 9, skipped: 2 }, { wrong_evidence_rate: 0.4, claims_unlabelled: 3 })
+ok('every proposal names the number that earned it', noisy.items.every((i) => i.evidence && i.because))
+ok('a high wrong-evidence rate points at the CITATION machinery, not the prompt',
+  noisy.items.some((i) => i.change.includes('citation')))
+// ⚖️ THE ONE THING IT MAY NEVER PROPOSE.
+ok('nothing in the brief proposes automating the judgement', !/pre-?fill|auto-?label|model.*(suggest|rank|grade)/i
+  .test(JSON.stringify(noisy.items)))
+ok('the thresholds are stated so they can be argued with', noisy.thresholds.includes('WRONG_EVIDENCE'))
+
+// ── the moved functions still work where they now live ──
+ok('selectCohort came across intact', selectCohort([row('https://www.tiktok.com/@c/video/3', 0)], 4).length === 1)
+ok('aggregate still refuses an open session', aggregate({ locked: false, labels: [] }).refused !== undefined)
+ok('friction still separates effort from coverage',
+  friction([{ kind: 'label', at: 1, index: 0 }, { kind: 'label', at: 2, index: 0 }]).claims_answered === 1)
+ok('flattenClaims still returns one row per declared path',
+  flattenClaims('u', {}).length === 15)
+
+if (failed) process.exit(1)
+console.log('pilot-core selftest: all cases passed')
