@@ -58,7 +58,26 @@ describe('a second pass may not erase a first', () => {
   it('refuses to read a response produced from zero frames', () => {
     // ⚠️ A model answering with nothing to look at is answering from the
     // caption — the WRONG EPISTEMIC SOURCE, not weak visual evidence.
-    expect(PASS).toContain("NOT_RUN('NO_FRAMES_SAMPLED'")
+    //
+    // ⚖️ ASSERTED AS "RETURNS BEFORE THE CALL", NOT AS A LITERAL. This test used
+    // to pin the exact string NOT_RUN('NO_FRAMES_SAMPLED', and it failed the
+    // moment that branch learned to distinguish a missing ffmpeg from a silent
+    // video — a change that STRENGTHENED the refusal. Pinning the ordering
+    // instead survives that and still fails if the call ever moves above it.
+    const zeroAt = PASS.indexOf('sample.framesSampled === 0')
+    const callAt = PASS.indexOf('geminiJson(')
+    expect(zeroAt).toBeGreaterThan(-1)
+    expect(zeroAt).toBeLessThan(callAt)
+    const branch = PASS.slice(zeroAt, callAt)
+    expect(branch).toContain('return NOT_RUN(')
+    expect(branch).toContain('NO_FRAMES_SAMPLED')
+  })
+
+  it('says whether the TOOL was missing or the video was', () => {
+    // ⚠️ sampleFrames swallows every ffmpeg failure, so a box without ffmpeg and
+    // an unsamplable video arrive as the same zero. Reported as one code, an
+    // infrastructure failure becomes a finding about the library.
+    expect(PASS).toContain('FFMPEG_MISSING')
   })
 
   it('range-checks against what landed, not what was requested', () => {

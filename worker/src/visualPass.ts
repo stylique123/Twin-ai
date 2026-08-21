@@ -23,6 +23,7 @@ import { extractVisualProfile } from './visualExtractionRules.js'
 import { geminiJson } from './gemini.js'
 import { modelForTask } from './modelRouting.js'
 import { persistFrames } from './referenceFrames.js'
+import { ffmpegPresent } from './frameSample.js'
 import { classifyDownloadFailure, phaseOf } from './downloadFailure.js'
 import type { DownloadRoute } from './downloadRoute.js'
 
@@ -102,7 +103,21 @@ export async function runVisualPass(
     // with no frames to look at is answering from the caption, which is the
     // WRONG EPISTEMIC SOURCE rather than weak evidence. Stopping here saves the
     // call as well as the confusion.
-    if (sample.framesSampled === 0) return NOT_RUN('NO_FRAMES_SAMPLED', 'media_download')
+    if (sample.framesSampled === 0) {
+      // ⚠️ WAS THE TOOL MISSING, OR THE VIDEO? sampleFrames catches EVERY ffmpeg
+      // failure with `catch { continue }`, so a container without ffmpeg, a
+      // corrupt download and a video with no decodable frame all arrive here as
+      // the same zero. The pilot's attrition table would then report an
+      // infrastructure failure as a property of the references — "8 videos
+      // yielded no frames" reads as a finding about the library when it is a
+      // finding about the box.
+      //
+      // ⚖️ ASKED ONLY ON THE ZERO PATH, so the healthy case pays nothing.
+      // `ffmpegPresent` was written for exactly this and had never been called
+      // by anything — a check that exists and never runs is not a check.
+      const haveFfmpeg = await ffmpegPresent()
+      return NOT_RUN(haveFfmpeg ? 'NO_FRAMES_SAMPLED' : 'FFMPEG_MISSING', 'media_download')
+    }
 
     // ⚠️ THE FRAMES ARE KEPT BEFORE THEY ARE SHOWN. This pass used to sample
     // into a temp directory, send the frames to the model, and delete the
