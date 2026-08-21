@@ -503,7 +503,7 @@ jobs:
           # `to_regclass` precisely so a missing table is skipped rather than
           # aborting. Excusing it would leave the one environment that could
           # catch a grant drift permanently unable to see one.
-          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component 0102_editor_review_gate 0104_brand_glossary 0110_reference_analysis_provenance 0111_approval_binds_output 0114_delete_a_video_deletes_it 0118_drop_legacy_takes_insert_policy 0119_blueprint_idempotency 0127_script_edits 0128_creator_questions_put 0129_script_attempts 0130_generation_selection 0131_generation_beat_audit 0132_director_failure_detail 0134_hook_choice_provenance 0136_brief_carries_the_six_answers 0137_generation_choices 0139_revoke_writes_nobody_uses 0140_no_client_may_truncate 0141_a_grant_needs_a_policy 0142_reference_content_profiles 0143_a_failure_may_not_erase_a_success 0144_the_probe_must_be_readable 0145_a_script_nobody_can_say_is_a_script_nobody_uses 0146_a_freeze_must_be_writable 0147_which_checks_were_asked 0149_what_the_client_saw 0150_which_route_actually_read_it 0151_where_the_failure_moved 0152_what_the_frames_showed 0153_the_download_is_not_the_assessment 0154_what_the_render_promised_and_delivered 0155_two_models_one_transcript; do
+          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component 0102_editor_review_gate 0104_brand_glossary 0110_reference_analysis_provenance 0111_approval_binds_output 0114_delete_a_video_deletes_it 0118_drop_legacy_takes_insert_policy 0119_blueprint_idempotency 0127_script_edits 0128_creator_questions_put 0129_script_attempts 0130_generation_selection 0131_generation_beat_audit 0132_director_failure_detail 0134_hook_choice_provenance 0136_brief_carries_the_six_answers 0137_generation_choices 0139_revoke_writes_nobody_uses 0140_no_client_may_truncate 0141_a_grant_needs_a_policy 0142_reference_content_profiles 0143_a_failure_may_not_erase_a_success 0144_the_probe_must_be_readable 0145_a_script_nobody_can_say_is_a_script_nobody_uses 0146_a_freeze_must_be_writable 0147_which_checks_were_asked 0149_what_the_client_saw 0150_which_route_actually_read_it 0151_where_the_failure_moved 0152_what_the_frames_showed 0153_the_download_is_not_the_assessment 0154_what_the_render_promised_and_delivered 0155_two_models_one_transcript 0156_an_asymmetric_trial_says_so 0157_a_trial_id_names_one_experiment; do
             echo "== applying $f =="
             psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f.sql"
           done
@@ -632,6 +632,32 @@ jobs:
                          where table_schema='public' and table_name='extraction_parity_trials'
                            and grantee in ('anon','authenticated'))
                 then raise exception 'extraction_parity_trials grants a client role (0155)'; end if;
+              -- 0156: without arms_asymmetric on the uniqueness key, a deliberate
+              -- follow-up trial upserts over the symmetric baseline it exists to
+              -- be compared against, and the baseline vanishes silently.
+              -- NOTE: this whole block is interpolated by the shell before
+              -- psql sees it, so prose here is NOT inert. A backtick runs the
+              -- word as a command; a double quote ends the string early. Both
+              -- happened, on consecutive runs, inside comments explaining the
+              -- previous one. Plain words only.
+              if not exists (select 1 from information_schema.columns
+                             where table_schema='public' and table_name='extraction_parity_trials'
+                               and column_name='arms_asymmetric')
+                then raise exception 'extraction_parity_trials is missing arms_asymmetric (0156)'; end if;
+              if not exists (
+                select 1 from pg_index i
+                join pg_class c on c.oid = i.indexrelid
+                where c.relname = 'extraction_parity_trials_one_per_url_pair'
+                  and (select count(*) from unnest(i.indkey)) = 4)
+                then raise exception 'the parity uniqueness key does not include arms_asymmetric (0156)'; end if;
+              -- 0157: without the manifest a trial cannot say what was held
+              -- identical, and the immutability check has nothing to compare
+              -- against — a resumed batch could silently become a mixture of
+              -- two experiments.
+              if not exists (select 1 from information_schema.columns
+                             where table_schema='public' and table_name='extraction_parity_trials'
+                               and column_name='manifest')
+                then raise exception 'extraction_parity_trials is missing manifest (0157)'; end if;
             end
             \$\$;"
           echo "staging schema matches this checkout (0090-0094, 0096-0097 + brand and storage fixtures applied)"

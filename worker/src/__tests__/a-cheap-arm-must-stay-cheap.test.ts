@@ -30,8 +30,15 @@ describe('the thinking budget is part of the arm', () => {
     expect(GEMINI).toMatch(/thinkingBudget \?\? Number\(process\.env\.GEMINI_THINKING_BUDGET \?\? '2048'\)/)
   })
 
-  it('gives arm B minimal thinking by default', () => {
-    expect(JOB).toContain("typeof p.thinkingBudgetB === 'number' ? p.thinkingBudgetB : 0")
+  it('gives arm B ARM A’S budget by default — the first trial isolates the model', () => {
+    // ⚠️ THIS ASSERTION WAS REVERSED ON 2026-08-21, DELIBERATELY. It used to
+    // require arm B to default to 0 (the cheapest viable path), which answered
+    // "is the premium buying anything" but confounded the model with its
+    // configuration. The first parity trial must vary ONE thing. The reason for
+    // naming budgets explicitly is unchanged and still load-bearing — absent is
+    // not "default", it is 2048 — only the default for arm B moved.
+    expect(JOB).toContain("typeof p.thinkingBudgetB === 'number' ? p.thinkingBudgetB : thinkingA")
+    expect(JOB).not.toContain("? p.thinkingBudgetB : 0")
   })
 
   it('leaves arm A absent on purpose, because that IS production', () => {
@@ -63,7 +70,12 @@ describe('the eval asks production’s exact question', () => {
 
   it('digests the text the models actually saw, after the cap', () => {
     expect(JOB).toContain('const text = full.slice(0, MAX_TRANSCRIPT_CHARS)')
-    expect(JOB.indexOf('const text = full.slice')).toBeLessThan(JOB.indexOf("createHash('sha256')"))
+    // ⚠️ THE DIGEST OF THE TEXT, NOT ANY createHash CALL. `digestOf` now hashes
+    // the prompt and schema at module level, so matching the bare constructor
+    // matched that instead — the test would have passed with the transcript
+    // digest taken anywhere at all.
+    expect(JOB.indexOf('const text = full.slice'))
+      .toBeLessThan(JOB.indexOf("createHash('sha256').update(text)"))
   })
 
   it('records a failed arm rather than dropping the trial', () => {
