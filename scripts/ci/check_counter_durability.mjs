@@ -160,6 +160,7 @@ const EVENTS = {
   // ── INCIDENTS: one occurrence matters, and a log is the right home ───────
   substance_unsupported: { kind: 'incident', why: 'A beat citing something not supplied. Reported per generation, never rewritten.' },
   reference_claim_leak: { kind: 'incident', why: "The reference's own measured claim reaching a script." },
+  schema_health: { kind: 'incident', why: 'A job type the production schema cannot serve, so the worker has stopped claiming it. An INCIDENT rather than a rate because it is actionable by exactly one act — apply the named migration — and because the count is not the point: one blocked job type is already the whole finding. Logged only when the blocked SET changes, so the five-minute recheck does not repeat itself; the recovery transition is logged too, because an operator who applied the migration needs to see the worker notice. Six migrations reached main unapplied on 2026-08-21 and twice a job type claimed work it could only throw on while the queue reported it pending. CI cannot detect this: migration-reconcile.yml refuses if its DB url points at production, so the worker is the only process holding legitimate production access.' },
   reference_claim_leak_repair: { kind: 'incident', why: 'What the repair pass rewrote.' },
   contentless_enumeration_unit: { kind: 'incident', why: 'A count promised with no unit behind it.' },
   script_mostly_questions: { kind: 'incident', why: 'A script that asks more than it says.' },
