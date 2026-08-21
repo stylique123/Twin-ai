@@ -67,6 +67,10 @@ export * from './setupAreas'
 export * from './referenceAssessment'
 export * from './referenceProfile'
 export * from './galleryPolicy'
+// The parity eval's decision layer. Exported here rather than kept beside the
+// script so it CALLS the real `eligibility` above instead of re-listing which
+// fields matter — a second copy of that judgement would drift in silence.
+export * from './extractionParityDecisions'
 export * from './compatibilityGate'
 export * from './editor/index'
 export * from './referenceExtraction'
