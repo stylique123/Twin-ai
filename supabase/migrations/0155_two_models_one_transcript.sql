@@ -38,6 +38,20 @@ create table if not exists public.extraction_parity_trials (
   model_a text not null,
   model_b text not null,
 
+  -- ⚠️ THE THINKING BUDGET IS PART OF THE ARM, AND OMITTING IT WOULD HAVE MADE
+  -- THIS TABLE LIE. gemini.ts resolves an absent budget to GEMINI_THINKING_BUDGET
+  -- or 2048 — so "pass nothing" is not "the model's default", it is 2048. An arm
+  -- recorded only by its model id would therefore describe a cheap model running
+  -- an expensive configuration as if it were the cheap path.
+  --
+  -- ⚖️ THE TWO ARMS ARE DELIBERATELY ASYMMETRIC AND THAT IS VISIBLE HERE. Arm A
+  -- reproduces PRODUCTION exactly, whatever production does. Arm B is the
+  -- CHEAPEST VIABLE path, because the question is not "does this model match when
+  -- given the same help" but "is the premium buying anything". Recording both
+  -- budgets is what stops that choice from being invisible later.
+  thinking_budget_a integer,
+  thinking_budget_b integer,
+
   -- The full parsed profiles. Stored whole because the questions worth asking
   -- later are not all known now, and re-running costs two more model calls
   -- against a 250/day allowance.

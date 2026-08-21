@@ -34,6 +34,12 @@ interface Payload {
   url?: unknown
   /** Defaults to whatever `extract` resolves to today, so arm A is production. */
   modelA?: unknown
+  /** ⚠️ EXPLICIT, BECAUSE `undefined` IS NOT "THE DEFAULT". gemini.ts resolves an
+   *  absent budget to GEMINI_THINKING_BUDGET or 2048, so passing nothing silently
+   *  buys 2048 tokens of reasoning. Arm A leaves it absent ON PURPOSE — that IS
+   *  what production does — and arm B names its own. */
+  thinkingBudgetA?: unknown
+  thinkingBudgetB?: unknown
   /** The challenger. Named explicitly — there is no "the flash model" constant
    *  here, because a model id guessed from memory is the chosen-not-measured
    *  mistake this eval exists to avoid. */
@@ -44,10 +50,10 @@ interface Payload {
 /** One arm. Returns its own failure rather than throwing, so a model that
  *  refuses is RECORDED as having refused instead of destroying the other arm's
  *  answer — which is the more interesting half of a parity result. */
-async function runArm(model: string, text: string, url: string) {
+async function runArm(model: string, text: string, url: string, thinkingBudget?: number) {
   try {
     const raw = await geminiJson(SYSTEM, `${VOCAB}\n\nTranscript:\n${text}`, SCHEMA,
-      90_000, undefined, model)
+      90_000, thinkingBudget, model)
     const { profile, rejections, fieldsAccepted } = parseContentExtraction(raw, {
       referenceId: url, niche: null, assessedAt: new Date().toISOString(),
       transcriptAvailable: true,
@@ -69,6 +75,13 @@ export async function handleExtractionParity(job: Job): Promise<Record<string, u
   const modelA = typeof p.modelA === 'string' && p.modelA.trim() !== ''
     ? p.modelA.trim() : modelForTask('extract')
   const modelB = typeof p.modelB === 'string' ? p.modelB.trim() : ''
+  // ⚖️ ARM B DEFAULTS TO MINIMAL THINKING, WHICH IS THE POINT OF TESTING IT.
+  // Google's own guidance for high-volume extraction and classification is the
+  // minimal setting; running the cheap model with 2048 tokens of reasoning would
+  // measure a configuration nobody would deploy at 2,647-URL scale, and would
+  // flatter it into the bargain.
+  const thinkingA = typeof p.thinkingBudgetA === 'number' ? p.thinkingBudgetA : undefined
+  const thinkingB = typeof p.thinkingBudgetB === 'number' ? p.thinkingBudgetB : 0
   if (modelB === '') throw new Error('extraction_parity: payload.modelB is required')
   if (modelB === modelA) throw new Error('extraction_parity: modelB must differ from modelA')
 
@@ -92,14 +105,17 @@ export async function handleExtractionParity(job: Job): Promise<Record<string, u
   // ⚖️ SEQUENTIAL, NOT CONCURRENT. Two simultaneous calls against a 250/day
   // allowance make a quota refusal land on an arbitrary arm; in sequence, a
   // refusal is attributable and the first arm's answer survives it.
-  const a = await runArm(modelA, text, url)
-  const b = await runArm(modelB, text, url)
+  const a = await runArm(modelA, text, url, thinkingA)
+  const b = await runArm(modelB, text, url, thinkingB)
 
   const { error: wrote } = await db.from('extraction_parity_trials').upsert({
     url,
     transcript_sha256: sha,
     transcript_chars: text.length,
     model_a: modelA, model_b: modelB,
+    // Recorded, so 'which configuration was compared' never has to be inferred
+    // from a commit date. null on arm A means 'production's own resolution'.
+    thinking_budget_a: thinkingA ?? null, thinking_budget_b: thinkingB,
     profile_a: a.profile, profile_b: b.profile,
     rejections_a: a.rejections, rejections_b: b.rejections,
     fields_accepted_a: a.fieldsAccepted, fields_accepted_b: b.fieldsAccepted,
@@ -109,6 +125,7 @@ export async function handleExtractionParity(job: Job): Promise<Record<string, u
 
   return {
     url, model_a: modelA, model_b: modelB,
+    thinking_a: thinkingA ?? null, thinking_b: thinkingB,
     fields_a: a.fieldsAccepted, fields_b: b.fieldsAccepted,
     rejected_a: a.rejections?.length ?? null, rejected_b: b.rejections?.length ?? null,
     error_a: a.error, error_b: b.error,
