@@ -83,16 +83,25 @@ jobs:
       # disk and dpkg installs them offline — no `apt-get update`, no download.
       # apt failed six times on 2026-08-19 and each failure blocked a merge for
       # twenty minutes; this is what stops somebody else's uptime gating ours.
+      # ⚠️ THE KEY VERSION IS `v2` BECAUSE `v1` WAS POISONED, AND `actions/cache`
+      # CANNOT HEAL A POISONED KEY. On an exact key hit the action restores the
+      # entry and SKIPS its post-job save — so the empty payload written under
+      # `v1` back when `apt_artifacts_fetch` could never populate anything was
+      # restored forever. Three consecutive runs logged
+      # `apt_cache_warmed set=ffmpeg artifacts=87`: the warm worked every time
+      # and the saved bytes were discarded every time, because the key had
+      # already hit. Bumping the version is the ONLY way to write a fresh entry.
+      # A future change to what these caches hold needs the same bump.
       - name: Restore the ffmpeg .deb artifacts
         uses: actions/cache@v4
         with:
           path: ~/.apt-artifacts/ffmpeg
-          key: aptdebs-ffmpeg-${{ runner.os }}-${{ runner.arch }}-v1
+          key: aptdebs-ffmpeg-${{ runner.os }}-${{ runner.arch }}-v2
       - name: Restore the espeak-ng .deb artifacts
         uses: actions/cache@v4
         with:
           path: ~/.apt-artifacts/espeak-ng
-          key: aptdebs-espeak-ng-${{ runner.os }}-${{ runner.arch }}-v1
+          key: aptdebs-espeak-ng-${{ runner.os }}-${{ runner.arch }}-v2
       - name: Install ffmpeg + espeak-ng (fixtures & audio extraction) + caption fonts
         # fonts-dejavu-core is REQUIRED by Phase 8: the worker refuses a caption
         # font that is absent or does not match its pinned digest, so a runner
