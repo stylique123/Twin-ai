@@ -635,12 +635,11 @@ jobs:
               -- 0156: without arms_asymmetric on the uniqueness key, a deliberate
               -- follow-up trial upserts over the symmetric baseline it exists to
               -- be compared against, and the baseline vanishes silently.
-              -- NOTE: no backticks anywhere in this heredoc. This block is
-              -- interpolated by the shell before psql ever sees it, so a
-              -- backtick-quoted word in a SQL COMMENT is COMMAND SUBSTITUTED --
-              -- which is exactly what happened here: a backtick-quoted asymmetric produced
-              -- "asymmetric: command not found" and the comment silently
-              -- became empty.
+              -- NOTE: this whole block is interpolated by the shell before
+              -- psql sees it, so prose here is NOT inert. A backtick runs the
+              -- word as a command; a double quote ends the string early. Both
+              -- happened, on consecutive runs, inside comments explaining the
+              -- previous one. Plain words only.
               if not exists (select 1 from information_schema.columns
                              where table_schema='public' and table_name='extraction_parity_trials'
                                and column_name='arms_asymmetric')
