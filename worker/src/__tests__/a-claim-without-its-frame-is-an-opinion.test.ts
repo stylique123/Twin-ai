@@ -124,3 +124,43 @@ describe('the migration says what the table must refuse', () => {
     expect(sql).toMatch(/reference-frames'\s*,\s*'reference-frames'\s*,\s*false/)
   })
 })
+
+describe('visual_route stops being a graveyard, but only when asked', () => {
+  const src = () => import('node:fs').then(({ readFileSync }) =>
+    readFileSync(new URL('../jobs/assessReference.ts', import.meta.url), 'utf8'))
+
+  it('runs the frames pass on the no-speech path', async () => {
+    const s = await src()
+    const branch = s.slice(s.indexOf('if (goesToFrames(routing))'), s.indexOf("skipped: 'no_speech'"))
+    // ⚠️ THE PROMISE THAT WAS ONLY A COMMENT. `visual_route` marked the row and
+    // returned; the 332 no-speech references were a graveyard with an
+    // optimistic sign on the gate.
+    expect(branch).toContain('runVisualPass(')
+  })
+
+  it('only when the job asked, because looking costs a second download', async () => {
+    const s = await src()
+    const branch = s.slice(s.indexOf('if (goesToFrames(routing))'), s.indexOf("skipped: 'no_speech'"))
+    // ⚖️ Unconditional would turn every no-speech assessment into a paid visual
+    // pass across the whole library — the decision the pilot exists to inform.
+    expect(branch).toContain('p.frames === true')
+    expect(branch).toContain(': null')
+  })
+
+  it('leaves the visual columns untouched when nobody looked', async () => {
+    const s = await src()
+    const branch = s.slice(s.indexOf('if (goesToFrames(routing))'), s.indexOf("skipped: 'no_speech'"))
+    // `null` must keep meaning "nobody looked" rather than "looked and saw
+    // nothing" — different facts, and the attrition report needs both.
+    expect(branch).toContain("visual?.ran === true ?")
+  })
+
+  it('reports three states, so cost is never reported as yield', async () => {
+    const s = await src()
+    const ret = s.slice(s.indexOf("skipped: 'no_speech'"), s.indexOf("skipped: 'no_speech'") + 900)
+    expect(ret).toContain("'not_requested'")
+    expect(ret).toContain("'ran'")
+    expect(ret).toContain("'failed'")
+    expect(ret).toContain('frames_failure')
+  })
+})
