@@ -23,6 +23,8 @@ import { parseContentExtraction, NOT_DETERMINED, NO_REHOOK } from '../referenceE
 import { frameSampleTargets } from '../referenceProfileTypes.js'
 import { runVisualPass } from '../visualPass.js'
 import { readCachedTranscript, writeCachedTranscript } from '../transcriptCache.js'
+import { decideRouting, goesToFrames } from '../transcriptRouting.js'
+import { recordRoutingDecision } from '../transcriptRoutingRecord.js'
 
 /** How much transcript the model is shown.
  *
@@ -250,6 +252,17 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
     if (done) return { url, skipped: 'already_assessed' }
   }
 
+  // ⚠️ READ BEFORE WE OVERWRITE IT. transcript_chars is the number the OLD
+  // metadata claimed, and the upsert below replaces it. Reading it afterwards
+  // would compare the fresh figure against itself and report zero drift on
+  // every row — a diagnostic that always agrees, which is the same as no
+  // diagnostic. `null` here means "no stored count", not "stored zero".
+  const { data: priorRow } = await db.from('reference_content_profiles')
+    .select('transcript_chars').eq('url', url).maybeSingle()
+  const storedCharsBefore = typeof priorRow?.transcript_chars === 'number'
+    ? priorRow.transcript_chars
+    : null
+
   const assessedAt = new Date().toISOString()
 
   // ⚠️ THE ROUTE COMES FROM THE JOB, AND DEFAULTS TO THE FREE RUNG. An
@@ -311,12 +324,35 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
 
   const full = transcript.text ?? ''
 
+  // ⚠️ THE TRANSCRIPT IN HAND DECIDES, NOT THE NUMBER WE REMEMBER. #66 proved
+  // stored transcript_chars does not predict a fresh acquisition — 133 stored
+  // came back as 5, and a stored-"substantial" reference also fell under the
+  // floor. So the routing decision is computed from what we actually have, and
+  // the disagreement with the stored figure is RECORDED rather than swallowed.
+  const routing = decideRouting({
+    url,
+    transcriptText: full,
+    storedChars: storedCharsBefore,
+    platform,
+    downloadRoute: transcript.downloadRoute ?? null,
+    source: transcript.source ?? null,
+    thresholdChars: MIN_TRANSCRIPT_CHARS,
+  })
+  // ⚖️ BEST EFFORT, LIKE EVERY OTHER MEASUREMENT ON THIS PATH. A drift record
+  // that could fail an assessment would make the diagnostic more dangerous than
+  // the defect it diagnoses.
+  await recordRoutingDecision(routing)
+
   // ⚠️ A SILENT VIDEO IS A FINDING, NOT A QUESTION FOR A MODEL. The pilot's
   // first results included transcripts of three and five characters — music-led
   // TikToks with no speech. Sending those to Gemini spends a call to be told
   // nothing, on a library where they may be common. Recorded as assessed with a
   // reason, so the next run does not pay to rediscover them.
-  if (full.trim().length < MIN_TRANSCRIPT_CHARS) {
+  //
+  // ⚖️ AND IT IS A DESTINATION, NOT A BIN. `visual_route` says the frames pass
+  // (#56) can still read this reference. The 332 known no-speech rows plus this
+  // one are a population, not a graveyard.
+  if (goesToFrames(routing)) {
     await db.from('reference_content_profiles').upsert({
       url, platform, profile: {}, rejections: [], fields_accepted: 0,
       transcript_source: transcript.source ?? null,
@@ -327,10 +363,14 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
       download_route: transcript.downloadRoute ?? null,
       download_trace: transcript.trace ?? null,
       transcript_chars: full.length,
-      error: `no_speech: transcript was ${full.trim().length} characters`,
+      error: `no_speech: transcript was ${routing.actualChars} characters (visual_route)`,
       assessed_at: assessedAt,
     }, { onConflict: 'url' })
-    return { url, skipped: 'no_speech', transcript_chars: full.length }
+    return {
+      url, skipped: 'no_speech', routed_to: 'visual_route',
+      transcript_chars: full.length, actual_chars: routing.actualChars,
+      stored_chars: routing.storedChars, delta_chars: routing.deltaChars,
+    }
   }
 
   const text = full.slice(0, MAX_TRANSCRIPT_CHARS)
