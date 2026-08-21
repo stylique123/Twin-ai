@@ -353,6 +353,27 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
   // (#56) can still read this reference. The 332 known no-speech rows plus this
   // one are a population, not a graveyard.
   if (goesToFrames(routing)) {
+    // ⚠️ AND THE PILOT IS THE ONLY THING THAT ACTUALLY LOOKS, FOR NOW. Until
+    // this branch, `visual_route` was a label and nothing else: the row was
+    // marked and the function returned, so the 332 no-speech references were a
+    // graveyard with an optimistic sign on the gate. The frames pass only runs
+    // when a job ASKS for it.
+    //
+    // ⚖️ OPT-IN, BECAUSE LOOKING COSTS A SECOND DOWNLOAD. Making this
+    // unconditional would turn every no-speech assessment into a paid visual
+    // pass across the whole library — turning "label a pilot" into "reprocess
+    // everything", which is the decision the pilot exists to inform rather than
+    // pre-empt.
+    //
+    // ⚠️ NO BEATS HERE, AND THAT IS NOT A DEGRADED CASE. There is no content
+    // profile on this path, so there are no hook/rehook/payoff timestamps and
+    // the schedule is `uniform`. The row records which arm it was, so the pilot
+    // can say whether uniform frames support weaker claims rather than assuming
+    // it.
+    const visual = p.frames === true ? await runVisualPass(url, route, {
+      count: typeof p.frameCount === 'number' ? p.frameCount : undefined,
+    }) : null
+
     await db.from('reference_content_profiles').upsert({
       url, platform, profile: {}, rejections: [], fields_accepted: 0,
       transcript_source: transcript.source ?? null,
@@ -365,11 +386,26 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
       transcript_chars: full.length,
       error: `no_speech: transcript was ${routing.actualChars} characters (visual_route)`,
       assessed_at: assessedAt,
+      // ⚠️ WRITTEN ONLY WHEN THE PASS RAN, so `null` keeps meaning "nobody
+      // looked" rather than "looked and saw nothing". Those are different facts
+      // and the pilot's attrition report depends on telling them apart.
+      ...(visual?.ran === true ? {
+        visual_profile: visual.visual_profile,
+        visual_rejections: visual.visual_rejections,
+        frames_sampled: visual.frames_sampled,
+        frame_schedule_basis: visual.frame_schedule_basis,
+        visual_assessed_at: assessedAt,
+      } : {}),
     }, { onConflict: 'url' })
     return {
       url, skipped: 'no_speech', routed_to: 'visual_route',
       transcript_chars: full.length, actual_chars: routing.actualChars,
       stored_chars: routing.storedChars, delta_chars: routing.deltaChars,
+      // ⚖️ THREE STATES, NOT TWO. `not_requested` is not the same as a pass that
+      // ran, nor as one that tried and could not — and an attrition table that
+      // merged them would report the pilot's cost as its yield.
+      frames: visual === null ? 'not_requested' : visual.ran ? 'ran' : 'failed',
+      frames_failure: visual?.failure_code ?? null,
     }
   }
 

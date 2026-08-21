@@ -390,6 +390,17 @@ jobs:
         run: |
           node scripts/ci/check_shadowed_globals.mjs --selftest
           node scripts/ci/check_shadowed_globals.mjs
+      # The pilot's draw decides what the labelling session sees, so a draw
+      # nobody can re-run is a sample nobody can argue with. The selftest needs
+      # no credentials, which is the only reason it can run here at all.
+      - name: Frame-pilot cohort selection (deterministic, one per creator, both bands)
+        run: node scripts/frame-pilot-cohort.mjs --selftest
+      # The packet decides which claims a human is ever asked about and when the
+      # accuracy number may be looked at. Both are logic, both are pure, and
+      # both are wrong silently -- a claim path nobody asks about scores the
+      # same as one that passed. The selftest needs no credentials.
+      - name: Label packet (four answers, locked before counted, no field unasked)
+        run: node scripts/label-packet.mjs --selftest
       # The staging matrix applies a HAND-MAINTAINED migration list, and it has
       # fallen behind three times. Every time, the symptom was a harness timeout
       # with nothing in the diff mentioning a migration — the gate went green on
