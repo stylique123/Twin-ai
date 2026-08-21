@@ -37,8 +37,14 @@ describe('worker job registry has no old editor', () => {
       // schema-constrained extractor on pro — and said the next move was an
       // eval rather than an edit. It changes no routing: both models are named
       // per call.
+      // extraction_replication re-asks ONE model the question a single parity
+      // trial already asked, on that trial's own cached transcript. It appends
+      // to its own insert-only table and never touches extraction_parity_trials
+      // — so investigating a timeout cannot overwrite the row that recorded it.
+      // It refuses a trial with no arm-A timeout, which is what stops it
+      // becoming a general "rerun anything" button later.
       'assess_reference', 'build_voice', 'editor_v2', 'extract_product',
-      'extraction_parity', 'ingest',
+      'extraction_parity', 'extraction_replication', 'ingest',
       'purge_media', 'scrape_dna', 'validate_clip', 'validate_source',
     ])
     expect(handlers).not.toHaveProperty('autoedit')

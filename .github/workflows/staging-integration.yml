@@ -503,7 +503,7 @@ jobs:
           # `to_regclass` precisely so a missing table is skipped rather than
           # aborting. Excusing it would leave the one environment that could
           # catch a grant drift permanently unable to see one.
-          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component 0102_editor_review_gate 0104_brand_glossary 0110_reference_analysis_provenance 0111_approval_binds_output 0114_delete_a_video_deletes_it 0118_drop_legacy_takes_insert_policy 0119_blueprint_idempotency 0127_script_edits 0128_creator_questions_put 0129_script_attempts 0130_generation_selection 0131_generation_beat_audit 0132_director_failure_detail 0134_hook_choice_provenance 0136_brief_carries_the_six_answers 0137_generation_choices 0139_revoke_writes_nobody_uses 0140_no_client_may_truncate 0141_a_grant_needs_a_policy 0142_reference_content_profiles 0143_a_failure_may_not_erase_a_success 0144_the_probe_must_be_readable 0145_a_script_nobody_can_say_is_a_script_nobody_uses 0146_a_freeze_must_be_writable 0147_which_checks_were_asked 0149_what_the_client_saw 0150_which_route_actually_read_it 0151_where_the_failure_moved 0152_what_the_frames_showed 0153_the_download_is_not_the_assessment 0154_what_the_render_promised_and_delivered 0155_two_models_one_transcript 0156_an_asymmetric_trial_says_so 0157_a_trial_id_names_one_experiment; do
+          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component 0102_editor_review_gate 0104_brand_glossary 0110_reference_analysis_provenance 0111_approval_binds_output 0114_delete_a_video_deletes_it 0118_drop_legacy_takes_insert_policy 0119_blueprint_idempotency 0127_script_edits 0128_creator_questions_put 0129_script_attempts 0130_generation_selection 0131_generation_beat_audit 0132_director_failure_detail 0134_hook_choice_provenance 0136_brief_carries_the_six_answers 0137_generation_choices 0139_revoke_writes_nobody_uses 0140_no_client_may_truncate 0141_a_grant_needs_a_policy 0142_reference_content_profiles 0143_a_failure_may_not_erase_a_success 0144_the_probe_must_be_readable 0145_a_script_nobody_can_say_is_a_script_nobody_uses 0146_a_freeze_must_be_writable 0147_which_checks_were_asked 0149_what_the_client_saw 0150_which_route_actually_read_it 0151_where_the_failure_moved 0152_what_the_frames_showed 0153_the_download_is_not_the_assessment 0154_what_the_render_promised_and_delivered 0155_two_models_one_transcript 0156_an_asymmetric_trial_says_so 0157_a_trial_id_names_one_experiment 0158_a_replication_is_evidence_not_an_edit; do
             echo "== applying $f =="
             psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f.sql"
           done
@@ -658,6 +658,24 @@ jobs:
                              where table_schema='public' and table_name='extraction_parity_trials'
                                and column_name='manifest')
                 then raise exception 'extraction_parity_trials is missing manifest (0157)'; end if;
+              -- 0158: the replication table is where a Pro-timeout investigation
+              -- writes. Without it the job throws on every attempt and the
+              -- reliability question stays unanswered.
+              if to_regclass('public.extraction_parity_replications') is null
+                then raise exception 'extraction_parity_replications does not exist (0158)'; end if;
+              -- A replication is evidence. The unique key is what makes a second
+              -- write of the same attempt FAIL rather than silently replace the
+              -- attempt it disagrees with, which is the whole point of the table.
+              if not exists (
+                select 1 from pg_index i
+                join pg_class c on c.oid = i.indexrelid
+                where c.relname = 'extraction_parity_replications_one_per_attempt'
+                  and i.indisunique)
+                then raise exception 'extraction_parity_replications does not refuse a duplicate attempt (0158)'; end if;
+              if exists (select 1 from information_schema.role_table_grants
+                         where table_schema='public' and table_name='extraction_parity_replications'
+                           and grantee in ('anon','authenticated'))
+                then raise exception 'extraction_parity_replications grants a client role (0158)'; end if;
             end
             \$\$;"
           echo "staging schema matches this checkout (0090-0094, 0096-0097 + brand and storage fixtures applied)"
