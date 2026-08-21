@@ -73,6 +73,14 @@ export const SCHEMA_REQUIREMENTS: Readonly<Record<string, readonly SchemaCapabil
     { table: 'reference_content_profiles', migration: '0142',
       columns: ['url', 'profile', 'transcript_chars', 'error'] },
     { table: 'reference_transcripts', migration: '0153', columns: ['url', 'transcript', 'chars'] },
+    // ⚠️ `reference_frames` (0160) IS DELIBERATELY NOT HERE, and that is not
+    // silence. Only the frames variant of this job writes it, and a missing
+    // table there is already a recorded row — runVisualPass returns
+    // FRAMES_NOT_PERSISTED and the transcript still lands. Declaring it would
+    // block all 780 references' transcript work over a table the transcript
+    // path never touches, which is the over-blocking this registry exists to
+    // avoid. If assess_reference ever splits into its own frames job type, that
+    // type declares 0160 and this note comes out.
     { table: 'transcript_routing_decisions', migration: '0159',
       // The drift record. Its writer is best-effort, so a missing table would
       // NOT fail an assessment — but it would silently return us to routing on

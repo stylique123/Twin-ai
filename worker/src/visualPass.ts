@@ -22,6 +22,7 @@ import { visualPrompt } from './visualPrompt.js'
 import { extractVisualProfile } from './visualExtractionRules.js'
 import { geminiJson } from './gemini.js'
 import { modelForTask } from './modelRouting.js'
+import { persistFrames } from './referenceFrames.js'
 import { classifyDownloadFailure, phaseOf } from './downloadFailure.js'
 import type { DownloadRoute } from './downloadRoute.js'
 
@@ -103,6 +104,20 @@ export async function runVisualPass(
     // call as well as the confusion.
     if (sample.framesSampled === 0) return NOT_RUN('NO_FRAMES_SAMPLED', 'media_download')
 
+    // ⚠️ THE FRAMES ARE KEPT BEFORE THEY ARE SHOWN. This pass used to sample
+    // into a temp directory, send the frames to the model, and delete the
+    // directory below — so the profile came back citing `frame 2` and frame 2
+    // no longer existed. Every visual field was an assertion nobody could
+    // check.
+    //
+    // ⚖️ AND BEFORE THE CALL, NOT AFTER IT. Uploading afterwards spends the call
+    // first and only then discovers the evidence could not be kept, which
+    // leaves exactly the unverifiable claims this is here to prevent. A frame
+    // we cannot store is a claim we cannot check, and a claim nobody can check
+    // is worse than no claim: it reads like a finding.
+    const kept = await persistFrames(rawUrl, sample)
+    if (kept.failure !== null) return NOT_RUN('FRAMES_NOT_PERSISTED', 'media_download')
+
     let raw: unknown
     try {
       raw = await geminiJson(
@@ -137,7 +152,9 @@ export async function runVisualPass(
       phase: 'complete',
     }
   } finally {
-    // Analyze-and-discard, same as every other media path here.
+    // Analyze-and-discard the VIDEO, same as every other media path here. The
+    // sampled frames are not discarded with it — they are the evidence for the
+    // claims, and they were uploaded above before the model ever saw them.
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
 }
