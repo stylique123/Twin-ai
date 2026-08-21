@@ -9,6 +9,7 @@ import { handlePurgeMedia } from './purgeMedia.js'
 import { handleExtractProduct } from './extractProduct.js'
 import { handleAssessReference } from './assessReference.js'
 import { handleExtractionParity } from './extractionParity.js'
+import { extractionReplication } from './extractionReplication.js'
 
 export type JobHandler = (job: Job) => Promise<Record<string, unknown>>
 
@@ -37,6 +38,7 @@ export const handlers: Record<string, JobHandler> = {
   extract_product: handleExtractProduct,
   assess_reference: handleAssessReference,
   extraction_parity: handleExtractionParity,
+  extraction_replication: extractionReplication,
   // Deletes the BYTES behind a removed media_asset. Enqueued by a database
   // trigger, not by application code, so every route to deletion is covered.
   purge_media: handlePurgeMedia,

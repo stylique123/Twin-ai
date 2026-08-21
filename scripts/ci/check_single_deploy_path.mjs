@@ -101,6 +101,16 @@ const ALLOWED_REGISTRY = [
   // its first job sat `queued` forever because the worker never asked for the
   // type. A dead-letter is loud; a job nobody claims is silent.
   'extraction_parity',
+  // extraction_replication re-asks ONE model the question a single parity trial
+  // already asked, on that trial's own cached transcript, and appends to its own
+  // insert-only table. It exists because #66 recorded three arm-A timeouts and
+  // could not say whether they were transient latency or reproducible behaviour.
+  // It belongs on this host for the same reason extraction_parity does: it is a
+  // Gemini call over a cached transcript, renders nothing, and encodes no media.
+  // It changes no routing — the model is named per call and must equal the
+  // source trial's arm A. It NEVER writes to extraction_parity_trials, so the
+  // investigation cannot destroy the evidence it investigates.
+  'extraction_replication',
 ]
 
 // Second-deploy manifests. Vercel (web app) is intentionally NOT here.
