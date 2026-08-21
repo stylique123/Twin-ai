@@ -8,6 +8,7 @@ import { handleEditorV2 } from './editorV2.js'
 import { handlePurgeMedia } from './purgeMedia.js'
 import { handleExtractProduct } from './extractProduct.js'
 import { handleAssessReference } from './assessReference.js'
+import { handleExtractionParity } from './extractionParity.js'
 
 export type JobHandler = (job: Job) => Promise<Record<string, unknown>>
 
@@ -35,6 +36,7 @@ export const handlers: Record<string, JobHandler> = {
   // off. See `extractProduct.ts`.
   extract_product: handleExtractProduct,
   assess_reference: handleAssessReference,
+  extraction_parity: handleExtractionParity,
   // Deletes the BYTES behind a removed media_asset. Enqueued by a database
   // trigger, not by application code, so every route to deletion is covered.
   purge_media: handlePurgeMedia,

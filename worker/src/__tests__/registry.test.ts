@@ -31,7 +31,14 @@ describe('worker job registry has no old editor', () => {
       // its structure requires. Enqueued by scripts/assess-references.mjs — and
       // `transcribe` below is the cautionary tale for why that matters: it was
       // registered, claimed, and enqueued by nothing at all.
-      'assess_reference', 'build_voice', 'editor_v2', 'extract_product', 'ingest',
+      // extraction_parity asks TWO models the same extraction question about one
+      // transcript and stores both answers. It exists because model_routing_v1
+      // recorded that the routing looks inverted — the Director on flash, the
+      // schema-constrained extractor on pro — and said the next move was an
+      // eval rather than an edit. It changes no routing: both models are named
+      // per call.
+      'assess_reference', 'build_voice', 'editor_v2', 'extract_product',
+      'extraction_parity', 'ingest',
       'purge_media', 'scrape_dna', 'validate_clip', 'validate_source',
     ])
     expect(handlers).not.toHaveProperty('autoedit')
