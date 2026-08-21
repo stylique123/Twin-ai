@@ -14,7 +14,15 @@
 -- Default false, because every trial written before this column existed was
 -- required to be symmetric by the code that wrote it.
 alter table public.extraction_parity_trials
-  add column if not exists asymmetric boolean not null default false;
+  add column if not exists arms_asymmetric boolean not null default false;
+
+-- ⚖️ NAMED `arms_asymmetric`, NOT `asymmetric`. The bare word is a RESERVED
+-- KEYWORD in Postgres — it is the second half of `between symmetric` /
+-- `between asymmetric` — and an unquoted column of that name is a syntax
+-- error, which is exactly how this was found. Quoting it would have worked
+-- and would have left every future query one forgotten pair of quotes away
+-- from the same error. The longer name is also the truer one: it is the ARMS
+-- that are asymmetric, not the trial's conclusion.
 
 -- ⚠️ THE UNIQUE INDEX MUST INCLUDE IT, OR THE FOLLOW-UP OVERWRITES THE BASELINE.
 -- 0155 keyed one trial per (url, model_a, model_b). A deliberate asymmetric
@@ -22,4 +30,4 @@ alter table public.extraction_parity_trials
 -- supposed to be compared against, and the baseline would vanish silently.
 drop index if exists extraction_parity_trials_one_per_url_pair;
 create unique index if not exists extraction_parity_trials_one_per_url_pair
-  on public.extraction_parity_trials (url, model_a, model_b, asymmetric);
+  on public.extraction_parity_trials (url, model_a, model_b, arms_asymmetric);

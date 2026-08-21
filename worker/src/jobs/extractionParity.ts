@@ -154,7 +154,7 @@ export async function assertManifestUnchanged(
     .select('manifest')
     .eq('url', url).eq('model_a', manifest.model_a as string)
     .eq('model_b', manifest.model_b as string)
-    .eq('asymmetric', manifest.asymmetric as boolean)
+    .eq('arms_asymmetric', manifest.arms_asymmetric as boolean)
     .maybeSingle()
   // A read that failed tells us nothing about the manifest; it must not be read
   // as agreement OR as disagreement.
@@ -211,7 +211,7 @@ export async function handleExtractionParity(job: Job): Promise<Record<string, u
     thinking_resolved: resolveThinkingBudget(thinkingA),
     timeout_ms: TIMEOUT_MS,
     system_sha: armA.systemSha, vocabulary_sha: armA.promptSha, schema_sha: armA.schemaSha,
-    asymmetric: allowAsymmetry,
+    arms_asymmetric: allowAsymmetry,
   }
 
   // ⚖️ READABLE ON PURPOSE. Logs are not the source of truth — the row is — but
@@ -266,19 +266,19 @@ export async function handleExtractionParity(job: Job): Promise<Record<string, u
     // Recorded, so 'which configuration was compared' never has to be inferred
     // from a commit date. null on arm A means 'production's own resolution'.
     thinking_budget_a: thinkingA ?? null, thinking_budget_b: thinkingB ?? null,
-    asymmetric: allowAsymmetry,
+    arms_asymmetric: allowAsymmetry,
     manifest,
     profile_a: a.profile, profile_b: b.profile,
     rejections_a: a.rejections, rejections_b: b.rejections,
     fields_accepted_a: a.fieldsAccepted, fields_accepted_b: b.fieldsAccepted,
     error_a: a.error, error_b: b.error,
-  }, { onConflict: 'url,model_a,model_b,asymmetric' })
+  }, { onConflict: 'url,model_a,model_b,arms_asymmetric' })
   if (wrote) throw new Error(`extraction_parity: could not store the trial: ${wrote.message}`)
 
   return {
     url, model_a: modelA, model_b: modelB,
     thinking_a: thinkingA ?? null, thinking_b: thinkingB ?? null,
-    asymmetric: allowAsymmetry,
+    arms_asymmetric: allowAsymmetry,
     identical: ['system', 'vocabulary', 'schema', 'input', 'thinking', 'timeout', 'parser', 'validator'],
     fields_a: a.fieldsAccepted, fields_b: b.fieldsAccepted,
     rejected_a: a.rejections?.length ?? null, rejected_b: b.rejections?.length ?? null,

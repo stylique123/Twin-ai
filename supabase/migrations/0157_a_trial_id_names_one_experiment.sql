@@ -21,5 +21,5 @@ alter table public.extraction_parity_trials
 
 comment on column public.extraction_parity_trials.manifest is
   'The pinned experiment: model_a, model_b, thinking_resolved, timeout_ms, '
-  'system_sha, vocabulary_sha, schema_sha, asymmetric. Written before either arm '
+  'system_sha, vocabulary_sha, schema_sha, arms_asymmetric. Written before either arm '
   'runs and refused if it disagrees with a stored trial for the same key.';
