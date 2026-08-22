@@ -32,6 +32,24 @@ alter table public.render_attempts
   -- 0, and the two must stay distinguishable.
   add column if not exists zoom_count integer;
 
+-- ⚠️ RE-RUNNABLE, BECAUSE POSTGRES HAS NO `ADD CONSTRAINT IF NOT EXISTS`.
+--
+-- The columns above are idempotent and this was not, so the SECOND application
+-- of this file failed with "constraint already exists". That reaches far beyond
+-- this migration: the staging matrix applies every listed migration BYTE-EXACT
+-- on every run, so one non-re-runnable file breaks every subsequent staging run
+-- — for every PR, not just the one that introduced it.
+--
+-- ⚖️ FOUND BY RE-RUNNING A MATRIX ON AN UNCHANGED HEAD, which is the only thing
+-- that exercises second application. A first run applies a new migration
+-- against a schema that has never seen it and cannot reveal this.
+--
+-- Drop-then-add, matching 0162 next door. Preferred over the `pg_constraint`
+-- do-block of 0030/0094 because it also survives a CHANGED definition: the
+-- guard form would silently keep the old constraint while the file claims the
+-- new one.
+alter table public.render_attempts
+  drop constraint if exists render_attempts_frame_counts_sane;
 alter table public.render_attempts
   add constraint render_attempts_frame_counts_sane check (
     (target_frame_count is null or target_frame_count > 0)
