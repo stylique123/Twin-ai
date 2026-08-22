@@ -456,8 +456,14 @@ jobs:
       # refuse, leaving an action that looks crippled and is not.
       - name: Pilot start (the action cannot express the dangerous request)
         run: node scripts/pilot-start.selftest.mjs
+      # D1's state machine. The two transitions worth guarding are "watched
+      # without consent" and "locked without asking why" — a session locked
+      # with no observation reads later as "we learned nothing", which is
+      # indistinguishable from "we never asked".
+      - name: Watched session (consent before watching, a reason before locking)
+        run: node scripts/watched-session.selftest.mjs
       # ⚠️ THE GENERATOR SAID "CI REGENERATES THIS FILE AND FAILS ON A DIFF" AND
-      # CI DID NOT. --check existed and nothing invoked it, so all three Deno
+      # CI DID NOT. --check existed and nothing invoked it, so all the Deno
       # copies could drift from their sources silently — exactly the failure the
       # generator was written to prevent, and the reason it exists at all: a
       # hand-maintained copy kept the 500%-of-a-different-population rate bug

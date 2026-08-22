@@ -17,6 +17,8 @@ const SOURCES = [
   ['scripts/pilot-core.mjs', 'supabase/functions/_shared/pilotCore.ts'],
   ['scripts/pilot-decision.mjs', 'supabase/functions/_shared/pilotDecision.ts'],
   ['scripts/pilot-start.mjs', 'supabase/functions/_shared/pilotStart.ts'],
+  ['scripts/d1-core.mjs', 'supabase/functions/_shared/d1Core.ts'],
+  ['scripts/watched-session.mjs', 'supabase/functions/_shared/watchedSession.ts'],
 ]
 
 const render = (from, src) =>
@@ -24,7 +26,9 @@ const render = (from, src) =>
   + `// Run: node scripts/ci/generate_shared_pilot_core.mjs\n`
   + `// Edit the source instead. CI regenerates this file and fails on a diff.\n`
   + `// @ts-nocheck\n`
-  + src.replace(/from '\.\/pilot-core\.mjs'/g, "from './pilotCore.ts'")
+  + src
+    .replace(/from '\.\/pilot-core\.mjs'/g, "from './pilotCore.ts'")
+    .replace(/from '\.\/d1-core\.mjs'/g, "from './d1Core.ts'")
 
 const check = process.argv.includes('--check')
 let stale = 0
