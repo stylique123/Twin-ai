@@ -21,8 +21,8 @@ import {
   EditPlanError, type EditPlanV1, type PlanOverlay, type PlanSegment, type PlanZoom,
 } from './editPlanContract.js'
 import {
-  buildContinuousZoomPlan, composeZoomExpression, composePanExpression,
-  assertFramePreserving, framesInCut,
+  buildContinuousZoomPlan, composeZoomExpression, composePanExpression, resolvePlanDuration,
+  assertFramePreserving,
 } from './frameTimeline.js'
 
 export const FFMPEG_GRAPH_VERSION = 'ffmpeg-graph-1'
@@ -349,9 +349,10 @@ function applyTimeGatedZooms(plan: EditPlanV1, vJoined: string, nodes: FilterNod
   const fpsNum = plan.output.fpsNum
   const fpsDen = plan.output.fpsDen
   const msToFrame = (ms: number) => Math.round((ms * fpsNum) / (1000 * fpsDen))
-  const targetFrameCount = plan.timeline.segments.reduce(
-    (n, seg) => n + framesInCut(seg.sourceEndMs - seg.sourceStartMs, fpsNum, fpsDen), 0,
-  )
+  // ⚠️ THE SAME RESOLUTION THE VALIDATOR USES. Derived here independently, this
+  // used to ignore `transitionInOverlapMs`, so a plan with a transition gated
+  // its zooms against a timeline longer than the one it emitted.
+  const targetFrameCount = resolvePlanDuration(plan).targetFrameCount
 
   const zoomPlan = buildContinuousZoomPlan(
     plan.video.zooms.map((z) => ({

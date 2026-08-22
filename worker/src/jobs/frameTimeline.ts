@@ -100,6 +100,34 @@ export function resolveDuration(
 }
 
 /**
+ * The same resolution, read off a plan rather than off two parallel arrays.
+ *
+ * ⚠️ ONE FUNCTION, TWO CALLERS, ON PURPOSE. The renderer needs the frame count
+ * to place its zoom gates and the validator needs the millisecond duration to
+ * judge the encode. When those two derived the number separately they disagreed
+ * about transition overlaps -- the renderer ignored them, so a plan with a
+ * transition gated its zooms against a longer timeline than the one it emitted.
+ *
+ * Structurally typed rather than importing `EditPlanV1`, so this module stays
+ * free of the contract module and remains unit-testable on a literal.
+ */
+export function resolvePlanDuration(plan: {
+  readonly timeline: { readonly segments: readonly {
+    readonly sourceStartMs: number
+    readonly sourceEndMs: number
+    readonly transitionInOverlapMs: number
+  }[] }
+  readonly output: { readonly fpsNum: number; readonly fpsDen: number }
+}): ResolvedDuration {
+  const segs = plan.timeline.segments
+  return resolveDuration(
+    segs.map((s) => s.sourceEndMs - s.sourceStartMs),
+    segs.map((s) => s.transitionInOverlapMs),
+    plan.output.fpsNum, plan.output.fpsDen,
+  )
+}
+
+/**
  * Turn millisecond window boundaries into frame ranges that TILE the timeline.
  *
  * ⚠️ A WINDOW THAT QUANTISES TO ZERO FRAMES IS ABSORBED, NOT EMITTED. The zoom
