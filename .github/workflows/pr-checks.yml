@@ -443,6 +443,12 @@ jobs:
       # taken from a different population than its denominator.
       - name: Pilot core (frozen sample, terminal states, rates that cannot exceed 100%)
         run: node scripts/pilot-core.selftest.mjs
+      # D1's state machine. The two transitions worth guarding are "watched
+      # without consent" and "locked without asking why" — a session locked
+      # with no observation reads later as "we learned nothing", which is
+      # indistinguishable from "we never asked".
+      - name: Watched session (consent before watching, a reason before locking)
+        run: node scripts/watched-session.selftest.mjs
       # The 332 decision rule, committed BEFORE any label exists. A verdict rule
       # invented after reading a support rate is not a decision procedure, it is
       # a justification — the trap #72 nearly fell into.
