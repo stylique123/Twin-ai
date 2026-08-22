@@ -42,6 +42,7 @@
 //   node scripts/ci/staging_matrix_gate.mjs --selftest
 //   node scripts/ci/staging_matrix_gate.mjs --classify --files /tmp/pr_files.txt
 //   node scripts/ci/staging_matrix_gate.mjs --verdict --runs /tmp/runs.json
+import { tierForFiles } from './gate_tiers.mjs'
 import { appendFileSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -146,10 +147,23 @@ export function matrixRequiredForFiles(files) {
   if (list.length === 0) {
     throw new Error('Resolved zero changed files. That is an API problem or an empty PR; neither is evidence of safety. Failing closed.')
   }
-  const runtime = list.filter((f) => !isExemptPath(f))
-  return runtime.length === 0
-    ? { required: false, reason: `Documentation-only PR (${list.length} files) — the editor matrix cannot prove anything about it.` }
-    : { required: true, reason: `${runtime.length} of ${list.length} changed files can alter runtime behaviour (e.g. ${runtime[0]}). A successful staging matrix on this exact head is REQUIRED.` }
+  // ⚖️ THE TIER DECIDES, AND IT IS STRICTLY MORE CONSERVATIVE THAN WHAT IT
+  // REPLACES. The old rule exempted documentation and nothing else. The tier
+  // adds exactly one more cheap destination — STATIC — and escalates everything
+  // it does not recognise, including several paths the old rule would have let
+  // through as ordinary runtime files and then gated identically anyway.
+  //
+  // ⚠️ THE DOCUMENTATION EXEMPTION IS KEPT AS A SEPARATE, NARROWER CHECK rather
+  // than folded away. If the tier table ever regressed, doc-only PRs would
+  // still be exempt by the original rule, and a bug in the new code could make
+  // the gate stricter but never looser.
+  const v = tierForFiles(list)
+  const docOnly = list.every((f) => isExemptPath(f))
+  if (docOnly) {
+    return { required: false, tier: 'DOC', decidedBy: list[0],
+      reason: `Documentation-only PR (${list.length} files) — the editor matrix cannot prove anything about it.` }
+  }
+  return { required: v.matrixRequired, tier: v.tier, decidedBy: v.decidedBy, reason: v.reason }
 }
 
 export function clampDescription(text) {
