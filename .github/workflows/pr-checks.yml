@@ -465,8 +465,30 @@ jobs:
       # attrition over what was SELECTED, and the #69 brief. Includes the rate
       # that printed 500% when the runner was driven end to end -- a numerator
       # taken from a different population than its denominator.
+      # ⚠️ ADVISORY ONLY, AND DELIBERATELY SO. This reports which gate the diff
+      # WOULD need; it does not yet decide anything. Flipping a 90-minute matrix
+      # to conditional on the first run of a brand-new classifier is how
+      # evidence disappears quietly. It runs alongside the existing gate until
+      # its verdicts have been watched against real PRs, and the switch is a
+      # separate change with its own falsifiable claim.
+      - name: Gate tier (advisory — what the smallest sufficient gate would be)
+        run: |
+          node scripts/ci/classify_change.selftest.mjs
+          node scripts/ci/classify_change.mjs --base "origin/${{ github.base_ref || 'main' }}" || true
+      # ⚠️ "THE RENDER PASSED" IS NOT THE ACCEPTANCE CRITERION FOR #445. A run
+      # losing frames per zoom while every render sits inside the tolerance has
+      # the SAME mechanism as the one that failed — it just has fewer zooms.
+      # This asserts the property that actually matters: the slope.
+      - name: Zoom-delta correlation (the defect is a slope, not a tolerance)
+        run: node scripts/ci/check_zoom_delta_correlation.selftest.mjs
       - name: Pilot core (frozen sample, terminal states, rates that cannot exceed 100%)
         run: node scripts/pilot-core.selftest.mjs
+      # #57's trigger. The properties worth guarding are the EXCLUSIONS: staging
+      # rows and uploads are not product recordings, an unrendered attempt is
+      # not a video anybody watched, and a control that lands on a real cut is
+      # scored against the baseline it exists to provide.
+      - name: Cut review (which renders count, and where the controls go)
+        run: node scripts/cut-review.selftest.mjs
       # Every refusal in the start action is proven to fire. The dangerous
       # failure is not a wrong message — it is a refusal that silently does not
       # refuse, leaving an action that looks crippled and is not.
