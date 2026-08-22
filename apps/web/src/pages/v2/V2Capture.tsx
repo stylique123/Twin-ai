@@ -20,6 +20,7 @@ import { buildTeleprompterIntent, captureScriptSha256, sha256Hex, normalizeDialo
 import type { CaptureUploadPayload } from '../../lib/api'
 import { saveTakePointer, clearTakePointer } from '../../lib/savedTake'
 import { safeToShow } from '../../lib/api'
+import { logSessionEvent } from '../../lib/api'
 import { cn } from '../../lib/cn'
 import { Aurora } from '../../components/Aurora'
 import {
@@ -414,14 +415,29 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
           audio: true,
         })
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return }
+        // ⚠️ AFTER THE PERMISSION RESOLVED, NOT BEFORE THE PROMPT. Logging on the
+        // attempt would count a creator who denied the permission as one who
+        // reached the camera, which is the opposite finding.
+        logSessionEvent('camera_opened', { facing })
         streamRef.current = stream
         if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.muted = true; void videoRef.current.play() }
       } catch (e) {
+        // ⚖️ THE BREAKAGE IS THE EVENT. Without this a creator blocked by a
+        // permission dialog and one who simply left both read as "never opened
+        // the camera" — same silence, opposite fixes.
+        logSessionEvent('client_error', { where: 'getUserMedia', message: e instanceof Error ? e.message : String(e) })
         setCamError(e instanceof Error ? e.message : 'Camera/microphone not available')
       }
     })()
     return () => {
       cancelled = true
+      // ⚠️ LEAVING WITH THE RECORDER STILL LIVE IS THE ABORT. finalizeRecording
+      // sets the recorder inactive before this runs on a normal finish, so an
+      // ACTIVE recorder here means they walked away mid-take — which is exactly
+      // the moment a watched session most needs a reason attached to it.
+      if (recRef.current && recRef.current.state !== 'inactive') {
+        logSessionEvent('recording_aborted', { scenes_closed: segmentsRef.current.length })
+      }
       try { recRef.current?.state !== 'inactive' && recRef.current?.stop() } catch { /* */ }
       recRef.current = null // a flipped camera needs a fresh recorder bound to the new stream
       streamRef.current?.getTracks().forEach((t) => t.stop())
@@ -476,7 +492,13 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
     ensureRecorder()
     const rec = recRef.current
     if (!rec) return
-    if (rec.state === 'inactive') rec.start(250)       // first scene: begin the single session
+    if (rec.state === 'inactive') {
+      // ⚠️ ONE SESSION, SO THIS FIRES ONCE. The recorder pauses between scenes
+      // rather than restarting, and counting resumes as starts would report a
+      // four-scene take as four attempts.
+      logSessionEvent('recording_started')
+      rec.start(250)       // first scene: begin the single session
+    }
     else if (rec.state === 'paused') rec.resume()       // later scene: resume same session
     // This scene's kept window opens at the current cumulative active time. (After a
     // Retake, that's past the flubbed read — so the bad take is dropped.)

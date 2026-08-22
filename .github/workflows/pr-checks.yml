@@ -446,6 +446,11 @@ jobs:
       # references with nobody noticing. Identity comes from the database.
       - name: Pilot remote (identity by id, the worker does the media work)
         run: node scripts/pilot-remote.selftest.mjs
+      # The observer packet decides what counts as a blocker, what it may
+      # prefill, and what it must leave blank. A prefilled cause is a cause the
+      # observer accepts, so "prefill contains no cause" is a real assertion.
+      - name: D1 observer (facts prefilled, cause never inferred, blind spots named)
+        run: node scripts/d1-observer.mjs --selftest
       # The staging matrix applies a HAND-MAINTAINED migration list, and it has
       # fallen behind three times. Every time, the symptom was a harness timeout
       # with nothing in the diff mentioning a migration — the gate went green on
