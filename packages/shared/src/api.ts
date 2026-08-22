@@ -19,6 +19,7 @@ import {
   EXTRACTED_FIELDS, EXTRACTION_SOURCES, type ExtractedFact,
 } from './productExtraction'
 import { generationLifecycle, resolveFinishedOutputs, resolveFinishedOutputsResult } from './editor/finishedOutput'
+import { refusalText } from './pilot/refusalText'
 
 // ---- Client injection ------------------------------------------------------
 // The web app is the single client surface. It wires its Supabase client, an
@@ -2136,7 +2137,8 @@ const pilot = async <T>(body: Record<string, unknown>): Promise<T> => {
   // ⚠️ A FAILED CALL IS NOT AN EMPTY RESULT. Returning null here would let the
   // page render "0 claims remaining" over a request that never landed, and the
   // Finish button would light up on a run nobody labelled.
-  if (error) throw new Error(error.message ?? 'the review service refused')
+  // Same fixed-string trap as the pilot-start helper — read the body.
+  if (error) throw new Error(await refusalText(error, 'the review service refused'))
   if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error)
   return data as T
 }
@@ -2176,10 +2178,20 @@ export interface PilotQuote {
 
 const start = async <T>(body: Record<string, unknown>): Promise<T> => {
   const { data, error } = await supabase.functions.invoke('pilot-start', { body })
-  if (error) throw new Error(error.message ?? 'the pilot service refused')
+  if (error) throw new Error(await refusalText(error, 'the pilot service refused'))
   if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error)
   return data as T
 }
+
+/**
+ * The pilot that is already in flight, if there is one.
+ *
+ * ⚖️ RECOVERY, NOT DISCOVERY. It returns an id the caller may poll, which is
+ * how a run that was started in some other session — or before a fix shipped —
+ * becomes reachable again without starting, re-enqueuing or re-paying anything.
+ */
+export const activePilot = () =>
+  start<{ ok: true; pilot_run_id: string | null; status: string | null }>({ action: 'active' })
 
 /** What it would cost. Touches no table and enqueues nothing, so the bill can
  *  be seen without running the version that spends it. */

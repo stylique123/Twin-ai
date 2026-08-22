@@ -7,7 +7,8 @@
 // case below asserts the REFUSAL happens, and the accepting cases assert it
 // does not, so a check that rejects everything cannot pass either.
 import {
-  validateStartRequest, validateStatusRequest, activePilotRefusal, pilotJobRows, expectedCost,
+  validateStartRequest, validateStatusRequest, activePilotRefusal, activePilotRun,
+  pilotJobRows, expectedCost,
   ACTIVE_STATUSES, ALLOWED_KEYS, STATUS_KEYS, DOWNLOADS_PER_REFERENCE,
 } from './pilot-start.mjs'
 import { MAX_SIZE, DEFAULT_SIZE, PILOT_PRIORITY } from './pilot-core.mjs'
@@ -72,6 +73,31 @@ ok('a live run among finished ones still blocks',
   typeof activePilotRefusal([
     { id: 'a', status: 'locked' }, { id: 'b', status: 'collecting' }, { id: 'c', status: 'abandoned' },
   ]) === 'string')
+
+// ── the run you already have, so it can be recovered rather than replaced ──
+//
+// ⚖️ THE REFUSAL AND THE RECOVERY MUST AGREE. If activePilotRun ever considered
+// a run live that activePilotRefusal did not (or the reverse), the product
+// would refuse to start a run it could not find, which is the exact state a
+// real pilot was stranded in.
+ok('no active run when there are none', activePilotRun([]) === null)
+ok('an undefined list has no active run', activePilotRun(undefined) === null)
+ok('a locked run is not active', activePilotRun([{ id: 'a', status: 'locked' }]) === null)
+ok('an abandoned run is not active', activePilotRun([{ id: 'a', status: 'abandoned' }]) === null)
+for (const status of ACTIVE_STATUSES) {
+  ok(`a ${status} run is recoverable`, activePilotRun([{ id: 'live-1', status }])?.id === 'live-1')
+}
+ok('enqueued is recoverable — the state the stranded run was actually in',
+  activePilotRun([{ id: '7204de6f', status: 'enqueued' }])?.id === '7204de6f')
+ok('a live run among finished ones is the one returned',
+  activePilotRun([
+    { id: 'a', status: 'locked' }, { id: 'b', status: 'collecting' }, { id: 'c', status: 'abandoned' },
+  ])?.id === 'b')
+for (const status of [...ACTIVE_STATUSES, 'locked', 'abandoned']) {
+  const runs = [{ id: 'x', status }]
+  ok(`refusal and recovery agree about "${status}"`,
+    (activePilotRefusal(runs) === null) === (activePilotRun(runs) === null))
+}
 
 // ── the jobs that actually get written ────────────────────────────────────
 const rows = pilotJobRows(['u1', 'u2'], 'run-7', PILOT_PRIORITY)

@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2, AlertTriangle, Play } from 'lucide-react'
-import { quotePilot, startPilot, pilotStatus, type PilotQuote, type PilotStatus } from '../lib/api'
+import { quotePilot, startPilot, pilotStatus, activePilot, type PilotQuote, type PilotStatus } from '../lib/api'
 
 // Kept in step with MAX_SIZE in scripts/pilot-core.mjs. A larger number typed
 // here is refused by the server, which is the check that matters; this only
@@ -59,6 +59,20 @@ export default function PilotVisualStart() {
       setError(String((e as Error).message ?? e))
     } finally { setBusy(false) }
   }, [size, ceiling])
+
+  // ⚖️ A RUN YOU ALREADY HAVE IS PICKED UP, NOT REPLACED. Before this, runId was
+  // only ever set by a start() in this same browser tab, so a pilot started
+  // yesterday — or one that outlived the tab — was unreachable from the only
+  // page that polls it. That is not cosmetic: polling is what materialises the
+  // packet, so an unreachable run is a run whose paid-for evidence can never be
+  // labelled. It adopts the run; it never starts one.
+  useEffect(() => {
+    let live = true
+    activePilot()
+      .then((a) => { if (live && a.pilot_run_id) setRunId(a.pilot_run_id) })
+      .catch((e) => { if (live) setError(String((e as Error).message ?? e)) })
+    return () => { live = false }
+  }, [])
 
   // Poll while collection runs. Stops as soon as the server reports it is done.
   useEffect(() => {
@@ -152,6 +166,16 @@ export default function PilotVisualStart() {
           {status.packet && (
             <div className="mt-2 text-xs opacity-60">
               Packet stored: {status.packet.claims} things to check across {status.packet.ready} videos.
+            </div>
+          )}
+          {/* ⚠️ THE REFUSAL, VERBATIM, WHERE THE PROGRESS IS. "a reference has
+              no terminal state", "no reference produced claims" — each names
+              why this run must not be labelled yet. A run that is done
+              collecting and still has no packet is not a run that is nearly
+              ready, and it must not read as one. */}
+          {status.packet_error && (
+            <div className="mt-3 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+              Twin could not put the labelling packet together yet: {status.packet_error}
             </div>
           )}
           {status.review_url && (

@@ -125,10 +125,25 @@ export function validateStatusRequest(body) {
  * cohort, so the same reference is paid for twice and two label sets disagree
  * about one URL with no way to say which run a label belonged to.
  */
-export function activePilotRefusal(runs) {
+/**
+ * The pilot that is already live, or null.
+ *
+ * ⚖️ ONE RULE, TWO READERS. The refusal that stops a second run and the lookup
+ * that RECOVERS the first must agree about what "already live" means, or the
+ * product refuses to start a run it also cannot find — which is exactly what
+ * happened: a real run sat `enqueued` holding eight references of paid-for
+ * evidence, the start page could only ever reach a run it had started itself,
+ * and the only thing that knew the run existed was the message refusing to
+ * start another one.
+ */
+export function activePilotRun(runs) {
   const active = (runs ?? []).filter((r) => ACTIVE_STATUSES.includes(String(r?.status)))
-  if (active.length === 0) return null
-  const r = active[0]
+  return active.length === 0 ? null : active[0]
+}
+
+export function activePilotRefusal(runs) {
+  const r = activePilotRun(runs)
+  if (!r) return null
   return `pilot run ${r.id} is still ${r.status}. One pilot at a time: a second run would draw an `
     + 'overlapping sample from the same cohort, pay for those references twice, and produce two '
     + 'label sets that disagree about one URL with nothing to say which run a label came from. '
