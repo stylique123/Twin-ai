@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { logEvent } from '../lib/api'
+import { logEvent, logSessionEvent } from '../lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
 import { LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X, Settings, Users, CalendarDays, Package } from 'lucide-react'
 import { Logo, LogoMark } from './Logo'
@@ -54,6 +54,19 @@ export function AppShell({ children, mobileChrome = true }: { children: React.Re
   useEffect(() => {
     void logEvent('page_view', { path: pathname })
     window.scrollTo(0, 0)
+  }, [pathname])
+  // ⚠️ WHERE THEY STOPPED IS A FACT NOBODY WAS RECORDING. Without it the last
+  // page_view is the only clue, and a creator who closed the tab on the camera
+  // screen looks identical to one still sitting on it — a distinction a watched
+  // session turns on.
+  //
+  // ⚖️ pagehide, NOT beforeunload. beforeunload does not fire reliably on mobile
+  // Safari, which is where a phone-first product is actually used, and this
+  // would have been silently empty for the population it exists to measure.
+  useEffect(() => {
+    const onHide = () => { void logSessionEvent('session_abandoned', { path: pathname }) }
+    window.addEventListener('pagehide', onHide)
+    return () => window.removeEventListener('pagehide', onHide)
   }, [pathname])
   const left = videosFromCredits(profile?.credits ?? 0)
   // Hide agency-only items (Workspaces) from solo/aspiring/pro plans.

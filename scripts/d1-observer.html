@@ -1,0 +1,98 @@
+<!doctype html>
+<meta charset="utf-8"><title>D1 observer</title>
+<!--
+  ⚠️ THE OBSERVED COLUMN IS READ-ONLY AND THE WHY COLUMN IS EMPTY. That split is
+  the whole design. Anything the machine can see is already filled in so the
+  observer never retypes it; anything about cause is blank, because a prefilled
+  cause is a cause the observer will accept.
+-->
+<style>
+  :root { color-scheme: dark }
+  body { margin:0; background:#0d0f12; color:#e8eaed; font:15px/1.6 system-ui, sans-serif }
+  main { max-width:1000px; margin:0 auto; padding:28px; display:grid; grid-template-columns:1fr 1fr; gap:32px }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:#8b93a1; margin:0 0 12px }
+  .fact { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid #1c2026 }
+  .fact b { font-weight:600 }
+  .t { font-size:13px; color:#8b93a1; max-height:280px; overflow:auto; margin-top:16px }
+  .t div { padding:3px 0 }
+  .warn { background:#2a1f10; border:1px solid #6b4d16; border-radius:8px; padding:12px; margin-bottom:16px; font-size:13px }
+  button { font:inherit; padding:11px 14px; border-radius:8px; border:1px solid #3a4049;
+           background:#171a1f; color:#e8eaed; cursor:pointer; text-align:left; width:100% }
+  button:hover { border-color:#4a9eff }
+  button.sel { border-color:#4a9eff; background:#1d2530 }
+  button span { display:block; color:#8b93a1; font-size:13px }
+  .list { display:grid; gap:8px; margin-bottom:20px }
+  textarea { width:100%; min-height:120px; background:#171a1f; color:#e8eaed; border:1px solid #3a4049;
+             border-radius:8px; padding:12px; font:inherit; box-sizing:border-box }
+  .save { margin-top:14px; background:#1d3a5c; border-color:#4a9eff }
+  .err { color:#ff8a8a; font-size:13px; min-height:20px }
+</style>
+<main>
+  <section>
+    <h2>Observed — already recorded, do not retype</h2>
+    <div id="facts"></div>
+    <div class="t" id="timeline"></div>
+  </section>
+  <section>
+    <div id="blind"></div>
+    <h2>Dominant blocker</h2>
+    <div class="list" id="blockers"></div>
+    <h2>Why — in the creator's own words</h2>
+    <!-- ⚠️ VERBATIM. Not your summary of what they meant: the summary is where
+         the observer's theory quietly replaces the creator's reason. -->
+    <textarea id="note" placeholder="What did they actually say?"></textarea>
+    <button class="save" id="save">Save this observation</button>
+    <div class="err" id="err"></div>
+  </section>
+</main>
+<script>
+let chosen = null, S = null
+const fmt = (ms) => ms === null ? '—' : (ms < 1000 ? ms + 'ms' : Math.round(ms / 1000) + 's')
+
+async function boot() {
+  S = await (await fetch('/session')).json()
+  const p = S.prefill
+  document.getElementById('facts').innerHTML = [
+    ['events seen', p.events_seen],
+    ['picked a reference', p.reference_selected ? 'yes' : 'no'],
+    ['script generated', p.script_generated ? 'yes' : 'no'],
+    ['time on the script', fmt(p.ms_on_script)],
+    ['script edits', p.script_edits],
+    ['opened the camera', p.camera_opened ? 'yes' : 'no'],
+    ['recordings started', p.recordings_started],
+    ['recordings aborted', p.recordings_aborted],
+    ['rendered', p.rendered ? 'yes' : 'no'],
+    ['errors', p.errors],
+    ['stopped at', p.stopped_at ?? '—'],
+  ].map(([k, v]) => '<div class="fact"><span>' + k + '</span><b>' + v + '</b></div>').join('')
+
+  document.getElementById('timeline').innerHTML = S.timeline.map((t) =>
+    '<div>+' + fmt(t.since_start_ms) + '  ' + t.event + '  (then ' + fmt(t.dwell_ms) + ')</div>').join('')
+
+  // ⚖️ THE BLIND SPOTS ARE SHOWN BEFORE THE ANSWER IS GIVEN. An observer who
+  // learns at the end that the camera was never instrumented has already
+  // concluded the creator never opened it.
+  if (S.missing.length) {
+    document.getElementById('blind').innerHTML = '<div class="warn"><b>This timeline is blind to:</b><br>'
+      + S.missing.map((m) => m.event + ' — ' + m.blind_to).join('<br>')
+      + '<br><br>Absence of these events is NOT evidence it did not happen.</div>'
+  }
+
+  document.getElementById('blockers').innerHTML = Object.entries(S.blockers).map(([k, t]) =>
+    '<button data-b="' + k + '">' + k + '<span>' + t + '</span></button>').join('')
+  document.querySelectorAll('[data-b]').forEach((b) => b.onclick = () => {
+    chosen = b.dataset.b
+    document.querySelectorAll('[data-b]').forEach((x) => x.classList.toggle('sel', x.dataset.b === chosen))
+  })
+}
+
+document.getElementById('save').onclick = async () => {
+  const r = await fetch('/observe', { method: 'POST', body: JSON.stringify({
+    blocker: chosen, creatorReason: document.getElementById('note').value }) })
+  const j = await r.json()
+  document.getElementById('err').textContent = j.error
+    ? j.error
+    : 'Saved. Now: node scripts/d1-observer.mjs --lock'
+}
+boot()
+</script>

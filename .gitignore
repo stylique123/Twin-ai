@@ -16,3 +16,7 @@ __pycache__/
 
 # Pilot run state: a frozen sample, un-locked labels, and reviewer identity.
 .twinai-pilot/
+# Watched-session and labelling data never enters the repo: a creator's verbatim
+# words and an operator's un-locked judgments.
+.twinai-labels/
+.twinai-d1/
