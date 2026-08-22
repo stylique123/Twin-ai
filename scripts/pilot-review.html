@@ -1,0 +1,200 @@
+<!doctype html>
+<meta charset="utf-8"><title>Pilot review</title>
+<!--
+  ⚠️ ONE CLAIM AT A TIME, WITH ITS FRAMES ALREADY ON SCREEN. The friction this
+  replaces is reading JSON and cross-referencing frame numbers by hand. If the
+  human has to go looking for the evidence, the packet has failed at its only job.
+
+  ⚖️ NOTHING HERE SUGGESTS AN ANSWER. No default selection, no highlighted
+  "likely" button, no model confidence. A packet that nudged would be measuring
+  its own nudge.
+-->
+<style>
+  :root { color-scheme: dark }
+  body { margin:0; background:#0d0f12; color:#e8eaed; font:15px/1.5 system-ui, sans-serif }
+  main { max-width:1100px; margin:0 auto; padding:24px }
+  .bar { height:4px; background:#22262c; border-radius:2px; overflow:hidden; margin-bottom:20px }
+  .bar > i { display:block; height:100%; background:#4a9eff; transition:width .2s }
+  .meta { color:#8b93a1; font-size:13px; display:flex; gap:16px; margin-bottom:8px }
+  .claim { font-size:26px; font-weight:600; margin:12px 0 4px }
+  .value { font-size:20px; color:#4a9eff; margin-bottom:20px }
+  .value.none { color:#e0a33a }
+  .frames { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px }
+  figure { margin:0 }
+  figure img { max-height:340px; border-radius:8px; display:block; background:#22262c }
+  figcaption { color:#8b93a1; font-size:12px; margin-top:6px; text-align:center }
+  .nocite { color:#e0a33a; padding:24px; border:1px dashed #3a4049; border-radius:8px }
+  button { font:inherit; padding:14px 18px; border-radius:8px; border:1px solid #3a4049;
+           background:#171a1f; color:#e8eaed; cursor:pointer; text-align:left }
+  button:hover { border-color:#4a9eff }
+  button b { display:block; font-size:15px }
+  button span { color:#8b93a1; font-size:13px }
+  .labels { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px }
+  .canon { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px }
+  .canon button { padding:8px 12px }
+  .canon.on button.sel { border-color:#4a9eff; background:#1d2530 }
+  .skip { color:#8b93a1; background:none; border:none; padding:8px 0; cursor:pointer }
+  .done { text-align:center; padding:80px 20px }
+  kbd { background:#22262c; border-radius:4px; padding:1px 6px; font-size:12px }
+</style>
+<main>
+  <div class="bar"><i id="bar"></i></div>
+  <div id="app"></div>
+</main>
+<script>
+const LABELS = [
+  ['SUPPORTED', 'The frames show this.'],
+  ['UNSUPPORTED', 'The frames contradict this.'],
+  ['INDETERMINATE', 'These frames cannot settle it.'],
+  ['WRONG_EVIDENCE', 'Right claim, wrong frame.'],
+]
+let rows = [], i = 0, corrected = null, FRAMES = [], CTX = {}
+
+const post = (path, body) => fetch(path, { method:'POST', body: JSON.stringify(body) })
+
+async function boot() {
+  const r = await (await fetch('/claims')).json()
+  rows = r.labels
+  FRAMES = r.frames || []
+  CTX = r.context || {}
+  // ⚠️ RESUME WHERE THE HUMAN STOPPED. A packet that restarted at zero would
+  // spend the session re-answering, and the re-answers are not independent.
+  i = rows.findIndex((x) => x.label === null)
+  if (i < 0) i = rows.length
+  render()
+}
+
+function render() {
+  const app = document.getElementById('app')
+  const done = rows.filter((x) => x.label !== null).length
+  document.getElementById('bar').style.width = (100 * done / rows.length) + '%'
+
+  if (i >= rows.length) {
+    // ⚠️ THE BUTTON APPEARS ONLY WHEN EVERY CLAIM IS ANSWERED, and a SKIP leaves
+    // one unanswered on purpose — the queue is not finished just because it was
+    // walked to the end. The server refuses too; this is the affordance, not the
+    // rule.
+    const left = rows.filter((x) => x.label === null).length
+    app.innerHTML = left === 0
+      ? '<div class="done"><h2>All ' + rows.length + ' claims answered.</h2>'
+        + '<p>The numbers stay hidden until you lock. Locking freezes these labels '
+        + 'and records who made them.</p>'
+        + '<button id="finish" style="max-width:320px;margin:20px auto;background:#1d3a5c;'
+        + 'border-color:#4a9eff">Finish &amp; lock</button><div class="err" id="err"></div></div>'
+      : '<div class="done"><h2>' + left + ' claim(s) still skipped.</h2>'
+        + '<p>A skip is not an answer. Go back and settle them — INDETERMINATE is '
+        + 'a real answer if the frames cannot decide it.</p>'
+        + '<button id="back" style="max-width:320px;margin:20px auto">Back to the first unanswered</button></div>'
+    const fin = document.getElementById('finish')
+    if (fin) fin.onclick = async () => {
+      const r = await fetch('/finish', { method: 'POST' })
+      const j = await r.json()
+      document.getElementById('err').textContent = j.error
+        ? j.error : 'Locked. The summary is printing in your terminal.'
+      if (!j.error) fin.disabled = true
+    }
+    const back = document.getElementById('back')
+    if (back) back.onclick = () => { i = rows.findIndex((x) => x.label === null); render() }
+    return
+  }
+  const c = rows[i]
+  corrected = c.correctedValue ?? null
+
+  // ⚠️ THE TIMESTAMP IS PART OF THE EVIDENCE. A claim about what CHANGES needs
+  // to know whether its two frames are half a second or half a minute apart; the
+  // same two stills support very different claims at different spacings.
+  const at = (n) => {
+    const f = FRAMES.find((x) => x.url === c.url && x.frame_index === n)
+    return f && f.at_seconds !== null && f.at_seconds !== undefined
+      ? Number(f.at_seconds).toFixed(1) + 's'
+      : 'time unknown'
+  }
+  const frames = c.frames.length
+    ? c.frames.map((n) => '<figure><img src="/frame?url=' + encodeURIComponent(c.url) + '&i=' + n
+        + '" alt=""><figcaption>frame ' + n + ' &middot; ' + at(n) + '</figcaption></figure>').join('')
+    // ⚖️ A CLAIM WITH NO CITATION IS ITS OWN FINDING, said plainly rather than
+    // rendered as an empty row the eye slides past.
+    : '<div class="nocite">The model cited no frame for this. There is no evidence to judge.</div>'
+
+  app.innerHTML =
+    '<div class="meta"><span>' + (done + 1) + ' of ' + rows.length + '</span><span>' + c.url + '</span></div>'
+    + '<div class="claim">' + c.path + '</div>'
+    + '<div class="value' + (c.answered ? '' : ' none') + '">'
+      + (c.answered ? String(c.value) : 'the model did not answer this') + '</div>'
+    + '<div class="frames">' + frames + '</div>'
+    + rejectionNote(c)
+    + (c.canonical ? '<div class="canon on" id="canon">' + c.canonical.map((v) =>
+        '<button data-v="' + v + '" class="' + (corrected === v ? 'sel' : '') + '">' + v + '</button>').join('')
+        + '</div>' : '')
+    + '<div class="labels">' + LABELS.map(([k, t], n) =>
+        '<button data-l="' + k + '"><b>' + k + ' <kbd>' + (n + 1) + '</kbd></b><span>' + t + '</span></button>').join('')
+      + '</div>'
+    + '<button class="skip" data-skip="1">Skip — come back to this one <kbd>s</kbd>'
+      + ' &nbsp;·&nbsp; <kbd>space</kbd> bigger frames &nbsp;·&nbsp; <kbd>←</kbd> <kbd>→</kbd> move</button>'
+
+  app.querySelectorAll('[data-l]').forEach((b) => b.onclick = () => answer(b.dataset.l))
+  app.querySelectorAll('[data-skip]').forEach((b) => b.onclick = () => answer(null, 'skip'))
+  const canon = document.getElementById('canon')
+  if (canon) canon.querySelectorAll('button').forEach((b) => b.onclick = () => {
+    corrected = corrected === b.dataset.v ? null : b.dataset.v
+    canon.querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x.dataset.v === corrected))
+  })
+
+  // ⚖️ THE FRAME THE HUMAN ENLARGES IS EVIDENCE ABOUT THE PACKET. Reaching for a
+  // different frame means we showed the wrong one first, and that count is a
+  // direct input to what #69 should change.
+  app.querySelectorAll('.frames img').forEach((img) => img.onclick = () => {
+    post('/event', { kind: 'frame_change' })
+    img.style.maxHeight = img.style.maxHeight === 'none' ? '340px' : 'none'
+  })
+}
+
+// ⚖️ WHAT THE PASS SAID AND HAD THROWN OUT, shown on the claims it affects. A
+// reviewer looking at an empty field cannot otherwise tell "the model said
+// nothing" from "the model said something inadmissible", and those are
+// different findings about the prompt.
+function rejectionNote(c) {
+  const ctx = CTX[c.url]
+  if (!ctx || !ctx.rejections) return ''
+  const list = Array.isArray(ctx.rejections) ? ctx.rejections : [ctx.rejections]
+  const mine = list.filter((r) => r && (r.field === c.path || r.path === c.path))
+  if (!mine.length) return ''
+  return '<div class="nocite" style="margin-bottom:20px">The pass answered this and it was '
+    + 'rejected: ' + mine.map((r) => (r.reason || r.rule || JSON.stringify(r))).join('; ')
+    + '</div>'
+}
+
+async function answer(label, kind) {
+  const idx = rows.indexOf(rows[i])
+  rows[i].label = label
+  rows[i].correctedValue = corrected
+  await post('/label', { index: idx, label, correctedValue: corrected, kind })
+  i++
+  render()
+}
+
+onkeydown = (e) => {
+  if (i >= rows.length) return
+  const n = Number(e.key)
+  // ⚖️ RECORDED, BECAUSE IT CHANGES WHAT #69 SHOULD FIX. A reviewer who never
+  // leaves the keyboard is telling you the shortcuts work; one who clicks every
+  // time is telling you they were never discoverable.
+  if (n >= 1 && n <= 4) { post('/event', { kind: 'key', via: 'label' }); answer(LABELS[n - 1][0]) }
+  if (e.key === 's') { post('/event', { kind: 'key', via: 'skip' }); answer(null, 'skip') }
+  if (e.key === 'ArrowLeft' && i > 0) { post('/event', { kind: 'nav', via: 'prev' }); i--; render() }
+  if (e.key === 'ArrowRight' && i < rows.length) { post('/event', { kind: 'nav', via: 'next' }); i++; render() }
+  // ⚖️ SPACE EXPANDS THE EVIDENCE, and it is recorded as a frame_change like a
+  // click is. Reaching for a bigger picture is the same signal however it is
+  // reached — counting only mouse expansions would make a keyboard reviewer
+  // look like one who never needed to look closer.
+  if (e.key === ' ') {
+    e.preventDefault()
+    const imgs = [...document.querySelectorAll('.frames img')]
+    if (!imgs.length) return
+    const expanded = imgs[0].style.maxHeight === 'none'
+    imgs.forEach((img) => { img.style.maxHeight = expanded ? '340px' : 'none' })
+    if (!expanded) post('/event', { kind: 'frame_change', via: 'key' })
+  }
+}
+boot()
+</script>

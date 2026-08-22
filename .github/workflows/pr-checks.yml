@@ -410,6 +410,23 @@ jobs:
       # same as one that passed. The selftest needs no credentials.
       - name: Label packet (four answers, locked before counted, no field unasked)
         run: node scripts/label-packet.mjs --selftest
+      # The pilot's deciding logic: the frozen sample, the three terminal states,
+      # attrition over what was SELECTED, and the #69 brief. Includes the rate
+      # that printed 500% when the runner was driven end to end -- a numerator
+      # taken from a different population than its denominator.
+      - name: Pilot core (frozen sample, terminal states, rates that cannot exceed 100%)
+        run: node scripts/pilot-core.selftest.mjs
+      # The 332 decision rule, committed BEFORE any label exists. A verdict rule
+      # invented after reading a support rate is not a decision procedure, it is
+      # a justification — the trap #72 nearly fell into.
+      - name: Pilot decision (pre-registered 332 rule, thresholds stated not buried)
+        run: node scripts/pilot-decision.selftest.mjs
+      # The control plane. A pilot frozen in one container's .twinai-pilot
+      # directory redrew itself on the next machine and nobody could tell which
+      # eight references a label belonged to. These cases assert the move:
+      # create, then load by id, and never touch the cohort table again.
+      - name: Pilot db (the frozen sample survives the machine it was drawn on)
+        run: node scripts/pilot-db.selftest.mjs
       # The staging matrix applies a HAND-MAINTAINED migration list, and it has
       # fallen behind three times. Every time, the symptom was a harness timeout
       # with nothing in the diff mentioning a migration — the gate went green on

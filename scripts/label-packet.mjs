@@ -30,150 +30,24 @@ import { createHash } from 'node:crypto'
 const arg = (n, d = null) => { const i = process.argv.indexOf(`--${n}`); return i < 0 ? d : (process.argv[i + 1] ?? true) }
 const flag = (n) => process.argv.includes(`--${n}`)
 
-/**
- * ⚠️ THE FOUR ANSWERS, AND WHY THERE ARE FOUR. Three would collapse the two ways
- * a claim fails: a claim the frames CONTRADICT and a claim whose cited frame was
- * simply the wrong one are different defects with different fixes -- the first
- * is the model seeing wrongly, the second is the citation machinery. Merging
- * them would leave "the model is 30% wrong" hiding a prompt bug.
- *
- * ⚖️ AND INDETERMINATE IS NOT A SKIP. It is the finding that four frames cannot
- * settle this question, which is exactly what the pilot needs to know before
- * anyone spends 332 downloads.
- */
-export const LABELS = Object.freeze({
-  SUPPORTED: 'The frames show this.',
-  UNSUPPORTED: 'The frames contradict this.',
-  INDETERMINATE: 'These frames cannot settle it.',
-  WRONG_EVIDENCE: 'The claim may be right, but this is not the frame that shows it.',
-})
-
-/** ⚠️ DECLARED, NOT WALKED. Reflecting over the object would silently stop
- *  covering a field the model returned as null, and a claim that is absent is
- *  exactly the thing worth noticing. The totality selftest holds this against
- *  the type. */
-export const CLAIM_PATHS = Object.freeze([
-  'primaryMode',
-  'people.count',
-  'setting.changes', 'setting.complexity',
-  'performance.talkingHead', 'performance.walking', 'performance.acting',
-  'performance.productInteraction', 'performance.screenInteraction',
-  'camera.framingChanges', 'camera.positionChanges',
-  'requirements.physicalProduct', 'requirements.secondPerson',
-  'requirements.multipleLocations', 'requirements.unusualProps',
-])
-
-/** For the categorical fields the human may also supply the correct value.
- *  ⚖️ A BOOLEAN NEEDS NO PICKER: UNSUPPORTED on `walking: true` already says
- *  false, and offering a second control to say it again invents disagreement
- *  between two answers to one question. */
-export const CANONICAL_VALUES = Object.freeze({
-  primaryMode: ['talking_head', 'demo', 'voiceover_broll', 'screen_capture', 'skit', 'other'],
-  'people.count': ['one', 'multiple'],
-  'setting.complexity': ['simple', 'moderate', 'complex'],
-})
-
-const at = (obj, path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj)
-
-/**
- * Turn one reference's visual profile into the list of things a human answers.
- *
- * ⚠️ A NULL FIELD IS A ROW, NOT A GAP. "The model did not answer this" is a
- * finding about the prompt, and dropping those rows would make the pass look
- * more complete the worse it did.
- */
-export function flattenClaims(url, visualProfile) {
-  return CLAIM_PATHS.map((path) => {
-    const obs = at(visualProfile, path)
-    const answered = obs != null && typeof obs === 'object' && 'value' in obs
-    return {
-      url,
-      path,
-      answered,
-      value: answered ? obs.value : null,
-      // ⚖️ THE CITATION IS THE WHOLE POINT OF SHOWING A FRAME. A claim with no
-      // citation cannot be WRONG_EVIDENCE, because there is no evidence to be
-      // wrong -- it can only be unanswered.
-      frames: answered && obs.evidence?.frames ? [...obs.evidence.frames] : [],
-      canonical: CANONICAL_VALUES[path] ?? null,
-    }
-  })
-}
-
-/** ⚠️ STABLE ACROSS RUNS. The order a human sees claims in changes how they
- *  answer, so a packet that reshuffled between sessions would make two sessions
- *  incomparable. Digest order, same reasoning as the cohort draw. */
-export function orderClaims(claims) {
-  return [...claims].sort((a, b) =>
-    createHash('sha256').update(`${a.url}|${a.path}`).digest('hex')
-      .localeCompare(createHash('sha256').update(`${b.url}|${b.path}`).digest('hex')))
-}
-
-export const isLabel = (l) => Object.prototype.hasOwnProperty.call(LABELS, l)
-
-/**
- * ⚠️ REFUSES ON AN OPEN SESSION, AND THAT IS THE FEATURE. Seeing the running
- * accuracy while labels remain is how the last few start agreeing with the
- * first few. The lock is what makes the number evidence rather than a mood.
- */
-export function aggregate(session) {
-  if (session?.locked !== true) {
-    return { refused: 'session is not locked — lock it before looking at the numbers' }
-  }
-  const labels = (session.labels ?? []).filter((l) => isLabel(l.label))
-  const dist = {}
-  for (const k of Object.keys(LABELS)) dist[k] = 0
-  for (const l of labels) dist[l.label]++
-
-  const answered = labels.filter((l) => l.answered)
-  // ⚠️ THE DENOMINATOR EXCLUDES NOTHING IT SHOULD COUNT. A claim the model never
-  // made is not a claim it got right, and a denominator that quietly drops
-  // non-answers turns a thin pass into a good one.
-  const supported = dist.SUPPORTED
-  return {
-    claims_shown: session.labels?.length ?? 0,
-    claims_labelled: labels.length,
-    claims_unlabelled: (session.labels?.length ?? 0) - labels.length,
-    model_answered: answered.length,
-    distribution: dist,
-    // ⚖️ TWO RATES, BECAUSE THEY ANSWER DIFFERENT QUESTIONS. Against everything
-    // the model was ASKED is "how much of the visual pass is usable". Against
-    // what it ANSWERED is "when it speaks, is it right". Reporting only the
-    // second is how a pass that answers three fields out of fifteen scores 100%.
-    supported_of_all_asked: labels.length === 0 ? null : supported / labels.length,
-    supported_of_answered: answered.length === 0 ? null : supported / answered.length,
-    // The citation machinery is a separate defect from the seeing.
-    wrong_evidence_rate: labels.length === 0 ? null : dist.WRONG_EVIDENCE / labels.length,
-  }
-}
-
-/**
- * What the session cost the human, from the event log.
- *
- * ⚖️ THIS IS THE ONLY INPUT TO #69. The requirements come from what was slow and
- * repetitive, not from a design memo written before anyone had done it once.
- */
-export function friction(events) {
-  const answers = events.filter((e) => e.kind === 'label')
-  const gaps = []
-  for (let i = 0; i < answers.length; i++) {
-    const prev = i === 0 ? events.find((e) => e.kind === 'session_start') : answers[i - 1]
-    if (prev) gaps.push(answers[i].at - prev.at)
-  }
-  const sorted = [...gaps].sort((a, b) => a - b)
-  return {
-    claims_answered: answers.length,
-    // ⚠️ MEDIAN, NOT MEAN. One interruption -- a phone call mid-session -- moves
-    // a mean enough to invent a usability problem that was a lunch break.
-    median_ms_per_claim: sorted.length === 0 ? null : sorted[Math.floor(sorted.length / 2)],
-    slowest_ms: sorted.length === 0 ? null : sorted[sorted.length - 1],
-    // A claim answered twice is a claim the packet made hard to answer once.
-    backtracks: events.filter((e) => e.kind === 'relabel').length,
-    // Reaching for a different frame means the packet showed the wrong one first.
-    evidence_frame_changes: events.filter((e) => e.kind === 'frame_change').length,
-    skipped: events.filter((e) => e.kind === 'skip').length,
-  }
-}
+// ⚠️ THE LOGIC LIVES IN pilot-core.mjs, AND THIS FILE HAD A COPY OF IT.
+//
+// The commit that created pilot-core said the functions were "moved, not
+// retyped" -- and that was wrong. They were COPIED, and this file kept its
+// originals. The 500% supported-rate defect was then fixed in pilot-core only,
+// so `label-packet.mjs --aggregate` went on dividing every supported label by
+// the answered ones and would have reported a rate above 100% to anyone using
+// the older path, which is still wired into pr-checks.
+//
+// ⚖️ TWO AUTHORITIES ON WHAT A PASS RATE MEANS IS THE EXACT THING THE
+// EXTRACTION CLAIMED TO PREVENT. Re-exporting is what makes the claim true.
+export {
+  LABELS, CLAIM_PATHS, CANONICAL_VALUES,
+  flattenClaims, orderClaims, isLabel, aggregate, friction, supportedRate,
+} from './pilot-core.mjs'
+import {
+  LABELS, CLAIM_PATHS, flattenClaims, orderClaims, isLabel, aggregate, friction,
+} from './pilot-core.mjs'
 
 if (flag('selftest')) {
   let failed = 0

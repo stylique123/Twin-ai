@@ -13,3 +13,6 @@ dist
 .claude/
 __pycache__/
 *.pyc
+
+# Pilot run state: a frozen sample, un-locked labels, and reviewer identity.
+.twinai-pilot/
