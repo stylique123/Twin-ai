@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
 import { authHeader } from './authSession.mjs'
+import { makeEditorFixtures } from './editorFixtures.mjs'
 
 const execFile = promisify(_execFile)
 const REPO_ROOT = join(import.meta.dirname, '..', '..')
@@ -254,26 +255,8 @@ async function tamperObject(asset, buf, ct = 'video/webm') {
 
 // Fabricated fenced lease for direct-RPC truth-table calls (a real running
 // job row the SECURITY DEFINER fence accepts).
-async function fabricateLease(ownerId, projectId, worker = 'hx-worker') {
-  const id = randomUUID()
-  const { error } = await admin.from('jobs').insert({
-    id, owner_id: ownerId, type: 'editor_v2', status: 'running', attempts: 1,
-    locked_at: new Date().toISOString(), locked_by: worker,
-    payload: { project_id: projectId }, dedup_key: `editor_v2:${projectId}:hx`,
-  })
-  if (error) throw new Error(`fabricateLease: ${error.message}`)
-  return { jobId: id, worker, attempt: 1 }
-}
 // A bare edit_projects row (not started through the edge fn) for RPC tests.
-async function scratchProject(ownerId, genId, assetId) {
-  const id = randomUUID()
-  const { error } = await admin.from('edit_projects').insert({
-    id, owner_id: ownerId, generation_id: genId, source_asset_id: assetId, status: 'queued',
-    idempotency_key: randomUUID(),
-  })
-  if (error) throw new Error(`scratchProject: ${error.message}`)
-  return id
-}
+const { fabricateLease, scratchProject } = makeEditorFixtures(admin, sha256)
 
 // =====================================================================
 async function main() {

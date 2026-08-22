@@ -2159,3 +2159,107 @@ export const logPilotEvent = (pilotRunId: string, kind: string, detail?: unknown
 
 export const finishPilotReview = (pilotRunId: string) =>
   pilot<{ ok: true; decision: unknown; report: unknown }>({ action: 'finish', pilot_run_id: pilotRunId })
+
+// ── starting a pilot ────────────────────────────────────────────────────────
+//
+// ⚠️ THIS CLIENT CANNOT SEND MORE THAN THE ENDPOINT ACCEPTS, AND THAT IS NOT
+// THE BOUNDARY. pilot-start refuses unknown keys itself; these helpers simply
+// have no parameter for a URL list, a payload, or a backlog flag, so a caller
+// cannot fumble one in by accident either. The server check is the real one.
+
+export interface PilotQuote {
+  references: number
+  /** ⚠️ TWO PER REFERENCE. force:true re-acquires AND pulls frames. */
+  downloads: number
+  visionCalls: number
+}
+
+const start = async <T>(body: Record<string, unknown>): Promise<T> => {
+  const { data, error } = await supabase.functions.invoke('pilot-start', { body })
+  if (error) throw new Error(error.message ?? 'the pilot service refused')
+  if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error)
+  return data as T
+}
+
+/** What it would cost. Touches no table and enqueues nothing, so the bill can
+ *  be seen without running the version that spends it. */
+export const quotePilot = (size: number, costCeilingDownloads: number) =>
+  start<{ ok: true; quoted: PilotQuote; ceiling: number; enqueued: 0 }>({
+    action: 'quote', size, cost_ceiling_downloads: costCeilingDownloads,
+  })
+
+/** Freeze a sample and enqueue exactly it. Refuses while another pilot is
+ *  live, and refuses if the real bill exceeds the ceiling the caller stated. */
+export const startPilot = (size: number, costCeilingDownloads: number) =>
+  start<{ ok: true; pilot_run_id: string; frozen: number; enqueued: number; quoted: PilotQuote; ceiling: number }>({
+    action: 'start', size, cost_ceiling_downloads: costCeilingDownloads,
+  })
+
+export interface PilotStatus {
+  ok: true
+  pilot_run_id: string
+  status: string
+  collecting: boolean
+  progress: {
+    /** ⚠️ THE DENOMINATOR. Never the survivors — a 6-of-8 pilot must not read as 100%. */
+    selected: number
+    ready_for_label: number
+    failed: number
+    unreadable: number
+    still_running: number
+  }
+  attrition: Record<string, unknown>
+  /** Null until collection is done AND something is actually reviewable. */
+  review_url: string | null
+}
+
+/** Poll a run. Read-only; refuses unknown keys exactly like start does. */
+export const pilotStatus = (pilotRunId: string) =>
+  start<PilotStatus>({ action: 'status', pilot_run_id: pilotRunId })
+
+// ── the watched session (D1) ───────────────────────────────────────────────
+//
+// ⚖️ THE MACHINE COLLECTS, THE OBSERVER ASKS WHY. Every call below either moves
+// the session's state or records what a human typed. None of them produces a
+// blocker, and no client-side default may ever supply one.
+
+export interface WatchedSessionGap { event_name: string; reason: string }
+export interface WatchedSessionFinish {
+  ok: true
+  status: string
+  events_captured: number
+  /** ⚠️ NAMED, NOT COUNTED. "uninstrumented" is a fact about the code;
+   *  "unknown" is an honest shrug. Neither means the creator did not do it. */
+  blind_spots: WatchedSessionGap[]
+  required_events: number
+}
+
+const watched = async <T>(body: Record<string, unknown>): Promise<T> => {
+  const { data, error } = await supabase.functions.invoke('watched-session', { body })
+  if (error) throw new Error(error.message ?? 'the session service refused')
+  if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error)
+  return data as T
+}
+
+export const createWatchedSession = (subjectUserId: string) =>
+  watched<{ ok: true; watched_session_id: string }>({ action: 'create', subject_user_id: subjectUserId })
+
+/** Records the yes. The server refuses to start watching without it. */
+export const consentWatchedSession = (id: string) =>
+  watched<{ ok: true }>({ action: 'consent', watched_session_id: id })
+
+export const startWatchedSession = (id: string) =>
+  watched<{ ok: true; status: string }>({ action: 'start', watched_session_id: id })
+
+export const finishWatchedSession = (id: string) =>
+  watched<WatchedSessionFinish>({ action: 'finish', watched_session_id: id })
+
+/** ⚠️ THE ONLY HUMAN WRITE. `creatorReason` is the creator's own words and the
+ *  server refuses an empty one — a blocker code alone says nothing. */
+export const observeWatchedSession = (id: string, blocker: string, creatorReason: string) =>
+  watched<{ ok: true }>({
+    action: 'observe', watched_session_id: id, blocker, creator_reason: creatorReason,
+  })
+
+export const lockWatchedSession = (id: string) =>
+  watched<{ ok: true; status: string; observations: number }>({ action: 'lock', watched_session_id: id })

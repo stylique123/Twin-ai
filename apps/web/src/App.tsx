@@ -25,6 +25,8 @@ const Settings = lazy(() => import('./pages/Settings'))
 const Billing = lazy(() => import('./pages/Billing'))
 const Metrics = lazy(() => import('./pages/Metrics'))
 const PilotVisualReview = lazy(() => import('./pages/PilotVisualReview'))
+const PilotVisualStart = lazy(() => import('./pages/PilotVisualStart'))
+const WatchedSession = lazy(() => import('./pages/WatchedSession'))
 const Calendar = lazy(() => import('./pages/Calendar'))
 const ClientReport = lazy(() => import('./pages/ClientReport'))
 const ReviewApproval = lazy(() => import('./pages/ReviewApproval'))
@@ -193,6 +195,14 @@ export default function App() {
     location.pathname.startsWith('/result') ||
     location.pathname.startsWith('/billing') ||
     location.pathname.startsWith('/settings') ||
+    // ⚠️ THE OWNER'S OWN LABELLING PAGE HAD THE BLACK-SCREEN BUG. /internal/*
+    // renders inside <Protected><AppShell><Page> and was never added here, so
+    // navigating to it keyed on the pathname and could strand the screen mid
+    // exit animation — the exact defect reported as "the Products tab is
+    // completely blank, black screen and glitches". Note this is /internal/,
+    // NOT /review/: the login-free client report at /review/:token is
+    // deliberately keyed per-path and must stay outside.
+    location.pathname.startsWith('/internal/') ||
     location.pathname.startsWith('/metrics') ||
     // ⚠️ THESE TWO WERE MISSING AND THE SYMPTOM WAS THE ONE DOCUMENTED ABOVE.
     // Both render inside <Protected><AppShell><Page> exactly like every route
@@ -299,6 +309,20 @@ export default function App() {
           <Route
             path="/metrics"
             element={<Protected><AppShell><Page><Metrics /></Page></AppShell></Protected>}
+          />
+          {/* Starting a pilot. Protected is convenience -- pilot-start
+              re-checks platform_admins with the service role and refuses
+              everything else it is handed, and THAT is the boundary. */}
+          <Route
+            path="/internal/review/visual/start"
+            element={<Protected><AppShell><Page><PilotVisualStart /></Page></AppShell></Protected>}
+          />
+          {/* D1's observer page. Protected is convenience — watched-session
+              re-checks platform_admins with the service role AND that the
+              observer owns the session, and those are the real boundary. */}
+          <Route
+            path="/internal/watch"
+            element={<Protected><AppShell><Page><WatchedSession /></Page></AppShell></Protected>}
           />
           {/* The visual pilot's labelling page. Protected is convenience -- the
               pilot-review edge function re-checks platform_admins with the
