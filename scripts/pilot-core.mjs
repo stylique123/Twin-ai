@@ -408,3 +408,38 @@ export function briefFor69(fr, agg) {
       + 'WRONG_EVIDENCE >15%; any unanswered claim at lock.',
   }
 }
+
+/**
+ * ⚠️ WHAT WAS ACTUALLY REVIEWED, DIGESTED, so the locked labels stay attached to
+ * the object they judged. A visual profile can be regenerated: re-run the pass
+ * and `primaryMode` may come back a different value citing a different frame.
+ * Without this, last week's labels would silently appear to be about this
+ * week's claims, and the accuracy number would describe a comparison nobody
+ * made.
+ *
+ * ⚖️ THE CLAIM AND ITS EVIDENCE ARE DIGESTED SEPARATELY, because they change for
+ * different reasons and the difference is the finding. A claim digest that moved
+ * while the evidence held means the model changed its mind about the same
+ * frames; evidence moving underneath an unchanged claim means the sample was
+ * re-drawn and the citation now points somewhere else.
+ */
+export const claimsDigest = (labels) => createHash('sha256').update(
+  [...labels]
+    .map((l) => `${l.url}|${l.path}|${JSON.stringify(l.value)}|${(l.frames ?? []).join(',')}`)
+    .sort().join('\n'),
+).digest('hex')
+
+/** Digest of the FRAME BYTES that were on screen, via the sha256 each row
+ *  already stores. ⚠️ Not the storage paths: a path is stable across a re-upload
+ *  that changed the picture, which is exactly the substitution worth catching. */
+export const evidenceDigest = (frames) => {
+  // ⚠️ NO FRAMES DIGESTS TO `null`, NOT TO THE HASH OF THE EMPTY STRING. Running
+  // the pilot printed `evidence e3b0c44298fc` when no frame rows came back --
+  // the sha256 of nothing, wearing the costume of a real digest. A reader would
+  // have taken it as evidence captured. Absent is not zero, and the pair of
+  // digests is only worth printing if one of them cannot quietly mean nothing.
+  if (!frames || frames.length === 0) return null
+  return createHash('sha256').update(
+    [...frames].map((f) => `${f.url}|${f.frame_index}|${f.sha256}`).sort().join('\n'),
+  ).digest('hex')
+}

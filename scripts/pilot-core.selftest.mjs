@@ -3,6 +3,7 @@
 import {
   manifestDigest, freezeManifest, assertManifestUnchanged, pilotState, progressOf,
   attrition, briefFor69, TERMINAL, selectCohort, aggregate, friction, flattenClaims,
+  claimsDigest, evidenceDigest,
 } from './pilot-core.mjs'
 
 let failed = 0
@@ -106,6 +107,37 @@ ok('flattenClaims still returns one row per declared path',
   ] })
   ok('a thin pass cannot score 100% by answering three fields',
     mixed.supported_of_answered === 0.5 && Math.abs(mixed.supported_of_all_asked - 1 / 3) < 1e-9)
+}
+
+// ── the reviewed object stays recoverable ──
+{
+  const L = [
+    { url: 'a', path: 'primaryMode', value: 'demo', frames: [2] },
+    { url: 'a', path: 'people.count', value: 'one', frames: [1] },
+  ]
+  ok('claim digests are order-independent', claimsDigest(L) === claimsDigest([...L].reverse()))
+  // ⚠️ THE MODEL CHANGING ITS MIND MUST CHANGE THE DIGEST, or last week's labels
+  // silently appear to be about this week's claims.
+  ok('a changed VALUE changes the digest',
+    claimsDigest(L) !== claimsDigest([{ ...L[0], value: 'skit' }, L[1]]))
+  // ⚖️ AND SO MUST A RE-POINTED CITATION, which is a different failure from a
+  // changed value and worth telling apart.
+  ok('a changed CITATION changes the digest',
+    claimsDigest(L) !== claimsDigest([{ ...L[0], frames: [3] }, L[1]]))
+
+  const F = [{ url: 'a', frame_index: 1, sha256: 'aa' }, { url: 'a', frame_index: 2, sha256: 'bb' }]
+  ok('evidence digests are order-independent', evidenceDigest(F) === evidenceDigest([...F].reverse()))
+  // ⚠️ A RE-UPLOAD KEEPS THE PATH AND CHANGES THE PICTURE. Digesting paths would
+  // miss exactly the substitution worth catching.
+  ok('a re-uploaded frame changes the evidence digest',
+    evidenceDigest(F) !== evidenceDigest([F[0], { ...F[1], sha256: 'cc' }]))
+  // ⚠️ FOUND BY READING THE REAL OUTPUT: an empty frame set produced
+  // e3b0c44298fc, the sha256 of the empty string, which reads as a captured
+  // digest. Absent is not zero.
+  ok('no frames digests to null, not to the hash of nothing', evidenceDigest([]) === null)
+  ok('and null is distinguishable from any real digest', evidenceDigest(F) !== null)
+  // ⚖️ THE TWO MOVE INDEPENDENTLY, which is what makes the pair informative.
+  ok('claims and evidence are separate digests', claimsDigest(L) !== evidenceDigest(F))
 }
 
 if (failed) process.exit(1)

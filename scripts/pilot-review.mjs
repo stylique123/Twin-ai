@@ -20,7 +20,7 @@ import { join } from 'node:path'
 import {
   selectCohort, bandOf, handleOf, freezeManifest, assertManifestUnchanged,
   progressOf, attrition, flattenClaims, orderClaims, isLabel, aggregate, friction,
-  briefFor69, PILOT_PRIORITY, MAX_SIZE,
+  briefFor69, claimsDigest, evidenceDigest, PILOT_PRIORITY, MAX_SIZE,
 } from './pilot-core.mjs'
 
 const DIR = '.twinai-pilot'
@@ -140,6 +140,12 @@ export async function runReview(db, opts) {
       .select('url, visual_profile').in('url', m.urls).not('visual_profile', 'is', null)
     const claims = orderClaims((rows ?? []).flatMap((r) => flattenClaims(r.url, r.visual_profile)))
     run.labels = claims.map((c) => ({ ...c, label: null, correctedValue: null }))
+    // ⚠️ THE EVIDENCE IS CAPTURED NOW, WHILE IT IS WHAT THE REVIEWER WILL SEE.
+    // Reading it at lock time instead would digest whatever the table holds by
+    // then, which is not necessarily what was on screen.
+    const { data: fr } = await db.from('reference_frames')
+      .select('url, frame_index, sha256').in('url', [...new Set(run.labels.map((l) => l.url))])
+    run.frames = fr ?? []
     run.events = [{ kind: 'session_start', at: Date.now() }]
     save(run)
   }
@@ -156,6 +162,18 @@ export function finish(run, reviewer) {
   run.aggregate = agg
   run.friction = fr
   run.brief69 = briefFor69(fr, agg)
+  // ⚖️ THE REVIEWED OBJECT, RECOVERABLE. A later re-run that changes the claims
+  // or re-draws the frames will not match these, and the mismatch is the point:
+  // it says these labels describe something that no longer exists rather than
+  // letting them look current.
+  run.digests = {
+    sample: run.manifest.digest,
+    claims: claimsDigest(run.labels),
+    evidence: evidenceDigest(run.frames ?? []),
+  }
+  // ⚠️ A LOCK IS FINAL FOR THIS VERSION. Re-reviewing is a NEW version with its
+  // own digests, never an edit of this one — an editable lock is a note.
+  run.review_version = (run.review_version ?? 0) + 1
   return run
 }
 
@@ -258,7 +276,13 @@ export function report(run) {
   const pct = (x) => (x === null || x === undefined ? '—' : `${Math.round(x * 100)}%`)
   const L = []
   L.push('\nPILOT LOCKED')
-  L.push(`  reviewer ${run.reviewer} · ${run.lockedAt} · sample ${run.manifest.digest.slice(0, 12)}`)
+  L.push(`  reviewer ${run.reviewer} · ${run.lockedAt} · review version ${run.review_version}`)
+  // ⚠️ PRINTED, NOT ONLY STORED. A digest nobody sees is a digest nobody checks,
+  // and these are what say these labels describe an object that still exists.
+  L.push(`  sample ${run.digests.sample.slice(0, 12)} · claims ${run.digests.claims.slice(0, 12)} `
+    + `· evidence ${run.digests.evidence === null
+      ? 'NOT CAPTURED — no frame rows were found for the reviewed references'
+      : run.digests.evidence.slice(0, 12)}`)
   L.push(`\n  selected            ${at.selected}`)
   L.push(`  successfully assessed ${at.ready_for_label}   (${pct(at.assessed_of_selected)} of selected)`)
   L.push(`  unreadable          ${at.unreadable}`)
