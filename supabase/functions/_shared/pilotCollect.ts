@@ -2,7 +2,6 @@
 // Run: node scripts/ci/generate_shared_pilot_core.mjs
 // Edit the source instead. CI regenerates this file and fails on a diff.
 // @ts-nocheck
-#!/usr/bin/env node
 // THE PACKET IS BUILT ONCE AND STORED, NOT REBUILT PER PAGE LOAD.
 //
 // The old packet lived in .twinai-pilot/run.json. Rebuilding it on each machine

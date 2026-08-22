@@ -2,7 +2,6 @@
 // Run: node scripts/ci/generate_shared_pilot_core.mjs
 // Edit the source instead. CI regenerates this file and fails on a diff.
 // @ts-nocheck
-#!/usr/bin/env node
 // THE PRODUCTION RECORD IS AUTHORITATIVE.
 //
 // The first pilot harness froze its sample into .twinai-pilot/run.json. That
