@@ -56,10 +56,14 @@ jobs:
           # localhost, which nobody but that container could reach. It carries
           # no anonymous path — every action re-checks platform_admins with the
           # service role before it reads or writes anything.
+          # watched-session — D1's record. PRODUCTION on purpose for the same
+          # reason as pilot-review: a session served from a laptop dies with the
+          # process and cannot be opened from anywhere else. Admin-gated, and
+          # the observer must own the session they are writing to.
           PROD="admin admin-metrics billing billing-webhook brand-logo brand-truth clip-asset \
                 dna-poll editor-output generate-blueprint generate-thumbnail ingest-reference \
                 pilot-review product-image referral review social source-asset start-dna \
-                start-editor-v2"
+                start-editor-v2 watched-session"
 
           unclassified=""
           for d in supabase/functions/*/; do
