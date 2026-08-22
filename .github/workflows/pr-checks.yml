@@ -421,6 +421,12 @@ jobs:
       # a justification — the trap #72 nearly fell into.
       - name: Pilot decision (pre-registered 332 rule, thresholds stated not buried)
         run: node scripts/pilot-decision.selftest.mjs
+      # The control plane. A pilot frozen in one container's .twinai-pilot
+      # directory redrew itself on the next machine and nobody could tell which
+      # eight references a label belonged to. These cases assert the move:
+      # create, then load by id, and never touch the cohort table again.
+      - name: Pilot db (the frozen sample survives the machine it was drawn on)
+        run: node scripts/pilot-db.selftest.mjs
       # The staging matrix applies a HAND-MAINTAINED migration list, and it has
       # fallen behind three times. Every time, the symptom was a harness timeout
       # with nothing in the diff mentioning a migration — the gate went green on
