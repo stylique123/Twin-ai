@@ -20,7 +20,8 @@ import { join } from 'node:path'
 import {
   selectCohort, bandOf, handleOf, freezeManifest, assertManifestUnchanged,
   progressOf, attrition, flattenClaims, orderClaims, isLabel, aggregate, friction,
-  briefFor69, claimsDigest, evidenceDigest, PILOT_PRIORITY, MAX_SIZE,
+  briefFor69, claimsDigest, evidenceDigest, byField, bySituation, slowestFields,
+  PILOT_PRIORITY, MAX_SIZE,
 } from './pilot-core.mjs'
 
 const DIR = '.twinai-pilot'
@@ -161,7 +162,13 @@ export function finish(run, reviewer) {
   const fr = friction(run.events ?? [])
   run.aggregate = agg
   run.friction = fr
-  run.brief69 = briefFor69(fr, agg)
+  // ⚠️ THE OVERALL RATE CANNOT TELL A UNIFORMLY MEDIOCRE PASS FROM A GOOD ONE
+  // WITH TWO BROKEN FIELDS, and those have opposite fixes: retune the prompt, or
+  // drop two fields.
+  run.by_field = byField(run.labels)
+  run.by_situation = bySituation(run.labels)
+  run.slowest_fields = slowestFields(run.events ?? [], run.labels)
+  run.brief69 = briefFor69(fr, agg, slowestFields(run.events ?? [], run.labels))
   // ⚖️ THE REVIEWED OBJECT, RECOVERABLE. A later re-run that changes the claims
   // or re-draws the frames will not match these, and the mismatch is the point:
   // it says these labels describe something that no longer exists rather than
@@ -300,6 +307,30 @@ export function report(run) {
   L.push(`  backtracks          ${f.backtracks}`)
   L.push(`  frame enlargements  ${f.evidence_frame_changes}`)
   L.push(`  skipped             ${f.skipped}`)
+  const slow = (run.slowest_fields ?? []).slice(0, 3)
+  if (slow.length) {
+    L.push('  slowest fields')
+    for (const x of slow) L.push(`      ${x.path.padEnd(28)} ${Math.round(x.median_ms / 100) / 10}s median, ${x.labelled} labels)`)
+  }
+  // ⚖️ WORST FIELDS FIRST, and never-answered called out separately, because
+  // "the model is silent here" and "the model is wrong here" are different
+  // problems with different fixes.
+  const fields = Object.entries(run.by_field ?? {})
+  const broken = fields.filter(([, v]) => v.supported_of_answered !== null && v.supported_of_answered < 0.5)
+    .sort((a, b) => a[1].supported_of_answered - b[1].supported_of_answered)
+  const silent = fields.filter(([, v]) => v.never_answered).map(([k]) => k)
+  if (broken.length) {
+    L.push('\n  FIELDS THE MODEL GETS WRONG')
+    for (const [k, v] of broken) L.push(`      ${k.padEnd(28)} ${pct(v.supported_of_answered)} of ${v.answered} answered`)
+  }
+  if (silent.length) L.push(`\n  FIELDS THE MODEL NEVER ANSWERED (not the same as wrong): ${silent.join(', ')}`)
+  const sits = Object.entries(run.by_situation ?? {}).filter(([k]) => k !== 'situation_unconfirmed')
+  if (sits.length) {
+    L.push('\n  BY VISUAL SITUATION — only where a human confirmed what the video is')
+    for (const [k, v] of sits) L.push(`      ${k.padEnd(28)} ${pct(v.supported_of_answered)} across ${v.references} reference(s)`)
+    const unc = run.by_situation.situation_unconfirmed
+    if (unc) L.push(`      ${'situation unconfirmed'.padEnd(28)} ${unc.references} reference(s) — primaryMode was not SUPPORTED`)
+  }
   L.push(`\n  #69 — ${b.verdict}`)
   for (const i of b.items) L.push(`   · ${i.change}\n       because ${i.because}`)
   if (b.items.length) L.push(`\n  thresholds: ${b.thresholds}`)

@@ -182,7 +182,7 @@ export function aggregate(session) {
   // every SUPPORTED label was divided by only the claims the model actually
   // answered. A rate above 100% is at least loud -- the same mistake landing at
   // 90% would have read as a good result and nobody would have looked twice.
-  const supportedAmongAnswered = answered.filter((l) => l.label === 'SUPPORTED').length
+
   return {
     claims_shown: session.labels?.length ?? 0,
     claims_labelled: labels.length,
@@ -193,8 +193,8 @@ export function aggregate(session) {
     // the model was ASKED is "how much of the visual pass is usable". Against
     // what it ANSWERED is "when it speaks, is it right". Reporting only the
     // second is how a pass that answers three fields out of fifteen scores 100%.
-    supported_of_all_asked: labels.length === 0 ? null : supported / labels.length,
-    supported_of_answered: answered.length === 0 ? null : supportedAmongAnswered / answered.length,
+    supported_of_all_asked: supportedRate(labels, { answeredOnly: false }),
+    supported_of_answered: supportedRate(labels, { answeredOnly: true }),
     // The citation machinery is a separate defect from the seeing.
     wrong_evidence_rate: labels.length === 0 ? null : dist.WRONG_EVIDENCE / labels.length,
   }
@@ -347,7 +347,7 @@ export function attrition(progress) {
  * pilot exists to keep human, and a brief generated from friction would
  * otherwise reach for it first, because judgement is always the slowest step.
  */
-export function briefFor69(fr, agg) {
+export function briefFor69(fr, agg, slow = []) {
   const items = []
   const sec = (ms) => Math.round((ms ?? 0) / 100) / 10
 
@@ -393,6 +393,20 @@ export function briefFor69(fr, agg) {
       change: 'Make the unanswered remainder visible before the lock, not after.',
       because: `${agg.claims_unlabelled} claims were locked unanswered.`,
       evidence: 'claims_unlabelled',
+    })
+  }
+
+  // ⚠️ A FIELD THAT IS SLOW EVERY TIME IS A PACKET PROBLEM, NOT A MODEL ONE --
+  // the question is unclear or its evidence is hard to find. That is the
+  // difference between #69 rewording a prompt and #69 changing what is on
+  // screen, and the overall median cannot distinguish them.
+  const slowest = slow[0]
+  if (slowest && slowest.labelled >= 3 && slowest.median_ms > 2 * (fr.median_ms_per_claim ?? 0)) {
+    items.push({
+      change: `Put ${slowest.path} last, or show more evidence for it.`,
+      because: `${Math.round(slowest.median_ms / 100) / 10}s median against `
+        + `${Math.round((fr.median_ms_per_claim ?? 0) / 100) / 10}s overall, across ${slowest.labelled} labels.`,
+      evidence: 'slowest_fields',
     })
   }
 
@@ -442,4 +456,124 @@ export const evidenceDigest = (frames) => {
   return createHash('sha256').update(
     [...frames].map((f) => `${f.url}|${f.frame_index}|${f.sha256}`).sort().join('\n'),
   ).digest('hex')
+}
+
+/**
+ * ⚠️ THE ONE PLACE A SUPPORTED-RATE IS COMPUTED, because getting it wrong is the
+ * defect this repo keeps re-committing. `aggregate` printed 500% and
+ * `bySituation` printed 350%, both by dividing EVERY supported label by only the
+ * claims the model ANSWERED — a numerator and denominator from different
+ * populations. Two separate fixes would have left a third site to find later.
+ *
+ * ⚖️ AND THE DENOMINATOR IS NAMED IN THE CALL, so a reader can see which
+ * question is being answered: "of everything asked" and "of what it answered"
+ * are different numbers and both are worth having.
+ */
+export function supportedRate(labels, { answeredOnly }) {
+  const pool = answeredOnly ? labels.filter((l) => l.answered) : labels
+  if (pool.length === 0) return null
+  return pool.filter((l) => l.label === 'SUPPORTED').length / pool.length
+}
+
+/**
+ * ⚠️ WHICH FIELDS THE MODEL GETS WRONG, not just how often it is wrong. An
+ * overall 70% can be a uniformly mediocre pass or a good one with two broken
+ * fields, and those have opposite fixes: retune the prompt, or drop two fields.
+ * The overall rate cannot tell them apart, which is why it is not enough on its
+ * own.
+ */
+export function byField(labels) {
+  const out = {}
+  for (const l of labels) {
+    const f = (out[l.path] ??= { asked: 0, answered: 0, supported: 0, supportedAnswered: 0,
+      unsupported: 0, indeterminate: 0, wrong_evidence: 0 })
+    f.asked++
+    if (l.answered) f.answered++
+    if (l.label === 'SUPPORTED') f.supported++
+    if (l.answered && l.label === 'SUPPORTED') f.supportedAnswered++
+    if (l.label === 'UNSUPPORTED') f.unsupported++
+    if (l.label === 'INDETERMINATE') f.indeterminate++
+    if (l.label === 'WRONG_EVIDENCE') f.wrong_evidence++
+  }
+  for (const f of Object.values(out)) {
+    // ⚖️ NULL WHEN THE MODEL NEVER ANSWERED THIS FIELD. Zero would say it got
+    // the field wrong every time, which is a different and much worse claim
+    // than never having spoken.
+    f.supported_of_answered = f.answered === 0 ? null : f.supportedAnswered / f.answered
+    f.never_answered = f.answered === 0
+  }
+  return out
+}
+
+/**
+ * Accuracy grouped by what the video ACTUALLY is.
+ *
+ * ⚠️ ONLY FOR REFERENCES WHERE THE HUMAN CONFIRMED THE SITUATION. Grouping by
+ * the model's own `primaryMode` would let a reference the model mis-typed carry
+ * every other claim into the wrong bucket — the model grading itself twice over.
+ * A reference whose primaryMode was not labelled SUPPORTED is reported as
+ * `situation_unconfirmed` rather than guessed at.
+ */
+export function bySituation(labels) {
+  const confirmed = new Map()
+  for (const l of labels) {
+    // ⚠️ AND THE CLAIM MUST HAVE BEEN ANSWERED. Running this produced a bucket
+    // literally named "null": a primaryMode the model never answered, labelled
+    // SUPPORTED, stringified its absent value into a situation name. A claim
+    // with no value cannot confirm what a video is.
+    if (l.path === 'primaryMode' && l.label === 'SUPPORTED' && l.answered) {
+      const v = l.correctedValue ?? l.value
+      if (v !== null && v !== undefined && v !== '') confirmed.set(l.url, String(v))
+    }
+  }
+  const out = {}
+  const byKey = new Map()
+  for (const l of labels) {
+    const key = confirmed.get(l.url) ?? 'situation_unconfirmed'
+    if (!byKey.has(key)) byKey.set(key, [])
+    byKey.get(key).push(l)
+    const g = (out[key] ??= { references: new Set(), asked: 0, answered: 0, supported: 0 })
+    g.references.add(l.url)
+    g.asked++
+    if (l.answered) g.answered++
+    if (l.label === 'SUPPORTED') g.supported++
+  }
+  for (const [key, g] of Object.entries(out)) {
+    g.references = g.references.size
+    // ⚖️ THROUGH THE SHARED HELPER, over the SAME population as its denominator.
+    // Computing it here by hand is exactly how this bucket reported 350%.
+    g.supported_of_answered = supportedRate(byKey.get(key) ?? [], { answeredOnly: true })
+  }
+  return out
+}
+
+/**
+ * ⚠️ WHICH FIELDS COST THE REVIEWER TIME. A field that is slow every time is a
+ * field whose question is unclear or whose evidence is hard to find — and that
+ * is a packet problem, not a model problem. It is the difference between #69
+ * rewording a prompt and #69 changing what is on screen.
+ */
+export function slowestFields(events, labels) {
+  const answers = events.filter((e) => e.kind === 'label' && typeof e.index === 'number')
+  const start = events.find((e) => e.kind === 'session_start')?.at ?? null
+  const perField = {}
+  for (let i = 0; i < answers.length; i++) {
+    const prev = i === 0 ? start : answers[i - 1].at
+    if (prev === null) continue
+    const path = labels[answers[i].index]?.path
+    if (!path) continue
+    ;(perField[path] ??= []).push(answers[i].at - prev)
+  }
+  return Object.entries(perField)
+    .map(([path, gaps]) => {
+      const sorted = [...gaps].sort((a, b) => a - b)
+      // ⚠️ `labelled`, NOT `answered`. Everywhere else in this file "answered"
+      // means THE MODEL answered; here it means the reviewer gave a label. The
+      // report printed "requirements.secondPerson ... (8)" beside a list of
+      // fields the model NEVER answered, and the same word carrying two
+      // meanings in one output is how a reader draws the wrong conclusion.
+      return { path, labelled: gaps.length, median_ms: sorted[Math.floor(sorted.length / 2)] }
+    })
+    // ⚖️ SORTED SLOWEST FIRST, because that is the order somebody would act in.
+    .sort((a, b) => b.median_ms - a.median_ms)
 }

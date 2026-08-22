@@ -3,7 +3,7 @@
 import {
   manifestDigest, freezeManifest, assertManifestUnchanged, pilotState, progressOf,
   attrition, briefFor69, TERMINAL, selectCohort, aggregate, friction, flattenClaims,
-  claimsDigest, evidenceDigest,
+  claimsDigest, evidenceDigest, byField, bySituation, slowestFields, supportedRate,
 } from './pilot-core.mjs'
 
 let failed = 0
@@ -138,6 +138,100 @@ ok('flattenClaims still returns one row per declared path',
   ok('and null is distinguishable from any real digest', evidenceDigest(F) !== null)
   // ⚖️ THE TWO MOVE INDEPENDENTLY, which is what makes the pair informative.
   ok('claims and evidence are separate digests', claimsDigest(L) !== evidenceDigest(F))
+}
+
+// ── field-level accuracy ──
+{
+  const L = [
+    { url: 'a', path: 'primaryMode', answered: true, label: 'SUPPORTED', value: 'demo' },
+    { url: 'a', path: 'people.count', answered: true, label: 'UNSUPPORTED' },
+    { url: 'b', path: 'primaryMode', answered: true, label: 'SUPPORTED', value: 'demo' },
+    { url: 'b', path: 'people.count', answered: true, label: 'UNSUPPORTED' },
+    { url: 'a', path: 'camera.framingChanges', answered: false, label: 'INDETERMINATE' },
+  ]
+  const f = byField(L)
+  // ⚠️ AN OVERALL 50% HERE HIDES ONE PERFECT FIELD AND ONE BROKEN ONE, which
+  // have opposite fixes.
+  ok('a broken field is visible even when the overall rate is middling',
+    f['primaryMode'].supported_of_answered === 1 && f['people.count'].supported_of_answered === 0)
+  // ⚖️ NEVER-ANSWERED IS NOT ZERO. Zero says it got the field wrong every time.
+  ok('a field the model never answered reports null, not zero',
+    f['camera.framingChanges'].supported_of_answered === null
+    && f['camera.framingChanges'].never_answered === true)
+  ok('every asked claim is counted', f['primaryMode'].asked === 2)
+}
+
+// ── accuracy by what the video actually is ──
+{
+  const L = [
+    { url: 'a', path: 'primaryMode', answered: true, label: 'SUPPORTED', value: 'demo' },
+    { url: 'a', path: 'people.count', answered: true, label: 'SUPPORTED' },
+    // b's primaryMode was WRONG, so nothing about b may be filed under a situation.
+    { url: 'b', path: 'primaryMode', answered: true, label: 'UNSUPPORTED', value: 'demo' },
+    { url: 'b', path: 'people.count', answered: true, label: 'UNSUPPORTED' },
+  ]
+  const g = bySituation(L)
+  // ⚠️ THE MODEL MAY NOT GRADE ITSELF TWICE. Grouping by an unconfirmed
+  // primaryMode would let a mis-typed reference drag every other claim into the
+  // wrong bucket.
+  ok('only human-confirmed situations become buckets', g['demo'].references === 1)
+  ok('an unconfirmed reference is named, not guessed at',
+    g['situation_unconfirmed'].references === 1)
+  ok('the confirmed bucket carries only its own claims', g['demo'].supported_of_answered === 1)
+  // ⚖️ A CORRECTED VALUE WINS over the model's, because that is the human's answer.
+  const corrected = bySituation([
+    { url: 'c', path: 'primaryMode', answered: true, label: 'SUPPORTED', value: 'demo', correctedValue: 'skit' },
+  ])
+  ok('a corrected canonical value is the situation, not the model\'s', corrected['skit'] !== undefined)
+}
+
+// ── which fields cost time ──
+{
+  const labels = [{ path: 'primaryMode' }, { path: 'people.count' }, { path: 'primaryMode' }]
+  const ev = [
+    { kind: 'session_start', at: 0 },
+    { kind: 'label', at: 30_000, index: 0 },
+    { kind: 'label', at: 32_000, index: 1 },
+    { kind: 'label', at: 62_000, index: 2 },
+  ]
+  const slow = slowestFields(ev, labels)
+  ok('the slowest field comes first', slow[0].path === 'primaryMode')
+  ok('and it reports how many LABELS that median rests on, not model answers', slow[0].labelled === 2)
+  ok('a fast field is still reported, just lower', slow[1].path === 'people.count' && slow[1].median_ms === 2000)
+  ok('an empty log yields no ranking rather than throwing', slowestFields([], labels).length === 0)
+}
+
+// ── one place computes a supported-rate, and it cannot exceed 100% anywhere ──
+{
+  // ⚠️ THE SAME DEFECT APPEARED THREE TIMES: aggregate printed 500%,
+  // bySituation printed 350%, both dividing EVERY supported label by only the
+  // ANSWERED ones. Patching each site would have left a fourth to find.
+  const L = [
+    { url: 'a', path: 'primaryMode', answered: true, label: 'SUPPORTED', value: 'demo' },
+    ...Array.from({ length: 9 }, (_, i) => ({ url: 'a', path: `f${i}`, answered: false, label: 'SUPPORTED' })),
+  ]
+  ok('the shared rate over answered claims cannot exceed 100%',
+    supportedRate(L, { answeredOnly: true }) === 1)
+  ok('the shared rate over everything asked counts everything', supportedRate(L, { answeredOnly: false }) === 1)
+  ok('an empty pool is null, not zero', supportedRate([], { answeredOnly: true }) === null)
+
+  ok('aggregate goes through it', aggregate({ locked: true, labels: L }).supported_of_answered <= 1)
+  const g = bySituation(L)
+  ok('bySituation goes through it too', g['demo'].supported_of_answered <= 1)
+
+  // ⚠️ AND A NULL VALUE MAY NOT BECOME A SITUATION NAMED "null". Running the
+  // pilot produced exactly that bucket, from a primaryMode the model never
+  // answered but that was labelled SUPPORTED.
+  const ghost = bySituation([
+    { url: 'z', path: 'primaryMode', answered: false, label: 'SUPPORTED', value: null },
+    { url: 'z', path: 'people.count', answered: true, label: 'SUPPORTED' },
+  ])
+  ok('an unanswered primaryMode cannot confirm a situation', ghost['null'] === undefined)
+  ok('and its reference is filed as unconfirmed', ghost['situation_unconfirmed'].references === 1)
+
+  const f = byField(L)
+  ok('byField reports per-field rates that cannot exceed 100%',
+    Object.values(f).every((v) => v.supported_of_answered === null || v.supported_of_answered <= 1))
 }
 
 if (failed) process.exit(1)
