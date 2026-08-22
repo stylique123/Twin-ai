@@ -577,3 +577,48 @@ export function slowestFields(events, labels) {
     // ⚖️ SORTED SLOWEST FIRST, because that is the order somebody would act in.
     .sort((a, b) => b.median_ms - a.median_ms)
 }
+
+/**
+ * ⚠️ THE ARM COMPARISON THE PILOT EXISTS TO MAKE. frameSampleTargets schedules
+ * frames on the content beats when the profile has them and uniformly when it
+ * does not, and the whole question behind #58 is whether beat-scheduled frames
+ * support stronger claims than four arbitrary points. Reporting one accuracy
+ * across both arms answers a question nobody asked.
+ *
+ * ⚖️ AND ON THE NO-SPEECH PATH THE BASIS IS ALWAYS `uniform`, because there is
+ * no content profile to take beats from. A pilot drawn entirely from silent
+ * video therefore has ONE arm, and saying so is the finding -- an empty
+ * content_beats bucket is not a zero score, it is an absent comparison.
+ */
+export function byScheduleBasis(labels, frames) {
+  const basisOf = new Map()
+  for (const f of frames ?? []) if (f.schedule_basis) basisOf.set(f.url, f.schedule_basis)
+  const out = {}
+  const pool = {}
+  for (const l of labels) {
+    const key = basisOf.get(l.url) ?? 'basis_unknown'
+    ;(pool[key] ??= []).push(l)
+    const g = (out[key] ??= { references: new Set(), asked: 0, answered: 0 })
+    g.references.add(l.url)
+    g.asked++
+    if (l.answered) g.answered++
+  }
+  for (const [key, g] of Object.entries(out)) {
+    g.references = g.references.size
+    g.supported_of_answered = supportedRate(pool[key], { answeredOnly: true })
+  }
+  return out
+}
+
+/** ⚠️ EVERY LABEL AS A SHARE OF WHAT WAS ASKED. Reporting SUPPORTED as a rate
+ *  and the rest as raw counts invites reading four numbers on two scales. */
+export function distributionRates(agg) {
+  const n = agg.claims_labelled
+  const r = (k) => (n === 0 ? null : agg.distribution[k] / n)
+  return {
+    supported: r('SUPPORTED'),
+    unsupported: r('UNSUPPORTED'),
+    indeterminate: r('INDETERMINATE'),
+    wrong_evidence: r('WRONG_EVIDENCE'),
+  }
+}

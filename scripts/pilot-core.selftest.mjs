@@ -4,6 +4,7 @@ import {
   manifestDigest, freezeManifest, assertManifestUnchanged, pilotState, progressOf,
   attrition, briefFor69, TERMINAL, selectCohort, aggregate, friction, flattenClaims,
   claimsDigest, evidenceDigest, byField, bySituation, slowestFields, supportedRate,
+  byScheduleBasis, distributionRates,
 } from './pilot-core.mjs'
 
 let failed = 0
@@ -232,6 +233,55 @@ ok('flattenClaims still returns one row per declared path',
   const f = byField(L)
   ok('byField reports per-field rates that cannot exceed 100%',
     Object.values(f).every((v) => v.supported_of_answered === null || v.supported_of_answered <= 1))
+}
+
+// ── the arm comparison, and when there is only one arm ──
+{
+  const labels = [
+    { url: 'a', answered: true, label: 'SUPPORTED' },
+    { url: 'a', answered: true, label: 'UNSUPPORTED' },
+    { url: 'b', answered: true, label: 'SUPPORTED' },
+  ]
+  const frames = [
+    { url: 'a', frame_index: 1, schedule_basis: 'uniform' },
+    { url: 'b', frame_index: 1, schedule_basis: 'content_beats' },
+  ]
+  const g = byScheduleBasis(labels, frames)
+  // ⚠️ ONE ACCURACY ACROSS BOTH ARMS ANSWERS A QUESTION NOBODY ASKED. Whether
+  // beat-scheduled frames support stronger claims than four arbitrary points is
+  // the question behind #58.
+  ok('the two arms are scored separately',
+    g.uniform.supported_of_answered === 0.5 && g.content_beats.supported_of_answered === 1)
+  ok('each arm counts its own references', g.uniform.references === 1 && g.content_beats.references === 1)
+
+  // ⚖️ A NO-SPEECH PILOT HAS ONE ARM, and an absent bucket is an ABSENT
+  // COMPARISON, not a zero score.
+  const oneArm = byScheduleBasis(labels, [
+    { url: 'a', frame_index: 1, schedule_basis: 'uniform' },
+    { url: 'b', frame_index: 1, schedule_basis: 'uniform' },
+  ])
+  ok('a single-arm pilot reports one bucket, not a zero for the other',
+    Object.keys(oneArm).length === 1 && oneArm.content_beats === undefined)
+  ok('a reference with no frames is basis_unknown, not silently uniform',
+    byScheduleBasis([{ url: 'z', answered: true, label: 'SUPPORTED' }], []).basis_unknown !== undefined)
+}
+
+// ── all four labels on one scale ──
+{
+  const agg = aggregate({ locked: true, labels: [
+    { index: 0, answered: true, label: 'SUPPORTED' },
+    { index: 1, answered: true, label: 'UNSUPPORTED' },
+    { index: 2, answered: true, label: 'INDETERMINATE' },
+    { index: 3, answered: true, label: 'WRONG_EVIDENCE' },
+  ] })
+  const r = distributionRates(agg)
+  ok('every label is a share of what was asked',
+    r.supported === 0.25 && r.unsupported === 0.25 && r.indeterminate === 0.25 && r.wrong_evidence === 0.25)
+  ok('the four shares sum to one',
+    Math.abs(r.supported + r.unsupported + r.indeterminate + r.wrong_evidence - 1) < 1e-9)
+  // ⚖️ NULL, NOT ZERO, when nothing was labelled at all.
+  ok('an unlabelled session reports null shares, not zeros',
+    distributionRates(aggregate({ locked: true, labels: [] })).supported === null)
 }
 
 if (failed) process.exit(1)

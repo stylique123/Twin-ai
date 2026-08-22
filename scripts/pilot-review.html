@@ -129,7 +129,8 @@ function render() {
     + '<div class="labels">' + LABELS.map(([k, t], n) =>
         '<button data-l="' + k + '"><b>' + k + ' <kbd>' + (n + 1) + '</kbd></b><span>' + t + '</span></button>').join('')
       + '</div>'
-    + '<button class="skip" data-skip="1">Skip — come back to this one <kbd>s</kbd></button>'
+    + '<button class="skip" data-skip="1">Skip — come back to this one <kbd>s</kbd>'
+      + ' &nbsp;·&nbsp; <kbd>space</kbd> bigger frames &nbsp;·&nbsp; <kbd>←</kbd> <kbd>→</kbd> move</button>'
 
   app.querySelectorAll('[data-l]').forEach((b) => b.onclick = () => answer(b.dataset.l))
   app.querySelectorAll('[data-skip]').forEach((b) => b.onclick = () => answer(null, 'skip'))
@@ -182,6 +183,18 @@ onkeydown = (e) => {
   if (e.key === 's') { post('/event', { kind: 'key', via: 'skip' }); answer(null, 'skip') }
   if (e.key === 'ArrowLeft' && i > 0) { post('/event', { kind: 'nav', via: 'prev' }); i--; render() }
   if (e.key === 'ArrowRight' && i < rows.length) { post('/event', { kind: 'nav', via: 'next' }); i++; render() }
+  // ⚖️ SPACE EXPANDS THE EVIDENCE, and it is recorded as a frame_change like a
+  // click is. Reaching for a bigger picture is the same signal however it is
+  // reached — counting only mouse expansions would make a keyboard reviewer
+  // look like one who never needed to look closer.
+  if (e.key === ' ') {
+    e.preventDefault()
+    const imgs = [...document.querySelectorAll('.frames img')]
+    if (!imgs.length) return
+    const expanded = imgs[0].style.maxHeight === 'none'
+    imgs.forEach((img) => { img.style.maxHeight = expanded ? '340px' : 'none' })
+    if (!expanded) post('/event', { kind: 'frame_change', via: 'key' })
+  }
 }
 boot()
 </script>

@@ -21,6 +21,7 @@ import {
   selectCohort, bandOf, handleOf, freezeManifest, assertManifestUnchanged,
   progressOf, attrition, flattenClaims, orderClaims, isLabel, aggregate, friction,
   briefFor69, claimsDigest, evidenceDigest, byField, bySituation, slowestFields,
+  byScheduleBasis, distributionRates,
   PILOT_PRIORITY, MAX_SIZE,
 } from './pilot-core.mjs'
 
@@ -100,6 +101,20 @@ export async function runReview(db, opts) {
   // ── 3. RUN, only the frozen 8 ────────────────────────────────────────────
   if (!run.enqueued) {
     if (opts.dryRun) { console.log('\ndry run — pass --go to spend. Nothing enqueued.'); return }
+    // ⚠️ A JOB ALREADY IN FLIGHT FOR ONE OF THESE URLS WOULD DOUBLE THE SPEND
+    // AND THE SAMPLE. The run.enqueued flag stops THIS command re-enqueuing,
+    // but it cannot see a job somebody queued by hand or a previous pilot left
+    // behind. Two assess_reference jobs on one url means two downloads and two
+    // upserts racing for the same row.
+    const { data: inflight } = await db.from('jobs')
+      .select('id, payload, status').eq('type', 'assess_reference').in('status', ['queued', 'running'])
+    const clashing = (inflight ?? []).filter((j) => m.urls.includes(j.payload?.url))
+    if (clashing.length) {
+      throw new Error(`${clashing.length} assess_reference job(s) are already queued or running for `
+        + 'references in this sample. Enqueuing again would pay for each of them twice and let two '
+        + 'writers race for one row. Let them drain, then re-run this command — the frozen sample '
+        + 'is unchanged and it will resume.')
+    }
     const { error } = await db.from('jobs').insert(m.urls.map((url) => ({
       type: 'assess_reference',
       priority: PILOT_PRIORITY,
@@ -124,8 +139,17 @@ export async function runReview(db, opts) {
       ? (rows ?? []).map((r) => r.url) : m.urls)
     if (drift) throw new Error(drift)
     progress = progressOf(rows ?? [], m)
-    process.stdout.write(`\r  ${progress.ready}/${m.urls.length} ready · ${progress.running} running · `
-      + `${progress.failed} failed · ${progress.unreadable} unreadable   `)
+    // ⚖️ QUEUED AND RUNNING ARE DIFFERENT WAITS. Everything sitting in the queue
+    // means the worker has not reached the pilot yet — patience. Everything
+    // running and nothing finishing means something IS wrong. One number for
+    // both hides which.
+    const { data: jobs } = await db.from('jobs')
+      .select('payload, status').eq('type', 'assess_reference').in('status', ['queued', 'running'])
+    const mine = (jobs ?? []).filter((j) => m.urls.includes(j.payload?.url))
+    const queued = mine.filter((j) => j.status === 'queued').length
+    const running = mine.filter((j) => j.status === 'running').length
+    process.stdout.write(`\r  ${progress.ready}/${m.urls.length} ready · ${running} running · `
+      + `${queued} queued · ${progress.failed} failed · ${progress.unreadable} unreadable   `)
     if (progress.done) break
     if (Date.now() > deadline) {
       // ⚖️ A TIMEOUT IS NOT A RESULT EITHER. Stopping with references still
@@ -222,6 +246,8 @@ export function finish(run, reviewer) {
   run.by_field = byField(run.labels)
   run.by_situation = bySituation(run.labels)
   run.slowest_fields = slowestFields(run.events ?? [], run.labels)
+  run.by_schedule_basis = byScheduleBasis(run.labels, run.frames ?? [])
+  run.rates = distributionRates(agg)
   run.brief69 = briefFor69(fr, agg, slowestFields(run.events ?? [], run.labels))
   // ⚖️ THE REVIEWED OBJECT, RECOVERABLE. A later re-run that changes the claims
   // or re-draws the frames will not match these, and the mismatch is the point:
@@ -363,9 +389,12 @@ export function report(run) {
   L.push(`\n  claims labelled     ${a.claims_labelled} of ${a.claims_shown}`)
   L.push(`  supported           ${pct(a.supported_of_all_asked)} of everything asked`)
   L.push(`                      ${pct(a.supported_of_answered)} of what the model answered`)
-  L.push(`  unsupported         ${a.distribution.UNSUPPORTED}`)
-  L.push(`  indeterminate       ${a.distribution.INDETERMINATE}`)
-  L.push(`  wrong evidence      ${pct(a.wrong_evidence_rate)}`)
+  // ⚖️ ALL FOUR ON ONE SCALE. Reporting SUPPORTED as a rate and the rest as raw
+  // counts invites reading four numbers as though they were comparable.
+  const r = run.rates ?? {}
+  L.push(`  unsupported         ${pct(r.unsupported)}  (${a.distribution.UNSUPPORTED})`)
+  L.push(`  indeterminate       ${pct(r.indeterminate)}  (${a.distribution.INDETERMINATE})`)
+  L.push(`  wrong evidence      ${pct(r.wrong_evidence)}  (${a.distribution.WRONG_EVIDENCE})`)
   L.push(`\n  REVIEW FRICTION`)
   L.push(`  median per claim    ${Math.round((f.median_ms_per_claim ?? 0) / 100) / 10}s`)
   L.push(`  slowest             ${Math.round((f.slowest_ms ?? 0) / 100) / 10}s`)
@@ -375,7 +404,7 @@ export function report(run) {
   const slow = (run.slowest_fields ?? []).slice(0, 3)
   if (slow.length) {
     L.push('  slowest fields')
-    for (const x of slow) L.push(`      ${x.path.padEnd(28)} ${Math.round(x.median_ms / 100) / 10}s median, ${x.labelled} labels)`)
+    for (const x of slow) L.push(`      ${x.path.padEnd(28)} ${Math.round(x.median_ms / 100) / 10}s median (${x.labelled} labels)`)
   }
   // ⚖️ WORST FIELDS FIRST, and never-answered called out separately, because
   // "the model is silent here" and "the model is wrong here" are different
@@ -389,6 +418,20 @@ export function report(run) {
     for (const [k, v] of broken) L.push(`      ${k.padEnd(28)} ${pct(v.supported_of_answered)} of ${v.answered} answered`)
   }
   if (silent.length) L.push(`\n  FIELDS THE MODEL NEVER ANSWERED (not the same as wrong): ${silent.join(', ')}`)
+  // ⚠️ THE ARM COMPARISON. On the no-speech path the basis is ALWAYS uniform,
+  // so a pilot drawn from silent video has ONE arm — and an empty content_beats
+  // bucket is an ABSENT comparison, not a zero score.
+  const bases = Object.entries(run.by_schedule_basis ?? {})
+  if (bases.length) {
+    L.push('\n  BY FRAME SCHEDULE')
+    for (const [k, v] of bases) {
+      L.push(`      ${k.padEnd(28)} ${pct(v.supported_of_answered)} across ${v.references} reference(s)`)
+    }
+    if (bases.length === 1 && bases[0][0] === 'uniform') {
+      L.push('      only one arm ran: no-speech references have no beats to schedule on,')
+      L.push('      so this pilot says nothing about content_beats either way.')
+    }
+  }
   const sits = Object.entries(run.by_situation ?? {}).filter(([k]) => k !== 'situation_unconfirmed')
   if (sits.length) {
     L.push('\n  BY VISUAL SITUATION — only where a human confirmed what the video is')
