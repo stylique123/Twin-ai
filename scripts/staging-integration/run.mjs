@@ -325,13 +325,39 @@ async function main() {
     for (let i = 0; i < 6; i++) statuses.push((await createIntent(cCaps, capsGen, randomUUID(), 'video/webm', webm.byteLength)).status)
     check('Caps: 6th open source asset refused (429)', statuses.slice(0, 5).every((s) => s === 200) && statuses[5] === 429, statuses.join(','))
     // Rate limit: hammer the SAME attempt (existing-asset path mints nothing new).
+    //
+    // ⚠️ THIS IS A SLIDING WINDOW OBSERVED BY A FIXED NUMBER OF ROUND TRIPS, so
+    // the margin is environmental. On a slow runner the same 32 requests spread
+    // across more wall-clock, fewer land inside any one window, and the limit
+    // never trips — a red gate that says nothing about the code under test.
+    //
+    // ⚖️ THE ATTEMPT COUNT IS NOT RAISED. Making it 200 would quietly turn
+    // "trips within the window" into "trips eventually", which is a weaker
+    // claim wearing the same name. Instead the check REPORTS WHAT IT SAW, so a
+    // future failure is classifiable from one line instead of an investigation:
+    // how many requests it managed, how long they took, and what came back.
     let sawRateLimit = false
+    let attempts = 0
+    const seen = new Map()
     const oneAttempt = randomUUID()
+    const startedAt = Date.now()
     for (let i = 0; i < 32 && !sawRateLimit; i++) {
       const r = await createIntent(cCaps, capsGen, oneAttempt, 'video/webm', webm.byteLength)
+      attempts++
+      seen.set(r.status, (seen.get(r.status) ?? 0) + 1)
       if (r.status === 429 && String(r.body.error ?? '').includes('few seconds')) sawRateLimit = true
     }
-    check('Caps: per-user rate limit trips within the window', sawRateLimit)
+    const elapsedMs = Date.now() - startedAt
+    const statusMix = [...seen.entries()].sort().map(([k, v]) => `${k}x${v}`).join(' ')
+    const evidence = `${attempts} attempts in ${elapsedMs}ms `
+      + `(${(elapsedMs / attempts).toFixed(0)}ms each) — statuses ${statusMix}`
+    // ⚠️ PRINTED WHETHER IT PASSES OR FAILS. A margin only visible after the
+    // gate turns red is a lagging indicator; "tripped on attempt 7 of 32" and
+    // "tripped on attempt 31 of 32" are the same green tick and completely
+    // different amounts of headroom. This makes the shrink readable before it
+    // becomes a red gate somebody has to investigate from scratch.
+    console.log(`  NOTE  rate-limit margin: ${evidence}`)
+    check('Caps: per-user rate limit trips within the window', sawRateLimit, evidence)
   }
 
   console.log('== T7-oversize: 700MB claim refused at create ==')

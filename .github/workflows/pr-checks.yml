@@ -217,6 +217,14 @@ jobs:
         run: |
           npm ci
           npm test -w @twinai/shared
+      # ⚠️ apps/web HAD 136 TESTS AND CI RAN NONE OF THEM. There was no `test`
+      # script in its package.json, so nothing could. One of those tests was
+      # already failing on main: /internal/review/visual/:pilotRunId renders
+      # inside AppShell but was missing from `inApp`, which is the black-screen
+      # strand reported as "the Products tab is completely blank". The guard
+      # for that defect existed, caught it, and was never run.
+      - name: Test @twinai/web
+        run: npm test -w @twinai/web
       - name: Install + test worker
         working-directory: worker
         run: |
@@ -439,6 +447,14 @@ jobs:
       # worth testing.
       - name: Staging harness failure classifier (re-run, or investigate?)
         run: node scripts/staging-integration/failure.mjs --selftest
+      # phase6 and phase7 each carried their own copy of "what a fenced lease is".
+      # They agreed, which is exactly why nobody noticed -- two definitions of an
+      # invariant drift silently, and the next phase that needs one makes three.
+      # The factory shape is load-bearing: every phase file calls need() at module
+      # scope and exits, so a shared helper that touched the environment could not
+      # be imported by a test at all.
+      - name: Editor staging fixtures (one definition of a fenced lease)
+        run: node scripts/staging-integration/editorFixtures.selftest.mjs
       # The packet decides which claims a human is ever asked about and when the
       # accuracy number may be looked at. Both are logic, both are pure, and
       # both are wrong silently -- a claim path nobody asks about scores the
@@ -451,6 +467,25 @@ jobs:
       # taken from a different population than its denominator.
       - name: Pilot core (frozen sample, terminal states, rates that cannot exceed 100%)
         run: node scripts/pilot-core.selftest.mjs
+      # Every refusal in the start action is proven to fire. The dangerous
+      # failure is not a wrong message — it is a refusal that silently does not
+      # refuse, leaving an action that looks crippled and is not.
+      - name: Pilot start (the action cannot express the dangerous request)
+        run: node scripts/pilot-start.selftest.mjs
+      # D1's state machine. The two transitions worth guarding are "watched
+      # without consent" and "locked without asking why" — a session locked
+      # with no observation reads later as "we learned nothing", which is
+      # indistinguishable from "we never asked".
+      - name: Watched session (consent before watching, a reason before locking)
+        run: node scripts/watched-session.selftest.mjs
+      # ⚠️ THE GENERATOR SAID "CI REGENERATES THIS FILE AND FAILS ON A DIFF" AND
+      # CI DID NOT. --check existed and nothing invoked it, so all the Deno
+      # copies could drift from their sources silently — exactly the failure the
+      # generator was written to prevent, and the reason it exists at all: a
+      # hand-maintained copy kept the 500%-of-a-different-population rate bug
+      # after the original was fixed, and its selftest passed against stale code.
+      - name: Generated Deno copies are not stale
+        run: node scripts/ci/generate_shared_pilot_core.mjs --check
       # The 332 decision rule, committed BEFORE any label exists. A verdict rule
       # invented after reading a support rate is not a decision procedure, it is
       # a justification — the trap #72 nearly fell into.
@@ -530,6 +565,14 @@ jobs:
         run: |
           node scripts/ci/check_counter_durability.mjs --selftest
           node scripts/ci/check_counter_durability.mjs
+      # ⚠️ SHAPE, NOT OUTCOME. This cannot verify that a credential was rotated —
+      # proving the old one no longer authenticates would mean holding it. It
+      # checks that the record is well-formed and, crucially, that a known entry
+      # cannot be deleted to make the debt go away.
+      - name: Security debt (an exposed credential does not expire on its own)
+        run: |
+          node scripts/ci/check_security_debt.mjs --selftest
+          node scripts/ci/check_security_debt.mjs
       - name: Staging migration coverage (a new migration is applied, or excluded with a reason)
         run: |
           node scripts/ci/check_staging_migration_coverage.mjs --selftest

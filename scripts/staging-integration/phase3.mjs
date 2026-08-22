@@ -100,16 +100,39 @@ async function putSigned(signedUrl, buf, contentType) {
   return { status: res.status, body: res.ok ? '' : (await res.text().catch(() => '')).slice(0, 200) }
 }
 async function sourceFlow(client, genId, buf, contentType = 'video/webm') {
-  const c = await callEdge(client, 'source-asset', {
-    action: 'create', capture: { origin: 'upload', recording_script_sha256: null, recorder_clock: 'none', accepted_segments: [] }, generation_id: genId, recording_attempt_id: randomUUID(),
-    content_type: contentType, size_bytes: buf.byteLength,
-  })
-  if (c.status !== 200) throw new Error(`source create ${c.status}: ${JSON.stringify(c.body)}`)
-  const p = await putSigned(c.body.signedUrl, buf, contentType)
-  if (p.status >= 300) throw new Error(`signed PUT ${p.status} ${p.body}`)
-  const f = await callEdge(client, 'source-asset', { action: 'finalize', asset_id: c.body.assetId })
-  if (f.status !== 200) throw new Error(`finalize ${f.status}: ${JSON.stringify(f.body)}`)
-  return c.body.assetId
+  // ⚠️ A FRESH SIGNED PUT OCCASIONALLY 400s TRANSIENTLY on the shared staging
+  // storage. phase4 documents exactly this, and phases 4-8 all retry the whole
+  // intent once with a NEW attempt id. Phases 2 and 3 alone threw on the first
+  // failure, so a storage blip reds the shared gate as "phase 2 is broken".
+  //
+  // ⚖️ A NEW ATTEMPT ID IS REQUIRED, NOT INCIDENTAL. media_assets_attempt_uniq
+  // makes (owner, generation, recording_attempt_id) unique, so REUSING the id
+  // would converge on the SAME row instead of retrying the upload -- that is
+  // the idempotency guarantee working as designed, and useless as a retry.
+  // randomUUID() is called inside the loop, so each attempt is a new take.
+  //
+  // The return shape stays a bare assetId. Every caller in this file uses it
+  // directly, and changing it here would be a second, silent change.
+  let lastErr
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const c = await callEdge(client, 'source-asset', {
+        action: 'create', capture: { origin: 'upload', recording_script_sha256: null, recorder_clock: 'none', accepted_segments: [] }, generation_id: genId, recording_attempt_id: randomUUID(),
+        content_type: contentType, size_bytes: buf.byteLength,
+      })
+      if (c.status !== 200) throw new Error(`source create ${c.status}: ${JSON.stringify(c.body)}`)
+      const p = await putSigned(c.body.signedUrl, buf, contentType)
+      if (p.status >= 300) throw new Error(`signed PUT ${p.status} ${p.body}`)
+      const f = await callEdge(client, 'source-asset', { action: 'finalize', asset_id: c.body.assetId })
+      if (f.status !== 200) throw new Error(`finalize ${f.status}: ${JSON.stringify(f.body)}`)
+      return c.body.assetId
+    } catch (e) {
+      lastErr = e
+      console.log(`   (upload intent failed, retrying once: ${e.message})`)
+      await sleep(2000)
+    }
+  }
+  throw lastErr
 }
 async function waitAssetReady(assetId, timeoutMs = 120_000) {
   const start = Date.now()
@@ -200,12 +223,30 @@ async function waitProject(id, pred, timeoutMs = 90_000, label = '') {
 const isSettled = (p) => ['completed', 'failed', 'cancelled'].includes(p.status)
 
 async function startProject(client, genId, assetId) {
-  const r = await callEdge(client, 'start-editor-v2', {
-    generation_id: genId, source_asset_id: assetId, idempotency_key: randomUUID(),
-  })
-  if (r.status !== 200) throw new Error(`start-editor-v2 ${r.status}: ${JSON.stringify(r.body)}`)
-  allProjects.push(r.body.projectId)
-  return r.body.projectId
+  for (let attempt = 0; ; attempt++) {
+    const r = await callEdge(client, 'start-editor-v2', {
+      generation_id: genId, source_asset_id: assetId, idempotency_key: randomUUID(),
+    })
+    // ⚠️ THIS PHASE WAS THE ONLY ONE THAT THREW ON A 429, and it packs starts
+    // exactly like the others do. The per-user start limit (10/60s) is a PRODUCT
+    // FEATURE, not a failure — phase4 says so in its own copy of this function,
+    // and phases 4-8 all wait the window out. Phase 3 alone turned a limiter
+    // doing its job into a red gate, which then reads as "phase 3 is broken"
+    // rather than "the starts were packed too tightly".
+    //
+    // ⚖️ NO ASSERTION IS RELAXED BY THIS. Phase 3 makes no claim about rate
+    // limiting — its single mention of 429 is a comment about gateway pages —
+    // so this changes only whether SETUP survives a documented product
+    // behaviour. The checks it then runs are untouched.
+    if (r.status === 429 && attempt < 3) {
+      console.log('   (start rate window — waiting 61s…)')
+      await sleep(61_000)
+      continue
+    }
+    if (r.status !== 200) throw new Error(`start-editor-v2 ${r.status}: ${JSON.stringify(r.body)}`)
+    allProjects.push(r.body.projectId)
+    return r.body.projectId
+  }
 }
 
 const PIPELINE = ['inspecting', 'transcribing', 'analyzing', 'directing', 'compiling', 'rendering', 'validating']
