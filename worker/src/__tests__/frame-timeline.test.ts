@@ -122,3 +122,100 @@ describe('an overlap is counted once', () => {
     expect(hard.targetFrameCount - faded.targetFrameCount).toBe(framesInCut(500, 30, 1))
   })
 })
+
+// ── CONTINUOUS ZOOM ─────────────────────────────────────────────────────────
+//
+// The numbers below are MEASURED against the real phase-8 fixture (VP8/WebM,
+// 30 fps, cuts [0,2710) and [4680,8140), resolved target 184 frames), not
+// chosen. They are here so a future "optimisation" back to decomposition
+// cannot pass.
+import {
+  zoomGateExpression, buildContinuousZoomPlan, composeZoomExpression,
+  assertFramePreserving, isSafeValue, VALUE_MAX_LEN,
+  EFFECT_TIMELINE_NOT_FRAME_PRESERVING,
+} from '../jobs/frameTimeline'
+
+/** What ffmpeg actually rendered, measured. */
+const MEASURED = {
+  target: 184,
+  decomposed: { 1: 181, 2: 176, 3: 170 },
+  continuous: { 0: 184, 1: 184, 2: 184, 3: 184 },
+} as const
+
+const ZOOM_WINDOWS = [
+  { startFrame: 0, endFrameExclusive: 36, scaleMilli: 1060 },
+  { startFrame: 83, endFrameExclusive: 119, scaleMilli: 1120 },
+  { startFrame: 135, endFrameExclusive: 171, scaleMilli: 1060 },
+]
+
+describe('the measured record, pinned', () => {
+  // ⚠️ THE DEFECT SCALED WITH SEAM COUNT. Frame-exact boundaries did not rescue
+  // it: every piece >= 1 frame and an exact tiling sum still rendered 181/184.
+  it('decomposition lost more frames the more zooms there were', () => {
+    expect(MEASURED.decomposed[1]).toBeLessThan(MEASURED.target)
+    expect(MEASURED.decomposed[2]).toBeLessThan(MEASURED.decomposed[1])
+    expect(MEASURED.decomposed[3]).toBeLessThan(MEASURED.decomposed[2])
+  })
+  it.each([0, 1, 2, 3] as const)('continuous rendering held the target at %i zoom(s)', (n) => {
+    expect(MEASURED.continuous[n]).toBe(MEASURED.target)
+  })
+})
+
+describe('a gate is a value the existing grammar already accepts', () => {
+  it('contains no comma, and no character the graph builder refuses', () => {
+    const g = zoomGateExpression(0, 36)
+    expect(g).not.toContain(',')
+    expect(isSafeValue(g)).toBe(true)
+  })
+  it('fits the SAME 64-char limit, which does not move for this', () => {
+    for (const z of ZOOM_WINDOWS) {
+      expect(zoomGateExpression(z.startFrame, z.endFrameExclusive).length)
+        .toBeLessThanOrEqual(VALUE_MAX_LEN)
+    }
+  })
+  // ⚠️ A WINDOW SHORTER THAN A FRAME CANNOT BE GATED. It must have been
+  // collapsed upstream; reaching here is a bug, not a rounding question.
+  it('refuses a sub-frame window rather than emitting one', () => {
+    expect(() => zoomGateExpression(10, 10)).toThrow(/cannot be gated|collapse/)
+  })
+})
+
+describe('composition belongs to the renderer, after validation', () => {
+  const plan = buildContinuousZoomPlan(ZOOM_WINDOWS, MEASURED.target)
+
+  it('validates every gate on its own, so a failure names the window', () => {
+    expect(plan.gates).toHaveLength(3)
+    for (const g of plan.gates) expect(isSafeValue(g.expression)).toBe(true)
+  })
+  it('the planner never holds one enormous expression', () => {
+    for (const g of plan.gates) expect(g.expression.length).toBeLessThanOrEqual(VALUE_MAX_LEN)
+  })
+  it('and the composed result still smuggles no terminator', () => {
+    const z = composeZoomExpression(plan)
+    for (const ch of [',', ';', '[', ']', '"', "'", '\\', ':']) expect(z).not.toContain(ch)
+  })
+  it('no zooms composes to the identity, not to an empty string', () => {
+    expect(composeZoomExpression({ targetFrameCount: 184, gates: [] })).toBe('1')
+  })
+  it('refuses a zoom that runs past the end of the timeline', () => {
+    expect(() => buildContinuousZoomPlan(
+      [{ startFrame: 0, endFrameExclusive: 500, scaleMilli: 1060 }], 184,
+    )).toThrow(/timeline is 184/)
+  })
+})
+
+describe('the refusal guard, kept although it should be unreachable', () => {
+  const plan = buildContinuousZoomPlan(ZOOM_WINDOWS, MEASURED.target)
+
+  it('passes a continuous strategy', () => {
+    expect(() => assertFramePreserving('continuous', plan)).not.toThrow()
+  })
+  // Defence in depth: lessons enjoy reincarnation.
+  it('refuses to render a decomposed timeline at all', () => {
+    expect(() => assertFramePreserving('decomposed', plan))
+      .toThrow(new RegExp(EFFECT_TIMELINE_NOT_FRAME_PRESERVING))
+  })
+  it('and names the measured loss so the refusal is arguable', () => {
+    expect(() => assertFramePreserving('decomposed', plan)).toThrow(/184 target: 1 zoom 181/)
+  })
+})

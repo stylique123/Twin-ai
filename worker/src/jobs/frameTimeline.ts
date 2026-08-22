@@ -146,3 +146,140 @@ export function assertTiles(ranges: readonly FrameRange[], targetFrameCount: num
       + 'A count that does not add up means the render will not be the length the plan says.')
   }
 }
+
+// ── CONTINUOUS ZOOM, COMPOSED FROM INDIVIDUALLY VALIDATED GATES ─────────────
+//
+// ⚠️ THE DECOMPOSITION WAS THE DEFECT. Slicing the timeline into independently
+// retimed `trim`+`setpts`+`concat` pieces loses frames at every seam, and the
+// loss scales with the number of seams. Measured on the real fixture against a
+// resolved target of 184 frames:
+//
+//     decomposed   1 zoom -> 181     2 zooms -> 176     3 zooms -> 170
+//     continuous   1 zoom -> 184     2 zooms -> 184     3 zooms -> 184
+//
+// Frame-exact boundary arithmetic does not rescue the decomposition: a run with
+// every piece >= 1 frame and an exact tiling sum still rendered 181 of 184. The
+// seams are the mechanism, so the seams are what is removed.
+//
+// ⚖️ AND THE SAFETY GRAMMAR DOES NOT MOVE TO ALLOW IT. A gate is expressible
+// with no comma, because ffmpeg's evaluator has single-argument functions:
+//
+//     d    = h - abs(in - c)           distance inside a window of half-width h
+//     pos  = (d + abs(d)) / 2          d when inside, 0 when outside
+//     gate = not(not(pos))             1 when inside, 0 when outside
+//
+// Each gate is its own value, validated on its own against the SAME 64-char
+// limit the rest of the graph obeys. The renderer composes them; the planner
+// never holds one enormous expression. A limit that moves because one
+// implementation happened to emit 69 characters is a limit that has stopped
+// being one.
+
+/** One zoom window, as a value the filter grammar already accepts. */
+export interface SafeZoomGate {
+  readonly startFrame: number
+  readonly endFrameExclusive: number
+  /** Individually validated. Never concatenated before validation. */
+  readonly expression: string
+  readonly scaleMilli: number
+}
+
+export interface ContinuousZoomPlan {
+  readonly targetFrameCount: number
+  readonly gates: readonly SafeZoomGate[]
+}
+
+/** The same bound the graph builder enforces, restated so this module refuses
+ *  before a caller ever reaches `checkValue`. */
+export const VALUE_MAX_LEN = 64
+const VALUE_CHARS = /^[A-Za-z0-9_.*/+()\-]+$/
+
+export function isSafeValue(v: string): boolean {
+  return v.length > 0 && v.length <= VALUE_MAX_LEN && VALUE_CHARS.test(v)
+}
+
+/**
+ * The comma-free gate for `[startFrame, endFrameExclusive)`.
+ *
+ * ⚠️ CENTRE/HALF-WIDTH, NOT TWO ONE-SIDED GATES. Two gates multiplied together
+ * is the obvious form and costs 57 characters; this costs 44 and leaves room
+ * for the coefficient inside the same limit.
+ */
+export function zoomGateExpression(startFrame: number, endFrameExclusive: number): string {
+  if (!Number.isInteger(startFrame) || !Number.isInteger(endFrameExclusive)) {
+    bad('a zoom gate needs integer frame bounds')
+  }
+  const span = endFrameExclusive - startFrame
+  // ⚠️ A WINDOW SHORTER THAN A FRAME IS NOT RENDERABLE AND MUST NOT BE EMITTED.
+  if (span < 1) bad(`a zoom window of ${span} frame(s) cannot be gated; collapse it first`)
+  // Half-width form needs an integer centre, so an odd span is widened by the
+  // half-frame that the frame grid cannot represent anyway.
+  const h = Math.floor(span / 2)
+  const c = startFrame + h
+  // ⚠️ `in`, NOT `n`. Inside zoompan, `n` is the filter's OUTPUT frame counter
+  // and `in` is the input frame index. Emitting `n` here produced a graph
+  // ffmpeg refused outright -- caught by rendering the module's own output
+  // rather than a hand-written approximation of it.
+  return `not(not((${h}-abs(in-${c})+abs(${h}-abs(in-${c})))/2))`
+}
+
+/** Build the plan. Every gate is validated ALONE, before anything is joined. */
+export function buildContinuousZoomPlan(
+  zooms: ReadonlyArray<{ startFrame: number; endFrameExclusive: number; scaleMilli: number }>,
+  targetFrameCount: number,
+): ContinuousZoomPlan {
+  const gates = zooms.map((z) => {
+    const expression = zoomGateExpression(z.startFrame, z.endFrameExclusive)
+    if (!isSafeValue(expression)) {
+      // Named per gate, not per blob: a caller learns WHICH window is the
+      // problem instead of being handed one rejected wall of text.
+      bad(`zoom gate for frames ${z.startFrame}..${z.endFrameExclusive} is not a safe value: `
+        + `${expression.length} chars`)
+    }
+    if (z.endFrameExclusive > targetFrameCount) {
+      bad(`a zoom ends at frame ${z.endFrameExclusive} but the timeline is ${targetFrameCount}`)
+    }
+    return { startFrame: z.startFrame, endFrameExclusive: z.endFrameExclusive, expression, scaleMilli: z.scaleMilli }
+  })
+  return { targetFrameCount, gates }
+}
+
+/**
+ * Compose the validated gates into the `zoompan` z expression.
+ *
+ * ⚠️ COMPOSITION IS THE RENDERER'S JOB AND HAPPENS AFTER VALIDATION. The join
+ * characters are themselves inside the allowed set, so the result cannot smuggle
+ * a terminator that its parts did not already contain.
+ */
+export function composeZoomExpression(plan: ContinuousZoomPlan): string {
+  for (const g of plan.gates) {
+    if (!isSafeValue(g.expression)) bad(`a gate reached composition unvalidated: ${g.expression}`)
+  }
+  if (plan.gates.length === 0) return '1'
+  const terms = plan.gates.map((g) => {
+    const amount = ((g.scaleMilli - 1000) / 1000).toFixed(3)
+    return `${amount}*${g.expression}`
+  })
+  return `1+${terms.join('+')}`
+}
+
+/**
+ * ⚠️ DEFENCE IN DEPTH, KEPT EVEN THOUGH IT SHOULD BE UNREACHABLE. If a later
+ * change turns the continuous filter back into seventeen little clips, this
+ * refuses to render rather than shipping a video that is quietly short.
+ */
+export const EFFECT_TIMELINE_NOT_FRAME_PRESERVING = 'EFFECT_TIMELINE_NOT_FRAME_PRESERVING'
+
+export function assertFramePreserving(
+  strategy: 'continuous' | 'decomposed', plan: ContinuousZoomPlan,
+): void {
+  if (strategy !== 'continuous') {
+    throw new Error(`${EFFECT_TIMELINE_NOT_FRAME_PRESERVING}: a ${strategy} effect timeline cannot `
+      + 'be proven to preserve the target frame count. Measured loss scales with seam count '
+      + '(184 target: 1 zoom 181, 2 zooms 176, 3 zooms 170). Refusing to render.')
+  }
+  for (const g of plan.gates) {
+    if (g.endFrameExclusive - g.startFrame < 1) {
+      throw new Error(`${EFFECT_TIMELINE_NOT_FRAME_PRESERVING}: a sub-frame window survived to render`)
+    }
+  }
+}
