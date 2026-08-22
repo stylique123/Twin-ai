@@ -7,8 +7,8 @@
 // case below asserts the REFUSAL happens, and the accepting cases assert it
 // does not, so a check that rejects everything cannot pass either.
 import {
-  validateStartRequest, activePilotRefusal, pilotJobRows, expectedCost,
-  ACTIVE_STATUSES, ALLOWED_KEYS, DOWNLOADS_PER_REFERENCE,
+  validateStartRequest, validateStatusRequest, activePilotRefusal, pilotJobRows, expectedCost,
+  ACTIVE_STATUSES, ALLOWED_KEYS, STATUS_KEYS, DOWNLOADS_PER_REFERENCE,
 } from './pilot-start.mjs'
 import { MAX_SIZE, DEFAULT_SIZE, PILOT_PRIORITY } from './pilot-core.mjs'
 
@@ -85,6 +85,20 @@ refuses('a job without a run id is refused', () => pilotJobRows(['u1'], '', PILO
 refuses('an empty sample is refused', () => pilotJobRows([], 'run-7', PILOT_PRIORITY), 'empty sample')
 refuses('more jobs than the ceiling is refused',
   () => pilotJobRows(Array.from({ length: MAX_SIZE + 1 }, (_, i) => `u${i}`), 'run-7', PILOT_PRIORITY), 'ceiling')
+
+// ── status is read-only and still refuses unknown keys ────────────────────
+accepts('a well-formed status request is accepted',
+  () => validateStatusRequest({ action: 'status', pilot_run_id: 'run-7' }))
+refuses('a status request without a run id is refused',
+  () => validateStatusRequest({ action: 'status' }), 'pilot_run_id is required')
+refuses('a status request may not smuggle a size',
+  () => validateStatusRequest({ action: 'status', pilot_run_id: 'r', size: 999 }), 'unknown key')
+refuses('a status request may not smuggle a URL list',
+  () => validateStatusRequest({ action: 'status', pilot_run_id: 'r', urls: ['x'] }), 'unknown key')
+refuses('a non-object status body is refused',
+  () => validateStatusRequest('run-7'), 'must be an object')
+ok('the status allow-list cannot name a payload or a size',
+  !STATUS_KEYS.includes('payload') && !STATUS_KEYS.includes('size'))
 
 // ── the allow-list itself ─────────────────────────────────────────────────
 ok('the allow-list cannot name a URL list or a payload',

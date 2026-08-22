@@ -2194,3 +2194,25 @@ export const startPilot = (size: number, costCeilingDownloads: number) =>
   start<{ ok: true; pilot_run_id: string; frozen: number; enqueued: number; quoted: PilotQuote; ceiling: number }>({
     action: 'start', size, cost_ceiling_downloads: costCeilingDownloads,
   })
+
+export interface PilotStatus {
+  ok: true
+  pilot_run_id: string
+  status: string
+  collecting: boolean
+  progress: {
+    /** ⚠️ THE DENOMINATOR. Never the survivors — a 6-of-8 pilot must not read as 100%. */
+    selected: number
+    ready_for_label: number
+    failed: number
+    unreadable: number
+    still_running: number
+  }
+  attrition: Record<string, unknown>
+  /** Null until collection is done AND something is actually reviewable. */
+  review_url: string | null
+}
+
+/** Poll a run. Read-only; refuses unknown keys exactly like start does. */
+export const pilotStatus = (pilotRunId: string) =>
+  start<PilotStatus>({ action: 'status', pilot_run_id: pilotRunId })

@@ -13,8 +13,9 @@
 // refuses a second concurrent run. `scripts/frame-pilot.mjs` survives as an
 // operator/debug path only; it is no longer how a pilot starts.
 //
-//   POST { action:"quote", size?, cost_ceiling_downloads }  -> the bill, nothing enqueued
-//   POST { action:"start", size?, cost_ceiling_downloads }  -> freeze + enqueue exactly that sample
+//   POST { action:"quote",  size?, cost_ceiling_downloads } -> the bill, nothing enqueued
+//   POST { action:"start",  size?, cost_ceiling_downloads } -> freeze + enqueue exactly that sample
+//   POST { action:"status", pilot_run_id }                  -> progress, and the review URL once ready
 //
 // ⚖️ `quote` EXISTS SO THE BILL CAN BE SEEN BEFORE IT IS AGREED TO. It touches
 // no table and enqueues nothing, so "what would this cost" is never a question
@@ -23,9 +24,10 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import {
   selectCohort, bandOf, handleOf, manifestDigest, PILOT_PRIORITY,
+  progressOf, attrition,
 } from '../_shared/pilotCore.ts'
 import {
-  validateStartRequest, activePilotRefusal, pilotJobRows, ACTIVE_STATUSES,
+  validateStartRequest, validateStatusRequest, activePilotRefusal, pilotJobRows, ACTIVE_STATUSES,
 } from '../_shared/pilotStart.ts'
 
 // Kept identical to scripts/pilot-db.mjs. A run that does not record which rule
@@ -62,8 +64,72 @@ Deno.serve(async (req: Request) => {
   try { body = await req.json() } catch { return json({ error: 'Invalid JSON body' }, 400) }
 
   const action = String(body.action ?? '')
-  if (action !== 'quote' && action !== 'start') {
-    return json({ error: 'action must be "quote" or "start"' }, 400)
+  if (action !== 'quote' && action !== 'start' && action !== 'status') {
+    return json({ error: 'action must be "quote", "start" or "status"' }, 400)
+  }
+
+  // ── status ───────────────────────────────────────────────────────────────
+  //
+  // ⚠️ THE DENOMINATOR IS THE FROZEN SAMPLE, NOT THE SURVIVORS, and that is why
+  // this reads the manifest rather than counting whatever rows exist. A pilot
+  // where two references failed must report 6 of 8, never 100% of 6.
+  //
+  // ⚖️ AND THE REVIEW URL APPEARS ONLY WHEN THERE IS SOMETHING TO REVIEW.
+  // Handing it over early invites labelling a half-collected packet, and the
+  // labels are the experiment's result.
+  if (action === 'status') {
+    let pilotRunId: string
+    try { pilotRunId = validateStatusRequest(body) } catch (e) {
+      return json({ error: e instanceof Error ? e.message : String(e) }, 400)
+    }
+
+    const { data: run, error: runErr } = await admin.from('visual_pilot_runs')
+      .select('*').eq('id', pilotRunId).maybeSingle()
+    if (runErr) return json({ error: `could not read the pilot run: ${runErr.message}` }, 500)
+    if (!run) return json({ error: 'No such pilot run' }, 404)
+
+    const { data: refs, error: refErr } = await admin.from('visual_pilot_references')
+      .select('url').eq('pilot_run_id', pilotRunId).order('url')
+    if (refErr) return json({ error: `could not read the pilot sample: ${refErr.message}` }, 500)
+    const urls = (refs ?? []).map((r: { url: string }) => r.url)
+
+    // ⚠️ THE STORED DIGEST IS THE POINT OF THE STORED DIGEST. If the rows and
+    // the frozen digest disagree, something changed the sample behind the
+    // trigger — report the run unusable rather than progressing a sample
+    // nobody froze.
+    const seen = manifestDigest(urls)
+    if (seen !== run.sample_digest) {
+      return json({
+        error: `pilot ${pilotRunId} does not match its frozen digest. The sample was changed `
+          + 'after freeze. This run cannot be labelled.',
+      }, 409)
+    }
+
+    const { data: profiles, error: profErr } = urls.length
+      ? await admin.from('reference_content_profiles')
+        .select('url, visual_profile, frames_sampled, visual_failure_code').in('url', urls)
+      : { data: [], error: null }
+    if (profErr) return json({ error: `could not read collection progress: ${profErr.message}` }, 500)
+
+    const progress = progressOf(profiles ?? [], { urls })
+    return json({
+      ok: true,
+      pilot_run_id: pilotRunId,
+      status: run.status,
+      collecting: !progress.done,
+      progress: {
+        selected: urls.length,
+        ready_for_label: progress.ready,
+        failed: progress.failed,
+        unreadable: progress.unreadable,
+        still_running: progress.running,
+      },
+      attrition: attrition(progress),
+      // Relative, so it is correct from whatever origin the owner opened.
+      review_url: progress.done && progress.ready > 0
+        ? `/internal/review/visual/${pilotRunId}`
+        : null,
+    })
   }
 
   // ⚠️ VALIDATED BEFORE ANYTHING IS READ, LET ALONE WRITTEN. A refusal that

@@ -38,6 +38,13 @@ export const ACTIVE_STATUSES = Object.freeze(['frozen', 'enqueued', 'collecting'
 /** The only keys a start request may carry. Anything else is a refusal. */
 export const ALLOWED_KEYS = Object.freeze(['action', 'size', 'cost_ceiling_downloads'])
 
+/** The only keys a status request may carry.
+ *
+ * ⚠️ STATUS IS READ-ONLY AND STILL REFUSES UNKNOWN KEYS. Leaving one action
+ * laxer than the others is how the strictness stops being a property of the
+ * endpoint and becomes a property of whichever branch somebody remembered. */
+export const STATUS_KEYS = Object.freeze(['action', 'pilot_run_id'])
+
 /** ⚠️ TWO PER REFERENCE, AND THE SECOND ONE IS THE ONE PEOPLE FORGET.
  *  `force: true` bypasses the transcript cache, so each reference pays a fresh
  *  acquisition AND a frames pull. Costing it at one download per reference is
@@ -90,6 +97,21 @@ export function validateStartRequest(body) {
       + `but the stated ceiling is ${ceiling}. Nothing was enqueued.`)
   }
   return { size, ceiling, cost }
+}
+
+/** Validate a status request. Returns the run id or throws. */
+export function validateStatusRequest(body) {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    throw new Error('the request body must be an object')
+  }
+  const unknown = Object.keys(body).filter((k) => !STATUS_KEYS.includes(k))
+  if (unknown.length > 0) {
+    throw new Error(`refusing unknown key(s): ${unknown.sort().join(', ')}. `
+      + `A status request accepts only ${STATUS_KEYS.join(', ')}.`)
+  }
+  const id = String(body.pilot_run_id ?? '')
+  if (!id) throw new Error('pilot_run_id is required')
+  return id
 }
 
 /**
