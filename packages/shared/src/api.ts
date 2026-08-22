@@ -2311,6 +2311,8 @@ export interface OwnerCard {
   detail: string
   href?: string
   checklist?: string[]
+  /** Pending migration files, in the order they must be applied. */
+  steps?: Array<{ id: string; file: string; because: string }>
   /** Cards this one blocks; a blocked card is never offered as "next". */
   blocks?: string[]
 }
