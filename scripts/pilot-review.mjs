@@ -158,3 +158,126 @@ export function finish(run, reviewer) {
   run.brief69 = briefFor69(fr, agg)
   return run
 }
+
+// ─────────────────────────── 7-9: the review UI ──────────────────────────────
+
+/** ⚠️ "EVERY REQUIRED CLAIM" EXCLUDES NOTHING SILENTLY. A skip leaves the claim
+ *  unanswered, so the lock stays out of reach until it is revisited — which is
+ *  the point of a skip rather than a quiet drop. */
+export const remaining = (run) => run.labels.filter((l) => !isLabel(l.label)).length
+export const canFinish = (run) => remaining(run) === 0
+
+export async function serveReview(db, run, save, port) {
+  const page = readFileSync(new URL('./pilot-review.html', import.meta.url), 'utf8')
+  const frameCache = new Map()
+
+  async function frameBytes(url, index) {
+    const k = `${url}|${index}`
+    if (frameCache.has(k)) return frameCache.get(k)
+    const { data: row } = await db.from('reference_frames')
+      .select('storage_path').eq('url', url).eq('frame_index', index).maybeSingle()
+    if (!row) return null
+    const { data, error } = await db.storage.from('reference-frames').download(row.storage_path)
+    if (error || !data) return null
+    const buf = Buffer.from(await data.arrayBuffer())
+    frameCache.set(k, buf)
+    return buf
+  }
+
+  return new Promise((resolve) => {
+    const server = createServer(async (req, res) => {
+      const u = new URL(req.url, `http://localhost:${port}`)
+      const json = (o, code = 200) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)) }
+
+      if (u.pathname === '/') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(page) }
+
+      if (u.pathname === '/claims') {
+        // ⚠️ NO AGGREGATE IN THIS PAYLOAD, DELIBERATELY. A running accuracy on
+        // screen is how the last few labels start agreeing with the first few,
+        // and it would be trivial to include here by accident.
+        return json({ labels: run.labels, remaining: remaining(run), canFinish: canFinish(run), locked: run.locked })
+      }
+
+      if (u.pathname === '/frame') {
+        const bytes = await frameBytes(u.searchParams.get('url'), Number(u.searchParams.get('i')))
+        if (!bytes) { res.writeHead(404); return res.end() }
+        res.writeHead(200, { 'content-type': 'image/jpeg' })
+        return res.end(bytes)
+      }
+
+      if (u.pathname === '/label' && req.method === 'POST') {
+        if (run.locked) return json({ error: 'this review is locked' }, 409)
+        let body = ''
+        for await (const c of req) body += c
+        const { index, label, correctedValue, kind } = JSON.parse(body || '{}')
+        const row = run.labels[index]
+        if (!row || (label !== null && !isLabel(label))) return json({ error: 'not a label' }, 400)
+        if (isLabel(row.label)) run.events.push({ kind: 'relabel', at: Date.now(), index })
+        row.label = label
+        row.correctedValue = correctedValue ?? null
+        run.events.push({ kind: kind === 'skip' ? 'skip' : 'label', at: Date.now(), index })
+        save(run)   // ⚠️ EVERY ANSWER, not at the end: a lost session is a session done twice.
+        return json({ saved: true, remaining: remaining(run), canFinish: canFinish(run) })
+      }
+
+      if (u.pathname === '/event' && req.method === 'POST') {
+        let body = ''
+        for await (const c of req) body += c
+        const e = JSON.parse(body || '{}')
+        if (['frame_change', 'nav', 'key'].includes(e.kind)) {
+          run.events.push({ kind: e.kind, at: Date.now(), via: e.via ?? null })
+          save(run)
+        }
+        return json({ ok: true })
+      }
+
+      if (u.pathname === '/finish' && req.method === 'POST') {
+        // ⚖️ THE SERVER REFUSES, NOT JUST THE BUTTON. A disabled control is a
+        // suggestion; this is the rule.
+        if (!canFinish(run)) return json({ error: `${remaining(run)} claims still unanswered` }, 409)
+        finish(run, process.env.PILOT_REVIEWER)
+        save(run)
+        json({ locked: true })
+        server.close()
+        return resolve(run)
+      }
+
+      res.writeHead(404); res.end()
+    })
+    server.listen(port, '127.0.0.1', () => {
+      console.log(`\n  ${run.labels.length} claims to label. open http://localhost:${port}`)
+      console.log('  1 supported · 2 unsupported · 3 indeterminate · 4 wrong evidence · s skip')
+      console.log('  the numbers stay hidden until you press Finish & lock.\n')
+    })
+  })
+}
+
+/** ⚠️ 13: THE FINAL OUTPUT, AND IT LEADS WITH THE DENOMINATOR. */
+export function report(run) {
+  const a = run.aggregate, f = run.friction, b = run.brief69, at = run.attrition
+  const pct = (x) => (x === null || x === undefined ? '—' : `${Math.round(x * 100)}%`)
+  const L = []
+  L.push('\nPILOT LOCKED')
+  L.push(`  reviewer ${run.reviewer} · ${run.lockedAt} · sample ${run.manifest.digest.slice(0, 12)}`)
+  L.push(`\n  selected            ${at.selected}`)
+  L.push(`  successfully assessed ${at.ready_for_label}   (${pct(at.assessed_of_selected)} of selected)`)
+  L.push(`  unreadable          ${at.unreadable}`)
+  L.push(`  failed              ${at.failed}`)
+  for (const [c, n] of Object.entries(at.failures_by_code)) L.push(`      ${c}: ${n}`)
+  L.push(`\n  claims labelled     ${a.claims_labelled} of ${a.claims_shown}`)
+  L.push(`  supported           ${pct(a.supported_of_all_asked)} of everything asked`)
+  L.push(`                      ${pct(a.supported_of_answered)} of what the model answered`)
+  L.push(`  unsupported         ${a.distribution.UNSUPPORTED}`)
+  L.push(`  indeterminate       ${a.distribution.INDETERMINATE}`)
+  L.push(`  wrong evidence      ${pct(a.wrong_evidence_rate)}`)
+  L.push(`\n  REVIEW FRICTION`)
+  L.push(`  median per claim    ${Math.round((f.median_ms_per_claim ?? 0) / 100) / 10}s`)
+  L.push(`  slowest             ${Math.round((f.slowest_ms ?? 0) / 100) / 10}s`)
+  L.push(`  backtracks          ${f.backtracks}`)
+  L.push(`  frame enlargements  ${f.evidence_frame_changes}`)
+  L.push(`  skipped             ${f.skipped}`)
+  L.push(`\n  #69 — ${b.verdict}`)
+  for (const i of b.items) L.push(`   · ${i.change}\n       because ${i.because}`)
+  if (b.items.length) L.push(`\n  thresholds: ${b.thresholds}`)
+  return L.join('\n')
+}

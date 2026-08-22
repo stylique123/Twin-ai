@@ -83,5 +83,30 @@ ok('friction still separates effort from coverage',
 ok('flattenClaims still returns one row per declared path',
   flattenClaims('u', {}).length === 15)
 
+// ── the rate that printed 500% ──
+{
+  const labels = [
+    ...Array.from({ length: 4 }, (_, i) => ({ index: i, answered: true, label: 'SUPPORTED' })),
+    ...Array.from({ length: 11 }, (_, i) => ({ index: 4 + i, answered: false, label: 'SUPPORTED' })),
+  ]
+  const a = aggregate({ locked: true, labels })
+  // ⚠️ FOUND BY RUNNING IT, NOT BY READING IT. Every SUPPORTED label was divided
+  // by only the claims the model ANSWERED, so a full sweep reported 375%. A rate
+  // above 100% is at least loud; the same error landing at 90% would have read
+  // as a good result and nobody would have looked twice.
+  ok('a rate can never exceed 100%', a.supported_of_answered <= 1)
+  ok('supported-of-answered counts only answered claims', a.supported_of_answered === 1)
+  // ⚖️ AND THE OTHER RATE STILL COUNTS EVERYTHING ASKED, which is why both exist.
+  ok('supported-of-all-asked still counts the unanswered ones', a.supported_of_all_asked === 1)
+
+  const mixed = aggregate({ locked: true, labels: [
+    { index: 0, answered: true, label: 'SUPPORTED' },
+    { index: 1, answered: true, label: 'UNSUPPORTED' },
+    { index: 2, answered: false, label: 'INDETERMINATE' },
+  ] })
+  ok('a thin pass cannot score 100% by answering three fields',
+    mixed.supported_of_answered === 0.5 && Math.abs(mixed.supported_of_all_asked - 1 / 3) < 1e-9)
+}
+
 if (failed) process.exit(1)
 console.log('pilot-core selftest: all cases passed')

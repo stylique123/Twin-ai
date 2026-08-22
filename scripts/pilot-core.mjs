@@ -177,6 +177,12 @@ export function aggregate(session) {
   // made is not a claim it got right, and a denominator that quietly drops
   // non-answers turns a thin pass into a good one.
   const supported = dist.SUPPORTED
+  // ⚠️ THE NUMERATOR MUST COME FROM THE SAME POPULATION AS ITS DENOMINATOR.
+  // Running the pilot end to end printed "500% of what the model answered":
+  // every SUPPORTED label was divided by only the claims the model actually
+  // answered. A rate above 100% is at least loud -- the same mistake landing at
+  // 90% would have read as a good result and nobody would have looked twice.
+  const supportedAmongAnswered = answered.filter((l) => l.label === 'SUPPORTED').length
   return {
     claims_shown: session.labels?.length ?? 0,
     claims_labelled: labels.length,
@@ -188,7 +194,7 @@ export function aggregate(session) {
     // what it ANSWERED is "when it speaks, is it right". Reporting only the
     // second is how a pass that answers three fields out of fifteen scores 100%.
     supported_of_all_asked: labels.length === 0 ? null : supported / labels.length,
-    supported_of_answered: answered.length === 0 ? null : supported / answered.length,
+    supported_of_answered: answered.length === 0 ? null : supportedAmongAnswered / answered.length,
     // The citation machinery is a separate defect from the seeing.
     wrong_evidence_rate: labels.length === 0 ? null : dist.WRONG_EVIDENCE / labels.length,
   }

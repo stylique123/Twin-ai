@@ -215,6 +215,39 @@ function selftest() {
 
 async function main() {
   if (flag('selftest')) { selftest(); return }
+
+  // ⚠️ THE WHOLE PILOT, IN ONE COMMAND:
+  //
+  //     node scripts/frame-pilot.mjs --review --size 8
+  //
+  // Select and FREEZE the sample, print the bill, probe the schema, enqueue only
+  // the frozen references, poll to terminal states, report attrition over what
+  // was SELECTED, build the packet, serve the review, and only after the lock
+  // compute the numbers and the #69 brief.
+  //
+  // ⚖️ EVERY ONE OF THOSE WAS A SEPARATE COMMAND WITH A SEPARATE CHANCE TO BE RUN
+  // IN THE WRONG ORDER -- and one of those orders, looking at the aggregate
+  // before locking, silently spoils the labels it was meant to measure.
+  if (flag('review')) {
+    const { runReview, serveReview, report } = await import('./pilot-review.mjs')
+    const { join } = await import('node:path')
+    const { readFileSync, writeFileSync, mkdirSync } = await import('node:fs')
+    const FILE = join('.twinai-pilot', 'run.json')
+    const save = (r) => { mkdirSync('.twinai-pilot', { recursive: true }); writeFileSync(FILE, JSON.stringify(r, null, 2)) }
+    const db = client()
+    const run = await runReview(db, {
+      size: arg('size', 8),
+      // ⚠️ DRY BY DEFAULT, LIKE EVERY OTHER SPENDING PATH HERE. --review shows
+      // the sample and the bill; --review --go is what costs money.
+      dryRun: !flag('go'),
+      timeoutMin: arg('timeout-min', 60),
+    })
+    if (!run) return
+    const finished = await serveReview(db, run, save, Number(arg('port', 7358)))
+    console.log(report(finished))
+    return
+  }
+
   const size = Math.min(MAX_SIZE, Math.max(1, Number(arg('size', DEFAULT_SIZE)) || DEFAULT_SIZE))
 
   if (flag('report')) {
