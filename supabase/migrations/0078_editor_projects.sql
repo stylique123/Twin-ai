@@ -68,6 +68,7 @@ begin
 end;
 $$;
 
+drop trigger if exists trg_edit_projects_immutable on public.edit_projects;
 create trigger trg_edit_projects_immutable
   before update on public.edit_projects
   for each row execute function public.edit_projects_guard_immutable();
@@ -171,6 +172,7 @@ begin
 end;
 $$;
 
+drop trigger if exists trg_edit_events_append_only on public.edit_events;
 create trigger trg_edit_events_append_only
   before update or delete on public.edit_events
   for each row execute function public.edit_events_append_only();

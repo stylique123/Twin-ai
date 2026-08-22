@@ -73,6 +73,7 @@ begin
   return case when tg_op = 'DELETE' then old else new end;
 end;
 $$;
+drop trigger if exists trg_edit_director_calls_guard on public.edit_director_calls;
 create trigger trg_edit_director_calls_guard
   before update or delete on public.edit_director_calls
   for each row execute function public.edit_director_calls_guard();
@@ -146,6 +147,7 @@ begin
   return new;
 end;
 $$;
+drop trigger if exists trg_edit_director_decisions_guard on public.edit_director_decisions;
 create trigger trg_edit_director_decisions_guard
   before insert or update or delete on public.edit_director_decisions
   for each row execute function public.edit_director_decisions_guard();
