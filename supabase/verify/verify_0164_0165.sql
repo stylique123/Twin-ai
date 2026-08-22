@@ -20,6 +20,32 @@
 -- READING IT: sort by verdict. Any FAIL is a stop. Expected total = 23 rows,
 -- all PASS. Fewer than 23 rows means this file was edited, not that the schema
 -- is fine.
+--
+-- ── AND THEN READ THE WORKER LOG, WHICH IS THE STRONGER CHECK ──────────────
+--
+-- 0164 IS NOT BOOKKEEPING. worker/src/schemaCapabilities.ts declares its three
+-- columns as a requirement of the `editor_v2` job type, and worker/src/index.ts
+-- removes a blocked type from the claim list ENTIRELY -- "never claim work that
+-- cannot succeed". While production sits below 0164, editor_v2 is therefore not
+-- degraded in production, it is not running, and render_attempts stays empty
+-- because nothing claims the work rather than because nothing fails.
+--
+-- The worker re-checks every five minutes precisely so a migration applied by
+-- hand heals it without a redeploy. So after applying, expect ONE log line:
+--
+--     {"event":"schema_health","status":"healthy","recovered":true, ...}
+--
+-- ⚖️ THAT LINE OUTRANKS EVERY ROW BELOW. This file is one process's opinion
+-- about catalog contents; that line is the worker saying it can now do the
+-- work. If the rows all say PASS and the worker never reports recovery, believe
+-- the worker and find out why -- starting with which build is actually deployed
+-- on the VPS, which no query here can see.
+--
+-- ⚠️ AND THE FAILURE PATH IF THE GATE IS EVER ABSENT: the writer in
+-- worker/src/jobs/renderAttempts.ts inserts all three columns unconditionally
+-- and swallows its own error into a console.error. A deployed build predating
+-- the capability registry would not decline the work -- it would take it and
+-- lose every render row quietly.
 
 with expected_0164_columns(column_name, want_type) as (values
   ('plan_quantisation_delta_ms', 'integer'),
