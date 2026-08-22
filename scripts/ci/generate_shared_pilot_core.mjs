@@ -19,6 +19,7 @@ const SOURCES = [
   ['scripts/pilot-start.mjs', 'supabase/functions/_shared/pilotStart.ts'],
   ['scripts/d1-core.mjs', 'supabase/functions/_shared/d1Core.ts'],
   ['scripts/watched-session.mjs', 'supabase/functions/_shared/watchedSession.ts'],
+  ['scripts/owner-console.mjs', 'supabase/functions/_shared/ownerConsole.ts'],
 ]
 
 const render = (from, src) =>

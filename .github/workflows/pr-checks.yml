@@ -494,6 +494,12 @@ jobs:
       # refuse, leaving an action that looks crippled and is not.
       - name: Pilot start (the action cannot express the dangerous request)
         run: node scripts/pilot-start.selftest.mjs
+      # ⚠️ THE DANGEROUS FAILURE OF A STATUS PAGE IS A CARD THAT LOOKS SETTLED.
+      # A probe that could not run must never render as "fine", a blocked card
+      # must never be offered as the next thing to do, and rotation must never
+      # read as done because a key is absent from a shell.
+      - name: Owner console (a card that cannot be checked is not a card that passed)
+        run: node scripts/owner-console.selftest.mjs
       # D1's state machine. The two transitions worth guarding are "watched
       # without consent" and "locked without asking why" — a session locked
       # with no observation reads later as "we learned nothing", which is
