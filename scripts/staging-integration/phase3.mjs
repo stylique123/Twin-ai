@@ -200,12 +200,30 @@ async function waitProject(id, pred, timeoutMs = 90_000, label = '') {
 const isSettled = (p) => ['completed', 'failed', 'cancelled'].includes(p.status)
 
 async function startProject(client, genId, assetId) {
-  const r = await callEdge(client, 'start-editor-v2', {
-    generation_id: genId, source_asset_id: assetId, idempotency_key: randomUUID(),
-  })
-  if (r.status !== 200) throw new Error(`start-editor-v2 ${r.status}: ${JSON.stringify(r.body)}`)
-  allProjects.push(r.body.projectId)
-  return r.body.projectId
+  for (let attempt = 0; ; attempt++) {
+    const r = await callEdge(client, 'start-editor-v2', {
+      generation_id: genId, source_asset_id: assetId, idempotency_key: randomUUID(),
+    })
+    // ⚠️ THIS PHASE WAS THE ONLY ONE THAT THREW ON A 429, and it packs starts
+    // exactly like the others do. The per-user start limit (10/60s) is a PRODUCT
+    // FEATURE, not a failure — phase4 says so in its own copy of this function,
+    // and phases 4-8 all wait the window out. Phase 3 alone turned a limiter
+    // doing its job into a red gate, which then reads as "phase 3 is broken"
+    // rather than "the starts were packed too tightly".
+    //
+    // ⚖️ NO ASSERTION IS RELAXED BY THIS. Phase 3 makes no claim about rate
+    // limiting — its single mention of 429 is a comment about gateway pages —
+    // so this changes only whether SETUP survives a documented product
+    // behaviour. The checks it then runs are untouched.
+    if (r.status === 429 && attempt < 3) {
+      console.log('   (start rate window — waiting 61s…)')
+      await sleep(61_000)
+      continue
+    }
+    if (r.status !== 200) throw new Error(`start-editor-v2 ${r.status}: ${JSON.stringify(r.body)}`)
+    allProjects.push(r.body.projectId)
+    return r.body.projectId
+  }
 }
 
 const PIPELINE = ['inspecting', 'transcribing', 'analyzing', 'directing', 'compiling', 'rendering', 'validating']
