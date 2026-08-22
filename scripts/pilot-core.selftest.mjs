@@ -357,5 +357,27 @@ ok('flattenClaims still returns one row per declared path',
     checkRateInvariants({ ...fine, claims_labelled: 4 }).some((p) => p.includes('sum to')))
 }
 
+// ── a revisit is not a backtrack ──
+{
+  // ⚠️ SOMEBODY WHO ANSWERS, LEAVES, COMES BACK AND ANSWERS THE SAME WAY has
+  // told you the claim was hard to settle even though nothing changed.
+  // Counting only relabels would score that session as frictionless.
+  const f = friction([
+    { kind: 'session_start', at: 0 },
+    { kind: 'label', at: 1000, index: 0 },
+    { kind: 'nav', at: 1500, via: 'prev' },
+    { kind: 'relabel', at: 2000, index: 0 },
+    { kind: 'label', at: 2000, index: 0 },
+    { kind: 'label', at: 3000, index: 1 },
+  ])
+  ok('a claim returned to is counted as revisited', f.claims_revisited === 1)
+  ok('and the replaced answer is still a backtrack', f.backtracks === 1)
+  ok('a claim answered once is neither',
+    friction([{ kind: 'label', at: 1, index: 0 }]).claims_revisited === 0)
+  ok('navigation is counted on its own', f.navigations === 1)
+  ok('keyboard use is counted separately from answers',
+    friction([{ kind: 'key', at: 1 }, { kind: 'label', at: 2, index: 0 }]).keyboard_actions === 1)
+}
+
 if (failed) process.exit(1)
 console.log('pilot-core selftest: all cases passed')

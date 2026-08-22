@@ -415,6 +415,9 @@ export function report(run) {
   L.push(`  backtracks          ${f.backtracks}`)
   L.push(`  frame enlargements  ${f.evidence_frame_changes}`)
   L.push(`  skipped             ${f.skipped}`)
+  L.push(`  claims revisited    ${f.claims_revisited}   (returned to, however answered)`)
+  L.push(`  navigations         ${f.navigations}`)
+  L.push(`  keyboard actions    ${f.keyboard_actions} of ${f.answers_given} answers`)
   const slow = (run.slowest_fields ?? []).slice(0, 3)
   if (slow.length) {
     L.push('  slowest fields')

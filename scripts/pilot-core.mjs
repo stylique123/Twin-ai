@@ -228,7 +228,23 @@ export function friction(events) {
     median_ms_per_claim: sorted.length === 0 ? null : sorted[Math.floor(sorted.length / 2)],
     slowest_ms: sorted.length === 0 ? null : sorted[sorted.length - 1],
     // A claim answered twice is a claim the packet made hard to answer once.
+    // ⚠️ A BACKTRACK IS AN ANSWER REPLACED. A REVISIT IS A CLAIM RETURNED TO.
+    // They are not the same and the spec asks for both: somebody who answers,
+    // walks away, comes back and answers the SAME WAY has told you the claim was
+    // hard to settle even though nothing changed. Counting only relabels would
+    // score that session as frictionless.
     backtracks: events.filter((e) => e.kind === 'relabel').length,
+    claims_revisited: (() => {
+      const seen = new Map()
+      for (const e of answers) seen.set(e.index, (seen.get(e.index) ?? 0) + 1)
+      return [...seen.values()].filter((n) => n > 1).length
+    })(),
+    // ⚖️ AND HOW THEY MOVED, since a reviewer stepping back and forth through
+    // the queue is a different signal from one answering straight through.
+    navigations: events.filter((e) => e.kind === 'nav').length,
+    // Keyboard vs mouse: a reviewer who never leaves the keyboard says the
+    // shortcuts work; one who clicks every time says they were never found.
+    keyboard_actions: events.filter((e) => e.kind === 'key').length,
     // Reaching for a different frame means the packet showed the wrong one first.
     evidence_frame_changes: events.filter((e) => e.kind === 'frame_change').length,
     skipped: events.filter((e) => e.kind === 'skip').length,
