@@ -6,6 +6,7 @@ import {
   canTransition, refuseStart, refuseLock, classifyGaps, evidenceWindow,
   TRANSITIONS, REQUIRED_EVENTS, BLOCKERS,
 } from './watched-session.mjs'
+import { reconstruct } from './d1-core.mjs'
 
 let pass = 0, fail = 0
 const ok = (n, c) => { if (c) pass++; else { fail++; console.error(`  FAIL  ${n}`) } }
@@ -106,6 +107,27 @@ ok('a session that never finished cannot lock',
 // ── the module may not invent a reason ────────────────────────────────────
 ok('the blocker taxonomy is frozen and includes the pressure gauge',
   Object.isFrozen(BLOCKERS) && 'OTHER' in BLOCKERS)
+
+// ── the tie-break path, which nothing was exercising ──────────────────────
+//
+// ⚠️ A LATENT ReferenceError LIVED HERE. Extracting d1-core.mjs cut above the
+// `createHash` import, and the only caller is the deterministic tie-break in
+// reconstruct() — reached ONLY when two events share a millisecond, which the
+// code's own comment calls common on a click that fires both. `||`
+// short-circuits, so every existing test passed while the file was broken.
+{
+  const tied = reconstruct([
+    { name: 'b', at: '2026-08-22T10:00:00.000Z' },
+    { name: 'a', at: '2026-08-22T10:00:00.000Z' },
+  ])
+  ok('two events in the same millisecond reconstruct without throwing', tied.length === 2)
+  const again = reconstruct([
+    { name: 'a', at: '2026-08-22T10:00:00.000Z' },
+    { name: 'b', at: '2026-08-22T10:00:00.000Z' },
+  ])
+  ok('and the tie breaks the SAME way whichever order they arrive in',
+    JSON.stringify(tied.map((e) => e.name)) === JSON.stringify(again.map((e) => e.name)))
+}
 
 console.log(`watched-session selftest: ${pass} passed, ${fail} failed`)
 process.exit(fail === 0 ? 0 : 1)

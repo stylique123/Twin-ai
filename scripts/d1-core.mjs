@@ -11,6 +11,8 @@
 // categories mean, and the two would drift on the first change — at which
 // point two sessions "coded the same way" would not be.
 
+import { createHash } from 'node:crypto'
+
 /**
  * ⚠️ FROZEN BEFORE THE SESSION, NOT AFTER IT. A taxonomy invented while watching
  * is a taxonomy shaped by the first creator, and every later session gets
