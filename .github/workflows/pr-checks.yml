@@ -447,6 +447,13 @@ jobs:
       # be imported by a test at all.
       - name: Editor staging fixtures (one definition of a fenced lease)
         run: node scripts/staging-integration/editorFixtures.selftest.mjs
+      # ⚠️ ONE RENDER IS ONE ZOOM COUNT, AND ONE ZOOM COUNT CANNOT SHOW A SLOPE.
+      # #445's acceptance was never "the render passed" — the duration error must
+      # stop GROWING with zoomCount. This is the logic that decides that, tested
+      # against samples where every render would sit inside the ±250 ms tolerance
+      # while still losing frames per zoom.
+      - name: Zoom sweep logic (the defect is a slope, not a tolerance)
+        run: node scripts/staging-integration/zoomSweep.selftest.mjs
       # The packet decides which claims a human is ever asked about and when the
       # accuracy number may be looked at. Both are logic, both are pure, and
       # both are wrong silently -- a claim path nobody asks about scores the
