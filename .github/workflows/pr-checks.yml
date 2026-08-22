@@ -390,6 +390,17 @@ jobs:
         run: |
           node scripts/ci/check_shadowed_globals.mjs --selftest
           node scripts/ci/check_shadowed_globals.mjs
+      # The staging assertion block reaches psql as one shell double-quoted
+      # argument, and the shell still owns two characters inside it. An
+      # unescaped backtick in a SQL COMMENT ran as a command and killed the step
+      # with an error naming neither SQL nor the file; the same bug was then
+      # reintroduced inside the comment explaining it, that time with a bare
+      # double quote that ended the argument early and silently skipped every
+      # assertion below it.
+      - name: Workflow shell quoting (SQL the shell reads first is not the SQL you wrote)
+        run: |
+          node scripts/ci/check_workflow_shell_quoting.mjs --selftest
+          node scripts/ci/check_workflow_shell_quoting.mjs
       # A bucket that names no size limit and no mime list accepts anything the
       # service key reaches, whatever the table grants say. Writing this guard
       # found that production's `takes` bucket carries a mime list NO MIGRATION
