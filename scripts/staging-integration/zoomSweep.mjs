@@ -113,7 +113,33 @@ export function slopeOf(rows) {
  * environment and spawns nothing itself, so it can be unit-tested with fakes on
  * a machine that has no staging credentials.
  */
+/**
+ * Every dependency this sweep cannot invent for itself.
+ *
+ * ⚠️ DESTRUCTURING A MISSING DEPENDENCY YIELDS `undefined`, NOT AN ERROR, and
+ * the failure then surfaces deep inside a 90-minute matrix as a bare
+ * "sha256 is not defined" — which is exactly what happened on the sweep's first
+ * real outing. Named up front and checked before any work starts, so the
+ * message says WHICH dependency was missing rather than where it was first
+ * touched.
+ */
+export const SWEEP_DEPS = Object.freeze([
+  'admin', 'fixtures', 'sha256', 'newGen', 'wordCountFor', 'runToSettled', 'donorAssetId', 'ownerId',
+])
+
+export function missingSweepDeps(deps) {
+  const d = deps ?? {}
+  return SWEEP_DEPS.filter((k) => d[k] === undefined || d[k] === null)
+}
+
 export async function runZoomSweep(deps) {
+  // ⚖️ REFUSED BEFORE IT SPENDS ANYTHING. A sweep that renders three videos and
+  // then discovers it cannot hash has already cost the matrix its time.
+  const missing = missingSweepDeps(deps)
+  if (missing.length) {
+    throw new Error(`runZoomSweep is missing required dependenc${missing.length === 1 ? 'y' : 'ies'}: `
+      + `${missing.join(', ')}. The caller must supply every one of: ${SWEEP_DEPS.join(', ')}.`)
+  }
   const { admin, fixtures, sha256, newGen, wordCountFor, runToSettled, donorAssetId, ownerId, log } = deps
   const rows = []
   const notes = []

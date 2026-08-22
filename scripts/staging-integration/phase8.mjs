@@ -41,6 +41,13 @@ import { makeEditorFixtures } from './editorFixtures.mjs'
 import { runZoomSweep } from './zoomSweep.mjs'
 
 const execFile = promisify(_execFile)
+// ⚠️ PHASE 8 OWNS ITS OWN DIGEST HELPER, exactly as phases 6 and 7 do.
+// editorFixtures takes `sha256` as a parameter on the stated grounds that
+// "phases already own one" — and phase 8 did not. The sweep referenced it, node
+// --check passed (it proves syntax, not that a binding resolves), the selftests
+// passed (they inject their own), and the ReferenceError only appeared 42
+// minutes into a real matrix, inside the advisory catch that kept it green.
+const sha256 = (s) => createHash('sha256').update(s).digest('hex')
 const REPO_ROOT = join(import.meta.dirname, '..', '..')
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 

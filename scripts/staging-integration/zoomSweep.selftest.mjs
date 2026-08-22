@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Credential-free: the sweep injects every dependency, so its logic is testable
 // with fakes on a machine that has never seen staging.
-import { slopeOf, zoomRequestsFor, SWEEP_ZOOM_COUNTS, runZoomSweep } from './zoomSweep.mjs'
+import { slopeOf, zoomRequestsFor, SWEEP_ZOOM_COUNTS, runZoomSweep , missingSweepDeps, SWEEP_DEPS } from './zoomSweep.mjs'
 
 let pass = 0, fail = 0
 const eq = (what, got, want) => {
@@ -91,6 +91,46 @@ ok('every requested anchor carries a valid intensity and reason',
   eq('the other three still produced rows', r.collected, 3)
   eq('and the sweep says how many it attempted', r.attempted, SWEEP_ZOOM_COUNTS.length)
 }
+
+
+// ── the dependency guard ──────────────────────────────────────────────────
+//
+// ⚠️ THIS IS THE BUG THAT COST A 90-MINUTE MATRIX. phase8 referenced a `sha256`
+// helper it never defined. Destructuring produced `undefined` rather than an
+// error, node --check passed (syntax only), these selftests passed (they inject
+// their own helpers), and the ReferenceError surfaced 42 minutes in — inside the
+// advisory catch, which kept the matrix green while the experiment produced
+// nothing at all.
+const fullDeps = () => ({
+  admin: {}, fixtures: {}, sha256: () => 'x', newGen: () => {}, wordCountFor: () => 0,
+  runToSettled: () => {}, donorAssetId: 'a', ownerId: 'o',
+})
+ok('a complete dependency set has nothing missing', missingSweepDeps(fullDeps()).length === 0)
+ok('a missing sha256 is NAMED, not discovered later', (() => {
+  const d = fullDeps(); delete d.sha256
+  return missingSweepDeps(d).length === 1 && missingSweepDeps(d)[0] === 'sha256'
+})())
+ok('an explicitly undefined dependency counts as missing', (() => {
+  const d = fullDeps(); d.newGen = undefined
+  return missingSweepDeps(d).includes('newGen')
+})())
+// ⚠️ NULL IS MISSING TOO. A helper that resolved to null would fail on first
+// call with a less useful message than this one.
+ok('a null dependency counts as missing', (() => {
+  const d = fullDeps(); d.fixtures = null
+  return missingSweepDeps(d).includes('fixtures')
+})())
+ok('no deps at all names every one of them', missingSweepDeps({}).length === SWEEP_DEPS.length)
+ok('an absent object is refused rather than throwing', missingSweepDeps(undefined).length === SWEEP_DEPS.length)
+// ⚠️ `log` IS NOT REQUIRED. It is optional by design, and demanding it would
+// make the guard refuse a legitimate caller.
+ok('log is deliberately NOT a required dependency', !SWEEP_DEPS.includes('log'))
+// The refusal must fire before any work is attempted, and must say which.
+await (async () => {
+  const d = fullDeps(); delete d.sha256
+  try { await runZoomSweep(d); ok('runZoomSweep refuses without sha256', false) }
+  catch (e) { ok('runZoomSweep refuses without sha256, naming it', e.message.includes('sha256')) }
+})()
 
 console.log(`zoom-sweep selftest: ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)
