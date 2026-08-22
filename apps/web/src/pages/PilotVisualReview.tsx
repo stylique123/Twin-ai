@@ -1,0 +1,200 @@
+// THE VISUAL PILOT'S LABELLING PAGE, HOSTED INSIDE TWIN.
+//
+// The first version of this served from the container that drew the sample, on
+// that container's localhost. The owner -- the only person whose judgment the
+// pilot collects -- could never open it.
+//
+// ⚠️ WHAT THIS PAGE MUST NEVER SHOW: any aggregate, any running rate, any count
+// of how many claims have been marked SUPPORTED so far. A reviewer who can see
+// the score is being told what the answer should be. The numbers exist only
+// after Finish & Lock, and only on the server.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useParams } from 'react-router-dom'
+import { Loader2, Lock, AlertTriangle } from 'lucide-react'
+import {
+  getPilotPacket, savePilotLabel, logPilotEvent, finishPilotReview,
+  type PilotPacket, type PilotClaim, type PilotLabel,
+} from '../lib/api'
+
+const KEYS: Record<string, PilotLabel> = {
+  '1': 'SUPPORTED', '2': 'UNSUPPORTED', '3': 'INDETERMINATE', '4': 'WRONG_EVIDENCE',
+}
+
+export default function PilotVisualReview() {
+  const { pilotRunId = '' } = useParams()
+  const [packet, setPacket] = useState<PilotPacket | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [at, setAt] = useState(0)
+  const [saving, setSaving] = useState(false)
+  const [locking, setLocking] = useState(false)
+  const [locked, setLocked] = useState(false)
+  const started = useRef(false)
+
+  useEffect(() => {
+    let live = true
+    getPilotPacket(pilotRunId)
+      .then((p) => { if (!live) return; setPacket(p); setLocked(p.run.status === 'locked') })
+      .catch((e) => { if (live) setError(String(e.message ?? e)) })
+    return () => { live = false }
+  }, [pilotRunId])
+
+  useEffect(() => {
+    if (!packet || started.current) return
+    started.current = true
+    void logPilotEvent(pilotRunId, 'session_start').catch(() => {})
+  }, [packet, pilotRunId])
+
+  const claims = packet?.claims ?? []
+  const claim: PilotClaim | undefined = claims[at]
+  const remaining = useMemo(() => claims.filter((c) => !c.current?.label).length, [claims])
+
+  const framesFor = useCallback((c: PilotClaim) => {
+    const cited = c.cited_frames ?? []
+    return (packet?.frames ?? [])
+      .filter((f) => f.url === c.url && (cited.length === 0 || cited.includes(f.frame_index)))
+      .sort((a, b) => a.frame_index - b.frame_index)
+  }, [packet])
+
+  const apply = useCallback(async (label: PilotLabel | null) => {
+    if (!claim || locked) return
+    setSaving(true)
+    try {
+      // ⚠️ SAVED BEFORE THE VIEW MOVES ON. Advancing first and saving after is
+      // how a session ends with labels the reviewer believes they gave and the
+      // database never received.
+      await savePilotLabel(pilotRunId, claim.id, label)
+      const wasAnswered = !!claim.current?.label
+      setPacket((p) => p && ({
+        ...p,
+        claims: p.claims.map((c) => c.id === claim.id
+          ? { ...c, current: { label, corrected_value: null } } : c),
+      }))
+      void logPilotEvent(pilotRunId, wasAnswered ? 'relabel' : (label === null ? 'skip' : 'label'),
+        { claim_id: claim.id, label }).catch(() => {})
+      // ⚠️ A SKIP SENDS THE REVIEWER BACK. It is not an answer, and the run
+      // cannot lock while one is outstanding.
+      setAt((i) => Math.min(claims.length - 1, i + 1))
+    } catch (e) {
+      setError(String((e as Error).message))
+    } finally { setSaving(false) }
+  }, [claim, claims.length, locked, pilotRunId])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (locked) return
+      if (KEYS[e.key]) { void apply(KEYS[e.key]); void logPilotEvent(pilotRunId, 'key', { key: e.key }).catch(() => {}) }
+      else if (e.key === 's') { void apply(null) }
+      else if (e.key === 'ArrowLeft') { setAt((i) => Math.max(0, i - 1)); void logPilotEvent(pilotRunId, 'nav', { dir: -1 }).catch(() => {}) }
+      else if (e.key === 'ArrowRight') { setAt((i) => Math.min(claims.length - 1, i + 1)); void logPilotEvent(pilotRunId, 'nav', { dir: 1 }).catch(() => {}) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [apply, claims.length, locked, pilotRunId])
+
+  const finish = async () => {
+    setLocking(true)
+    try {
+      await finishPilotReview(pilotRunId)
+      setLocked(true)
+    } catch (e) { setError(String((e as Error).message)) } finally { setLocking(false) }
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-2xl p-8">
+        <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+          <div><div className="font-medium">The review could not load</div>
+            <div className="mt-1 text-sm opacity-80">{error}</div></div>
+        </div>
+      </div>
+    )
+  }
+  if (!packet) {
+    return <div className="flex h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin opacity-60" /></div>
+  }
+  if (locked) {
+    return (
+      <div className="mx-auto max-w-2xl p-8">
+        <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+          <Lock className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
+          <div>
+            <div className="font-medium text-emerald-100">This review is locked</div>
+            <div className="mt-1 text-sm text-emerald-200/70">
+              Labels are final. The report and the go / hold decision were computed on the
+              server and are recorded against this run.
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl p-6">
+      <div className="mb-4 flex items-baseline justify-between text-sm opacity-70">
+        <span>Claim {at + 1} of {claims.length}</span>
+        {/* Progress only. Never a score. */}
+        <span>{remaining} left to answer</span>
+      </div>
+
+      {claim && (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+          <div className="text-xs uppercase tracking-wide opacity-50">{claim.claim_path}</div>
+          <div className="mt-2 text-lg">
+            {claim.answered
+              ? <code className="rounded bg-white/10 px-2 py-1">{JSON.stringify(claim.claim_value)}</code>
+              /* ⚠️ UNANSWERED IS ITS OWN THING. Confirming a claim the pass never
+                 made once put a bucket named 'null' into the distribution. */
+              : <span className="opacity-60">The pass did not answer this.</span>}
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {framesFor(claim).map((f) => (
+              <figure key={`${f.url}-${f.frame_index}`} className="overflow-hidden rounded-lg border border-white/10">
+                {f.signed_url
+                  ? <img src={f.signed_url} alt={`frame ${f.frame_index}`} className="w-full" />
+                  : <div className="flex h-24 items-center justify-center text-xs opacity-50">frame unavailable</div>}
+                <figcaption className="px-2 py-1 text-[11px] opacity-60">
+                  #{f.frame_index}
+                  {/* at_seconds travels with the frame: a claim about what CHANGES
+                      cannot be judged without knowing how far apart the stills are. */}
+                  {f.at_seconds != null && <> · {f.at_seconds.toFixed(1)}s</>}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            {(Object.entries(KEYS) as Array<[string, PilotLabel]>).map(([k, label]) => (
+              <button key={label} disabled={saving} onClick={() => void apply(label)}
+                className={`rounded-lg border px-3 py-2 text-sm transition ${
+                  claim.current?.label === label
+                    ? 'border-sky-400 bg-sky-400/20' : 'border-white/15 hover:bg-white/5'}`}>
+                <span className="mr-2 opacity-50">{k}</span>{packet.vocabulary[label] ?? label}
+              </button>
+            ))}
+            <button disabled={saving} onClick={() => void apply(null)}
+              className="rounded-lg border border-white/15 px-3 py-2 text-sm opacity-70 hover:bg-white/5">
+              <span className="mr-2 opacity-50">s</span>Skip for now
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-6">
+        <button
+          onClick={() => void finish()}
+          disabled={remaining > 0 || locking}
+          className="rounded-lg bg-emerald-500/90 px-4 py-2 font-medium text-black disabled:cursor-not-allowed disabled:opacity-40">
+          {locking ? 'Locking…' : 'Finish & Lock'}
+        </button>
+        {remaining > 0 && (
+          <span className="ml-3 text-sm opacity-60">
+            {remaining} claim{remaining === 1 ? '' : 's'} still need an answer.
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}

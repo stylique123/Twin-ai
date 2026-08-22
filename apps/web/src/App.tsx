@@ -24,6 +24,7 @@ const Brands = lazy(() => import('./pages/Brands'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Billing = lazy(() => import('./pages/Billing'))
 const Metrics = lazy(() => import('./pages/Metrics'))
+const PilotVisualReview = lazy(() => import('./pages/PilotVisualReview'))
 const Calendar = lazy(() => import('./pages/Calendar'))
 const ClientReport = lazy(() => import('./pages/ClientReport'))
 const ReviewApproval = lazy(() => import('./pages/ReviewApproval'))
@@ -298,6 +299,13 @@ export default function App() {
           <Route
             path="/metrics"
             element={<Protected><AppShell><Page><Metrics /></Page></AppShell></Protected>}
+          />
+          {/* The visual pilot's labelling page. Protected is convenience -- the
+              pilot-review edge function re-checks platform_admins with the
+              service role, and that check is the actual boundary. */}
+          <Route
+            path="/internal/review/visual/:pilotRunId"
+            element={<Protected><AppShell><Page><PilotVisualReview /></Page></AppShell></Protected>}
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
