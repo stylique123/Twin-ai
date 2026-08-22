@@ -2216,3 +2216,50 @@ export interface PilotStatus {
 /** Poll a run. Read-only; refuses unknown keys exactly like start does. */
 export const pilotStatus = (pilotRunId: string) =>
   start<PilotStatus>({ action: 'status', pilot_run_id: pilotRunId })
+
+// ── the watched session (D1) ───────────────────────────────────────────────
+//
+// ⚖️ THE MACHINE COLLECTS, THE OBSERVER ASKS WHY. Every call below either moves
+// the session's state or records what a human typed. None of them produces a
+// blocker, and no client-side default may ever supply one.
+
+export interface WatchedSessionGap { event_name: string; reason: string }
+export interface WatchedSessionFinish {
+  ok: true
+  status: string
+  events_captured: number
+  /** ⚠️ NAMED, NOT COUNTED. "uninstrumented" is a fact about the code;
+   *  "unknown" is an honest shrug. Neither means the creator did not do it. */
+  blind_spots: WatchedSessionGap[]
+  required_events: number
+}
+
+const watched = async <T>(body: Record<string, unknown>): Promise<T> => {
+  const { data, error } = await supabase.functions.invoke('watched-session', { body })
+  if (error) throw new Error(error.message ?? 'the session service refused')
+  if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error)
+  return data as T
+}
+
+export const createWatchedSession = (subjectUserId: string) =>
+  watched<{ ok: true; watched_session_id: string }>({ action: 'create', subject_user_id: subjectUserId })
+
+/** Records the yes. The server refuses to start watching without it. */
+export const consentWatchedSession = (id: string) =>
+  watched<{ ok: true }>({ action: 'consent', watched_session_id: id })
+
+export const startWatchedSession = (id: string) =>
+  watched<{ ok: true; status: string }>({ action: 'start', watched_session_id: id })
+
+export const finishWatchedSession = (id: string) =>
+  watched<WatchedSessionFinish>({ action: 'finish', watched_session_id: id })
+
+/** ⚠️ THE ONLY HUMAN WRITE. `creatorReason` is the creator's own words and the
+ *  server refuses an empty one — a blocker code alone says nothing. */
+export const observeWatchedSession = (id: string, blocker: string, creatorReason: string) =>
+  watched<{ ok: true }>({
+    action: 'observe', watched_session_id: id, blocker, creator_reason: creatorReason,
+  })
+
+export const lockWatchedSession = (id: string) =>
+  watched<{ ok: true; status: string; observations: number }>({ action: 'lock', watched_session_id: id })

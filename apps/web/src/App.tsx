@@ -26,6 +26,7 @@ const Billing = lazy(() => import('./pages/Billing'))
 const Metrics = lazy(() => import('./pages/Metrics'))
 const PilotVisualReview = lazy(() => import('./pages/PilotVisualReview'))
 const PilotVisualStart = lazy(() => import('./pages/PilotVisualStart'))
+const WatchedSession = lazy(() => import('./pages/WatchedSession'))
 const Calendar = lazy(() => import('./pages/Calendar'))
 const ClientReport = lazy(() => import('./pages/ClientReport'))
 const ReviewApproval = lazy(() => import('./pages/ReviewApproval'))
@@ -315,6 +316,13 @@ export default function App() {
           <Route
             path="/internal/review/visual/start"
             element={<Protected><AppShell><Page><PilotVisualStart /></Page></AppShell></Protected>}
+          />
+          {/* D1's observer page. Protected is convenience — watched-session
+              re-checks platform_admins with the service role AND that the
+              observer owns the session, and those are the real boundary. */}
+          <Route
+            path="/internal/watch"
+            element={<Protected><AppShell><Page><WatchedSession /></Page></AppShell></Protected>}
           />
           {/* The visual pilot's labelling page. Protected is convenience -- the
               pilot-review edge function re-checks platform_admins with the
