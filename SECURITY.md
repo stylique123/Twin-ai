@@ -68,3 +68,29 @@ Before a phase is marked done, it must clear this checklist (recorded in the PR)
 -- run via the Supabase SQL console / service role, never from the app:
 insert into public.platform_admins (user_id, role) values ('<your-auth-uid>', 'superadmin');
 ```
+
+## Open security debt
+
+⚠️ **This section is machine-read.** `scripts/ci/check_security_debt.mjs` parses the
+table below and fails the build if an unresolved entry is missing its trigger, its
+completion criterion, or its status — and if an entry is marked `RESOLVED` without a
+dated line saying what was actually done. Deleting an entry to make the guard quiet
+is itself a failure: the guard requires every `BLOCKING_SECURITY_CLEANUP` id it has
+ever been told about to still be present.
+
+| id | reason | trigger | completion criterion | status |
+|---|---|---|---|---|
+| `EXPOSED_SERVICE_ROLE_KEY_ROTATION_REQUIRED` | A live production service-role JWT for project `jmdecibuytznsonrasxw` was pasted into a conversation transcript on 2026-08-21. It was used for exactly one read-only schema verification and was written to no file, committed to no repo, and placed in no environment. | The first real #58 visual pilot reaching `LOCKED`. | **The key is rotated in the Supabase dashboard and the old one no longer authenticates.** Not "we stopped using it" — the transcript is permanent, so ceasing to use the pasted key is not a completion criterion. Anything that still holds the old key (edge function env, worker VPS env, CI secrets) must be updated in the same pass, and the guard's entry updated with the date and the list of places rotated. | `BLOCKING_SECURITY_CLEANUP` |
+
+### Why this is recorded here rather than in a ticket
+
+A credential in a transcript has no expiry and no owner. The one durable place a
+future reader will look before shipping is the security spec, and the one mechanism
+that survives a context window is a CI guard that refuses to go quiet.
+
+**A note on a claim that was made and was wrong.** It was stated in this project's
+notes that the owner had removed the service role key. The owner corrected that:
+**the key was not removed.** What is verifiable is narrower and is the only thing that
+should be repeated — `SUPABASE_SERVICE_ROLE_KEY` is unset in the assistant's session
+environment, and there is no `.env` in the repository. Neither of those facts is
+rotation, and neither retires this entry.
