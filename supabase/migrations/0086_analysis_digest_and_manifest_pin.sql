@@ -211,6 +211,7 @@ begin
 end;
 $$;
 
+drop trigger if exists trg_edit_projects_guard_pin on public.edit_projects;
 create trigger trg_edit_projects_guard_pin
   before update of boot_manifest, boot_manifest_sha, script_snapshot, script_snapshot_sha
   on public.edit_projects

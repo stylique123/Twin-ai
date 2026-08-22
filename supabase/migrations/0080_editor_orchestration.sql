@@ -67,6 +67,7 @@ begin
 end;
 $$;
 
+drop trigger if exists trg_edit_projects_stage on public.edit_projects;
 create trigger trg_edit_projects_stage
   before update of status on public.edit_projects
   for each row execute function public.edit_projects_guard_stage();
