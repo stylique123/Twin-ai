@@ -217,6 +217,14 @@ jobs:
         run: |
           npm ci
           npm test -w @twinai/shared
+      # ⚠️ apps/web HAD 136 TESTS AND CI RAN NONE OF THEM. There was no `test`
+      # script in its package.json, so nothing could. One of those tests was
+      # already failing on main: /internal/review/visual/:pilotRunId renders
+      # inside AppShell but was missing from `inApp`, which is the black-screen
+      # strand reported as "the Products tab is completely blank". The guard
+      # for that defect existed, caught it, and was never run.
+      - name: Test @twinai/web
+        run: npm test -w @twinai/web
       - name: Install + test worker
         working-directory: worker
         run: |
