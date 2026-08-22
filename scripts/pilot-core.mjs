@@ -684,6 +684,14 @@ export function armComparison(labels, frames) {
  */
 export function checkPacketInvariants({ progress, labels, claimPaths = CLAIM_PATHS.length }) {
   const problems = []
+  // ⚠️ A COUNT, NOT A LIST. Passing the CLAIM_PATHS array made the expected
+  // product NaN, and `labels.length !== NaN` is always true -- the invariant
+  // would have refused every packet while appearing to check one. Normalise so
+  // the next call site cannot make the same slip.
+  const paths = Array.isArray(claimPaths) ? claimPaths.length : Number(claimPaths)
+  if (!Number.isFinite(paths) || paths <= 0) {
+    return ['the packet check was given no usable claim-path count, so it checked nothing']
+  }
   const readyUrls = new Set(progress.states.filter((s) => s.state === 'READY_FOR_LABEL').map((s) => s.url))
   const packetUrls = new Set(labels.map((l) => l.url))
 
@@ -698,10 +706,10 @@ export function checkPacketInvariants({ progress, labels, claimPaths = CLAIM_PAT
         + 'contribute ZERO claims: there is nothing for a human to judge.')
     }
   }
-  const expected = readyUrls.size * claimPaths
+  const expected = readyUrls.size * paths
   if (labels.length !== expected) {
     problems.push(`the packet holds ${labels.length} claims but ${readyUrls.size} ready reference(s) `
-      + `× ${claimPaths} declared claim paths is ${expected}. A count that does not multiply out `
+      + `× ${paths} declared claim paths is ${expected}. A count that does not multiply out `
       + 'means the packet was built from a different set than the one reported ready.')
   }
   return problems
