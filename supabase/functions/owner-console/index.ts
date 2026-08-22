@@ -125,9 +125,33 @@ Deno.serve(async (req: Request) => {
       .order('created_at', { ascending: false }).limit(1)
     : { data: null }
 
+  // ⚠️ THE PACKET IS WHAT MAKES A RUN LABELLABLE, and it lives in a different
+  // table from the progress. A pilot that finished collecting with zero claims
+  // is stuck, not working — which is exactly the state a real run reached
+  // tonight, and "still collecting" would have been a lie about it.
+  const { count: claimCount } = run && hasPilotTables
+    ? await admin.from('visual_pilot_claims').select('id', { count: 'exact', head: true }).eq('pilot_run_id', run.id)
+    : { count: null }
+  // Collection is done when every frozen reference has reached a terminal state.
+  const { data: refRows } = run && hasPilotTables
+    ? await admin.from('visual_pilot_references').select('url, terminal_state').eq('pilot_run_id', run.id)
+    : { data: null }
+  const { data: refProfiles } = refRows?.length
+    ? await admin.from('reference_content_profiles')
+      .select('url, visual_profile, visual_failure_code, frames_sampled')
+      .in('url', refRows.map((r: { url: string }) => r.url))
+    : { data: null }
+  // ⚖️ READ FROM THE PROFILES, NOT FROM terminal_state. terminal_state is
+  // written BY the collect step, so using it here would report "not finished"
+  // for exactly the runs where collect never ran — the ones this card exists
+  // to surface.
+  const collectionDone = !!refRows?.length && refRows.every((r: { url: string }) =>
+    (refProfiles ?? []).some((p: { url: string; visual_profile: unknown; visual_failure_code: unknown; frames_sampled: unknown }) =>
+      p.url === r.url && (p.visual_profile != null || p.visual_failure_code != null || p.frames_sampled != null)))
+
   const cards = [
     schemaCard({ hasZoomCount, hasWatchedSessions }),
-    pilotCard(run, { canStart: hasPilotTables === true }),
+    pilotCard(run, { canStart: hasPilotTables === true, claims: claimCount, collectionDone }),
     recordingsCard(eligibleCount ?? 0),
     watchedSessionCard(sessions?.[0] ?? null, { tablesExist: hasWatchedSessions === true }),
     // ⚠️ `resolved` IS NOT DERIVABLE FROM THIS DATABASE. Rotation is proven by

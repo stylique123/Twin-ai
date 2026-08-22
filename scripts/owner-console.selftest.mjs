@@ -63,6 +63,25 @@ ok('locked is done', pilotCard({ id: 'r', status: 'locked' }, { canStart: true }
 ok('an undeployed pilot is blocked, not startable',
   pilotCard(null, { canStart: false }).state === 'blocked')
 
+// ⚠️ THE STATE A REAL PILOT WAS IN TONIGHT. Eight references collected, real
+// evidence for every one, zero claims, run still at `enqueued` — because
+// nothing on the button path built the packet. "Still collecting" would have
+// left the owner waiting for something that was never going to happen.
+ok('a run that finished collecting with no packet is BLOCKED, not working',
+  pilotCard({ id: 'r', status: 'enqueued' }, { canStart: true, claims: 0, collectionDone: true }).state === 'blocked')
+ok('and it tells the owner the evidence is safe',
+  pilotCard({ id: 'r', status: 'enqueued' }, { canStart: true, claims: 0, collectionDone: true })
+    .detail.includes('evidence is safe'))
+ok('and warns against starting another pilot',
+  pilotCard({ id: 'r', status: 'enqueued' }, { canStart: true, claims: 0, collectionDone: true })
+    .detail.includes('do not start another'))
+// ⚠️ MID-FLIGHT WITH NO CLAIMS YET IS NORMAL, not stuck. Collapsing the two
+// would cry wolf on every healthy run.
+ok('a run still collecting with no claims yet is still just working',
+  pilotCard({ id: 'r', status: 'collecting' }, { canStart: true, claims: 0, collectionDone: false }).state === 'working')
+ok('a finished run WITH claims is not blocked',
+  pilotCard({ id: 'r', status: 'ready_for_label' }, { canStart: true, claims: 40, collectionDone: true }).state === 'action_needed')
+
 // ── recordings ────────────────────────────────────────────────────────────
 ok('zero asks for two', recordingsCard(0).ownerAction.includes('2 more'))
 ok('one asks for one, singular', recordingsCard(1).ownerAction.includes('1 more video through'))

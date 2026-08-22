@@ -90,7 +90,7 @@ export function schemaCard({ hasZoomCount, hasWatchedSessions }) {
  * different states and must not collapse: one needs a click, the other needs
  * looking at.
  */
-export function pilotCard(run, { canStart }) {
+export function pilotCard(run, { canStart, claims = null, collectionDone = false }) {
   if (!canStart) {
     return { card: 'visual_pilot', state: 'blocked', ownerAction: null,
       detail: 'pilot-start is not deployed or its tables are missing.' }
@@ -108,6 +108,18 @@ export function pilotCard(run, { canStart }) {
     return { card: 'visual_pilot', state: 'action_needed',
       ownerAction: 'Label the claims, then Finish & Lock',
       detail: 'Collection finished. This is the judgment nothing else can supply.',
+      href: `/internal/review/visual/${run.id}` }
+  }
+  // ⚠️ A RUN THAT FINISHED COLLECTING BUT HAS NO PACKET IS STUCK, NOT WORKING.
+  // This is not hypothetical: a real pilot collected all eight references,
+  // produced real evidence for every one, and sat at `enqueued` with zero
+  // claims because nothing on the button path ever built the packet. Reporting
+  // that as "still collecting" would have left the owner waiting on a thing
+  // that was never going to happen.
+  if (collectionDone && claims === 0) {
+    return { card: 'visual_pilot', state: 'blocked', ownerAction: null,
+      detail: 'Twin finished watching the videos but has not produced anything to label yet. '
+        + 'The evidence is safe — do not start another pilot.',
       href: `/internal/review/visual/${run.id}` }
   }
   // frozen / enqueued / collecting
