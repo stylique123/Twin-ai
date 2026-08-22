@@ -441,6 +441,16 @@ jobs:
       # attrition over what was SELECTED, and the #69 brief. Includes the rate
       # that printed 500% when the runner was driven end to end -- a numerator
       # taken from a different population than its denominator.
+      # ⚠️ ADVISORY ONLY, AND DELIBERATELY SO. This reports which gate the diff
+      # WOULD need; it does not yet decide anything. Flipping a 90-minute matrix
+      # to conditional on the first run of a brand-new classifier is how
+      # evidence disappears quietly. It runs alongside the existing gate until
+      # its verdicts have been watched against real PRs, and the switch is a
+      # separate change with its own falsifiable claim.
+      - name: Gate tier (advisory — what the smallest sufficient gate would be)
+        run: |
+          node scripts/ci/classify_change.selftest.mjs
+          node scripts/ci/classify_change.mjs --base "origin/${{ github.base_ref || 'main' }}" || true
       - name: Pilot core (frozen sample, terminal states, rates that cannot exceed 100%)
         run: node scripts/pilot-core.selftest.mjs
       # The 332 decision rule, committed BEFORE any label exists. A verdict rule
