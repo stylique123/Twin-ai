@@ -27,7 +27,8 @@ import {
   progressOf, attrition,
 } from '../_shared/pilotCore.ts'
 import {
-  validateStartRequest, validateStatusRequest, activePilotRefusal, pilotJobRows, ACTIVE_STATUSES,
+  validateStartRequest, validateStatusRequest, activePilotRefusal, resolveActiveRun, pilotJobRows,
+  ACTIVE_STATUSES,
 } from '../_shared/pilotStart.ts'
 
 // Kept identical to scripts/pilot-db.mjs. A run that does not record which rule
@@ -78,9 +79,28 @@ Deno.serve(async (req: Request) => {
   // Handing it over early invites labelling a half-collected packet, and the
   // labels are the experiment's result.
   if (action === 'status') {
-    let pilotRunId: string
+    let pilotRunId: string | null
     try { pilotRunId = validateStatusRequest(body) } catch (e) {
       return json({ error: e instanceof Error ? e.message : String(e) }, 400)
+    }
+
+    // ── no id given: resolve the caller's own active pilot ──────────────────
+    //
+    // ⚠️ THIS IS A LOOKUP, NOT A NEW AUTHORITY. platform_admins has already
+    // been re-checked above with the service role, and the rows read here are
+    // the same rows the start path reads to refuse a second pilot. Nothing is
+    // exposed that a status call with the id in hand did not already return.
+    if (pilotRunId === null) {
+      const { data: live, error: liveErr } = await admin.from('visual_pilot_runs')
+        .select('id, status').in('status', ACTIVE_STATUSES)
+      if (liveErr) return json({ error: `could not look for an active pilot: ${liveErr.message}` }, 500)
+      const resolved = resolveActiveRun(live ?? [])
+      if (resolved.refusal) return json({ error: resolved.refusal }, 409)
+      // ⚠️ NO ACTIVE PILOT IS AN ANSWER, NOT AN ERROR. The start screen asks
+      // this on load precisely because it does not know yet; a 404 here would
+      // paint a red failure box over an ordinary empty state.
+      if (!resolved.id) return json({ ok: true, pilot_run_id: null, active: false })
+      pilotRunId = resolved.id
     }
 
     const { data: run, error: runErr } = await admin.from('visual_pilot_runs')
@@ -114,6 +134,7 @@ Deno.serve(async (req: Request) => {
     const progress = progressOf(profiles ?? [], { urls })
     return json({
       ok: true,
+      active: true,
       pilot_run_id: pilotRunId,
       status: run.status,
       collecting: !progress.done,

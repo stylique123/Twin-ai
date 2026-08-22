@@ -113,9 +113,42 @@ export function validateStatusRequest(body) {
     throw new Error(`refusing unknown key(s): ${unknown.sort().join(', ')}. `
       + `A status request accepts only ${STATUS_KEYS.join(', ')}.`)
   }
-  const id = String(body.pilot_run_id ?? '')
-  if (!id) throw new Error('pilot_run_id is required')
+  // ⚠️ OMITTED IS NOT INVALID — IT IS THE RECOVERY PATH. The run id lives only
+  // in the tab that started the pilot. Close that tab during collection and the
+  // owner has no way back to their own run, while `start` correctly refuses to
+  // give them a second one: a dead end reachable by one keystroke. A status
+  // request with no id therefore means "the pilot I already started", and the
+  // server resolves it. An id that is PRESENT but empty is still a caller bug.
+  if (body.pilot_run_id === undefined || body.pilot_run_id === null) return null
+  const id = String(body.pilot_run_id)
+  if (!id) {
+    throw new Error('pilot_run_id was given but empty — omit the key entirely to ask for the active pilot')
+  }
   return id
+}
+
+/**
+ * The one run a status request with no id means.
+ *
+ * ⚠️ EXACTLY ONE, OR NONE. This reuses the same ACTIVE_STATUSES set that
+ * activePilotRefusal enforces, so the invariant that makes "the active pilot"
+ * unambiguous is the same invariant that stops a second one existing. If more
+ * than one is ever active the refusal above has already failed, and guessing
+ * which of them the owner meant would attach labels to the wrong run — so this
+ * refuses instead of picking.
+ */
+export function resolveActiveRun(runs) {
+  const active = (runs ?? []).filter((r) => ACTIVE_STATUSES.includes(String(r?.status)))
+  if (active.length === 0) return { id: null, refusal: null }
+  if (active.length > 1) {
+    return {
+      id: null,
+      refusal: `${active.length} pilot runs are active at once (${active.map((r) => r.id).sort().join(', ')}). `
+        + 'One pilot at a time is what makes "the active pilot" mean anything, so this asks for the '
+        + 'run id explicitly rather than guessing which one you meant.',
+    }
+  }
+  return { id: String(active[0].id), refusal: null }
 }
 
 /**
