@@ -395,6 +395,24 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
         frames_sampled: visual.frames_sampled,
         frame_schedule_basis: visual.frame_schedule_basis,
         visual_assessed_at: assessedAt,
+        // ⚖️ CLEARED ON SUCCESS, because a success and a failure are not both
+        // true. A re-run that worked must not leave the old code beside the new
+        // frames for a later count to guess between; the 0162 check refuses that
+        // row anyway, so clearing it here is what makes the retry legal.
+        visual_failure_code: null,
+      } : visual !== null ? {
+        // ⚠️ A PASS THAT TRIED AND COULD NOT IS NOT A PASS NOBODY RAN. Without
+        // this the row is byte-identical to a reference nobody looked at, and
+        // the pilot's attrition table cannot tell a missing ffmpeg from a
+        // blocked download from a job that never ran — three different next
+        // actions, one number.
+        visual_failure_code: visual.failure_code,
+        // ⚠️ AND `visual_assessed_at` IS DELIBERATELY NOT STAMPED. frame-pilot
+        // selects candidates with `!r.visual_assessed_at`, so stamping it on a
+        // failure would permanently exclude a reference that failed for a
+        // TRANSIENT reason — an IP block that lifts an hour later — and the
+        // eligible population would shrink silently. The code says what
+        // happened; the absent timestamp says it is still worth another try.
       } : {}),
     }, { onConflict: 'url' })
     return {
@@ -464,8 +482,18 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
           frames_sampled: visual.frames_sampled,
           frame_schedule_basis: visual.frame_schedule_basis,
           visual_assessed_at: assessedAt,
+          // Cleared on success: a success and a failure are not both true, and
+          // the 0162 check refuses a row that claims both.
+          visual_failure_code: null,
         }
-      : {}),
+      : visual !== null
+        ? {
+            // ⚠️ THE CODE, BUT STILL NO TIMESTAMP. Same reason as the no-speech
+            // path: the stamp is what excludes a reference from a later pass,
+            // and a transient block must not exclude anything permanently.
+            visual_failure_code: visual.failure_code,
+          }
+        : {}),
     transcript_source: transcript.source ?? null,
     paid_because: transcript.paidBecause ?? null,
     transcript_chars: full.length,
