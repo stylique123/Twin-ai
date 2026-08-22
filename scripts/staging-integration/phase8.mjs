@@ -400,6 +400,62 @@ async function main() {
     check('A19 no render_failed / validate_failed event',
       !codes.includes('render_failed') && !codes.includes('validate_failed'), codes.join(','))
     check('A20 ZERO stray ffmpeg processes after a clean run', strayMediaProcesses() === 0)
+
+    // ---- the duration evidence 0164 added, and nothing yet proved lands -----
+    //
+    // ⚠️ recordRenderAttempt SWALLOWS EVERY INSERT ERROR. It wraps the insert in
+    // try/catch and logs `render_attempt_not_recorded` on failure, deliberately,
+    // so a telemetry problem can never fail a render a creator is waiting on.
+    // The cost is that a wrong column name, a constraint violation or a missing
+    // grant produces NO test failure anywhere: the render passes, the gate goes
+    // green, and the table quietly stays empty.
+    //
+    // ⚖️ WHICH IS EXACTLY THE COLUMN SET #445 RELIES ON. `zoom_count`,
+    // `target_frame_count` and `plan_quantisation_delta_ms` exist to make the
+    // zoomCount -> duration-error relationship measurable at all. If they are
+    // never written, the instrument that reads them reports "no evidence"
+    // forever and that reads like "no problem".
+    const { data: attempts, error: attemptErr } = await admin
+      .from('render_attempts').select('*').eq('edit_project_id', pid)
+    check('A21 the render recorded a render_attempt row',
+      !attemptErr && (attempts?.length ?? 0) >= 1,
+      attemptErr?.message ?? `rows=${attempts?.length ?? 0}`)
+
+    const ra = attempts?.[0]
+    if (ra) {
+      // ⚖️ ABSENT IS NOT ZERO, and this is the assertion that says so. NULL means
+      // the worker never recorded it; 0 means a plan that genuinely has no
+      // zooms. Accepting NULL here would let the column rot while the suite
+      // stayed green.
+      check('A22 zoom_count is RECORDED, not null (0 is a real answer, null is not)',
+        ra.zoom_count !== null && Number.isInteger(ra.zoom_count) && ra.zoom_count >= 0,
+        String(ra.zoom_count))
+      check('A23 target_frame_count is a positive frame count',
+        Number.isInteger(ra.target_frame_count) && ra.target_frame_count > 0,
+        String(ra.target_frame_count))
+      check('A24 plan_quantisation_delta_ms is recorded as its own number',
+        ra.plan_quantisation_delta_ms !== null && Number.isFinite(Number(ra.plan_quantisation_delta_ms)),
+        String(ra.plan_quantisation_delta_ms))
+      // The database constraint already asserts delta = actual - predicted, so
+      // this catches a row that somehow bypassed it rather than re-deriving it.
+      check('A25 the recorded delta IS actual minus predicted',
+        Number(ra.duration_delta_ms) === Number(ra.actual_duration_ms) - Number(ra.predicted_duration_ms),
+        `${ra.duration_delta_ms} vs ${ra.actual_duration_ms} - ${ra.predicted_duration_ms}`)
+
+      // ⚠️ THIS LINE IS THE POINT OF THE WHOLE BLOCK, AND IT IS NOT AN
+      // ASSERTION. One render is ONE zoom count, and one zoom count cannot show
+      // a trend -- claiming "the correlation is gone" from a single row is the
+      // unrun experiment wearing a green tick. Printing it makes every staging
+      // run contribute a readable data point, so the population #454's
+      // check_zoom_delta_correlation needs actually accumulates.
+      console.log(`NOTE render-attempt evidence: zoomCount=${ra.zoom_count}`
+        + ` targetFrames=${ra.target_frame_count}`
+        + ` predicted=${ra.predicted_duration_ms}ms actual=${ra.actual_duration_ms}ms`
+        + ` delta=${ra.duration_delta_ms}ms`
+        + ` planQuantisation=${ra.plan_quantisation_delta_ms}ms`
+        + ` outcome=${ra.validator_outcome}`)
+      console.log('NOTE   one render is one zoom count — this is a data point, NOT a slope.')
+    }
   }
 
   // ---- B. cancellation mid-render ----------------------------------------
