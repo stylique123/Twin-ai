@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2, AlertTriangle, Play } from 'lucide-react'
-import { quotePilot, startPilot, pilotStatus, type PilotQuote, type PilotStatus } from '../lib/api'
+import { quotePilot, startPilot, pilotStatus, activePilot, type PilotQuote, type PilotStatus } from '../lib/api'
 
 // Kept in step with MAX_SIZE in scripts/pilot-core.mjs. A larger number typed
 // here is refused by the server, which is the check that matters; this only
@@ -33,6 +33,23 @@ export default function PilotVisualStart() {
   const [error, setError] = useState<string | null>(null)
   const [runId, setRunId] = useState<string | null>(null)
   const [status, setStatus] = useState<PilotStatus | null>(null)
+  const [resuming, setResuming] = useState(true)
+
+  // ⚠️ THE RUN ID LIVED ONLY IN THIS TAB. Close it while Twin is watching the
+  // videos and the pilot keeps going without you — but the link back to it is
+  // gone, and starting another is refused because one is already running. So
+  // ask the server on load whether a pilot is already yours, and pick it back
+  // up. Nothing is re-drawn and nothing is re-spent; this is a lookup.
+  useEffect(() => {
+    let live = true
+    activePilot()
+      .then((r) => { if (live && r.active) setRunId(r.pilot_run_id) })
+      // A failed lookup must not block starting a new pilot — the server
+      // refuses a second one on its own, and that refusal is the real check.
+      .catch(() => {})
+      .finally(() => { if (live) setResuming(false) })
+    return () => { live = false }
+  }, [])
 
   const ask = useCallback(async () => {
     setBusy(true); setError(null); setQuote(null)
@@ -126,6 +143,20 @@ export default function PilotVisualStart() {
         </div>
       )}
 
+      {resuming && (
+        <div className="flex items-center gap-2 rounded border p-3 text-sm opacity-70">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Checking whether you already have a pilot running…
+        </div>
+      )}
+
+      {!resuming && runId && !quote && (
+        <div className="rounded border p-3 text-sm">
+          You already have a pilot running. Picking it back up below — you do not
+          need to start another one.
+        </div>
+      )}
+
       {status && (
         <div className="rounded border p-3 text-sm">
           <div className="font-medium">
@@ -153,13 +184,13 @@ export default function PilotVisualStart() {
 
       <div className="flex gap-2">
         <button
-          onClick={ask} disabled={busy || !!runId}
+          onClick={ask} disabled={busy || resuming || !!runId}
           className="rounded border px-4 py-2 text-sm disabled:opacity-50"
         >
           {busy && !quote ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Check what it costs'}
         </button>
         <button
-          onClick={go} disabled={busy || !quote || !!runId}
+          onClick={go} disabled={busy || resuming || !quote || !!runId}
           className="flex items-center gap-2 rounded bg-white px-4 py-2 text-sm font-medium text-black disabled:opacity-50"
         >
           <Play className="h-4 w-4" />

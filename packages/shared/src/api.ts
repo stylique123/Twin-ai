@@ -2197,6 +2197,8 @@ export const startPilot = (size: number, costCeilingDownloads: number) =>
 
 export interface PilotStatus {
   ok: true
+  /** False only in the no-id form, and only when no pilot is running. */
+  active: true
   pilot_run_id: string
   status: string
   collecting: boolean
@@ -2213,9 +2215,23 @@ export interface PilotStatus {
   review_url: string | null
 }
 
+/** The no-id answer when nothing is running. Distinct from an error. */
+export interface NoActivePilot { ok: true; active: false; pilot_run_id: null }
+
 /** Poll a run. Read-only; refuses unknown keys exactly like start does. */
 export const pilotStatus = (pilotRunId: string) =>
   start<PilotStatus>({ action: 'status', pilot_run_id: pilotRunId })
+
+/**
+ * "Which pilot is mine?" — asked on load, so closing the tab mid-collection is
+ * not a dead end.
+ *
+ * ⚠️ THE KEY IS OMITTED, NOT SENT AS NULL. The endpoint refuses unknown keys
+ * and refuses a present-but-empty id; the absence of the key is what carries
+ * the meaning, so this must not helpfully send `pilot_run_id: undefined`.
+ */
+export const activePilot = () =>
+  start<PilotStatus | NoActivePilot>({ action: 'status' })
 
 // ── the watched session (D1) ───────────────────────────────────────────────
 //

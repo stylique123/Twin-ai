@@ -7,7 +7,7 @@
 // case below asserts the REFUSAL happens, and the accepting cases assert it
 // does not, so a check that rejects everything cannot pass either.
 import {
-  validateStartRequest, validateStatusRequest, activePilotRefusal, pilotJobRows, expectedCost,
+  validateStartRequest, validateStatusRequest, activePilotRefusal, resolveActiveRun, pilotJobRows, expectedCost,
   ACTIVE_STATUSES, ALLOWED_KEYS, STATUS_KEYS, DOWNLOADS_PER_REFERENCE,
 } from './pilot-start.mjs'
 import { MAX_SIZE, DEFAULT_SIZE, PILOT_PRIORITY } from './pilot-core.mjs'
@@ -89,8 +89,16 @@ refuses('more jobs than the ceiling is refused',
 // ── status is read-only and still refuses unknown keys ────────────────────
 accepts('a well-formed status request is accepted',
   () => validateStatusRequest({ action: 'status', pilot_run_id: 'run-7' }))
-refuses('a status request without a run id is refused',
-  () => validateStatusRequest({ action: 'status' }), 'pilot_run_id is required')
+// ⚠️ OMITTING THE ID IS THE RECOVERY PATH, NOT A MALFORMED REQUEST. A present
+// but empty id is still a caller bug, and these two cases must not collapse
+// into each other — that is exactly how "resolve the active pilot" would start
+// silently answering typos.
+ok('a status request with no run id asks for the active pilot',
+  validateStatusRequest({ action: 'status' }) === null)
+ok('an explicit null id means the same thing',
+  validateStatusRequest({ action: 'status', pilot_run_id: null }) === null)
+refuses('a present-but-empty run id is still refused',
+  () => validateStatusRequest({ action: 'status', pilot_run_id: '' }), 'given but empty')
 refuses('a status request may not smuggle a size',
   () => validateStatusRequest({ action: 'status', pilot_run_id: 'r', size: 999 }), 'unknown key')
 refuses('a status request may not smuggle a URL list',
@@ -99,6 +107,35 @@ refuses('a non-object status body is refused',
   () => validateStatusRequest('run-7'), 'must be an object')
 ok('the status allow-list cannot name a payload or a size',
   !STATUS_KEYS.includes('payload') && !STATUS_KEYS.includes('size'))
+
+// ── resolving "the active pilot" ──────────────────────────────────────────
+ok('no runs at all resolves to nothing, and is not an error',
+  resolveActiveRun([]).id === null && resolveActiveRun([]).refusal === null)
+ok('a null run list resolves to nothing rather than throwing',
+  resolveActiveRun(null).id === null && resolveActiveRun(null).refusal === null)
+ok('exactly one active run resolves to that run',
+  resolveActiveRun([{ id: 'r1', status: 'collecting' }]).id === 'r1')
+ok('a run still waiting to be labelled is active — that is the tab you closed',
+  resolveActiveRun([{ id: 'r9', status: 'ready_for_label' }]).id === 'r9')
+// ⚠️ THE TERMINAL STATES MUST NOT RESOLVE. Handing back a locked run would let
+// the start screen offer to "pick up" a pilot whose labels are already final.
+ok('a locked run is not active',
+  resolveActiveRun([{ id: 'r2', status: 'locked' }]).id === null)
+ok('an abandoned run is not active',
+  resolveActiveRun([{ id: 'r3', status: 'abandoned' }]).id === null)
+ok('a locked run alongside an active one resolves to the active one',
+  resolveActiveRun([{ id: 'r2', status: 'locked' }, { id: 'r4', status: 'frozen' }]).id === 'r4')
+// ⚠️ TWO ACTIVE RUNS MEANS THE ONE-PILOT REFUSAL ALREADY FAILED. Guessing here
+// would attach a label set to the wrong run, so it refuses and names both.
+ok('two active runs refuse rather than guess', (() => {
+  const r = resolveActiveRun([{ id: 'rA', status: 'collecting' }, { id: 'rB', status: 'frozen' }])
+  return r.id === null && !!r.refusal && r.refusal.includes('rA') && r.refusal.includes('rB')
+})())
+// The two readers of ACTIVE_STATUSES must agree, or "the active pilot" and
+// "you already have one" would disagree about the same row.
+ok('resolve and refuse agree about every status', ACTIVE_STATUSES.every((st) =>
+  resolveActiveRun([{ id: 'x', status: st }]).id === 'x'
+  && activePilotRefusal([{ id: 'x', status: st }]) !== null))
 
 // ── the allow-list itself ─────────────────────────────────────────────────
 ok('the allow-list cannot name a URL list or a payload',
