@@ -131,7 +131,7 @@ describe('an overlap is counted once', () => {
 // cannot pass.
 import {
   zoomGateExpression, punchInGateExpression, rampCoreExpression,
-  buildContinuousZoomPlan, composeZoomExpression,
+  buildContinuousZoomPlan, composeZoomExpression, isComposedExpression,
   assertFramePreserving, isSafeValue, VALUE_MAX_LEN,
   EFFECT_TIMELINE_NOT_FRAME_PRESERVING,
 } from '../jobs/frameTimeline'
@@ -195,10 +195,38 @@ describe('composition belongs to the renderer, after validation', () => {
   })
   it('and the composed result still smuggles no terminator', () => {
     const z = composeZoomExpression(plan)
-    for (const ch of [',', ';', '[', ']', '"', "'", '\\', ':']) expect(z).not.toContain(ch)
+    for (const ch of [',', ';', '[', ']', '"', "'", '\\', ':']) expect(z.text).not.toContain(ch)
   })
   it('no zooms composes to the identity, not to an empty string', () => {
-    expect(composeZoomExpression({ targetFrameCount: 184, gates: [] })).toBe('1')
+    expect(composeZoomExpression({ targetFrameCount: 184, gates: [] }).text).toBe('1')
+  })
+
+  // ── the exemption cannot be claimed, only earned ────────────────────────
+  //
+  // ⚠️ THE OLD SHAPE WAS A BOOLEAN NEXT TO A STRING. Any caller could write
+  // `{ value: whatever, composedFromValidatedParts: true }` and the 64-char
+  // limit stopped applying. These assert the replacement is a value only this
+  // module can mint, not a claim anybody can make.
+  it('a composition carries the atomic leaves it was built from', () => {
+    const z = composeZoomExpression(plan)
+    expect(z.parts.length).toBeGreaterThan(1)
+    // Every leaf is a fully valid AUTHORED value — same class, same 64 cap.
+    for (const part of z.parts) {
+      expect(isSafeValue(part)).toBe(true)
+      expect(part.length).toBeLessThanOrEqual(VALUE_MAX_LEN)
+    }
+    // ...while the composed text is longer than any single one of them. That
+    // gap is the whole point: length is the ONLY rule composition relaxes.
+    expect(z.text.length).toBeGreaterThan(VALUE_MAX_LEN)
+  })
+  it('a hand-made lookalike is NOT a composition', () => {
+    // The shape without the private symbol. This is what an attacker or a
+    // hurried future caller would build.
+    const forged = { parts: ['1'], text: "1';drop" } as unknown
+    expect(isComposedExpression(forged)).toBe(false)
+  })
+  it('a real composition is recognised, so the negative above is not vacuous', () => {
+    expect(isComposedExpression(composeZoomExpression(plan))).toBe(true)
   })
   it('refuses a zoom that runs past the end of the timeline', () => {
     expect(() => buildContinuousZoomPlan(

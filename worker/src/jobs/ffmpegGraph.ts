@@ -22,7 +22,7 @@ import {
 } from './editPlanContract.js'
 import {
   buildContinuousZoomPlan, composeZoomExpression, composePanExpression, resolvePlanDuration,
-  assertFramePreserving,
+  assertFramePreserving, isComposedExpression, type ComposedExpression,
 } from './frameTimeline.js'
 
 export const FFMPEG_GRAPH_VERSION = 'ffmpeg-graph-1'
@@ -38,22 +38,23 @@ function invalid(message: string): never {
 // rather than a string that happens to look like a path.
 export type FilterArg = {
   key: string
-  value: string | number
-  isPath?: true
   /**
-   * ⚠️ SET ONLY BY A BUILDER THAT VALIDATED EVERY COMPONENT SEPARATELY.
+   * A plain value is held to VALUE_RE in full, 64 characters included.
    *
-   * A zoom expression is assembled from ramp cores that were each checked
-   * against the SAME 64-character limit as every other value. The assembled
-   * result is longer than any of its parts, and that length is the ONLY rule it
-   * is exempt from -- the character class still applies in full, because the
-   * character class is what actually refuses a terminator.
+   * ⚠️ THE ONLY WAY PAST THE 64-CHARACTER LIMIT IS A `ComposedExpression`, AND
+   * IT CANNOT BE FORGED. It used to be a `composedFromValidatedParts: true`
+   * boolean sitting beside a plain string, so any caller could write
+   * `{ value: userString, composedFromValidatedParts: true }` and the boundary
+   * became a comment. The exemption is now a VALUE that only frameTimeline can
+   * mint, and it carries its own parts so this module can re-check each one
+   * rather than trusting the claim.
    *
-   * The limit is not being widened. No authored value may exceed 64; a
-   * composition of validated values is bounded by how many the plan contains,
-   * which the plan validator already bounds.
+   * The limit is NOT widened. No authored value may exceed 64; a composition is
+   * bounded by how many validated parts the plan contains, which the plan
+   * validator already bounds.
    */
-  composedFromValidatedParts?: true
+  value: string | number | ComposedExpression
+  isPath?: true
 }
 export interface FilterNode {
   id: string
@@ -129,8 +130,22 @@ function checkLabel(l: string): string {
  * being allowed to grow.
  */
 const COMPOSED_MAX_LEN = 1024
-function checkComposedValue(v: string | number): string {
-  const s = typeof v === 'number' ? String(v) : v
+/**
+ * ⚠️ RE-VALIDATES THE PARTS, NOT JUST THE RESULT. The composer already checked
+ * them; checking again here means a composition is trusted because of what it
+ * can still show, never because of who handed it over. Each part faces the
+ * FULL authored rule — same character class, same 64-character limit.
+ */
+function checkComposedValue(v: ComposedExpression): string {
+  if (v.parts.length === 0) invalid('a composed filter argument carries no parts')
+  for (const part of v.parts) {
+    if (!VALUE_RE.test(part)) {
+      invalid(`composed filter argument part ${JSON.stringify(part)} is not a valid authored value`)
+    }
+  }
+  const s = v.text
+  // The character class is the rule that refuses a terminator, so it applies to
+  // the joined text in full. Only the LENGTH bound differs.
   if (!/^[A-Za-z0-9_.*\/+()\-]+$/.test(s)) {
     invalid(`composed filter argument ${JSON.stringify(s)} contains a forbidden character`)
   }
@@ -141,7 +156,12 @@ function checkComposedValue(v: string | number): string {
   return s
 }
 
-function checkValue(v: string | number): string {
+function checkValue(v: string | number | ComposedExpression): string {
+  if (isComposedExpression(v)) {
+    // Unreachable through the serializer, which dispatches first. Kept so a
+    // future caller cannot smuggle a composition through the authored path.
+    invalid('a composed expression reached the authored-value check')
+  }
   const s = typeof v === 'number' ? String(v) : v
   if (!VALUE_RE.test(s)) invalid(`filter argument ${JSON.stringify(s)} contains a forbidden character`)
   return s
@@ -372,9 +392,9 @@ function applyTimeGatedZooms(plan: EditPlanV1, vJoined: string, nodes: FilterNod
   nodes.push({
     id: 'zoompan', filter: 'zoompan',
     args: [
-      { key: 'z', value: composeZoomExpression(zoomPlan), composedFromValidatedParts: true },
-      { key: 'x', value: composePanExpression(zoomPlan, 'x'), composedFromValidatedParts: true },
-      { key: 'y', value: composePanExpression(zoomPlan, 'y'), composedFromValidatedParts: true },
+      { key: 'z', value: composeZoomExpression(zoomPlan) },
+      { key: 'x', value: composePanExpression(zoomPlan, 'x') },
+      { key: 'y', value: composePanExpression(zoomPlan, 'y') },
       // d=1 emits exactly one output frame per input frame: the property that
       // makes the frame count survivable at all.
       { key: 'd', value: 1 },
@@ -581,7 +601,7 @@ function compositionWindows(plan: EditPlanV1): CompositionWindow[] {
   if (cursor < plan.output.durationMs) {
     windows.push({ startMs: cursor, endMs: plan.output.durationMs, overlay: null })
   }
-  // Re-derived rather than assumed, exactly as `allWindows` and `joinSegments`
+  // Re-derived rather than assumed, exactly as `joinSegments`
   // do: a fold that covers the wrong number of milliseconds is a defect here,
   // not a video that is quietly the wrong length.
   const coveredMs = windows.reduce((n, w) => n + (w.endMs - w.startMs), 0)
@@ -979,9 +999,12 @@ export function serializeFilterGraph(graph: FfmpegGraph): string {
     const ins = node.inputs.map((i) => (/^\d+:[va]$/.test(i) ? `[${i}]` : `[${checkLabel(i)}]`)).join('')
     const outs = node.outputs.map((o) => `[${checkLabel(o)}]`).join('')
     const args = node.args.map((arg) => {
+      // ⚠️ DISPATCH ON THE VALUE, NOT ON A FLAG THE CALLER SET. Only a real
+      // ComposedExpression — which only frameTimeline can mint — takes the
+      // composed path; everything else faces the full authored rule.
       const raw = arg.isPath
         ? `'${escapeFilterPath(String(arg.value))}'`
-        : arg.composedFromValidatedParts
+        : isComposedExpression(arg.value)
           ? checkComposedValue(arg.value)
           : checkValue(arg.value)
       return arg.key === '' ? raw : `${arg.key}=${raw}`

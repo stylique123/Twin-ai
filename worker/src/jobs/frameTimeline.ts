@@ -346,18 +346,73 @@ export function buildContinuousZoomPlan(
  * characters are themselves inside the allowed set, so the result cannot smuggle
  * a terminator that its parts did not already contain.
  */
-export function composeZoomExpression(plan: ContinuousZoomPlan): string {
+/**
+ * A composed filter expression, and the ONLY thing the renderer will accept
+ * past the 64-character authored limit.
+ *
+ * ⚠️ A BOOLEAN FLAG WAS NOT A BOUNDARY. This used to be
+ * `composedFromValidatedParts: true` set beside a plain string, which any
+ * caller could write:
+ *
+ *     { value: userString, composedFromValidatedParts: true }
+ *
+ * and the safety property became a comment. The exemption now travels as a
+ * VALUE that only this module can mint, because minting one requires the
+ * module-private symbol below. `composedFromValidatedParts([userString])` does
+ * not typecheck and does not exist.
+ *
+ * ⚖️ AND THE PARTS ARE CARRIED, NOT JUST THE RESULT. The renderer re-validates
+ * every part independently, so a composition is only ever as trusted as the
+ * pieces it can still show you — not as trusted as its author's assertion.
+ */
+const COMPOSED: unique symbol = Symbol('twinai.composedFromValidatedParts')
+
+export interface ComposedExpression {
+  readonly [COMPOSED]: true
+  /** Every individually validated piece, each <= VALUE_MAX_LEN. */
+  readonly parts: readonly string[]
+  readonly text: string
+}
+
+export const isComposedExpression = (v: unknown): v is ComposedExpression =>
+  typeof v === 'object' && v !== null && (v as { [COMPOSED]?: unknown })[COMPOSED] === true
+
+/**
+ * Mint a ComposedExpression. Module-private on purpose: every part is checked
+ * against the SAME character class and the SAME 64-character limit as any
+ * authored value, HERE, at the only place one can be created.
+ *
+ * ⚠️ `parts` MUST BE THE ATOMIC LEAVES, NOT INTERMEDIATE JOINS. A ramp core and
+ * a numeric literal are authored values and each fits in 64 characters; a gate
+ * expression is already a composition of them and does not. Passing joins here
+ * makes the check assert something no rule requires and fail on correct input
+ * -- which is exactly what it did on the first attempt.
+ */
+function compose(parts: readonly string[], text: string): ComposedExpression {
+  for (const part of parts) {
+    if (!isSafeValue(part)) {
+      bad(`a composed part failed validation and cannot be composed: ${JSON.stringify(part)}`)
+    }
+  }
+  return { [COMPOSED]: true, parts: [...parts], text }
+}
+
+export function composeZoomExpression(plan: ContinuousZoomPlan): ComposedExpression {
   for (const g of plan.gates) {
     for (const c of g.cores) {
       if (!isSafeValue(c)) bad(`a ramp core reached composition unvalidated: ${c}`)
     }
   }
-  if (plan.gates.length === 0) return '1'
+  if (plan.gates.length === 0) return compose(['1'], '1')
+  const leaves: string[] = ['1']
   const terms = plan.gates.map((g) => {
     const amount = ((g.scaleMilli - 1000) / 1000).toFixed(3)
+    // The LEAVES: the scale literal and each ramp core. A gate expression is
+    // already a composition of those cores plus parentheses.
+    leaves.push(amount, ...g.cores)
     return `${amount}*${g.expression}`
   })
-  return `1+${terms.join('+')}`
+  return compose(leaves, `1+${terms.join('+')}`)
 }
 
 /**
@@ -390,13 +445,17 @@ export function assertFramePreserving(
  * belongs to reads as the frame drifting, which is a different defect from the
  * one just fixed and would be just as invisible to a frame count.
  */
-export function composePanExpression(plan: ContinuousZoomPlan, axis: 'x' | 'y'): string {
+export function composePanExpression(plan: ContinuousZoomPlan, axis: 'x' | 'y'): ComposedExpression {
   const dim = axis === 'x' ? 'iw' : 'ih'
   // Centre the crop: zoompan's origin is the top-left of the source frame.
   const centred = `${dim}/2-(${dim}/zoom/2)`
+  const leaves: string[] = [centred]
   const terms = plan.gates
-    .map((g) => ({ px: axis === 'x' ? g.offsetXPx : g.offsetYPx, g }))
+    .map((t0) => ({ px: axis === 'x' ? t0.offsetXPx : t0.offsetYPx, g: t0 }))
     .filter((t) => t.px !== 0)
-    .map((t) => `${t.px > 0 ? '+' : '-'}${Math.abs(t.px)}*${t.g.expression}`)
-  return centred + terms.join('')
+    .map((t) => {
+      leaves.push(String(Math.abs(t.px)), ...t.g.cores)
+      return `${t.px > 0 ? '+' : '-'}${Math.abs(t.px)}*${t.g.expression}`
+    })
+  return compose(leaves, centred + terms.join(''))
 }

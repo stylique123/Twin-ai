@@ -15,6 +15,18 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { baseInput, policy, shippedEncoder } from './fixtures/editPlanFixture.js'
 
+/** Read a filter argument's expression text.
+ *
+ * ⚠️ NOT `String(arg.value)`. A composed z/x/y is now an object, and
+ * `String()` on it yields "[object Object]" — which would make a
+ * `toContain('in')` assertion fail for a reason that has nothing to do with
+ * the picture, or worse, make a `not.toContain(',')` assertion PASS
+ * vacuously. */
+const exprOf = (v: unknown): string =>
+  (typeof v === 'object' && v !== null && 'text' in (v as object))
+    ? String((v as { text: unknown }).text)
+    : String(v)
+
 /**
  * Evaluate an ffmpeg filter expression of `in` the way the evaluator would.
  *
@@ -160,7 +172,7 @@ describe('the argument array', () => {
     const zoom = plan.video.zooms[0]
     const graph = buildFfmpegGraph(plan, ASSETS)
     const zp = graph.nodes.find((n) => n.filter === 'zoompan')!
-    const z = String(zp.args.find((a) => a.key === 'z')!.value)
+    const z = exprOf(zp.args.find((a) => a.key === 'z')!.value)
     const held = ((zoom.scaleMilli - 1000) / 1000).toFixed(3)
     expect(z.startsWith('1+')).toBe(true)
     expect(z).toContain(`${held}*`)
@@ -184,7 +196,7 @@ describe('zooms are time-gated, never permanent or compounding', () => {
     const zoom = plan.video.zooms[0]
     const graph = buildFfmpegGraph(plan, ASSETS)
     const zp = graph.nodes.find((n) => n.filter === 'zoompan')!
-    const z = String(zp.args.find((a) => a.key === 'z')!.value)
+    const z = exprOf(zp.args.find((a) => a.key === 'z')!.value)
     const fps = plan.output.fpsNum / plan.output.fpsDen
     const f = (ms: number) => Math.round((ms * fps) / 1000)
     expect(evalFfmpegExpr(z, f(zoom.outputStartMs) - 1)).toBeCloseTo(1, 9)
@@ -219,7 +231,7 @@ describe('zooms are time-gated, never permanent or compounding', () => {
     expect(graph.nodes.some((n) => n.id === 'zoomsplit')).toBe(false)
     expect(graph.nodes.some((n) => n.id === 'zoomconcat')).toBe(false)
 
-    const z = String(graph.nodes.find((n) => n.filter === 'zoompan')!
+    const z = exprOf(graph.nodes.find((n) => n.filter === 'zoompan')!
       .args.find((a) => a.key === 'z')!.value)
     const fps = plan.output.fpsNum / plan.output.fpsDen
     const lastFrame = Math.round((plan.output.durationMs * fps) / 1000)
@@ -305,6 +317,56 @@ describe('paths and values cannot become behaviour', () => {
     // The unmodified graph serializes cleanly, so the rejection is about the
     // smuggled value alone.
     expect(() => serializeFilterGraph(graph)).not.toThrow()
+  })
+
+  // ── the composed-expression exemption, at the real boundary ─────────────
+  //
+  // ⚠️ THE EXEMPTION USED TO BE A BOOLEAN A CALLER COULD SET. `{ value: anything,
+  // composedFromValidatedParts: true }` skipped the 64-character limit, so the
+  // safety property was an honour system. It is now a value only frameTimeline
+  // can mint. These test the RENDERER, which is the boundary that matters —
+  // whatever a caller manages to construct still has to survive here.
+
+  it('a plain long string cannot claim the composed exemption', () => {
+    const graph = buildFfmpegGraph(hardCutPlan(), ASSETS)
+    const hostile = JSON.parse(JSON.stringify(graph)) as typeof graph
+    // 200 chars of otherwise-legal alphabet: refused for LENGTH, because
+    // nothing about it is a composition.
+    hostile.nodes[0].args.push({ key: 'x', value: 'a'.repeat(200) })
+    expect(codeOf(() => serializeFilterGraph(hostile))).toBe('render_graph_invalid')
+  })
+
+  it('an object SHAPED like a composition is not one', () => {
+    const graph = buildFfmpegGraph(hardCutPlan(), ASSETS)
+    const hostile = JSON.parse(JSON.stringify(graph)) as typeof graph
+    // Exactly the public shape — parts + text — minus the private symbol.
+    hostile.nodes[0].args.push({
+      key: 'x',
+      value: { parts: ['1'], text: 'a:drawtext=text=pwned' } as never,
+    })
+    expect(codeOf(() => serializeFilterGraph(hostile))).toBe('render_graph_invalid')
+  })
+
+  it('a REAL composition that has been tampered with is still refused', () => {
+    // ⚠️ THE CASE A SYMBOL ALONE DOES NOT STOP. Own symbol keys survive a
+    // spread, so `{...real, text: evil}` can carry the token. The renderer
+    // re-validates the text and the parts independently rather than trusting
+    // the token, and THAT is what refuses this.
+    const graph = buildFfmpegGraph(hardCutPlan(), ASSETS)
+    const zArg = graph.nodes.find((n) => n.filter === 'zoompan')?.args.find((a) => a.key === 'z')
+    expect(zArg).toBeDefined()
+    const real = zArg!.value as unknown as Record<string | symbol, unknown>
+    const tampered = { ...real, text: "1;drawtext=text=pwned" }
+    const hostile = { ...graph, nodes: graph.nodes.map((n) => ({ ...n, args: [...n.args] })) }
+    const target = hostile.nodes.find((n) => n.filter === 'zoompan')!
+    target.args = target.args.map((a) => (a.key === 'z' ? { ...a, value: tampered as never } : a))
+    expect(codeOf(() => serializeFilterGraph(hostile as typeof graph))).toBe('render_graph_invalid')
+  })
+
+  it('CONTROL: the untampered zoom graph serializes cleanly', () => {
+    // So the three refusals above are about the tampering, not about zooms
+    // being unserializable in general.
+    expect(() => serializeFilterGraph(buildFfmpegGraph(hardCutPlan(), ASSETS))).not.toThrow()
   })
 
   it('CONTROL: the label alphabet rejects a smuggled chain terminator', () => {
@@ -520,8 +582,8 @@ describe('the zoom crop is displaced toward the subject', () => {
     expect(zoom.offsetXPx).not.toBe(0)
     const graph = buildFfmpegGraph(plan, ASSETS)
     const zp = graph.nodes.find((n) => n.filter === 'zoompan')!
-    const x = String(zp.args.find((a) => a.key === 'x')!.value)
-    const z = String(zp.args.find((a) => a.key === 'z')!.value)
+    const x = exprOf(zp.args.find((a) => a.key === 'x')!.value)
+    const z = exprOf(zp.args.find((a) => a.key === 'z')!.value)
     expect(x).toContain(String(Math.abs(zoom.offsetXPx)))
     // The offset term is gated by the SAME expression the scale term uses.
     const gate = z.slice(z.indexOf('*') + 1)
@@ -536,8 +598,11 @@ describe('the zoom crop is displaced toward the subject', () => {
     plan.video.zooms[0].offsetYPx = 0
     const graph = buildFfmpegGraph(plan, ASSETS)
     const zp = graph.nodes.find((n) => n.filter === 'zoompan')!
-    expect(zp.args).toContainEqual({ key: 'x', value: 'iw/2-(iw/zoom/2)', composedFromValidatedParts: true })
-    expect(zp.args).toContainEqual({ key: 'y', value: 'ih/2-(ih/zoom/2)', composedFromValidatedParts: true })
+    // Asserted on the TEXT, not on the object: the exemption now travels as a
+    // minted value carrying its parts, so a deep-equal against a literal would
+    // be asserting the token's internals rather than the emitted expression.
+    expect(exprOf(zp.args.find((a) => a.key === 'x')!.value)).toBe('iw/2-(iw/zoom/2)')
+    expect(exprOf(zp.args.find((a) => a.key === 'y')!.value)).toBe('ih/2-(ih/zoom/2)')
   })
   it('the displaced crop expression stays inside the value alphabet', () => {
     // `+`/`-` and digits only — no comma, no conditional, nothing that could
