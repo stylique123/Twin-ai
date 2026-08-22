@@ -90,6 +90,11 @@ export const SCHEMA_REQUIREMENTS: Readonly<Record<string, readonly SchemaCapabil
   editor_v2: [
     { table: 'render_attempts', migration: '0154',
       columns: ['render_job_id', 'predicted_duration_ms', 'actual_duration_ms', 'duration_delta_ms'] },
+    // 0164 splits the quantisation out of the delta and records the zoom count.
+    // Declared separately from 0154 so an environment stuck on the older
+    // migration is reported as stuck on THAT one, not as missing the table.
+    { table: 'render_attempts', migration: '0164',
+      columns: ['plan_quantisation_delta_ms', 'target_frame_count', 'zoom_count'] },
   ],
 }
 

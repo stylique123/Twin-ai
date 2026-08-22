@@ -20,6 +20,10 @@ import { sha256Hex, canonicalJson } from './editorManifest.js'
 import {
   EditPlanError, type EditPlanV1, type PlanOverlay, type PlanSegment, type PlanZoom,
 } from './editPlanContract.js'
+import {
+  buildContinuousZoomPlan, composeZoomExpression, composePanExpression, resolvePlanDuration,
+  assertFramePreserving, isComposedExpression, type ComposedExpression,
+} from './frameTimeline.js'
 
 export const FFMPEG_GRAPH_VERSION = 'ffmpeg-graph-1'
 
@@ -32,7 +36,26 @@ function invalid(message: string): never {
 // path. It is escaped for the filter mini-language at serialization time and is
 // exempt from the value alphabet — which is why it is a distinct, explicit kind
 // rather than a string that happens to look like a path.
-export type FilterArg = { key: string; value: string | number; isPath?: true }
+export type FilterArg = {
+  key: string
+  /**
+   * A plain value is held to VALUE_RE in full, 64 characters included.
+   *
+   * ⚠️ THE ONLY WAY PAST THE 64-CHARACTER LIMIT IS A `ComposedExpression`, AND
+   * IT CANNOT BE FORGED. It used to be a `composedFromValidatedParts: true`
+   * boolean sitting beside a plain string, so any caller could write
+   * `{ value: userString, composedFromValidatedParts: true }` and the boundary
+   * became a comment. The exemption is now a VALUE that only frameTimeline can
+   * mint, and it carries its own parts so this module can re-check each one
+   * rather than trusting the claim.
+   *
+   * The limit is NOT widened. No authored value may exceed 64; a composition is
+   * bounded by how many validated parts the plan contains, which the plan
+   * validator already bounds.
+   */
+  value: string | number | ComposedExpression
+  isPath?: true
+}
 export interface FilterNode {
   id: string
   filter: string
@@ -97,7 +120,48 @@ function checkLabel(l: string): string {
   if (!LABEL_RE.test(l)) invalid(`label ${JSON.stringify(l)} is not a plain graph label`)
   return l
 }
-function checkValue(v: string | number): string {
+/**
+ * A value assembled from parts that were each already checked.
+ *
+ * ⚠️ THE CHARACTER CLASS IS ENFORCED IDENTICALLY. That is the rule that stops a
+ * value terminating a filter, an option or a chain, and it is not relaxed.
+ * Only the LENGTH bound differs, because the length of a composition is a
+ * function of how many validated parts went in -- not of any single one of them
+ * being allowed to grow.
+ */
+const COMPOSED_MAX_LEN = 1024
+/**
+ * ⚠️ RE-VALIDATES THE PARTS, NOT JUST THE RESULT. The composer already checked
+ * them; checking again here means a composition is trusted because of what it
+ * can still show, never because of who handed it over. Each part faces the
+ * FULL authored rule — same character class, same 64-character limit.
+ */
+function checkComposedValue(v: ComposedExpression): string {
+  if (v.parts.length === 0) invalid('a composed filter argument carries no parts')
+  for (const part of v.parts) {
+    if (!VALUE_RE.test(part)) {
+      invalid(`composed filter argument part ${JSON.stringify(part)} is not a valid authored value`)
+    }
+  }
+  const s = v.text
+  // The character class is the rule that refuses a terminator, so it applies to
+  // the joined text in full. Only the LENGTH bound differs.
+  if (!/^[A-Za-z0-9_.*\/+()\-]+$/.test(s)) {
+    invalid(`composed filter argument ${JSON.stringify(s)} contains a forbidden character`)
+  }
+  if (s.length > COMPOSED_MAX_LEN) {
+    invalid(`composed filter argument is ${s.length} characters, over ${COMPOSED_MAX_LEN}. `
+      + 'A composition this long means the plan carries more effects than the graph should build.')
+  }
+  return s
+}
+
+function checkValue(v: string | number | ComposedExpression): string {
+  if (isComposedExpression(v)) {
+    // Unreachable through the serializer, which dispatches first. Kept so a
+    // future caller cannot smuggle a composition through the authored path.
+    invalid('a composed expression reached the authored-value check')
+  }
   const s = typeof v === 'number' ? String(v) : v
   if (!VALUE_RE.test(s)) invalid(`filter argument ${JSON.stringify(s)} contains a forbidden character`)
   return s
@@ -281,189 +345,69 @@ function segmentChain(seg: PlanSegment, plan: EditPlanV1, nodes: FilterNode[]): 
 
 // A zoom is a bounded, time-gated scale about the frame centre — bounded means
 // framing MUST return to normal once `outputEndMs` passes, and time-gated means
-// two zooms must never compound into each other's scale. Neither property held
-// before this batch: the old `zoomChain` applied `scale`+`crop` to whatever it
-// was handed and chained the result onward unconditionally, so the zoomed
-// framing never ended and a second zoom scaled the first zoom's OUTPUT rather
-// than the original frame.
+// two zooms must never compound into each other's scale.
 //
-// The obvious fix — a single time-varying filter, `scale` gated by
-// `enable=between(t,a,b)` — is unavailable: `VALUE_RE` deliberately excludes
-// the comma `between(t,a,b)` requires, because a value that needs one of the
-// excluded characters is exactly a value this module refuses to trust into a
-// filter string. So the graph is time-gated STRUCTURALLY instead: the joined
-// video is split by `trim` into pieces that alternate between "outside every
-// zoom" (passed through untouched) and "inside a zoom" (given a FIXED,
-// non-time-varying scale+crop), and the pieces are `concat`-ed back in order.
-// A piece is trimmed from the ORIGINAL joined stream, never from a previous
-// piece's output, which is what makes compounding structurally impossible
-// rather than merely untested.
-//
-// Smooth easing needs the scale to vary continuously across a window, which is
-// the same comma-shaped wall. It is approximated instead by slicing each ease
-// phase into a small fixed number of equal-length steps, each a constant scale
-// at that step's midpoint fraction into the ramp — a staircase standing in for
-// a ramp, close enough at the policy's ~250ms ease lengths (a handful of
-// frames per step) to read as easing rather than a snap.
-const EASE_STEPS = 5
-
-interface ZoomWindow {
-  startMs: number
-  endMs: number
-  // null = outside every zoom: pass the frame through with no scale/crop.
-  scaleMilli: number | null
-  // Displacement of the crop from the frame centre, so the punch lands on the
-  // subject. Zero for pass-through windows and for zooms with no face evidence.
-  offsetXPx: number
-  offsetYPx: number
-}
-
-function rampWindows(
-  fromMs: number, toMs: number, fromScale: number, toScale: number,
-  offsetXPx: number, offsetYPx: number,
-): ZoomWindow[] {
-  const span = toMs - fromMs
-  if (span <= 0) return []
-  const out: ZoomWindow[] = []
-  for (let k = 0; k < EASE_STEPS; k++) {
-    const startMs = fromMs + Math.round((k * span) / EASE_STEPS)
-    const endMs = fromMs + Math.round(((k + 1) * span) / EASE_STEPS)
-    if (endMs <= startMs) continue
-    const fraction = (k + 0.5) / EASE_STEPS
-    const scaleMilli = Math.round(fromScale + fraction * (toScale - fromScale))
-    // The displacement eases WITH the scale. Snapping to the full offset on the
-    // first step would jerk the framing sideways before the zoom has revealed
-    // the slack to move into — and at the ease's first step there is barely any.
-    const t = (scaleMilli - 1000) / Math.max(1, toScale === 1000 ? fromScale - 1000 : toScale - 1000)
-    out.push({
-      startMs, endMs, scaleMilli,
-      offsetXPx: Math.round(offsetXPx * t), offsetYPx: Math.round(offsetYPx * t),
-    })
-  }
-  return out
-}
-
-function zoomWindows(zoom: PlanZoom): ZoomWindow[] {
-  const holdStart = zoom.outputStartMs + zoom.easeInMs
-  const holdEnd = zoom.outputEndMs - zoom.easeOutMs
-  const windows: ZoomWindow[] = [
-    ...rampWindows(zoom.outputStartMs, holdStart, 1000, zoom.scaleMilli, zoom.offsetXPx, zoom.offsetYPx),
-  ]
-  if (holdEnd > holdStart) {
-    windows.push({
-      startMs: holdStart, endMs: holdEnd, scaleMilli: zoom.scaleMilli,
-      offsetXPx: zoom.offsetXPx, offsetYPx: zoom.offsetYPx,
-    })
-  }
-  windows.push(...rampWindows(holdEnd, zoom.outputEndMs, zoom.scaleMilli, 1000, zoom.offsetXPx, zoom.offsetYPx))
-  return windows
-}
-
-// The full, gap-filled timeline: every zoom's own windows, plus a
-// pass-through window for every stretch of video no zoom claims. Zooms are
-// validated elsewhere to be sorted and non-overlapping, so a single forward
-// cursor is enough to find the gaps.
-function allWindows(plan: EditPlanV1): ZoomWindow[] {
-  const windows: ZoomWindow[] = []
-  let cursor = 0
-  for (const zoom of plan.video.zooms) {
-    if (zoom.outputStartMs > cursor) {
-      windows.push({ startMs: cursor, endMs: zoom.outputStartMs, scaleMilli: null, offsetXPx: 0, offsetYPx: 0 })
-    }
-    windows.push(...zoomWindows(zoom))
-    cursor = zoom.outputEndMs
-  }
-  if (cursor < plan.output.durationMs) {
-    windows.push({ startMs: cursor, endMs: plan.output.durationMs, scaleMilli: null, offsetXPx: 0, offsetYPx: 0 })
-  }
-  const coveredMs = windows.reduce((n, w) => n + (w.endMs - w.startMs), 0)
-  // Recomputed independently of `plan.output.durationMs`, exactly the way
-  // `joinSegments` re-derives its own total and requires it to agree with the
-  // plan: a disagreement here is a defect in this fold, not a video that is
-  // quietly the wrong length.
-  if (coveredMs !== plan.output.durationMs) {
-    invalid(`zoom windows cover ${coveredMs}ms but the plan declares ${plan.output.durationMs}ms`)
-  }
-  return windows
-}
-
-function windowChain(plan: EditPlanV1, win: ZoomWindow, vJoined: string, nodes: FilterNode[], idx: number): string {
-  const vTrim = `vzwt${idx}`
-  nodes.push({
-    id: `vzwtrim${idx}`, filter: 'trim',
-    args: [
-      { key: 'start', value: msToSecondsLiteral(win.startMs) },
-      { key: 'end', value: msToSecondsLiteral(win.endMs) },
-    ],
-    inputs: [vJoined], outputs: [vTrim],
-  })
-  const vPts = `vzwp${idx}`
-  nodes.push({ id: `vzwpts${idx}`, filter: 'setpts', args: [{ key: '', value: 'PTS-STARTPTS' }], inputs: [vTrim], outputs: [vPts] })
-  if (win.scaleMilli === null) return vPts
-
-  const vScaled = `vzws${idx}`
-  nodes.push({
-    id: `vzwscale${idx}`, filter: 'scale',
-    args: [
-      { key: 'w', value: `iw*${milliToScalarLiteral(win.scaleMilli)}` },
-      { key: 'h', value: `ih*${milliToScalarLiteral(win.scaleMilli)}` },
-      { key: 'eval', value: 'init' },
-    ],
-    inputs: [vPts], outputs: [vScaled],
-  })
-  const vCropped = `vzwc${idx}`
-  // The crop is displaced from centre by the plan's own offset, so the punch
-  // lands on the subject. `signedTerm` keeps the expression inside the value
-  // alphabet — `+`/`-` and digits only, no comma, no conditional.
-  const signedTerm = (n: number): string => (n === 0 ? '' : n > 0 ? `+${n}` : `-${Math.abs(n)}`)
-  nodes.push({
-    id: `vzwcrop${idx}`, filter: 'crop',
-    args: [
-      { key: 'w', value: plan.output.width }, { key: 'h', value: plan.output.height },
-      { key: 'x', value: `(iw-ow)/2${signedTerm(win.offsetXPx)}` },
-      { key: 'y', value: `(ih-oh)/2${signedTerm(win.offsetYPx)}` },
-    ],
-    inputs: [vScaled], outputs: [vCropped],
-  })
-  // `scale=w=iw*1.012:...` rounds each dimension to a whole pixel count
-  // independently, so the two roundings are not exactly proportional — ffmpeg
-  // compensates by attaching a corrective, non-1:1 SAR rather than distorting
-  // the pixel grid. `crop` carries that SAR forward unchanged. Every OTHER
-  // piece in this graph (segments, and the un-zoomed pass-through windows) is
-  // still exactly 1:1, so left uncorrected the final `concat` refuses to join
-  // them: "Input link parameters ... do not match". Pixel content is already
-  // exactly `plan.output.width`x`plan.output.height` after `crop`; this only
-  // corrects the metadata to match everything else in the pipeline.
-  const vSar = `vzwsar${idx}`
-  nodes.push({ id: `vzwsetsar${idx}`, filter: 'setsar', args: [{ key: 'sar', value: '1' }], inputs: [vCropped], outputs: [vSar] })
-  return vSar
-}
-
+// The decomposition that used to live here — `trim` the joined video into
+// per-window pieces, `setpts` each back to zero, `concat` them — is GONE. It
+// lost frames at every seam, and the loss scaled with the seam count. The
+// replacement is one continuous `zoompan` whose z/x/y are comma-free gate
+// expressions composed from individually validated parts; see
+// `buildContinuousZoomPlan` in ./frameTimeline.
 function applyTimeGatedZooms(plan: EditPlanV1, vJoined: string, nodes: FilterNode[]): string {
   if (plan.video.zooms.length === 0) return vJoined
-  const windows = allWindows(plan)
-  if (windows.length === 1) return windowChain(plan, windows[0], vJoined, nodes, 0)
 
-  // A filtergraph label is a SINGLE-CONSUMER pad: `vJoined` cannot be wired as
-  // the input of every window's `trim` at once, only of one. `split` is the
-  // filter that turns one stream into N independent copies, which is what
-  // makes it safe for every window to be trimmed from the ORIGINAL joined
-  // stream (never from a previous window's processed output) without ffmpeg
-  // rejecting the graph as a pad used twice.
-  const splitLabels = windows.map((_w, idx) => `vzwsplit${idx}`)
+  // ⚠️ ONE CONTINUOUS STREAM. The previous implementation split the joined
+  // video into per-window pieces, retimed each with `setpts=PTS-STARTPTS`, and
+  // `concat`-ed them back. Every seam lost frames, and the loss scaled with the
+  // seam count -- measured against a resolved target of 184 frames:
+  //
+  //     decomposed   1 zoom 181   2 zooms 176   3 zooms 170
+  //     continuous   1 zoom 184   2 zooms 184   3 zooms 184
+  //
+  // Frame-exact boundaries did not rescue it: every piece >= 1 frame with an
+  // exact tiling sum still rendered 181 of 184. The seams were the mechanism.
+  const fpsNum = plan.output.fpsNum
+  const fpsDen = plan.output.fpsDen
+  const msToFrame = (ms: number) => Math.round((ms * fpsNum) / (1000 * fpsDen))
+  // ⚠️ THE SAME RESOLUTION THE VALIDATOR USES. Derived here independently, this
+  // used to ignore `transitionInOverlapMs`, so a plan with a transition gated
+  // its zooms against a timeline longer than the one it emitted.
+  const targetFrameCount = resolvePlanDuration(plan).targetFrameCount
+
+  const zoomPlan = buildContinuousZoomPlan(
+    plan.video.zooms.map((z) => ({
+      startFrame: msToFrame(z.outputStartMs),
+      endFrameExclusive: msToFrame(z.outputEndMs),
+      scaleMilli: z.scaleMilli,
+      offsetXPx: z.offsetXPx,
+      offsetYPx: z.offsetYPx,
+    })),
+    targetFrameCount,
+  )
+  // ⚖️ DEFENCE IN DEPTH. Should be unreachable; kept because a later change
+  // that reintroduces seams must fail loudly rather than ship a short video.
+  assertFramePreserving('continuous', zoomPlan)
+
+  const out = 'vzoom'
   nodes.push({
-    id: 'zoomsplit', filter: 'split',
-    args: [{ key: 'outputs', value: windows.length }],
-    inputs: [vJoined], outputs: splitLabels,
+    id: 'zoompan', filter: 'zoompan',
+    args: [
+      { key: 'z', value: composeZoomExpression(zoomPlan) },
+      { key: 'x', value: composePanExpression(zoomPlan, 'x') },
+      { key: 'y', value: composePanExpression(zoomPlan, 'y') },
+      // d=1 emits exactly one output frame per input frame: the property that
+      // makes the frame count survivable at all.
+      { key: 'd', value: 1 },
+      { key: 's', value: `${plan.output.width}x${plan.output.height}` },
+      { key: 'fps', value: `${fpsNum}/${fpsDen}` },
+    ],
+    inputs: [vJoined], outputs: [out],
   })
-  const labels = windows.map((w, idx) => windowChain(plan, w, splitLabels[idx], nodes, idx))
-  const out = 'vzcat'
-  nodes.push({
-    id: 'zoomconcat', filter: 'concat',
-    args: [{ key: 'n', value: labels.length }, { key: 'v', value: 1 }, { key: 'a', value: 0 }],
-    inputs: labels, outputs: [out],
-  })
-  return out
+  // zoompan can attach a corrective SAR the same way scale+crop did; every
+  // other pad in this graph is exactly 1:1 and `concat` refuses a mismatch.
+  const vSar = 'vzoomsar'
+  nodes.push({ id: 'vzoomsetsar', filter: 'setsar', args: [{ key: 'sar', value: '1' }], inputs: [out], outputs: [vSar] })
+  return vSar
 }
 
 /**
@@ -657,7 +601,7 @@ function compositionWindows(plan: EditPlanV1): CompositionWindow[] {
   if (cursor < plan.output.durationMs) {
     windows.push({ startMs: cursor, endMs: plan.output.durationMs, overlay: null })
   }
-  // Re-derived rather than assumed, exactly as `allWindows` and `joinSegments`
+  // Re-derived rather than assumed, exactly as `joinSegments`
   // do: a fold that covers the wrong number of milliseconds is a defect here,
   // not a video that is quietly the wrong length.
   const coveredMs = windows.reduce((n, w) => n + (w.endMs - w.startMs), 0)
@@ -1055,9 +999,14 @@ export function serializeFilterGraph(graph: FfmpegGraph): string {
     const ins = node.inputs.map((i) => (/^\d+:[va]$/.test(i) ? `[${i}]` : `[${checkLabel(i)}]`)).join('')
     const outs = node.outputs.map((o) => `[${checkLabel(o)}]`).join('')
     const args = node.args.map((arg) => {
+      // ⚠️ DISPATCH ON THE VALUE, NOT ON A FLAG THE CALLER SET. Only a real
+      // ComposedExpression — which only frameTimeline can mint — takes the
+      // composed path; everything else faces the full authored rule.
       const raw = arg.isPath
         ? `'${escapeFilterPath(String(arg.value))}'`
-        : checkValue(arg.value)
+        : isComposedExpression(arg.value)
+          ? checkComposedValue(arg.value)
+          : checkValue(arg.value)
       return arg.key === '' ? raw : `${arg.key}=${raw}`
     }).join(':')
     chains.push(`${ins}${node.filter}${args === '' ? '' : `=${args}`}${outs}`)
