@@ -24,6 +24,15 @@ import { loadRenderCatalog } from '../jobs/editorRender.js'
 import { compileEditPlan } from '../jobs/editorCompile.js'
 import { EditPlanError, type EditPlanV1 } from '../jobs/editPlanContract.js'
 import { baseInput, policy } from './fixtures/editPlanFixture.js'
+import { resolvePlanDuration } from '../jobs/frameTimeline.js'
+
+/** What a CORRECT renderer emits: whole frames, so not necessarily the
+ *  millisecond the Director asked for. Every duration assertion below is
+ *  anchored here rather than on `plan.output.durationMs`, because charging the
+ *  encoder for a frame it cannot emit is the bias this suite used to encode. */
+function renderableMs(p: EditPlanV1): number {
+  return Math.round(resolvePlanDuration(p).renderableDurationMs)
+}
 
 const CATALOG = loadRenderCatalog()
 const PROFILE = CATALOG.outputProfiles['vertical-social-1080x1920-h264-aac-v1']
@@ -39,7 +48,7 @@ function codeOf(fn: () => unknown): string {
 /** A probe of a CORRECT output for the given plan. Every test starts from this
  *  and changes exactly one thing, so a failure names the field it is about. */
 function goodProbe(p: EditPlanV1, overrides: { durationMs?: number } = {}): ProbeResult {
-  const ms = overrides.durationMs ?? p.output.durationMs
+  const ms = overrides.durationMs ?? renderableMs(p)
   const secs = `${Math.floor(ms / 1000)}.${String(ms % 1000).padStart(3, '0')}`
   return {
     format: { format_name: 'mov,mp4,m4a,3gp,3g2,mj2', duration: secs, size: '1000000' },
@@ -81,16 +90,38 @@ describe('CONTROL: a correct output validates', () => {
   })
 })
 
+describe('the target is the frame grid, not the request', () => {
+  it('predicts what the renderer can emit, and reports the gap separately', () => {
+    const p = plan()
+    const resolved = resolvePlanDuration(p)
+    // This fixture's requested duration does NOT land on a frame boundary — it
+    // sits 33 ms above the last frame the renderer can emit. That gap is not the
+    // encoder's fault, and before this change it was silently spent out of the
+    // ±250 ms tolerance on every single render.
+    expect(renderableMs(p)).not.toBe(p.output.durationMs)
+    expect(Math.round(resolved.planQuantizationDeltaMs)).toBe(-33)
+
+    let seen: { predictedMs: number; planQuantizationDeltaMs: number; targetFrameCount: number } | null = null
+    const r = validateProbedOutput(goodProbe(p), p, PROFILE, BYTES, (o) => { seen = o })
+    // A render that emits exactly the reachable frame count is EXACTLY on
+    // target now, not 33 ms short of it.
+    expect(r.durationDeltaMs).toBe(0)
+    expect(seen!.predictedMs).toBe(renderableMs(p))
+    expect(seen!.planQuantizationDeltaMs).toBe(-33)
+    expect(seen!.targetFrameCount).toBe(resolved.targetFrameCount)
+  })
+})
+
 describe('duration: the tolerance is ±250 ms and it is symmetric', () => {
   it('accepts exactly at the tolerance, both directions', () => {
     const p = plan()
-    expect(() => validateProbedOutput(goodProbe(p, { durationMs: p.output.durationMs + 250 }), p, PROFILE, BYTES)).not.toThrow()
-    expect(() => validateProbedOutput(goodProbe(p, { durationMs: p.output.durationMs - 250 }), p, PROFILE, BYTES)).not.toThrow()
+    expect(() => validateProbedOutput(goodProbe(p, { durationMs: renderableMs(p) + 250 }), p, PROFILE, BYTES)).not.toThrow()
+    expect(() => validateProbedOutput(goodProbe(p, { durationMs: renderableMs(p) - 250 }), p, PROFILE, BYTES)).not.toThrow()
   })
 
   it('MUTATION: one millisecond past the tolerance is refused — LONG', () => {
     const p = plan()
-    expect(codeOf(() => validateProbedOutput(goodProbe(p, { durationMs: p.output.durationMs + 251 }), p, PROFILE, BYTES)))
+    expect(codeOf(() => validateProbedOutput(goodProbe(p, { durationMs: renderableMs(p) + 251 }), p, PROFILE, BYTES)))
       .toBe('output_duration_mismatch')
   })
 
@@ -99,7 +130,7 @@ describe('duration: the tolerance is ±250 ms and it is symmetric', () => {
     // passes every short render, and a video that is silently truncated is the
     // more damaging of the two.
     const p = plan()
-    expect(codeOf(() => validateProbedOutput(goodProbe(p, { durationMs: p.output.durationMs - 251 }), p, PROFILE, BYTES)))
+    expect(codeOf(() => validateProbedOutput(goodProbe(p, { durationMs: renderableMs(p) - 251 }), p, PROFILE, BYTES)))
       .toBe('output_duration_mismatch')
   })
 
@@ -120,7 +151,7 @@ describe('the container header is a CLAIM; the stream is the measurement', () =>
     probe.format!.duration = '9999.000'
     const r = validateProbedOutput(probe, p, PROFILE, BYTES)
     expect(r.measurements.durationSourceField).toBe('video_stream')
-    expect(r.measurements.durationMs).toBe(p.output.durationMs)
+    expect(r.measurements.durationMs).toBe(renderableMs(p))
   })
 
   it('falls back to the header only when the stream has no duration, and SAYS SO', () => {
@@ -398,7 +429,7 @@ describe('the audio and video streams are compared to EACH OTHER', () => {
   /** A probe whose audio stream differs from its video stream on purpose. */
   function drifted(p: EditPlanV1, o: { audioDeltaMs?: number; startDeltaMs?: number }): ProbeResult {
     const base = goodProbe(p)
-    const vMs = p.output.durationMs
+    const vMs = renderableMs(p)
     const streams = base.streams!.map((st) => st.codec_type === 'audio'
       ? { ...st, duration: ms(vMs + (o.audioDeltaMs ?? 0)), start_time: ms(o.startDeltaMs ?? 0) }
       : { ...st, start_time: '0.000' })

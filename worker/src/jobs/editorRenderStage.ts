@@ -256,6 +256,9 @@ export async function runRenderingStage(
           editProjectId: projectId,
           appliedCuts,
           segmentCount: plan.timeline.segments.length,
+          // Read off the plan this very render compiled, not off the compiling
+          // stage's stats — a resumed job still knows how many zooms it drew.
+          zoomCount: plan.video.zooms.length,
         }, o)
       },
     })

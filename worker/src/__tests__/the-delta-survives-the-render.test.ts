@@ -19,6 +19,11 @@ import { loadRenderCatalog } from '../jobs/editorRender.js'
 import { compileEditPlan } from '../jobs/editorCompile.js'
 import type { EditPlanV1 } from '../jobs/editPlanContract.js'
 import { baseInput, policy } from './fixtures/editPlanFixture.js'
+import { resolvePlanDuration } from '../jobs/frameTimeline.js'
+
+/** The frame-grid duration a correct renderer emits. The observation's
+ *  `predictedMs` is this, not the Director's request — see 0164. */
+const renderableMs = (p: EditPlanV1): number => Math.round(resolvePlanDuration(p).renderableDurationMs)
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 const MIGRATION = readFileSync(
@@ -51,9 +56,9 @@ describe('the duration observation', () => {
   it('is delivered when the render PASSES', () => {
     const p = plan()
     const seen: DurationObservation[] = []
-    validateProbedOutput(probeOf(p, p.output.durationMs - 70), p, PROFILE, BYTES, (o) => seen.push(o))
+    validateProbedOutput(probeOf(p, renderableMs(p) - 70), p, PROFILE, BYTES, (o) => seen.push(o))
     expect(seen).toHaveLength(1)
-    expect(seen[0].predictedMs).toBe(p.output.durationMs)
+    expect(seen[0].predictedMs).toBe(renderableMs(p))
     expect(seen[0].deltaMs).toBe(-70)
     expect(seen[0].withinTolerance).toBe(true)
   })
@@ -64,7 +69,7 @@ describe('the duration observation', () => {
     const p = plan()
     const seen: DurationObservation[] = []
     expect(() =>
-      validateProbedOutput(probeOf(p, p.output.durationMs - 303), p, PROFILE, BYTES, (o) => seen.push(o)),
+      validateProbedOutput(probeOf(p, renderableMs(p) - 303), p, PROFILE, BYTES, (o) => seen.push(o)),
     ).toThrow()
     expect(seen).toHaveLength(1)
     expect(seen[0].deltaMs).toBe(-303)
@@ -78,7 +83,7 @@ describe('the duration observation', () => {
     // here would corrupt the evidence in the one dimension being tested.
     const p = plan()
     const seen: DurationObservation[] = []
-    validateProbedOutput(probeOf(p, p.output.durationMs), p, PROFILE, BYTES, (o) => seen.push(o))
+    validateProbedOutput(probeOf(p, renderableMs(p)), p, PROFILE, BYTES, (o) => seen.push(o))
     expect(seen[0].fpsNum).toBe(30)
     expect(seen[0].fpsDen).toBe(1)
   })
@@ -88,7 +93,7 @@ describe('evidence may not decide the thing it is evidence of', () => {
   it('a reporter that throws does not rescue a render that must fail', () => {
     const p = plan()
     expect(() =>
-      validateProbedOutput(probeOf(p, p.output.durationMs - 303), p, PROFILE, BYTES, () => {
+      validateProbedOutput(probeOf(p, renderableMs(p) - 303), p, PROFILE, BYTES, () => {
         throw new Error('the telemetry backend is on fire')
       }),
     ).toThrow(/tolerance/)
@@ -97,7 +102,7 @@ describe('evidence may not decide the thing it is evidence of', () => {
   it('a reporter that throws does not sink a render that must pass', () => {
     const p = plan()
     expect(() =>
-      validateProbedOutput(probeOf(p, p.output.durationMs), p, PROFILE, BYTES, () => {
+      validateProbedOutput(probeOf(p, renderableMs(p)), p, PROFILE, BYTES, () => {
         throw new Error('still on fire')
       }),
     ).not.toThrow()
@@ -108,7 +113,7 @@ describe('evidence may not decide the thing it is evidence of', () => {
     // working unchanged. Absent means nobody is recording, not that nothing
     // happened.
     const p = plan()
-    expect(() => validateProbedOutput(probeOf(p, p.output.durationMs), p, PROFILE, BYTES)).not.toThrow()
+    expect(() => validateProbedOutput(probeOf(p, renderableMs(p)), p, PROFILE, BYTES)).not.toThrow()
   })
 })
 

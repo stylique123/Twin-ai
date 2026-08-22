@@ -19,6 +19,11 @@ export interface RenderAttemptContext {
    *  table exists to measure toward zero. */
   appliedCuts: number | null
   segmentCount: number | null
+  /** ⚠️ NULL MEANS UNRECORDED, NEVER ZERO — and here the distinction is the
+   *  whole point. The one failing attempt in the 2026-08-20 matrix differed
+   *  from the fifteen passing ones by having 2 zooms rather than 1; a plan with
+   *  no zooms genuinely records 0. */
+  zoomCount: number | null
 }
 
 /**
@@ -44,6 +49,9 @@ export async function recordRenderAttempt(
       duration_tolerance_ms: o.toleranceMs,
       output_fps_num: o.fpsNum,
       output_fps_den: o.fpsDen,
+      plan_quantisation_delta_ms: o.planQuantizationDeltaMs,
+      target_frame_count: o.targetFrameCount,
+      zoom_count: ctx.zoomCount,
       applied_cuts: ctx.appliedCuts,
       segment_count: ctx.segmentCount,
       validator_outcome: o.withinTolerance ? 'within_tolerance' : 'duration_mismatch',
