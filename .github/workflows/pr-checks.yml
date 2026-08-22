@@ -451,6 +451,12 @@ jobs:
         run: |
           node scripts/ci/classify_change.selftest.mjs
           node scripts/ci/classify_change.mjs --base "origin/${{ github.base_ref || 'main' }}" || true
+      # ⚠️ "THE RENDER PASSED" IS NOT THE ACCEPTANCE CRITERION FOR #445. A run
+      # losing frames per zoom while every render sits inside the tolerance has
+      # the SAME mechanism as the one that failed — it just has fewer zooms.
+      # This asserts the property that actually matters: the slope.
+      - name: Zoom-delta correlation (the defect is a slope, not a tolerance)
+        run: node scripts/ci/check_zoom_delta_correlation.selftest.mjs
       - name: Pilot core (frozen sample, terminal states, rates that cannot exceed 100%)
         run: node scripts/pilot-core.selftest.mjs
       # #57's trigger. The properties worth guarding are the EXCLUSIONS: staging
