@@ -622,3 +622,91 @@ export function distributionRates(agg) {
     wrong_evidence: r('WRONG_EVIDENCE'),
   }
 }
+
+export const ARMS = ['uniform', 'content_beats']
+
+/**
+ * ⚠️ AN ARM WITH NO REFERENCES IS NOT AN ARM THAT SCORED ZERO. A no-speech
+ * pilot exercises `uniform` only -- silent references have no content profile,
+ * so there are no beats to schedule on and content_beats CANNOT appear. Printing
+ * it as 0% would be numerically tidy and scientifically false: it would read as
+ * "beat-scheduled frames supported nothing", a claim this sample cannot make in
+ * either direction.
+ *
+ * ⚖️ SO THE COMPARISON ITSELF HAS A STATE. `NOT RUN` is the honest answer when
+ * only one arm is represented, and it is reported beside the arm that WAS
+ * measured rather than left for a reader to infer from a missing row.
+ */
+export function armComparison(labels, frames) {
+  const groups = byScheduleBasis(labels, frames)
+  const arms = {}
+  for (const arm of ARMS) {
+    arms[arm] = groups[arm]
+      ? { status: 'measured', ...groups[arm] }
+      : { status: 'NOT REPRESENTED', references: 0, asked: 0, answered: 0, supported_of_answered: null }
+  }
+  const measured = ARMS.filter((a) => arms[a].status === 'measured')
+  return {
+    arms,
+    // ⚠️ A COMPARISON NEEDS TWO SIDES. One arm is a measurement of that arm, and
+    // nothing at all about the other.
+    arm_comparison: measured.length === 2 ? 'measured' : 'NOT RUN',
+    measured_arms: measured,
+    unknown_basis: groups.basis_unknown ?? null,
+  }
+}
+
+/**
+ * ⚠️ THE RELATIONSHIP THE STUB WAS ALLOWED TO BREAK. A test double that ignored
+ * one PostgREST filter produced six READY references and one hundred and twenty
+ * review claims, where ninety was the only possible answer -- and the
+ * contradiction was printed in the output, unasserted, more than once.
+ *
+ * ⚖️ SO THE INVARIANT LIVES AT THE ORCHESTRATION BOUNDARY, not in the mock.
+ * Fixing the stub fixes one lie; asserting the relationship catches the next
+ * one, whatever creative interpretation of Supabase tomorrow brings.
+ */
+export function checkPacketInvariants({ progress, labels, claimPaths = CLAIM_PATHS.length }) {
+  const problems = []
+  const readyUrls = new Set(progress.states.filter((s) => s.state === 'READY_FOR_LABEL').map((s) => s.url))
+  const packetUrls = new Set(labels.map((l) => l.url))
+
+  if (readyUrls.size !== packetUrls.size) {
+    problems.push(`${readyUrls.size} references are READY_FOR_LABEL but the packet covers `
+      + `${packetUrls.size}. A packet may contain exactly the references that produced claims.`)
+  }
+  for (const u of packetUrls) {
+    if (!readyUrls.has(u)) {
+      const st = progress.states.find((s) => s.url === u)?.state ?? 'unknown'
+      problems.push(`${u} is ${st} but has review claims. FAILED and UNREADABLE references `
+        + 'contribute ZERO claims: there is nothing for a human to judge.')
+    }
+  }
+  const expected = readyUrls.size * claimPaths
+  if (labels.length !== expected) {
+    problems.push(`the packet holds ${labels.length} claims but ${readyUrls.size} ready reference(s) `
+      + `× ${claimPaths} declared claim paths is ${expected}. A count that does not multiply out `
+      + 'means the packet was built from a different set than the one reported ready.')
+  }
+  return problems
+}
+
+/** ⚠️ FOUR SHARES OF ONE POPULATION MUST SUM TO ONE. Anything else means a label
+ *  was counted twice or a denominator moved between lines. */
+export function checkRateInvariants(agg) {
+  const problems = []
+  const r = distributionRates(agg)
+  const vals = Object.values(r)
+  if (vals.every((v) => v === null)) return problems
+  const sum = vals.reduce((a, b) => a + (b ?? 0), 0)
+  if (Math.abs(sum - 1) > 1e-9) {
+    problems.push(`the four label shares sum to ${sum.toFixed(4)}, not 1. A label was counted `
+      + 'twice, or a denominator changed between lines.')
+  }
+  for (const [k, v] of Object.entries({ ...r, supported_of_answered: agg.supported_of_answered })) {
+    if (v !== null && (v < 0 || v > 1)) {
+      problems.push(`${k} is ${v}, outside 0..1 — a numerator and denominator from different populations.`)
+    }
+  }
+  return problems
+}

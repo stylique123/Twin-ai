@@ -21,7 +21,7 @@ import {
   selectCohort, bandOf, handleOf, freezeManifest, assertManifestUnchanged,
   progressOf, attrition, flattenClaims, orderClaims, isLabel, aggregate, friction,
   briefFor69, claimsDigest, evidenceDigest, byField, bySituation, slowestFields,
-  byScheduleBasis, distributionRates,
+  byScheduleBasis, distributionRates, armComparison, checkPacketInvariants, checkRateInvariants,
   PILOT_PRIORITY, MAX_SIZE,
 } from './pilot-core.mjs'
 
@@ -226,6 +226,14 @@ export async function runReview(db, opts) {
       .in('url', [...new Set(run.labels.map((l) => l.url))])
     run.frames = fr ?? []
     run.events = [{ kind: 'session_start', at: Date.now() }]
+
+    // ⚠️ ASSERTED HERE, WHERE THE PACKET IS BORN. A stub that ignored one filter
+    // once produced six ready references and one hundred and twenty claims, and
+    // the contradiction was printed unasserted. This refuses to serve a packet
+    // whose size does not multiply out.
+    const bad = checkPacketInvariants({ progress, labels: run.labels })
+    if (bad.length) throw new Error(`the packet does not match the attrition report:\n  ${bad.join('\n  ')}`)
+
     save(run)
   }
   return run
@@ -247,7 +255,13 @@ export function finish(run, reviewer) {
   run.by_situation = bySituation(run.labels)
   run.slowest_fields = slowestFields(run.events ?? [], run.labels)
   run.by_schedule_basis = byScheduleBasis(run.labels, run.frames ?? [])
+  run.arm_comparison = armComparison(run.labels, run.frames ?? [])
   run.rates = distributionRates(agg)
+  // ⚠️ THE RATES ARE CHECKED BEFORE THEY ARE PRINTED. A share above 1, or four
+  // shares that do not sum to one, means a denominator moved between lines --
+  // and this file has produced 500% and 350% before.
+  const rateProblems = checkRateInvariants(agg)
+  if (rateProblems.length) throw new Error(`refusing to report impossible rates:\n  ${rateProblems.join('\n  ')}`)
   run.brief69 = briefFor69(fr, agg, slowestFields(run.events ?? [], run.labels))
   // ⚖️ THE REVIEWED OBJECT, RECOVERABLE. A later re-run that changes the claims
   // or re-draws the frames will not match these, and the mismatch is the point:
@@ -421,15 +435,25 @@ export function report(run) {
   // ⚠️ THE ARM COMPARISON. On the no-speech path the basis is ALWAYS uniform,
   // so a pilot drawn from silent video has ONE arm — and an empty content_beats
   // bucket is an ABSENT comparison, not a zero score.
-  const bases = Object.entries(run.by_schedule_basis ?? {})
-  if (bases.length) {
-    L.push('\n  BY FRAME SCHEDULE')
-    for (const [k, v] of bases) {
-      L.push(`      ${k.padEnd(28)} ${pct(v.supported_of_answered)} across ${v.references} reference(s)`)
+  const ac = run.arm_comparison
+  if (ac) {
+    L.push('\n  FRAME SCHEDULE ARMS')
+    for (const arm of ['uniform', 'content_beats']) {
+      const a = ac.arms[arm]
+      L.push(a.status === 'measured'
+        ? `      ${arm.padEnd(20)} ${pct(a.supported_of_answered)} across ${a.references} reference(s)`
+        : `      ${arm.padEnd(20)} NOT REPRESENTED`)
     }
-    if (bases.length === 1 && bases[0][0] === 'uniform') {
-      L.push('      only one arm ran: no-speech references have no beats to schedule on,')
-      L.push('      so this pilot says nothing about content_beats either way.')
+    L.push(`      ${'arm_comparison'.padEnd(20)} ${ac.arm_comparison}`)
+    if (ac.arm_comparison === 'NOT RUN') {
+      // ⚖️ SAID IN WORDS AS WELL AS IN A FIELD. A reader who skims the table
+      // should not be able to walk away thinking the comparison happened.
+      L.push('      No-speech references have no content profile, so there are no beats to')
+      L.push('      schedule on. This sample measures uniform only and says NOTHING about')
+      L.push('      content_beats in either direction. A 0% there would be tidy and false.')
+    }
+    if (ac.unknown_basis) {
+      L.push(`      ${'basis unknown'.padEnd(20)} ${ac.unknown_basis.references} reference(s) — no frame rows`)
     }
   }
   const sits = Object.entries(run.by_situation ?? {}).filter(([k]) => k !== 'situation_unconfirmed')

@@ -4,7 +4,8 @@ import {
   manifestDigest, freezeManifest, assertManifestUnchanged, pilotState, progressOf,
   attrition, briefFor69, TERMINAL, selectCohort, aggregate, friction, flattenClaims,
   claimsDigest, evidenceDigest, byField, bySituation, slowestFields, supportedRate,
-  byScheduleBasis, distributionRates,
+  byScheduleBasis, distributionRates, armComparison, checkPacketInvariants,
+  checkRateInvariants, CLAIM_PATHS,
 } from './pilot-core.mjs'
 
 let failed = 0
@@ -282,6 +283,78 @@ ok('flattenClaims still returns one row per declared path',
   // ⚖️ NULL, NOT ZERO, when nothing was labelled at all.
   ok('an unlabelled session reports null shares, not zeros',
     distributionRates(aggregate({ locked: true, labels: [] })).supported === null)
+}
+
+// ── an absent arm is NOT REPRESENTED, never 0% ──
+{
+  const labels = [
+    { url: 'a', answered: true, label: 'SUPPORTED' },
+    { url: 'a', answered: true, label: 'UNSUPPORTED' },
+  ]
+  const uniformOnly = armComparison(labels, [{ url: 'a', frame_index: 1, schedule_basis: 'uniform' }])
+  // ⚠️ A 0% CONTENT_BEATS WOULD READ AS "beat-scheduled frames supported
+  // nothing" — a claim this sample cannot make in either direction.
+  ok('an unrepresented arm says so rather than scoring zero',
+    uniformOnly.arms.content_beats.status === 'NOT REPRESENTED'
+    && uniformOnly.arms.content_beats.supported_of_answered === null)
+  ok('the measured arm is still measured', uniformOnly.arms.uniform.status === 'measured')
+  // ⚖️ THE COMPARISON ITSELF HAS A STATE.
+  ok('one arm means the comparison did NOT run', uniformOnly.arm_comparison === 'NOT RUN')
+
+  const both = armComparison(
+    [...labels, { url: 'b', answered: true, label: 'SUPPORTED' }],
+    [{ url: 'a', frame_index: 1, schedule_basis: 'uniform' },
+     { url: 'b', frame_index: 1, schedule_basis: 'content_beats' }])
+  ok('two arms means the comparison ran', both.arm_comparison === 'measured')
+  ok('and both are marked measured',
+    both.arms.uniform.status === 'measured' && both.arms.content_beats.status === 'measured')
+}
+
+// ── the invariant the stub was allowed to break ──
+{
+  const progress = { states: [
+    { url: 'r1', state: 'READY_FOR_LABEL' },
+    { url: 'r2', state: 'READY_FOR_LABEL' },
+    { url: 'f1', state: 'FAILED' },
+    { url: 'u1', state: 'UNREADABLE' },
+  ] }
+  const claimsFor = (u) => CLAIM_PATHS.map((p) => ({ url: u, path: p }))
+  const good = [...claimsFor('r1'), ...claimsFor('r2')]
+  ok('a packet matching the ready set passes',
+    checkPacketInvariants({ progress, labels: good }).length === 0)
+
+  // ⚠️ THE EXACT SHAPE THAT PRINTED 6 READY AND 120 CLAIMS.
+  const withFailed = [...good, ...claimsFor('f1'), ...claimsFor('u1')]
+  const bad = checkPacketInvariants({ progress, labels: withFailed })
+  ok('a packet including FAILED and UNREADABLE references is refused', bad.length > 0)
+  ok('and it names the offending reference and its state',
+    bad.some((p) => p.includes('f1') && p.includes('FAILED'))
+    && bad.some((p) => p.includes('u1') && p.includes('UNREADABLE')))
+  ok('and it says the count does not multiply out',
+    bad.some((p) => p.includes('multiply out')))
+
+  ok('a packet missing a ready reference is refused',
+    checkPacketInvariants({ progress, labels: claimsFor('r1') }).length > 0)
+  ok('a ready reference with the wrong claim count is refused',
+    checkPacketInvariants({ progress, labels: [...good, { url: 'r1', path: 'extra' }] }).length > 0)
+  ok('no ready references and an empty packet is consistent',
+    checkPacketInvariants({ progress: { states: [{ url: 'f1', state: 'FAILED' }] }, labels: [] }).length === 0)
+}
+
+// ── a rate that cannot exist is refused before it is printed ──
+{
+  const fine = aggregate({ locked: true, labels: [
+    { index: 0, answered: true, label: 'SUPPORTED' },
+    { index: 1, answered: true, label: 'UNSUPPORTED' },
+  ] })
+  ok('honest rates pass', checkRateInvariants(fine).length === 0)
+  ok('an empty session passes rather than dividing by zero',
+    checkRateInvariants(aggregate({ locked: true, labels: [] })).length === 0)
+  // ⚠️ THE 500% AND 350% SHAPES, CAUGHT BEFORE PRINTING.
+  ok('a share above 1 is refused',
+    checkRateInvariants({ ...fine, supported_of_answered: 5 }).some((p) => p.includes('outside 0..1')))
+  ok('shares that do not sum to one are refused',
+    checkRateInvariants({ ...fine, claims_labelled: 4 }).some((p) => p.includes('sum to')))
 }
 
 if (failed) process.exit(1)
