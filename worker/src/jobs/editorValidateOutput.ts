@@ -58,6 +58,7 @@ import {
 } from './editorRender.js'
 import { milliToScalarLiteral } from './ffmpegGraph.js'
 import { parseLoudnormJson, checkLoudness, type LoudnessVerdict } from './loudness.js'
+import { resolvePlanDuration } from './frameTimeline.js'
 import type { CancelWatch } from './editorCancel.js'
 
 function bad(message: string, code: string): never {
@@ -285,6 +286,13 @@ export interface DurationObservation {
   fpsNum: number
   fpsDen: number
   withinTolerance: boolean
+  /** ⚠️ NOBODY'S FAULT, AND KEPT SEPARATE FOR THAT REASON. `predictedMs` is the
+   *  frame-grid duration the renderer can actually emit; this is how far that
+   *  sits from what the Director asked for. Negative when the request lands
+   *  above the reachable frame. Folding it into the delta is how a systematic
+   *  bias hid for fifteen runs. */
+  planQuantizationDeltaMs: number
+  targetFrameCount: number
 }
 
 /** ⚖️ A CALLBACK RATHER THAN A `db` IMPORT. This module is pure and is unit
@@ -361,7 +369,23 @@ export function validateProbedOutput(
   const durationSourceField = streamMs !== null ? 'video_stream' : 'format'
 
   const toleranceMs = profile.durationToleranceMs
-  const durationDeltaMs = durationMs - plan.output.durationMs
+  // ⚠️ MEASURED AGAINST THE FRAME GRID, NOT AGAINST THE REQUEST. A renderer can
+  // only emit whole frames, so `plan.output.durationMs` is reachable only when
+  // it happens to land on one. Comparing against it charged the encoder for a
+  // quantisation nobody could avoid — a one-directional bias, never long, that
+  // ate part of the tolerance on every single render. This is NOT a widened
+  // tolerance: the tolerance is unchanged, the target is now a number the
+  // renderer can actually hit, and the difference is reported in its own field.
+  //
+  // ⚠️ ROUNDED ONCE, AND EVERYTHING ELSE DERIVED FROM THE ROUNDED NUMBER.
+  // `targetFrameCount * frameDurationMs` is fractional at 30000/1001, and
+  // `render_attempts` asserts in the database that its delta IS actual minus
+  // predicted. Rounding the two independently would produce rows the constraint
+  // rejects, which is a write that fails silently in a best-effort recorder.
+  const resolved = resolvePlanDuration(plan)
+  const predictedMs = Math.round(resolved.renderableDurationMs)
+  const durationDeltaMs = durationMs - predictedMs
+  const planQuantizationDeltaMs = predictedMs - plan.output.durationMs
 
   // ⚠️ REPORTED BEFORE THE VERDICT, NOT AFTER IT. This number has always been
   // computed here and then thrown away — on success it evaporated, on failure it
@@ -375,21 +399,25 @@ export function validateProbedOutput(
   if (observe) {
     try {
       observe({
-        predictedMs: plan.output.durationMs,
+        predictedMs,
         actualMs: durationMs,
         deltaMs: durationDeltaMs,
         toleranceMs,
         fpsNum: rate.num,
         fpsDen: rate.den,
         withinTolerance: Math.abs(durationDeltaMs) <= toleranceMs,
+        planQuantizationDeltaMs,
+        targetFrameCount: resolved.targetFrameCount,
       })
     } catch { /* see above */ }
   }
 
   if (Math.abs(durationDeltaMs) > toleranceMs) {
     bad(
-      `the output runs ${durationMs}ms but the plan promised ${plan.output.durationMs}ms ` +
-      `(delta ${durationDeltaMs}ms, tolerance ±${toleranceMs}ms)`,
+      `the output runs ${durationMs}ms but the plan's ${resolved.targetFrameCount} frames ` +
+      `render to ${predictedMs}ms (delta ${durationDeltaMs}ms, tolerance ±${toleranceMs}ms; ` +
+      `the plan asked for ${plan.output.durationMs}ms, ` +
+      `quantisation ${planQuantizationDeltaMs}ms)`,
       'output_duration_mismatch',
     )
   }
