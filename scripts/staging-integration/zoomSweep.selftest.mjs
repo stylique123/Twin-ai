@@ -80,10 +80,10 @@ ok('every requested anchor carries a valid intensity and reason',
       fabricateLease: async () => { calls++; if (calls === 2) throw new Error('boom'); return { jobId: 'j', worker: 'w', attempt: 1 } },
     },
     sha256: (s) => `sha(${s})`,
-    mintReady: async () => ({ gen: 'g' }),
+    newGen: async () => 'g',
     wordCountFor: async () => 100,
     runToSettled: async () => ({ status: 'completed' }),
-    donorAssetId: 'a', ownerId: 'o', client: {},
+    donorAssetId: 'a', ownerId: 'o',
   }
   const r = await runZoomSweep(deps)
   eq('a failing zoom count is recorded, not fatal', r.notes.length, 1)
