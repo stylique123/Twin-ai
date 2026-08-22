@@ -380,4 +380,18 @@ ok('flattenClaims still returns one row per declared path',
 }
 
 if (failed) process.exit(1)
+
+// ⚠️ THE CHECK ITSELF CAN BE DISARMED BY ITS CALLER. Handed the CLAIM_PATHS
+// ARRAY instead of its length, the expected product was NaN and every
+// comparison against it was true -- a guard that refuses everything is as
+// broken as one that refuses nothing.
+{
+  const progress = { states: [{ url: 'u', state: 'READY_FOR_LABEL' }] }
+  const labels = CLAIM_PATHS.map((p) => ({ url: 'u', path: p }))
+  ok('the packet check accepts the paths array as a count',
+    checkPacketInvariants({ progress, labels, claimPaths: CLAIM_PATHS }).length === 0)
+  ok('and says so rather than passing when given nothing usable',
+    checkPacketInvariants({ progress, labels, claimPaths: 'not a number' }).length === 1)
+}
+
 console.log('pilot-core selftest: all cases passed')

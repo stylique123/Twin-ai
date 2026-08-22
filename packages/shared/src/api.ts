@@ -2102,3 +2102,60 @@ export async function saveMintedEntity(
   }
   return readEntityRow(data as ProductEntityRow)
 }
+
+// ── the visual pilot's labelling page ────────────────────────────────────────
+// The review lives INSIDE Twin, at /internal/review/visual/:pilotRunId, behind
+// a normal authenticated admin session. Every one of these calls goes to the
+// pilot-review edge function, which re-checks platform_admins with the service
+// role -- the route guard is convenience, the function is the boundary.
+export type PilotLabel = 'SUPPORTED' | 'UNSUPPORTED' | 'INDETERMINATE' | 'WRONG_EVIDENCE'
+
+export interface PilotClaim {
+  id: string; url: string; claim_path: string; answered: boolean
+  claim_value: unknown; cited_frames: number[] | null; canonical_values: string[] | null
+  current: { label: PilotLabel | null; corrected_value: unknown } | null
+}
+export interface PilotFrame {
+  url: string; frame_index: number; sha256: string
+  at_seconds: number | null; schedule_basis: string | null; signed_url: string | null
+}
+export interface PilotPacket {
+  run: {
+    id: string; status: string; frozen_size: number; sample_digest: string
+    selection_version: string; locked_at: string | null; review_version: number
+  }
+  references: Array<Record<string, unknown>>
+  claims: PilotClaim[]
+  frames: PilotFrame[]
+  vocabulary: Record<string, string>
+  claim_paths: string[]
+}
+
+const pilot = async <T>(body: Record<string, unknown>): Promise<T> => {
+  const { data, error } = await supabase.functions.invoke('pilot-review', { body })
+  // ⚠️ A FAILED CALL IS NOT AN EMPTY RESULT. Returning null here would let the
+  // page render "0 claims remaining" over a request that never landed, and the
+  // Finish button would light up on a run nobody labelled.
+  if (error) throw new Error(error.message ?? 'the review service refused')
+  if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error)
+  return data as T
+}
+
+export const getPilotPacket = (pilotRunId: string) =>
+  pilot<PilotPacket>({ action: 'packet', pilot_run_id: pilotRunId })
+
+/** Autosave. The label is persisted server-side before the reviewer moves on;
+ *  null is an explicit SKIP and is recorded as one, not as an absence. */
+export const savePilotLabel = (
+  pilotRunId: string, claimId: string, label: PilotLabel | null, correctedValue?: unknown,
+) => pilot<{ ok: true }>({
+  action: 'label', pilot_run_id: pilotRunId, claim_id: claimId, label, corrected_value: correctedValue ?? null,
+})
+
+/** ⚖️ THE FRICTION LOG IS THE ONLY INPUT TO #69. Requirements come from what was
+ *  slow and repetitive in a real session, not from a memo written beforehand. */
+export const logPilotEvent = (pilotRunId: string, kind: string, detail?: unknown) =>
+  pilot<{ ok: true }>({ action: 'event', pilot_run_id: pilotRunId, kind, detail: detail ?? null })
+
+export const finishPilotReview = (pilotRunId: string) =>
+  pilot<{ ok: true; decision: unknown; report: unknown }>({ action: 'finish', pilot_run_id: pilotRunId })

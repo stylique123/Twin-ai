@@ -1,3 +1,7 @@
+// GENERATED FROM scripts/pilot-core.mjs — DO NOT EDIT.
+// Run: node scripts/ci/generate_shared_pilot_core.mjs
+// Edit the source instead. CI regenerates this file and fails on a diff.
+// @ts-nocheck
 // THE PILOT'S LOGIC, SEPARATED FROM ITS COMMAND LINE.
 //
 // ⚠️ THIS EXTRACTION IS NOT TIDINESS, IT IS A PREREQUISITE. label-packet.mjs and

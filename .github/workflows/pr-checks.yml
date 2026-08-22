@@ -427,6 +427,12 @@ jobs:
       # create, then load by id, and never touch the cohort table again.
       - name: Pilot db (the frozen sample survives the machine it was drawn on)
         run: node scripts/pilot-db.selftest.mjs
+      # The stored packet. FAILED and UNREADABLE references contribute zero
+      # review claims, and the stored count multiplies out against the
+      # references reported ready -- the invariant a stub once contradicted in
+      # printed output that nobody asserted on.
+      - name: Pilot collect (the packet is stored once, and it multiplies out)
+        run: node scripts/pilot-collect.selftest.mjs
       # The staging matrix applies a HAND-MAINTAINED migration list, and it has
       # fallen behind three times. Every time, the symptom was a harness timeout
       # with nothing in the diff mentioning a migration — the gate went green on
