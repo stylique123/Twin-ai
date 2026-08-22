@@ -15,6 +15,23 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { baseInput, policy, shippedEncoder } from './fixtures/editPlanFixture.js'
 
+/**
+ * Evaluate an ffmpeg filter expression of `in` the way the evaluator would.
+ *
+ * ⚠️ IT MUST KNOW EVERY FUNCTION THE GATES USE. An oracle that knows `abs` but
+ * not `not` throws on a perfectly good expression, and that reads as a defect
+ * in the code rather than in the instrument.
+ */
+const nt = (x: number): number => (x ? 0 : 1)
+function evalFfmpegExpr(expr: string, inN: number): number {
+  // eslint-disable-next-line no-eval
+  return eval(expr
+    .replace(/\bin\b/g, String(inN))
+    .replace(/\bnot\(/g, 'nt(')
+    .replace(/\babs\(/g, 'Math.abs(')) as number
+}
+
+
 function codeOf(fn: () => unknown): string {
   try { fn() } catch (e) { return (e as EditPlanError).code }
   throw new Error('expected a throw, got none')
@@ -132,19 +149,23 @@ describe('the argument array', () => {
     expect(filter).toContain('loudnorm=I=-14.000:TP=-1.000:LRA=11')
   })
 
-  it('applies a zoom at its held scale, ramping through eased steps around it', () => {
+  it('applies a zoom at its held scale, easing into and out of it', () => {
+    // ⚠️ THE MECHANISM CHANGED; THE PROPERTY DID NOT. This used to assert the
+    // per-window scale nodes of a split/concat decomposition. That decomposition
+    // lost frames at every seam (184 target: 1 zoom 181, 2 zooms 176, 3 zooms
+    // 170), so it is gone. The zoom now lives in ONE zoompan expression, and
+    // what must still be true is that the scale reaches its target in the hold
+    // and travels there rather than arriving in one frame.
     const plan = hardCutPlan()
+    const zoom = plan.video.zooms[0]
     const graph = buildFfmpegGraph(plan, ASSETS)
-    const scaleNodes = graph.nodes.filter((n) => n.filter === 'scale' && n.id.startsWith('vzwscale'))
-    // The fixture's one zoom is `medium` (scaleMilli 1120); its held window
-    // reaches that scale exactly, and the eased steps around it never overshoot.
-    expect(scaleNodes.some((n) => n.args.some((a) => a.key === 'w' && a.value === 'iw*1.120'))).toBe(true)
-    for (const n of scaleNodes) {
-      const w = n.args.find((a) => a.key === 'w')!.value as string
-      const milli = Number(w.replace('iw*', ''))
-      expect(milli).toBeGreaterThan(1.0)
-      expect(milli).toBeLessThanOrEqual(1.120)
-    }
+    const zp = graph.nodes.find((n) => n.filter === 'zoompan')!
+    const z = String(zp.args.find((a) => a.key === 'z')!.value)
+    const held = ((zoom.scaleMilli - 1000) / 1000).toFixed(3)
+    expect(z.startsWith('1+')).toBe(true)
+    expect(z).toContain(`${held}*`)
+    // It is an expression of the input frame index, not a constant.
+    expect(z).toContain('in')
   })
 })
 
@@ -155,86 +176,71 @@ describe('zooms are time-gated, never permanent or compounding', () => {
   // output rather than the original frame. Every assertion here is aimed at
   // one of those two failure modes specifically.
 
-  it('framing returns to normal before and after the zoom window, with no scale/crop', () => {
+  it('framing returns to normal before and after the zoom window', () => {
+    // Structurally this used to mean "the boundary windows have no scale node".
+    // With one continuous stream it means the GATE evaluates to zero outside
+    // its window, which is the same claim about the picture.
     const plan = hardCutPlan()
     const zoom = plan.video.zooms[0]
     const graph = buildFfmpegGraph(plan, ASSETS)
-    const trims = graph.nodes.filter((n) => n.id.startsWith('vzwtrim'))
-    const first = trims[0]
-    const last = trims[trims.length - 1]
-    // The very first window starts the video and ends exactly where the zoom's
-    // own ease-in begins; the very last starts exactly where its ease-out ends
-    // and runs to the plan's declared output duration.
-    expect(first.args).toContainEqual({ key: 'start', value: '0.000' })
-    expect(first.args).toContainEqual({ key: 'end', value: msToSecondsLiteral(zoom.outputStartMs) })
-    expect(last.args).toContainEqual({ key: 'start', value: msToSecondsLiteral(zoom.outputEndMs) })
-    expect(last.args).toContainEqual({ key: 'end', value: msToSecondsLiteral(plan.output.durationMs) })
-    // Neither boundary window has a matching scale/crop node — the frame passes
-    // through untouched, which is what "returns to normal" means structurally.
-    const idxOf = (id: string): string => id.replace('vzwtrim', '')
-    expect(graph.nodes.some((n) => n.id === `vzwscale${idxOf(first.id)}`)).toBe(false)
-    expect(graph.nodes.some((n) => n.id === `vzwscale${idxOf(last.id)}`)).toBe(false)
+    const zp = graph.nodes.find((n) => n.filter === 'zoompan')!
+    const z = String(zp.args.find((a) => a.key === 'z')!.value)
+    const fps = plan.output.fpsNum / plan.output.fpsDen
+    const f = (ms: number) => Math.round((ms * fps) / 1000)
+    expect(evalFfmpegExpr(z, f(zoom.outputStartMs) - 1)).toBeCloseTo(1, 9)
+    expect(evalFfmpegExpr(z, f(zoom.outputEndMs))).toBeCloseTo(1, 9)
+    // And it does reach the target somewhere in between.
+    const mid = Math.round((f(zoom.outputStartMs) + f(zoom.outputEndMs)) / 2)
+    expect(evalFfmpegExpr(z, mid)).toBeGreaterThan(1)
   })
-
-  it('every zoom window is trimmed from the joined stream directly, so two zooms cannot compound', () => {
-    const base = hardCutPlan()
-    const plan = JSON.parse(JSON.stringify(base)) as EditPlanV1
-    // Two well-separated, un-eased zooms so each is exactly one hold window —
-    // easing is proven separately above, this test is about compounding only.
-    plan.video.zooms = [
-      {
-        index: 0, outputStartMs: 1000, outputEndMs: 2000, scaleMilli: 1200,
-        intensity: 'medium', reasonCode: 'emphasis_word', anchorWordIndex: 0,
-        easeInMs: 0, easeOutMs: 0,
-      },
-      {
-        index: 1, outputStartMs: 5000, outputEndMs: 6000, scaleMilli: 1400,
-        intensity: 'strong', reasonCode: 'emphasis_word', anchorWordIndex: 1,
-        easeInMs: 0, easeOutMs: 0,
-      },
-    ]
+  it('two zooms cannot compound, because their gates are disjoint', () => {
+    // ⚠️ THE ORIGINAL DEFECT THIS GUARDS remains real: a second zoom must never
+    // scale the FIRST zoom's output. The old graph achieved that by trimming
+    // every window from the joined stream. The continuous form achieves it by
+    // construction -- z is 1 plus a SUM of terms whose gates do not overlap --
+    // so the strongest assertion available is that the scale never exceeds the
+    // largest single zoom.
+    // A second zoom, added to the real fixture rather than to a fixture
+    // invented for this test -- the compounding risk is about two zooms on ONE
+    // timeline, so they must share one.
+    const plan = JSON.parse(JSON.stringify(hardCutPlan())) as EditPlanV1
+    const first = plan.video.zooms[0]
+    const gap = first.outputEndMs - first.outputStartMs
+    plan.video.zooms = [first, {
+      ...first,
+      index: 1,
+      outputStartMs: first.outputEndMs + gap,
+      outputEndMs: Math.min(first.outputEndMs + gap * 2, plan.output.durationMs),
+      scaleMilli: 1120,
+    }]
     const graph = buildFfmpegGraph(plan, ASSETS)
-    const trims = graph.nodes.filter((n) => n.id.startsWith('vzwtrim'))
-    // 5 windows: [0,1000) normal, [1000,2000) zoom0, [2000,5000) normal,
-    // [5000,6000) zoom1, [6000,duration) normal.
-    expect(trims).toHaveLength(5)
-    // A filtergraph pad has exactly one consumer, so the joined stream is
-    // fanned out through a `split` before any window trims it — every window
-    // reads one of THAT split's own outputs. If zoom1 compounded on zoom0's
-    // output, its trim's input would be zoom0's crop label instead.
-    const split = graph.nodes.find((n) => n.filter === 'split')
-    expect(split).toBeDefined()
-    expect(split!.inputs).toHaveLength(1)
-    for (const t of trims) expect(split!.outputs).toContain(t.inputs[0])
-    // `vzwsar1` (zoom0's final, SAR-corrected output) legitimately feeds the
-    // final concat — that is not compounding. It would BE compounding if any
-    // trim or scale fed on it instead of a split output, which is what this
-    // checks.
-    const downstreamOfZoom0 = graph.nodes.filter((n) => n.id.startsWith('vzwtrim') || n.id.startsWith('vzwscale'))
-    expect(downstreamOfZoom0.some((n) => n.inputs.includes('vzwsar1'))).toBe(false)
-    const scale0 = graph.nodes.find((n) => n.id === 'vzwscale1')
-    const scale1 = graph.nodes.find((n) => n.id === 'vzwscale3')
-    expect(scale0?.args).toContainEqual({ key: 'w', value: 'iw*1.200' })
-    expect(scale1?.args).toContainEqual({ key: 'w', value: 'iw*1.400' })
-    // The un-zoomed windows (0, 2, 4) never got a scale/crop node at all.
-    for (const idx of [0, 2, 4]) {
-      expect(graph.nodes.some((n) => n.id === `vzwscale${idx}`)).toBe(false)
-    }
-  })
+    // There is exactly one zoom stage, and nothing is split or concatenated.
+    expect(graph.nodes.filter((n) => n.filter === 'zoompan')).toHaveLength(1)
+    expect(graph.nodes.some((n) => n.id === 'zoomsplit')).toBe(false)
+    expect(graph.nodes.some((n) => n.id === 'zoomconcat')).toBe(false)
 
-  it('the zoom windows are concatenated back together, covering the full output duration exactly', () => {
+    const z = String(graph.nodes.find((n) => n.filter === 'zoompan')!
+      .args.find((a) => a.key === 'z')!.value)
+    const fps = plan.output.fpsNum / plan.output.fpsDen
+    const lastFrame = Math.round((plan.output.durationMs * fps) / 1000)
+    const biggest = Math.max(...plan.video.zooms.map((zz) => zz.scaleMilli)) / 1000
+    let peak = 0
+    for (let n = 0; n <= lastFrame; n++) peak = Math.max(peak, evalFfmpegExpr(z, n))
+    expect(peak).toBeLessThanOrEqual(biggest + 1e-9)
+    expect(peak).toBeGreaterThan(1)
+  })
+  it('covers the full output duration exactly, with no seams to lose frames at', () => {
+    // ⚠️ THIS TEST USED TO ASSERT THE SEAMS. They were the defect: every
+    // split/setpts/concat boundary dropped frames, and the loss scaled with the
+    // seam count. Now the claim is that there are none.
     const plan = hardCutPlan()
     const graph = buildFfmpegGraph(plan, ASSETS)
-    const trims = graph.nodes.filter((n) => n.id.startsWith('vzwtrim'))
-    const coveredMs = trims.reduce((n, t) => {
-      const start = Number(t.args.find((a) => a.key === 'start')!.value)
-      const end = Number(t.args.find((a) => a.key === 'end')!.value)
-      return n + Math.round((end - start) * 1000)
-    }, 0)
-    expect(coveredMs).toBe(plan.output.durationMs)
-    const concat = graph.nodes.find((n) => n.id === 'zoomconcat')
-    expect(concat?.args).toContainEqual({ key: 'n', value: trims.length })
-    expect(concat?.args).toContainEqual({ key: 'a', value: 0 })
+    expect(graph.nodes.some((n) => n.filter === 'split' && n.id === 'zoomsplit')).toBe(false)
+    expect(graph.nodes.some((n) => n.filter === 'concat' && n.id === 'zoomconcat')).toBe(false)
+    expect(graph.nodes.filter((n) => n.id.startsWith('vzwtrim'))).toHaveLength(0)
+    const zp = graph.nodes.find((n) => n.filter === 'zoompan')!
+    // d=1 is what makes one input frame produce exactly one output frame.
+    expect(zp.args).toContainEqual({ key: 'd', value: 1 })
   })
 })
 
@@ -505,35 +511,34 @@ describe('the watermark cannot be placed where the platform will cover it', () =
 })
 
 describe('the zoom crop is displaced toward the subject', () => {
-  it('every zoom window crops off-centre, easing WITH the scale', () => {
+  it('the pan is displaced toward the subject, easing WITH the scale', () => {
+    // ⚖️ THE SAME GATE AS THE SCALE. A pan on its own curve reads as the frame
+    // drifting -- a different defect from the one just fixed, and equally
+    // invisible to a frame count.
     const plan = hardCutPlan()
-    const z = plan.video.zooms[0]
-    expect(z.offsetXPx).not.toBe(0)
+    const zoom = plan.video.zooms[0]
+    expect(zoom.offsetXPx).not.toBe(0)
     const graph = buildFfmpegGraph(plan, ASSETS)
-    const crops = graph.nodes.filter((n) => n.id.startsWith('vzwcrop'))
-    expect(crops.length).toBeGreaterThan(1)
-    const xs = crops.map((c) => String(c.args.find((a) => a.key === 'x')!.value))
-    // The hold window carries the full offset...
-    expect(xs).toContain(`(iw-ow)/2-${Math.abs(z.offsetXPx)}`)
-    // ...and the ease steps carry less, so the framing does not jerk sideways
-    // before the zoom has revealed any slack to move into.
-    const magnitudes = xs.map((x) => Math.abs(Number(x.replace('(iw-ow)/2', '')) || 0))
-    expect(Math.max(...magnitudes)).toBe(Math.abs(z.offsetXPx))
-    expect(Math.min(...magnitudes)).toBeLessThan(Math.abs(z.offsetXPx))
+    const zp = graph.nodes.find((n) => n.filter === 'zoompan')!
+    const x = String(zp.args.find((a) => a.key === 'x')!.value)
+    const z = String(zp.args.find((a) => a.key === 'z')!.value)
+    expect(x).toContain(String(Math.abs(zoom.offsetXPx)))
+    // The offset term is gated by the SAME expression the scale term uses.
+    const gate = z.slice(z.indexOf('*') + 1)
+    expect(x).toContain(gate)
   })
-
-  it('a zero offset emits the plain centre expression, byte-identical to before', () => {
-    // No face evidence must not start emitting `(iw-ow)/2+0` — a cosmetic
-    // change that would alter the graph digest of every centred render.
+  it('a zero offset emits the plain centre expression, with no +0 term', () => {
+    // No face evidence must not start emitting a degenerate `+0*...` term: it
+    // would change the graph digest of every centred render for no picture
+    // difference at all.
     const plan = JSON.parse(JSON.stringify(hardCutPlan())) as EditPlanV1
     plan.video.zooms[0].offsetXPx = 0
     plan.video.zooms[0].offsetYPx = 0
     const graph = buildFfmpegGraph(plan, ASSETS)
-    const crop = graph.nodes.find((n) => n.id.startsWith('vzwcrop'))!
-    expect(crop.args).toContainEqual({ key: 'x', value: '(iw-ow)/2' })
-    expect(crop.args).toContainEqual({ key: 'y', value: '(ih-oh)/2' })
+    const zp = graph.nodes.find((n) => n.filter === 'zoompan')!
+    expect(zp.args).toContainEqual({ key: 'x', value: 'iw/2-(iw/zoom/2)', composedFromValidatedParts: true })
+    expect(zp.args).toContainEqual({ key: 'y', value: 'ih/2-(ih/zoom/2)', composedFromValidatedParts: true })
   })
-
   it('the displaced crop expression stays inside the value alphabet', () => {
     // `+`/`-` and digits only — no comma, no conditional, nothing that could
     // terminate a filter. Proven by serializing rather than by inspection.
