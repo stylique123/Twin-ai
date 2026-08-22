@@ -522,6 +522,14 @@ jobs:
         run: |
           node scripts/ci/check_counter_durability.mjs --selftest
           node scripts/ci/check_counter_durability.mjs
+      # ⚠️ SHAPE, NOT OUTCOME. This cannot verify that a credential was rotated —
+      # proving the old one no longer authenticates would mean holding it. It
+      # checks that the record is well-formed and, crucially, that a known entry
+      # cannot be deleted to make the debt go away.
+      - name: Security debt (an exposed credential does not expire on its own)
+        run: |
+          node scripts/ci/check_security_debt.mjs --selftest
+          node scripts/ci/check_security_debt.mjs
       - name: Staging migration coverage (a new migration is applied, or excluded with a reason)
         run: |
           node scripts/ci/check_staging_migration_coverage.mjs --selftest
