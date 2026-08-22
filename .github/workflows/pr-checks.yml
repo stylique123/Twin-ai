@@ -401,6 +401,14 @@ jobs:
         run: |
           node scripts/ci/check_workflow_shell_quoting.mjs --selftest
           node scripts/ci/check_workflow_shell_quoting.mjs
+      # Migration 0156 added a column named `asymmetric`. The bare word is
+      # RESERVED in Postgres -- the second half of `between symmetric` -- so the
+      # file was unrunnable from the moment it was written, and nothing in
+      # review caught it because the word reads like an adjective.
+      - name: Reserved column names (a column named `asymmetric` is a syntax error)
+        run: |
+          node scripts/ci/check_reserved_column_names.mjs --selftest
+          node scripts/ci/check_reserved_column_names.mjs
       # A bucket that names no size limit and no mime list accepts anything the
       # service key reaches, whatever the table grants say. Writing this guard
       # found that production's `takes` bucket carries a mime list NO MIGRATION
