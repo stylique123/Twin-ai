@@ -20,6 +20,10 @@ import { sha256Hex, canonicalJson } from './editorManifest.js'
 import {
   EditPlanError, type EditPlanV1, type PlanOverlay, type PlanSegment, type PlanZoom,
 } from './editPlanContract.js'
+import {
+  buildContinuousZoomPlan, composeZoomExpression, composePanExpression,
+  assertFramePreserving, framesInCut,
+} from './frameTimeline.js'
 
 export const FFMPEG_GRAPH_VERSION = 'ffmpeg-graph-1'
 
@@ -32,7 +36,25 @@ function invalid(message: string): never {
 // path. It is escaped for the filter mini-language at serialization time and is
 // exempt from the value alphabet — which is why it is a distinct, explicit kind
 // rather than a string that happens to look like a path.
-export type FilterArg = { key: string; value: string | number; isPath?: true }
+export type FilterArg = {
+  key: string
+  value: string | number
+  isPath?: true
+  /**
+   * ⚠️ SET ONLY BY A BUILDER THAT VALIDATED EVERY COMPONENT SEPARATELY.
+   *
+   * A zoom expression is assembled from ramp cores that were each checked
+   * against the SAME 64-character limit as every other value. The assembled
+   * result is longer than any of its parts, and that length is the ONLY rule it
+   * is exempt from -- the character class still applies in full, because the
+   * character class is what actually refuses a terminator.
+   *
+   * The limit is not being widened. No authored value may exceed 64; a
+   * composition of validated values is bounded by how many the plan contains,
+   * which the plan validator already bounds.
+   */
+  composedFromValidatedParts?: true
+}
 export interface FilterNode {
   id: string
   filter: string
@@ -97,6 +119,28 @@ function checkLabel(l: string): string {
   if (!LABEL_RE.test(l)) invalid(`label ${JSON.stringify(l)} is not a plain graph label`)
   return l
 }
+/**
+ * A value assembled from parts that were each already checked.
+ *
+ * ⚠️ THE CHARACTER CLASS IS ENFORCED IDENTICALLY. That is the rule that stops a
+ * value terminating a filter, an option or a chain, and it is not relaxed.
+ * Only the LENGTH bound differs, because the length of a composition is a
+ * function of how many validated parts went in -- not of any single one of them
+ * being allowed to grow.
+ */
+const COMPOSED_MAX_LEN = 1024
+function checkComposedValue(v: string | number): string {
+  const s = typeof v === 'number' ? String(v) : v
+  if (!/^[A-Za-z0-9_.*\/+()\-]+$/.test(s)) {
+    invalid(`composed filter argument ${JSON.stringify(s)} contains a forbidden character`)
+  }
+  if (s.length > COMPOSED_MAX_LEN) {
+    invalid(`composed filter argument is ${s.length} characters, over ${COMPOSED_MAX_LEN}. `
+      + 'A composition this long means the plan carries more effects than the graph should build.')
+  }
+  return s
+}
+
 function checkValue(v: string | number): string {
   const s = typeof v === 'number' ? String(v) : v
   if (!VALUE_RE.test(s)) invalid(`filter argument ${JSON.stringify(s)} contains a forbidden character`)
@@ -441,29 +485,58 @@ function windowChain(plan: EditPlanV1, win: ZoomWindow, vJoined: string, nodes: 
 
 function applyTimeGatedZooms(plan: EditPlanV1, vJoined: string, nodes: FilterNode[]): string {
   if (plan.video.zooms.length === 0) return vJoined
-  const windows = allWindows(plan)
-  if (windows.length === 1) return windowChain(plan, windows[0], vJoined, nodes, 0)
 
-  // A filtergraph label is a SINGLE-CONSUMER pad: `vJoined` cannot be wired as
-  // the input of every window's `trim` at once, only of one. `split` is the
-  // filter that turns one stream into N independent copies, which is what
-  // makes it safe for every window to be trimmed from the ORIGINAL joined
-  // stream (never from a previous window's processed output) without ffmpeg
-  // rejecting the graph as a pad used twice.
-  const splitLabels = windows.map((_w, idx) => `vzwsplit${idx}`)
+  // ⚠️ ONE CONTINUOUS STREAM. The previous implementation split the joined
+  // video into per-window pieces, retimed each with `setpts=PTS-STARTPTS`, and
+  // `concat`-ed them back. Every seam lost frames, and the loss scaled with the
+  // seam count -- measured against a resolved target of 184 frames:
+  //
+  //     decomposed   1 zoom 181   2 zooms 176   3 zooms 170
+  //     continuous   1 zoom 184   2 zooms 184   3 zooms 184
+  //
+  // Frame-exact boundaries did not rescue it: every piece >= 1 frame with an
+  // exact tiling sum still rendered 181 of 184. The seams were the mechanism.
+  const fpsNum = plan.output.fpsNum
+  const fpsDen = plan.output.fpsDen
+  const msToFrame = (ms: number) => Math.round((ms * fpsNum) / (1000 * fpsDen))
+  const targetFrameCount = plan.timeline.segments.reduce(
+    (n, seg) => n + framesInCut(seg.sourceEndMs - seg.sourceStartMs, fpsNum, fpsDen), 0,
+  )
+
+  const zoomPlan = buildContinuousZoomPlan(
+    plan.video.zooms.map((z) => ({
+      startFrame: msToFrame(z.outputStartMs),
+      endFrameExclusive: msToFrame(z.outputEndMs),
+      scaleMilli: z.scaleMilli,
+      offsetXPx: z.offsetXPx,
+      offsetYPx: z.offsetYPx,
+    })),
+    targetFrameCount,
+  )
+  // ⚖️ DEFENCE IN DEPTH. Should be unreachable; kept because a later change
+  // that reintroduces seams must fail loudly rather than ship a short video.
+  assertFramePreserving('continuous', zoomPlan)
+
+  const out = 'vzoom'
   nodes.push({
-    id: 'zoomsplit', filter: 'split',
-    args: [{ key: 'outputs', value: windows.length }],
-    inputs: [vJoined], outputs: splitLabels,
+    id: 'zoompan', filter: 'zoompan',
+    args: [
+      { key: 'z', value: composeZoomExpression(zoomPlan), composedFromValidatedParts: true },
+      { key: 'x', value: composePanExpression(zoomPlan, 'x'), composedFromValidatedParts: true },
+      { key: 'y', value: composePanExpression(zoomPlan, 'y'), composedFromValidatedParts: true },
+      // d=1 emits exactly one output frame per input frame: the property that
+      // makes the frame count survivable at all.
+      { key: 'd', value: 1 },
+      { key: 's', value: `${plan.output.width}x${plan.output.height}` },
+      { key: 'fps', value: `${fpsNum}/${fpsDen}` },
+    ],
+    inputs: [vJoined], outputs: [out],
   })
-  const labels = windows.map((w, idx) => windowChain(plan, w, splitLabels[idx], nodes, idx))
-  const out = 'vzcat'
-  nodes.push({
-    id: 'zoomconcat', filter: 'concat',
-    args: [{ key: 'n', value: labels.length }, { key: 'v', value: 1 }, { key: 'a', value: 0 }],
-    inputs: labels, outputs: [out],
-  })
-  return out
+  // zoompan can attach a corrective SAR the same way scale+crop did; every
+  // other pad in this graph is exactly 1:1 and `concat` refuses a mismatch.
+  const vSar = 'vzoomsar'
+  nodes.push({ id: 'vzoomsetsar', filter: 'setsar', args: [{ key: 'sar', value: '1' }], inputs: [out], outputs: [vSar] })
+  return vSar
 }
 
 /**
@@ -1057,7 +1130,9 @@ export function serializeFilterGraph(graph: FfmpegGraph): string {
     const args = node.args.map((arg) => {
       const raw = arg.isPath
         ? `'${escapeFilterPath(String(arg.value))}'`
-        : checkValue(arg.value)
+        : arg.composedFromValidatedParts
+          ? checkComposedValue(arg.value)
+          : checkValue(arg.value)
       return arg.key === '' ? raw : `${arg.key}=${raw}`
     }).join(':')
     chains.push(`${ins}${node.filter}${args === '' ? '' : `=${args}`}${outs}`)

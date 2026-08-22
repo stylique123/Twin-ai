@@ -183,6 +183,9 @@ export interface SafeZoomGate {
   /** The ramp components. These are the values the grammar checks. */
   readonly cores: readonly string[]
   readonly scaleMilli: number
+  /** Pan offsets in OUTPUT pixels, gated by the same ramp as the scale. */
+  readonly offsetXPx: number
+  readonly offsetYPx: number
 }
 
 export interface ContinuousZoomPlan {
@@ -284,7 +287,8 @@ export function zoomGateExpression(
 
 /** Build the plan. Every gate is validated ALONE, before anything is joined. */
 export function buildContinuousZoomPlan(
-  zooms: ReadonlyArray<{ startFrame: number; endFrameExclusive: number; scaleMilli: number }>,
+  zooms: ReadonlyArray<{ startFrame: number; endFrameExclusive: number; scaleMilli: number;
+                         offsetXPx?: number; offsetYPx?: number }>,
   targetFrameCount: number,
 ): ContinuousZoomPlan {
   const gates = zooms.map((z) => {
@@ -299,7 +303,10 @@ export function buildContinuousZoomPlan(
     if (z.endFrameExclusive > targetFrameCount) {
       bad(`a zoom ends at frame ${z.endFrameExclusive} but the timeline is ${targetFrameCount}`)
     }
-    return { startFrame: z.startFrame, endFrameExclusive: z.endFrameExclusive, expression, cores, scaleMilli: z.scaleMilli }
+    return {
+      startFrame: z.startFrame, endFrameExclusive: z.endFrameExclusive, expression, cores,
+      scaleMilli: z.scaleMilli, offsetXPx: z.offsetXPx ?? 0, offsetYPx: z.offsetYPx ?? 0,
+    }
   })
   return { targetFrameCount, gates }
 }
@@ -345,4 +352,23 @@ export function assertFramePreserving(
       throw new Error(`${EFFECT_TIMELINE_NOT_FRAME_PRESERVING}: a sub-frame window survived to render`)
     }
   }
+}
+
+/**
+ * The `x`/`y` expressions for `zoompan`, centred and then nudged by each zoom's
+ * own offset, gated by that zoom's ramp.
+ *
+ * ⚠️ THE SAME GATE AS THE SCALE. A pan on a different curve from the zoom it
+ * belongs to reads as the frame drifting, which is a different defect from the
+ * one just fixed and would be just as invisible to a frame count.
+ */
+export function composePanExpression(plan: ContinuousZoomPlan, axis: 'x' | 'y'): string {
+  const dim = axis === 'x' ? 'iw' : 'ih'
+  // Centre the crop: zoompan's origin is the top-left of the source frame.
+  const centred = `${dim}/2-(${dim}/zoom/2)`
+  const terms = plan.gates
+    .map((g) => ({ px: axis === 'x' ? g.offsetXPx : g.offsetYPx, g }))
+    .filter((t) => t.px !== 0)
+    .map((t) => `${t.px > 0 ? '+' : '-'}${Math.abs(t.px)}*${t.g.expression}`)
+  return centred + terms.join('')
 }
