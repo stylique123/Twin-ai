@@ -448,6 +448,14 @@ jobs:
       # refuse, leaving an action that looks crippled and is not.
       - name: Pilot start (the action cannot express the dangerous request)
         run: node scripts/pilot-start.selftest.mjs
+      # ⚠️ THE GENERATOR SAID "CI REGENERATES THIS FILE AND FAILS ON A DIFF" AND
+      # CI DID NOT. --check existed and nothing invoked it, so all three Deno
+      # copies could drift from their sources silently — exactly the failure the
+      # generator was written to prevent, and the reason it exists at all: a
+      # hand-maintained copy kept the 500%-of-a-different-population rate bug
+      # after the original was fixed, and its selftest passed against stale code.
+      - name: Generated Deno copies are not stale
+        run: node scripts/ci/generate_shared_pilot_core.mjs --check
       # The 332 decision rule, committed BEFORE any label exists. A verdict rule
       # invented after reading a support rate is not a decision procedure, it is
       # a justification — the trap #72 nearly fell into.
