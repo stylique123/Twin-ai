@@ -6,7 +6,7 @@
 // that says "fine".
 import {
   CARDS, schemaCard, pilotCard, recordingsCard, watchedSessionCard, rotationCard,
-  nextAction, ROTATION_LOCATIONS, RECORDINGS_NEEDED,
+  nextAction, ROTATION_LOCATIONS, RECORDINGS_NEEDED, SCHEMA_STEPS,
 } from './owner-console.mjs'
 
 let pass = 0, fail = 0
@@ -33,6 +33,23 @@ ok('a missing 0165 blocks the watched-session card',
   (schemaCard({ hasZoomCount: true, hasWatchedSessions: false }).blocks ?? []).includes('watched_session'))
 ok('a present 0165 blocks nothing',
   (schemaCard({ hasZoomCount: true, hasWatchedSessions: true }).blocks ?? []).length === 0)
+
+// ⚠️ BOTH PENDING FILES MUST BE NAMED BEFORE THE OWNER STARTS. Applying one and
+// discovering the other afterwards is the exact failure this list prevents.
+ok('a card missing both names both files, in order', (() => {
+  const st = schemaCard({ hasZoomCount: false, hasWatchedSessions: false }).steps
+  return st.length === 2 && st[0].id === '0164' && st[1].id === '0165'
+})())
+ok('a card missing only 0165 does not offer to re-apply 0164', (() => {
+  const st = schemaCard({ hasZoomCount: true, hasWatchedSessions: false }).steps
+  return st.length === 1 && st[0].id === '0165'
+})())
+ok('every step carries the file path that must actually be pasted',
+  SCHEMA_STEPS.every((s) => s.file.startsWith('supabase/migrations/') && s.file.endsWith('.sql')))
+ok('every step says why it matters, not what it changes',
+  SCHEMA_STEPS.every((s) => typeof s.because === 'string' && s.because.length > 20))
+ok('a satisfied schema offers no steps at all',
+  schemaCard({ hasZoomCount: true, hasWatchedSessions: true }).steps === undefined)
 
 // ── pilot ─────────────────────────────────────────────────────────────────
 ok('no run asks for the click', pilotCard(null, { canStart: true }).ownerAction.includes('Start'))

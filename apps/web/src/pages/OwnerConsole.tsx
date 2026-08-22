@@ -125,6 +125,19 @@ export default function OwnerConsole() {
             </div>
             {c.ownerAction && <div className="mt-1.5 text-sm">{c.ownerAction}</div>}
             <div className="mt-1 text-sm opacity-70">{c.detail}</div>
+            {c.steps && (
+              // ⚠️ IN ORDER, BOTH OF THEM, BEFORE STARTING. Applying one file and
+              // discovering the second afterwards — by something behaving oddly —
+              // is the failure this list exists to prevent.
+              <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm">
+                {c.steps.map((s) => (
+                  <li key={s.id}>
+                    <code className="rounded bg-white/10 px-1.5 py-0.5 text-[12px]">{s.file}</code>
+                    <div className="opacity-70">{s.because}</div>
+                  </li>
+                ))}
+              </ol>
+            )}
             {c.checklist && (
               // ⚠️ ALL OF THEM, BEFORE STARTING. Discovering these one at a time
               // is how a rotation half-completes and something somewhere keeps

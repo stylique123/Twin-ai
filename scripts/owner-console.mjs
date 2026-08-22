@@ -25,6 +25,30 @@ export const CARDS = Object.freeze([
 ])
 
 /**
+ * What a failed probe means, in the order the files must be applied.
+ *
+ * ⚠️ THE ORDER IS PART OF THE DATA, not something the reader reconstructs. Two
+ * pending migrations discovered separately is how the second one gets found
+ * later, by something behaving strangely.
+ */
+export const SCHEMA_STEPS = Object.freeze([
+  {
+    id: '0164',
+    file: 'supabase/migrations/0164_the_quantisation_is_nobodys_fault_so_it_gets_its_own_column.sql',
+    // ⚖️ THE CONSEQUENCE, NOT THE CHANGELOG. schemaCapabilities declares these
+    // columns as an editor_v2 requirement and the worker drops a blocked type
+    // from its claim list entirely, so this is not a degraded editor — it is an
+    // editor that never picks the work up.
+    because: 'Until this lands, the worker declines editor_v2 work entirely — blocked, not degraded.',
+  },
+  {
+    id: '0165',
+    file: 'supabase/migrations/0165_a_watched_session_lives_in_the_database_not_a_laptop.sql',
+    because: 'Until this lands, the deployed watched-session endpoint fails on its first query.',
+  },
+])
+
+/**
  * Production schema readiness, from object probes.
  *
  * ⚠️ `absent` IS A THIRD ANSWER, NOT A FALSE. A probe that could not run is not
@@ -44,9 +68,14 @@ export function schemaCard({ hasZoomCount, hasWatchedSessions }) {
     return { card: 'production_schema', state: 'done', ownerAction: null,
       detail: 'render_attempts carries the 0164 columns and the watched_session tables exist.' }
   }
+  // ⚠️ EVERY PENDING FILE, NAMED, IN ORDER, BEFORE THE OWNER STARTS. Applying
+  // one and discovering the other afterwards is the failure this list exists to
+  // prevent. Both files are re-runnable, so a mid-pass retry is safe.
+  const steps = SCHEMA_STEPS.filter((s) => missing.includes(s.id))
   return {
     card: 'production_schema', state: 'action_needed',
     ownerAction: `Apply ${missing.join(' then ')} in one pass, then run verify_0164_0165.sql`,
+    steps,
     // ⚖️ THE CONSEQUENCE, NOT JUST THE FACT. "0164 pending" is a chore; "the
     // worker will not claim editor_v2 work" is why it is today's chore.
     detail: missing.includes('0164')
