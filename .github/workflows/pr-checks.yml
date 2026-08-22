@@ -443,6 +443,12 @@ jobs:
       # taken from a different population than its denominator.
       - name: Pilot core (frozen sample, terminal states, rates that cannot exceed 100%)
         run: node scripts/pilot-core.selftest.mjs
+      # #57's trigger. The properties worth guarding are the EXCLUSIONS: staging
+      # rows and uploads are not product recordings, an unrendered attempt is
+      # not a video anybody watched, and a control that lands on a real cut is
+      # scored against the baseline it exists to provide.
+      - name: Cut review (which renders count, and where the controls go)
+        run: node scripts/cut-review.selftest.mjs
       # The 332 decision rule, committed BEFORE any label exists. A verdict rule
       # invented after reading a support rate is not a decision procedure, it is
       # a justification — the trap #72 nearly fell into.
