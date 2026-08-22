@@ -6,5 +6,7 @@
 -- rows. Extending the set is a deliberate migration, exactly like a status
 -- enum.
 alter table public.media_analyses
+  drop constraint if exists media_analyses_component_bounded;
+alter table public.media_analyses
   add constraint media_analyses_component_bounded
   check (component in ('inspection', 'speech', 'visual', 'audio', 'hook'));
