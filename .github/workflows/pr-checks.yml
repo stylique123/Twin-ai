@@ -416,6 +416,11 @@ jobs:
       # taken from a different population than its denominator.
       - name: Pilot core (frozen sample, terminal states, rates that cannot exceed 100%)
         run: node scripts/pilot-core.selftest.mjs
+      # The 332 decision rule, committed BEFORE any label exists. A verdict rule
+      # invented after reading a support rate is not a decision procedure, it is
+      # a justification — the trap #72 nearly fell into.
+      - name: Pilot decision (pre-registered 332 rule, thresholds stated not buried)
+        run: node scripts/pilot-decision.selftest.mjs
       # The staging matrix applies a HAND-MAINTAINED migration list, and it has
       # fallen behind three times. Every time, the symptom was a harness timeout
       # with nothing in the diff mentioning a migration — the gate went green on

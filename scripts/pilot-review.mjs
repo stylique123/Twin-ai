@@ -17,6 +17,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, copyFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
+import { decide332, renderDecision } from './pilot-decision.mjs'
 import {
   selectCohort, bandOf, handleOf, freezeManifest, assertManifestUnchanged,
   progressOf, attrition, flattenClaims, orderClaims, isLabel, aggregate, friction,
@@ -260,6 +261,7 @@ export function finish(run, reviewer) {
   // ⚠️ THE RATES ARE CHECKED BEFORE THEY ARE PRINTED. A share above 1, or four
   // shares that do not sum to one, means a denominator moved between lines --
   // and this file has produced 500% and 350% before.
+  run.decision = decide332(run)
   const rateProblems = checkRateInvariants(agg)
   if (rateProblems.length) throw new Error(`refusing to report impossible rates:\n  ${rateProblems.join('\n  ')}`)
   run.brief69 = briefFor69(fr, agg, slowestFields(run.events ?? [], run.labels))
@@ -469,5 +471,9 @@ export function report(run) {
   L.push(`\n  #69 — ${b.verdict}`)
   for (const i of b.items) L.push(`   · ${i.change}\n       because ${i.because}`)
   if (b.items.length) L.push(`\n  thresholds: ${b.thresholds}`)
+  // ⚠️ THE VERDICT IS COMPUTED, NOT ARGUED. The rule was committed before any
+  // label existed; applying it here means nobody reads a support rate and then
+  // decides what would have counted as good.
+  if (run.decision) L.push(renderDecision(run.decision))
   return L.join('\n')
 }
