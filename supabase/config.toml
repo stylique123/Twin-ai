@@ -79,3 +79,9 @@ verify_jwt = true
 
 [functions.generate-thumbnail]
 verify_jwt = true
+
+# The visual pilot's labelling page. A normal authenticated Twin admin session
+# is the access control; the function checks platform_admins with the service
+# role before it will read or write anything.
+[functions.pilot-review]
+verify_jwt = true
