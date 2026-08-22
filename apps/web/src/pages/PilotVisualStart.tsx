@@ -140,6 +140,20 @@ export default function PilotVisualStart() {
             {status.progress.unreadable > 0 && <li>{status.progress.unreadable} had nothing to see</li>}
             {status.progress.failed > 0 && <li>{status.progress.failed} could not be checked</li>}
           </ul>
+          {/* ⚠️ A REFUSED PACKET IS SHOWN, NOT SPUN ON. The reason names which
+              rule refused — a reference with no terminal state, a zero-claim
+              packet, a packet that contradicts its own attrition report — and
+              every one of those means this run must not be labelled yet. */}
+          {status.packet_error && (
+            <div className="mt-3 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+              The review packet could not be built yet: {status.packet_error}
+            </div>
+          )}
+          {status.packet && (
+            <div className="mt-2 text-xs opacity-60">
+              Packet stored: {status.packet.claims} things to check across {status.packet.ready} videos.
+            </div>
+          )}
           {status.review_url && (
             <Link
               to={status.review_url}

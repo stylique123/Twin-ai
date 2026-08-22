@@ -29,6 +29,10 @@ import {
 import {
   validateStartRequest, validateStatusRequest, activePilotRefusal, pilotJobRows, ACTIVE_STATUSES,
 } from '../_shared/pilotStart.ts'
+// ⚠️ THE PACKET IS BUILT HERE, NOT BY A LAPTOP. collectForRun's only caller used
+// to be the CLI, so the button path enqueued work, watched it finish, and handed
+// over a review URL for a packet nothing had ever written.
+import { collectForRun, collectReadiness } from '../_shared/pilotCollect.ts'
 
 // Kept identical to scripts/pilot-db.mjs. A run that does not record which rule
 // drew it cannot be compared with a later run drawn by a different one.
@@ -112,7 +116,46 @@ Deno.serve(async (req: Request) => {
     if (profErr) return json({ error: `could not read collection progress: ${profErr.message}` }, 500)
 
     const progress = progressOf(profiles ?? [], { urls })
+
+    // ── materialise the packet, before anybody is sent to label it ──────────
+    //
+    // ⚖️ READY_FOR_LABEL IS A CLAIM ABOUT A PERSISTED PACKET, NOT A PROGRESS
+    // READING. The review page reads visual_pilot_claims; progress reads
+    // reference_content_profiles. Those are different tables, and handing over
+    // the URL on the strength of the second while the first was empty is
+    // exactly how a real pilot showed "Claim 1 of 0" over eight references
+    // whose evidence had already been collected and paid for.
+    //
+    // ⚠️ IDEMPOTENT ON PURPOSE. collectForRun upserts claims keyed by
+    // (pilot_run_id, url, claim_path) and refuses a locked run, so polling this
+    // endpoint repeatedly converges on one packet rather than rebuilding a
+    // different one under a reviewer who is already labelling.
+    let packet: { references: number; ready: number; claims: number } | null = null
+    let packetError: string | null = null
+    const gate = collectReadiness(progress, run)
+    if (gate.collect) {
+      try {
+        packet = await collectForRun(admin, pilotRunId)
+      } catch (e) {
+        // ⚠️ REPORTED, NEVER SWALLOWED, AND NEVER PROMOTED. Its refusals — a
+        // reference with no terminal state, a zero-claim packet, a packet that
+        // contradicts the attrition report — are the reasons this run must NOT
+        // be labelled yet. Turning them into a 500 would read as an outage;
+        // hiding them would send the owner to an empty page again.
+        packetError = e instanceof Error ? e.message : String(e)
+      }
+    }
+
+    // ⚠️ THE PACKET, NOT THE PROGRESS, DECIDES. A run is reviewable only once a
+    // non-empty stored packet exists — which is what `claims > 0` reads back.
+    const reviewable = (packet?.claims ?? 0) > 0
+      || (progress.done && (await admin.from('visual_pilot_claims')
+        .select('id', { count: 'exact', head: true }).eq('pilot_run_id', pilotRunId)).count! > 0)
+
     return json({
+      packet,
+      // Null unless something refused. Never a bare "not ready".
+      packet_error: packetError,
       ok: true,
       pilot_run_id: pilotRunId,
       status: run.status,
@@ -126,9 +169,8 @@ Deno.serve(async (req: Request) => {
       },
       attrition: attrition(progress),
       // Relative, so it is correct from whatever origin the owner opened.
-      review_url: progress.done && progress.ready > 0
-        ? `/internal/review/visual/${pilotRunId}`
-        : null,
+      // ⚠️ GATED ON THE PACKET, NOT ON PROGRESS. This line is the fix.
+      review_url: reviewable ? `/internal/review/visual/${pilotRunId}` : null,
     })
   }
 
