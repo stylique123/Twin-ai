@@ -56,10 +56,18 @@ jobs:
           # localhost, which nobody but that container could reach. It carries
           # no anonymous path — every action re-checks platform_admins with the
           # service role before it reads or writes anything.
+          # pilot-start — the ONLY way to start a #58 pilot. PRODUCTION on
+          # purpose, and it REPLACES a laptop terminal holding a service-role
+          # key. It is deliberately crippled: three accepted keys, unknown keys
+          # REFUSED rather than ignored, assess_reference only, frames:true and
+          # the whole payload constructed server-side, size capped at the pilot
+          # ceiling, one active run at a time, and a cost ceiling the caller
+          # must state before anything is enqueued. Same platform_admins check
+          # as pilot-review, with the service role, before any table is read.
           PROD="admin admin-metrics billing billing-webhook brand-logo brand-truth clip-asset \
                 dna-poll editor-output generate-blueprint generate-thumbnail ingest-reference \
-                pilot-review product-image referral review social source-asset start-dna \
-                start-editor-v2"
+                pilot-review pilot-start product-image referral review social source-asset \
+                start-dna start-editor-v2"
 
           unclassified=""
           for d in supabase/functions/*/; do

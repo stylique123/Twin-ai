@@ -16,6 +16,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 const SOURCES = [
   ['scripts/pilot-core.mjs', 'supabase/functions/_shared/pilotCore.ts'],
   ['scripts/pilot-decision.mjs', 'supabase/functions/_shared/pilotDecision.ts'],
+  ['scripts/pilot-start.mjs', 'supabase/functions/_shared/pilotStart.ts'],
 ]
 
 const render = (from, src) =>
