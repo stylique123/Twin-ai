@@ -443,6 +443,11 @@ jobs:
       # taken from a different population than its denominator.
       - name: Pilot core (frozen sample, terminal states, rates that cannot exceed 100%)
         run: node scripts/pilot-core.selftest.mjs
+      # Every refusal in the start action is proven to fire. The dangerous
+      # failure is not a wrong message — it is a refusal that silently does not
+      # refuse, leaving an action that looks crippled and is not.
+      - name: Pilot start (the action cannot express the dangerous request)
+        run: node scripts/pilot-start.selftest.mjs
       # The 332 decision rule, committed BEFORE any label exists. A verdict rule
       # invented after reading a support rate is not a decision procedure, it is
       # a justification — the trap #72 nearly fell into.

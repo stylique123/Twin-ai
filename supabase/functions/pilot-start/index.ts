@@ -1,0 +1,159 @@
+// Supabase Edge Function: pilot-start
+//
+// STARTING A PILOT IS AN AUTHENTICATED ACTION, NOT A TERMINAL COMMAND.
+//
+// The previous way to start a #58 pilot was `frame-pilot.mjs --review --size 8
+// --go`, run from a laptop holding a service role key. That is a
+// general-purpose job producer pointed at a pilot: nothing in it prevents an
+// arbitrary URL list, an arbitrary payload, or the whole backlog. The only
+// control was the operator's care.
+//
+// This endpoint cannot express those requests. It accepts three keys, draws
+// the sample from the frozen cohort rule, constructs every payload itself, and
+// refuses a second concurrent run. `scripts/frame-pilot.mjs` survives as an
+// operator/debug path only; it is no longer how a pilot starts.
+//
+//   POST { action:"quote", size?, cost_ceiling_downloads }  -> the bill, nothing enqueued
+//   POST { action:"start", size?, cost_ceiling_downloads }  -> freeze + enqueue exactly that sample
+//
+// ⚖️ `quote` EXISTS SO THE BILL CAN BE SEEN BEFORE IT IS AGREED TO. It touches
+// no table and enqueues nothing, so "what would this cost" is never a question
+// somebody has to answer by running the spending version.
+
+import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
+import {
+  selectCohort, bandOf, handleOf, manifestDigest, PILOT_PRIORITY,
+} from '../_shared/pilotCore.ts'
+import {
+  validateStartRequest, activePilotRefusal, pilotJobRows, ACTIVE_STATUSES,
+} from '../_shared/pilotStart.ts'
+
+// Kept identical to scripts/pilot-db.mjs. A run that does not record which rule
+// drew it cannot be compared with a later run drawn by a different one.
+const SELECTION_VERSION = 'chars_zero_tiny_v1'
+
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+const json = (b: unknown, s = 200) =>
+  new Response(JSON.stringify(b), { status: s, headers: { ...cors, 'Content-Type': 'application/json' } })
+
+Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
+
+  const env = (k: string) => Deno.env.get(k)
+  const url = env('SUPABASE_URL')!
+  const admin = createClient(url, env('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } })
+  const userClient = createClient(url, env('SUPABASE_ANON_KEY')!, {
+    global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
+  })
+
+  const { data: { user } } = await userClient.auth.getUser()
+  if (!user) return json({ error: 'Not authenticated' }, 401)
+  // Checked with the service role so RLS cannot be tricked, and so admin status
+  // is never something the client can assert about itself.
+  const { data: adminRow } = await admin.from('platform_admins').select('role').eq('user_id', user.id).maybeSingle()
+  if (!adminRow) return json({ error: 'Forbidden' }, 403)
+
+  let body: Record<string, unknown>
+  try { body = await req.json() } catch { return json({ error: 'Invalid JSON body' }, 400) }
+
+  const action = String(body.action ?? '')
+  if (action !== 'quote' && action !== 'start') {
+    return json({ error: 'action must be "quote" or "start"' }, 400)
+  }
+
+  // ⚠️ VALIDATED BEFORE ANYTHING IS READ, LET ALONE WRITTEN. A refusal that
+  // happens after the cohort query has already run is a refusal that has
+  // already done work on behalf of a request it was going to reject.
+  let checked: { size: number; ceiling: number; cost: { references: number; downloads: number; visionCalls: number } }
+  try { checked = validateStartRequest(body) } catch (e) {
+    return json({ error: e instanceof Error ? e.message : String(e) }, 400)
+  }
+
+  if (action === 'quote') {
+    return json({ ok: true, quoted: checked.cost, ceiling: checked.ceiling, enqueued: 0 })
+  }
+
+  // ── one pilot at a time ──────────────────────────────────────────────────
+  const { data: runs, error: runsErr } = await admin.from('visual_pilot_runs')
+    .select('id, status').in('status', ACTIVE_STATUSES)
+  if (runsErr) return json({ error: `could not check for an active pilot: ${runsErr.message}` }, 500)
+  const refusal = activePilotRefusal(runs ?? [])
+  if (refusal) return json({ error: refusal }, 409)
+
+  // ── draw and freeze ──────────────────────────────────────────────────────
+  const { data: rows, error: cohortErr } = await admin.from('reference_content_profiles')
+    .select('url, transcript_chars').like('error', 'no_speech%')
+  if (cohortErr) return json({ error: `could not read the no-speech cohort: ${cohortErr.message}` }, 500)
+
+  const cohort = selectCohort(rows ?? [], checked.size)
+  // ⚠️ AN EMPTY DRAW IS A REFUSAL, NOT AN EMPTY RUN. A frozen pilot of nothing
+  // would later report 0% and read like a measurement.
+  if (cohort.length === 0) return json({ error: 'the no-speech cohort is empty — nothing to pilot' }, 409)
+
+  const urls = cohort.map((r: { url: string }) => r.url)
+  const { data: run, error: e2 } = await admin.from('visual_pilot_runs').insert({
+    created_by: user.id,
+    selection_version: SELECTION_VERSION,
+    requested_size: checked.size,
+    frozen_size: urls.length,
+    sample_digest: manifestDigest(urls),
+    expected_max_downloads: checked.cost.downloads,
+    status: 'frozen',
+  }).select('id').single()
+  if (e2 || !run) return json({ error: `could not create the pilot run: ${e2?.message}` }, 500)
+
+  const { error: e3 } = await admin.from('visual_pilot_references').insert(
+    cohort.map((r: { url: string; transcript_chars: number }) => ({
+      pilot_run_id: run.id,
+      url: r.url,
+      stratum: bandOf(r.transcript_chars),
+      creator_handle: handleOf(r.url),
+    })),
+  )
+  if (e3) return json({ error: `could not freeze the pilot sample: ${e3.message}`, pilot_run_id: run.id }, 500)
+
+  // ── enqueue exactly the frozen sample ────────────────────────────────────
+  //
+  // ⚠️ A JOB ALREADY IN FLIGHT FOR ONE OF THESE URLS WOULD DOUBLE THE SPEND.
+  // The active-run check above stops a second pilot; it cannot see a job
+  // somebody queued by hand.
+  const { data: inflight, error: e4 } = await admin.from('jobs')
+    .select('id, payload, status').eq('type', 'assess_reference').in('status', ['queued', 'running'])
+  if (e4) return json({ error: `could not check for in-flight jobs: ${e4.message}`, pilot_run_id: run.id }, 500)
+  const clashing = (inflight ?? []).filter((j: { payload?: { url?: string } }) => urls.includes(j.payload?.url ?? ''))
+  if (clashing.length > 0) {
+    return json({
+      error: `${clashing.length} assess_reference job(s) are already queued or running for references `
+        + 'in this sample. Enqueuing would pay for each of them twice. The sample is frozen and '
+        + 'unchanged — let them drain, then start again.',
+      pilot_run_id: run.id,
+    }, 409)
+  }
+
+  const { error: e5 } = await admin.from('jobs').insert(pilotJobRows(urls, run.id, PILOT_PRIORITY))
+  if (e5) return json({ error: `could not enqueue the pilot: ${e5.message}`, pilot_run_id: run.id }, 500)
+
+  const { error: e6 } = await admin.from('visual_pilot_runs')
+    .update({ status: 'enqueued' }).eq('id', run.id)
+  if (e6) return json({ error: `enqueued, but could not record it: ${e6.message}`, pilot_run_id: run.id }, 500)
+
+  await admin.from('visual_pilot_events').insert({
+    pilot_run_id: run.id,
+    kind: 'started',
+    detail: { by: user.id, size: checked.size, ceiling: checked.ceiling, cost: checked.cost },
+  })
+
+  return json({
+    ok: true,
+    pilot_run_id: run.id,
+    frozen: urls.length,
+    enqueued: urls.length,
+    quoted: checked.cost,
+    ceiling: checked.ceiling,
+  })
+})
