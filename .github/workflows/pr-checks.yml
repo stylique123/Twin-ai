@@ -417,6 +417,14 @@ jobs:
         run: |
           node scripts/ci/check_reserved_column_names.mjs --selftest
           node scripts/ci/check_reserved_column_names.mjs
+      # The staging matrix applies every listed migration BYTE-EXACT on every run,
+      # so one non-re-runnable file breaks every subsequent run for every PR --
+      # and it ships green, because a first application against a schema that
+      # has never seen the migration cannot reveal it. 0164 did exactly this.
+      - name: Migrations survive being applied twice (Postgres has no ADD CONSTRAINT IF NOT EXISTS)
+        run: |
+          node scripts/ci/check_migration_rerunnable.selftest.mjs
+          node scripts/ci/check_migration_rerunnable.mjs
       # A bucket that names no size limit and no mime list accepts anything the
       # service key reaches, whatever the table grants say. Writing this guard
       # found that production's `takes` bucket carries a mime list NO MIGRATION

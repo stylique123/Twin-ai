@@ -75,6 +75,12 @@ begin
     execute format('alter table public.media_assets drop constraint %I', c.conname);
   end loop;
 end $$;
+-- ⚖️ THE LOOP ABOVE ALREADY DROPS THIS ONE, BUT ONLY BY ACCIDENT: it matches on
+-- the definition containing 'thumbnail', and this constraint happens to list
+-- 'thumbnail'. Edit that list and the migration silently stops being
+-- re-runnable. The explicit drop-by-name does not depend on the definition.
+alter table public.media_assets
+  drop constraint if exists media_assets_kind_check;
 alter table public.media_assets
   add constraint media_assets_kind_check
   check (kind in ('source', 'music', 'output', 'thumbnail', 'clip'));

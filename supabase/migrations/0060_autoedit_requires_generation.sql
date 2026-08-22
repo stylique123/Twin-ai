@@ -10,5 +10,7 @@
 -- unaffected. The edge function (enqueue-autoedit) also rejects a missing
 -- generation up front with a clean 400 — this is the belt-and-braces DB backstop.
 alter table public.jobs
+  drop constraint if exists autoedit_requires_generation;
+alter table public.jobs
   add constraint autoedit_requires_generation
   check (type <> 'autoedit' or (payload->>'generation_id') is not null);

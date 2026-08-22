@@ -44,6 +44,7 @@ begin
 end;
 $$;
 
+drop trigger if exists trg_media_analyses_append_only on public.media_analyses;
 create trigger trg_media_analyses_append_only
   before update or delete on public.media_analyses
   for each row execute function public.media_analyses_append_only();
