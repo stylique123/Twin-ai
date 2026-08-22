@@ -124,7 +124,8 @@ export function slopeOf(rows) {
  * touched.
  */
 export const SWEEP_DEPS = Object.freeze([
-  'admin', 'fixtures', 'sha256', 'newGen', 'wordCountFor', 'runToSettled', 'donorAssetId', 'ownerId',
+  'admin', 'fixtures', 'sha256', 'wordCountFor', 'runToSettled',
+  'donorAssetId', 'donorGenerationId', 'ownerId',
 ])
 
 export function missingSweepDeps(deps) {
@@ -140,17 +141,26 @@ export async function runZoomSweep(deps) {
     throw new Error(`runZoomSweep is missing required dependenc${missing.length === 1 ? 'y' : 'ies'}: `
       + `${missing.join(', ')}. The caller must supply every one of: ${SWEEP_DEPS.join(', ')}.`)
   }
-  const { admin, fixtures, sha256, newGen, wordCountFor, runToSettled, donorAssetId, ownerId, log } = deps
+  const { admin, fixtures, sha256, wordCountFor, runToSettled, donorAssetId, donorGenerationId, ownerId, log } = deps
   const rows = []
   const notes = []
 
   for (const n of SWEEP_ZOOM_COUNTS) {
     try {
-      // ⚖️ A FRESH GENERATION, BUT THE DONOR'S ASSET. media_analyses is keyed by
-      // source_asset_id, so reusing the asset is what makes the cached evidence
-      // apply — a new upload would have no analysis and compiling would fail.
-      const gen = await newGen(ownerId)
-      const pid = await fixtures.scratchProject(ownerId, gen, donorAssetId)
+      // ⚠️ THE DONOR'S GENERATION, NOT A FRESH ONE. This is the correction the
+      // first real run forced. bootScriptPolicy enforces, before any other
+      // branch, that media_assets.generation_id EQUALS the project's
+      // generation_id — a provenance invariant, not a formality. Minting a new
+      // generation while reusing the donor's asset breaks it by construction,
+      // and all four zoom buckets failed identically with
+      // "source_state_contradiction: pin: asset linkage mismatch".
+      //
+      // ⚖️ THE ASSET IS STILL THE DONOR'S, WHICH IS THE WHOLE SEAM.
+      // media_analyses is keyed by source_asset_id, so reusing the asset is what
+      // makes the cached evidence apply; a fresh upload would have no analysis
+      // and compiling would fail for a different reason. Reusing the donor's
+      // GENERATION too is what makes that legal rather than a contradiction.
+      const pid = await fixtures.scratchProject(ownerId, donorGenerationId, donorAssetId)
       const lease = await fixtures.fabricateLease(ownerId, pid, `p8-sweep-${n}`)
       await fixtures.advanceTo(pid, lease, ['inspecting', 'transcribing', 'analyzing', 'directing'])
 

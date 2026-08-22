@@ -629,9 +629,15 @@ async function main() {
         const w = data?.[0]?.result?.words
         return Array.isArray(w) ? w.length : null
       }
+      // The donor project's generation — read back rather than assumed, because
+      // it is the exact value bootScriptPolicy compares the asset against.
+      const { data: donorProj } = await admin.from('edit_projects')
+        .select('generation_id').eq('id', happyPid).maybeSingle()
+      if (!donorProj?.generation_id) throw new Error('sweep: could not read the donor project generation')
       const sweep = await runZoomSweep({
-        admin, fixtures, sha256, newGen, wordCountFor, runToSettled,
-        donorAssetId, ownerId: user.id, log: (m) => console.log(m),
+        admin, fixtures, sha256, wordCountFor, runToSettled,
+        donorAssetId, donorGenerationId: donorProj.generation_id,
+        ownerId: user.id, log: (m) => console.log(m),
       })
       console.log(`NOTE sweep verdict: ${sweep.verdict}`
         + ` slope=${sweep.slope === null ? 'n/a' : `${sweep.slope.toFixed(1)}ms/zoom`}`

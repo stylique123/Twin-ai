@@ -80,10 +80,9 @@ ok('every requested anchor carries a valid intensity and reason',
       fabricateLease: async () => { calls++; if (calls === 2) throw new Error('boom'); return { jobId: 'j', worker: 'w', attempt: 1 } },
     },
     sha256: (s) => `sha(${s})`,
-    newGen: async () => 'g',
     wordCountFor: async () => 100,
     runToSettled: async () => ({ status: 'completed' }),
-    donorAssetId: 'a', ownerId: 'o',
+    donorAssetId: 'a', donorGenerationId: 'g', ownerId: 'o',
   }
   const r = await runZoomSweep(deps)
   eq('a failing zoom count is recorded, not fatal', r.notes.length, 1)
@@ -102,8 +101,8 @@ ok('every requested anchor carries a valid intensity and reason',
 // advisory catch, which kept the matrix green while the experiment produced
 // nothing at all.
 const fullDeps = () => ({
-  admin: {}, fixtures: {}, sha256: () => 'x', newGen: () => {}, wordCountFor: () => 0,
-  runToSettled: () => {}, donorAssetId: 'a', ownerId: 'o',
+  admin: {}, fixtures: {}, sha256: () => 'x', wordCountFor: () => 0,
+  runToSettled: () => {}, donorAssetId: 'a', donorGenerationId: 'g', ownerId: 'o',
 })
 ok('a complete dependency set has nothing missing', missingSweepDeps(fullDeps()).length === 0)
 ok('a missing sha256 is NAMED, not discovered later', (() => {
@@ -111,9 +110,19 @@ ok('a missing sha256 is NAMED, not discovered later', (() => {
   return missingSweepDeps(d).length === 1 && missingSweepDeps(d)[0] === 'sha256'
 })())
 ok('an explicitly undefined dependency counts as missing', (() => {
-  const d = fullDeps(); d.newGen = undefined
-  return missingSweepDeps(d).includes('newGen')
+  const d = fullDeps(); d.wordCountFor = undefined
+  return missingSweepDeps(d).includes('wordCountFor')
 })())
+// ⚠️ THE DEPENDENCY THE FIRST REAL RUN PROVED WAS REQUIRED. bootScriptPolicy
+// compares media_assets.generation_id against the project's generation_id
+// before any other branch; a sweep without the donor's generation fails all
+// four buckets with "asset linkage mismatch".
+ok('the donor GENERATION is required, not just the donor asset', (() => {
+  const d = fullDeps(); delete d.donorGenerationId
+  return missingSweepDeps(d).includes('donorGenerationId')
+})())
+ok('and a fresh-generation minter is no longer a dependency at all',
+  !SWEEP_DEPS.includes('newGen'))
 // ⚠️ NULL IS MISSING TOO. A helper that resolved to null would fail on first
 // call with a less useful message than this one.
 ok('a null dependency counts as missing', (() => {
