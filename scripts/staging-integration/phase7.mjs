@@ -23,6 +23,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
 import { authHeader } from './authSession.mjs'
+import { makeEditorFixtures, fullDecisionV2 } from './editorFixtures.mjs'
 
 const execFile = promisify(_execFile)
 const REPO_ROOT = join(import.meta.dirname, '..', '..')
@@ -217,35 +218,15 @@ async function mintReady(client, ownerId, buf) {
 }
 
 // Fabricated fenced lease + scratch project for direct-RPC truth-table tests.
-async function fabricateLease(ownerId, projectId, worker = 'p7-hx') {
-  const id = randomUUID()
-  const { error } = await admin.from('jobs').insert({
-    id, owner_id: ownerId, type: 'editor_v2', status: 'running', attempts: 1,
-    locked_at: new Date().toISOString(), locked_by: worker,
-    payload: { project_id: projectId }, dedup_key: `editor_v2:${projectId}:hx`,
-  })
-  if (error) throw new Error(`fabricateLease: ${error.message}`)
-  return { jobId: id, worker, attempt: 1 }
-}
-async function scratchProject(ownerId, genId, assetId) {
-  const id = randomUUID()
-  const { error } = await admin.from('edit_projects').insert({ id, owner_id: ownerId, generation_id: genId, source_asset_id: assetId, status: 'queued', idempotency_key: randomUUID() })
-  if (error) throw new Error(`scratchProject: ${error.message}`)
-  return id
-}
-async function advanceTo(pid, lease, stages) {
-  for (const to of stages) {
-    const { error } = await admin.rpc('editor_advance_stage', {
-      p_project: pid, p_job: lease.jobId, p_worker: lease.worker, p_attempt: lease.attempt,
-      p_to: to, p_pct: null, p_message_code: 'stage_started', p_details: {},
-    })
-    if (error) throw new Error(`advanceTo ${to}: ${error.message}`)
-  }
-}
-const dirBegin = (pid, lease, assetId, attemptOverride) => admin.rpc('editor_director_begin', {
-  p_project: pid, p_job: lease.jobId, p_worker: lease.worker, p_attempt: attemptOverride ?? lease.attempt,
-  p_source_asset: assetId, p_envelope_sha256: sha256('env-' + pid), p_model: 'gemini-3.5-flash', p_provider: 'google',
-})
+//
+// ⚖️ MOVED TO editorFixtures.mjs, because phase6 carried its own copy of the
+// first two and a second definition of "what a lease is" is how the two quietly
+// stop agreeing. The default worker name stays `p7-hx` so this phase's rows are
+// still recognisable in a shared staging database.
+const { fabricateLease: makeLease, scratchProject, advanceTo, dirBegin } =
+  makeEditorFixtures(admin, sha256)
+const fabricateLease = (ownerId, projectId, worker = 'p7-hx') =>
+  makeLease(ownerId, projectId, worker)
 
 async function main() {
   console.log('\n== Phase 7 · staging matrix (real directing) ==')
@@ -341,13 +322,7 @@ async function main() {
     await admin.rpc('editor_director_receive', { p_project: p2, p_job: l2.jobId, p_worker: l2.worker, p_attempt: l2.attempt, p_response_sha256: recvSha })
     // A COMPLETE Decision v2 (schema 2) — the 0092 guard requires schema 2 AND every
     // field present, so a partial/v1 object is rejected before any mismatch check.
-    const fullV2 = (over = {}) => ({
-      schemaVersion: 2, selections: [], keptBoundaries: [], summary: '',
-      pacing: 'balanced', music: 'none', emphasisWordIndices: [],
-      hookTreatment: 'keep', hookStartWordIndex: null,
-      visualWasteSelections: [], captionPresetId: 'caption-clean-keyword-v1',
-      transitionPolicy: 'restrained', zoomRequests: [], ...over,
-    })
+    const fullV2 = fullDecisionV2
     const okDecision = fullV2()
     const succeed = (over) => admin.rpc('editor_director_succeed', {
       p_project: p2, p_job: l2.jobId, p_worker: l2.worker, p_attempt: l2.attempt, p_schema_version: 2,
