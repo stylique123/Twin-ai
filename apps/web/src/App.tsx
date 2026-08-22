@@ -26,6 +26,7 @@ const Billing = lazy(() => import('./pages/Billing'))
 const Metrics = lazy(() => import('./pages/Metrics'))
 const PilotVisualReview = lazy(() => import('./pages/PilotVisualReview'))
 const PilotVisualStart = lazy(() => import('./pages/PilotVisualStart'))
+const OwnerConsole = lazy(() => import('./pages/OwnerConsole'))
 const WatchedSession = lazy(() => import('./pages/WatchedSession'))
 const Calendar = lazy(() => import('./pages/Calendar'))
 const ClientReport = lazy(() => import('./pages/ClientReport'))
@@ -309,6 +310,14 @@ export default function App() {
           <Route
             path="/metrics"
             element={<Protected><AppShell><Page><Metrics /></Page></AppShell></Protected>}
+          />
+          {/* The owner's remaining work, on one page. Protected is
+              convenience -- owner-console re-checks platform_admins with the
+              service role, and that is the boundary. The endpoint is read-only,
+              which is why a status page is allowed to exist at all. */}
+          <Route
+            path="/internal/owner"
+            element={<Protected><AppShell><Page><OwnerConsole /></Page></AppShell></Protected>}
           />
           {/* Starting a pilot. Protected is convenience -- pilot-start
               re-checks platform_admins with the service role and refuses
