@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { initApi } from '@twinai/shared'
+import { initApi, classifyUploadFailure, mayRetry } from '@twinai/shared'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const anon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -33,6 +33,9 @@ export const supabase = createClient(
  * of being too patient is a slow failure, and the cost of being too strict is
  * killing an upload that would have finished.
  */
+/** An upload failure that still carries the server's verdict. */
+interface UploadError extends Error { status?: number }
+
 export function uploadTimeoutMs(bytes: number): number {
   const mb = Math.max(0, Number(bytes) || 0) / (1024 * 1024)
   return Math.min(30 * 60_000, Math.round(90_000 + mb * 8_000))
@@ -58,8 +61,20 @@ async function uploadSignedWithProgress(
         // was left watching a dead progress bar with no way forward. Two real
         // takes are stuck in production in exactly that state.
         xhr.timeout = uploadTimeoutMs(blob.size)
+        // ⚠️ THIS REACHES 1.0 WHEN THE BROWSER FINISHES WRITING THE BODY, not
+        // when the server accepts it. A real creator watched it hit 100% and was
+        // then refused for size. Callers must treat 1.0 as "uploading finished",
+        // never as "saved" — see SaveStage in uploadCeiling.
         xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total) }
-        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`upload ${xhr.status}`)))
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) { resolve(); return }
+          // ⚠️ THE STATUS AND THE SERVER'S OWN WORDS ARE CARRIED OUT, not
+          // replaced. `upload 413` alone cannot be classified, and the sentence
+          // the creator was actually shown lives in the response body.
+          const err = new Error(`upload ${xhr.status}: ${String(xhr.responseText ?? '').slice(0, 300)}`) as UploadError
+          err.status = xhr.status
+          reject(err)
+        }
         xhr.onerror = () => reject(new Error('upload network error'))
         xhr.ontimeout = () => reject(new Error(`upload timed out after ${xhr.timeout}ms`))
         xhr.onabort = () => reject(new Error('upload aborted'))
@@ -67,8 +82,17 @@ async function uploadSignedWithProgress(
       })
       onProgress?.(1)
       return
-    } catch {
-      // fall through to the supabase-js path below
+    } catch (e) {
+      // ⚠️ THE BARE `catch {}` THAT USED TO BE HERE IS THE REASON A FIVE-MINUTE
+      // UPLOAD TOOK TEN. It discarded the error — status included — and silently
+      // re-sent the ENTIRE blob through the supabase-js path below. For a size
+      // rejection the second attempt is guaranteed to fail identically, so the
+      // creator paid twice to be told once, and the real status code was thrown
+      // away on the way past.
+      //
+      // ⚖️ THE FALLBACK IS FOR A BROKEN TRANSPORT, NOT A REFUSED REQUEST.
+      const kind = classifyUploadFailure((e as UploadError)?.status ?? null, (e as Error)?.message)
+      if (!mayRetry(kind)) throw e
     }
   }
   const { error } = await supabase.storage
