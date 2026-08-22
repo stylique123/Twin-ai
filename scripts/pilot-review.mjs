@@ -118,7 +118,8 @@ export async function runReview(db, opts) {
   const deadline = Date.now() + (Number(opts.timeoutMin) || 60) * 60_000
   for (;;) {
     const { data: rows } = await db.from('reference_content_profiles')
-      .select('url, visual_profile, frames_sampled, visual_failure_code').in('url', m.urls)
+      .select('url, visual_profile, frames_sampled, visual_failure_code, error, download_route')
+      .in('url', m.urls)
     const drift = assertManifestUnchanged(m, (rows ?? []).map((r) => r.url).length === m.urls.length
       ? (rows ?? []).map((r) => r.url) : m.urls)
     if (drift) throw new Error(drift)
@@ -148,7 +149,28 @@ export async function runReview(db, opts) {
     url: s.url, terminal_state: s.state,
     failure_code: s.row?.visual_failure_code ?? null,
     frames_sampled: s.row?.frames_sampled ?? null,
+    download_route: s.row?.download_route ?? null,
+    // ⚠️ A REFERENCE DRAWN AS NO-SPEECH MAY COME BACK WITH SPEECH, and that is
+    // not a bug -- it is 0159's finding arriving in the pilot. force bypasses
+    // the transcript cache, so the re-acquisition can hear what the stored
+    // metadata missed. The reference then takes the SPEECH path, its frames are
+    // scheduled on content beats rather than uniformly, and it is no longer an
+    // example of the population this pilot was drawn to study.
+    //
+    // ⚖️ REPORTED, NOT DROPPED. Dropping it would quietly shrink the sample
+    // after the fact; leaving it unremarked would let a content_beats result be
+    // read as evidence about uniform sampling on silent video.
+    turned_out_to_have_speech: (s.row?.error ?? '').startsWith('no_speech') === false
+      && s.row !== null && s.row !== undefined,
   }))
+  const spoke = run.states.filter((x) => x.turned_out_to_have_speech)
+  if (spoke.length) {
+    console.log(`\n  ⚠️  ${spoke.length} reference(s) drawn as no-speech came back WITH speech on`)
+    console.log('      re-acquisition. That is 0159 arriving in the pilot, not a fault. Their frames')
+    console.log('      were scheduled on content beats, not uniformly, so they are not evidence')
+    console.log('      about the silent-video population this sample was drawn to study.')
+    run.attrition.turned_out_to_have_speech = spoke.length
+  }
   save(run)
   if (att.ready_for_label === 0) throw new Error('no reference produced claims — nothing to label')
 
