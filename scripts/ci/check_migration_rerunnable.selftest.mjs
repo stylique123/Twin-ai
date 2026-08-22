@@ -3,7 +3,7 @@
 // appeared in this repo or would have been reported wrongly by an earlier
 // version of the scanner.
 import { findingsIn, guardedNames, stripComments, scanAll } from './migration_rerunnable_scan.mjs'
-import { reconcile, loadDebt } from './check_migration_rerunnable.mjs'
+import { reconcile, loadDebt, prune } from './check_migration_rerunnable.mjs'
 
 let pass = 0, fail = 0
 const eq = (what, got, want) => {
@@ -92,6 +92,27 @@ eq('a recorded entry matching nothing is stale',
   reconcile([], new Set(['a'])).stale, ['a'])
 eq('the inventory does not silently absorb a new finding',
   reconcile([f('a'), f('b')], new Set(['a'])).added.map((x) => x.key), ['b'])
+
+// ── prune may shrink the inventory and NOTHING ELSE ──────────────────────────
+// ⚠️ THIS IS THE ONE THAT MATTERS. A regeneration flag that rewrote the file
+// from the current scan would absorb new debt silently: one --prune after
+// adding a bare create and the ratchet is gone, behind a green build and a
+// plausible diff. Prune must REFUSE while any new finding exists.
+eq('prune refuses while new debt exists',
+  prune([f('a'), f('new')], new Set(['a'])).ok, false)
+eq('prune names what blocked it',
+  prune([f('a'), f('new')], new Set(['a'])).added.map((x) => x.key), ['new'])
+eq('a refused prune writes no entries',
+  prune([f('a'), f('new')], new Set(['a'])).entries, null)
+eq('prune removes only what is fixed',
+  prune([f('a')], new Set(['a', 'gone'])), { ok: true, added: [], removed: ['gone'], entries: ['a'] })
+eq('prune is a no-op when nothing is fixed',
+  prune([f('a')], new Set(['a'])).entries, ['a'])
+// ⚖️ AND IT CANNOT ADD. The intersection is with the OLD inventory, so a
+// finding that was never recorded cannot enter through this path even when
+// the caller is holding it.
+eq('prune never introduces an entry',
+  prune([f('a')], new Set(['a'])).entries.includes('b'), false)
 
 // ── helpers keep their own contracts ─────────────────────────────────────────
 eq('stripComments leaves the statement',

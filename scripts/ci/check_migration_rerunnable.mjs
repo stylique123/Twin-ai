@@ -39,7 +39,7 @@
 // history to satisfy a guard is a bigger and riskier change than the defect it
 // would close, and it is not urgent. Closing them is its own PR, and every one
 // closed is a line deleted here.
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { scanAll } from './migration_rerunnable_scan.mjs'
@@ -67,9 +67,44 @@ export function reconcile(findings, debt) {
   }
 }
 
+/**
+ * `--prune` regenerates the inventory after somebody FIXES entries, so shrinking
+ * it is a documented command rather than folklore. I shrank it by hand the first
+ * time and that is exactly the kind of step that gets done wrong later.
+ *
+ * ⚠️ IT CAN ONLY REMOVE. A regeneration flag that rewrote the file from the
+ * current scan would ABSORB NEW DEBT SILENTLY -- one `--prune` after adding a
+ * bare create and the ratchet is gone, with a green build and a plausible diff.
+ * So prune refuses outright while any new finding exists, and returns only the
+ * intersection of the old inventory with what is still there. The inventory can
+ * never gain an entry through this path; adding one is a hand edit somebody has
+ * to justify in review.
+ */
+export function prune(findings, debt) {
+  const { added, stale } = reconcile(findings, debt)
+  if (added.length) return { ok: false, added, entries: null, removed: [] }
+  const seen = new Set(findings.map((f) => f.key))
+  return { ok: true, added: [], removed: stale, entries: [...debt].filter((k) => seen.has(k)).sort() }
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { scanned, findings } = scanAll()
   const debt = loadDebt()
+
+  if (process.argv.includes('--prune')) {
+    const result = prune(findings, debt)
+    if (!result.ok) {
+      console.error(`refusing to prune: ${result.added.length} NEW bare create(s) exist.`)
+      for (const f of result.added) console.error(`  ${f.file}  ${f.kind} ${f.name}`)
+      console.error('\nPrune removes fixed entries. It does not record new ones -- fix them first.')
+      process.exit(1)
+    }
+    writeFileSync(DEBT_FILE, `${JSON.stringify({ note: 'see check_migration_rerunnable.mjs', entries: result.entries }, null, 2)}\n`)
+    console.log(`pruned ${result.removed.length} fixed entr(ies); ${result.entries.length} remain`)
+    for (const k of result.removed) console.log(`  - ${k}`)
+    process.exit(0)
+  }
+
   const { added, stale } = reconcile(findings, debt)
 
   if (added.length) {
@@ -92,6 +127,10 @@ create breaks every later run for every PR -- not just this one.`)
     console.error(`${DEBT_FILE}\n`)
     for (const k of stale) console.error(`  ${k}`)
     console.error(`
+Fixed them? Remove the lines with:
+
+  node scripts/ci/check_migration_rerunnable.mjs --prune
+
 An exemption that outlives its defect is a hole with a plausible name. The
 inventory shrinks; it never carries entries that match nothing.`)
     process.exit(1)
