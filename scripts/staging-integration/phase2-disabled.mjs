@@ -9,6 +9,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
 import { authHeader } from './authSession.mjs'
+import { failAt, describeFailure } from './failure.mjs'
 
 const URL = need('STAGING_URL')
 const ANON = need('STAGING_ANON_KEY')
@@ -31,10 +32,13 @@ async function main() {
   const email = `gate-${randomUUID().slice(0, 8)}@staging.test`
   const pw = `It-${randomUUID()}`
   const { data: u, error: uErr } = await admin.auth.admin.createUser({ email, password: pw, email_confirm: true })
-  if (uErr) throw new Error(uErr.message)
+  // ⚠️ THIS EXACT LINE PRINTED "PROBE ERROR: Error: Gateway Timeout" AND NOTHING
+  // ELSE. It is setup, not an assertion, and the diff under test could not have
+  // caused it — but nothing said so.
+  if (uErr) failAt('creating the probe user', uErr)
   const client = createClient(URL, ANON, { auth: { persistSession: false } })
   const { error: lErr } = await client.auth.signInWithPassword({ email, password: pw })
-  if (lErr) throw new Error(lErr.message)
+  if (lErr) failAt('signing the probe user in', lErr)
 
   const { count: projBefore } = await admin.from('edit_projects').select('id', { count: 'exact', head: true })
   const { count: jobsBefore } = await admin.from('jobs').select('id', { count: 'exact', head: true }).eq('type', 'editor_v2')
@@ -80,4 +84,10 @@ async function main() {
   if (failures.length > 0) process.exit(1)
 }
 
-main().catch((e) => { console.error('PROBE ERROR:', e); process.exit(1) })
+main().catch((e) => {
+  // ⚖️ THE CLASSIFICATION IS PRINTED EVEN WHEN THE THROW DID NOT COME FROM
+  // failAt, so an unwrapped error still gets told apart from an outage.
+  console.error('PROBE ERROR:', e.harnessStep ? e.message : describeFailure('the probe', e))
+  if (!e.harnessStep) console.error(e)
+  process.exit(1)
+})
