@@ -1,4 +1,7 @@
-#!/usr/bin/env node
+// GENERATED FROM scripts/pilot-collect.mjs — DO NOT EDIT.
+// Run: node scripts/ci/generate_shared_pilot_core.mjs
+// Edit the source instead. CI regenerates this file and fails on a diff.
+// @ts-nocheck
 // THE PACKET IS BUILT ONCE AND STORED, NOT REBUILT PER PAGE LOAD.
 //
 // The old packet lived in .twinai-pilot/run.json. Rebuilding it on each machine
@@ -10,12 +13,12 @@
 // IDENTIFIERS, never frame bytes: the bytes stay in production storage and the
 // review page fetches them through short-lived signed URLs.
 
-import { CLAIM_PATHS, flattenClaims, orderClaims, TERMINAL, checkPacketInvariants } from './pilot-core.mjs'
+import { CLAIM_PATHS, flattenClaims, orderClaims, TERMINAL, checkPacketInvariants } from './pilotCore.ts'
 
 // TERMINAL is the LIST of the three states. Naming them here keeps the strings
 // in one place without pretending the list is a map.
 const [READY_FOR_LABEL, FAILED, UNREADABLE] = TERMINAL
-import { loadPilotRun } from './pilot-db.mjs'
+import { loadPilotRun } from './pilotDb.ts'
 
 const err = (e, what) => { if (e) throw new Error(`${what}: ${e.message}`) }
 

@@ -17,18 +17,33 @@ const SOURCES = [
   ['scripts/pilot-core.mjs', 'supabase/functions/_shared/pilotCore.ts'],
   ['scripts/pilot-decision.mjs', 'supabase/functions/_shared/pilotDecision.ts'],
   ['scripts/pilot-start.mjs', 'supabase/functions/_shared/pilotStart.ts'],
+  // The packet materialiser and the frozen-run reader it depends on. Generated
+  // rather than reimplemented so loadPilotRun stays ONE authority: the digest
+  // check that refuses a sample changed after freeze must not exist twice.
+  ['scripts/pilot-db.mjs', 'supabase/functions/_shared/pilotDb.ts'],
+  ['scripts/pilot-collect.mjs', 'supabase/functions/_shared/pilotCollect.ts'],
   ['scripts/d1-core.mjs', 'supabase/functions/_shared/d1Core.ts'],
   ['scripts/watched-session.mjs', 'supabase/functions/_shared/watchedSession.ts'],
 ]
 
-const render = (from, src) =>
-  `// GENERATED FROM ${from} — DO NOT EDIT.\n`
+// ⚠️ A SHEBANG IS LEGAL ONLY ON LINE 1, AND THE HEADER PUSHES IT TO LINE 5.
+// The first five sources here are library modules with no shebang, so this went
+// unnoticed until pilot-db.mjs and pilot-collect.mjs — which are executable
+// scripts — joined the set and produced `TS1005: ';' expected` at line 5 in
+// both. Stripped rather than tolerated: the Deno copy is imported, never run.
+const stripShebang = (src) => src.replace(/^#![^\n]*\n/, '')
+
+const render = (from, src0) => {
+  const src = stripShebang(src0)
+  return `// GENERATED FROM ${from} — DO NOT EDIT.\n`
   + `// Run: node scripts/ci/generate_shared_pilot_core.mjs\n`
   + `// Edit the source instead. CI regenerates this file and fails on a diff.\n`
   + `// @ts-nocheck\n`
   + src
     .replace(/from '\.\/pilot-core\.mjs'/g, "from './pilotCore.ts'")
+    .replace(/from '\.\/pilot-db\.mjs'/g, "from './pilotDb.ts'")
     .replace(/from '\.\/d1-core\.mjs'/g, "from './d1Core.ts'")
+}
 
 const check = process.argv.includes('--check')
 let stale = 0
