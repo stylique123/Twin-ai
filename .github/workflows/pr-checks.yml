@@ -441,6 +441,12 @@ jobs:
       # attrition over what was SELECTED, and the #69 brief. Includes the rate
       # that printed 500% when the runner was driven end to end -- a numerator
       # taken from a different population than its denominator.
+      # ⚠️ "THE RENDER PASSED" IS NOT THE ACCEPTANCE CRITERION FOR #445. A run
+      # losing frames per zoom while every render sits inside the tolerance has
+      # the SAME mechanism as the one that failed — it just has fewer zooms.
+      # This asserts the property that actually matters: the slope.
+      - name: Zoom-delta correlation (the defect is a slope, not a tolerance)
+        run: node scripts/ci/check_zoom_delta_correlation.selftest.mjs
       - name: Pilot core (frozen sample, terminal states, rates that cannot exceed 100%)
         run: node scripts/pilot-core.selftest.mjs
       # The 332 decision rule, committed BEFORE any label exists. A verdict rule
