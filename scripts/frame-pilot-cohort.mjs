@@ -37,68 +37,13 @@ import { createHash } from 'node:crypto'
 const arg = (n, d = null) => { const i = process.argv.indexOf(`--${n}`); return i < 0 ? d : (process.argv[i + 1] ?? true) }
 const flag = (n) => process.argv.includes(`--${n}`)
 
-export const DEFAULT_SIZE = 8
-/** ⚠️ TEN IS THE CEILING AND IT IS DELIBERATE. This is the step before deciding
- *  whether the visual pass is trustworthy enough to touch 332 references. A
- *  "pilot" of 40 has already made that decision by spending it. */
-export const MAX_SIZE = 10
-
-/** ⚖️ BELOW THE BACKLOG, WHICH IS ITSELF BELOW CREATOR WORK. The queue orders by
- *  priority desc. A pilot that preempts a creator's scan has cost more than it
- *  can learn. */
-export const PILOT_PRIORITY = -20
-
-/** The creator, from a TikTok reference url. ⚠️ Ten videos from one creator are
- *  ten samples of one visual situation, which is the failure mode a "random"
- *  draw hides. */
-export const handleOf = (url) => {
-  const m = /@([^/?#]+)/.exec(String(url ?? ''))
-  return m ? m[1].toLowerCase() : null
-}
-
-/** ⚠️ TWO BANDS, NOT ONE. A transcript of exactly zero characters is a different
- *  fact from one of six: the first is silence or a failure to hear anything at
- *  all, the second is a video that made a sound we could read and it was not
- *  speech. Merging them would let the draw come entirely from the 281. */
-export const bandOf = (chars) => (Number(chars) === 0 ? 'chars_zero' : 'chars_tiny')
-
-const rank = (url) => createHash('sha256').update(String(url)).digest('hex')
-
-/**
- * Draw the cohort.
- *
- * ⚖️ ONE PER CREATOR, ALTERNATING BANDS, ORDERED BY A DIGEST OF THE URL. The
- * digest is what makes it re-drawable: same rows and same size give the same
- * cohort on any machine, so a later argument about the sample is settleable.
- */
-export function selectCohort(rows, size = DEFAULT_SIZE) {
-  const n = Math.max(1, Math.min(MAX_SIZE, Number(size) || DEFAULT_SIZE))
-  const seen = new Set()
-  const bands = { chars_zero: [], chars_tiny: [] }
-
-  for (const r of [...rows].sort((a, b) => rank(a.url).localeCompare(rank(b.url)))) {
-    const h = handleOf(r.url)
-    // A url with no handle is still a reference; it just cannot be deduplicated
-    // by creator, so it is kept rather than silently dropped.
-    if (h !== null) {
-      if (seen.has(h)) continue
-      seen.add(h)
-    }
-    bands[bandOf(r.transcript_chars)].push(r)
-  }
-
-  // ⚠️ ALTERNATE, DO NOT SPLIT IN HALF. The bands are 51 and 281 deep; a
-  // proportional draw would give the zero-character band one slot out of eight
-  // and call it represented.
-  const out = []
-  for (let i = 0; out.length < n && (bands.chars_zero.length || bands.chars_tiny.length); i++) {
-    const first = i % 2 === 0 ? 'chars_zero' : 'chars_tiny'
-    const second = first === 'chars_zero' ? 'chars_tiny' : 'chars_zero'
-    const pick = bands[first].shift() ?? bands[second].shift()
-    if (pick) out.push(pick)
-  }
-  return out
-}
+// ⚠️ THE SELECTION LIVES IN pilot-core.mjs. This file kept a copy of it after
+// the extraction, which is how label-packet.mjs ended up shipping a stale
+// aggregate with a rate that could exceed 100%. One authority, re-exported.
+export { DEFAULT_SIZE, MAX_SIZE, PILOT_PRIORITY, handleOf, bandOf, selectCohort }
+  from './pilot-core.mjs'
+import { DEFAULT_SIZE, MAX_SIZE, PILOT_PRIORITY, handleOf, bandOf, selectCohort }
+  from './pilot-core.mjs'
 
 if (flag('selftest')) {
   let failed = 0
