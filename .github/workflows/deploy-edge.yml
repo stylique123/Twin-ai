@@ -50,9 +50,16 @@ jobs:
           # client has no insert policy on the `edits` bucket, so this
           # service-role hop is the only way a creator's own photograph of their
           # product reaches storage. Owner-prefixed path, content-type allow-list.
+          # pilot-review — the #58 visual pilot's labelling page. PRODUCTION on
+          # purpose: the review is hosted inside Twin so the owner can open it
+          # from anywhere, and the previous version served from a container's
+          # localhost, which nobody but that container could reach. It carries
+          # no anonymous path — every action re-checks platform_admins with the
+          # service role before it reads or writes anything.
           PROD="admin admin-metrics billing billing-webhook brand-logo brand-truth clip-asset \
                 dna-poll editor-output generate-blueprint generate-thumbnail ingest-reference \
-                product-image referral review social source-asset start-dna start-editor-v2"
+                pilot-review product-image referral review social source-asset start-dna \
+                start-editor-v2"
 
           unclassified=""
           for d in supabase/functions/*/; do
