@@ -439,6 +439,14 @@ jobs:
       # worth testing.
       - name: Staging harness failure classifier (re-run, or investigate?)
         run: node scripts/staging-integration/failure.mjs --selftest
+      # phase6 and phase7 each carried their own copy of "what a fenced lease is".
+      # They agreed, which is exactly why nobody noticed -- two definitions of an
+      # invariant drift silently, and the next phase that needs one makes three.
+      # The factory shape is load-bearing: every phase file calls need() at module
+      # scope and exits, so a shared helper that touched the environment could not
+      # be imported by a test at all.
+      - name: Editor staging fixtures (one definition of a fenced lease)
+        run: node scripts/staging-integration/editorFixtures.selftest.mjs
       # The packet decides which claims a human is ever asked about and when the
       # accuracy number may be looked at. Both are logic, both are pure, and
       # both are wrong silently -- a claim path nobody asks about scores the
