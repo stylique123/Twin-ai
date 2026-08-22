@@ -13,120 +13,93 @@
 // reveal it. It fails for the NEXT PR, and every PR after that, on a file none
 // of them touched.
 //
-// ⚖️ POSTGRES HAS NO `ADD CONSTRAINT IF NOT EXISTS`. So the repo has exactly two
-// re-runnable spellings, and this guard accepts both:
+// ⚖️ POSTGRES HAS NO `IF NOT EXISTS` FOR CONSTRAINTS, TRIGGERS OR POLICIES, so
+// all three are the same defect wearing three names, and all three are scanned.
+// `create type` was MEASURED and has zero offenders here, so it is not scanned.
 //
-//   1. drop-then-add (0162, 0164)   -- also survives a CHANGED definition
-//   2. the pg_constraint do-block (0030, 0094) -- keeps whatever is already there
+// ── WHY THIS IS A RATCHET AND NOT A CLEAN BILL OF HEALTH ────────────────────
+// The constraint class is CLOSED: every one is re-runnable, and the inventory
+// below holds none. Triggers and policies are NOT closed -- 70 pre-existing
+// bare creates are recorded in migration_rerunnable_debt.json and allowed.
 //
-// Form 1 is preferred: form 2 silently keeps the OLD constraint while the file
-// claims the new one, so editing a guarded constraint is a no-op that reads as
-// a change. This guard does not enforce that preference -- it is a comment, not
-// a rule, because both forms are genuinely re-runnable.
+// ⚠️ SO A GREEN RUN HERE DOES NOT MEAN EVERY MIGRATION IS RE-RUNNABLE. It means
+// NO NEW ONE WAS ADDED. That distinction is the whole point of the file, and
+// anybody reading this guard's green tick as "the migrations are fine" has read
+// it wrong.
 //
-// ⚠️ WHAT THIS GUARD DOES NOT COVER, stated so a green run is not read as more
-// than it is: it checks CONSTRAINTS ONLY. `create trigger`, `create type`,
-// `create policy` and `insert` without a conflict clause are the same latent
-// class and are NOT checked here. Adding them is a separate change with its own
-// claim; listing them here rather than implying coverage.
-import { readFileSync, readdirSync } from 'node:fs'
+// The inventory is one-way. A finding that is not in it fails the build (new
+// debt). An entry in it that no longer matches anything ALSO fails the build,
+// with an instruction to delete the line -- so the list can only ever shrink,
+// and a fix cannot silently leave a stale exemption behind for a future bare
+// create to slot into.
+//
+// ⚖️ WHY THE 70 WERE NOT SIMPLY FIXED. They span 19 migrations that are already
+// applied to production, and NONE of them are in the staging matrix's applied
+// list -- which is exactly why they have never broken a run. Rewriting applied
+// history to satisfy a guard is a bigger and riskier change than the defect it
+// would close, and it is not urgent. Closing them is its own PR, and every one
+// closed is a line deleted here.
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { scanAll } from './migration_rerunnable_scan.mjs'
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
-const DIR = join(ROOT, 'supabase', 'migrations')
+const HERE = dirname(fileURLToPath(import.meta.url))
+const DEBT_FILE = join(HERE, 'migration_rerunnable_debt.json')
 
-/** ⚖️ A COMMENT IS NOT SQL. `-- add constraint foo` must not count as either an
- * offence or a rescue, and a file whose prose explains the pattern (this repo
- * has several) would otherwise be read as containing it. */
-export function stripComments(sql) {
-  return sql
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .split('\n')
-    .map((line) => {
-      // ⚠️ Only strip `--` outside a string literal. A check constraint may
-      // legitimately contain `--` inside quotes.
-      let out = ''
-      let quote = null
-      for (let i = 0; i < line.length; i++) {
-        const c = line[i]
-        if (quote) {
-          out += c
-          if (c === quote) quote = null
-          continue
-        }
-        if (c === "'" || c === '"') { quote = c; out += c; continue }
-        if (c === '-' && line[i + 1] === '-') break
-        out += c
-      }
-      return out
-    })
-    .join('\n')
-}
-
-const ADD = /\badd\s+constraint\s+([A-Za-z0-9_]+)/gi
-const DROP = /\bdrop\s+constraint\s+if\s+exists\s+([A-Za-z0-9_]+)/gi
-/**
- * ⚠️ THE GUARD FORM HAS MORE THAN ONE SPELLING AND A NARROW REGEX CALLS THE
- * OTHERS OFFENCES. 0030 writes `pg_constraint where conname = 'x'`; 0138 writes
- * `pg_constraint where conrelid = ... and conname = 'x'`. Both are the same
- * check. So the rule is: the file consults `pg_constraint`, AND that name is
- * compared against `conname`. Requiring `where` immediately before `conname`
- * reported 0138 as a defect it does not have.
- */
-const GUARDED = /\bconname\s*=\s*'([A-Za-z0-9_]+)'/gi
-
-/** Names rescued by a pg_constraint do-block anywhere in the file. */
-export function guardedNames(sql) {
-  if (!/\bpg_constraint\b/i.test(sql)) return new Set()
-  return new Set([...sql.matchAll(GUARDED)].map((m) => m[1]))
+export function loadDebt(file = DEBT_FILE) {
+  return new Set(JSON.parse(readFileSync(file, 'utf8')).entries)
 }
 
 /**
- * ⚠️ ORDER MATTERS AND POSITION IS THE ONLY HONEST TEST. A `drop constraint if
- * exists` that appears AFTER the `add constraint` rescues nothing -- the add
- * has already failed. So a drop counts only when its offset is lower.
+ * Compares findings against the frozen inventory.
+ *   added   -- a bare create that is not recorded. THE BUILD FAILS.
+ *   stale   -- a recorded entry nothing matches any more. THE BUILD ALSO FAILS,
+ *              because an exemption outliving its defect is a hole with a
+ *              plausible name, and the next bare create with that name inherits
+ *              it silently.
  */
-export function unrescuedConstraints(rawSql) {
-  const sql = stripComments(rawSql)
-  const guarded = guardedNames(sql)
-  const drops = [...sql.matchAll(DROP)].map((m) => ({ name: m[1], at: m.index }))
-  const bad = []
-  for (const m of sql.matchAll(ADD)) {
-    const name = m[1]
-    const at = m.index
-    if (guarded.has(name)) continue
-    if (drops.some((d) => d.name === name && d.at < at)) continue
-    bad.push({ name, at })
+export function reconcile(findings, debt) {
+  const seen = new Set(findings.map((f) => f.key))
+  return {
+    added: findings.filter((f) => !debt.has(f.key)),
+    stale: [...debt].filter((k) => !seen.has(k)).sort(),
   }
-  return bad
-}
-
-export function scan(dir = DIR) {
-  const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
-  const offenders = []
-  for (const file of files) {
-    const bad = unrescuedConstraints(readFileSync(join(dir, file), 'utf8'))
-    if (bad.length) offenders.push({ file, names: bad.map((b) => b.name) })
-  }
-  return { scanned: files.length, offenders }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const { scanned, offenders } = scan()
-  const count = offenders.reduce((n, o) => n + o.names.length, 0)
-  if (offenders.length) {
-    console.error(`migration-rerunnable: ${count} bare ADD CONSTRAINT in ${offenders.length} of ${scanned} migrations\n`)
-    for (const o of offenders) console.error(`  ${o.file}\n    ${o.names.join('\n    ')}`)
+  const { scanned, findings } = scanAll()
+  const debt = loadDebt()
+  const { added, stale } = reconcile(findings, debt)
+
+  if (added.length) {
+    console.error(`migration-rerunnable: ${added.length} NEW bare create(s) -- Postgres will refuse the second application\n`)
+    for (const f of added) console.error(`  ${f.file}\n    ${f.kind} ${f.name}`)
     console.error(`
-Postgres has no ADD CONSTRAINT IF NOT EXISTS. Use either:
+Add the matching drop before it:
 
-  alter table X drop constraint if exists NAME;
-  alter table X add constraint NAME check (...);
+  drop constraint if exists NAME;   -- then: alter table X add constraint NAME ...
+  drop trigger    if exists NAME on TABLE;
+  drop policy     if exists "NAME" on TABLE;
 
-or the pg_constraint do-block. The staging matrix applies every listed
-migration on EVERY run, so a bare add breaks every later run for every PR.`)
+The staging matrix applies every listed migration on EVERY run, so a bare
+create breaks every later run for every PR -- not just this one.`)
     process.exit(1)
   }
-  console.log(`migration-rerunnable: OK (${scanned} migrations, every ADD CONSTRAINT is re-runnable)`)
+
+  if (stale.length) {
+    console.error(`migration-rerunnable: ${stale.length} recorded entr(ies) no longer exist. Delete them from`)
+    console.error(`${DEBT_FILE}\n`)
+    for (const k of stale) console.error(`  ${k}`)
+    console.error(`
+An exemption that outlives its defect is a hole with a plausible name. The
+inventory shrinks; it never carries entries that match nothing.`)
+    process.exit(1)
+  }
+
+  const byKind = findings.reduce((a, f) => ({ ...a, [f.kind]: (a[f.kind] ?? 0) + 1 }), {})
+  const summary = Object.entries(byKind).map(([k, n]) => `${n} ${k}`).join(', ') || 'none'
+  console.log(`migration-rerunnable: OK (${scanned} migrations, no new bare creates)`)
+  console.log(`  recorded and still outstanding: ${summary}`)
+  console.log('  ⚠️ this is "nothing new was added", NOT "every migration is re-runnable"')
 }
