@@ -114,19 +114,21 @@ export function slopeOf(rows) {
  * a machine that has no staging credentials.
  */
 export async function runZoomSweep(deps) {
-  const { admin, fixtures, sha256, mintReady, runToSettled, donorAssetId, ownerId, client, log } = deps
+  const { admin, fixtures, sha256, newGen, wordCountFor, runToSettled, donorAssetId, ownerId, log } = deps
   const rows = []
   const notes = []
 
   for (const n of SWEEP_ZOOM_COUNTS) {
     try {
-      // A fresh project on the DONOR's asset, so the cached analysis applies.
-      const { gen } = await mintReady(client, ownerId, null, donorAssetId)
+      // ⚖️ A FRESH GENERATION, BUT THE DONOR'S ASSET. media_analyses is keyed by
+      // source_asset_id, so reusing the asset is what makes the cached evidence
+      // apply — a new upload would have no analysis and compiling would fail.
+      const gen = await newGen(ownerId)
       const pid = await fixtures.scratchProject(ownerId, gen, donorAssetId)
       const lease = await fixtures.fabricateLease(ownerId, pid, `p8-sweep-${n}`)
       await fixtures.advanceTo(pid, lease, ['inspecting', 'transcribing', 'analyzing', 'directing'])
 
-      const words = await deps.wordCountFor(donorAssetId)
+      const words = await wordCountFor(donorAssetId)
       const zr = zoomRequestsFor(n, words)
       if (zr === null) { notes.push(`zoom ${n}: transcript has ${words} words, cannot place ${n} anchors`); continue }
 
