@@ -68,10 +68,15 @@ jobs:
           # pilot-review: a session served from a laptop dies with the process
           # and cannot be opened from anywhere else. Admin-gated, and the
           # observer must own the session they are writing to.
+          # owner-console — what the owner still has to do, answered by the
+          # database instead of by memory. READ-ONLY: it starts nothing,
+          # enqueues nothing and spends nothing, which is why a status page is
+          # allowed to exist at all. Same platform_admins check with the service
+          # role. PRODUCTION because the state it reports IS production's.
           PROD="admin admin-metrics billing billing-webhook brand-logo brand-truth clip-asset \
                 dna-poll editor-output generate-blueprint generate-thumbnail ingest-reference \
-                pilot-review pilot-start product-image referral review social source-asset \
-                start-dna start-editor-v2 watched-session"
+                owner-console pilot-review pilot-start product-image referral review social \
+                source-asset start-dna start-editor-v2 watched-session"
 
           unclassified=""
           for d in supabase/functions/*/; do
