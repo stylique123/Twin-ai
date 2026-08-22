@@ -97,6 +97,7 @@ begin
 end;
 $$;
 
+drop trigger if exists trg_media_assets_guard on public.media_assets;
 create trigger trg_media_assets_guard
   before update of status on public.media_assets
   for each row execute function public.media_assets_guard_transition();
