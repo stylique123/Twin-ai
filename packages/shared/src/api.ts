@@ -2209,7 +2209,22 @@ export interface PilotStatus {
     still_running: number
   }
   attrition: Record<string, unknown>
-  /** Null until collection is done AND something is actually reviewable. */
+  /** What the server stored, the moment it stored it. Null until it could. */
+  packet: { references: number; ready: number; claims: number } | null
+  /**
+   * ⚠️ WHY THE PACKET WAS REFUSED, VERBATIM. "a reference has no terminal state",
+   * "no reference produced claims", "the packet does not match the attrition
+   * report" — each is a reason this run must not be labelled yet, and each is
+   * shown rather than flattened into a spinner.
+   */
+  packet_error: string | null
+  /**
+   * ⚠️ GATED ON A PERSISTED, NON-EMPTY PACKET — NOT ON PROGRESS. Progress reads
+   * reference_content_profiles; the review page reads visual_pilot_claims. A
+   * real pilot once handed over this URL on the strength of the first while the
+   * second was empty, and eight references of paid-for evidence rendered as
+   * "Claim 1 of 0".
+   */
   review_url: string | null
 }
 

@@ -17,6 +17,11 @@ const SOURCES = [
   ['scripts/pilot-core.mjs', 'supabase/functions/_shared/pilotCore.ts'],
   ['scripts/pilot-decision.mjs', 'supabase/functions/_shared/pilotDecision.ts'],
   ['scripts/pilot-start.mjs', 'supabase/functions/_shared/pilotStart.ts'],
+  // The packet materialiser and the frozen-run reader it depends on. Generated
+  // rather than reimplemented so loadPilotRun stays ONE authority: the digest
+  // check that refuses a sample changed after freeze must not exist twice.
+  ['scripts/pilot-db.mjs', 'supabase/functions/_shared/pilotDb.ts'],
+  ['scripts/pilot-collect.mjs', 'supabase/functions/_shared/pilotCollect.ts'],
   ['scripts/d1-core.mjs', 'supabase/functions/_shared/d1Core.ts'],
   ['scripts/watched-session.mjs', 'supabase/functions/_shared/watchedSession.ts'],
 ]
@@ -28,6 +33,7 @@ const render = (from, src) =>
   + `// @ts-nocheck\n`
   + src
     .replace(/from '\.\/pilot-core\.mjs'/g, "from './pilotCore.ts'")
+    .replace(/from '\.\/pilot-db\.mjs'/g, "from './pilotDb.ts'")
     .replace(/from '\.\/d1-core\.mjs'/g, "from './d1Core.ts'")
 
 const check = process.argv.includes('--check')

@@ -2,7 +2,7 @@
 // The stored packet. The invariant under test is the one that mattered most:
 // FAILED and UNREADABLE references contribute ZERO claims, and the stored count
 // multiplies out against the references reported ready.
-import { collectForRun, terminalStateOf } from './pilot-collect.mjs'
+import { collectForRun, terminalStateOf, collectReadiness } from './pilot-collect.mjs'
 import { CLAIM_PATHS, manifestDigest } from './pilot-core.mjs'
 
 let failed = 0
@@ -129,6 +129,37 @@ await threw('a run where nothing produced claims is a refusal',
 
 const locked = stub(mixed); locked.runs[0].status = 'locked'
 await threw('a locked run refuses a fresh packet', () => collectForRun(locked, 'run-1'), 'is locked')
+
+
+// ── the gate in front of READY_FOR_LABEL ──────────────────────────────────
+//
+// ⚠️ THIS IS THE DEFECT THAT REACHED A REAL OWNER. `status` read progress from
+// reference_content_profiles, said 8/8 ready and handed over the review URL,
+// while nothing on the button path had ever built the packet the review page
+// reads. Eight references' worth of paid-for evidence rendered as
+// "Claim 1 of 0".
+ok('a finished run with ready references may be collected',
+  collectReadiness({ done: true, ready: 8 }, { status: 'enqueued' }).collect === true)
+// ⚠️ MID-FLIGHT IS REFUSED. Collecting before every reference is terminal would
+// record an unfinished reference as though it produced nothing.
+ok('a run still collecting is refused',
+  collectReadiness({ done: false, ready: 3 }, { status: 'enqueued' }).collect === false)
+ok('and says which state it is in',
+  collectReadiness({ done: false, ready: 3 }, { status: 'enqueued' }).reason === 'still collecting')
+// ⚠️ ZERO READY IS NOT A PACKET. Building one anyway is how a run locks an
+// empty denominator as though it were a measurement.
+ok('a finished run with nothing ready is refused',
+  collectReadiness({ done: true, ready: 0 }, { status: 'enqueued' }).collect === false)
+ok('a finished run with a non-integer ready count is refused, not coerced',
+  collectReadiness({ done: true, ready: null }, { status: 'enqueued' }).collect === false)
+// ⚠️ A LOCKED PACKET IS FINAL. Re-collecting over it would rewrite the exact
+// artefact the labels were given against.
+ok('a locked run is never re-collected',
+  collectReadiness({ done: true, ready: 8 }, { status: 'locked' }).collect === false)
+ok('a missing run is refused rather than assumed', collectReadiness({ done: true, ready: 8 }, null).collect === false)
+// CONTROL: the gate must not simply refuse everything.
+ok('CONTROL: the only accepting case really does accept',
+  collectReadiness({ done: true, ready: 1 }, { status: 'collecting' }).collect === true)
 
 console.log(failed === 0 ? '\npilot-collect selftest: all passed' : `\npilot-collect selftest: ${failed} FAILED`)
 process.exit(failed === 0 ? 0 : 1)
