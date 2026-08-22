@@ -14,7 +14,7 @@
 //
 // ⚠️ IT NEVER TOUCHES THE 332. The frozen manifest is the whole population it
 // will ever act on in a run.
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, copyFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import {
@@ -70,6 +70,23 @@ export async function runReview(db, opts) {
     + `${m.size_frozen} frame pulls) and ${m.size_frozen} vision calls\n`)
 
   if (run.locked) throw new Error('this pilot is already locked — move .twinai-pilot aside to start a new one')
+
+  // ⚠️ A REFERENCE ALREADY LABELLED IN A LOCKED PILOT MUST NOT BE RE-DRAWN. The
+  // second set of labels would not be independent of the first -- the reviewer
+  // remembers -- and averaging them would report agreement with themselves as
+  // accuracy. Prior runs are kept beside the current one for exactly this check.
+  const priorLocked = existsSync(join(DIR, 'locked'))
+    ? readdirSync(join(DIR, 'locked')).flatMap((f) => {
+        try { return JSON.parse(readFileSync(join(DIR, 'locked', f), 'utf8')).manifest?.urls ?? [] }
+        catch { return [] }
+      })
+    : []
+  const repeats = m.urls.filter((u) => priorLocked.includes(u))
+  if (repeats.length) {
+    throw new Error(`${repeats.length} reference(s) were already labelled in a locked pilot: `
+      + `${repeats.slice(0, 3).join(', ')}${repeats.length > 3 ? '…' : ''}. A second set of labels `
+      + 'is not independent of the first. Draw a fresh sample, or review the locked run instead.')
+  }
 
   for (const cap of CAPABILITIES) {
     const { error } = await db.from(cap.table).select(cap.columns).limit(0)
@@ -138,14 +155,29 @@ export async function runReview(db, opts) {
   // ── 6. PACKET ────────────────────────────────────────────────────────────
   if (!run.labels) {
     const { data: rows } = await db.from('reference_content_profiles')
-      .select('url, visual_profile').in('url', m.urls).not('visual_profile', 'is', null)
+      // ⚠️ THE REJECTIONS COME TOO. What the model said that was THROWN OUT is
+      // evidence about the prompt, and a reviewer judging a thin profile
+      // deserves to see whether the pass answered nothing or answered badly.
+      .select('url, visual_profile, visual_rejections, download_route')
+      .in('url', m.urls).not('visual_profile', 'is', null)
     const claims = orderClaims((rows ?? []).flatMap((r) => flattenClaims(r.url, r.visual_profile)))
+    run.context = Object.fromEntries((rows ?? []).map((r) => [r.url, {
+      // ⚖️ RECORDED PER REFERENCE, because a failure pattern that follows one
+      // download route is a routing finding, not a model finding.
+      download_route: r.download_route ?? null,
+      rejections: r.visual_rejections ?? null,
+    }]))
     run.labels = claims.map((c) => ({ ...c, label: null, correctedValue: null }))
     // ⚠️ THE EVIDENCE IS CAPTURED NOW, WHILE IT IS WHAT THE REVIEWER WILL SEE.
     // Reading it at lock time instead would digest whatever the table holds by
     // then, which is not necessarily what was on screen.
     const { data: fr } = await db.from('reference_frames')
-      .select('url, frame_index, sha256').in('url', [...new Set(run.labels.map((l) => l.url))])
+      // ⚠️ at_seconds TRAVELS WITH THE FRAME. A claim about what CHANGES needs
+      // to know whether its two cited frames are half a second or half a minute
+      // apart -- without the timestamps the reviewer is judging a temporal claim
+      // from stills that could be anywhere in the clip.
+      .select('url, frame_index, sha256, at_seconds, schedule_basis')
+      .in('url', [...new Set(run.labels.map((l) => l.url))])
     run.frames = fr ?? []
     run.events = [{ kind: 'session_start', at: Date.now() }]
     save(run)
@@ -220,7 +252,13 @@ export async function serveReview(db, run, save, port) {
         // ⚠️ NO AGGREGATE IN THIS PAYLOAD, DELIBERATELY. A running accuracy on
         // screen is how the last few labels start agreeing with the first few,
         // and it would be trivial to include here by accident.
-        return json({ labels: run.labels, remaining: remaining(run), canFinish: canFinish(run), locked: run.locked })
+        return json({
+          labels: run.labels, remaining: remaining(run), canFinish: canFinish(run), locked: run.locked,
+          // ⚖️ STILL NO AGGREGATE. Timestamps and rejections are EVIDENCE about
+          // the claim on screen; an accuracy figure is a verdict about the
+          // labels already given, and only one of those belongs here.
+          frames: run.frames ?? [], context: run.context ?? {},
+        })
       }
 
       if (u.pathname === '/frame') {
@@ -262,6 +300,11 @@ export async function serveReview(db, run, save, port) {
         if (!canFinish(run)) return json({ error: `${remaining(run)} claims still unanswered` }, 409)
         finish(run, process.env.PILOT_REVIEWER)
         save(run)
+        // ⚖️ ARCHIVED UNDER ITS OWN DIGEST. A locked run that stayed only in
+        // run.json would be overwritten by the next pilot, and the "already
+        // labelled" refusal above would have nothing to consult.
+        mkdirSync(join(DIR, 'locked'), { recursive: true })
+        copyFileSync(FILE, join(DIR, 'locked', `${run.manifest.digest.slice(0, 16)}.json`))
         json({ locked: true })
         server.close()
         return resolve(run)

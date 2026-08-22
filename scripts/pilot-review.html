@@ -48,13 +48,15 @@ const LABELS = [
   ['INDETERMINATE', 'These frames cannot settle it.'],
   ['WRONG_EVIDENCE', 'Right claim, wrong frame.'],
 ]
-let rows = [], i = 0, corrected = null
+let rows = [], i = 0, corrected = null, FRAMES = [], CTX = {}
 
 const post = (path, body) => fetch(path, { method:'POST', body: JSON.stringify(body) })
 
 async function boot() {
   const r = await (await fetch('/claims')).json()
   rows = r.labels
+  FRAMES = r.frames || []
+  CTX = r.context || {}
   // ⚠️ RESUME WHERE THE HUMAN STOPPED. A packet that restarted at zero would
   // spend the session re-answering, and the re-answers are not independent.
   i = rows.findIndex((x) => x.label === null)
@@ -98,9 +100,18 @@ function render() {
   const c = rows[i]
   corrected = c.correctedValue ?? null
 
+  // ⚠️ THE TIMESTAMP IS PART OF THE EVIDENCE. A claim about what CHANGES needs
+  // to know whether its two frames are half a second or half a minute apart; the
+  // same two stills support very different claims at different spacings.
+  const at = (n) => {
+    const f = FRAMES.find((x) => x.url === c.url && x.frame_index === n)
+    return f && f.at_seconds !== null && f.at_seconds !== undefined
+      ? Number(f.at_seconds).toFixed(1) + 's'
+      : 'time unknown'
+  }
   const frames = c.frames.length
     ? c.frames.map((n) => '<figure><img src="/frame?url=' + encodeURIComponent(c.url) + '&i=' + n
-        + '" alt=""><figcaption>frame ' + n + '</figcaption></figure>').join('')
+        + '" alt=""><figcaption>frame ' + n + ' &middot; ' + at(n) + '</figcaption></figure>').join('')
     // ⚖️ A CLAIM WITH NO CITATION IS ITS OWN FINDING, said plainly rather than
     // rendered as an empty row the eye slides past.
     : '<div class="nocite">The model cited no frame for this. There is no evidence to judge.</div>'
@@ -111,6 +122,7 @@ function render() {
     + '<div class="value' + (c.answered ? '' : ' none') + '">'
       + (c.answered ? String(c.value) : 'the model did not answer this') + '</div>'
     + '<div class="frames">' + frames + '</div>'
+    + rejectionNote(c)
     + (c.canonical ? '<div class="canon on" id="canon">' + c.canonical.map((v) =>
         '<button data-v="' + v + '" class="' + (corrected === v ? 'sel' : '') + '">' + v + '</button>').join('')
         + '</div>' : '')
@@ -134,6 +146,21 @@ function render() {
     post('/event', { kind: 'frame_change' })
     img.style.maxHeight = img.style.maxHeight === 'none' ? '340px' : 'none'
   })
+}
+
+// ⚖️ WHAT THE PASS SAID AND HAD THROWN OUT, shown on the claims it affects. A
+// reviewer looking at an empty field cannot otherwise tell "the model said
+// nothing" from "the model said something inadmissible", and those are
+// different findings about the prompt.
+function rejectionNote(c) {
+  const ctx = CTX[c.url]
+  if (!ctx || !ctx.rejections) return ''
+  const list = Array.isArray(ctx.rejections) ? ctx.rejections : [ctx.rejections]
+  const mine = list.filter((r) => r && (r.field === c.path || r.path === c.path))
+  if (!mine.length) return ''
+  return '<div class="nocite" style="margin-bottom:20px">The pass answered this and it was '
+    + 'rejected: ' + mine.map((r) => (r.reason || r.rule || JSON.stringify(r))).join('; ')
+    + '</div>'
 }
 
 async function answer(label, kind) {
