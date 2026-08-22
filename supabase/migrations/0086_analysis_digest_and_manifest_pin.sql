@@ -44,12 +44,18 @@ alter table public.media_analyses
   add column if not exists manifest_sha text;
 
 alter table public.media_analyses
+  drop constraint if exists media_analyses_component_digest_shape;
+alter table public.media_analyses
   add constraint media_analyses_component_digest_shape
   check (component_digest is null or component_digest ~ '^[0-9a-f]{64}$');
+alter table public.media_analyses
+  drop constraint if exists media_analyses_manifest_sha_shape;
 alter table public.media_analyses
   add constraint media_analyses_manifest_sha_shape
   check (manifest_sha is null or manifest_sha ~ '^[0-9a-f]{64}$');
 -- A digest row must carry its manifest provenance; legacy rows carry neither.
+alter table public.media_analyses
+  drop constraint if exists media_analyses_digest_provenance;
 alter table public.media_analyses
   add constraint media_analyses_digest_provenance
   check ((component_digest is null) = (manifest_sha is null));
@@ -159,18 +165,28 @@ alter table public.edit_projects
   add column if not exists script_snapshot_sha text;
 
 alter table public.edit_projects
+  drop constraint if exists edit_projects_manifest_pair;
+alter table public.edit_projects
   add constraint edit_projects_manifest_pair
   check ((boot_manifest is null) = (boot_manifest_sha is null));
+alter table public.edit_projects
+  drop constraint if exists edit_projects_snapshot_pair;
 alter table public.edit_projects
   add constraint edit_projects_snapshot_pair
   check ((script_snapshot is null) = (script_snapshot_sha is null));
 -- Manifest and snapshot are pinned TOGETHER (one fenced call), never one-sided.
 alter table public.edit_projects
+  drop constraint if exists edit_projects_pin_together;
+alter table public.edit_projects
   add constraint edit_projects_pin_together
   check ((boot_manifest_sha is null) = (script_snapshot_sha is null));
 alter table public.edit_projects
+  drop constraint if exists edit_projects_manifest_sha_shape;
+alter table public.edit_projects
   add constraint edit_projects_manifest_sha_shape
   check (boot_manifest_sha is null or boot_manifest_sha ~ '^[0-9a-f]{64}$');
+alter table public.edit_projects
+  drop constraint if exists edit_projects_snapshot_sha_shape;
 alter table public.edit_projects
   add constraint edit_projects_snapshot_sha_shape
   check (script_snapshot_sha is null or script_snapshot_sha ~ '^[0-9a-f]{64}$');
@@ -195,6 +211,7 @@ begin
 end;
 $$;
 
+drop trigger if exists trg_edit_projects_guard_pin on public.edit_projects;
 create trigger trg_edit_projects_guard_pin
   before update of boot_manifest, boot_manifest_sha, script_snapshot, script_snapshot_sha
   on public.edit_projects

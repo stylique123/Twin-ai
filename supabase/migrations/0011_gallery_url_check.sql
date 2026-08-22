@@ -4,4 +4,6 @@
 -- ingest-reference allowlist already re-validates the host on use). NOT VALID so
 -- existing rows are left untouched; enforced on all new inserts.
 alter table public.gallery_items
+  drop constraint if exists gallery_items_url_https;
+alter table public.gallery_items
   add constraint gallery_items_url_https check (url like 'https://%') not valid;
