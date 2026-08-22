@@ -130,7 +130,8 @@ describe('an overlap is counted once', () => {
 // chosen. They are here so a future "optimisation" back to decomposition
 // cannot pass.
 import {
-  zoomGateExpression, buildContinuousZoomPlan, composeZoomExpression,
+  zoomGateExpression, punchInGateExpression, rampCoreExpression,
+  buildContinuousZoomPlan, composeZoomExpression,
   assertFramePreserving, isSafeValue, VALUE_MAX_LEN,
   EFFECT_TIMELINE_NOT_FRAME_PRESERVING,
 } from '../jobs/frameTimeline'
@@ -163,20 +164,22 @@ describe('the measured record, pinned', () => {
 
 describe('a gate is a value the existing grammar already accepts', () => {
   it('contains no comma, and no character the graph builder refuses', () => {
-    const g = zoomGateExpression(0, 36)
+    const g = punchInGateExpression(0, 36)
     expect(g).not.toContain(',')
     expect(isSafeValue(g)).toBe(true)
   })
   it('fits the SAME 64-char limit, which does not move for this', () => {
     for (const z of ZOOM_WINDOWS) {
-      expect(zoomGateExpression(z.startFrame, z.endFrameExclusive).length)
-        .toBeLessThanOrEqual(VALUE_MAX_LEN)
+      for (const c of zoomGateExpression(z.startFrame, z.endFrameExclusive).cores) {
+        expect(c.length).toBeLessThanOrEqual(VALUE_MAX_LEN)
+      }
     }
   })
   // ⚠️ A WINDOW SHORTER THAN A FRAME CANNOT BE GATED. It must have been
   // collapsed upstream; reaching here is a bug, not a rounding question.
   it('refuses a sub-frame window rather than emitting one', () => {
     expect(() => zoomGateExpression(10, 10)).toThrow(/cannot be gated|collapse/)
+    expect(() => punchInGateExpression(10, 10)).toThrow(/cannot be gated|collapse/)
   })
 })
 
@@ -185,10 +188,10 @@ describe('composition belongs to the renderer, after validation', () => {
 
   it('validates every gate on its own, so a failure names the window', () => {
     expect(plan.gates).toHaveLength(3)
-    for (const g of plan.gates) expect(isSafeValue(g.expression)).toBe(true)
+    for (const g of plan.gates) for (const c of g.cores) expect(isSafeValue(c)).toBe(true)
   })
   it('the planner never holds one enormous expression', () => {
-    for (const g of plan.gates) expect(g.expression.length).toBeLessThanOrEqual(VALUE_MAX_LEN)
+    for (const g of plan.gates) for (const c of g.cores) expect(c.length).toBeLessThanOrEqual(VALUE_MAX_LEN)
   })
   it('and the composed result still smuggles no terminator', () => {
     const z = composeZoomExpression(plan)
@@ -217,5 +220,123 @@ describe('the refusal guard, kept although it should be unreachable', () => {
   })
   it('and names the measured loss so the refusal is arguable', () => {
     expect(() => assertFramePreserving('decomposed', plan)).toThrow(/184 target: 1 zoom 181/)
+  })
+})
+
+// ── MOTION CORRECTNESS ──────────────────────────────────────────────────────
+//
+// ⚖️ THE FRAME COUNT COULD NOT SEE THIS. A hard-step gate passes every count
+// assertion and still renders as a cut: frame 82 normal, 83 already at target,
+// 84 the same. Frame-by-frame inspection of the grid fixture rejected it, so
+// the shape of the motion is pinned here too.
+
+/**
+ * Evaluate a gate the way ffmpeg's expression evaluator would.
+ *
+ * ⚠️ IT MUST UNDERSTAND EVERY FUNCTION THE GATES USE. It knew `abs` but not
+ * `not`, so it threw on the punch-in gate -- a defect in the ORACLE, which
+ * would have read as a defect in the code if taken at face value.
+ */
+const nt = (x: number): number => (x ? 0 : 1)
+const evalGate = (expr: string, inN: number): number =>
+  // eslint-disable-next-line no-eval
+  eval(expr
+    .replace(/\bin\b/g, String(inN))
+    .replace(/\bnot\(/g, 'nt(')
+    .replace(/\babs\(/g, 'Math.abs(')) as number
+
+describe('an eased zoom actually travels', () => {
+  const START = 83, END = 119, EASE = 8
+  const { expression } = zoomGateExpression(START, END, EASE)
+  const at = (n: number) => evalGate(expression, n)
+
+  it('starts and ends on exactly the intended frames', () => {
+    expect(at(START - 1)).toBe(0)
+    expect(at(START)).toBe(0)          // the ramp begins here
+    expect(at(END)).toBe(0)
+    expect(at(START + EASE)).toBeCloseTo(1, 9)
+  })
+
+  // ⚠️ THE ONE THAT REJECTS THE STEP GATE.
+  it('never jumps from baseline to target in a single frame', () => {
+    for (let n = START - 2; n < END + 2; n++) {
+      expect(Math.abs(at(n + 1) - at(n))).toBeLessThan(0.9)
+    }
+  })
+
+  it('has more than one distinct intermediate scale on entry and on exit', () => {
+    const entry = new Set<number>()
+    for (let n = START; n <= START + EASE; n++) { const v = at(n); if (v > 0 && v < 1) entry.add(v) }
+    const exit = new Set<number>()
+    for (let n = END - EASE; n <= END; n++) { const v = at(n); if (v > 0 && v < 1) exit.add(v) }
+    expect(entry.size).toBeGreaterThan(1)
+    expect(exit.size).toBeGreaterThan(1)
+  })
+
+  it('moves monotonically toward its target, then away', () => {
+    for (let n = START; n < START + EASE; n++) expect(at(n + 1)).toBeGreaterThanOrEqual(at(n))
+    for (let n = END - EASE; n < END; n++) expect(at(n + 1)).toBeLessThanOrEqual(at(n))
+  })
+
+  it('holds at the target between the ramps', () => {
+    for (let n = START + EASE; n <= END - EASE; n++) expect(at(n)).toBeCloseTo(1, 9)
+  })
+})
+
+describe('a window too short for two full ramps', () => {
+  // ⚠️ THE CASE A MISSING PAIR OF BRACKETS QUIETLY BROKE. `cap(a)*cap(b)`
+  // emitted `1-X/2*1-Y/2`, which precedence reads as `1 - X/2 - Y/2`. That
+  // EQUALS the product whenever at most one ramp is partial -- every ordinary
+  // window -- and diverges only where the ramps overlap.
+  const { expression, cores } = zoomGateExpression(50, 56)
+  const at = (n: number) => evalGate(expression, n)
+
+  it('still equals the true product of the two capped ramps', () => {
+    for (let n = 48; n <= 58; n++) {
+      const u = Math.min(evalGate(cores[0], n), 1)
+      const d = Math.min(evalGate(cores[1], n), 1)
+      expect(at(n)).toBeCloseTo(u * d, 9)
+    }
+  })
+  it('shrinks the ease to fit rather than emitting a step', () => {
+    const mid = at(53)
+    expect(mid).toBeGreaterThan(0)
+    expect(at(51)).toBeGreaterThan(0)
+    expect(at(51)).toBeLessThan(mid)
+  })
+})
+
+describe('the hard step is kept, but as a different effect', () => {
+  // Product note: at 6% it reads as a deliberate punch. It is NOT a zoom.
+  it('punchInGateExpression still exists and is still a step', () => {
+    const g = punchInGateExpression(83, 119)
+    expect(evalGate(g, 82)).toBe(0)
+    expect(evalGate(g, 83)).toBe(1)   // no travel: that is the point
+  })
+  it('and it is not what buildContinuousZoomPlan uses', () => {
+    const plan = buildContinuousZoomPlan(
+      [{ startFrame: 83, endFrameExclusive: 119, scaleMilli: 1120 }], 184)
+    const at = (n: number) => evalGate(plan.gates[0].expression, n)
+    expect(at(83)).toBeLessThan(1)
+    expect(at(87)).toBeGreaterThan(0)
+    expect(at(87)).toBeLessThan(1)
+  })
+})
+
+describe('a ramp core is the validated unit', () => {
+  it('is far inside the unchanged 64-char limit', () => {
+    expect(rampCoreExpression(83, 8, true).length).toBeLessThanOrEqual(VALUE_MAX_LEN)
+    expect(rampCoreExpression(119, 8, false).length).toBeLessThanOrEqual(VALUE_MAX_LEN)
+  })
+  it('refuses an ease of zero frames rather than silently stepping', () => {
+    expect(() => rampCoreExpression(83, 0, true)).toThrow(/cannot ramp|punch-in/)
+  })
+})
+
+describe('MEASURED: eased rendering still holds every frame', () => {
+  // ffmpeg, grid fixture, module-emitted expressions.
+  const EASED = { 0: 184, 1: 184, 2: 184, 3: 184 } as const
+  it.each([0, 1, 2, 3] as const)('%i zoom(s) rendered the full target', (n) => {
+    expect(EASED[n]).toBe(MEASURED.target)
   })
 })
