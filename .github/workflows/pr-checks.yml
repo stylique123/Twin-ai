@@ -433,6 +433,11 @@ jobs:
       # printed output that nobody asserted on.
       - name: Pilot collect (the packet is stored once, and it multiplies out)
         run: node scripts/pilot-collect.selftest.mjs
+      # The command the owner actually runs. The defect it guards is a MOVE:
+      # invoke on one machine, resume on another, and get a different eight
+      # references with nobody noticing. Identity comes from the database.
+      - name: Pilot remote (identity by id, the worker does the media work)
+        run: node scripts/pilot-remote.selftest.mjs
       # The staging matrix applies a HAND-MAINTAINED migration list, and it has
       # fallen behind three times. Every time, the symptom was a harness timeout
       # with nothing in the diff mentioning a migration — the gate went green on

@@ -229,22 +229,27 @@ async function main() {
   // IN THE WRONG ORDER -- and one of those orders, looking at the aggregate
   // before locking, silently spoils the labels it was meant to measure.
   if (flag('review')) {
-    const { runReview, serveReview, report } = await import('./pilot-review.mjs')
+    const { runRemotePilot } = await import('./pilot-remote.mjs')
     const { join } = await import('node:path')
-    const { readFileSync, writeFileSync, mkdirSync } = await import('node:fs')
-    const FILE = join('.twinai-pilot', 'run.json')
-    const save = (r) => { mkdirSync('.twinai-pilot', { recursive: true }); writeFileSync(FILE, JSON.stringify(r, null, 2)) }
-    const db = client()
-    const run = await runReview(db, {
+    const { writeFileSync, mkdirSync } = await import('node:fs')
+    // ⚠️ WRITE-ONLY. The mirror lets a human see which run this shell is talking
+    // about. It is NEVER read back for identity -- that is exactly how a second
+    // machine used to find no file, draw its own eight references, and lose the
+    // pre-registration with nothing to notice it.
+    const mirror = (m) => {
+      mkdirSync('.twinai-pilot', { recursive: true })
+      writeFileSync(join('.twinai-pilot', 'run.json'), JSON.stringify(m, null, 2))
+    }
+    await runRemotePilot(client(), {
+      appUrl: arg('app-url', process.env.TWIN_APP_URL ?? null),
       size: arg('size', 8),
-      // ⚠️ DRY BY DEFAULT, LIKE EVERY OTHER SPENDING PATH HERE. --review shows
-      // the sample and the bill; --review --go is what costs money.
+      // ⚠️ DRY BY DEFAULT, LIKE EVERY OTHER SPENDING PATH HERE.
       dryRun: !flag('go'),
       timeoutMin: arg('timeout-min', 60),
+      // Resuming takes an ID, not a file.
+      pilotRunId: arg('pilot-run-id', null),
+      mirror,
     })
-    if (!run) return
-    const finished = await serveReview(db, run, save, Number(arg('port', 7358)))
-    console.log(report(finished))
     return
   }
 
