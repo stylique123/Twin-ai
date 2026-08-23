@@ -110,6 +110,13 @@ const SENTENCES: Record<string, Sayer> = {
     'The place this is filmed changes during the video.',
     'It is filmed in one place the whole way through.',
   ),
+  // ⚠️ THE DISTANCE, SAID WITHOUT JARGON. "Medium shot" is a film-crew word; the
+  // reviewer is a creator being asked what they can see.
+  'camera.shotType': oneOf({
+    close: 'It is filmed close up — head and shoulders.',
+    medium: 'It is filmed from about the waist up.',
+    wide: 'It is filmed from far enough back to see the whole body.',
+  }),
   'setting.complexity': oneOf({
     simple: 'It is filmed somewhere plain and uncluttered.',
     moderate: 'It is filmed somewhere with a bit going on in the background.',

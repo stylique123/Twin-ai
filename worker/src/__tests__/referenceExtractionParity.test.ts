@@ -96,7 +96,11 @@ describe('worker ↔ shared VISUAL parity', () => {
       return [...block.matchAll(/'(static|temporal|transition)'/g)].map((m) => m[1])
     }
     expect(classes(WORKER_VISUAL)).toEqual(classes(SHARED_VISUAL))
-    expect(classes(SHARED_VISUAL).length).toBe(15)
+    // ⚠️ A DELIBERATE RATCHET, NOT A MAGIC NUMBER. 15 -> 16 with camera.shotType
+    // (visual-3). Changing this number is the moment to ask whether the new
+    // field is asked, parsed, projected, mirrored into the worker copy AND
+    // stamped with a new analyzer version — all five, or the field is invisible.
+    expect(classes(SHARED_VISUAL).length).toBe(16)
   })
 
   it('the blocker vocabulary and its plain-English reasons are identical', () => {

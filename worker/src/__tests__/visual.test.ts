@@ -55,7 +55,9 @@ describe('buildVisualAnalysis', () => {
   it('builds the evidence-only contract with display-space facts and pinned provenance', () => {
     const r = buildVisualAnalysis({ id: 'a1', content_sha256: 'h1' }, bridge(), facts,
       { intervalMs: 2000, rules, boundsSha256, requirePinnedModel: true }) as Record<string, any>
-    expect(r.visualVersion).toBe('visual-2')
+    // visual-3: the six field questions the pilot's reviewer could not answer
+    // as asked, plus camera.shotType. The stamp MUST move with the questions.
+    expect(r.visualVersion).toBe('visual-3')
     expect(r.rotation).toBe(90)
     expect(r.displayWidth).toBe(1080)
     expect(r.sampling).toEqual({ coarseIntervalMs: 2000, coarseSamples: 5, fineSamples: 3, faceSamples: 5 })

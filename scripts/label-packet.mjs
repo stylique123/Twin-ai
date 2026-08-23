@@ -68,8 +68,11 @@ if (flag('selftest')) {
   const claims = flattenClaims('u', profile)
   ok('one row per declared claim path, answered or not', claims.length === CLAIM_PATHS.length)
   // ⚠️ THE FINDING THAT DROPPING NULLS WOULD HIDE.
+  // 9 -> 10 unanswered with camera.shotType (visual-3): the fixture profile does
+  // not set it, so it is one more UNANSWERED ROW. The point of the assertion is
+  // unchanged — a field the model did not answer must still appear.
   ok('an unanswered field is a ROW, not a gap',
-    claims.filter((c) => !c.answered).length === 9
+    claims.filter((c) => !c.answered).length === 10
     && claims.filter((c) => c.answered).length === 6)
   ok('carries the cited frames', claims.find((c) => c.path === 'primaryMode').frames.join() === '2')
   ok('carries a two-frame citation intact',
