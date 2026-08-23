@@ -27,6 +27,7 @@ const ENDPOINT = readFileSync(
   join(REPO, 'supabase', 'functions', 'pilot-review', 'index.ts'), 'utf8')
 const REVIEW_PAGE = readFileSync(
   join(REPO, 'apps', 'web', 'src', 'pages', 'PilotVisualReview.tsx'), 'utf8')
+const PILOT_CORE = readFileSync(join(REPO, 'scripts', 'pilot-core.mjs'), 'utf8')
 
 /** ⚠️ COMMENTS STRIPPED FIRST. This very migration explains the bug by quoting
  *  the wrong column names, so a raw scan would match the EXPLANATION. */
@@ -38,6 +39,7 @@ const strip = (s: string) => s
 const SQL = strip(ALL_SQL)
 const CODE = strip(ENDPOINT)
 const PAGE = strip(REVIEW_PAGE)
+const CORE = strip(PILOT_CORE)
 
 /** Columns the table actually has: those in the CREATE plus every ADD COLUMN. */
 function columnsOfEventsTable(): Set<string> {
@@ -91,6 +93,40 @@ describe('the friction log can actually be written to', () => {
       // never listed it, so those rows were rejected even once the columns were
       // right.
       expect(allowed.has(kind), `page sends kind "${kind}" — the check constraint forbids it`).toBe(true)
+    }
+  })
+})
+
+// ⚠️ THE SAME DEFECT, ONE TABLE OVER, AND IT COST THE OWNER A FAILED START.
+// Pressing Start on the with-speech cohort returned "could not freeze the pilot
+// sample: new row for relation visual_pilot_references violates check constraint
+// visual_pilot_references_stratum_check". 0163 wrote the strata when there was
+// ONE cohort; #475 added a second whose bands are speech_short / speech_long and
+// moved everything except that line.
+//
+// ⚖️ THE NO-SPEECH RUN PASSING IS WHAT HID IT. A constraint that has only ever
+// seen the population it was written for looks like a working constraint. So
+// this reads every band the code can EMIT and asserts the constraint ADMITS it,
+// rather than checking the one path that happens to be exercised.
+describe('every cohort’s strata are admitted by the table', () => {
+  it('COHORT_BANDS and the stratum constraint agree', () => {
+    const spec = CORE.match(/export const COHORT_BANDS = Object\.freeze\(\{([\s\S]*?)\}\)/)
+    expect(spec, 'COHORT_BANDS must be findable in pilot-core.mjs').toBeTruthy()
+    const emitted = new Set<string>()
+    for (const m of spec![1].matchAll(/bands:\s*\[([^\]]*)\]/g)) {
+      for (const b of m[1].matchAll(/'([a-z_]+)'/g)) emitted.add(b[1])
+    }
+    // Both cohorts, two bands each: if this drops to one cohort's worth the
+    // regex has stopped matching and the assertion below is vacuous.
+    expect(emitted.size).toBeGreaterThanOrEqual(4)
+
+    const checks = [...SQL.matchAll(/stratum in \(([\s\S]*?)\)/g)]
+    expect(checks.length).toBeGreaterThan(0)
+    const allowed = new Set<string>()
+    for (const m of checks.at(-1)![1].matchAll(/'([a-z_]+)'/g)) allowed.add(m[1])
+
+    for (const band of emitted) {
+      expect(allowed.has(band), `pilot-core can emit stratum "${band}" — the check constraint forbids it`).toBe(true)
     }
   })
 })
