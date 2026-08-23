@@ -2,7 +2,8 @@
 // The stored packet. The invariant under test is the one that mattered most:
 // FAILED and UNREADABLE references contribute ZERO claims, and the stored count
 // multiplies out against the references reported ready.
-import { collectForRun, terminalStateOf, collectReadiness } from './pilot-collect.mjs'
+import { readFileSync, readdirSync } from 'node:fs'
+import { collectForRun, terminalStateOf, collectReadiness, PROFILE_COLUMNS } from './pilot-collect.mjs'
 import { CLAIM_PATHS, manifestDigest } from './pilot-core.mjs'
 
 let failed = 0
@@ -83,7 +84,7 @@ function stub(profiles) {
 const mixed = [
   { url: URLS[0], visual_profile: answered(1), error: 'no_speech: 0 chars', frames_sampled: 6, download_route: 'local_impersonated' },
   { url: URLS[1], visual_profile: answered(2), error: 'no_speech: 3 chars', frames_sampled: 6, download_route: 'local_impersonated' },
-  { url: URLS[2], visual_failure_code: 'download_blocked', visual_failure_stage: 'acquire', error: 'no_speech: 0 chars' },
+  { url: URLS[2], visual_failure_code: 'download_blocked', error: 'no_speech: 0 chars' },
   { url: URLS[3], frames_sampled: 6, error: 'no_speech: 0 chars', download_route: 'local_impersonated' },
 ]
 const a = stub(mixed)
@@ -96,9 +97,19 @@ ok('the packet holds ready × declared claim paths',
   res.claims === 2 * CLAIM_PATHS.length && a.claims.length === 2 * CLAIM_PATHS.length)
 ok('and no claim belongs to a FAILED or UNREADABLE reference',
   a.claims.every((c) => c.url === URLS[0] || c.url === URLS[1]))
-ok('the failed reference records its code and stage',
-  a.refs[2].terminal_state === 'FAILED' && a.refs[2].failure_code === 'download_blocked'
-  && a.refs[2].failure_stage === 'acquire')
+ok('the failed reference records its code',
+  a.refs[2].terminal_state === 'FAILED' && a.refs[2].failure_code === 'download_blocked')
+// ⚠️ THIS FIXTURE USED TO INVENT visual_failure_stage AND THEN ASSERT IT BACK.
+// The column has never existed in any migration and nothing writes it, so the
+// test was proving a property of its own stub while the real query -- which
+// named that column -- was refused outright by PostgREST. A fixture that
+// manufactures the column under test cannot fail when the column is missing.
+ok('no failure stage is invented for a reference nobody staged',
+  a.refs[2].failure_stage === undefined)
+// The CONTROL: the columns that DO exist still arrive, so the fix removed the
+// imaginary field and nothing else.
+ok('CONTROL the real failure column still lands', a.refs[2].failure_code === 'download_blocked')
+ok('CONTROL the real frames column still lands', a.refs[3].frames_sampled === 6)
 ok('the unreadable one records frames but no code',
   a.refs[3].terminal_state === 'UNREADABLE' && a.refs[3].failure_code === null && a.refs[3].frames_sampled === 6)
 ok('answered is stored as its own column', a.claims.every((c) => c.answered === true))
@@ -160,6 +171,29 @@ ok('a missing run is refused rather than assumed', collectReadiness({ done: true
 // CONTROL: the gate must not simply refuse everything.
 ok('CONTROL: the only accepting case really does accept',
   collectReadiness({ done: true, ready: 1 }, { status: 'collecting' }).collect === true)
+
+// ── every column asked for must actually exist ────────────────────────────
+//
+// ⚠️ THE GUARD THAT WOULD HAVE CAUGHT IT. PostgREST refuses the ENTIRE read if
+// one name in the projection is unknown, so an imaginary column does not
+// degrade the packet -- it destroys it. visual_failure_stage was named here,
+// was created by no migration, and was written by nothing, and the only reason
+// the suite stayed green is that the fixture invented the column it asserted.
+const MIGRATIONS = readdirSync(new URL('../supabase/migrations', import.meta.url))
+  .filter((f) => f.endsWith('.sql'))
+  .map((f) => readFileSync(new URL(`../supabase/migrations/${f}`, import.meta.url), 'utf8'))
+  .join('\n')
+const declared = (col) => new RegExp(`\\b${col}\\b`).test(MIGRATIONS)
+
+for (const col of PROFILE_COLUMNS) {
+  ok(`${col} is declared by a migration`, declared(col))
+}
+// ⚠️ AND THE CHECK IS PROVEN ABLE TO FAIL. A guard whose zero has never been
+// falsified is not evidence; this asserts the detector rejects a column that
+// is not there -- including the exact one that broke production.
+ok('CONTROL the check rejects an invented column', declared('visual_failure_stage') === false)
+ok('CONTROL the check rejects a nonsense column', declared('column_that_never_existed_xyz') === false)
+ok('CONTROL the check accepts a column that does exist', declared('visual_profile') === true)
 
 console.log(failed === 0 ? '\npilot-collect selftest: all passed' : `\npilot-collect selftest: ${failed} FAILED`)
 process.exit(failed === 0 ? 0 : 1)

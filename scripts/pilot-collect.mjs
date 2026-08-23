@@ -60,6 +60,19 @@ export function collectReadiness(progress, run) {
   return { collect: true, reason: null }
 }
 
+/**
+ * The columns collectForRun reads off reference_content_profiles.
+ *
+ * ⚖️ NAMED ONCE, SO A GUARD CAN CHECK THEM. PostgREST refuses the WHOLE read if
+ * any single name in the projection does not exist, so one imaginary column
+ * costs the entire packet -- which is exactly what happened to a real pilot
+ * whose evidence had already been collected and paid for.
+ */
+export const PROFILE_COLUMNS = Object.freeze([
+  'url', 'visual_profile', 'visual_rejections', 'visual_failure_code',
+  'frames_sampled', 'download_route', 'error',
+])
+
 export async function collectForRun(db, pilotRunId) {
   const { run, urls } = await loadPilotRun(db, pilotRunId)
   if (run.status === 'locked') throw new Error(`pilot ${pilotRunId} is locked — its packet is final`)
@@ -68,8 +81,15 @@ export async function collectForRun(db, pilotRunId) {
     // ⚠️ THE REJECTIONS COME TOO. What the pass said that was THROWN OUT is
     // evidence about the prompt, and a reviewer judging a thin profile deserves
     // to know whether it answered nothing or answered badly.
-    .select('url, visual_profile, visual_rejections, visual_failure_code, visual_failure_stage, '
-      + 'frames_sampled, download_route, error')
+    //
+    // ⚠️ visual_failure_stage IS NOT IN THIS LIST BECAUSE IT DOES NOT EXIST.
+    // It was never created by any migration and nothing anywhere writes it, so
+    // asking for it made PostgREST refuse the WHOLE read: "column
+    // reference_content_profiles.visual_failure_stage does not exist". That
+    // refusal is what a real pilot hit after its evidence was already collected
+    // and paid for -- the packet could not be built at all because one column
+    // in the projection was imaginary.
+    .select(PROFILE_COLUMNS.join(', '))
     .in('url', urls)
   err(error, 'could not read the pilot references')
 
@@ -100,7 +120,12 @@ export async function collectForRun(db, pilotRunId) {
     const { error: e } = await db.from('visual_pilot_references').update({
       terminal_state: s.state,
       failure_code: s.row?.visual_failure_code ?? null,
-      failure_stage: s.row?.visual_failure_stage ?? null,
+      // ⚖️ NO failure_stage IS RECORDED, BECAUSE NOTHING PRODUCES ONE. The
+      // column exists on visual_pilot_references, but the visual pass has no
+      // notion of a stage and never has. Writing a value here would be
+      // inventing an attribution the evidence does not support; leaving it
+      // unset says the honest thing, which is that nobody measured it.
+
       frames_sampled: s.row?.frames_sampled ?? null,
       download_route: s.row?.download_route ?? null,
       turned_out_to_have_speech: s.spoke,
