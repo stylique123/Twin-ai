@@ -884,9 +884,17 @@ async function main() {
     // ⚠️ K1 IS GONE FROM HERE, AND IT WAS NOT DROPPED — IT WAS UPGRADED.
     //
     // It proved "no analysis row exists outside the six sanctioned components"
-    // by counting, with head:true, across the WHOLE table:
+    // by counting, with head:true, across the WHOLE table — a PostgREST
+    // anti-filter naming every sanctioned component.
     //
-    //     .not('component', 'in', '("inspection","speech",...)')
+    // ⚠️ THE EXAMPLE IS DESCRIBED, NOT PASTED, AND THAT IS DELIBERATE.
+    // check_analysis_components.mjs scrapes this file for a literal
+    // `.not('component','in',...)` and compares what it finds against the
+    // catalog. A commented-out copy is indistinguishable from a live one: the
+    // first version of this comment pasted the call with an ellipsis, the
+    // scraper read it as a site declaring two components, and CI correctly
+    // refused the PR. A guard that reads source text cannot tell code from a
+    // quotation of code.
     //
     // Measured on staging 2026-08-23: media_analyses is 51,318 rows / 87 MB,
     // neither component index can serve a NOT IN anti-filter, and the seq scan

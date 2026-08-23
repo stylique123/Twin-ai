@@ -47,6 +47,14 @@ export const CATALOG_PATH = 'scripts/ci/analysis_components.json'
 export const MIGRATIONS_DIR = 'supabase/migrations'
 export const WORKFLOW = '.github/workflows/staging-integration.yml'
 
+// ⚠️ THE NAMESPACE ASSERTION MOVED, AND SO DID ITS SITE. phase3 used to prove
+// the bounded namespace by counting rows through PostgREST; that count seq-
+// scanned 51,318 rows (2.7s idle, 5.7s under load, against an 8s timeout) and
+// three matrix runs died on it. It is now asserted from the VALIDATED CHECK
+// constraint in the psql schema step, which proves more and costs nothing.
+// The catalog must still govern it — a hardcoded list is a hardcoded list
+// wherever it lives, and this .sql spells out all six.
+export const ANALYSIS_CONSTRAINT_SQL = 'scripts/ci/check_analysis_component_bounded.sql'
 export const PHASE3 = 'scripts/staging-integration/phase3.mjs'
 export const PHASE4 = 'scripts/staging-integration/phase4.mjs'
 export const PHASE5 = 'scripts/staging-integration/phase5.mjs'
@@ -120,6 +128,17 @@ export function parseAppliedMigrations(yaml) {
 export function parseNotInFilter(js) {
   const m = /\.not\(\s*'component'\s*,\s*'in'\s*,\s*'\(([^)]*)\)'/.exec(js)
   return m ? [...m[1].matchAll(/"([a-z_]+)"/g)].map((x) => x[1]) : null
+}
+
+// The .sql pins the constraint's EXACT definition, so the component list is
+// spelled out inside a doubled-quoted SQL string literal:
+//   expected text := 'CHECK ((component = ANY (ARRAY[''inspection''::text, ...])))';
+export function parseConstraintExpectedDef(sql) {
+  const m = /expected\s+text\s*:=\s*'([^;]*?)'\s*;/s.exec(sql)
+  if (!m) return null
+  const inner = /ARRAY\[(.*?)\]/s.exec(m[1])
+  if (!inner) return null
+  return [...inner[1].matchAll(/''([a-z_]+)''::text/g)].map((x) => x[1])
 }
 
 export function parseSanctionedConst(js) {
@@ -258,7 +277,7 @@ export function evaluate(catalog, files, migrations) {
 
   // 5-8. the staging-integration phase scripts
   for (const [path, parse, expected, label] of [
-    [PHASE3, parseNotInFilter, all, 'sanctioned-component filter'],
+    [ANALYSIS_CONSTRAINT_SQL, parseConstraintExpectedDef, all, 'pinned CHECK-constraint component list'],
     [PHASE4, parseNotInFilter, all, 'sanctioned-component filter'],
     [PHASE5, parseSanctionedConst, all, 'SANCTIONED const'],
   ]) {
@@ -340,7 +359,7 @@ function selftest() {
   const migrations = () => ({ '0083_bounds.sql': CHECK, '0087_writers.sql': FN })
   const files = () => ({
     [WORKFLOW]: 'for f in 0090_a 0091_b; do psql; done',
-    [PHASE3]: `.not('component', 'in', '("inspection","speech","visual","audio","hook")')`,
+    [ANALYSIS_CONSTRAINT_SQL]: `expected text := 'CHECK ((component = ANY (ARRAY[''inspection''::text, ''speech''::text, ''visual''::text, ''audio''::text, ''hook''::text])))';`,
     [PHASE4]: `.not('component', 'in', '("inspection","speech","visual","audio","hook")')`,
     [PHASE5]: `const SANCTIONED = ['inspection', 'speech', 'visual', 'audio', 'hook']`,
     [PHASE6]: `['visual', 'audio', 'hook'].every((c) => x)\nrecEv.length === 3\nreused.length === 3\n['visual', 'audio', 'hook'].every((c) => y)`,
@@ -366,8 +385,11 @@ function selftest() {
     'a component added to the CHECK but not the catalog', /component CHECK is/)
   one((f, m) => { m['0087_writers.sql'] = FN.replace("'visual','audio','hook'", "'visual','audio'") },
     'a component dropped from the digest guard', /digest-keyed guard is/)
-  one((f) => { f[PHASE3] = f[PHASE3].replace(',"hook"', '') },
-    'phase3 filter out of step', /phase3.*filter is/)
+  // ⚖️ THE MUTATION MOVED WITH THE SITE. The namespace is now pinned in the
+  // .sql's expected constraint definition; dropping a component there must be
+  // caught exactly as dropping it from phase3's old filter was.
+  one((f) => { f[ANALYSIS_CONSTRAINT_SQL] = f[ANALYSIS_CONSTRAINT_SQL].replace(", ''hook''::text", '') },
+    'pinned constraint list out of step', /CHECK-constraint component list is/)
   one((f) => { f[PHASE4] = f[PHASE4].replace(',"speech"', '') },
     'phase4 filter out of step', /phase4.*filter is/)
   one((f) => { f[PHASE5] = f[PHASE5].replace(", 'hook'", '') },
@@ -407,7 +429,8 @@ function selftest() {
       .replace("'visual','audio','hook'", "'visual','audio','hook','alignment'")
       .replace('else 16384', "when 'alignment' then 524288 else 16384")
     const f = files()
-    f[PHASE3] = f[PHASE3].replace('"hook"', '"hook","alignment"')
+    f[ANALYSIS_CONSTRAINT_SQL] = f[ANALYSIS_CONSTRAINT_SQL]
+      .replace("''hook''::text", "''hook''::text, ''alignment''::text")
     f[PHASE4] = f[PHASE4].replace('"hook"', '"hook","alignment"')
     f[PHASE5] = f[PHASE5].replace("'hook'", "'hook', 'alignment'")
     f[PHASE6] = f[PHASE6].replace(/'visual', 'audio', 'hook'/g, "'visual', 'audio', 'hook', 'alignment'")
@@ -436,7 +459,8 @@ function selftest() {
       .replace("'visual','audio','hook'", "'visual','audio','hook','alignment'")
       .replace('else 16384', "when 'alignment' then 524288 else 16384")
     const f = files()
-    f[PHASE3] = f[PHASE3].replace('"hook"', '"hook","alignment"')
+    f[ANALYSIS_CONSTRAINT_SQL] = f[ANALYSIS_CONSTRAINT_SQL]
+      .replace("''hook''::text", "''hook''::text, ''alignment''::text")
     f[PHASE4] = f[PHASE4].replace('"hook"', '"hook","alignment"')
     f[PHASE5] = f[PHASE5].replace("'hook'", "'hook', 'alignment'")
     f[PHASE6] = f[PHASE6].replace(/'visual', 'audio', 'hook'/g, "'visual', 'audio', 'hook', 'alignment'").replace(/=== 3/g, '=== 4')
@@ -530,7 +554,7 @@ function readAll() {
     if (n.endsWith('.sql')) migrations[n] = readFileSync(`${MIGRATIONS_DIR}/${n}`, 'utf8')
   }
   const files = {}
-  for (const p of [WORKFLOW, PHASE3, PHASE4, PHASE5, PHASE6, ...TS_SITES]) {
+  for (const p of [WORKFLOW, ANALYSIS_CONSTRAINT_SQL, PHASE4, PHASE5, PHASE6, ...TS_SITES]) {
     try { files[p] = readFileSync(p, 'utf8') } catch { /* missing → evaluate() fails closed */ }
   }
   return { catalog, files, migrations }
