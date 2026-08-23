@@ -6,6 +6,8 @@ import {
   claimsDigest, evidenceDigest, byField, bySituation, slowestFields, supportedRate,
   byScheduleBasis, distributionRates, armComparison, checkPacketInvariants,
   checkRateInvariants, CLAIM_PATHS,
+  COHORT_SPEECH, COHORT_NO_SPEECH, COHORTS, speechBandOf, SPEECH_BAND_SPLIT_CHARS,
+  selectionVersionFor,
 } from './pilot-core.mjs'
 
 let failed = 0
@@ -431,6 +433,84 @@ ok('flattenClaims still returns one row per declared path',
   ok('keyboard use is counted separately from answers',
     friction([{ kind: 'key', at: 1 }, { kind: 'label', at: 2, index: 0 }]).keyboard_actions === 1)
 }
+
+// ── the with-speech cohort ──────────────────────────────────────────────────
+// ⚠️ WHY THIS EXISTS AT ALL. Run 7204de6f drew only silent references, so the
+// content_beats arm could not appear and #58's question went unasked. Measured
+// on that packet: talkingHead false on 8 of 8, primaryMode unanswered on 8 of 8.
+ok('the split is a pinned constant, not computed at draw time',
+  SPEECH_BAND_SPLIT_CHARS === 645)
+ok('below the split is short', speechBandOf(644) === 'speech_short')
+ok('the split itself is long', speechBandOf(645) === 'speech_long')
+ok('well above the split is long', speechBandOf(43687) === 'speech_long')
+// ⚠️ ABSENT IS NOT ZERO-LENGTH SPEECH. A row with no chars has no business in
+// this cohort; the DRAW filters it out, and the band function must not quietly
+// give it a home either.
+ok('a null length lands in short rather than throwing', speechBandOf(null) === 'speech_short')
+
+// ⚠️ THE VERSION STRING MUST DIFFER. It is the only thing a later reader has to
+// tell whether two runs were drawn the same way; reusing it would make an
+// incomparable pair look like a pair.
+ok('each cohort carries its own selection version',
+  selectionVersionFor(COHORT_NO_SPEECH) !== selectionVersionFor(COHORT_SPEECH))
+ok('the no-speech version is unchanged — old runs stay comparable',
+  selectionVersionFor(COHORT_NO_SPEECH) === 'chars_zero_tiny_v1')
+ok('an unknown cohort has no version and refuses', (() => {
+  try { selectionVersionFor('made_up'); return false } catch { return true }
+})())
+
+{
+  // Two creators per band, so one-per-creator and alternation are both visible.
+  const rows = [
+    { url: 'https://www.tiktok.com/@a/video/1', transcript_chars: 200 },
+    { url: 'https://www.tiktok.com/@b/video/2', transcript_chars: 300 },
+    { url: 'https://www.tiktok.com/@c/video/3', transcript_chars: 1500 },
+    { url: 'https://www.tiktok.com/@d/video/4', transcript_chars: 2500 },
+  ]
+  const drawn = selectCohort(rows, 4, COHORT_SPEECH)
+  ok('every row is drawn when the size allows', drawn.length === 4)
+  const bands = new Set(drawn.map((r) => speechBandOf(r.transcript_chars)))
+  ok('BOTH bands are represented, not one end of the distribution',
+    bands.has('speech_short') && bands.has('speech_long'))
+
+  // ⚖️ ONE PER CREATOR SURVIVES THE NEW COHORT. Ten videos from one creator are
+  // ten samples of one visual situation — the failure mode a "random" draw hides.
+  const sameCreator = [
+    { url: 'https://www.tiktok.com/@solo/video/1', transcript_chars: 200 },
+    { url: 'https://www.tiktok.com/@solo/video/2', transcript_chars: 2000 },
+    { url: 'https://www.tiktok.com/@other/video/3', transcript_chars: 900 },
+  ]
+  const deduped = selectCohort(sameCreator, 3, COHORT_SPEECH)
+  ok('one video per creator, in the speech cohort too', deduped.length === 2)
+
+  // Deterministic: same rows, same size, same draw on any machine.
+  ok('the draw is reproducible',
+    JSON.stringify(selectCohort(rows, 3, COHORT_SPEECH).map((r) => r.url))
+    === JSON.stringify(selectCohort([...rows].reverse(), 3, COHORT_SPEECH).map((r) => r.url)))
+}
+
+// ⚠️ AN UNKNOWN COHORT REFUSES RATHER THAN FALLING BACK. Defaulting to the
+// no-speech bands would draw a SILENT sample for a caller that asked for a
+// speaking one, and freeze it under whatever version string it was given.
+ok('selectCohort refuses an unknown cohort', (() => {
+  try { selectCohort([{ url: 'https://www.tiktok.com/@a/video/1', transcript_chars: 5 }], 1, 'nope'); return false }
+  catch (e) { return String(e.message).includes('nope') }
+})())
+ok('the closed list is exactly the two populations',
+  COHORTS.length === 2 && COHORTS.includes('no_speech') && COHORTS.includes('speech'))
+
+// ⚖️ CONTROL: the default is unchanged. Existing callers that pass no cohort
+// must still draw exactly what they drew before.
+{
+  const silent = [
+    { url: 'https://www.tiktok.com/@x/video/1', transcript_chars: 0 },
+    { url: 'https://www.tiktok.com/@y/video/2', transcript_chars: 6 },
+  ]
+  ok('CONTROL an omitted cohort draws the no-speech bands, as before',
+    JSON.stringify(selectCohort(silent, 2).map((r) => r.url))
+    === JSON.stringify(selectCohort(silent, 2, COHORT_NO_SPEECH).map((r) => r.url)))
+}
+
 
 // ⚠️ THE CHECK ITSELF CAN BE DISARMED BY ITS CALLER. Handed the CLAIM_PATHS
 // ARRAY instead of its length, the expected product was NaN and every

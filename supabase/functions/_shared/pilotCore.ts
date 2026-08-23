@@ -43,6 +43,73 @@ export const handleOf = (url) => {
  *  speech. Merging them would let the draw come entirely from the 281. */
 export const bandOf = (chars) => (Number(chars) === 0 ? 'chars_zero' : 'chars_tiny')
 
+// ── WHICH POPULATION THE PILOT DRAWS FROM ───────────────────────────────────
+//
+// ⚠️ THE FIRST PILOT COULD NOT ANSWER ITS OWN QUESTION, AND THE COHORT IS WHY.
+// #58 asks whether frames scheduled on CONTENT BEATS support stronger claims
+// than four arbitrary points. Beats come from the content profile, and a silent
+// reference has no content profile -- so a cohort drawn entirely from
+// `no_speech` exercises the `uniform` arm ONLY. armComparison already reports
+// that honestly as NOT RUN, which is the finding: the comparison was never a
+// close result, it was an absent one.
+//
+// Measured on run 7204de6f, the packet the owner actually opened:
+//   performance.talkingHead   false on 8 of 8   -- one value, no variation
+//   performance.screenInteraction false on 8 of 8
+//   primaryMode               unanswered on 8 of 8
+// Silent TikToks are wide shots, text cards and b-roll. A sample of them can
+// show whether the visual pass reads THOSE correctly; it cannot show whether it
+// RECOGNISES a person talking to camera, because there is not one to find.
+//
+// ⚖️ SO THE POPULATION BECOMES A NAMED CHOICE RATHER THAN A HARD-CODED FILTER,
+// and each choice carries its own selection_version. The version is what makes
+// two runs comparable or not; changing which rows are eligible while keeping
+// the old version string would make an incomparable pair look like a pair.
+export const COHORT_NO_SPEECH = 'no_speech'
+export const COHORT_SPEECH = 'speech'
+export const COHORTS = Object.freeze([COHORT_NO_SPEECH, COHORT_SPEECH])
+
+/**
+ * ⚠️ THE SPLIT IS PINNED, NOT COMPUTED AT DRAW TIME. 645 is the measured median
+ * transcript length over the 387 clean with-speech profiles present on
+ * 2026-08-23. Recomputing the median from the live pool on every draw would
+ * move the band boundary as the pool grows, so two runs a month apart would
+ * silently be stratified differently while both claiming the same
+ * selection_version. A stated constant can be argued with; a moving one cannot
+ * even be noticed.
+ *
+ * ⚖️ AND THE BANDS ARE NOT COSMETIC. A 200-character video and a 2000-character
+ * one have different beat DENSITIES, which is precisely the variable the arm
+ * comparison is about. Drawing only from one end would answer the question for
+ * one density and report it as the answer.
+ */
+export const SPEECH_BAND_SPLIT_CHARS = 645
+export const speechBandOf = (chars) =>
+  (Number(chars) < SPEECH_BAND_SPLIT_CHARS ? 'speech_short' : 'speech_long')
+
+/** The bands a cohort stratifies on, and the function that assigns them. */
+export const COHORT_BANDS = Object.freeze({
+  [COHORT_NO_SPEECH]: { bands: ['chars_zero', 'chars_tiny'], bandOf },
+  [COHORT_SPEECH]: { bands: ['speech_short', 'speech_long'], bandOf: speechBandOf },
+})
+
+/**
+ * ⚠️ A NEW POPULATION MUST NOT REUSE THE OLD VERSION STRING. selection_version
+ * is the only thing a later reader has to tell whether two runs were drawn the
+ * same way. `chars_zero_tiny_v1` describes bands that do not exist in the
+ * speech cohort at all.
+ */
+export const SELECTION_VERSIONS = Object.freeze({
+  [COHORT_NO_SPEECH]: 'chars_zero_tiny_v1',
+  [COHORT_SPEECH]: 'speech_short_long_v1',
+})
+
+export function selectionVersionFor(cohort) {
+  const v = SELECTION_VERSIONS[cohort]
+  if (!v) throw new Error(`unknown cohort ${JSON.stringify(cohort)} — expected one of ${COHORTS.join(', ')}`)
+  return v
+}
+
 const rank = (url) => createHash('sha256').update(String(url)).digest('hex')
 
 /**
@@ -52,10 +119,17 @@ const rank = (url) => createHash('sha256').update(String(url)).digest('hex')
  * digest is what makes it re-drawable: same rows and same size give the same
  * cohort on any machine, so a later argument about the sample is settleable.
  */
-export function selectCohort(rows, size = DEFAULT_SIZE) {
+export function selectCohort(rows, size = DEFAULT_SIZE, cohort = COHORT_NO_SPEECH) {
   const n = Math.max(1, Math.min(MAX_SIZE, Number(size) || DEFAULT_SIZE))
+  const spec = COHORT_BANDS[cohort]
+  // ⚠️ AN UNKNOWN COHORT REFUSES RATHER THAN FALLING BACK. Defaulting to the
+  // no-speech bands would draw a silent sample for a caller that asked for a
+  // speaking one and label it with whatever version string it passed.
+  if (!spec) throw new Error(`unknown cohort ${JSON.stringify(cohort)} — expected one of ${COHORTS.join(', ')}`)
+  const bandFn = spec.bandOf
   const seen = new Set()
-  const bands = { chars_zero: [], chars_tiny: [] }
+  const bands = Object.fromEntries(spec.bands.map((b) => [b, []]))
+  const [BAND_A, BAND_B] = spec.bands
 
   for (const r of [...rows].sort((a, b) => rank(a.url).localeCompare(rank(b.url)))) {
     const h = handleOf(r.url)
@@ -65,16 +139,16 @@ export function selectCohort(rows, size = DEFAULT_SIZE) {
       if (seen.has(h)) continue
       seen.add(h)
     }
-    bands[bandOf(r.transcript_chars)].push(r)
+    bands[bandFn(r.transcript_chars)].push(r)
   }
 
   // ⚠️ ALTERNATE, DO NOT SPLIT IN HALF. The bands are 51 and 281 deep; a
   // proportional draw would give the zero-character band one slot out of eight
   // and call it represented.
   const out = []
-  for (let i = 0; out.length < n && (bands.chars_zero.length || bands.chars_tiny.length); i++) {
-    const first = i % 2 === 0 ? 'chars_zero' : 'chars_tiny'
-    const second = first === 'chars_zero' ? 'chars_tiny' : 'chars_zero'
+  for (let i = 0; out.length < n && (bands[BAND_A].length || bands[BAND_B].length); i++) {
+    const first = i % 2 === 0 ? BAND_A : BAND_B
+    const second = first === BAND_A ? BAND_B : BAND_A
     const pick = bands[first].shift() ?? bands[second].shift()
     if (pick) out.push(pick)
   }

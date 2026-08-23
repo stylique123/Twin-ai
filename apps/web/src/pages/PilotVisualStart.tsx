@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2, AlertTriangle, Play } from 'lucide-react'
-import { quotePilot, startPilot, pilotStatus, activePilot, type PilotQuote, type PilotStatus } from '../lib/api'
+import { quotePilot, startPilot, pilotStatus, activePilot, type PilotQuote, type PilotStatus, type PilotCohort } from '../lib/api'
 
 // Kept in step with MAX_SIZE in scripts/pilot-core.mjs. A larger number typed
 // here is refused by the server, which is the check that matters; this only
@@ -26,6 +26,11 @@ const MAX_SIZE = 10
 const DEFAULT_SIZE = 8
 
 export default function PilotVisualStart() {
+  // ⚠️ THE POPULATION IS A CHOICE THE OWNER MAKES, AND IT DECIDES WHAT THE RUN
+  // CAN ANSWER. Defaulting silently to silent video is how the first pilot spent
+  // eight references on a sample that could not exercise the content-beats arm
+  // at all. Named in plain words on the screen, not left to a flag.
+  const [cohort, setCohort] = useState<PilotCohort>('speech')
   const [size, setSize] = useState(DEFAULT_SIZE)
   const [ceiling, setCeiling] = useState(DEFAULT_SIZE * 2)
   const [quote, setQuote] = useState<PilotQuote | null>(null)
@@ -44,7 +49,7 @@ export default function PilotVisualStart() {
   const go = useCallback(async () => {
     setBusy(true); setError(null)
     try {
-      const r = await startPilot(size, ceiling)
+      const r = await startPilot(size, ceiling, cohort)
       // ⚠️ DO NOT JUMP STRAIGHT TO THE REVIEW PAGE. Collection has only just
       // been enqueued; the packet does not exist yet. Landing on an empty
       // review screen reads as a broken pilot, and worse, invites labelling a
@@ -58,7 +63,7 @@ export default function PilotVisualStart() {
       // would throw away the only explanation anybody gets.
       setError(String((e as Error).message ?? e))
     } finally { setBusy(false) }
-  }, [size, ceiling])
+  }, [size, ceiling, cohort])
 
   // ⚖️ A RUN YOU ALREADY HAVE IS PICKED UP, NOT REPLACED. Before this, runId was
   // only ever set by a start() in this same browser tab, so a pilot started
@@ -96,6 +101,31 @@ export default function PilotVisualStart() {
           Twin picks the videos, checks what they would cost, and starts looking at them.
           You label what it claims once they are ready.
         </p>
+      </div>
+
+      {/* ⚠️ PLAIN ENGLISH, AND IT IS THE MOST CONSEQUENTIAL CHOICE ON THE SCREEN.
+          "no_speech cohort" means nothing to a person; "videos where somebody
+          talks" is the same fact and can be understood in about a second. The
+          first pilot drew silent videos by default and nobody chose it. */}
+      <div className="space-y-1">
+        <span className="text-sm">What kind of videos to check</span>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {([
+            ['speech', 'Videos where somebody talks',
+              'Closest to what your creators actually make.'],
+            ['no_speech', 'Videos with no talking',
+              'Wide shots, text on screen, background clips.'],
+          ] as Array<[PilotCohort, string, string]>).map(([value, title, sub]) => (
+            <button
+              key={value} type="button"
+              onClick={() => { setCohort(value); setQuote(null) }}
+              className={`rounded-lg border px-3 py-2 text-left transition ${
+                cohort === value ? 'border-sky-400 bg-sky-400/20' : 'border-white/15 hover:bg-white/5'}`}>
+              <span className="block text-sm">{title}</span>
+              <span className="block text-xs opacity-60">{sub}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <label className="block space-y-1">

@@ -26,6 +26,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import {
   selectCohort, bandOf, handleOf, manifestDigest, PILOT_PRIORITY,
   progressOf, attrition,
+  COHORT_SPEECH, COHORT_BANDS, selectionVersionFor,
 } from '../_shared/pilotCore.ts'
 import {
   validateStartRequest, validateStatusRequest, activePilotRefusal, activePilotRun,
@@ -36,9 +37,12 @@ import {
 // over a review URL for a packet nothing had ever written.
 import { collectForRun, collectReadiness } from '../_shared/pilotCollect.ts'
 
-// Kept identical to scripts/pilot-db.mjs. A run that does not record which rule
-// drew it cannot be compared with a later run drawn by a different one.
-const SELECTION_VERSION = 'chars_zero_tiny_v1'
+// ⚠️ THE VERSION IS DERIVED FROM THE COHORT, NOT PINNED HERE. It used to be a
+// local copy of one string, which was correct only while there was one
+// population. A second population with the same version string would make two
+// incomparable runs look like a pair, and selection_version is the only thing a
+// later reader has to tell them apart. selectionVersionFor is the one authority,
+// shared with scripts/pilot-db.mjs.
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -223,19 +227,32 @@ Deno.serve(async (req: Request) => {
   }
 
   // ── draw and freeze ──────────────────────────────────────────────────────
-  const { data: rows, error: cohortErr } = await admin.from('reference_content_profiles')
-    .select('url, transcript_chars').like('error', 'no_speech%')
-  if (cohortErr) return json({ error: `could not read the no-speech cohort: ${cohortErr.message}` }, 500)
+  // ⚠️ WHICH POPULATION, AND WHY IT IS NOW A CHOICE. The first pilot drew only
+  // `no_speech` rows. Silent references have no content profile, so there are no
+  // beats to schedule frames on -- the `content_beats` arm CANNOT appear, and
+  // #58's actual question went unasked. Measured on run 7204de6f: talkingHead
+  // was false on 8 of 8 and primaryMode unanswered on 8 of 8.
+  //
+  // ⚖️ THE SPEECH FILTER IS POSITIVE, NOT "NOT no_speech". 280 of the 667 rows
+  // carrying a transcript also carry an error; a reference that failed for some
+  // other reason is not one that speaks, it is one whose state nobody
+  // established. Drawing it would put an unknown into a frozen sample.
+  const which = checked.cohort
+  const base = admin.from('reference_content_profiles').select('url, transcript_chars')
+  const { data: rows, error: cohortErr } = which === COHORT_SPEECH
+    ? await base.gt('transcript_chars', 0).or('error.is.null,error.eq.')
+    : await base.like('error', 'no_speech%')
+  if (cohortErr) return json({ error: `could not read the ${which} cohort: ${cohortErr.message}` }, 500)
 
-  const cohort = selectCohort(rows ?? [], checked.size)
+  const cohort = selectCohort(rows ?? [], checked.size, which)
   // ⚠️ AN EMPTY DRAW IS A REFUSAL, NOT AN EMPTY RUN. A frozen pilot of nothing
   // would later report 0% and read like a measurement.
-  if (cohort.length === 0) return json({ error: 'the no-speech cohort is empty — nothing to pilot' }, 409)
+  if (cohort.length === 0) return json({ error: `the ${which} cohort is empty — nothing to pilot` }, 409)
 
   const urls = cohort.map((r: { url: string }) => r.url)
   const { data: run, error: e2 } = await admin.from('visual_pilot_runs').insert({
     created_by: user.id,
-    selection_version: SELECTION_VERSION,
+    selection_version: selectionVersionFor(which),
     requested_size: checked.size,
     frozen_size: urls.length,
     sample_digest: manifestDigest(urls),
@@ -248,7 +265,7 @@ Deno.serve(async (req: Request) => {
     cohort.map((r: { url: string; transcript_chars: number }) => ({
       pilot_run_id: run.id,
       url: r.url,
-      stratum: bandOf(r.transcript_chars),
+      stratum: COHORT_BANDS[which].bandOf(r.transcript_chars),
       creator_handle: handleOf(r.url),
     })),
   )
