@@ -38,6 +38,16 @@ export default function PilotVisualReview() {
   const [saving, setSaving] = useState(false)
   const [locking, setLocking] = useState(false)
   const [locked, setLocked] = useState(false)
+  // ⚠️ A FAILED LOCK IS NOT A FAILED LOAD, AND MUST NOT DESTROY THE PAGE.
+  // The owner finished all 103 labels, pressed Finish & Lock from a phone, and
+  // got "The review could not load" on an empty screen -- because `finish` wrote
+  // into the loader's `error`, and the `if (error)` branch REPLACES the whole
+  // view. Two lies in one: the review had loaded fine, and the only control that
+  // could retry the lock was gone. Measured after the fact: the run was still
+  // ready_for_label with locked_at null, and all 103 labels were safe.
+  // A lock failure is transient by nature -- it stays INLINE, beside a button
+  // that is still there to press again.
+  const [lockError, setLockError] = useState<string | null>(null)
   // ⚠️ THE EVIDENCE MUST BE LOOKABLE-AT. A thumbnail a reviewer cannot open
   // is not evidence they can judge; the owner said so on the live packet.
   const [zoom, setZoom] = useState<string | null>(null)
@@ -141,10 +151,13 @@ export default function PilotVisualReview() {
 
   const finish = async () => {
     setLocking(true)
+    setLockError(null)
     try {
       await finishPilotReview(pilotRunId)
       setLocked(true)
-    } catch (e) { setError(String((e as Error).message)) } finally { setLocking(false) }
+    } catch (e) {
+      setLockError(String((e as Error).message ?? e))
+    } finally { setLocking(false) }
   }
 
   if (error) {
@@ -378,6 +391,15 @@ export default function PilotVisualReview() {
           <span className="ml-3 text-sm opacity-60">
             {remaining} claim{remaining === 1 ? '' : 's'} still need an answer.
           </span>
+        )}
+        {lockError && (
+          <div
+            role="alert"
+            className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+            <div className="font-medium">Locking did not go through. Your labels are saved.</div>
+            <div className="mt-1 opacity-80">{lockError}</div>
+            <div className="mt-1 opacity-80">Press Finish &amp; Lock again.</div>
+          </div>
         )}
       </div>
     </div>
