@@ -55,9 +55,14 @@ begin
   -- future Postgres does not read as a widened namespace. Everything else --
   -- the component list, its order, the cast types -- must match exactly.
   if regexp_replace(actual, '\s+', ' ', 'g') <> regexp_replace(expected, '\s+', ' ', 'g') then
+    -- ⚠️ e'' AND \n, NOT chr(10) PLACEHOLDERS. PL/pgSQL reads %% as an ESCAPED
+    -- LITERAL PERCENT, not as two placeholders, so writing the newlines as
+    -- arguments collapsed four placeholders into two and the block would not
+    -- compile: "too many parameters specified for RAISE". The newlines belong
+    -- in the string; only the two values are arguments.
     raise exception
-      'media_analyses_component_bounded does not bound the namespace to the six sanctioned components.%  expected: %%  actual:   %',
-      chr(10), expected, chr(10), actual;
+      e'media_analyses_component_bounded does not bound the namespace to the six sanctioned components.\n  expected: %\n  actual:   %',
+      expected, actual;
   end if;
 
   raise notice 'media_analyses_component_bounded: present, validated, exactly the six sanctioned components';
