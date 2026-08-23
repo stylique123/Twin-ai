@@ -81,3 +81,21 @@ drop policy if exists talking_head_overrides_select_own on public.talking_head_o
 create policy talking_head_overrides_select_own
   on public.talking_head_overrides for select
   using (auth.uid() = owner_id);
+
+-- ⚠️ TRUNCATE IS NOT GATED BY ROW SECURITY, SO THE GRANT IS THE WHOLE
+-- PERMISSION. A new table inherits client grants by default, and RLS only ever
+-- filters ROWS: it has nothing to say about a statement that empties the table.
+-- Left as created, any authenticated client could destroy the entire override
+-- log in one statement — the exact evidence this table exists to hold, and the
+-- only evidence that will ever say whether the gate is worth having.
+--
+-- ⚖️ AND DELETE AND UPDATE GO WITH IT, for the reason stated above: a record of
+-- what somebody chose is worthless if it can be edited or removed afterwards.
+-- The policies above grant INSERT and SELECT only; these revokes make that the
+-- real permission rather than a description of one.
+--
+-- ⚠️ THE STAGING GUARD CAUGHT THIS, NOT REVIEW. check_client_write_grants.sql
+-- failed the matrix with "client roles hold TRUNCATE on: talking_head_overrides
+-- ... there is no legitimate client caller". It was right, and the fix is to
+-- revoke the grant rather than to quieten the check.
+revoke update, delete, truncate on table public.talking_head_overrides from anon, authenticated;
