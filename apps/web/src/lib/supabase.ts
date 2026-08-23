@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
-import { initApi } from '@twinai/shared'
+import {
+  initApi, classifyUploadFailure, mayRetry, preflight, RESUMABLE_THRESHOLD_BYTES,
+} from '@twinai/shared'
+import * as tus from 'tus-js-client'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const anon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -33,9 +36,73 @@ export const supabase = createClient(
  * of being too patient is a slow failure, and the cost of being too strict is
  * killing an upload that would have finished.
  */
+/** An upload failure that still carries the server's verdict. */
+interface UploadError extends Error { status?: number }
+
 export function uploadTimeoutMs(bytes: number): number {
   const mb = Math.max(0, Number(bytes) || 0) / (1024 * 1024)
   return Math.min(30 * 60_000, Math.round(90_000 + mb * 8_000))
+}
+
+/**
+ * A large take, sent in resumable chunks against the SAME signed upload token.
+ *
+ * ⚖️ THE SECURITY BOUNDARY IS UNCHANGED, AND THAT IS THE WHOLE POINT. The
+ * obvious way to do resumable uploads is `authorization: Bearer <user jwt>`,
+ * which authorizes the write through storage policies — exactly the posture
+ * that got `uploadTakeToBucket` deleted. Supabase's resumable endpoint also
+ * accepts a server-minted signed upload token in `x-signature`, so the write
+ * stays authorized by `source-asset` and no storage INSERT policy is involved.
+ *
+ * ⚠️ ONE REQUEST COULD NOT CARRY A REAL TAKE. A five-minute recording sent as a
+ * single PUT has to survive the whole transfer on a phone; one dropped
+ * connection meant starting again at byte zero. Chunks resume where they
+ * stopped.
+ */
+async function uploadResumable(
+  target: { bucket: string; path: string; token: string; contentType: string },
+  blob: Blob,
+  onProgress?: (fraction: number) => void,
+): Promise<void> {
+  // ⚠️ THE DIRECT STORAGE HOSTNAME, per the platform's own guidance for large
+  // files. The api hostname works but gives up the transfer path built for this.
+  // ⚠️ REFUSED RATHER THAN POINTED AT A PLACEHOLDER. An unconfigured client
+  // would otherwise send a real recording to a hostname that does not exist.
+  if (!url) throw new Error('Twin is not configured to save recordings right now.')
+  const endpoint = `${url.replace('.supabase.co', '.storage.supabase.co')}/storage/v1/upload/resumable`
+  await new Promise<void>((resolve, reject) => {
+    const upload = new tus.Upload(blob, {
+      endpoint,
+      // 6 MB is required by the platform, not chosen — the server rejects other
+      // chunk sizes on this endpoint.
+      chunkSize: RESUMABLE_THRESHOLD_BYTES,
+      retryDelays: [0, 3000, 5000, 10000, 20000],
+      headers: {
+        // The server-minted token. No user JWT, no storage policy.
+        'x-signature': target.token,
+        'x-upsert': 'true',
+      },
+      metadata: {
+        bucketName: target.bucket,
+        objectName: target.path,
+        contentType: target.contentType,
+        cacheControl: '3600',
+      },
+      uploadDataDuringCreation: true,
+      removeFingerprintOnSuccess: true,
+      onError: (e) => reject(e),
+      // ⚠️ STILL BYTES SENT, NOT BYTES KEPT. Resumable does not change that;
+      // only finalize does.
+      onProgress: (sent, total) => { if (total > 0) onProgress?.(sent / total) },
+      onSuccess: () => resolve(),
+    })
+    // Resume from wherever a previous attempt stopped, rather than from zero.
+    upload.findPreviousUploads().then((prev) => {
+      if (prev.length) upload.resumeFromPreviousUpload(prev[0])
+      upload.start()
+    }).catch(() => upload.start())
+  })
+  onProgress?.(1)
 }
 
 async function uploadSignedWithProgress(
@@ -43,6 +110,28 @@ async function uploadSignedWithProgress(
   blob: Blob,
   onProgress?: (fraction: number) => void,
 ): Promise<void> {
+  // ⚠️ REFUSED BEFORE A BYTE MOVES. A take above the supported ceiling used to
+  // be discovered after five minutes of uploading; preflight answers now.
+  const pre = preflight(blob.size)
+  if (!pre.ok) throw new Error(pre.message)
+
+  // ⚖️ ROUTED BY SIZE, NOT BY HOPE. Anything a single request cannot reliably
+  // carry goes to the resumable path.
+  if (pre.transport === 'resumable') {
+    try {
+      await uploadResumable(target, blob, onProgress)
+      return
+    } catch (e) {
+      const kind = classifyUploadFailure(
+        (e as UploadError)?.status ?? (e as { originalResponse?: { getStatus?: () => number } })?.originalResponse?.getStatus?.() ?? null,
+        (e as Error)?.message,
+      )
+      // A refusal is a refusal on every transport. Falling back to one big PUT
+      // would spend the creator's time reaching the identical wall.
+      if (!mayRetry(kind)) throw e
+    }
+  }
+
   if (typeof XMLHttpRequest !== 'undefined') {
     try {
       await new Promise<void>((resolve, reject) => {
@@ -58,8 +147,20 @@ async function uploadSignedWithProgress(
         // was left watching a dead progress bar with no way forward. Two real
         // takes are stuck in production in exactly that state.
         xhr.timeout = uploadTimeoutMs(blob.size)
+        // ⚠️ THIS REACHES 1.0 WHEN THE BROWSER FINISHES WRITING THE BODY, not
+        // when the server accepts it. A real creator watched it hit 100% and was
+        // then refused for size. Callers must treat 1.0 as "uploading finished",
+        // never as "saved" — see SaveStage in uploadCeiling.
         xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total) }
-        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`upload ${xhr.status}`)))
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) { resolve(); return }
+          // ⚠️ THE STATUS AND THE SERVER'S OWN WORDS ARE CARRIED OUT, not
+          // replaced. `upload 413` alone cannot be classified, and the sentence
+          // the creator was actually shown lives in the response body.
+          const err = new Error(`upload ${xhr.status}: ${String(xhr.responseText ?? '').slice(0, 300)}`) as UploadError
+          err.status = xhr.status
+          reject(err)
+        }
         xhr.onerror = () => reject(new Error('upload network error'))
         xhr.ontimeout = () => reject(new Error(`upload timed out after ${xhr.timeout}ms`))
         xhr.onabort = () => reject(new Error('upload aborted'))
@@ -67,8 +168,17 @@ async function uploadSignedWithProgress(
       })
       onProgress?.(1)
       return
-    } catch {
-      // fall through to the supabase-js path below
+    } catch (e) {
+      // ⚠️ THE BARE `catch {}` THAT USED TO BE HERE IS THE REASON A FIVE-MINUTE
+      // UPLOAD TOOK TEN. It discarded the error — status included — and silently
+      // re-sent the ENTIRE blob through the supabase-js path below. For a size
+      // rejection the second attempt is guaranteed to fail identically, so the
+      // creator paid twice to be told once, and the real status code was thrown
+      // away on the way past.
+      //
+      // ⚖️ THE FALLBACK IS FOR A BROKEN TRANSPORT, NOT A REFUSED REQUEST.
+      const kind = classifyUploadFailure((e as UploadError)?.status ?? null, (e as Error)?.message)
+      if (!mayRetry(kind)) throw e
     }
   }
   const { error } = await supabase.storage
