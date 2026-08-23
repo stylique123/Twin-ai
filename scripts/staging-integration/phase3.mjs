@@ -31,6 +31,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { authHeader } from './authSession.mjs'
+import { describeReadFailure } from './transportError.mjs'
 
 const execFile = promisify(_execFile)
 
@@ -836,9 +837,47 @@ async function main() {
     // ABSENT IS NOT ZERO. `?? 0` here would turn an unreadable table into a
     // passing boundary assertion — the same defect phase7's edit_plans count had
     // to learn, and phase8's countRows already refuses.
+    // ⚠️ THIS HELPER WAS BLIND, AND IT COST THREE MATRIX RUNS. It printed only
+    // `error.message`, and three runs in a row died with the message EMPTY:
+    //
+    //     K: non-sanctioned analysis rows is unreadable:
+    //
+    // Nothing after the colon, so nothing to diagnose. The cause is structural,
+    // in postgrest-js PostgrestBuilder.ts:
+    //
+    //     const body = await res.text()
+    //     try { error = JSON.parse(body) }
+    //     catch { error = { message: body } }    // body '' -> message ''
+    //
+    // A non-2xx with an EMPTY BODY yields message ''. And this request is
+    // `head: true`, so PostgREST returns no body by design -- on any error
+    // status there is nothing to parse and the message is always empty.
+    //
+    // ⚖️ THE STATUS WAS IN HAND THE WHOLE TIME. postgrest-js returns
+    // { data, error, count, status, statusText } and this helper destructured
+    // two of the five, throwing away the only fields that survive an empty
+    // body. Measured, not assumed: media_analyses is 51,318 rows / 87 MB, the
+    // NOT IN filter cannot use either component index so it seq-scans, and the
+    // scan timed at 2,755 ms idle and 5,709 ms while a matrix was running --
+    // against the 8s statement_timeout the API role inherits from
+    // `authenticator`. That is the shape of the failure this could not report.
+    //
+    // ⚠️ AN EMPTY BODY IS NOT EVIDENCE THE PROPERTY FAILED. It is evidence the
+    // request did not complete. Those are different findings and the message
+    // now says which one it is, per the #67 taxonomy.
     const exact = async (q, what) => {
-      const { count, error } = await q
-      if (error) throw new Error(`K: ${what} is unreadable: ${error.message}`)
+      const startedAt = Date.now()
+      const { count, error, status, statusText } = await q
+      if (error) {
+        // ⚠️ THE STATUS AND THE ELAPSED TIME ARE THE ONLY THINGS THAT SURVIVE AN
+        // EMPTY BODY, and this helper used to throw both away. See
+        // transportError.mjs for the postgrest-js path that makes the message
+        // empty, and for why TRANSPORT_FAILED is not a failed assertion.
+        const { text } = describeReadFailure({
+          what, error, status, statusText, elapsedMs: Date.now() - startedAt,
+        })
+        throw new Error(`K: ${text}`)
+      }
       if (typeof count !== 'number') throw new Error(`K: ${what} returned no count`)
       return count
     }
