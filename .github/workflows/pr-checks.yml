@@ -447,6 +447,11 @@ jobs:
       # worth testing.
       - name: Staging harness failure classifier (re-run, or investigate?)
         run: node scripts/staging-integration/failure.mjs --selftest
+      # An empty body is not a failed assertion. Three matrix runs died on a
+      # message with nothing after the colon; this classifier is what makes the
+      # fourth one diagnosable.
+      - name: Transport vs assertion (an empty body is not a failed property)
+        run: node scripts/staging-integration/transportError.selftest.mjs
       # phase6 and phase7 each carried their own copy of "what a fenced lease is".
       # They agreed, which is exactly why nobody noticed -- two definitions of an
       # invariant drift silently, and the next phase that needs one makes three.

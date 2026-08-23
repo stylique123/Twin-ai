@@ -514,6 +514,16 @@ jobs:
           # every migration, so it sees the schema the matrix is about to test.
           echo "== asserting client write grants =="
           psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f scripts/ci/check_client_write_grants.sql
+          # ⚖️ THE ANALYSIS NAMESPACE, ASSERTED FROM THE CONSTRAINT RATHER THAN
+          # COUNTED FROM THE ROWS. phase3's K1 used to seq-scan media_analyses
+          # (51,318 rows / 87 MB, measured) to prove no unsanctioned component
+          # existed -- 2.7s idle, 5.7s under load, against an 8s statement
+          # timeout. Three matrix runs died there. The validated CHECK proves
+          # MORE than the count did: not "none right now" but "none can exist".
+          # It runs here because phase3 reaches the database only through
+          # PostgREST and cannot read pg_catalog.
+          echo "== asserting the analysis namespace is bounded by a validated constraint =="
+          psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f scripts/ci/check_analysis_component_bounded.sql
           # STAGING-ONLY fixture, never a migration: staging is a purpose-built
           # editor test bed with no brand tables, and the Phase-7 Boot Manifest now
           # pins the brand snapshot CONTENT, so every editor_v2 job reads
