@@ -83,8 +83,17 @@ const NOTES: Record<string, string> = {
     'Talking towards the camera, at any distance. They do not have to be close up, '
     + 'and you do not have to hear them.',
 
+  // ⚠️ ANIMATION BREAKS THE WHOLE FIELD SET, AND THE OWNER MET IT AT CLAIM 37:
+  // an illustrated mouse in a meadow, asked whether "someone is acting out a
+  // scene or playing a character". The model's question is 'rather than speaking
+  // as THEMSELVES', which presupposes a real performer -- there is none to
+  // contrast with in a drawing. Every field here is ultimately about what a
+  // creator would have to DO to remake the video, and nobody performs an
+  // illustration.
   'performance.acting':
-    'Playing a character or acting out a scene, rather than being themselves.',
+    'This is about a real person performing — playing a character or acting out a '
+    + 'scene instead of being themselves. Drawings and animation are not a person '
+    + 'acting.',
   'performance.screenInteraction':
     'Touching, tapping or pointing at a screen — a phone, laptop or monitor.',
   'performance.walking':
@@ -97,7 +106,8 @@ const NOTES: Record<string, string> = {
     'How much setting up the place would take: a room or a plain wall is simple, '
     + 'a venue or a busy street is complex.',
   'people.count':
-    'People visible on camera. Someone filming from behind the camera is not counted.',
+    'Real people visible on camera. Someone filming from behind the camera is not '
+    + 'counted, and drawn or animated characters are not people on camera.',
 }
 
 /** The note for a claim path, or null when the sentence needs no gloss. */

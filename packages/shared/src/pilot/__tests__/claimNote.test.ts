@@ -25,6 +25,15 @@ describe('claimNote', () => {
     expect(note).toContain('license or download')
   })
 
+  it('says animation is not a person performing', () => {
+    // Claim 37 was an illustrated mouse. The model's question says 'rather than
+    // speaking as themselves', which presupposes a real performer.
+    expect(claimNote('performance.acting')!.toLowerCase())
+      .toContain('drawings and animation are not a person acting')
+    expect(claimNote('people.count')!.toLowerCase())
+      .toContain('animated characters are not people on camera')
+  })
+
   it('separates handling a product from NEEDING one', () => {
     // performance.productInteraction observes; requirements.physicalProduct
     // requires. A coffee someone happens to drink is handled, not needed.
