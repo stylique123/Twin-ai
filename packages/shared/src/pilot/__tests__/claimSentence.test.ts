@@ -19,9 +19,9 @@ const LIVE_PATHS = [
 describe('claimSentence', () => {
   it('says the talking-head claim the way the owner saw it', () => {
     expect(claimSentence('performance.talkingHead', false))
-      .toBe('Nobody is talking straight to the camera.')
+      .toBe('Nobody is talking to the camera.')
     expect(claimSentence('performance.talkingHead', true))
-      .toBe('Someone is talking straight to the camera.')
+      .toBe('Someone is talking to the camera. They do not have to be close up.')
   })
 
   // ⚠️ EVERY PATH THE LIVE PACKET CONTAINS MUST HAVE A SENTENCE. Measured from
@@ -82,5 +82,30 @@ describe('claimSentence', () => {
         if (s) expect(s.toLowerCase()).not.toContain(p.toLowerCase())
       }
     }
+  })
+
+  // ⚠️ A GUARD AGAINST A PLAUSIBLE "IMPROVEMENT". The industry definition of a
+  // talking head requires head-and-shoulders framing. Twin is not asked that --
+  // visualPrompt.ts asks 'Is someone speaking to camera?' and nothing about
+  // distance. A sentence that adds a framing requirement would have the
+  // reviewer judging a stricter claim than the model answered, and every label
+  // would record that gap as a model error. This was drafted once and rejected;
+  // the test exists so it is rejected again rather than re-argued.
+  it('does not put a framing requirement in front of the reviewer', () => {
+    const said = [
+      claimSentence('performance.talkingHead', true),
+      claimSentence('performance.talkingHead', false),
+    ].join(' ').toLowerCase()
+    for (const framing of ['head and shoulders', 'close-up', 'closeup', 'waist up', 'framed']) {
+      expect(said).not.toContain(framing)
+    }
+  })
+
+  // ⚖️ AND IT ANSWERS THE AMBIGUITY THAT ACTUALLY STOPPED SOMEBODY. A subject
+  // far from the camera is still "talking to the camera" under the question the
+  // model was asked, and the card now says so rather than leaving the reviewer
+  // to guess.
+  it('says out loud that distance does not matter', () => {
+    expect(claimSentence('performance.talkingHead', true)).toContain('do not have to be close up')
   })
 })

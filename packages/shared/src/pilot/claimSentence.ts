@@ -51,9 +51,26 @@ const SENTENCES: Record<string, Sayer> = {
     'Someone is pointing at or using a screen.',
     'Nobody is pointing at or using a screen.',
   ),
+  // ⚠️ THE HALF-SENTENCE THAT STOPPED A REVIEWER DEAD. The owner reached a
+  // reference shot from about twenty metres away and could not decide: the
+  // person faces the camera, but nobody would call that a "talking head".
+  //
+  // ⚖️ AND THE FIX IS NOT TO TIGHTEN THE SENTENCE. Synthesia's industry
+  // definition -- "the camera is positioned so that only the speaker's head and
+  // shoulders are visible" -- is STRICTER than the question Twin was actually
+  // asked, which is verbatim 'Is someone speaking to camera?'
+  // (worker/src/visualPrompt.ts). Adding "head and shoulders" here would have
+  // the reviewer judging a stricter claim than the model answered, and every
+  // resulting label would record that gap as a MODEL error. The measurement
+  // would be corrupted by a change that reads as a pure improvement.
+  //
+  // So the sentence says what the field MEANS, including the part that was
+  // ambiguous. Whether the field should mean something else is a separate
+  // decision costing an analyzer version; it is recorded in
+  // docs/video-format-research.md and is not taken here.
   'performance.talkingHead': yesNo(
-    'Someone is talking straight to the camera.',
-    'Nobody is talking straight to the camera.',
+    'Someone is talking to the camera. They do not have to be close up.',
+    'Nobody is talking to the camera.',
   ),
   'performance.walking': yesNo(
     'Someone is walking while filming.',
