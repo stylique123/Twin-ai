@@ -177,10 +177,22 @@ export function messageForOwnAccount(counts: { usable: number; checked: number }
   if (!Number.isFinite(usable) || !Number.isFinite(checked) || checked < 1) {
     return { kind: 'fine', headline: '', detail: '' }
   }
+  // ⚠️ THE COUNT WE LOOKED AT IS NAMED, NOT IMPLIED. Twin does not watch every
+  // video on an account — frames cost a download each, so a scan samples. Saying
+  // "we found 3 videos of you talking to the camera" to someone with forty
+  // videos states a fact about their WHOLE account that nobody measured. Naming
+  // the sample keeps the sentence true at any size and costs the creator
+  // nothing: they can see for themselves that three out of six is not three out
+  // of forty.
+  //
+  // ⚖️ AND IT IS STILL A FACT ABOUT THEIR VIDEOS, which is the whole of option
+  // 3. "None of the six we looked at" is a measurement; "Twin isn't for you" is
+  // a verdict on the person, and the difference is whether they come back.
+  const looked = `${checked} ${checked === 1 ? 'video' : 'videos'}`
   if (usable < 1) {
     return {
       kind: 'none',
-      headline: "We could not find a video of you talking to the camera",
+      headline: `None of the ${looked} we looked at are you talking to the camera`,
       detail:
         'Twin writes scripts that sound like you, and it learns that from watching you speak. Post one video where you talk straight to the camera, then come back and scan again.',
     }
@@ -188,7 +200,7 @@ export function messageForOwnAccount(counts: { usable: number; checked: number }
   if (usable < ENOUGH_TO_SOUND_LIKE_YOU) {
     return {
       kind: 'thin',
-      headline: `We found ${usable} ${usable === 1 ? 'video' : 'videos'} of you talking to the camera`,
+      headline: `${usable} of the ${looked} we looked at ${usable === 1 ? 'is' : 'are'} you talking to the camera`,
       detail: 'That is enough to get started. The more you post talking straight to the camera, the more your scripts will sound like you.',
     }
   }
