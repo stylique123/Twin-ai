@@ -232,5 +232,39 @@ eq('coverage defaults to the sweep\'s own zoom counts',
     !r.notes.some((n) => n.includes('zoom_centred_no_face_evidence')))
 }
 
+// ── the spacing that decides whether a zoom survives compilation ─────────────
+// ⚠️ THE OLD PLACEMENT PUT 3 ANCHORS A QUARTER OF THE VIDEO APART. Consecutive
+// zooms need ~2700 ms between starts (1200 ms hold + 1500 ms minSeparation).
+// On the ~8.1 s donor, quarters are ~2.0 s apart and the third zoom was dropped
+// every single run. Measured as a FRACTION of the transcript so the test does
+// not depend on any one donor's length.
+for (const n of [2, 3]) {
+  const a = zoomRequestsFor(n, 200).map((z) => z.anchorWordIndex)
+  const gaps = a.slice(1).map((x, i) => x - a[i])
+  const smallestFraction = Math.min(...gaps) / 200
+  // 8.1 s x 0.30 = 2.4 s; 8.1 s x 0.39 (what n=3 now gets) = 3.2 s.
+  ok(`n=${n} anchors are spaced for the compiler's separation rule`,
+    smallestFraction >= 0.30, `smallest gap was ${(smallestFraction * 100).toFixed(0)}% of the transcript`)
+}
+// CONTROL: the OLD (n+1)-division placement would have failed that for n=3.
+ok('CONTROL the old quarter-spacing would not have cleared it',
+  Math.floor(200 / 4) / 200 < 0.30)
+
+// The invariants the contract still enforces, at the new spread.
+for (const n of [1, 2, 3]) {
+  const a = zoomRequestsFor(n, 200).map((z) => z.anchorWordIndex)
+  eq(`n=${n} yields exactly ${n} anchors`, a.length, n)
+  eq(`n=${n} anchors stay distinct`, new Set(a).size, n)
+  ok(`n=${n} anchors stay inside the transcript`, a.every((i) => i >= 0 && i < 200))
+  eq(`n=${n} anchors stay in order`, a, [...a].sort((x, y) => x - y))
+}
+// ⚠️ A SHORT TRANSCRIPT MUST STILL YIELD DISTINCT ANCHORS, not a duplicate the
+// director contract would refuse outright.
+{
+  const a = zoomRequestsFor(3, 4).map((z) => z.anchorWordIndex)
+  eq('a 4-word transcript still gives 3 distinct anchors', new Set(a).size, 3)
+  ok('and all of them are real indices', a.every((i) => i >= 0 && i < 4))
+}
+
 console.log(`zoom-sweep selftest: ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

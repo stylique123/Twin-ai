@@ -54,12 +54,50 @@ export const SWEEP_ZOOM_COUNTS = Object.freeze([0, 1, 2, 3])
 export function zoomRequestsFor(n, wordCount) {
   if (n === 0) return []
   if (!Number.isInteger(wordCount) || wordCount < n) return null // caller reports, does not guess
-  const step = Math.floor(wordCount / (n + 1))
-  return Array.from({ length: n }, (_, i) => ({
-    anchorWordIndex: Math.min(step * (i + 1), wordCount - 1),
+  if (n === 1) return [anchor(Math.floor(wordCount / 2), wordCount)]
+
+  // ⚠️ THE SPACING IS WHY THE 3-ZOOM CONDITION DID NOT RENDER. Anchors used to
+  // divide the transcript into n+1 parts, which for n=3 puts them a quarter of
+  // the video apart. The compiler drops a zoom starting within
+  // policy.zooms.minSeparationMs (1500 ms) of the previous one's END, and a
+  // zoom HOLDS for 1200 ms -- so consecutive zooms need ~2700 ms between
+  // starts. The donor output is ~8.1 s, quarters are ~2.0 s apart, and the
+  // third zoom was dropped every time. The sweep asked for 3, got 2, and had
+  // no way to tell.
+  //
+  // Spreading over the fuller span gives n=3 roughly 3.2 s between anchors,
+  // which clears the rule with margin. An INSET keeps them off the very first
+  // and last words, which the hook trim is most likely to remove.
+  //
+  // ⚖️ THIS BUYS HEADROOM, IT DOES NOT GUARANTEE ANYTHING. Anchors are placed
+  // in WORD ORDER; the separation the compiler enforces is in OUTPUT TIME,
+  // after removals it has not made yet. No placement computable here can
+  // promise a zoom survives -- which is exactly why the sweep now reports
+  // delivered-vs-requested instead of assuming they match.
+  const first = Math.floor(wordCount * 0.1)
+  const last = Math.max(first + n - 1, Math.floor(wordCount * 0.9))
+  const span = Math.min(last, wordCount - 1) - first
+  const seen = new Set()
+  const out = []
+  for (let i = 0; i < n; i++) {
+    // Distinct indices, always: directorContract refuses a duplicate anchor
+    // outright, which would fail the whole condition rather than shrink it.
+    let idx = first + Math.round((span * i) / (n - 1))
+    while (seen.has(idx) && idx < wordCount - 1) idx++
+    while (seen.has(idx) && idx > 0) idx--
+    if (seen.has(idx)) return null
+    seen.add(idx)
+    out.push(anchor(idx, wordCount))
+  }
+  return out
+}
+
+function anchor(i, wordCount) {
+  return {
+    anchorWordIndex: Math.max(0, Math.min(i, wordCount - 1)),
     intensity: 'subtle',
     reasonCode: 'emphasis_word',
-  }))
+  }
 }
 
 /**
