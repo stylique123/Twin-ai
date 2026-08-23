@@ -14,6 +14,13 @@ import { join } from 'node:path'
 const SRC = readFileSync(
   join(__dirname, '..', 'pages', 'PilotVisualReview.tsx'), 'utf8')
 
+/** ⚠️ Comments stripped before any banned-token check: this page's own comments
+ *  DISCUSS the things that must not be rendered, so scanning the raw file for
+ *  them flags the warning rather than the defect. */
+const CODE = SRC
+  .replace(/\/\*[\s\S]*?\*\//g, ' ')
+  .replace(/^\s*\/\/.*$/gm, ' ')
+
 describe('the labelling card shows the field note', () => {
   it('imports and renders claimNote', () => {
     expect(SRC).toContain('claimNote')
@@ -31,5 +38,28 @@ describe('the labelling card shows the field note', () => {
 
   it('renders nothing when a claim has no note, rather than an empty box', () => {
     expect(SRC).toContain(': null')
+  })
+})
+
+describe('jumping to the next unanswered claim', () => {
+  it('binds j and wires the button to jumpTarget', () => {
+    expect(SRC).toContain("e.key === 'j'")
+    expect(SRC).toContain('jumpTarget(')
+    expect(SRC).toContain('Next unanswered')
+  })
+
+  it('passes ONLY booleans, so navigation cannot leak label values', () => {
+    // !!c.current?.label collapses the label to answered/not. Passing the label
+    // itself would be the first step toward showing a reviewer their own rate.
+    expect(SRC).toContain('claims.map((c) => !!c.current?.label)')
+  })
+
+  it('disables the control when there is nowhere to jump', () => {
+    expect(SRC).toContain('=== null}')
+  })
+
+  it('still shows progress, never a score', () => {
+    expect(SRC).toContain('left to answer')
+    expect(CODE).not.toContain('supportedRate')
   })
 })

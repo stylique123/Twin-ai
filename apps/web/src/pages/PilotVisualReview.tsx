@@ -13,7 +13,7 @@ import { useParams } from 'react-router-dom'
 import { Loader2, Lock, AlertTriangle } from 'lucide-react'
 import {
   getPilotPacket, savePilotLabel, logPilotEvent, finishPilotReview,
-  claimSentence, claimNote,
+  claimSentence, claimNote, jumpTarget,
   type PilotPacket, type PilotClaim, type PilotLabel,
 } from '../lib/api'
 
@@ -125,10 +125,19 @@ export default function PilotVisualReview() {
       else if (e.key === 's') { void apply(null) }
       else if (e.key === 'ArrowLeft') { setAt((i) => Math.max(0, i - 1)); void logPilotEvent(pilotRunId, 'nav', { dir: -1 }).catch(() => {}) }
       else if (e.key === 'ArrowRight') { setAt((i) => Math.min(claims.length - 1, i + 1)); void logPilotEvent(pilotRunId, 'nav', { dir: 1 }).catch(() => {}) }
+      // ⚠️ THE PAGE OPENS AT CLAIM 1 EVERY TIME. Three deploys landed during one
+      // labelling session and each asked the reviewer to reload and then arrow
+      // forward past everything already answered. `j` jumps to the next claim
+      // still needing an answer, wrapping, so a skip left behind at claim 7 is
+      // reachable from claim 60.
+      else if (e.key === 'j') {
+        const to = jumpTarget(claims.map((c) => !!c.current?.label), at)
+        if (to !== null) { setAt(to); void logPilotEvent(pilotRunId, 'jump', { to }).catch(() => {}) }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [apply, claims.length, locked, pilotRunId])
+  }, [apply, at, claims, locked, pilotRunId])
 
   const finish = async () => {
     setLocking(true)
@@ -174,7 +183,23 @@ export default function PilotVisualReview() {
       <div className="mb-4 flex items-baseline justify-between text-sm opacity-70">
         <span>Claim {at + 1} of {claims.length}</span>
         {/* Progress only. Never a score. */}
-        <span>{remaining} left to answer</span>
+        {/* Progress, never a score: how much work is left, never how any of it
+            was answered. The jump control is navigation for the same reason. */}
+        <span className="flex items-center gap-3">
+          <span>{remaining} left to answer</span>
+          {remaining > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                const to = jumpTarget(claims.map((c) => !!c.current?.label), at)
+                if (to !== null) { setAt(to); void logPilotEvent(pilotRunId, 'jump', { to }).catch(() => {}) }
+              }}
+              disabled={jumpTarget(claims.map((c) => !!c.current?.label), at) === null}
+              className="rounded border border-white/15 px-2 py-1 text-xs hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-30">
+              <span className="mr-1 opacity-50">j</span>Next unanswered
+            </button>
+          )}
+        </span>
       </div>
 
       {/* Said plainly, and said once. The reviewer should know these exist and
