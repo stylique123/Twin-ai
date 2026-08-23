@@ -23,7 +23,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import {
   LABELS, isLabel, aggregate, friction, briefFor69, byField, bySituation, slowestFields,
-  byScheduleBasis, armComparison, distributionRates, checkRateInvariants,
+  armComparison, distributionRates, checkRateInvariants,
   claimsDigest, evidenceDigest, CLAIM_PATHS,
 } from '../_shared/pilotCore.ts'
 import { decide332 } from '../_shared/pilotDecision.ts'
@@ -215,9 +215,27 @@ Deno.serve(async (req: Request) => {
       .select('kind, detail, created_at').eq('pilot_run_id', pilotRunId).order('created_at', { ascending: true })
 
     const agg = aggregate(session)
-    const fr = friction((events ?? []).map((e) => ({
+    // ⚠️ THE EVENT LIST IS BUILT ONCE AND PASSED ON AS AN ARRAY.
+    // This is the defect that made Finish & Lock impossible. `friction` RETURNS a
+    // summary object; `slowestFields` and `armComparison` each take RAW inputs.
+    // Passing friction's OUTPUT to slowestFields, and byScheduleBasis's output to
+    // armComparison, threw TypeError every single time:
+    //   slowestFields(fr)                 -> events.filter is not a function
+    //   armComparison(byScheduleBasis(…)) -> labels is not iterable
+    // The throw killed the isolate BEFORE the update, so the reviewer saw no HTTP
+    // reply at all -- indistinguishable from a network failure -- and the run was
+    // left untouched, so every retry failed identically. The owner labelled 103
+    // claims and could not lock any of them.
+    // ⚖️ WHY NOTHING CAUGHT IT: the generated pilotCore.ts carries @ts-nocheck, so
+    // the edge function is type-checked against NOTHING here, and the selftests
+    // call these helpers directly with correct arguments. Only the real finish
+    // path put the wrong shapes together, and nothing exercised the real finish
+    // path. The regression test added with this fix replays this exact sequence.
+    const evs = (events ?? []).map((e) => ({
       kind: e.kind, at: new Date(e.created_at).getTime(), ...(e.detail ?? {}),
-    })))
+    }))
+    const fr = friction(evs)
+    const slow = slowestFields(evs, session.labels)
     const attrition = {
       selected: (refs ?? []).length,
       ready_for_label: (refs ?? []).filter((r) => r.terminal_state === 'READY_FOR_LABEL').length,
@@ -242,12 +260,12 @@ Deno.serve(async (req: Request) => {
       aggregate: agg,
       rates,
       by_field: byField(session.labels),
-      by_situation: bySituation(session.labels, refs ?? []),
-      slowest_fields: slowestFields(fr),
+      by_situation: bySituation(session.labels),
+      slowest_fields: slow,
       // ⚠️ NOT REPRESENTED IS AN ANSWER. A 0% content-beats arm would be
       // numerically tidy and scientifically false.
-      arm_comparison: armComparison(byScheduleBasis(session.labels, frames ?? [])),
-      brief_for_69: briefFor69(fr, agg, slowestFields(fr)),
+      arm_comparison: armComparison(session.labels, frames ?? []),
+      brief_for_69: briefFor69(fr, agg, slow),
       friction: fr,
     }
 
