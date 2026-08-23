@@ -177,6 +177,10 @@ export function aggregate(session) {
   for (const l of labels) dist[l.label]++
 
   const answered = labels.filter((l) => l.answered)
+  // ⚠️ NOT AN ANSWER, AND NOT A HUMAN'S FAULT. These are claims the model
+  // declined to make. They are counted and named rather than dropped, because
+  // "Twin said nothing about this" is a result about Twin.
+  const notAnswered = (session.labels ?? []).filter((l) => !l.answered)
   // ⚠️ THE DENOMINATOR EXCLUDES NOTHING IT SHOULD COUNT. A claim the model never
   // made is not a claim it got right, and a denominator that quietly drops
   // non-answers turns a thin pass into a good one.
@@ -192,12 +196,35 @@ export function aggregate(session) {
     claims_labelled: labels.length,
     claims_unlabelled: (session.labels?.length ?? 0) - labels.length,
     model_answered: answered.length,
+    model_did_not_answer: notAnswered.length,
     distribution: dist,
     // ⚖️ TWO RATES, BECAUSE THEY ANSWER DIFFERENT QUESTIONS. Against everything
     // the model was ASKED is "how much of the visual pass is usable". Against
     // what it ANSWERED is "when it speaks, is it right". Reporting only the
     // second is how a pass that answers three fields out of fifteen scores 100%.
-    supported_of_all_asked: supportedRate(labels, { answeredOnly: false }),
+    // ⚠️ THE DENOMINATOR MUST HOLD THE MODEL'S NON-ANSWERS AND NOT THE HUMAN'S.
+    // These are two different reasons a row carries no label and they must not
+    // be treated alike:
+    //
+    //   answered = false, no label   the model declined. There is nothing for a
+    //                                person to judge, and it IS a claim the
+    //                                visual pass failed to make -- it belongs in
+    //                                the denominator. Dropping it turns "103 of
+    //                                120 answered" into a rate over 103.
+    //   answered = true,  no label   the reviewer has not got to it yet. We do
+    //                                not know the answer, so counting it as
+    //                                not-supported understates a pass for a
+    //                                reason that has nothing to do with the
+    //                                model.
+    //
+    // ⚖️ AT LOCK ONLY THE FIRST KIND CAN EXIST -- the finish gate still requires
+    // a label on every answered claim -- so the two coincide in a real report.
+    // They are still separated here, because aggregate() is handed sessions
+    // that were not built by that gate.
+    supported_of_all_asked: supportedRate(
+      (session.labels ?? []).filter((l) => isLabel(l.label) || l.answered !== true),
+      { answeredOnly: false },
+    ),
     supported_of_answered: supportedRate(labels, { answeredOnly: true }),
     // The citation machinery is a separate defect from the seeing.
     wrong_evidence_rate: labels.length === 0 ? null : dist.WRONG_EVIDENCE / labels.length,
