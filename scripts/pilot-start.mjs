@@ -29,14 +29,14 @@
 // executes nothing. The edge function does the SQL, so every refusal below is
 // testable without a database and without a credential.
 
-import { MAX_SIZE, DEFAULT_SIZE } from './pilot-core.mjs'
+import { MAX_SIZE, DEFAULT_SIZE, COHORTS, COHORT_NO_SPEECH } from './pilot-core.mjs'
 
 /** Statuses that mean a pilot is still consuming the lane. `locked` and
  *  `abandoned` are finished; everything else is in flight. */
 export const ACTIVE_STATUSES = Object.freeze(['frozen', 'enqueued', 'collecting', 'ready_for_label'])
 
 /** The only keys a start request may carry. Anything else is a refusal. */
-export const ALLOWED_KEYS = Object.freeze(['action', 'size', 'cost_ceiling_downloads'])
+export const ALLOWED_KEYS = Object.freeze(['action', 'size', 'cost_ceiling_downloads', 'cohort'])
 
 /** The only keys a status request may carry.
  *
@@ -90,13 +90,27 @@ export function validateStartRequest(body) {
       + 'There is no default: a ceiling nobody chose is not a ceiling.')
   }
 
+  // ⚠️ AN ENUM, NOT A PASS-THROUGH. `cohort` widens what this endpoint accepts,
+  // so it is checked against the closed list here rather than trusted to the
+  // draw. A free-text cohort would become a way to name a population from
+  // outside, which is exactly what the allow-list exists to prevent -- and an
+  // unrecognised one must refuse rather than fall back to the default, because
+  // silently drawing silent video for a caller that asked for speech is how a
+  // sample and its label stop matching.
+  const cohort = body.cohort === undefined ? COHORT_NO_SPEECH : body.cohort
+  if (!COHORTS.includes(cohort)) {
+    throw new Error(`cohort ${JSON.stringify(body.cohort)} is not one of ${COHORTS.join(', ')}. `
+      + 'The population a pilot draws from decides what its labels can answer, so it cannot be '
+      + 'guessed at.')
+  }
+
   const cost = expectedCost(size)
   if (cost.downloads > ceiling) {
     throw new Error(`this run would cost ${cost.downloads} downloads (${size} references × `
       + `${DOWNLOADS_PER_REFERENCE}, because force:true re-acquires as well as pulling frames) `
       + `but the stated ceiling is ${ceiling}. Nothing was enqueued.`)
   }
-  return { size, ceiling, cost }
+  return { size, ceiling, cost, cohort }
 }
 
 /** Validate a status request. Returns the run id or throws. */

@@ -19,30 +19,43 @@
 // It does no media work. Downloads, frames and vision calls belong to the
 // worker; this container only speaks SQL.
 
-import { selectCohort, bandOf, handleOf, manifestDigest, PILOT_PRIORITY, MAX_SIZE, DEFAULT_SIZE } from './pilotCore.ts'
+import {
+  selectCohort, bandOf, handleOf, manifestDigest, PILOT_PRIORITY, MAX_SIZE, DEFAULT_SIZE,
+  COHORT_NO_SPEECH, COHORT_SPEECH, COHORT_BANDS, selectionVersionFor,
+} from './pilotCore.ts'
 
 export const SELECTION_VERSION = 'chars_zero_tiny_v1'
 
 const err = (e, what) => { if (e) throw new Error(`${what}: ${e.message}`) }
 
 /** Draw a cohort and FREEZE it into the database. Returns the pilot_run_id. */
-export async function createPilotRun(db, { size = DEFAULT_SIZE, createdBy = null } = {}) {
+export async function createPilotRun(db, { size = DEFAULT_SIZE, createdBy = null, cohort: which = COHORT_NO_SPEECH } = {}) {
   const requested = Math.min(MAX_SIZE, Math.max(1, Number(size) || DEFAULT_SIZE))
-  const { data: rows, error } = await db.from('reference_content_profiles')
-    .select('url, transcript_chars').like('error', 'no_speech%')
-  err(error, 'could not read the no-speech cohort')
+  // Refuses an unknown name before it reads anything, so a typo cannot draw the
+  // default population and freeze it under whatever version string it was given.
+  const selectionVersion = selectionVersionFor(which)
 
-  const cohort = selectCohort(rows ?? [], requested)
+  // ⚠️ THE WITH-SPEECH FILTER IS `transcript_chars > 0` AND A CLEAN `error`,
+  // NOT merely "not no_speech". 280 of the 667 rows carrying a transcript also
+  // carry an error, and a reference that failed for some other reason is not a
+  // reference that speaks -- it is one whose state nobody has established.
+  const q = db.from('reference_content_profiles').select('url, transcript_chars')
+  const { data: rows, error } = which === COHORT_SPEECH
+    ? await q.gt('transcript_chars', 0).or('error.is.null,error.eq.')
+    : await q.like('error', 'no_speech%')
+  err(error, `could not read the ${which} cohort`)
+
+  const cohort = selectCohort(rows ?? [], requested, which)
   // ⚠️ AN EMPTY DRAW IS A REFUSAL, NOT AN EMPTY RUN. A frozen pilot of nothing
   // would later report 0% and read like a measurement.
-  if (cohort.length === 0) throw new Error('the no-speech cohort is empty — nothing to pilot')
+  if (cohort.length === 0) throw new Error(`the ${which} cohort is empty — nothing to pilot`)
 
   const urls = cohort.map((r) => r.url)
   const digest = manifestDigest(urls)
 
   const { data: run, error: e2 } = await db.from('visual_pilot_runs').insert({
     created_by: createdBy,
-    selection_version: SELECTION_VERSION,
+    selection_version: selectionVersion,
     requested_size: requested,
     frozen_size: urls.length,
     sample_digest: digest,
@@ -56,7 +69,7 @@ export async function createPilotRun(db, { size = DEFAULT_SIZE, createdBy = null
   const { error: e3 } = await db.from('visual_pilot_references').insert(cohort.map((r) => ({
     pilot_run_id: run.id,
     url: r.url,
-    stratum: bandOf(r.transcript_chars),
+    stratum: COHORT_BANDS[which].bandOf(r.transcript_chars),
     creator_handle: handleOf(r.url),
   })))
   err(e3, 'could not freeze the pilot sample')

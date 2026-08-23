@@ -2202,9 +2202,14 @@ export const quotePilot = (size: number, costCeilingDownloads: number) =>
 
 /** Freeze a sample and enqueue exactly it. Refuses while another pilot is
  *  live, and refuses if the real bill exceeds the ceiling the caller stated. */
-export const startPilot = (size: number, costCeilingDownloads: number) =>
+/** Which population a pilot draws from. `speech` is the one that can exercise
+ *  the content-beats arm; `no_speech` cannot, because a silent reference has no
+ *  content profile to take beats from. */
+export type PilotCohort = 'no_speech' | 'speech'
+
+export const startPilot = (size: number, costCeilingDownloads: number, cohort: PilotCohort = 'no_speech') =>
   start<{ ok: true; pilot_run_id: string; frozen: number; enqueued: number; quoted: PilotQuote; ceiling: number }>({
-    action: 'start', size, cost_ceiling_downloads: costCeilingDownloads,
+    action: 'start', size, cost_ceiling_downloads: costCeilingDownloads, cohort,
   })
 
 export interface PilotStatus {
