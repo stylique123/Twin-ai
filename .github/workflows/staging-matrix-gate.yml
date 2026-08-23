@@ -209,6 +209,11 @@ jobs:
           HEAD_SHA: ${{ steps.head.outputs.sha }}
           EVENT: ${{ github.event_name }}
           REQUIRED: ${{ steps.scope.outputs.required }}
+          # Empty when the base copy of the script predates this output. The
+          # resolver falls back to the documentation wording, which is the
+          # older and NARROWER claim -- skew can understate an exemption's
+          # scope, never overstate it.
+          EXEMPT_REASON: ${{ steps.scope.outputs.exempt_reason }}
           VERDICT_STATE: ${{ steps.verdict.outputs.state }}
           VERDICT_DESCRIPTION: ${{ steps.verdict.outputs.description }}
           VERDICT_TARGET_URL: ${{ steps.verdict.outputs.target_url }}
