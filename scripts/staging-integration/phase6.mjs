@@ -24,7 +24,10 @@ import { randomUUID, createHash } from 'node:crypto'
 // package with no build step here. The regex is anchored to the exact export so
 // a comment mentioning the string cannot satisfy it.
 const EXPECTED_VISUAL_VERSION = (() => {
-  const src = readFileSync(new URL('../../worker/src/jobs/editorManifest.ts', import.meta.url), 'utf8')
+  // NOT `new URL(...)`: line 38 declares `const URL = need('STAGING_URL')`, which
+  // shadows the global URL for this whole module, so referencing it up here is a
+  // temporal-dead-zone crash. import.meta.dirname has no such collision.
+  const src = readFileSync(join(import.meta.dirname, '..', '..', 'worker', 'src', 'jobs', 'editorManifest.ts'), 'utf8')
   const m = src.match(/^export const VISUAL_ANALYSIS_VERSION = '([^']+)'/m)
   if (!m) throw new Error('phase6: could not read VISUAL_ANALYSIS_VERSION from editorManifest.ts')
   return m[1]
