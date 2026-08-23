@@ -471,6 +471,11 @@ jobs:
       # evidence disappears quietly. It runs alongside the existing gate until
       # its verdicts have been watched against real PRs, and the switch is a
       # separate change with its own falsifiable claim.
+      # ⚠️ THE GATE MAY NOT GRADE ITS OWN REWRITE CHEAPLY. scripts/ci is FULL
+      # wholesale — including this classifier and the gate it feeds — so a
+      # change to the tier table always pays the full matrix to prove itself.
+      - name: Gate tiers (a cheaper tier is a claim the MATRIX cannot falsify it, not that nothing can)
+        run: node scripts/ci/gate_tiers.selftest.mjs
       - name: Gate tier (advisory — what the smallest sufficient gate would be)
         run: |
           node scripts/ci/classify_change.selftest.mjs
