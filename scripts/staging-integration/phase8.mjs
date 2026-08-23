@@ -639,12 +639,23 @@ async function main() {
         donorAssetId, donorGenerationId: donorProj.generation_id,
         ownerId: user.id, log: (m) => console.log(m),
       })
+      // ⚠️ CONDITIONS, NOT ROWS. The first real sweep printed `collected=4/4`
+      // over three distinct zoom counts, because one render delivered 2 zooms
+      // when 3 were requested. Rows were never the denominator that mattered.
       console.log(`NOTE sweep verdict: ${sweep.verdict}`
         + ` slope=${sweep.slope === null ? 'n/a' : `${sweep.slope.toFixed(1)}ms/zoom`}`
-        + ` collected=${sweep.collected}/${sweep.attempted} excluded=${sweep.excluded}`)
+        + ` zoomCountsDelivered=[${sweep.delivered.join(',')}]`
+        + ` missing=[${sweep.missing.join(',')}]`
+        + ` rows=${sweep.collected}/${sweep.attempted} excluded=${sweep.excluded}`)
       for (const pt of sweep.points) console.log(`NOTE   zoom=${pt.zoom} meanDelta=${pt.delta.toFixed(1)}ms`)
       for (const n of sweep.notes) console.log(`NOTE   ${n}`)
-      if (sweep.verdict !== 'CORRELATION_GONE') {
+      if (sweep.verdict === 'INCOMPLETE_SWEEP') {
+        console.log(`NOTE ⚠️ ADVISORY ONLY — this does NOT fail the phase. But INCOMPLETE_SWEEP is`)
+        console.log(`NOTE    NOT a pass: zoom count(s) ${sweep.missing.join(', ')} never rendered, so`)
+        console.log(`NOTE    the slope was fitted over ${sweep.delivered.length} conditions, not ${sweep.attempted}.`)
+        console.log(`NOTE    Over the ones that DID render the fit says ${sweep.slopeOverDelivered} —`)
+        console.log('NOTE    which is a statement about those conditions only.')
+      } else if (sweep.verdict !== 'CORRELATION_GONE') {
         console.log('NOTE ⚠️ ADVISORY ONLY — this does NOT fail the phase yet. INSUFFICIENT_EVIDENCE')
         console.log('NOTE    is not a pass either: it means the experiment did not run, not that')
         console.log('NOTE    the defect is absent.')

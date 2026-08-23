@@ -107,6 +107,29 @@ export function slopeOf(rows) {
 }
 
 /**
+ * WHICH REQUESTED ZOOM COUNTS ACTUALLY GOT RENDERED.
+ *
+ * ⚠️ THE FIRST REAL RUN REPORTED `CORRELATION_GONE slope=0.0 collected=4/4
+ * excluded=0` OVER THREE BUCKETS. Four rows were collected, but the render for
+ * n=3 came back with zoom_count=2 -- the compiler drops a requested zoom when
+ * its anchor was removed, when it lands inside minSeparationMs of the previous
+ * one, or when the remaining piece is shorter than the ease pair. So the sweep
+ * had a duplicate 2-bucket and NO 3-bucket, and every line it printed said
+ * otherwise: `collected` counts ROWS, and rows are not conditions.
+ *
+ * The 3-zoom render is the one carrying the signal -- it is the condition the
+ * failing #65 render was closest to -- so a sweep that quietly substitutes a
+ * second 2 for it has not run the experiment it claims to have run.
+ */
+export function coverageOf(rows, requested = SWEEP_ZOOM_COUNTS) {
+  const delivered = [...new Set((rows ?? [])
+    .map((r) => r?.zoom_count)
+    .filter((z) => Number.isInteger(z)))].sort((a, b) => a - b)
+  const missing = requested.filter((n) => !delivered.includes(n))
+  return { delivered, missing, complete: missing.length === 0 }
+}
+
+/**
  * Render once per zoom count and return the rows.
  *
  * Every dependency is injected: this module opens no client, reads no
@@ -195,7 +218,43 @@ export async function runZoomSweep(deps) {
       const { data: ra } = await admin.from('render_attempts').select('*').eq('edit_project_id', pid)
       if (!ra?.length) { notes.push(`zoom ${n}: no render_attempt row`); continue }
       rows.push(ra[0])
-      log?.(`NOTE sweep zoom=${ra[0].zoom_count} target=${ra[0].target_frame_count}`
+
+      // ⚠️ REQUESTED IS NOT DELIVERED, AND THE ROW RECORDS THE DELIVERED ONE.
+      // The compiler drops a requested zoom for four documented reasons, each
+      // one a warning on the plan. Asking for 3 and rendering 2 is not a
+      // failure of the renderer and must not red anything -- but it IS the
+      // 3-zoom condition going unrun, and reporting it as a collected row was
+      // how the first sweep printed a slope over three buckets while claiming
+      // four. The reason is READ OFF THE PLAN rather than inferred here.
+      if (ra[0].zoom_count !== n) {
+        // ⚠️ THE EXPLANATION MUST NOT BE ABLE TO DESTROY THE MEASUREMENT. The
+        // render happened and its row is already collected; a plan read that
+        // throws would otherwise fall into the outer catch and turn a real
+        // result into "zoom 3: <some client error>". The mismatch is reported
+        // either way, with or without its cause.
+        let dropped = []
+        let lookupFailed = null
+        try {
+          const { data: plans } = await admin.from('edit_plans').select('plan')
+            .eq('edit_project_id', pid).order('version', { ascending: false }).limit(1)
+          const warnings = plans?.[0]?.plan?.warnings
+          dropped = (Array.isArray(warnings) ? warnings : [])
+            .map((w) => (typeof w === 'string' ? w : w?.code ?? ''))
+            .filter((c) => String(c).startsWith('zoom_dropped'))
+        } catch (e) {
+          lookupFailed = e instanceof Error ? e.message : String(e)
+        }
+        notes.push(`zoom ${n}: REQUESTED ${n}, RENDERED ${ra[0].zoom_count}`
+          + ` — the ${n}-zoom condition did not run.`
+          + (lookupFailed
+            ? ` The plan could not be read (${lookupFailed}), so the cause is NOT known from this run.`
+            : dropped.length
+              ? ` The compiler dropped ${dropped.length}: ${dropped.join(', ')}.`
+              : ' The plan recorded no zoom_dropped warning, so the cause is NOT known'
+                + ' from this run and must not be guessed.'))
+      }
+
+      log?.(`NOTE sweep requested=${n} zoom=${ra[0].zoom_count} target=${ra[0].target_frame_count}`
         + ` predicted=${ra[0].predicted_duration_ms} actual=${ra[0].actual_duration_ms}`
         + ` delta=${ra[0].duration_delta_ms}`)
     } catch (e) {
@@ -206,5 +265,26 @@ export async function runZoomSweep(deps) {
   }
 
   const result = slopeOf(rows)
-  return { ...result, rows, notes, attempted: SWEEP_ZOOM_COUNTS.length, collected: rows.length }
+  const coverage = coverageOf(rows)
+
+  // ⚠️ A SLOPE OVER A SUBSET IS NOT THE ANSWER TO THE QUESTION THAT WAS ASKED.
+  // The claim under test is that error does not grow with zoom count ACROSS
+  // 0/1/2/3. If 3 never rendered, CORRELATION_GONE would be reporting the
+  // absence of a defect in a condition that was never exercised -- the exact
+  // shape of an unrun experiment wearing a green tick. INCOMPLETE_SWEEP is a
+  // real answer and, like INSUFFICIENT_EVIDENCE, it is NOT a pass.
+  const verdict = coverage.complete ? result.verdict : 'INCOMPLETE_SWEEP'
+  return {
+    ...result,
+    verdict,
+    slopeOverDelivered: result.verdict,
+    ...coverage,
+    rows,
+    notes,
+    attempted: SWEEP_ZOOM_COUNTS.length,
+    collected: rows.length,
+    // Conditions, not rows. `collected` counts rows and two rows can be the
+    // same condition; this is the number the verdict actually depends on.
+    conditionsDelivered: coverage.delivered.length,
+  }
 }
