@@ -29,7 +29,7 @@ import {
 } from '../_shared/pilotCore.ts'
 import {
   validateStartRequest, validateStatusRequest, activePilotRefusal, activePilotRun,
-  pilotJobRows, ACTIVE_STATUSES,
+  pilotJobRows, ACTIVE_STATUSES, resolveActivePilotRun, ambiguousPilotRefusal,
 } from '../_shared/pilotStart.ts'
 // ⚠️ THE PACKET IS BUILT HERE, NOT BY A LAPTOP. collectForRun's only caller used
 // to be the CLI, so the button path enqueued work, watched it finish, and handed
@@ -86,7 +86,13 @@ Deno.serve(async (req: Request) => {
     const { data: runs, error: activeErr } = await admin.from('visual_pilot_runs')
       .select('id, status').in('status', ACTIVE_STATUSES)
     if (activeErr) return json({ error: `could not check for an active pilot: ${activeErr.message}` }, 500)
-    const run = activePilotRun(runs ?? [])
+    // ⚠️ ADOPTION MUST NOT PICK. activePilotRun returns active[0], which is the
+    // right answer for REFUSING a second pilot and the wrong one for choosing
+    // which run the owner is about to label. Two active runs mean the one-pilot
+    // invariant already failed; that is reported, naming both, never resolved
+    // by choosing one.
+    const { run, ambiguous, ids } = resolveActivePilotRun(runs ?? [])
+    if (ambiguous) return json({ error: ambiguousPilotRefusal(ids), pilot_run_ids: ids }, 409)
     return json({ ok: true, pilot_run_id: run?.id ?? null, status: run?.status ?? null })
   }
 
