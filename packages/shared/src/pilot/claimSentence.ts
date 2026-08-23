@@ -68,6 +68,13 @@ const SENTENCES: Record<string, Sayer> = {
   // ambiguous. Whether the field should mean something else is a separate
   // decision costing an analyzer version; it is recorded in
   // docs/video-format-research.md and is not taken here.
+  //
+  // ⚠️ AND IT IS AN OPEN DEFERRAL, NOT A SETTLED DEFINITION. It is registered as
+  // TALKINGHEAD_LOOSER_THAN_INDUSTRY in ./knownLimitations, whose trigger is the
+  // first pilot run reaching LOCKED. A test pins the two together: while that
+  // entry is OPEN, this sentence must keep saying distance does not matter, so
+  // tightening the card is a reviewed edit rather than a thing that quietly
+  // happens and takes the measurement with it.
   'performance.talkingHead': yesNo(
     'Someone is talking to the camera. They do not have to be close up.',
     'Nobody is talking to the camera.',
