@@ -493,6 +493,12 @@ jobs:
         run: node scripts/ci/check_zoom_delta_correlation.selftest.mjs
       - name: Pilot core (frozen sample, terminal states, rates that cannot exceed 100%)
         run: node scripts/pilot-core.selftest.mjs
+      # The helpers are individually correct and were still assembled wrongly: the
+      # finish action passed friction's OUTPUT to slowestFields and byScheduleBasis's
+      # OUTPUT to armComparison, so Finish & Lock threw TypeError every time and the
+      # reviewer saw no HTTP reply at all. Nothing ran the real sequence. This does.
+      - name: Pilot finish (the lock path actually runs, with the shapes it really gets)
+        run: node scripts/pilot-finish.selftest.mjs
       # #57's trigger. The properties worth guarding are the EXCLUSIONS: staging
       # rows and uploads are not product recordings, an unrendered attempt is
       # not a video anybody watched, and a control that lands on a real cut is
