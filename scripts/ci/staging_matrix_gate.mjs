@@ -207,6 +207,7 @@ export function resolvePostedStatus({
   description,
   targetUrl,
   runUrl = '',
+  exemptReason = '',
 } = {}) {
   const fallbackUrl = String(runUrl ?? '')
   const verdictState = String(state ?? '').trim()
@@ -226,9 +227,29 @@ export function resolvePostedStatus({
   // Strict identity, not `==` and not coerced: Actions' loose `==` is precisely
   // what turned a skipped step's null into a green.
   if (eventName === 'pull_request' && required === '0') {
+    // ⚠️ THE STATUS MUST SAY WHICH EXEMPTION IT TOOK, AND IT DID NOT. Every
+    // exemption posted the documentation wording, because this function saw
+    // only required='0' and never the tier. The first STATIC PRs under #75 --
+    // one changing V2Capture.tsx, one changing supabase/verify -- were both
+    // announced to the world as "Documentation-only PR".
+    //
+    // ⚖️ THAT IS A LOSS OF THE EXACT SIGNAL THE GATE EXISTS TO GIVE. The
+    // decision was correct and provably narrow: isExemptPath returned false for
+    // every file on both. But if the documentation rule ever DID widen, its
+    // status would read identically to this one -- so the record could no
+    // longer distinguish "exempt because documentation" from "exempt because
+    // static", and a green whose stated reason is not the real reason is the
+    // defect this repository keeps having to catch.
+    //
+    // ⚠️ AN OLDER SCRIPT SUPPLIES NO REASON, AND THAT IS THE NORMAL CASE. The
+    // workflow checks out base.sha, so it runs one version BEHIND itself; until
+    // this lands on main the classify step emits no exempt_reason and the
+    // fallback below is what posts. Falling back to the documentation wording
+    // is safe because it is the older, narrower claim -- never the broader one.
+    const said = String(exemptReason ?? '').trim()
     return {
       state: 'success',
-      description: clampDescription(DOC_ONLY_DESCRIPTION),
+      description: clampDescription(said || DOC_ONLY_DESCRIPTION),
       targetUrl: fallbackUrl,
       exempt: true,
     }
@@ -339,7 +360,32 @@ function selftest() {
   // --- the exemption still works where it is supposed to ------------------
   ok(pr({ required: '0' }).exempt, 'pull_request + required="0" + no verdict → exempt (the documentation-only case still works)')
   ok(pr({ required: '0' }).state === 'success', 'the documentation-only exemption still posts success')
-  ok(pr({ required: '0' }).description === DOC_ONLY_DESCRIPTION, 'the exemption posts the documentation-only description')
+  ok(pr({ required: '0' }).description === DOC_ONLY_DESCRIPTION, 'with NO reason supplied the exemption still posts the documentation-only description (version skew)')
+  // --- the status must name the exemption it actually took ----------------
+  //
+  // ⚠️ THE FIRST TWO STATIC PRs WERE BOTH ANNOUNCED AS DOCUMENTATION. The
+  // decision was right and the wording was false, and a green whose stated
+  // reason is not the real reason cannot be audited later.
+  {
+    const STATIC_REASON = 'STATIC: all 4 changed files are static (typechecked, unit-tested, no worker or renderer reach). The editor matrix cannot falsify this change.'
+    const r = pr({ required: '0', exemptReason: STATIC_REASON })
+    ok(r.state === 'success' && r.exempt, 'a STATIC exemption still posts success')
+    // ⚠️ CLAMPED, NOT VERBATIM. GitHub caps a status description at 140 chars
+    // and the STATIC reason is longer, so the contract is "its own reason,
+    // clamped" -- asserting the raw string would fail for the wrong reason.
+    ok(r.description === clampDescription(STATIC_REASON), 'a STATIC exemption posts ITS OWN reason, clamped')
+    ok(r.description.startsWith('STATIC:'), 'and the tier that granted the exemption survives the clamp')
+    ok(!r.description.startsWith('Documentation-only'), 'CONTROL a static PR is never described as documentation')
+  }
+  for (const blank of ['', '   ', null, undefined])
+    ok(pr({ required: '0', exemptReason: blank }).description === DOC_ONLY_DESCRIPTION,
+      'CONTROL a blank reason falls back to the documentation wording rather than posting an empty status')
+  // ⚠️ AND A REASON MAY NEVER MANUFACTURE AN EXEMPTION. It only names one that
+  // `required` already granted.
+  ok(pr({ required: '1', exemptReason: 'STATIC: totally fine, honest' }).state === 'error',
+    'CONTROL a reason cannot exempt a REQUIRED PR')
+  ok(pr({ required: undefined, exemptReason: 'STATIC: nothing to see here' }).state === 'error',
+    'CONTROL a reason cannot exempt a PR whose classify step never ran')
   ok(pr({ required: '1' }).state === 'error', 'CONTROL: pull_request + required="1" + no verdict → error, never success')
   ok(pr({ required: '1', state: 'pending', description: 'still running' }).state === 'pending', 'a required PR awaiting the matrix posts pending')
   for (const absent of [undefined, null, ''])
@@ -451,6 +497,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     }
     console.log(decision.reason)
     emit('required', decision.required ? '1' : '0')
+    // Travels with the exemption so the posted status can name the tier that
+    // produced it rather than asserting documentation for all of them.
+    emit('exempt_reason', decision.required ? '' : decision.reason)
   } else if (process.argv.includes('--verdict')) {
     let payload
     try {
@@ -478,6 +527,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       description: process.env.VERDICT_DESCRIPTION,
       targetUrl: process.env.VERDICT_TARGET_URL,
       runUrl: process.env.RUN_URL,
+      exemptReason: process.env.EXEMPT_REASON,
     })
     console.error(
       `resolve: event=${process.env.EVENT ?? '-'} required=${process.env.REQUIRED || '(unset — classify did not run)'} ` +
