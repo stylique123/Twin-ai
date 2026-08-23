@@ -181,7 +181,40 @@ export default function PilotVisualReview() {
   return (
     <div className="mx-auto max-w-3xl p-6">
       <div className="mb-4 flex items-baseline justify-between text-sm opacity-70">
-        <span>Claim {at + 1} of {claims.length}</span>
+        {/* ⚠️ GOING BACK WAS KEYBOARD-ONLY, AND THE OWNER LABELLED FROM A PHONE.
+            ArrowLeft moved the cursor; nothing on screen did. They finished a
+            103-claim run wanting to revise earlier answers and had no way to
+            reach them. A control a reviewer cannot press does not exist.
+            ⚖️ AND REVISION IS THE POINT, NOT AN ESCAPE HATCH. Field notes shipped
+            mid-run, so the earliest claims were judged without them. Labels stay
+            editable until Finish & Lock precisely so a reviewer can correct
+            themselves; a keyboard-only path silently removed that for anyone not
+            at a laptop. */}
+        <span className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setAt((i) => Math.max(0, i - 1))
+              void logPilotEvent(pilotRunId, 'nav', { dir: -1 }).catch(() => {})
+            }}
+            disabled={at === 0}
+            aria-label="Previous claim"
+            className="rounded border border-white/15 px-2 py-1 text-xs hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-30">
+            ← Back
+          </button>
+          <span>Claim {at + 1} of {claims.length}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setAt((i) => Math.min(claims.length - 1, i + 1))
+              void logPilotEvent(pilotRunId, 'nav', { dir: 1 }).catch(() => {})
+            }}
+            disabled={at >= claims.length - 1}
+            aria-label="Next claim"
+            className="rounded border border-white/15 px-2 py-1 text-xs hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-30">
+            Next →
+          </button>
+        </span>
         {/* Progress only. Never a score. */}
         {/* Progress, never a score: how much work is left, never how any of it
             was answered. The jump control is navigation for the same reason. */}
