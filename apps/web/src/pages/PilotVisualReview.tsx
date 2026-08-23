@@ -13,6 +13,7 @@ import { useParams } from 'react-router-dom'
 import { Loader2, Lock, AlertTriangle } from 'lucide-react'
 import {
   getPilotPacket, savePilotLabel, logPilotEvent, finishPilotReview,
+  claimSentence,
   type PilotPacket, type PilotClaim, type PilotLabel,
 } from '../lib/api'
 
@@ -28,6 +29,9 @@ export default function PilotVisualReview() {
   const [saving, setSaving] = useState(false)
   const [locking, setLocking] = useState(false)
   const [locked, setLocked] = useState(false)
+  // ⚠️ THE EVIDENCE MUST BE LOOKABLE-AT. A thumbnail a reviewer cannot open
+  // is not evidence they can judge; the owner said so on the live packet.
+  const [zoom, setZoom] = useState<string | null>(null)
   const started = useRef(false)
 
   useEffect(() => {
@@ -140,20 +144,40 @@ export default function PilotVisualReview() {
 
       {claim && (
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-          <div className="text-xs uppercase tracking-wide opacity-50">{claim.claim_path}</div>
-          <div className="mt-2 text-lg">
-            {claim.answered
-              ? <code className="rounded bg-white/10 px-2 py-1">{JSON.stringify(claim.claim_value)}</code>
-              /* ⚠️ UNANSWERED IS ITS OWN THING. Confirming a claim the pass never
-                 made once put a bucket named 'null' into the distribution. */
-              : <span className="opacity-60">The pass did not answer this.</span>}
+          {/* ⚠️ THE SENTENCE IS WHAT A PERSON JUDGES. This card used to print the
+              internal field path and JSON.stringify(value) -- "PERFORMANCE.TALKINGHEAD"
+              over "false" -- and the owner could not tell what was being asked.
+              An unreadable claim does not produce a careful label, it produces a
+              fast one, and the labels are the entire result of this experiment. */}
+          <div className="text-xs uppercase tracking-wide opacity-40">Twin says</div>
+          <div className="mt-2 text-lg leading-snug">
+            {(() => {
+              const said = claimSentence(claim.claim_path, claim.claim_value, claim.answered)
+              // ⚠️ FALLS BACK RATHER THAN INVENTING. An unmapped path shows the raw
+              // pair: a reviewer judging a sentence the client made up would be
+              // judging the wrong claim.
+              if (said) return <span>{said}</span>
+              return claim.answered
+                ? <code className="rounded bg-white/10 px-2 py-1">{claim.claim_path} = {JSON.stringify(claim.claim_value)}</code>
+                : <span className="opacity-60">Twin did not reach a conclusion about this one.</span>
+            })()}
           </div>
+          <div className="mt-3 text-sm opacity-60">
+            Does the picture below back that up?
+          </div>
+          {/* The internal path stays available, but as debug detail rather than
+              as the thing a human is asked to read. */}
+          <div className="mt-1 text-[11px] opacity-30">{claim.claim_path}</div>
 
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {framesFor(claim).map((f) => (
               <figure key={`${f.url}-${f.frame_index}`} className="overflow-hidden rounded-lg border border-white/10">
                 {f.signed_url
-                  ? <img src={f.signed_url} alt={`frame ${f.frame_index}`} className="w-full" />
+                  ? <button type="button" onClick={() => setZoom(f.signed_url)}
+                      className="block w-full cursor-zoom-in"
+                      aria-label={`Open frame ${f.frame_index} full size`}>
+                      <img src={f.signed_url} alt={`frame ${f.frame_index}`} className="w-full" />
+                    </button>
                   : <div className="flex h-24 items-center justify-center text-xs opacity-50">frame unavailable</div>}
                 <figcaption className="px-2 py-1 text-[11px] opacity-60">
                   #{f.frame_index}
@@ -179,6 +203,17 @@ export default function PilotVisualReview() {
               <span className="mr-2 opacity-50">s</span>Skip for now
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Tap the picture to see it properly. Tap anywhere to close. */}
+      {zoom && (
+        <div
+          role="dialog" aria-modal="true" aria-label="Frame, full size"
+          onClick={() => setZoom(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+          <img src={zoom} alt="Frame, full size" className="max-h-full max-w-full object-contain" />
+          <div className="absolute bottom-6 text-sm opacity-70">Tap anywhere to close</div>
         </div>
       )}
 
