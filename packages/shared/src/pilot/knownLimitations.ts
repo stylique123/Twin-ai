@@ -61,6 +61,36 @@ export const KNOWN_LIMITATIONS: readonly KnownLimitation[] = Object.freeze([
       + 'live pilot is not permitted. The payoff lands on the NEXT cohort.',
     status: 'OPEN',
   }),
+  Object.freeze({
+    id: 'PILOT_COHORT_IS_NOT_THE_PRODUCT_PATH',
+    what:
+      'The first visual pilot cohort was drawn from no_speech references ONLY. In practice that '
+      + 'selects montage and B-roll -- aerial festival footage, cut sequences with no presenter -- '
+      + 'and not the talking-head creator videos the product exists to remake. Two consequences '
+      + 'were measured on run 7204de6f before any labelling: performance.talkingHead and '
+      + 'performance.screenInteraction came back false on 8 of 8 references with NO VARIATION (16 '
+      + 'claims that cannot discriminate anything), and because content_beats cannot appear in a '
+      + 'no_speech draw, armComparison will report NOT RUN rather than a comparison. The owner met '
+      + 'it directly at claim 13, asked whether "filming this would only need one location" about a '
+      + 'drone montage, and said they did not know how to answer.',
+    decision:
+      'Label and complete this run anyway. Its labels are still evidence -- they measure how well '
+      + 'the visual pass reads B-roll, which is a real question -- but they DO NOT measure the '
+      + 'product path, and no report from this run may be read as if they did. The reviewer is told '
+      + 'to answer "these frames cannot settle it" rather than guess when a montage genuinely '
+      + 'cannot be judged from the cited frames; a forced guess is worse than a recorded '
+      + 'non-answer, because it is indistinguishable from a real judgement afterwards.',
+    revisitWhen:
+      'The with-speech cohort is drawn (#475 ships the selection; the draw itself is the owner\'s '
+      + 'Start button). That cohort is what measures the product path, and the two runs must be '
+      + 'reported separately rather than pooled.',
+    cost:
+      'A fresh run: a new cohort, a new frame-analysis pass, and a second round of labelling. '
+      + 'It cannot be recovered from run 7204de6f by re-analysis -- re-running frame analysis on a '
+      + 'live pilot is not permitted, and re-drawing would discard the labels already given. '
+      + 'Pooling the two cohorts to save a round would hide exactly the difference being measured.',
+    status: 'OPEN',
+  }),
 ])
 
 export const openLimitations = (): readonly KnownLimitation[] =>
