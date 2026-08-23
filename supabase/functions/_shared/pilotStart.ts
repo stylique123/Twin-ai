@@ -141,6 +141,36 @@ export function activePilotRun(runs) {
   return active.length === 0 ? null : active[0]
 }
 
+/**
+ * THE RUN TO ADOPT WHEN THE OWNER ARRIVES WITHOUT AN ID — OR A REFUSAL.
+ *
+ * ⚠️ REFUSING A SECOND PILOT AND ADOPTING AN EXISTING ONE ARE NOT THE SAME
+ * QUESTION, AND activePilotRun ONLY ANSWERS THE FIRST. For the refusal, ANY
+ * active run is sufficient grounds and picking one of several is harmless --
+ * the answer is "no" either way. For adoption it is the opposite: picking
+ * active[0] out of two sends the owner to an arbitrary run and attaches a
+ * label set to it, and labels are the entire result of the pilot. A label on
+ * the wrong run is worse than no label, because nothing downstream can tell.
+ *
+ * ⚖️ TWO ACTIVE RUNS MEANS THE ONE-PILOT INVARIANT HAS ALREADY FAILED. That is
+ * a condition to report, naming both, not one to paper over by choosing. The
+ * adoption path is the only caller that must care.
+ */
+export function resolveActivePilotRun(runs) {
+  const active = (runs ?? []).filter((r) => ACTIVE_STATUSES.includes(String(r?.status)))
+  if (active.length === 0) return { run: null, ambiguous: false, ids: [] }
+  const ids = active.map((r) => String(r?.id))
+  if (active.length > 1) return { run: null, ambiguous: true, ids }
+  return { run: active[0], ambiguous: false, ids }
+}
+
+export function ambiguousPilotRefusal(ids) {
+  return `${ids.length} pilot runs are active at once (${ids.join(', ')}). Only one may be, so `
+    + 'this cannot be resolved by picking: adopting the wrong one would attach your labels to a '
+    + 'run they were not given about, and nothing downstream could tell. Open the one you meant '
+    + 'by its id, or abandon the runs that should not be active.'
+}
+
 export function activePilotRefusal(runs) {
   const r = activePilotRun(runs)
   if (!r) return null

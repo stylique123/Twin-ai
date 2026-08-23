@@ -8,6 +8,7 @@
 // does not, so a check that rejects everything cannot pass either.
 import {
   validateStartRequest, validateStatusRequest, activePilotRefusal, activePilotRun,
+  resolveActivePilotRun, ambiguousPilotRefusal,
   pilotJobRows, expectedCost,
   ACTIVE_STATUSES, ALLOWED_KEYS, STATUS_KEYS, DOWNLOADS_PER_REFERENCE,
 } from './pilot-start.mjs'
@@ -129,6 +130,57 @@ ok('the status allow-list cannot name a payload or a size',
 // ── the allow-list itself ─────────────────────────────────────────────────
 ok('the allow-list cannot name a URL list or a payload',
   !ALLOWED_KEYS.includes('urls') && !ALLOWED_KEYS.includes('payload') && !ALLOWED_KEYS.includes('backlog'))
+
+// ── adopting a run is not the same question as refusing one ─────────────────
+// ⚠️ activePilotRun RETURNS active[0]. That is correct for the refusal — any
+// active run is grounds, and the answer is "no" either way — and wrong for
+// adoption, where picking one of two sends the owner to an arbitrary run and
+// attaches their labels to it. Labels are the entire result of the pilot, and
+// a label on the wrong run is worse than no label because nothing downstream
+// can tell.
+ok('nothing active resolves to nothing, and is not ambiguous', (() => {
+  const r = resolveActivePilotRun([])
+  return r.run === null && r.ambiguous === false && r.ids.length === 0
+})())
+ok('an undefined list resolves to nothing rather than throwing',
+  resolveActivePilotRun(undefined).run === null)
+ok('exactly one active run resolves to it', (() => {
+  const r = resolveActivePilotRun([{ id: '7204de6f', status: 'ready_for_label' }])
+  return r.run?.id === '7204de6f' && r.ambiguous === false
+})())
+ok('terminal runs do not resolve — a locked run is not one to pick up',
+  resolveActivePilotRun([{ id: 'a', status: 'locked' }, { id: 'b', status: 'abandoned' }]).run === null)
+
+// ⚠️ TWO ACTIVE RUNS REFUSES AND NAMES BOTH. It does NOT pick.
+{
+  const two = [{ id: 'run-a', status: 'collecting' }, { id: 'run-b', status: 'frozen' }]
+  const r = resolveActivePilotRun(two)
+  ok('two active runs are ambiguous', r.ambiguous === true)
+  ok('and it refuses to choose one', r.run === null)
+  ok('and both ids are named', JSON.stringify(r.ids) === JSON.stringify(['run-a', 'run-b']))
+  const said = ambiguousPilotRefusal(r.ids)
+  ok('the refusal names both ids', said.includes('run-a') && said.includes('run-b'))
+  ok('the refusal says why picking is not an option', said.includes('cannot be resolved by picking'))
+}
+// A terminal run alongside a live one is NOT ambiguity — there is one active.
+ok('a locked run beside a live one is still unambiguous', (() => {
+  const r = resolveActivePilotRun([{ id: 'old', status: 'locked' }, { id: 'live', status: 'enqueued' }])
+  return r.ambiguous === false && r.run?.id === 'live'
+})())
+
+// ⚖️ THE REFUSAL PATH IS DELIBERATELY UNCHANGED. Starting a second pilot must
+// still be refused when two are somehow active — that is MORE reason to refuse,
+// not less — so activePilotRefusal must keep answering on the same rows.
+ok('CONTROL starting a second pilot is still refused when two are active',
+  activePilotRefusal([{ id: 'run-a', status: 'collecting' }, { id: 'run-b', status: 'frozen' }]) !== null)
+// The two functions agree about WHETHER anything is active, and differ only
+// about whether one can be singled out.
+for (const runs of [[], [{ id: 'x', status: 'collecting' }],
+  [{ id: 'x', status: 'collecting' }, { id: 'y', status: 'collecting' }],
+  [{ id: 'x', status: 'locked' }]]) {
+  ok('active-ness agrees between refusal and resolution',
+    (activePilotRefusal(runs) === null) === (resolveActivePilotRun(runs).ids.length === 0))
+}
 
 console.log(`pilot-start selftest: ${pass} passed, ${fail} failed`)
 process.exit(fail === 0 ? 0 : 1)
