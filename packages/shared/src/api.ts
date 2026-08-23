@@ -20,6 +20,7 @@ import {
 } from './productExtraction'
 import { generationLifecycle, resolveFinishedOutputs, resolveFinishedOutputsResult } from './editor/finishedOutput'
 import { refusalText } from './pilot/refusalText'
+import { classifyPilotFailure, type PilotFailure } from './pilot/callFailure'
 
 // ---- Client injection ------------------------------------------------------
 // The web app is the single client surface. It wires its Supabase client, an
@@ -2132,14 +2133,35 @@ export interface PilotPacket {
   claim_paths: string[]
 }
 
+/** A pilot-review failure carrying the classified facts, not just a string.
+ *  ⚠️ The page needs to know whether a reply ARRIVED; `message` alone cannot
+ *  say. See pilot/callFailure.ts for why that distinction is load-bearing. */
+export class PilotCallError extends Error {
+  readonly failure: PilotFailure
+  constructor(failure: PilotFailure) { super(failure.message); this.failure = failure }
+}
+
 const pilot = async <T>(body: Record<string, unknown>): Promise<T> => {
   const { data, error } = await supabase.functions.invoke('pilot-review', { body })
   // ⚠️ A FAILED CALL IS NOT AN EMPTY RESULT. Returning null here would let the
   // page render "0 claims remaining" over a request that never landed, and the
   // Finish button would light up on a run nobody labelled.
   // Same fixed-string trap as the pilot-start helper — read the body.
-  if (error) throw new Error(await refusalText(error, 'the review service refused'))
-  if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error)
+  if (error) {
+    const said = await refusalText(error, 'the review service refused')
+    // ⚠️ `context` is the Response for a non-2xx, and ABSENT for a transport
+    // failure. Its absence is the evidence that nothing reached the server.
+    const ctx = (error as { context?: unknown }).context
+    const res = ctx instanceof Response ? ctx : null
+    throw new PilotCallError(
+      classifyPilotFailure(String(body.action ?? 'unknown'), said, res))
+  }
+  if ((data as { error?: string })?.error) {
+    // A 200 carrying {error} is the server speaking, so it is a REFUSED with a
+    // response -- not a transport failure.
+    throw new PilotCallError(classifyPilotFailure(
+      String(body.action ?? 'unknown'), (data as { error: string }).error, { status: 200 }))
+  }
   return data as T
 }
 
