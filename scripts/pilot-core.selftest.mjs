@@ -109,6 +109,39 @@ ok('flattenClaims still returns one row per declared path',
   ] })
   ok('a thin pass cannot score 100% by answering three fields',
     mixed.supported_of_answered === 0.5 && Math.abs(mixed.supported_of_all_asked - 1 / 3) < 1e-9)
+
+  // ── the claim nobody can label ────────────────────────────────────────────
+  // ⚠️ THE FIXTURES ABOVE ALL GIVE THE UNANSWERED CLAIMS A LABEL, which is why
+  // this went unnoticed. In the first real packet 17 of 120 rows were fields
+  // Twin declined to answer, and there is no honest button for them -- so they
+  // carry NO label at all. Filtering the pool to labelled rows would drop them
+  // out of the denominator and score a 103-of-120 pass over 103.
+  const withNonAnswers = aggregate({ locked: true, labels: [
+    { index: 0, answered: true, label: 'SUPPORTED' },
+    { index: 1, answered: true, label: 'SUPPORTED' },
+    { index: 2, answered: false, label: null },
+    { index: 3, answered: false, label: null },
+  ] })
+  ok('an unlabelled non-answer is still in the all-asked denominator',
+    withNonAnswers.supported_of_all_asked === 0.5)
+  ok('and it is named rather than merely missing',
+    withNonAnswers.model_did_not_answer === 2)
+  ok('while the answered rate is untouched by it',
+    withNonAnswers.supported_of_answered === 1)
+  ok('every shown claim is still counted as shown', withNonAnswers.claims_shown === 4)
+  ok('and the two that carry no label are reported as unlabelled',
+    withNonAnswers.claims_unlabelled === 2)
+
+  // ⚖️ CONTROL: with nothing unanswered the two rates agree, so the change
+  // above cannot be silently altering the ordinary case.
+  const allAnswered = aggregate({ locked: true, labels: [
+    { index: 0, answered: true, label: 'SUPPORTED' },
+    { index: 1, answered: true, label: 'UNSUPPORTED' },
+  ] })
+  ok('CONTROL both rates agree when the model answered everything',
+    allAnswered.supported_of_all_asked === 0.5
+    && allAnswered.supported_of_answered === 0.5
+    && allAnswered.model_did_not_answer === 0)
 }
 
 // ── the reviewed object stays recoverable ──
@@ -379,8 +412,6 @@ ok('flattenClaims still returns one row per declared path',
     friction([{ kind: 'key', at: 1 }, { kind: 'label', at: 2, index: 0 }]).keyboard_actions === 1)
 }
 
-if (failed) process.exit(1)
-
 // ⚠️ THE CHECK ITSELF CAN BE DISARMED BY ITS CALLER. Handed the CLAIM_PATHS
 // ARRAY instead of its length, the expected product was NaN and every
 // comparison against it was true -- a guard that refuses everything is as
@@ -393,5 +424,12 @@ if (failed) process.exit(1)
   ok('and says so rather than passing when given nothing usable',
     checkPacketInvariants({ progress, labels, claimPaths: 'not a number' }).length === 1)
 }
+
+// ⚠️ THE EXIT CHECK BELONGS AT THE END, AND IT USED TO SIT IN THE MIDDLE.
+// `if (failed) process.exit(1)` ran BEFORE the last two cases, so a failure in
+// either of them incremented `failed`, was never re-checked, and the file went
+// on to print "all cases passed" and exit 0 -- a green selftest over a failing
+// case, which is the exact shape of defect this file exists to catch.
+if (failed) process.exit(1)
 
 console.log('pilot-core selftest: all cases passed')

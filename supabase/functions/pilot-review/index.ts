@@ -170,7 +170,23 @@ Deno.serve(async (req: Request) => {
     // ⚠️ COMPLETENESS IS CHECKED SERVER-SIDE. The page also hides the button, but
     // a page is a suggestion; this is the rule. A SKIP is not an answer -- it
     // sends the reviewer back rather than locking a partial run.
-    const outstanding = (claims ?? []).filter((c) => !isLabel(latest.get(c.id)?.label ?? null))
+    //
+    // ⚠️ ONLY A CLAIM TWIN ACTUALLY MADE CAN BE LABELLED. Seventeen of the first
+    // real packet's 120 rows were fields the model declined to answer -- eight
+    // of them primaryMode, on every single reference. The card said "Twin did
+    // not reach a conclusion about this one" and then offered four buttons that
+    // all judge a claim, none of which is true of a claim that does not exist.
+    // Every one of them was unlabellable AND blocked the lock, so the run could
+    // not be finished at all.
+    //
+    // ⚖️ THEY ARE NOT DROPPED, THEY ARE COUNTED. aggregate() reports
+    // model_did_not_answer and keeps every shown claim in the denominator of
+    // supported_of_all_asked, so a pass that answers 103 of 120 cannot score
+    // itself over 103. Excusing the human from a judgement they cannot make is
+    // not the same as excusing the model from the measurement.
+    const outstanding = (claims ?? [])
+      .filter((c) => c.answered === true)
+      .filter((c) => !isLabel(latest.get(c.id)?.label ?? null))
     if (outstanding.length) {
       return json({
         error: `${outstanding.length} claim(s) are still unanswered. A run locked with unanswered `

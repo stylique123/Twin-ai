@@ -177,6 +177,10 @@ export function aggregate(session) {
   for (const l of labels) dist[l.label]++
 
   const answered = labels.filter((l) => l.answered)
+  // ⚠️ NOT AN ANSWER, AND NOT A HUMAN'S FAULT. These are claims the model
+  // declined to make. They are counted and named rather than dropped, because
+  // "Twin said nothing about this" is a result about Twin.
+  const notAnswered = (session.labels ?? []).filter((l) => !l.answered)
   // ⚠️ THE DENOMINATOR EXCLUDES NOTHING IT SHOULD COUNT. A claim the model never
   // made is not a claim it got right, and a denominator that quietly drops
   // non-answers turns a thin pass into a good one.
@@ -192,12 +196,19 @@ export function aggregate(session) {
     claims_labelled: labels.length,
     claims_unlabelled: (session.labels?.length ?? 0) - labels.length,
     model_answered: answered.length,
+    model_did_not_answer: notAnswered.length,
     distribution: dist,
     // ⚖️ TWO RATES, BECAUSE THEY ANSWER DIFFERENT QUESTIONS. Against everything
     // the model was ASKED is "how much of the visual pass is usable". Against
     // what it ANSWERED is "when it speaks, is it right". Reporting only the
     // second is how a pass that answers three fields out of fifteen scores 100%.
-    supported_of_all_asked: supportedRate(labels, { answeredOnly: false }),
+    // ⚠️ THE DENOMINATOR IS EVERY CLAIM SHOWN, NOT EVERY CLAIM LABELLED. A claim
+    // the model never answered carries no human label -- there is nothing for a
+    // person to judge -- so filtering to labelled rows would drop it out of the
+    // denominator entirely and turn "the visual pass answered 103 of 120" into
+    // a rate over 103. That is the same defect as the 500% rate, in the
+    // direction that reads as a good result instead of an obvious bug.
+    supported_of_all_asked: supportedRate(session.labels ?? [], { answeredOnly: false }),
     supported_of_answered: supportedRate(labels, { answeredOnly: true }),
     // The citation machinery is a separate defect from the seeing.
     wrong_evidence_rate: labels.length === 0 ? null : dist.WRONG_EVIDENCE / labels.length,

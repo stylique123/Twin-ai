@@ -48,7 +48,18 @@ export default function PilotVisualReview() {
     void logPilotEvent(pilotRunId, 'session_start').catch(() => {})
   }, [packet, pilotRunId])
 
-  const claims = packet?.claims ?? []
+  // ⚠️ A CLAIM TWIN NEVER MADE CANNOT BE LABELLED, AND ASKING IS WORSE THAN NOT
+  // ASKING. The first real packet put 17 of these in front of the owner --
+  // "Twin did not reach a conclusion about this one" over four buttons that all
+  // judge a claim. There is no honest press. Every one of them also blocked
+  // Finish & Lock, so the run could not be completed at all.
+  //
+  // ⚖️ HIDDEN FROM THE QUEUE, NOT FROM THE REPORT. The server keeps them in the
+  // denominator and reports model_did_not_answer; what is removed here is only
+  // the demand that a person settle them.
+  const allClaims = packet?.claims ?? []
+  const claims = useMemo(() => allClaims.filter((c) => c.answered), [allClaims])
+  const notAnswered = allClaims.length - claims.length
   const claim: PilotClaim | undefined = claims[at]
   const remaining = useMemo(() => claims.filter((c) => !c.current?.label).length, [claims])
 
@@ -141,6 +152,16 @@ export default function PilotVisualReview() {
         {/* Progress only. Never a score. */}
         <span>{remaining} left to answer</span>
       </div>
+
+      {/* Said plainly, and said once. The reviewer should know these exist and
+          know they are not being withheld -- not be asked to judge them. */}
+      {notAnswered > 0 && (
+        <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm opacity-70">
+          Twin had no answer for {notAnswered} more {notAnswered === 1 ? 'thing' : 'things'}.
+          There is nothing to check on those, so they are not in your list. They are still counted
+          in the results.
+        </div>
+      )}
 
       {claim && (
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
