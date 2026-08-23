@@ -13,9 +13,18 @@ import { useParams } from 'react-router-dom'
 import { Loader2, Lock, AlertTriangle } from 'lucide-react'
 import {
   getPilotPacket, savePilotLabel, logPilotEvent, finishPilotReview,
-  claimSentence, claimNote, jumpTarget,
+  claimSentence, claimNote, jumpTarget, describePilotFailure, PilotCallError,
   type PilotPacket, type PilotClaim, type PilotLabel,
 } from '../lib/api'
+
+/** ⚠️ SAY WHICH FAILURE THIS WAS, NOT JUST THAT ONE HAPPENED. "Failed to send a
+ *  request to the Edge Function" is compatible with the server refusing, the
+ *  server being down, the session having expired, and the phone losing signal.
+ *  Those need four different actions from the reviewer. */
+function explain(e: unknown): string {
+  if (e instanceof PilotCallError) return describePilotFailure(e.failure)
+  return String((e as Error)?.message ?? e)
+}
 
 /** Drop the focus ring left on an answer button once the view has moved on.
  *  Guarded because `document` is absent under SSR and `blur` is missing on
@@ -48,18 +57,28 @@ export default function PilotVisualReview() {
   // A lock failure is transient by nature -- it stays INLINE, beside a button
   // that is still there to press again.
   const [lockError, setLockError] = useState<string | null>(null)
+  // ⚠️ AND A FAILED AUTOSAVE IS NOT A FAILED LOAD EITHER -- the same defect a
+  // third time, and the worst of the three: it fires MID-LABELLING, so a single
+  // dropped save would have wiped the page and lost the reviewer's place. It
+  // stays inline, beside the answer buttons, and the label can be pressed again.
+  const [saveError, setSaveError] = useState<string | null>(null)
   // ⚠️ THE EVIDENCE MUST BE LOOKABLE-AT. A thumbnail a reviewer cannot open
   // is not evidence they can judge; the owner said so on the live packet.
   const [zoom, setZoom] = useState<string | null>(null)
   const started = useRef(false)
 
+  // ⚠️ A REFRESH WAS THE ONLY WAY TO RETRY THE LOAD, AND THE OWNER TRIED IT.
+  // `reload` bumps this, so the packet can be re-fetched in place.
+  const [reload, setReload] = useState(0)
+
   useEffect(() => {
     let live = true
+    setError(null)
     getPilotPacket(pilotRunId)
       .then((p) => { if (!live) return; setPacket(p); setLocked(p.run.status === 'locked') })
-      .catch((e) => { if (live) setError(String(e.message ?? e)) })
+      .catch((e) => { if (live) setError(explain(e)) })
     return () => { live = false }
-  }, [pilotRunId])
+  }, [pilotRunId, reload])
 
   useEffect(() => {
     if (!packet || started.current) return
@@ -91,6 +110,7 @@ export default function PilotVisualReview() {
 
   const apply = useCallback(async (label: PilotLabel | null) => {
     if (!claim || locked) return
+    setSaveError(null)
     setSaving(true)
     try {
       // ⚠️ SAVED BEFORE THE VIEW MOVES ON. Advancing first and saving after is
@@ -124,7 +144,7 @@ export default function PilotVisualReview() {
       // arrows), so nothing here depends on the button keeping focus.
       blurAnswerFocus()
     } catch (e) {
-      setError(String((e as Error).message))
+      setSaveError(explain(e))
     } finally { setSaving(false) }
   }, [claim, claims.length, locked, pilotRunId])
 
@@ -156,7 +176,7 @@ export default function PilotVisualReview() {
       await finishPilotReview(pilotRunId)
       setLocked(true)
     } catch (e) {
-      setLockError(String((e as Error).message ?? e))
+      setLockError(explain(e))
     } finally { setLocking(false) }
   }
 
@@ -165,8 +185,18 @@ export default function PilotVisualReview() {
       <div className="mx-auto max-w-2xl p-8">
         <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-          <div><div className="font-medium">The review could not load</div>
-            <div className="mt-1 text-sm opacity-80">{error}</div></div>
+          <div>
+            <div className="font-medium">The review could not load</div>
+            <div className="mt-1 text-sm opacity-80">{error}</div>
+            {/* ⚠️ RETRYING MUST NOT REQUIRE A REFRESH. The owner refreshed and
+                got the same screen, with nothing else to try. */}
+            <button
+              type="button"
+              onClick={() => setReload((n) => n + 1)}
+              className="mt-3 rounded-lg border border-red-400/40 px-3 py-1.5 text-sm hover:bg-red-500/10">
+              Try again
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -366,6 +396,15 @@ export default function PilotVisualReview() {
               <span className="mr-2 opacity-50">s</span>Skip for now
             </button>
           </div>
+          {saveError && (
+            <div
+              role="alert"
+              className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+              <div className="font-medium">That answer was not saved.</div>
+              <div className="mt-1 opacity-80">{saveError}</div>
+              <div className="mt-1 opacity-80">Press it again.</div>
+            </div>
+          )}
         </div>
       )}
 
