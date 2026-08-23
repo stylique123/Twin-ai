@@ -69,3 +69,35 @@ describe('while the talking-head gap is OPEN, the card stays loose', () => {
     }
   })
 })
+
+describe('the cohort limitation', () => {
+  const COHORT = 'PILOT_COHORT_IS_NOT_THE_PRODUCT_PATH'
+
+  it('is recorded and still open', () => {
+    const l = limitationById(COHORT)
+    expect(l).not.toBeNull()
+    expect(l!.status).toBe('OPEN')
+  })
+
+  it('names the measured consequence, not just a worry', () => {
+    // 8/8 with no variation is the fact that makes those claims undiscriminating.
+    expect(limitationById(COHORT)!.what).toContain('8 of 8')
+    expect(limitationById(COHORT)!.what).toContain('NO VARIATION')
+  })
+
+  it('records that armComparison cannot run on a no_speech draw', () => {
+    expect(limitationById(COHORT)!.what).toContain('NOT RUN')
+  })
+
+  it('refuses to pool the two cohorts, which is the tempting shortcut', () => {
+    const l = limitationById(COHORT)!
+    expect(`${l.revisitWhen} ${l.cost}`).toContain('separately')
+    expect(l.cost).toContain('Pooling')
+  })
+
+  it('says the run is still worth completing rather than abandoning it here', () => {
+    // Lock-vs-abandon is the owner's decision; this file must not pre-empt it,
+    // but it must also not imply the labels are worthless.
+    expect(limitationById(COHORT)!.decision).toContain('still evidence')
+  })
+})

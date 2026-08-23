@@ -51,3 +51,41 @@ broken by the cohort change.
 is deliberately *not* added separately: `worker/` classifies as `FULL` tier, so a
 comment-only change would spend a full 40–95 minute staging-matrix lane to say something this
 page already says. It goes in with the `shotType` change, which has to touch that file anyway.
+
+---
+
+## `PILOT_COHORT_IS_NOT_THE_PRODUCT_PATH` — OPEN
+
+**What is wrong.** The first visual pilot cohort was drawn from `no_speech` references **only**.
+In practice that selects montage and B-roll — aerial festival footage, cut sequences with no
+presenter — not the talking-head creator videos the product exists to remake.
+
+Measured on run `7204de6f` before any labelling:
+
+| finding | value |
+|---|---|
+| `performance.talkingHead` | `false` on **8 of 8** references — no variation |
+| `performance.screenInteraction` | `false` on **8 of 8** references — no variation |
+| claims that therefore discriminate nothing | 16 |
+| `armComparison` | will report **NOT RUN** — `content_beats` cannot appear in a `no_speech` draw |
+
+The owner met this directly at claim 13 — asked whether *"filming this would only need one
+location"* about a drone montage of a festival — and said they did not know how to answer. That
+is the correct reaction to the question, not a failure to understand it.
+
+**What was decided.** Label and complete the run anyway. Its labels are still evidence: they
+measure how well the visual pass reads B-roll, which is a real question. They **do not** measure
+the product path, and no report from this run may be read as if they did.
+
+**How to answer a claim a montage cannot settle.** Press **3, "These frames cannot settle it."**
+That is a real answer and it is counted. A forced guess is worse than a recorded non-answer,
+because afterwards it is indistinguishable from a real judgement.
+
+**Revisit when.** The with-speech cohort is drawn. #475 ships the selection; the draw itself is
+the owner's Start button. ⚠️ **The two runs must be reported separately, never pooled** — pooling
+to save a round would hide exactly the difference being measured.
+
+**What it will cost.** A fresh run: new cohort, new frame-analysis pass, a second round of
+labelling. It cannot be recovered from `7204de6f` by re-analysis — re-running frame analysis on a
+live pilot is not permitted, and re-drawing would discard the labels already given.
+
