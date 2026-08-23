@@ -881,21 +881,37 @@ async function main() {
       if (typeof count !== 'number') throw new Error(`K: ${what} returned no count`)
       return count
     }
-    // Phase 4/5/6 made inspecting/transcribing/analyzing real: inspection,
-    // speech, visual, audio, hook and alignment are ALL sanctioned analysis
-    // writes now. This list is a hardcoded allowlist, so registering a new
-    // component means moving it HERE too — the third such list after the
-    // media_analyses CHECK and editor_record_analysis's own guard. Missing it
-    // reads as "the pipeline wrote something it should not have", which is the
-    // right alarm to have and the wrong diagnosis to act on.
-    // Anything beyond those five (an unbounded namespace) would be a defect —
-    // the media_analyses component check constraint also enforces this. This one
-    // stays GLOBAL on purpose: it asserts that no unknown component kind exists
-    // anywhere, which is a claim about the namespace rather than about a run.
-    const beyondAnalysis = await exact(admin.from('media_analyses')
-      .select('id', { count: 'exact', head: true })
-      .not('component', 'in', '("inspection","speech","visual","audio","hook","alignment")'), 'non-sanctioned analysis rows')
-    check('K1 zero analysis rows beyond the six sanctioned components', beyondAnalysis === 0, `got ${beyondAnalysis}`)
+    // ⚠️ K1 IS GONE FROM HERE, AND IT WAS NOT DROPPED — IT WAS UPGRADED.
+    //
+    // It proved "no analysis row exists outside the six sanctioned components"
+    // by counting, with head:true, across the WHOLE table:
+    //
+    //     .not('component', 'in', '("inspection","speech",...)')
+    //
+    // Measured on staging 2026-08-23: media_analyses is 51,318 rows / 87 MB,
+    // neither component index can serve a NOT IN anti-filter, and the seq scan
+    // timed at 2,755 ms idle and 5,709 ms while a matrix was running — against
+    // the 8s statement_timeout the API role inherits from `authenticator`.
+    // Three matrix runs died on it (#467, #468, #474). The message was empty
+    // every time, for the reason transportError.mjs records.
+    //
+    // ⚖️ THE CONSTRAINT PROVES MORE THAN THE COUNT DID. A count says no
+    // violating row existed at the instant it ran.
+    // media_analyses_component_bounded is a VALIDATED CHECK: every existing row
+    // was verified when it was added and every future insert is refused. "None
+    // right now" becomes "none can exist". This is a strengthening, not a
+    // convenience — and it is the difference between describing this failure
+    // and removing it.
+    //
+    // It lives in the psql schema-assert step
+    // (scripts/ci/check_analysis_component_bounded.sql) because phase3 reaches
+    // the database only through PostgREST and cannot read pg_catalog. That step
+    // runs BEFORE these phases, so the guarantee is in force throughout.
+    //
+    // ⚠️ REGISTERING A NEW COMPONENT STILL FAILS LOUDLY. The .sql compares the
+    // constraint's exact definition, so a widened namespace is refused rather
+    // than passing an existence check.
+
 
     const { data: mine, error: mineErr } = await admin
       .from('edit_projects').select('id, generation_id, output_asset_id').in('id', allProjects)
