@@ -9,6 +9,9 @@
 // Only talking scenes (show_in_teleprompter) are recorded. Takes are preserved
 // in-memory across back/exit.
 import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  captureConstraints, fallbackConstraints, verifyCapture, DEFAULT_CAPTURE_INTENT,
+} from '@twinai/shared'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Sparkles, RotateCcw, UploadCloud, Film, X } from 'lucide-react'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
@@ -410,15 +413,49 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
     let cancelled = false
     ;(async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: facing, width: { ideal: 1080 }, height: { ideal: 1920 } },
-          audio: true,
-        })
+        // ⚠️ `ideal` WAS THE DEFECT. It is a preference: a browser that cannot
+        // meet it returns whatever it has — commonly 1280x720 — and this promise
+        // still RESOLVES. The teleprompter then framed a creator in portrait
+        // while the camera wrote landscape, and nobody looked.
+        //
+        // ⚖️ ASK EXACTLY FIRST, THEN RELAX THE RESOLUTION BUT NEVER THE SHAPE.
+        let stream: MediaStream
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: captureConstraints(DEFAULT_CAPTURE_INTENT, facing), audio: true,
+          })
+        } catch {
+          // A camera that cannot do 1080x1920 may still do another portrait
+          // size. OverconstrainedError here is information, not a dead end.
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: fallbackConstraints(DEFAULT_CAPTURE_INTENT, facing), audio: true,
+          })
+        }
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return }
+
+        // ⚠️ RESOLVING IS NOT AGREEING. This is the read-back the old code never
+        // did: what the camera actually gave, checked against what the project
+        // asked for, BEFORE a single frame is recorded.
+        const settings = stream.getVideoTracks()[0]?.getSettings?.() ?? {}
+        const verdict = verifyCapture(settings.width, settings.height, DEFAULT_CAPTURE_INTENT)
+        if (!verdict.ok) {
+          stream.getTracks().forEach((t) => t.stop())
+          logSessionEvent('client_error', {
+            where: 'capture_shape',
+            message: `${verdict.reason} ${verdict.width ?? '?'}x${verdict.height ?? '?'}`,
+          })
+          // ⚖️ CSS WOULD HAVE HIDDEN THIS. Letterboxing a landscape stream inside
+          // the portrait frame makes the PREVIEW agree while the recorded file
+          // still disagrees — the same defect wearing a costume.
+          setCamError(verdict.message)
+          return
+        }
         // ⚠️ AFTER THE PERMISSION RESOLVED, NOT BEFORE THE PROMPT. Logging on the
         // attempt would count a creator who denied the permission as one who
         // reached the camera, which is the opposite finding.
-        logSessionEvent('camera_opened', { facing })
+        // ⚠️ THE GEOMETRY TRAVELS WITH THE EVENT. "the camera opened" was true
+        // of the landscape case too; the two numbers are what tell them apart.
+        logSessionEvent('camera_opened', { facing, width: verdict.width, height: verdict.height })
         streamRef.current = stream
         if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.muted = true; void videoRef.current.play() }
       } catch (e) {
