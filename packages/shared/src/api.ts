@@ -2290,3 +2290,45 @@ export const observeWatchedSession = (id: string, blocker: string, creatorReason
 
 export const lockWatchedSession = (id: string) =>
   watched<{ ok: true; status: string; observations: number }>({ action: 'lock', watched_session_id: id })
+
+// ── the owner console ──────────────────────────────────────────────────────
+//
+// ⚠️ WHAT IS LEFT TO DO, ANSWERED BY THE DATABASE. Every field below is
+// computed from rows and schema probes at read time, so a card cannot be stale
+// — there is nowhere for it to be stale from.
+//
+// ⚖️ APPENDED AT THE END DELIBERATELY. The pilot helpers above are being edited
+// on another branch; putting an unrelated addition in the middle of them buys a
+// merge conflict for no reason.
+
+export type OwnerCardState = 'done' | 'action_needed' | 'working' | 'blocked' | 'waiting' | 'unknown'
+
+export interface OwnerCard {
+  card: 'production_schema' | 'visual_pilot' | 'recordings' | 'watched_session' | 'key_rotation'
+  state: OwnerCardState
+  /** Null whenever there is nothing for a person to do — never a filler task. */
+  ownerAction: string | null
+  detail: string
+  href?: string
+  checklist?: string[]
+  /** Pending migration files, in the order they must be applied. */
+  steps?: Array<{ id: string; file: string; because: string }>
+  /** Cards this one blocks; a blocked card is never offered as "next". */
+  blocks?: string[]
+}
+
+export interface OwnerConsoleView {
+  ok: true
+  cards: OwnerCard[]
+  /** Exactly one thing, or null. A list of five is the problem, not the answer. */
+  next: OwnerCard | null
+  generated_at: string
+}
+
+/** Read-only. Starts nothing, enqueues nothing, spends nothing. */
+export const ownerConsole = async (): Promise<OwnerConsoleView> => {
+  const { data, error } = await supabase.functions.invoke('owner-console', { body: { action: 'cards' } })
+  if (error) throw new Error(error.message ?? 'the owner console could not be read')
+  if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error)
+  return data as OwnerConsoleView
+}

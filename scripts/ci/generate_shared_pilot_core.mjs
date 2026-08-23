@@ -24,6 +24,7 @@ const SOURCES = [
   ['scripts/pilot-collect.mjs', 'supabase/functions/_shared/pilotCollect.ts'],
   ['scripts/d1-core.mjs', 'supabase/functions/_shared/d1Core.ts'],
   ['scripts/watched-session.mjs', 'supabase/functions/_shared/watchedSession.ts'],
+  ['scripts/owner-console.mjs', 'supabase/functions/_shared/ownerConsole.ts'],
 ]
 
 // ⚠️ A SHEBANG IS LEGAL ONLY ON LINE 1, AND THE HEADER PUSHES IT TO LINE 5.
