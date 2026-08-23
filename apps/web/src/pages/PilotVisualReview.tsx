@@ -13,7 +13,7 @@ import { useParams } from 'react-router-dom'
 import { Loader2, Lock, AlertTriangle } from 'lucide-react'
 import {
   getPilotPacket, savePilotLabel, logPilotEvent, finishPilotReview,
-  claimSentence,
+  claimSentence, claimNote,
   type PilotPacket, type PilotClaim, type PilotLabel,
 } from '../lib/api'
 
@@ -240,7 +240,26 @@ export default function PilotVisualReview() {
           })()}
           {/* The internal path stays available, but as debug detail rather than
               as the thing a human is asked to read. */}
-          <div className="mt-1 text-[11px] opacity-30">{claim.claim_path}</div>
+          {/* ⚠️ WHAT THE FIELD MEANS, FOR THE CLAIMS THAT LOOK LIKE EACH OTHER.
+              The owner reached "The camera stays in one position the whole way
+              through", saw a wide shot and a close-up of one face, and could not
+              tell whether a ZOOM counted as the camera moving. It does not --
+              that is camera.framingChanges, a separate claim the model answered
+              separately. A reviewer who conflates the two scores the model wrong
+              for something it never claimed.
+              ⚖️ THE NOTE EXPLAINS THE QUESTION, NEVER THE ANSWER. It says what
+              the field means; it does not say what is in the frames or which way
+              to lean. A note that decides for the reviewer is the same defect as
+              a pre-highlighted button. */}
+          {(() => {
+            const note = claimNote(claim.claim_path)
+            return note
+              ? <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-[13px] leading-snug opacity-75">
+                  {note}
+                </div>
+              : null
+          })()}
+          <div className="mt-2 text-[11px] opacity-30">{claim.claim_path}</div>
 
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {framesFor(claim).map((f) => (
