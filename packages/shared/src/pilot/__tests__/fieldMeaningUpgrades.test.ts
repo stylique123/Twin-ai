@@ -76,17 +76,45 @@ describe('the model-side spec', () => {
     expect(UPGRADE_REQUIRES_VERSION.notRetroactive).toContain('NEXT cohort')
   })
 
-  it('the current text matches what the worker actually asks today', () => {
-    // ⚠️ SCRAPED FROM THE WORKER, NOT RESTATED. A spec whose "current" drifted
-    // from the live prompt would propose a diff against something imaginary.
+  it('THE UPGRADE HAS SHIPPED: the worker now asks the PROPOSED wording', () => {
+    // ⚠️ THIS ASSERTION IS INVERTED FROM ITS FIRST VERSION, ON PURPOSE. While the
+    // change was only a spec, the invariant was "current still matches the live
+    // prompt" — that kept the proposal honest against drift. The moment the
+    // upgrade was applied (visual-3), that assertion had to fail, and the real
+    // invariant became the stronger one: the worker asks the proposal, and no
+    // longer asks the old wording anywhere.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { readFileSync } = require('node:fs') as typeof import('node:fs')
     const { join } = require('node:path') as typeof import('node:path')
     const src = readFileSync(
       join(__dirname, '..', '..', '..', '..', '..', 'worker', 'src', 'visualPrompt.ts'), 'utf8')
     for (const u of FIELD_MEANING_UPGRADES) {
-      expect(src, `${u.path}: current text is not what the worker asks`)
-        .toContain(u.current)
+      expect(src, `${u.path}: the proposed wording has NOT shipped`).toContain(u.proposed)
+      // The old wording is a strict prefix of most proposals, so "no longer
+      // present" has to mean "not present as the WHOLE question".
+      expect(src, `${u.path}: the old wording is still the whole question`)
+        .not.toContain(`'${u.current}',`)
+    }
+  })
+
+  it('the version bump it named actually happened, in BOTH mirrors', () => {
+    // ⚠️ THE SPEC SAID visual-2 -> visual-3 AND WHY. If the questions changed
+    // without the stamp, two cohorts answering different questions would carry
+    // the same visualVersion and the same componentDigest, and nothing
+    // downstream could tell them apart.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { readFileSync } = require('node:fs') as typeof import('node:fs')
+    const { join } = require('node:path') as typeof import('node:path')
+    const root = join(__dirname, '..', '..', '..', '..', '..')
+    for (const rel of [
+      ['worker', 'src', 'jobs', 'editorManifest.ts'],
+      ['packages', 'shared', 'src', 'editor', 'contracts.ts'],
+    ]) {
+      const src = readFileSync(join(root, ...rel), 'utf8')
+      expect(src, `${rel.join('/')} is not at ${UPGRADE_REQUIRES_VERSION.to}`)
+        .toContain(`VISUAL_ANALYSIS_VERSION = '${UPGRADE_REQUIRES_VERSION.to}'`)
+      expect(src, `${rel.join('/')} still carries ${UPGRADE_REQUIRES_VERSION.from}`)
+        .not.toContain(`VISUAL_ANALYSIS_VERSION = '${UPGRADE_REQUIRES_VERSION.from}'`)
     }
   })
 })

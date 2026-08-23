@@ -30,7 +30,7 @@ import { ALIGNMENT_EVIDENCE_VERSION, ALIGNMENT_TIMINGS_MAX_BYTES, ALIGNMENT_RESU
 // pins the bounded brand snapshot SHA, the source's capture-manifest SHA, and
 // the frozen feature flags — so no stage rereads live brand/feature settings.
 export const PIPELINE_EPOCH = 2
-export const VISUAL_ANALYSIS_VERSION = 'visual-2' // v2: + per-sample luma + near-black/frozen blank intervals
+export const VISUAL_ANALYSIS_VERSION = 'visual-3' // v3: sharper field questions (six confusions the pilot's reviewer hit) + camera.shotType
 export const AUDIO_ANALYSIS_VERSION = 'audio-1'
 export const HOOK_EVIDENCE_VERSION = 'hook-1'
 export const VISUAL_ANALYSIS_SCHEMA_VERSION = 1

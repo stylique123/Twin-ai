@@ -65,6 +65,14 @@ export const VISUAL_FIELDS: readonly (readonly [string, ClaimClass])[] = [
   ['performance.screenInteraction', 'static'],
   ['camera.framingChanges', 'temporal'],
   ['camera.positionChanges', 'temporal'],
+  // ⚠️ SEPARATELY TRACKED, NOT A REDEFINITION OF talkingHead. talkingHead stays
+  // loose ("talking towards the camera, at ANY distance") and shotType records
+  // the distance alongside it, so a later reader can ask "how would a
+  // close-up-only definition have scored?" WITHOUT re-running anything. Folding
+  // distance into talkingHead instead would have destroyed the looser reading.
+  // `static` because it describes the framing of the frame being cited, exactly
+  // like setting.complexity.
+  ['camera.shotType', 'static'],
   // Requirements are about what must EXIST, and one frame can show a thing.
   ['requirements.physicalProduct', 'static'],
   ['requirements.secondPerson', 'static'],
@@ -122,6 +130,7 @@ const PARSERS: Record<string, (v: unknown) => Parsed<unknown>> = {
   'primaryMode': oneOf(PRODUCTION_MODES),
   'people.count': oneOf(['one', 'multiple'] as const),
   'setting.complexity': oneOf(['simple', 'moderate', 'complex'] as const),
+  'camera.shotType': oneOf(['close', 'medium', 'wide'] as const),
 }
 const parserFor = (path: string) => PARSERS[path] ?? asBoolean
 
@@ -215,6 +224,7 @@ export function extractVisualProfile(
     camera: {
       framingChanges: get<boolean>('camera.framingChanges'),
       positionChanges: get<boolean>('camera.positionChanges'),
+      shotType: get<'close' | 'medium' | 'wide'>('camera.shotType'),
     },
     requirements: {
       physicalProduct: get<boolean>('requirements.physicalProduct'),

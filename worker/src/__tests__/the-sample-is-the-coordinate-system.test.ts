@@ -99,7 +99,9 @@ describe('the visual prompt', () => {
   it('asks every field the contract will try to read', () => {
     // The module-load assertion already fails the build on a missing question;
     // this is the same guarantee stated where a reader will find it.
-    expect(Object.keys(FIELD_QUESTIONS)).toHaveLength(15)
+    // 15 -> 16 with camera.shotType (visual-3). A count pin, so adding a field
+    // is a deliberate act rather than something that slips in unasked.
+    expect(Object.keys(FIELD_QUESTIONS)).toHaveLength(16)
     for (const q of Object.values(FIELD_QUESTIONS)) {
       expect(q.length).toBeGreaterThan(10)
       expect(visualPrompt(4)).toContain(q)
