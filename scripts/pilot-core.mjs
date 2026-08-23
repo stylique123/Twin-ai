@@ -198,13 +198,29 @@ export function aggregate(session) {
     // the model was ASKED is "how much of the visual pass is usable". Against
     // what it ANSWERED is "when it speaks, is it right". Reporting only the
     // second is how a pass that answers three fields out of fifteen scores 100%.
-    // ⚠️ THE DENOMINATOR IS EVERY CLAIM SHOWN, NOT EVERY CLAIM LABELLED. A claim
-    // the model never answered carries no human label -- there is nothing for a
-    // person to judge -- so filtering to labelled rows would drop it out of the
-    // denominator entirely and turn "the visual pass answered 103 of 120" into
-    // a rate over 103. That is the same defect as the 500% rate, in the
-    // direction that reads as a good result instead of an obvious bug.
-    supported_of_all_asked: supportedRate(session.labels ?? [], { answeredOnly: false }),
+    // ⚠️ THE DENOMINATOR MUST HOLD THE MODEL'S NON-ANSWERS AND NOT THE HUMAN'S.
+    // These are two different reasons a row carries no label and they must not
+    // be treated alike:
+    //
+    //   answered = false, no label   the model declined. There is nothing for a
+    //                                person to judge, and it IS a claim the
+    //                                visual pass failed to make -- it belongs in
+    //                                the denominator. Dropping it turns "103 of
+    //                                120 answered" into a rate over 103.
+    //   answered = true,  no label   the reviewer has not got to it yet. We do
+    //                                not know the answer, so counting it as
+    //                                not-supported understates a pass for a
+    //                                reason that has nothing to do with the
+    //                                model.
+    //
+    // ⚖️ AT LOCK ONLY THE FIRST KIND CAN EXIST -- the finish gate still requires
+    // a label on every answered claim -- so the two coincide in a real report.
+    // They are still separated here, because aggregate() is handed sessions
+    // that were not built by that gate.
+    supported_of_all_asked: supportedRate(
+      (session.labels ?? []).filter((l) => isLabel(l.label) || l.answered !== true),
+      { answeredOnly: false },
+    ),
     supported_of_answered: supportedRate(labels, { answeredOnly: true }),
     // The citation machinery is a separate defect from the seeing.
     wrong_evidence_rate: labels.length === 0 ? null : dist.WRONG_EVIDENCE / labels.length,

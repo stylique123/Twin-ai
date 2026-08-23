@@ -132,6 +132,26 @@ ok('flattenClaims still returns one row per declared path',
   ok('and the two that carry no label are reported as unlabelled',
     withNonAnswers.claims_unlabelled === 2)
 
+  // ⚠️ TWO REASONS A ROW HAS NO LABEL, AND THEY ARE NOT THE SAME REASON.
+  // The first version of this fix counted every unlabelled row against the
+  // model, which failed label-packet's own fixture: a claim Twin DID make that
+  // the reviewer simply had not reached yet is a gap in the REVIEW, not a
+  // failure of the visual pass, and charging the model for it understates a
+  // pass for reasons that have nothing to do with the model. The test was
+  // right and the code was too broad.
+  const humanSkip = aggregate({ locked: true, labels: [
+    { index: 0, answered: true, label: 'SUPPORTED' },
+    { index: 1, answered: true, label: null },   // reviewer has not got here
+  ] })
+  ok('an answered claim nobody has labelled yet is NOT charged to the model',
+    humanSkip.supported_of_all_asked === 1)
+  const modelSilence = aggregate({ locked: true, labels: [
+    { index: 0, answered: true, label: 'SUPPORTED' },
+    { index: 1, answered: false, label: null },  // Twin declined
+  ] })
+  ok('a claim the model declined IS in the denominator',
+    modelSilence.supported_of_all_asked === 0.5)
+
   // ⚖️ CONTROL: with nothing unanswered the two rates agree, so the change
   // above cannot be silently altering the ordinary case.
   const allAnswered = aggregate({ locked: true, labels: [
