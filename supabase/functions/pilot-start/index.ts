@@ -16,6 +16,7 @@
 //   POST { action:"quote",  size?, cost_ceiling_downloads } -> the bill, nothing enqueued
 //   POST { action:"start",  size?, cost_ceiling_downloads } -> freeze + enqueue exactly that sample
 //   POST { action:"status", pilot_run_id }                  -> progress, and the review URL once ready
+//   POST { action:"active" }                                -> the run already in flight, or null
 //
 // ⚖️ `quote` EXISTS SO THE BILL CAN BE SEEN BEFORE IT IS AGREED TO. It touches
 // no table and enqueues nothing, so "what would this cost" is never a question
@@ -27,7 +28,8 @@ import {
   progressOf, attrition,
 } from '../_shared/pilotCore.ts'
 import {
-  validateStartRequest, validateStatusRequest, activePilotRefusal, pilotJobRows, ACTIVE_STATUSES,
+  validateStartRequest, validateStatusRequest, activePilotRefusal, activePilotRun,
+  pilotJobRows, ACTIVE_STATUSES,
 } from '../_shared/pilotStart.ts'
 // ⚠️ THE PACKET IS BUILT HERE, NOT BY A LAPTOP. collectForRun's only caller used
 // to be the CLI, so the button path enqueued work, watched it finish, and handed
@@ -68,8 +70,24 @@ Deno.serve(async (req: Request) => {
   try { body = await req.json() } catch { return json({ error: 'Invalid JSON body' }, 400) }
 
   const action = String(body.action ?? '')
-  if (action !== 'quote' && action !== 'start' && action !== 'status') {
-    return json({ error: 'action must be "quote", "start" or "status"' }, 400)
+  if (action !== 'quote' && action !== 'start' && action !== 'status' && action !== 'active') {
+    return json({ error: 'action must be "quote", "start", "status" or "active"' }, 400)
+  }
+
+  // ── active ───────────────────────────────────────────────────────────────
+  //
+  // ⚖️ THE RUN YOU ALREADY HAVE, SO IT CAN BE FINISHED RATHER THAN REPLACED.
+  // Read-only: it reads one id and one status and takes no parameters at all,
+  // so there is nothing here to point at a different run, a different owner, or
+  // a different sample. It exists because a real pilot became unreachable —
+  // eight references of paid-for evidence sat `enqueued` while the only page
+  // that could poll it could only poll a run started in that same browser tab.
+  if (action === 'active') {
+    const { data: runs, error: activeErr } = await admin.from('visual_pilot_runs')
+      .select('id, status').in('status', ACTIVE_STATUSES)
+    if (activeErr) return json({ error: `could not check for an active pilot: ${activeErr.message}` }, 500)
+    const run = activePilotRun(runs ?? [])
+    return json({ ok: true, pilot_run_id: run?.id ?? null, status: run?.status ?? null })
   }
 
   // ── status ───────────────────────────────────────────────────────────────
@@ -191,7 +209,12 @@ Deno.serve(async (req: Request) => {
     .select('id, status').in('status', ACTIVE_STATUSES)
   if (runsErr) return json({ error: `could not check for an active pilot: ${runsErr.message}` }, 500)
   const refusal = activePilotRefusal(runs ?? [])
-  if (refusal) return json({ error: refusal }, 409)
+  // ⚠️ THE ID TRAVELS WITH THE REFUSAL. "Finish it or abandon it" is only
+  // actionable if the caller can say WHICH run, and a client that has to parse
+  // the id back out of the prose is one rewording away from breaking.
+  if (refusal) {
+    return json({ error: refusal, pilot_run_id: activePilotRun(runs ?? [])?.id ?? null }, 409)
+  }
 
   // ── draw and freeze ──────────────────────────────────────────────────────
   const { data: rows, error: cohortErr } = await admin.from('reference_content_profiles')
