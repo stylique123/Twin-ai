@@ -25,7 +25,9 @@ function talkingHeadResponse() {
       talkingHead: s(true), walking: t(false), acting: t(false),
       productInteraction: s(false), screenInteraction: s(false),
     },
-    camera: { framingChanges: t(false), positionChanges: t(false) },
+    // shotType is `static` and separately tracked: talkingHead stays loose about
+    // distance, and this records the distance beside it.
+    camera: { framingChanges: t(false), positionChanges: t(false), shotType: s('close') },
     requirements: {
       physicalProduct: s(false), secondPerson: s(false),
       multipleLocations: t(false), unusualProps: s(false),

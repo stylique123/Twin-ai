@@ -18,6 +18,17 @@ import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
+
+// ⚠️ DERIVED FROM THE WORKER'S OWN CONSTANT, by reading the file rather than
+// importing it: this script runs from the repo root and worker/ is a separate
+// package with no build step here. The regex is anchored to the exact export so
+// a comment mentioning the string cannot satisfy it.
+const EXPECTED_VISUAL_VERSION = (() => {
+  const src = readFileSync(new URL('../../worker/src/jobs/editorManifest.ts', import.meta.url), 'utf8')
+  const m = src.match(/^export const VISUAL_ANALYSIS_VERSION = '([^']+)'/m)
+  if (!m) throw new Error('phase6: could not read VISUAL_ANALYSIS_VERSION from editorManifest.ts')
+  return m[1]
+})()
 import { authHeader } from './authSession.mjs'
 import { makeEditorFixtures } from './editorFixtures.mjs'
 
@@ -317,7 +328,13 @@ async function main() {
       JSON.stringify(proj.script_snapshot))
     check('A4 manifest epoch-2 + versions + model artifacts + v2 pins',
       manifest.manifestEpoch === 2
-      && manifest.componentVersions?.visual === 'visual-2'
+      // ⚠️ READ FROM THE SOURCE, NOT RETYPED. This was hardcoded 'visual-2' and it
+      // failed the whole matrix the first time the analyzer version legitimately
+      // moved to visual-3 — 59 assertions passed and this one stale literal was
+      // the only red. A pin that must be edited by hand every bump is a pin that
+      // will be forgotten; deriving it means the assertion still proves the
+      // manifest carries the CURRENT version without going stale.
+      && manifest.componentVersions?.visual === EXPECTED_VISUAL_VERSION
       && manifest.componentVersions?.audio === 'audio-1'
       && manifest.componentVersions?.hook === 'hook-1'
       && /^[0-9a-f]{64}$/.test(manifest.modelArtifacts?.faceDetector?.artifactSha256 ?? '')

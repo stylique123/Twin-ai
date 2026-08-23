@@ -183,7 +183,7 @@ export const CLAIM_PATHS = Object.freeze([
   'setting.changes', 'setting.complexity',
   'performance.talkingHead', 'performance.walking', 'performance.acting',
   'performance.productInteraction', 'performance.screenInteraction',
-  'camera.framingChanges', 'camera.positionChanges',
+  'camera.framingChanges', 'camera.positionChanges', 'camera.shotType',
   'requirements.physicalProduct', 'requirements.secondPerson',
   'requirements.multipleLocations', 'requirements.unusualProps',
 ])
@@ -196,6 +196,7 @@ export const CANONICAL_VALUES = Object.freeze({
   primaryMode: ['talking_head', 'demo', 'voiceover_broll', 'screen_capture', 'skit', 'other'],
   'people.count': ['one', 'multiple'],
   'setting.complexity': ['simple', 'moderate', 'complex'],
+  'camera.shotType': ['close', 'medium', 'wide'],
 })
 
 const at = (obj, path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj)

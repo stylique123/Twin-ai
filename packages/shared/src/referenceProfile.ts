@@ -122,6 +122,9 @@ export interface ReferenceVisualProfile {
   }
   camera: {
     framingChanges: VisualObservation<boolean> | null
+    /** How close the framing is. Recorded ALONGSIDE performance.talkingHead,
+     *  which stays deliberately loose about distance. */
+    shotType: VisualObservation<'close' | 'medium' | 'wide'> | null
     positionChanges: VisualObservation<boolean> | null
   }
   requirements: {
@@ -165,7 +168,7 @@ export function emptyVisualProfile(): ReferenceVisualProfile {
       productInteraction: null,
       screenInteraction: null,
     },
-    camera: { framingChanges: null, positionChanges: null },
+    camera: { framingChanges: null, positionChanges: null, shotType: null },
     requirements: {
       physicalProduct: null,
       secondPerson: null,

@@ -413,7 +413,7 @@ export const PIPELINE_EPOCH = 2
 
 // Component analyzer-bundle versions (cache identity inputs). The worker's
 // runtime constants must match these exactly — a cross-package test pins them.
-export const VISUAL_ANALYSIS_VERSION = 'visual-2' // v2: + per-sample luma curve + near-black/frozen blank intervals
+export const VISUAL_ANALYSIS_VERSION = 'visual-3' // v3: sharper field questions (six confusions the pilot's reviewer hit) + camera.shotType
 export const AUDIO_ANALYSIS_VERSION = 'audio-1'
 export const HOOK_EVIDENCE_VERSION = 'hook-1'
 

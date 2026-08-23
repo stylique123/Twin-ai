@@ -88,10 +88,10 @@ describe('boot manifest', () => {
   it('builds a complete v2 manifest with digests, epoch-2 pins and a canonical sha', async () => {
     const built = await buildBootManifest(v2opts)
     const m = built.manifest as Record<string, any>
-    // Boot Manifest v2: epoch 2, visual-2, and the frozen creative-half pins.
+    // Boot Manifest v2: epoch 2, visual-3, and the frozen creative-half pins.
     expect(m.manifestEpoch).toBe(2)
     expect(m.componentVersions).toEqual({
-      inspection: 'inspect-1', speech: 'speech-6', visual: 'visual-2', audio: 'audio-1', hook: 'hook-1',
+      inspection: 'inspect-1', speech: 'speech-6', visual: 'visual-3', audio: 'audio-1', hook: 'hook-1',
       alignment: 'alignment-2',
     })
     expect(m.brandSnapshotSha).toBe(BRAND_SHA)

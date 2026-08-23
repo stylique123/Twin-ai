@@ -85,8 +85,10 @@ ok('selectCohort came across intact', selectCohort([row('https://www.tiktok.com/
 ok('aggregate still refuses an open session', aggregate({ locked: false, labels: [] }).refused !== undefined)
 ok('friction still separates effort from coverage',
   friction([{ kind: 'label', at: 1, index: 0 }, { kind: 'label', at: 2, index: 0 }]).claims_answered === 1)
+// 15 -> 16 with camera.shotType (visual-3). Asserted against CLAIM_PATHS itself
+// rather than a literal, so the next field cannot make this pass by coincidence.
 ok('flattenClaims still returns one row per declared path',
-  flattenClaims('u', {}).length === 15)
+  flattenClaims('u', {}).length === CLAIM_PATHS.length && CLAIM_PATHS.length === 16)
 
 // ── the rate that printed 500% ──
 {

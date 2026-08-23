@@ -11,7 +11,7 @@ const { PermanentJobError } = await import('../errors.js')
 // divergence fails closed; user-mutable divergence (brand) never enters the check.
 const base = () => ({
   schemaVersion: 1, manifestEpoch: 2,
-  componentVersions: { inspection: 'inspect-1', speech: 'speech-6', visual: 'visual-2', audio: 'audio-1', hook: 'hook-1' },
+  componentVersions: { inspection: 'inspect-1', speech: 'speech-6', visual: 'visual-3', audio: 'audio-1', hook: 'hook-1' },
   componentDigests: { visual: 'a'.repeat(64), audio: 'b'.repeat(64), hook: 'c'.repeat(64), alignment: 'd'.repeat(64) },
   modelArtifacts: { speech: { artifactSha256: 'd'.repeat(64) }, faceDetector: { artifactSha256: 'e'.repeat(64) } },
   build: { workerCommit: 'f'.repeat(40), dockerfileSha256: '1'.repeat(64), dependencyLockSha256: '2'.repeat(64) },
