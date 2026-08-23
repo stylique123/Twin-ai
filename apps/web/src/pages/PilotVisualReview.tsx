@@ -17,6 +17,15 @@ import {
   type PilotPacket, type PilotClaim, type PilotLabel,
 } from '../lib/api'
 
+/** Drop the focus ring left on an answer button once the view has moved on.
+ *  Guarded because `document` is absent under SSR and `blur` is missing on
+ *  anything that is not an HTMLElement. */
+function blurAnswerFocus(): void {
+  if (typeof document === 'undefined') return
+  const el = document.activeElement
+  if (el instanceof HTMLElement && typeof el.blur === 'function') el.blur()
+}
+
 const KEYS: Record<string, PilotLabel> = {
   '1': 'SUPPORTED', '2': 'UNSUPPORTED', '3': 'INDETERMINATE', '4': 'WRONG_EVIDENCE',
 }
@@ -89,6 +98,21 @@ export default function PilotVisualReview() {
       // ⚠️ A SKIP SENDS THE REVIEWER BACK. It is not an answer, and the run
       // cannot lock while one is outstanding.
       setAt((i) => Math.min(claims.length - 1, i + 1))
+      // ⚠️ AND THE PREVIOUS ANSWER MUST NOT ARRIVE PRE-HIGHLIGHTED ON THE NEXT
+      // CLAIM. These buttons are keyed by label, so React reuses the same DOM
+      // nodes as the view advances and the browser's focus ring stays on the one
+      // just clicked. The owner saw claim 2 open with "The frames contradict
+      // this" already ringed in blue and reasonably read it as selected.
+      //
+      // ⚖️ THAT IS NOT COSMETIC ON THIS PAGE. A visibly pre-picked answer nudges
+      // a reviewer toward repeating their last one, and repeated answers are
+      // indistinguishable from agreement in the results. This page already
+      // refuses to show a running score for the same reason; a sticky highlight
+      // is the same coaching by another route.
+      //
+      // Blurring, not re-keying: keyboard labelling is bound to window (1-4, s,
+      // arrows), so nothing here depends on the button keeping focus.
+      blurAnswerFocus()
     } catch (e) {
       setError(String((e as Error).message))
     } finally { setSaving(false) }
@@ -183,9 +207,37 @@ export default function PilotVisualReview() {
                 : <span className="opacity-60">Twin did not reach a conclusion about this one.</span>
             })()}
           </div>
-          <div className="mt-3 text-sm opacity-60">
-            Does the picture below back that up?
-          </div>
+          {/* ⚠️ HOW MUCH TWIN LOOKED AT IS PART OF THE CLAIM, AND THE CARD USED TO
+              HIDE IT. The sentence above is about the WHOLE VIDEO -- "Nobody is
+              talking to the camera" -- while the evidence below is whatever
+              frames the claim cited, sometimes a single still. The owner met
+              exactly that: one 1.8s frame offered as grounds for an absence
+              across a whole video, with nothing on screen saying so.
+              ⚖️ SAYING IT DOES NOT CHANGE THE CLAIM. The reviewer still judges
+              what the model asserted; they can now see the evidence is thin
+              instead of inferring it, which is the difference between "these
+              frames cannot settle it" being an informed answer and a guess. */}
+          {(() => {
+            const shown = framesFor(claim).length
+            const all = (packet.frames ?? []).filter((f) => f.url === claim.url).length
+            const scope = all > 0 && shown < all
+              ? `Twin pointed at ${shown} of the ${all} pictures it looked at from this video.`
+              : shown > 0
+                ? `Twin pointed at ${shown === all ? 'all ' : ''}${shown} picture${shown === 1 ? '' : 's'} from this video.`
+                : null
+            return (
+              <>
+                <div className="mt-3 text-sm opacity-60">
+                  {shown === 1
+                    ? 'Does the picture below back that up?'
+                    : 'Do the pictures below back that up?'}
+                </div>
+                {scope && (
+                  <div className="mt-1 text-[13px] opacity-45">{scope}</div>
+                )}
+              </>
+            )
+          })()}
           {/* The internal path stays available, but as debug detail rather than
               as the thing a human is asked to read. */}
           <div className="mt-1 text-[11px] opacity-30">{claim.claim_path}</div>
