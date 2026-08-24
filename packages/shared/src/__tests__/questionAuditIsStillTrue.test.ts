@@ -96,6 +96,24 @@ describe('the root cause is recorded, not just the symptoms', () => {
     }
   })
 
+  // ⚠️ THE INVERSE, AND WITHOUT IT THE WIRING HAS NO GUARD. A field whose
+  // verdict says "persisted, but nothing reads it" must actually BE persisted;
+  // otherwise deleting the write would move it back to localStorage-only and
+  // every test here would still pass, because the audit only ever checked that
+  // orphans were absent.
+  it('every field the audit calls persisted is really in the write', () => {
+    const onboarding = readFileSync(
+      join(repo, 'apps', 'web', 'src', 'pages', 'Onboarding.tsx'), 'utf8',
+    )
+    const at = onboarding.indexOf('savePreScriptBrief(')
+    const call = onboarding.slice(at, onboarding.indexOf('})', at))
+    const persisted = AUDITED_QUESTIONS.filter((q) => q.verdict === 'ORPHANED_NO_READER')
+    expect(persisted.length).toBeGreaterThanOrEqual(5)
+    for (const q of persisted) {
+      expect(call, `${q.field} is no longer persisted — its verdict is now wrong`).toContain(q.field)
+    }
+  })
+
   it('names more than one orphan, so a single fix cannot empty the audit silently', () => {
     expect(orphanedCount()).toBeGreaterThanOrEqual(6)
   })
