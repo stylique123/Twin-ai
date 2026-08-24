@@ -138,3 +138,26 @@ export type ReadablePlatform = (typeof READABLE_PLATFORMS)[number]
 
 export const otherPlatforms = (tried: string): readonly ReadablePlatform[] =>
   READABLE_PLATFORMS.filter((p) => p !== tried.toLowerCase())
+
+const PLATFORM_NAME: Record<ReadablePlatform, string> = {
+  youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram',
+}
+
+/**
+ * "YouTube or TikTok" -- the offer as a creator reads it.
+ *
+ * ⚠️ THE SCREEN HARDCODED ALL THREE, INCLUDING THE ONE THAT HAD JUST FAILED.
+ * After an Instagram scan fell over it said "try the same creator on another
+ * platform -- YouTube, TikTok or Instagram". `otherPlatforms` has been correct
+ * and uncalled this whole time; this is the sentence it needed to be usable
+ * from a screen, so the list and the words stay in one place.
+ *
+ * ⚖️ AN EMPTY STRING IS A REAL ANSWER, and the caller must render nothing at
+ * all rather than a sentence with a gap where the platforms were.
+ */
+export function otherPlatformsSentence(tried: string): string {
+  const names = otherPlatforms(tried).map((p) => PLATFORM_NAME[p])
+  if (names.length === 0) return ''
+  if (names.length === 1) return names[0]
+  return `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`
+}
