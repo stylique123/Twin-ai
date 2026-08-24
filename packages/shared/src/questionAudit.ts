@@ -64,7 +64,7 @@ export const AUDITED_QUESTIONS: readonly AuditedQuestion[] = Object.freeze([
     asked: 'What do you want your content to help you do?',
     field: 'contentGoals',
     screen: 'Onboarding scan step',
-    verdict: 'ORPHANED_LOCAL',
+    verdict: 'ORPHANED_NO_READER',
     absentFrom: GENERATION_DIRS,
     cost:
       'The creator picks up to two goals and is told the limit, which reads as a '
@@ -75,7 +75,7 @@ export const AUDITED_QUESTIONS: readonly AuditedQuestion[] = Object.freeze([
     asked: 'What kinds of videos do you want Twin to help you make?',
     field: 'desiredFormats',
     screen: 'Onboarding scan step',
-    verdict: 'ORPHANED_LOCAL',
+    verdict: 'ORPHANED_NO_READER',
     absentFrom: GENERATION_DIRS,
     cost:
       'This is the question that separates what a creator ALREADY makes from what they '
@@ -86,7 +86,7 @@ export const AUDITED_QUESTIONS: readonly AuditedQuestion[] = Object.freeze([
     asked: 'Should Twin stay close to what you already do?',
     field: 'formatExploration',
     screen: 'Onboarding scan step',
-    verdict: 'ORPHANED_LOCAL',
+    verdict: 'ORPHANED_NO_READER',
     absentFrom: GENERATION_DIRS,
     cost:
       'The cleanest dead field in the flow: its only reader is inside '
@@ -97,7 +97,7 @@ export const AUDITED_QUESTIONS: readonly AuditedQuestion[] = Object.freeze([
     asked: 'What kind of service?',
     field: 'ownServiceKind',
     screen: 'Onboarding scan step (conditional)',
-    verdict: 'ORPHANED_LOCAL',
+    verdict: 'ORPHANED_NO_READER',
     absentFrom: GENERATION_DIRS,
     cost:
       'Zero consumers of any kind -- not even an ask-gate for a later question. It is a '
@@ -107,7 +107,7 @@ export const AUDITED_QUESTIONS: readonly AuditedQuestion[] = Object.freeze([
     asked: 'What kind of thing do you sell?',
     field: 'ownProductKind',
     screen: 'Onboarding scan step (conditional)',
-    verdict: 'ORPHANED_LOCAL',
+    verdict: 'ORPHANED_NO_READER',
     absentFrom: GENERATION_DIRS,
     cost:
       'Gates whether a capability question is asked, and nothing else. The product type '

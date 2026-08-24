@@ -960,9 +960,39 @@ function ConfirmStep({
       // CTA strength. Writing a sentence into an enum field would store an
       // answer no reader can act on — `readStoredBrief` would drop it anyway,
       // silently. The chooser is the other track's to add.
+      // ⚠️ AND THE SIX SCAN ANSWERS, WHICH THIS BLOCK DESCRIBED AND THEN LEFT
+      // OUT. Everything the comment above says about `workKind` was equally true
+      // of them and stayed true afterwards: asked on the scan step, written into
+      // the draft, and the draft is localStorage. A creator answered six
+      // questions on their phone and a second device had never heard of any of
+      // them.
+      //
+      // ⚖️ THIS IS THE ROOT CAUSE OF "TWIN ASKS ME THE SAME THING FOUR TIMES".
+      // Onboarding asks, the DNA review asks again, "what can appear in your
+      // videos" asks a third version, the Product Library asks a fourth — not
+      // because four screens were written carelessly, but because THE FIRST
+      // ANSWER NEVER LEFT THE BROWSER, so every later screen had to ask again.
+      // The duplication is a symptom of this missing write.
+      //
+      // ⚠️ THE COLUMN, THE CONSTRAINT AND THE SANITISER ALREADY EXISTED. 0136 is
+      // literally named `brief_carries_the_six_answers`, whitelists every key
+      // below, and enforces that the three multi-selects are non-empty arrays.
+      // The storage was built and the write was never wired — which is why
+      // nothing ever failed loudly enough to notice.
+      //
+      // ⚖️ `null` RATHER THAN A DEFAULT FOR EVERY UNANSWERED ONE. The sanitiser
+      // drops nulls, so a skipped question stays ABSENT rather than becoming a
+      // stored value that reads as an answer. Unknown must stay unknown.
       await savePreScriptBrief(draft.voiceId, {
         workKind, workKindOther: workKindOther.trim() || null,
         forbiddenClaims, audience, promotes: q4,
+        audienceKnowledge: draft.audienceKnowledge ?? null,
+        contentGoals: draft.contentGoals?.length ? draft.contentGoals : null,
+        desiredFormats: draft.desiredFormats?.length ? draft.desiredFormats : null,
+        formatExploration: draft.formatExploration ?? null,
+        commercialTies: draft.commercialTies?.length ? draft.commercialTies : null,
+        ownProductKind: draft.ownProductKind ?? null,
+        ownServiceKind: draft.ownServiceKind ?? null,
         // The offer, but ONLY if the creator typed it. `offerTouched` is exactly
         // that fact, and without it we would store the scan's guess as though
         // they had confirmed it — which is the inference this question exists to
