@@ -85,34 +85,48 @@ export const AUDITED_QUESTIONS: readonly AuditedQuestion[] = Object.freeze([
     asked: 'What do you want your content to help you do?',
     field: 'contentGoals',
     screen: 'Onboarding scan step',
-    verdict: 'ORPHANED_NO_READER',
-    absentFrom: GENERATION_DIRS,
+    // ⚠️ THIS VERDICT WAS TRUE UNTIL THE READER WAS WIRED, AND THE GUARD
+    // FAILED THE MOMENT IT WAS. That is the audit doing its job: good news
+    // breaks the test on purpose, so a fix cannot land while the record
+    // still calls it an orphan.
+    verdict: 'LIVE',
     cost:
-      'The creator picks up to two goals and is told the limit, which reads as a '
-      + 'consequential decision. No writer, director or CTA reads it -- so the goal they '
-      + 'chose changes nothing about the script they get.',
+      'None any more. generate-blueprint reads it through standingGoalDirectiveInline, which '
+      + 'fills the `- Goal:` line ONLY where the creator gave no per-video answer -- the '
+      + 'remix pop-up outranks it, always. The first goal in stored order is used and a '
+      + 'second is deliberately ignored rather than blended into a third goal nobody chose.',
   }),
   Object.freeze({
     asked: 'What kinds of videos do you want Twin to help you make?',
     field: 'desiredFormats',
     screen: 'Onboarding scan step',
-    verdict: 'ORPHANED_NO_READER',
-    absentFrom: GENERATION_DIRS,
+    // ⚠️ THIS VERDICT WAS TRUE UNTIL THE READER WAS WIRED, AND THE GUARD
+    // FAILED THE MOMENT IT WAS. That is the audit doing its job: good news
+    // breaks the test on purpose, so a fix cannot land while the record
+    // still calls it an orphan.
+    verdict: 'LIVE',
     cost:
-      'This is the question that separates what a creator ALREADY makes from what they '
-      + 'WANT next -- the distinction Creator DNA cannot observe. It reaches nothing. '
-      + 'desiredFormatModes.ts says so in its own header.',
+      'None any more. generate-blueprint reads it through renderDesiredFormatsInline, which '
+      + 'shapes concept.premise -- NOT the shot list, because the shot vocabulary is '
+      + 'talking_head or cover_frame with no third option and inventing one would reverse '
+      + 'the no-B-roll scope decision through a side door. \u26a0\ufe0f `recommend` still '
+      + 'contributes nothing: it is an explicit request NOT to be constrained.',
   }),
   Object.freeze({
     asked: 'Should Twin stay close to what you already do?',
     field: 'formatExploration',
     screen: 'Onboarding scan step',
-    verdict: 'ORPHANED_NO_READER',
-    absentFrom: GENERATION_DIRS,
+    // ⚠️ THIS VERDICT WAS TRUE UNTIL THE READER WAS WIRED, AND THE GUARD
+    // FAILED THE MOMENT IT WAS. That is the audit doing its job: good news
+    // breaks the test on purpose, so a fix cannot land while the record
+    // still calls it an orphan.
+    verdict: 'LIVE',
     cost:
-      'The cleanest dead field in the flow: its only reader is inside '
-      + 'compileCreatorProfile, which has no production caller. A creator asking Twin to '
-      + 'push them somewhere new is answered by nothing at all.',
+      'None any more. It is the WEIGHT between the formats the scan observed and the ones '
+      + 'the creator asked for, read together with desiredFormats or not at all -- without '
+      + 'it, \u201cI want to try reviews\u201d and \u201cmostly what I already make\u201d '
+      + 'pull opposite ways with nothing to settle them. Unanswered gets the NEUTRAL '
+      + 'weighting, never the adventurous one.',
   }),
   Object.freeze({
     asked: 'What kind of service?',

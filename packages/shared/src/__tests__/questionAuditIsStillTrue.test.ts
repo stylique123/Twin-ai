@@ -107,8 +107,19 @@ describe('the root cause is recorded, not just the symptoms', () => {
     )
     const at = onboarding.indexOf('savePreScriptBrief(')
     const call = onboarding.slice(at, onboarding.indexOf('})', at))
+    // ⚠️ THIS ASSERTED `>= 5` AND WAS THE TWIN OF THE `>= 6` ALREADY FIXED
+    // ABOVE: a snapshot pretending to be a property. Wiring readers for
+    // contentGoals, desiredFormats and formatExploration legitimately took the
+    // ORPHANED_NO_READER count from five to two and failed it. A floor that
+    // drops every time somebody FIXES something is a floor that has to be edited
+    // downward until it means nothing.
+    //
+    // ⚖️ THE REAL PROPERTY IS "NOT VACUOUS, AND EVERY ONE OF THEM IS IN THE
+    // WRITE". The non-vacuity that does not decay is the roster itself, which is
+    // asserted separately; here it is enough that whatever IS labelled persisted
+    // really is persisted. If the list ever empties, that is the audit finishing
+    // its job rather than the guard breaking.
     const persisted = AUDITED_QUESTIONS.filter((q) => q.verdict === 'ORPHANED_NO_READER')
-    expect(persisted.length).toBeGreaterThanOrEqual(5)
     for (const q of persisted) {
       expect(call, `${q.field} is no longer persisted — its verdict is now wrong`).toContain(q.field)
     }

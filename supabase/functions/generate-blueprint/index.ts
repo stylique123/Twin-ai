@@ -1483,6 +1483,130 @@ function preferKindsInline<T extends { kind: string }>(
   return [...groups.flat(), ...rest]
 }
 
+// ── WHAT THEY WANT TO MAKE, WHICH IS NOT WHAT THEY ALREADY MAKE ───────────
+//
+// ⚠️ `desiredFormats` HAS BEEN COLLECTED SINCE ONBOARDING EXISTED AND REACHED
+// NOTHING THAT WRITES A SCRIPT. It is the one question Creator DNA cannot
+// answer for them: the scan reads what they HAVE posted, and this asks what they
+// want NEXT. A creator who has only ever done talking heads and wants to start
+// doing reviews looks, to the scan, exactly like a creator who wants more
+// talking heads.
+//
+// ⚖️ IT SHAPES THE PREMISE, NOT THE SHOT LIST, AND THAT IS A DECIDED BOUNDARY.
+// The shot vocabulary is `talking_head` or `cover_frame` and says "there is no
+// third option: Twin does not plan overlay or cutaway footage" -- downstream of
+// the no-B-roll scope decision. Walking, POV and review have nowhere to land
+// there, and inventing a third shot type to make room would reverse a product
+// decision through a side door. But the question a creator answered was what
+// kind of VIDEO they want, which is what the video IS rather than how it is
+// shot -- so it belongs to the premise, where it genuinely bites.
+const DESIRED_FORMAT_PREMISE: Record<string, string> = {
+  talking_head: 'a piece they can carry by talking alone, no props and no setup',
+  educational: 'a premise that TEACHES one thing end to end, with a before and after',
+  founder: 'a premise from inside their business -- a decision, a number, a thing that went wrong',
+  review: 'a premise that judges something specific: the thing, the claim about it, the verdict',
+  product: 'a premise built around one product doing one job, not a tour of it',
+  story: 'a premise with a beginning, a turn and an ending that happened to a person',
+  opinion: 'a premise that stakes a position somebody could disagree with out loud',
+  pov: 'a premise set in a SITUATION the viewer recognises, played rather than described',
+  trend: 'a premise tied to something happening right now that dates quickly and is worth it',
+  walking: 'a premise loose enough to carry while moving, with no shot that needs a tripod',
+  recommend: '',
+}
+
+/** ⚖️ HOW FAR TO STRAY, WHICH THEY ALSO ANSWERED AND WHICH ALSO REACHED NOTHING.
+ *  `formatExploration` is the weight between the scan's observed playbook and
+ *  the formats they asked for. Without it, "I want to try reviews" and "mostly
+ *  what I already make" would pull in opposite directions with nothing to settle
+ *  them -- so the two are read together or not at all. */
+const EXPLORATION_DIRECTIVE: Record<string, string> = {
+  stay_close: 'Lean on the formats they ALREADY make. Treat the wanted list as a tie-breaker, not a brief.',
+  fit_goals: 'Pick whichever of the two serves the goal of this video better. Neither list outranks the other by default.',
+  try_new: 'Prefer a format from the WANTED list, even where their playbook has a safer option. They asked to be pushed.',
+  mixed: 'Either list is fair game. Choose the one the reference actually supports.',
+}
+
+/** ⚖️ THE STANDING GOAL, IN THE SAME OPERATIONAL VOICE THE PER-VIDEO ONE USES.
+ *  `- Goal:` is read by the writer as an instruction, so a slug pasted there
+ *  ("followers") invites the model to decide what that implies. Naming the
+ *  CONSEQUENCE is what changes the writing -- the same reasoning GOAL_LINES used
+ *  before it was replaced, and the reason this maps rather than interpolates. */
+const STANDING_GOAL_DIRECTIVE: Record<string, string> = {
+  followers: 'grow the audience: widest entry point, near-zero prior knowledge, earn a follow or a share',
+  authority: 'build authority: go narrow and deep on one thing, and leave them trusting this person more',
+  educate: 'teach one thing properly, end to end, so they can do it afterwards',
+  leads: 'start a conversation: make the next step a reply or a message, not a purchase',
+  sell: 'turn attention into a purchase, with the offer named plainly and once',
+  entertain: 'be worth watching for its own sake: pace, surprise and a payoff',
+  personal_brand: 'make this person memorable: their stance, their words, their face on the idea',
+}
+
+/**
+ * ⚠️ THE FIRST GOAL IN THE STORED ORDER, NOT A BLEND. Up to two may be chosen,
+ * and combining them produces a sentence neither of them says. The first is
+ * used and the second is deliberately ignored rather than quietly averaged.
+ *
+ * ⚖️ AND AN UNRECOGNISED VALUE YIELDS null, WHICH FALLS THROUGH TO THE INFERRED
+ * GOAL. A stored slug outside the vocabulary is not an instruction.
+ */
+/**
+ * ⚠️ NARROWED, NEVER CAST, AND THE COMPILER CAUGHT ME DOING THE OPPOSITE.
+ *
+ * `brief` is typed `Record<string, string | undefined>` because most of it IS
+ * strings. Three keys are arrays. My first version wrote
+ * `brief.desiredFormats as string[]`, which tsc rejected as "conversion of type
+ * string to type string[] may be a mistake" -- and it was exactly the shape of
+ * `'DENIED' as PersonalUse`: a cast that asserts a type the value may not have.
+ *
+ * ⚖️ SO THE ARRAY IS PROVEN AT RUNTIME, and anything else reads as absent. A
+ * stored scalar where a list belongs is not a one-item list; it is a row that
+ * predates the field or was written by something else, and neither is an answer.
+ */
+function briefListInline(raw: Record<string, unknown>, key: string): string[] | undefined {
+  const v = raw[key]
+  if (!Array.isArray(v)) return undefined
+  const kept = v.filter((x): x is string => typeof x === 'string' && x !== '')
+  return kept.length > 0 ? kept : undefined
+}
+
+/** The same rule for a single stored string. */
+function briefTextInline(raw: Record<string, unknown>, key: string): string | undefined {
+  const v = raw[key]
+  return typeof v === 'string' && v !== '' ? v : undefined
+}
+
+function standingGoalDirectiveInline(goals: readonly string[] | null | undefined): string | null {
+  if (!Array.isArray(goals)) return null
+  for (const g of goals) {
+    const d = typeof g === 'string' ? STANDING_GOAL_DIRECTIVE[g] : undefined
+    if (d) return d
+  }
+  return null
+}
+
+function renderDesiredFormatsInline(
+  desired: readonly string[] | null | undefined,
+  exploration: string | null | undefined,
+): string {
+  if (!Array.isArray(desired) || desired.length === 0) return ''
+  // ⚠️ `recommend` IS A DECLINE, NOT A FORMAT. A creator who tapped "let Twin
+  // suggest" asked NOT to be constrained, and turning that into a constraint is
+  // the opposite of the answer. It contributes nothing and, alone, renders
+  // nothing at all.
+  const lines = desired
+    .map((d) => DESIRED_FORMAT_PREMISE[d])
+    .filter((t) => typeof t === 'string' && t !== '')
+  if (lines.length === 0) return ''
+  const weight = (exploration && EXPLORATION_DIRECTIVE[exploration])
+    // ⚖️ UNANSWERED IS NOT "PUSH THEM". Silence gets the neutral weighting, never
+    // the adventurous one -- an unasked question must not become a decision.
+    ?? EXPLORATION_DIRECTIVE.fit_goals
+  return `
+WHAT THEY WANT TO MAKE NEXT — asked during onboarding, and NOT the same as the formats the scan observed above. Shape concept.premise toward one of these:
+${lines.map((t) => `- ${t}`).join('\n')}
+${weight}`
+}
+
 function renderVideoIntentInline(intent: VideoIntentInline): string {
   // The goal directive is NOT rendered here — it already has one reader, the
   // `- Goal:` line of CREATOR DNA. See the shared copy for the reasoning.
@@ -3487,7 +3611,23 @@ Deno.serve(async (req: Request) => {
     // ⚖️ THE INFERRED VALUES STILL STAND BEHIND IT, unchanged. They are a reading
     // of the creator's public content, which is a real signal when nobody
     // answered — just never a better one than the answer itself.
+    // ⚠️ PRECEDENCE, NAMED ONCE, WITH ONE READER. `intent.goalDirective` is what
+    // the creator chose for THIS video in the remix pop-up. `contentGoals` is
+    // what they said their content should do IN GENERAL, up to two, during
+    // onboarding -- and until now it reached nothing that writes a script.
+    //
+    // ⚖️ THE PER-VIDEO ANSWER WINS WHENEVER IT EXISTS, AND THE STANDING ONE
+    // FILLS SILENCE. Never merged and never averaged: a standing preference must
+    // not override a specific instruction somebody just gave, and two goals
+    // blended into one sentence is a third goal nobody chose.
+    //
+    // ⚠️ AND IT IS A FOURTH CHANNEL ONLY BECAUSE THE THIRD IS GONE. This file
+    // already records that three fields once meant "goal", one of which could
+    // never hold a value, and that "adding a fourth channel on top of a dead
+    // third would have been the bug". `brief.goal` was deleted; this slots into
+    // the gap it left rather than stacking on top of it.
     const goal = intent.goalDirective
+      ?? standingGoalDirectiveInline(briefListInline(briefRaw, 'contentGoals'))
       ?? (vp?.goal ?? dna.goal ?? 'turn attention into trust')
     const tone = vp?.tone ?? dna.voice ?? 'direct, warm, a little punchy'
     const editing = vp?.editing_style ?? dna.editing_style ?? 'fast jump cuts, burned-in captions'
@@ -4346,12 +4486,12 @@ ${fenced('derived structure', ref.structure ? JSON.stringify(ref.structure).slic
 ${fenced('reference transcript', clip(ref.text ?? '', 6000))}
 - Creator's angle/note:
 ${fenced("creator's note", reference_note || '(none provided)')}
-- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${renderVideoIntentInline(intent)}${containerBlock}`
+- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderVideoIntentInline(intent)}${containerBlock}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
 ${fenced("creator's note", reference_note || '(none provided)')}
-- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${renderVideoIntentInline(intent)}${containerBlock}`
+- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderVideoIntentInline(intent)}${containerBlock}`
 
     // The DNA is fenced too. It reads like our own text, but every field in it
     // was synthesized from captions we scraped — so it is exactly as
