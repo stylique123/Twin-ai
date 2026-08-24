@@ -346,6 +346,11 @@ export interface EntityAttestation {
   name: string | null
   productUrl?: string | null
   flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
+  /** ⚠️ THE COMMUNITY MAP, WHEN THE CREATOR FILLED ONE IN. Absent for every
+   *  other product type, and absent is the ordinary state -- it is NOT a
+   *  community that failed to answer. `buildCommunityMap` returns null rather
+   *  than a half-map, so anything arriving here is already usable or is null. */
+  communityMap?: unknown
   now?: string
 }
 
@@ -738,6 +743,13 @@ export interface DraftEntity {
 
 export interface ProductEntityRecord extends DraftEntity {
   id: string
+  /** The surfaces, figures and privacy states for a COMMUNITY entity.
+   *
+   *  ⚖️ NULL IS THE NORMAL CASE AND MEANS "no map", not "a map we could not
+   *  read". Every product that is not a community has one, and a community
+   *  whose creator has not filled the form in yet has one too -- the writer
+   *  stays silent either way, which is the same answer for both. */
+  communityMap: import('./communityMap').CommunityMap | null
   /** When the creator withdrew this from future videos. Null means live.
    *
    *  ⚖️ A DATE RATHER THAN A BOOLEAN, because "when did this stop" is a fact
