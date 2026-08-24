@@ -54,6 +54,21 @@ export interface AuditedQuestion {
   /** ⚠️ FOR AN ORPHAN, THE EVIDENCE THAT IT IS ONE. A directory the field must
    *  NOT appear in. The guard greps this, so the claim cannot rot. */
   absentFrom?: readonly string[]
+  /**
+   * ⚠️ THE BRIEF KEY THIS ANSWER ARRIVES UNDER, WHEN IT IS NOT ITS OWN NAME.
+   *
+   * `audienceSeg` is the case that forced this field to exist. The audit called
+   * it display-only; it has in fact reached generation since #398, because the
+   * confirm step seeds the free-text `audience` from the chooser label when the
+   * creator typed nothing. The answer counts -- it just does not travel under
+   * its own name, and a guard that greps only for `audienceSeg` in the write
+   * call concludes "not persisted" and is wrong.
+   *
+   * ⚖️ SO THE INDIRECTION IS DECLARED RATHER THAN INFERRED. The guard checks
+   * that the key IS in the write AND that the page really links the two, so a
+   * claimed path that does not exist fails instead of excusing an orphan.
+   */
+  travelsAs?: string
   /** What is lost by asking it. Never "nothing" -- a question with no reader
    *  still costs the creator a decision and costs Twin their trust when the
    *  answer visibly changes nothing. */
@@ -124,12 +139,22 @@ export const AUDITED_QUESTIONS: readonly AuditedQuestion[] = Object.freeze([
     asked: 'Who do you mainly want to reach?',
     field: 'audienceSeg',
     screen: 'Onboarding scan step',
-    verdict: 'ORPHANED_LOCAL',
-    absentFrom: GENERATION_DIRS,
+    // ⚠️ THIS VERDICT WAS WRONG WHEN IT WAS WRITTEN, not stale by drift. The
+    // seeding line landed in #398 on 17 August; this audit was written on the
+    // 24th and recorded the answer as display-only anyway. The claim was never
+    // checked against the tree it described.
+    //
+    // ⚖️ AND THE RULE ADDED WITH THE AUDIT DID NOT CATCH IT EITHER, because it
+    // greps the write call for the field's OWN name and this answer travels
+    // under `audience`. A guard that can only see one spelling of a path will
+    // keep reporting orphans that are not.
+    verdict: 'LIVE',
+    travelsAs: 'audience',
     cost:
-      'The chooser answer is display-only. generate-blueprint reads brief.audience, which '
-      + 'is the FREE-TEXT box on the confirm screen -- so the creator answers the same '
-      + 'question twice and only the typed one counts.',
+      'None. The chooser fills the free-text `audience` when the creator typed nothing, '
+      + 'and generate-blueprint reads that -- so the answer counts. What IS still true is '
+      + 'that the same fact is asked twice, once as a chooser and once as a box, and the '
+      + 'typed one silently wins. That is a duplication worth removing, not an orphan.',
   }),
   Object.freeze({
     asked: 'How much do they already know?',
