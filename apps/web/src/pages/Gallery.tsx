@@ -9,6 +9,8 @@ import { useAuth } from '../context/AuthContext'
 import {
   listGalleryItems, listBrandVoices, logEvent, loadReferenceProfiles,
   loadProductEntities, galleryCreatorView, emptyReferenceProfile,
+  loadPreScriptBrief, assembleCreatorProfile, briefToProfileAnswers,
+  type CreatorProfile,
   type GalleryItem, type ReferenceProfile, type FillableEntity,
 } from '../lib/api'
 import { decideGallery } from '../lib/galleryDecisions'
@@ -255,6 +257,18 @@ export default function Gallery() {
   // distinct from a loaded voice that answered nothing, which it also reports as
   // not_checked but for a stated reason. Neither ever reads as "cannot".
   const [voiceFlags, setVoiceFlags] = useState<Record<string, boolean | null> | null>(null)
+  // ⚠️ WHAT THEY SAID THEY WANT TO MAKE, WHICH THIS PAGE HAS NEVER READ.
+  // `desiredFormats` has been collected since onboarding existed, assembled into
+  // `preferredFormats` by profileAssembler, and consumed by galleryCreatorView --
+  // and the call below passed `profile: null`, so the whole chain terminated in a
+  // hardcoded literal. The format group has been dark in production the entire
+  // time, which reads as a decision somebody made rather than a wire nobody
+  // connected.
+  //
+  // ⚖️ `null` UNTIL IT LOADS, AND NEVER `{}`. A creator whose brief has not
+  // arrived has not answered nothing -- we have not asked yet, and every rule
+  // downstream treats those two differently.
+  const [myProfile, setMyProfile] = useState<CreatorProfile | null>(null)
   // ⚠️ WHAT THE TRANSCRIPT PASS LEARNED, FOR THE CARDS ACTUALLY ON THIS PAGE.
   // Empty until it loads and empty forever for an unassessed library — which is
   // still most of it — and `decideGallery` treats a missing profile as "decide
@@ -299,6 +313,26 @@ export default function Gallery() {
         // a DIFFERENT state from no voice at all, and only the first is "we
         // asked and they have not said".
         if (def) setVoiceFlags(def.default_capability_flags ?? {})
+        // ⚖️ BEST-EFFORT, AND A FAILURE LEAVES THE GALLERY EXACTLY AS IT IS.
+        // Losing a preference must never cost somebody the page: on any error
+        // `myProfile` stays null, `preferredFormats` stays empty, and every
+        // format rule skips -- which is precisely today's behaviour.
+        if (def) {
+          loadPreScriptBrief(def.id)
+            .then((brief) => setMyProfile(assembleCreatorProfile({
+              // ⚠️ NARROWED, NEVER CAST. The brief stores these as loose strings
+              // because §8a requires every "Other" to carry free text, so
+              // `audience` genuinely holds values that are not segments. A cast
+              // would hand that free text downstream wearing the type of an
+              // answer nobody gave -- the exact shape of the 'DENIED' as
+              // PersonalUse bug that compiled and then failed a CHECK
+              // constraint in production.
+              answers: briefToProfileAnswers(brief),
+              defaultCta: brief.defaultCta ?? null,
+              now: new Date().toISOString(),
+            })))
+            .catch(() => {})
+        }
         VOICE_CACHE = { niche, sub }
         if (niche) setVoiceNiche(niche)
         if (sub) setVoiceSubNiche(sub)
@@ -409,10 +443,10 @@ export default function Gallery() {
   // `null` capabilities and no relationship, which makes each refusal SKIP; the
   // gallery they see is exactly today's.
   const me = useMemo(() => galleryCreatorView({
-    profile: null,
+    profile: myProfile,
     capabilities: voiceFlags === null ? null : resolveCapabilities(null, voiceFlags),
     entities: entities ?? [],
-  }), [voiceFlags, entities])
+  }), [myProfile, voiceFlags, entities])
 
   const decisions = useMemo(() => decideGallery({
     cards: all.map((c) => ({ id: c.id, url: c.url })),
