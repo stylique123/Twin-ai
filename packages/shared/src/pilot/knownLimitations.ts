@@ -91,6 +91,42 @@ export const KNOWN_LIMITATIONS: readonly KnownLimitation[] = Object.freeze([
       + 'Pooling the two cohorts to save a round would hide exactly the difference being measured.',
     status: 'OPEN',
   }),
+  Object.freeze({
+    id: 'ANIMATED_REFERENCES_ARE_OUT_OF_SCOPE',
+    what:
+      'An illustrated mouse in the first pilot cohort raised a question the field set had no '
+      + 'answer for: does a drawn character count as a person, and is an animated figure acting? '
+      + 'Two of the seven sharpenings in #489 exist because of it -- performance.acting was taught '
+      + '"drawings and animation are not a person acting" and people.count was taught "drawn or '
+      + 'animated characters are not people on camera". Those questions now EXCLUDE animation, but '
+      + 'nothing recorded whether excluding it was the intent or an accident of wording, and the '
+      + 'talking-head gate shipped a third exclusion on top: judgeFit returns does_not_fit with '
+      + 'reason ANIMATED before it looks at anything else.',
+    decision:
+      'CLOSED, and closed as a NO rather than deferred: Twin\'s visual pass is about filmed '
+      + 'people, and animation is recognised only in order to be excluded. Twin learns how a '
+      + 'PERSON talks and hands it back as a script somebody performs; a cartoon has no performer '
+      + 'to learn from, so a correct description of one still produces nothing a creator can act '
+      + 'on. Teaching the field set to read drawings would also mean giving every field a second '
+      + 'meaning -- what is a wide shot of a drawn scene, does a cartoon hold a product -- and each '
+      + 'second meaning is another chance for the reviewer and the model to answer different '
+      + 'questions, which is the gap that put run 7204de6f at 0.728 rather than higher. The owner '
+      + 'was given the case for and against and answered "a hard no to cartoons, close the '
+      + 'question".',
+    revisitWhen:
+      'The talking_head_overrides log (migration 0166) shows creators repeatedly overriding an '
+      + 'ANIMATED warning AND keeping the scripts that result. That is the only evidence that would '
+      + 'show the exclusion costs real creators something, and it is now recorded rather than '
+      + 'guessable. ⚠️ AND THE ANSWER WOULD STILL PROBABLY NOT BE "describe cartoons": a creator '
+      + 'who posts animation with a voiceover has a voice worth learning from their SPEECH, so the '
+      + 'cheaper feature is to skip the visual pass for them, not to teach it to read drawings.',
+    cost:
+      'Reopening is not a wording change. Every VISUAL_FIELD would need a defined meaning for '
+      + 'drawn footage, the seven sharpenings from #489 would have to be re-argued against it, and '
+      + 'VISUAL_ANALYSIS_VERSION would have to move again -- which makes every visual-3 row '
+      + 'incomparable with what came after. A cohort drawn to measure it would be a third run.',
+    status: 'RESOLVED',
+  }),
 ])
 
 export const openLimitations = (): readonly KnownLimitation[] =>

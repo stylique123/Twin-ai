@@ -101,3 +101,37 @@ describe('the cohort limitation', () => {
     expect(limitationById(COHORT)!.decision).toContain('still evidence')
   })
 })
+
+// ⚠️ A CLOSED DECISION IS AS FRAGILE AS AN OPEN ONE, IN THE OTHER DIRECTION.
+// This register exists because "not now, revisit later" evaporates when the
+// conversation ends. A decided NO evaporates the same way: six weeks on, nobody
+// remembers that cartoons were considered and refused, and the next person
+// treats the gap as an oversight worth filling.
+describe('cartoons were decided, not overlooked', () => {
+  const cartoons = limitationById('ANIMATED_REFERENCES_ARE_OUT_OF_SCOPE')
+
+  it('is on the register at all', () => {
+    expect(cartoons).toBeTruthy()
+  })
+
+  // ⚖️ RESOLVED, NOT OPEN. The owner answered "a hard no to cartoons, close the
+  // question". Leaving it OPEN would put it back in the queue of things somebody
+  // is expected to get to.
+  it('is RESOLVED rather than deferred', () => {
+    expect(cartoons!.status).toBe('RESOLVED')
+  })
+
+  // ⚠️ A CLOSED ENTRY STILL NEEDS ITS REOPENING CONDITION, or "closed" quietly
+  // becomes "never again". The condition here is evidence, not an opinion: the
+  // override log showing creators forcing animated references through AND
+  // keeping the scripts.
+  it('names the evidence that would reopen it', () => {
+    expect(cartoons!.revisitWhen).toContain('talking_head_overrides')
+  })
+
+  // ⚖️ AND THE COST OF REOPENING IS STATED, because "we could always add it
+  // later" is the sentence that turns a decision into a assumption.
+  it('states what reopening would actually cost', () => {
+    expect(cartoons!.cost).toContain('VISUAL_ANALYSIS_VERSION')
+  })
+})
