@@ -39,6 +39,7 @@
 
 import type { ProductEvidence } from './productEvidence'
 import { BRIEF_PROMOTES, type BriefWorkKind } from './preScriptBrief'
+import type { OwnProductKind, OwnServiceKind } from './creatorProfileQuestions'
 
 // ---------------------------------------------------------------------------
 // THE VOCABULARY
@@ -254,14 +255,20 @@ export function mintFromWorkKind(
     /** The capability answers, so showability is PRE-FILLED rather than asked.
      *  Absent means unanswered, which yields UNKNOWN — never a denial. */
     flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
+    /** ⚠️ THE FINER ANSWER THEY ALREADY GAVE, which reached nothing until now.
+     *  See `refinedEntityType`: a creator selling a course said so on the scan
+     *  step and was minted SAAS anyway. */
+    ownProductKind?: OwnProductKind | null
+    ownServiceKind?: OwnServiceKind | null
   } = {},
 ): DraftEntity | null {
   const mint = kind ? WORK_KIND_MINT[kind] : undefined
   if (!mint) return null
   const name = (opts.name ?? '').trim()
+  const type = refinedEntityType(mint.type, opts)
   return {
     name: name === '' ? null : name,
-    type: mint.type,
+    type,
     relationship: mint.relationship,
     // The default, and nothing here may move it. A founder owning a product
     // does not establish that they use it — and for an owned product the
@@ -270,7 +277,7 @@ export function mintFromWorkKind(
     // DERIVED, NOT ASKED. From the capability flags the creator already
     // answered — see `inferShowability`. UNKNOWN when they have not answered
     // them either, which is honest rather than convenient.
-    showability: inferShowability(mint.type, opts.flags),
+    showability: inferShowability(type, opts.flags),
     productUrl: null,
     affiliateUrl: null,
     evidence: null,
@@ -874,4 +881,76 @@ export function toneClampReason(
     !bounds.allowsAbsoluteCertainty ? 'absolute certainty' : '',
   ].filter(Boolean)
   return `Kept at ${applied}: your voice does not use ${why.join(' or ')}, and more energy should not change who you sound like.`
+}
+
+// ── THE FINER ANSWER THEY ALREADY GAVE ────────────────────────────────────
+//
+// ⚠️ THE SAME FACT IS COLLECTED TWICE AND ONLY THE COARSE ONE COUNTS.
+// `workKind` mints an entity type from four broad answers -- saas → SAAS,
+// ecommerce → PHYSICAL_PRODUCT, professional and local_service → SERVICE. Then
+// the scan step asks "What kind of thing do you sell?" with six finer options,
+// and that answer reaches NOTHING. A creator selling a course says so, and the
+// entity is typed SAAS.
+//
+// ⚠️ AND MEASURED, NOT ASSUMED — THE FIRST VERSION OF THIS COMMENT WAS WRONG.
+// It claimed the type decides the show moments. It does not, today:
+// productSceneGuidance returns BYTE-IDENTICAL direction for SAAS, COURSE,
+// DIGITAL_PRODUCT, MARKETPLACE and OTHER — four screen_recording moments each.
+// So refining SAAS→COURSE changes nothing a creator sees right now.
+//
+// ⚖️ IT IS STILL WORTH STORING CORRECTLY, and the reason is not the current
+// prompt. The type is what the Library shows, what a future scene rule would
+// branch on, and what anything reasoning about this product reads. A stored
+// type the creator explicitly contradicted is a wrong fact whether or not
+// today's prompt happens to consult it.
+//
+// ⚠️ THE ONE REFINEMENT THAT DOES CHANGE BEHAVIOUR IS `community` → COMMUNITY,
+// because COMMUNITY takes the NEVER branch in inferShowability: a community has
+// nothing to point a camera at. A creator running one was previously typed
+// SERVICE — also NEVER — so even this is currently a wash. See
+// SCENE_GUIDANCE_DOES_NOT_READ_THE_TYPE in knownLimitations.
+
+/** ⚠️ `other` IS ABSENT ON PURPOSE, AND THE FIRST REASON I GAVE WAS FALSE.
+ *
+ *  I wrote that refining to OTHER would cost the creator every show moment.
+ *  Measured: inferShowability puts OTHER on the SCREEN branch, exactly like
+ *  SAAS, and productSceneGuidance('OTHER','ALWAYS') returns the same four
+ *  moments as SAAS. It costs nothing of the sort.
+ *
+ *  ⚖️ THE REAL REASON IS NARROWER. "Other" says none of the listed kinds fit;
+ *  it is not a claim that the product IS of type OTHER, and the coarse answer
+ *  came from a different question they also really answered. Between two real
+ *  answers, the one that names something wins over the one that names nothing.
+ *  That is a judgement, not a measurement, and it is written here as one. */
+const PRODUCT_KIND_TYPE: Partial<Record<OwnProductKind, EntityType>> = {
+  software: 'SAAS',
+  physical: 'PHYSICAL_PRODUCT',
+  digital: 'DIGITAL_PRODUCT',
+  course: 'COURSE',
+  marketplace: 'MARKETPLACE',
+}
+
+/** ⚖️ MOST SERVICE KINDS ARE ALREADY SERVICE, so only the one that genuinely
+ *  differs is listed. Consulting, coaching, an agency, freelance and training
+ *  are all a person selling their time; a community is a place. */
+const SERVICE_KIND_TYPE: Partial<Record<OwnServiceKind, EntityType>> = {
+  community: 'COMMUNITY',
+}
+
+/**
+ * The type to mint, given both answers.
+ *
+ * ⚠️ THE FINER ANSWER WINS WHERE IT SAYS SOMETHING, and the coarse one stands
+ * everywhere else. Never the reverse: `workKind` is a fact about their BUSINESS
+ * and these are facts about the THING, and the thing is what a scene has to show.
+ */
+export function refinedEntityType(
+  coarse: EntityType,
+  kinds: { ownProductKind?: OwnProductKind | null; ownServiceKind?: OwnServiceKind | null },
+): EntityType {
+  const p = kinds.ownProductKind ? PRODUCT_KIND_TYPE[kinds.ownProductKind] : undefined
+  if (p) return p
+  const s = kinds.ownServiceKind ? SERVICE_KIND_TYPE[kinds.ownServiceKind] : undefined
+  if (s) return s
+  return coarse
 }
