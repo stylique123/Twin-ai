@@ -2825,7 +2825,12 @@ Deno.serve(async (req: Request) => {
   // trust.
   const { data: ownedEntity, error: ownedEntityErr } = await admin
     .from('product_entities')
-    .select('name, type, relationship, personal_use, showability, evidence, restrictions, knowledge')
+    // ⚠️ `id` IS SELECTED BECAUSE IT IS READ. `selected_product_id` is written
+    // from `ownedEntity?.id` further down, and this select omitted the column —
+    // so every generation recorded "no product was chosen" no matter which
+    // product it was written about. A column that is read must be selected; the
+    // optional chain made the absence look like a legitimate null.
+    .select('id, name, type, relationship, personal_use, showability, evidence, restrictions, knowledge')
     .eq('owner_id', ownerId)
     .eq('voice_id', voice?.id ?? null)
     .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
