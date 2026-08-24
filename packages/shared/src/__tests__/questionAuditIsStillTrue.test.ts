@@ -114,8 +114,22 @@ describe('the root cause is recorded, not just the symptoms', () => {
     }
   })
 
+  // ⚠️ THIS ASSERTED `>= 6` AND WAS A SNAPSHOT PRETENDING TO BE A PROPERTY.
+  // Two legitimate fixes -- audienceKnowledge and audienceSeg both turning out
+  // to be LIVE -- took the count to 5 and failed it. Good news is SUPPOSED to
+  // break a case here, but it should break the specific verdict case (it does),
+  // not a magic number that then has to be edited downward after every fix
+  // until it means nothing.
+  //
+  // ⚖️ SO THE PROPERTY IS STATED DIRECTLY, and the fear it was really guarding
+  // -- entries DELETED rather than questions fixed -- gets a floor that only
+  // deletion can breach. An orphan count falls legitimately; the roster does not.
   it('names more than one orphan, so a single fix cannot empty the audit silently', () => {
-    expect(orphanedCount()).toBeGreaterThanOrEqual(6)
+    expect(orphanedCount()).toBeGreaterThanOrEqual(2)
+  })
+
+  it('the roster never shrinks — a question is fixed, not deleted', () => {
+    expect(AUDITED_QUESTIONS.length).toBeGreaterThanOrEqual(7)
   })
 
   it('every orphan states what it costs, and never states nothing', () => {
@@ -150,17 +164,69 @@ const writeCall = (): string => {
   return onboarding.slice(at, onboarding.indexOf('})', at))
 }
 
+const onboardingSource = (): string => readFileSync(
+  join(repo, 'apps', 'web', 'src', 'pages', 'Onboarding.tsx'), 'utf8',
+)
+
+/**
+ * ⚠️ AN ANSWER CAN REACH THE BRIEF UNDER A DIFFERENT NAME, and the first
+ * version of this helper could not see that. `audienceSeg` has reached
+ * generation since #398 -- the confirm step seeds the free-text `audience` from
+ * the chooser label when the creator typed nothing -- and grepping the write
+ * call for "audienceSeg" answered "not persisted". That is how a LIVE field
+ * stayed recorded as an orphan, in a guard written to stop exactly that.
+ *
+ * ⚖️ THE INDIRECT PATH MUST BE DECLARED AND MUST BE REAL. `travelsAs` names the
+ * key, and this checks BOTH that the key is written AND that one line of the
+ * page mentions the field and the key together. A declared path that does not
+ * exist fails rather than laundering an orphan into LIVE.
+ */
+const travels = (field: string, travelsAs: string | undefined): boolean => {
+  if (!travelsAs) return false
+  if (!writeCall().includes(travelsAs)) return false
+  return onboardingSource().split('\n').some((l) => l.includes(field) && l.includes(travelsAs))
+}
+
+/**
+ * ⚠️ AND AN UNDECLARED PATH MUST BE CAUGHT TOO, or the fix above is a rubber
+ * stamp: it would only ever validate a path somebody remembered to declare,
+ * while the failure mode is forgetting. Reverting audienceSeg to
+ * ORPHANED_LOCAL passed cleanly until this existed.
+ *
+ * ⚖️ THE APPROXIMATION IS DELIBERATE AND ITS LIMIT IS NAMED. Proving an answer
+ * reaches the brief by NO route is not decidable by grep. What is checkable:
+ * does any single line of the page mention this field beside a key that IS
+ * written? That is how audienceSeg reaches `audience`, and it is the shape any
+ * seeding line has. A path spread across several statements would still slip
+ * through, and that is a known limit rather than a claim of completeness.
+ */
+const leaksThroughAnotherKey = (field: string): boolean => {
+  const call = writeCall()
+  // ⚠️ EVERY KEY, NOT THE FIRST ON EACH LINE. The anchored version of this
+  // regex captured only `forbiddenClaims` from
+  //   forbiddenClaims, audience, promotes: q4,
+  // so `audience` was never in the set and the check passed the very mutation
+  // it was written for. Measured, not assumed: the mutation was re-run.
+  const writtenKeys = [...call.matchAll(/(\w+)\s*[,:]/g)].map((m) => m[1])
+    .filter((k) => k !== field && k.length > 3)
+  return onboardingSource().split('\n').some((l) =>
+    l.includes(field) && writtenKeys.some((k) => l.includes(k)))
+}
+
 /** persisted by onboarding? / read by anything that writes a script? */
-const evidence = (field: string) => ({
-  persisted: writeCall().includes(field),
-  readByGeneration: matchingFiles(field, GENERATION_DIRS).length > 0,
+const evidence = (field: string, travelsAs?: string) => ({
+  persisted: writeCall().includes(field) || travels(field, travelsAs),
+  readByGeneration: matchingFiles(travelsAs ?? field, GENERATION_DIRS).length > 0,
+  leaksThroughAnotherKey: leaksThroughAnotherKey(field),
 })
 
-const RULES: Record<string, (e: { persisted: boolean; readByGeneration: boolean }) => boolean> = {
+type Evidence = { persisted: boolean; readByGeneration: boolean; leaksThroughAnotherKey: boolean }
+
+const RULES: Record<string, (e: Evidence) => boolean> = {
   // Written where it is asked, and something downstream acts on it.
   LIVE: (e) => e.persisted && e.readByGeneration,
-  // Never leaves the browser.
-  ORPHANED_LOCAL: (e) => !e.persisted,
+  // Never leaves the browser -- under its own name OR any other.
+  ORPHANED_LOCAL: (e) => !e.persisted && !e.leaksThroughAnotherKey,
   // Leaves the browser and lands nowhere.
   ORPHANED_NO_READER: (e) => e.persisted && !e.readByGeneration,
   // Generation reads it; the screen that ASKS it does not write it.
@@ -168,15 +234,15 @@ const RULES: Record<string, (e: { persisted: boolean; readByGeneration: boolean 
 }
 
 describe('a verdict nothing can falsify is a failure', () => {
-  it.each(AUDITED_QUESTIONS.map((q) => [q.field, q.verdict] as const))(
+  it.each(AUDITED_QUESTIONS.map((q) => [q.field, q.verdict, q.travelsAs] as const))(
     '%s is really %s',
-    (field, verdict) => {
+    (field, verdict, travelsAs) => {
       const rule = RULES[verdict]
       expect(rule, `no rule for verdict ${verdict} — add one, do not leave it unchecked`).toBeTypeOf('function')
-      const e = evidence(field)
+      const e = evidence(field, travelsAs)
       expect(
         rule(e),
-        `${field} is recorded as ${verdict} but the tree says persisted=${e.persisted}, readByGeneration=${e.readByGeneration}`,
+        `${field} is recorded as ${verdict} but the tree says persisted=${e.persisted}, readByGeneration=${e.readByGeneration}, leaksThroughAnotherKey=${e.leaksThroughAnotherKey}`,
       ).toBe(true)
     },
   )
@@ -187,5 +253,31 @@ describe('a verdict nothing can falsify is a failure', () => {
   it('every verdict in use has a rule', () => {
     const used = new Set(AUDITED_QUESTIONS.map((q) => q.verdict))
     for (const v of used) expect(Object.keys(RULES)).toContain(v)
+  })
+})
+
+describe('a declared indirect path must actually exist', () => {
+  // ⚠️ OTHERWISE `travelsAs` BECOMES AN EXCUSE RATHER THAN EVIDENCE. Naming a
+  // key would be enough to launder any orphan into LIVE, which is worse than
+  // the hole it was added to close.
+  it.each(AUDITED_QUESTIONS.filter((q) => q.travelsAs).map((q) => [q.field, q.travelsAs!] as const))(
+    '%s really does reach the brief as %s',
+    (field, travelsAs) => {
+      const linked = readFileSync(
+        join(repo, 'apps', 'web', 'src', 'pages', 'Onboarding.tsx'), 'utf8',
+      ).split('\n').filter((l) => l.includes(field) && l.includes(travelsAs))
+      expect(
+        linked.length,
+        `${field} claims to travel as ${travelsAs}, but no line of Onboarding.tsx links them`,
+      ).toBeGreaterThan(0)
+    },
+  )
+
+  // ⚖️ AND AN ORPHAN MAY NOT QUIETLY CARRY ONE. If a field has a real indirect
+  // path it is not an orphan, whatever the verdict says.
+  it('no ORPHANED verdict declares a path', () => {
+    for (const q of AUDITED_QUESTIONS.filter((x) => x.verdict !== 'LIVE')) {
+      expect(q.travelsAs, `${q.field} is called ${q.verdict} but declares a path`).toBeUndefined()
+    }
   })
 })
