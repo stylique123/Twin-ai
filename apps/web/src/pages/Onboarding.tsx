@@ -19,7 +19,7 @@ import {
   Q4_ANSWERS, mintFromWorkKind, mintsOwnedEntity, q4AsksOwnership,
   saveMintedEntity, type EntityType, type Q4Answer,
 } from '../lib/api'
-import { readScanFailure, scanFailure, type ScanFailure } from '../lib/api'
+import { readScanFailure, scanFailure, otherPlatformsSentence, type ScanFailure } from '../lib/api'
 import { Aurora } from '../components/Aurora'
 
 /** The chooser's words. Kept beside the screen rather than in the contract: the
@@ -773,10 +773,17 @@ function BuildingStep({
           )}
           {/* ⚖️ AND WHEN IT IS OURS, SAY WHAT ACTUALLY HELPS. The same creator on
               another platform usually reads fine, which is what happened when
-              Instagram failed and YouTube worked. */}
-          {failure && !failure.creatorCanFix && failure.tryAnotherPlatform && (
+              Instagram failed and YouTube worked.
+              ⚠️ AND IT NAMES ONLY THE ONES THAT ARE LEFT. This line used to
+              hardcode all three, so an Instagram failure advised "YouTube,
+              TikTok or Instagram" — offering back the platform that had just
+              failed, which reads as though nobody looked at what happened.
+              `otherPlatforms` has been correct and CALLED BY NOTHING since it
+              was written; this is its first caller. */}
+          {failure && !failure.creatorCanFix && failure.tryAnotherPlatform
+            && otherPlatformsSentence(draft.platform) !== '' && (
             <p className="text-sm text-sand">
-              You can also try the same creator on another platform — YouTube, TikTok or Instagram.
+              You can also try the same creator on {otherPlatformsSentence(draft.platform)}.
             </p>
           )}
         </div>
