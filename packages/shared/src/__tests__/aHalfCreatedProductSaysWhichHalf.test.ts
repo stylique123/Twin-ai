@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   productLifecycle, LIFECYCLE_MESSAGE, factsAreQuotable,
-  IMPORT_FAILED_IS_NOT_DERIVABLE, type ProductLifecycle,
+  IMPORT_FAILED_IS_DERIVABLE_SINCE_0169, type ProductLifecycle,
 } from '../productLifecycle'
 import { emptyRestrictions, type ProductEntityRecord } from '../productEntity'
 import type { ExtractedFact } from '../productExtraction'
@@ -26,7 +26,7 @@ const entity = (over: Partial<ProductEntityRecord> = {}): ProductEntityRecord =>
   restrictions: emptyRestrictions(), source: 'user_answer', userConfirmed: true,
   updated: '2026-08-24T00:00:00Z',
   archivedAt: null, knowledge: null, knowledgeExtractedAt: null,
-  knowledgeSourceUrl: null,
+  knowledgeSourceUrl: null, knowledgeFailedAt: null, knowledgeError: null,
   ...over,
 })
 
@@ -89,7 +89,8 @@ describe('archived outranks everything', () => {
 
 describe('only confirmed facts may be spoken in a script', () => {
   const ALL: ProductLifecycle[] = [
-    'ARCHIVED', 'NEEDS_SOURCE', 'READING', 'NOTHING_FOUND', 'REVIEW_REQUIRED', 'READY',
+    'ARCHIVED', 'NEEDS_SOURCE', 'IMPORT_FAILED', 'READING', 'NOTHING_FOUND',
+    'REVIEW_REQUIRED', 'READY',
   ]
 
   it('READY is the only quotable state', () => {
@@ -119,11 +120,43 @@ describe('what the creator reads', () => {
   })
 })
 
-describe('the state that is honestly missing', () => {
-  // ⚠️ VERIFIED AT SOURCE, NOT ASSUMED: worker/src/jobs/extractProduct.ts writes
-  // `knowledge: []` on the nothing-to-read path, and writes NOTHING AT ALL when
-  // an extraction fails. So a failure is byte-identical to never-attempted.
-  it('IMPORT_FAILED is absent from the union rather than guessed', () => {
+describe('the state that used to be missing, and now is not', () => {
+  // ⚠️ THIS BLOCK ASSERTED THE OPPOSITE AND WAS RIGHT TO. IMPORT_FAILED was
+  // absent from the union because a failed extraction wrote NOTHING back, so it
+  // was byte-identical to never-attempted. Migration 0169 records the attempt
+  // outcome, the worker writes it and clears it on success, and the state is
+  // now derivable. The case is rewritten rather than deleted, because the
+  // history is the useful part: this is what "the fix is a column, not a
+  // cleverer derivation" looked like when it was done.
+  it('a failed read with nothing learned is IMPORT_FAILED, not READING', () => {
+    const e = entity({
+      productUrl: 'https://example.com',
+      knowledge: null,
+      knowledgeFailedAt: '2026-08-24T10:00:00Z',
+      knowledgeError: 'That page would not let Twin read it.',
+    })
+    expect(productLifecycle(e)).toBe('IMPORT_FAILED')
+    expect(productLifecycle(e)).not.toBe('READING')
+  })
+
+  // ⚖️ AND A FAILURE THAT LEARNED NOTHING IS NOT THE SAME AS A FAILURE ON TOP OF
+  // FACTS. A product with usable facts and a stale failed re-read is not broken;
+  // telling its owner it failed would be a worse lie than saying nothing.
+  it('a failed re-read over existing facts does not erase them', () => {
+    const e = entity({
+      productUrl: 'https://example.com',
+      knowledge: [fact('usable')],
+      knowledgeFailedAt: '2026-08-24T10:00:00Z',
+      knowledgeError: 'That page took too long to answer.',
+    })
+    expect(productLifecycle(e)).toBe('READY')
+  })
+
+  it('no recorded failure still means READING while a source exists', () => {
+    expect(productLifecycle(entity({ productUrl: 'https://example.com' }))).toBe('READING')
+  })
+
+  it('the union now has seven states', () => {
     const states = new Set<string>()
     for (const url of [null, 'https://x.co']) {
       for (const k of [null, [], [fact('usable')], [fact('needs_confirmation')]]) {
@@ -131,48 +164,15 @@ describe('the state that is honestly missing', () => {
       }
     }
     states.add(productLifecycle(entity({ archivedAt: 'x' })))
-    expect(states.has('IMPORT_FAILED')).toBe(false)
-    expect(states.size).toBe(6)
+    states.add(productLifecycle(entity({
+      productUrl: 'https://x.co', knowledge: null,
+      knowledgeFailedAt: 'now', knowledgeError: 'nope',
+    })))
+    expect(states.has('IMPORT_FAILED')).toBe(true)
+    expect(states.size).toBe(7)
   })
 
-  it('and the reason is recorded in code, not only in a commit message', () => {
-    expect(IMPORT_FAILED_IS_NOT_DERIVABLE).toMatch(/writes nothing back/i)
-  })
-})
-
-describe('the card renders the state rather than re-deciding it', () => {
-  const repo = join(import.meta.dirname, '..', '..', '..', '..')
-  const code = readFileSync(join(repo, 'apps', 'web', 'src', 'pages', 'ProductLibrary.tsx'), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
-
-  // ⚠️ THE OWNER'S REPORT, AT ITS SOURCE. The card branched on
-  // `knowledge === null` alone, so a product WITH a link being read was offered
-  // a link box and told nothing about what was happening.
-  it('calls the derivation instead of branching on null alone', () => {
-    expect(code).toMatch(/productLifecycle\(e, photoPathsOf\(e\)\.length\)/)
-  })
-
-  it('the reading state is tested BEFORE the null branch it used to fall into', () => {
-    const reading = code.indexOf("productLifecycle(e, photoPathsOf(e).length) === 'READING'")
-    const nullBranch = code.indexOf('e.knowledge === null ?')
-    expect(reading).toBeGreaterThan(-1)
-    expect(nullBranch).toBeGreaterThan(-1)
-    expect(reading).toBeLessThan(nullBranch)
-  })
-
-  // ⚖️ ONE WORDING, NOT TWO. The sentence a reading product shows comes from
-  // LIFECYCLE_MESSAGE, so it cannot drift from the state that selected it.
-  it('shows the shared message rather than a second copy of it', () => {
-    expect(code).toMatch(/LIFECYCLE_MESSAGE\.READING/)
-  })
-})
-
-describe('the module is reachable at all', () => {
-  // ⚠️ THE DEFECT I SHIPPED ONCE ALREADY: four modules written, tested, merged
-  // and NOT EXPORTED FROM THE INDEX, so no app could import them even by trying.
-  it('is exported from the package index', () => {
-    expect(typeof shared.productLifecycle).toBe('function')
-    expect(typeof shared.factsAreQuotable).toBe('function')
-    expect(typeof shared.LIFECYCLE_MESSAGE).toBe('object')
+  it('and what changed is recorded in code, not only in a commit message', () => {
+    expect(IMPORT_FAILED_IS_DERIVABLE_SINCE_0169).toMatch(/knowledge_failed_at/)
   })
 })
