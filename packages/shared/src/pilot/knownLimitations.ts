@@ -138,26 +138,35 @@ export const KNOWN_LIMITATIONS: readonly KnownLimitation[] = Object.freeze([
       + 'beat-audit signal, but nothing anywhere consults the status before letting a script '
       + 'make claims about a product. The rule was written, tested, and never connected.',
     decision:
-      'NOT wired tonight, and this is a deliberate refusal rather than an oversight. '
-      + '`entityStatus` returns missing_information whenever `evidence` is null, and most '
-      + 'entities in production carry evidence null -- they were minted from an onboarding tap '
-      + 'or a Library claim, neither of which collects evidence sections. Enforcing the stop as '
-      + 'written would therefore silence product claims for MOST existing products, including '
-      + 'the ones #497 had just unblocked for scenes. That is a large behavioural change '
-      + 'disguised as connecting a function, and it must be measured against real rows before '
-      + 'it ships, not reasoned about.',
+      'STILL NOT WIRED, and the reason has CHANGED because the measurement was taken. '
+      + '⚠️ MY EARLIER REASON WAS AN ASSUMPTION STATED AS FACT: I wrote that "most entities in '
+      + 'production carry evidence null" and that enforcing the stop "would silence product '
+      + 'claims for MOST existing products". Measured 2026-08-24 against production, read-only: '
+      + 'public.product_entities contains ONE ROW IN TOTAL -- one owner, created 2026-08-18, '
+      + 'none archived, none ever deleted. There is no "most". The sentence described a '
+      + 'population that does not exist.\n\n'
+      + '⚖️ AND THE MEASUREMENT DOES NOT SETTLE THE QUESTION EITHER. That single row would '
+      + 'indeed return missing_information (evidence is null), which is 100% of the table and '
+      + 'evidence of nothing: n=1 cannot distinguish "the mint never collects evidence" from '
+      + '"this one row happens to lack it". Reporting 100% here would be the same error in the '
+      + 'opposite direction. So the refusal stands on a NEW footing: not that wiring the stop '
+      + 'would break most products, but that NOTHING IS KNOWN about what it would do, and a rule '
+      + 'whose blast radius is unmeasured must not be connected to a creator-facing path.',
     revisitWhen:
-      'Someone has counted how many live product_entities rows would return '
-      + 'missing_information -- one read-only query against production. If the number is small, '
-      + 'wire the stop. If it is most of them, the defect is that the mint never collects '
-      + 'evidence, and THAT is the fix; the stop is only correct once an entity can realistically '
-      + 'satisfy it.',
+      '⚠️ THE OLD TRIGGER -- "someone has counted" -- IS SPENT: it was counted, and the count '
+      + 'was 1. A trigger a single query can satisfy while teaching nothing is not a trigger. '
+      + 'The real precondition is a POPULATION: at least CLAIM_STOP_MIN_POPULATION live rows '
+      + 'across more than one owner, at which point re-run the same query. If most of that '
+      + 'population would return missing_information, the defect is that the mint never collects '
+      + 'evidence and THAT is the fix. If few would, wire the stop. Until then the honest state '
+      + 'is that the Product Library has barely been used, and THAT is the finding -- a claim '
+      + 'stop is not the most valuable thing to build for a table with one row in it.',
     cost:
-      'Low to wire, high to get wrong in either direction. Wiring it blind silences products '
-      + 'across the board and reads to a creator as Twin forgetting what they sell. Leaving it '
-      + 'costs the guarantee \u00a714 was written to give: a script may currently make claims '
-      + 'about an entity with no name and no evidence. The measurement is one query and should '
-      + 'happen before either.',
+      'Low to wire, high to get wrong in either direction, and CHEAP TO LEAVE RIGHT NOW. '
+      + 'Leaving it costs the guarantee \u00a714 was written to give -- a script may currently '
+      + 'make claims about an entity with no name and no evidence -- but that exposure is '
+      + 'bounded by the same measurement: one entity, one owner. The cost of wiring it blind is '
+      + 'unchanged and unbounded, because nobody knows what it would block.',
     status: 'OPEN',
   }),
   Object.freeze({
