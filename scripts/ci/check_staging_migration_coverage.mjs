@@ -134,6 +134,20 @@ export const EXCLUDED = {
     + 'ordering would be the tail wagging the dog. The editor never reads '
     + '`product_entities` either — entities reach it through the blueprint prompt, the '
     + 'same route the brief takes in 0109 above. ⚠️ MANUAL APPLY: excluding it here means nothing applies it anywhere, so it was applied to production BY HAND on 2026-08-11 (verified: the table exists with RLS on). Any future migration excluded here carries the same debt.',
+  '0170_a_community_is_a_set_of_surfaces':
+    'Adds `community_map` to `product_entities`, which is itself excluded above for the '
+    + 'staging FK-ordering reason -- staging has no such table, so this would fail on its '
+    + 'first statement rather than pass vacuously. THE EXCLUSION IS INHERITED, not a new '
+    + 'judgement, and it is the third migration to inherit it (0169 was the second). The '
+    + 'editor never reads `product_entities`; entities reach the blueprint through the '
+    + 'prompt. ⚠️ MANUAL APPLY, NOT YET DONE. Excluding it means nothing applies it '
+    + 'anywhere, so it must be applied to production BY HAND before anything READS the '
+    + 'column. ⚖️ THE BLAST RADIUS IS SMALLER THAN 0169 ON PURPOSE: nothing in this pull '
+    + 'request writes or reads community_map -- it ships the SHAPE (the surface catalog, '
+    + 'the privacy rule, the usable-map test) and no caller. So merging before the apply '
+    + 'is SAFE here, where merging 0169 early would have made every successful extraction '
+    + 'store nothing. The capture flow and the writer integration are the units that must '
+    + 'wait for the column to exist, and they are not in this change.',
   '0169_a_failed_read_leaves_a_trace':
     'Adds `knowledge_failed_at` and `knowledge_error` to `product_entities`, which is '
     + 'itself excluded above for the staging FK-ordering reason -- staging has no such '
