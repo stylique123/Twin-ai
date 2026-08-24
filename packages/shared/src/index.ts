@@ -97,3 +97,13 @@ export * from './pilot/knownLimitations'
 export * from './pilot/fieldMeaningUpgrades'
 export * from './pilot/callFailure'
 export * from './gate/talkingHeadFit'
+
+// ⚠️ THESE FOUR WERE WRITTEN AND NOT EXPORTED, WHICH IS WORSE THAN NOT CALLED.
+// A module missing from this barrel is not merely unused — it is UNREACHABLE
+// from apps/web, so "nothing imports it" reads as a choice when it was an
+// omission. scanFailure sat here for a whole release doing nothing while the
+// onboarding screen still told creators their public account might be private.
+export * from './scanFailure'
+export * from './questionAudit'
+export * from './productScenes'
+export * from './pilot/backlogRuns'
