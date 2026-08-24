@@ -259,6 +259,31 @@ export const KNOWN_LIMITATIONS: readonly KnownLimitation[] = Object.freeze([
       + 'The failure it guards against is exactly that quote.',
     status: 'OPEN',
   }),
+  Object.freeze({
+    id: 'COMMUNITY_MOMENTS_ARE_UNREACHABLE',
+    what:
+      'productScenes gives COMMUNITY its own show moments -- the inside view, with a '
+      + 'permission-and-privacy instruction, added in #520. MEASURED 2026-08-24: '
+      + 'inferShowability returns NEVER for COMMUNITY on every input -- canRecordScreen true, '
+      + 'false and unset all give NEVER -- and productSceneGuidance returns mayShow false with '
+      + 'ZERO moments at NEVER. So those moments cannot be reached through the showability '
+      + 'path. They are written, parity-checked against the edge copy, unit-tested, and dead.',
+    decision:
+      '⚠️ RECORDED RATHER THAN RESOLVED EITHER WAY, because the two available fixes are '
+      + 'opposite product decisions and I have no evidence to choose between them. Either (a) '
+      + 'inferShowability is right that a community has nothing to point a camera at, and the '
+      + 'COMMUNITY moments should be deleted; or (b) the moments are right -- a community DOES '
+      + 'have an inside worth showing on a screen -- and inferShowability is wrong to hard-'
+      + 'refuse it. ⚖️ I WROTE THE MOMENTS, so I am the least reliable judge of which. Picking '
+      + '(b) because it saves my own work is exactly the bias to name out loud.',
+    revisitWhen:
+      'The owner says which a community is: a place with a screen worth recording, or a thing '
+      + 'with nothing to film. It is one product judgement and it needs no data.',
+    cost:
+      'Zero today -- unreachable code shows a creator nothing. The cost is that it LOOKS done: '
+      + 'a reader finds COMMUNITY moments in the file and concludes communities are handled.',
+    status: 'OPEN',
+  }),
 ])
 
 export const openLimitations = (): readonly KnownLimitation[] =>

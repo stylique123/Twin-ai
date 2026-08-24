@@ -24,6 +24,8 @@ import {
   questionsToAsk, type AskContext, type ProductType, type Relationship,
 } from './questionRegistry'
 import type { EntityType, EntityRelationship } from './productEntity'
+// The showability rule is the AUTHORITY on whether a screen answer is used.
+import { inferShowability } from './productEntity'
 
 /**
  * ⚠️ `MARKETPLACE` AND `OTHER` MAP TO NULL, AND THAT IS A DECISION RATHER THAN A
@@ -103,8 +105,48 @@ export const asksPhysicalAvailability = (c: ProductFormContext): boolean =>
  *  universal form in a smaller costume. */
 export function capabilityQuestion(c: ProductFormContext): 'screen' | 'physical' | null {
   if (asksPhysicalAvailability(c)) return 'physical'
-  if (asksScreenShow(c)) return 'screen'
-  return null
+  // ⚠️ THE SAME FACT WAS ASKABLE ON ONE SURFACE AND NOT THE OTHER, and that is
+  // the "one question owns one fact" break rather than a missing question.
+  // MEASURED 2026-08-24: `inferShowability` puts MARKETPLACE and OTHER on the
+  // SCREEN branch and will turn `canRecordScreen: true` into ALWAYS for both --
+  // so onboarding can and does collect that answer. The Library could not,
+  // because `KIND` maps both to null and the registry therefore asks nothing.
+  // One creator answered it on the scan screen; the identical creator arriving
+  // through the Library was never given the chance.
+  //
+  // ⚖️ AND THE KIND MAP IS STILL RIGHT TO REFUSE. Its comment warns against
+  // "calling a marketplace 'software' because both live on a screen" -- inventing
+  // a registry TAXONOMY entry on a guess. That warning is about what KIND of
+  // product this is. This is a different question: can you record a screen. The
+  // fix is not to guess a kind, it is to stop deriving a capability question
+  // from a taxonomy that was never meant to answer it, and ask the SAME
+  // authority the showability rule asks.
+  //
+  // ⚖️ NOTHING NEW IS ASKED OF A CREATOR WHOSE ANSWER WOULD BE IGNORED. If
+  // inferShowability cannot consume a screen answer for this type -- SERVICE and
+  // COMMUNITY are NEVER whatever they say -- this still returns null.
+  // ⚠️ AND IT CUTS BOTH WAYS, WHICH IS THE HALF I DID NOT EXPECT. COMMUNITY was
+  // ASKED "can you record your screen to show it?" and inferShowability returns
+  // NEVER for a community whatever they answer -- true, false, unset, all NEVER.
+  // The answer was collected and discarded. That is the founding defect of this
+  // whole rebuild, in miniature, and it was already shipped.
+  if (c.type === null) return asksScreenShow(c) ? 'screen' : null
+  return screenAnswerIsUsed(c.type) ? 'screen' : null
+}
+
+/** Would the showability rule actually CONSUME a `canRecordScreen` answer for
+ *  this type? The single authority on that is `inferShowability` itself, asked
+ *  rather than re-derived — a second hand-written list of screen types is
+ *  exactly the drift this file already documents elsewhere. */
+export function screenAnswerIsUsed(type: EntityType): boolean {
+  // ⚠️ ONE CONDITION, BECAUSE THE SECOND ONE COULD NOT FAIL. This first read
+  // `=== 'ALWAYS' && inferShowability(type, { canRecordScreen: false }) ===
+  // 'NEVER'`, which looked more careful and was not: deleting that clause left
+  // all 14 cases green, because no type answers ALWAYS to true without
+  // answering NEVER to false. A verdict nothing can falsify is a failure -- the
+  // rule this repo already ships under that name -- so the clause is gone rather
+  // than kept as decoration that a reader would mistake for a tested guarantee.
+  return inferShowability(type, { canRecordScreen: true }) === 'ALWAYS'
 }
 
 /** What the creator actually reads. Plain English, and the wording differs
