@@ -1005,6 +1005,46 @@ const FIRST_PERSON_ACT_INVERTED = new RegExp(
   String.raw`\b(?:things?|ways?|lessons?|mistakes?|reasons?|what|how|why)\b[^.?!]{0,40}?` +
   String.raw`\b(?:i|we)\s+(?:${EXPERIENTIAL_VERB})\b`, 'i')
 
+// ⚠️ A DIRECTION THAT ASKS FOR A SCREEN CAPTURE, COUNTED WHERE IT CAN BE SEEN.
+// The prompt now forbids screen recordings, but the writer is a model and that is
+// an instruction rather than a guarantee. This exact direction shipped to a real
+// creator: "EXTRA CLIP: Screen recording showing the deletion of a draft" -- a
+// beat they cannot film, discovered after everything else was already shot.
+//
+// ⚖️ COUNTED BEFORE IT IS ENFORCED, the order every other beat_audit counter
+// uses. How often the writer still asks for one is not known, and a refusal built
+// on a guess about frequency is how a check becomes the thing people route
+// around. ⚠️ PARITY: this mirrors asksForScreenCapture in
+// packages/shared/src/screenCaptureConversion.ts -- the edge cannot import
+// @twinai/shared, so the rule lives twice and the shared copy is the tested one.
+const CAPTURE_PHRASES_INLINE: RegExp[] = [
+  /\b(?:a\s+|an\s+|the\s+)?screen[\s-]?recording\s+(?:of|showing|that\s+shows)\b/i,
+  /\b(?:a\s+|an\s+|the\s+)?screen[\s-]?capture\s+(?:of|showing|that\s+shows)\b/i,
+  /\brecord\s+(?:your|the|my)\s+screen\s+(?:to\s+show|showing|and\s+show)\b/i,
+  /\bscreen[\s-]?record\s+(?:your|the|my)?\s*/i,
+  /\b(?:a\s+|an\s+|the\s+)?screen[\s-]?recording\b/i,
+  /\b(?:a\s+|an\s+|the\s+)?screen[\s-]?capture\b/i,
+  /\brecord\s+(?:your|the|my)\s+screen\b/i,
+]
+
+function asksForScreenCaptureInline(direction: unknown): boolean {
+  if (typeof direction !== 'string' || direction.trim() === '') return false
+  return CAPTURE_PHRASES_INLINE.some((re) => re.test(direction))
+}
+
+/** How many beats still ask for something the creator cannot film in the take.
+ *  ⚠️ Reads `proof` and `direction` because the writer puts the shot in either. */
+function screenCaptureDirectionsInline(beatPlan: unknown): number {
+  if (!Array.isArray(beatPlan)) return 0
+  let n = 0
+  for (const b of beatPlan) {
+    if (!b || typeof b !== 'object') continue
+    const rec = b as Record<string, unknown>
+    if (asksForScreenCaptureInline(rec.proof) || asksForScreenCaptureInline(rec.direction)) n += 1
+  }
+  return n
+}
+
 function premiseDemandInline(referenceText: string | null | undefined): 'narrator_experience' | 'none' | 'unknown' {
   const text = String(referenceText ?? '').replace(/\s+/g, ' ').trim()
   if (text.length < MIN_PREMISE_CHARS) return 'unknown'
@@ -5109,6 +5149,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         (Array.isArray(declared) ? declared : []) as Array<Record<string, unknown>>,
         productFactValues).length,
       proof_quality: proofQualityCounts(
+        (templated.bp as { beat_plan?: unknown })?.beat_plan),
+      // ⚠️ THE SHOT THE CREATOR CANNOT SUPPLY. Twin stopped directing screen
+      // recordings; this counts how often the writer asks anyway. Zero is the
+      // expected reading and an absent counter would look identical to it, which
+      // is why it is written even when nothing is found.
+      screen_capture_directions: screenCaptureDirectionsInline(
         (templated.bp as { beat_plan?: unknown })?.beat_plan),
     }
     console.log(JSON.stringify({
