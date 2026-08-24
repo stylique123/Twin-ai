@@ -1161,6 +1161,85 @@ ${lines.join('\n')}`
 
 const SUBSTANCE_ENUM = /^(?:creator_knowledge|creator_experience|creator_opinion|product_dna|general|needs_user)$/i
 const NAMES_A_SOURCE = /^(?:the\s+)?(?:creator'\s?s?\b|creators'\b|creator\s+(?:experience|knowledge|expertise|opinion)\b|general (?:knowledge|observation)\b|product_dna\b|reference structure\b|specific knowledge\b)/i
+
+/**
+ * THE COMMUNITY MAP, READ INLINE.
+ *
+ * ⚠️ THE RULE LIVES TWICE AND THAT IS NOT OPTIONAL. Edge functions run on Deno
+ * and cannot import @twinai/shared, so this mirrors `communityMap.ts` under the
+ * …Inline convention. Two copies drift silently — the shared one learns a rule
+ * the edge never does, and the prompt quietly stops carrying it — so a parity
+ * case compares the shipped sources.
+ */
+const SURFACES_WITH_OTHER_PEOPLE_INLINE = ['feed', 'members', 'leaderboard', 'channels']
+
+/** ⚠️ A MAP WITH NO SURFACES IS NOT A MAP, and the writer must stay SILENT
+ *  rather than invent one. Mirrors `mapIsUsable`. */
+function communityMapIsUsableInline(m: unknown): boolean {
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return false
+  const map = m as Record<string, unknown>
+  if (typeof map.url !== 'string' || map.url.trim() === '') return false
+  if (typeof map.name !== 'string' || map.name.trim() === '') return false
+  return Array.isArray(map.surfaceIds) && map.surfaceIds.length > 0
+}
+
+/** ⚠️ ABSENT IS NOT PERMISSION. Mirrors `privacyOfProofItem`: anything that is
+ *  not an explicit `mine` or `permitted` is `blur`. Nothing ships assuming
+ *  permission from somebody who was never asked. */
+function proofPrivacyInline(item: unknown): string {
+  const p = (item as { privacy?: unknown } | null)?.privacy
+  return p === 'mine' || p === 'permitted' ? p : 'blur'
+}
+
+/**
+ * The block the writer reads about a community, or '' when there is no map.
+ *
+ * ⚖️ IT SUPPLIES FACTS AND ONE RULE, NOT A SCENE. Which beat shows the community
+ * is the writer's call from the reference; what may be SHOWN, what may be SAID,
+ * and what must be COVERED are ours, because each of those is checkable and none
+ * of them is taste.
+ */
+function communityBlockInline(raw: unknown, entityName: string): string {
+  if (!communityMapIsUsableInline(raw)) return ''
+  const map = raw as Record<string, unknown>
+  const ids = (map.surfaceIds as string[]).filter((x) => typeof x === 'string')
+  const name = String(map.name ?? entityName)
+
+  const figures: string[] = []
+  for (const key of ['memberCount', 'price', 'cadence']) {
+    const v = map[key]
+    if (typeof v === 'string' && v.trim() !== '') figures.push(v.trim())
+  }
+
+  const crowd = ids.filter((id) => SURFACES_WITH_OTHER_PEOPLE_INLINE.indexOf(id) !== -1)
+  const items = Array.isArray(map.proofItems) ? map.proofItems as Array<Record<string, unknown>> : []
+
+  const parts: string[] = []
+  parts.push(`\nTHEIR COMMUNITY — ${name}. A community is NOT one thing to film. These are the pages the creator CONFIRMED they can open on their phone, and each one proves something different. If a beat shows the community, name ONE of these; never invent a page, and never write "show your community", which leaves them to choose and they will open the feed.`)
+  parts.push(ids.map((id) => `  * ${id}`).join('\n'))
+
+  // ⚠️ EVERY NUMBER A SCRIPT SAYS MUST EXIST HERE. This is what turns a
+  // community fact into a checkable product fact rather than a sentence the
+  // model liked the sound of. An empty list is an INSTRUCTION, not an omission.
+  parts.push(figures.length
+    ? `\nFIGURES THIS SCRIPT MAY SPEAK, exactly as the creator stated them. Say NO other number about the community — not a rounded one, not an estimate, not one you infer from anything above:\n`
+      + figures.map((f) => `  * ${f}`).join('\n')
+    : '\nFIGURES THIS SCRIPT MAY SPEAK: NONE. The creator gave no numbers, so this script says no number about the community at all — no member count, no price, no meeting frequency. A number nobody supplied is one nobody checked.')
+
+  // ⚠️ THE COVERING LINE IS OWED BY THE PAGE, NOT BY THE ITEM. Filming a page
+  // with other people on it publishes a member's words to an audience that
+  // member never agreed to.
+  if (crowd.length) {
+    const uncovered = crowd.filter((id) =>
+      !items.some((i) => i && i.surface === id && proofPrivacyInline(i) !== 'blur'))
+    if (uncovered.length) {
+      parts.push(`\n⚠️ OTHER PEOPLE ARE ON THESE PAGES: ${uncovered.join(', ')}. If a beat shows one, its direction MUST also tell the creator to cover the names and faces of anybody who did not agree to appear. This is not optional and it is not a style note.`)
+    }
+  }
+
+  return parts.join('\n')
+}
+
 const NAMES_AN_EFFECT = /^(?:establishes?|sets? up|provides?|guides?|engages?|introduces?|explains?|concludes?|reinforces?|builds?|creates?|delivers?|summari[sz]es?|transitions?|highlights?|emphasi[sz]es?)\b/i
 
 type ProofQuality = 'shootable' | 'substance_enum' | 'names_a_source' | 'names_an_effect' | 'absent'
@@ -2998,7 +3077,7 @@ Deno.serve(async (req: Request) => {
     // so every generation recorded "no product was chosen" no matter which
     // product it was written about. A column that is read must be selected; the
     // optional chain made the absence look like a legitimate null.
-    .select('id, name, type, relationship, personal_use, showability, evidence, restrictions, knowledge')
+    .select('id, name, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
     .eq('owner_id', ownerId)
     .eq('voice_id', voice?.id ?? null)
     .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
@@ -4150,6 +4229,17 @@ Deno.serve(async (req: Request) => {
       ? ''
       : productSceneDirection(String(ownedEntity.name ?? 'the product'), sceneGuidance)
 
+    // ⚠️ A COMMUNITY IS THE ONE TYPE WHERE "SHOW THE PRODUCT" IS UNDER-SPECIFIED,
+    // so it gets facts the other types do not need. `communityBlockInline`
+    // returns '' when there is no usable map, which is the ordinary state for
+    // every product that is not a community AND for a community whose creator
+    // has not filled the form in — the writer stays silent for both, which is
+    // the same correct answer.
+    const communityBlock = communityBlockInline(
+      (ownedEntity as { community_map?: unknown } | null)?.community_map,
+      String(ownedEntity?.name ?? 'their community'),
+    )
+
     // THE COMPATIBILITY GATE'S REFUSALS (§16b), reaching the prompt as decisions
     // rather than as facts for the writer to weigh.
     //
@@ -4346,7 +4436,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}${audienceLevelLine}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${knowledgeBlock}
+- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
