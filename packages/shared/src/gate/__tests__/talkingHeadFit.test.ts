@@ -124,22 +124,38 @@ describe('the creator’s own account — option 3', () => {
   // VIDEOS, not a verdict on them. "Twin isn't for you" must never appear while
   // we did find something usable.
   it('a thin account is told the count, not that Twin is not for them', () => {
-    const m = messageForOwnAccount({ usable: 3, checked: 30 })
+    const m = messageForOwnAccount({ usable: 3, checked: 6 })
     expect(m.kind).toBe('thin')
-    expect(m.headline).toBe('We found 3 videos of you talking to the camera')
+    expect(m.headline).toBe('3 of the 6 videos we looked at are you talking to the camera')
     expect(m.detail).toContain('enough to get started')
     expect(`${m.headline} ${m.detail}`.toLowerCase()).not.toContain('not for you')
   })
 
-  it('one usable video reads as one video, not "1 videos"', () => {
-    expect(messageForOwnAccount({ usable: 1, checked: 30 }).headline)
-      .toBe('We found 1 video of you talking to the camera')
+  // ⚠️ THE SAMPLE SIZE IS THE HONESTY. Twin does not watch every video on an
+  // account — frames cost a download each. "We found 3 videos" told someone with
+  // forty videos a fact about their whole account that nobody measured.
+  it('names how many were actually looked at, never implying the whole account', () => {
+    const m = messageForOwnAccount({ usable: 3, checked: 6 })
+    expect(m.headline).toContain('6 videos we looked at')
+    expect(m.headline).not.toMatch(/^We found/)
   })
 
-  // ⚖️ THE ZERO CASE STILL SAYS NO — but names the one thing that changes it.
-  it('zero usable says no, and says what would change the answer', () => {
-    const m = messageForOwnAccount({ usable: 0, checked: 30 })
+  it('one usable video reads as "is", not "are"', () => {
+    expect(messageForOwnAccount({ usable: 1, checked: 6 }).headline)
+      .toBe('1 of the 6 videos we looked at is you talking to the camera')
+  })
+
+  it('one video looked at reads as "video", not "videos"', () => {
+    expect(messageForOwnAccount({ usable: 0, checked: 1 }).headline)
+      .toBe('None of the 1 video we looked at are you talking to the camera')
+  })
+
+  // ⚖️ THE ZERO CASE STILL SAYS NO — but as a measurement of what we sampled,
+  // not a verdict on the person, and it names the one thing that changes it.
+  it('zero usable says no, names the sample, and says what would change it', () => {
+    const m = messageForOwnAccount({ usable: 0, checked: 6 })
     expect(m.kind).toBe('none')
+    expect(m.headline).toBe('None of the 6 videos we looked at are you talking to the camera')
     expect(m.detail).toContain('come back and scan again')
   })
 
