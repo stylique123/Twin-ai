@@ -1122,6 +1122,13 @@ function ConfirmStep({
             mintFromWorkKind(workKind, {
               name: product.trim() || null,
               flags: { canRecordScreen, canFilmObjects },
+              // ⚠️ THE FINER ANSWER, WHICH REACHED NOTHING UNTIL NOW. The scan
+              // step asks "What kind of thing do you sell?" and the entity was
+              // minted from workKind alone -- so a creator selling a course
+              // said so and was typed SAAS. The type decides the show moments,
+              // so this was not cosmetic.
+              ownProductKind: draft.ownProductKind ?? null,
+              ownServiceKind: draft.ownServiceKind ?? null,
             }),
           )
         } catch (mintError) {

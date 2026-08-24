@@ -194,6 +194,39 @@ export const KNOWN_LIMITATIONS: readonly KnownLimitation[] = Object.freeze([
       + 'routed to the staging-harness issue rather than re-run until it goes green.',
     status: 'OPEN',
   }),
+  Object.freeze({
+    id: 'SCENE_GUIDANCE_DOES_NOT_READ_THE_TYPE',
+    what:
+      'productSceneGuidance takes an EntityType and, for everything shown through a '
+      + 'screen, ignores it. Measured on 2026-08-24: SAAS, COURSE, DIGITAL_PRODUCT, '
+      + 'MARKETPLACE and OTHER all return the SAME four screen_recording moments, word for '
+      + 'word. Only the physical/service/community split changes anything, and that split '
+      + 'happens in inferShowability rather than in the guidance. So a creator selling an '
+      + 'online course and a creator selling a dashboard are told to do identical things '
+      + 'with their camera.',
+    decision:
+      'RECORDED, NOT PATCHED, because the fix is content rather than wiring and inventing '
+      + 'it here would be guessing at direction nobody has watched a creator follow. The '
+      + 'owner asked for exactly this -- "guide them through scenes and words in detail, '
+      + 'now show landing page, this part, point or wave a hand at it, now we show '
+      + 'dashboard" -- and that request is about a SaaS dashboard specifically. A course '
+      + 'is a curriculum page and a lesson list; a marketplace is a listing and a checkout. '
+      + 'Those are different shots and different sentences. ⚠️ THIS WAS FOUND BY A GUARD '
+      + 'FAILING AGAINST MY OWN CLAIM: a commit asserting "the type decides the show '
+      + 'moments" was written, and the test proved it false before it shipped.',
+    revisitWhen:
+      'Any real recording exists of a creator following the screen_recording moments for '
+      + 'something that is NOT a SaaS dashboard. The direction was written for a dashboard, '
+      + 'and whether it survives contact with a course page is a question about a filmed '
+      + 'video, not about this file. The two teleprompter recordings and the watched '
+      + 'creator session are the first place that could be seen.',
+    cost:
+      'Writing per-type direction is cheap in code and expensive to get RIGHT -- it is the '
+      + 'difference between a beat a creator can film and one they abandon mid-shoot. It '
+      + 'also has to stay parity-checked against the edge copy, so it is a DB_EDGE_AUTH '
+      + 'trip rather than a shared-package edit.',
+    status: 'OPEN',
+  }),
 ])
 
 export const openLimitations = (): readonly KnownLimitation[] =>
