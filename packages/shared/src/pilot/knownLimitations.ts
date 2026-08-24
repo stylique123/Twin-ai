@@ -197,13 +197,14 @@ export const KNOWN_LIMITATIONS: readonly KnownLimitation[] = Object.freeze([
   Object.freeze({
     id: 'SCENE_GUIDANCE_DOES_NOT_READ_THE_TYPE',
     what:
-      'productSceneGuidance takes an EntityType and, for everything shown through a '
-      + 'screen, ignores it. Measured on 2026-08-24: SAAS, COURSE, DIGITAL_PRODUCT, '
-      + 'MARKETPLACE and OTHER all return the SAME four screen_recording moments, word for '
-      + 'word. Only the physical/service/community split changes anything, and that split '
-      + 'happens in inferShowability rather than in the guidance. So a creator selling an '
-      + 'online course and a creator selling a dashboard are told to do identical things '
-      + 'with their camera.',
+      'WAS: productSceneGuidance took an EntityType and, for everything shown through a '
+      + 'screen, ignored it. Measured on 2026-08-24: SAAS, COURSE, DIGITAL_PRODUCT, '
+      + 'MARKETPLACE and OTHER all returned the SAME four screen_recording moments, word '
+      + 'for word, so a creator selling an online course and a creator selling a dashboard '
+      + 'were told to do identical things with their camera. ⚠️ THAT MEASUREMENT NO LONGER '
+      + 'HOLDS. COURSE, MARKETPLACE, APP, DIGITAL_PRODUCT and COMMUNITY now each have their '
+      + 'own moments. SAAS and OTHER still take the default screen direction, which is '
+      + 'correct rather than left over: that direction was WRITTEN for a dashboard.',
     decision:
       'RECORDED, NOT PATCHED, because the fix is content rather than wiring and inventing '
       + 'it here would be guessing at direction nobody has watched a creator follow. The '
@@ -225,6 +226,28 @@ export const KNOWN_LIMITATIONS: readonly KnownLimitation[] = Object.freeze([
       + 'difference between a beat a creator can film and one they abandon mid-shoot. It '
       + 'also has to stay parity-checked against the edge copy, so it is a DB_EDGE_AUTH '
       + 'trip rather than a shared-package edit.',
+    status: 'RESOLVED',
+  }),
+  Object.freeze({
+    id: 'PER_TYPE_SCENE_DIRECTION_IS_UNFILMED',
+    what:
+      'Every screen-shown type now gets its own moments, and NOT ONE of them has been '
+      + 'followed by a person holding a phone. The direction is written, parity-checked '
+      + 'against the edge copy and unit-tested for shape. None of that is evidence that a '
+      + 'creator can film it.',
+    decision:
+      '⚠️ RECORDED AS ITS OWN LIMITATION RATHER THAN FOLDED INTO THE ONE IT SUCCEEDS. '
+      + 'SCENE_GUIDANCE_DOES_NOT_READ_THE_TYPE was a defect -- five types, one script -- '
+      + 'and it is fixed. This is a different claim: that the words now written are words '
+      + 'somebody can act on. Marking the first RESOLVED and stopping there would let a '
+      + 'wiring change stand as evidence about a filmed video, which it is not.',
+    revisitWhen:
+      'A real recording exists of a creator following the moments for something that is '
+      + 'NOT a SaaS dashboard. The two teleprompter recordings and the watched creator '
+      + 'session are the first place that could be seen.',
+    cost:
+      'Leaving it costs nothing until somebody quotes the per-type direction as proven. '
+      + 'The failure it guards against is exactly that quote.',
     status: 'OPEN',
   }),
 ])
