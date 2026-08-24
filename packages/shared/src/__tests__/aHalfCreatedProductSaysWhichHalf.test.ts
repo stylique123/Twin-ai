@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   productLifecycle, LIFECYCLE_MESSAGE, factsAreQuotable,
   IMPORT_FAILED_IS_NOT_DERIVABLE, type ProductLifecycle,
@@ -135,6 +137,33 @@ describe('the state that is honestly missing', () => {
 
   it('and the reason is recorded in code, not only in a commit message', () => {
     expect(IMPORT_FAILED_IS_NOT_DERIVABLE).toMatch(/writes nothing back/i)
+  })
+})
+
+describe('the card renders the state rather than re-deciding it', () => {
+  const repo = join(import.meta.dirname, '..', '..', '..', '..')
+  const code = readFileSync(join(repo, 'apps', 'web', 'src', 'pages', 'ProductLibrary.tsx'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+
+  // ⚠️ THE OWNER'S REPORT, AT ITS SOURCE. The card branched on
+  // `knowledge === null` alone, so a product WITH a link being read was offered
+  // a link box and told nothing about what was happening.
+  it('calls the derivation instead of branching on null alone', () => {
+    expect(code).toMatch(/productLifecycle\(e, photoPathsOf\(e\)\.length\)/)
+  })
+
+  it('the reading state is tested BEFORE the null branch it used to fall into', () => {
+    const reading = code.indexOf("productLifecycle(e, photoPathsOf(e).length) === 'READING'")
+    const nullBranch = code.indexOf('e.knowledge === null ?')
+    expect(reading).toBeGreaterThan(-1)
+    expect(nullBranch).toBeGreaterThan(-1)
+    expect(reading).toBeLessThan(nullBranch)
+  })
+
+  // ⚖️ ONE WORDING, NOT TWO. The sentence a reading product shows comes from
+  // LIFECYCLE_MESSAGE, so it cannot drift from the state that selected it.
+  it('shows the shared message rather than a second copy of it', () => {
+    expect(code).toMatch(/LIFECYCLE_MESSAGE\.READING/)
   })
 })
 

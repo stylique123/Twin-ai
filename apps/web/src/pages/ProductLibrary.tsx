@@ -46,6 +46,7 @@ import {
   signEditUrls,
   bestSuggestion,
   asksPersonalUse, capabilityQuestion, CAPABILITY_PROMPT,
+  productLifecycle, LIFECYCLE_MESSAGE,
   type ProductSuggestion,
 } from '@twinai/shared'
 import { readOnboardingDraft } from '../lib/onboardingDraft'
@@ -746,7 +747,21 @@ export default function ProductLibrary() {
               What Twin knows about it
             </p>
 
-            {e.knowledge === null ? (
+            {/* ⚠️ THE HALF-CREATED PRODUCT, REPORTED FROM A REAL ACCOUNT: "Added,
+                but we could not start reading that page." A card that infers its
+                own state from `knowledge === null` cannot tell "no link yet"
+                from "reading right now", so it offered a link box to somebody
+                who had already given one and said nothing about what was
+                happening. `productLifecycle` names the state once, and the card
+                renders it rather than re-deciding it. */}
+            {productLifecycle(e, photoPathsOf(e).length) === 'READING' ? (
+              <>
+                <p className="mt-1 text-sm text-sand">{LIFECYCLE_MESSAGE.READING}</p>
+                {e.productUrl && (
+                  <p className="mt-1 break-all text-xs text-stone">{e.productUrl}</p>
+                )}
+              </>
+            ) : e.knowledge === null ? (
               <>
                 <p className="mt-1 text-sm text-sand">
                   Paste a link to its page and Twin will read it, so your scripts can say
