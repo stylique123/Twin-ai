@@ -1,4 +1,11 @@
-import { db, type Job } from '../db.js'
+import { db, publishEarlyLook, type Job } from '../db.js'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { downloadReference } from '../media.js'
+import { parseRoute } from '../downloadRoute.js'
+import { earlyLook } from '../earlyLook.js'
+import { earlyLookStep } from '../earlyLookStep.js'
 import { transcribeFromUrl } from '../media.js'
 import { deriveStructure } from '../structure.js'
 
@@ -24,6 +31,36 @@ export async function handleTranscribe(job: Job): Promise<Record<string, unknown
   const url = String((job.payload as Record<string, unknown>).url ?? '').trim()
   if (!url) throw new Error('payload.url is required')
   const platform = (job.payload as Record<string, unknown>).platform as string | undefined
+
+  // ⚠️ THE TALKING-HEAD CHECK RUNS FIRST, AND THAT IS THE WHOLE POINT. TwinAI is
+  // talking-head only, and the requirement is that a creator hears "this won't
+  // work well" in seconds rather than after a full analysis. Transcription is
+  // the slow part, so the check goes in front of it and publishes its answer to
+  // the job row on the way past — the screen is polling that row already.
+  //
+  // ⚖️ AND ONLY FOR `ingest`, the path a creator actually waits on. `transcribe`
+  // is retired and nothing enqueues it; paying for a triage download on a batch
+  // path with nobody watching would buy a warning no one reads.
+  //
+  // ⚠️ IT NEVER BLOCKS, NEVER THROWS, AND NEVER DECIDES. The verdict and the
+  // words live in @twinai/shared; this records three raw answers. Every failure
+  // is an all-null answer, which reads as `unsure` and passes silently.
+  if (job.type === 'ingest') {
+    const dir = await mkdtemp(join(tmpdir(), 'twinai-triage-'))
+    try {
+      await earlyLookStep(join(dir, 'triage.mp4'), {
+        // ⚖️ `triage`, NOT `video`: 360p, because a check whose entire purpose
+        // is to be early must not wait on a 720p master to arrive.
+        download: async (outPath) => {
+          await downloadReference(url, parseRoute(undefined), { medium: 'triage', outPath, timeoutMs: 45_000 })
+        },
+        look: earlyLook,
+        persist: (r) => publishEarlyLook(job.id, r),
+      })
+    } finally {
+      await rm(dir, { recursive: true, force: true }).catch(() => {})
+    }
+  }
 
   const t = await transcribeFromUrl(url)
 

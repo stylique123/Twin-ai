@@ -9,6 +9,9 @@ import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBr
 import { loadProductEntities } from '../../lib/api'
 import type { ProductEntityRecord } from '../../lib/api'
 import { assessReadiness, isCommercialField } from '../../lib/api'
+import { judgeFit, warningForPickedVideo, recordTalkingHeadChoice } from '../../lib/api'
+import type { FitWarning, FitReason } from '../../lib/api'
+import { TalkingHeadWarning } from '../../components/TalkingHeadWarning'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
@@ -207,6 +210,26 @@ export default function V2Building() {
   // is a decision about the INPUT, taken before any credit is spent, so the copy
   // says what to do next rather than apologising for a failure.
   const [unusableRef, setUnusableRef] = useState<string | null>(null)
+  // ── THE TALKING-HEAD WARNING ──────────────────────────────────────────────
+  //
+  // ⚠️ IT WARNS AND WAITS; IT DOES NOT REFUSE. Unlike `unusableRef` above, which
+  // is a decision Twin makes alone, this one is the CREATOR'S. Twin agreed with
+  // a human on 73% of the visual claims it was judged on, so it must never be
+  // able to stop anybody — it may only say what it saw and hand back the choice.
+  //
+  // ⚖️ THE READ PAUSES HERE RATHER THAN RACING ON. The whole value is that the
+  // question is asked BEFORE the slow work and before any spend, so the loop
+  // holds on this promise until a button is pressed.
+  const [gateWarn, setGateWarn] = useState<FitWarning | null>(null)
+  const [gateBusy, setGateBusy] = useState(false)
+  const gateResolve = useRef<((c: 'used_anyway' | 'picked_another') => void) | null>(null)
+  // What Twin actually said, kept so the recorded row describes the warning the
+  // creator SAW rather than what the rules would produce today.
+  const gateCtx = useRef<{ jobId: string | null; reason: FitReason; framesLookedAt: number | null } | null>(null)
+  // ⚠️ ASKED ONCE PER BUILD. The poll runs up to 60 times and the answer sits on
+  // the job row for all of them; without this the card would reappear on every
+  // tick after the creator had already answered it.
+  const gateAsked = useRef(false)
   // ⚖️ A CONTRADICTION, NOT A MISSING INPUT. Readiness asks a question because an
   // answer would unblock the build; this one has no question — the goal and what
   // the creator has to sell disagree, and only they can settle which was wrong.
@@ -506,6 +529,43 @@ export default function V2Building() {
                 if (cancelled.current) return // explicit Cancel → stop, no spend
                 const job = await getJob(jobId)
                 if (!job) continue
+
+                // ⚠️ THE EARLY ANSWER ARRIVES BEFORE THE TRANSCRIPT, ON PURPOSE.
+                // The worker publishes it on the way past, so this fires while
+                // the job is still running — which is the entire point. Asking
+                // after `done` would be an apology, not a warning.
+                //
+                // ⚖️ `unsure` FALLS THROUGH SILENTLY. warningForPickedVideo
+                // returns null for anything but does_not_fit, so a check that
+                // failed, timed out or simply could not tell costs the creator
+                // nothing and says nothing. A broken check must never become an
+                // obstacle.
+                const early = job.result?.early_look
+                if (early && !gateAsked.current) {
+                  gateAsked.current = true
+                  const decision = judgeFit(early)
+                  const warn = warningForPickedVideo(decision)
+                  if (warn) {
+                    gateCtx.current = {
+                      jobId,
+                      reason: decision.reason,
+                      framesLookedAt: early.framesLookedAt ?? null,
+                    }
+                    const choice = await new Promise<'used_anyway' | 'picked_another'>((resolve) => {
+                      gateResolve.current = resolve
+                      if (alive) { setGateWarn(warn); setIngesting(false) }
+                    })
+                    if (cancelled.current) return // Cancel during the question → no spend
+                    if (choice === 'picked_another') {
+                      // ⚠️ NO SPEND, AND STRAIGHT BACK TO THE COMPOSER. They took
+                      // the advice; the useful next screen is the one with the
+                      // link box on it, not a progress bar they must abandon.
+                      if (alive) nav('/v2', { replace: true })
+                      return
+                    }
+                    if (alive) setIngesting(true)
+                  }
+                }
                 if (job.status === 'done' && job.result?.transcript_id) {
                   // REJECT AN UNUSABLE REFERENCE BEFORE IT POISONS THE SCRIPT.
                   // §5: "a bad reference link — 12 minutes, no speech, a
@@ -721,6 +781,33 @@ export default function V2Building() {
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [state, error, unusableRef, contradiction, askQuestions, nav])
+
+  // ⚠️ THE ROW IS WRITTEN BEFORE THE FLOW RESUMES, and the buttons are disabled
+  // while it is in flight. Two rows from one decision would corrupt the only
+  // evidence that says whether this gate is any good.
+  //
+  // ⚖️ BUT A FAILED WRITE NEVER TRAPS THE CREATOR. recordTalkingHeadChoice
+  // swallows its own errors, so the resolve below always runs.
+  const answerGate = async (choice: 'used_anyway' | 'picked_another') => {
+    if (gateBusy) return
+    setGateBusy(true)
+    const ctx = gateCtx.current
+    if (ctx) {
+      await recordTalkingHeadChoice({
+        jobId: ctx.jobId,
+        // does_not_fit is the only verdict that produces a card, and its three
+        // reasons are exactly the values the table accepts.
+        reason: ctx.reason as 'ANIMATED' | 'NOBODY_ON_CAMERA' | 'NOBODY_TALKING_TO_CAMERA',
+        framesLookedAt: ctx.framesLookedAt,
+        choice,
+      })
+    }
+    setGateBusy(false)
+    setGateWarn(null)
+    const resolve = gateResolve.current
+    gateResolve.current = null
+    resolve?.(choice)
+  }
 
   const echo = state.reference_url ? 'From your reference link' : 'From your idea'
   const shownPct = Math.round(pct)
@@ -1032,6 +1119,16 @@ export default function V2Building() {
             <button onClick={() => nav('/products')} className="btn-gradient mt-6 w-full">Open my Product Library</button>
             <button onClick={() => nav('/v2', { replace: true })} className="btn-ghost mt-3 w-full">Start over</button>
           </div>
+        ) : gateWarn ? (
+          // ⚠️ IT REPLACES THE PROGRESS BAR RATHER THAN SITTING BESIDE IT. The
+          // requirement was that this "very apparently" limits bad results; a
+          // note next to a spinner is read by nobody.
+          <TalkingHeadWarning
+            warning={gateWarn}
+            busy={gateBusy}
+            onPickAnother={() => { void answerGate('picked_another') }}
+            onUseAnyway={() => { void answerGate('used_anyway') }}
+          />
         ) : unusableRef ? (
           // NOT "We hit a snag" — nothing went wrong and nothing was charged. The
           // reference was read, measured, and judged the wrong shape to copy.

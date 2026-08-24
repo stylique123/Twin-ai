@@ -812,7 +812,7 @@ async function statBytes(path: string): Promise<number> {
  * cannot sample frames from an m4a. Route rendering, impersonation, the size cap
  * and the trace are identical by construction rather than by review.
  */
-type DownloadMedium = 'audio' | 'video'
+type DownloadMedium = 'audio' | 'video' | 'triage'
 
 const MEDIUM_ARGS: Record<DownloadMedium, readonly string[]> = {
   audio: ['-f', 'bestaudio/best', '-x', '--audio-format', 'm4a'],
@@ -820,6 +820,17 @@ const MEDIUM_ARGS: Record<DownloadMedium, readonly string[]> = {
   // anyway, and pulling a 1080p60 master to make four stills spends bandwidth on
   // pixels nothing reads — on the residential rung that bandwidth is metered.
   video: ['-f', 'bv*[height<=720]+ba/b[height<=720]/b', '--merge-output-format', 'mp4'],
+  // ⚠️ 360p, AND THE POINT IS SPEED RATHER THAN THRIFT. `triage` serves the
+  // talking-head check, which has to answer while a creator is still watching
+  // the screen. Pulling the same 720p master the full visual pass uses would
+  // make a check whose entire purpose is to be early arrive late — a slow
+  // triage question has failed at its job even when it answers correctly.
+  //
+  // ⚖️ AND 360p IS ENOUGH FOR WHAT IT ASKS. The three questions are "is anyone
+  // there", "are they facing me" and "is this drawn". None of them turn on fine
+  // detail, and the stills are downscaled to a 512px long edge before the model
+  // sees them regardless, so the extra pixels would be discarded on the way in.
+  triage: ['-f', 'bv*[height<=360]+ba/b[height<=360]/b', '--merge-output-format', 'mp4'],
 }
 
 export async function downloadReference(
