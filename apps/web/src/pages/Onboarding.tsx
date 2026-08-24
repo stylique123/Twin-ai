@@ -19,6 +19,7 @@ import {
   Q4_ANSWERS, mintFromWorkKind, mintsOwnedEntity, q4AsksOwnership,
   saveMintedEntity, type EntityType, type Q4Answer,
 } from '../lib/api'
+import { readScanFailure, scanFailure, type ScanFailure } from '../lib/api'
 import { Aurora } from '../components/Aurora'
 
 /** The chooser's words. Kept beside the screen rather than in the contract: the
@@ -484,6 +485,11 @@ function BuildingStep({
   onDraftChange: (next: OnboardingDraft) => void
 }) {
   const [err, setErr] = useState<string | null>(null)
+  // ⚠️ THE CLASSIFIED FAILURE, BESIDE THE RAW STRING RATHER THAN INSTEAD OF IT.
+  // `err` still drives anything that only needs a sentence; this decides whether
+  // the creator is told to go and change something, and it is the difference
+  // between "your account may be private" and "this is on our side".
+  const [failure, setFailure] = useState<ScanFailure | null>(null)
   const [stage, setStage] = useState(0)
 
   // THE QUESTIONS RUN AT THE CREATOR'S PACE, THE SCAN AT ITS OWN.
@@ -561,7 +567,14 @@ function BuildingStep({
           }
         } else if (res.status === 'failed') {
           if (timer.current) clearInterval(timer.current)
-          setErr(res.error ?? 'The scan could not finish.')
+          // ⚠️ CLASSIFIED FROM A CAUSE CODE, NEVER GUESSED FROM THE MESSAGE.
+          // `readScanFailure` recognises a known cause and falls back to UNKNOWN
+          // for everything else — and UNKNOWN is worded as OURS. Pattern-matching
+          // the server's prose for the word "private" would be exactly the guess
+          // this taxonomy exists to stop.
+          const f = readScanFailure((res as { cause?: unknown }).cause)
+          setFailure(f)
+          setErr(f.message)
           // AND FORGET THE DEAD SCAN. `mode` resumes into 'building' whenever
           // the draft still carries a voiceId, so a failed scan used to trap
           // the account: onboarded stays false, every sign-in redirects here,
@@ -572,7 +585,11 @@ function BuildingStep({
           onScanDead()
         } else if (Date.now() - startedAt > MAX_WAIT_MS) {
           if (timer.current) clearInterval(timer.current)
-          setErr('This is taking longer than usual. Head back and try again — a public account reads fastest.')
+          // A timeout tells us nothing about their account, so it must not
+          // imply one. UNKNOWN says we are unsure and it is worth another try.
+          const f = scanFailure('UNKNOWN')
+          setFailure(f)
+          setErr(f.message)
           onScanDead()
         }
       } catch (e) {
@@ -580,7 +597,11 @@ function BuildingStep({
         console.warn('dna poll', e)
         if (Date.now() - startedAt > MAX_WAIT_MS && !stopped) {
           if (timer.current) clearInterval(timer.current)
-          setErr('We couldn’t reach the scanner. Head back and try again in a moment.')
+          // We could not reach our OWN scanner. There is no ambiguity about
+          // whose problem this is.
+          const f = scanFailure('PLATFORM_ACCESS_FAILED')
+          setFailure(f)
+          setErr(f.message)
           onScanDead()
         }
       }
@@ -740,9 +761,24 @@ function BuildingStep({
       {err && (
         <div className="mt-6 space-y-2">
           <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>
-          <p className="text-sm text-sand">
-            Tip: pick a <span className="text-cream">public</span> account with a handful of recent posts — that reads fastest and most accurately.
-          </p>
+          {/* ⚠️ THE TIP USED TO SHOW ON EVERY FAILURE, INCLUDING OURS. Telling a
+              creator to "pick a public account" after Twin's own retriever fell
+              over sends them to check a setting that was never the problem — the
+              owner hit exactly this with a large, unambiguously public account.
+              It now appears only when the failure is genuinely theirs to fix. */}
+          {failure?.creatorCanFix && (
+            <p className="text-sm text-sand">
+              Tip: pick a <span className="text-cream">public</span> account with a handful of recent posts — that reads fastest and most accurately.
+            </p>
+          )}
+          {/* ⚖️ AND WHEN IT IS OURS, SAY WHAT ACTUALLY HELPS. The same creator on
+              another platform usually reads fine, which is what happened when
+              Instagram failed and YouTube worked. */}
+          {failure && !failure.creatorCanFix && failure.tryAnotherPlatform && (
+            <p className="text-sm text-sand">
+              You can also try the same creator on another platform — YouTube, TikTok or Instagram.
+            </p>
+          )}
         </div>
       )}
 
