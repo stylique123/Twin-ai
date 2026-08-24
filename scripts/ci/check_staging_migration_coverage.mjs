@@ -134,6 +134,21 @@ export const EXCLUDED = {
     + 'ordering would be the tail wagging the dog. The editor never reads '
     + '`product_entities` either — entities reach it through the blueprint prompt, the '
     + 'same route the brief takes in 0109 above. ⚠️ MANUAL APPLY: excluding it here means nothing applies it anywhere, so it was applied to production BY HAND on 2026-08-11 (verified: the table exists with RLS on). Any future migration excluded here carries the same debt.',
+  '0169_a_failed_read_leaves_a_trace':
+    'Adds `knowledge_failed_at` and `knowledge_error` to `product_entities`, which is '
+    + 'itself excluded above for the staging FK-ordering reason -- staging has no such '
+    + 'table, so this would fail on its first statement rather than pass vacuously. THE '
+    + 'EXCLUSION IS INHERITED, not a new judgement: the coverage guard names this case '
+    + 'itself and refuses to let the migration in while its creator is out. The editor '
+    + 'never reads `product_entities`; entities reach the blueprint through the prompt. '
+    + '⚠️ MANUAL APPLY, NOT YET DONE, AND IT BLOCKS THE MERGE. Excluding it means nothing '
+    + 'applies it anywhere. VERIFIED against production on 2026-08-24: product_entities '
+    + 'has knowledge, knowledge_extracted_at and knowledge_source_url and NEITHER new '
+    + 'column. So the worker update names columns that do not exist -- and the success '
+    + 'path treats an update error as FATAL (`if (error) throw`), which would mean every '
+    + 'successful extraction stores nothing. An earlier draft of this note said the write '
+    + 'would silently no-op; that was an assumption and it was wrong. The code must not '
+    + 'merge before the migration is applied, the same way #316 waited on 0120 and 0121.',
   '0138_generation_choices_product_fk':
     'Adds the `generation_choices.selected_product_id` FK to `product_entities`, '
     + 'which is itself excluded above for the staging FK-ordering reason. It is a '
