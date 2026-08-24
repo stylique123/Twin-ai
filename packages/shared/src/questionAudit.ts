@@ -18,13 +18,19 @@
 // listed as orphaned and the test FAILS, demanding the verdict be updated. An
 // audit that can silently go stale is the thing it was written to prevent.
 //
-// ⚠️ THE ROOT CAUSE THIS DOCUMENTS. Six of the scan questions are written only
-// into `OnboardingDraft` in localStorage. `savePreScriptBrief` sends exactly six
-// keys -- workKind, workKindOther, forbiddenClaims, audience, promotes, offer --
-// and none of the six scan answers is among them. THAT is why the same truth is
-// collected four times in four wordings: the first answer never left the
-// browser, so every later screen had to ask again. The duplication is a
-// SYMPTOM of the missing write, not a copywriting mistake.
+// ⚠️ THE ROOT CAUSE THIS DOCUMENTS, NOW HALF-FIXED. The scan questions USED TO
+// BE written only into `OnboardingDraft` in localStorage: `savePreScriptBrief`
+// sent exactly six keys -- workKind, workKindOther, forbiddenClaims, audience,
+// promotes, offer -- and not one scan answer was among them. THAT is why the
+// same truth was collected four times in four wordings: the first answer never
+// left the browser, so every later screen had to ask again. The duplication was
+// a SYMPTOM of the missing write, not a copywriting mistake.
+//
+// ⚖️ THE WRITE IS NOW WIRED, AND THAT IS NOT THE SAME AS DONE. Those fields moved
+// from ORPHANED_LOCAL to ORPHANED_NO_READER, not to LIVE. They survive the
+// browser; nothing in generate-blueprint or the worker reads them yet.
+// Persisting is necessary and insufficient, and the verdict says so rather than
+// letting a half-fix read as a finished one.
 
 export type AuditVerdict =
   /** Persisted server-side AND read by something that changes a script. */
