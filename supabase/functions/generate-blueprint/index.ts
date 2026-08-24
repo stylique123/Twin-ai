@@ -2306,10 +2306,10 @@ SCRIPT & HOOK INTEGRATION:
   * NEVER WRITE A PROGRESS CHECK. "Still with me?", "You are halfway there", "Ready for the last two?", "If you are still watching" — these ask the viewer to notice how long they have been watching, which is the opposite of retention, and they consume a beat to say nothing. Real creators do not say them.
 - Front-load the payoff promise, keep delivering, and place ONE clear CTA near the end that fits the goal: prefer a save ("save this so you can do it later") or a comment-bait question over a generic "follow for more".
 
-SHOT LIST & ASSET SPECIFICATION (B-ROLL & TALKING HEADS):
-- shot_list: specify all shots required to construct the final edit (talking heads, B-roll overlay inserts, and the cover/thumbnail frame).
+SHOT LIST & ASSET SPECIFICATION:
+- shot_list: specify all shots required to construct the final edit (talking heads and the cover/thumbnail frame).
 - shot_type: specify either 'talking_head' (camera on creator speaking) or 'cover_frame' (the thumbnail image/first frame). There is no third option: Twin does not plan overlay or cutaway footage, so never invent a shot the creator has no way to supply.
-- spoken_text: if this shot contains spoken lines (voiceover/narrative spoken during the B-roll overlay, or talking head lines), specify the exact spoken dialogue lines here. If this shot is a silent B-roll overlay or a cover thumbnail frame, set spoken_text to an empty string. This ensures some B-roll lines have spoken dialogue, while others remain silent.
+- spoken_text: if this shot contains spoken lines, specify the exact spoken dialogue lines here. If this shot is a cover/thumbnail frame, set spoken_text to an empty string.
 
 CAPTIONS (burned-in, for our own renderer):
 - Short, 3 to 6 words each, punchy, matched to the spoken line. These are the on-screen kinetic captions.
@@ -2317,7 +2317,7 @@ CAPTIONS (burned-in, for our own renderer):
 EDIT CHECKLIST (treat editing as a 9/10 craft, not an afterthought):
 - Cohesion: the finished piece must feel like ONE coherent video, not ten stitched clips. Call out jump-cut pacing, removing dead air and filler ("um", long pauses), and matching energy across cuts.
 - Sound design: specify a music bed mood and that it is ducked under the voice, plus 1 or 2 sound-effect or whoosh accents on key transitions. Audio normalized to about -14 LUFS for platform loudness.
-- B-roll / cutaways: name 2 to 3 concrete cutaways tied to specific lines so the visuals reinforce the words instead of a static talking head.
+- Visual change: name 2 to 3 concrete changes tied to specific lines — a move to a new position, a prop already in reach picked up, a change of framing or angle — so the visuals reinforce the words instead of one static frame. These are things the creator does ON CAMERA, never cutaway footage they would have to go and film.
 - Cover frame: specify the thumbnail / cover frame and the text overlay on it, because the cover drives the tap from a profile or grid.
 
 CAPTION PACKET: this is the spec for TwinAI's own auto-captioner (caption_style, pacing, emphasis, export). Write concrete, quantified values (font weight, words-per-screen, which words to emphasize, export aspect and fps) for OUR renderer, not any third-party tool.
@@ -2330,7 +2330,7 @@ PUBLISH PLAN:
 
 RETENTION MAP: for each beat give the goal AND the concrete tactic that holds attention there (open loop, visual change, tension, payoff), so the creator knows WHY each beat earns the next second. One beat in the middle MUST be the re-hook that resets attention at the predictable drop-off point.
 
-PRODUCTION SPRINT: compress filming, B-roll, caption/edit, and review into about 20 focused minutes of concrete tasks.
+PRODUCTION SPRINT: compress filming, caption/edit, and review into about 20 focused minutes of concrete tasks.
 
 FINAL CHECK (do this before returning): reread every hook and every script line against the CREATOR DNA — their vocabulary, hook patterns, point of view and enemy. If any line could belong to a generic creator in this niche, rewrite it until it is unmistakably this creator's. Confirm there are zero em or en dashes anywhere.
 
@@ -4570,7 +4570,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
 - Make the single CTA concrete and point it at the creator's product or offer above. If the offer is unspecified, fall back to a save or a comment-bait question.
 - publish_plan: produce ONE entry for EACH platform listed in CREATOR DNA, using only those platforms. Never invent a platform the creator does not use.
 - Write every script line TO ITS BEAT'S target_sec. A line for a 6 second beat is roughly 15 words at a natural pace; a line for a 16 second beat is roughly 40. Do not write a forty word line into a six second beat.
-- shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include at least one b-roll or insert shot and the cover frame shot, so the editor is never guessing.`
+- shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include the cover frame shot, so the editor is never guessing. Every shot is either the creator on camera or the cover frame — never an insert or cutaway they would have to source.`
 
     // ⚠️ ONE RUN ID FOR THE WHOLE LADDER, so a recovered retry counts as one
     // generation rather than two. Minted here rather than in the recorder because
