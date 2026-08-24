@@ -160,6 +160,40 @@ export const KNOWN_LIMITATIONS: readonly KnownLimitation[] = Object.freeze([
       + 'happen before either.',
     status: 'OPEN',
   }),
+  Object.freeze({
+    id: 'STAGING_PHASE5_CANCEL_TEARDOWN_FLAKE',
+    what:
+      'On 2026-08-24 the staging matrix failed phase 5 on head 9798b1df with '
+      + 'AssertionError [ERR_ASSERTION]: assert(!this.paused) thrown from Parser.finish '
+      + '(node:internal/deps/undici/undici) during the DELIBERATE SIGTERM in the '
+      + 'cancel-during_extract case. The diff under test touched only generate-blueprint show-'
+      + 'moment wiring and a generated edge copy -- nothing in the cancellation path, the '
+      + 'worker, or the HTTP client. A single workflow_dispatch re-run of the SAME head then '
+      + 'passed, and the change merged.',
+    decision:
+      'RECORDED AS OBSERVED-AND-RECOVERED, AND DELIBERATELY NOT AS A DIAGNOSIS. Two runs of one '
+      + 'head separate "reproducible on this commit" from "not reproducible on this commit"; '
+      + 'they do not establish WHY an undici parser was mid-body when the socket was torn down. '
+      + 'Writing "flaky teardown race" in here as a CAUSE would make the next person reading it '
+      + 'stop looking, and a cancellation bug that surfaces once every N runs is exactly the '
+      + 'kind that gets dismissed by an inherited label. What is known is the signature, the '
+      + 'step, and that it did not recur on the same commit. The outcome was PRE-REGISTERED '
+      + 'before the re-run -- pass meant merge without claiming a cause, the same failure meant '
+      + 'stop and investigate -- so the merge is not a decision made after seeing a convenient '
+      + 'result.',
+    revisitWhen:
+      'The same assert(!this.paused) signature appears in phase 5 on a DIFFERENT head. One '
+      + 'occurrence is an anecdote; a second on unrelated code makes it a property of the '
+      + 'cancellation teardown rather than of a commit, and at that point the thing to look at '
+      + 'is the undici response body on the aborted extract call -- specifically whether it is '
+      + 'consumed or destroyed before the socket goes away.',
+    cost:
+      'Investigating now costs a matrix trip per attempt against a failure that has not '
+      + 'recurred and cannot be forced. Leaving it costs a re-run when it happens again -- and '
+      + 'the standing rule already caps that at ONE re-run of the same head before it must be '
+      + 'routed to the staging-harness issue rather than re-run until it goes green.',
+    status: 'OPEN',
+  }),
 ])
 
 export const openLimitations = (): readonly KnownLimitation[] =>
