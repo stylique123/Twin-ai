@@ -47,8 +47,21 @@ export interface ShowMoment {
   /** What the words are FOR here. Not a script -- the writer supplies the
    *  sentence in the creator's voice; this says what the sentence must achieve. */
   sayWhat: string
-  /** The scene type this becomes. Never `b_roll`. */
-  sceneType: 'product_demo' | 'screen_recording' | 'talking_head'
+  /** The scene type this becomes. Never `b_roll`.
+   *
+   *  ⚠️ AND NEVER `screen_recording` EITHER, WHICH IS WHY IT IS NOT IN THE TYPE.
+   *  Twin used to direct screen recordings for everything that lives on a
+   *  screen. A screen recording is a second piece of work: the creator has to
+   *  capture it, find it, trim it and drop it into an edit, on a device that is
+   *  usually not the one they are filming with. Most never do, so the beat is
+   *  either missing or filled with a still. Everything Twin asks for is now a
+   *  thing the creator does ON CAMERA, in the take, with the phone in their
+   *  hand -- the screen appears INSIDE the shot rather than replacing it.
+   *
+   *  ⚖️ SO A SCREEN IS A `product_demo`. That type means "a physical object,
+   *  handled, on camera", and a phone held up beside your face with your
+   *  dashboard on it is exactly that. Nothing downstream had to widen. */
+  sceneType: 'product_demo' | 'talking_head'
 }
 
 /** Everything the writer and director need for one product in one video. */
@@ -102,28 +115,28 @@ const OBJECT_MOMENTS: readonly ShowMoment[] = Object.freeze([
  *  that says what it does, then move to the dashboard" is. */
 const SCREEN_MOMENTS: readonly ShowMoment[] = Object.freeze([
   Object.freeze({
-    onScreen: 'The landing page, top of the page, nothing scrolled yet.',
-    doThis: 'Open the page fresh and leave it still for a beat before you move anything. Do not scroll while you are introducing it.',
+    onScreen: 'Your phone held up beside your face, open on the page people land on first.',
+    doThis: 'Have the page already open BEFORE you start filming, then hold the phone up next to your head, screen turned to the camera, framed chest-up. Hold it still for a beat. A screen that wobbles reads as nervous.',
     sayWhat: 'Say what this thing is for, in the words a stranger would use — not the tagline on the page.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
   Object.freeze({
     onScreen: 'The one line or section that states what it actually does.',
-    doThis: 'Move the cursor to that line and leave it there. A cursor that keeps moving reads as searching; a cursor that stops reads as pointing.',
+    doThis: 'Put a finger beside that line and leave it there. A finger that keeps moving reads as searching; a finger that stops reads as pointing.',
     sayWhat: 'Say the promise in your own words and why it matters to the person watching.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
   Object.freeze({
     onScreen: 'The main screen people actually use — the dashboard, the editor, the feed.',
-    doThis: 'Go there directly. Do not narrate the navigation; cut straight to the screen that matters.',
+    doThis: 'Have that screen already open on the phone before the take. Do not film yourself tapping your way there -- nobody needs the journey.',
     sayWhat: 'Say what a person does here, as a sequence: they open this, they do that, they get this.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
   Object.freeze({
     onScreen: 'The result — the finished thing, the output, the number that changed.',
-    doThis: 'Show the end state, held still long enough to read.',
+    doThis: 'Hold the phone steady and close enough that the number is readable on a small screen. If it is tiny, pinch to zoom before you film.',
     sayWhat: 'Say what changed for them. This is the payoff the whole walkthrough was building to.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
 ])
 
@@ -146,19 +159,19 @@ const COURSE_MOMENTS: readonly ShowMoment[] = Object.freeze([
     onScreen: 'The course contents — the list of modules or lessons, unscrolled.',
     doThis: 'Open the contents page and hold it still. This is the one shot that shows the size of what they get, so let it sit long enough to be read.',
     sayWhat: 'Say what someone can do at the end that they cannot do now. Not the module titles — the outcome.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
   Object.freeze({
     onScreen: 'One lesson actually open — the video playing or the page of it people read.',
     doThis: 'Go into a real lesson, not the preview. Pick the one that proves the teaching is specific, and let a few seconds of it run.',
     sayWhat: 'Say what this particular lesson fixes. One concrete thing, the kind a person would recognise as their own problem.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
   Object.freeze({
     onScreen: 'Whatever comes WITH the course — the workbook, the templates, the community tab.',
     doThis: 'Open the extras. A course looks like a video list until you show that it is not only videos.',
     sayWhat: 'Say what they use these for while they are working through it.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
 ])
 
@@ -167,40 +180,40 @@ const MARKETPLACE_MOMENTS: readonly ShowMoment[] = Object.freeze([
     onScreen: 'The browse or search results — several real listings at once.',
     doThis: 'Show the breadth first. A marketplace is worth nothing to a viewer until they can see there is enough of it.',
     sayWhat: 'Say who is on the other side and roughly how much of it there is.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
   Object.freeze({
     onScreen: 'One listing opened — the real detail page.',
-    doThis: 'Open a genuine listing and stop moving. Do not scroll while you are explaining what is on it.',
+    doThis: 'Open a genuine listing before the take, then hold the phone up and stop moving. Talk to the camera, not to the screen.',
     sayWhat: 'Say what a person is deciding at this point and what on the page decides it for them.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
   Object.freeze({
     onScreen: 'The step where it actually happens — the booking, the basket, the message.',
     doThis: 'Show the moment of commitment, not the confirmation email. Stop before anything private appears.',
     sayWhat: 'Say how simple this step is, because the fear here is that it is not.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
 ])
 
 const APP_MOMENTS: readonly ShowMoment[] = Object.freeze([
   Object.freeze({
-    onScreen: 'The app open on a phone, held or screen-recorded — the first screen after opening.',
-    doThis: 'Record the phone, not a laptop. An app shown on a desktop browser stops looking like an app.',
+    onScreen: 'The app open on a phone, held up beside your face — the first screen after opening.',
+    doThis: 'Film the phone in your hand, not a laptop. An app shown on a desktop browser stops looking like an app. Have it already open before the take.',
     sayWhat: 'Say what someone opens this for, in the moment they would open it.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
   Object.freeze({
     onScreen: 'One thing being done, thumb visible if you can.',
     doThis: 'Do the action at normal speed. A tap that is too fast to follow teaches nothing.',
     sayWhat: 'Narrate what you are doing as you do it, in the order you do it.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
   Object.freeze({
     onScreen: 'The result on screen, held still long enough to read.',
     doThis: 'Stop and let the end state sit.',
     sayWhat: 'Say what just changed for them.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
 ])
 
@@ -209,19 +222,19 @@ const DIGITAL_PRODUCT_MOMENTS: readonly ShowMoment[] = Object.freeze([
     onScreen: 'The thing itself, open — the template, the file, the preset applied.',
     doThis: 'Open the actual product rather than a picture of it. A screenshot of a template is not the template.',
     sayWhat: 'Say what it is and what it saves them doing.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
   Object.freeze({
     onScreen: 'Before and after, side by side or one straight after the other.',
     doThis: 'Show the same thing without it and with it. This is the whole argument for a digital product and it is almost always skipped.',
     sayWhat: 'Say the difference out loud even though it is on screen. The viewer is often listening, not watching.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
   Object.freeze({
     onScreen: 'What is actually inside — the file list, the pages, the number of them.',
     doThis: 'Show the contents so the size of it is not something they have to take on trust.',
     sayWhat: 'Say what they get, plainly.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
 ])
 
@@ -237,15 +250,15 @@ const DIGITAL_PRODUCT_MOMENTS: readonly ShowMoment[] = Object.freeze([
 const COMMUNITY_MOMENTS: readonly ShowMoment[] = Object.freeze([
   Object.freeze({
     onScreen: 'The channel or topic list — the shape of the place, no messages readable.',
-    doThis: 'Show the structure rather than the conversation. Blur or scroll past anything with a name or a face on it.',
+    doThis: 'Hold the phone up beside your face with the place open on it. Before you film, cover member names with your thumb or crop them out of frame -- show the shape of the room, not the people in it.',
     sayWhat: 'Say what the place is for and who is in it.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
   Object.freeze({
     onScreen: 'One thread you have permission to show, or your own post.',
     doThis: 'Use your own words or something you have been given permission to show. Do not film other people\'s messages to prove a point about your product.',
     sayWhat: 'Say what kind of question gets answered here and how quickly.',
-    sceneType: 'screen_recording',
+    sceneType: 'product_demo',
   }),
 ])
 
@@ -266,7 +279,7 @@ function backgroundFor(type: EntityType): string | null {
     return 'Somewhere the product reads clearly against the background — a plain wall or a tidy surface behind you. Busy shelves make a held object disappear.'
   }
   if (ON_A_SCREEN.includes(type)) {
-    return 'Wherever you normally film. The screen recording carries the product, so the room behind you does not have to.'
+    return 'Somewhere plain and evenly lit, with the light in front of you rather than behind. You are holding a screen up next to your face, and a bright window behind you turns both of you into a silhouette.'
   }
   return null
 }

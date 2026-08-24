@@ -60,23 +60,42 @@ describe('capability decides first, and silence is never permission', () => {
 describe('an object and a screen are not the same kind of showing', () => {
   // ⚠️ THE DEFECT THIS REPLACES: one instruction — "show the product" — that
   // covered a book and a SaaS dashboard and helped with neither.
-  it('a physical product is held, and a SaaS product is opened', () => {
+  // ⚠️ THE TYPE NO LONGER CARRIES THIS DISTINCTION, AND THAT IS THE CHANGE.
+  // This case used to assert a book is not a `screen_recording` and a SaaS is not
+  // a `product_demo` — two kinds of showing, told apart by the enum. Twin stopped
+  // directing screen recordings entirely, so BOTH are now `product_demo`: a book
+  // in your hand and a phone in your hand are the same kind of shot.
+  //
+  // ⚖️ THE DISTINCTION IS REAL AND IT MOVED INTO THE WORDS. What differs is what
+  // the creator is told to DO, so that is what this now checks. Asserting on the
+  // enum would pass forever while the direction rotted.
+  it('a physical product is held, and a screen product is held up', () => {
     const book = productSceneGuidance('PHYSICAL_PRODUCT', 'ALWAYS')
     const app = productSceneGuidance('SAAS', 'ALWAYS')
     expect(book.moments[0].doThis).toMatch(/hold|pick it up/i)
-    expect(book.moments.every((m) => m.sceneType !== 'screen_recording')).toBe(true)
-    expect(app.moments[0].onScreen).toMatch(/landing page/i)
-    expect(app.moments.every((m) => m.sceneType !== 'product_demo')).toBe(true)
+    expect(app.moments[0].onScreen).toMatch(/phone|screen/i)
+    expect(app.moments[0].doThis).toMatch(/hold|open|film/i)
+    // They are the same shot TYPE and must not be the same DIRECTION.
+    expect(book.moments[0].doThis).not.toBe(app.moments[0].doThis)
+  })
+
+  // ⚖️ NOTHING ANYWHERE MAY ASK FOR A SCREEN RECORDING, whichever product it is.
+  it('neither a book nor a dashboard is ever a screen recording', () => {
+    for (const t of ['PHYSICAL_PRODUCT', 'SAAS'] as const) {
+      for (const m of productSceneGuidance(t, 'ALWAYS').moments) {
+        expect(m.sceneType).not.toBe('screen_recording')
+      }
+    }
   })
 
   it('the screen walkthrough is an ordered route, not one instruction', () => {
     const m = productSceneGuidance('SAAS', 'ALWAYS').moments
     const route = m.map((x) => x.onScreen.toLowerCase()).join(' | ')
-    expect(route).toMatch(/landing page/)
+    expect(route).toMatch(/land|first/)
     expect(route).toMatch(/dashboard|editor|feed/)
     expect(route).toMatch(/result|finished|output/)
-    // The landing page comes before the result, or it is not a walkthrough.
-    expect(route.indexOf('landing')).toBeLessThan(route.indexOf('result'))
+    // Where people arrive comes before the payoff, or it is not a walkthrough.
+    expect(route.search(/land|first/)).toBeLessThan(route.indexOf('result'))
   })
 
   // ⚖️ A SERVICE HAS NOTHING TO POINT A CAMERA AT. This is the consultant asked

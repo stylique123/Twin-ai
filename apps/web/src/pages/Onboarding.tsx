@@ -1401,7 +1401,7 @@ function ConfirmStep({
             HIDES a capture surface; `can_film_objects = false` withholds
             footage SUGGESTIONS. Saying no to the second removes advice, not
             ability, so the sentence has to promise the right thing. */}
-          <p className="mt-5 text-xs text-sand">Can you record your screen?</p>
+          <p className="mt-5 text-xs text-sand">Can you have it open on a screen while you film?</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {([true, false] as const).map((v) => (
               <button

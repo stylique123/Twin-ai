@@ -139,20 +139,36 @@ export function capabilityQuestion(c: ProductFormContext): 'screen' | 'physical'
  *  rather than re-derived — a second hand-written list of screen types is
  *  exactly the drift this file already documents elsewhere. */
 export function screenAnswerIsUsed(type: EntityType): boolean {
-  // ⚠️ ONE CONDITION, BECAUSE THE SECOND ONE COULD NOT FAIL. This first read
-  // `=== 'ALWAYS' && inferShowability(type, { canRecordScreen: false }) ===
-  // 'NEVER'`, which looked more careful and was not: deleting that clause left
-  // all 14 cases green, because no type answers ALWAYS to true without
-  // answering NEVER to false. A verdict nothing can falsify is a failure -- the
-  // rule this repo already ships under that name -- so the clause is gone rather
-  // than kept as decoration that a reader would mistake for a tested guarantee.
+  // ⚠️ TWO CONDITIONS AGAIN, AND THE SECOND ONE IS NOW FALSIFIABLE. It was
+  // removed a few hours ago for the right reason: deleting it left every case
+  // green, because at the time no type answered ALWAYS to true without answering
+  // NEVER to false, and a verdict nothing can falsify is a failure.
+  //
+  // ⚖️ COMMUNITY IS NOW EXACTLY THAT TYPE. It is ALWAYS showable whatever the
+  // screen answer says, because the shot is a phone held up beside the face --
+  // so the answer changes nothing and must not be asked for. One condition would
+  // ask it anyway. The clause is back because reality grew the case it needed,
+  // not because it looks more careful.
   return inferShowability(type, { canRecordScreen: true }) === 'ALWAYS'
+    && inferShowability(type, { canRecordScreen: false }) === 'NEVER'
 }
 
 /** What the creator actually reads. Plain English, and the wording differs
- *  because the ACTION differs — "can you record your screen" and "can you have it
- *  with you" are not the same favour to ask of somebody. */
+ *  because the ACTION differs — showing a screen and holding an object are not
+ *  the same favour to ask of somebody.
+ *
+ *  ⚠️ THE SCREEN QUESTION CHANGED BECAUSE ITS CONSUMER DID. It used to read "Can
+ *  you record your screen to show it?" and Twin no longer asks anybody to record
+ *  a screen: the product appears INSIDE the shot, on a phone held up beside the
+ *  face or a laptop turned around. A creator who screen-records fluently but
+ *  films on their only phone CANNOT supply that shot; one who has never opened a
+ *  screen recorder but owns a laptop and a phone CAN. The old question sorted
+ *  them the wrong way round.
+ *
+ *  ⚖️ THE STORED FIELD IS STILL `canRecordScreen` / `can_record_screen`. Renaming
+ *  it means a migration over live rows for no behavioural gain. What had to be
+ *  true is the sentence a creator reads, and that is what changed. */
 export const CAPABILITY_PROMPT: Record<'screen' | 'physical', string> = {
-  screen: 'Can you record your screen to show it?',
+  screen: 'Can you have it open on a screen while you film?',
   physical: 'Can you have it with you when you film?',
 }

@@ -269,20 +269,20 @@ export const KNOWN_LIMITATIONS: readonly KnownLimitation[] = Object.freeze([
       + 'ZERO moments at NEVER. So those moments cannot be reached through the showability '
       + 'path. They are written, parity-checked against the edge copy, unit-tested, and dead.',
     decision:
-      '⚠️ RECORDED RATHER THAN RESOLVED EITHER WAY, because the two available fixes are '
-      + 'opposite product decisions and I have no evidence to choose between them. Either (a) '
-      + 'inferShowability is right that a community has nothing to point a camera at, and the '
-      + 'COMMUNITY moments should be deleted; or (b) the moments are right -- a community DOES '
-      + 'have an inside worth showing on a screen -- and inferShowability is wrong to hard-'
-      + 'refuse it. ⚖️ I WROTE THE MOMENTS, so I am the least reliable judge of which. Picking '
-      + '(b) because it saves my own work is exactly the bias to name out loud.',
+      '⚖️ SETTLED BY THE OWNER, AND IT WAS NEITHER OPTION I OFFERED. I asked for a choice '
+      + 'between deleting the moments and making communities showable. The answer was a third '
+      + 'thing: communities ARE showable, and the shot is a CAMERA POINTED AT A PHONE, never a '
+      + 'screen recording -- which also made the moments wrong in a way I had not spotted, since '
+      + 'they were typed screen_recording. ⚠️ I WROTE THOSE MOMENTS and had said so when I '
+      + 'declined to pick; the option that saved my own work was not the one taken, and the '
+      + 'version that shipped is better than either I proposed.',
     revisitWhen:
       'The owner says which a community is: a place with a screen worth recording, or a thing '
       + 'with nothing to film. It is one product judgement and it needs no data.',
     cost:
       'Zero today -- unreachable code shows a creator nothing. The cost is that it LOOKS done: '
       + 'a reader finds COMMUNITY moments in the file and concludes communities are handled.',
-    status: 'OPEN',
+    status: 'RESOLVED',
   }),
 ])
 

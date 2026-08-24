@@ -153,6 +153,17 @@ export function isRecordingScriptForGeneration(
 
   let hasSpokenScene = false
   const seen = new Set<number>()
+  // ⚠️ `screen_recording` IS STILL ACCEPTED HERE AND IS NO LONGER EMITTED
+  // ANYWHERE. Twin stopped directing screen recordings -- the shot type is gone
+  // from ShowMoment and the writer is told never to ask for one. This set is the
+  // READER, though, and it reads work creators already saved.
+  //
+  // ⚖️ MEASURED BEFORE DECIDING, against production on 2026-08-24: 13 of 41
+  // generations carry `screen_recording` inside their blueprint, plus one
+  // scene_timeline. Dropping it from this set would have made roughly a third of
+  // every script anybody has ever generated fail validation and vanish from
+  // their editor. A parser is liberal in what it accepts and strict in what it
+  // emits; the strictness belongs at the writing end, which is where it now is.
   const sceneTypes = new Set<SceneType>(['talking_head', 'b_roll', 'screen_recording', 'product_demo', 'cta'])
   for (let index = 0; index < script.scenes.length; index++) {
     const raw = script.scenes[index]

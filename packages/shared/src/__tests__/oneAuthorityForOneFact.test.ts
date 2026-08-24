@@ -56,6 +56,7 @@ describe('one authority decides whether a screen answer is used', () => {
   it('every type that infers ALWAYS from a screen answer is asked, with no list to maintain', () => {
     for (const t of ENTITY_TYPES) {
       const consumed = inferShowability(t as EntityType, { canRecordScreen: true }) === 'ALWAYS'
+        && inferShowability(t as EntityType, { canRecordScreen: false }) === 'NEVER'
       expect(screenAnswerIsUsed(t as EntityType)).toBe(consumed)
       if (consumed && t !== 'PHYSICAL_PRODUCT') expect(ask(t as EntityType)).toBe('screen')
     }
@@ -69,8 +70,13 @@ describe('one authority decides whether a screen answer is used', () => {
     }
   })
 
-  it('the wording a creator reads is unchanged plain English', () => {
-    expect(CAPABILITY_PROMPT.screen).toBe('Can you record your screen to show it?')
+  // ⚠️ THE SCREEN WORDING DELIBERATELY CHANGED, and pinning the old sentence
+  // here would now fail against correct code. Twin no longer asks anyone to
+  // record a screen, so the question asks what actually gates the shot: can the
+  // thing be open on a screen while they film.
+  it('the wording a creator reads is plain English and asks for the right favour', () => {
+    expect(CAPABILITY_PROMPT.screen).toBe('Can you have it open on a screen while you film?')
     expect(CAPABILITY_PROMPT.physical).toBe('Can you have it with you when you film?')
+    expect(CAPABILITY_PROMPT.screen).not.toMatch(/record/i)
   })
 })

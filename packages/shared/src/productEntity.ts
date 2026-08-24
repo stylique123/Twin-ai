@@ -171,7 +171,24 @@ export function inferShowability(
   // ⚖️ WHAT IS FILMABLE AT ALL. A service and a community have nothing to point
   // a camera at, so no capability answer can make them showable — that is a fact
   // about the kind, not a gap in what the creator told us.
-  if (type === 'SERVICE' || type === 'COMMUNITY') return 'NEVER'
+  // ⚖️ A SERVICE HAS NOTHING TO POINT A CAMERA AT. Consulting is not a thing in
+  // the room and not a thing on a screen, so no capability answer can make it
+  // showable — a fact about the kind, not a gap in what the creator told us.
+  if (type === 'SERVICE') return 'NEVER'
+  // ⚠️ A COMMUNITY IS SHOWABLE, AND THE OWNER'S BUILD PLAN SETTLED IT. This used
+  // to be bundled with SERVICE on the reasoning that neither is an object. That
+  // grouped them on the wrong axis: a community is not an object, but it IS a
+  // place with a screen — the feed, the classroom, the member count, the one
+  // pinned win. Refusing it meant a creator whose whole business is a community
+  // got no product scene at all.
+  //
+  // ⚖️ AND IT IS ALWAYS, WITHOUT ASKING A CAPABILITY QUESTION, because the shot
+  // is a CAMERA POINTED AT A SCREEN -- the creator holds their own phone up
+  // beside their face. That needs no screen-recording permission and no second
+  // piece of kit they might not own, so there is no answer that could change the
+  // outcome. Asking anyway would spend their attention on a question whose
+  // answer is discarded, which is the defect this rebuild exists to remove.
+  if (type === 'COMMUNITY') return 'ALWAYS'
   // ⚠️ THE SPLIT IS "OBJECT IN THE ROOM" VERSUS "THING ON A SCREEN", NOT the
   // enum's alphabetical shape. A physical product needs `canFilmObjects`;
   // everything else that can be shown at all is shown through a screen. OTHER

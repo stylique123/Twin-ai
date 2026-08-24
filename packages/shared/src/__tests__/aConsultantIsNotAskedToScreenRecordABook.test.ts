@@ -24,7 +24,12 @@ describe('the question that named the whole problem', () => {
     const app = { type: 'SAAS' as EntityType, relationship: 'OWN_PRODUCT' as EntityRelationship }
     expect(asksPhysicalAvailability(app)).toBe(false)
     expect(capabilityQuestion(app)).toBe('screen')
-    expect(CAPABILITY_PROMPT[capabilityQuestion(app)!]).toMatch(/record your screen/i)
+    // ⚠️ THE WORDING CHANGED WITH ITS CONSUMER, so this asserts the property
+    // rather than the old sentence: software is asked about a SCREEN, and is
+    // never asked to RECORD one, because Twin no longer directs screen
+    // recordings. Pinning the old string would have failed against correct code.
+    expect(CAPABILITY_PROMPT[capabilityQuestion(app)!]).toMatch(/screen/i)
+    expect(CAPABILITY_PROMPT[capabilityQuestion(app)!]).not.toMatch(/record/i)
   })
 
   // ⚖️ A SERVICE HAS NOTHING TO POINT A CAMERA AT, so it is asked neither.
