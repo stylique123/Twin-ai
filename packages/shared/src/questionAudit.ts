@@ -135,11 +135,22 @@ export const AUDITED_QUESTIONS: readonly AuditedQuestion[] = Object.freeze([
     asked: 'How much do they already know?',
     field: 'audienceKnowledge',
     screen: 'Onboarding scan step',
-    verdict: 'ORPHANED_WRONG_WRITER',
+    // ⚠️ THIS VERDICT WENT STALE AND NOTHING NOTICED, WHICH IS THE FINDING.
+    // It read ORPHANED_WRONG_WRITER -- "generate-blueprint reads it, onboarding
+    // never writes it". Then the six-answer write landed, onboarding began
+    // persisting it, and the audit went on reporting an orphan that had been
+    // fixed. The entry carried no `absentFrom` and its verdict had no case, so
+    // there was nothing to break.
+    //
+    // ⚖️ AN AUDIT THAT CAN GO STALE IS THE THING THE AUDIT EXISTS TO PREVENT.
+    // The guard now requires every verdict to be checked by something, so a
+    // verdict with no evidence is itself a failure.
+    verdict: 'LIVE',
     cost:
-      'generate-blueprint DOES read audienceKnowledge, and onboarding never writes it -- '
-      + 'Settings is its only writer. Answering it during onboarding changes nothing '
-      + 'unless the creator later re-answers the same question in Settings.',
+      'None any more, and the history is the point: it WAS asked on a screen that did '
+      + 'not persist it, so the answer only counted if the creator later re-answered the '
+      + 'same question in Settings. Onboarding now writes it and generate-blueprint reads '
+      + 'it -- the chain is complete end to end.',
   }),
 ])
 
