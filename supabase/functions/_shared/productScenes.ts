@@ -28,7 +28,14 @@
 // on the camera they already have. Nothing here asks for stock footage or a
 // second source.
 
-import type { EntityType, Showability } from './productEntity'
+// ⚠️ DECLARED LOCALLY, NOT IMPORTED. Deno deploy cannot reach @twinai/shared, so
+// the two type names are restated here and NOTHING ELSE in this file differs
+// from packages/shared/src/productScenes.ts. A parity test compares the rest
+// byte for byte, because a paraphrase is how the two copies come to disagree.
+export type EntityType =
+  | 'SAAS' | 'APP' | 'PHYSICAL_PRODUCT' | 'DIGITAL_PRODUCT'
+  | 'SERVICE' | 'COURSE' | 'COMMUNITY' | 'MARKETPLACE' | 'OTHER'
+export type Showability = 'ALWAYS' | 'SOMETIMES' | 'NEVER' | 'UNKNOWN'
 
 /** What the creator is looking at, doing, and saying — all three, or it is not
  *  a moment. */

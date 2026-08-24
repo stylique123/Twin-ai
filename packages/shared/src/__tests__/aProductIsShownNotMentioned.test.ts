@@ -34,14 +34,26 @@ describe('capability decides first, and silence is never permission', () => {
     expect(productSceneGuidance('SAAS', 'ALWAYS').moments.length).toBeGreaterThan(2)
   })
 
-  // ⚠️ THE PROMPT'S OWN RULE: a scene must not DEPEND on the product being
-  // visible. One optional beat satisfies that; four do not.
-  it('SOMETIMES keeps one beat, not the whole demonstration', () => {
+  // ⚠️ THIS ASSERTION ENCODED MY OWN WRONG RULE AND HAD TO BE REVERSED. It
+  // demanded SOMETIMES keep "one optional beat", but a show moment IS a scene
+  // that depends on the product being visible, so one beat does not weaken the
+  // rule -- it breaks it. generate-blueprint decided this before I did, and
+  // said why: a script is written once and filmed LATER.
+  it('SOMETIMES builds no scene on the product at all', () => {
     for (const t of ['PHYSICAL_PRODUCT', 'SAAS'] as EntityType[]) {
       const g = productSceneGuidance(t, 'SOMETIMES')
-      expect(g.moments.length, t).toBe(1)
-      expect(g.moments.length).toBeLessThan(productSceneGuidance(t, 'ALWAYS').moments.length)
+      expect(g.moments, t).toEqual([])
+      expect(g.mayShow, t).toBe(false)
     }
+  })
+
+  // ⚖️ BUT IT IS NOT NEVER. The creator is not told they cannot show it, only
+  // that nothing will be built on it -- and the sentence says so.
+  it('SOMETIMES still says it may be mentioned, unlike NEVER', () => {
+    const sometimes = productSceneGuidance('PHYSICAL_PRODUCT', 'SOMETIMES')
+    expect(sometimes.cannotShowBecause).toMatch(/mentioned/)
+    expect(productSceneGuidance('PHYSICAL_PRODUCT', 'NEVER').cannotShowBecause)
+      .not.toMatch(/mentioned/)
   })
 })
 
@@ -135,12 +147,14 @@ describe('the teleprompter does not scroll through a physical action', () => {
   // that keeps scrolling makes the creator choose between them.
   it('pauses after a show moment whenever there is one', () => {
     expect(productSceneGuidance('PHYSICAL_PRODUCT', 'ALWAYS').pauseAfterShowMoment).toBe(true)
-    expect(productSceneGuidance('SAAS', 'SOMETIMES').pauseAfterShowMoment).toBe(true)
+    expect(productSceneGuidance('SAAS', 'ALWAYS').pauseAfterShowMoment).toBe(true)
   })
 
   it('does not pause a talking-only plan for no reason', () => {
     expect(productSceneGuidance('PHYSICAL_PRODUCT', 'NEVER').pauseAfterShowMoment).toBe(false)
     expect(productSceneGuidance('SERVICE', 'ALWAYS').pauseAfterShowMoment).toBe(false)
+    // SOMETIMES builds no scene, so there is nothing to pause for.
+    expect(productSceneGuidance('SAAS', 'SOMETIMES').pauseAfterShowMoment).toBe(false)
   })
 })
 

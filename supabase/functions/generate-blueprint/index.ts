@@ -21,6 +21,10 @@ import {
   SUBSTANCE_SOURCES, type SubstanceItem,
 } from '../_shared/knowledgeResolver.ts'
 import { claimStrength, type ClaimStrength } from '../_shared/claimStrength.ts'
+import {
+  productSceneGuidance, productSceneDirection,
+  type EntityType, type Showability,
+} from '../_shared/productScenes.ts'
 
 // Internal credits per recreation. Adjustable via the RECREATION_COST secret so we
 // can quietly change the credit<->video rate later WITHOUT a code change and
@@ -3951,14 +3955,20 @@ Deno.serve(async (req: Request) => {
     // costs an ignorable tip. This decides whether a scene is written at all, so
     // silence costs an unfilmable scene in a plan someone is following with a
     // phone in their hand.
-    const showability = (ownedEntity?.showability ?? 'UNKNOWN') as string
-    const showLine = !ownedEntity
+    //
+    // ⚠️ AND THE PERMISSION IS NOW FOLLOWED BY THE INSTRUCTIONS. Saying "a scene
+    // may show it directly" told the writer it was ALLOWED and never what to
+    // write, so a product scene came out as a talking head who mentions a
+    // product. `productSceneGuidance` supplies the beats: what is on screen,
+    // what the creator DOES with their hands, and what the words must achieve --
+    // and it distinguishes an object held in the room from a screen walked
+    // through, which one sentence could not.
+    const showability = (ownedEntity?.showability ?? 'UNKNOWN') as Showability
+    const productType = (ownedEntity?.type ?? 'OTHER') as EntityType
+    const sceneGuidance = ownedEntity ? productSceneGuidance(productType, showability) : null
+    const showLine = !ownedEntity || !sceneGuidance
       ? ''
-      : showability === 'ALWAYS'
-        ? `\n- SHOWING IT: the creator can put ${ownedEntity.name ?? 'the product'} on screen. A scene may show it directly.`
-        : showability === 'SOMETIMES'
-          ? `\n- SHOWING IT: the creator can only SOMETIMES put ${ownedEntity.name ?? 'the product'} on screen. It may be mentioned, and a scene must NOT depend on it being visible.`
-          : `\n- SHOWING IT: the creator CANNOT put ${ownedEntity.name ?? 'the product'} on screen. Write NO shot that requires showing, holding or demonstrating it. This is a talking script.`
+      : productSceneDirection(String(ownedEntity.name ?? 'the product'), sceneGuidance)
 
     // THE COMPATIBILITY GATE'S REFUSALS (§16b), reaching the prompt as decisions
     // rather than as facts for the writer to weigh.
