@@ -117,6 +117,56 @@ export function frameSchedule(durationSec: number, count: number): number[] {
 }
 
 /**
+ * The BEAT schedule: the content pass's timestamps, made safe to sample at.
+ *
+ * ⚠️ THIS EXISTS BECAUSE THE OLD ONE LINE LIED. It read
+ * `requested.filter((t) => t < duration)` under a comment promising the beats
+ * were "CLAMPED INSIDE THE CLIP" and warning that a beat past the end "would
+ * silently thin the sample". Filtering IS the thinning. A beat list of
+ * [0, 12, 25, 40] against an 11s clip left exactly one timestamp — 0 — so the
+ * pass looked at ONE frame, and that frame was the title card. A real pilot
+ * reference came back with `frames_sampled: 1, frame_schedule_basis:
+ * content_beats`, and the reviewer was asked whether a second person was needed
+ * on camera from a poster image.
+ *
+ * ⚠️ AND ZERO IS THE WORST TIMESTAMP IN THE CLIP. `frameSchedule` samples
+ * interior midpoints precisely so it never lands on the title card; the beat
+ * path had no such protection, even though a hook beat is ALWAYS at or near 0.
+ * The uniform path's care was undone by the path that overrides it.
+ *
+ * ⚖️ SO BEATS ARE CLAMPED INTO THE SAME INTERIOR THE UNIFORM SCHEDULE USES,
+ * rather than dropped. A beat past the end still carries the content pass's
+ * intent — "look late" — and pulling it to the last interior midpoint keeps
+ * that intent; discarding it throws the intent away AND thins the sample.
+ *
+ * ⚖️ AND THE SAMPLE IS TOPPED UP so it is never thinner than uniform sampling
+ * would have been. Beats are better evidence than midpoints, but FEWER beats
+ * are not better than more frames: a claim can only cite what was sent.
+ */
+export function beatSchedule(
+  requested: readonly number[], durationSec: number, count: number,
+): number[] {
+  const n = Math.max(0, Math.trunc(count))
+  if (!(durationSec > 0) || n === 0) return []
+  const usable = requested.filter((t) => Number.isFinite(t) && t >= 0)
+  if (usable.length === 0) return []
+
+  // The same interior the uniform schedule occupies: never 0 (title card),
+  // never the final instant (end card).
+  const floor = (0.5 / n) * durationSec
+  const ceil = ((n - 0.5) / n) * durationSec
+  const ms = (t: number) => Math.round(Math.min(ceil, Math.max(floor, t)) * 1000) / 1000
+
+  const out = new Set<number>(usable.map(ms))
+  // ⚠️ TOP UP ONLY AFTER THE BEATS, so a beat is never displaced by a midpoint.
+  for (const t of frameSchedule(durationSec, n)) {
+    if (out.size >= n) break
+    out.add(t)
+  }
+  return [...out].sort((a, b) => a - b).slice(0, n)
+}
+
+/**
  * Sample `count` stills from a local video file.
  *
  * ⚠️ NEVER THROWS FOR A THIN SAMPLE. A reference that yields two frames is a
@@ -139,13 +189,9 @@ export async function sampleFrames(
   // caller it describes as "doing its own uniform sampling KNOWING that is what
   // it is doing" — the knowing part being `scheduleBasis` on the result.
   const requested = (opts.at ?? []).filter((t) => Number.isFinite(t) && t >= 0)
-  // ⚖️ CLAMPED INSIDE THE CLIP, AND STILL IN ORDER. A beat timestamp past the end
-  // makes ffmpeg emit nothing and say nothing, which would silently thin the
-  // sample; a beat list out of order would break the "frame 1 is earliest"
-  // guarantee the whole citation scheme rests on.
-  const beats = [...new Set(requested.filter((t) => t < duration))].sort((a, b) => a - b)
+  const beats = beatSchedule(requested, duration, count)
   const scheduleBasis: ScheduleBasis = beats.length > 0 ? 'content_beats' : 'uniform'
-  const schedule = beats.length > 0 ? beats.slice(0, count) : frameSchedule(duration, count)
+  const schedule = beats.length > 0 ? beats : frameSchedule(duration, count)
   if (schedule.length === 0) return EMPTY
 
   const dir = await mkdtemp(join(tmpdir(), 'twinai-frames-'))
