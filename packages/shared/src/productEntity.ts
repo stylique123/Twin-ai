@@ -800,6 +800,22 @@ export function entityStatus(entity: DraftEntity): EntityStatus {
   return 'ready'
 }
 
+/** How many live product_entities rows must exist, across more than one owner,
+ *  before the claim stop's blast radius can be measured at all.
+ *
+ *  ⚠️ MEASURED 2026-08-24: THE WHOLE TABLE HELD ONE ROW. One owner, created
+ *  2026-08-18, none archived. `mayGenerateClaims` and `entityStatus` still have
+ *  zero production callers, and the reason they stay unwired is no longer "it
+ *  would block most products" -- that was an assumption, and the population it
+ *  described does not exist. It is that NOTHING IS KNOWN about what the stop
+ *  would block.
+ *
+ *  ⚖️ 100% OF ONE ROW IS NOT A RATE. That single row would return
+ *  missing_information, and quoting it as "100% would be blocked" would be the
+ *  same error as the assumption it replaced, pointing the other way. This
+ *  number is the threshold below which the question is simply not askable. */
+export const CLAIM_STOP_MIN_POPULATION = 25
+
 /** May a script generate CLAIMS about this entity? The hard half of §14. */
 export function mayGenerateClaims(entity: DraftEntity): boolean {
   return entityStatus(entity) !== 'missing_information' && entity.relationship !== 'NONE'
