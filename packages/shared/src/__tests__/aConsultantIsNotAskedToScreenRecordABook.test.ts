@@ -65,13 +65,35 @@ describe('owning a thing is not using it', () => {
   })
 })
 
-describe('an unmapped kind asks nothing rather than guessing', () => {
-  // ⚖️ THE REGISTRY HAS NO KIND FOR MARKETPLACE OR OTHER. Calling a marketplace
-  // "software" because both live on a screen would gate a real question on a
-  // guess; asking nothing leaves showability UNKNOWN, so no scene is built on it.
-  it('MARKETPLACE and OTHER get no capability question', () => {
+describe('an unmapped kind still does not guess a taxonomy', () => {
+  // ⚠️ THIS CASE WAS REWRITTEN, AND HALF OF IT WAS WRONG RATHER THAN STALE.
+  // It asserted MARKETPLACE and OTHER get NO capability question, on the stated
+  // grounds that "asking nothing leaves showability UNKNOWN, so no scene is
+  // built on it". The first half of the rationale is right and still holds:
+  // calling a marketplace "software" to unlock a question WOULD gate it on a
+  // guess, and KIND still maps both to null.
+  //
+  // ⚠️ THE SECOND HALF WAS FALSE, AND MEASURABLY SO. Onboarding does not go
+  // through KIND at all -- it mints with flags, and inferShowability puts
+  // MARKETPLACE and OTHER on the SCREEN branch, turning canRecordScreen: true
+  // into ALWAYS. So a scene IS built on a marketplace, for every creator who
+  // arrived through the scan. The guard pinned a safety property the system only
+  // had on ONE of its two surfaces, which is this repo's recurring shape: a
+  // constraint that has only ever seen the population it was written for.
+  //
+  // ⚖️ SO THE QUESTION NOW COMES FROM THE SHOWABILITY AUTHORITY, NOT THE
+  // TAXONOMY. Nothing is guessed; the same rule that would consume the answer
+  // decides whether it is worth asking for.
+  it('the registry still has no kind for MARKETPLACE or OTHER', () => {
     for (const t of ['MARKETPLACE', 'OTHER'] as EntityType[]) {
-      expect(capabilityQuestion({ type: t, relationship: 'OWN_PRODUCT' }), t).toBeNull()
+      expect(productQuestionIds({ type: t, relationship: 'OWN_PRODUCT' }), t)
+        .not.toContain('product_screen_show')
+    }
+  })
+
+  it('and the capability question is asked anyway, because the answer is used', () => {
+    for (const t of ['MARKETPLACE', 'OTHER'] as EntityType[]) {
+      expect(capabilityQuestion({ type: t, relationship: 'OWN_PRODUCT' }), t).toBe('screen')
     }
   })
 
