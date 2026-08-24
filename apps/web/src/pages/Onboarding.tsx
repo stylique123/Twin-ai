@@ -1002,7 +1002,26 @@ function ConfirmStep({
   // `mintFromWorkKind` returns null where Q3 said nothing, and the block that
   // renders this is gated on `mintsOwnedEntity` — so the fallback type below is
   // never the one displayed, it only keeps the lookup total.
-  const mintedType: EntityType = mintFromWorkKind(workKind)?.type ?? 'SAAS'
+  //
+  // ⚠️ THE KINDS ARE PASSED HERE FOR THE SAME REASON THEY ARE PASSED AT THE
+  // SAVE. This line used to call `mintFromWorkKind(workKind)` with no options,
+  // while the save a few hundred lines below passed `ownProductKind` and
+  // `ownServiceKind` — so `refinedEntityType` ran on one and not the other, and
+  // the two disagreed for every creator who answered the finer question.
+  //
+  // What that looked like: a creator selling a COURSE read "We'll treat your
+  // offer as your own SaaS product" on the confirm screen, and COURSE was
+  // stored. The sentence describing their own business was wrong at the exact
+  // moment we asked them to confirm it.
+  //
+  // ⚖️ AND THE ESCAPE HATCH IS WHAT MAKES IT MORE THAN COSMETIC. Directly under
+  // this sentence sits "That's not right", which CLEARS the mint. A creator
+  // shown the wrong type would reasonably take it, throwing away a mint that
+  // was in fact correct — so a display bug became a data-loss path.
+  const mintedType: EntityType = mintFromWorkKind(workKind, {
+    ownProductKind: draft.ownProductKind ?? null,
+    ownServiceKind: draft.ownServiceKind ?? null,
+  })?.type ?? 'SAAS'
 
   const setField = (k: keyof VoiceProfile, v: string) => setVp({ ...vp, [k]: v })
   const setList = (k: keyof VoiceProfile, v: string[]) => setVp({ ...vp, [k]: v })
