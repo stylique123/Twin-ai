@@ -86,12 +86,14 @@
    "unwiredReason": "Read by the PROFILE SURFACE only: profileCompletion gates the 'what you sell' item and productDnaStatus, and productSuggestionConfidence uses it to suppress suggestions for a creator who said they sell nothing. ⚠️ AN EARLIER VERSION OF THIS REASON CLAIMED a script 'cannot tell an affiliate from an owner', AND THAT WAS WRONG — checked against the edge rather than asserted. `brief.promotes` already reaches the prompt with per-relationship instructions, including the non-optional disclosure for affiliate and sponsor, and the claimed entity carries ownership. So this key is a SECOND CHANNEL for a fact the writer already has. ⚖️ Wiring it as-is would add a second interpretation of one fact, which is the drift the ProfileAssembler exists to end; the right consumer is the canonical CreatorProfile, where `promotes` and this answer are reconciled once."
   },
   "contentGoals": {
-   "readBy": [],
-   "unwiredReason": "Read by profileCompletion for the goal and subject items. The writer never sees it — the per-video goal in videoIntent is what currently reaches a script, and this standing answer does not yet narrow retrieval."
+   "readBy": [
+    "supabase/functions/generate-blueprint/index.ts"
+   ]
   },
   "desiredFormats": {
-   "readBy": [],
-   "unwiredReason": "Read by profileCompletion for the formats item. Nothing recommends references from it yet, which is the reader it is waiting for."
+   "readBy": [
+    "supabase/functions/generate-blueprint/index.ts"
+   ]
   },
   "audienceKnowledge": {
    "readBy": [
@@ -99,8 +101,9 @@
    ]
   },
   "formatExploration": {
-   "readBy": [],
-   "unwiredReason": "Same shape as audienceKnowledge — it steers which questions get asked and reaches no script consumer."
+   "readBy": [
+    "supabase/functions/generate-blueprint/index.ts"
+   ]
   },
   "ownProductKind": {
    "readBy": [],

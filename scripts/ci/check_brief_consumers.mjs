@@ -100,6 +100,18 @@ export function edgeFunctionFiles(dir) {
  * authorities" finding showing up as a naming collision — and treating them as
  * interchangeable is how the brief's answer stays unread while looking read.
  */
+// ⚠️ COMMENTS ARE NOT CODE, AND THIS GUARD LEARNED IT THE EXPENSIVE WAY.
+// `desiredFormats` was correctly reported as read while the ONLY thing matching
+// was a code comment explaining a cast that had been REMOVED: the prose
+// `brief.desiredFormats as string[]` sat in a block describing why that spelling
+// was wrong. A right answer for a reason that cannot be trusted is worse than a
+// wrong one, because it passes review. The selftest already had a prose case;
+// it used prose that did not contain a brief-shaped ACCESS, so it never
+// exercised this.
+function withoutComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ')
+}
+
 export function filesMentioning(key, files, read) {
   // `[\w$]*` on BOTH sides, not a required leading character — the commonest
   // reader in the codebase is the bare identifier `brief`, and a pattern that
@@ -109,9 +121,20 @@ export function filesMentioning(key, files, read) {
     + `|\\[\\s*['"\`]${key}['"\`]\\s*\\])`)
   const destructure = new RegExp(
     `\\{[^{}]*\\b${key}\\b[^{}]*\\}\\s*=\\s*\\b${holder}\\b`)
+  // ⚠️ THE READ THIS GUARD COULD NOT SEE AT ALL. A key pulled out by a helper --
+  // `briefListInline(briefRaw, 'contentGoals')` -- is a real read with no
+  // property access anywhere in it. Two keys wired in exactly that shape sat
+  // declared-unwired and the guard stayed green, which is the precise failure it
+  // exists to prevent: an answer the creator gave that nothing admits to reading.
+  //
+  // ⚖️ THE BRIEF-SHAPED ARGUMENT IS REQUIRED, not just the quoted key. Matching
+  // a bare string would call any occurrence of the word a read.
+  const viaHelper = new RegExp(
+    `\\b${holder}\\b[^()]{0,80}?['"\`]${key}['"\`]`
+    + `|['"\`]${key}['"\`][^()]{0,80}?\\b${holder}\\b`)
   return files.filter((f) => {
-    const src = read(f)
-    return access.test(src) || destructure.test(src)
+    const src = withoutComments(read(f))
+    return access.test(src) || destructure.test(src) || viaHelper.test(src)
   })
 }
 
@@ -186,11 +209,27 @@ function selftest() {
     // read off a DIFFERENT authority. It must not count as a reader.
     'prose.ts': 'const goal = vp?.goal ?? dna.goal\nGoal: ${goal}\n{ goal: str }',
     'destructured.ts': 'const { promotes } = storedBrief',
+    // ⚠️ A COMMENT IS NOT A READER. This is prose that DOES contain a
+    // brief-shaped access -- the old prose fixture did not, which is why the
+    // gap survived a passing selftest.
+    'comment.ts': '// my first version wrote brief.offer as string[], which tsc rejected\nconst x = 1',
+    // ⚠️ A READ WITH NO PROPERTY ACCESS ANYWHERE IN IT.
+    'helper.ts': "const g = briefListInline(briefRaw, 'workKind')",
+    // The same helper shape with NO brief-shaped argument: a quoted word alone
+    // must not count, or every string in the codebase becomes a reader.
+    'quoted.ts': "const g = pick(config, 'workKind')",
   })[f] ?? ''
-  const files = ['a.ts', 'b.ts', 'prose.ts', 'destructured.ts']
+  const files = ['a.ts', 'b.ts', 'prose.ts', 'destructured.ts', 'comment.ts',
+    'helper.ts', 'quoted.ts']
   const fail = []
 
+  // ⚠️ THE COUNT IS DERIVED, NOT TYPED. It read "14 cases" while thirteen ran,
+  // and stayed "14" after six more were added. A number nobody computes is not a
+  // report, it is decoration -- and it is exactly what would have let these new
+  // cases sit unexecuted while the line said they passed.
+  let ran = 0
   const expect = (name, errors, shouldPass) => {
+    ran += 1
     const passed = errors.length === 0
     if (passed !== shouldPass) {
       fail.push(`${name}: expected ${shouldPass ? 'pass' : 'failure'}, got ${
@@ -254,6 +293,38 @@ function selftest() {
     registry: { keys: { goal: { readBy: [], unwiredReason: 'read off dna, not the brief' } } },
   }), true)
 
+  // ⚠️ THE GAP THAT LET A KEY BE CALLED READ FOR THE WRONG REASON. Found in
+  // production: `desiredFormats` was reported read while the only match was a
+  // comment describing a cast that had already been deleted.
+  expect('a key mentioned ONLY in a comment stays unwired', check({
+    storedKeys: ['offer'], files: ['comment.ts'], read,
+    registry: { keys: { offer: { readBy: [], unwiredReason: 'nothing reads it yet' } } },
+  }), true)
+
+  expect('a comment is not enough to name a file a reader', check({
+    storedKeys: ['offer'], files: ['comment.ts'], read,
+    registry: { keys: { offer: { readBy: ['comment.ts'] } } },
+  }), false)
+
+  // ⚠️ THE GAP THAT HID TWO REAL READS. A helper pulling the key out by name is
+  // a read; the guard saw no property access and stayed green.
+  expect('a helper read counts, and a stale excuse for it fails', check({
+    storedKeys: ['workKind'], files: ['helper.ts'], read,
+    registry: { keys: { workKind: { readBy: [], unwiredReason: 'stale excuse' } } },
+  }), false)
+
+  expect('a helper read satisfies readBy', check({
+    storedKeys: ['workKind'], files: ['helper.ts'], read,
+    registry: { keys: { workKind: { readBy: ['helper.ts'] } } },
+  }), true)
+
+  // ⚖️ AND THE BRIEF-SHAPED ARGUMENT IS LOAD-BEARING. The same call shape off a
+  // different authority must not launder the word into a read.
+  expect('a quoted key with no brief argument is NOT a reader', check({
+    storedKeys: ['workKind'], files: ['quoted.ts'], read,
+    registry: { keys: { workKind: { readBy: [], unwiredReason: 'read off config, not the brief' } } },
+  }), true)
+
   expect('a destructured read counts', check({
     storedKeys: ['promotes'], files, read,
     registry: { keys: { promotes: { readBy: ['destructured.ts'] } } },
@@ -274,7 +345,7 @@ function selftest() {
     for (const f of fail) console.error('  ' + f)
     process.exit(1)
   }
-  console.log('check_brief_consumers selftest passed (14 cases)')
+  console.log(`check_brief_consumers selftest passed (${ran} cases)`)
 }
 
 function main() {
