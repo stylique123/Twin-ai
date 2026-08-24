@@ -665,6 +665,20 @@ export default function ProductLibrary() {
 
       {(tab === 'live' ? entities : []).map((e) => (
         <section key={e.id} className="rounded-xl border border-white/10 p-4">
+          {/* ── WHERE THIS ONE IS, IN ONE LINE ───────────────────────────
+              ⚠️ MOST STATES SAID NOTHING AT ALL. A product that was READY, or
+              carrying unchecked guesses, or had no source yet, all opened with
+              the same "Name" field — so "what is happening with this one" had
+              to be worked out by reading down the card, and the owner's
+              "Added, but we could not start reading that page" report is what
+              that costs.
+              ⚖️ ONE SENTENCE FROM THE SHARED MAP, never a second copy. The
+              state and the words it renders cannot drift apart because there
+              is only one of each. */}
+          <p className="mb-3 text-xs text-stone">
+            {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
+          </p>
+
           <label className="block text-xs font-medium uppercase tracking-wide text-stone">
             Name
           </label>
@@ -808,10 +822,12 @@ export default function ProductLibrary() {
                 )}
               </>
             ) : e.knowledge.length === 0 ? (
-              <p className="mt-1 text-sm text-sand">
-                Twin read that page and could not find anything usable on it. You can still
-                describe the product yourself.
-              </p>
+              /* ⚖️ THE SHARED SENTENCE, NOT A SECOND ONE. This read "Twin read
+                 that page and could not find anything usable on it" while
+                 LIFECYCLE_MESSAGE.NOTHING_FOUND said something close but not
+                 identical — two wordings for one state, drifting apart at
+                 whatever rate the two files are edited. */
+              <p className="mt-1 text-sm text-sand">{LIFECYCLE_MESSAGE.NOTHING_FOUND}</p>
             ) : (
               <>
                 <ul className="mt-2 space-y-1">
