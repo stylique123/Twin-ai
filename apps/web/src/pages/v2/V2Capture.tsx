@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   captureConstraints, fallbackConstraints, verifyCapture, DEFAULT_CAPTURE_INTENT,
+  preRollChecklist,
 } from '@twinai/shared'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Sparkles, RotateCcw, UploadCloud, Film, X } from 'lucide-react'
@@ -915,6 +916,24 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
             leaving him to work out which to believe. See sceneConsistency.ts;
             the structural fix is the field split in §5c. */}
         {next?.movement && safeToShow({ spoken: !!next.show_in_teleprompter, dialogue: next.dialogue, movement: next.movement }, 'movement') && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">What to do while you talk</div><p className="text-white/90">{next.movement}</p></div>}
+        {/* ⚠️ THE SETUP HAPPENS BEFORE THE RECORD BUTTON, AND NOTHING SAID SO.
+            Every camera-at-screen shot assumes the page is already open and
+            already zoomed when the take starts. That instruction lives on the
+            scene card, which the creator has usually scrolled past by the time
+            they are holding the phone — so they press record and THEN open the
+            app, burning the first seconds of the take fumbling. Those are the
+            seconds the hook depends on. This is the last thing they read before
+            the countdown, so it is where the reminder belongs.
+
+            ⚖️ AND IT IS NULL FOR A TALKING-HEAD BEAT. A reminder with nothing to
+            open is noise, and noise here teaches people to skip the line that
+            matters. */}
+        {preRollChecklist(next?.movement ?? null) && (
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300/90">Set up first</div>
+            <p className="text-white/90">{preRollChecklist(next?.movement ?? null)}</p>
+          </div>
+        )}
         {next?.purpose && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">Why this scene matters</div><p className="text-white/90">{next.purpose}</p></div>}
       </div>
 

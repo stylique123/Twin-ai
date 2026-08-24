@@ -128,3 +128,28 @@ export function shotDirection(c: ShotContext): { pattern: ShotPattern; lines: re
  *  into HOLD_UP is the next unit and will need somewhere to put its count. */
 export const UNSUPPLYABLE_SHOTS_COUNTER_IS_NOT_BUILT =
   'unsupplyable_shots.converted has no definition in this repository; the conversion check needs it before it can flag.'
+
+/** ⚠️ THE SETUP HAPPENS BEFORE THE RECORD BUTTON, AND NOTHING SAID SO. Every
+ *  camera-at-screen pattern assumes the page is already open and already zoomed
+ *  when the take starts — "open {page} BEFORE recording starts" is in the
+ *  direction, and the direction is on a card the creator has usually scrolled
+ *  past by the time they are holding the phone.
+ *
+ *  ⚖️ SO IT IS A SEPARATE LINE ON THE BETWEEN-SCENES PANEL, which is the last
+ *  thing they read before the countdown. A creator who starts recording and THEN
+ *  opens the app has burned the first three seconds of the take fumbling, and
+ *  those are the seconds the whole hook depends on.
+ *
+ *  Returns null when the scene needs no setup — a talking-head beat has nothing
+ *  to open, and a reminder there is noise that teaches people to ignore the line. */
+export function preRollChecklist(direction: string | null | undefined): string | null {
+  if (typeof direction !== 'string') return null
+  const d = direction.toLowerCase()
+  // Only the patterns that put a screen in the shot need anything opened.
+  const needsScreen = /\bphone\b|\blaptop\b|\bscreen\b|\bopen\b/.test(d)
+  if (!needsScreen) return null
+  const needsZoom = /\bzoom\b|\bpinch\b|\bnumber\b|\bgraph\b|\bchart\b/.test(d)
+  return needsZoom
+    ? 'Before you press record: open it, pinch to zoom so the part that matters is readable, then start.'
+    : 'Before you press record: open it on the screen first, then start.'
+}
