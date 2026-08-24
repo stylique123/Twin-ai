@@ -45,6 +45,7 @@ import {
   isStale, factAgeDays, SOURCE_LABEL, sourceWarrantsAttention,
   signEditUrls,
   bestSuggestion,
+  asksPersonalUse, capabilityQuestion, CAPABILITY_PROMPT,
   type ProductSuggestion,
 } from '@twinai/shared'
 import { readOnboardingDraft } from '../lib/onboardingDraft'
@@ -421,6 +422,7 @@ export default function ProductLibrary() {
      *  runs — a claim that also had to carry bytes could fail halfway and leave
      *  a product minted with photographs nobody can find. */
     imagePaths?: string[]
+    flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
   }) {
     // ⚠️ AN EMPTY OWNER ID MUST NOT REACH THE INSERT. RLS is owner-scoped, so a
     // blank id fails somewhere deep with a policy error that reads as a bug in
@@ -1061,6 +1063,10 @@ function StartFromLink({ onCancel, onClaim, busy }: {
   onClaim: (a: {
     relationship: EntityRelationship; personalUse: PersonalUse
     type: EntityType; name: string; productUrl?: string | null; imagePaths?: string[]
+    /** ⚖️ THE ANSWER TO THE ONE CAPABILITY QUESTION THIS PRODUCT WARRANTED.
+     *  Absent when the type warranted none — a service — and absent is NOT a
+     *  denial: `attestedEntity` reads a missing flag as UNKNOWN. */
+    flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
   }) => void
 }) {
   const [url, setUrl] = useState('')
@@ -1074,6 +1080,10 @@ function StartFromLink({ onCancel, onClaim, busy }: {
   const [relationship, setRelationship] = useState<EntityRelationship | null>(null)
   const [type, setType] = useState<EntityType | null>(null)
   const [personalUse, setPersonalUse] = useState<PersonalUse | null>(null)
+  // ⚠️ ASKED HERE SO THE PRODUCT IS NOT BORN UNSHOWABLE. #497 made the claim
+  // inherit the ACCOUNT default; this is the better answer, about THIS thing,
+  // and `attestedEntity` prefers an explicit flag over the default.
+  const [showability, setShowability] = useState<Showability | null>(null)
 
   const link = url.trim()
   // ⚖️ REFUSED HERE SO THE CREATOR IS TOLD NOW, not after a job fails silently
@@ -1087,8 +1097,17 @@ function StartFromLink({ onCancel, onClaim, busy }: {
   // pictures is a complete submission; demanding a name for it would make the
   // typing mandatory again in the one case where the pictures say more.
   const named = link !== '' || imagePaths.length > 0 || name.trim() !== ''
+  // ⚠️ REQUIRE ONLY WHAT IS ACTUALLY ASKED, OR THE FORM CANNOT BE SUBMITTED AT
+  // ALL. The old gate demanded `personalUse` from everyone; now that an owner is
+  // never asked it, demanding it would leave them staring at a disabled button
+  // with no visible field to fill — the worst kind of dead end, because nothing
+  // on screen says what is missing.
+  const ctx = { type, relationship }
+  const capability = type !== null && relationship !== null ? capabilityQuestion(ctx) : null
   const ready = named && linkLooksReal && !uploading && relationship !== null
-    && type !== null && personalUse !== null
+    && type !== null
+    && (!asksPersonalUse(ctx) || personalUse !== null)
+    && (capability === null || showability !== null)
 
   const addPhotos = async (files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -1192,6 +1211,12 @@ function StartFromLink({ onCancel, onClaim, busy }: {
         chosen={relationship}
         onPick={(v) => setRelationship(v)}
       />
+      {/* ⚠️ CONDITIONAL NOW, AND IT USED TO BE ASKED OF EVERY PRODUCT. Owning a
+          thing already authorises "we built this"; asking an owner whether they
+          have personally used their own product is not a permission question,
+          it is noise. The registry has said so since it was written — this is
+          the first code to consult it. */}
+      {asksPersonalUse(ctx) && (
       <Choices
         label="Have you actually used it yourself?"
         options={[
@@ -1212,14 +1237,47 @@ function StartFromLink({ onCancel, onClaim, busy }: {
         chosen={personalUse}
         onPick={(v) => setPersonalUse(v)}
       />
+      )}
+
+      {/* ⚠️ ONE CAPABILITY QUESTION, CHOSEN BY WHAT THE THING IS — the fix for
+          the flow's most visible carelessness. A book is an object in the room
+          and a SaaS product is a thing on a screen, so "can you record your
+          screen" and "can you have it with you" are different favours to ask.
+          A service is asked NEITHER, because there is nothing to point a camera
+          at. The registry decides; this only renders. */}
+      {capability !== null && (
+        <Choices
+          label={CAPABILITY_PROMPT[capability]}
+          options={[
+            { value: 'ALWAYS' as Showability, label: 'Usually' },
+            { value: 'SOMETIMES' as Showability, label: 'Sometimes' },
+            { value: 'NEVER' as Showability, label: 'No' },
+          ]}
+          chosen={showability}
+          onPick={(v) => setShowability(v)}
+        />
+      )}
 
       <div className="flex gap-2 pt-1">
         <button
           type="button"
           disabled={!ready || busy}
           onClick={() => onClaim({
-            relationship: relationship!, personalUse: personalUse!, type: type!,
+            relationship: relationship!,
+            // ⚖️ NOT_CONFIRMED WHEN THE QUESTION WAS NEVER ASKED, which is the
+            // literal truth: nobody confirmed personal use, because for an owner
+            // it is not a permission question at all. It must not become
+            // CONFIRMED by default — that would manufacture a first-hand
+            // experience claim out of silence.
+            personalUse: asksPersonalUse(ctx) ? personalUse! : 'NOT_CONFIRMED',
+            type: type!,
             name: name.trim(), productUrl: link || null, imagePaths,
+            // ⚠️ THE ANSWER ABOUT THIS PRODUCT, WHICH BEATS THE ACCOUNT DEFAULT.
+            // `attestedEntity` derives showability from flags, so the flag that
+            // matches the question asked is the one sent.
+            flags: capability === 'physical' ? { canFilmObjects: showability === 'ALWAYS' }
+              : capability === 'screen' ? { canRecordScreen: showability === 'ALWAYS' }
+                : undefined,
           })}
           className="btn-gradient rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
         >{busy ? 'Adding…' : (link || imagePaths.length > 0) ? 'Add it and take a look' : 'Add it'}</button>
