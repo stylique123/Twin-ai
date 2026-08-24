@@ -127,6 +127,128 @@ const SCREEN_MOMENTS: readonly ShowMoment[] = Object.freeze([
   }),
 ])
 
+/** ⚠️ THE SCREEN MOMENTS ABOVE WERE WRITTEN FOR A DASHBOARD, AND EVERY
+ *  SCREEN-SHOWN TYPE WAS GETTING THEM. Measured before this existed: SAAS,
+ *  COURSE, DIGITAL_PRODUCT, MARKETPLACE and OTHER returned byte-identical
+ *  direction. "Go to the main screen people actually use — the dashboard, the
+ *  editor, the feed" is good advice about software and nonsense about a course,
+ *  where the thing people use is a lesson.
+ *
+ *  ⚖️ THESE ARE A JUDGEMENT ABOUT WHAT EACH PRODUCT'S SURFACES ARE, NOT A
+ *  MEASUREMENT OF WHAT FILMS WELL. Knowing a course has a curriculum page and a
+ *  lesson player needs no recording. Knowing whether holding on the lesson
+ *  player for a beat reads as generous or slow DOES, and that is what the
+ *  recordings revise. Shipping direction that is probably right beats shipping
+ *  direction that is certainly wrong.
+ */
+const COURSE_MOMENTS: readonly ShowMoment[] = Object.freeze([
+  Object.freeze({
+    onScreen: 'The course contents — the list of modules or lessons, unscrolled.',
+    doThis: 'Open the contents page and hold it still. This is the one shot that shows the size of what they get, so let it sit long enough to be read.',
+    sayWhat: 'Say what someone can do at the end that they cannot do now. Not the module titles — the outcome.',
+    sceneType: 'screen_recording',
+  }),
+  Object.freeze({
+    onScreen: 'One lesson actually open — the video playing or the page of it people read.',
+    doThis: 'Go into a real lesson, not the preview. Pick the one that proves the teaching is specific, and let a few seconds of it run.',
+    sayWhat: 'Say what this particular lesson fixes. One concrete thing, the kind a person would recognise as their own problem.',
+    sceneType: 'screen_recording',
+  }),
+  Object.freeze({
+    onScreen: 'Whatever comes WITH the course — the workbook, the templates, the community tab.',
+    doThis: 'Open the extras. A course looks like a video list until you show that it is not only videos.',
+    sayWhat: 'Say what they use these for while they are working through it.',
+    sceneType: 'screen_recording',
+  }),
+])
+
+const MARKETPLACE_MOMENTS: readonly ShowMoment[] = Object.freeze([
+  Object.freeze({
+    onScreen: 'The browse or search results — several real listings at once.',
+    doThis: 'Show the breadth first. A marketplace is worth nothing to a viewer until they can see there is enough of it.',
+    sayWhat: 'Say who is on the other side and roughly how much of it there is.',
+    sceneType: 'screen_recording',
+  }),
+  Object.freeze({
+    onScreen: 'One listing opened — the real detail page.',
+    doThis: 'Open a genuine listing and stop moving. Do not scroll while you are explaining what is on it.',
+    sayWhat: 'Say what a person is deciding at this point and what on the page decides it for them.',
+    sceneType: 'screen_recording',
+  }),
+  Object.freeze({
+    onScreen: 'The step where it actually happens — the booking, the basket, the message.',
+    doThis: 'Show the moment of commitment, not the confirmation email. Stop before anything private appears.',
+    sayWhat: 'Say how simple this step is, because the fear here is that it is not.',
+    sceneType: 'screen_recording',
+  }),
+])
+
+const APP_MOMENTS: readonly ShowMoment[] = Object.freeze([
+  Object.freeze({
+    onScreen: 'The app open on a phone, held or screen-recorded — the first screen after opening.',
+    doThis: 'Record the phone, not a laptop. An app shown on a desktop browser stops looking like an app.',
+    sayWhat: 'Say what someone opens this for, in the moment they would open it.',
+    sceneType: 'screen_recording',
+  }),
+  Object.freeze({
+    onScreen: 'One thing being done, thumb visible if you can.',
+    doThis: 'Do the action at normal speed. A tap that is too fast to follow teaches nothing.',
+    sayWhat: 'Narrate what you are doing as you do it, in the order you do it.',
+    sceneType: 'screen_recording',
+  }),
+  Object.freeze({
+    onScreen: 'The result on screen, held still long enough to read.',
+    doThis: 'Stop and let the end state sit.',
+    sayWhat: 'Say what just changed for them.',
+    sceneType: 'screen_recording',
+  }),
+])
+
+const DIGITAL_PRODUCT_MOMENTS: readonly ShowMoment[] = Object.freeze([
+  Object.freeze({
+    onScreen: 'The thing itself, open — the template, the file, the preset applied.',
+    doThis: 'Open the actual product rather than a picture of it. A screenshot of a template is not the template.',
+    sayWhat: 'Say what it is and what it saves them doing.',
+    sceneType: 'screen_recording',
+  }),
+  Object.freeze({
+    onScreen: 'Before and after, side by side or one straight after the other.',
+    doThis: 'Show the same thing without it and with it. This is the whole argument for a digital product and it is almost always skipped.',
+    sayWhat: 'Say the difference out loud even though it is on screen. The viewer is often listening, not watching.',
+    sceneType: 'screen_recording',
+  }),
+  Object.freeze({
+    onScreen: 'What is actually inside — the file list, the pages, the number of them.',
+    doThis: 'Show the contents so the size of it is not something they have to take on trust.',
+    sayWhat: 'Say what they get, plainly.',
+    sceneType: 'screen_recording',
+  }),
+])
+
+/** ⚠️ A COMMUNITY IS OTHER PEOPLE, AND THAT CHANGES THE INSTRUCTION RATHER THAN
+ *  ONLY THE SHOT. Every other type here can be filmed freely; this one cannot,
+ *  because the interesting part of it is somebody else's words. The direction
+ *  says so at the point of filming, where it can still be acted on.
+ *
+ *  ⚖️ REACHABLE ONLY BY AN EXPLICIT ANSWER. `inferShowability` returns NEVER for
+ *  COMMUNITY, so these appear only where a creator has gone into the Product
+ *  Library and said they CAN show it — which is exactly the person who has
+ *  thought about whether they may. */
+const COMMUNITY_MOMENTS: readonly ShowMoment[] = Object.freeze([
+  Object.freeze({
+    onScreen: 'The channel or topic list — the shape of the place, no messages readable.',
+    doThis: 'Show the structure rather than the conversation. Blur or scroll past anything with a name or a face on it.',
+    sayWhat: 'Say what the place is for and who is in it.',
+    sceneType: 'screen_recording',
+  }),
+  Object.freeze({
+    onScreen: 'One thread you have permission to show, or your own post.',
+    doThis: 'Use your own words or something you have been given permission to show. Do not film other people\'s messages to prove a point about your product.',
+    sayWhat: 'Say what kind of question gets answered here and how quickly.',
+    sceneType: 'screen_recording',
+  }),
+])
+
 const SERVICE_MOMENTS: readonly ShowMoment[] = Object.freeze([
   Object.freeze({
     onScreen: 'You, talking.',
@@ -215,12 +337,26 @@ export function productSceneGuidance(
     }
   }
 
+  // ⚠️ ONE SET PER TYPE, WHICH IS THE WHOLE OF THIS CHANGE. Every screen-shown
+  // product used to get SCREEN_MOMENTS, written for a SaaS dashboard: "go to the
+  // main screen people actually use — the dashboard, the editor, the feed".
+  // Sound advice about software and nonsense about a course, where the thing
+  // people use is a lesson.
+  //
+  // ⚖️ `OTHER` AND `SAAS` KEEP THE ORIGINAL SET, and for different reasons. SAAS
+  // is what it was written for. OTHER is unclassified, so the generic
+  // walkthrough is the honest thing to give it — inventing specifics for a
+  // product we cannot name would be worse than the dashboard shape.
+  const BY_TYPE: Partial<Record<EntityType, readonly ShowMoment[]>> = {
+    COURSE: COURSE_MOMENTS,
+    MARKETPLACE: MARKETPLACE_MOMENTS,
+    APP: APP_MOMENTS,
+    DIGITAL_PRODUCT: DIGITAL_PRODUCT_MOMENTS,
+    COMMUNITY: COMMUNITY_MOMENTS,
+  }
+
   const moments = HELD_IN_HAND.includes(type) ? OBJECT_MOMENTS
-    : ON_A_SCREEN.includes(type) ? SCREEN_MOMENTS
-      // ⚖️ `OTHER` TAKES THE SCREEN BRANCH, matching `inferShowability`'s own
-      // choice: a screen recording is the capability more creators have, so an
-      // unclassified product asks for the easier thing.
-      : SCREEN_MOMENTS
+    : BY_TYPE[type] ?? SCREEN_MOMENTS
 
   return {
     mayShow: true,

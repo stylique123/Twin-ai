@@ -59,23 +59,37 @@ describe('"other" does not refine, and it is a judgement not a measurement', () 
   })
 })
 
-describe('what refining does NOT change today, recorded so nobody re-claims it', () => {
-  // ⚠️ THE PREMISE THIS UNIT STARTED FROM WAS WRONG. "The type decides the show
-  // moments" is false for every screen-shown kind: the direction is byte
-  // identical, so refining SAAS→COURSE changes nothing a creator sees. The type
-  // is still worth storing correctly -- the Library shows it and future rules
-  // branch on it -- but this test exists so the false claim cannot come back.
-  const SCREEN_SHOWN = ['SAAS', 'COURSE', 'DIGITAL_PRODUCT', 'MARKETPLACE', 'OTHER'] as const
-
-  it('every screen-shown type gets identical direction', () => {
-    const first = JSON.stringify(productSceneGuidance('SAAS', 'ALWAYS').moments)
-    for (const t of SCREEN_SHOWN) {
-      expect(JSON.stringify(productSceneGuidance(t, 'ALWAYS').moments), t).toBe(first)
-    }
+describe('what refining changes, and what it still does not', () => {
+  // ⚠️ THIS CASE WAS INVERTED, NOT DELETED, AND THE HISTORY IS THE POINT. It
+  // used to assert that every screen-shown type got IDENTICAL direction -- which
+  // was true when it was written, measured, and was the reason the unit's
+  // original claim ("the type decides the show moments") was withdrawn as false.
+  // The per-type direction has since landed, so the old assertion now fails
+  // against CORRECT code. The reality changed; the test follows it and says so,
+  // because a case quietly dropped is how a measurement turns into folklore.
+  it('a course is no longer told to film a dashboard', () => {
+    const course = JSON.stringify(productSceneGuidance('COURSE', 'ALWAYS').moments)
+    const saas = JSON.stringify(productSceneGuidance('SAAS', 'ALWAYS').moments)
+    expect(course).not.toBe(saas)
   })
 
-  it('the gap is recorded as an open limitation rather than left implicit', () => {
-    expect(limitationById('SCENE_GUIDANCE_DOES_NOT_READ_THE_TYPE')?.status).toBe('OPEN')
+  // ⚖️ SAAS AND OTHER SHARING THE DEFAULT IS CORRECT, NOT LEFTOVER. The default
+  // screen direction was written for a dashboard, so SAAS keeping it is the
+  // right answer rather than an un-migrated one. Asserting it stops a later
+  // reader from "finishing the job" by inventing a second dashboard script.
+  it('SAAS keeps the default direction, which was written for it', () => {
+    expect(JSON.stringify(productSceneGuidance('OTHER', 'ALWAYS').moments))
+      .toBe(JSON.stringify(productSceneGuidance('SAAS', 'ALWAYS').moments))
+  })
+
+  it('the defect is closed', () => {
+    expect(limitationById('SCENE_GUIDANCE_DOES_NOT_READ_THE_TYPE')?.status).toBe('RESOLVED')
+  })
+
+  // ⚠️ AND WRITTEN IS NOT FILMED. Closing the first limitation must not be read
+  // as evidence a creator can act on the new words -- nobody has yet.
+  it('the unfilmed direction is recorded as its own open limitation', () => {
+    expect(limitationById('PER_TYPE_SCENE_DIRECTION_IS_UNFILMED')?.status).toBe('OPEN')
   })
 })
 
