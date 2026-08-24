@@ -125,3 +125,67 @@ describe('the root cause is recorded, not just the symptoms', () => {
     }
   })
 })
+
+// ── EVERY VERDICT MUST BE BACKED BY EVIDENCE ──────────────────────────────
+//
+// ⚠️ THE HOLE THIS CLOSES WAS IN THIS FILE. `audienceKnowledge` was recorded as
+// ORPHANED_WRONG_WRITER -- "generation reads it, onboarding never writes it".
+// Then the six-answer write landed, onboarding began persisting it, and the
+// audit kept reporting an orphan that had been FIXED. It carried no
+// `absentFrom`, and no case above covered its verdict, so there was nothing to
+// break. The audit had gone stale in exactly the way it exists to prevent, and
+// the suite stayed green through both states.
+//
+// ⚖️ SO THE RULE IS NOW STRUCTURAL RATHER THAN PER-ENTRY: a verdict that
+// nothing can falsify is itself a failure. Each kind below states what must be
+// TRUE of the tree for it to hold, and a new verdict added to the union with no
+// rule here fails the last case.
+
+const writeCall = (): string => {
+  const onboarding = readFileSync(
+    join(repo, 'apps', 'web', 'src', 'pages', 'Onboarding.tsx'), 'utf8',
+  )
+  const at = onboarding.indexOf('savePreScriptBrief(')
+  expect(at, 'savePreScriptBrief call not found — the guard cannot conclude anything').toBeGreaterThan(-1)
+  return onboarding.slice(at, onboarding.indexOf('})', at))
+}
+
+/** persisted by onboarding? / read by anything that writes a script? */
+const evidence = (field: string) => ({
+  persisted: writeCall().includes(field),
+  readByGeneration: matchingFiles(field, GENERATION_DIRS).length > 0,
+})
+
+const RULES: Record<string, (e: { persisted: boolean; readByGeneration: boolean }) => boolean> = {
+  // Written where it is asked, and something downstream acts on it.
+  LIVE: (e) => e.persisted && e.readByGeneration,
+  // Never leaves the browser.
+  ORPHANED_LOCAL: (e) => !e.persisted,
+  // Leaves the browser and lands nowhere.
+  ORPHANED_NO_READER: (e) => e.persisted && !e.readByGeneration,
+  // Generation reads it; the screen that ASKS it does not write it.
+  ORPHANED_WRONG_WRITER: (e) => e.readByGeneration && !e.persisted,
+}
+
+describe('a verdict nothing can falsify is a failure', () => {
+  it.each(AUDITED_QUESTIONS.map((q) => [q.field, q.verdict] as const))(
+    '%s is really %s',
+    (field, verdict) => {
+      const rule = RULES[verdict]
+      expect(rule, `no rule for verdict ${verdict} — add one, do not leave it unchecked`).toBeTypeOf('function')
+      const e = evidence(field)
+      expect(
+        rule(e),
+        `${field} is recorded as ${verdict} but the tree says persisted=${e.persisted}, readByGeneration=${e.readByGeneration}`,
+      ).toBe(true)
+    },
+  )
+
+  // ⚠️ AND THE UNION CANNOT GROW PAST THE RULES. A new verdict with no entry
+  // here would make every question carrying it unverifiable, which is the state
+  // this whole block exists to end.
+  it('every verdict in use has a rule', () => {
+    const used = new Set(AUDITED_QUESTIONS.map((q) => q.verdict))
+    for (const v of used) expect(Object.keys(RULES)).toContain(v)
+  })
+})
