@@ -1195,8 +1195,19 @@ function StartFromLink({ onCancel, onClaim, busy }: {
       <Choices
         label="Have you actually used it yourself?"
         options={[
-          { value: 'CONFIRMED' as PersonalUse, label: 'Yes, I have used it' },
-          { value: 'DENIED' as PersonalUse, label: 'No, I have not' },
+          // ⚠️ THIS SAID `'DENIED' as PersonalUse`, AND THE CAST IS WHAT HID IT.
+          // `PersonalUse` is CONFIRMED | NOT_CONFIRMED, and the database agrees:
+          // `product_entities_personal_use_known` is CHECK (personal_use IN
+          // ('CONFIRMED','NOT_CONFIRMED')). `attestedEntity` passes the value
+          // straight through, so answering honestly sent 'DENIED' to the insert
+          // and the constraint refused it — a creator telling the truth about an
+          // affiliate product could not add it at all.
+          //
+          // ⚖️ NO CAST HERE, ON PURPOSE. Typed as PersonalUse, a third value is a
+          // compile error rather than a runtime refusal nobody sees until a
+          // creator hits it.
+          { value: 'CONFIRMED', label: 'Yes, I have used it' },
+          { value: 'NOT_CONFIRMED', label: 'No, I have not' },
         ]}
         chosen={personalUse}
         onPick={(v) => setPersonalUse(v)}
