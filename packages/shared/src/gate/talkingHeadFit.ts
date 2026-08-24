@@ -147,6 +147,36 @@ export function warningForPickedVideo(decision: FitDecision): FitWarning | null 
  *  mentioning it. */
 export const ENOUGH_TO_SOUND_LIKE_YOU = 5
 
+/** How many of the creator's own videos a scan actually looks at.
+ *
+ *  ⚠️ THIS IS A SAMPLE, AND THE SAMPLE COSTS MONEY. `build_voice` transcribes
+ *  from AUDIO, so it never has frames; deciding whether a video is the creator
+ *  talking to camera means an ADDITIONAL 360p download and one model call per
+ *  video checked. That is why a scan does not look at all of them, and why
+ *  `messageForOwnAccount` names the number it looked at instead of implying it
+ *  looked at everything.
+ *
+ *  ⚖️ AND THE FLOOR IS NOT ARBITRARY: A SAMPLE BELOW THE THRESHOLD CAN NEVER
+ *  BE SILENT. `messageForOwnAccount` returns `fine` -- says nothing at all --
+ *  only once `usable` reaches ENOUGH_TO_SOUND_LIKE_YOU. If a scan checks four
+ *  videos and the bar is five, then every creator on earth, including one whose
+ *  every video is a perfect talking head, is told their account is thin. The
+ *  warning would stop being a measurement and become a fixture of the product.
+ *  So the sample must be able to clear the bar, with room for one that fails to
+ *  download. `sampleCanBeSilent` below is that rule, and it is tested. */
+export const OWN_VIDEOS_TO_CHECK = 6
+
+/** True when a sample of this size can still produce silence -- i.e. when a
+ *  creator with a good account can be told nothing at all.
+ *
+ *  ⚠️ THE NULL CHECK PRECEDES THE COERCION, because Number(null) is 0 and
+ *  isFinite(0) is true, so a missing size would otherwise read as a real zero. */
+export function sampleCanBeSilent(size: number | null | undefined): boolean {
+  if (size === null || size === undefined) return false
+  if (!Number.isFinite(size)) return false
+  return size >= ENOUGH_TO_SOUND_LIKE_YOU
+}
+
 export interface AccountMessage {
   /** 'none' — we found nothing usable. 'thin' — enough to begin, worth saying.
    *  'fine' — nothing to say, and nothing is shown. */
