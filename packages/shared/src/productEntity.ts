@@ -726,6 +726,18 @@ export interface ProductEntityRecord extends DraftEntity {
   knowledge: import('./productExtraction').ExtractedFact[] | null
   knowledgeExtractedAt: string | null
   knowledgeSourceUrl: string | null
+  /** ⚠️ WHEN THE LAST ATTEMPT FAILED. Null means the last attempt did not fail,
+   *  which INCLUDES never having attempted one -- the two are told apart by
+   *  whether there is a source to read. Cleared on every success, because a
+   *  product that failed once and then read fine is not a failing product.
+   *  Added by migration 0169; before it, a failure was indistinguishable from
+   *  an extraction nobody had started. */
+  knowledgeFailedAt: string | null
+  /** Why it failed, in words safe to show a creator. Never a raw error: those
+   *  carry stack frames and host names, and tell a person nothing they can act
+   *  on. Null exactly when `knowledgeFailedAt` is null -- the database enforces
+   *  the pair. */
+  knowledgeError: string | null
 }
 
 /**

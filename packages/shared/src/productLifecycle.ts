@@ -26,6 +26,10 @@ export type ProductLifecycle =
   | 'ARCHIVED'
   /** Nothing to read from — no link, no photographs. Twin cannot start. */
   | 'NEEDS_SOURCE'
+  /** Twin tried and could not read the source. ⚠️ THIS USED TO BE UNDERIVABLE
+   *  and is the reason `knowledge_failed_at` exists — see the note at the
+   *  bottom of this file for what changed. */
+  | 'IMPORT_FAILED'
   /** A source exists and no extraction has completed yet.
    *  ⚠️ THIS STATE IS AMBIGUOUS AND THE AMBIGUITY IS REAL — see below. */
   | 'READING'
@@ -48,6 +52,12 @@ export function productLifecycle(e: ProductEntityRecord, photoCount = 0): Produc
   const hasSource = !!(e.productUrl ?? '').trim() || photoCount > 0
   const k = e.knowledge
 
+  // ⚠️ A RECORDED FAILURE OUTRANKS "still reading", and only a failure with
+  // NOTHING LEARNED counts here. A product that failed a re-read but already
+  // holds usable facts is not broken — it is a product with facts and a stale
+  // attempt, and telling its owner it failed would be a worse lie than silence.
+  if (e.knowledgeFailedAt && (k === null || k.length === 0)) return 'IMPORT_FAILED'
+
   // ⚠️ null AND [] ARE DIFFERENT ANSWERS, and collapsing them is the mistake the
   // record's own comment warns about. null = never extracted; [] = extracted and
   // nothing usable found.
@@ -60,6 +70,7 @@ export function productLifecycle(e: ProductEntityRecord, photoCount = 0): Produc
 /** What the creator reads. One sentence, plain, and never blaming them. */
 export const LIFECYCLE_MESSAGE: Record<ProductLifecycle, string> = {
   ARCHIVED: 'Put away. Scripts will not use this one.',
+  IMPORT_FAILED: 'Twin could not read that page. Try again, or add the details yourself.',
   NEEDS_SOURCE: 'Add a link or a photo and Twin can learn what this is.',
   READING: 'Twin is reading the page. This keeps going if you leave.',
   NOTHING_FOUND: 'Twin read the page and could not find anything usable. You can add details yourself.',
@@ -72,22 +83,26 @@ export const LIFECYCLE_MESSAGE: Record<ProductLifecycle, string> = {
 export const factsAreQuotable = (s: ProductLifecycle): boolean => s === 'READY'
 
 /**
- * ⚠️ IMPORT_FAILED IS NOT IN THE UNION, AND ITS ABSENCE IS THE FINDING.
+ * ⚠️ IMPORT_FAILED WAS NOT DERIVABLE, AND THIS RECORDS WHAT CHANGED.
  *
- * A failed extraction writes NOTHING back to `product_entities`. `knowledge`
- * stays null and `knowledge_extracted_at` stays null -- byte-identical to a
- * product whose extraction was never attempted. So `READING` currently means
- * "queued, in flight, OR failed some time ago", and a creator whose page could
- * not be read sees "Twin is reading the page" forever.
+ * It used to be absent from the union on purpose: a failed extraction wrote
+ * NOTHING back, so `knowledge` stayed null and `knowledge_extracted_at` stayed
+ * null -- byte-identical to a product whose extraction was never attempted.
+ * `READING` therefore meant "queued, in flight, OR failed some time ago", and a
+ * creator whose page could not be read saw "Twin is reading the page" forever.
  *
- * ⚖️ THE FIX IS A COLUMN, NOT A CLEVERER DERIVATION. Guessing from elapsed time
- * -- "null for more than ten minutes means failed" -- would report a slow queue
- * as a failure and a fast failure as progress, and it would do so silently.
- * Making this honest needs the worker to record the attempt and its outcome,
- * which is a migration and an edge change: DB_EDGE_AUTH, and it belongs in its
- * own matrix trip rather than smuggled into a derivation.
+ * ⚖️ THE FIX WAS A COLUMN, NOT A CLEVERER DERIVATION, and it stayed that way.
+ * Guessing from elapsed time -- "null for more than ten minutes means failed" --
+ * reports a slow queue as a failure and a fast failure as progress, silently.
+ * Migration 0169 adds `knowledge_failed_at` and `knowledge_error`; the worker
+ * records them when the handler throws and CLEARS them on every success, so a
+ * product that failed once and later read fine does not keep reporting a
+ * failure it has recovered from.
+ *
+ * ⚠️ AND THE STATE IS STILL DERIVED. The columns say what happened to the
+ * ATTEMPT; they are not a status field that could disagree with the knowledge
+ * itself. A failure only becomes IMPORT_FAILED where nothing was learned.
  */
-export const IMPORT_FAILED_IS_NOT_DERIVABLE =
-  'A failed extraction writes nothing back, so READING cannot be distinguished '
-  + 'from a failure that already happened. Fixing it requires recording the '
-  + 'attempt outcome on the row.'
+export const IMPORT_FAILED_IS_DERIVABLE_SINCE_0169 =
+  'A failed extraction now records knowledge_failed_at and knowledge_error, so '
+  + 'READING can be distinguished from a failure that already happened.'

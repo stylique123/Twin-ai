@@ -222,7 +222,61 @@ const SYSTEM = [
   'about the page; an invented one is a fact about you.',
 ].join('\n')
 
+/**
+ * ⚠️ A FAILED READ MUST LEAVE A TRACE, and until now it left none: the handler
+ * threw and the row was untouched, so the failure was indistinguishable from an
+ * extraction nobody had started. The creator's card then said "Twin is reading
+ * the page" forever.
+ *
+ * ⚖️ THE WRAPPER RECORDS AND RETHROWS. It must not swallow: the job still fails,
+ * still retries under the queue's own rules, and still shows up in the worker's
+ * error path. All that changes is that the ROW now says what happened.
+ *
+ * ⚠️ AND RECORDING MUST NOT ITSELF BECOME A FAILURE. If the write fails, the
+ * original error is what propagates -- losing the note is bad, replacing the
+ * real cause with a note-writing error is worse.
+ */
 export async function handleExtractProduct(job: Job): Promise<Record<string, unknown>> {
+  try {
+    return await extractProduct(job)
+  } catch (e) {
+    const payload = (job.payload ?? {}) as Record<string, unknown>
+    const entityId = typeof payload.entity_id === 'string' ? payload.entity_id : ''
+    if (entityId) {
+      try {
+        await db.from('product_entities').update({
+          knowledge_failed_at: new Date().toISOString(),
+          knowledge_error: creatorSafeReason(e),
+        }).eq('id', entityId)
+      } catch (writeError) {
+        console.warn('extract_product: could not record the failure',
+          writeError instanceof Error ? writeError.message : writeError)
+      }
+    }
+    throw e
+  }
+}
+
+/**
+ * ⚠️ WHAT THE CREATOR IS ALLOWED TO SEE. A raw error carries stack frames, our
+ * host names and sometimes the URL with its query string -- none of which is
+ * theirs to read, and none of which tells them what to do. This maps the causes
+ * we actually produce onto sentences a person can act on, and everything else
+ * onto one that blames nobody.
+ */
+function creatorSafeReason(e: unknown): string {
+  const raw = (e instanceof Error ? e.message : String(e)).toLowerCase()
+  if (raw.includes('https')) return 'That link has to start with https.'
+  if (raw.includes('quota') || raw.includes('rate')) return 'Twin was busy when it tried. Try that link again in a few minutes.'
+  if (raw.includes('timeout') || raw.includes('timed out')) return 'That page took too long to answer.'
+  if (raw.includes('404') || raw.includes('not found')) return 'That page could not be found.'
+  if (raw.includes('403') || raw.includes('forbidden') || raw.includes('401')) return 'That page would not let Twin read it.'
+  // ⚖️ THE DEFAULT IS OURS, NOT THEIRS. An unrecognised failure is not evidence
+  // the creator did anything wrong, and must never be worded as though it were.
+  return 'Twin could not read that page. This is on our side — try again, or add the details yourself.'
+}
+
+async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   const payload = (job.payload ?? {}) as Record<string, unknown>
   const entityId = typeof payload.entity_id === 'string' ? payload.entity_id : ''
   const url = typeof payload.url === 'string' ? payload.url.trim() : ''
@@ -264,6 +318,11 @@ export async function handleExtractProduct(job: Job): Promise<Record<string, unk
       knowledge: [],
       knowledge_extracted_at: new Date().toISOString(),
       knowledge_source_url: url,
+      // ⚠️ CLEARED, BECAUSE THIS ATTEMPT DID NOT FAIL. A product that failed
+      // once and then read fine would otherwise keep reporting a failure it has
+      // already recovered from. Stale is not absent.
+      knowledge_failed_at: null,
+      knowledge_error: null,
     }).eq('id', entityId)
     return { extracted: 0, reason: 'unreadable' }
   }
@@ -380,6 +439,9 @@ export async function handleExtractProduct(job: Job): Promise<Record<string, unk
     knowledge,
     knowledge_extracted_at: now,
     knowledge_source_url: url,
+    // Same clearing as the unreadable path, for the same reason.
+    knowledge_failed_at: null,
+    knowledge_error: null,
   }).eq('id', entityId)
   if (error) throw new Error(`extract_product could not store knowledge: ${error.message}`)
 

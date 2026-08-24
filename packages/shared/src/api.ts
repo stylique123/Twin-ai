@@ -1544,10 +1544,12 @@ interface ProductEntityRow {
   knowledge?: unknown
   knowledge_extracted_at?: string | null
   knowledge_source_url?: string | null
+  knowledge_failed_at?: string | null
+  knowledge_error?: string | null
 }
 
 const ENTITY_COLUMNS =
-  'id, name, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at, archived_at, knowledge, knowledge_extracted_at, knowledge_source_url'
+  'id, name, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at, archived_at, knowledge, knowledge_extracted_at, knowledge_source_url, knowledge_failed_at, knowledge_error'
 
 /** Read `restrictions` back defensively. `approvedClaims` is the field §5a.5
  *  turns on — an outcome claim needs a permission that EXISTS — so a malformed
@@ -1619,6 +1621,13 @@ function readEntityRow(row: ProductEntityRow): ProductEntityRecord | null {
       : null,
     knowledgeExtractedAt: typeof row.knowledge_extracted_at === 'string' ? row.knowledge_extracted_at : null,
     knowledgeSourceUrl: typeof row.knowledge_source_url === 'string' ? row.knowledge_source_url : null,
+    // ⚠️ READ, NOT INFERRED. The pair is enforced in the database (0169), and a
+    // row that somehow carries one without the other is treated as no failure
+    // at all — a half-written failure is not a state a creator can act on.
+    knowledgeFailedAt: typeof row.knowledge_failed_at === 'string' && typeof row.knowledge_error === 'string'
+      ? row.knowledge_failed_at : null,
+    knowledgeError: typeof row.knowledge_failed_at === 'string' && typeof row.knowledge_error === 'string'
+      ? row.knowledge_error : null,
   }
 }
 
