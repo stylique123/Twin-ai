@@ -134,9 +134,18 @@ export const AUDITED_QUESTIONS: readonly AuditedQuestion[] = Object.freeze([
     screen: 'Onboarding scan step (conditional)',
     verdict: 'ORPHANED_NO_READER',
     absentFrom: GENERATION_DIRS,
+    // ⚠️ THIS NOTE SAID "ZERO CONSUMERS OF ANY KIND" AND THAT WAS FALSE. The
+    // verdict is right -- generation does not read this field -- but the cost
+    // was not, and a cost note is what somebody reads before deciding to delete
+    // a question. `refinedEntityType` consumes it at mint time: SERVICE plus
+    // `community` becomes a COMMUNITY entity, which is the mapping the whole
+    // community shot-list rests on. Deleting this field would silently retype
+    // every community creator as a plain SERVICE.
     cost:
-      'Zero consumers of any kind -- not even an ask-gate for a later question. It is a '
-      + 'question whose entire effect is the tap that answers it.',
+      'Not read by generation, which is what the verdict says. But it is NOT unread: '
+      + '`refinedEntityType` consumes it when the entity is minted, and SERVICE + community '
+      + 'is what produces a COMMUNITY entity at all. The cost is that the answer reaches '
+      + 'the script only THROUGH the entity type -- never in its own right.',
   }),
   Object.freeze({
     asked: 'What kind of thing do you sell?',
@@ -144,10 +153,18 @@ export const AUDITED_QUESTIONS: readonly AuditedQuestion[] = Object.freeze([
     screen: 'Onboarding scan step (conditional)',
     verdict: 'ORPHANED_NO_READER',
     absentFrom: GENERATION_DIRS,
+    // ⚠️ AND THIS ONE SAID "AND NOTHING ELSE", WHICH WAS ALSO FALSE. It gates the
+    // capability question AND refines the minted entity type through
+    // `refinedEntityType` -- course, digital and marketplace each produce a
+    // different type, and the type decides the show moments. A reader who
+    // believed "nothing else" would delete a field that changes what the camera
+    // is told to do.
     cost:
-      'Gates whether a capability question is asked, and nothing else. The product type '
-      + 'that matters is the one on the PRODUCT, which is asked again in the Library -- '
-      + 'this is one of the four places the same truth is collected.',
+      'Not read by generation, which is what the verdict says. It gates the capability '
+      + 'question AND refines the minted entity type via `refinedEntityType`, which decides '
+      + 'the show moments. The cost is that it reaches the script only THROUGH the type. '
+      + 'The product type that matters later is the one on the PRODUCT, asked again in the '
+      + 'Library -- this is one of the places the same truth is collected.',
   }),
   Object.freeze({
     asked: 'Who do you mainly want to reach?',
