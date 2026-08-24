@@ -269,7 +269,34 @@ Deno.serve(async (req: Request) => {
       creator_handle: handleOf(r.url),
     })),
   )
-  if (e3) return json({ error: `could not freeze the pilot sample: ${e3.message}`, pilot_run_id: run.id }, 500)
+  if (e3) {
+    // ⚠️ A HALF-FROZEN RUN IS WORSE THAN NO RUN, AND THIS PATH CREATED ONE.
+    // The run row is written first, carrying sample_digest over the drawn URLs
+    // and status 'frozen'. When this insert fails, that row survives with ZERO
+    // references — so every later read computes the digest of nothing, never
+    // matches, and reports "does not match its frozen digest. The sample was
+    // changed after freeze." Nothing changed the sample; it was never written.
+    //
+    // ⚠️ AND IT WEDGES THE BUTTON. 'frozen' counts as ACTIVE, so the corpse also
+    // refuses the next Start — the owner is left unable to label the run and
+    // unable to begin a new one, with no way out from the screen. That is
+    // exactly what happened to run 1758052e after the stratum constraint
+    // rejected the speech cohort's bands.
+    //
+    // ⚖️ SO THE RUN IS REMOVED RATHER THAN LEFT AS EVIDENCE. There are two
+    // statements here and no transaction across them, and the honest repair for
+    // "the second one failed" is to undo the first. Best-effort: if the delete
+    // also fails, the id is still reported so the row can be found by hand.
+    const { error: cleanup } = await admin.from('visual_pilot_runs').delete().eq('id', run.id)
+    return json({
+      error: `could not freeze the pilot sample: ${e3.message}`,
+      pilot_run_id: run.id,
+      // ⚠️ SAY WHICH, rather than implying the cleanup worked. A run that could
+      // not be removed still blocks the next Start, and the person reading this
+      // is the only one who can clear it.
+      run_removed: !cleanup,
+    }, 500)
+  }
 
   // ── enqueue exactly the frozen sample ────────────────────────────────────
   //

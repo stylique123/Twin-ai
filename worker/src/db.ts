@@ -104,3 +104,27 @@ export async function failJob(id: string, message: string, backoffSecs = 30, att
   if (error) throw error
   if (data === 0) console.log(JSON.stringify({ t: new Date().toISOString(), level: 'warn', msg: 'fail_job no-op: job was reclaimed', job: id, worker: env.workerId }))
 }
+
+/** Publish the talking-head early answer while the job is still running.
+ *
+ *  ⚠️ WRITTEN BEFORE TRANSCRIPTION, WHICH IS THE ONLY REASON IT EXISTS. The
+ *  creator is watching a screen; the point of the early check is that they hear
+ *  "this won't work well" now rather than after the analysis finishes. Waiting
+ *  for complete_job would put the answer at the end, where a warning is an
+ *  apology.
+ *
+ *  ⚠️ THE SAME OWNERSHIP GUARDS AS updateJobProgress, and for the same reason: a
+ *  job reclaimed after its visibility timeout must not have its final result
+ *  clobbered by a stale write from the previous owner.
+ *
+ *  ⚖️ BEST-EFFORT. Losing a warning must never cost the creator the video they
+ *  asked for, so a failed write is logged and swallowed.
+ */
+export async function publishEarlyLook(id: string, early_look: unknown): Promise<void> {
+  try {
+    await db.from('jobs').update({ result: { early_look } })
+      .eq('id', id).eq('status', 'running').eq('locked_by', env.workerId)
+  } catch (e) {
+    console.warn(`[job ${id}] early look write failed:`, e)
+  }
+}

@@ -285,6 +285,18 @@ export interface IngestJob {
         transcript_id?: string
         duration_sec?: number
         words?: number
+        /** ⚠️ PUBLISHED MID-JOB, BEFORE TRANSCRIPTION. The talking-head check
+         *  runs first and writes its three answers here so the screen — which is
+         *  polling this row already — can warn in seconds rather than after the
+         *  whole analysis. Every field is nullable: null means "we could not
+         *  tell", which judgeFit reads as `unsure` and lets straight through. */
+        early_look?: {
+          someoneTalkingToCamera: boolean | null
+          peopleOnCamera: 'none' | 'one' | 'multiple' | null
+          looksAnimated: boolean | null
+          framesLookedAt: number
+          failure: string | null
+        }
       }
     | null
   error: string | null
@@ -343,6 +355,46 @@ export async function getJob(id: string): Promise<IngestJob | null> {
     .maybeSingle()
   if (error || !data) return null
   return data as IngestJob
+}
+
+/** What the creator did when Twin warned them about a video.
+ *
+ *  ⚠️ BOTH CHOICES ARE RECORDED, NOT ONLY THE OVERRIDES. A log of overrides
+ *  alone has no denominator — "40 people ignored the warning" is unreadable
+ *  without knowing whether 45 saw it or 4,500. These rows are the only evidence
+ *  that will ever say whether this gate is worth having.
+ *
+ *  ⚖️ AND IT NEVER FAILS THE BUILD. Losing a record costs us a measurement;
+ *  throwing here would cost the creator the video they asked for. The write is
+ *  best-effort and the caller does not branch on it.
+ *
+ *  ⚠️ THE ROW IS WHAT TWIN SAID, NOT WHAT TWIN WOULD SAY TODAY. `reason` is
+ *  copied from the warning the creator actually saw, so if the rules change
+ *  later these rows still explain the decision they were reacting to. */
+export async function recordTalkingHeadChoice(input: {
+  jobId: string | null
+  reason: 'ANIMATED' | 'NOBODY_ON_CAMERA' | 'NOBODY_TALKING_TO_CAMERA'
+  framesLookedAt: number | null
+  choice: 'used_anyway' | 'picked_another'
+}): Promise<void> {
+  try {
+    const client = getClient()
+    const { data: auth } = await client.auth.getUser()
+    const owner = auth?.user?.id
+    // ⚠️ NO OWNER, NO ROW. RLS would refuse it anyway; failing quietly here
+    // keeps an unauthenticated edge case from surfacing as an error a creator
+    // has to read.
+    if (!owner) return
+    await client.from('talking_head_overrides').insert({
+      owner_id: owner,
+      job_id: input.jobId,
+      reason: input.reason,
+      frames_looked_at: input.framesLookedAt,
+      choice: input.choice,
+    })
+  } catch {
+    /* a lost measurement must never cost the creator their video */
+  }
 }
 
 /** A field the planner could not settle, and the question that settles it. */
