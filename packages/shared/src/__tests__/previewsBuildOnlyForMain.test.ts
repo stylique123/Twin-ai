@@ -11,7 +11,7 @@ import { execFileSync } from 'node:child_process'
 const repo = join(import.meta.dirname, '..', '..', '..', '..')
 const cfg = JSON.parse(readFileSync(join(repo, 'vercel.json'), 'utf8')) as {
   ignoreCommand?: string
-}
+} & Record<string, unknown>
 
 /** Returns Vercel's meaning: exit 0 = build skipped, exit 1 = build proceeds. */
 function decide(ref: string | undefined): 'skipped' | 'builds' {
@@ -28,6 +28,38 @@ function decide(ref: string | undefined): 'skipped' | 'builds' {
     return 'builds'    // non-zero
   }
 }
+
+// ⚠️ AND THE CONFIG MUST BE ONE VERCEL WILL ACCEPT AT ALL. I tried to document
+// this decision inside vercel.json as an "_ignoreCommand" array of prose, and
+// every deployment then failed with:
+//   The `vercel.json` schema validation failed with the following message:
+//   should NOT have additional property `_ignoreCommand`
+// The schema rejects unknown keys and JSON takes no comments, so the rationale
+// belongs HERE, in the guard, which this repo already argues is where a rule
+// lives. The failure came before ignoreCommand was ever evaluated -- a config
+// typo does not break one branch, it breaks every deploy including production.
+describe('vercel will accept this file', () => {
+  const ALLOWED = new Set([
+    '$schema', 'ignoreCommand', 'installCommand', 'buildCommand',
+    'outputDirectory', 'rewrites', 'headers', 'redirects', 'git', 'github',
+    'framework', 'devCommand', 'regions', 'functions', 'crons', 'cleanUrls',
+    'trailingSlash', 'public', 'installCommand',
+  ])
+
+  it('carries no key Vercel would reject', () => {
+    for (const k of Object.keys(cfg as Record<string, unknown>)) {
+      expect(ALLOWED.has(k), `${k} is not a documented vercel.json property`).toBe(true)
+    }
+  })
+
+  // ⚖️ THE SPECIFIC SHAPE OF MY MISTAKE. An underscore-prefixed key looks like a
+  // conventional "ignore me" marker and is not one.
+  it('has no underscore-prefixed pseudo-comment keys', () => {
+    for (const k of Object.keys(cfg as Record<string, unknown>)) {
+      expect(k.startsWith('_'), `${k} is a comment pretending to be config`).toBe(false)
+    }
+  })
+})
 
 describe('the command exists at all', () => {
   it('vercel.json sets ignoreCommand', () => {
