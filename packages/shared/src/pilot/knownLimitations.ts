@@ -127,6 +127,39 @@ export const KNOWN_LIMITATIONS: readonly KnownLimitation[] = Object.freeze([
       + 'incomparable with what came after. A cohort drawn to measure it would be a third run.',
     status: 'RESOLVED',
   }),
+  Object.freeze({
+    id: 'THE_CLAIM_STOP_IS_DECLARED_BUT_NOT_ENFORCED',
+    what:
+      "`entityStatus` and `mayGenerateClaims` in productEntity.ts implement what their own "
+      + "comment calls 'the hard half of \u00a714' -- missing_information is 'a STOP, not a "
+      + "warning: an entity in that state may be MENTIONED but must not have claims generated "
+      + 'about it.\u2019 Both functions have ZERO production callers. Grep finds them only in '
+      + 'their own test file. generate-blueprint reads the owned entity and uses `name` for a '
+      + 'beat-audit signal, but nothing anywhere consults the status before letting a script '
+      + 'make claims about a product. The rule was written, tested, and never connected.',
+    decision:
+      'NOT wired tonight, and this is a deliberate refusal rather than an oversight. '
+      + '`entityStatus` returns missing_information whenever `evidence` is null, and most '
+      + 'entities in production carry evidence null -- they were minted from an onboarding tap '
+      + 'or a Library claim, neither of which collects evidence sections. Enforcing the stop as '
+      + 'written would therefore silence product claims for MOST existing products, including '
+      + 'the ones #497 had just unblocked for scenes. That is a large behavioural change '
+      + 'disguised as connecting a function, and it must be measured against real rows before '
+      + 'it ships, not reasoned about.',
+    revisitWhen:
+      'Someone has counted how many live product_entities rows would return '
+      + 'missing_information -- one read-only query against production. If the number is small, '
+      + 'wire the stop. If it is most of them, the defect is that the mint never collects '
+      + 'evidence, and THAT is the fix; the stop is only correct once an entity can realistically '
+      + 'satisfy it.',
+    cost:
+      'Low to wire, high to get wrong in either direction. Wiring it blind silences products '
+      + 'across the board and reads to a creator as Twin forgetting what they sell. Leaving it '
+      + 'costs the guarantee \u00a714 was written to give: a script may currently make claims '
+      + 'about an entity with no name and no evidence. The measurement is one query and should '
+      + 'happen before either.',
+    status: 'OPEN',
+  }),
 ])
 
 export const openLimitations = (): readonly KnownLimitation[] =>
