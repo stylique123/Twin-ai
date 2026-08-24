@@ -1895,7 +1895,51 @@ export async function claimProductEntity(
    *  wired entitlements yet must not silently start refusing writes. */
   entitlements?: Record<string, unknown> | null,
 ): Promise<ProductEntityRecord | null> {
-  const entity = attestedEntity(attestation)
+  // ⚠️ WITHOUT THIS, EVERY PRODUCT ADDED FROM THE LIBRARY WAS BORN UNSHOWABLE.
+  // `attestedEntity` derives showability from capability flags, and the Library
+  // passed none — so `inferShowability(type, {})` returned UNKNOWN, and
+  // generate-blueprint renders UNKNOWN as "the creator CANNOT put it on screen.
+  // Write NO shot that requires showing, holding or demonstrating it." A creator
+  // who had already answered "yes, I can film objects" during onboarding got a
+  // talking-only script for the product they had just added.
+  //
+  // ⚖️ THIS READS AN ANSWER, IT DOES NOT INVENT ONE. The account default is what
+  // the creator told us about their setup; applying it here is the same
+  // derivation the onboarding mint already does (`mintFromWorkKind` passes
+  // `{ canRecordScreen, canFilmObjects }`). An unanswered flag stays unanswered
+  // and showability stays UNKNOWN — silence must never become permission any
+  // more than it becomes refusal.
+  //
+  // ⚠️ AN EXPLICIT `flags` ON THE ATTESTATION STILL WINS. A caller that asked the
+  // creator about THIS product has a better answer than the account default, and
+  // folding the default in would overwrite it.
+  let flags = attestation.flags
+  if (!flags) {
+    try {
+      const { data: voiceRow } = await supabase
+        .from('brand_voices')
+        .select('default_capability_flags, is_default')
+        .eq('owner_id', ownerId)
+        .order('is_default', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const account = readCapabilityFlags(
+        (voiceRow as { default_capability_flags?: unknown } | null)?.default_capability_flags,
+      )
+      // ⚖️ `?? null` RATHER THAN `?? false`. Absent is not a denial — that is the
+      // trap 0103 names, and `inferShowability` already reads null as UNKNOWN.
+      flags = {
+        canRecordScreen: account.can_record_screen ?? null,
+        canFilmObjects: account.can_film_objects ?? null,
+      }
+    } catch {
+      // ⚖️ A FAILED READ MUST NOT REFUSE THE CLAIM. The product exists because a
+      // person said it is theirs; a transient error reading their setup leaves
+      // showability UNKNOWN, which is exactly what it was before this block.
+      flags = undefined
+    }
+  }
+  const entity = attestedEntity({ ...attestation, flags })
 
   // ⚖️ THE ORDER IS CORRECTNESS FIRST, THEN ENTITLEMENT, AND IT IS NOT
   // ARBITRARY. A duplicate mint arriving from an onboarding replay is a BUG; it
