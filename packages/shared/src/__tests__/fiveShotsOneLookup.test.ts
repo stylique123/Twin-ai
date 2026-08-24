@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   pickShot, shotDirection, privacyOf, SHOT_DIRECTION, READABILITY_RULES, BLUR_LINE,
+  preRollChecklist,
   type BeatPurpose, type ShotPattern,
 } from '../shotGrammar'
 import * as shared from '../index'
@@ -103,4 +104,51 @@ it('is exported from the package index', () => {
 it('no direction makes the creator think about Twin', () => {
   const all = [...Object.values(SHOT_DIRECTION), ...READABILITY_RULES, BLUR_LINE].join(' ')
   expect(all).not.toMatch(/screen[- ]record|screen capture|sceneType|beat_plan|product_dna|entity/i)
+})
+
+// ⚠️ THE SETUP HAPPENS BEFORE THE RECORD BUTTON. Every camera-at-screen shot
+// assumes the page is open and zoomed when the take starts; that instruction sits
+// on a card the creator has scrolled past by the time they are holding the phone.
+// They press record, THEN open the app, and burn the seconds the hook depends on.
+describe('the setup line appears before the countdown, not after', () => {
+  it('a screen shot gets a setup line', () => {
+    expect(preRollChecklist('Hold your phone up beside your face with the dashboard open')).toBeTruthy()
+    expect(preRollChecklist('Laptop open to the classroom, point at the module list')).toBeTruthy()
+  })
+
+  it('a shot with a number to read is told to zoom first', () => {
+    const line = preRollChecklist('Turn the phone to camera showing the revenue number')
+    expect(line).toMatch(/zoom/i)
+  })
+
+  // ⚖️ NULL FOR A TALKING-HEAD BEAT. A reminder with nothing to open is noise,
+  // and noise here teaches people to skip the line that matters.
+  it.each([
+    'You, talking.',
+    'Stay in your normal position and describe the change for one client.',
+    '',
+  ])('says nothing for %s', (d) => {
+    expect(preRollChecklist(d)).toBeNull()
+  })
+
+  it('an absent direction is not a crash and not a reminder', () => {
+    expect(preRollChecklist(null)).toBeNull()
+    expect(preRollChecklist(undefined)).toBeNull()
+  })
+
+  // ⚠️ A DECISION LAYER NOTHING CALLS is the state this repo keeps rediscovering,
+  // so this asserts the teleprompter actually renders it.
+  it('the between-scenes panel actually calls it', () => {
+    const { readFileSync } = require('node:fs') as typeof import('node:fs')
+    const { join } = require('node:path') as typeof import('node:path')
+    const repo = join(import.meta.dirname, '..', '..', '..', '..')
+    const capture = readFileSync(join(repo, 'apps', 'web', 'src', 'pages', 'v2', 'V2Capture.tsx'), 'utf8')
+    // ⚠️ AND NOT JUST THE TOKEN. My first version matched /preRollChecklist/,
+    // which the IMPORT LINE satisfies — so replacing the render condition with
+    // `{false && (` left the guard green. Twice today a guard of mine asserted a
+    // string appeared somewhere rather than in the position that carries the
+    // behaviour. This reads the render condition itself.
+    expect(capture).toMatch(/\{preRollChecklist\(next\?\.movement \?\? null\) && \(/)
+    expect(capture).toMatch(/Set up first/)
+  })
 })
