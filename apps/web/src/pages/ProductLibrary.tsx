@@ -506,6 +506,26 @@ export default function ProductLibrary() {
     if (!ownerId) { setErr('Please sign in again.'); return }
     setLearning(id)
     try {
+      // ⚠️ THE LINK BECOMES THE PRODUCT'S LINK, AND IT DID NOT BEFORE. This box
+      // sent the URL to the extractor and never wrote it to `product_url`, while
+      // the Link field above wrote `product_url` and never re-read the page. Two
+      // inputs, disjoint effects — so a creator could paste a page here, watch
+      // Twin read it, and still find the Link field empty or holding an older
+      // address. The most recent thing they told us was the one thing we did not
+      // keep.
+      //
+      // ⚖️ ONE CANONICAL FIELD. `product_url` is what every other view reads, so
+      // giving Twin a page to read IS telling us where the product lives. The
+      // write is awaited before the extraction so a failure here surfaces as a
+      // failure rather than leaving the two out of step.
+      //
+      // ⚖️ AND IT DOES NOT OVERWRITE AN IDENTICAL VALUE. `save` round-trips to
+      // the server; skipping the no-op keeps a re-read from touching updated_at
+      // and looking like an edit nobody made.
+      const entity = (entities ?? []).find((x) => x.id === id)
+      if (url && url !== (entity?.productUrl ?? '')) {
+        await save(id, { productUrl: url })
+      }
       await requestProductExtraction(ownerId, id, url)
       // ⚖️ POLLS THE ENTITY, NOT THE JOB. A creator who reloads or comes back
       // tomorrow sees whatever the worker got to; watching a job id would lose
