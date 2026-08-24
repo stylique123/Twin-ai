@@ -19,7 +19,10 @@ import {
   Q4_ANSWERS, mintFromWorkKind, mintsOwnedEntity, q4AsksOwnership,
   saveMintedEntity, type EntityType, type Q4Answer,
 } from '../lib/api'
-import { readScanFailure, scanFailure, otherPlatformsSentence, type ScanFailure } from '../lib/api'
+import {
+  readScanFailure, scanFailure, otherPlatforms, otherPlatformsSentence, PLATFORM_LABEL,
+  type ScanFailure,
+} from '../lib/api'
 import { Aurora } from '../components/Aurora'
 
 /** The chooser's words. Kept beside the screen rather than in the contract: the
@@ -141,12 +144,13 @@ export default function Onboarding() {
     safeWriteDraft(next)
   }, [])
 
-  const startDraft = useCallback((voiceId: string, platform: Platform, profile: VoiceProfile | null) => {
+  const startDraft = useCallback((voiceId: string, platform: Platform, handle: string, profile: VoiceProfile | null) => {
     const next: OnboardingDraft = {
       version: ONBOARDING_DRAFT_VERSION,
       userId,
       voiceId,
       platform,
+      handle: handle.trim().slice(0, 120),
       profile,
       ...emptyProfileAnswers(),
       workKind: null,
@@ -199,10 +203,23 @@ export default function Onboarding() {
     safeClearDraft(userId)
     setDraft(null)
   }, [navigate, refreshProfile, userId])
-  const handleStarted = useCallback((voiceId: string, platform: Platform, profile: VoiceProfile | null) => {
-    startDraft(voiceId, platform, profile)
+  const handleStarted = useCallback((voiceId: string, platform: Platform, handle: string, profile: VoiceProfile | null) => {
+    startDraft(voiceId, platform, handle, profile)
     setMode(profile ? 'confirm' : 'building')
   }, [startDraft])
+
+  // ⚠️ THE SAME CREATOR, SOMEWHERE ELSE, IN ONE TAP. A scan that failed on OUR
+  // side is most often fixed by trying another platform -- and the only route
+  // there was Back, re-pick a platform, and retype the handle from memory.
+  // That is a charge levied on somebody we have just told the fault was ours.
+  const [retrySeed, setRetrySeed] = useState<{ handle: string; platform: Platform } | null>(null)
+  const tryAnotherPlatform = useCallback((platform: Platform) => {
+    setRetrySeed({ handle: draft?.handle ?? '', platform })
+    // ⚖️ THE DEAD SCAN IS DROPPED FIRST. Leaving the failed voiceId on the draft
+    // is what used to resume straight back into the scan that already failed.
+    forgetDeadScan()
+    setMode('handle')
+  }, [draft?.handle, forgetDeadScan])
   // THE SCAN MUST NOT OVERWRITE WHAT THE CREATOR JUST TYPED.
   //
   // This used to hand the scan's own reading straight in — `profile.audience`
@@ -283,7 +300,7 @@ export default function Onboarding() {
               transition={{ duration: 0.35, ease: EASE }}
             >
               {mode === 'handle' && (
-                <HandleStep onStarted={handleStarted} />
+                <HandleStep onStarted={handleStarted} seed={retrySeed} />
               )}
               {mode === 'building' && draft && (
                 <BuildingStep
@@ -291,6 +308,7 @@ export default function Onboarding() {
                   onReady={handleReady}
                   onBack={() => setMode('handle')}
                   onScanDead={forgetDeadScan}
+                  onTryPlatform={tryAnotherPlatform}
                   onDraftChange={persistDraft}
                 />
               )}
@@ -337,11 +355,15 @@ function safeClearDraft(userId: string): void {
 // --- Step 1: paste a handle ------------------------------------------------
 function HandleStep({
   onStarted,
+  seed,
 }: {
-  onStarted: (voiceId: string, platform: Platform, profile: VoiceProfile | null) => void
+  onStarted: (voiceId: string, platform: Platform, handle: string, profile: VoiceProfile | null) => void
+  /** ⚖️ SET ONLY WHEN A FAILED SCAN SENT THEM BACK HERE. A normal arrival gets
+   *  the empty form it always got; this is a recovery path, not a new default. */
+  seed?: { handle: string; platform: Platform } | null
 }) {
-  const [handle, setHandle] = useState('')
-  const [platform, setPlatform] = useState<Platform>('instagram')
+  const [handle, setHandle] = useState(seed?.handle ?? '')
+  const [platform, setPlatform] = useState<Platform>(seed?.platform ?? 'instagram')
   const [busy, setBusy] = useState(false)
   const [manualBusy, setManualBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -357,7 +379,7 @@ function HandleStep({
       // second voice or hitting the "you already have a voice" / brand-limit wall. So
       // Back → choose again → Build always works, and no orphan voices pile up.
       const res = await startDna(handle.trim(), platform, false, true)
-      onStarted(res.brand_voice_id, platform, null)
+      onStarted(res.brand_voice_id, platform, handle.trim(), null)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not start the scan.')
     } finally {
@@ -373,7 +395,7 @@ function HandleStep({
     setManualBusy(true)
     try {
       const res = await startManualVoice(platform, handle.trim())
-      onStarted(res.brand_voice_id, platform, emptyVoiceProfile())
+      onStarted(res.brand_voice_id, platform, handle.trim(), emptyVoiceProfile())
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not set up a manual voice.')
     } finally {
@@ -476,12 +498,15 @@ function BuildingStep({
   onReady,
   onBack,
   onScanDead,
+  onTryPlatform,
   onDraftChange,
 }: {
   draft: OnboardingDraft
   onReady: (profile: VoiceProfile) => void
   onBack: () => void
   onScanDead: () => void
+  /** Take the same handle to another platform, in one tap. */
+  onTryPlatform: (platform: Platform) => void
   onDraftChange: (next: OnboardingDraft) => void
 }) {
   const [err, setErr] = useState<string | null>(null)
@@ -781,10 +806,34 @@ function BuildingStep({
               `otherPlatforms` has been correct and CALLED BY NOTHING since it
               was written; this is its first caller. */}
           {failure && !failure.creatorCanFix && failure.tryAnotherPlatform
-            && otherPlatformsSentence(draft.platform) !== '' && (
-            <p className="text-sm text-sand">
-              You can also try the same creator on {otherPlatformsSentence(draft.platform)}.
-            </p>
+            && otherPlatforms(draft.platform).length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm text-sand">
+                {draft.handle !== ''
+                  ? 'You can try the same handle somewhere else:'
+                  : `You can also try the same creator on ${otherPlatformsSentence(draft.platform)}.`}
+              </p>
+              {/* ⚠️ ONE TAP, BECAUSE THE ALTERNATIVE WAS RETYPING FROM MEMORY.
+                  The old route was Back, re-pick a platform, type the handle
+                  again — charged to somebody we have just told the fault was
+                  ours.
+                  ⚖️ AND THE BUTTONS APPEAR ONLY IF WE ACTUALLY KEPT THE HANDLE.
+                  An older draft predates the field and carries ''; offering a
+                  one-tap retry that silently lands on an empty box would be
+                  worse than the sentence, so that case keeps the sentence. */}
+              {draft.handle !== '' && (
+                <div className="flex flex-wrap gap-2">
+                  {otherPlatforms(draft.platform).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      className="btn-ghost text-sm"
+                      onClick={() => onTryPlatform(p)}
+                    >Try on {PLATFORM_LABEL[p]}</button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}

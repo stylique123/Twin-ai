@@ -139,7 +139,10 @@ export type ReadablePlatform = (typeof READABLE_PLATFORMS)[number]
 export const otherPlatforms = (tried: string): readonly ReadablePlatform[] =>
   READABLE_PLATFORMS.filter((p) => p !== tried.toLowerCase())
 
-const PLATFORM_NAME: Record<ReadablePlatform, string> = {
+/** How a creator writes each platform's name. ⚖️ EXPORTED, because a screen
+ *  that renders a button per platform needs the same spelling the sentence uses
+ *  -- two copies is how "TikTok" and "Tiktok" end up on one screen. */
+export const PLATFORM_LABEL: Record<ReadablePlatform, string> = {
   youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram',
 }
 
@@ -156,7 +159,7 @@ const PLATFORM_NAME: Record<ReadablePlatform, string> = {
  * all rather than a sentence with a gap where the platforms were.
  */
 export function otherPlatformsSentence(tried: string): string {
-  const names = otherPlatforms(tried).map((p) => PLATFORM_NAME[p])
+  const names = otherPlatforms(tried).map((p) => PLATFORM_LABEL[p])
   if (names.length === 0) return ''
   if (names.length === 1) return names[0]
   return `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`

@@ -22,6 +22,16 @@ export interface OnboardingDraft {
   userId: string
   voiceId: string
   platform: Platform
+  /** ⚠️ KEPT SO A FAILED SCAN CAN BE RETRIED SOMEWHERE ELSE WITHOUT RETYPING.
+   *  When our own fetch fails, the useful next step is the same creator on
+   *  another platform -- and until now the only route there was Back, re-pick a
+   *  platform, and type the handle again from memory. A creator who has just
+   *  been told "this is on our side" should not also be charged the typing.
+   *
+   *  ⚖️ THEIR PUBLIC HANDLE, NOTHING MORE. It is the same value already carried
+   *  by `voiceId`'s row and shown on screen while the scan runs; it is not a
+   *  credential, and it is capped so a hand-edited draft cannot grow unbounded. */
+  handle: string
   profile: VoiceProfile | null
   audience: string
   product: string
@@ -169,6 +179,9 @@ function parseDraft(raw: string | null, userId: string): OnboardingDraft | null 
       userId,
       voiceId: value.voiceId,
       platform: value.platform,
+      // VALIDATED AND CAPPED, like every other free-text field read back out of
+      // localStorage. A draft is not a trusted source.
+      handle: typeof value.handle === 'string' ? value.handle.slice(0, 120) : '',
       profile: value.profile ?? null,
       audience: value.audience ?? value.profile?.audience ?? '',
       product: value.product ?? value.profile?.offer ?? '',
@@ -247,6 +260,10 @@ export function readOnboardingDraft(storage: Storage, userId: string): Onboardin
     userId,
     voiceId: legacyVoiceId,
     platform,
+    // ⚖️ EMPTY, BECAUSE v1 NEVER STORED IT. Inventing one from the legacy blob
+    // would put a handle the creator cannot see behind a one-tap retry; the
+    // screen falls back to the sentence when there is nothing to carry.
+    handle: '',
     profile: null,
     audience: '',
     product: '',

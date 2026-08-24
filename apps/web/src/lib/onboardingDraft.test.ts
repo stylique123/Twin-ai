@@ -23,6 +23,7 @@ const draft = (userId = 'user-a'): OnboardingDraft => ({
   userId,
   voiceId: 'voice-a',
   platform: 'instagram',
+  handle: '@someone',
   ...emptyProfileAnswers(),
   workKind: null, workKindOther: null,
   forbiddenClaims: null,

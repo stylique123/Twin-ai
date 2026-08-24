@@ -57,7 +57,15 @@ describe('nothing to suggest means nothing is said', () => {
     const repo = join(import.meta.dirname, '..', '..', '..', '..')
     const code = readFileSync(join(repo, 'apps', 'web', 'src', 'pages', 'Onboarding.tsx'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
-    expect(code).toMatch(/otherPlatformsSentence\(draft\.platform\) !== ''/)
+    // ⚠️ THE PROPERTY, NOT ONE SPELLING OF IT. This first asserted the literal
+    // expression `otherPlatformsSentence(draft.platform) !== ''` and then failed
+    // against CORRECT code when the condition became the equivalent
+    // `otherPlatforms(draft.platform).length > 0`. The TEST was wrong, not the
+    // change: what must hold is that the block is GUARDED on there being
+    // somewhere to send them -- by either form -- never rendered unconditionally.
+    const guarded = /otherPlatformsSentence\(draft\.platform\) !== ''/.test(code)
+      || /otherPlatforms\(draft\.platform\)\.length > 0/.test(code)
+    expect(guarded, 'the cross-platform block must be gated on having somewhere to send them').toBe(true)
   })
 })
 
