@@ -1,0 +1,77 @@
+# ⚠️ THIS WORKFLOW IS THE ONLY THING THAT DEPLOYS PRODUCTION.
+#
+# vercel.json sets git.deploymentEnabled = false, which stops Vercel deploying
+# ANY branch on push -- previews and production alike. That was the point: every
+# branch push was creating a deployment, and 70% of the free daily allowance was
+# being spent on previews nobody opens, which then rate-limited the account and
+# blocked real work four times in one day.
+#
+# ⚖️ THE COST OF THAT TRADE IS EXACTLY THIS FILE. Production deploys move from
+# "Vercel notices a push" to "we ask it to". If this workflow silently stops
+# working, main keeps merging and the site keeps serving stale code with nothing
+# to say so -- which is worse than the problem it solves. So it FAILS LOUD at
+# every step rather than skipping: a missing secret is a red run, not a no-op.
+name: deploy-production
+
+on:
+  push:
+    branches: [main]
+  # ⚠️ A MANUAL PATH THAT IS NOT A DIFFERENT PATH. If a deploy is missed, the
+  # recovery is to re-run THIS workflow rather than to invent a one-off command
+  # nobody has tested.
+  workflow_dispatch:
+
+concurrency:
+  # Deploys are ordered and never parallel: two production deploys racing means
+  # the older commit can land last.
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # ⚠️ ABSENT IS NOT "SKIP". A missing secret used to be the classic silent
+      # failure here: `if: secrets.X != ''` reads as caution and produces a GREEN
+      # run that deployed nothing. This asserts instead, so the board goes red and
+      # somebody looks.
+      - name: The deploy hook must exist, or this is a red run and not a quiet one
+        env:
+          HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOOK}" ]; then
+            echo "::error::VERCEL_DEPLOY_HOOK_URL is not set."
+            echo "::error::vercel.json disables automatic git deploys, so nothing else will deploy production."
+            echo "::error::Create a Deploy Hook on the main branch (Vercel -> Settings -> Git -> Deploy Hooks)"
+            echo "::error::and add its URL as the repository secret VERCEL_DEPLOY_HOOK_URL."
+            exit 1
+          fi
+          echo "hook is configured"
+
+      - name: Ask Vercel to deploy this commit to production
+        env:
+          HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          set -euo pipefail
+          # ⚠️ THE EXIT CODE IS READ FROM curl ITSELF, not from a pipe. A pipe
+          # would report the exit status of the last command in it and hide a
+          # failed request behind a successful `tee`.
+          code="$(curl -sS -o /tmp/hook.out -w '%{http_code}' -X POST "${HOOK}")"
+          echo "vercel responded ${code}"
+          cat /tmp/hook.out || true
+          case "${code}" in
+            2*) echo "deploy requested" ;;
+            *)  echo "::error::Deploy hook returned ${code}; production was NOT asked to deploy."; exit 1 ;;
+          esac
+
+      # ⚖️ ASKING IS NOT DEPLOYING, AND THIS IS THE HALF THAT MAKES THE CLAIM
+      # HONEST. A 2xx from the hook means Vercel accepted the request, not that a
+      # build succeeded. Without a token we cannot poll the deployment to READY,
+      # so this step says plainly what has and has not been proven rather than
+      # letting a green tick imply more than it earned.
+      - name: Say what a green run here does and does not prove
+        run: |
+          echo "PROVEN: the deploy hook exists and accepted the request for ${GITHUB_SHA}."
+          echo "NOT PROVEN: that the build succeeded, or that the new version is live."
+          echo "Verify at https://vercel.com/stylique-crm-s-projects/twinai if this commit matters."
