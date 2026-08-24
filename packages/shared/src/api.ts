@@ -7,6 +7,7 @@ import {
 import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
 import { sanitizeBriefForWrite, readStoredBrief, type BriefAnswers } from './preScriptBrief'
 import type { HookChoice } from './hookChoice'
+import { mapIsUsable, type CommunityMap } from './communityMap'
 import { readStoredReferenceProfile, type StoredProfileRow } from './storedReferenceProfile'
 import type { ReferenceProfile } from './referenceProfile'
 import {
@@ -1546,10 +1547,11 @@ interface ProductEntityRow {
   knowledge_source_url?: string | null
   knowledge_failed_at?: string | null
   knowledge_error?: string | null
+  community_map?: unknown
 }
 
 const ENTITY_COLUMNS =
-  'id, name, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at, archived_at, knowledge, knowledge_extracted_at, knowledge_source_url, knowledge_failed_at, knowledge_error'
+  'id, name, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at, archived_at, knowledge, knowledge_extracted_at, knowledge_source_url, knowledge_failed_at, knowledge_error, community_map'
 
 /** Read `restrictions` back defensively. `approvedClaims` is the field §5a.5
  *  turns on — an outcome claim needs a permission that EXISTS — so a malformed
@@ -1628,6 +1630,19 @@ function readEntityRow(row: ProductEntityRow): ProductEntityRecord | null {
       ? row.knowledge_failed_at : null,
     knowledgeError: typeof row.knowledge_failed_at === 'string' && typeof row.knowledge_error === 'string'
       ? row.knowledge_error : null,
+    // ⚠️ READ THROUGH THE SAME TEST EVERY CONSUMER USES, NEVER TRUSTED RAW.
+    // `mapIsUsable` is what decides whether a community scene may be written at
+    // all; a row that fails it must read as NO MAP here rather than reaching a
+    // caller that would then have to re-check. A half-map that reads as present
+    // and behaves as absent is the exact shape `buildCommunityMap` refuses to
+    // create, and the read must not reintroduce it.
+    //
+    // ⚖️ AND THE DEGRADATION IS TOWARDS SILENCE, which is the safe direction.
+    // No map means the writer says nothing about the community; a malformed one
+    // treated as usable would let it name surfaces nobody confirmed exist.
+    communityMap: mapIsUsable(row.community_map as CommunityMap | null)
+      ? (row.community_map as CommunityMap)
+      : null,
   }
 }
 
@@ -1991,6 +2006,14 @@ export async function claimProductEntity(
     restrictions: entity.restrictions,
     source: entity.source,
     user_confirmed: entity.userConfirmed,
+    // ⚠️ WRITTEN ONLY WHEN IT IS USABLE, AND null OTHERWISE. The column's check
+    // constraint (0170) refuses anything that is not a JSON object, so sending
+    // a half-map would fail the INSERT — and the creator would be told their
+    // product could not be added, for a reason that has nothing to do with the
+    // product. Filtering here means a bad map costs the map, never the row.
+    community_map: mapIsUsable(attestation.communityMap as CommunityMap | null)
+      ? attestation.communityMap
+      : null,
   }
 
   const { data, error } = await supabase
