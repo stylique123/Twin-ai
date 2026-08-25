@@ -16,6 +16,8 @@ import { buildSlots, filledFrom, slotsReady } from '../_shared/writerInput.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
 import { applyHookContract } from '../_shared/hookContract.ts'
 import { craftBeatsThatAsked, readsAsPlaceholder, fallbackCta } from '../_shared/craftBeats.ts'
+import { askIsUsable, scaffoldWithoutAnswer } from '../_shared/beatAsk.ts'
+import { splitEmphasis } from '../_shared/emphasis.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import {
   resolveTemplate,
@@ -4773,6 +4775,17 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // ran, 0 means it ran and found nothing to repair. A rising count means the
     // writer regressed and the check caught it.
     let ctaFallbacks: number | null = null
+    // ⚠️ COUNTED FROM ZERO, NOT NULL, BECAUSE THE LOOP ALWAYS RUNS. Unlike the
+    // two counters above, whose checks can be skipped entirely, this one is
+    // reached on every generation that got as far as the entitlement repair —
+    // so 0 genuinely means "no beat needed the creator", not "we never looked".
+    let beatAsksEmitted = 0
+    let beatAsksWithScaffold = 0
+    // ⚖️ NULL MEANS THE SPLIT NEVER RAN; 0 MEANS IT RAN AND THE WRITER WROTE A
+    // CLEAN LINE. Should trend to 0 as the prompt line takes effect -- and if it
+    // does not, that is the familiar inert-instruction result and the check
+    // carries it alone, which is fine.
+    let capsRuns: number | null = null
     // WHERE THE CONTENT CAME FROM, COUNTED — and the declaration checked against
     // what the prompt actually carried. ⚖️ `speakable` and not `kRows`: checking
     // against the fuller store would excuse exactly the fabrication this exists
@@ -5270,6 +5283,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // writer started marking craft beats `needs_user` again; the check caught
       // it and the creator still got a readable line.
       cta_fallbacks: ctaFallbacks,
+      // ⚠️ THE SUPPLY SIGNAL. `emitted` is how many beats rested on something
+      // only this creator knows; `with_scaffold` is how many of those the writer
+      // left a real sentence around, so the beat can be completed by one typed
+      // fact rather than rewritten. A high emitted with a low with_scaffold means
+      // the writer is refusing without offering a way forward.
+      beat_asks: { emitted: beatAsksEmitted, with_scaffold: beatAsksWithScaffold },
+      caps_emphasis_runs: capsRuns,
       by_source: bySource,
       creator_knowledge_depth: byDepth,
       knowledge_supplied: speakable.length,
@@ -5395,13 +5415,34 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // contract exists to stop — and it is not shipped as a fabrication either.
     // It becomes a visible question addressed to the creator, which is the third
     // of the three honest answers: research, reframe, or ASK.
+    // ⚠️ THIS LOOP IS WHERE THE PLACEHOLDER CAME FROM. It used to assign the
+    // refusal STRAIGHT INTO `b.line`, so "Only you can supply this. What would
+    // you actually say here?" reached a creator's teleprompter as dialogue — in
+    // three of six scenes of a real script.
+    //
+    // ⚖️ THE REFUSAL IS STILL RIGHT. Twin must not invent a creator's life, and
+    // nothing here changes that. What changes is WHERE the refusal goes: a
+    // question is a QUESTION, carried in its own field, and never a line anybody
+    // is asked to read aloud.
     for (const f of entFails) {
-      const b = Array.isArray(declared) ? (declared[f.index] as { line?: string; substance?: string } | undefined) : undefined
+      const b = Array.isArray(declared)
+        ? (declared[f.index] as { line?: string; substance?: string; ask?: string; line_scaffold?: string } | undefined)
+        : undefined
       if (!b) continue
       const q = f.ask ?? 'Only you can supply this. What would you actually say here?'
-      b.line = q
+      b.ask = q
+      // ⚖️ AND THE SPOKEN LINE IS WHATEVER SURVIVES WITHOUT THE PERSONAL FACT.
+      // When the writer gave a usable scaffold, the sentence around the slot is
+      // real writing and stands on its own. When it did not, there is NO line —
+      // and empty is honest, where the refusal was not. Both render sites in the
+      // client already guard on a non-empty spoken line, so nothing shows rather
+      // than dead text showing.
+      const kept = askIsUsable(q, b.line_scaffold) ? scaffoldWithoutAnswer(b.line_scaffold) : null
+      b.line = kept ?? ''
       b.substance = 'needs_user'
       if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
+      beatAsksEmitted += 1
+      if (kept !== null) beatAsksWithScaffold += 1
     }
     if (entFails.length) {
       console.warn(JSON.stringify({ event: 'entitlement_unrepaired', beats: entFails.length, questions: creatorQuestions }))
@@ -5449,6 +5490,36 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         }))
       }
     } catch { /* never fail a generation on a craft-beat repair */ }
+
+    // ── EMPHASIS IS DIRECTION, NOT WORDS ────────────────────────────────────
+    //
+    // ⚠️ A REAL SCRIPT SHIPPED "YOU HAVE TIME" INSIDE THE SPOKEN LINE. Capitals
+    // are how a writer says "lean on this" — a stage direction wearing the
+    // costume of dialogue. The creator reads it as SHOUTING off a teleprompter,
+    // and the caps then travel into burned-in captions where they are permanent.
+    //
+    // ⚖️ ONE WRITER, TWO READERS, AND THE SECOND ONE IS THE POINT.
+    // `caption_packet.emphasis` asks "which words to emphasize" and has never
+    // had an upstream source — it has been guessed per generation. Now it has
+    // one, and it is the same list the teleprompter bolds.
+    //
+    // ⚖️ RUNS OF TWO OR MORE ONLY. One capitalised word is usually a name, a
+    // brand, or an acronym the allowlist has not heard of, and lowercasing
+    // "WHOOP" would put a mistake in the creator's mouth.
+    try {
+      const beats = Array.isArray(declared) ? declared as Array<Record<string, unknown>> : []
+      let runs = 0
+      for (const b of beats) {
+        if (!b || typeof b !== 'object') continue
+        const split = splitEmphasis(b.line)
+        if (split.runs === 0) continue
+        b.line = split.line
+        b.emphasis_words = [...split.emphasisWords]
+        runs += split.runs
+      }
+      capsRuns = runs
+      if (runs > 0) console.warn(JSON.stringify({ event: 'caps_emphasis_moved', runs }))
+    } catch { /* never fail a generation on an emphasis split */ }
 
     // ── THE REFERENCE'S OWN MEASUREMENTS MUST NOT BE SPOKEN BY THIS CREATOR ──
     //

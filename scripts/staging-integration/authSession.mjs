@@ -67,3 +67,56 @@ export async function authHeader(client) {
   }
   return `Bearer ${refreshed.session.access_token}`
 }
+
+/**
+ * Force a fresh access token, whatever the cached session claims.
+ *
+ * ⚠️ `authHeader` REFRESHES ON THE CLOCK; THIS REFRESHES ON THE ANSWER. The
+ * clock check is necessary and it is not sufficient: a token whose `expires_at`
+ * is comfortably in the future can still be rejected — the auth service can
+ * fail a verification transiently, and a session can be invalidated server-side
+ * without the client being told. In both cases the SDK holds a token it
+ * believes in and the edge function says 401.
+ */
+export async function freshAuthHeader(client) {
+  const { data: refreshed, error } = await client.auth.refreshSession()
+  if (error || !refreshed?.session) {
+    throw new Error(`auth: forced session refresh failed: ${error?.message ?? 'no session returned'}`)
+  }
+  return `Bearer ${refreshed.session.access_token}`
+}
+
+/**
+ * ⚠️ A 401 IS NOT A VERDICT UNTIL IT SURVIVES A FRESH TOKEN.
+ *
+ * THE COST, MEASURED. The staging matrix takes the better part of an hour and
+ * a single unretried 401 destroys the whole run — this file's own header
+ * records that such a 401 "has already been miscounted once as one of the
+ * matrix's two real failures", and it happened again on 2026-08-25, killing a
+ * run at minute 35 after dozens of assertions had already passed.
+ *
+ * ⚖️ AND THE ASYMMETRY IS THE TELL. `startProject` already retries a 429,
+ * because a rate window is understood to be a fact about the moment rather
+ * than about the code. A transient auth-verification failure is the same kind
+ * of fact and was the only one treated as final.
+ *
+ * ⚖️ THIS WEAKENS NOTHING. It does not lower a permission, skip a check, or
+ * accept an unauthenticated call. It re-establishes the caller's OWN session
+ * once and asks again. A genuine authorization defect answers 401 to a
+ * brand-new token too, so it still fails the run — twice, and loudly.
+ *
+ * ⚠️ EXACTLY ONE RETRY. A loop here would turn a real auth break into a hang,
+ * and the second 401 is the one that means something.
+ */
+export async function callEdgeAuthRetried(call, client, label) {
+  const first = await call()
+  if (first.status !== 401 || !client) return first
+  console.log(`   ⚠️ 401 on ${label} — refreshing the session and asking once more`)
+  await freshAuthHeader(client)
+  const second = await call()
+  if (second.status === 401) {
+    console.log(`   ⚠️ 401 on ${label} SURVIVED a fresh token — this is authorization, not the clock`)
+  }
+  return second
+}
+

@@ -115,6 +115,12 @@ export * from './pilot/backlogRuns'
 export * from './productQuestions'
 export * from './productLifecycle'
 export * from './briefToProfileAnswers'
+// ⚠️ THE SCRIPT CONTRACTS. `beatAsk` is exported because the CLIENT renders the
+// question and fills the scaffold; the other two are read by the edge function
+// through their generated Deno copies and by their own tests, and are exported
+// here so a future reader does not write a third copy of a rule that exists.
+export * from './script/beatAsk'
+export * from './script/craftBeats'
 
 // ⚖️ THE METER READS THESE. Counts a creator can check, never a score.
 export * from './twinStrength'

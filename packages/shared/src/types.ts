@@ -175,6 +175,15 @@ export interface Blueprint {
     wardrobe?: string
     cuts_info?: string
     action_posing?: string
+    /** ⚠️ THE ONE QUESTION THAT UNLOCKS THIS LINE, when the beat rests on
+     *  something only this creator knows. It is a QUESTION and never a spoken
+     *  line: `generate-blueprint` used to assign the refusal straight into
+     *  `line`, which is how "Only you can supply this" reached a real
+     *  teleprompter as dialogue in three of six scenes. */
+    ask?: string
+    /** The full spoken line with exactly one `{answer}` slot, so the beat can be
+     *  completed by one typed fact and no second model call. */
+    line_scaffold?: string
   }[]
   shot_list: {
     shot: string
