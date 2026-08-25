@@ -111,6 +111,18 @@ const ALLOWED_REGISTRY = [
   // source trial's arm A. It NEVER writes to extraction_parity_trials, so the
   // investigation cannot destroy the evidence it investigates.
   'extraction_replication',
+  // sample_own_account looks at a SAMPLE of the creator's OWN videos and records
+  // how many are them talking to camera, so the account half of the talking-head
+  // gate has something to read. It belongs on this host for the reason the two
+  // above do: it downloads at 360p, samples two stills, calls a model, renders
+  // nothing and encodes no media.
+  //
+  // It is listed here for the reason the extraction_parity note gives — a
+  // MISSING entry is the silent failure. Its handler is registered, its schema
+  // is declared and the scan enqueues it; without this line the worker would
+  // never ask for the type and every scan would leave a job sitting `queued`
+  // forever, while the scan itself reported success.
+  'sample_own_account',
 ]
 
 // Second-deploy manifests. Vercel (web app) is intentionally NOT here.
