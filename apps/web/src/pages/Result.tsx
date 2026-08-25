@@ -31,7 +31,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { lengthSentence, measureScriptLength, readVisualHook, shotLabel } from '@twinai/shared'
+import { lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -1842,6 +1842,12 @@ function BlueprintScriptCards({ script }: { script: Blueprint['script'] }) {
               <span className="text-[11px] font-medium text-stone">Scene {i + 1}</span>
             </div>
             <p className="font-display text-lg leading-relaxed text-cream">“{s.line}”</p>
+            {/* ⚖️ A NOTE, NEVER A VERDICT. Names the words that are doing no
+                work and says what to do instead — it does not block, score or
+                rewrite, and the decision stays the creator's. */}
+            {stockPhraseNote(stockPhrasesIn(s.line)) && (
+              <p className="text-xs text-amber/90">{stockPhraseNote(stockPhrasesIn(s.line))}</p>
+            )}
             <div className="space-y-3.5 rounded-2xl border border-white/[0.04] bg-ink/40 p-4">
               <div className="flex items-start gap-3">
                 <Video className="h-4 w-4 text-amber shrink-0 mt-0.5" />

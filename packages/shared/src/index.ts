@@ -132,3 +132,8 @@ export * from './script/scriptLength'
 // 4 of 4 complete — and NOTHING read it. Delivery was the defect, not
 // completeness.
 export * from './script/visualHook'
+
+// ⚖️ A STOCK PHRASE IS NOT A STANCE. The prompt already bans these and the
+// writer shipped 7 anyway; but 4 of those 7 were the creator naming their
+// ENEMY, so the list is phrase-level and "hustle" is deliberately absent.
+export * from './script/clichePhrases'
