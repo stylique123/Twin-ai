@@ -24,7 +24,7 @@ import { mkdtemp, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
-import { authHeader } from './authSession.mjs'
+import { authHeader, callEdgeAuthRetried } from './authSession.mjs'
 
 const execFile = promisify(_execFile)
 // scripts/staging-integration/phase5.mjs → repo root is two levels up.
@@ -133,9 +133,18 @@ async function waitAsset(assetId, timeoutMs = 120_000) {
 const allProjects = []
 async function startProject(client, genId, assetId) {
   for (let attempt = 0; ; attempt++) {
-    const r = await callEdge(client, 'start-editor-v2', {
-      generation_id: genId, source_asset_id: assetId, idempotency_key: randomUUID(),
-    })
+    // ⚠️ A 401 HERE KILLED A 55-MINUTE RUN AT MINUTE 35, after G4 and G5 had
+    // already passed. `authHeader` refreshes on the CLOCK, which is necessary
+    // and not sufficient — a token the SDK believes in can still be rejected.
+    // One forced re-auth and one more ask; a real authorization defect answers
+    // 401 to a fresh token too and still fails the run.
+    const r = await callEdgeAuthRetried(
+      () => callEdge(client, 'start-editor-v2', {
+        generation_id: genId, source_asset_id: assetId, idempotency_key: randomUUID(),
+      }),
+      client,
+      'start-editor-v2',
+    )
     if (r.status === 429 && attempt < 2) {
       console.log('   (start rate window — waiting 61s…)')
       await sleep(61_000)
