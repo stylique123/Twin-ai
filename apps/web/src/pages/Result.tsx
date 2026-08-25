@@ -31,7 +31,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { lengthSentence, measureScriptLength, readVisualHook, shotLabel } from '@twinai/shared'
+import { isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -633,6 +633,14 @@ export default function Result() {
   // does not exist.
   const visualHook = readVisualHook(b.visual_hook)
   const updatedScript = b.script.map((s, i) => {
+    // ⚠️ SILENCE IS NEVER OVERWRITTEN, AT ANY INDEX. `isWhollyPlaceholder` is
+    // true for BOTH "[Hook Option 1]" (fill me in) and "[No spoken audio]"
+    // (nobody speaks here), and this map filled every true with the hook. In
+    // production that gave generation 9072552b — four beats, three of them
+    // "[No spoken audio]" — the SAME HOOK LINE THREE TIMES, once as its Call
+    // to Action. The hook is on the picker above regardless, so there is
+    // nothing to recover by pasting it over a deliberate silence.
+    if (isSilentBeat(s.line)) return s
     if (i === 0 && hookText) {
       if (isWhollyPlaceholder(s.line)) return { ...s, line: hookText }
       const sentences = s.line.split(/(?<=[.!?])\s+/)
@@ -1841,7 +1849,12 @@ function BlueprintScriptCards({ script }: { script: Blueprint['script'] }) {
               </span>
               <span className="text-[11px] font-medium text-stone">Scene {i + 1}</span>
             </div>
-            <p className="font-display text-lg leading-relaxed text-cream">“{s.line}”</p>
+            {/* ⚖️ SILENCE IS SHOWN AS SILENCE, in plain English and without
+                quote marks — "[No spoken audio]" is a note to the writer, not
+                a line anybody reads out. */}
+            {isSilentBeat(s.line)
+              ? <p className="font-display text-lg leading-relaxed text-stone">No one speaks here.</p>
+              : <p className="font-display text-lg leading-relaxed text-cream">“{s.line}”</p>}
             <div className="space-y-3.5 rounded-2xl border border-white/[0.04] bg-ink/40 p-4">
               <div className="flex items-start gap-3">
                 <Video className="h-4 w-4 text-amber shrink-0 mt-0.5" />

@@ -23,6 +23,7 @@
  * words, and the creator would have no way to tell which one was lying.
  */
 import { DEFAULT_WPM, estimateDurationSec, type WpmPreset } from '../recordingScript'
+import { beatVoice } from './silentBeat'
 
 /** A beat as it reaches this module. Only the spoken half matters: direction,
  *  wardrobe and shot notes are never read aloud. */
@@ -50,6 +51,10 @@ export interface ScriptLength {
   /** Beats still waiting on the creator — words not yet written, so not yet
    *  time. ⚖️ ABSENT IS NOT ZERO: these are missing, not empty. */
   unwrittenBeats: number
+  /** Beats the writer marked as having no speech at all. ⚖️ SILENCE IS NOT A
+   *  DEBT and it is not an empty line: nobody owes words here, so these are
+   *  counted apart from `unwrittenBeats` and never prompt the creator. */
+  silentBeats: number
   /** True only when every beat is written AND the total is implausibly short.
    *  ⚠️ A script that is short BECAUSE it is unfinished is not this defect —
    *  it is an unfinished script, and saying "too short" would send the creator
@@ -58,7 +63,7 @@ export interface ScriptLength {
 }
 
 function hasWords(b: SpokenBeat): boolean {
-  return typeof b.line === 'string' && b.line.trim().length > 0
+  return beatVoice(b.line) === 'spoken'
 }
 
 export function measureScriptLength(
@@ -67,10 +72,14 @@ export function measureScriptLength(
 ): ScriptLength {
   const all = Array.isArray(beats) ? beats : []
   const written = all.filter(hasWords)
-  // ⚠️ EVERY BEAT WITHOUT WORDS IS UNWRITTEN, whatever its `substance` says.
-  // Trusting `substance === 'needs_user'` alone would miss a beat that lost its
-  // line some other way, and an unwritten beat must never silently become 0s.
-  const unwritten = all.length - written.length
+  // ⚠️ EVERY BEAT WITHOUT WORDS IS UNWRITTEN, whatever its `substance` says —
+  // EXCEPT a beat the writer deliberately marked silent. Trusting
+  // `substance === 'needs_user'` alone would miss a beat that lost its line
+  // some other way, and an unwritten beat must never silently become 0s; but
+  // counting SILENCE as unwritten would send the creator to write words the
+  // writer left out on purpose.
+  const silent = all.filter((b) => beatVoice(b.line) === 'silent').length
+  const unwritten = all.length - written.length - silent
   const spokenSec =
     Math.round(
       written.reduce((a, b) => a + estimateDurationSec(String(b.line), wpm), 0) * 10,
@@ -79,6 +88,7 @@ export function measureScriptLength(
     spokenSec,
     writtenBeats: written.length,
     unwrittenBeats: unwritten,
+    silentBeats: silent,
     implausiblyShort: written.length > 0 && unwritten === 0 && spokenSec < IMPLAUSIBLY_SHORT_SEC,
   }
 }
