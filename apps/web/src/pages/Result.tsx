@@ -31,6 +31,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
+import { shotLabel } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -1084,7 +1085,7 @@ export default function Result() {
                       <div className="space-y-2">
                         {/* Title & Framing Badge */}
                         <div className="space-y-1.5">
-                          <span className="font-heading text-cream text-sm font-semibold block">{s.shot}</span>
+                          <span className="font-heading text-cream text-sm font-semibold block">{shotLabel(s.shot, s.shot_type, s.framing, i)}</span>
                           <span className="inline-block rounded bg-ink3 border border-white/10 px-2 py-0.5 text-[10px] text-sand font-mono leading-snug">
                             {s.framing}
                           </span>
@@ -1421,7 +1422,7 @@ export default function Result() {
                       >
                         <div className="space-y-2">
                           <div className="space-y-1.5">
-                            <span className="font-heading text-cream text-sm font-semibold block">{s.shot}</span>
+                            <span className="font-heading text-cream text-sm font-semibold block">{shotLabel(s.shot, s.shot_type, s.framing, i)}</span>
                             <span className="inline-block rounded bg-ink3 border border-white/10 px-2 py-0.5 text-[10px] text-sand font-mono leading-snug">
                               {s.framing}
                             </span>
