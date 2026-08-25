@@ -205,6 +205,17 @@ const EVENTS = {
   entitlement_repair: { kind: 'incident', why: 'What the entitlement repair rewrote.' },
   entitlement_unrepaired: { kind: 'incident', why: 'A repair that did not take.' },
   hooks_unentitled: { kind: 'incident', why: 'Hooks resting on an unentitled claim.' },
+  hook_over_length: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'The prompt demands a hook under ~12 words and nothing checked it — a hook '
+      + 'shipped to a real creator at 30. Counts hooks that broke the length/opener '
+      + 'contract as written, how many the deterministic ladder rescued, and how many '
+      + 'were demoted and still offered. Durable because the honest question it answers '
+      + '-- does the 12-word doctrine survive contact with the writer, and do creators '
+      + 'pick the shorter hooks once they exist -- is only answerable across many '
+      + 'generations. Stored by 0131, null when the contract did not run.',
+  },
   generation_not_billable: { kind: 'incident', why: 'A generation the ledger must not charge for.' },
   // ⚠️ A SUCCESS FOR THE CREATOR AND A DEFECT FOR US, WHICH IS WHY IT IS AN
   // INCIDENT RATHER THAN A COUNTER. Every occurrence is one throw in the 792

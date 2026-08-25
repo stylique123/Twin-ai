@@ -187,3 +187,77 @@ describe('the prompt and the check ban the same openers', () => {
       expect((line ?? '').toLowerCase()).toContain(o)
     })
 })
+
+/**
+ * ⚠️ THE RULE IS ONLY REAL IF THE WRITER RUNS IT. Every check in this repo that
+ * turned out to be decoration passed a token search while the call site was
+ * gone. So this pins the CALL, the ORDER, and the DESTINATION.
+ */
+describe('the writer actually applies the contract', () => {
+  const repo = join(import.meta.dirname, '..', '..', '..', '..', '..')
+  const bp = readFileSync(join(repo, 'supabase', 'functions', 'generate-blueprint', 'index.ts'), 'utf8')
+
+  it('imports the generated copy, not a second hand-written rule', () => {
+    expect(bp).toMatch(/import \{ applyHookContract \} from '\.\.\/_shared\/hookContract\.ts'/)
+  })
+
+  // ⚠️ AFTER THE RESCUE POINT. A hook contract may never cost a creator the
+  // script they paid for — the whole reason the rescue clone exists.
+  it('runs after the rescue point, never before it', () => {
+    const rescue = bp.indexOf('rescue = { bp: structuredClone(')
+    const call = bp.indexOf('applyHookContract(')
+    expect(rescue).toBeGreaterThan(-1)
+    expect(call).toBeGreaterThan(rescue)
+  })
+
+  // ⚖️ AND IT IS WRAPPED, so a throw inside the contract is silence rather than
+  // a lost generation.
+  it('the call site cannot throw a generation away', () => {
+    const at = bp.indexOf('applyHookContract(')
+    const around = bp.slice(at - 400, at + 900)
+    expect(around).toMatch(/try \{/)
+    expect(around).toMatch(/catch \{ \/\* never fail a generation on a hook contract \*\//)
+  })
+
+  // ⚠️ THE COUNTER LANDS SOMEWHERE THAT OUTLIVES AN EDGE LOG. A console line
+  // expires in days; the question this counter answers takes months.
+  it('writes the audit into beat_audit, not only into a log line', () => {
+    expect(bp).toMatch(/hook_length: hookLengthAudit/)
+    const decl = bp.indexOf('let hookLengthAudit')
+    const write = bp.indexOf('hookLengthAudit = {')
+    const read = bp.indexOf('hook_length: hookLengthAudit')
+    expect(decl).toBeGreaterThan(-1)
+    expect(write).toBeGreaterThan(decl)
+    expect(read).toBeGreaterThan(write)
+  })
+
+  // ⚖️ NULL, NOT ZERO, WHEN THE CONTRACT NEVER RAN. "No hook was over length"
+  // and "we never looked" are different facts and must not share a value.
+  it('the audit defaults to null rather than an empty count', () => {
+    expect(bp).toMatch(/let hookLengthAudit: Record<string, number> \| null = null/)
+  })
+})
+
+/**
+ * ⚖️ ONE AUTHOR, MECHANICALLY COPIED. Every other two-copy rule here is hand
+ * written under the `…Inline` convention; this one is generated, because a hand
+ * copy in this repo once kept a bug after the original was fixed.
+ */
+describe('the edge copy is generated from this source', () => {
+  const repo = join(import.meta.dirname, '..', '..', '..', '..', '..')
+  const gen = readFileSync(join(repo, 'supabase', 'functions', '_shared', 'hookContract.ts'), 'utf8')
+
+  it('says where it came from and forbids hand edits', () => {
+    expect(gen).toMatch(/GENERATED FROM packages\/shared\/src\/script\/hookContract\.ts — DO NOT EDIT/)
+  })
+
+  it('is registered with the generator that CI diffs', () => {
+    const g = readFileSync(join(repo, 'scripts', 'ci', 'generate_shared_pilot_core.mjs'), 'utf8')
+    expect(g).toMatch(/'packages\/shared\/src\/script\/hookContract\.ts', 'supabase\/functions\/_shared\/hookContract\.ts'/)
+  })
+
+  it('carries the same ceiling as the source, byte for byte', () => {
+    expect(gen).toContain(`export const HOOK_MAX_WORDS = ${HOOK_MAX_WORDS}`)
+    expect(gen).toContain(`export const HOOK_TARGET_WORDS = ${HOOK_TARGET_WORDS}`)
+  })
+})
