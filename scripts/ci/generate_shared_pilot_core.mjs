@@ -25,6 +25,20 @@ const SOURCES = [
   ['scripts/d1-core.mjs', 'supabase/functions/_shared/d1Core.ts'],
   ['scripts/watched-session.mjs', 'supabase/functions/_shared/watchedSession.ts'],
   ['scripts/owner-console.mjs', 'supabase/functions/_shared/ownerConsole.ts'],
+  // ⚠️ THE HOOK CONTRACT, COPIED RATHER THAN RE-TYPED AS AN `…Inline` HELPER.
+  // The writer's ≤12-word hook rule needs a check on BOTH sides: the shared
+  // package (tested, imported by the web app) and the edge function that
+  // actually repairs the hooks. Every other two-copy rule in this repo is hand
+  // written under the `…Inline` convention and guarded by a parity test that
+  // compares the shipped sources — which works, and which is strictly weaker
+  // than not having two authors at all. This file exists because a hand copy
+  // once kept a bug after the original was fixed; the hook contract gets the
+  // mechanism rather than the convention.
+  //
+  // ⚖️ THE SOURCE IS TYPESCRIPT AND THAT IS FINE. The copy is `@ts-nocheck`ed
+  // like every other generated file, and the module has no imports to rewrite.
+  ['packages/shared/src/script/hookContract.ts', 'supabase/functions/_shared/hookContract.ts'],
+  ['packages/shared/src/script/craftBeats.ts', 'supabase/functions/_shared/craftBeats.ts'],
 ]
 
 // ⚠️ A SHEBANG IS LEGAL ONLY ON LINE 1, AND THE HEADER PUSHES IT TO LINE 5.

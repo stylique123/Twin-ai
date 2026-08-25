@@ -14,6 +14,8 @@ import { buildLinkAllowlist, sanitizeBlueprintLinks, type LinkAllowlist } from '
 import { templateFor } from '../_shared/containerTemplates.ts'
 import { buildSlots, filledFrom, slotsReady } from '../_shared/writerInput.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
+import { applyHookContract } from '../_shared/hookContract.ts'
+import { craftBeatsThatAsked, readsAsPlaceholder, fallbackCta } from '../_shared/craftBeats.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import {
   resolveTemplate,
@@ -4762,6 +4764,15 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // never throwing for exactly this reason. Nothing else below is a safety
     // prerequisite: the checks repair a script, they do not license one.
     rescue = { bp: structuredClone(templated.bp), allow: linkAllow, runId: scriptRunId }
+    // ⚠️ DECLARED HERE, WRITTEN AT THE HOOK CONTRACT, READ AT `beatAudit`.
+    // `null` is the honest default: it means the contract never ran (an early
+    // throw, or no hooks at all), which is NOT the same as "no hook was over
+    // length" — and folding those together is the absent-is-not-zero mistake.
+    let hookLengthAudit: Record<string, number> | null = null
+    // ⚖️ SAME THREE-STATE RULE AS ABOVE: null means the craft-beat check never
+    // ran, 0 means it ran and found nothing to repair. A rising count means the
+    // writer regressed and the check caught it.
+    let ctaFallbacks: number | null = null
     // WHERE THE CONTENT CAME FROM, COUNTED — and the declaration checked against
     // what the prompt actually carried. ⚖️ `speakable` and not `kRows`: checking
     // against the fuller store would excuse exactly the fabrication this exists
@@ -4829,6 +4840,48 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         }
       }
     } catch { /* never fail a generation on a hook filter */ }
+
+    // ── AND THE RULE THE PROMPT STATES ABOUT HOOK LENGTH ────────────────────
+    //
+    // ⚠️ A RULE WITHOUT A CHECK DRIFTS, AND THIS ONE ALREADY HAD. The SYSTEM
+    // prompt demands "one spoken line under ~12 words". A hook shipped to a real
+    // creator at THIRTY. At a natural pace that is ~9 seconds, and the
+    // three-second scroll decision is over before the first clause lands.
+    //
+    // ⚖️ EVERY HOOK, NOT JUST THE RECOMMENDED ONE. The filter above checks all
+    // five for entitlement; nothing checked any of the five for LENGTH. The
+    // creator picks from all five, so a rule that only holds for index 0 is a
+    // rule that holds for whichever hook they happen not to choose.
+    //
+    // ⚖️ REPAIR ONLY SHORTENS — every output is a substring of the writer's own
+    // line with filler removed, which is the property that makes running it
+    // before a human reads the script acceptable. It cannot introduce a claim.
+    // Failing hooks are DEMOTED rather than dropped: five exist so the creator
+    // chooses, and a deleted hook is a preference datapoint we never get back.
+    //
+    // ⚠️ AFTER THE RESCUE POINT, LIKE EVERY OTHER CHECK HERE. A hook contract
+    // may not cost a creator the script they paid for, so this is wrapped and
+    // its failure is silence.
+    try {
+      const bpL = templated.bp as { hook_options?: unknown }
+      const audit = applyHookContract(bpL.hook_options as unknown[] | undefined)
+      if (audit.hooks.length > 0) {
+        bpL.hook_options = [...audit.hooks]
+        // ⚖️ DURABLE, NOT A LOG LINE. `beat_audit` (0131) is where the other
+        // per-generation counters land, and a counter that lives only in a
+        // console line answers no question anyone asks later — which is how
+        // three counters in two days measured nothing.
+        hookLengthAudit = {
+          raw: audit.raw,
+          repaired: audit.repaired,
+          shipped_over: audit.shippedOver,
+          openers: audit.openersFound,
+        }
+        if (audit.raw > 0) {
+          console.warn(JSON.stringify({ event: 'hook_over_length', ...hookLengthAudit }))
+        }
+      }
+    } catch { /* never fail a generation on a hook contract */ }
 
     // ── CREATOR-STATE: SAFE REWRITES APPLIED, FULL ENFORCEMENT SHADOWED ─────
     //
@@ -5208,6 +5261,15 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // describing a different script from the logged one.
     beatAudit = {
       beats: Array.isArray(declared) ? declared.length : 0,
+      // ⚠️ THE HOOK RULE THE PROMPT STATES, MEASURED. `raw` counts hooks that
+      // broke the length/opener contract as written; `repaired` how many the
+      // deterministic ladder rescued; `shipped_over` how many were demoted and
+      // still offered. NULL means the contract did not run — never zero.
+      hook_length: hookLengthAudit,
+      // ⚠️ THE BEAT THAT COULD ALWAYS BE WRITTEN AND WAS NOT. Rising means the
+      // writer started marking craft beats `needs_user` again; the check caught
+      // it and the creator still got a readable line.
+      cta_fallbacks: ctaFallbacks,
       by_source: bySource,
       creator_knowledge_depth: byDepth,
       knowledge_supplied: speakable.length,
@@ -5343,6 +5405,50 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     }
     if (entFails.length) {
       console.warn(JSON.stringify({ event: 'entitlement_unrepaired', beats: entFails.length, questions: creatorQuestions }))
+    }
+
+    // ── THE BEATS THAT CAN ALWAYS BE WRITTEN, AND THEREFORE MUST BE ─────────
+    //
+    // ⚠️ THE LOOP DIRECTLY ABOVE IS WHERE THE PLACEHOLDER COMES FROM. It writes
+    // the refusal INTO `b.line`, which is correct for a beat that genuinely
+    // rests on the creator's own life — and wrong for the three sections that
+    // never do. In the audited script the FINAL beat, a direct ask to share,
+    // shipped as "Only you can supply this. What would you actually say here?"
+    // The one beat needing nothing personal was the one that starved.
+    //
+    // ⚖️ THIS TAKES NOTHING AWAY FROM `needs_user`. A Setup or a Re-hook asking
+    // for a real story is the system working, and is left exactly alone. A hook,
+    // a payoff or a CTA is craft: writable from the goal and the offer, both
+    // already on file. Marking those `needs_user` does not protect the creator
+    // from a fabrication, it hands them an unfinished script.
+    //
+    // ⚖️ AND THE REPLACEMENT IS DETERMINISTIC — no second model call, no bracket,
+    // and plain enough to read off a teleprompter unchanged.
+    try {
+      const asked = craftBeatsThatAsked(Array.isArray(declared) ? declared : [])
+      if (asked.length > 0) {
+        for (const v of asked) {
+          const b = (declared as Array<{ line?: string; substance?: string }>)[v.index]
+          if (!b) continue
+          // ⚠️ ONLY THE LINE THAT IS ACTUALLY DEAD IS REPLACED. If the writer
+          // marked the beat `needs_user` but still wrote real words, those words
+          // are the creator's script and this has no business touching them.
+          // ⚠️ `offer` DEFAULTS TO THE STRING 'unspecified', and splicing that
+          // in would produce "If you want unspecified, the link is in my bio."
+          // A sentinel is not an offer; it is the absence of one, and the
+          // fallback already has a line for that case.
+          if (readsAsPlaceholder(b.line)) {
+            b.line = fallbackCta(intent.goal, offer === 'unspecified' ? null : offer)
+          }
+          b.substance = 'general'
+        }
+        ctaFallbacks = asked.length
+        console.warn(JSON.stringify({
+          event: 'cta_fallback', beats: asked.length,
+          sections: asked.map((v) => v.section),
+        }))
+      }
+    } catch { /* never fail a generation on a craft-beat repair */ }
 
     // ── THE REFERENCE'S OWN MEASUREMENTS MUST NOT BE SPOKEN BY THIS CREATOR ──
     //
@@ -5411,7 +5517,6 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       }
     } catch (err) {
       console.error('reference_claim_leak_failed', err instanceof Error ? err.message : err)
-    }
     }
 
     // ── AN UNFILLED TEMPLATE IS NOT A SCRIPT ────────────────────────────────
