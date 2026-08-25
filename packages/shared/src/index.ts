@@ -123,6 +123,11 @@ export * from './twinStrength'
 // bare ordinal; the card must not render one.
 export * from './script/shotLabel'
 
+// ⚖️ HOW LONG THIS SCRIPT ACTUALLY RUNS. 17 of 35 production scripts run >25%
+// longer than the reference they adapted, 10 run >25% shorter, one is 4 seconds
+// — and no screen said so. Disclosure, never enforcement.
+export * from './script/scriptLength'
+
 // ⚖️ THE FIRST SECOND. The writer has been producing a visual hook all along —
 // 4 of 4 complete — and NOTHING read it. Delivery was the defect, not
 // completeness.
