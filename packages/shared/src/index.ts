@@ -115,3 +115,30 @@ export * from './pilot/backlogRuns'
 export * from './productQuestions'
 export * from './productLifecycle'
 export * from './briefToProfileAnswers'
+
+// ⚖️ THE METER READS THESE. Counts a creator can check, never a score.
+export * from './twinStrength'
+
+// ⚖️ THE SHOT-CARD HEADING. 44% of production rows name their shot with a
+// bare ordinal; the card must not render one.
+export * from './script/shotLabel'
+
+// ⚖️ HOW LONG THIS SCRIPT ACTUALLY RUNS. 17 of 35 production scripts run >25%
+// longer than the reference they adapted, 10 run >25% shorter, one is 4 seconds
+// — and no screen said so. Disclosure, never enforcement.
+export * from './script/scriptLength'
+
+// ⚖️ THE FIRST SECOND. The writer has been producing a visual hook all along —
+// 4 of 4 complete — and NOTHING read it. Delivery was the defect, not
+// completeness.
+export * from './script/visualHook'
+
+// ⚖️ A SILENT BEAT IS NOT A BLANK TO FILL IN. "[No spoken audio]" and
+// "[Hook Option 1]" were one check, so the hook got pasted over deliberate
+// silence — three times out of four beats in one production script.
+export * from './script/silentBeat'
+
+// ⚖️ A STOCK PHRASE IS NOT A STANCE. The prompt already bans these and the
+// writer shipped 7 anyway; but 4 of those 7 were the creator naming their
+// ENEMY, so the list is phrase-level and "hustle" is deliberately absent.
+export * from './script/clichePhrases'
