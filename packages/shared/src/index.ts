@@ -153,3 +153,9 @@ export * from './script/clichePhrases'
 // three words five times over; three more do it three times. The opener is the
 // creator's own signature, so this reports the COLLISION, never the words.
 export * from './script/hookVariety'
+
+// ⚖️ THE SHOOTING NOTE THAT WAS THROWN AWAY. `beat_plan[].proof` is 20-of-20
+// complete in production and `proofAt` had ZERO callers. Shown only where it
+// describes what the CREATOR performs — never a b-roll or screen-recording
+// request, both of which appear in the real data and are out of scope.
+export * from './script/beatProof'

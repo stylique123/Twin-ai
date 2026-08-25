@@ -145,6 +145,11 @@ export interface Blueprint {
     original_b_roll_count: string
     suggested_b_roll_count: string
   }
+  /** WHAT EACH BEAT IS FOR, its decided length, and the shooting note
+   *  (`proof`). `unknown` on purpose: persisted jsonb, and only 4 of 41
+   *  generations carry one. Read the note through `shootingNoteAt`, which
+   *  withholds anything asking for footage this product does not make. */
+  beat_plan?: unknown
   /** THE FIRST SECOND (`opening_frame` + `why_it_interrupts`). `unknown` on
    *  purpose: it is persisted jsonb, and 37 of 41 generations predate it —
    *  read it through `readVisualHook`, which treats absent and half-present
