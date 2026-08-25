@@ -49,8 +49,18 @@ describe('silence is shown as silence', () => {
   })
 
   // ⚠️ THE MARKER ITSELF NEVER REACHES THE CREATOR.
+  //
+  // ⚖️ THIS ASSERTION WAS CORRECTED, AND THE DISTINCTION MATTERS. It used to
+  // say "no line ENDS with the quote render", using line position as a proxy
+  // for "unguarded". That proxy broke the moment the guard became multi-line —
+  // against code that is correct. The property was never about line endings:
+  // it is that the ONLY place the spoken line is quoted sits INSIDE the
+  // not-silent branch, after the isSilentBeat test.
   it('the bracketed note is never rendered as a spoken line', () => {
-    expect(SRC).not.toMatch(/“\{s\.line\}”\s*<\/p>\s*$/m)
-    expect(SRC).toMatch(/isSilentBeat\(s\.line\)\s*\?/)
+    const guard = SRC.indexOf('isSilentBeat(s.line)')
+    expect(guard, 'the silence test is missing').toBeGreaterThan(-1)
+    const quotes = [...SRC.matchAll(/“\{s\.line\}”/g)].map((m) => m.index!)
+    expect(quotes.length, 'the spoken line is quoted in exactly one place').toBe(1)
+    expect(quotes[0], 'the quote must sit after the silence test').toBeGreaterThan(guard)
   })
 })

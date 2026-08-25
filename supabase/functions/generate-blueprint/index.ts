@@ -16,6 +16,7 @@ import { buildSlots, filledFrom, slotsReady } from '../_shared/writerInput.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
 import { applyHookContract } from '../_shared/hookContract.ts'
 import { craftBeatsThatAsked, readsAsPlaceholder, fallbackCta } from '../_shared/craftBeats.ts'
+import { askIsUsable, scaffoldWithoutAnswer } from '../_shared/beatAsk.ts'
 import { splitEmphasis } from '../_shared/emphasis.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import {
@@ -4774,6 +4775,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // ran, 0 means it ran and found nothing to repair. A rising count means the
     // writer regressed and the check caught it.
     let ctaFallbacks: number | null = null
+    // ⚠️ COUNTED FROM ZERO, NOT NULL, BECAUSE THE LOOP ALWAYS RUNS. Unlike the
+    // two counters above, whose checks can be skipped entirely, this one is
+    // reached on every generation that got as far as the entitlement repair —
+    // so 0 genuinely means "no beat needed the creator", not "we never looked".
+    let beatAsksEmitted = 0
+    let beatAsksWithScaffold = 0
     // ⚖️ NULL MEANS THE SPLIT NEVER RAN; 0 MEANS IT RAN AND THE WRITER WROTE A
     // CLEAN LINE. Should trend to 0 as the prompt line takes effect -- and if it
     // does not, that is the familiar inert-instruction result and the check
@@ -5276,6 +5283,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // writer started marking craft beats `needs_user` again; the check caught
       // it and the creator still got a readable line.
       cta_fallbacks: ctaFallbacks,
+      // ⚠️ THE SUPPLY SIGNAL. `emitted` is how many beats rested on something
+      // only this creator knows; `with_scaffold` is how many of those the writer
+      // left a real sentence around, so the beat can be completed by one typed
+      // fact rather than rewritten. A high emitted with a low with_scaffold means
+      // the writer is refusing without offering a way forward.
+      beat_asks: { emitted: beatAsksEmitted, with_scaffold: beatAsksWithScaffold },
       caps_emphasis_runs: capsRuns,
       by_source: bySource,
       creator_knowledge_depth: byDepth,
@@ -5402,13 +5415,34 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // contract exists to stop — and it is not shipped as a fabrication either.
     // It becomes a visible question addressed to the creator, which is the third
     // of the three honest answers: research, reframe, or ASK.
+    // ⚠️ THIS LOOP IS WHERE THE PLACEHOLDER CAME FROM. It used to assign the
+    // refusal STRAIGHT INTO `b.line`, so "Only you can supply this. What would
+    // you actually say here?" reached a creator's teleprompter as dialogue — in
+    // three of six scenes of a real script.
+    //
+    // ⚖️ THE REFUSAL IS STILL RIGHT. Twin must not invent a creator's life, and
+    // nothing here changes that. What changes is WHERE the refusal goes: a
+    // question is a QUESTION, carried in its own field, and never a line anybody
+    // is asked to read aloud.
     for (const f of entFails) {
-      const b = Array.isArray(declared) ? (declared[f.index] as { line?: string; substance?: string } | undefined) : undefined
+      const b = Array.isArray(declared)
+        ? (declared[f.index] as { line?: string; substance?: string; ask?: string; line_scaffold?: string } | undefined)
+        : undefined
       if (!b) continue
       const q = f.ask ?? 'Only you can supply this. What would you actually say here?'
-      b.line = q
+      b.ask = q
+      // ⚖️ AND THE SPOKEN LINE IS WHATEVER SURVIVES WITHOUT THE PERSONAL FACT.
+      // When the writer gave a usable scaffold, the sentence around the slot is
+      // real writing and stands on its own. When it did not, there is NO line —
+      // and empty is honest, where the refusal was not. Both render sites in the
+      // client already guard on a non-empty spoken line, so nothing shows rather
+      // than dead text showing.
+      const kept = askIsUsable(q, b.line_scaffold) ? scaffoldWithoutAnswer(b.line_scaffold) : null
+      b.line = kept ?? ''
       b.substance = 'needs_user'
       if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
+      beatAsksEmitted += 1
+      if (kept !== null) beatAsksWithScaffold += 1
     }
     if (entFails.length) {
       console.warn(JSON.stringify({ event: 'entitlement_unrepaired', beats: entFails.length, questions: creatorQuestions }))
