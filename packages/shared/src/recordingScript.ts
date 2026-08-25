@@ -33,6 +33,18 @@ export interface RecordingScene {
   scene_type: SceneType
   purpose: string // plain-language why this scene exists
   dialogue: string | null // exact spoken words, or null for silent b-roll
+  /** THE QUESTION ONLY THIS CREATOR CAN ANSWER, carried from the beat that
+   *  raised it (`script[i].ask`, see `beatAsk.ts`).
+   *
+   *  ⚠️ A BEAT WITH AN ASK AND NO SCAFFOLD HAS `dialogue: null` — there is
+   *  genuinely nothing written to read, and the creator speaks their own words
+   *  here. That is NOT the same as a silent beat, where nobody speaks at all,
+   *  and the recorder must not treat them alike.
+   *
+   *  ⚖️ OPTIONAL, AND ABSENT IS NOT EMPTY. Every recording script stored before
+   *  this existed has none, and no generation written before the writer emitted
+   *  `ask` can ever grow one. */
+  ask?: string | null
   duration_sec: number // estimated, drives teleprompter pacing
   // THE LENGTH THAT WAS DECIDED, kept beside the length currently in force.
   //
@@ -93,6 +105,16 @@ export const WPM_PRESETS = {
 } as const
 export type WpmPreset = keyof typeof WPM_PRESETS
 export const DEFAULT_WPM: WpmPreset = 'natural'
+
+/**
+ * How long to hold on a beat that has a question and no written words.
+ *
+ * ⚠️ NOT AN ESTIMATE OF ANYTHING. There is no text to time here — the creator
+ * has not said it yet. This is a recording allowance so the teleprompter does
+ * not skip past the question before it can be read, and the beat plan's target
+ * overrides it whenever the writer decided one.
+ */
+export const DEFAULT_ASK_SEC = 8
 
 export const WPM_LABEL: Record<WpmPreset, string> = {
   slow: 'Slow',
