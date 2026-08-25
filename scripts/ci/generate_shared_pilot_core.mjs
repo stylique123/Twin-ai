@@ -39,6 +39,7 @@ const SOURCES = [
   // like every other generated file, and the module has no imports to rewrite.
   ['packages/shared/src/script/hookContract.ts', 'supabase/functions/_shared/hookContract.ts'],
   ['packages/shared/src/script/craftBeats.ts', 'supabase/functions/_shared/craftBeats.ts'],
+  ['packages/shared/src/script/emphasis.ts', 'supabase/functions/_shared/emphasis.ts'],
   ['packages/shared/src/script/beatAsk.ts', 'supabase/functions/_shared/beatAsk.ts'],
 ]
 
