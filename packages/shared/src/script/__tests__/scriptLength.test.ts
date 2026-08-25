@@ -73,6 +73,48 @@ describe('the one case that is a defect and not a choice', () => {
   })
 })
 
+describe('a silent beat is not a debt', () => {
+  // ⚠️ MEASURED: generation 9072552b has four beats and three are
+  // "[No spoken audio]". Counting those as unwritten would tell that creator
+  // three lines are waiting on them when the writer meant silence.
+  it('counts apart from unwritten, and never prompts', () => {
+    const len = measureScriptLength([
+      { line: words(75) },
+      { line: '[No spoken audio]' },
+      { line: '[No spoken audio]' },
+    ])
+    expect(len.writtenBeats).toBe(1)
+    expect(len.silentBeats).toBe(2)
+    expect(len.unwrittenBeats).toBe(0)
+    expect(lengthSentence(len)).not.toMatch(/waiting on you/)
+  })
+
+  it('and adds no spoken seconds', () => {
+    const alone = measureScriptLength([{ line: words(75) }]).spokenSec
+    const withSilence = measureScriptLength([
+      { line: words(75) }, { line: '[No spoken audio]' },
+    ]).spokenSec
+    expect(withSilence).toBe(alone)
+  })
+
+  // ⚖️ A SCRIPT THAT IS ALL SILENCE IS NOT A FINISHED SHORT SCRIPT.
+  it('an all-silent script has nothing written, so it is not judged short', () => {
+    const len = measureScriptLength([{ line: '[No spoken audio]' }, { line: '[No spoken audio]' }])
+    expect(len.writtenBeats).toBe(0)
+    expect(len.implausiblyShort).toBe(false)
+  })
+
+  // ⚠️ AND SILENCE STILL DOES NOT SUPPRESS THE REAL PROMPT.
+  it('a script with both silence and a missing line still says a line is waiting', () => {
+    const len = measureScriptLength([
+      { line: words(75) }, { line: '[No spoken audio]' }, { line: '' },
+    ])
+    expect(len.silentBeats).toBe(1)
+    expect(len.unwrittenBeats).toBe(1)
+    expect(lengthSentence(len)).toMatch(/waiting on you/)
+  })
+})
+
 describe('nothing written at all', () => {
   it('says so instead of claiming zero seconds', () => {
     const len = measureScriptLength([{ line: '' }, { line: null }])

@@ -31,6 +31,12 @@ describe('the note reaches the script card', () => {
     expect(at, 'the note must be guarded').toBeGreaterThan(-1)
   })
 
+  // ⚠️ NEVER ON A SILENT BEAT. "No one speaks here." has no spoken words to
+  // swap, so a note beside it would be advice about nothing.
+  it('is suppressed where nobody speaks', () => {
+    expect(SRC).toMatch(/\{!isSilentBeat\(s\.line\) && stockPhraseNote\(stockPhrasesIn\(s\.line\)\)/)
+  })
+
   // ⚖️ IT NEVER BLOCKS. The note is advisory; nothing about it may gate
   // recording, disable a control, or drop the line.
   it('does not gate anything', () => {

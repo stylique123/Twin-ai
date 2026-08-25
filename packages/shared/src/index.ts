@@ -133,6 +133,11 @@ export * from './script/scriptLength'
 // completeness.
 export * from './script/visualHook'
 
+// ⚖️ A SILENT BEAT IS NOT A BLANK TO FILL IN. "[No spoken audio]" and
+// "[Hook Option 1]" were one check, so the hook got pasted over deliberate
+// silence — three times out of four beats in one production script.
+export * from './script/silentBeat'
+
 // ⚖️ A STOCK PHRASE IS NOT A STANCE. The prompt already bans these and the
 // writer shipped 7 anyway; but 4 of those 7 were the creator naming their
 // ENEMY, so the list is phrase-level and "hustle" is deliberately absent.
