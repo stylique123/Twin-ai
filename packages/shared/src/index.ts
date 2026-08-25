@@ -115,3 +115,6 @@ export * from './pilot/backlogRuns'
 export * from './productQuestions'
 export * from './productLifecycle'
 export * from './briefToProfileAnswers'
+
+// ⚖️ THE METER READS THESE. Counts a creator can check, never a score.
+export * from './twinStrength'
