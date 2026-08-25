@@ -127,3 +127,8 @@ export * from './script/shotLabel'
 // longer than the reference they adapted, 10 run >25% shorter, one is 4 seconds
 // — and no screen said so. Disclosure, never enforcement.
 export * from './script/scriptLength'
+
+// ⚖️ THE FIRST SECOND. The writer has been producing a visual hook all along —
+// 4 of 4 complete — and NOTHING read it. Delivery was the defect, not
+// completeness.
+export * from './script/visualHook'
