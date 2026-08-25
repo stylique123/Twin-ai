@@ -79,6 +79,7 @@ const ENTITY_TYPE_LABEL: Record<EntityType, string> = {
 import { EASE } from '../components/motion'
 import { cn } from '../lib/cn'
 import { LogoMark } from '../components/Logo'
+import { StoryInterview } from '../components/StoryInterview'
 import {
   ONBOARDING_DRAFT_VERSION,
   clearOnboardingDraft,
@@ -530,6 +531,10 @@ function BuildingStep({
   // finishing early means WAITING, never interrupting. The last one to finish
   // hands over, whichever it is.
   const [qIndex, setQIndex] = useState(0)
+  // ⚖️ THREE STORY QUESTIONS AFTER THE SIX CATEGORICAL ONES. `storiesDone`
+  // starts false and is set when they are answered, skipped, or when there is
+  // no voice to attach them to.
+  const [storiesDone, setStoriesDone] = useState(false)
   const [readyProfile, setReadyProfile] = useState<VoiceProfile | null>(null)
   // ⚠️ FINISHING IS SOMETHING THE CREATOR DOES, NOT SOMETHING A COMPARISON
   // DECIDES. `qIndex >= asked.length` LOOKED equivalent and was not: the list is
@@ -552,8 +557,13 @@ function BuildingStep({
 
   // Hand over exactly once, and only when BOTH halves are finished.
   useEffect(() => {
-    if (questionsDone && readyProfile) onReady(readyProfile)
-  }, [questionsDone, readyProfile, onReady])
+    // ⚠️ THE STORY QUESTIONS GATE THIS TOO, FOR THE REASON THIS FILE ALREADY
+    // LEARNED ONCE: a scan that finished early used to take the screen away
+    // with an answer half-typed. `storiesDone` parks a finished scan the same
+    // way `questionsDone` does, so finishing early means WAITING, never
+    // interrupting.
+    if (questionsDone && storiesDone && readyProfile) onReady(readyProfile)
+  }, [questionsDone, storiesDone, readyProfile, onReady])
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Advance the visual stage on a gentle clock so the wait feels alive even
@@ -724,7 +734,19 @@ function BuildingStep({
           scan finishes on its own schedule and can advance out from under a
           half-typed answer. `forgetDeadScan` clears only `voiceId`, so a scan
           that dies keeps every answer given here. */}
-      {!err && questionsDone && (
+      {/* ⚠️ THE CATEGORICAL QUESTIONS ARE DONE AND THE WAIT IS NOT. Everything
+          above asks WHAT the creator does; nothing asks what HAPPENED to them —
+          and experience items are the one predictor of a script that does not
+          read as generic. Captions have produced zero of them, ever. This is
+          dead time that can carry three real answers instead. */}
+      {!err && questionsDone && !storiesDone && (
+        <StoryInterview
+          voiceId={draft.voiceId ?? null}
+          onDone={() => setStoriesDone(true)}
+        />
+      )}
+
+      {!err && questionsDone && storiesDone && (
         // Answered everything before the scan finished. Say so plainly — a
         // spinner with no sentence reads as a stall, and this is the one moment
         // the creator is genuinely just waiting.
