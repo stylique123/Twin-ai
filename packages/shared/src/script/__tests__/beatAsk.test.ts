@@ -180,3 +180,18 @@ describe('the writer never puts a question where a spoken line goes', () => {
     expect(bp).toMatch(/beat_asks: \{ emitted: beatAsksEmitted, with_scaffold: beatAsksWithScaffold \}/)
   })
 })
+
+/**
+ * ⚠️ TWO CONSTANTS FOR ONE LIMIT. `ANSWER_MAX` (creatorQuestions) is what the
+ * knowledge schema enforces; `ANSWER_MAX_CHARS` lives here because this module
+ * is mechanically copied into the edge runtime and must not import across
+ * modules there. They are the same rule, so they are pinned to each other
+ * rather than left to drift — a divergence would let the card accept a sentence
+ * the store then refuses, losing it after the creator watched it be accepted.
+ */
+describe('the answer limit is one rule, not two', () => {
+  it('matches the limit the knowledge schema enforces', async () => {
+    const { ANSWER_MAX } = await import('../../creatorQuestions')
+    expect(ANSWER_MAX_CHARS).toBe(ANSWER_MAX)
+  })
+})

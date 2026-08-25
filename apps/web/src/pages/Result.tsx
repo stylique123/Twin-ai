@@ -1809,7 +1809,28 @@ function BlueprintScriptCards({ script }: { script: Blueprint['script'] }) {
               </span>
               <span className="text-[11px] font-medium text-stone">Scene {i + 1}</span>
             </div>
-            <p className="font-display text-lg leading-relaxed text-cream">“{s.line}”</p>
+            {/* ⚠️ AN EMPTY LINE MUST NOT RENDER AS EMPTY QUOTE MARKS. This printed
+                unconditionally, so a beat with no line showed as “” — and before
+                that it showed the refusal itself as dialogue, which is how "Only
+                you can supply this" reached a real teleprompter.
+
+                ⚖️ READ-ONLY ON PURPOSE. This view is the FALLBACK for when the
+                recording script cannot be produced, and its own contract is that
+                it offers no edit — `script[i]` is not the line that gets filmed.
+                So the question is SHOWN here and answered where the creator
+                actually works. Putting an input here would edit something nobody
+                records. */}
+            {s.line && s.line.trim() !== '' && (
+              <p className="font-display text-lg leading-relaxed text-cream">“{s.line}”</p>
+            )}
+            {s.ask && s.ask.trim() !== '' && (
+              <div className="rounded-2xl border border-amber/25 bg-amber/[0.06] p-4">
+                <span className="block text-[11px] font-semibold uppercase tracking-wider text-amber mb-1">
+                  Only you know this one
+                </span>
+                <p className="font-display text-base leading-relaxed text-cream">{s.ask}</p>
+              </div>
+            )}
             <div className="space-y-3.5 rounded-2xl border border-white/[0.04] bg-ink/40 p-4">
               <div className="flex items-start gap-3">
                 <Video className="h-4 w-4 text-amber shrink-0 mt-0.5" />
