@@ -36,9 +36,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # ⚠️ PINNED (NOT 'latest'), AND THE REASON IS MEASURED, NOT ANTICIPATED.
+      # On 2026-08-24 this workflow failed at setup with "Failed to resolve
+      # latest Supabase CLI release: rate limit exceeded" -- before the CLI was
+      # installed and before any deploy step ran. The merge that triggered it
+      # (#503) therefore sat UNDEPLOYED while main looked healthy, which is the
+      # part worth fearing: a green-looking main whose edge functions are stale.
+      # Resolving 'latest' costs an unauthenticated GitHub API call from a shared
+      # runner IP, and a mutable toolchain weakens reproducibility anyway.
+      # ⚖️ staging-integration.yml ALREADY PINNED FOR EXACTLY THIS REASON. The
+      # lesson had been learned and written down in one file; the failure landed
+      # in the two that had not applied it.
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.109.1
       - name: Classify every function directory
         run: |
           set -euo pipefail
