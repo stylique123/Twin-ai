@@ -16,6 +16,7 @@ import {
   type RecordingScript,
   type WpmPreset,
   DEFAULT_WPM,
+  DEFAULT_ASK_SEC,
   estimateDurationSec,
   totalDurationSec,
 } from './recordingScript'
@@ -182,8 +183,15 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   const usable: Array<{ seg: Blueprint['script'][number]; idx: number }> = []
   ;(blueprint.script ?? []).forEach((seg, idx) => {
     const l = (seg.line || '').trim()
-    if (!l) return
-    if (isWhollyPlaceholder(l)) return
+    // ⚠️ AN EMPTY LINE WITH A QUESTION IS NOT AN EMPTY BEAT. This is the FIRST
+    // of two places a blank line was dropped, and the earlier one: the beat
+    // never reached the scene loop at all. `beatAsk` blanks `line` on purpose
+    // when the writer refused a beat and offered no usable scaffold, so the
+    // beat that most needs the creator was the one deleted before they could
+    // be asked.
+    const hasAsk = typeof seg.ask === 'string' && seg.ask.trim() !== ''
+    if (!l && !hasAsk) return
+    if (l && isWhollyPlaceholder(l)) return
     // ⚠️ A RE-HOOK IS NOT THE HOOK, AND THE WORD IS INSIDE THE WORD.
     //
     // MEASURED ON A REAL GENERATION. Blueprint a98bf712 labelled its fourth
@@ -300,9 +308,36 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
 
     // An embedded marker leaves the spoken words and declares its slot on them.
     const { text: line, clips } = stripDeclaredClips(raw)
-    // Stripping can empty a line that was only a marker plus punctuation; an
-    // empty dialogue is not a scene the teleprompter can show.
+
+    // ⚠️ THE QUESTION SURVIVES THE EMPTY LINE. `beatAsk` blanks `line` on
+    // purpose when the writer refused a beat and offered no usable scaffold —
+    // empty is honest where the refusal was not. But an empty dialogue was not
+    // a scene, so that beat was DROPPED FROM THE RECORDING SCRIPT ENTIRELY:
+    // the creator never saw the question, and the beat itself vanished between
+    // the plan and the teleprompter.
+    //
+    // ⚖️ IT IS A SPOKEN SCENE WITH NOTHING WRITTEN, not a silent one. Nobody
+    // speaks on a silent beat; here the creator speaks their OWN words, which
+    // is the entire point of asking. So it shows in the teleprompter with
+    // `dialogue: null` and the question in its place.
+    const ask = typeof seg.ask === 'string' && seg.ask.trim() !== '' ? seg.ask.trim() : null
     if (line === '') {
+      if (ask) {
+        const an = scenes.length + 1
+        scenes.push({
+          scene_number: an,
+          scene_type: 'talking_head',
+          purpose: purposeAt(beatPlan, idx) || seg.section?.trim() || 'Say this one in your own words',
+          dialogue: null,
+          ask,
+          duration_sec: beatDurationSec(beatPlan, idx, DEFAULT_ASK_SEC),
+          ...(beatPlan?.[idx]?.targetSec != null ? { target_sec: beatPlan[idx].targetSec } : {}),
+          ...framingFor(i + 1, blueprint, seg),
+          caption_text: pushCaption(captionFromLine(ask), an),
+          pause_after: true,
+          show_in_teleprompter: true,
+        })
+      }
       pending.push(...clips)
       return
     }
@@ -331,6 +366,10 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
       // existed has.
       purpose: purposeAt(beatPlan, idx) || seg.section?.trim() || 'Deliver the next point',
       dialogue: line,
+      // ⚖️ CARRIED EVEN WHEN THERE IS A LINE. A usable scaffold gives the beat
+      // real words AND still leaves one thing only the creator knows; showing
+      // the scaffold without the question would hide what the blank is for.
+      ...(ask ? { ask } : {}),
       // DECIDED, not derived — the plan's target when there is one, and the
       // words-over-speaking-rate estimate when there is not.
       duration_sec: beatDurationSec(beatPlan, idx, estimateDurationSec(line, wpm)),
