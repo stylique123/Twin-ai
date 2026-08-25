@@ -10,6 +10,7 @@ import { handleExtractProduct } from './extractProduct.js'
 import { handleAssessReference } from './assessReference.js'
 import { handleExtractionParity } from './extractionParity.js'
 import { extractionReplication } from './extractionReplication.js'
+import { handleSampleOwnAccount } from './sampleOwnAccount.js'
 
 export type JobHandler = (job: Job) => Promise<Record<string, unknown>>
 
@@ -37,6 +38,12 @@ export const handlers: Record<string, JobHandler> = {
   // off. See `extractProduct.ts`.
   extract_product: handleExtractProduct,
   assess_reference: handleAssessReference,
+  // Looks at a SAMPLE of the creator's OWN videos and records how many are them
+  // talking to camera. Its own job rather than part of `scrape_dna` because six
+  // downloads plus six model calls is latency a creator would feel during
+  // onboarding, and the entire output is an optional warning. See
+  // `sampleOwnAccount.ts` for why it does not reuse build_voice's download.
+  sample_own_account: handleSampleOwnAccount,
   extraction_parity: handleExtractionParity,
   extraction_replication: extractionReplication,
   // Deletes the BYTES behind a removed media_asset. Enqueued by a database

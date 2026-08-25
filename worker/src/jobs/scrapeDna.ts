@@ -471,6 +471,34 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
         payload: { brand_voice_id: voiceId, handle, platform, urls, captions: posts.map((x) => x.text).filter(Boolean).slice(0, 120) },
       })
       stage('transcripts_enqueued', 'ok', `${urls.length} queued`)
+
+      // ⚠️ THE SAME VIDEOS, ASKED A DIFFERENT QUESTION. `selectVideosToTranscribe`
+      // deliberately does NOT pick by views — viral videos skew to spectacle and
+      // are the least representative sample of a creator. That reasoning holds
+      // exactly as well for "is this person usually talking to camera", so the
+      // list is reused rather than re-picked. Picking the top-viewed here would
+      // answer a question nobody asked.
+      //
+      // ⚖️ ENQUEUED, NOT AWAITED, AND THAT IS THE POINT. This costs six
+      // downloads and six model calls; run inline it would be six downloads a
+      // creator sits through during onboarding, to produce a warning they are
+      // not blocked on. Off the critical path or not at all.
+      try {
+        await db.from('jobs').insert({
+          owner_id: ownerId,
+          type: 'sample_own_account',
+          status: 'queued',
+          // Never retry: a retry re-spends the downloads and the model calls to
+          // re-derive an optional warning. Same rule as build_voice above.
+          max_attempts: 1,
+          payload: { brand_voice_id: voiceId, urls },
+        })
+        stage('own_sample_enqueued', 'ok', `${Math.min(urls.length, 6)} to look at`)
+      } catch (err) {
+        // ⚖️ A WARNING THAT COULD NOT BE QUEUED MUST NOT COST THE SCAN. The
+        // creator's voice is the deliverable; this is an extra.
+        stage('own_sample_enqueued', 'failed', err instanceof Error ? err.message : String(err))
+      }
     } else if (!ownerId) {
       // ⚠️ A REAL BRANCH, AND PREVIOUSLY INVISIBLE. No owner means the upgrade is
       // never queued, so the creator's store can only ever hold caption items —

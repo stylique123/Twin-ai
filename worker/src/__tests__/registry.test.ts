@@ -45,7 +45,16 @@ describe('worker job registry has no old editor', () => {
       // becoming a general "rerun anything" button later.
       'assess_reference', 'build_voice', 'editor_v2', 'extract_product',
       'extraction_parity', 'extraction_replication', 'ingest',
-      'purge_media', 'scrape_dna', 'validate_clip', 'validate_source',
+      // sample_own_account looks at a SAMPLE of the creator's OWN videos and
+      // records how many are them talking to camera. It is registered here
+      // rather than folded into scrape_dna because six downloads plus six model
+      // calls is latency a creator would sit through during onboarding, for an
+      // output that is only ever an optional warning. It is also the caller the
+      // account half of the talking-head gate never had: `sampleOwnAccount` and
+      // `messageForOwnAccount` were both shipped and tested with nothing
+      // invoking either — the exact "registered and enqueued by nothing"
+      // cautionary tale `transcribe` is cited for above, run in reverse.
+      'purge_media', 'sample_own_account', 'scrape_dna', 'validate_clip', 'validate_source',
     ])
     expect(handlers).not.toHaveProperty('autoedit')
     expect(handlers).not.toHaveProperty('transcribe')

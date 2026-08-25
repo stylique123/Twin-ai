@@ -72,6 +72,16 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0171_the_sample_is_written_down_or_it_never_happened':
+    'Adds four own_sample_* columns to `brand_voices`. ⚠️ EXCLUDED FROM THE LOOP, NOT FROM '
+    + 'STAGING — and the distinction is the whole reason for this wording. On staging '
+    + '`brand_voices` is a STAGING-ONLY FIXTURE applied AFTER the migration loop '
+    + '(scripts/staging-integration/staging-brand-schema.sql), not the product of any '
+    + 'migration, so running this inside the loop would fail outright on a table that does '
+    + 'not exist yet. It IS applied — immediately after that fixture — and the columns are '
+    + 'asserted in the same step, so staging exercises it for real rather than vacuously. '
+    + 'Excluding it outright would have been the convenient answer and would have left the '
+    + 'one environment that can catch a drift here unable to see one.',
   '0148_would_you_actually_post_this':
     'The creator\'s own "would you post this?" answer. The staging matrix exercises the '
     + 'editor pipeline and never asks a human anything, so it cannot exercise this table. '
