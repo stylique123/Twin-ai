@@ -45,7 +45,7 @@ import {
   isStale, factAgeDays, SOURCE_LABEL, sourceWarrantsAttention,
   signEditUrls,
   bestSuggestion,
-  asksPersonalUse, capabilityQuestion, CAPABILITY_PROMPT,
+  asksPersonalUse, capabilityQuestion, CAPABILITY_PROMPT, capabilityAnswerIsUsed,
   productLifecycle, LIFECYCLE_MESSAGE,
   CAPTURE_COPY, PLATFORM_CHOICES, PRIVACY_CHOICES, RATHER_NOT_SAY, FIGURE_HINT,
   surfaceChoices, buildCommunityMap, whatIsMissing,
@@ -87,12 +87,25 @@ const TYPE_CHOICES: Array<{ value: EntityType; label: string }> = [
   { value: 'OTHER', label: 'Something else' },
 ]
 
+/** ⚖️ THE ADD FORM'S THREE WORDS, PLUS THE STATE THEY CANNOT PICK. "Usually /
+ *  Sometimes / No" is what the add form shows, so this panel shows the same —
+ *  two vocabularies for one stored field is how a creator learns their answer
+ *  did not mean what they thought. `Not set` is listed because a product can
+ *  arrive here never having been asked, and a blank row reads as a bug. */
 const SHOW_OPTIONS: Array<{ value: Showability; label: string; note: string }> = [
-  { value: 'ALWAYS', label: 'Always', note: 'A scene may show it directly.' },
-  { value: 'SOMETIMES', label: 'Sometimes', note: 'It can be mentioned; no scene will depend on it.' },
-  { value: 'NEVER', label: 'Never', note: 'Scripts stay talking-only for this one.' },
-  { value: 'UNKNOWN', label: 'Not set', note: 'Treated as "cannot dependably show".' },
+  { value: 'ALWAYS', label: 'Usually', note: 'A scene can show it directly.' },
+  { value: 'SOMETIMES', label: 'Sometimes', note: 'It can be mentioned, and no scene will fall apart without it.' },
+  { value: 'NEVER', label: 'No', note: 'Scripts stay talking-only for this one.' },
+  { value: 'UNKNOWN', label: 'Not set', note: 'Until you answer, no scene will depend on showing it.' },
 ]
+
+/** What a creator is told about a type whose answer would change nothing.
+ *  ⚠️ NEVER MAKE THE CREATOR THINK ABOUT TWIN'S ARCHITECTURE: these say what
+ *  will happen to their scripts, not which function decided it. */
+const FIXED_SHOW_NOTE: Record<string, string> = {
+  SERVICE: 'A service has nothing to point a camera at, so scripts for this one talk about it rather than show it.',
+  COMMUNITY: 'Scripts can show this one — you hold your own phone up beside your face and show the feed.',
+}
 
 /** Plain-language names for the fields a creator cannot change here. Showing the
  *  value with no explanation reads as a bug; showing it with one reads as a
@@ -708,28 +721,49 @@ export default function ProductLibrary() {
             }}
           />
 
-          <fieldset className="mt-4">
-            <legend className="text-xs font-medium uppercase tracking-wide text-stone">
-              Can you put it on screen?
-            </legend>
-            <div className="mt-2 space-y-1">
-              {SHOW_OPTIONS.map((o) => (
-                <label key={o.value} className="flex items-start gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name={`show-${e.id}`}
-                    className="mt-1"
-                    checked={e.showability === o.value}
-                    onChange={() => void save(e.id, { showability: o.value })}
-                  />
-                  <span>
-                    {o.label}
-                    <span className="block text-xs text-stone">{o.note}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          {/* ⚠️ THE SAME QUESTION THE ADD FORM ASKS, IN THE SAME WORDS. This
+              panel asked its own generic "Can you put it on screen?" of every
+              product, while the add form asked a physical product whether they
+              could have it WITH them and a screen product whether they could
+              have it OPEN. One creator, one product, two different questions
+              depending on which door they walked through — and the honest answer
+              to one is not the answer to the other.
+
+              ⚖️ AND A TYPE WHOSE ANSWER IS DISCARDED IS NOT ASKED AT ALL. A
+              service has nothing to point a camera at and a community is filmed
+              by holding your own phone up beside your face; `inferShowability`
+              returns the same value for those whatever anybody picks. Asking
+              anyway spends a creator's attention on an answer we throw away,
+              which is the founding defect of this rebuild in miniature. They are
+              told the fact instead. */}
+          {capabilityAnswerIsUsed(e.type as EntityType) ? (
+            <fieldset className="mt-4">
+              <legend className="text-xs font-medium uppercase tracking-wide text-stone">
+                {CAPABILITY_PROMPT[
+                  e.type === 'PHYSICAL_PRODUCT' ? 'physical' : 'screen'
+                ]}
+              </legend>
+              <div className="mt-2 space-y-1">
+                {SHOW_OPTIONS.map((o) => (
+                  <label key={o.value} className="flex items-start gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name={`show-${e.id}`}
+                      className="mt-1"
+                      checked={e.showability === o.value}
+                      onChange={() => void save(e.id, { showability: o.value })}
+                    />
+                    <span>
+                      {o.label}
+                      <span className="block text-xs text-stone">{o.note}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : (
+            <p className="mt-4 text-xs text-stone">{FIXED_SHOW_NOTE[e.type] ?? ''}</p>
+          )}
 
           {/* ── WHAT IT LOOKS LIKE ───────────────────────────────────────
               ⚠️ THE PHOTOS WERE WRITE-ONCE AND INVISIBLE. They could be attached
@@ -1331,6 +1365,10 @@ function StartFromLink({ onCancel, onClaim, busy }: {
      *  Absent when the type warranted none — a service — and absent is NOT a
      *  denial: `attestedEntity` reads a missing flag as UNKNOWN. */
     flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
+    /** ⚠️ THE SAME ANSWER, UNFLATTENED. The flag above can only carry yes/no, and
+     *  this form has always offered three options — so SOMETIMES arrived as a
+     *  `false` and was stored as NEVER. See `answeredShowability`. */
+    showability?: Showability | null
     /** ⚖️ Present only for a COMMUNITY, and null when the form was not filled
      *  in far enough to be usable. Absent is the ordinary state. */
     communityMap?: unknown
@@ -1573,6 +1611,14 @@ function StartFromLink({ onCancel, onClaim, busy }: {
             // `claimProductEntity` writes it to `community_map`, and writes null
             // when it is not usable rather than failing the whole insert.
             communityMap,
+            // ⚠️ THE ANSWER TRAVELS AS THE ANSWER, NOT AS A BOOLEAN. This form
+            // has offered "Usually / Sometimes / No" since it shipped and then
+            // sent SOMETIMES through as `false`, which `inferShowability` read
+            // as a denial and stored as NEVER -- so a creator who said "I can
+            // usually show it" got talking-only scripts. The flags still travel,
+            // because they are the honest pre-fill for anything that did not
+            // ask; `answeredShowability` prefers the answer where one was given.
+            showability,
             flags: capability === 'physical' ? { canFilmObjects: showability === 'ALWAYS' }
               : capability === 'screen' ? { canRecordScreen: showability === 'ALWAYS' }
                 : undefined,
