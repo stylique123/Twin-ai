@@ -15,7 +15,14 @@ const SRC = readFileSync(join(import.meta.dirname, '..', 'pages', 'Result.tsx'),
 
 describe('the shot card never renders the raw field', () => {
   it('imports the label helper', () => {
-    expect(SRC).toMatch(/import \{ shotLabel \} from '@twinai\/shared'/)
+    // ⚖️ WIDENED, NOT WEAKENED. This used to pin the whole import line as a
+    // literal, which broke the moment a SECOND shared symbol joined the same
+    // import — a formatting fact, not the property. What is still required is
+    // exactly what always was: `shotLabel` is imported FROM `@twinai/shared`,
+    // not redefined locally.
+    const imp = SRC.match(/import \{([^}]*)\} from '@twinai\/shared'/)
+    expect(imp, 'nothing is imported from @twinai/shared').not.toBeNull()
+    expect(imp![1].split(',').map((x) => x.trim())).toContain('shotLabel')
   })
 
   // ⚠️ BOTH SITES. The file renders the shot list twice, and a fix applied to
