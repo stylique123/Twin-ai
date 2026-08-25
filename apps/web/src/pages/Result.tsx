@@ -31,7 +31,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { shotLabel } from '@twinai/shared'
+import { lengthSentence, measureScriptLength, shotLabel } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -633,6 +633,11 @@ export default function Result() {
     return s
   })
 
+  // ⚖️ HOW LONG THIS IS, BEFORE THEY STAND IN FRONT OF A CAMERA. Measured on the
+  // REPAIRED script above, because that is the one they will read. Disclosure
+  // only — a creator may shoot any length they like.
+  const lengthLine = lengthSentence(measureScriptLength(updatedScript))
+
   return (
     <main className="relative min-h-screen overflow-clip bg-ink text-sand pb-20">
       {/* Aurora Glow */}
@@ -1035,6 +1040,7 @@ export default function Result() {
                 </h2>
                 <span className="text-xs text-stone">{updatedScript.length} scenes</span>
               </div>
+              <p className="text-xs text-stone/80">{lengthLine}</p>
               
               <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />
@@ -1378,6 +1384,7 @@ export default function Result() {
                   </h2>
                   <span className="text-xs text-stone">{updatedScript.length} scenes</span>
                 </div>
+                <p className="text-xs text-stone/80">{lengthLine}</p>
                 
                 <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />

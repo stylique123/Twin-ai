@@ -122,3 +122,8 @@ export * from './twinStrength'
 // ⚖️ THE SHOT-CARD HEADING. 44% of production rows name their shot with a
 // bare ordinal; the card must not render one.
 export * from './script/shotLabel'
+
+// ⚖️ HOW LONG THIS SCRIPT ACTUALLY RUNS. 17 of 35 production scripts run >25%
+// longer than the reference they adapted, 10 run >25% shorter, one is 4 seconds
+// — and no screen said so. Disclosure, never enforcement.
+export * from './script/scriptLength'
