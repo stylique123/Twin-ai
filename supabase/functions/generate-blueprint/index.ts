@@ -18,6 +18,7 @@ import { applyHookContract } from '../_shared/hookContract.ts'
 import { craftBeatsThatAsked, readsAsPlaceholder, fallbackCta } from '../_shared/craftBeats.ts'
 import { askIsUsable, scaffoldWithoutAnswer } from '../_shared/beatAsk.ts'
 import { splitEmphasis } from '../_shared/emphasis.ts'
+import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import {
   resolveTemplate,
@@ -4704,7 +4705,8 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
 - Make the single CTA concrete and point it at the creator's product or offer above. If the offer is unspecified, fall back to a save or a comment-bait question.
 - publish_plan: produce ONE entry for EACH platform listed in CREATOR DNA, using only those platforms. Never invent a platform the creator does not use.
 - Write every script line TO ITS BEAT'S target_sec. A line for a 6 second beat is roughly 15 words at a natural pace; a line for a 16 second beat is roughly 40. Do not write a forty word line into a six second beat.
-- shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include the cover frame shot, so the editor is never guessing. Every shot is either the creator on camera or the cover frame — never an insert or cutaway they would have to source.`
+- shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include the cover frame shot, so the editor is never guessing. Every shot is either the creator on camera or the cover frame — never an insert or cutaway they would have to source.
+- shot_list "shot" is the shot's NAME and it is what the creator reads as the heading on the card they are holding their phone against. Write what the shot IS, in three to six plain words — "Opening line, straight to camera", "The still for the thumbnail", "Close on your hands". NEVER write its position in the list: "1", "2", "Shot 3" are not names, and a card headed with a number tells the creator nothing about what to point the camera at.`
 
     // ⚠️ ONE RUN ID FOR THE WHOLE LADDER, so a recovered retry counts as one
     // generation rather than two. Minted here rather than in the recorder because
@@ -4786,6 +4788,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // does not, that is the familiar inert-instruction result and the check
     // carries it alone, which is fine.
     let capsRuns: number | null = null
+    // ⚖️ NULL MEANS NOTHING WAS SCANNED; 0 MEANS EVERY SHOT CARRIED A NAME. The
+    // scan only runs when the writer returned a shot list at all, so unlike the
+    // beat counters this one cannot be counted from zero -- a generation whose
+    // shot_list came back empty or malformed never looked, and reporting that as
+    // "0 numbered shots" would be the cleanest possible reading of no data.
+    let shotsNumberedNotNamed: number | null = null
     // WHERE THE CONTENT CAME FROM, COUNTED — and the declaration checked against
     // what the prompt actually carried. ⚖️ `speakable` and not `kRows`: checking
     // against the fuller store would excuse exactly the fabrication this exists
@@ -5290,6 +5298,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // the writer is refusing without offering a way forward.
       beat_asks: { emitted: beatAsksEmitted, with_scaffold: beatAsksWithScaffold },
       caps_emphasis_runs: capsRuns,
+      // ⚠️ MEASURED BEFORE THE PROMPT LINE EXISTED: 98 of 223 shot-list rows --
+      // 44% -- carried a bare ordinal in `shot`, and the card renders that field
+      // as its heading, so a creator scanning their shot list saw a card called
+      // "2". `shotLabel` already repairs the RENDER; this counts whether the
+      // WRITER stopped doing it, which is the only thing that tells us the new
+      // instruction is not inert.
+      shots_named_by_number: shotsNumberedNotNamed,
       by_source: bySource,
       creator_knowledge_depth: byDepth,
       knowledge_supplied: speakable.length,
@@ -5520,6 +5535,40 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       capsRuns = runs
       if (runs > 0) console.warn(JSON.stringify({ event: 'caps_emphasis_moved', runs }))
     } catch { /* never fail a generation on an emphasis split */ }
+
+    // ── A SHOT CARD MUST SAY WHAT THE SHOT IS ───────────────────────────────
+    //
+    // ⚠️ MEASURED IN PRODUCTION: 98 of 223 shot-list rows -- 44% -- named the
+    // shot with its position, "1", "2", "3". The card renders `shot` as its
+    // heading, so the creator holding a phone against their shot list read a
+    // card called "2". The rows were never empty: every numbered one still
+    // carried a real `shot_type` and real `notes`. Only the name was a number.
+    //
+    // ⚖️ THIS COUNTS, IT DOES NOT REPAIR. `shotLabel` already derives a readable
+    // heading at render time from fields the row carries, so the creator is not
+    // waiting on this. What nothing could tell us is whether the WRITER stopped
+    // -- and a prompt line that changes nothing is this repo's most familiar
+    // result. The counter is what makes that falsifiable rather than assumed.
+    //
+    // ⚖️ AND `isBareOrdinal` IS THE COPIED READER, not a second regex written
+    // here. Two hand-written spellings of "is this just a number" is exactly the
+    // drift that puts the check and the render into quiet disagreement.
+    try {
+      const shots = (templated.bp as { shot_list?: unknown })?.shot_list
+      if (Array.isArray(shots) && shots.length > 0) {
+        let bare = 0
+        for (const row of shots) {
+          if (!row || typeof row !== 'object') continue
+          if (isBareOrdinal((row as { shot?: unknown }).shot)) bare += 1
+        }
+        shotsNumberedNotNamed = bare
+        if (bare > 0) {
+          console.warn(JSON.stringify({
+            event: 'shots_named_by_number', bare, of: shots.length,
+          }))
+        }
+      }
+    } catch { /* never fail a generation on a measurement */ }
 
     // ── THE REFERENCE'S OWN MEASUREMENTS MUST NOT BE SPOKEN BY THIS CREATOR ──
     //

@@ -226,6 +226,19 @@ const EVENTS = {
       + 'that is the familiar inert-instruction result and the check carries it alone. '
       + 'Stored by 0131, null when the split did not run.',
   },
+  shots_named_by_number: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'Shot-list rows whose "shot" field is the row\'s position rather than the '
+      + 'shot\'s name. MEASURED at 98 of 223 rows -- 44% -- before the prompt line '
+      + 'existed; the card renders that field as its heading, so a creator holding a '
+      + 'phone against their shot list read a card called "2". shotLabel already '
+      + 'repairs the RENDER, so this is not what the creator is waiting on. Durable '
+      + 'because the only open question is whether the WRITER stopped: it should trend '
+      + 'to 0, and if it does not, that is the familiar inert-instruction result and '
+      + 'this counter is the only thing that can say so. Null when no shot list came '
+      + 'back to scan -- which is NOT the same as zero numbered shots.',
+  },
   hook_over_length: {
     kind: 'counter',
     stored: 'generations.beat_audit',
