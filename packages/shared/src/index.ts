@@ -97,6 +97,10 @@ export * from './pilot/knownLimitations'
 export * from './pilot/fieldMeaningUpgrades'
 export * from './pilot/callFailure'
 export * from './gate/talkingHeadFit'
+// ⚖️ THE ACCOUNT HALF'S MISSING READER. The worker writes four columns onto the
+// voice on every sample and apps/web imported `messageForOwnAccount` NOWHERE —
+// one half of one gate spoke to the creator and the other never had.
+export * from './gate/ownSampleRow'
 
 // ⚠️ THESE FOUR WERE WRITTEN AND NOT EXPORTED, WHICH IS WORSE THAN NOT CALLED.
 // A module missing from this barrel is not merely unused — it is UNREACHABLE
