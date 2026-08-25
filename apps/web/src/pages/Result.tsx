@@ -31,7 +31,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel } from '@twinai/shared'
+import { hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -1022,6 +1022,12 @@ export default function Result() {
                 <span className="font-heading text-xs font-semibold text-cream tracking-wide uppercase">Pick your opening line</span>
               </div>
               <p className="text-xs text-stone">Pick an opening line — it updates your script below.</p>
+              {/* ⚖️ FIVE OPTIONS THAT OPEN THE SAME WAY ARE NOT FIVE OPTIONS.
+                  Reports the collision only — the opening may be exactly how
+                  this creator talks, and Twin does not overrule that. */}
+              {hookVarietyNote(b.hook_options) && (
+                <p className="text-xs text-amber/90">{hookVarietyNote(b.hook_options)}</p>
+              )}
               {visualHook && (
                 <div className="mt-1 rounded-lg border border-white/5 bg-ink/40 p-3 space-y-1">
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-amber">Before you say a word</div>
@@ -1373,6 +1379,12 @@ export default function Result() {
                   <span className="font-heading text-xs font-semibold text-cream tracking-wide uppercase">Pick your opening line</span>
                 </div>
                 <p className="text-xs text-stone">Pick an opening line — it updates your script below.</p>
+                {/* ⚖️ FIVE OPTIONS THAT OPEN THE SAME WAY ARE NOT FIVE OPTIONS.
+                    Reports the collision only — the opening may be exactly how
+                    this creator talks, and Twin does not overrule that. */}
+                {hookVarietyNote(b.hook_options) && (
+                  <p className="text-xs text-amber/90">{hookVarietyNote(b.hook_options)}</p>
+                )}
                 {visualHook && (
                   <div className="mt-1 rounded-lg border border-white/5 bg-ink/40 p-3 space-y-1">
                     <div className="text-[10px] font-semibold uppercase tracking-wider text-amber">Before you say a word</div>
@@ -1849,7 +1861,7 @@ function BlueprintScriptCards({ script }: { script: Blueprint['script'] }) {
               </span>
               <span className="text-[11px] font-medium text-stone">Scene {i + 1}</span>
             </div>
-{/* ⚖️ THREE OUTCOMES, AND EACH ONE WAS A SEPARATE DEFECT.
+{/* ⚖️ FOUR OUTCOMES, AND EACH ONE WAS A SEPARATE DEFECT.
                 SILENCE is shown as silence, in plain English and without quote
                 marks — "[No spoken audio]" is a note to the writer, not a line
                 anybody reads out.
@@ -1858,6 +1870,7 @@ function BlueprintScriptCards({ script }: { script: Blueprint['script'] }) {
                 refusal itself as dialogue, which is how "Only you can supply
                 this" reached a real teleprompter.
                 OTHERWISE the spoken line, quoted.
+                AND THE ASK, when only the creator can supply what goes here.
 
                 ⚖️ READ-ONLY ON PURPOSE. This view is the FALLBACK for when the
                 recording script cannot be produced, and its own contract is that
@@ -1870,6 +1883,13 @@ function BlueprintScriptCards({ script }: { script: Blueprint['script'] }) {
               : s.line && s.line.trim() !== '' && (
                 <p className="font-display text-lg leading-relaxed text-cream">“{s.line}”</p>
               )}
+            {/* ⚖️ A NOTE, NEVER A VERDICT. Names the words that are doing no
+                work and says what to do instead — it does not block, score or
+                rewrite, and the decision stays the creator's. ⚠️ NEVER ON A
+                SILENT BEAT: there are no spoken words there to swap. */}
+            {!isSilentBeat(s.line) && stockPhraseNote(stockPhrasesIn(s.line)) && (
+              <p className="text-xs text-amber/90">{stockPhraseNote(stockPhrasesIn(s.line))}</p>
+            )}
             {s.ask && s.ask.trim() !== '' && (
               <div className="rounded-2xl border border-amber/25 bg-amber/[0.06] p-4">
                 <span className="block text-[11px] font-semibold uppercase tracking-wider text-amber mb-1">
