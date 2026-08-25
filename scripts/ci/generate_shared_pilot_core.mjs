@@ -40,6 +40,7 @@ const SOURCES = [
   ['packages/shared/src/script/hookContract.ts', 'supabase/functions/_shared/hookContract.ts'],
   ['packages/shared/src/script/craftBeats.ts', 'supabase/functions/_shared/craftBeats.ts'],
   ['packages/shared/src/script/emphasis.ts', 'supabase/functions/_shared/emphasis.ts'],
+  ['packages/shared/src/script/beatAsk.ts', 'supabase/functions/_shared/beatAsk.ts'],
   ['packages/shared/src/script/shotLabel.ts', 'supabase/functions/_shared/shotLabel.ts'],
 ]
 

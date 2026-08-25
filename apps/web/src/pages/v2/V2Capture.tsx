@@ -1000,6 +1000,29 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
           <div className="absolute inset-0 z-10 grid place-items-center px-4">
             <div className="w-full max-w-md">{nextCard}</div>
           </div>
+        ) : scene?.ask ? (
+          /* ⚠️ NOTHING IS WRITTEN HERE, AND THAT IS THE POINT. The writer refused
+             to invent this creator's life and offered no usable scaffold, so the
+             beat has no words to scroll. Before this, the beat was DROPPED from
+             the recording script entirely and the creator never learned it
+             existed. The question stands in place of the line, and they answer
+             it out loud in their own words.
+
+             ⚖️ NOT A TELEPROMPTER LINE. It is deliberately not styled as words
+             to read — reading a question aloud is exactly the failure this whole
+             thread of work exists to end. */
+          <div className="absolute inset-0 z-10 grid place-items-center px-6 sm:px-12">
+            <div className="w-full max-w-2xl text-center space-y-3">
+              <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-300/90">
+                Only you know this one
+              </div>
+              <p className="font-bold leading-snug text-white [text-shadow:0_2px_20px_rgba(0,0,0,0.65)]"
+                 style={{ fontSize: Math.round(FONT_PX[fontIdx] * 0.62) }}>
+                {scene.ask}
+              </p>
+              <p className="text-sm text-white/70">Say it in your own words.</p>
+            </div>
+          </div>
         ) : (
           <div className="absolute inset-0 z-10 flex items-center px-5 sm:px-10">
             {/* the script glides UP past a fixed read-line, soft-faded top + bottom */}

@@ -31,7 +31,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn } from '@twinai/shared'
+import { shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -611,6 +611,10 @@ export default function Result() {
     // every generation that had one. `readVisualHook` validates it at the point
     // of use; dropping it here made that impossible.
     visual_hook: raw.visual_hook,
+    // ⚠️ CARRIED THROUGH RAW, for the reason visual_hook was: this normaliser
+    // rebuilds the blueprint field by field, so a field it does not name is
+    // discarded on arrival. `beat_plan[].proof` was being lost here.
+    beat_plan: raw.beat_plan,
     hook_options: Array.isArray(raw.hook_options) ? raw.hook_options : [],
     script: Array.isArray(raw.script) ? raw.script : [],
     shot_list: Array.isArray(raw.shot_list) ? raw.shot_list : [],
@@ -1081,7 +1085,7 @@ export default function Result() {
                 blueprint={b}
                 selectedHook={chosenHook}
                 hasTake={serverSourceAssetId != null}
-                fallback={<BlueprintScriptCards script={updatedScript} />}
+                fallback={<BlueprintScriptCards script={updatedScript} beatPlan={b.beat_plan} />}
               />
               {/* See the other call site: the script owns the list, so the
                   editor that changes it stays above this. */}
@@ -1438,7 +1442,7 @@ export default function Result() {
                   blueprint={b}
                   selectedHook={chosenHook}
                   hasTake={serverSourceAssetId != null}
-                  fallback={<BlueprintScriptCards script={updatedScript} />}
+                  fallback={<BlueprintScriptCards script={updatedScript} beatPlan={b.beat_plan} />}
                 />
                 {/* BELOW the editor on purpose: the slots come FROM the script,
                     so the thing that changes them sits above the thing that
@@ -1842,7 +1846,9 @@ function PublishRow({
 // teleprompter's scene i are different lines. Editing here would edit something
 // nobody records — so this shows what the model wrote and offers no edit, and
 // `ScriptEditor` owns the version that can be changed.
-function BlueprintScriptCards({ script }: { script: Blueprint['script'] }) {
+function BlueprintScriptCards(
+  { script, beatPlan }: { script: Blueprint['script']; beatPlan?: unknown },
+) {
   return (
     <div className="space-y-6">
       {script.map((s, i) => {
@@ -1861,18 +1867,49 @@ function BlueprintScriptCards({ script }: { script: Blueprint['script'] }) {
               </span>
               <span className="text-[11px] font-medium text-stone">Scene {i + 1}</span>
             </div>
-{/* ⚖️ SILENCE IS SHOWN AS SILENCE, in plain English and without
-                quote marks — "[No spoken audio]" is a note to the writer, not
-                a line anybody reads out. */}
+            {/* ⚖️ WHAT THE CREATOR DOES IN FRONT OF THE CAMERA. Withheld
+                entirely when the writer's note asks for footage this product
+                does not make — a b-roll or screen-recording request is a good
+                idea that is out of scope, not an instruction to hand over. */}
+            {shootingNoteAt(beatPlan, i) && (
+              <p className="text-xs text-sand/80">{shootingNoteAt(beatPlan, i)}</p>
+            )}
+            {/* ⚖️ FOUR OUTCOMES, AND EACH ONE WAS A SEPARATE DEFECT.
+                SILENCE is shown as silence, in plain English and without quote
+                marks — "[No spoken audio]" is a note to the writer, not a line
+                anybody reads out.
+                AN EMPTY LINE prints nothing: this rendered unconditionally, so
+                a beat with no line showed as “”, and before that it showed the
+                refusal itself as dialogue, which is how "Only you can supply
+                this" reached a real teleprompter.
+                OTHERWISE the spoken line, quoted.
+                AND THE ASK, when only the creator can supply what goes here.
+
+                ⚖️ READ-ONLY ON PURPOSE. This view is the FALLBACK for when the
+                recording script cannot be produced, and its own contract is that
+                it offers no edit — `script[i]` is not the line that gets filmed.
+                So the question is SHOWN here and answered where the creator
+                actually works. Putting an input here would edit something nobody
+                records. */}
             {isSilentBeat(s.line)
               ? <p className="font-display text-lg leading-relaxed text-stone">No one speaks here.</p>
-              : <p className="font-display text-lg leading-relaxed text-cream">“{s.line}”</p>}
+              : s.line && s.line.trim() !== '' && (
+                <p className="font-display text-lg leading-relaxed text-cream">“{s.line}”</p>
+              )}
             {/* ⚖️ A NOTE, NEVER A VERDICT. Names the words that are doing no
                 work and says what to do instead — it does not block, score or
                 rewrite, and the decision stays the creator's. ⚠️ NEVER ON A
                 SILENT BEAT: there are no spoken words there to swap. */}
             {!isSilentBeat(s.line) && stockPhraseNote(stockPhrasesIn(s.line)) && (
               <p className="text-xs text-amber/90">{stockPhraseNote(stockPhrasesIn(s.line))}</p>
+            )}
+            {s.ask && s.ask.trim() !== '' && (
+              <div className="rounded-2xl border border-amber/25 bg-amber/[0.06] p-4">
+                <span className="block text-[11px] font-semibold uppercase tracking-wider text-amber mb-1">
+                  Only you know this one
+                </span>
+                <p className="font-display text-base leading-relaxed text-cream">{s.ask}</p>
+              </div>
             )}
             <div className="space-y-3.5 rounded-2xl border border-white/[0.04] bg-ink/40 p-4">
               <div className="flex items-start gap-3">

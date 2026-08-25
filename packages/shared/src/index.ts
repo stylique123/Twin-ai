@@ -115,6 +115,12 @@ export * from './pilot/backlogRuns'
 export * from './productQuestions'
 export * from './productLifecycle'
 export * from './briefToProfileAnswers'
+// ⚠️ THE SCRIPT CONTRACTS. `beatAsk` is exported because the CLIENT renders the
+// question and fills the scaffold; the other two are read by the edge function
+// through their generated Deno copies and by their own tests, and are exported
+// here so a future reader does not write a third copy of a rule that exists.
+export * from './script/beatAsk'
+export * from './script/craftBeats'
 
 // ⚖️ THE METER READS THESE. Counts a creator can check, never a score.
 export * from './twinStrength'
@@ -147,3 +153,9 @@ export * from './script/clichePhrases'
 // three words five times over; three more do it three times. The opener is the
 // creator's own signature, so this reports the COLLISION, never the words.
 export * from './script/hookVariety'
+
+// ⚖️ THE SHOOTING NOTE THAT WAS THROWN AWAY. `beat_plan[].proof` is 20-of-20
+// complete in production and `proofAt` had ZERO callers. Shown only where it
+// describes what the CREATOR performs — never a b-roll or screen-recording
+// request, both of which appear in the real data and are out of scope.
+export * from './script/beatProof'
