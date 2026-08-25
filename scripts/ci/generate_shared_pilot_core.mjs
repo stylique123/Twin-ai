@@ -38,6 +38,7 @@ const SOURCES = [
   // ⚖️ THE SOURCE IS TYPESCRIPT AND THAT IS FINE. The copy is `@ts-nocheck`ed
   // like every other generated file, and the module has no imports to rewrite.
   ['packages/shared/src/script/hookContract.ts', 'supabase/functions/_shared/hookContract.ts'],
+  ['packages/shared/src/script/craftBeats.ts', 'supabase/functions/_shared/craftBeats.ts'],
 ]
 
 // ⚠️ A SHEBANG IS LEGAL ONLY ON LINE 1, AND THE HEADER PUSHES IT TO LINE 5.

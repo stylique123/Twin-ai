@@ -205,6 +205,17 @@ const EVENTS = {
   entitlement_repair: { kind: 'incident', why: 'What the entitlement repair rewrote.' },
   entitlement_unrepaired: { kind: 'incident', why: 'A repair that did not take.' },
   hooks_unentitled: { kind: 'incident', why: 'Hooks resting on an unentitled claim.' },
+  cta_fallback: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'A hook, payoff or CTA that claimed it needed the creator. Those three are '
+      + 'craft -- writable from the goal and the offer, both already on file -- so the '
+      + 'claim is always wrong, and in the audited script the final beat shipped as '
+      + '"Only you can supply this" to a creator at a teleprompter. Durable because a '
+      + 'RISING rate is the signal that matters: it means the writer regressed and this '
+      + 'check is the only thing standing between that and a dead line on screen. '
+      + 'Stored by 0131, null when the check did not run.',
+  },
   hook_over_length: {
     kind: 'counter',
     stored: 'generations.beat_audit',
