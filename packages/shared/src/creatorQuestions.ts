@@ -74,6 +74,37 @@ export const ANSWER_MIN = 12
 // for a NUMBER or a specific case, because `figures` on caption-derived stores
 // is 2 across 374 items and a script with no concrete detail is the founding
 // defect of this product.
+/**
+ * THE THREE ASKED AT SIGNUP, IN THIS ORDER.
+ *
+ * ⚠️ THE SIX QUESTIONS ON THE SCAN SCREEN ARE ALL CATEGORICAL — what you do,
+ * who for, what you sell. NOTHING ASKS "tell me about a time". And `experience`
+ * items are the single predictor of a script that does not read as generic:
+ * measured on production knowledge, captions produce 13% substance and ZERO
+ * experiences, ever. So a creator whose catalogue is captions reaches their
+ * first script structurally unable to have one worth filming, and finds out by
+ * reading it.
+ *
+ * ⚖️ THREE ANSWERS ARE MORE SUBSTANCE THAN 374 SCRAPED CAPTIONS PRODUCED. That
+ * is the whole case for asking, and it is why these three and not six: the wait
+ * is real but it is not long, and a question nobody answers is worth less than
+ * one they do.
+ *
+ * ⚠️ THEY ARE EXISTING QUESTIONS, NOT NEW ONES. Two experiences and one
+ * opinion, already written and already carrying hints that make a SPECIFIC
+ * answer the obvious one. Writing three more would have created a second
+ * catalogue to keep honest.
+ */
+export const OPENING_THREE: readonly string[] = Object.freeze([
+  // What it cost, in their own words. The clearest route to an `experience`.
+  'expensive_lesson',
+  // The one most likely to carry a figure the writer may quote.
+  'best_result',
+  // ⚖️ THE OPINION LAST, DELIBERATELY. It is the hardest to answer cold and the
+  // easiest to skip, so it goes where a skip costs the least.
+  'contrarian',
+])
+
 export const CREATOR_QUESTIONS: readonly CreatorQuestion[] = [
   {
     id: 'contrarian',
