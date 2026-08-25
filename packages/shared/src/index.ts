@@ -118,3 +118,7 @@ export * from './briefToProfileAnswers'
 
 // ⚖️ THE METER READS THESE. Counts a creator can check, never a score.
 export * from './twinStrength'
+
+// ⚖️ THE SHOT-CARD HEADING. 44% of production rows name their shot with a
+// bare ordinal; the card must not render one.
+export * from './script/shotLabel'
