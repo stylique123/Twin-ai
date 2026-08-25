@@ -216,6 +216,16 @@ const EVENTS = {
       + 'check is the only thing standing between that and a dead line on screen. '
       + 'Stored by 0131, null when the check did not run.',
   },
+  caps_emphasis_moved: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'ALL-CAPS runs lifted out of a spoken line and into emphasis_words. A real '
+      + 'script shipped "YOU HAVE TIME" as dialogue, which a creator reads as shouting '
+      + 'and which then burns into captions permanently. Durable because the question is '
+      + 'whether the prompt line takes effect: this should trend to 0, and if it does not '
+      + 'that is the familiar inert-instruction result and the check carries it alone. '
+      + 'Stored by 0131, null when the split did not run.',
+  },
   hook_over_length: {
     kind: 'counter',
     stored: 'generations.beat_audit',

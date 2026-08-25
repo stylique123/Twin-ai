@@ -16,6 +16,7 @@ import { buildSlots, filledFrom, slotsReady } from '../_shared/writerInput.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
 import { applyHookContract } from '../_shared/hookContract.ts'
 import { craftBeatsThatAsked, readsAsPlaceholder, fallbackCta } from '../_shared/craftBeats.ts'
+import { splitEmphasis } from '../_shared/emphasis.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import {
   resolveTemplate,
@@ -4773,6 +4774,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // ran, 0 means it ran and found nothing to repair. A rising count means the
     // writer regressed and the check caught it.
     let ctaFallbacks: number | null = null
+    // ⚖️ NULL MEANS THE SPLIT NEVER RAN; 0 MEANS IT RAN AND THE WRITER WROTE A
+    // CLEAN LINE. Should trend to 0 as the prompt line takes effect -- and if it
+    // does not, that is the familiar inert-instruction result and the check
+    // carries it alone, which is fine.
+    let capsRuns: number | null = null
     // WHERE THE CONTENT CAME FROM, COUNTED — and the declaration checked against
     // what the prompt actually carried. ⚖️ `speakable` and not `kRows`: checking
     // against the fuller store would excuse exactly the fabrication this exists
@@ -5270,6 +5276,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // writer started marking craft beats `needs_user` again; the check caught
       // it and the creator still got a readable line.
       cta_fallbacks: ctaFallbacks,
+      caps_emphasis_runs: capsRuns,
       by_source: bySource,
       creator_knowledge_depth: byDepth,
       knowledge_supplied: speakable.length,
@@ -5449,6 +5456,36 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         }))
       }
     } catch { /* never fail a generation on a craft-beat repair */ }
+
+    // ── EMPHASIS IS DIRECTION, NOT WORDS ────────────────────────────────────
+    //
+    // ⚠️ A REAL SCRIPT SHIPPED "YOU HAVE TIME" INSIDE THE SPOKEN LINE. Capitals
+    // are how a writer says "lean on this" — a stage direction wearing the
+    // costume of dialogue. The creator reads it as SHOUTING off a teleprompter,
+    // and the caps then travel into burned-in captions where they are permanent.
+    //
+    // ⚖️ ONE WRITER, TWO READERS, AND THE SECOND ONE IS THE POINT.
+    // `caption_packet.emphasis` asks "which words to emphasize" and has never
+    // had an upstream source — it has been guessed per generation. Now it has
+    // one, and it is the same list the teleprompter bolds.
+    //
+    // ⚖️ RUNS OF TWO OR MORE ONLY. One capitalised word is usually a name, a
+    // brand, or an acronym the allowlist has not heard of, and lowercasing
+    // "WHOOP" would put a mistake in the creator's mouth.
+    try {
+      const beats = Array.isArray(declared) ? declared as Array<Record<string, unknown>> : []
+      let runs = 0
+      for (const b of beats) {
+        if (!b || typeof b !== 'object') continue
+        const split = splitEmphasis(b.line)
+        if (split.runs === 0) continue
+        b.line = split.line
+        b.emphasis_words = [...split.emphasisWords]
+        runs += split.runs
+      }
+      capsRuns = runs
+      if (runs > 0) console.warn(JSON.stringify({ event: 'caps_emphasis_moved', runs }))
+    } catch { /* never fail a generation on an emphasis split */ }
 
     // ── THE REFERENCE'S OWN MEASUREMENTS MUST NOT BE SPOKEN BY THIS CREATOR ──
     //
