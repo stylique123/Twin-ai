@@ -122,3 +122,8 @@ export * from './twinStrength'
 // ⚖️ THE SHOT-CARD HEADING. 44% of production rows name their shot with a
 // bare ordinal; the card must not render one.
 export * from './script/shotLabel'
+
+// ⚖️ THE FIRST SECOND. The writer has been producing a visual hook all along —
+// 4 of 4 complete — and NOTHING read it. Delivery was the defect, not
+// completeness.
+export * from './script/visualHook'

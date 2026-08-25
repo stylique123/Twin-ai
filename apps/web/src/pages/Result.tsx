@@ -31,7 +31,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { shotLabel } from '@twinai/shared'
+import { readVisualHook, shotLabel } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -606,6 +606,11 @@ export default function Result() {
       original_b_roll_count: br.original_b_roll_count ?? '0',
       suggested_b_roll_count: br.suggested_b_roll_count ?? '0',
     },
+    // ⚠️ CARRIED THROUGH RAW. This normaliser rebuilds the blueprint field by
+    // field, which is exactly how the visual hook was discarded on arrival for
+    // every generation that had one. `readVisualHook` validates it at the point
+    // of use; dropping it here made that impossible.
+    visual_hook: raw.visual_hook,
     hook_options: Array.isArray(raw.hook_options) ? raw.hook_options : [],
     script: Array.isArray(raw.script) ? raw.script : [],
     shot_list: Array.isArray(raw.shot_list) ? raw.shot_list : [],
@@ -622,6 +627,11 @@ export default function Result() {
   // any already stored: swap the opening hook beat for the chosen/best hook, and
   // blank any stray placeholder elsewhere rather than showing the raw token.
   const hookText = chosenHook || b.hook_options[0] || ''
+  // ⚖️ THE FIRST SECOND, IF THIS GENERATION HAS ONE. 37 of 41 predate the
+  // field; for those the card simply is not there, because they were never
+  // promised a first-second plan and "not specified" would report a gap that
+  // does not exist.
+  const visualHook = readVisualHook(b.visual_hook)
   const updatedScript = b.script.map((s, i) => {
     if (i === 0 && hookText) {
       if (isWhollyPlaceholder(s.line)) return { ...s, line: hookText }
@@ -999,6 +1009,13 @@ export default function Result() {
                 <span className="font-heading text-xs font-semibold text-cream tracking-wide uppercase">Pick your opening line</span>
               </div>
               <p className="text-xs text-stone">Pick an opening line — it updates your script below.</p>
+              {visualHook && (
+                <div className="mt-1 rounded-lg border border-white/5 bg-ink/40 p-3 space-y-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-amber">Before you say a word</div>
+                  <p className="text-xs text-cream">{visualHook.openingFrame}</p>
+                  <p className="text-xs text-stone">{visualHook.whyItInterrupts}</p>
+                </div>
+              )}
               <div className="grid grid-cols-1 gap-3">
                 {b.hook_options.map((h, i) => {
                   const isChosen = h === chosenHook
@@ -1342,6 +1359,13 @@ export default function Result() {
                   <span className="font-heading text-xs font-semibold text-cream tracking-wide uppercase">Pick your opening line</span>
                 </div>
                 <p className="text-xs text-stone">Pick an opening line — it updates your script below.</p>
+                {visualHook && (
+                  <div className="mt-1 rounded-lg border border-white/5 bg-ink/40 p-3 space-y-1">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-amber">Before you say a word</div>
+                    <p className="text-xs text-cream">{visualHook.openingFrame}</p>
+                    <p className="text-xs text-stone">{visualHook.whyItInterrupts}</p>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 gap-3">
                   {b.hook_options.map((h, i) => {
                     const isChosen = h === chosenHook
