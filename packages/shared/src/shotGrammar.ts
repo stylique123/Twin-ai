@@ -121,10 +121,54 @@ export function shotDirection(c: ShotContext): { pattern: ShotPattern; lines: re
   return { pattern, lines: Object.freeze(lines) }
 }
 
-/** ⚠️ NOT WIRED YET, AND SAYING SO RATHER THAN IMPLYING OTHERWISE. The owner's
- *  audit routes the conversion check's flag at `unsupplyable_shots.converted`,
- *  a counter from Fix 12 that does not exist in this repository yet -- grep
- *  finds no definition. The check that rewrites leftover screen-capture phrasing
- *  into HOLD_UP is the next unit and will need somewhere to put its count. */
-export const UNSUPPLYABLE_SHOTS_COUNTER_IS_NOT_BUILT =
-  'unsupplyable_shots.converted has no definition in this repository; the conversion check needs it before it can flag.'
+/** ⚠️ THE COUNT LANDS IN beat_audit, NOT WHERE THE AUDIT ROUTED IT. The plan
+ *  sends the conversion check's flag to `unsupplyable_shots.converted`, a Fix 12
+ *  counter with NO definition anywhere in this repository -- grep finds nothing.
+ *  `beat_audit.screen_capture_directions` is the durable, already-registered
+ *  channel every comparable count uses, and the plan's own section 7 says all
+ *  flags land in beat_audit. */
+export const CONVERSION_COUNT_LANDS_IN_BEAT_AUDIT =
+  'beat_audit.screen_capture_directions; unsupplyable_shots.converted has no definition in this repository.'
+
+/** ⚖️ THE WAY BACK IS ALREADY BUILT, WHICH IS WORTH KNOWING BEFORE SOMEBODY
+ *  BUILDS IT AGAIN. Removing screen recording is a removal of a PROMISE, not of
+ *  the possibility: a creator may one day upload a real screen capture as an
+ *  extra clip and have it composited over their take.
+ *
+ *  The audit asks for an overlay slot to be RESERVED as defined-but-unsupported.
+ *  It does not need reserving -- `PlanComposition` in
+ *  worker/src/jobs/editPlanContract.ts already carries `sources` and `overlays`
+ *  with a complete `PlanOverlay` shape, and its contract already reasons about
+ *  the exact hazard ("silently mixing a screen capture's system audio under a
+ *  creator's voice"). The seam is specified; nothing fills it yet.
+ *
+ *  ⚠️ SO THE RISK IS DELETION, NOT ABSENCE. An overlay list that is empty in
+ *  every plan looks like dead weight to a reader who does not know a return path
+ *  was deliberately left open. That is what the guard on this constant protects. */
+export const SCREEN_CAPTURE_RETURN_PATH =
+  'worker/src/jobs/editPlanContract.ts: PlanComposition.overlays / PlanOverlay'
+
+/** ⚠️ THE SETUP HAPPENS BEFORE THE RECORD BUTTON, AND NOTHING SAID SO. Every
+ *  camera-at-screen pattern assumes the page is already open and already zoomed
+ *  when the take starts — "open {page} BEFORE recording starts" is in the
+ *  direction, and the direction is on a card the creator has usually scrolled
+ *  past by the time they are holding the phone.
+ *
+ *  ⚖️ SO IT IS A SEPARATE LINE ON THE BETWEEN-SCENES PANEL, which is the last
+ *  thing they read before the countdown. A creator who starts recording and THEN
+ *  opens the app has burned the first three seconds of the take fumbling, and
+ *  those are the seconds the whole hook depends on.
+ *
+ *  Returns null when the scene needs no setup — a talking-head beat has nothing
+ *  to open, and a reminder there is noise that teaches people to ignore the line. */
+export function preRollChecklist(direction: string | null | undefined): string | null {
+  if (typeof direction !== 'string') return null
+  const d = direction.toLowerCase()
+  // Only the patterns that put a screen in the shot need anything opened.
+  const needsScreen = /\bphone\b|\blaptop\b|\bscreen\b|\bopen\b/.test(d)
+  if (!needsScreen) return null
+  const needsZoom = /\bzoom\b|\bpinch\b|\bnumber\b|\bgraph\b|\bchart\b/.test(d)
+  return needsZoom
+    ? 'Before you press record: open it, pinch to zoom so the part that matters is readable, then start.'
+    : 'Before you press record: open it on the screen first, then start.'
+}

@@ -37,8 +37,17 @@ import { join } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
 import { authHeader } from './authSession.mjs'
 import { captionChecks, captionEvidenceChecks } from './captionAssertions.mjs'
+import { makeEditorFixtures } from './editorFixtures.mjs'
+import { runZoomSweep } from './zoomSweep.mjs'
 
 const execFile = promisify(_execFile)
+// ⚠️ PHASE 8 OWNS ITS OWN DIGEST HELPER, exactly as phases 6 and 7 do.
+// editorFixtures takes `sha256` as a parameter on the stated grounds that
+// "phases already own one" — and phase 8 did not. The sweep referenced it, node
+// --check passed (it proves syntax, not that a binding resolves), the selftests
+// passed (they inject their own), and the ReferenceError only appeared 42
+// minutes into a real matrix, inside the advisory catch that kept it green.
+const sha256 = (s) => createHash('sha256').update(s).digest('hex')
 const REPO_ROOT = join(import.meta.dirname, '..', '..')
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -268,6 +277,7 @@ async function main() {
   // ALREADY rendered, and re-rendering one just to ask for its URL would test a
   // second pipeline run rather than the endpoint.
   let happyPid = null
+  let donorAssetId = null
   let happyVideo = null
   let scaffoldPid = null
   console.log('\n== A. full pipeline with rendering REAL ==')
@@ -290,6 +300,7 @@ async function main() {
     const outs = await editOutputs(pid)
     const vid = outs.find((o) => o.kind === 'video')
     happyPid = pid
+    donorAssetId = assetId
     happyVideo = vid
     const cov = outs.find((o) => o.kind === 'cover')
     check('A5 a video output row exists and is READY', vid?.state === 'ready', vid?.state)
@@ -588,6 +599,70 @@ async function main() {
         `${rs.status} ${JSON.stringify(rs.body).slice(0, 120)}`)
     } else {
       check('D10 CONTROL: the scaffold completion yields output_absent, not a URL', false, 'scenario C did not run')
+    }
+  }
+
+  // ---- E. the controlled zoom sweep: the SLOPE, not the tolerance ---------
+  //
+  // ⚠️ ADVISORY. It REPORTS and never fails the phase. Every step is inferred
+  // from schema and source and has never executed against staging; failing a
+  // 90-minute matrix on the first outing of an unproven experiment is how a real
+  // renderer regression gets mistaken for a broken harness. Flip it to enforcing
+  // once its verdicts have been watched, exactly as the gate classifier was.
+  //
+  // ⚖️ IT REUSES SECTION A's ASSET ON PURPOSE. media_analyses is an analyze-once
+  // cache keyed by (source_asset_id, component, analyzer_bundle_version), so the
+  // donor render above is what makes the sweep's projects compilable at all.
+  console.log('\n== E. controlled zoom sweep (ADVISORY — reports, never fails) ==')
+  if (!donorAssetId) {
+    console.log('NOTE sweep skipped: scenario A produced no donor asset')
+  } else {
+    try {
+      const fixtures = makeEditorFixtures(admin, sha256)
+      // The transcript the anchors must index. Null when the speech component is
+      // missing — reported rather than guessed at, so the sweep says WHY it
+      // could not place anchors instead of inventing an index.
+      const wordCountFor = async (assetId) => {
+        const { data } = await admin.from('media_analyses').select('result')
+          .eq('source_asset_id', assetId).eq('component', 'speech')
+          .order('created_at').limit(1)
+        const w = data?.[0]?.result?.words
+        return Array.isArray(w) ? w.length : null
+      }
+      // The donor project's generation — read back rather than assumed, because
+      // it is the exact value bootScriptPolicy compares the asset against.
+      const { data: donorProj } = await admin.from('edit_projects')
+        .select('generation_id').eq('id', happyPid).maybeSingle()
+      if (!donorProj?.generation_id) throw new Error('sweep: could not read the donor project generation')
+      const sweep = await runZoomSweep({
+        admin, fixtures, sha256, wordCountFor, runToSettled,
+        donorAssetId, donorGenerationId: donorProj.generation_id,
+        ownerId: user.id, log: (m) => console.log(m),
+      })
+      // ⚠️ CONDITIONS, NOT ROWS. The first real sweep printed `collected=4/4`
+      // over three distinct zoom counts, because one render delivered 2 zooms
+      // when 3 were requested. Rows were never the denominator that mattered.
+      console.log(`NOTE sweep verdict: ${sweep.verdict}`
+        + ` slope=${sweep.slope === null ? 'n/a' : `${sweep.slope.toFixed(1)}ms/zoom`}`
+        + ` zoomCountsDelivered=[${sweep.delivered.join(',')}]`
+        + ` missing=[${sweep.missing.join(',')}]`
+        + ` rows=${sweep.collected}/${sweep.attempted} excluded=${sweep.excluded}`)
+      for (const pt of sweep.points) console.log(`NOTE   zoom=${pt.zoom} meanDelta=${pt.delta.toFixed(1)}ms`)
+      for (const n of sweep.notes) console.log(`NOTE   ${n}`)
+      if (sweep.verdict === 'INCOMPLETE_SWEEP') {
+        console.log(`NOTE ⚠️ ADVISORY ONLY — this does NOT fail the phase. But INCOMPLETE_SWEEP is`)
+        console.log(`NOTE    NOT a pass: zoom count(s) ${sweep.missing.join(', ')} never rendered, so`)
+        console.log(`NOTE    the slope was fitted over ${sweep.delivered.length} conditions, not ${sweep.attempted}.`)
+        console.log(`NOTE    Over the ones that DID render the fit says ${sweep.slopeOverDelivered} —`)
+        console.log('NOTE    which is a statement about those conditions only.')
+      } else if (sweep.verdict !== 'CORRELATION_GONE') {
+        console.log('NOTE ⚠️ ADVISORY ONLY — this does NOT fail the phase yet. INSUFFICIENT_EVIDENCE')
+        console.log('NOTE    is not a pass either: it means the experiment did not run, not that')
+        console.log('NOTE    the defect is absent.')
+      }
+    } catch (err) {
+      // A sweep that breaks must not red a matrix whose real assertions passed.
+      console.log(`NOTE sweep did not complete: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 

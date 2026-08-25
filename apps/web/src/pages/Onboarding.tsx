@@ -79,6 +79,7 @@ const ENTITY_TYPE_LABEL: Record<EntityType, string> = {
 import { EASE } from '../components/motion'
 import { cn } from '../lib/cn'
 import { LogoMark } from '../components/Logo'
+import { StoryInterview } from '../components/StoryInterview'
 import {
   ONBOARDING_DRAFT_VERSION,
   clearOnboardingDraft,
@@ -530,6 +531,10 @@ function BuildingStep({
   // finishing early means WAITING, never interrupting. The last one to finish
   // hands over, whichever it is.
   const [qIndex, setQIndex] = useState(0)
+  // ⚖️ THREE STORY QUESTIONS AFTER THE SIX CATEGORICAL ONES. `storiesDone`
+  // starts false and is set when they are answered, skipped, or when there is
+  // no voice to attach them to.
+  const [storiesDone, setStoriesDone] = useState(false)
   const [readyProfile, setReadyProfile] = useState<VoiceProfile | null>(null)
   // ⚠️ FINISHING IS SOMETHING THE CREATOR DOES, NOT SOMETHING A COMPARISON
   // DECIDES. `qIndex >= asked.length` LOOKED equivalent and was not: the list is
@@ -552,8 +557,13 @@ function BuildingStep({
 
   // Hand over exactly once, and only when BOTH halves are finished.
   useEffect(() => {
-    if (questionsDone && readyProfile) onReady(readyProfile)
-  }, [questionsDone, readyProfile, onReady])
+    // ⚠️ THE STORY QUESTIONS GATE THIS TOO, FOR THE REASON THIS FILE ALREADY
+    // LEARNED ONCE: a scan that finished early used to take the screen away
+    // with an answer half-typed. `storiesDone` parks a finished scan the same
+    // way `questionsDone` does, so finishing early means WAITING, never
+    // interrupting.
+    if (questionsDone && storiesDone && readyProfile) onReady(readyProfile)
+  }, [questionsDone, storiesDone, readyProfile, onReady])
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Advance the visual stage on a gentle clock so the wait feels alive even
@@ -724,7 +734,19 @@ function BuildingStep({
           scan finishes on its own schedule and can advance out from under a
           half-typed answer. `forgetDeadScan` clears only `voiceId`, so a scan
           that dies keeps every answer given here. */}
-      {!err && questionsDone && (
+      {/* ⚠️ THE CATEGORICAL QUESTIONS ARE DONE AND THE WAIT IS NOT. Everything
+          above asks WHAT the creator does; nothing asks what HAPPENED to them —
+          and experience items are the one predictor of a script that does not
+          read as generic. Captions have produced zero of them, ever. This is
+          dead time that can carry three real answers instead. */}
+      {!err && questionsDone && !storiesDone && (
+        <StoryInterview
+          voiceId={draft.voiceId ?? null}
+          onDone={() => setStoriesDone(true)}
+        />
+      )}
+
+      {!err && questionsDone && storiesDone && (
         // Answered everything before the scan finished. Say so plainly — a
         // spinner with no sentence reads as a stall, and this is the one moment
         // the creator is genuinely just waiting.
@@ -1002,7 +1024,26 @@ function ConfirmStep({
   // `mintFromWorkKind` returns null where Q3 said nothing, and the block that
   // renders this is gated on `mintsOwnedEntity` — so the fallback type below is
   // never the one displayed, it only keeps the lookup total.
-  const mintedType: EntityType = mintFromWorkKind(workKind)?.type ?? 'SAAS'
+  //
+  // ⚠️ THE KINDS ARE PASSED HERE FOR THE SAME REASON THEY ARE PASSED AT THE
+  // SAVE. This line used to call `mintFromWorkKind(workKind)` with no options,
+  // while the save a few hundred lines below passed `ownProductKind` and
+  // `ownServiceKind` — so `refinedEntityType` ran on one and not the other, and
+  // the two disagreed for every creator who answered the finer question.
+  //
+  // What that looked like: a creator selling a COURSE read "We'll treat your
+  // offer as your own SaaS product" on the confirm screen, and COURSE was
+  // stored. The sentence describing their own business was wrong at the exact
+  // moment we asked them to confirm it.
+  //
+  // ⚖️ AND THE ESCAPE HATCH IS WHAT MAKES IT MORE THAN COSMETIC. Directly under
+  // this sentence sits "That's not right", which CLEARS the mint. A creator
+  // shown the wrong type would reasonably take it, throwing away a mint that
+  // was in fact correct — so a display bug became a data-loss path.
+  const mintedType: EntityType = mintFromWorkKind(workKind, {
+    ownProductKind: draft.ownProductKind ?? null,
+    ownServiceKind: draft.ownServiceKind ?? null,
+  })?.type ?? 'SAAS'
 
   const setField = (k: keyof VoiceProfile, v: string) => setVp({ ...vp, [k]: v })
   const setList = (k: keyof VoiceProfile, v: string[]) => setVp({ ...vp, [k]: v })

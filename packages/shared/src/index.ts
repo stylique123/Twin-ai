@@ -97,6 +97,10 @@ export * from './pilot/knownLimitations'
 export * from './pilot/fieldMeaningUpgrades'
 export * from './pilot/callFailure'
 export * from './gate/talkingHeadFit'
+// ⚖️ THE ACCOUNT HALF'S MISSING READER. The worker writes four columns onto the
+// voice on every sample and apps/web imported `messageForOwnAccount` NOWHERE —
+// one half of one gate spoke to the creator and the other never had.
+export * from './gate/ownSampleRow'
 
 // ⚠️ THESE FOUR WERE WRITTEN AND NOT EXPORTED, WHICH IS WORSE THAN NOT CALLED.
 // A module missing from this barrel is not merely unused — it is UNREACHABLE
@@ -107,7 +111,55 @@ export * from './scanFailure'
 export * from './questionAudit'
 export * from './productScenes'
 export * from './shotGrammar'
+export * from './screenCaptureConversion'
+export * from './communityMap'
+export * from './communityChecks'
+export * from './communityCapture'
 export * from './pilot/backlogRuns'
 export * from './productQuestions'
 export * from './productLifecycle'
 export * from './briefToProfileAnswers'
+// ⚠️ THE SCRIPT CONTRACTS. `beatAsk` is exported because the CLIENT renders the
+// question and fills the scaffold; the other two are read by the edge function
+// through their generated Deno copies and by their own tests, and are exported
+// here so a future reader does not write a third copy of a rule that exists.
+export * from './script/beatAsk'
+export * from './script/craftBeats'
+
+// ⚖️ THE METER READS THESE. Counts a creator can check, never a score.
+export * from './twinStrength'
+
+// ⚖️ THE SHOT-CARD HEADING. 44% of production rows name their shot with a
+// bare ordinal; the card must not render one.
+export * from './script/shotLabel'
+
+// ⚖️ HOW LONG THIS SCRIPT ACTUALLY RUNS. 17 of 35 production scripts run >25%
+// longer than the reference they adapted, 10 run >25% shorter, one is 4 seconds
+// — and no screen said so. Disclosure, never enforcement.
+export * from './script/scriptLength'
+
+// ⚖️ THE FIRST SECOND. The writer has been producing a visual hook all along —
+// 4 of 4 complete — and NOTHING read it. Delivery was the defect, not
+// completeness.
+export * from './script/visualHook'
+
+// ⚖️ A SILENT BEAT IS NOT A BLANK TO FILL IN. "[No spoken audio]" and
+// "[Hook Option 1]" were one check, so the hook got pasted over deliberate
+// silence — three times out of four beats in one production script.
+export * from './script/silentBeat'
+
+// ⚖️ A STOCK PHRASE IS NOT A STANCE. The prompt already bans these and the
+// writer shipped 7 anyway; but 4 of those 7 were the creator naming their
+// ENEMY, so the list is phrase-level and "hustle" is deliberately absent.
+export * from './script/clichePhrases'
+
+// ⚖️ FIVE HOOKS THAT ARE REALLY ONE. Two production menus open with the same
+// three words five times over; three more do it three times. The opener is the
+// creator's own signature, so this reports the COLLISION, never the words.
+export * from './script/hookVariety'
+
+// ⚖️ THE SHOOTING NOTE THAT WAS THROWN AWAY. `beat_plan[].proof` is 20-of-20
+// complete in production and `proofAt` had ZERO callers. Shown only where it
+// describes what the CREATOR performs — never a b-roll or screen-recording
+// request, both of which appear in the real data and are out of scope.
+export * from './script/beatProof'

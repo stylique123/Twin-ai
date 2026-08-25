@@ -52,6 +52,45 @@ describe('finishing is something the creator does', () => {
     // ⚠️ THE PROPERTY THE WHOLE FIX EXISTS TO RESTORE. Handover happens when
     // BOTH halves are done, and the creator's half now cannot be completed by
     // anything except a tap.
-    expect(SRC).toMatch(/if \(questionsDone && readyProfile\) onReady\(readyProfile\)/)
+    //
+    // ⚖️ THIS ASSERTION WAS WIDENED, NOT WEAKENED, and the distinction matters.
+    // It used to pin the exact string `questionsDone && readyProfile`. The story
+    // interview added a THIRD creator-side half, so the handover is now gated on
+    // more than before — the property is stronger and the old literal no longer
+    // describes it. What is still required is what always was: the scan's
+    // readiness alone can never trigger handover.
+    const at = SRC.indexOf('onReady(readyProfile)')
+    expect(at, 'the handover call was not found').toBeGreaterThan(-1)
+    const guard = SRC.slice(SRC.lastIndexOf('if (', at), at)
+    expect(guard, 'handover must wait on the questions').toMatch(/questionsDone/)
+    expect(guard, 'handover must wait on the story interview').toMatch(/storiesDone/)
+    expect(guard).toMatch(/readyProfile/)
+  })
+})
+
+/**
+ * ⚠️ A COMPONENT NOBODY MOUNTS ASKS NOBODY ANYTHING. The gate above proves the
+ * handover WAITS for the story interview; it does not prove the interview is on
+ * screen. Deleting the mount left every gate green — found by probing exactly
+ * that, which is why this block exists.
+ */
+describe('the story interview is actually on the screen', () => {
+  it('is imported and rendered, not merely imported', () => {
+    expect(SRC).toMatch(/import \{ StoryInterview \} from '\.\.\/components\/StoryInterview'/)
+    expect(SRC).toMatch(/<StoryInterview\s/)
+  })
+
+  // ⚖️ IT OCCUPIES THE WAIT, NOT A NEW SCREEN. The measured lesson is that a
+  // dedicated screen becomes the 0-row Product Library; a question inside an
+  // existing wait gets answered.
+  it('renders only once the categorical questions are done and before the thanks', () => {
+    expect(SRC).toMatch(/\{!err && questionsDone && !storiesDone && \(/)
+    expect(SRC).toMatch(/\{!err && questionsDone && storiesDone && \(/)
+  })
+
+  // ⚠️ IT IS HANDED THE VOICE, or the answers attach to nothing.
+  it('is given the voice the answers belong to', () => {
+    const at = SRC.indexOf('<StoryInterview')
+    expect(SRC.slice(at, at + 220)).toMatch(/voiceId=\{draft\.voiceId \?\? null\}/)
   })
 })

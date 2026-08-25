@@ -45,14 +45,17 @@ import {
   isStale, factAgeDays, SOURCE_LABEL, sourceWarrantsAttention,
   signEditUrls,
   bestSuggestion,
-  asksPersonalUse, capabilityQuestion, CAPABILITY_PROMPT,
+  asksPersonalUse, capabilityQuestion, CAPABILITY_PROMPT, capabilityAnswerIsUsed,
   productLifecycle, LIFECYCLE_MESSAGE,
+  CAPTURE_COPY, PLATFORM_CHOICES, PRIVACY_CHOICES, RATHER_NOT_SAY, FIGURE_HINT,
+  surfaceChoices, buildCommunityMap, whatIsMissing,
   type ProductSuggestion,
 } from '@twinai/shared'
 import { readOnboardingDraft } from '../lib/onboardingDraft'
 import type {
   ProductEntityRecord, Showability, EntityRelationship, EntityType, PersonalUse,
   ExtractedFact as ProductFact,
+  CommunityPlatform, CommunityProofItem, ShotPrivacy,
 } from '@twinai/shared'
 import { useAuth } from '../context/AuthContext'
 
@@ -84,12 +87,25 @@ const TYPE_CHOICES: Array<{ value: EntityType; label: string }> = [
   { value: 'OTHER', label: 'Something else' },
 ]
 
+/** ⚖️ THE ADD FORM'S THREE WORDS, PLUS THE STATE THEY CANNOT PICK. "Usually /
+ *  Sometimes / No" is what the add form shows, so this panel shows the same —
+ *  two vocabularies for one stored field is how a creator learns their answer
+ *  did not mean what they thought. `Not set` is listed because a product can
+ *  arrive here never having been asked, and a blank row reads as a bug. */
 const SHOW_OPTIONS: Array<{ value: Showability; label: string; note: string }> = [
-  { value: 'ALWAYS', label: 'Always', note: 'A scene may show it directly.' },
-  { value: 'SOMETIMES', label: 'Sometimes', note: 'It can be mentioned; no scene will depend on it.' },
-  { value: 'NEVER', label: 'Never', note: 'Scripts stay talking-only for this one.' },
-  { value: 'UNKNOWN', label: 'Not set', note: 'Treated as "cannot dependably show".' },
+  { value: 'ALWAYS', label: 'Usually', note: 'A scene can show it directly.' },
+  { value: 'SOMETIMES', label: 'Sometimes', note: 'It can be mentioned, and no scene will fall apart without it.' },
+  { value: 'NEVER', label: 'No', note: 'Scripts stay talking-only for this one.' },
+  { value: 'UNKNOWN', label: 'Not set', note: 'Until you answer, no scene will depend on showing it.' },
 ]
+
+/** What a creator is told about a type whose answer would change nothing.
+ *  ⚠️ NEVER MAKE THE CREATOR THINK ABOUT TWIN'S ARCHITECTURE: these say what
+ *  will happen to their scripts, not which function decided it. */
+const FIXED_SHOW_NOTE: Record<string, string> = {
+  SERVICE: 'A service has nothing to point a camera at, so scripts for this one talk about it rather than show it.',
+  COMMUNITY: 'Scripts can show this one — you hold your own phone up beside your face and show the feed.',
+}
 
 /** Plain-language names for the fields a creator cannot change here. Showing the
  *  value with no explanation reads as a bug; showing it with one reads as a
@@ -705,28 +721,49 @@ export default function ProductLibrary() {
             }}
           />
 
-          <fieldset className="mt-4">
-            <legend className="text-xs font-medium uppercase tracking-wide text-stone">
-              Can you put it on screen?
-            </legend>
-            <div className="mt-2 space-y-1">
-              {SHOW_OPTIONS.map((o) => (
-                <label key={o.value} className="flex items-start gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name={`show-${e.id}`}
-                    className="mt-1"
-                    checked={e.showability === o.value}
-                    onChange={() => void save(e.id, { showability: o.value })}
-                  />
-                  <span>
-                    {o.label}
-                    <span className="block text-xs text-stone">{o.note}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          {/* ⚠️ THE SAME QUESTION THE ADD FORM ASKS, IN THE SAME WORDS. This
+              panel asked its own generic "Can you put it on screen?" of every
+              product, while the add form asked a physical product whether they
+              could have it WITH them and a screen product whether they could
+              have it OPEN. One creator, one product, two different questions
+              depending on which door they walked through — and the honest answer
+              to one is not the answer to the other.
+
+              ⚖️ AND A TYPE WHOSE ANSWER IS DISCARDED IS NOT ASKED AT ALL. A
+              service has nothing to point a camera at and a community is filmed
+              by holding your own phone up beside your face; `inferShowability`
+              returns the same value for those whatever anybody picks. Asking
+              anyway spends a creator's attention on an answer we throw away,
+              which is the founding defect of this rebuild in miniature. They are
+              told the fact instead. */}
+          {capabilityAnswerIsUsed(e.type as EntityType) ? (
+            <fieldset className="mt-4">
+              <legend className="text-xs font-medium uppercase tracking-wide text-stone">
+                {CAPABILITY_PROMPT[
+                  e.type === 'PHYSICAL_PRODUCT' ? 'physical' : 'screen'
+                ]}
+              </legend>
+              <div className="mt-2 space-y-1">
+                {SHOW_OPTIONS.map((o) => (
+                  <label key={o.value} className="flex items-start gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name={`show-${e.id}`}
+                      className="mt-1"
+                      checked={e.showability === o.value}
+                      onChange={() => void save(e.id, { showability: o.value })}
+                    />
+                    <span>
+                      {o.label}
+                      <span className="block text-xs text-stone">{o.note}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : (
+            <p className="mt-4 text-xs text-stone">{FIXED_SHOW_NOTE[e.type] ?? ''}</p>
+          )}
 
           {/* ── WHAT IT LOOKS LIKE ───────────────────────────────────────
               ⚠️ THE PHOTOS WERE WRITE-ONCE AND INVISIBLE. They could be attached
@@ -1108,6 +1145,216 @@ function FactOrigin({ fact }: { fact: ProductFact }) {
  *  sells it, and reading either off a URL would be an entitlement granted by a
  *  paste. That is the escalation this whole page exists to refuse.
  */
+
+/** What the community form holds while it is being filled in.
+ *
+ *  ⚖️ STRINGS RATHER THAN `string | null` FOR THE TEXT FIELDS, because a
+ *  controlled input needs a string — and `buildCommunityMap` is what turns a
+ *  blank one back into the absent answer it represents. The three states are
+ *  preserved by the BUILDER, not by the form state, which is the only place
+ *  they can be tested. */
+interface CommunityAnswers {
+  platform: CommunityPlatform | null
+  url: string
+  name: string
+  surfaceIds: string[]
+  memberCount: string
+  price: string
+  cadence: string
+  proofItems: CommunityProofItem[]
+}
+
+const EMPTY_COMMUNITY: CommunityAnswers = {
+  platform: null, url: '', name: '', surfaceIds: [],
+  memberCount: '', price: '', cadence: '', proofItems: [],
+}
+
+/**
+ * THE COMMUNITY QUESTIONS, ASKED ONLY OF A COMMUNITY.
+ *
+ * ⚠️ A COMMUNITY IS NOT ONE THING TO FILM, which is what makes it the only type
+ * that earns extra questions. A book is the book; a dashboard is the dashboard.
+ * A community is an about page AND a feed AND a classroom AND a calendar, each
+ * proving something different — so "show your community" leaves the creator to
+ * choose, and they open the feed, which is the weakest of them.
+ *
+ * ⚖️ AND THIS COMPONENT DECIDES NOTHING. Every string comes from `CAPTURE_COPY`,
+ * every option list from the shared module, and the map is built by
+ * `buildCommunityMap`. That split is deliberate: wording is the part that has to
+ * be tested, because a label that quietly starts asking for a screen recording is
+ * a defect nobody sees in a screenshot.
+ */
+function CommunityQuestions({ value, onChange }: {
+  value: CommunityAnswers
+  onChange: (next: CommunityAnswers) => void
+}) {
+  const surfaces = surfaceChoices(value.platform)
+  const set = (patch: Partial<CommunityAnswers>) => onChange({ ...value, ...patch })
+
+  // ⚠️ SWITCHING PLATFORM CLEARS THE TICKS, and the creator sees it happen. The
+  // builder drops pages the new platform does not offer anyway; clearing them
+  // here means the screen never shows a Classroom tick for a WhatsApp group,
+  // which would be a promise the shot list cannot keep.
+  const pickPlatform = (p: CommunityPlatform) =>
+    set({ platform: p, surfaceIds: [], proofItems: [] })
+
+  const toggleSurface = (id: string) => {
+    const has = value.surfaceIds.includes(id)
+    const next = has ? value.surfaceIds.filter((s) => s !== id) : [...value.surfaceIds, id]
+    // ⚖️ UNTICKING A PAGE TAKES ITS POINTED-AT THING WITH IT. `needsCovering`
+    // decides the privacy line FROM the page, so an item left behind on an
+    // unticked page would be judged against a page that no longer exists.
+    set({ surfaceIds: next, proofItems: value.proofItems.filter((i) => next.includes(i.surface)) })
+  }
+
+  const proof = value.proofItems[0] ?? null
+  const setProof = (patch: Partial<CommunityProofItem>) => {
+    const base: CommunityProofItem = proof ?? { label: '', surface: value.surfaceIds[0] ?? '', privacy: 'blur' }
+    set({ proofItems: [{ ...base, ...patch }] })
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+      <Choices
+        label={CAPTURE_COPY.platform}
+        options={PLATFORM_CHOICES.map((c) => ({ value: c.value, label: c.label }))}
+        chosen={value.platform}
+        onPick={pickPlatform}
+      />
+
+      <div>
+        <label className="text-xs font-medium uppercase tracking-wide text-stone" htmlFor="community-url">
+          {CAPTURE_COPY.url}
+        </label>
+        <input
+          id="community-url"
+          type="url"
+          inputMode="url"
+          value={value.url}
+          onChange={(e) => set({ url: e.target.value })}
+          placeholder="https://…"
+          className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+        />
+      </div>
+
+      <div>
+        <label className="text-xs font-medium uppercase tracking-wide text-stone" htmlFor="community-name">
+          {CAPTURE_COPY.name}
+        </label>
+        <input
+          id="community-name"
+          type="text"
+          value={value.name}
+          onChange={(e) => set({ name: e.target.value })}
+          className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none focus:border-signature"
+        />
+      </div>
+
+      {/* ⚠️ CHECKBOXES RATHER THAN A TEXT BOX, and the reason is not tidiness: a
+          surface name the creator typed is one no writer can match and no check
+          can verify. Twenty seconds of ticking turns "show your community" into
+          "open your Classroom tab". */}
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-stone">{CAPTURE_COPY.surfaces}</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {surfaces.map((sf) => {
+            const on = value.surfaceIds.includes(sf.id)
+            return (
+              <button
+                key={sf.id}
+                type="button"
+                aria-pressed={on}
+                onClick={() => toggleSurface(sf.id)}
+                className={`rounded-lg border px-2.5 py-1.5 text-xs ${
+                  on ? 'border-signature bg-signature/15 text-cream' : 'border-white/15 bg-white/5 text-sand'
+                }`}
+              >
+                {sf.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ⚠️ EVERY NUMBER A SCRIPT SAYS MUST EXIST HERE FIRST. Twin never scrapes
+          these: a figure read off a page six weeks ago and repeated as fact is a
+          wrong number said confidently, which is worse than no number. Blank
+          stays blank — an untouched field is UNANSWERED, and the writer stays
+          silent rather than guessing. */}
+      <div className="grid gap-2 sm:grid-cols-3">
+        {([
+          ['community-members', CAPTURE_COPY.memberCount, value.memberCount, (v: string) => set({ memberCount: v })],
+          ['community-price', CAPTURE_COPY.price, value.price, (v: string) => set({ price: v })],
+          ['community-cadence', CAPTURE_COPY.cadence, value.cadence, (v: string) => set({ cadence: v })],
+        ] as const).map(([id, label, v, onSet]) => (
+          <div key={id}>
+            <label className="text-[11px] text-stone" htmlFor={id}>{label}</label>
+            <input
+              id={id}
+              type="text"
+              value={v}
+              onChange={(e) => onSet(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-cream outline-none focus:border-signature"
+            />
+            <button
+              type="button"
+              onClick={() => onSet(RATHER_NOT_SAY)}
+              className="mt-1 text-[11px] text-stone underline decoration-white/20 underline-offset-2 hover:text-cream"
+            >
+              {RATHER_NOT_SAY}
+            </button>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-stone">{FIGURE_HINT}</p>
+
+      {/* ⚖️ THE POINTED-AT THING IS OPTIONAL AND ONLY OFFERED ONCE A PAGE EXISTS
+          TO PUT IT ON. Asking "where is it?" before anything is ticked would
+          offer an empty list, which reads as a broken form rather than an
+          optional question. */}
+      {value.surfaceIds.length > 0 && (
+        <div className="space-y-2 border-t border-white/10 pt-3">
+          <div>
+            <label className="text-xs font-medium uppercase tracking-wide text-stone" htmlFor="community-proof">
+              {CAPTURE_COPY.proofLabel}
+            </label>
+            <input
+              id="community-proof"
+              type="text"
+              value={proof?.label ?? ''}
+              onChange={(e) => setProof({ label: e.target.value })}
+              className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none focus:border-signature"
+            />
+          </div>
+
+          {(proof?.label ?? '').trim() !== '' && (
+            <>
+              <Choices
+                label={CAPTURE_COPY.proofWhere}
+                options={surfaces
+                  .filter((sf) => value.surfaceIds.includes(sf.id))
+                  .map((sf) => ({ value: sf.id, label: sf.label }))}
+                chosen={proof?.surface ?? null}
+                onPick={(v) => setProof({ surface: v })}
+              />
+              {/* ⚠️ ABSENT IS NOT PERMISSION. Nothing here defaults to "mine":
+                  an unanswered question resolves to covering the names, because
+                  filming a page without covering publishes a member's words to
+                  an audience that member never agreed to. */}
+              <Choices
+                label={CAPTURE_COPY.proofPrivacy}
+                options={PRIVACY_CHOICES.map((c) => ({ value: c.value, label: c.label }))}
+                chosen={proof?.privacy ?? null}
+                onPick={(v: ShotPrivacy) => setProof({ privacy: v })}
+              />
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function StartFromLink({ onCancel, onClaim, busy }: {
   onCancel: () => void
   busy: boolean
@@ -1118,6 +1365,13 @@ function StartFromLink({ onCancel, onClaim, busy }: {
      *  Absent when the type warranted none — a service — and absent is NOT a
      *  denial: `attestedEntity` reads a missing flag as UNKNOWN. */
     flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
+    /** ⚠️ THE SAME ANSWER, UNFLATTENED. The flag above can only carry yes/no, and
+     *  this form has always offered three options — so SOMETIMES arrived as a
+     *  `false` and was stored as NEVER. See `answeredShowability`. */
+    showability?: Showability | null
+    /** ⚖️ Present only for a COMMUNITY, and null when the form was not filled
+     *  in far enough to be usable. Absent is the ordinary state. */
+    communityMap?: unknown
   }) => void
 }) {
   const [url, setUrl] = useState('')
@@ -1135,6 +1389,9 @@ function StartFromLink({ onCancel, onClaim, busy }: {
   // inherit the ACCOUNT default; this is the better answer, about THIS thing,
   // and `attestedEntity` prefers an explicit flag over the default.
   const [showability, setShowability] = useState<Showability | null>(null)
+  // ⚠️ ONLY A COMMUNITY IS ASKED THESE, and the state exists regardless so
+  //  switching type away and back does not silently lose what was typed.
+  const [community, setCommunity] = useState<CommunityAnswers>(EMPTY_COMMUNITY)
 
   const link = url.trim()
   // ⚖️ REFUSED HERE SO THE CREATOR IS TOLD NOW, not after a job fails silently
@@ -1155,10 +1412,17 @@ function StartFromLink({ onCancel, onClaim, busy }: {
   // on screen says what is missing.
   const ctx = { type, relationship }
   const capability = type !== null && relationship !== null ? capabilityQuestion(ctx) : null
+  // ⚠️ A COMMUNITY MUST CARRY A USABLE MAP OR IT IS NOT READY. `buildCommunityMap`
+  // returns null rather than a half-map, so this is the same test every consumer
+  // downstream applies — and `whatIsMissing` names the gaps below, because a
+  // disabled button with no reason is this page's oldest bug and shipped once.
+  const communityMap = type === 'COMMUNITY' ? buildCommunityMap(community) : null
+  const communityGaps = type === 'COMMUNITY' ? whatIsMissing(community) : []
   const ready = named && linkLooksReal && !uploading && relationship !== null
     && type !== null
     && (!asksPersonalUse(ctx) || personalUse !== null)
     && (capability === null || showability !== null)
+    && (type !== 'COMMUNITY' || communityMap !== null)
 
   const addPhotos = async (files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -1309,6 +1573,22 @@ function StartFromLink({ onCancel, onClaim, busy }: {
         />
       )}
 
+      {/* ⚠️ ONLY A COMMUNITY GETS THESE. Asking a book which of its pages you can
+          open on a phone is the kind of question that teaches creators the form
+          is not paying attention. */}
+      {type === 'COMMUNITY' && (
+        <CommunityQuestions value={community} onChange={setCommunity} />
+      )}
+
+      {/* ⚖️ THE BUTTON SAYS WHY IT IS DISABLED. The old gate demanded a field
+          that was never rendered, leaving a dead button and nothing on screen
+          saying what was missing — the worst kind of dead end. */}
+      {communityGaps.length > 0 && (
+        <p className="text-xs text-stone">
+          Still needed: {communityGaps.join(' · ')}
+        </p>
+      )}
+
       <div className="flex gap-2 pt-1">
         <button
           type="button"
@@ -1326,6 +1606,19 @@ function StartFromLink({ onCancel, onClaim, busy }: {
             // ⚠️ THE ANSWER ABOUT THIS PRODUCT, WHICH BEATS THE ACCOUNT DEFAULT.
             // `attestedEntity` derives showability from flags, so the flag that
             // matches the question asked is the one sent.
+            // ⚠️ THE MAP TRAVELS WITH THE CLAIM OR IT IS LOST. Everything the
+            // creator ticked lives only in this component's state until here;
+            // `claimProductEntity` writes it to `community_map`, and writes null
+            // when it is not usable rather than failing the whole insert.
+            communityMap,
+            // ⚠️ THE ANSWER TRAVELS AS THE ANSWER, NOT AS A BOOLEAN. This form
+            // has offered "Usually / Sometimes / No" since it shipped and then
+            // sent SOMETIMES through as `false`, which `inferShowability` read
+            // as a denial and stored as NEVER -- so a creator who said "I can
+            // usually show it" got talking-only scripts. The flags still travel,
+            // because they are the honest pre-fill for anything that did not
+            // ask; `answeredShowability` prefers the answer where one was given.
+            showability,
             flags: capability === 'physical' ? { canFilmObjects: showability === 'ALWAYS' }
               : capability === 'screen' ? { canRecordScreen: showability === 'ALWAYS' }
                 : undefined,

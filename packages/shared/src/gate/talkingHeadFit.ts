@@ -185,6 +185,35 @@ export interface AccountMessage {
   detail: string
 }
 
+/** What `messageForOwnAccount` is being asked about.
+ *
+ *  ⚠️ `complete` EXISTS BECAUSE THE CHECK IS ABOUT TO BECOME ASYNCHRONOUS, and
+ *  the guard is written BEFORE the switch is thrown rather than after the first
+ *  creator sees the bug. Today every caller hands over a finished sample: the
+ *  scan checks its videos and then asks. When the per-video pass moves off the
+ *  onboarding critical path — so a creator is not kept waiting through six
+ *  downloads and six model calls — counts become readable WHILE they are still
+ *  climbing, and that is a state no existing caller can produce.
+ *
+ *  ⚖️ AND A PARTIAL SAMPLE IS NOT A SMALL ONE, which is the distinction that
+ *  matters and the one I first got wrong. A creator who has posted a single
+ *  video yields `checked: 1` legitimately, and "None of the 1 video we looked
+ *  at" is a TRUE and useful sentence for them. Refusing to speak below some size
+ *  would silence a finished measurement. What must be refused is a verdict drawn
+ *  from a sample still being collected — one usable video out of one checked SO
+ *  FAR is not "none of them", it is "we have barely started".
+ *
+ *  ⚠️ ABSENT MEANS COMPLETE, AND THAT IS AN OBSERVATION RATHER THAN A DEFAULT.
+ *  Every call site that exists today asks only after its sample is finished, so
+ *  `undefined` describes them correctly. The asynchronous caller is the one that
+ *  must SAY it is partial, because it is the only one that ever is. */
+export interface AccountCounts {
+  usable: number
+  checked: number
+  /** False only while the sample is still being collected. */
+  complete?: boolean
+}
+
 /** What Twin says about the creator's OWN account after a scan.
  *
  *  ⚠️ THIS IS THE SAME CHECK, SAID DIFFERENTLY, AND THAT IS THE WHOLE POINT.
@@ -201,10 +230,22 @@ export interface AccountMessage {
  *  ⚠️ `usable` OF `checked`, AND NEITHER IS ASSUMED. A scan that checked nothing
  *  is not a scan that found nothing — it is `fine`, i.e. silent, because we have
  *  no standing to tell somebody about videos we never looked at. */
-export function messageForOwnAccount(counts: { usable: number; checked: number }): AccountMessage {
+export function messageForOwnAccount(counts: AccountCounts): AccountMessage {
   const usable = counts.usable
   const checked = counts.checked
   if (!Number.isFinite(usable) || !Number.isFinite(checked) || checked < 1) {
+    return { kind: 'fine', headline: '', detail: '' }
+  }
+  // ⚠️ A SAMPLE STILL BEING COLLECTED GETS NO VERDICT. Speaking from it would
+  // produce "None of the 1 video we looked at" a second after the scan starts
+  // checking, and then quietly replace it once the other five arrive — a
+  // warning manufactured out of incompleteness, shown to a creator whose
+  // account may be perfect. Silence costs nothing here: the finished sample is
+  // seconds away and will say the true thing.
+  //
+  // ⚖️ EXPLICITLY `=== false`, NOT FALSY. `undefined` is every existing caller,
+  // all of which are complete; only a caller that KNOWS it is partial says so.
+  if (counts.complete === false) {
     return { kind: 'fine', headline: '', detail: '' }
   }
   // ⚠️ THE COUNT WE LOOKED AT IS NAMED, NOT IMPLIED. Twin does not watch every

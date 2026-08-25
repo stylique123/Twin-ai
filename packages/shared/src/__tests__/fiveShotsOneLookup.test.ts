@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   pickShot, shotDirection, privacyOf, SHOT_DIRECTION, READABILITY_RULES, BLUR_LINE,
+  preRollChecklist,
+  SCREEN_CAPTURE_RETURN_PATH, CONVERSION_COUNT_LANDS_IN_BEAT_AUDIT,
   type BeatPurpose, type ShotPattern,
 } from '../shotGrammar'
 import * as shared from '../index'
@@ -103,4 +105,104 @@ it('is exported from the package index', () => {
 it('no direction makes the creator think about Twin', () => {
   const all = [...Object.values(SHOT_DIRECTION), ...READABILITY_RULES, BLUR_LINE].join(' ')
   expect(all).not.toMatch(/screen[- ]record|screen capture|sceneType|beat_plan|product_dna|entity/i)
+})
+
+// ⚠️ THE SETUP HAPPENS BEFORE THE RECORD BUTTON. Every camera-at-screen shot
+// assumes the page is open and zoomed when the take starts; that instruction sits
+// on a card the creator has scrolled past by the time they are holding the phone.
+// They press record, THEN open the app, and burn the seconds the hook depends on.
+describe('the setup line appears before the countdown, not after', () => {
+  it('a screen shot gets a setup line', () => {
+    expect(preRollChecklist('Hold your phone up beside your face with the dashboard open')).toBeTruthy()
+    expect(preRollChecklist('Laptop open to the classroom, point at the module list')).toBeTruthy()
+  })
+
+  it('a shot with a number to read is told to zoom first', () => {
+    const line = preRollChecklist('Turn the phone to camera showing the revenue number')
+    expect(line).toMatch(/zoom/i)
+  })
+
+  // ⚖️ NULL FOR A TALKING-HEAD BEAT. A reminder with nothing to open is noise,
+  // and noise here teaches people to skip the line that matters.
+  it.each([
+    'You, talking.',
+    'Stay in your normal position and describe the change for one client.',
+    '',
+  ])('says nothing for %s', (d) => {
+    expect(preRollChecklist(d)).toBeNull()
+  })
+
+  it('an absent direction is not a crash and not a reminder', () => {
+    expect(preRollChecklist(null)).toBeNull()
+    expect(preRollChecklist(undefined)).toBeNull()
+  })
+
+  // ⚠️ A DECISION LAYER NOTHING CALLS is the state this repo keeps rediscovering,
+  // so this asserts the teleprompter actually renders it.
+  it('the between-scenes panel actually calls it', () => {
+    const { readFileSync } = require('node:fs') as typeof import('node:fs')
+    const { join } = require('node:path') as typeof import('node:path')
+    const repo = join(import.meta.dirname, '..', '..', '..', '..')
+    const capture = readFileSync(join(repo, 'apps', 'web', 'src', 'pages', 'v2', 'V2Capture.tsx'), 'utf8')
+    // ⚠️ AND NOT JUST THE TOKEN. My first version matched /preRollChecklist/,
+    // which the IMPORT LINE satisfies — so replacing the render condition with
+    // `{false && (` left the guard green. Twice today a guard of mine asserted a
+    // string appeared somewhere rather than in the position that carries the
+    // behaviour. This reads the render condition itself.
+    expect(capture).toMatch(/\{preRollChecklist\(next\?\.movement \?\? null\) && \(/)
+    expect(capture).toMatch(/Set up first/)
+  })
+})
+
+// ⚖️ THE WAY BACK IS ALREADY BUILT, AND THE RISK IS DELETION RATHER THAN ABSENCE.
+// Removing screen recording removed a PROMISE, not the possibility: a creator may
+// one day upload a real capture as an extra clip and have it composited over
+// their take. The audit asks for an overlay slot to be RESERVED — it does not
+// need reserving, it is fully specified. But an overlay list that is empty in
+// every plan looks like dead weight to a reader who does not know a return path
+// was deliberately left open, and that reader deletes it.
+describe('the return path for real screen capture stays open', () => {
+  const { readFileSync } = require('node:fs') as typeof import('node:fs')
+  const { join } = require('node:path') as typeof import('node:path')
+  const repo = join(import.meta.dirname, '..', '..', '..', '..')
+  const contract = readFileSync(join(repo, 'worker', 'src', 'jobs', 'editPlanContract.ts'), 'utf8')
+
+  // ⚠️ ANCHORED INSIDE PlanComposition, and the loose version was the THIRD guard
+  // of mine today to match a string in the wrong place. /overlays:\s*PlanOverlay
+  // \[\]/ also matches `const overlays: PlanOverlay[] = ...` — a local variable
+  // 580 lines away — so deleting the INTERFACE FIELD left the guard green. The
+  // other two were `exit 1` matching the curl branch instead of the missing-secret
+  // branch, and `preRollChecklist` matching the import line instead of the render
+  // condition. All three passed their first mutation.
+  it('the EditPlan contract still carries a composition seam', () => {
+    expect(contract).toMatch(/export interface PlanOverlay\b/)
+    // ⚠️ WITH THE BRACE, because 'export interface PlanComposition' matches
+    // PlanCompositionSource FIRST — a prefix collision that pointed the slice at
+    // the wrong interface and failed against correct code.
+    const at = contract.indexOf('export interface PlanComposition {')
+    expect(at, 'PlanComposition must exist').toBeGreaterThan(-1)
+    const block = contract.slice(at, contract.indexOf('\n}', at))
+    expect(block, 'PlanComposition must still declare overlays').toMatch(/overlays:\s*PlanOverlay\[\]/)
+    expect(block).toMatch(/sources:\s*PlanCompositionSource\[\]/)
+  })
+
+  // ⚠️ AND IT STILL REASONS ABOUT THE HAZARD, which is the part that makes the
+  // seam usable rather than merely present: a screen capture carries system
+  // audio, and silently mixing it under a creator's voice is the kind of thing
+  // nobody notices until it ships.
+  it('and still says why a clip is only ever picture', () => {
+    expect(contract).toMatch(/A CLIP IS ONLY EVER PICTURE/)
+  })
+
+  it('the shot grammar points at it, so nobody rebuilds it', () => {
+    expect(SCREEN_CAPTURE_RETURN_PATH).toContain('editPlanContract')
+    expect(SCREEN_CAPTURE_RETURN_PATH).toContain('PlanOverlay')
+  })
+
+  // ⚠️ THE AUDIT'S FLAG TARGET DOES NOT EXIST, recorded so the next reader does
+  // not go looking for a counter this repository has never had.
+  it('the conversion count is recorded as landing in beat_audit', () => {
+    expect(CONVERSION_COUNT_LANDS_IN_BEAT_AUDIT).toContain('beat_audit')
+    expect(CONVERSION_COUNT_LANDS_IN_BEAT_AUDIT).toMatch(/no definition/i)
+  })
 })

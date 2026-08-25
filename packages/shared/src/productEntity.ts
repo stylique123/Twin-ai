@@ -201,6 +201,61 @@ export function inferShowability(
   return 'UNKNOWN'
 }
 
+/**
+ * Does the CREATOR's own answer decide this type's showability, or does the
+ * type decide it for them?
+ *
+ * ⚖️ `inferShowability` IS ASKED, NEVER RE-DERIVED. A second hand-written list
+ * of "types you can film" is exactly the drift this file keeps catching, and
+ * `screenAnswerIsUsed` in productQuestions.ts already settled the idiom: put the
+ * flag in both positions and see whether the answer moves the outcome. A type
+ * whose showability is the same either way is a type whose answer is discarded.
+ *
+ * ⚠️ BOTH FLAGS GO IN TOGETHER because `inferShowability` picks the one that
+ * matches the type -- objects read `canFilmObjects`, screens read
+ * `canRecordScreen`. Passing only one would report OTHER as undecidable purely
+ * because we handed it the physical flag.
+ */
+export function capabilityAnswerIsUsed(type: EntityType): boolean {
+  const yes = inferShowability(type, { canRecordScreen: true, canFilmObjects: true })
+  const no = inferShowability(type, { canRecordScreen: false, canFilmObjects: false })
+  return yes === 'ALWAYS' && no === 'NEVER'
+}
+
+/**
+ * The creator's OWN three-way answer, where they were actually asked one.
+ *
+ * ⚠️ MEASURED, NOT SUSPECTED. The add form has offered "Usually / Sometimes /
+ * No" since the Library shipped, and then sent the answer through a BOOLEAN:
+ * `canFilmObjects: showability === 'ALWAYS'`. A creator who picked SOMETIMES
+ * handed us `false`, `inferShowability` read false as a denial, and the entity
+ * was stored NEVER. They said "I can usually show it, just do not build a scene
+ * around it" and Twin recorded "a shot of this cannot be taken" -- so every
+ * script for that product came out talking-only. The middle option was
+ * unreachable through the only path that offered it.
+ *
+ * ⚖️ THE ANSWER WINS OVER THE INFERENCE, BUT ONLY WHERE ONE WAS ASKED. Flags
+ * are a PRE-FILL from what the creator told us elsewhere; a direct answer about
+ * this product is authority and outranks it. But a SERVICE is NEVER and a
+ * COMMUNITY is ALWAYS whatever anybody answers -- facts about the kind of thing,
+ * not gaps -- so for those the type decides and the answer is discarded, which
+ * is why the form does not ask them in the first place.
+ *
+ * ⚖️ AND `UNKNOWN` IS NOT AN ANSWER, it is the absence of one, so it falls
+ * through to the inference rather than overwriting a real pre-filled value with
+ * a shrug.
+ */
+export function answeredShowability(
+  type: EntityType,
+  answer: unknown,
+  flags: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null } = {},
+): Showability {
+  const inferred = inferShowability(type, flags)
+  if (!isShowability(answer) || answer === 'UNKNOWN') return inferred
+  if (!capabilityAnswerIsUsed(type)) return inferred
+  return answer
+}
+
 /** The relationships that mean the creator owns the thing. Used in enough
  *  places that a second hand-written list would eventually disagree with this
  *  one — which is the drift bug this repo keeps catching. */
@@ -346,6 +401,15 @@ export interface EntityAttestation {
   name: string | null
   productUrl?: string | null
   flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
+  /** ⚠️ THE THREE-WAY ANSWER THE FORM ALREADY SHOWS THEM. Absent means they
+   *  were not asked, and the flags pre-fill it instead -- see
+   *  `answeredShowability` for why a boolean could not carry SOMETIMES. */
+  showability?: Showability | null
+  /** ⚠️ THE COMMUNITY MAP, WHEN THE CREATOR FILLED ONE IN. Absent for every
+   *  other product type, and absent is the ordinary state -- it is NOT a
+   *  community that failed to answer. `buildCommunityMap` returns null rather
+   *  than a half-map, so anything arriving here is already usable or is null. */
+  communityMap?: unknown
   now?: string
 }
 
@@ -364,9 +428,10 @@ export function attestedEntity(a: EntityAttestation): DraftEntity {
     type: a.type,
     relationship: a.relationship,
     personalUse: a.personalUse,
-    // DERIVED FROM CAPABILITIES, NOT ASKED AGAIN — and UNKNOWN when they have
-    // not answered those either. Never a denial inferred from silence.
-    showability: inferShowability(a.type, a.flags ?? {}),
+    // THEIR OWN ANSWER WHERE THEY GAVE ONE, else derived from the capabilities
+    // they already answered — and UNKNOWN when they answered neither. Never a
+    // denial inferred from silence, and never SOMETIMES flattened into NEVER.
+    showability: answeredShowability(a.type, a.showability, a.flags ?? {}),
     productUrl: url === '' ? null : url,
     // ⚠️ A COMMERCIAL TIE IS ITS OWN ANSWER. `AFFILIATE` says a commission
     // exists; it does not supply the link, and inventing one here would put a
@@ -738,6 +803,13 @@ export interface DraftEntity {
 
 export interface ProductEntityRecord extends DraftEntity {
   id: string
+  /** The surfaces, figures and privacy states for a COMMUNITY entity.
+   *
+   *  ⚖️ NULL IS THE NORMAL CASE AND MEANS "no map", not "a map we could not
+   *  read". Every product that is not a community has one, and a community
+   *  whose creator has not filled the form in yet has one too -- the writer
+   *  stays silent either way, which is the same answer for both. */
+  communityMap: import('./communityMap').CommunityMap | null
   /** When the creator withdrew this from future videos. Null means live.
    *
    *  ⚖️ A DATE RATHER THAN A BOOLEAN, because "when did this stop" is a fact

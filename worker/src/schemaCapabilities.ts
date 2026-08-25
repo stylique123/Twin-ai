@@ -50,6 +50,14 @@ export interface SchemaCapability {
  * block jobs over tables they never touch.
  */
 export const SCHEMA_REQUIREMENTS: Readonly<Record<string, readonly SchemaCapability[]>> = {
+  sample_own_account: [
+    { table: 'brand_voices', migration: '0171',
+      // ⚠️ ALL FOUR, BECAUSE THE CONSTRAINT DEMANDS ALL FOUR. 0171 refuses a
+      // half-written sample, so a schema missing any ONE of these does not
+      // degrade the job — every write it attempts is rejected. Naming three
+      // would let the one that is actually absent pass the probe.
+      columns: ['own_sample_usable', 'own_sample_checked', 'own_sample_complete', 'own_sample_no_answer'] },
+  ],
   extraction_replication: [
     { table: 'extraction_parity_replications', migration: '0158',
       // The insert this job exists to perform. `outcome` and `attempt_number`

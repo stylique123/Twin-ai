@@ -31,6 +31,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
+import { shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -605,6 +606,15 @@ export default function Result() {
       original_b_roll_count: br.original_b_roll_count ?? '0',
       suggested_b_roll_count: br.suggested_b_roll_count ?? '0',
     },
+    // ⚠️ CARRIED THROUGH RAW. This normaliser rebuilds the blueprint field by
+    // field, which is exactly how the visual hook was discarded on arrival for
+    // every generation that had one. `readVisualHook` validates it at the point
+    // of use; dropping it here made that impossible.
+    visual_hook: raw.visual_hook,
+    // ⚠️ CARRIED THROUGH RAW, for the reason visual_hook was: this normaliser
+    // rebuilds the blueprint field by field, so a field it does not name is
+    // discarded on arrival. `beat_plan[].proof` was being lost here.
+    beat_plan: raw.beat_plan,
     hook_options: Array.isArray(raw.hook_options) ? raw.hook_options : [],
     script: Array.isArray(raw.script) ? raw.script : [],
     shot_list: Array.isArray(raw.shot_list) ? raw.shot_list : [],
@@ -621,7 +631,20 @@ export default function Result() {
   // any already stored: swap the opening hook beat for the chosen/best hook, and
   // blank any stray placeholder elsewhere rather than showing the raw token.
   const hookText = chosenHook || b.hook_options[0] || ''
+  // ⚖️ THE FIRST SECOND, IF THIS GENERATION HAS ONE. 37 of 41 predate the
+  // field; for those the card simply is not there, because they were never
+  // promised a first-second plan and "not specified" would report a gap that
+  // does not exist.
+  const visualHook = readVisualHook(b.visual_hook)
   const updatedScript = b.script.map((s, i) => {
+    // ⚠️ SILENCE IS NEVER OVERWRITTEN, AT ANY INDEX. `isWhollyPlaceholder` is
+    // true for BOTH "[Hook Option 1]" (fill me in) and "[No spoken audio]"
+    // (nobody speaks here), and this map filled every true with the hook. In
+    // production that gave generation 9072552b — four beats, three of them
+    // "[No spoken audio]" — the SAME HOOK LINE THREE TIMES, once as its Call
+    // to Action. The hook is on the picker above regardless, so there is
+    // nothing to recover by pasting it over a deliberate silence.
+    if (isSilentBeat(s.line)) return s
     if (i === 0 && hookText) {
       if (isWhollyPlaceholder(s.line)) return { ...s, line: hookText }
       const sentences = s.line.split(/(?<=[.!?])\s+/)
@@ -631,6 +654,11 @@ export default function Result() {
     if (isWhollyPlaceholder(s.line)) return { ...s, line: hookText || s.line }
     return s
   })
+
+  // ⚖️ HOW LONG THIS IS, BEFORE THEY STAND IN FRONT OF A CAMERA. Measured on the
+  // REPAIRED script above, because that is the one they will read. Disclosure
+  // only — a creator may shoot any length they like.
+  const lengthLine = lengthSentence(measureScriptLength(updatedScript))
 
   return (
     <main className="relative min-h-screen overflow-clip bg-ink text-sand pb-20">
@@ -998,6 +1026,19 @@ export default function Result() {
                 <span className="font-heading text-xs font-semibold text-cream tracking-wide uppercase">Pick your opening line</span>
               </div>
               <p className="text-xs text-stone">Pick an opening line — it updates your script below.</p>
+              {/* ⚖️ FIVE OPTIONS THAT OPEN THE SAME WAY ARE NOT FIVE OPTIONS.
+                  Reports the collision only — the opening may be exactly how
+                  this creator talks, and Twin does not overrule that. */}
+              {hookVarietyNote(b.hook_options) && (
+                <p className="text-xs text-amber/90">{hookVarietyNote(b.hook_options)}</p>
+              )}
+              {visualHook && (
+                <div className="mt-1 rounded-lg border border-white/5 bg-ink/40 p-3 space-y-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-amber">Before you say a word</div>
+                  <p className="text-xs text-cream">{visualHook.openingFrame}</p>
+                  <p className="text-xs text-stone">{visualHook.whyItInterrupts}</p>
+                </div>
+              )}
               <div className="grid grid-cols-1 gap-3">
                 {b.hook_options.map((h, i) => {
                   const isChosen = h === chosenHook
@@ -1034,6 +1075,7 @@ export default function Result() {
                 </h2>
                 <span className="text-xs text-stone">{updatedScript.length} scenes</span>
               </div>
+              <p className="text-xs text-stone/80">{lengthLine}</p>
               
               <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />
@@ -1043,7 +1085,7 @@ export default function Result() {
                 blueprint={b}
                 selectedHook={chosenHook}
                 hasTake={serverSourceAssetId != null}
-                fallback={<BlueprintScriptCards script={updatedScript} />}
+                fallback={<BlueprintScriptCards script={updatedScript} beatPlan={b.beat_plan} />}
               />
               {/* See the other call site: the script owns the list, so the
                   editor that changes it stays above this. */}
@@ -1084,7 +1126,7 @@ export default function Result() {
                       <div className="space-y-2">
                         {/* Title & Framing Badge */}
                         <div className="space-y-1.5">
-                          <span className="font-heading text-cream text-sm font-semibold block">{s.shot}</span>
+                          <span className="font-heading text-cream text-sm font-semibold block">{shotLabel(s.shot, s.shot_type, s.framing, i)}</span>
                           <span className="inline-block rounded bg-ink3 border border-white/10 px-2 py-0.5 text-[10px] text-sand font-mono leading-snug">
                             {s.framing}
                           </span>
@@ -1341,6 +1383,19 @@ export default function Result() {
                   <span className="font-heading text-xs font-semibold text-cream tracking-wide uppercase">Pick your opening line</span>
                 </div>
                 <p className="text-xs text-stone">Pick an opening line — it updates your script below.</p>
+                {/* ⚖️ FIVE OPTIONS THAT OPEN THE SAME WAY ARE NOT FIVE OPTIONS.
+                    Reports the collision only — the opening may be exactly how
+                    this creator talks, and Twin does not overrule that. */}
+                {hookVarietyNote(b.hook_options) && (
+                  <p className="text-xs text-amber/90">{hookVarietyNote(b.hook_options)}</p>
+                )}
+                {visualHook && (
+                  <div className="mt-1 rounded-lg border border-white/5 bg-ink/40 p-3 space-y-1">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-amber">Before you say a word</div>
+                    <p className="text-xs text-cream">{visualHook.openingFrame}</p>
+                    <p className="text-xs text-stone">{visualHook.whyItInterrupts}</p>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 gap-3">
                   {b.hook_options.map((h, i) => {
                     const isChosen = h === chosenHook
@@ -1377,6 +1432,7 @@ export default function Result() {
                   </h2>
                   <span className="text-xs text-stone">{updatedScript.length} scenes</span>
                 </div>
+                <p className="text-xs text-stone/80">{lengthLine}</p>
                 
                 <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />
@@ -1386,7 +1442,7 @@ export default function Result() {
                   blueprint={b}
                   selectedHook={chosenHook}
                   hasTake={serverSourceAssetId != null}
-                  fallback={<BlueprintScriptCards script={updatedScript} />}
+                  fallback={<BlueprintScriptCards script={updatedScript} beatPlan={b.beat_plan} />}
                 />
                 {/* BELOW the editor on purpose: the slots come FROM the script,
                     so the thing that changes them sits above the thing that
@@ -1421,7 +1477,7 @@ export default function Result() {
                       >
                         <div className="space-y-2">
                           <div className="space-y-1.5">
-                            <span className="font-heading text-cream text-sm font-semibold block">{s.shot}</span>
+                            <span className="font-heading text-cream text-sm font-semibold block">{shotLabel(s.shot, s.shot_type, s.framing, i)}</span>
                             <span className="inline-block rounded bg-ink3 border border-white/10 px-2 py-0.5 text-[10px] text-sand font-mono leading-snug">
                               {s.framing}
                             </span>
@@ -1790,7 +1846,9 @@ function PublishRow({
 // teleprompter's scene i are different lines. Editing here would edit something
 // nobody records — so this shows what the model wrote and offers no edit, and
 // `ScriptEditor` owns the version that can be changed.
-function BlueprintScriptCards({ script }: { script: Blueprint['script'] }) {
+function BlueprintScriptCards(
+  { script, beatPlan }: { script: Blueprint['script']; beatPlan?: unknown },
+) {
   return (
     <div className="space-y-6">
       {script.map((s, i) => {
@@ -1809,7 +1867,50 @@ function BlueprintScriptCards({ script }: { script: Blueprint['script'] }) {
               </span>
               <span className="text-[11px] font-medium text-stone">Scene {i + 1}</span>
             </div>
-            <p className="font-display text-lg leading-relaxed text-cream">“{s.line}”</p>
+            {/* ⚖️ WHAT THE CREATOR DOES IN FRONT OF THE CAMERA. Withheld
+                entirely when the writer's note asks for footage this product
+                does not make — a b-roll or screen-recording request is a good
+                idea that is out of scope, not an instruction to hand over. */}
+            {shootingNoteAt(beatPlan, i) && (
+              <p className="text-xs text-sand/80">{shootingNoteAt(beatPlan, i)}</p>
+            )}
+            {/* ⚖️ FOUR OUTCOMES, AND EACH ONE WAS A SEPARATE DEFECT.
+                SILENCE is shown as silence, in plain English and without quote
+                marks — "[No spoken audio]" is a note to the writer, not a line
+                anybody reads out.
+                AN EMPTY LINE prints nothing: this rendered unconditionally, so
+                a beat with no line showed as “”, and before that it showed the
+                refusal itself as dialogue, which is how "Only you can supply
+                this" reached a real teleprompter.
+                OTHERWISE the spoken line, quoted.
+                AND THE ASK, when only the creator can supply what goes here.
+
+                ⚖️ READ-ONLY ON PURPOSE. This view is the FALLBACK for when the
+                recording script cannot be produced, and its own contract is that
+                it offers no edit — `script[i]` is not the line that gets filmed.
+                So the question is SHOWN here and answered where the creator
+                actually works. Putting an input here would edit something nobody
+                records. */}
+            {isSilentBeat(s.line)
+              ? <p className="font-display text-lg leading-relaxed text-stone">No one speaks here.</p>
+              : s.line && s.line.trim() !== '' && (
+                <p className="font-display text-lg leading-relaxed text-cream">“{s.line}”</p>
+              )}
+            {/* ⚖️ A NOTE, NEVER A VERDICT. Names the words that are doing no
+                work and says what to do instead — it does not block, score or
+                rewrite, and the decision stays the creator's. ⚠️ NEVER ON A
+                SILENT BEAT: there are no spoken words there to swap. */}
+            {!isSilentBeat(s.line) && stockPhraseNote(stockPhrasesIn(s.line)) && (
+              <p className="text-xs text-amber/90">{stockPhraseNote(stockPhrasesIn(s.line))}</p>
+            )}
+            {s.ask && s.ask.trim() !== '' && (
+              <div className="rounded-2xl border border-amber/25 bg-amber/[0.06] p-4">
+                <span className="block text-[11px] font-semibold uppercase tracking-wider text-amber mb-1">
+                  Only you know this one
+                </span>
+                <p className="font-display text-base leading-relaxed text-cream">{s.ask}</p>
+              </div>
+            )}
             <div className="space-y-3.5 rounded-2xl border border-white/[0.04] bg-ink/40 p-4">
               <div className="flex items-start gap-3">
                 <Video className="h-4 w-4 text-amber shrink-0 mt-0.5" />

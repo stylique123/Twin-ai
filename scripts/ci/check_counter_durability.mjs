@@ -205,6 +205,51 @@ const EVENTS = {
   entitlement_repair: { kind: 'incident', why: 'What the entitlement repair rewrote.' },
   entitlement_unrepaired: { kind: 'incident', why: 'A repair that did not take.' },
   hooks_unentitled: { kind: 'incident', why: 'Hooks resting on an unentitled claim.' },
+  cta_fallback: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'A hook, payoff or CTA that claimed it needed the creator. Those three are '
+      + 'craft -- writable from the goal and the offer, both already on file -- so the '
+      + 'claim is always wrong, and in the audited script the final beat shipped as '
+      + '"Only you can supply this" to a creator at a teleprompter. Durable because a '
+      + 'RISING rate is the signal that matters: it means the writer regressed and this '
+      + 'check is the only thing standing between that and a dead line on screen. '
+      + 'Stored by 0131, null when the check did not run.',
+  },
+  caps_emphasis_moved: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'ALL-CAPS runs lifted out of a spoken line and into emphasis_words. A real '
+      + 'script shipped "YOU HAVE TIME" as dialogue, which a creator reads as shouting '
+      + 'and which then burns into captions permanently. Durable because the question is '
+      + 'whether the prompt line takes effect: this should trend to 0, and if it does not '
+      + 'that is the familiar inert-instruction result and the check carries it alone. '
+      + 'Stored by 0131, null when the split did not run.',
+  },
+  shots_named_by_number: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'Shot-list rows whose "shot" field is the row\'s position rather than the '
+      + 'shot\'s name. MEASURED at 98 of 223 rows -- 44% -- before the prompt line '
+      + 'existed; the card renders that field as its heading, so a creator holding a '
+      + 'phone against their shot list read a card called "2". shotLabel already '
+      + 'repairs the RENDER, so this is not what the creator is waiting on. Durable '
+      + 'because the only open question is whether the WRITER stopped: it should trend '
+      + 'to 0, and if it does not, that is the familiar inert-instruction result and '
+      + 'this counter is the only thing that can say so. Null when no shot list came '
+      + 'back to scan -- which is NOT the same as zero numbered shots.',
+  },
+  hook_over_length: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'The prompt demands a hook under ~12 words and nothing checked it — a hook '
+      + 'shipped to a real creator at 30. Counts hooks that broke the length/opener '
+      + 'contract as written, how many the deterministic ladder rescued, and how many '
+      + 'were demoted and still offered. Durable because the honest question it answers '
+      + '-- does the 12-word doctrine survive contact with the writer, and do creators '
+      + 'pick the shorter hooks once they exist -- is only answerable across many '
+      + 'generations. Stored by 0131, null when the contract did not run.',
+  },
   generation_not_billable: { kind: 'incident', why: 'A generation the ledger must not charge for.' },
   // ⚠️ A SUCCESS FOR THE CREATOR AND A DEFECT FOR US, WHICH IS WHY IT IS AN
   // INCIDENT RATHER THAN A COUNTER. Every occurrence is one throw in the 792

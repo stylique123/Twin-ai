@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   captureConstraints, fallbackConstraints, verifyCapture, DEFAULT_CAPTURE_INTENT,
+  preRollChecklist,
 } from '@twinai/shared'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Sparkles, RotateCcw, UploadCloud, Film, X } from 'lucide-react'
@@ -915,6 +916,24 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
             leaving him to work out which to believe. See sceneConsistency.ts;
             the structural fix is the field split in §5c. */}
         {next?.movement && safeToShow({ spoken: !!next.show_in_teleprompter, dialogue: next.dialogue, movement: next.movement }, 'movement') && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">What to do while you talk</div><p className="text-white/90">{next.movement}</p></div>}
+        {/* ⚠️ THE SETUP HAPPENS BEFORE THE RECORD BUTTON, AND NOTHING SAID SO.
+            Every camera-at-screen shot assumes the page is already open and
+            already zoomed when the take starts. That instruction lives on the
+            scene card, which the creator has usually scrolled past by the time
+            they are holding the phone — so they press record and THEN open the
+            app, burning the first seconds of the take fumbling. Those are the
+            seconds the hook depends on. This is the last thing they read before
+            the countdown, so it is where the reminder belongs.
+
+            ⚖️ AND IT IS NULL FOR A TALKING-HEAD BEAT. A reminder with nothing to
+            open is noise, and noise here teaches people to skip the line that
+            matters. */}
+        {preRollChecklist(next?.movement ?? null) && (
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300/90">Set up first</div>
+            <p className="text-white/90">{preRollChecklist(next?.movement ?? null)}</p>
+          </div>
+        )}
         {next?.purpose && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">Why this scene matters</div><p className="text-white/90">{next.purpose}</p></div>}
       </div>
 
@@ -980,6 +999,29 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
         ) : between ? (
           <div className="absolute inset-0 z-10 grid place-items-center px-4">
             <div className="w-full max-w-md">{nextCard}</div>
+          </div>
+        ) : scene?.ask ? (
+          /* ⚠️ NOTHING IS WRITTEN HERE, AND THAT IS THE POINT. The writer refused
+             to invent this creator's life and offered no usable scaffold, so the
+             beat has no words to scroll. Before this, the beat was DROPPED from
+             the recording script entirely and the creator never learned it
+             existed. The question stands in place of the line, and they answer
+             it out loud in their own words.
+
+             ⚖️ NOT A TELEPROMPTER LINE. It is deliberately not styled as words
+             to read — reading a question aloud is exactly the failure this whole
+             thread of work exists to end. */
+          <div className="absolute inset-0 z-10 grid place-items-center px-6 sm:px-12">
+            <div className="w-full max-w-2xl text-center space-y-3">
+              <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-300/90">
+                Only you know this one
+              </div>
+              <p className="font-bold leading-snug text-white [text-shadow:0_2px_20px_rgba(0,0,0,0.65)]"
+                 style={{ fontSize: Math.round(FONT_PX[fontIdx] * 0.62) }}>
+                {scene.ask}
+              </p>
+              <p className="text-sm text-white/70">Say it in your own words.</p>
+            </div>
           </div>
         ) : (
           <div className="absolute inset-0 z-10 flex items-center px-5 sm:px-10">

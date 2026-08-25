@@ -14,6 +14,11 @@ import { buildLinkAllowlist, sanitizeBlueprintLinks, type LinkAllowlist } from '
 import { templateFor } from '../_shared/containerTemplates.ts'
 import { buildSlots, filledFrom, slotsReady } from '../_shared/writerInput.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
+import { applyHookContract } from '../_shared/hookContract.ts'
+import { craftBeatsThatAsked, readsAsPlaceholder, fallbackCta } from '../_shared/craftBeats.ts'
+import { askIsUsable, scaffoldWithoutAnswer } from '../_shared/beatAsk.ts'
+import { splitEmphasis } from '../_shared/emphasis.ts'
+import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import {
   resolveTemplate,
@@ -1005,6 +1010,46 @@ const FIRST_PERSON_ACT_INVERTED = new RegExp(
   String.raw`\b(?:things?|ways?|lessons?|mistakes?|reasons?|what|how|why)\b[^.?!]{0,40}?` +
   String.raw`\b(?:i|we)\s+(?:${EXPERIENTIAL_VERB})\b`, 'i')
 
+// ⚠️ A DIRECTION THAT ASKS FOR A SCREEN CAPTURE, COUNTED WHERE IT CAN BE SEEN.
+// The prompt now forbids screen recordings, but the writer is a model and that is
+// an instruction rather than a guarantee. This exact direction shipped to a real
+// creator: "EXTRA CLIP: Screen recording showing the deletion of a draft" -- a
+// beat they cannot film, discovered after everything else was already shot.
+//
+// ⚖️ COUNTED BEFORE IT IS ENFORCED, the order every other beat_audit counter
+// uses. How often the writer still asks for one is not known, and a refusal built
+// on a guess about frequency is how a check becomes the thing people route
+// around. ⚠️ PARITY: this mirrors asksForScreenCapture in
+// packages/shared/src/screenCaptureConversion.ts -- the edge cannot import
+// @twinai/shared, so the rule lives twice and the shared copy is the tested one.
+const CAPTURE_PHRASES_INLINE: RegExp[] = [
+  /\b(?:a\s+|an\s+|the\s+)?screen[\s-]?recording\s+(?:of|showing|that\s+shows)\b/i,
+  /\b(?:a\s+|an\s+|the\s+)?screen[\s-]?capture\s+(?:of|showing|that\s+shows)\b/i,
+  /\brecord\s+(?:your|the|my)\s+screen\s+(?:to\s+show|showing|and\s+show)\b/i,
+  /\bscreen[\s-]?record\s+(?:your|the|my)?\s*/i,
+  /\b(?:a\s+|an\s+|the\s+)?screen[\s-]?recording\b/i,
+  /\b(?:a\s+|an\s+|the\s+)?screen[\s-]?capture\b/i,
+  /\brecord\s+(?:your|the|my)\s+screen\b/i,
+]
+
+function asksForScreenCaptureInline(direction: unknown): boolean {
+  if (typeof direction !== 'string' || direction.trim() === '') return false
+  return CAPTURE_PHRASES_INLINE.some((re) => re.test(direction))
+}
+
+/** How many beats still ask for something the creator cannot film in the take.
+ *  ⚠️ Reads `proof` and `direction` because the writer puts the shot in either. */
+function screenCaptureDirectionsInline(beatPlan: unknown): number {
+  if (!Array.isArray(beatPlan)) return 0
+  let n = 0
+  for (const b of beatPlan) {
+    if (!b || typeof b !== 'object') continue
+    const rec = b as Record<string, unknown>
+    if (asksForScreenCaptureInline(rec.proof) || asksForScreenCaptureInline(rec.direction)) n += 1
+  }
+  return n
+}
+
 function premiseDemandInline(referenceText: string | null | undefined): 'narrator_experience' | 'none' | 'unknown' {
   const text = String(referenceText ?? '').replace(/\s+/g, ' ').trim()
   if (text.length < MIN_PREMISE_CHARS) return 'unknown'
@@ -1121,6 +1166,85 @@ ${lines.join('\n')}`
 
 const SUBSTANCE_ENUM = /^(?:creator_knowledge|creator_experience|creator_opinion|product_dna|general|needs_user)$/i
 const NAMES_A_SOURCE = /^(?:the\s+)?(?:creator'\s?s?\b|creators'\b|creator\s+(?:experience|knowledge|expertise|opinion)\b|general (?:knowledge|observation)\b|product_dna\b|reference structure\b|specific knowledge\b)/i
+
+/**
+ * THE COMMUNITY MAP, READ INLINE.
+ *
+ * ⚠️ THE RULE LIVES TWICE AND THAT IS NOT OPTIONAL. Edge functions run on Deno
+ * and cannot import @twinai/shared, so this mirrors `communityMap.ts` under the
+ * …Inline convention. Two copies drift silently — the shared one learns a rule
+ * the edge never does, and the prompt quietly stops carrying it — so a parity
+ * case compares the shipped sources.
+ */
+const SURFACES_WITH_OTHER_PEOPLE_INLINE = ['feed', 'members', 'leaderboard', 'channels']
+
+/** ⚠️ A MAP WITH NO SURFACES IS NOT A MAP, and the writer must stay SILENT
+ *  rather than invent one. Mirrors `mapIsUsable`. */
+function communityMapIsUsableInline(m: unknown): boolean {
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return false
+  const map = m as Record<string, unknown>
+  if (typeof map.url !== 'string' || map.url.trim() === '') return false
+  if (typeof map.name !== 'string' || map.name.trim() === '') return false
+  return Array.isArray(map.surfaceIds) && map.surfaceIds.length > 0
+}
+
+/** ⚠️ ABSENT IS NOT PERMISSION. Mirrors `privacyOfProofItem`: anything that is
+ *  not an explicit `mine` or `permitted` is `blur`. Nothing ships assuming
+ *  permission from somebody who was never asked. */
+function proofPrivacyInline(item: unknown): string {
+  const p = (item as { privacy?: unknown } | null)?.privacy
+  return p === 'mine' || p === 'permitted' ? p : 'blur'
+}
+
+/**
+ * The block the writer reads about a community, or '' when there is no map.
+ *
+ * ⚖️ IT SUPPLIES FACTS AND ONE RULE, NOT A SCENE. Which beat shows the community
+ * is the writer's call from the reference; what may be SHOWN, what may be SAID,
+ * and what must be COVERED are ours, because each of those is checkable and none
+ * of them is taste.
+ */
+function communityBlockInline(raw: unknown, entityName: string): string {
+  if (!communityMapIsUsableInline(raw)) return ''
+  const map = raw as Record<string, unknown>
+  const ids = (map.surfaceIds as string[]).filter((x) => typeof x === 'string')
+  const name = String(map.name ?? entityName)
+
+  const figures: string[] = []
+  for (const key of ['memberCount', 'price', 'cadence']) {
+    const v = map[key]
+    if (typeof v === 'string' && v.trim() !== '') figures.push(v.trim())
+  }
+
+  const crowd = ids.filter((id) => SURFACES_WITH_OTHER_PEOPLE_INLINE.indexOf(id) !== -1)
+  const items = Array.isArray(map.proofItems) ? map.proofItems as Array<Record<string, unknown>> : []
+
+  const parts: string[] = []
+  parts.push(`\nTHEIR COMMUNITY — ${name}. A community is NOT one thing to film. These are the pages the creator CONFIRMED they can open on their phone, and each one proves something different. If a beat shows the community, name ONE of these; never invent a page, and never write "show your community", which leaves them to choose and they will open the feed.`)
+  parts.push(ids.map((id) => `  * ${id}`).join('\n'))
+
+  // ⚠️ EVERY NUMBER A SCRIPT SAYS MUST EXIST HERE. This is what turns a
+  // community fact into a checkable product fact rather than a sentence the
+  // model liked the sound of. An empty list is an INSTRUCTION, not an omission.
+  parts.push(figures.length
+    ? `\nFIGURES THIS SCRIPT MAY SPEAK, exactly as the creator stated them. Say NO other number about the community — not a rounded one, not an estimate, not one you infer from anything above:\n`
+      + figures.map((f) => `  * ${f}`).join('\n')
+    : '\nFIGURES THIS SCRIPT MAY SPEAK: NONE. The creator gave no numbers, so this script says no number about the community at all — no member count, no price, no meeting frequency. A number nobody supplied is one nobody checked.')
+
+  // ⚠️ THE COVERING LINE IS OWED BY THE PAGE, NOT BY THE ITEM. Filming a page
+  // with other people on it publishes a member's words to an audience that
+  // member never agreed to.
+  if (crowd.length) {
+    const uncovered = crowd.filter((id) =>
+      !items.some((i) => i && i.surface === id && proofPrivacyInline(i) !== 'blur'))
+    if (uncovered.length) {
+      parts.push(`\n⚠️ OTHER PEOPLE ARE ON THESE PAGES: ${uncovered.join(', ')}. If a beat shows one, its direction MUST also tell the creator to cover the names and faces of anybody who did not agree to appear. This is not optional and it is not a style note.`)
+    }
+  }
+
+  return parts.join('\n')
+}
+
 const NAMES_AN_EFFECT = /^(?:establishes?|sets? up|provides?|guides?|engages?|introduces?|explains?|concludes?|reinforces?|builds?|creates?|delivers?|summari[sz]es?|transitions?|highlights?|emphasi[sz]es?)\b/i
 
 type ProofQuality = 'shootable' | 'substance_enum' | 'names_a_source' | 'names_an_effect' | 'absent'
@@ -2244,8 +2368,8 @@ VIRAL METHODOLOGY (apply to every field):
 
 CONCEPT & ADAPTATION (decide the actual VIDEO first, then translate it to what the creator can really shoot):
 - premise: the core shootable idea for THIS video in 1 to 2 sentences, set in the creator's real world and niche, echoing the reference's WINNING mechanism (its stakes, its transformation, its payoff), not merely its format. Make it a concrete video someone would actually click, never a vague topic.
-- your_scale: the reference may be a huge production. State plainly and honestly how ONE person with a phone achieves the SAME effect at their scale. Never assume a team, a budget, locations, cast, or gear the creator does not have. The goal is to reproduce the reference's psychology simply.
-- translations: 2 to 4 pairs mapping a big element of the reference (theirs) to the achievable version (yours) that keeps the same effect, e.g. theirs "flies ten strangers to an island", yours "one visible personal challenge with a countdown timer on screen". Be specific and honest, never aspirational filler.
+- your_scale: the reference may be a huge production. State plainly and honestly how ONE person with a phone achieves the SAME effect at their scale. Never assume a team, a budget, locations, cast, or gear the creator does not have. The goal is to reproduce the reference's psychology simply. ⚠️ AND IF THE REFERENCE IS SUBSTANTIALLY A SCREEN-CAPTURE VIDEO, SAY SO IN THIS FIELD IN PLAIN WORDS — for example "The reference is a screen-capture walkthrough. Your version films the screen with your phone: one feature, zoomed, with the key number in the caption." NEVER silently present the two formats as the same thing. A creator who notices the difference themselves stops trusting everything else in the plan, and the difference is one they WILL notice.
+- translations: 2 to 4 pairs mapping a big element of the reference (theirs) to the achievable version (yours) that keeps the same effect, e.g. theirs "flies ten strangers to an island", yours "one visible personal challenge with a countdown timer on screen". Be specific and honest, never aspirational filler. ⚠️ THE SCREEN MAPPING IS FIXED AND YOU DO NOT GET TO RESTATE IT: theirs "screen recording / screen capture walkthrough" maps to yours "your phone filming the screen — one feature, zoomed, with the key number in the caption". Twin does not plan screen recordings, so a reference that is one MUST be translated here rather than copied.
 
 PACKAGING (title + thumbnail, decide this FIRST): most short-form videos are won or lost on the title and the first-frame thumbnail BEFORE a single word is heard, so package the video before you write it. Build the packaging from the creator's real angle, vocabulary and the reference's proven title SHAPE.
 - titles: 5 scroll-stopping video titles, best first, each a SPECIFIC promise (not a topic). Use the creator's signature vocabulary and a different angle each. A title a random creator in this niche could reuse is a failure. No clickbait lies, no "you won't believe".
@@ -2958,7 +3082,7 @@ Deno.serve(async (req: Request) => {
     // so every generation recorded "no product was chosen" no matter which
     // product it was written about. A column that is read must be selected; the
     // optional chain made the absence look like a legitimate null.
-    .select('id, name, type, relationship, personal_use, showability, evidence, restrictions, knowledge')
+    .select('id, name, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
     .eq('owner_id', ownerId)
     .eq('voice_id', voice?.id ?? null)
     .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
@@ -4110,6 +4234,17 @@ Deno.serve(async (req: Request) => {
       ? ''
       : productSceneDirection(String(ownedEntity.name ?? 'the product'), sceneGuidance)
 
+    // ⚠️ A COMMUNITY IS THE ONE TYPE WHERE "SHOW THE PRODUCT" IS UNDER-SPECIFIED,
+    // so it gets facts the other types do not need. `communityBlockInline`
+    // returns '' when there is no usable map, which is the ordinary state for
+    // every product that is not a community AND for a community whose creator
+    // has not filled the form in — the writer stays silent for both, which is
+    // the same correct answer.
+    const communityBlock = communityBlockInline(
+      (ownedEntity as { community_map?: unknown } | null)?.community_map,
+      String(ownedEntity?.name ?? 'their community'),
+    )
+
     // THE COMPATIBILITY GATE'S REFUSALS (§16b), reaching the prompt as decisions
     // rather than as facts for the writer to weigh.
     //
@@ -4207,7 +4342,7 @@ Deno.serve(async (req: Request) => {
     // A default would be this system telling the model what someone does for a
     // living because nobody asked.
     const WORK_KIND_LINES: Record<string, string> = {
-      saas: 'runs a SOFTWARE product. Their proof is the product working — a screen, not a claim. Their constraints are competitive, not regulatory.',
+      saas: 'runs a SOFTWARE product. Their proof is the product working — a screen SHOWN TO CAMERA, not a claim. Their constraints are competitive, not regulatory.',
       professional: 'is a CREDENTIALED PROFESSIONAL whose advice carries real-world consequences. Prefer "in my experience" and "for many people" over universal promises, and never imply an outcome is guaranteed.',
       ecommerce: 'sells a PHYSICAL PRODUCT. The object itself is the proof — write beats that hold it, use it and show the result, rather than describing it.',
       brand: 'speaks for a BRAND or company account, not as a private individual. Write in the brand\'s voice; avoid first-person claims that only a named person could make.',
@@ -4306,7 +4441,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}${audienceLevelLine}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${knowledgeBlock}
+- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
@@ -4570,7 +4705,8 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
 - Make the single CTA concrete and point it at the creator's product or offer above. If the offer is unspecified, fall back to a save or a comment-bait question.
 - publish_plan: produce ONE entry for EACH platform listed in CREATOR DNA, using only those platforms. Never invent a platform the creator does not use.
 - Write every script line TO ITS BEAT'S target_sec. A line for a 6 second beat is roughly 15 words at a natural pace; a line for a 16 second beat is roughly 40. Do not write a forty word line into a six second beat.
-- shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include the cover frame shot, so the editor is never guessing. Every shot is either the creator on camera or the cover frame — never an insert or cutaway they would have to source.`
+- shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include the cover frame shot, so the editor is never guessing. Every shot is either the creator on camera or the cover frame — never an insert or cutaway they would have to source.
+- shot_list "shot" is the shot's NAME and it is what the creator reads as the heading on the card they are holding their phone against. Write what the shot IS, in three to six plain words — "Opening line, straight to camera", "The still for the thumbnail", "Close on your hands". NEVER write its position in the list: "1", "2", "Shot 3" are not names, and a card headed with a number tells the creator nothing about what to point the camera at.`
 
     // ⚠️ ONE RUN ID FOR THE WHOLE LADDER, so a recovered retry counts as one
     // generation rather than two. Minted here rather than in the recorder because
@@ -4632,6 +4768,32 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // never throwing for exactly this reason. Nothing else below is a safety
     // prerequisite: the checks repair a script, they do not license one.
     rescue = { bp: structuredClone(templated.bp), allow: linkAllow, runId: scriptRunId }
+    // ⚠️ DECLARED HERE, WRITTEN AT THE HOOK CONTRACT, READ AT `beatAudit`.
+    // `null` is the honest default: it means the contract never ran (an early
+    // throw, or no hooks at all), which is NOT the same as "no hook was over
+    // length" — and folding those together is the absent-is-not-zero mistake.
+    let hookLengthAudit: Record<string, number> | null = null
+    // ⚖️ SAME THREE-STATE RULE AS ABOVE: null means the craft-beat check never
+    // ran, 0 means it ran and found nothing to repair. A rising count means the
+    // writer regressed and the check caught it.
+    let ctaFallbacks: number | null = null
+    // ⚠️ COUNTED FROM ZERO, NOT NULL, BECAUSE THE LOOP ALWAYS RUNS. Unlike the
+    // two counters above, whose checks can be skipped entirely, this one is
+    // reached on every generation that got as far as the entitlement repair —
+    // so 0 genuinely means "no beat needed the creator", not "we never looked".
+    let beatAsksEmitted = 0
+    let beatAsksWithScaffold = 0
+    // ⚖️ NULL MEANS THE SPLIT NEVER RAN; 0 MEANS IT RAN AND THE WRITER WROTE A
+    // CLEAN LINE. Should trend to 0 as the prompt line takes effect -- and if it
+    // does not, that is the familiar inert-instruction result and the check
+    // carries it alone, which is fine.
+    let capsRuns: number | null = null
+    // ⚖️ NULL MEANS NOTHING WAS SCANNED; 0 MEANS EVERY SHOT CARRIED A NAME. The
+    // scan only runs when the writer returned a shot list at all, so unlike the
+    // beat counters this one cannot be counted from zero -- a generation whose
+    // shot_list came back empty or malformed never looked, and reporting that as
+    // "0 numbered shots" would be the cleanest possible reading of no data.
+    let shotsNumberedNotNamed: number | null = null
     // WHERE THE CONTENT CAME FROM, COUNTED — and the declaration checked against
     // what the prompt actually carried. ⚖️ `speakable` and not `kRows`: checking
     // against the fuller store would excuse exactly the fabrication this exists
@@ -4699,6 +4861,48 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         }
       }
     } catch { /* never fail a generation on a hook filter */ }
+
+    // ── AND THE RULE THE PROMPT STATES ABOUT HOOK LENGTH ────────────────────
+    //
+    // ⚠️ A RULE WITHOUT A CHECK DRIFTS, AND THIS ONE ALREADY HAD. The SYSTEM
+    // prompt demands "one spoken line under ~12 words". A hook shipped to a real
+    // creator at THIRTY. At a natural pace that is ~9 seconds, and the
+    // three-second scroll decision is over before the first clause lands.
+    //
+    // ⚖️ EVERY HOOK, NOT JUST THE RECOMMENDED ONE. The filter above checks all
+    // five for entitlement; nothing checked any of the five for LENGTH. The
+    // creator picks from all five, so a rule that only holds for index 0 is a
+    // rule that holds for whichever hook they happen not to choose.
+    //
+    // ⚖️ REPAIR ONLY SHORTENS — every output is a substring of the writer's own
+    // line with filler removed, which is the property that makes running it
+    // before a human reads the script acceptable. It cannot introduce a claim.
+    // Failing hooks are DEMOTED rather than dropped: five exist so the creator
+    // chooses, and a deleted hook is a preference datapoint we never get back.
+    //
+    // ⚠️ AFTER THE RESCUE POINT, LIKE EVERY OTHER CHECK HERE. A hook contract
+    // may not cost a creator the script they paid for, so this is wrapped and
+    // its failure is silence.
+    try {
+      const bpL = templated.bp as { hook_options?: unknown }
+      const audit = applyHookContract(bpL.hook_options as unknown[] | undefined)
+      if (audit.hooks.length > 0) {
+        bpL.hook_options = [...audit.hooks]
+        // ⚖️ DURABLE, NOT A LOG LINE. `beat_audit` (0131) is where the other
+        // per-generation counters land, and a counter that lives only in a
+        // console line answers no question anyone asks later — which is how
+        // three counters in two days measured nothing.
+        hookLengthAudit = {
+          raw: audit.raw,
+          repaired: audit.repaired,
+          shipped_over: audit.shippedOver,
+          openers: audit.openersFound,
+        }
+        if (audit.raw > 0) {
+          console.warn(JSON.stringify({ event: 'hook_over_length', ...hookLengthAudit }))
+        }
+      }
+    } catch { /* never fail a generation on a hook contract */ }
 
     // ── CREATOR-STATE: SAFE REWRITES APPLIED, FULL ENFORCEMENT SHADOWED ─────
     //
@@ -5078,6 +5282,29 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // describing a different script from the logged one.
     beatAudit = {
       beats: Array.isArray(declared) ? declared.length : 0,
+      // ⚠️ THE HOOK RULE THE PROMPT STATES, MEASURED. `raw` counts hooks that
+      // broke the length/opener contract as written; `repaired` how many the
+      // deterministic ladder rescued; `shipped_over` how many were demoted and
+      // still offered. NULL means the contract did not run — never zero.
+      hook_length: hookLengthAudit,
+      // ⚠️ THE BEAT THAT COULD ALWAYS BE WRITTEN AND WAS NOT. Rising means the
+      // writer started marking craft beats `needs_user` again; the check caught
+      // it and the creator still got a readable line.
+      cta_fallbacks: ctaFallbacks,
+      // ⚠️ THE SUPPLY SIGNAL. `emitted` is how many beats rested on something
+      // only this creator knows; `with_scaffold` is how many of those the writer
+      // left a real sentence around, so the beat can be completed by one typed
+      // fact rather than rewritten. A high emitted with a low with_scaffold means
+      // the writer is refusing without offering a way forward.
+      beat_asks: { emitted: beatAsksEmitted, with_scaffold: beatAsksWithScaffold },
+      caps_emphasis_runs: capsRuns,
+      // ⚠️ MEASURED BEFORE THE PROMPT LINE EXISTED: 98 of 223 shot-list rows --
+      // 44% -- carried a bare ordinal in `shot`, and the card renders that field
+      // as its heading, so a creator scanning their shot list saw a card called
+      // "2". `shotLabel` already repairs the RENDER; this counts whether the
+      // WRITER stopped doing it, which is the only thing that tells us the new
+      // instruction is not inert.
+      shots_named_by_number: shotsNumberedNotNamed,
       by_source: bySource,
       creator_knowledge_depth: byDepth,
       knowledge_supplied: speakable.length,
@@ -5109,6 +5336,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         (Array.isArray(declared) ? declared : []) as Array<Record<string, unknown>>,
         productFactValues).length,
       proof_quality: proofQualityCounts(
+        (templated.bp as { beat_plan?: unknown })?.beat_plan),
+      // ⚠️ THE SHOT THE CREATOR CANNOT SUPPLY. Twin stopped directing screen
+      // recordings; this counts how often the writer asks anyway. Zero is the
+      // expected reading and an absent counter would look identical to it, which
+      // is why it is written even when nothing is found.
+      screen_capture_directions: screenCaptureDirectionsInline(
         (templated.bp as { beat_plan?: unknown })?.beat_plan),
     }
     console.log(JSON.stringify({
@@ -5197,16 +5430,145 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // contract exists to stop — and it is not shipped as a fabrication either.
     // It becomes a visible question addressed to the creator, which is the third
     // of the three honest answers: research, reframe, or ASK.
+    // ⚠️ THIS LOOP IS WHERE THE PLACEHOLDER CAME FROM. It used to assign the
+    // refusal STRAIGHT INTO `b.line`, so "Only you can supply this. What would
+    // you actually say here?" reached a creator's teleprompter as dialogue — in
+    // three of six scenes of a real script.
+    //
+    // ⚖️ THE REFUSAL IS STILL RIGHT. Twin must not invent a creator's life, and
+    // nothing here changes that. What changes is WHERE the refusal goes: a
+    // question is a QUESTION, carried in its own field, and never a line anybody
+    // is asked to read aloud.
     for (const f of entFails) {
-      const b = Array.isArray(declared) ? (declared[f.index] as { line?: string; substance?: string } | undefined) : undefined
+      const b = Array.isArray(declared)
+        ? (declared[f.index] as { line?: string; substance?: string; ask?: string; line_scaffold?: string } | undefined)
+        : undefined
       if (!b) continue
       const q = f.ask ?? 'Only you can supply this. What would you actually say here?'
-      b.line = q
+      b.ask = q
+      // ⚖️ AND THE SPOKEN LINE IS WHATEVER SURVIVES WITHOUT THE PERSONAL FACT.
+      // When the writer gave a usable scaffold, the sentence around the slot is
+      // real writing and stands on its own. When it did not, there is NO line —
+      // and empty is honest, where the refusal was not. Both render sites in the
+      // client already guard on a non-empty spoken line, so nothing shows rather
+      // than dead text showing.
+      const kept = askIsUsable(q, b.line_scaffold) ? scaffoldWithoutAnswer(b.line_scaffold) : null
+      b.line = kept ?? ''
       b.substance = 'needs_user'
       if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
+      beatAsksEmitted += 1
+      if (kept !== null) beatAsksWithScaffold += 1
     }
     if (entFails.length) {
       console.warn(JSON.stringify({ event: 'entitlement_unrepaired', beats: entFails.length, questions: creatorQuestions }))
+    }
+
+    // ── THE BEATS THAT CAN ALWAYS BE WRITTEN, AND THEREFORE MUST BE ─────────
+    //
+    // ⚠️ THE LOOP DIRECTLY ABOVE IS WHERE THE PLACEHOLDER COMES FROM. It writes
+    // the refusal INTO `b.line`, which is correct for a beat that genuinely
+    // rests on the creator's own life — and wrong for the three sections that
+    // never do. In the audited script the FINAL beat, a direct ask to share,
+    // shipped as "Only you can supply this. What would you actually say here?"
+    // The one beat needing nothing personal was the one that starved.
+    //
+    // ⚖️ THIS TAKES NOTHING AWAY FROM `needs_user`. A Setup or a Re-hook asking
+    // for a real story is the system working, and is left exactly alone. A hook,
+    // a payoff or a CTA is craft: writable from the goal and the offer, both
+    // already on file. Marking those `needs_user` does not protect the creator
+    // from a fabrication, it hands them an unfinished script.
+    //
+    // ⚖️ AND THE REPLACEMENT IS DETERMINISTIC — no second model call, no bracket,
+    // and plain enough to read off a teleprompter unchanged.
+    try {
+      const asked = craftBeatsThatAsked(Array.isArray(declared) ? declared : [])
+      if (asked.length > 0) {
+        for (const v of asked) {
+          const b = (declared as Array<{ line?: string; substance?: string }>)[v.index]
+          if (!b) continue
+          // ⚠️ ONLY THE LINE THAT IS ACTUALLY DEAD IS REPLACED. If the writer
+          // marked the beat `needs_user` but still wrote real words, those words
+          // are the creator's script and this has no business touching them.
+          // ⚠️ `offer` DEFAULTS TO THE STRING 'unspecified', and splicing that
+          // in would produce "If you want unspecified, the link is in my bio."
+          // A sentinel is not an offer; it is the absence of one, and the
+          // fallback already has a line for that case.
+          if (readsAsPlaceholder(b.line)) {
+            b.line = fallbackCta(intent.goal, offer === 'unspecified' ? null : offer)
+          }
+          b.substance = 'general'
+        }
+        ctaFallbacks = asked.length
+        console.warn(JSON.stringify({
+          event: 'cta_fallback', beats: asked.length,
+          sections: asked.map((v) => v.section),
+        }))
+      }
+    } catch { /* never fail a generation on a craft-beat repair */ }
+
+    // ── EMPHASIS IS DIRECTION, NOT WORDS ────────────────────────────────────
+    //
+    // ⚠️ A REAL SCRIPT SHIPPED "YOU HAVE TIME" INSIDE THE SPOKEN LINE. Capitals
+    // are how a writer says "lean on this" — a stage direction wearing the
+    // costume of dialogue. The creator reads it as SHOUTING off a teleprompter,
+    // and the caps then travel into burned-in captions where they are permanent.
+    //
+    // ⚖️ ONE WRITER, TWO READERS, AND THE SECOND ONE IS THE POINT.
+    // `caption_packet.emphasis` asks "which words to emphasize" and has never
+    // had an upstream source — it has been guessed per generation. Now it has
+    // one, and it is the same list the teleprompter bolds.
+    //
+    // ⚖️ RUNS OF TWO OR MORE ONLY. One capitalised word is usually a name, a
+    // brand, or an acronym the allowlist has not heard of, and lowercasing
+    // "WHOOP" would put a mistake in the creator's mouth.
+    try {
+      const beats = Array.isArray(declared) ? declared as Array<Record<string, unknown>> : []
+      let runs = 0
+      for (const b of beats) {
+        if (!b || typeof b !== 'object') continue
+        const split = splitEmphasis(b.line)
+        if (split.runs === 0) continue
+        b.line = split.line
+        b.emphasis_words = [...split.emphasisWords]
+        runs += split.runs
+      }
+      capsRuns = runs
+      if (runs > 0) console.warn(JSON.stringify({ event: 'caps_emphasis_moved', runs }))
+    } catch { /* never fail a generation on an emphasis split */ }
+
+    // ── A SHOT CARD MUST SAY WHAT THE SHOT IS ───────────────────────────────
+    //
+    // ⚠️ MEASURED IN PRODUCTION: 98 of 223 shot-list rows -- 44% -- named the
+    // shot with its position, "1", "2", "3". The card renders `shot` as its
+    // heading, so the creator holding a phone against their shot list read a
+    // card called "2". The rows were never empty: every numbered one still
+    // carried a real `shot_type` and real `notes`. Only the name was a number.
+    //
+    // ⚖️ THIS COUNTS, IT DOES NOT REPAIR. `shotLabel` already derives a readable
+    // heading at render time from fields the row carries, so the creator is not
+    // waiting on this. What nothing could tell us is whether the WRITER stopped
+    // -- and a prompt line that changes nothing is this repo's most familiar
+    // result. The counter is what makes that falsifiable rather than assumed.
+    //
+    // ⚖️ AND `isBareOrdinal` IS THE COPIED READER, not a second regex written
+    // here. Two hand-written spellings of "is this just a number" is exactly the
+    // drift that puts the check and the render into quiet disagreement.
+    try {
+      const shots = (templated.bp as { shot_list?: unknown })?.shot_list
+      if (Array.isArray(shots) && shots.length > 0) {
+        let bare = 0
+        for (const row of shots) {
+          if (!row || typeof row !== 'object') continue
+          if (isBareOrdinal((row as { shot?: unknown }).shot)) bare += 1
+        }
+        shotsNumberedNotNamed = bare
+        if (bare > 0) {
+          console.warn(JSON.stringify({
+            event: 'shots_named_by_number', bare, of: shots.length,
+          }))
+        }
+      }
+    } catch { /* never fail a generation on a measurement */ }
 
     // ── THE REFERENCE'S OWN MEASUREMENTS MUST NOT BE SPOKEN BY THIS CREATOR ──
     //
@@ -5275,7 +5637,6 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       }
     } catch (err) {
       console.error('reference_claim_leak_failed', err instanceof Error ? err.message : err)
-    }
     }
 
     // ── AN UNFILLED TEMPLATE IS NOT A SCRIPT ────────────────────────────────
