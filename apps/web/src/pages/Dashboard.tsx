@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext'
 import { claimQualifier, getDashboardStats, getReferralCode, getBrandStats, listBrandVoices, listGenerations, listPosts, recordPostStats, validateClaim, resolveFinishedOutputsResult, type BrandStats, type DashboardStats, type FinishedOutput, type OutcomeClaim, type Post } from '../lib/api'
 import type { BrandVoice, Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
+import { TwinStrengthCard } from '../components/TwinStrengthCard'
 import { OutcomeHistory } from '../components/OutcomeHistory'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Counter } from '../components/Counter'
@@ -143,6 +144,14 @@ export default function Dashboard() {
           <p className="mt-4 max-w-md text-base text-stone">
             Everything you've shipped, and what to make next.
           </p>
+          {/* ⚠️ THE SILENT FAILURE, MADE VISIBLE. A creator whose catalogue is
+              captions gets a hollow twin and nothing tells them — they find out
+              by reading a disappointing script and concluding the product is bad
+              at its job. This says what the twin holds, in counts, and renders
+              nothing at all when it cannot say. */}
+          <div className="mt-6 max-w-md">
+            <TwinStrengthCard voiceId={brand?.id ?? null} />
+          </div>
           {/* The welcome name is the brand handle; show its platform so it's clear
               which brand voice is active. No email — that's not the creator identity. */}
           {brand?.platform && (

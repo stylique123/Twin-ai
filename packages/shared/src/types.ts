@@ -145,6 +145,11 @@ export interface Blueprint {
     original_b_roll_count: string
     suggested_b_roll_count: string
   }
+  /** THE FIRST SECOND (`opening_frame` + `why_it_interrupts`). `unknown` on
+   *  purpose: it is persisted jsonb, and 37 of 41 generations predate it —
+   *  read it through `readVisualHook`, which treats absent and half-present
+   *  alike as no visual hook rather than as an empty one. */
+  visual_hook?: unknown
   hook_options: string[]
   script: {
     section: string
