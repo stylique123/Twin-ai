@@ -157,6 +157,7 @@ export * from './script/silentBeat'
 // ENEMY, so the list is phrase-level and "hustle" is deliberately absent.
 export * from './script/clichePhrases'
 export * from './script/repetition'
+export * from './script/advisoryRead'
 
 // ⚖️ FIVE HOOKS THAT ARE REALLY ONE. Two production menus open with the same
 // three words five times over; three more do it three times. The opener is the
