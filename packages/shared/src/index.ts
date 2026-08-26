@@ -133,6 +133,9 @@ export * from './script/craftBeats'
 // ⚖️ THE METER READS THESE. Counts a creator can check, never a score.
 export * from './twinStrength'
 
+// ⚖️ SIGNATURE VOCABULARY, MEASURED. Voice Cause 3.
+export * from './signaturePhrases'
+
 // ⚖️ THE SHOT-CARD HEADING. 44% of production rows name their shot with a
 // bare ordinal; the card must not render one.
 export * from './script/shotLabel'

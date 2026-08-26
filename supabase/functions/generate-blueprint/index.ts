@@ -1168,6 +1168,67 @@ These are observations of this creator, not style advice. Write to them.
 ${lines.join('\n')}`
 }
 
+// ── SIGNATURE PHRASES (inlined from packages/shared/src/signaturePhrases.ts) ─
+//
+// ⚠️ VOICE CAUSE 3. "Use their signature vocabulary" (below, and in dna.ts)
+// has always been an instruction to guess — nothing counted which phrases a
+// creator actually repeats. This measures it: a 2–4 word phrase in at least
+// three DIFFERENT videos, not merely repeated within one long transcript.
+// Kept in parity with the shared copy by `signaturePhrases-parity.test.ts`.
+const SIG_STOPWORDS: ReadonlySet<string> = new Set([
+  'a', 'an', 'the', 'and', 'or', 'but', 'if', 'of', 'in', 'on', 'at', 'to',
+  'for', 'with', 'is', 'was', 'are', 'were', 'be', 'been', 'being', 'it',
+  'its', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'we',
+  'they', 'my', 'your', 'his', 'her', 'our', 'their', 'as', 'so', 'not',
+  'do', 'does', 'did', 'have', 'has', 'had', 'just', 'from', 'by', 'up',
+  'out', 'about', 'into', 'over', 'then', 'than', 'when', 'what', 'which',
+  'who', 'how', 'why', 'here', 'there', 'all', 'can', 'will', 'would',
+  'could', 'should', 'im', 'get', 'got', 'like',
+])
+const SIG_MAX_PHRASES = 10
+const SIG_MIN_VIDEOS = 3
+const SIG_NGRAM_SIZES = [2, 3, 4] as const
+
+interface SignaturePhraseInline { phrase: string; videos: number }
+
+function sigTokenize(text: string): string[] {
+  return String(text ?? '').toLowerCase().replace(/[’']/g, "'").split(/[^a-z0-9']+/).filter(Boolean)
+}
+function sigBoundaryClean(words: string[]): boolean {
+  return !SIG_STOPWORDS.has(words[0]) && !SIG_STOPWORDS.has(words[words.length - 1])
+}
+function extractSignaturePhrasesInline(videos: readonly { id: string; text: string }[]): SignaturePhraseInline[] {
+  const byVideoId = new Map<string, Set<string>>()
+  for (const v of videos ?? []) {
+    const id = String(v?.id ?? '')
+    const words = sigTokenize(v?.text ?? '')
+    if (!id || !words.length) continue
+    if (!byVideoId.has(id)) byVideoId.set(id, new Set())
+    const seenInThisVideo = byVideoId.get(id)!
+    for (const n of SIG_NGRAM_SIZES) {
+      for (let i = 0; i + n <= words.length; i++) {
+        const slice = words.slice(i, i + n)
+        if (!sigBoundaryClean(slice)) continue
+        seenInThisVideo.add(slice.join(' '))
+      }
+    }
+  }
+  const phraseVideoCount = new Map<string, number>()
+  for (const phrases of byVideoId.values()) {
+    for (const phrase of phrases) phraseVideoCount.set(phrase, (phraseVideoCount.get(phrase) ?? 0) + 1)
+  }
+  return [...phraseVideoCount.entries()]
+    .filter(([, videoCount]) => videoCount >= SIG_MIN_VIDEOS)
+    .sort(([a, ac], [b, bc]) => bc - ac || b.split(' ').length - a.split(' ').length || a.localeCompare(b))
+    .slice(0, SIG_MAX_PHRASES)
+    .map(([phrase, videos]) => ({ phrase, videos }))
+}
+function renderSignaturePhrasesInline(phrases: readonly SignaturePhraseInline[]): string {
+  if (!phrases.length) return ''
+  const list = phrases.map((p) => `"${p.phrase}" (in ${p.videos} of their videos)`).join(', ')
+  return `Phrases they actually repeat across their own videos, measured, not guessed: ${list}.`
+}
+
 const SUBSTANCE_ENUM = /^(?:creator_knowledge|creator_experience|creator_opinion|product_dna|general|needs_user)$/i
 const NAMES_A_SOURCE = /^(?:the\s+)?(?:creator'\s?s?\b|creators'\b|creator\s+(?:experience|knowledge|expertise|opinion)\b|general (?:knowledge|observation)\b|product_dna\b|reference structure\b|specific knowledge\b)/i
 
@@ -3874,10 +3935,11 @@ Deno.serve(async (req: Request) => {
       historyBlock = ''
     }
     let styleRules = ''
+    let signaturePhrasesLine = ''
     try {
       const { data: ownSpeech } = await admin
         .from('transcripts')
-        .select('text')
+        .select('id, text')
         .eq('owner_id', ownerId)
         .eq('subject', 'own')
         .order('created_at', { ascending: false })
@@ -3895,12 +3957,19 @@ Deno.serve(async (req: Request) => {
       const askedSpeech = (askedRows ?? [])
         .filter((r) => String(r?.source ?? '') === 'asked')
         .map((r) => String(r?.text ?? ''))
+      // ⚠️ VOICE CAUSE 3 — MEASURED, NOT ASSERTED. Computed from the same
+      // `ownSpeech` rows the style card reads, before they are flattened to
+      // bare strings below (this needs the `id` per row; the style card never
+      // did). A failed read degrades this the same way it degrades styleRules.
+      signaturePhrasesLine = renderSignaturePhrasesInline(
+        extractSignaturePhrasesInline((ownSpeech ?? []).map((r) => ({ id: String(r?.id ?? ''), text: String(r?.text ?? '') }))))
       styleRules = renderStyleRulesInline(
         compileStyleInline([...(ownSpeech ?? []).map((r) => String(r?.text ?? '')), ...askedSpeech]))
     } catch {
       // A failed read makes the script thinner, never wronger — the same
       // treatment the knowledge read gets, for the same reason.
       styleRules = ''
+      signaturePhrasesLine = ''
     }
     // WRITE-TIME ENRICHMENT. Even a thin scan must still write IN-VOICE, so we
     // never feed the model "(none captured)" for the fields that decide whether a
@@ -4541,7 +4610,8 @@ Deno.serve(async (req: Request) => {
 - Don't: ${(vp.donts ?? []).join('; ')}
 - Voice summary: ${vp.summary ?? ''}` : ''}${voiceSamples ? `
 - HOW THEY ACTUALLY WRITE (verbatim samples — match this EXACT cadence, diction, sentence length and rhythm; weight this above every other signal, it is the most reliable evidence of their true voice): ${voiceSamples}` : ''}${styleRules ? `
-${styleRules}` : ''}
+${styleRules}` : ''}${signaturePhrasesLine ? `
+- ${signaturePhrasesLine}` : ''}
 - Platforms (publish_plan MUST use ONLY these, one entry each): ${platforms.join(', ')}${paletteHex ? `
 - Brand colors (the creator's real palette, hex): ${paletteHex}. Weave these into the BACKGROUND, props and wardrobe of each beat's setup so the shoot looks on-brand (e.g. a backdrop, object, or outfit in these colors). Do NOT name hex codes in the script the creator speaks.` : ''}`
 
