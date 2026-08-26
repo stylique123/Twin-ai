@@ -39,6 +39,21 @@
 // it asks a question that has an easy answer -- but it means a registry entry
 // saying "read via select('*') in X" is a legitimate resolution, not a dodge.
 //
+// ⚠️ A WRITER COUNTS AS A READER, AND THAT IS THE BIGGEST HOLE. The instrument
+// asks whether the column NAME appears in code, not what the code does with it.
+// So a column that one file writes and nothing ever reads passes, because the
+// writing line names it. MEASURED: `generations.script_report` is written at
+// generate-blueprint/index.ts:5954 and read by nothing at all -- not by the web
+// app, not by the worker -- and this guard reports it as fine.
+//
+// That is the exact case the guard exists to catch, so it is worth being blunt
+// about: a green run here means "every column is MENTIONED somewhere", not
+// "every column is CONSUMED somewhere". Closing it properly needs the writer
+// and reader sides told apart (an insert/update payload key versus a select
+// list or a property read), which is a real parser rather than a grep. Until
+// then this catches the columns nothing mentions at all, which is a strictly
+// smaller class than the one the title claims.
+//
 // ⚠️ IT PROVES NOTHING ABOUT VALUES. A column with a reader may still be
 // written null forever. That is `check_counter_durability`'s territory and the
 // mutation tests', not this one's.
