@@ -74,3 +74,41 @@ describe('it is mounted where a creator actually is', () => {
     expect(RESULT).toMatch(/<CreatorQuestionCard \/>/)
   })
 })
+
+// ── A QUESTION SHOWN IS NOT A QUESTION REFUSED ───────────────────────────────
+//
+// ⚠️ MEASURED 2026-08-26: creator_questions_put held 0 rows against 22 creators
+// who had generated 41 scripts. 0128 writes on answer or skip only, so that zero
+// is equally consistent with "the card never rendered" and with "every creator
+// saw it and scrolled past". Nothing could tell them apart, and every fix for the
+// first would have been a guess.
+describe('an impression is recorded, and it never retires the question', () => {
+  const MIG_175 = readFileSync(
+    join(HERE, '..', '..', '..', '..',
+      'supabase/migrations/0175_a_question_shown_is_not_a_question_refused.sql'), 'utf8')
+
+  it('the schema accepts the third outcome 0128 left room for', () => {
+    expect(MIG_175).toMatch(/check \(outcome in \('answered', 'skipped', 'shown'\)\)/)
+  })
+
+  it('the card records the impression only once a question exists', () => {
+    expect(CARD).toMatch(/if \(q\) void markQuestionShown\(q\.id\)/)
+    // ⚠️ NOT ON MOUNT. Every Result page mounts this card, including the ones
+    // with nothing to ask; recording there would count impressions that never
+    // happened and flatter the denominator.
+    expect(CARD).not.toMatch(/markQuestionShown\(\)/)
+  })
+
+  // ⚠️ THE ONE THAT WOULD SILENTLY KILL THE FEATURE. `nextQuestion` retires every
+  // id handed to it, so a 'shown' row reaching the reader would retire the
+  // question the instant it was displayed — each creator asked exactly one
+  // question, once, forever, and no error anywhere.
+  it('the reader excludes shown, so a displayed question comes back', () => {
+    expect(LIB).toMatch(/\.in\('outcome', \['answered', 'skipped'\]\)/)
+  })
+
+  it('the impression cannot cost the creator the question', () => {
+    // Best-effort by construction: swallowed, returns void.
+    expect(LIB).toMatch(/export async function markQuestionShown[\s\S]*?catch \{/)
+  })
+})
