@@ -9,6 +9,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { cors, json, normalizeHandle, startApifyRun, type Platform } from '../_shared/dna.ts'
+import { monthlyScanCeiling, scanAllowance } from '../_shared/scanCeiling.ts'
 
 const PLATFORMS: Platform[] = ['tiktok', 'instagram', 'youtube', 'other']
 
@@ -87,6 +88,65 @@ Deno.serve(async (req: Request) => {
         { error: "You've started several voice scans recently — give it a few minutes." },
         429,
       )
+    }
+
+    // ── AND A CEILING FOR THE MONTH, NOT ONLY A LIMIT FOR THE HOUR ──────────
+    //
+    // ⚠️ THE HOURLY LIMIT ABOVE LEAVES ~5,760 SCANS A MONTH OPEN. Eight an hour,
+    // every hour, each one able to spend Apify and Gemini budget, and nothing
+    // counts the total. `rate_events` cannot answer it: `check_rate_limit`
+    // deletes every row older than its window, so the table holds zero rows in
+    // production by design. The ledger below is the durable half.
+    //
+    // ⚖️ THE ORDER IS READ, DECIDE, THEN WRITE. Writing first would charge a
+    // creator for a scan that the ceiling then refuses.
+    const monthStart = new Date()
+    monthStart.setUTCDate(1)
+    monthStart.setUTCHours(0, 0, 0, 0)
+    const { count: usedRaw, error: countErr } = await admin
+      .from('scan_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('billable', true)
+      .gte('created_at', monthStart.toISOString())
+
+    // ⚠️ A COUNT WE COULD NOT READ IS NOT ZERO. Treating a failed read as "0 used"
+    // would turn every database hiccup into an unlimited budget; treating it as
+    // "over the ceiling" would lock out paying creators over a transient. So the
+    // scan proceeds and the event is still recorded — the ledger stays honest and
+    // the next request, which can read, enforces. Absent is neither zero nor a
+    // refusal.
+    if (!countErr && typeof usedRaw === 'number') {
+      // ⚖️ READ HERE RATHER THAN REUSED FROM BELOW. The plan read further down
+      // selects only `plan` and runs after this gate; widening it and moving it
+      // up would couple the brand-voice cap to the spend ceiling, and a future
+      // edit to either would silently change the other.
+      const { data: ent } = await admin
+        .from('profiles').select('entitlements').eq('id', user.id).maybeSingle()
+      const ceiling = monthlyScanCeiling(
+        (ent?.entitlements ?? null) as Record<string, unknown> | null,
+      )
+      const verdict = scanAllowance(usedRaw, ceiling)
+      if (!verdict.allowed) {
+        console.warn(JSON.stringify({
+          event: 'scan_ceiling_reached',
+          user_id: user.id, used: verdict.used, ceiling: verdict.ceiling,
+        }))
+        return json({ error: verdict.message }, 429)
+      }
+    }
+
+    // ⚖️ RECORDED EVEN WHEN THE COUNT COULD NOT BE READ, and never allowed to
+    // fail the scan. A creator must not lose a voice build because our ledger
+    // insert had a bad moment — but the row is what makes next month's count
+    // true, so it is attempted every time.
+    const { error: ledgerErr } = await admin.from('scan_events').insert({
+      user_id: user.id, handle, platform, billable: true,
+    })
+    if (ledgerErr) {
+      console.warn(JSON.stringify({
+        event: 'scan_event_not_recorded', user_id: user.id, reason: ledgerErr.message,
+      }))
     }
   }
 

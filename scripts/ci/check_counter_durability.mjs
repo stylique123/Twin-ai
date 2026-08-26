@@ -226,6 +226,27 @@ const EVENTS = {
       + 'that is the familiar inert-instruction result and the check carries it alone. '
       + 'Stored by 0131, null when the split did not run.',
   },
+  scan_ceiling_reached: {
+    kind: 'incident',
+    stored: 'scan_events (the ledger the ceiling counts)',
+    why: 'An account hit its monthly voice-scan ceiling and a scan was refused. '
+      + 'AN INCIDENT RATHER THAN A COUNTER: each one is a creator who was told no, '
+      + 'and the durable record is the ledger itself -- scan_events holds every '
+      + 'billable scan append-only, so "how many did they run and when" is '
+      + 'answerable months later without this log line. The line exists so the '
+      + 'refusal is greppable in the moment; the evidence is in the table.',
+  },
+  scan_event_not_recorded: {
+    kind: 'incident',
+    stored: 'not persisted -- deliberately',
+    why: 'The ledger insert failed and the scan proceeded anyway. NOT PERSISTED '
+      + 'ON PURPOSE: the only durable home for it would be the very table that '
+      + 'just refused a write, so a row here would be the least trustworthy row '
+      + 'in the system. It is an incident to page on, not a rate to track. Its '
+      + 'consequence is visible instead as an undercount in scan_events, which is '
+      + 'the honest direction to fail -- a creator is never charged for a scan we '
+      + 'could not record.',
+  },
   shots_named_by_number: {
     kind: 'counter',
     stored: 'generations.beat_audit',
