@@ -28,6 +28,8 @@ import {
 import { claimStrength, type ClaimStrength } from '../_shared/claimStrength.ts'
 import { projectBrandTruth, validateBrandTruthSnapshot } from '../_shared/brandTruth.ts'
 import { businessFactLines, businessFactProvenanceCounts } from '../_shared/brandTruthPrompt.ts'
+import { lexicalFloor } from '../_shared/repetition.ts'
+import { shouldAsk, readVerdict } from '../_shared/advisoryRead.ts'
 import {
   productSceneGuidance, productSceneDirection,
   type EntityType, type Showability,
@@ -2704,6 +2706,29 @@ function attemptRecorder(
     },
   }
 }
+
+// The advisory read's response shape. ⚠️ SMALL ON PURPOSE: every field it can
+// return is a field `readVerdict` has to defend against, so the schema asks for
+// exactly what the note needs and nothing a creator would never see.
+const ADVISORY_SCHEMA = {
+  type: 'object',
+  properties: {
+    findings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: ['repetition', 'generic_phrasing'] },
+          beat: { type: 'integer' },
+          echoes: { type: 'integer' },
+          what: { type: 'string' },
+        },
+        required: ['kind', 'beat', 'what'],
+      },
+    },
+  },
+  required: ['findings'],
+} as const
 
 async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder): Promise<string> {
   // The default MUST be a model that reliably returns a FULL blueprint inside the
@@ -5833,6 +5858,83 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // the placeholder drop both change spoken lines, so a reading taken before
     // them describes a script no creator ever sees.
     const speech = speechAudit(blueprint)
+
+    // ── ONE ADVISORY READ, AFTER THE SCRIPT IS ALREADY SAFE ──────────────────
+    //
+    // ⚠️ EVERYTHING BELOW RUNS AFTER THE RESCUE POINT AND CANNOT COST THE
+    // CREATOR THEIR SCRIPT. `rescue` was captured hundreds of lines above; a
+    // throw here lands in the rescue path and still saves the generation. The
+    // try/catch is belt and braces on top of that, because an advisory note is
+    // never worth a failed run.
+    //
+    // ⚖️ OFF BY DEFAULT, AND DELIBERATELY. This adds a model call to EVERY paid
+    // generation, and `shouldAsk` clears on most scripts (production mean is 6.3
+    // beats against a threshold of 4), so it is a cost gate in shape only. A new
+    // recurring per-generation cost gets an explicit switch, the same way
+    // EDITOR_V2_START_ENABLED does, rather than arriving with a merge.
+    if ((Deno.env.get('SCRIPT_ADVISORY_ENABLED') ?? '') === 'true') {
+      try {
+        const advBeats = Array.isArray((blueprint as { script?: unknown })?.script)
+          ? ((blueprint as { script: Array<Record<string, unknown>> }).script)
+          : []
+        const floor = lexicalFloor(advBeats)
+        if (shouldAsk(floor)) {
+          const numbered = advBeats
+            .map((b, i) => `${i}: ${typeof b?.line === 'string' ? b.line : ''}`).join('\n')
+          // ⚠️ THE EXEMPT BEATS ARE NAMED IN THE ASK, NOT FILTERED OUT OF IT. The
+          // model needs to SEE the re-hook to judge whether another beat echoes
+          // it; it just may not report the re-hook itself as the offender.
+          const exemptList = floor.exemptBeats.length
+            ? `Beats ${floor.exemptBeats.join(', ')} restate earlier beats ON PURPOSE — a re-hook `
+              + 'holds attention and a call to action repeats the ask. Never report them as a '
+              + 'problem. You may still say another beat echoes one of them.'
+            : 'No beat in this script restates by design.'
+          const raw = await callModel(
+            apiKey,
+            'You are reading one short-form video script for a creator who wrote it. '
+            + 'Report only two things: a beat that says what an earlier beat already said, '
+            + 'and a beat phrased so generically that anyone could have said it. '
+            + 'Report nothing else. If the script is fine, return an empty list — '
+            + 'a script with no problems is the normal case.',
+            `${exemptList}\n\nSCRIPT:\n${numbered}`,
+            ADVISORY_SCHEMA,
+          )
+          const verdict = readVerdict(JSON.parse(raw), advBeats.length, floor.exemptBeats)
+          // ⚖️ THE FLOOR TRAVELS WITH THE VERDICT so a later reader can check one
+          // against the other. A model reporting five findings on a script whose
+          // lexical overlap is zero is a claim about meaning; the same five on a
+          // script full of exact repeats is a claim anyone could have made.
+          ;(blueprint as Record<string, unknown>).advisory = {
+            findings: verdict.findings,
+            quiet: verdict.quiet,
+            floor: {
+              exact_pairs: floor.pairs.filter((p) => p.exact).length,
+              strongest_overlap_milli: floor.pairs[0]?.overlapMilli ?? 0,
+              compared_beats: floor.comparedBeats,
+              exempt_beats: floor.exemptBeats.length,
+            },
+          }
+          console.log(JSON.stringify({
+            event: 'script_advisory_read',
+            findings: verdict.findings.length,
+            quiet: verdict.quiet,
+            exact_pairs: floor.pairs.filter((p) => p.exact).length,
+            strongest_overlap_milli: floor.pairs[0]?.overlapMilli ?? 0,
+          }))
+        } else {
+          console.log(JSON.stringify({
+            event: 'script_advisory_read', findings: 0, quiet: 'not_asked_too_short',
+            exact_pairs: 0, strongest_overlap_milli: 0,
+          }))
+        }
+      } catch (err) {
+        // ⚠️ NON-FATAL, ALWAYS. The script is already built and paid for.
+        console.warn(JSON.stringify({
+          event: 'script_advisory_skipped',
+          reason: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200),
+        }))
+      }
+    }
 
     // ── THE SCRIPT REPORT: SEVEN CHECKS RUN, TWO THAT CANNOT ─────────────────
     //

@@ -31,7 +31,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn } from '@twinai/shared'
+import { shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -1085,7 +1085,7 @@ export default function Result() {
                 blueprint={b}
                 selectedHook={chosenHook}
                 hasTake={serverSourceAssetId != null}
-                fallback={<BlueprintScriptCards script={updatedScript} beatPlan={b.beat_plan} />}
+                fallback={<BlueprintScriptCards script={updatedScript} beatPlan={b.beat_plan} advisoryFindings={readAdvisoryFindings(b)} />}
               />
               {/* See the other call site: the script owns the list, so the
                   editor that changes it stays above this. */}
@@ -1442,7 +1442,7 @@ export default function Result() {
                   blueprint={b}
                   selectedHook={chosenHook}
                   hasTake={serverSourceAssetId != null}
-                  fallback={<BlueprintScriptCards script={updatedScript} beatPlan={b.beat_plan} />}
+                  fallback={<BlueprintScriptCards script={updatedScript} beatPlan={b.beat_plan} advisoryFindings={readAdvisoryFindings(b)} />}
                 />
                 {/* BELOW the editor on purpose: the slots come FROM the script,
                     so the thing that changes them sits above the thing that
@@ -1846,8 +1846,25 @@ function PublishRow({
 // teleprompter's scene i are different lines. Editing here would edit something
 // nobody records — so this shows what the model wrote and offers no edit, and
 // `ScriptEditor` owns the version that can be changed.
+/**
+ * The advisory findings stored on a blueprint, or none.
+ *
+ * ⚠️ READ, NOT CAST. `b.advisory` arrives from the database as JSON that a model
+ * produced and an edge function stored; a cast would make TypeScript agree it is
+ * the right shape without anything having checked. `readVerdict` already did the
+ * checking server-side, so this only confirms the array survived the round trip.
+ */
+function readAdvisoryFindings(bp: unknown): readonly AdvisoryFinding[] {
+  const f = (bp as { advisory?: { findings?: unknown } })?.advisory?.findings
+  if (!Array.isArray(f)) return []
+  return f.filter((x): x is AdvisoryFinding =>
+    !!x && typeof (x as AdvisoryFinding).beat === 'number'
+    && typeof (x as AdvisoryFinding).what === 'string')
+}
+
 function BlueprintScriptCards(
-  { script, beatPlan }: { script: Blueprint['script']; beatPlan?: unknown },
+  { script, beatPlan, advisoryFindings = [] }:
+  { script: Blueprint['script']; beatPlan?: unknown; advisoryFindings?: readonly AdvisoryFinding[] },
 ) {
   return (
     <div className="space-y-6">
@@ -1902,6 +1919,16 @@ function BlueprintScriptCards(
                 SILENT BEAT: there are no spoken words there to swap. */}
             {!isSilentBeat(s.line) && stockPhraseNote(stockPhrasesIn(s.line)) && (
               <p className="text-xs text-amber/90">{stockPhraseNote(stockPhrasesIn(s.line))}</p>
+            )}
+            {/* ⚖️ THE SAME VOICE, ONE STEP FURTHER OUT. `stockPhraseNote` above is
+                computed from this line alone; this one comes from a model that read
+                the WHOLE script, so it is the only note that can say a beat echoes
+                an earlier one. Also a note and never a verdict: no grade, no count,
+                and the decision stays the creator's.
+                ⚠️ NEVER ON A SILENT BEAT, for the same reason as the note above —
+                there are no spoken words there to double. */}
+            {!isSilentBeat(s.line) && advisoryNote(advisoryFindings, i) && (
+              <p className="text-xs text-amber/90">{advisoryNote(advisoryFindings, i)}</p>
             )}
             {s.ask && s.ask.trim() !== '' && (
               <div className="rounded-2xl border border-amber/25 bg-amber/[0.06] p-4">
