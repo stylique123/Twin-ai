@@ -26,6 +26,8 @@ import {
   SUBSTANCE_SOURCES, type SubstanceItem,
 } from '../_shared/knowledgeResolver.ts'
 import { claimStrength, type ClaimStrength } from '../_shared/claimStrength.ts'
+import { projectBrandTruth, validateBrandTruthSnapshot } from '../_shared/brandTruth.ts'
+import { businessFactLines, businessFactProvenanceCounts } from '../_shared/brandTruthPrompt.ts'
 import {
   productSceneGuidance, productSceneDirection,
   type EntityType, type Showability,
@@ -3696,6 +3698,47 @@ Deno.serve(async (req: Request) => {
     const offer = brief.offer ?? vp?.offer ?? dna.product ?? 'unspecified'
     const pain = vp?.audience_pain ?? dna.pain ?? ''
     const dream = vp?.dream_outcome ?? dna.dream ?? ''
+
+    // ⚠️ THE FOUR CHAINS ABOVE COLLAPSE A GUESS AND A STATED FACT INTO ONE
+    // STRING, and the writer cannot tell them apart. Measured on production
+    // 2026-08-26 (41 profiles, 40 voices): `brief.offer` was set for 0 of 40,
+    // and `pain` and `dream` have no brief fallback at all -- they were a model
+    // guess for 34 of 34 voices that had them. So EVERY script this system has
+    // produced described its creator's audience pain and dream outcome from an
+    // inference, rendered in the same flat voice as a fact they typed.
+    //
+    // ⚖️ THE CHAINS STAY; THE PROVENANCE IS ADDED BESIDE THEM. Deleting a
+    // guessed audience would trade a labelled inference for an empty field --
+    // strictly less to write from, for the 22 of 40 creators who have only the
+    // guess. §10.2 is the rule: an inferred business fact may inform a bounded
+    // creative choice and may never become an authoritative claim.
+    //
+    // Projected from sources already in hand -- no extra DB read, no round
+    // trip. A projection failure must never cost a paid generation, so it
+    // degrades to the unlabelled block rather than throwing.
+    let factProvenance = new Map<string, string>()
+    let factCounts = { stated: 0, guessed: 0, total: 0 }
+    try {
+      const snapshot = validateBrandTruthSnapshot(projectBrandTruth({
+        ownerId: user.id,
+        brandVoiceId: voice?.id ?? null,
+        selfReported: dna as Record<string, unknown>,
+        synthesized: (vp ?? null) as Record<string, unknown> | null,
+        brandKit: (voice?.brand_kit ?? null) as Parameters<typeof projectBrandTruth>[0]['brandKit'],
+      }))
+      const lines = businessFactLines(snapshot)
+      factProvenance = new Map(lines.map((l) => [l.field, l.suffix]))
+      factCounts = businessFactProvenanceCounts(lines)
+    } catch (err) {
+      console.warn(JSON.stringify({ event: 'brand_truth_projection_skipped',
+        reason: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200) }))
+    }
+    // ⚠️ '' WHEN THE FIELD IS ABSENT, NOT A GUESS MARKER. An unlabelled line is
+    // the old behaviour; labelling an absent field "guessed" would be inventing
+    // a provenance for a value that has none.
+    const prov = (field: string) => factProvenance.get(field) ?? ''
+    console.log(JSON.stringify({ event: 'business_fact_provenance',
+      stated: factCounts.stated, guessed: factCounts.guessed, total: factCounts.total }))
     // WHAT THE CREATOR WANTS THESE VIDEOS TO DO.
     //
     // This line used to read `vp?.goal ?? dna.goal ?? 'turn attention into
@@ -4438,10 +4481,10 @@ Deno.serve(async (req: Request) => {
     const creatorDna = `CREATOR DNA${vp ? ` (learned from @${voice!.handle} on ${voice!.platform})` : ''}
 - Niche: ${niche}${subNiche ? `
 - Specific angle (what their audience searches for): ${subNiche}` : ''}
-- Audience: ${audienceResolved}${audienceLevelLine}
-- Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
-- Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}
+- Audience: ${audienceResolved}${prov('audience')}${audienceLevelLine}
+- Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
+- Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
+- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `

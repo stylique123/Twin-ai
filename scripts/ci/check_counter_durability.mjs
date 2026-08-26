@@ -247,6 +247,32 @@ const EVENTS = {
       + 'the honest direction to fail -- a creator is never charged for a scan we '
       + 'could not record.',
   },
+  business_fact_provenance: {
+    kind: 'counter_ephemeral',
+    why: 'How many of the CREATOR DNA business facts on this run were stated by the '
+      + 'creator versus guessed by synthesis, as a stated/guessed/total triple. '
+      + 'MEASURED on production 2026-08-26 (41 profiles, 40 voices) before the '
+      + 'labelling existed: brief.offer set for 0 of 40, and audience_pain and '
+      + 'dream_outcome guessed for 34 of 34 voices that carried them -- so every '
+      + 'script described its creator\'s audience from an inference rendered as '
+      + 'fact. NOT PERSISTED because it is derivable at any time from brand_voices '
+      + 'and profiles, which is where the one-off measurement came from; a column '
+      + 'would duplicate a query, not preserve a fact that is otherwise lost. It is '
+      + 'logged so the ratio becomes a series in the edge logs rather than a number '
+      + 'somebody ran by hand once. Revisit if the ratio ever needs to be joined to '
+      + 'a specific generation.',
+  },
+  brand_truth_projection_skipped: {
+    kind: 'incident',
+    why: 'The brand-truth projection threw and the CREATOR DNA block rendered '
+      + 'unlabelled -- the pre-existing behaviour, not a degraded script. Not '
+      + 'persisted because it must never cost a paid generation and an ops_events '
+      + 'insert on this path is one more thing that can fail while a creator is '
+      + 'waiting. If it ever fires at volume the labelling is silently absent, which '
+      + 'is exactly what the four per-field assertions in brandTruthPrompt.test.ts '
+      + 'would NOT catch: they check the code renders the marker, not that the '
+      + 'projection succeeded at runtime.',
+  },
   shots_named_by_number: {
     kind: 'counter',
     stored: 'generations.beat_audit',

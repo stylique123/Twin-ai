@@ -97,8 +97,18 @@ describe('the blueprint brief tells the model whose product it is', () => {
   const fn = readFileSync(
     resolve(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
 
+  // ⚠️ SAME LINE AND IN ORDER, NOT LITERALLY ADJACENT. This asserted the exact
+  // string `${offer}${promotesLine}`, which is stricter than the thing it is
+  // for: it broke when a provenance marker was inserted between them, even
+  // though `promotesLine` still renders on the CTA instruction exactly as
+  // intended. Pinning adjacency makes every future addition to this one line a
+  // false failure. Order and co-location are what the test actually means.
   it('appends the line to the CTA instruction', () => {
-    expect(fn).toContain('- Product or offer the CTA should point at: ${offer}${promotesLine}')
+    const line = fn.split('\n').find((l) => l.includes('- Product or offer the CTA should point at:'))
+    expect(line).toBeDefined()
+    expect(line).toContain('${offer}')
+    expect(line).toContain('${promotesLine}')
+    expect(line!.indexOf('${offer}')).toBeLessThan(line!.indexOf('${promotesLine}'))
   })
 
   it('branches on all four answers', () => {
