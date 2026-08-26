@@ -16,7 +16,7 @@
 // declined, which is precisely how an optional prompt earns being ignored.
 import { useEffect, useState } from 'react'
 import { nextQuestion, askedProgress, ANSWER_MAX, type CreatorQuestion } from '@twinai/shared'
-import { loadQuestionsPut, answerQuestion, skipQuestion } from '../lib/creatorAnswers'
+import { loadQuestionsPut, answerQuestion, skipQuestion, markQuestionShown } from '../lib/creatorAnswers'
 import { cn } from '../lib/cn'
 
 const REFUSAL: Record<string, string> = {
@@ -39,9 +39,17 @@ export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | nul
     void (async () => {
       const put = await loadQuestionsPut()
       if (!live || put === null) return // not-knowing: ask nothing
-      setQuestion(nextQuestion(put))
+      const q = nextQuestion(put)
+      setQuestion(q)
       const p = askedProgress(put)
       setProgress({ put: p.put, of: p.of })
+      // ⚠️ RECORDED HERE BECAUSE HERE IS WHERE IT IS TRUE. The impression is
+      // written only once a question actually exists to render -- not on mount,
+      // which happens on every Result page including the ones that show nothing.
+      // Without it "nobody answers" and "nobody was asked" are the same zero,
+      // and every fix for the first would be a guess. Best-effort: a failed
+      // impression must never cost the creator the question.
+      if (q) void markQuestionShown(q.id)
     })()
     return () => { live = false }
   }, [])

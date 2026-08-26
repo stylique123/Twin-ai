@@ -14,6 +14,25 @@
 import { supabase } from './supabase'
 import { answerToKnowledge, type CreatorQuestion } from '@twinai/shared'
 
+/**
+ * Record that a question was DISPLAYED.
+ *
+ * ⚠️ THE MEASUREMENT THAT DID NOT EXIST. Until this, "nobody answers" and
+ * "nobody was asked" were the same zero: 0128 wrote a row on answer or skip
+ * only, so a creator who scrolled past the card left no trace. Production on
+ * 2026-08-26 held 0 rows against 22 creators who had generated 41 scripts, and
+ * that number was equally consistent with the card never rendering and with
+ * every creator ignoring it.
+ *
+ * ⚖️ BEST-EFFORT AND SILENT. An impression that fails to record must never cost
+ * the creator the question itself, so this returns nothing and throws nothing.
+ * Its absence understates the denominator, which is the honest direction to
+ * fail: it can only make the answer rate look BETTER than it is, never worse.
+ */
+export async function markQuestionShown(questionId: string): Promise<void> {
+  try { await markPut(questionId, 'shown') } catch { /* an unrecorded impression is not the creator's problem */ }
+}
+
 /** Every question already put to this creator — answered OR skipped.
  *
  *  ⚠️ RETURNS null, NOT [], WHEN IT CANNOT READ. An empty array means "nothing
@@ -25,10 +44,16 @@ export async function loadQuestionsPut(): Promise<string[] | null> {
     const { data: auth } = await supabase.auth.getUser()
     const ownerId = auth?.user?.id
     if (!ownerId) return null
+    // ⚠️ 'shown' IS EXCLUDED, AND THE FEATURE DIES WITHOUT THIS FILTER.
+    // `nextQuestion` retires every id in the list it is handed, so a 'shown' row
+    // reaching it would retire the question the moment it was displayed -- each
+    // creator would be asked exactly one question, once, forever. 'shown' means
+    // seen and not acted on, which is precisely the state that SHOULD come back.
     const { data, error } = await supabase
       .from('creator_questions_put')
       .select('question_id')
       .eq('owner_id', ownerId)
+      .in('outcome', ['answered', 'skipped'])
     if (error) {
       // A table that does not exist yet (0128 unapplied) is not-knowing, not empty.
       console.warn('questions-put not read', error.message)
@@ -100,7 +125,7 @@ export async function answerQuestion(
  *  never-ask-twice rule cannot be lost to a race — which means a creator who
  *  skipped a question and later answers it would collide. That transition is
  *  legitimate and is the one thing allowed to change about a row. */
-async function markPut(questionId: string, outcome: 'answered' | 'skipped'): Promise<boolean> {
+async function markPut(questionId: string, outcome: 'answered' | 'skipped' | 'shown'): Promise<boolean> {
   try {
     const { data: auth } = await supabase.auth.getUser()
     const ownerId = auth?.user?.id
