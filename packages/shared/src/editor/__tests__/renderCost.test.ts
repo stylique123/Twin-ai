@@ -115,3 +115,53 @@ describe('no total is produced while the biggest cost is unrecorded', () => {
     }
   })
 })
+
+// ── COMPUTE IS MEASURED NOW, AND EGRESS IS STILL NOT ─────────────────────────
+//
+// The module used to assert all three costs were unrecordable. `render_measured`
+// (worker/src/jobs/editorV2.ts) has been writing render_ms and output_bytes for
+// some time, so that assertion had gone stale and made this under-report.
+describe('render_measured moves compute out of the gap, and nothing else', () => {
+  const base = { projectId: 'p1', events: [], directorCall: null }
+
+  it('a render with render_ms reports it and drops compute_seconds', () => {
+    const c = renderCost({ ...base, renderMeasured: { render_ms: 41000, output_bytes: 9_400_000 } })
+    expect(c.computeMs).toBe(41000)
+    expect(c.outputBytes).toBe(9_400_000)
+    expect(c.unmeasured).not.toContain('compute_seconds')
+  })
+
+  // ⚠️ THE ONE THAT MUST NEVER FLIP. Knowing two of three terms is not knowing
+  // the total, and the missing term is the one that varies with popularity.
+  it('egress stays unmeasured even with compute and bytes in hand', () => {
+    const c = renderCost({ ...base, renderMeasured: { render_ms: 41000, output_bytes: 9_400_000 } })
+    expect(c.unmeasured).toContain('egress_bytes')
+    expect(c.unmeasured).toContain('storage_bytes_months')
+    expect(costIsComparable(c)).toBe(false)
+  })
+
+  it('no render_measured leaves the full baseline gap', () => {
+    const c = renderCost(base)
+    expect(c.computeMs).toBeNull()
+    expect(c.outputBytes).toBeNull()
+    expect(c.unmeasured).toEqual(UNMEASURED_TODAY)
+  })
+
+  // ⚠️ ABSENT IS NOT ZERO, AND A BAD VALUE IS ABSENT. A render_measured event
+  // carrying junk must not retire the compute gap — a zeroed compute term makes
+  // the most expensive renders look like the cheapest.
+  it.each([
+    ['null', null], ['undefined', undefined], ['negative', -1],
+    ['a string', '41000'], ['NaN', Number.NaN], ['fractional', 4.5],
+  ])('render_ms = %s is not a measurement', (_label, v) => {
+    const c = renderCost({ ...base, renderMeasured: { render_ms: v, output_bytes: 1 } })
+    expect(c.computeMs).toBeNull()
+    expect(c.unmeasured).toContain('compute_seconds')
+  })
+
+  it('0 ms IS a measurement — a render can genuinely be instant', () => {
+    const c = renderCost({ ...base, renderMeasured: { render_ms: 0, output_bytes: 0 } })
+    expect(c.computeMs).toBe(0)
+    expect(c.unmeasured).not.toContain('compute_seconds')
+  })
+})
