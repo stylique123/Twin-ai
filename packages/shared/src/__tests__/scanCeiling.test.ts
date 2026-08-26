@@ -93,8 +93,21 @@ describe('the ledger is append-only and the edge enforces it', () => {
     join(REPO, 'supabase/migrations/0172_a_scan_leaves_a_durable_trace.sql'), 'utf8')
   const EDGE = readFileSync(join(REPO, 'supabase/functions/start-dna/index.ts'), 'utf8')
 
-  it('no browser may write the ledger', () => {
-    expect(MIG).toMatch(/revoke insert, update, delete on public\.scan_events/)
+  // ⚠️ THIS TEST USED TO ASSERT `revoke insert, update, delete`, AND THAT WAS
+  // THE BUG WEARING A GUARD'S CLOTHES. Enumerating three verbs leaves the
+  // fourth, and ROW SECURITY IS NEVER CONSULTED FOR TRUNCATE -- so a creator
+  // holding the Supabase default grant could empty their own scan ledger and
+  // reset the monthly count to zero. The staging matrix caught it; this test
+  // had been asserting the weaker form was present, which is why it passed.
+  it('no browser may write the ledger, and TRUNCATE is not an exception', () => {
+    expect(MIG).toMatch(/revoke all on table public\.scan_events from anon, authenticated/)
+    expect(MIG).toMatch(/grant select on table public\.scan_events to authenticated/)
+  })
+
+  // ⚖️ AND THE ENUMERATION MAY NOT COME BACK. Asserting the strong form alone
+  // would still pass if somebody added a verb list beside it.
+  it('the ledger grant is never expressed as a verb list', () => {
+    expect(MIG).not.toMatch(/revoke\s+(insert|update|delete)[^;]*on\s+public\.scan_events/i)
   })
 
   it('RLS is on and the creator can read their own', () => {
