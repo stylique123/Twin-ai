@@ -624,6 +624,15 @@ jobs:
         run: |
           node scripts/ci/check_security_debt.mjs --selftest
           node scripts/ci/check_security_debt.mjs
+      # ⚠️ THE WILDCARD IS ACCEPTED ON A PREMISE, AND THIS IS THE PREMISE.
+      # SECURITY.md row 9 accepts `Access-Control-Allow-Origin: *` only because
+      # auth is bearer-only — never an ambient cookie. The one-line change that
+      # kills that premise reads as reasonable in isolation, so it is checked
+      # rather than remembered.
+      - name: CORS premise (the wildcard is safe only while auth is bearer-only)
+        run: |
+          node scripts/ci/check_cors_assumption.mjs --selftest
+          node scripts/ci/check_cors_assumption.mjs
       - name: Staging migration coverage (a new migration is applied, or excluded with a reason)
         run: |
           node scripts/ci/check_staging_migration_coverage.mjs --selftest
