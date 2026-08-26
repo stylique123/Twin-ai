@@ -1168,6 +1168,9 @@ These are observations of this creator, not style advice. Write to them.
 ${lines.join('\n')}`
 }
 
+const SUBSTANCE_ENUM = /^(?:creator_knowledge|creator_experience|creator_opinion|product_dna|general|needs_user)$/i
+const NAMES_A_SOURCE = /^(?:the\s+)?(?:creator'\s?s?\b|creators'\b|creator\s+(?:experience|knowledge|expertise|opinion)\b|general (?:knowledge|observation)\b|product_dna\b|reference structure\b|specific knowledge\b)/i
+
 // ── SIGNATURE PHRASES (inlined from packages/shared/src/signaturePhrases.ts) ─
 //
 // ⚠️ VOICE CAUSE 3. "Use their signature vocabulary" (below, and in dna.ts)
@@ -1175,6 +1178,12 @@ ${lines.join('\n')}`
 // creator actually repeats. This measures it: a 2–4 word phrase in at least
 // three DIFFERENT videos, not merely repeated within one long transcript.
 // Kept in parity with the shared copy by `signaturePhrases-parity.test.ts`.
+//
+// ⚠️ DELIBERATELY PLACED AFTER `SUBSTANCE_ENUM`, NOT NEXT TO THE STYLE
+// COMPILER ABOVE. `style-compiler-parity.test.ts` slices this file from
+// `STYLE_MIN_SENTENCES` to `SUBSTANCE_ENUM` and strips a fixed list of TS
+// annotations from that slice — this block's `interface`/generics are not on
+// that list, and landing inside the slice broke that unrelated test's parser.
 const SIG_STOPWORDS: ReadonlySet<string> = new Set([
   'a', 'an', 'the', 'and', 'or', 'but', 'if', 'of', 'in', 'on', 'at', 'to',
   'for', 'with', 'is', 'was', 'are', 'were', 'be', 'been', 'being', 'it',
@@ -1228,9 +1237,6 @@ function renderSignaturePhrasesInline(phrases: readonly SignaturePhraseInline[])
   const list = phrases.map((p) => `"${p.phrase}" (in ${p.videos} of their videos)`).join(', ')
   return `Phrases they actually repeat across their own videos, measured, not guessed: ${list}.`
 }
-
-const SUBSTANCE_ENUM = /^(?:creator_knowledge|creator_experience|creator_opinion|product_dna|general|needs_user)$/i
-const NAMES_A_SOURCE = /^(?:the\s+)?(?:creator'\s?s?\b|creators'\b|creator\s+(?:experience|knowledge|expertise|opinion)\b|general (?:knowledge|observation)\b|product_dna\b|reference structure\b|specific knowledge\b)/i
 
 /**
  * THE COMMUNITY MAP, READ INLINE.

@@ -13,7 +13,7 @@ const SRC = readFileSync(join(FN, 'generate-blueprint', 'index.ts'), 'utf8')
 
 function loadInline() {
   const start = SRC.indexOf('// ── SIGNATURE PHRASES (inlined')
-  const end = SRC.indexOf('const SUBSTANCE_ENUM', start)
+  const end = SRC.indexOf('/**\n * THE COMMUNITY MAP, READ INLINE', start)
   expect(start).toBeGreaterThan(-1)
   expect(end).toBeGreaterThan(start)
   const body = SRC.slice(start, end)
