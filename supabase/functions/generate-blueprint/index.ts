@@ -5859,6 +5859,21 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // them describes a script no creator ever sees.
     const speech = speechAudit(blueprint)
 
+    // ── THE PRODUCT-BLINDNESS DECISION, CARRIED TO THE CLIENT ────────────────
+    //
+    // ⚠️ `unrecordedProduct` WAS COMPUTED HUNDREDS OF LINES ABOVE TO WRITE ONE
+    // PROMPT INSTRUCTION AND WENT NO FURTHER. It decided "do not write a scene
+    // that depends on a product" for this exact generation, and until now that
+    // decision left no trace the client could read. A creator whose product
+    // was never captured had no way to learn that fact from the script they
+    // were handed — the one moment they are demonstrably engaged enough to
+    // answer one question about it.
+    //
+    // ⚖️ WRITTEN UNCONDITIONALLY, UNLIKE THE ADVISORY READ BELOW. This costs no
+    // extra model call — `unrecordedProduct` is already a boolean sitting in
+    // scope from the prompt-assembly pass. There is no cost gate to design.
+    ;(blueprint as Record<string, unknown>).product_capture_prompt = unrecordedProduct
+
     // ── ONE ADVISORY READ, AFTER THE SCRIPT IS ALREADY SAFE ──────────────────
     //
     // ⚠️ EVERYTHING BELOW RUNS AFTER THE RESCUE POINT AND CANNOT COST THE
