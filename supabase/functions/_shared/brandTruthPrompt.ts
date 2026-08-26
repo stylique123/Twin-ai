@@ -1,3 +1,7 @@
+// GENERATED FROM packages/shared/src/brandTruthPrompt.ts — DO NOT EDIT.
+// Run: node scripts/ci/generate_shared_pilot_core.mjs
+// Edit the source instead. CI regenerates this file and fails on a diff.
+// @ts-nocheck
 // THE WRITER IS TOLD WHICH BUSINESS FACTS THE CREATOR STATED AND WHICH TWIN GUESSED.
 //
 // ── WHAT WAS MEASURED ─────────────────────────────────────────────────────
@@ -43,7 +47,7 @@
 // labelled inference for an empty field -- strictly less information. §10.2's
 // rule is the one applied here: an inferred business fact "may still inform a
 // bounded creative choice, but it can never become an authoritative claim".
-import type { BrandTruthSnapshotV1, TruthField } from './brandTruth.js'
+import type { BrandTruthSnapshotV1, TruthField } from './brandTruth.ts'
 
 /**
  * The five business facts the CREATOR DNA block renders, paired with the label

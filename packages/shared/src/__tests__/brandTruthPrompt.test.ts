@@ -1,4 +1,9 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const REPO = join(fileURLToPath(import.meta.url), '..', '..', '..', '..', '..')
 import { businessFactLines, businessFactProvenanceCounts, DNA_BUSINESS_FACTS } from '../brandTruthPrompt.js'
 import type { BrandTruthSnapshotV1, TruthField } from '../brandTruth.js'
 
@@ -69,5 +74,43 @@ describe('businessFactProvenanceCounts', () => {
 
   it('is all zeros when there is nothing to label', () => {
     expect(businessFactProvenanceCounts([])).toEqual({ stated: 0, guessed: 0, total: 0 })
+  })
+})
+
+describe('suffix', () => {
+  // ⚠️ THE CALLER APPENDS `suffix`, NOT `line`. If these ever disagree the
+  // prompt says one thing and this file's other tests check another.
+  it('is exactly the marker that `line` ends with', () => {
+    for (const stated of [true, false]) {
+      const [l] = businessFactLines(snap({ offer: field('A 6-week course', stated) }))
+      expect(l.line.endsWith(l.suffix)).toBe(true)
+      expect(l.suffix).not.toBe('')
+    }
+  })
+})
+
+// ── THE CALLER, ASSERTED AGAINST THE REAL FILE ───────────────────────────────
+//
+// ⚠️ WITHOUT THIS, THE MODULE ABOVE IS DEAD CODE. A shared reader nobody calls
+// is the exact "reader with no writer" shape this work exists to remove, and it
+// passes every unit test in this file while changing no script at all.
+describe('generate-blueprint actually renders the provenance', () => {
+  const FN = readFileSync(
+    join(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
+
+  it('imports the shared reader rather than re-deriving provenance', () => {
+    expect(FN).toContain("from '../_shared/brandTruthPrompt.ts'")
+    expect(FN).toContain('businessFactLines(')
+  })
+
+  // ⚠️ ONE ASSERTION PER FIELD, BECAUSE THEY REGRESS ONE AT A TIME. `pain` and
+  // `dream` are the load-bearing pair: measured 34 of 34 guessed on production.
+  it.each(['audience', 'audiencePain', 'dreamOutcome', 'offer'])(
+    'the %s line carries its provenance marker', (field) => {
+      expect(FN).toContain(`\${prov('${field}')}`)
+    })
+
+  it('degrades to the unlabelled block instead of costing a paid generation', () => {
+    expect(FN).toContain('brand_truth_projection_skipped')
   })
 })

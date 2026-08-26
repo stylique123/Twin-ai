@@ -43,6 +43,7 @@ const SOURCES = [
   ['packages/shared/src/script/beatAsk.ts', 'supabase/functions/_shared/beatAsk.ts'],
   ['packages/shared/src/script/shotLabel.ts', 'supabase/functions/_shared/shotLabel.ts'],
   ['packages/shared/src/scanCeiling.ts', 'supabase/functions/_shared/scanCeiling.ts'],
+  ['packages/shared/src/brandTruthPrompt.ts', 'supabase/functions/_shared/brandTruthPrompt.ts'],
 ]
 
 // ⚠️ A SHEBANG IS LEGAL ONLY ON LINE 1, AND THE HEADER PUSHES IT TO LINE 5.
@@ -62,6 +63,7 @@ const render = (from, src0) => {
     .replace(/from '\.\/pilot-core\.mjs'/g, "from './pilotCore.ts'")
     .replace(/from '\.\/pilot-db\.mjs'/g, "from './pilotDb.ts'")
     .replace(/from '\.\/d1-core\.mjs'/g, "from './d1Core.ts'")
+    .replace(/from '\.\/brandTruth\.js'/g, "from './brandTruth.ts'")
 }
 
 const check = process.argv.includes('--check')
