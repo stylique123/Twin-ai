@@ -620,6 +620,14 @@ jobs:
       # proving the old one no longer authenticates would mean holding it. It
       # checks that the record is well-formed and, crucially, that a known entry
       # cannot be deleted to make the debt go away.
+      # ⚠️ COLUMNS, THE SAME WAY EVENTS ARE DONE ABOVE. The recurring defect here
+      # is not a wrong value but a value with no consumer -- visual_hook,
+      # beat_plan.proof, the whole BrandTruth lineage. This cannot decide whether
+      # a column deserves to exist; it refuses to let the question go unasked.
+      - name: Column readers (a column nobody reads is a decision nobody made)
+        run: |
+          node scripts/ci/check_column_readers.mjs --selftest
+          node scripts/ci/check_column_readers.mjs
       - name: Security debt (an exposed credential does not expire on its own)
         run: |
           node scripts/ci/check_security_debt.mjs --selftest
