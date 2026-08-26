@@ -138,6 +138,14 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
   onClaim: (a: {
     relationship: EntityRelationship; personalUse: PersonalUse
     type: EntityType; name: string
+    // ⚠️ G2 — THE CAPABILITY QUESTION THE LINK-PASTE FLOW ALREADY ASKS AND THIS
+    // ONE NEVER DID. Claiming from here fell back to the account-wide default
+    // capability flags — set once during onboarding, for a creator who may film
+    // very different products very differently. A creator who claimed a
+    // suggested product could get the wrong scene type for THAT product even
+    // after correctly answering the account-wide question for a different one.
+    showability?: Showability | null
+    flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
   }) => void
 }) {
   // ⚖️ NOT PREFILLED FROM THE SUGGESTION TEXT. A suggestion is a CLAIM — "Early
@@ -147,11 +155,19 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
   const [relationship, setRelationship] = useState<EntityRelationship | null>(null)
   const [type, setType] = useState<EntityType | null>(null)
   const [personalUse, setPersonalUse] = useState<PersonalUse | null>(null)
+  // ⚠️ G2 — SAME REGISTRY, SAME QUESTION, AS THE LINK-PASTE FLOW. `capabilityQuestion`
+  // decides screen/physical/null from type+relationship; this form asks nothing
+  // new, it just no longer skips the question the other claim path already asks.
+  const [showability, setShowability] = useState<Showability | null>(null)
+  const capability = type !== null && relationship !== null
+    ? capabilityQuestion({ type, relationship })
+    : null
   // ⚖️ EVERY ANSWER IS REQUIRED, INCLUDING THE NAME. A nameless entity reaches
   // the prompt as "the product", and an unanswered relationship has no default
   // that is safe — `NONE` would silently forbid, `OWN_PRODUCT` would silently
   // permit. So the button stays disabled rather than either.
   const ready = name.trim() !== '' && relationship !== null && type !== null && personalUse !== null
+    && (capability === null || showability !== null)
 
   return (
     <div className="mt-3 space-y-3 rounded-lg bg-white/[0.03] p-3">
@@ -231,12 +247,38 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
         </div>
       </fieldset>
 
+      {/* ⚠️ G2 — SAME QUESTION, SAME CHOICES, AS THE LINK-PASTE FLOW'S showability
+          picker. Rendered here only when the type+relationship pair asks one at
+          all — a service is asked nothing, because there is nothing to point a
+          camera at. */}
+      {capability !== null && (
+        <Choices
+          label={CAPABILITY_PROMPT[capability]}
+          options={[
+            { value: 'ALWAYS' as Showability, label: 'Usually' },
+            { value: 'SOMETIMES' as Showability, label: 'Sometimes' },
+            { value: 'NEVER' as Showability, label: 'No' },
+          ]}
+          chosen={showability}
+          onPick={(v) => setShowability(v)}
+        />
+      )}
+
       <div className="flex gap-2 pt-1">
         <button
           type="button"
           disabled={!ready || busy}
           onClick={() => ready && onClaim({
             relationship: relationship!, personalUse: personalUse!, type: type!, name,
+            // ⚠️ THE ANSWER TRAVELS AS THE ANSWER, NOT AS A BOOLEAN — same trap
+            // named at the link-paste flow's own claim site: SOMETIMES sent as
+            // `false` reads to `inferShowability` as a denial. `showability`
+            // wins over `flags` in `answeredShowability`; `flags` still travels
+            // as the honest pre-fill for anything this question did not ask.
+            showability,
+            flags: capability === 'physical' ? { canFilmObjects: showability === 'ALWAYS' }
+              : capability === 'screen' ? { canRecordScreen: showability === 'ALWAYS' }
+                : undefined,
           })}
           className="btn-gradient rounded-lg px-3 py-1.5 text-sm disabled:opacity-40"
         >{busy ? 'Adding…' : 'Add to my products'}</button>
@@ -440,6 +482,12 @@ export default function ProductLibrary() {
      *  a product minted with photographs nobody can find. */
     imagePaths?: string[]
     flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
+    // ⚠️ G2 — CARRIED THROUGH FROM ClaimForm, NOT DEFAULTED HERE. Absent means
+    // this claim path did not ask (the extraction flow's own claim call above
+    // does not set it either), which `claimProductEntity` reads by falling back
+    // to the account default — the pre-#2 behaviour, preserved for every OTHER
+    // caller of `claim()`.
+    showability?: Showability | null
   }) {
     // ⚠️ AN EMPTY OWNER ID MUST NOT REACH THE INSERT. RLS is owner-scoped, so a
     // blank id fails somewhere deep with a policy error that reads as a bug in

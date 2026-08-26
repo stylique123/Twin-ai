@@ -145,4 +145,37 @@ describe('the form actually consults the registry', () => {
   it('an unasked personal-use question stores NOT_CONFIRMED, never CONFIRMED', () => {
     expect(code).toMatch(/asksPersonalUse\(ctx\) \? personalUse! : 'NOT_CONFIRMED'/)
   })
+
+  // ⚠️ G2 — THE SECOND CLAIM PATH, SCOPED SEPARATELY FROM THE FIRST. The checks
+  // above scan the WHOLE FILE, so they were already true from the link-paste
+  // flow (`StartFromLink`) before G2 existed — they proved nothing about the
+  // suggestion-claim path, which is `ClaimForm` and used to skip the capability
+  // question entirely, falling back to the account-wide default for every
+  // product claimed from a suggestion or typed in by hand. Bounding the scan to
+  // `ClaimForm`'s own body is what makes this assertion actually about G2: a
+  // mutation that deleted the wiring from ClaimForm while leaving StartFromLink
+  // untouched would still pass every check above and only fail these.
+  describe('the suggestion-claim form also consults the registry (G2)', () => {
+    const claimFormStart = code.indexOf('function ClaimForm(')
+    const claimFormEnd = code.indexOf('function ', claimFormStart + 1)
+    const claimFormBody = code.slice(claimFormStart, claimFormEnd)
+
+    it('found the function — a rename here would silently empty every check below', () => {
+      expect(claimFormStart).toBeGreaterThan(-1)
+      expect(claimFormEnd).toBeGreaterThan(claimFormStart)
+    })
+
+    it('ClaimForm asks the capability question the registry chose', () => {
+      expect(claimFormBody).toMatch(/capabilityQuestion\(/)
+      expect(claimFormBody).toMatch(/CAPABILITY_PROMPT\[/)
+    })
+
+    it("ClaimForm's submit gate requires the capability answer when one was asked", () => {
+      expect(claimFormBody).toMatch(/capability === null \|\| showability !== null/)
+    })
+
+    it('ClaimForm sends the answer as the answer, not as a boolean', () => {
+      expect(claimFormBody).toMatch(/showability,/)
+    })
+  })
 })
