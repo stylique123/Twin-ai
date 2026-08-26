@@ -31,6 +31,11 @@ import { readFileSync } from 'node:fs'
 // deletion wearing a different hat, and is what code review is for.
 const KNOWN_IDS = [
   'EXPOSED_SERVICE_ROLE_KEY_ROTATION_REQUIRED',
+  // An audit CLAIMED a Gemini key exposure that could not be confirmed or
+  // refuted from here. It is listed because an unverifiable credential claim
+  // defaults to OPEN -- the cheap outcome is a needless console check, the
+  // expensive one is a live key nobody ever looked at again.
+  'UNVERIFIED_GEMINI_API_KEY_EXPOSURE_CLAIM',
 ]
 
 const VALID_STATUS = new Set(['BLOCKING_SECURITY_CLEANUP', 'ACCEPTED_RISK', 'RESOLVED'])
@@ -82,13 +87,20 @@ function check(md) {
 // ⚠️ THE GUARD IS TESTED AGAINST A KNOWN-BAD DOCUMENT, not only a good one. A
 // checker that accepts everything passes on the real corpus too.
 if (process.argv.includes('--selftest')) {
-  const good = '| `EXPOSED_SERVICE_ROLE_KEY_ROTATION_REQUIRED` | a real reason here | a real trigger here | a real criterion here | `BLOCKING_SECURITY_CLEANUP` |'
+  // ⚠️ THE WELL-FORMED FIXTURE IS DERIVED FROM KNOWN_IDS, NOT HARD-CODED.
+  // A literal one-row document stops being well-formed the moment a second id
+  // is recorded, and the selftest would then fail for a reason that has
+  // nothing to do with the guard.
+  const rowFor = (id) => `| \`${id}\` | a real reason here | a real trigger here | a real criterion here | \`BLOCKING_SECURITY_CLEANUP\` |`
+  const good = KNOWN_IDS.map(rowFor).join('\n')
+  const one = rowFor(KNOWN_IDS[0])
   const fails = [
     ['deleted row', '| `SOMETHING_ELSE_ENTIRELY` | reason reason reason | trigger trigger | criterion criterion | `RESOLVED` |'],
     ['blank trigger', good.replace('a real trigger here', '')],
+    ['deleted second row', one],
     ['bogus status', good.replace('BLOCKING_SECURITY_CLEANUP', 'PROBABLY_FINE')],
     ['undated resolution', good.replace('BLOCKING_SECURITY_CLEANUP', 'RESOLVED')],
-    ['duplicate id', `${good}\n${good}`],
+    ['duplicate id', `${good}\n${one}`],
   ]
   let failures = 0
   if (check(good).problems.length !== 0) { console.error('selftest: a well-formed row was rejected'); failures++ }
@@ -96,7 +108,7 @@ if (process.argv.includes('--selftest')) {
     if (check(md).problems.length === 0) { console.error(`selftest: "${name}" was accepted and must not be`); failures++ }
   }
   if (failures > 0) { console.error(`security-debt guard selftest: ${failures} FAILED`); process.exit(1) }
-  console.log('security-debt guard selftest: OK (1 accepted, 5 rejected)')
+  console.log('security-debt guard selftest: OK (1 accepted, 6 rejected)')
   process.exit(0)
 }
 
