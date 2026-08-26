@@ -628,6 +628,12 @@ jobs:
         run: |
           node scripts/ci/check_column_readers.mjs --selftest
           node scripts/ci/check_column_readers.mjs
+      # ⚠️ THE COST MODEL HAS A CALLER NOW. renderCost.ts was written, exported,
+      # tested and called by nothing — the same defect as a column nobody reads.
+      # The selftest runs the caller with no database, including the re-key trap
+      # that would report a measured render as an unmeasured one.
+      - name: Render cost reader (a cost model nobody runs answers nothing)
+        run: node scripts/render-cost.mjs --selftest
       - name: Security debt (an exposed credential does not expire on its own)
         run: |
           node scripts/ci/check_security_debt.mjs --selftest
