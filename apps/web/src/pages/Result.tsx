@@ -21,6 +21,7 @@ import { creatorPick, defaultCapture, freeformEntry } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
 import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
+import { ProductCaptureCard, readProductCapturePrompt } from '../components/ProductCaptureCard'
 import { CreativeTransfer } from '../components/CreativeTransfer'
 import { isWhollyPlaceholder } from '../lib/api'
 import { UnfilledContainers } from '../components/UnfilledContainers'
@@ -1096,6 +1097,12 @@ export default function Result() {
                   product is that placement decides whether they get answered at
                   all. One question, under a script they were just handed. */}
               <CreatorQuestionCard />
+              {/* ⚠️ ONLY WHEN THIS EXACT SCRIPT WAS WRITTEN BLIND. `product_capture_prompt`
+                  is this generation's own `unrecordedProduct` decision, carried from
+                  the writer -- so the card appears exactly when the creator can feel
+                  the cost of the gap, not on every script regardless of whether it
+                  mattered here. */}
+              <ProductCaptureCard shown={readProductCapturePrompt(b)} voiceId={gen.brand_voice_id ?? null} />
             </div>
 
             {/* Shot List */}
