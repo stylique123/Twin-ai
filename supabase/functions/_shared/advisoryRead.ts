@@ -1,3 +1,7 @@
+// GENERATED FROM packages/shared/src/script/advisoryRead.ts — DO NOT EDIT.
+// Run: node scripts/ci/generate_shared_pilot_core.mjs
+// Edit the source instead. CI regenerates this file and fails on a diff.
+// @ts-nocheck
 // ONE ADVISORY READ PER SCRIPT — WHAT TO ASK, AND WHAT TO BELIEVE BACK.
 //
 // ── WHY ONE CALL AND NOT TWO ──────────────────────────────────────────────
@@ -29,7 +33,7 @@
 // 0-11% (see script/repetition.ts for the numbers). This module cannot settle
 // that, and a verdict it returns is one model's reading of one script, never a
 // measurement of how often the writer repeats itself.
-import type { LexicalFloor } from './repetition.js'
+import type { LexicalFloor } from './repetition.ts'
 
 /** ⚠️ FEWER BEATS THAN THIS AND THERE IS NOTHING TO REPEAT. A three-beat script
  *  that says one thing three ways is a three-beat script; the shape is the

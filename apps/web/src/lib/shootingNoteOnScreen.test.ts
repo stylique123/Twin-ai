@@ -22,9 +22,14 @@ describe('the card is actually handed the plan', () => {
   // ⚠️ A COMPONENT THAT NEVER RECEIVES THE PLAN RENDERS NOTHING, and the
   // shared tests stay green while the creator sees nothing — the exact shape
   // of the defect this fixes.
+  // ⚠️ THE PROP, NOT THE WHOLE TAG. This pinned the exact call site down to its
+  // closing `/>`, so adding ANY further prop broke it while `beatPlan` was still
+  // passed at both sites — a false failure that says nothing about the defect
+  // above. It now asserts what it means: every call site hands over the plan.
   it('both fallback call sites pass beatPlan', () => {
-    const passed = SRC.match(/<BlueprintScriptCards script=\{updatedScript\} beatPlan=\{b\.beat_plan\} \/>/g) ?? []
-    expect(passed.length).toBe(2)
+    const sites = SRC.match(/<BlueprintScriptCards\b[^>]*>/g) ?? []
+    expect(sites.length).toBe(2)
+    expect(sites.every((t) => /beatPlan=\{b\.beat_plan\}/.test(t))).toBe(true)
   })
 
   it('and the component accepts it', () => {

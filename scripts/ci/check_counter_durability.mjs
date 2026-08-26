@@ -273,6 +273,29 @@ const EVENTS = {
       + 'would NOT catch: they check the code renders the marker, not that the '
       + 'projection succeeded at runtime.',
   },
+  script_advisory_read: {
+    kind: 'counter',
+    stored: 'generations.blueprint',
+    why: 'What the one advisory read found, beside the LEXICAL FLOOR it should be '
+      + 'checked against -- exact pairs and strongest overlap for the same script. '
+      + 'Durable because the pair is the whole point: a blind creator panel put beat '
+      + 'repetition at 67% while every lexical measure computable from production '
+      + 'lands at 0-11% (2026-08-26, 41 scripts), and only a stored verdict NEXT TO '
+      + 'its floor can say which of those two the model is agreeing with. A findings '
+      + 'count alone would be a number nobody could argue with. Written into the '
+      + 'blueprint rather than script_report because Result.tsx reads the blueprint '
+      + 'and reads script_report never.',
+  },
+  script_advisory_skipped: {
+    kind: 'incident',
+    why: 'The advisory read threw and the script shipped without a note -- the '
+      + 'pre-existing behaviour, not a degraded script. Not persisted because it runs '
+      + 'after the rescue point on a generation the creator has already paid for, and '
+      + 'an ops_events insert there is one more thing that can fail while they wait. '
+      + 'If it fires at volume the notes are silently absent, which the per-field '
+      + 'assertions cannot catch: they check the code renders a note, not that the '
+      + 'model answered.',
+  },
   shots_named_by_number: {
     kind: 'counter',
     stored: 'generations.beat_audit',

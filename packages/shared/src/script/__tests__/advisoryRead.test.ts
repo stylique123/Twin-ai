@@ -3,6 +3,9 @@ import {
   readVerdict, advisoryNote, shouldAsk, MIN_FINDINGS_TO_SURFACE, MAX_FINDINGS,
 } from '../advisoryRead.js'
 import { lexicalFloor } from '../repetition.js'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const beats = (n: number) => Array.from({ length: n }, (_, i) => ({
   line: `beat ${i} carries enough distinct content tokens to compare properly`,
@@ -111,5 +114,68 @@ describe('advisoryNote', () => {
     const v = readVerdict({ findings: [rep(4, 1), rep(5, 2)] }, 6, [])
     const note = advisoryNote(v.findings, 4)!
     expect(note).not.toMatch(/\b(bad|weak|poor|score|\d+ (issues|problems))\b/i)
+  })
+})
+
+// ── THE CALLER, ASSERTED AGAINST THE REAL FILES ──────────────────────────────
+//
+// ⚠️ WITHOUT THIS, EVERYTHING ABOVE IS DEAD CODE. A judge nobody calls and a
+// note nobody renders is the exact "reader with no writer" shape this work
+// exists to remove, and it passes every unit test in this file.
+describe('the advisory read is actually wired', () => {
+  const REPO = join(fileURLToPath(import.meta.url), '..', '..', '..', '..', '..', '..')
+  const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
+  const RESULT = readFileSync(join(REPO, 'apps/web/src/pages/Result.tsx'), 'utf8')
+
+  it('generate-blueprint asks and reads the verdict', () => {
+    expect(EDGE).toContain("from '../_shared/advisoryRead.ts'")
+    expect(EDGE).toContain('shouldAsk(floor)')
+    expect(EDGE).toContain('readVerdict(')
+  })
+
+  // ⚠️ THE BLUEPRINT, NEVER script_report. script_report is written at
+  // index.ts:5954 and read by nothing — Result.tsx reads the blueprint.
+  it('the verdict is stored where the UI actually reads', () => {
+    expect(EDGE).toMatch(/\(blueprint as Record<string, unknown>\)\.advisory\s*=/)
+  })
+
+  // ⚠️ THE FLOOR TRAVELS WITH THE VERDICT, or the model's claim cannot be
+  // checked against anything later.
+  // ⚠️ THIS TEST WAS WRONG FIRST AND THE MUTATION CAUGHT IT. It sliced 700
+  // characters from `.advisory =`, which reaches past the stored object into the
+  // console.log below — the same field names appear in both, so deleting them
+  // from the STORED block left the test green. It now anchors on the `floor:`
+  // sub-object of the stored value and stops at its closing brace.
+  it('the lexical floor is stored beside the findings', () => {
+    const at = EDGE.indexOf('.advisory =')
+    expect(at).toBeGreaterThan(-1)
+    const floorAt = EDGE.indexOf('floor: {', at)
+    expect(floorAt).toBeGreaterThan(-1)
+    const stored = EDGE.slice(floorAt, EDGE.indexOf('},', floorAt))
+    expect(stored).toContain('exact_pairs')
+    expect(stored).toContain('strongest_overlap_milli')
+    expect(stored).toContain('compared_beats')
+  })
+
+  // ⚠️ NEVER BLOCKING. The script is already built and paid for.
+  it('a failed read is caught and non-fatal', () => {
+    expect(EDGE).toContain('script_advisory_skipped')
+  })
+
+  // ⚠️ OFF BY DEFAULT. A new per-generation model cost gets an explicit switch.
+  it('it is behind a flag that defaults off', () => {
+    expect(EDGE).toContain("Deno.env.get('SCRIPT_ADVISORY_ENABLED')")
+    expect(EDGE).toMatch(/SCRIPT_ADVISORY_ENABLED'\) \?\? ''\) === 'true'/)
+  })
+
+  it('Result.tsx renders the note beside the beat', () => {
+    expect(RESULT).toContain('advisoryNote(advisoryFindings, i)')
+    expect(RESULT).toContain('readAdvisoryFindings(b)')
+  })
+
+  // ⚠️ NOT ON A SILENT BEAT — there are no spoken words there to double, the
+  // same rule stockPhraseNote already follows one line above.
+  it('the note never appears on a silent beat', () => {
+    expect(RESULT).toContain('!isSilentBeat(s.line) && advisoryNote(advisoryFindings, i)')
   })
 })
