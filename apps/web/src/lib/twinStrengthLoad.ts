@@ -29,7 +29,32 @@ export async function loadTwinStrength(voiceId?: string | null): Promise<TwinStr
 
     const { data, error } = await q
     if (error || !Array.isArray(data)) return null
-    return twinStrength(data)
+
+    // ⚠️ G8 — A SECOND, INDEPENDENT READ. Product facts live on
+    // `product_entities.knowledge`, not `creator_knowledge` — a different
+    // table, a different row shape, no `kind`/`source` columns at all. A
+    // failure here must not blank the meter the first query already answered;
+    // it degrades to `0`, the same "we don't know a product fact happened"
+    // state an account with no products reports honestly.
+    //
+    // ⚖️ LIVE ROWS ONLY. An archived product's facts are not something the
+    // writer can use — `archived_at is null` matches every other reader of
+    // this table (`claimProductEntity`'s own limit count, `loadProductEntities`).
+    let pq = supabase
+      .from('product_entities')
+      .select('knowledge')
+      .eq('owner_id', ownerId)
+      .is('archived_at', null)
+    if (voiceId) pq = pq.or(`voice_id.eq.${voiceId},voice_id.is.null`)
+    const { data: productRows } = await pq
+    const productFactCount = Array.isArray(productRows)
+      ? productRows.reduce((n, r) => {
+          const k = (r as { knowledge?: unknown } | null)?.knowledge
+          return n + (Array.isArray(k) ? k.length : 0)
+        }, 0)
+      : 0
+
+    return twinStrength(data, productFactCount)
   } catch {
     return null
   }

@@ -47,9 +47,23 @@ export interface TwinStrength {
    *  sources is 0/0, and rendering that as 0% would report a measured absence
    *  where there was no measurement. */
   spokenShare: number | null
+  /** ⚠️ G8 — A SEPARATE COUNT, NEVER FOLDED INTO `substance`. Product facts
+   *  (`product_entities.knowledge`) have no `kind`, no `EXPERIENCE_KINDS`
+   *  equivalent, and no meaningful "spoken" reading — a spec sheet was never
+   *  said out loud. Forcing them through `SUBSTANCE_KINDS` would misclassify
+   *  every one of them. A creator with a rich product and no personal stories
+   *  reads as having a weak twin today, because this number did not exist; it
+   *  is a plain count, matching the module's own rule (counts, never a score),
+   *  not a reinterpretation of what "substance" means. */
+  productFacts: number
 }
 
-export function twinStrength(rows: readonly KnowledgeRow[] | null | undefined): TwinStrength {
+export function twinStrength(
+  rows: readonly KnowledgeRow[] | null | undefined,
+  /** Facts recorded on the creator's live product entities — see the field
+   *  comment above for why this travels separately rather than through `rows`. */
+  productFactCount = 0,
+): TwinStrength {
   const items = Array.isArray(rows) ? rows.filter((r) => r && typeof r === 'object') : []
   const substance = items.filter((i) => SUBSTANCE_KINDS.has(String(i.kind)))
   const withSource = items.filter((i) => typeof i.source === 'string' && i.source !== '')
@@ -62,6 +76,12 @@ export function twinStrength(rows: readonly KnowledgeRow[] | null | undefined): 
     spokenShare: withSource.length === 0
       ? null
       : withSource.filter((i) => wasSpoken(i)).length / withSource.length,
+    // ⚠️ NOT NEGATIVE, NOT NaN. A caller passing a bad number is a bug
+    // upstream; clamping here means a broken count still renders as "we don't
+    // know a product fact happened" rather than a sentence with a negative
+    // number in it.
+    productFacts: Number.isFinite(productFactCount) && productFactCount > 0
+      ? Math.floor(productFactCount) : 0,
   }
 }
 
@@ -78,6 +98,18 @@ function plural(n: number, one: string, many: string): string {
 }
 
 export function strengthSentence(s: TwinStrength): StrengthSentence {
+  // ⚠️ G8 — THE CASE THIS FIELD EXISTS TO FIX. Before `productFacts`, a
+  // creator with a rich product and zero personal stories hit this branch and
+  // read "has not learned anything yet" — false, and the exact silent failure
+  // the audit named: a hollow twin the creator has no way to notice, except a
+  // disappointing script. Checked before `sourceRecorded === null` because an
+  // empty `creator_knowledge` store says nothing about the product store.
+  if (s.sourceRecorded === null && s.productFacts > 0) {
+    return {
+      headline: `Your twin knows ${plural(s.productFacts, 'fact', 'facts')} about your product.`,
+      nudge: 'A story about you would give it something to say beyond the spec sheet.',
+    }
+  }
   // ⚠️ UNMEASURED, NEVER WEAK. A store with nothing in it and a store scanned
   // before we recorded where things came from are both "we cannot say", and
   // saying anything else is a claim about their work we cannot support.
@@ -85,6 +117,12 @@ export function strengthSentence(s: TwinStrength): StrengthSentence {
     return {
       headline: 'Your twin has not learned anything yet.',
       nudge: 'Answer a couple of questions and it will have something of yours to work from.',
+    }
+  }
+  if (s.substance === 0 && s.productFacts > 0) {
+    return {
+      headline: `Your twin knows about your work and ${plural(s.productFacts, 'product fact', 'product facts')}, but nothing personal it can say out loud yet.`,
+      nudge: 'Tell it one thing that actually happened to you.',
     }
   }
   if (s.substance === 0) {
@@ -96,8 +134,13 @@ export function strengthSentence(s: TwinStrength): StrengthSentence {
 
   // ⚖️ STORIES AND NUMBERS ARE NAMED SEPARATELY because they do different jobs
   // in a script, and a creator can tell instantly which one they are short of.
+  // ⚠️ PRODUCT FACTS JOIN THE SAME LIST, LAST, ONLY WHEN THERE ARE ANY — the
+  // module's own rule (plain counts) applies here too: a creator with zero
+  // product facts reads a sentence that never mentions a product, not a "0
+  // product facts" line nobody asked to see.
   const parts: string[] = [plural(s.experiences, 'real story', 'real stories')]
   if (s.figures > 0) parts.push(plural(s.figures, 'number', 'numbers'))
+  if (s.productFacts > 0) parts.push(plural(s.productFacts, 'product fact', 'product facts'))
   const headline = `Your twin knows ${parts.join(' and ')} from you.`
 
   if (s.experiences === 0) {
