@@ -42,4 +42,30 @@ describe('it reads, and only reads', () => {
     expect(LOAD).toMatch(/if \(error \|\| !Array\.isArray\(data\)\) return null/)
     expect(CARD).toMatch(/if \(!s\) return null/)
   })
+
+  // ⚠️ G8 — THE SECOND SOURCE, PROVEN SEPARATELY FROM THE FIRST. Every check
+  // above passed before G8 existed and would keep passing if the product-facts
+  // query were deleted — none of them mention `product_entities`. This is the
+  // one that actually catches that regression.
+  describe('and reads product facts too (G8)', () => {
+    it('queries product_entities for the knowledge column', () => {
+      expect(LOAD).toMatch(/\.from\('product_entities'\)/)
+      expect(LOAD).toMatch(/\.select\('knowledge'\)/)
+    })
+
+    it('excludes archived entities, matching every other reader of this table', () => {
+      expect(LOAD).toMatch(/\.is\('archived_at', null\)/)
+    })
+
+    it('passes the count into twinStrength as the second argument', () => {
+      expect(LOAD).toMatch(/twinStrength\(data, productFactCount\)/)
+    })
+
+    // ⚠️ A FAILED PRODUCT-FACTS READ MUST NOT BLANK THE METER THE FIRST QUERY
+    // ALREADY ANSWERED. There is deliberately no `if (productsError) return null`
+    // for the second query — only the first read is a hard failure.
+    it('a failed product read degrades the count, not the whole meter', () => {
+      expect(LOAD).not.toMatch(/if \(productsError/)
+    })
+  })
 })
