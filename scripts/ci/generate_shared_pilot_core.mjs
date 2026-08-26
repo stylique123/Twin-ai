@@ -42,6 +42,7 @@ const SOURCES = [
   ['packages/shared/src/script/emphasis.ts', 'supabase/functions/_shared/emphasis.ts'],
   ['packages/shared/src/script/beatAsk.ts', 'supabase/functions/_shared/beatAsk.ts'],
   ['packages/shared/src/script/shotLabel.ts', 'supabase/functions/_shared/shotLabel.ts'],
+  ['packages/shared/src/scanCeiling.ts', 'supabase/functions/_shared/scanCeiling.ts'],
 ]
 
 // ⚠️ A SHEBANG IS LEGAL ONLY ON LINE 1, AND THE HEADER PUSHES IT TO LINE 5.

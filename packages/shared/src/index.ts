@@ -102,6 +102,10 @@ export * from './gate/talkingHeadFit'
 // one half of one gate spoke to the creator and the other never had.
 export * from './gate/ownSampleRow'
 
+// ⚖️ A COST CEILING PER ACCOUNT. The hourly rate limit answers "are you
+// hammering us"; nothing answered "have you spent a month of our budget".
+export * from './scanCeiling'
+
 // ⚠️ THESE FOUR WERE WRITTEN AND NOT EXPORTED, WHICH IS WORSE THAN NOT CALLED.
 // A module missing from this barrel is not merely unused — it is UNREACHABLE
 // from apps/web, so "nothing imports it" reads as a choice when it was an
