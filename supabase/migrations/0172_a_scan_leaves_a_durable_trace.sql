@@ -48,7 +48,16 @@ drop policy if exists scan_events_owner_read on public.scan_events;
 create policy scan_events_owner_read on public.scan_events
   for select using (auth.uid() = user_id);
 
-revoke insert, update, delete on public.scan_events from anon, authenticated;
+-- ⚠️ `revoke all`, THEN GRANT BACK EXACTLY SELECT -- AND THE REASON IS TRUNCATE.
+-- This line first read `revoke insert, update, delete`, which looks complete and
+-- is not: ROW SECURITY DOES NOT GATE TRUNCATE. A creator holding the default
+-- table grant could have emptied their own scan ledger and reset the monthly
+-- count to zero, which is the whole quota defeated by the one verb the policy
+-- cannot see. `check_client_write_grants.sql` caught it on the staging matrix.
+-- Enumerating verbs is how that happened, so this stops enumerating: revoke
+-- everything, then name the single capability a browser legitimately has.
+revoke all on table public.scan_events from anon, authenticated;
+grant select on table public.scan_events to authenticated;
 
 -- ⚠️ NO DELETE POLICY AND NO UPDATE POLICY EXIST ON PURPOSE. An append-only
 -- ledger with an UPDATE path is an append-only ledger in name only.
