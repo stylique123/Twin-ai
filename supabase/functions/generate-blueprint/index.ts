@@ -1094,6 +1094,8 @@ function premiseInstructionInline(referenceText: string | null | undefined, hasE
 // below 40 sentences: a style profile is the most confident-sounding thing this
 // system can emit, and it sounds exactly as confident when computed from three.
 const STYLE_MIN_SENTENCES = 40
+// ⚠️ VOICE CAUSE 1(c) — see `renderPartialStyleRulesInline` below.
+const STYLE_PARTIAL_MIN_SENTENCES = 15
 const STYLE_SHORT_WORDS = 12
 const STYLE_CONTRACTION = /\b\w+['’](?:s|t|re|ve|ll|d|m)\b/gi
 const STYLE_SECOND_PERSON = /\b(you|your|you['’]re|yours|yourself)\b/i
@@ -1165,6 +1167,23 @@ function renderStyleRulesInline(style: InlineStyle): string {
   }
   return `HOW THEY ACTUALLY WRITE — MEASURED FROM ${style.sentences} SENTENCES OF THEIR OWN RECORDED SPEECH.
 These are observations of this creator, not style advice. Write to them.
+${lines.join('\n')}`
+}
+
+// ⚠️ VOICE CAUSE 1(c) — never both cards. opener is excluded: it is one data
+// point per SAMPLE TEXT, not per sentence, so it stays unreliable regardless
+// of total sentence count.
+function renderPartialStyleRulesInline(style: InlineStyle): string {
+  if (style.sentences < STYLE_PARTIAL_MIN_SENTENCES || style.reportable) return ''
+  const pct = (n: number) => `${Math.round(n * 100)}%`
+  const lines = [
+    `- Sentence length: median ${style.medianSentenceWords} words; ${pct(style.shortSentenceShare)} run ${STYLE_SHORT_WORDS} words or fewer.`,
+    `- Direct address: ${pct(style.secondPersonShare)} of their sentences speak to the viewer as "you".`,
+    `- Questions: ${pct(style.questionShare)} of their sentences are questions.`,
+    `- First person: ${pct(style.firstPersonShare)} carry I/we — their own experience.`,
+    `- Contractions: ${style.contractionRate} per sentence.`,
+  ]
+  return `AN EARLY READ ON HOW THEY WRITE — MEASURED FROM ONLY ${style.sentences} SENTENCES, BELOW THE ${STYLE_MIN_SENTENCES}-SENTENCE FLOOR FOR A FULL PROFILE. Weight this less than a confident measurement, but more than a guess:
 ${lines.join('\n')}`
 }
 
@@ -3958,6 +3977,7 @@ Deno.serve(async (req: Request) => {
       historyBlock = ''
     }
     let styleRules = ''
+    let partialStyleRules = ''
     let signaturePhrasesLine = ''
     try {
       const { data: ownSpeech } = await admin
@@ -3986,19 +4006,23 @@ Deno.serve(async (req: Request) => {
       // did). A failed read degrades this the same way it degrades styleRules.
       signaturePhrasesLine = renderSignaturePhrasesInline(
         extractSignaturePhrasesInline((ownSpeech ?? []).map((r) => ({ id: String(r?.id ?? ''), text: String(r?.text ?? '') }))))
-      styleRules = renderStyleRulesInline(
-        compileStyleInline([...(ownSpeech ?? []).map((r) => String(r?.text ?? '')), ...askedSpeech]))
+      const compiledStyle = compileStyleInline([...(ownSpeech ?? []).map((r) => String(r?.text ?? '')), ...askedSpeech])
+      styleRules = renderStyleRulesInline(compiledStyle)
+      // ⚠️ VOICE CAUSE 1(c) — never both cards; renderPartialStyleRulesInline
+      // itself refuses once `compiledStyle.reportable` is true.
+      partialStyleRules = renderPartialStyleRulesInline(compiledStyle)
     } catch {
       // A failed read makes the script thinner, never wronger — the same
       // treatment the knowledge read gets, for the same reason.
       styleRules = ''
+      partialStyleRules = ''
       signaturePhrasesLine = ''
     }
     // ⚠️ VOICE CAUSE 1(a) — THE FLOOR BELOW THE FLOOR. Rendered ONLY when
     // BOTH verbatim samples and the measured style card are empty — the
     // moment either has real evidence, this labeled genre default must not
     // compete with it.
-    const defaultRegisterCard = (!voiceSamples && !styleRules) ? renderDefaultRegisterCardInline() : ''
+    const defaultRegisterCard = (!voiceSamples && !styleRules && !partialStyleRules) ? renderDefaultRegisterCardInline() : ''
     // WRITE-TIME ENRICHMENT. Even a thin scan must still write IN-VOICE, so we
     // never feed the model "(none captured)" for the fields that decide whether a
     // script sounds like THIS creator. A creator's real hooks ARE their opener
@@ -4638,7 +4662,8 @@ Deno.serve(async (req: Request) => {
 - Don't: ${(vp.donts ?? []).join('; ')}
 - Voice summary: ${vp.summary ?? ''}` : ''}${voiceSamples ? `
 - HOW THEY ACTUALLY WRITE (verbatim samples — match this EXACT cadence, diction, sentence length and rhythm; weight this above every other signal, it is the most reliable evidence of their true voice): ${voiceSamples}` : ''}${styleRules ? `
-${styleRules}` : ''}${defaultRegisterCard ? `
+${styleRules}` : ''}${partialStyleRules ? `
+${partialStyleRules}` : ''}${defaultRegisterCard ? `
 ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
 - ${signaturePhrasesLine}` : ''}
 - Platforms (publish_plan MUST use ONLY these, one entry each): ${platforms.join(', ')}${paletteHex ? `

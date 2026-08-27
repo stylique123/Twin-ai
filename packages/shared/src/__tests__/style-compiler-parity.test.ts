@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { compileStyle, renderStyleRules, MIN_SENTENCES, SHORT_SENTENCE_WORDS } from '../styleCompiler'
+import { compileStyle, renderStyleRules, renderPartialStyleRules, MIN_SENTENCES, SHORT_SENTENCE_WORDS, PARTIAL_MIN_SENTENCES } from '../styleCompiler'
 
 const EDGE = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..',
@@ -25,6 +25,7 @@ const EDGE = readFileSync(
 function loadInline(): {
   compile: (s: string[]) => Record<string, unknown>
   render: (s: Record<string, unknown>) => string
+  renderPartial: (s: Record<string, unknown>) => string
 } {
   const start = EDGE.indexOf('const STYLE_MIN_SENTENCES')
   const end = EDGE.indexOf('const SUBSTANCE_ENUM')
@@ -39,7 +40,7 @@ function loadInline(): {
     .replace(/: string\[\]/g, '').replace(/: string\b/g, '').replace(/: number\b/g, '')
     .replace(/function (\w+)\(([^)]*)\)\s*\{/g, 'function $1($2) {')
   // eslint-disable-next-line no-new-func
-  const factory = new Function(`${src}; return { compile: compileStyleInline, render: renderStyleRulesInline }`)
+  const factory = new Function(`${src}; return { compile: compileStyleInline, render: renderStyleRulesInline, renderPartial: renderPartialStyleRulesInline }`)
   return factory() as ReturnType<typeof loadInline>
 }
 
@@ -79,6 +80,25 @@ describe('the inlined compiler matches the shared one', () => {
   }
 })
 
+const PARTIAL_FIXTURES: Array<[string, string[]]> = [
+  ['empty', []],
+  ['below the partial floor', ['You should stop. You must move.']],
+  ['between the two floors', [Array.from({ length: 10 },
+    (_, i) => `You need to stop this now. It costs you ${i} hours a week.`).join(' ')]],
+  ['crosses the full floor — silent, renderStyleRules takes over', [Array.from({ length: 45 },
+    (_, i) => `You need to stop this now. It costs you ${i} hours a week.`).join(' ')]],
+]
+
+describe('the inlined partial card matches the shared one (Voice Cause 1c)', () => {
+  for (const [name, samples] of PARTIAL_FIXTURES) {
+    it(`renders identically: ${name}`, () => {
+      const shared = renderPartialStyleRules(compileStyle(samples))
+      const edge = inline.renderPartial(inline.compile(samples))
+      expect(edge).toBe(shared)
+    })
+  }
+})
+
 describe('the constants cannot drift apart', () => {
   it('agrees on the reporting threshold', () => {
     expect(EDGE).toContain(`const STYLE_MIN_SENTENCES = ${MIN_SENTENCES}`)
@@ -86,6 +106,10 @@ describe('the constants cannot drift apart', () => {
 
   it('agrees on the short-sentence boundary', () => {
     expect(EDGE).toContain(`const STYLE_SHORT_WORDS = ${SHORT_SENTENCE_WORDS}`)
+  })
+
+  it('agrees on the partial-card floor', () => {
+    expect(EDGE).toContain(`const STYLE_PARTIAL_MIN_SENTENCES = ${PARTIAL_MIN_SENTENCES}`)
   })
 })
 

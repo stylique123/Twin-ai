@@ -63,6 +63,14 @@ export const NOT_MEASURED = [
 /** Below this, the numbers are about one video's editing, not a person's voice. */
 export const MIN_SENTENCES = 40
 
+/** ⚠️ VOICE CAUSE 1(c) — THE GAP BETWEEN "NOTHING" AND "CONFIDENT". Below
+ *  `MIN_SENTENCES` the full card is silent, correctly, but a creator sitting
+ *  at 20-30 sentences is not the same as one at zero: some of these numbers
+ *  are already meaningful. Between this floor and `MIN_SENTENCES`, a smaller
+ *  card renders — fewer metrics, each labeled with the sentence count it was
+ *  measured from, so nobody reads it as the full profile. */
+export const PARTIAL_MIN_SENTENCES = 15
+
 /** A sentence a viewer can absorb in one breath. Not a target — a measurement
  *  boundary, chosen because short-form beats that run past it tend to be read
  *  rather than spoken. */
@@ -170,5 +178,36 @@ export function renderStyleRules(style: StyleProfile): string {
   }
   return `HOW THEY ACTUALLY WRITE — MEASURED FROM ${style.sentences} SENTENCES OF THEIR OWN RECORDED SPEECH.
 These are observations of this creator, not style advice. Write to them.
+${lines.join('\n')}`
+}
+
+/**
+ * Render a SMALLER card for a corpus too thin for `renderStyleRules` but not
+ * empty. ⚠️ VOICE CAUSE 1(c).
+ *
+ * ⚖️ ONLY THE PER-SENTENCE METRICS, NEVER `opener`. Every number here pools
+ * across ALL sentences in the corpus, so 20 sentences already gives each one
+ * a real (if noisy) sample. `opener` is different: it is one data point per
+ * SAMPLE TEXT, not per sentence — a creator with two or three short samples
+ * has two or three opener observations regardless of total sentence count,
+ * which is far too few to call a habit. The full card's own tie-break
+ * ("one opener move is a habit; three is a range") already distrusts three
+ * observations; this card never reaches for fewer.
+ *
+ * ⚠️ THE COUNT IS THE FIRST THING SAID, NOT A FOOTNOTE. A partial card that
+ * reads like the confident one would undo the whole reason `renderStyleRules`
+ * refuses below its own floor.
+ */
+export function renderPartialStyleRules(style: StyleProfile): string {
+  if (style.sentences < PARTIAL_MIN_SENTENCES || style.reportable) return ''
+  const pct = (n: number) => `${Math.round(n * 100)}%`
+  const lines = [
+    `- Sentence length: median ${style.medianSentenceWords} words; ${pct(style.shortSentenceShare)} run ${SHORT_SENTENCE_WORDS} words or fewer.`,
+    `- Direct address: ${pct(style.secondPersonShare)} of their sentences speak to the viewer as "you".`,
+    `- Questions: ${pct(style.questionShare)} of their sentences are questions.`,
+    `- First person: ${pct(style.firstPersonShare)} carry I/we — their own experience.`,
+    `- Contractions: ${style.contractionRate} per sentence.`,
+  ]
+  return `AN EARLY READ ON HOW THEY WRITE — MEASURED FROM ONLY ${style.sentences} SENTENCES, BELOW THE ${MIN_SENTENCES}-SENTENCE FLOOR FOR A FULL PROFILE. Weight this less than a confident measurement, but more than a guess:
 ${lines.join('\n')}`
 }
