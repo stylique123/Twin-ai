@@ -167,6 +167,11 @@ export * from './script/advisoryRead'
 // creator's own signature, so this reports the COLLISION, never the words.
 export * from './script/hookVariety'
 
+// ⚖️ "X, Y, AND Z" REPEATED IS A TIC, NOT A SENTENCE. Voice Cause 2's
+// structural AI-tell detector — a triadic list once is ordinary language,
+// twice across one script is the templated cadence.
+export * from './script/parallelTriads'
+
 // ⚖️ THE SHOOTING NOTE THAT WAS THROWN AWAY. `beat_plan[].proof` is 20-of-20
 // complete in production and `proofAt` had ZERO callers. Shown only where it
 // describes what the CREATOR performs — never a b-roll or screen-recording
