@@ -158,6 +158,16 @@ export * from './script/visualHook'
 // silence — three times out of four beats in one production script.
 export * from './script/silentBeat'
 
+// ⚖️ FOUR SCENES, ONE LOCATION STRING, AND NOTHING CHECKED IT. The retention
+// doctrine requires scene-to-scene visual change; flags a run of ≥3
+// consecutive speaking beats with an identical (location, framing) pair.
+// Detection only — repair is a UI-offered suggestion, never a model rewrite.
+export * from './script/sceneVariety'
+
+// ⚖️ FIX 8a. A body line that restates a non-selected hook option almost
+// word-for-word — lexical repetition of a known string, decidable by
+// containment. hook_options[0] is never checked (it IS the hook beat).
+export * from './script/hookBodyCollision'
 // ⚖️ A STOCK PHRASE IS NOT A STANCE. The prompt already bans these and the
 // writer shipped 7 anyway; but 4 of those 7 were the creator naming their
 // ENEMY, so the list is phrase-level and "hustle" is deliberately absent.
