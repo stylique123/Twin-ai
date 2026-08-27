@@ -2271,7 +2271,33 @@ function findProductClaimGaps(
   return out
 }
 
+// ⚠️ FIX 11 — SERMON WITHOUT WITNESS, DETECTED. Two separate counts, not one
+// score: `firstPersonBeats` asks whether the creator's own supplied
+// knowledge reached a beat spoken IN THEIR VOICE; `figuresSpoken` asks
+// whether the script carries a real number at all, regardless of source. A
+// script grounded in a reference's numbers with zero first-person beats is
+// exactly the sermon shape this exists to name.
+//
+// ⚖️ PARITY: mirrors witnessScore in packages/shared/src/script/witnessScore.ts
+// -- the edge cannot import @twinai/shared, so the rule lives twice and the
+// shared copy is the tested one. Reuses `claimedValues` above, the same
+// figure-normalisation the entailment and product-claim checks depend on.
+const FIRST_PERSON_MARKER_INLINE = /\b(?:i|i'm|i've|i'd|i'll|me|my|mine|we|we're|we've|our|ours)\b/i
 
+function witnessScoreInline(
+  beats: unknown,
+): { firstPersonBeats: number; figuresSpoken: number } {
+  if (!Array.isArray(beats)) return { firstPersonBeats: 0, figuresSpoken: 0 }
+  let firstPersonBeats = 0
+  let figuresSpoken = 0
+  for (const b of beats) {
+    const beat = (b ?? {}) as { line?: unknown; substance?: unknown }
+    const line = typeof beat.line === 'string' ? beat.line : ''
+    if (beat.substance === 'creator_knowledge' && FIRST_PERSON_MARKER_INLINE.test(line)) firstPersonBeats += 1
+    if (line !== '' && claimedValues(line).size > 0) figuresSpoken += 1
+  }
+  return { firstPersonBeats, figuresSpoken }
+}
 
 
 // HOW THIS CREATOR PACKAGES A VIDEO — the reader for what the scan measured.
@@ -5714,6 +5740,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // live in production before this shipped: both violations were present.
       unsupplyable_shots: unsupplyableShotCountInline(
         Array.isArray(declared) ? declared : []),
+      // ⚠️ FIX 11. Two separate counts: beats grounded in the creator's own
+      // knowledge AND spoken in their voice, versus beats carrying a real
+      // figure from any source. A script can score high on the second and
+      // zero on the first — that gap is the sermon-without-witness shape.
+      witness_score: witnessScoreInline(declared),
     }
     console.log(JSON.stringify({
       event: 'beat_substance',
