@@ -1117,6 +1117,42 @@ function sceneMonotonyBeatCountInline(beats: unknown): number {
   return total
 }
 
+// ⚠️ PARITY: mirrors asksForBroll / unsupplyableShotCount in
+// packages/shared/src/screenCaptureConversion.ts. `screenCaptureDirectionsInline`
+// above scans `beat_plan`, an earlier planning stage; this scans the FINAL
+// script's `editor_intent` field, where MEASUREMENT against production found
+// both standing-decision violations still live: "Overlay the screen recording
+// at fifty percent opacity" and "Hard cut to full screen b-roll for two
+// seconds". `shot_type` is constrained to talking_head/cover_frame; the
+// free-text `editor_intent` field is not.
+const BROLL_PHRASES_INLINE: RegExp[] = [
+  /\bfull[\s-]?screen\s+b[\s-]?roll\b/i,
+  /\bb[\s-]?roll\s+(?:of|showing|footage)\b/i,
+  /\bcut(?:s)?\s+to\s+b[\s-]?roll\b/i,
+  /\bstock\s+footage\b/i,
+  /\binsert\s+(?:clip|footage|shot)\s+of\b/i,
+  /\bcutaway\s+(?:to|of|shot)\b/i,
+  /\bb[\s-]?roll\b/i,
+]
+
+function asksForBrollInline(direction: unknown): boolean {
+  if (typeof direction !== 'string' || direction.trim() === '') return false
+  return BROLL_PHRASES_INLINE.some((re) => re.test(direction))
+}
+
+/** Counts demand for a shot the creator cannot supply; never converts the
+ *  shot type — the standing decision this exists to measure, not enforce. */
+function unsupplyableShotCountInline(script: unknown): number {
+  if (!Array.isArray(script)) return 0
+  let n = 0
+  for (const b of script) {
+    if (!b || typeof b !== 'object') continue
+    const rec = b as Record<string, unknown>
+    if (asksForScreenCaptureInline(rec.editor_intent) || asksForBrollInline(rec.editor_intent)) n += 1
+  }
+  return n
+}
+
 function premiseDemandInline(referenceText: string | null | undefined): 'narrator_experience' | 'none' | 'unknown' {
   const text = String(referenceText ?? '').replace(/\s+/g, ' ').trim()
   if (text.length < MIN_PREMISE_CHARS) return 'unknown'
@@ -5616,6 +5652,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // and an absent counter would look identical to it, which is why this
       // is written even when nothing is found.
       scene_monotony_beats: sceneMonotonyBeatCountInline(declared),
+      // ⚠️ THE SAME QUESTION, ASKED OF THE FIELD THAT ACTUALLY REACHES THE
+      // CREATOR. `screen_capture_directions` above reads the earlier beat_plan;
+      // this reads the FINAL script's `editor_intent`, and also counts b-roll —
+      // the second standing-decision violation, never checked before. MEASURED
+      // live in production before this shipped: both violations were present.
+      unsupplyable_shots: unsupplyableShotCountInline(
+        Array.isArray(declared) ? declared : []),
     }
     console.log(JSON.stringify({
       event: 'beat_substance',
