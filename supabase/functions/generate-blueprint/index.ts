@@ -1054,6 +1054,120 @@ function screenCaptureDirectionsInline(beatPlan: unknown): number {
   return n
 }
 
+// ⚠️ FIX 8a. A body line that restates a non-selected hook option almost
+// word-for-word. Lexical repetition of a known string (the hook the model
+// itself wrote), never checking hook_options[0] since its own beat IS drawn
+// from it.
+//
+// ⚖️ PARITY: this mirrors hookBodyCollisionBeatCount in
+// packages/shared/src/script/hookBodyCollision.ts -- the edge cannot import
+// @twinai/shared, so the rule lives twice and the shared copy is the tested
+// one.
+const HOOK_BODY_CONTAINMENT_THRESHOLD_INLINE = 0.6
+const HOOK_BODY_STOPWORDS_INLINE = new Set([
+  'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'you', 'your', 'i',
+  'me', 'my', 'it', 'its', 'to', 'of', 'in', 'on', 'at', 'for', 'and', 'or',
+  'but', 'that', 'this', 'with', 'into', 'right', 'now', 'if', 'so', 'because',
+])
+
+function hookBodyContentWordsInline(text: unknown): string[] {
+  if (typeof text !== 'string') return []
+  return text
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-z0-9']/g, ''))
+    .filter((w) => w !== '' && !HOOK_BODY_STOPWORDS_INLINE.has(w))
+}
+
+function hookBodyContainmentInline(a: unknown, b: unknown): number | null {
+  const wordsA = new Set(hookBodyContentWordsInline(a))
+  const wordsB = new Set(hookBodyContentWordsInline(b))
+  if (wordsA.size === 0 || wordsB.size === 0) return null
+  const smaller = wordsA.size <= wordsB.size ? wordsA : wordsB
+  const larger = wordsA.size <= wordsB.size ? wordsB : wordsA
+  let shared = 0
+  for (const w of smaller) if (larger.has(w)) shared += 1
+  return shared / smaller.size
+}
+
+function hookBodyCollisionBeatCountInline(hookOptions: unknown, beats: unknown): number {
+  if (!Array.isArray(hookOptions) || !Array.isArray(beats)) return 0
+  const collidingBeats = new Set<number>()
+  for (let h = 1; h < hookOptions.length; h++) {
+    const hook = hookOptions[h]
+    if (typeof hook !== 'string' || hook.trim() === '') continue
+    beats.forEach((b, beatIndex) => {
+      const line = (b as { line?: unknown } | null)?.line
+      const score = hookBodyContainmentInline(hook, line)
+      if (score !== null && score >= HOOK_BODY_CONTAINMENT_THRESHOLD_INLINE) collidingBeats.add(beatIndex)
+    })
+  }
+  return collidingBeats.size
+}
+
+// ⚠️ FOUR SCENES, ONE LOCATION STRING, AND NOTHING CHECKED IT (FIX 4). The
+// retention doctrine requires scene-to-scene visual change; flags a run of
+// ≥3 consecutive speaking beats whose (location, direction) pair is
+// unchanged. Flag only -- location is the field with the "assumed
+// inventory" failure mode, so no automatic rewrite is offered here.
+//
+// ⚖️ PARITY: this mirrors sceneMonotonyBeatCount in
+// packages/shared/src/script/sceneVariety.ts -- the edge cannot import
+// @twinai/shared, so the rule lives twice and the shared copy is the tested
+// one.
+const SCENE_MONOTONY_RUN_LENGTH_INLINE = 3
+
+function normalizeSceneFieldInline(value: unknown): string {
+  return typeof value === 'string'
+    ? value.trim().toLowerCase().replace(/[.,!?]+$/g, '')
+    : ''
+}
+
+function isSpeakingBeatInline(beat: { line?: unknown }): boolean {
+  return typeof beat.line === 'string' && beat.line.trim().length > 0
+    && !asksForSilenceInline(beat.line)
+}
+
+// ⚠️ A SILENT BEAT ('[No spoken audio]') IS NOT A SPEAKING BEAT even though
+// its line is non-empty text. Kept minimal and local rather than importing
+// the full silentBeat marker list, since only the bracket-wrapped shape
+// matters for this count.
+const SILENCE_MARKERS_INLINE = [
+  'no spoken audio', 'no dialogue', 'no dialog', 'no audio', 'no voiceover',
+  'no voice over', 'no speech', 'silent', 'silence', 'no words', 'nothing spoken',
+]
+function asksForSilenceInline(line: string): boolean {
+  const t = line.trim()
+  const m = /^\[([^\]]*)\]$/.exec(t)
+  if (!m) return false
+  const inner = m[1].trim().toLowerCase().replace(/[.!]+$/, '')
+  return SILENCE_MARKERS_INLINE.includes(inner)
+}
+
+function sceneMonotonyBeatCountInline(beats: unknown): number {
+  if (!Array.isArray(beats)) return 0
+  const speaking: Array<{ location: string; direction: string }> = []
+  for (const b of beats) {
+    const beat = (b ?? {}) as { line?: unknown; location?: unknown; direction?: unknown }
+    if (!isSpeakingBeatInline(beat)) continue
+    speaking.push({ location: normalizeSceneFieldInline(beat.location), direction: normalizeSceneFieldInline(beat.direction) })
+  }
+  let total = 0
+  let runStart = 0
+  for (let i = 1; i <= speaking.length; i++) {
+    const sameAsPrev = i < speaking.length
+      && speaking[i].location === speaking[runStart].location
+      && speaking[i].direction === speaking[runStart].direction
+      && speaking[runStart].location !== ''
+    if (!sameAsPrev) {
+      const runLength = i - runStart
+      if (runLength >= SCENE_MONOTONY_RUN_LENGTH_INLINE) total += runLength
+      runStart = i
+    }
+  }
+  return total
+}
+
 // ⚠️ PARITY: mirrors asksForBroll / unsupplyableShotCount in
 // packages/shared/src/screenCaptureConversion.ts. `screenCaptureDirectionsInline`
 // above scans `beat_plan`, an earlier planning stage; this scans the FINAL
@@ -5610,6 +5724,15 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // is why it is written even when nothing is found.
       screen_capture_directions: screenCaptureDirectionsInline(
         (templated.bp as { beat_plan?: unknown })?.beat_plan),
+      // ⚠️ FIX 8a. How many body beats restate a non-selected hook option.
+      // hook_options[0] is skipped by construction, never filtered after.
+      hook_body_collisions: hookBodyCollisionBeatCountInline(
+        (templated.bp as { hook_options?: unknown })?.hook_options, declared),
+      // ⚠️ FIX 4. How many speaking beats sit inside a ≥3-beat run of an
+      // unchanged (location, direction) pair. Zero is the expected reading
+      // and an absent counter would look identical to it, which is why this
+      // is written even when nothing is found.
+      scene_monotony_beats: sceneMonotonyBeatCountInline(declared),
       // ⚠️ THE SAME QUESTION, ASKED OF THE FIELD THAT ACTUALLY REACHES THE
       // CREATOR. `screen_capture_directions` above reads the earlier beat_plan;
       // this reads the FINAL script's `editor_intent`, and also counts b-roll —

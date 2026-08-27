@@ -10,13 +10,21 @@ const EDGE = readFileSync(
     'supabase', 'functions', 'generate-blueprint', 'index.ts'), 'utf8')
 
 function loadInline(): (script: unknown) => number {
-  const start = EDGE.indexOf('const CAPTURE_PHRASES_INLINE')
-  const end = EDGE.indexOf('function unsupplyableShotCountInline')
+  // ⚠️ TWO DISJOINT SLICES, NOT ONE CONTIGUOUS RANGE. FIX 4's own inline block
+  // now sits between `asksForScreenCaptureInline` (needed here) and
+  // `screenCaptureDirectionsInline`/`BROLL_PHRASES_INLINE` (also needed) --
+  // a single start..end slice would pull FIX 4's block in too and its type
+  // annotations aren't covered by the strips below.
+  const captureStart = EDGE.indexOf('const CAPTURE_PHRASES_INLINE')
+  const captureEnd = EDGE.indexOf('function screenCaptureDirectionsInline')
+  const brollStart = EDGE.indexOf('const BROLL_PHRASES_INLINE')
   const bodyStart = EDGE.indexOf('function unsupplyableShotCountInline')
   const bodyEnd = EDGE.indexOf('\n}', bodyStart) + 2
-  expect(start).toBeGreaterThan(-1)
-  expect(end).toBeGreaterThan(start)
-  const src = EDGE.slice(start, bodyEnd)
+  expect(captureStart).toBeGreaterThan(-1)
+  expect(captureEnd).toBeGreaterThan(captureStart)
+  expect(brollStart).toBeGreaterThan(captureEnd)
+  expect(bodyStart).toBeGreaterThan(brollStart)
+  const src = (EDGE.slice(captureStart, captureEnd) + EDGE.slice(brollStart, bodyEnd))
     .replace(/: RegExp\[\]/g, '')
     .replace(/: unknown\b/g, '').replace(/: Record<string, unknown>/g, '')
     .replace(/\s+as Record<string, unknown>/g, '')
