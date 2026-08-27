@@ -2273,6 +2273,129 @@ function findProductClaimGaps(
 
 
 
+// FIX 13 — WHAT THE FRAMES SHOWED, READ INTO THE PROMPT.
+//
+// ⚠️ `reference_content_profiles.visual_profile` HAS BEEN WRITTEN SINCE
+// MIGRATION 0152 AND HAD ZERO READERS. This is the missing reader: it turns
+// the cached visual pass into `observed_visual` prompt lines, labeled and
+// fenced exactly like every other reference-derived field.
+//
+// ⚖️ PARITY: mirrors packages/shared/src/script/observedVisual.ts -- the edge
+// cannot import @twinai/shared, so the rule lives twice and the shared copy
+// is the tested one.
+interface VisualObservationInline<T> { value: T; evidence: { frames: readonly number[] } }
+interface ReferenceVisualProfileInline {
+  visualPassRan: boolean
+  fieldsObserved: number
+  primaryMode?: VisualObservationInline<string> | null
+  people?: { count?: VisualObservationInline<'one' | 'multiple'> | null } | null
+  setting?: {
+    changes?: VisualObservationInline<boolean> | null
+    complexity?: VisualObservationInline<'simple' | 'moderate' | 'complex'> | null
+  } | null
+  performance?: {
+    talkingHead?: VisualObservationInline<boolean> | null
+    walking?: VisualObservationInline<boolean> | null
+    acting?: VisualObservationInline<boolean> | null
+    productInteraction?: VisualObservationInline<boolean> | null
+    screenInteraction?: VisualObservationInline<boolean> | null
+  } | null
+  camera?: {
+    framingChanges?: VisualObservationInline<boolean> | null
+    positionChanges?: VisualObservationInline<boolean> | null
+    shotType?: VisualObservationInline<'close' | 'medium' | 'wide'> | null
+  } | null
+  requirements?: {
+    physicalProduct?: VisualObservationInline<boolean> | null
+    secondPerson?: VisualObservationInline<boolean> | null
+    multipleLocations?: VisualObservationInline<boolean> | null
+    unusualProps?: VisualObservationInline<boolean> | null
+  } | null
+}
+const SHOT_LABEL_INLINE: Record<'close' | 'medium' | 'wide', string> = {
+  close: 'a close shot', medium: 'a medium shot', wide: 'a wide shot',
+}
+const COMPLEXITY_LABEL_INLINE: Record<'simple' | 'moderate' | 'complex', string> = {
+  simple: 'simple', moderate: 'moderately dressed', complex: 'visually complex',
+}
+function observedVisualLinesInline(
+  profile: ReferenceVisualProfileInline | null | undefined,
+): Array<{ dimension: string; line: string }> {
+  if (!profile || !profile.visualPassRan) return []
+  const out: Array<{ dimension: string; line: string }> = []
+  const add = (dimension: string, line: string) => out.push({ dimension, line })
+  if (profile.primaryMode) add('primary_mode', `Filmed as ${profile.primaryMode.value.replace(/_/g, ' ')}.`)
+  if (profile.people?.count) {
+    add('people_count', profile.people.count.value === 'multiple'
+      ? 'More than one person appears on camera.' : 'Only one person appears on camera.')
+  }
+  if (profile.setting?.changes) {
+    add('setting_changes', profile.setting.changes.value
+      ? 'The setting changes during the video.' : 'The setting stays the same throughout.')
+  }
+  if (profile.setting?.complexity) {
+    add('setting_complexity', `The setting reads as ${COMPLEXITY_LABEL_INLINE[profile.setting.complexity.value]}.`)
+  }
+  if (profile.performance?.talkingHead) {
+    add('talking_head', profile.performance.talkingHead.value
+      ? 'The creator talks toward the camera.' : 'The creator does not talk directly toward the camera.')
+  }
+  if (profile.performance?.walking) {
+    add('walking', profile.performance.walking.value
+      ? 'The creator walks during the video.' : 'The creator does not walk during the video.')
+  }
+  if (profile.performance?.acting) {
+    add('acting', profile.performance.acting.value
+      ? 'The creator performs a scripted scene rather than speaking to camera.'
+      : 'The creator does not perform a scripted scene.')
+  }
+  if (profile.performance?.productInteraction) {
+    add('product_interaction', profile.performance.productInteraction.value
+      ? 'The creator physically handles a product on camera.' : 'The creator does not handle a product on camera.')
+  }
+  if (profile.performance?.screenInteraction) {
+    add('screen_interaction', profile.performance.screenInteraction.value
+      ? 'A screen is shown or interacted with on camera.' : 'No screen is shown or interacted with.')
+  }
+  if (profile.camera?.framingChanges) {
+    add('framing_changes', profile.camera.framingChanges.value
+      ? 'The framing changes during the video.' : 'The framing stays constant throughout.')
+  }
+  if (profile.camera?.positionChanges) {
+    add('position_changes', profile.camera.positionChanges.value
+      ? 'The camera position changes during the video.' : 'The camera position stays constant throughout.')
+  }
+  if (profile.camera?.shotType) add('shot_type', `Shot in ${SHOT_LABEL_INLINE[profile.camera.shotType.value]}.`)
+  if (profile.requirements?.physicalProduct) {
+    add('requires_physical_product', profile.requirements.physicalProduct.value
+      ? 'A physical product is required to shoot this.' : 'No physical product is required to shoot this.')
+  }
+  if (profile.requirements?.secondPerson) {
+    add('requires_second_person', profile.requirements.secondPerson.value
+      ? 'A second person is required to shoot this.' : 'No second person is required to shoot this.')
+  }
+  if (profile.requirements?.multipleLocations) {
+    add('requires_multiple_locations', profile.requirements.multipleLocations.value
+      ? 'Multiple locations are required to shoot this.' : 'One location is enough to shoot this.')
+  }
+  if (profile.requirements?.unusualProps) {
+    add('requires_unusual_props', profile.requirements.unusualProps.value
+      ? 'Unusual props are required to shoot this.' : 'No unusual props are required to shoot this.')
+  }
+  return out
+}
+function observedVisualBlockInline(profile: ReferenceVisualProfileInline | null | undefined): string | null {
+  const lines = observedVisualLinesInline(profile)
+  if (lines.length === 0) return null
+  return 'OBSERVED FROM THE REFERENCE’S OWN VIDEO FRAMES (observed_visual — not the '
+    + 'transcript, and not a description of this creator). Use it only to judge whether '
+    + 'the SHAPE of the reference is shootable; never as instruction for what this '
+    + 'creator’s own video should show:\n'
+    + lines.map((l) => `  - ${l.line}`).join('\n')
+}
+function observedVisualCountInline(profile: ReferenceVisualProfileInline | null | undefined): number {
+  return profile?.visualPassRan ? profile.fieldsObserved : 0
+}
 
 // HOW THIS CREATOR PACKAGES A VIDEO — the reader for what the scan measured.
 //
@@ -4847,13 +4970,28 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         // means the resolver never ran (no template, or the read failed), which
         // is deliberately distinct from "ran and resolved nothing".
         let resolvedSlots: ReturnType<typeof buildSlots> | null = null
+        // ⚠️ FIX 13. How many visual dimensions the cached frame pass actually
+        // answered for THIS reference. `0` covers both "never assessed" and
+        // "assessed, read nothing" -- the same three-state collapse
+        // `observedVisualCountInline` documents, kept because `beat_audit` has
+        // no separate slot for "ran" vs "ran and learned nothing" today.
+        let visualDimensionsObserved = 0
         try {
           const { data: assessed } = await admin
             .from('reference_content_profiles')
-            .select('profile')
+            .select('profile, visual_profile')
             .eq('url', reference_url)
             .is('error', null)
             .maybeSingle()
+          // ⚠️ Wired the moment a gallery reference's frame pass has been cached
+          // -- the worker has been writing `visual_profile` since migration 0152
+          // and nothing read it until now. Appended to `containerBlock` so it
+          // reaches the SAME prompt slot as every other reference-derived field,
+          // regardless of whether a container template also matched.
+          const visualProfile = assessed?.visual_profile as ReferenceVisualProfileInline | null
+          const visualBlock = observedVisualBlockInline(visualProfile)
+          visualDimensionsObserved = observedVisualCountInline(visualProfile)
+          if (visualBlock) containerBlock += `\n\n${visualBlock}`
           const container = (assessed?.profile as
             { structure?: { containerType?: { value?: string; basis?: string } } } | null)
             ?.structure?.containerType
@@ -5714,6 +5852,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // live in production before this shipped: both violations were present.
       unsupplyable_shots: unsupplyableShotCountInline(
         Array.isArray(declared) ? declared : []),
+      // ⚠️ FIX 13. How many of the reference's 9 visual dimensions the cached
+      // frame pass actually answered. 0 covers both "never assessed" and
+      // "assessed, learned nothing" -- the expected reading for the ~97% of
+      // the gallery the visual pilot has not yet reached, and an absent
+      // counter would look identical to it, which is why this is written
+      // even when nothing was found.
+      visual_dimensions_observed: visualDimensionsObserved,
     }
     console.log(JSON.stringify({
       event: 'beat_substance',
