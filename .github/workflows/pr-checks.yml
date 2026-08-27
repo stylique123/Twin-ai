@@ -687,6 +687,13 @@ jobs:
       # Both are things the compiler names; nothing was asking the compiler.
       - name: Edge functions compile (a syntax error here cannot deploy)
         run: node scripts/ci/check_edge_functions_parse.mjs
+      # ⚠️ THE UNWIRED-MODULE DETECTOR WAS ITSELF UNWIRED. Built, tested,
+      # correct, and nothing called it in CI — exactly the defect class its
+      # own header names four instances of. Reports only, never fails: a
+      # module with tests and no caller looks healthier than one with
+      # neither, and this makes that visible without blocking anyone.
+      - name: Shared modules with no production caller (report only, never fails)
+        run: node scripts/ci/check_unwired_modules.mjs
       # A table name is a STRING, so the compiler cannot check it and a test
       # cannot reach it when the write is fire-and-forget. `ops_alerts` — the
       # alert saying a refund failed and a human must reconcile it — was written
