@@ -32,7 +32,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote } from '@twinai/shared'
+import { shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, sentenceUniformityNote } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -1879,10 +1879,17 @@ function BlueprintScriptCards(
   // every spoken line, never per-card.
   const triadNote = parallelTriadNote(
     script.flatMap((s) => (isSilentBeat(s.line) ? [] : parallelTriadsIn(s.line))))
+  // ⚖️ VOICE CAUSE 2 (PART 2) — SAME WHOLE-SCRIPT SHAPE AS triadNote, a
+  // second and independent structural-cadence check.
+  const uniformityNote = sentenceUniformityNote(
+    script.flatMap((s) => (isSilentBeat(s.line) ? [] : [s.line ?? ''])))
   return (
     <div className="space-y-6">
       {triadNote && (
         <p className="text-xs text-amber/90">{triadNote}</p>
+      )}
+      {uniformityNote && (
+        <p className="text-xs text-amber/90">{uniformityNote}</p>
       )}
       {script.map((s, i) => {
         const isHook = s.section?.toLowerCase().includes('hook')
