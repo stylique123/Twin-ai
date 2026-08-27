@@ -30,6 +30,18 @@
  * ⚖️ AND IT IS A NOTE, NOT A VERDICT. This never blocks, never scores and never
  * rewrites. It tells the creator which words are doing no work, and leaves the
  * decision where it belongs.
+ *
+ * ⚠️⚠️ VOICE CAUSE 2 — RE-MEASURED AGAINST THE SAME 41-GENERATION CORPUS,
+ * PHRASE-LEVEL AGAIN. "But here is the [part/reality/secret/exact reason]"
+ * — a myth-reveal pivot lifted straight from ad-copy structure — appeared 17
+ * times across 17 of the 41 generations (41%), a far higher rate than the
+ * original list's own 7-of-463 baseline. Every one of the 17 hits is the
+ * identical transitional device; ZERO were a creator's own stance, unlike
+ * "hustle". One of the 17 sits inside a line already pinned in this module's
+ * tests as a stance-protection fixture — that line genuinely carries BOTH a
+ * real opinion ("hustle culture" named as the enemy) AND this generic opener
+ * in the same sentence, which is why the two are separate checks rather than
+ * one broader one.
  */
 
 /**
@@ -51,6 +63,8 @@ export const STOCK_PHRASES: readonly string[] = [
   'move the needle',
   'game changer',
   'game-changer',
+  'but here is the',
+  "but here's the",
 ]
 
 export interface StockPhraseHit {

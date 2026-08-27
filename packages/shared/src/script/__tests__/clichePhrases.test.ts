@@ -10,13 +10,34 @@ const THE_CREATORS_STANCE = [
   'Hey friends, I am sharing the exact playbook that gave me financial freedom, but I am also being quite honest about why the toxic hustle culture almost ruined it for me. Hope you enjoy xx.',
   'Hey friends, I am sharing three mindset shifts that helped me find financial freedom, but tbh I am also being quite honest about how hard it was to unlearn toxic hustle culture.',
   'Hey friends, if you feel burnt out by hustle culture but still want to build something huge, this video is for you.',
-  'But here is the part nobody tells you about leaving that default path. If you just replace a stressful corporate job with a frantic hustle culture business, you have not actually escaped anything. You have just built yourself a new cage.',
 ]
+
+// ⚠️ VOICE CAUSE 2 — THIS ONE REAL PRODUCTION LINE CARRIES BOTH THINGS AT
+// ONCE. "hustle culture business" is the creator's own named enemy, exactly
+// like the three lines above — and MUST stay unflagged. "But here is the
+// part nobody tells you" is a separate, generic ad-copy transition that
+// this line ALSO happens to open with — measured at 17 hits across 17 of 41
+// production generations, zero of them a stance. One line, two independent
+// properties; a single blanket "no hits" assertion can no longer describe
+// it, so it gets its own check for each.
+const STANCE_AND_FILLER_IN_ONE_LINE =
+  'But here is the part nobody tells you about leaving that default path. If you just replace a stressful corporate job with a frantic hustle culture business, you have not actually escaped anything. You have just built yourself a new cage.'
 
 const THE_REAL_FILLER = [
   'Myth number one: you need expensive gear to go viral. WRONG. We started with a potato camera and a dream. What you actually need is a rock-solid idea and relentless execution, not a thousand dollar lens.',
   "The truth? You need to make what *they* love. You have to understand your audience better than they understand themselves. What problems can you solve? What thrills can you deliver? That's the secret sauce.",
   "Seriously, we've done some crazy stuff, but this new one? It's on a whole other level. And it got me thinking, a lot of you out there are trying to make big videos too, but you're probably falling for some common traps.",
+]
+
+// ⚠️ VOICE CAUSE 2 — 17 REAL PRODUCTION LINES, ALL THE SAME TRANSITION, ZERO
+// A STANCE. Pinned as required matches for the same reason THE_CREATORS_STANCE
+// is pinned as required non-matches: widening or narrowing this phrase should
+// turn a test red, not pass silently.
+const THE_MYTH_REVEAL_PIVOT = [
+  'But here is the reality most fashion brands ignore.',
+  'But here is the exact reason your conversion rate is stuck.',
+  "But here's the secret nobody tells you. They are not fixing it with better photography.",
+  'But here is the most insane part about the wrong way turn.',
 ]
 
 describe('an opinion is never filler', () => {
@@ -25,6 +46,12 @@ describe('an opinion is never filler', () => {
   it.each(THE_CREATORS_STANCE)('leaves a named enemy alone: %s', (line) => {
     expect(stockPhrasesIn(line)).toEqual([])
     expect(stockPhraseNote(stockPhrasesIn(line))).toBeNull()
+  })
+
+  it('flags the generic opener without ever flagging the stance sharing the same line', () => {
+    const hits = stockPhrasesIn(STANCE_AND_FILLER_IN_ONE_LINE)
+    expect(hits.map((h) => h.phrase)).toEqual(['but here is the'])
+    expect(hits.some((h) => h.phrase.includes('hustle'))).toBe(false)
   })
 
   // ⚠️ THE STRUCTURAL GUARANTEE, not just the four measured lines.
@@ -47,6 +74,18 @@ describe('an opinion is never filler', () => {
 describe('the filler the prompt already banned is caught', () => {
   it.each(THE_REAL_FILLER)('flags interchangeable advice-speak: %s', (line) => {
     expect(stockPhrasesIn(line).length).toBeGreaterThan(0)
+  })
+
+  // ⚠️ VOICE CAUSE 2 — THE MYTH-REVEAL PIVOT, MEASURED. Every one of these
+  // is a real production line; every one flags.
+  it.each(THE_MYTH_REVEAL_PIVOT)('flags the myth-reveal pivot: %s', (line) => {
+    const hits = stockPhrasesIn(line)
+    expect(hits.length).toBeGreaterThan(0)
+    expect(hits.some((h) => h.phrase.startsWith('but here'))).toBe(true)
+  })
+
+  it('matches the apostrophe variant too', () => {
+    expect(stockPhrasesIn("But here's the thing.").map((h) => h.phrase)).toEqual(["but here's the"])
   })
 
   it('names every phrase in the line, in the order they appear', () => {
