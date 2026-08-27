@@ -1054,6 +1054,69 @@ function screenCaptureDirectionsInline(beatPlan: unknown): number {
   return n
 }
 
+// ⚠️ FOUR SCENES, ONE LOCATION STRING, AND NOTHING CHECKED IT (FIX 4). The
+// retention doctrine requires scene-to-scene visual change; flags a run of
+// ≥3 consecutive speaking beats whose (location, direction) pair is
+// unchanged. Flag only -- location is the field with the "assumed
+// inventory" failure mode, so no automatic rewrite is offered here.
+//
+// ⚖️ PARITY: this mirrors sceneMonotonyBeatCount in
+// packages/shared/src/script/sceneVariety.ts -- the edge cannot import
+// @twinai/shared, so the rule lives twice and the shared copy is the tested
+// one.
+const SCENE_MONOTONY_RUN_LENGTH_INLINE = 3
+
+function normalizeSceneFieldInline(value: unknown): string {
+  return typeof value === 'string'
+    ? value.trim().toLowerCase().replace(/[.,!?]+$/g, '')
+    : ''
+}
+
+function isSpeakingBeatInline(beat: { line?: unknown }): boolean {
+  return typeof beat.line === 'string' && beat.line.trim().length > 0
+    && !asksForSilenceInline(beat.line)
+}
+
+// ⚠️ A SILENT BEAT ('[No spoken audio]') IS NOT A SPEAKING BEAT even though
+// its line is non-empty text. Kept minimal and local rather than importing
+// the full silentBeat marker list, since only the bracket-wrapped shape
+// matters for this count.
+const SILENCE_MARKERS_INLINE = [
+  'no spoken audio', 'no dialogue', 'no dialog', 'no audio', 'no voiceover',
+  'no voice over', 'no speech', 'silent', 'silence', 'no words', 'nothing spoken',
+]
+function asksForSilenceInline(line: string): boolean {
+  const t = line.trim()
+  const m = /^\[([^\]]*)\]$/.exec(t)
+  if (!m) return false
+  const inner = m[1].trim().toLowerCase().replace(/[.!]+$/, '')
+  return SILENCE_MARKERS_INLINE.includes(inner)
+}
+
+function sceneMonotonyBeatCountInline(beats: unknown): number {
+  if (!Array.isArray(beats)) return 0
+  const speaking: Array<{ location: string; direction: string }> = []
+  for (const b of beats) {
+    const beat = (b ?? {}) as { line?: unknown; location?: unknown; direction?: unknown }
+    if (!isSpeakingBeatInline(beat)) continue
+    speaking.push({ location: normalizeSceneFieldInline(beat.location), direction: normalizeSceneFieldInline(beat.direction) })
+  }
+  let total = 0
+  let runStart = 0
+  for (let i = 1; i <= speaking.length; i++) {
+    const sameAsPrev = i < speaking.length
+      && speaking[i].location === speaking[runStart].location
+      && speaking[i].direction === speaking[runStart].direction
+      && speaking[runStart].location !== ''
+    if (!sameAsPrev) {
+      const runLength = i - runStart
+      if (runLength >= SCENE_MONOTONY_RUN_LENGTH_INLINE) total += runLength
+      runStart = i
+    }
+  }
+  return total
+}
+
 // ⚠️ PARITY: mirrors asksForBroll / unsupplyableShotCount in
 // packages/shared/src/screenCaptureConversion.ts. `screenCaptureDirectionsInline`
 // above scans `beat_plan`, an earlier planning stage; this scans the FINAL
@@ -5584,6 +5647,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // is why it is written even when nothing is found.
       screen_capture_directions: screenCaptureDirectionsInline(
         (templated.bp as { beat_plan?: unknown })?.beat_plan),
+      // ⚠️ FIX 4. How many speaking beats sit inside a ≥3-beat run of an
+      // unchanged (location, direction) pair. Zero is the expected reading
+      // and an absent counter would look identical to it, which is why this
+      // is written even when nothing is found.
+      scene_monotony_beats: sceneMonotonyBeatCountInline(declared),
       // ⚠️ THE SAME QUESTION, ASKED OF THE FIELD THAT ACTUALLY REACHES THE
       // CREATOR. `screen_capture_directions` above reads the earlier beat_plan;
       // this reads the FINAL script's `editor_intent`, and also counts b-roll —
