@@ -1105,6 +1105,105 @@ function hookBodyCollisionBeatCountInline(hookOptions: unknown, beats: unknown):
   return collidingBeats.size
 }
 
+// ⚠️ FOUR SCENES, ONE LOCATION STRING, AND NOTHING CHECKED IT (FIX 4). The
+// retention doctrine requires scene-to-scene visual change; flags a run of
+// ≥3 consecutive speaking beats whose (location, direction) pair is
+// unchanged. Flag only -- location is the field with the "assumed
+// inventory" failure mode, so no automatic rewrite is offered here.
+//
+// ⚖️ PARITY: this mirrors sceneMonotonyBeatCount in
+// packages/shared/src/script/sceneVariety.ts -- the edge cannot import
+// @twinai/shared, so the rule lives twice and the shared copy is the tested
+// one.
+const SCENE_MONOTONY_RUN_LENGTH_INLINE = 3
+
+function normalizeSceneFieldInline(value: unknown): string {
+  return typeof value === 'string'
+    ? value.trim().toLowerCase().replace(/[.,!?]+$/g, '')
+    : ''
+}
+
+function isSpeakingBeatInline(beat: { line?: unknown }): boolean {
+  return typeof beat.line === 'string' && beat.line.trim().length > 0
+    && !asksForSilenceInline(beat.line)
+}
+
+// ⚠️ A SILENT BEAT ('[No spoken audio]') IS NOT A SPEAKING BEAT even though
+// its line is non-empty text. Kept minimal and local rather than importing
+// the full silentBeat marker list, since only the bracket-wrapped shape
+// matters for this count.
+const SILENCE_MARKERS_INLINE = [
+  'no spoken audio', 'no dialogue', 'no dialog', 'no audio', 'no voiceover',
+  'no voice over', 'no speech', 'silent', 'silence', 'no words', 'nothing spoken',
+]
+function asksForSilenceInline(line: string): boolean {
+  const t = line.trim()
+  const m = /^\[([^\]]*)\]$/.exec(t)
+  if (!m) return false
+  const inner = m[1].trim().toLowerCase().replace(/[.!]+$/, '')
+  return SILENCE_MARKERS_INLINE.includes(inner)
+}
+
+function sceneMonotonyBeatCountInline(beats: unknown): number {
+  if (!Array.isArray(beats)) return 0
+  const speaking: Array<{ location: string; direction: string }> = []
+  for (const b of beats) {
+    const beat = (b ?? {}) as { line?: unknown; location?: unknown; direction?: unknown }
+    if (!isSpeakingBeatInline(beat)) continue
+    speaking.push({ location: normalizeSceneFieldInline(beat.location), direction: normalizeSceneFieldInline(beat.direction) })
+  }
+  let total = 0
+  let runStart = 0
+  for (let i = 1; i <= speaking.length; i++) {
+    const sameAsPrev = i < speaking.length
+      && speaking[i].location === speaking[runStart].location
+      && speaking[i].direction === speaking[runStart].direction
+      && speaking[runStart].location !== ''
+    if (!sameAsPrev) {
+      const runLength = i - runStart
+      if (runLength >= SCENE_MONOTONY_RUN_LENGTH_INLINE) total += runLength
+      runStart = i
+    }
+  }
+  return total
+}
+
+// ⚠️ PARITY: mirrors asksForBroll / unsupplyableShotCount in
+// packages/shared/src/screenCaptureConversion.ts. `screenCaptureDirectionsInline`
+// above scans `beat_plan`, an earlier planning stage; this scans the FINAL
+// script's `editor_intent` field, where MEASUREMENT against production found
+// both standing-decision violations still live: "Overlay the screen recording
+// at fifty percent opacity" and "Hard cut to full screen b-roll for two
+// seconds". `shot_type` is constrained to talking_head/cover_frame; the
+// free-text `editor_intent` field is not.
+const BROLL_PHRASES_INLINE: RegExp[] = [
+  /\bfull[\s-]?screen\s+b[\s-]?roll\b/i,
+  /\bb[\s-]?roll\s+(?:of|showing|footage)\b/i,
+  /\bcut(?:s)?\s+to\s+b[\s-]?roll\b/i,
+  /\bstock\s+footage\b/i,
+  /\binsert\s+(?:clip|footage|shot)\s+of\b/i,
+  /\bcutaway\s+(?:to|of|shot)\b/i,
+  /\bb[\s-]?roll\b/i,
+]
+
+function asksForBrollInline(direction: unknown): boolean {
+  if (typeof direction !== 'string' || direction.trim() === '') return false
+  return BROLL_PHRASES_INLINE.some((re) => re.test(direction))
+}
+
+/** Counts demand for a shot the creator cannot supply; never converts the
+ *  shot type — the standing decision this exists to measure, not enforce. */
+function unsupplyableShotCountInline(script: unknown): number {
+  if (!Array.isArray(script)) return 0
+  let n = 0
+  for (const b of script) {
+    if (!b || typeof b !== 'object') continue
+    const rec = b as Record<string, unknown>
+    if (asksForScreenCaptureInline(rec.editor_intent) || asksForBrollInline(rec.editor_intent)) n += 1
+  }
+  return n
+}
+
 function premiseDemandInline(referenceText: string | null | undefined): 'narrator_experience' | 'none' | 'unknown' {
   const text = String(referenceText ?? '').replace(/\s+/g, ' ').trim()
   if (text.length < MIN_PREMISE_CHARS) return 'unknown'
@@ -5603,6 +5702,18 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // hook_options[0] is skipped by construction, never filtered after.
       hook_body_collisions: hookBodyCollisionBeatCountInline(
         (templated.bp as { hook_options?: unknown })?.hook_options, declared),
+      // ⚠️ FIX 4. How many speaking beats sit inside a ≥3-beat run of an
+      // unchanged (location, direction) pair. Zero is the expected reading
+      // and an absent counter would look identical to it, which is why this
+      // is written even when nothing is found.
+      scene_monotony_beats: sceneMonotonyBeatCountInline(declared),
+      // ⚠️ THE SAME QUESTION, ASKED OF THE FIELD THAT ACTUALLY REACHES THE
+      // CREATOR. `screen_capture_directions` above reads the earlier beat_plan;
+      // this reads the FINAL script's `editor_intent`, and also counts b-roll —
+      // the second standing-decision violation, never checked before. MEASURED
+      // live in production before this shipped: both violations were present.
+      unsupplyable_shots: unsupplyableShotCountInline(
+        Array.isArray(declared) ? declared : []),
     }
     console.log(JSON.stringify({
       event: 'beat_substance',

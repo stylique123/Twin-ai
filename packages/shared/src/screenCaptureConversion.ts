@@ -93,3 +93,69 @@ export function countConvertedDirections(directions: readonly unknown[]): number
   if (!Array.isArray(directions)) return 0
   return directions.filter((d) => typeof d === 'string' && asksForScreenCapture(d)).length
 }
+
+// ── UNSUPPLYABLE SHOTS — THE STANDING NO-SCREEN-RECORDING, NO-B-ROLL DECISION,
+// MEASURED WHERE IT ACTUALLY LEAKS ──────────────────────────────────────────
+//
+// ⚠️ THE COUNTERS ABOVE READ THE WRONG FIELD. `screenCaptureDirectionsInline`
+// (the edge function's own copy) scans `beat_plan`'s `proof`/`direction` —
+// an earlier planning stage. MEASURED against production directly: the FINAL
+// script's `editor_intent` field still carries live violations of both
+// standing decisions — "Overlay the screen recording at fifty percent
+// opacity so the creator is still visible" and "Hard cut to full screen
+// b-roll for two seconds on the word unfulfilling" were both found in
+// generated scripts. `shot_type` itself is correctly constrained to
+// `talking_head`/`cover_frame`, but the free-text `editor_intent` field has
+// no equivalent constraint, so the model can still ask for a shot the
+// creator has no way to supply.
+//
+// ⚖️ NO B-ROLL DETECTOR EXISTED AT ALL BEFORE THIS. Only screen-capture
+// phrasing was ever checked. Both are refused under the same standing
+// decision, so both are measured here.
+//
+// ⚖️ THIS COUNTS DEMAND; IT DOES NOT CONVERT THE SHOT TYPE. Per the standing
+// decision: "Build the unsupplyable_shots COUNTER so demand is measured,
+// never the shot type." `editor_intent` is edit direction, not a plannable
+// shot — there is no camera-only rewrite of "cut to b-roll" the way
+// `convertScreenCaptureDirection` rewrites a screen-capture SHOT direction.
+// Converting prose the renderer never executes would be theatre; counting how
+// often it happens is the honest, useful signal.
+
+/** Phrasings that ask for cutaway/stock footage the creator has no way to
+ *  supply — the second standing-decision violation, alongside screen capture.
+ *  Ordered longest-first for the same reason `CAPTURE_PHRASES` is. */
+const BROLL_PHRASES: readonly RegExp[] = Object.freeze([
+  /\bfull[\s-]?screen\s+b[\s-]?roll\b/i,
+  /\bb[\s-]?roll\s+(?:of|showing|footage)\b/i,
+  /\bcut(?:s)?\s+to\s+b[\s-]?roll\b/i,
+  /\bstock\s+footage\b/i,
+  /\binsert\s+(?:clip|footage|shot)\s+of\b/i,
+  /\bcutaway\s+(?:to|of|shot)\b/i,
+  /\bb[\s-]?roll\b/i,
+])
+
+/** Does this direction ask for cutaway/stock footage the creator cannot film
+ *  in the take? */
+export function asksForBroll(direction: string): boolean {
+  if (typeof direction !== 'string' || direction.trim() === '') return false
+  return BROLL_PHRASES.some((re) => re.test(direction))
+}
+
+/** Either standing-decision violation, in one check. */
+export function asksForUnsupplyableShot(direction: string): boolean {
+  return asksForScreenCapture(direction) || asksForBroll(direction)
+}
+
+/**
+ * How many beats in the FINAL script (not the earlier beat_plan) still ask
+ * for a shot the creator cannot supply — screen capture or b-roll — read from
+ * `editor_intent`, the free-text field with no shot-type constraint on it.
+ *
+ * ⚠️ ADVISORY, COUNTED. Matches the discipline every other beat_audit counter
+ * in this repository already uses: measured before it is ever enforced.
+ */
+export function unsupplyableShotCount(script: readonly { editor_intent?: unknown }[]): number {
+  if (!Array.isArray(script)) return 0
+  return script.filter((b) => asksForUnsupplyableShot(
+    typeof b?.editor_intent === 'string' ? b.editor_intent : '')).length
+}

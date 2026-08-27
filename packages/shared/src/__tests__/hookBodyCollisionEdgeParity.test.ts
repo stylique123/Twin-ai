@@ -18,10 +18,16 @@ const EDGE = readFileSync(
     'supabase', 'functions', 'generate-blueprint', 'index.ts'), 'utf8')
 
 function loadInline() {
+  // ⚠️ ENDS RIGHT AFTER hookBodyCollisionBeatCountInline'S OWN CLOSING BRACE,
+  // NOT AT THE NEXT NAMED FUNCTION. Other inline blocks (FIX 4, unsupplyable
+  // shots) now sit between this one and `premiseDemandInline`, and their type
+  // annotations aren't covered by the strips a sibling parity test needed to
+  // add for the same reason.
   const start = EDGE.indexOf('const HOOK_BODY_CONTAINMENT_THRESHOLD_INLINE')
-  const end = EDGE.indexOf('function premiseDemandInline')
+  const bodyStart = EDGE.indexOf('function hookBodyCollisionBeatCountInline')
+  const end = EDGE.indexOf('\n}', bodyStart) + 2
   expect(start, 'the inline block must exist in the edge').toBeGreaterThan(-1)
-  expect(end).toBeGreaterThan(start)
+  expect(end).toBeGreaterThan(bodyStart)
   const ts = EDGE.slice(start, end)
   const js = transformSync(ts, { loader: 'ts', format: 'cjs' }).code
   // eslint-disable-next-line no-new-func
