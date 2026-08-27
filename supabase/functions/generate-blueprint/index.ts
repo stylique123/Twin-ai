@@ -1238,6 +1238,23 @@ function renderSignaturePhrasesInline(phrases: readonly SignaturePhraseInline[])
   return `Phrases they actually repeat across their own videos, measured, not guessed: ${list}.`
 }
 
+// ── DEFAULT REGISTER CARD (inlined from packages/shared/src/defaultRegisterCard.ts) ─
+//
+// ⚠️ VOICE CAUSE 1(a) — THE FLOOR BELOW THE FLOOR. `styleRules` and
+// `voiceSamples` both correctly render nothing below their own evidence
+// thresholds, but "nothing" is not neutral: it leaves the writer with zero
+// cadence guidance, which defaults to generic long-form prose — a worse floor
+// than a HONESTLY LABELED genre default. Rendered only when both are empty;
+// the moment either has real evidence this must not appear.
+function renderDefaultRegisterCardInline(): string {
+  return `SHORT-FORM REGISTER (GENERIC DEFAULT — NOT MEASURED FROM THIS CREATOR, NOTHING OF THEIRS HAS BEEN CAPTURED YET). Write to this until real evidence exists:
+- Short sentences. Most under 12 words. One idea each.
+- Speak straight to the viewer as "you" — this is a conversation, not a report.
+- Contractions throughout ("don't", "it's", "you're") — written speech reads stiff without them.
+- Open on a claim or a direct address, never a scene-setting preamble.
+- No hedging language ("I think", "maybe", "sort of") — say the thing.`
+}
+
 /**
  * THE COMMUNITY MAP, READ INLINE.
  *
@@ -3977,6 +3994,11 @@ Deno.serve(async (req: Request) => {
       styleRules = ''
       signaturePhrasesLine = ''
     }
+    // ⚠️ VOICE CAUSE 1(a) — THE FLOOR BELOW THE FLOOR. Rendered ONLY when
+    // BOTH verbatim samples and the measured style card are empty — the
+    // moment either has real evidence, this labeled genre default must not
+    // compete with it.
+    const defaultRegisterCard = (!voiceSamples && !styleRules) ? renderDefaultRegisterCardInline() : ''
     // WRITE-TIME ENRICHMENT. Even a thin scan must still write IN-VOICE, so we
     // never feed the model "(none captured)" for the fields that decide whether a
     // script sounds like THIS creator. A creator's real hooks ARE their opener
@@ -4616,7 +4638,8 @@ Deno.serve(async (req: Request) => {
 - Don't: ${(vp.donts ?? []).join('; ')}
 - Voice summary: ${vp.summary ?? ''}` : ''}${voiceSamples ? `
 - HOW THEY ACTUALLY WRITE (verbatim samples — match this EXACT cadence, diction, sentence length and rhythm; weight this above every other signal, it is the most reliable evidence of their true voice): ${voiceSamples}` : ''}${styleRules ? `
-${styleRules}` : ''}${signaturePhrasesLine ? `
+${styleRules}` : ''}${defaultRegisterCard ? `
+${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
 - ${signaturePhrasesLine}` : ''}
 - Platforms (publish_plan MUST use ONLY these, one entry each): ${platforms.join(', ')}${paletteHex ? `
 - Brand colors (the creator's real palette, hex): ${paletteHex}. Weave these into the BACKGROUND, props and wardrobe of each beat's setup so the shoot looks on-brand (e.g. a backdrop, object, or outfit in these colors). Do NOT name hex codes in the script the creator speaks.` : ''}`
