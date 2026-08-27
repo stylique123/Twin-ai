@@ -136,6 +136,9 @@ export * from './twinStrength'
 // ⚖️ SIGNATURE VOCABULARY, MEASURED. Voice Cause 3.
 export * from './signaturePhrases'
 
+// ⚖️ THE FLOOR BELOW THE FLOOR. Voice Cause 1(a) — a labeled genre default for
+// when nothing measured or verbatim exists yet.
+export * from './defaultRegisterCard'
 // ⚖️ THE SHOT-CARD HEADING. 44% of production rows name their shot with a
 // bare ordinal; the card must not render one.
 export * from './script/shotLabel'
