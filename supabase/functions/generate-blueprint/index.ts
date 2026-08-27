@@ -1054,6 +1054,57 @@ function screenCaptureDirectionsInline(beatPlan: unknown): number {
   return n
 }
 
+// ⚠️ FIX 8a. A body line that restates a non-selected hook option almost
+// word-for-word. Lexical repetition of a known string (the hook the model
+// itself wrote), never checking hook_options[0] since its own beat IS drawn
+// from it.
+//
+// ⚖️ PARITY: this mirrors hookBodyCollisionBeatCount in
+// packages/shared/src/script/hookBodyCollision.ts -- the edge cannot import
+// @twinai/shared, so the rule lives twice and the shared copy is the tested
+// one.
+const HOOK_BODY_CONTAINMENT_THRESHOLD_INLINE = 0.6
+const HOOK_BODY_STOPWORDS_INLINE = new Set([
+  'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'you', 'your', 'i',
+  'me', 'my', 'it', 'its', 'to', 'of', 'in', 'on', 'at', 'for', 'and', 'or',
+  'but', 'that', 'this', 'with', 'into', 'right', 'now', 'if', 'so', 'because',
+])
+
+function hookBodyContentWordsInline(text: unknown): string[] {
+  if (typeof text !== 'string') return []
+  return text
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-z0-9']/g, ''))
+    .filter((w) => w !== '' && !HOOK_BODY_STOPWORDS_INLINE.has(w))
+}
+
+function hookBodyContainmentInline(a: unknown, b: unknown): number | null {
+  const wordsA = new Set(hookBodyContentWordsInline(a))
+  const wordsB = new Set(hookBodyContentWordsInline(b))
+  if (wordsA.size === 0 || wordsB.size === 0) return null
+  const smaller = wordsA.size <= wordsB.size ? wordsA : wordsB
+  const larger = wordsA.size <= wordsB.size ? wordsB : wordsA
+  let shared = 0
+  for (const w of smaller) if (larger.has(w)) shared += 1
+  return shared / smaller.size
+}
+
+function hookBodyCollisionBeatCountInline(hookOptions: unknown, beats: unknown): number {
+  if (!Array.isArray(hookOptions) || !Array.isArray(beats)) return 0
+  const collidingBeats = new Set<number>()
+  for (let h = 1; h < hookOptions.length; h++) {
+    const hook = hookOptions[h]
+    if (typeof hook !== 'string' || hook.trim() === '') continue
+    beats.forEach((b, beatIndex) => {
+      const line = (b as { line?: unknown } | null)?.line
+      const score = hookBodyContainmentInline(hook, line)
+      if (score !== null && score >= HOOK_BODY_CONTAINMENT_THRESHOLD_INLINE) collidingBeats.add(beatIndex)
+    })
+  }
+  return collidingBeats.size
+}
+
 function premiseDemandInline(referenceText: string | null | undefined): 'narrator_experience' | 'none' | 'unknown' {
   const text = String(referenceText ?? '').replace(/\s+/g, ' ').trim()
   if (text.length < MIN_PREMISE_CHARS) return 'unknown'
@@ -5548,6 +5599,10 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // is why it is written even when nothing is found.
       screen_capture_directions: screenCaptureDirectionsInline(
         (templated.bp as { beat_plan?: unknown })?.beat_plan),
+      // ⚠️ FIX 8a. How many body beats restate a non-selected hook option.
+      // hook_options[0] is skipped by construction, never filtered after.
+      hook_body_collisions: hookBodyCollisionBeatCountInline(
+        (templated.bp as { hook_options?: unknown })?.hook_options, declared),
     }
     console.log(JSON.stringify({
       event: 'beat_substance',
