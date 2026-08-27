@@ -164,6 +164,10 @@ export * from './script/silentBeat'
 // Detection only — repair is a UI-offered suggestion, never a model rewrite.
 export * from './script/sceneVariety'
 
+// ⚖️ FIX 8a. A body line that restates a non-selected hook option almost
+// word-for-word — lexical repetition of a known string, decidable by
+// containment. hook_options[0] is never checked (it IS the hook beat).
+export * from './script/hookBodyCollision'
 // ⚖️ A STOCK PHRASE IS NOT A STANCE. The prompt already bans these and the
 // writer shipped 7 anyway; but 4 of those 7 were the creator naming their
 // ENEMY, so the list is phrase-level and "hustle" is deliberately absent.
