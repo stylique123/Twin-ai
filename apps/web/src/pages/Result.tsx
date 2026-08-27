@@ -32,7 +32,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding } from '@twinai/shared'
+import { shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -1873,8 +1873,17 @@ function BlueprintScriptCards(
   { script, beatPlan, advisoryFindings = [] }:
   { script: Blueprint['script']; beatPlan?: unknown; advisoryFindings?: readonly AdvisoryFinding[] },
 ) {
+  // ⚖️ VOICE CAUSE 2 — A WHOLE-SCRIPT COUNT, RENDERED ONCE. Unlike
+  // stockPhraseNote (per line), a repeated triadic-list cadence is a
+  // property of the SCRIPT, not any one beat — computed here once across
+  // every spoken line, never per-card.
+  const triadNote = parallelTriadNote(
+    script.flatMap((s) => (isSilentBeat(s.line) ? [] : parallelTriadsIn(s.line))))
   return (
     <div className="space-y-6">
+      {triadNote && (
+        <p className="text-xs text-amber/90">{triadNote}</p>
+      )}
       {script.map((s, i) => {
         const isHook = s.section?.toLowerCase().includes('hook')
         const isRehook = s.section?.toLowerCase().includes('re-hook') || s.section?.toLowerCase().includes('rehook')
