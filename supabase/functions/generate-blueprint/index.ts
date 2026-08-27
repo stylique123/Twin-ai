@@ -3882,8 +3882,21 @@ Deno.serve(async (req: Request) => {
         .eq('subject', 'own')
         .order('created_at', { ascending: false })
         .limit(8)
+      // ⚠️ VOICE CAUSE 1(b) — AN ANSWERED QUESTION IS SPEECH TOO, AND WAS NEVER
+      // COUNTED AS ANY. `askedRows` (source = 'asked') already feeds the
+      // knowledge block above, but the creator's own sentence — typed by them,
+      // no extraction step, `answerToKnowledge`'s `text` is verbatim — never
+      // reached this compiler. A creator who has answered every asked question
+      // and filmed nothing sits at 0 sentences here and gets no style card,
+      // while their own words for exactly this purpose are sitting unused two
+      // reads above. `wasSpoken`/`SPOKEN_SOURCES` already treats 'asked' as
+      // spoken, on equal footing with 'transcript' — this is that same
+      // classification, applied to the one reader that had not caught up to it.
+      const askedSpeech = (askedRows ?? [])
+        .filter((r) => String(r?.source ?? '') === 'asked')
+        .map((r) => String(r?.text ?? ''))
       styleRules = renderStyleRulesInline(
-        compileStyleInline((ownSpeech ?? []).map((r) => String(r?.text ?? ''))))
+        compileStyleInline([...(ownSpeech ?? []).map((r) => String(r?.text ?? '')), ...askedSpeech]))
     } catch {
       // A failed read makes the script thinner, never wronger — the same
       // treatment the knowledge read gets, for the same reason.
