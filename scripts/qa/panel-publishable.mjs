@@ -49,12 +49,21 @@ Judge on:
   REPETITION- does any beat restate an earlier beat in different words?
   VOICE     - does this sound like you, or like a generic creator in your niche?
 
+Separately from those five, answer one more question on its own terms:
+  Read the script again as a stranger, with no account or niche in mind. Does
+  it read like a PERSON wrote it, or like AI-generated marketing copy? Base
+  this on concrete tells — parallel "X, Y, and Z" triads, uniform sentence
+  length, hedge-free confident claims stacked with no texture, a hook that
+  states its own importance — not on vibes.
+
 Reply as JSON only:
 {"publish": true|false,
  "score": 1-10,
  "biggest_flaw": "<one specific sentence naming the single thing most wrong>",
  "flaw_category": "HOOK|PAYOFF|SHAPE|REPETITION|VOICE|NONE",
- "what_you_would_cut": "<quote the beat you would delete, or empty>"}`
+ "what_you_would_cut": "<quote the beat you would delete, or empty>",
+ "reads_like_person": true|false,
+ "ai_tell": "<the concrete tell that gave it away, or empty if reads_like_person is true>"}`
 
 async function judge(dna, script) {
   const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + KEY, {
@@ -86,6 +95,7 @@ console.table(out.map((o) => ({
   creator: o.creator, arm: ARM[o.arm] ?? o.arm,
   publish: o.publish === true ? 'YES' : o.publish === false ? 'no' : (o.error ?? '?'),
   score: o.score ?? '—', flaw: o.flaw_category ?? '—',
+  person: o.reads_like_person === true ? 'person' : o.reads_like_person === false ? 'AI' : '—',
 })))
 
 for (const arm of Object.keys(ARM)) {
@@ -97,6 +107,14 @@ for (const arm of Object.keys(ARM)) {
   const flaws = {}
   for (const o of a) flaws[o.flaw_category] = (flaws[o.flaw_category] ?? 0) + 1
   console.log('  biggest flaw by category:', JSON.stringify(flaws))
+  // ⚖️ CREATIVITY #4 — THE ARBITER. Judged separately from VOICE: VOICE asks
+  // whether it sounds like THIS creator; this asks whether a stranger would
+  // read it as AI-generated at all, independent of whose account it is.
+  const judged = a.filter((o) => typeof o.reads_like_person === 'boolean')
+  if (judged.length) {
+    const person = judged.filter((o) => o.reads_like_person === true).length
+    console.log(`  reads like a person: ${person}/${judged.length}`)
+  }
 }
 
 console.log('\n── WHAT THEY WOULD CUT ──')
