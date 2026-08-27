@@ -42,6 +42,18 @@
  * real opinion ("hustle culture" named as the enemy) AND this generic opener
  * in the same sentence, which is why the two are separate checks rather than
  * one broader one.
+ *
+ * ⚠️⚠️ FIX 9 — THE MOTIVATIONAL-POSTER FAMILY, MEASURED AGAIN. The Deep Audit
+ * names six candidate phrases from this family ("dictate your happiness",
+ * "living someone else's life", "comfort zone", "your best self", "the
+ * person you're meant to be", "society tells you"). Queried against the same
+ * 41-generation/258-line corpus: ZERO hits for all six — no evidence they are
+ * a creator's stance (there is nothing to be a false positive AGAINST), and
+ * no evidence of production frequency either. They are added anyway, on the
+ * audit's own reasoning rather than measured demand: each is structurally
+ * identical to already-approved entries (interchangeable advice-speak, no
+ * argument of its own), so the same phrase-level, zero-false-positive-risk
+ * bar this list already holds applies without needing a live hit to clear it.
  */
 
 /**
@@ -65,6 +77,12 @@ export const STOCK_PHRASES: readonly string[] = [
   'game-changer',
   'but here is the',
   "but here's the",
+  'dictate your happiness',
+  'living someone else\'s life',
+  'comfort zone',
+  'your best self',
+  'the person you\'re meant to be',
+  'society tells you',
 ]
 
 export interface StockPhraseHit {

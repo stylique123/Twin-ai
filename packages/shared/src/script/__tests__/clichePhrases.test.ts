@@ -71,8 +71,25 @@ describe('an opinion is never filler', () => {
   })
 })
 
+// ⚠️ FIX 9 — THE MOTIVATIONAL-POSTER FAMILY. Zero production hits at build
+// time (unlike every other entry, which was measured against a real line) —
+// added on the audit's structural reasoning, not demand. These are synthetic
+// sentences carrying each phrase, not pinned real lines.
+const THE_MOTIVATIONAL_POSTER_FAMILY = [
+  'Nobody tells you that fear is just society trying to dictate your happiness for you.',
+  "You are tired of living someone else's life instead of your own.",
+  'Growth only happens the moment you step outside your comfort zone.',
+  'This is the year you finally become your best self.',
+  "Stop running from the person you're meant to be.",
+  'Every single day, society tells you that you are not enough.',
+]
+
 describe('the filler the prompt already banned is caught', () => {
   it.each(THE_REAL_FILLER)('flags interchangeable advice-speak: %s', (line) => {
+    expect(stockPhrasesIn(line).length).toBeGreaterThan(0)
+  })
+
+  it.each(THE_MOTIVATIONAL_POSTER_FAMILY)('flags the motivational-poster family: %s', (line) => {
     expect(stockPhrasesIn(line).length).toBeGreaterThan(0)
   })
 
