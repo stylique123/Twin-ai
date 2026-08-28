@@ -330,6 +330,7 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
           purpose: purposeAt(beatPlan, idx) || seg.section?.trim() || 'Say this one in your own words',
           dialogue: null,
           ask,
+          beat_index: idx,
           duration_sec: beatDurationSec(beatPlan, idx, DEFAULT_ASK_SEC),
           ...(beatPlan?.[idx]?.targetSec != null ? { target_sec: beatPlan[idx].targetSec } : {}),
           ...framingFor(i + 1, blueprint, seg),
@@ -369,7 +370,7 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
       // ⚖️ CARRIED EVEN WHEN THERE IS A LINE. A usable scaffold gives the beat
       // real words AND still leaves one thing only the creator knows; showing
       // the scaffold without the question would hide what the blank is for.
-      ...(ask ? { ask } : {}),
+      ...(ask ? { ask, beat_index: idx } : {}),
       // DECIDED, not derived — the plan's target when there is one, and the
       // words-over-speaking-rate estimate when there is not.
       duration_sec: beatDurationSec(beatPlan, idx, estimateDurationSec(line, wpm)),

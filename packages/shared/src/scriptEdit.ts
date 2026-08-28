@@ -143,6 +143,40 @@ export function applyHookEdit(script: RecordingScript, text: string): ScriptEdit
   return { ok: true, script: { ...withScenes(script, scenes), hook: next } }
 }
 
+/**
+ * Turn an ASK CARD into an ordinary spoken scene.
+ *
+ * ⚖️ NOT `applyDialogueEdit`. That function refuses any scene whose `dialogue`
+ * is not already a string — correct for rewriting a line that exists, and
+ * exactly wrong for a `needs_user` beat, which has `dialogue: null` BY
+ * DESIGN (see `RecordingScene.ask`). This is the one write path allowed to
+ * put words where there were none: it is reached only from an ask card, on a
+ * scene that carries `ask`, after the creator answered or skipped.
+ *
+ * The resulting text comes from `resolveAskAnswer` (answered or skipped) —
+ * this function only ever WRITES it into the script; it does not decide it,
+ * so the card and the persisted `blueprint.script[i]` cannot disagree about
+ * what filling or skipping the ask produced.
+ */
+export function applyAskAnswerEdit(
+  script: RecordingScript, sceneNumber: number, line: string,
+): ScriptEditResult {
+  const scene = script.scenes.find((s) => s.scene_number === sceneNumber)
+  if (!scene) return { ok: false, reason: 'no_such_scene' }
+
+  const next = normalizeDialogueEdit(line)
+  if (next === '') return { ok: false, reason: 'would_empty_the_line' }
+  if (next.length > SNAPSHOT_MAX_DIALOGUE_CHARS) return { ok: false, reason: 'too_long' }
+
+  const wpm = script.wpm ?? DEFAULT_WPM
+  const scenes = script.scenes.map((s) => (
+    s.scene_number === sceneNumber
+      ? { ...s, dialogue: next, duration_sec: estimateDurationSec(next, wpm) }
+      : s
+  ))
+  return { ok: true, script: withScenes(script, scenes) }
+}
+
 function withScenes(script: RecordingScript, scenes: RecordingScene[]): RecordingScript {
   return { ...script, scenes, total_duration_sec: totalDurationSec(scenes) }
 }

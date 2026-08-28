@@ -156,3 +156,58 @@ export function scaffoldWithoutAnswer(scaffold: unknown): string | null {
   if (rest.replace(/[^a-z0-9]/gi, '').length < 12) return null
   return rest
 }
+
+/** What answering or skipping an ask beat produces, and nothing else. */
+export interface AskResolution {
+  /** The spoken line to store, or '' when nothing survives — never the
+   *  question and never a fragment (see `scaffoldWithoutAnswer`). */
+  line: string
+  state: AskState
+}
+
+/**
+ * ONE FUNCTION, CALLED FROM BOTH SIDES OF THE WIRE.
+ *
+ * ⚖️ THE CLIENT AND THE SERVER MUST AGREE ON THE RESULT BEFORE THE SERVER HAS
+ * ANSWERED. The card applies this locally the instant a creator taps Answer, so
+ * the teleprompter reads real words with no spinner in front of them; the edge
+ * function applies the SAME call to decide what actually gets persisted. Two
+ * call sites, one function, is how "instant" and "correct" stop being in
+ * tension — a second, hand-written copy of this branch is exactly the kind of
+ * drift this module exists to prevent.
+ *
+ * `answer` absent/blank means SKIP, not a malformed answer — skipping is a
+ * first-class outcome here, not an error path the caller has to construct.
+ *
+ * ⚖️ NO SCAFFOLD IS NOT A FAILURE. `generate-blueprint` blanks a beat's line to
+ * '' when the writer produced an ask with no usable scaffold — the beat is
+ * still worth asking, and the creator's own words become the line directly,
+ * with no sentence built around them.
+ */
+export function resolveAskAnswer(
+  ask: unknown, scaffold: unknown, answer: string | null | undefined,
+): AskResolution {
+  const usable = askIsUsable(ask, scaffold)
+  const a = String(answer ?? '').trim()
+
+  if (a === '') {
+    // SKIP. Whatever the scaffold's own sentence can stand on without the
+    // slot survives; a scaffold that cannot stand alone, or that never
+    // existed, leaves no line — never the question itself.
+    const kept = usable ? scaffoldWithoutAnswer(scaffold) : null
+    return { line: kept ?? '', state: 'skipped' }
+  }
+
+  if (usable) {
+    const filled = fillScaffold(scaffold, a)
+    // `fillScaffold` only returns null for a too-long answer here, since
+    // `usable` already guarantees exactly one slot — refuse, not truncate.
+    return filled === null
+      ? { line: '', state: 'unanswered' }
+      : { line: filled, state: 'answered' }
+  }
+
+  // No usable scaffold: the creator's own words ARE the line.
+  if (a.length > ANSWER_MAX_CHARS) return { line: '', state: 'unanswered' }
+  return { line: a, state: 'answered' }
+}

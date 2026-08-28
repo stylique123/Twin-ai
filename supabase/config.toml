@@ -80,6 +80,11 @@ verify_jwt = true
 [functions.generate-thumbnail]
 verify_jwt = true
 
+# Answer/skip a needs_user beat's question (FIX 1). Owner-authenticated;
+# patches blueprint.script[i] and, on a real answer, creator_knowledge.
+[functions.answer-beat-ask]
+verify_jwt = true
+
 # The visual pilot's labelling page. A normal authenticated Twin admin session
 # is the access control; the function checks platform_admins with the service
 # role before it will read or write anything.

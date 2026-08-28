@@ -26,11 +26,11 @@
 // without; an EDIT is not a cache. If it does not land, the creator films the
 // old words — so failure is surfaced, and the field keeps their text.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Loader2, Pencil, SlidersHorizontal, TriangleAlert, User, Video, X } from 'lucide-react'
+import { Check, HelpCircle, Loader2, Pencil, SlidersHorizontal, TriangleAlert, User, Video, X } from 'lucide-react'
 import {
-  applyDialogueEdit, applyHookEdit, buildRecordingScript, changesTheRecordedScript,
-  establishDurableRecordingScriptLive, loadRecordingScript, SCRIPT_EDIT_MESSAGE,
-  sceneOverrunSec, overrunWorthShowing,
+  answerBeatAsk, applyAskAnswerEdit, applyDialogueEdit, applyHookEdit, buildRecordingScript,
+  changesTheRecordedScript, establishDurableRecordingScriptLive, loadRecordingScript,
+  SCRIPT_EDIT_MESSAGE, sceneOverrunSec, overrunWorthShowing,
   type RecordingScene, type RecordingScript, type ScriptEditResult,
 } from '../lib/api'
 import {
@@ -229,6 +229,14 @@ function Editor({ script, setupPlan, hasTake, edited, commit }: {
         // both would be the same line twice with two edit boxes, and the second
         // one would silently win.
         if (s.scene_number === 1 && sameWords(s.dialogue, script.hook)) return null
+        // ⚠️ CHECKED BEFORE THE SILENT FALLBACK, ON PURPOSE. A `needs_user` beat
+        // also has `dialogue: null` — nobody wrote it a line, because only this
+        // creator can — and `SilentCard` reads that as "Silent shot", the exact
+        // defect this card exists to end: a real question, indistinguishable
+        // from b-roll. See `beatAsk.ts`.
+        if (typeof s.dialogue !== 'string' && typeof s.ask === 'string' && s.ask.trim() !== '') {
+          return <AskCard key={s.scene_number} scene={s} script={script} commit={commit} />
+        }
         if (typeof s.dialogue !== 'string' || s.dialogue.trim() === '') {
           return <SilentCard key={s.scene_number} scene={s} />
         }
@@ -426,6 +434,114 @@ function SceneCard({ label, sceneNumber, plan, text, guidance, onSave }: {
       )}
 
       {guidance && <Guidance scene={guidance} inSetup={plan.setupIdOf[sceneNumber] != null} />}
+    </div>
+  )
+}
+
+/**
+ * A `needs_user` BEAT, RENDERED AS A QUESTION — never as the refusal that used
+ * to ship in its place (see `beatAsk.ts`). Answering or skipping calls
+ * `answer-beat-ask`, which is the only place the beat's `blueprint.script[i]`
+ * gets patched; the line it returns is then written into THIS script the same
+ * way any other edit is, so the card becomes an ordinary `SceneCard` on the
+ * very next render and everything downstream (teleprompter, edit history)
+ * sees one script, not a client guess ahead of the server's.
+ *
+ * ⚠️ SKIPPING DOES NOT CLOSE THE CARD. A skip can leave no survivable line
+ * (`resolveAskAnswer`'s fragment rule) — there is nothing to swap the card
+ * for — and even when it does, the creator may still want to answer before
+ * they film. The card just remembers it was skipped and keeps the door open.
+ */
+function AskCard({ scene, script, commit }: {
+  scene: RecordingScene
+  script: RecordingScript
+  commit: (result: ScriptEditResult, edit: ScriptEditRecord | null) => Promise<string | null>
+}) {
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [skipped, setSkipped] = useState(false)
+
+  const respond = async (answer: string | null) => {
+    if (typeof scene.beat_index !== 'number') {
+      setError("This question isn't tied to a beat we can save an answer against.")
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const { line, ask_state } = await answerBeatAsk(script.generation_id, scene.beat_index, answer)
+      if (line) {
+        const err = await commit(
+          applyAskAnswerEdit(script, scene.scene_number, line),
+          describeEdit('dialogue', scene.scene_number, scene.dialogue, line),
+        )
+        setError(err)
+        if (!err) setSkipped(false)
+      } else if (ask_state === 'skipped') {
+        // Nothing survived to fill the scene with (or nothing was ever
+        // written for it) — honest, not an error.
+        setSkipped(true)
+      } else {
+        setError("That answer couldn't be saved — try again.")
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That answer couldn't be saved — try again.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-card border border-teal/25 bg-teal/[0.06] p-6 shadow-glass backdrop-blur-md">
+      <div className="flex items-center justify-between gap-2">
+        <span className="rounded-full border border-white/5 bg-ink2/40 px-3 py-1 text-[11px] font-semibold tracking-wide text-sand">
+          Scene {scene.scene_number}
+        </span>
+        <span className="inline-flex items-center gap-1 text-[11px] text-teal">
+          <HelpCircle className="h-3 w-3" /> Only you can answer this
+        </span>
+      </div>
+
+      <p className="mt-4 font-display text-lg leading-relaxed text-cream">{scene.ask}</p>
+
+      {skipped && (
+        <p className="mt-2 text-xs text-stone">
+          Skipped for now — you can still answer it any time before you record.
+        </p>
+      )}
+
+      <div className="mt-4">
+        <textarea
+          value={draft}
+          onChange={(e) => { setDraft(e.target.value); setError(null) }}
+          rows={3}
+          placeholder="Type your answer in your own words…"
+          aria-label={`Answer for scene ${scene.scene_number}`}
+          className="w-full resize-y rounded-2xl border border-white/10 bg-ink/60 p-3 font-display text-lg leading-relaxed text-cream outline-none transition-colors focus:border-teal"
+        />
+        {error && <p className="mt-2 text-xs text-coral">{error}</p>}
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => respond(draft)}
+            disabled={busy || draft.trim() === ''}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-cream px-4 py-1.5 text-xs font-semibold text-ink disabled:opacity-60"
+          >
+            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Answer
+          </button>
+          <button
+            type="button"
+            onClick={() => respond(null)}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-4 py-1.5 text-xs text-sand disabled:opacity-60"
+          >
+            <X className="h-3 w-3" /> Skip for now
+          </button>
+        </div>
+      </div>
+
+      {scene.background?.trim() && <Guidance scene={scene} />}
     </div>
   )
 }

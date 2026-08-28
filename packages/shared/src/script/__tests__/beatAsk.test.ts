@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   askProblems, askIsUsable, askIsGeneric, fillScaffold, scaffoldWithoutAnswer,
-  ANSWER_SLOT, ASK_MAX_CHARS, ANSWER_MAX_CHARS,
+  resolveAskAnswer, ANSWER_SLOT, ASK_MAX_CHARS, ANSWER_MAX_CHARS,
 } from '../beatAsk'
 
 /** The refusal that shipped as spoken dialogue in three of six scenes. */
@@ -193,5 +193,60 @@ describe('the answer limit is one rule, not two', () => {
   it('matches the limit the knowledge schema enforces', async () => {
     const { ANSWER_MAX } = await import('../../creatorQuestions')
     expect(ANSWER_MAX_CHARS).toBe(ANSWER_MAX)
+  })
+})
+
+/**
+ * ⚠️ ONE RESOLVER, BOTH SIDES OF THE WIRE. `AskCard` applies this the instant a
+ * creator taps Answer/Skip, and the edge function applies the same call to
+ * decide what is persisted — these tests are what keeps the two from silently
+ * disagreeing about what a beat's line should become.
+ */
+describe('resolveAskAnswer — one call for both the card and the endpoint', () => {
+  const scaffold = 'It starts small. ' + ANSWER_SLOT + '. And that panic is the whole trap.'
+  const ask = 'What was the moment you almost deleted your first post?'
+
+  it('answering a usable scaffold fills it and marks answered', () => {
+    expect(resolveAskAnswer(ask, scaffold, 'I deleted a post nobody had seen')).toEqual({
+      line: 'It starts small. I deleted a post nobody had seen. And that panic is the whole trap.',
+      state: 'answered',
+    })
+  })
+
+  it.each([null, undefined, '', '   '])('%s is a skip, not an answer', (a) => {
+    expect(resolveAskAnswer(ask, scaffold, a)).toEqual({
+      line: 'It starts small. And that panic is the whole trap.',
+      state: 'skipped',
+    })
+  })
+
+  it('a skip on a scaffold that cannot stand alone leaves no line', () => {
+    const fragment = `And then ${ANSWER_SLOT}.`
+    expect(resolveAskAnswer(ask, fragment, null)).toEqual({ line: '', state: 'skipped' })
+  })
+
+  it('an answer too long to fill is refused, not truncated', () => {
+    const long = 'x'.repeat(ANSWER_MAX_CHARS + 1)
+    expect(resolveAskAnswer(ask, scaffold, long)).toEqual({ line: '', state: 'unanswered' })
+  })
+
+  // ⚖️ THE BEAT THAT STARVED. `generate-blueprint` blanks `line` to '' when the
+  // writer emitted an ask with no usable scaffold — the ask still deserves an
+  // answer, and here the creator's own words become the line with no sentence
+  // built around them.
+  it('an ask with no usable scaffold takes the answer as the whole line', () => {
+    expect(resolveAskAnswer(ask, undefined, 'I almost deleted it at 2am on a Tuesday')).toEqual({
+      line: 'I almost deleted it at 2am on a Tuesday',
+      state: 'answered',
+    })
+  })
+
+  it('an unusable scaffold still skips to nothing, never the question', () => {
+    expect(resolveAskAnswer(ask, undefined, null)).toEqual({ line: '', state: 'skipped' })
+  })
+
+  it('an unusable-scaffold answer is still refused past the length limit', () => {
+    const long = 'x'.repeat(ANSWER_MAX_CHARS + 1)
+    expect(resolveAskAnswer(ask, null, long)).toEqual({ line: '', state: 'unanswered' })
   })
 })
