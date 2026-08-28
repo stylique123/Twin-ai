@@ -2423,6 +2423,66 @@ function observedVisualCountInline(profile: ReferenceVisualProfileInline | null 
   return profile?.visualPassRan ? profile.fieldsObserved : 0
 }
 
+// FIX 7 — "WRITE TO target_sec" WAS PROSE. NOTHING COMPUTED IT.
+//
+// ⚖️ PARITY: mirrors packages/shared/src/script/timingMath.ts -- the edge
+// cannot import @twinai/shared, so the rule lives twice and the shared copy
+// is the tested one. `estimateDurationSecInline` mirrors recordingScript.ts's
+// `estimateDurationSec` at the natural (150 wpm) rate, so this check and the
+// teleprompter can never quote two different lengths for the same words.
+//
+// ⚠️ DETECTION ONLY, NO REPAIR. beat_plan's target_sec is never returned in
+// the shipped blueprint and nothing downstream resolves it today -- repairing
+// an unread field is the exact defect this session's audit found twice.
+const NATURAL_WPM_INLINE = 150
+function estimateDurationSecInline(dialogue: string | null): number {
+  if (!dialogue) return 2.5
+  const words = dialogue.trim().split(/\s+/).filter(Boolean).length
+  if (!words) return 2.5
+  const sec = (words / NATURAL_WPM_INLINE) * 60
+  return Math.max(1.5, Math.round(sec * 10) / 10)
+}
+// ⚖️ MIRRORS `parseTargetSec` IN beatPlan.ts, NOT timingMath.ts's OWN copy --
+// timingMath.ts has none of its own; it imports beatPlan's, so the bounds
+// (1.5-90s) that reject an absurd "0.2" or "600" apply here too.
+const MIN_BEAT_SEC_INLINE = 1.5
+const MAX_BEAT_SEC_INLINE = 90
+function parseTargetSecInline(raw: unknown): number | null {
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) && raw >= MIN_BEAT_SEC_INLINE && raw <= MAX_BEAT_SEC_INLINE
+      ? Math.round(raw * 10) / 10
+      : null
+  }
+  if (typeof raw !== 'string') return null
+  const match = raw.match(/(\d+(?:\.\d+)?)/)
+  if (!match) return null
+  const n = Number(match[1])
+  return Number.isFinite(n) && n >= MIN_BEAT_SEC_INLINE && n <= MAX_BEAT_SEC_INLINE
+    ? Math.round(n * 10) / 10
+    : null
+}
+function timingThresholdInline(targetSec: number): number {
+  return Math.max(2, targetSec * 0.3)
+}
+function timingFlagCountInline(
+  script: readonly { line?: string | null }[] | null | undefined,
+  beatPlan: readonly { target_sec?: unknown }[] | null | undefined,
+): number {
+  const beats = Array.isArray(script) ? script : []
+  const plan = Array.isArray(beatPlan) ? beatPlan : []
+  let count = 0
+  const n = Math.min(beats.length, plan.length)
+  for (let i = 0; i < n; i++) {
+    const line = beats[i]?.line
+    if (typeof line !== 'string' || line.trim() === '') continue
+    const targetSec = parseTargetSecInline(plan[i]?.target_sec)
+    if (targetSec === null) continue
+    const expectedSec = estimateDurationSecInline(line)
+    if (Math.abs(expectedSec - targetSec) > timingThresholdInline(targetSec)) count += 1
+  }
+  return count
+}
+
 // HOW THIS CREATOR PACKAGES A VIDEO — the reader for what the scan measured.
 //
 // ⚠️ THE GAP THIS CLOSES. `voiceMetrics` shipped as a contract with no reader:
@@ -5890,6 +5950,15 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // counter would look identical to it, which is why this is written
       // even when nothing was found.
       visual_dimensions_observed: visualDimensionsObserved,
+      // ⚠️ FIX 7. Beats whose words don't fit the beat_plan's own target_sec,
+      // matched by position (one beat plan entry per script entry). Detection
+      // only -- target_sec reaches nothing downstream today, so there is
+      // nothing yet to repair. Zero is the expected reading for a well-planned
+      // script, and an absent counter would look identical to it.
+      timing_flags: timingFlagCountInline(
+        Array.isArray(declared) ? declared : [],
+        (templated.bp as { beat_plan?: unknown })?.beat_plan as
+          Array<{ target_sec?: unknown }> | undefined),
     }
     console.log(JSON.stringify({
       event: 'beat_substance',
