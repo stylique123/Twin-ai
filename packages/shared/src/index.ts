@@ -148,6 +148,12 @@ export * from './script/shotLabel'
 // — and no screen said so. Disclosure, never enforcement.
 export * from './script/scriptLength'
 
+// ⚖️ FIX 7. "Write to target_sec" was prose; nothing computed it. Per-beat
+// detection only -- the spec's own repair step assumes a target_sec reader
+// downstream that does not exist yet, and repairing an unread field is the
+// exact defect this session's audit already found twice.
+export * from './script/timingMath'
+
 // ⚖️ THE FIRST SECOND. The writer has been producing a visual hook all along —
 // 4 of 4 complete — and NOTHING read it. Delivery was the defect, not
 // completeness.
