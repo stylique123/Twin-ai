@@ -2271,7 +2271,33 @@ function findProductClaimGaps(
   return out
 }
 
+// ⚠️ FIX 11 — SERMON WITHOUT WITNESS, DETECTED. Two separate counts, not one
+// score: `firstPersonBeats` asks whether the creator's own supplied
+// knowledge reached a beat spoken IN THEIR VOICE; `figuresSpoken` asks
+// whether the script carries a real number at all, regardless of source. A
+// script grounded in a reference's numbers with zero first-person beats is
+// exactly the sermon shape this exists to name.
+//
+// ⚖️ PARITY: mirrors witnessScore in packages/shared/src/script/witnessScore.ts
+// -- the edge cannot import @twinai/shared, so the rule lives twice and the
+// shared copy is the tested one. Reuses `claimedValues` above, the same
+// figure-normalisation the entailment and product-claim checks depend on.
+const FIRST_PERSON_MARKER_INLINE = /\b(?:i|i'm|i've|i'd|i'll|me|my|mine|we|we're|we've|our|ours)\b/i
 
+function witnessScoreInline(
+  beats: unknown,
+): { firstPersonBeats: number; figuresSpoken: number } {
+  if (!Array.isArray(beats)) return { firstPersonBeats: 0, figuresSpoken: 0 }
+  let firstPersonBeats = 0
+  let figuresSpoken = 0
+  for (const b of beats) {
+    const beat = (b ?? {}) as { line?: unknown; substance?: unknown }
+    const line = typeof beat.line === 'string' ? beat.line : ''
+    if (beat.substance === 'creator_knowledge' && FIRST_PERSON_MARKER_INLINE.test(line)) firstPersonBeats += 1
+    if (line !== '' && claimedValues(line).size > 0) figuresSpoken += 1
+  }
+  return { firstPersonBeats, figuresSpoken }
+}
 
 // FIX 13 — WHAT THE FRAMES SHOWED, READ INTO THE PROMPT.
 //
@@ -2747,7 +2773,7 @@ VIRAL METHODOLOGY (apply to every field):
   4. Emotional arousal: provoke surprise, tension, desire, or mild outrage. High-arousal emotion drives shares.
 
 CONCEPT & ADAPTATION (decide the actual VIDEO first, then translate it to what the creator can really shoot):
-- premise: the core shootable idea for THIS video in 1 to 2 sentences, set in the creator's real world and niche, echoing the reference's WINNING mechanism (its stakes, its transformation, its payoff), not merely its format. Make it a concrete video someone would actually click, never a vague topic.
+- premise: the core shootable idea for THIS video in 1 to 2 sentences, set in the creator's real world and niche, echoing the reference's WINNING mechanism (its stakes, its transformation, its payoff), not merely its format. Make it a concrete video someone would actually click, never a vague topic. ⚠️ IF WHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID CONTAINS NO FIRST-PERSON EXPERIENCE, do NOT write a testimony-shaped premise ("I tried this and…", "this happened to me…") — you would be inventing an event that never happened. Adapt the reference's mechanism to an observer or teaching frame instead ("the pattern I keep seeing in founders", "here is what actually works, and why"), and say so plainly in your_scale. An empty knowledge store cannot manufacture a story; the honest response is a premise that does not pretend to be one.
 - your_scale: the reference may be a huge production. State plainly and honestly how ONE person with a phone achieves the SAME effect at their scale. Never assume a team, a budget, locations, cast, or gear the creator does not have. The goal is to reproduce the reference's psychology simply. ⚠️ AND IF THE REFERENCE IS SUBSTANTIALLY A SCREEN-CAPTURE VIDEO, SAY SO IN THIS FIELD IN PLAIN WORDS — for example "The reference is a screen-capture walkthrough. Your version films the screen with your phone: one feature, zoomed, with the key number in the caption." NEVER silently present the two formats as the same thing. A creator who notices the difference themselves stops trusting everything else in the plan, and the difference is one they WILL notice.
 - translations: 2 to 4 pairs mapping a big element of the reference (theirs) to the achievable version (yours) that keeps the same effect, e.g. theirs "flies ten strangers to an island", yours "one visible personal challenge with a countdown timer on screen". Be specific and honest, never aspirational filler. ⚠️ THE SCREEN MAPPING IS FIXED AND YOU DO NOT GET TO RESTATE IT: theirs "screen recording / screen capture walkthrough" maps to yours "your phone filming the screen — one feature, zoomed, with the key number in the caption". Twin does not plan screen recordings, so a reference that is one MUST be translated here rather than copied.
 
@@ -5852,6 +5878,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // live in production before this shipped: both violations were present.
       unsupplyable_shots: unsupplyableShotCountInline(
         Array.isArray(declared) ? declared : []),
+      // ⚠️ FIX 11. Two separate counts: beats grounded in the creator's own
+      // knowledge AND spoken in their voice, versus beats carrying a real
+      // figure from any source. A script can score high on the second and
+      // zero on the first — that gap is the sermon-without-witness shape.
+      witness_score: witnessScoreInline(declared),
       // ⚠️ FIX 13. How many of the reference's 9 visual dimensions the cached
       // frame pass actually answered. 0 covers both "never assessed" and
       // "assessed, learned nothing" -- the expected reading for the ~97% of

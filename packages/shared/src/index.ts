@@ -169,13 +169,19 @@ export * from './script/sceneVariety'
 // containment. hook_options[0] is never checked (it IS the hook beat).
 export * from './script/hookBodyCollision'
 
+// ⚖️ FIX 11. Sermon without witness, detected. How many beats draw on the
+// creator's own supplied knowledge AND are spoken in their own voice, and
+// how many beats carry a real figure at all — two separate counts, so a
+// script grounded in a reference's numbers but zero first-person evidence
+// cannot hide behind one blended score.
+export * from './script/witnessScore'
+
 // ⚖️ FIX 13. What the frames pass saw, read into the prompt at last — the
 // cache (`reference_content_profiles.visual_profile`) has been populated
 // since migration 0152 and had zero readers. `setting`/`camera_work` show up
 // here on purpose: `compatibilityGate.ts` leaves both out because a
 // transcript cannot see a room or a lens, and a frame can.
 export * from './script/observedVisual'
-
 // ⚖️ A STOCK PHRASE IS NOT A STANCE. The prompt already bans these and the
 // writer shipped 7 anyway; but 4 of those 7 were the creator naming their
 // ENEMY, so the list is phrase-level and "hustle" is deliberately absent.
