@@ -2299,6 +2299,129 @@ function witnessScoreInline(
   return { firstPersonBeats, figuresSpoken }
 }
 
+// FIX 13 — WHAT THE FRAMES SHOWED, READ INTO THE PROMPT.
+//
+// ⚠️ `reference_content_profiles.visual_profile` HAS BEEN WRITTEN SINCE
+// MIGRATION 0152 AND HAD ZERO READERS. This is the missing reader: it turns
+// the cached visual pass into `observed_visual` prompt lines, labeled and
+// fenced exactly like every other reference-derived field.
+//
+// ⚖️ PARITY: mirrors packages/shared/src/script/observedVisual.ts -- the edge
+// cannot import @twinai/shared, so the rule lives twice and the shared copy
+// is the tested one.
+interface VisualObservationInline<T> { value: T; evidence: { frames: readonly number[] } }
+interface ReferenceVisualProfileInline {
+  visualPassRan: boolean
+  fieldsObserved: number
+  primaryMode?: VisualObservationInline<string> | null
+  people?: { count?: VisualObservationInline<'one' | 'multiple'> | null } | null
+  setting?: {
+    changes?: VisualObservationInline<boolean> | null
+    complexity?: VisualObservationInline<'simple' | 'moderate' | 'complex'> | null
+  } | null
+  performance?: {
+    talkingHead?: VisualObservationInline<boolean> | null
+    walking?: VisualObservationInline<boolean> | null
+    acting?: VisualObservationInline<boolean> | null
+    productInteraction?: VisualObservationInline<boolean> | null
+    screenInteraction?: VisualObservationInline<boolean> | null
+  } | null
+  camera?: {
+    framingChanges?: VisualObservationInline<boolean> | null
+    positionChanges?: VisualObservationInline<boolean> | null
+    shotType?: VisualObservationInline<'close' | 'medium' | 'wide'> | null
+  } | null
+  requirements?: {
+    physicalProduct?: VisualObservationInline<boolean> | null
+    secondPerson?: VisualObservationInline<boolean> | null
+    multipleLocations?: VisualObservationInline<boolean> | null
+    unusualProps?: VisualObservationInline<boolean> | null
+  } | null
+}
+const SHOT_LABEL_INLINE: Record<'close' | 'medium' | 'wide', string> = {
+  close: 'a close shot', medium: 'a medium shot', wide: 'a wide shot',
+}
+const COMPLEXITY_LABEL_INLINE: Record<'simple' | 'moderate' | 'complex', string> = {
+  simple: 'simple', moderate: 'moderately dressed', complex: 'visually complex',
+}
+function observedVisualLinesInline(
+  profile: ReferenceVisualProfileInline | null | undefined,
+): Array<{ dimension: string; line: string }> {
+  if (!profile || !profile.visualPassRan) return []
+  const out: Array<{ dimension: string; line: string }> = []
+  const add = (dimension: string, line: string) => out.push({ dimension, line })
+  if (profile.primaryMode) add('primary_mode', `Filmed as ${profile.primaryMode.value.replace(/_/g, ' ')}.`)
+  if (profile.people?.count) {
+    add('people_count', profile.people.count.value === 'multiple'
+      ? 'More than one person appears on camera.' : 'Only one person appears on camera.')
+  }
+  if (profile.setting?.changes) {
+    add('setting_changes', profile.setting.changes.value
+      ? 'The setting changes during the video.' : 'The setting stays the same throughout.')
+  }
+  if (profile.setting?.complexity) {
+    add('setting_complexity', `The setting reads as ${COMPLEXITY_LABEL_INLINE[profile.setting.complexity.value]}.`)
+  }
+  if (profile.performance?.talkingHead) {
+    add('talking_head', profile.performance.talkingHead.value
+      ? 'The creator talks toward the camera.' : 'The creator does not talk directly toward the camera.')
+  }
+  if (profile.performance?.walking) {
+    add('walking', profile.performance.walking.value
+      ? 'The creator walks during the video.' : 'The creator does not walk during the video.')
+  }
+  if (profile.performance?.acting) {
+    add('acting', profile.performance.acting.value
+      ? 'The creator performs a scripted scene rather than speaking to camera.'
+      : 'The creator does not perform a scripted scene.')
+  }
+  if (profile.performance?.productInteraction) {
+    add('product_interaction', profile.performance.productInteraction.value
+      ? 'The creator physically handles a product on camera.' : 'The creator does not handle a product on camera.')
+  }
+  if (profile.performance?.screenInteraction) {
+    add('screen_interaction', profile.performance.screenInteraction.value
+      ? 'A screen is shown or interacted with on camera.' : 'No screen is shown or interacted with.')
+  }
+  if (profile.camera?.framingChanges) {
+    add('framing_changes', profile.camera.framingChanges.value
+      ? 'The framing changes during the video.' : 'The framing stays constant throughout.')
+  }
+  if (profile.camera?.positionChanges) {
+    add('position_changes', profile.camera.positionChanges.value
+      ? 'The camera position changes during the video.' : 'The camera position stays constant throughout.')
+  }
+  if (profile.camera?.shotType) add('shot_type', `Shot in ${SHOT_LABEL_INLINE[profile.camera.shotType.value]}.`)
+  if (profile.requirements?.physicalProduct) {
+    add('requires_physical_product', profile.requirements.physicalProduct.value
+      ? 'A physical product is required to shoot this.' : 'No physical product is required to shoot this.')
+  }
+  if (profile.requirements?.secondPerson) {
+    add('requires_second_person', profile.requirements.secondPerson.value
+      ? 'A second person is required to shoot this.' : 'No second person is required to shoot this.')
+  }
+  if (profile.requirements?.multipleLocations) {
+    add('requires_multiple_locations', profile.requirements.multipleLocations.value
+      ? 'Multiple locations are required to shoot this.' : 'One location is enough to shoot this.')
+  }
+  if (profile.requirements?.unusualProps) {
+    add('requires_unusual_props', profile.requirements.unusualProps.value
+      ? 'Unusual props are required to shoot this.' : 'No unusual props are required to shoot this.')
+  }
+  return out
+}
+function observedVisualBlockInline(profile: ReferenceVisualProfileInline | null | undefined): string | null {
+  const lines = observedVisualLinesInline(profile)
+  if (lines.length === 0) return null
+  return 'OBSERVED FROM THE REFERENCE’S OWN VIDEO FRAMES (observed_visual — not the '
+    + 'transcript, and not a description of this creator). Use it only to judge whether '
+    + 'the SHAPE of the reference is shootable; never as instruction for what this '
+    + 'creator’s own video should show:\n'
+    + lines.map((l) => `  - ${l.line}`).join('\n')
+}
+function observedVisualCountInline(profile: ReferenceVisualProfileInline | null | undefined): number {
+  return profile?.visualPassRan ? profile.fieldsObserved : 0
+}
 
 // HOW THIS CREATOR PACKAGES A VIDEO — the reader for what the scan measured.
 //
@@ -2650,7 +2773,7 @@ VIRAL METHODOLOGY (apply to every field):
   4. Emotional arousal: provoke surprise, tension, desire, or mild outrage. High-arousal emotion drives shares.
 
 CONCEPT & ADAPTATION (decide the actual VIDEO first, then translate it to what the creator can really shoot):
-- premise: the core shootable idea for THIS video in 1 to 2 sentences, set in the creator's real world and niche, echoing the reference's WINNING mechanism (its stakes, its transformation, its payoff), not merely its format. Make it a concrete video someone would actually click, never a vague topic.
+- premise: the core shootable idea for THIS video in 1 to 2 sentences, set in the creator's real world and niche, echoing the reference's WINNING mechanism (its stakes, its transformation, its payoff), not merely its format. Make it a concrete video someone would actually click, never a vague topic. ⚠️ IF WHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID CONTAINS NO FIRST-PERSON EXPERIENCE, do NOT write a testimony-shaped premise ("I tried this and…", "this happened to me…") — you would be inventing an event that never happened. Adapt the reference's mechanism to an observer or teaching frame instead ("the pattern I keep seeing in founders", "here is what actually works, and why"), and say so plainly in your_scale. An empty knowledge store cannot manufacture a story; the honest response is a premise that does not pretend to be one.
 - your_scale: the reference may be a huge production. State plainly and honestly how ONE person with a phone achieves the SAME effect at their scale. Never assume a team, a budget, locations, cast, or gear the creator does not have. The goal is to reproduce the reference's psychology simply. ⚠️ AND IF THE REFERENCE IS SUBSTANTIALLY A SCREEN-CAPTURE VIDEO, SAY SO IN THIS FIELD IN PLAIN WORDS — for example "The reference is a screen-capture walkthrough. Your version films the screen with your phone: one feature, zoomed, with the key number in the caption." NEVER silently present the two formats as the same thing. A creator who notices the difference themselves stops trusting everything else in the plan, and the difference is one they WILL notice.
 - translations: 2 to 4 pairs mapping a big element of the reference (theirs) to the achievable version (yours) that keeps the same effect, e.g. theirs "flies ten strangers to an island", yours "one visible personal challenge with a countdown timer on screen". Be specific and honest, never aspirational filler. ⚠️ THE SCREEN MAPPING IS FIXED AND YOU DO NOT GET TO RESTATE IT: theirs "screen recording / screen capture walkthrough" maps to yours "your phone filming the screen — one feature, zoomed, with the key number in the caption". Twin does not plan screen recordings, so a reference that is one MUST be translated here rather than copied.
 
@@ -4873,13 +4996,28 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         // means the resolver never ran (no template, or the read failed), which
         // is deliberately distinct from "ran and resolved nothing".
         let resolvedSlots: ReturnType<typeof buildSlots> | null = null
+        // ⚠️ FIX 13. How many visual dimensions the cached frame pass actually
+        // answered for THIS reference. `0` covers both "never assessed" and
+        // "assessed, read nothing" -- the same three-state collapse
+        // `observedVisualCountInline` documents, kept because `beat_audit` has
+        // no separate slot for "ran" vs "ran and learned nothing" today.
+        let visualDimensionsObserved = 0
         try {
           const { data: assessed } = await admin
             .from('reference_content_profiles')
-            .select('profile')
+            .select('profile, visual_profile')
             .eq('url', reference_url)
             .is('error', null)
             .maybeSingle()
+          // ⚠️ Wired the moment a gallery reference's frame pass has been cached
+          // -- the worker has been writing `visual_profile` since migration 0152
+          // and nothing read it until now. Appended to `containerBlock` so it
+          // reaches the SAME prompt slot as every other reference-derived field,
+          // regardless of whether a container template also matched.
+          const visualProfile = assessed?.visual_profile as ReferenceVisualProfileInline | null
+          const visualBlock = observedVisualBlockInline(visualProfile)
+          visualDimensionsObserved = observedVisualCountInline(visualProfile)
+          if (visualBlock) containerBlock += `\n\n${visualBlock}`
           const container = (assessed?.profile as
             { structure?: { containerType?: { value?: string; basis?: string } } } | null)
             ?.structure?.containerType
@@ -5745,6 +5883,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // figure from any source. A script can score high on the second and
       // zero on the first — that gap is the sermon-without-witness shape.
       witness_score: witnessScoreInline(declared),
+      // ⚠️ FIX 13. How many of the reference's 9 visual dimensions the cached
+      // frame pass actually answered. 0 covers both "never assessed" and
+      // "assessed, learned nothing" -- the expected reading for the ~97% of
+      // the gallery the visual pilot has not yet reached, and an absent
+      // counter would look identical to it, which is why this is written
+      // even when nothing was found.
+      visual_dimensions_observed: visualDimensionsObserved,
     }
     console.log(JSON.stringify({
       event: 'beat_substance',
