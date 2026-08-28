@@ -78,7 +78,21 @@ begin
 end
 $fn$;
 
-drop trigger if exists trg_gallery_curation_visual_analysis on public.gallery_items;
-create trigger trg_gallery_curation_visual_analysis
-  after insert on public.gallery_items
-  for each row execute function public.enqueue_gallery_visual_analysis();
+-- ⚠️ GUARDED ON to_regclass, THE SAME IDIOM 0139 USES FOR THE SAME REASON.
+-- Staging is a purpose-built fixture (see staging-integration.yml) that never
+-- ran migration 0008 -- it carries only the editor-v2-relevant schema plus
+-- two staging-only fixtures (brand, storage), not the gallery/discovery
+-- tables. A bare `create trigger ... on public.gallery_items` aborts staging
+-- entirely with "relation does not exist"; skipping when the table is absent
+-- lets this migration apply cleanly there while still wiring the trigger for
+-- real on any database (dev, prod) that actually has the table.
+do $do$
+begin
+  if to_regclass('public.gallery_items') is not null then
+    execute 'drop trigger if exists trg_gallery_curation_visual_analysis on public.gallery_items';
+    execute 'create trigger trg_gallery_curation_visual_analysis '
+      || 'after insert on public.gallery_items '
+      || 'for each row execute function public.enqueue_gallery_visual_analysis()';
+  end if;
+end
+$do$;
