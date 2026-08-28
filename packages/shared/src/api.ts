@@ -795,6 +795,24 @@ export async function generateThumbnail(
   return data as { url: string; path: string; reused?: boolean }
 }
 
+// Answer or skip a `needs_user` beat's question (see `beatAsk.ts` / FIX 1).
+// Patches `blueprint.script[beat_index]` server-side (`line`, `ask_state`,
+// `answer`) and, only on a real answer, writes a `creator_knowledge` row with
+// `source: 'asked'`. Returns the resolved line so the caller can turn the ask
+// card into an ordinary scene without a second round trip re-deriving it.
+//
+// `answer` omitted or blank means SKIP — this endpoint has no separate "skip"
+// action, matching `resolveAskAnswer`'s own reading of a blank answer.
+export async function answerBeatAsk(
+  generationId: string, beatIndex: number, answer: string | null,
+): Promise<{ line: string; ask_state: 'unanswered' | 'answered' | 'skipped' }> {
+  const { data, error } = await supabase.functions.invoke('answer-beat-ask', {
+    body: { generation_id: generationId, beat_index: beatIndex, answer },
+  })
+  if (error) throw new Error(await readInvokeError(error))
+  return data as { line: string; ask_state: 'unanswered' | 'answered' | 'skipped' }
+}
+
 // ---- Dashboard (Phase 7: real stats from data we already own) ------------
 
 // ONE lifecycle, derived from the generation (the "remix") — never from the jobs

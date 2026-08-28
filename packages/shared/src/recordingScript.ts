@@ -45,6 +45,14 @@ export interface RecordingScene {
    *  this existed has none, and no generation written before the writer emitted
    *  `ask` can ever grow one. */
   ask?: string | null
+  /** THE `blueprint.script[]` INDEX THIS SCENE WAS BUILT FROM. Set only
+   *  alongside `ask`: answering a beat writes back to `blueprint.script[i]`
+   *  (see `answer-beat-ask`), and the adapter's filtering/reordering means
+   *  scene position and script index are NOT the same number — the hook is
+   *  dropped, the CTA is moved to the end, silent inserts have no script
+   *  entry at all. Without this the endpoint has no way to know which beat a
+   *  card is answering. */
+  beat_index?: number | null
   duration_sec: number // estimated, drives teleprompter pacing
   // THE LENGTH THAT WAS DECIDED, kept beside the length currently in force.
   //
