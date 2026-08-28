@@ -30,6 +30,10 @@
 // key: `beat_plan` entries carry no id.
 
 import { DEFAULT_WPM, estimateDurationSec, type WpmPreset } from '../recordingScript'
+// ⚠️ REUSED, NOT REDEFINED. `beatPlan.ts` already parses this exact field with
+// real bounds (1.5-90s) -- a second parser here would be a second opinion on
+// what a valid target_sec is, free to drift from the first.
+import { parseTargetSec } from '../beatPlan'
 
 export interface TimingFlag {
   /** Index into both `script` and `beatPlan`, per the one-beat-per-entry contract. */
@@ -37,21 +41,6 @@ export interface TimingFlag {
   expectedSec: number
   targetSec: number
   diffSec: number
-}
-
-/**
- * Read `target_sec` as the writer wrote it. ⚠️ IT IS A STRING IN THE SCHEMA,
- * NOT A NUMBER — the model may write "6s", "6 seconds", or "6". A value with
- * no parseable number is NOT a target of zero; it is no target at all, so the
- * beat is excluded from the check rather than compared against a fabricated 0.
- */
-export function parseTargetSec(raw: unknown): number | null {
-  if (typeof raw === 'number') return Number.isFinite(raw) && raw > 0 ? raw : null
-  if (typeof raw !== 'string') return null
-  const match = raw.match(/(\d+(?:\.\d+)?)/)
-  if (!match) return null
-  const n = Number(match[1])
-  return Number.isFinite(n) && n > 0 ? n : null
 }
 
 /** ⚠️ THE THRESHOLD THE SPEC NAMES: whichever is larger of a flat 2 seconds or

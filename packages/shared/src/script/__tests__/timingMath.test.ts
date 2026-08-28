@@ -1,28 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { parseTargetSec, timingFlagCount, timingFlags, timingThreshold } from '../timingMath'
+import { timingFlagCount, timingFlags, timingThreshold } from '../timingMath'
 
-describe('parseTargetSec: a string schema field, not a number', () => {
-  it('reads a plain number string', () => {
-    expect(parseTargetSec('6')).toBe(6)
-  })
-  it('reads "6s" and "6 seconds"', () => {
-    expect(parseTargetSec('6s')).toBe(6)
-    expect(parseTargetSec('6 seconds')).toBe(6)
-  })
-  it('reads a real number type too', () => {
-    expect(parseTargetSec(6)).toBe(6)
-  })
-  it('an unparseable value is null, never a fabricated 0', () => {
-    expect(parseTargetSec('a while')).toBeNull()
-    expect(parseTargetSec('')).toBeNull()
-    expect(parseTargetSec(null)).toBeNull()
-    expect(parseTargetSec(undefined)).toBeNull()
-  })
-  it('zero and negative are not real targets', () => {
-    expect(parseTargetSec('0')).toBeNull()
-    expect(parseTargetSec(-3)).toBeNull()
-  })
-})
+// `parseTargetSec` is reused from `beatPlan.ts` (not redefined here) and has
+// its own coverage in `__tests__/beatPlan.test.ts` — including the string
+// parsing, the "never a fabricated 0" rule, and the 1.5-90s bounds.
 
 describe('timingThreshold: max(2s, 30%)', () => {
   it('the flat floor wins on a short beat', () => {

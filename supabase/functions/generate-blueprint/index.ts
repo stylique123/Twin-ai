@@ -2442,13 +2442,24 @@ function estimateDurationSecInline(dialogue: string | null): number {
   const sec = (words / NATURAL_WPM_INLINE) * 60
   return Math.max(1.5, Math.round(sec * 10) / 10)
 }
+// ⚖️ MIRRORS `parseTargetSec` IN beatPlan.ts, NOT timingMath.ts's OWN copy --
+// timingMath.ts has none of its own; it imports beatPlan's, so the bounds
+// (1.5-90s) that reject an absurd "0.2" or "600" apply here too.
+const MIN_BEAT_SEC_INLINE = 1.5
+const MAX_BEAT_SEC_INLINE = 90
 function parseTargetSecInline(raw: unknown): number | null {
-  if (typeof raw === 'number') return Number.isFinite(raw) && raw > 0 ? raw : null
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) && raw >= MIN_BEAT_SEC_INLINE && raw <= MAX_BEAT_SEC_INLINE
+      ? Math.round(raw * 10) / 10
+      : null
+  }
   if (typeof raw !== 'string') return null
   const match = raw.match(/(\d+(?:\.\d+)?)/)
   if (!match) return null
   const n = Number(match[1])
-  return Number.isFinite(n) && n > 0 ? n : null
+  return Number.isFinite(n) && n >= MIN_BEAT_SEC_INLINE && n <= MAX_BEAT_SEC_INLINE
+    ? Math.round(n * 10) / 10
+    : null
 }
 function timingThresholdInline(targetSec: number): number {
   return Math.max(2, targetSec * 0.3)
