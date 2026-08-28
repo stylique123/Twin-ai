@@ -73,3 +73,33 @@ export function evaluateSemanticRepetitionTrigger(
   ))
   return { trigger: substantivePairs.length >= 2, substantivePairs }
 }
+
+/** What the UI needs from `generations.beat_audit.semantic_repetition` to
+ *  offer the repair — the beat index it targets, and the up-to-3 candidate
+ *  rewrites. Never the raw pairs or reasoning; those stay server-side audit. */
+export interface SemanticRepetitionRepair {
+  repairTarget: number
+  repairCandidates: string[]
+}
+
+/**
+ * Reads `generations.beat_audit` (stored `unknown`) down to the one thing a
+ * scene card can act on. Returns null for every shape that is not a landed,
+ * candidate-bearing repair — an old row with no `beat_audit`, a run that
+ * didn't trigger, a run whose repair call failed (`repair_candidates: null`,
+ * see `generate-blueprint/index.ts`) — so a caller never has to duplicate
+ * this narrowing to stay safe against a field it does not otherwise touch.
+ */
+export function readSemanticRepetitionRepair(beatAudit: unknown): SemanticRepetitionRepair | null {
+  if (typeof beatAudit !== 'object' || beatAudit === null) return null
+  const sr = (beatAudit as { semantic_repetition?: unknown }).semantic_repetition
+  if (typeof sr !== 'object' || sr === null) return null
+  const { repair_target: target, repair_candidates: candidates } = sr as {
+    repair_target?: unknown
+    repair_candidates?: unknown
+  }
+  if (!Number.isInteger(target) || !Array.isArray(candidates)) return null
+  const repairCandidates = candidates.filter((c): c is string => typeof c === 'string' && c.trim() !== '')
+  if (repairCandidates.length === 0) return null
+  return { repairTarget: target as number, repairCandidates }
+}
