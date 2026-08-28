@@ -26,7 +26,7 @@
 // without; an EDIT is not a cache. If it does not land, the creator films the
 // old words — so failure is surfaced, and the field keeps their text.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, HelpCircle, Loader2, Pencil, SlidersHorizontal, TriangleAlert, User, Video, X } from 'lucide-react'
+import { Check, HelpCircle, Loader2, Pencil, Sparkles, SlidersHorizontal, TriangleAlert, User, Video, X } from 'lucide-react'
 import {
   answerBeatAsk, applyAskAnswerEdit, applyDialogueEdit, applyHookEdit, buildRecordingScript,
   changesTheRecordedScript, establishDurableRecordingScriptLive, loadRecordingScript,
@@ -34,8 +34,8 @@ import {
   type RecordingScene, type RecordingScript, type ScriptEditResult,
 } from '../lib/api'
 import {
-  describeEdit, planSetups, startsSetup, setupStrip,
-  type ScriptEditRecord, type SetupPlan,
+  describeEdit, planSetups, startsSetup, setupStrip, readSemanticRepetitionRepair,
+  type ScriptEditRecord, type SetupPlan, type SemanticRepetitionRepair,
 } from '@twinai/shared'
 import { recordScriptEdit } from '../lib/scriptEdits'
 import type { Blueprint } from '../lib/types'
@@ -53,6 +53,11 @@ interface Props {
   /** Rendered when the recording script cannot be produced at all, so the plan
    *  screen shows the model's beats read-only rather than nothing. */
   fallback: React.ReactNode
+  /** `generations.beat_audit`, raw — narrowed by `readSemanticRepetitionRepair`
+   *  rather than trusted here. Absent on generations the judge never ran
+   *  against, which is the common case (off by default, and most scripts
+   *  don't trigger it even when it runs). */
+  beatAudit?: unknown
   /**
    * THE SCRIPT THIS COMPONENT IS SHOWING, lifted to whoever renders it.
    *
@@ -72,7 +77,7 @@ interface Props {
   onScriptChange?: (script: RecordingScript | null) => void
 }
 
-export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, fallback, onScriptChange }: Props) {
+export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, fallback, beatAudit, onScriptChange }: Props) {
   const [script, setScript] = useState<RecordingScript | null>(null)
   const [loading, setLoading] = useState(true)
   // The script as it was when this screen opened. Compared against the current
@@ -145,7 +150,8 @@ export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, f
 
   return <Editor
     script={script} setupPlan={planSetups(script.scenes)}
-    hasTake={hasTake} edited={edited} commit={commit} />
+    hasTake={hasTake} edited={edited} commit={commit}
+    repair={readSemanticRepetitionRepair(beatAudit)} />
 }
 
 /**
@@ -163,12 +169,13 @@ export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, f
  * makes the strip flip back and forth around a boundary while a person stands
  * still.
  */
-function Editor({ script, setupPlan, hasTake, edited, commit }: {
+function Editor({ script, setupPlan, hasTake, edited, commit, repair }: {
   script: RecordingScript
   setupPlan: SetupPlan
   hasTake?: boolean
   edited: boolean
   commit: (result: ScriptEditResult, edit: ScriptEditRecord | null) => Promise<string | null>
+  repair: SemanticRepetitionRepair | null
 }) {
   const [activeScene, setActiveScene] = useState<number | null>(null)
   const activeSetupId = activeScene == null
@@ -241,18 +248,99 @@ function Editor({ script, setupPlan, hasTake, edited, commit }: {
           return <SilentCard key={s.scene_number} scene={s} />
         }
         return (
-          <SceneCard
-            key={s.scene_number}
-            label={`Scene ${s.scene_number}`}
-            sceneNumber={s.scene_number}
-            plan={setupPlan}
-            text={s.dialogue}
-            guidance={s}
-            onSave={(text) => commit(applyDialogueEdit(script, s.scene_number, text),
-              describeEdit('dialogue', s.scene_number, s.dialogue, text))}
-          />
+          <div key={s.scene_number} className="space-y-3">
+            <SceneCard
+              label={`Scene ${s.scene_number}`}
+              sceneNumber={s.scene_number}
+              plan={setupPlan}
+              text={s.dialogue}
+              guidance={s}
+              onSave={(text) => commit(applyDialogueEdit(script, s.scene_number, text),
+                describeEdit('dialogue', s.scene_number, s.dialogue, text))}
+            />
+            {repair && s.beat_index === repair.repairTarget && (
+              <RepairCard
+                repair={repair}
+                onUse={(candidate) => commit(applyDialogueEdit(script, s.scene_number, candidate),
+                  describeEdit('dialogue', s.scene_number, s.dialogue, candidate))}
+              />
+            )}
+          </div>
         )
       })}
+    </div>
+  )
+}
+
+/**
+ * FIX 8b's repair, offered — never imposed. `repair_candidates` is the G18
+ * shape: three rewrites, the creator picks one or keeps the original by
+ * dismissing the card. Dismissal is per-mount only (no persisted "seen"
+ * state) — the source data (`beat_audit`) is immutable per generation, so
+ * there is nothing durable to dismiss FROM; reopening the plan just shows it
+ * again, same as any other advisory note on this screen.
+ *
+ * ⚠️ "USE THIS" GOES THROUGH `applyDialogueEdit`/`commit`, THE SAME PATH
+ * `SceneCard` USES. A separate write path here could land a candidate that
+ * disagrees with what the ordinary edit box would have produced for the same
+ * text (durability, re-estimated duration, edit history) — reusing the seam
+ * is what keeps the two indistinguishable to everything downstream.
+ */
+function RepairCard({ repair, onUse }: {
+  repair: SemanticRepetitionRepair
+  onUse: (candidate: string) => Promise<string | null>
+}) {
+  const [dismissed, setDismissed] = useState(false)
+  const [busyIdx, setBusyIdx] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [usedIdx, setUsedIdx] = useState<number | null>(null)
+
+  if (dismissed) return null
+
+  const use = async (i: number, candidate: string) => {
+    setBusyIdx(i)
+    setError(null)
+    const err = await onUse(candidate)
+    setBusyIdx(null)
+    setError(err)
+    if (!err) setUsedIdx(i)
+  }
+
+  return (
+    <div className="rounded-card border border-teal/25 bg-teal/[0.05] p-4">
+      <div className="flex items-start justify-between gap-2">
+        <p className="inline-flex items-start gap-1.5 text-xs text-sand">
+          <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-teal" />
+          This restates an earlier beat. Suggested rewrites — use one, or leave the line as is.
+        </p>
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          aria-label="Dismiss the rewrite suggestions"
+          className="shrink-0 text-stone transition-colors hover:text-cream"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {error && <p className="mt-2 text-xs text-coral">{error}</p>}
+      <ul className="mt-3 space-y-2">
+        {repair.repairCandidates.map((candidate, i) => (
+          <li key={i} className="flex items-start justify-between gap-3 rounded-xl border border-white/5 bg-ink/40 p-3">
+            <p className="text-sm leading-relaxed text-cream">“{candidate}”</p>
+            <button
+              type="button"
+              onClick={() => use(i, candidate)}
+              disabled={busyIdx !== null || usedIdx === i}
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-teal/30 px-2.5 py-1 text-[11px] font-semibold text-teal disabled:opacity-60"
+            >
+              {busyIdx === i
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : usedIdx === i ? <Check className="h-3 w-3" /> : null}
+              {usedIdx === i ? 'Used' : 'Use this'}
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

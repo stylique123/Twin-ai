@@ -46,6 +46,11 @@ const SOURCES = [
   ['packages/shared/src/brandTruthPrompt.ts', 'supabase/functions/_shared/brandTruthPrompt.ts'],
   ['packages/shared/src/script/repetition.ts', 'supabase/functions/_shared/repetition.ts'],
   ['packages/shared/src/script/advisoryRead.ts', 'supabase/functions/_shared/advisoryRead.ts'],
+  // ⚠️ FIX 8b. The trigger the edge function's judge call must obey — "2+
+  // substantive soft beats", never the payoff branch G20 forbids. Generated
+  // rather than retyped so the edge call site and the tested rule are the
+  // same code, not two authors of one blind-tested boundary.
+  ['packages/shared/src/script/semanticRepetition.ts', 'supabase/functions/_shared/semanticRepetition.ts'],
 ]
 
 // ⚠️ A SHEBANG IS LEGAL ONLY ON LINE 1, AND THE HEADER PUSHES IT TO LINE 5.
@@ -67,6 +72,7 @@ const render = (from, src0) => {
     .replace(/from '\.\/d1-core\.mjs'/g, "from './d1Core.ts'")
     .replace(/from '\.\/brandTruth\.js'/g, "from './brandTruth.ts'")
     .replace(/from '\.\/repetition\.js'/g, "from './repetition.ts'")
+    .replace(/from '\.\/craftBeats\.js'/g, "from './craftBeats.ts'")
 }
 
 const check = process.argv.includes('--check')

@@ -279,5 +279,11 @@ export interface Generation {
    *  and the brand snapshot through it. */
   brand_voice_id?: string | null
   created_at: string
+  /** Server-only advisory findings written alongside `blueprint`, never
+   *  rewritten once landed (`generations.beat_audit`, jsonb). `unknown` for
+   *  the same reason as `scene_timeline`: read it through a narrow accessor
+   *  (see `readSemanticRepetitionAudit` in `semanticRepetition.ts`) rather
+   *  than trusting the shape directly. */
+  beat_audit?: unknown
 }
 

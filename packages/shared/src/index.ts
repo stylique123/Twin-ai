@@ -195,6 +195,12 @@ export * from './script/clichePhrases'
 export * from './script/repetition'
 export * from './script/advisoryRead'
 
+// ⚖️ FIX 8b. The blind-tested repair trigger only — "2+ substantive soft
+// beats" (3-0), never the payoff branch (1-6, G20 forbids building it). Pure
+// so the trigger is testable without a model call; the judge call itself is
+// edge-only, cost-gated, and lives beside `advisoryRead`'s call site.
+export * from './script/semanticRepetition'
+
 // ⚖️ FIVE HOOKS THAT ARE REALLY ONE. Two production menus open with the same
 // three words five times over; three more do it three times. The opener is the
 // creator's own signature, so this reports the COLLISION, never the words.
