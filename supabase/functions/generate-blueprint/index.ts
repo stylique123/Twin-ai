@@ -30,6 +30,7 @@ import { projectBrandTruth, validateBrandTruthSnapshot } from '../_shared/brandT
 import { businessFactLines, businessFactProvenanceCounts } from '../_shared/brandTruthPrompt.ts'
 import { lexicalFloor } from '../_shared/repetition.ts'
 import { shouldAsk, readVerdict } from '../_shared/advisoryRead.ts'
+import { evaluateSemanticRepetitionTrigger } from '../_shared/semanticRepetition.ts'
 import {
   productSceneGuidance, productSceneDirection,
   type EntityType, type Showability,
@@ -3190,6 +3191,43 @@ const ADVISORY_SCHEMA = {
     },
   },
   required: ['findings'],
+} as const
+
+// FIX 8b's judge schema. ⚠️ INDICES ONLY, NEVER TEXT — the judge already has
+// the numbered script in its prompt; asking it to also echo each line back
+// invites a paraphrase that no longer matches the beat at that index, which
+// is exactly the kind of drift `evaluateSemanticRepetitionTrigger` (the
+// shared, tested trigger) must not be asked to reconcile.
+const SEMANTIC_REPETITION_SCHEMA = {
+  type: 'object',
+  properties: {
+    pairs: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          a: { type: 'integer' },
+          b: { type: 'integer' },
+          what: { type: 'string' },
+        },
+        required: ['a', 'b', 'what'],
+      },
+    },
+  },
+  required: ['pairs'],
+} as const
+
+// The three-candidate span rewrite (the G18 shape) for exactly ONE beat —
+// the later beat of the strongest substantive pair. ⚠️ THREE, NEVER ONE: a
+// single auto-applied rewrite is imposed, not offered, and G18 measured the
+// imposed shape a net loss. Candidates are stored for the UI; nothing here
+// mutates the shipped script.
+const SPAN_REPAIR_SCHEMA = {
+  type: 'object',
+  properties: {
+    candidates: { type: 'array', items: { type: 'string' }, minItems: 3, maxItems: 3 },
+  },
+  required: ['candidates'],
 } as const
 
 async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder): Promise<string> {
@@ -6494,6 +6532,165 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         // ⚠️ NON-FATAL, ALWAYS. The script is already built and paid for.
         console.warn(JSON.stringify({
           event: 'script_advisory_skipped',
+          reason: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200),
+        }))
+      }
+    }
+
+    // ── FIX 8b. SEMANTIC REPETITION — THE JUDGE, AFTER THE RESCUE POINT ──────
+    //
+    // ⚠️ EVERYTHING CHEAP ALREADY FAILED. `repetition.ts`'s lexical floor
+    // measured 4.9% on 41 real scripts against a 67% panel report — the gap is
+    // meaning no word-overlap check can reach, and the only evidenced route is
+    // a judge. This runs strictly after `rescue` was captured hundreds of
+    // lines above, is wrapped so a throw here is silence, and NEVER touches
+    // `blueprint` on the trigger path — only `beatAudit`, which is durable
+    // (`generations.beat_audit`) and never re-read to change what shipped.
+    //
+    // ⚖️ OFF BY DEFAULT, SAME SWITCH SHAPE AS `SCRIPT_ADVISORY_ENABLED`. A new
+    // recurring per-generation model call gets an explicit flag, never a
+    // silent default-on.
+    if ((Deno.env.get('SEMANTIC_REPETITION_JUDGE_ENABLED') ?? '') === 'true') {
+      try {
+        // ── THE COST GATE. 50/day, DURABLE, READ BEFORE THE MODEL IS CALLED ──
+        //
+        // ⚠️ READ THEN DECIDE, LIKE `scanCeiling`'s ledger check — never charge
+        // the budget for a call that hasn't happened. Counted from `generations
+        // .beat_audit->semantic_repetition->>ran`, the SAME row the judge's own
+        // result lands in, so there is no second ledger that can disagree with
+        // the thing it counts.
+        //
+        // ⚠️ A COUNT WE COULD NOT READ IS TREATED AS OVER BUDGET, THE OPPOSITE
+        // OF `scanAllowance`'s failure direction. That function fails open
+        // because failing closed would lock a paying creator out of their
+        // scan; this gate protects nothing but spend, so an unreadable count
+        // fails closed — skip the call rather than risk an uncounted one.
+        const SEMANTIC_REPETITION_DAILY_BUDGET = 50
+        const dayStart = new Date()
+        dayStart.setUTCHours(0, 0, 0, 0)
+        const { count: usedToday, error: budgetErr } = await admin
+          .from('generations')
+          .select('id', { count: 'exact', head: true })
+          .gte('created_at', dayStart.toISOString())
+          .filter('beat_audit->semantic_repetition->>ran', 'eq', 'true')
+        const overBudget = budgetErr || typeof usedToday !== 'number'
+          ? true
+          : usedToday >= SEMANTIC_REPETITION_DAILY_BUDGET
+
+        if (overBudget) {
+          // ⚖️ THE SKIP ITSELF IS VISIBLE, NOT SILENT. Decision #3: budget
+          // exhaustion must never cost the creator their script, but it must
+          // also never be an invisible no-op — this event is how the rate is
+          // tracked in `beat_audit`, the same durable home every other
+          // counter here uses.
+          if (beatAudit) {
+            beatAudit.semantic_repetition = {
+              ran: false, trigger: null, substantive_pairs: null, repaired: null,
+              skipped_reason: budgetErr ? 'budget_unreadable' : 'budget_exhausted',
+            }
+          }
+          console.warn(JSON.stringify({
+            event: 'semantic_repetition_judge_skipped_budget',
+            used_today: typeof usedToday === 'number' ? usedToday : null,
+            ceiling: SEMANTIC_REPETITION_DAILY_BUDGET,
+            reason: budgetErr ? budgetErr.message.slice(0, 200) : 'ceiling_reached',
+          }))
+        } else {
+          const srBeats = Array.isArray(declared)
+            ? (declared as Array<{ line?: unknown; section?: unknown }>)
+            : []
+          const numbered = srBeats
+            .map((b, i) => `${i} [${String(b?.section ?? '')}]: ${typeof b?.line === 'string' ? b.line : ''}`)
+            .join('\n')
+          const raw = await callModel(
+            apiKey,
+            'You are reading one short-form video script for repeated substance. Report every '
+            + 'pair of beats that make the SAME underlying point in different words — not beats '
+            + 'that merely share a topic, and not a hook/re-hook/CTA restating the video\'s own '
+            + 'promise, which this format does on purpose. Report nothing else. An empty list is '
+            + 'the normal, expected result for a well-written script.',
+            `SCRIPT (index [section]: line):\n${numbered}`,
+            SEMANTIC_REPETITION_SCHEMA,
+          )
+          const parsed = JSON.parse(raw) as { pairs?: unknown }
+          const rawPairs = Array.isArray(parsed.pairs) ? parsed.pairs : []
+          const judgedPairs = rawPairs
+            .filter((p): p is { a: number; b: number } => (
+              typeof p === 'object' && p !== null
+              && Number.isInteger((p as { a?: unknown }).a) && Number.isInteger((p as { b?: unknown }).b)
+            ))
+            .map((p) => ({ a: p.a, b: p.b }))
+
+          // ⚠️ THE SHARED, TESTED TRIGGER — NEVER RE-DERIVED HERE. This is the
+          // one call site `semanticRepetition.test.ts` pins: the "2+
+          // substantive soft beats" rule (3-0 blind test) decides repair,
+          // never a count of raw pairs, a section name, or anything shaped
+          // like the rejected payoff branch (1-6, G20).
+          const verdict = evaluateSemanticRepetitionTrigger(srBeats, judgedPairs)
+
+          let repairCandidates: string[] | null = null
+          // ⚖️ AUTO-REPAIR FIRES ONLY ON THE TRIGGER. Every other flag is
+          // advisory — stored for the UI's "covers the same ground as beat N"
+          // note, never rewritten. Offered, not imposed: three candidates,
+          // the creator picks or keeps the original (the G18 shape).
+          if (verdict.trigger) {
+            const strongest = verdict.substantivePairs[0]!
+            const targetLine = typeof srBeats[strongest.b]?.line === 'string'
+              ? (srBeats[strongest.b]!.line as string) : ''
+            if (targetLine !== '') {
+              try {
+                const repairRaw = await callModel(
+                  apiKey,
+                  'Rewrite ONE line of a short-form video script so it no longer restates an '
+                  + 'earlier beat, while keeping the same voice and the same underlying claim. '
+                  + 'Return exactly three different candidate rewrites; never invent a new fact '
+                  + 'or personal detail the creator did not already say.',
+                  `EARLIER BEAT (already said): ${typeof srBeats[strongest.a]?.line === 'string' ? srBeats[strongest.a]!.line : ''}\n`
+                  + `LINE TO REWRITE: ${targetLine}`,
+                  SPAN_REPAIR_SCHEMA,
+                )
+                const repairParsed = JSON.parse(repairRaw) as { candidates?: unknown }
+                repairCandidates = Array.isArray(repairParsed.candidates)
+                  ? repairParsed.candidates.filter((c): c is string => typeof c === 'string').slice(0, 3)
+                  : null
+              } catch (repairErr) {
+                // ⚠️ A FAILED REPAIR CALL LOSES THE REPAIR, NEVER THE SCRIPT.
+                // The trigger and the findings are already recorded below.
+                console.warn(JSON.stringify({
+                  event: 'semantic_repetition_repair_failed',
+                  reason: repairErr instanceof Error ? repairErr.message.slice(0, 200) : String(repairErr).slice(0, 200),
+                }))
+              }
+            }
+          }
+
+          if (beatAudit) {
+            beatAudit.semantic_repetition = {
+              ran: true,
+              pairs_reported: judgedPairs.length,
+              trigger: verdict.trigger,
+              substantive_pairs: verdict.substantivePairs.length,
+              // ⚖️ INDICES ONLY, so a UI reader can point at the exact beats
+              // without a second copy of the script text living in the audit.
+              flagged_pairs: verdict.substantivePairs,
+              repaired: verdict.trigger && repairCandidates !== null,
+              repair_target: verdict.trigger ? verdict.substantivePairs[0]!.b : null,
+              repair_candidates: repairCandidates,
+            }
+          }
+          console.log(JSON.stringify({
+            event: 'semantic_repetition_judge_ran',
+            pairs_reported: judgedPairs.length,
+            substantive_pairs: verdict.substantivePairs.length,
+            trigger: verdict.trigger,
+            repaired: verdict.trigger && repairCandidates !== null,
+          }))
+        }
+      } catch (err) {
+        // ⚠️ NON-FATAL, ALWAYS, LIKE THE ADVISORY READ BESIDE IT. The script is
+        // already built and paid for; a judge failure is never a script failure.
+        console.warn(JSON.stringify({
+          event: 'semantic_repetition_judge_skipped',
           reason: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200),
         }))
       }

@@ -59,6 +59,38 @@ const EVENTS = {
     stored: 'generations.selection',
     why: 'What the selector handed the writer. Was a log until 0130; the readings expired.',
   },
+  // ⚖️ FIX 8b. `ran` is the SAME field the daily budget gate counts, so the
+  // ceiling and the durable record can never disagree — one query, one
+  // truth. Trigger and repair fields ride along on the same row.
+  semantic_repetition_judge_ran: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'Whether the judge ran, how many pairs it reported, whether the blind-tested '
+      + '"2+ substantive" trigger fired, and whether a repair was offered. `ran: true` on '
+      + 'this row is exactly what the 50/day budget gate queries before its next call.',
+  },
+  // ⚠️ THE SKIP MUST BE AS VISIBLE AS THE RUN, per decision #3 — a silent
+  // skip is how a cost gate becomes a quality regression nobody can explain.
+  semantic_repetition_judge_skipped_budget: {
+    kind: 'incident',
+    stored: 'generations.beat_audit',
+    why: 'The daily judge budget (50) was exhausted, or the count could not be read and '
+      + 'the gate failed closed. Never blocks the script — logged so the skip rate is '
+      + 'visible instead of indistinguishable from "nothing to flag".',
+  },
+  semantic_repetition_judge_skipped: {
+    kind: 'incident',
+    why: "The outer try/catch caught something other than the budget gate — a malformed "
+      + "model response, a network failure. Same shape as `script_advisory_skipped` beside "
+      + "it: non-fatal by construction, so a log line is the right home for a one-off.",
+  },
+  semantic_repetition_repair_failed: {
+    kind: 'incident',
+    why: 'The trigger fired but the span-repair model call itself failed. The trigger '
+      + 'and findings are already durable on the row via `semantic_repetition_judge_ran`; '
+      + 'this is the one-occurrence failure of the optional second call, not a rate '
+      + 'anything downstream currently depends on.',
+  },
   beat_substance: {
     kind: 'counter',
     stored: 'generations.beat_audit',
