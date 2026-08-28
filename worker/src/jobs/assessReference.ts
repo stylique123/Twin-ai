@@ -224,6 +224,33 @@ rehookPosition: an index into beats, or ${NO_REHOOK} if the video never
   re-hooks. ${NO_REHOOK} is a real answer, and most short videos deserve it.
 productsRequired: a whole number; 0 is a real answer.`
 
+/**
+ * Is an already-done row reason enough to skip this request?
+ *
+ * ⚠️ "ALREADY ASSESSED" USED TO MEAN ONE THING: THE TRANSCRIPT SUCCEEDED. That
+ * was correct for the batch this job was built for — same job, same request
+ * shape, replayed after a crash. FIX 13's gallery-curation trigger asks a
+ * DIFFERENT question of the SAME job type: "does this URL have a visual pass
+ * yet", fired automatically the moment a reference is curated. A row with a
+ * successful transcript but no `visual_profile` answers that question NO, and
+ * the old skip answered it YES anyway — silently, with no error to notice by,
+ * for every gallery item the free transcript batch had already reached. That
+ * is most of the library.
+ *
+ * ⚖️ SO THE SKIP NARROWS TO "NOTHING THIS REQUEST ASKS FOR IS MISSING", not
+ * "something ran once". A plain re-run (no `frames`) still skips exactly as
+ * before — the cost guard this exists for is untouched. A `frames: true`
+ * request only skips once a `visual_profile` is actually on the row.
+ */
+export function shouldSkipAlreadyAssessed(
+  done: { visual_profile?: unknown } | null | undefined,
+  framesRequested: boolean,
+): boolean {
+  if (!done) return false
+  if (!framesRequested) return true
+  return done.visual_profile !== null && done.visual_profile !== undefined
+}
+
 interface Payload {
   url?: unknown; platform?: unknown; force?: unknown; route?: unknown
   /** ⚠️ OPT-IN, AND EXACTLY `true`. The frames pass costs a SECOND download —
@@ -248,8 +275,10 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
   // enforce that is here rather than in every caller.
   if (p.force !== true) {
     const { data: done } = await db.from('reference_content_profiles')
-      .select('url').eq('url', url).is('error', null).maybeSingle()
-    if (done) return { url, skipped: 'already_assessed' }
+      .select('url, visual_profile').eq('url', url).is('error', null).maybeSingle()
+    if (shouldSkipAlreadyAssessed(done, p.frames === true)) {
+      return { url, skipped: 'already_assessed' }
+    }
   }
 
   // ⚠️ READ BEFORE WE OVERWRITE IT. transcript_chars is the number the OLD
