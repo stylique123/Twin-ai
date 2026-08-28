@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   isSubstantiveSoftBeat,
   evaluateSemanticRepetitionTrigger,
+  readSemanticRepetitionRepair,
   type SemanticRepetitionBeat,
 } from '../semanticRepetition'
 
@@ -115,5 +116,35 @@ describe('the boundary is exact', () => {
     const one = evaluateSemanticRepetitionTrigger(beats, [{ a: 0, b: 1 }])
     expect(two.trigger).toBe(true)
     expect(one.trigger).toBe(false)
+  })
+})
+
+// FIX 8b's reader. The judge writes `beat_audit.semantic_repetition`; nothing
+// in the UI read it until this — this is what closes that gap.
+describe('readSemanticRepetitionRepair — the UI-facing reader', () => {
+  it('reads target and candidates from a landed, triggered repair', () => {
+    const beatAudit = {
+      semantic_repetition: {
+        ran: true, trigger: true, repair_target: 4,
+        repair_candidates: ['Rewrite one.', 'Rewrite two.', 'Rewrite three.'],
+      },
+    }
+    expect(readSemanticRepetitionRepair(beatAudit)).toEqual({
+      repairTarget: 4,
+      repairCandidates: ['Rewrite one.', 'Rewrite two.', 'Rewrite three.'],
+    })
+  })
+
+  it.each([
+    ['no beat_audit at all', undefined],
+    ['not an object', 'not an object'],
+    ['no semantic_repetition key', {}],
+    ['the judge did not trigger', { semantic_repetition: { ran: true, trigger: false, repair_target: null, repair_candidates: null } }],
+    ['the repair call failed', { semantic_repetition: { ran: true, trigger: true, repair_target: 4, repair_candidates: null } }],
+    ['candidates is not an array', { semantic_repetition: { repair_target: 4, repair_candidates: 'nope' } }],
+    ['target is not an integer', { semantic_repetition: { repair_target: 1.5, repair_candidates: ['a', 'b', 'c'] } }],
+    ['candidates are all blank', { semantic_repetition: { repair_target: 4, repair_candidates: ['', '  '] } }],
+  ])('returns null when %s', (_label, beatAudit) => {
+    expect(readSemanticRepetitionRepair(beatAudit)).toBeNull()
   })
 })

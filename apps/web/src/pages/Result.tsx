@@ -1086,6 +1086,7 @@ export default function Result() {
                 blueprint={b}
                 selectedHook={chosenHook}
                 hasTake={serverSourceAssetId != null}
+                beatAudit={gen.beat_audit}
                 fallback={<BlueprintScriptCards script={updatedScript} beatPlan={b.beat_plan} advisoryFindings={readAdvisoryFindings(b)} />}
               />
               {/* See the other call site: the script owns the list, so the
@@ -1449,6 +1450,7 @@ export default function Result() {
                   blueprint={b}
                   selectedHook={chosenHook}
                   hasTake={serverSourceAssetId != null}
+                  beatAudit={gen.beat_audit}
                   fallback={<BlueprintScriptCards script={updatedScript} beatPlan={b.beat_plan} advisoryFindings={readAdvisoryFindings(b)} />}
                 />
                 {/* BELOW the editor on purpose: the slots come FROM the script,
