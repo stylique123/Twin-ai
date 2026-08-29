@@ -45,6 +45,12 @@ const SOURCES = [
   ['packages/shared/src/scanCeiling.ts', 'supabase/functions/_shared/scanCeiling.ts'],
   ['packages/shared/src/brandTruthPrompt.ts', 'supabase/functions/_shared/brandTruthPrompt.ts'],
   ['packages/shared/src/script/repetition.ts', 'supabase/functions/_shared/repetition.ts'],
+  // ⚠️ FIX 1 (Wave 1). The reference-copying check. Generated rather than
+  // retyped so the writer path's `≥6-content-word` threshold and the tested
+  // module agree by construction — a hand copy is exactly how the 2026-08-26
+  // Run D evidence (verbatim reference sentences at fidelity="loose") would
+  // survive its own fix.
+  ['packages/shared/src/script/phraseOverlap.ts', 'supabase/functions/_shared/phraseOverlap.ts'],
   ['packages/shared/src/script/advisoryRead.ts', 'supabase/functions/_shared/advisoryRead.ts'],
   // ⚠️ FIX 8b. The trigger the edge function's judge call must obey — "2+
   // substantive soft beats", never the payoff branch G20 forbids. Generated
@@ -73,6 +79,7 @@ const render = (from, src0) => {
     .replace(/from '\.\/brandTruth\.js'/g, "from './brandTruth.ts'")
     .replace(/from '\.\/repetition\.js'/g, "from './repetition.ts'")
     .replace(/from '\.\/craftBeats\.js'/g, "from './craftBeats.ts'")
+    .replace(/from '\.\/hookContract\.js'/g, "from './hookContract.ts'")
 }
 
 const check = process.argv.includes('--check')

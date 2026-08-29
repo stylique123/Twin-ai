@@ -1,0 +1,137 @@
+{
+  "id": "run-b",
+  "settings": {
+    "onboarded": false,
+    "goal": "teach_something",
+    "subject": "something_i_know_well",
+    "fidelity": "just_how_it_is_built",
+    "tone": null
+  },
+  "reference": {
+    "url": "https://www.youtube.com/shorts/hormozi-3-reasons-business",
+    "note": "3 reasons your business isn't making more money",
+    "text": "There are three reasons your business is not making as much money as you want. Number one is promotion. Number two is the product or service itself. Number three is what happens every single day inside your business. Fix those three things in that order and you will make more money."
+  },
+  "known_defects": [
+    "Original, non-borrowed script ('Shiny object syndrome is not a lack of focus, it's a lack of fortitude').",
+    "Enumeration checker correctly silent (script uses 'The first mistake... Second... And the third...').",
+    "Header claims 1m 27s (87s); beat_plan target_sec sums to 36s (~7s/beat despite ~50 words/beat).",
+    "Shot list 'Hook and Intro' contains an extra sentence not present in the teleprompter script.",
+    "Setup sequence B,A,...,B (repeats).",
+    "First location comma-split into fake fields.",
+    "Coaching panels describe the REFERENCE's structure, not the actual script.",
+    "Spoken line contains literal markdown asterisks: 'measure the actual cost of *not* doing it'.",
+    "Product-capture card correctly fired (no product info supplied) — this is CORRECT behavior, must be preserved."
+  ],
+  "ui_header": { "claimed_seconds": 87, "claimed_scenes": 5 },
+  "generation": {
+    "id": "fixture-run-b",
+    "user_id": "fixture-user-b",
+    "reference_url": "https://www.youtube.com/shorts/hormozi-3-reasons-business",
+    "reference_note": "3 reasons your business isn't making more money",
+    "fidelity": "close",
+    "created_at": "2026-08-21T12:00:00.000Z",
+    "blueprint": {
+      "reference_read": {
+        "platform": "youtube",
+        "format_label": "The Numbered Framework",
+        "why_it_works": [
+          "The hook immediately targets a deep-seated insecurity (breaking promises to oneself)."
+        ],
+        "retention_map": [
+          { "beat": "Hook", "goal": "State the promise and the count." },
+          { "beat": "Reason 1", "goal": "Promotion." },
+          { "beat": "Reason 2", "goal": "Product." },
+          { "beat": "Reason 3", "goal": "Culture." },
+          { "beat": "CTA", "goal": "Lead magnet — comment a specific word to get the freebie." }
+        ]
+      },
+      "hook_options": [
+        "Shiny object syndrome is not a lack of focus, it's a lack of fortitude.",
+        "You keep starting things you never finish, and it isn't about discipline.",
+        "The real reason you quit is not what you think it is.",
+        "Three mistakes are quietly draining your bank account.",
+        "You don't have a focus problem. You have a finishing problem."
+      ],
+      "beat_plan": [
+        { "section": "Hook", "target_sec": 7 },
+        { "section": "Mistake 1", "target_sec": 7 },
+        { "section": "Mistake 2", "target_sec": 7 },
+        { "section": "Mistake 3", "target_sec": 8 },
+        { "section": "CTA", "target_sec": 7 }
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Shiny object syndrome is not a lack of focus, it's a lack of fortitude.",
+          "direction": "Straight to camera."
+        },
+        {
+          "section": "Mistake 1",
+          "line": "The first mistake is quitting the moment something feels hard instead of boring.",
+          "direction": "Medium shot."
+        },
+        {
+          "section": "Mistake 2",
+          "line": "Second, you measure the actual cost of *not* doing it, and you never do the math.",
+          "direction": "Medium shot."
+        },
+        {
+          "section": "Mistake 3",
+          "line": "And the third mistake is treating every new idea as evidence the old one was wrong.",
+          "direction": "Lean in."
+        },
+        {
+          "section": "CTA",
+          "line": "Save this video so you have it the next time you want to quit.",
+          "direction": "Straight to camera."
+        }
+      ],
+      "shot_list": [
+        {
+          "shot": "Hook and Intro",
+          "framing": "Medium shot",
+          "notes": "Setup B · Clean neutral wall · facing the brightest window · Medium shot",
+          "spoken_text": "Shiny object syndrome is not a lack of focus, it's a lack of fortitude. They are subtle, but they will kill your growth and your bank account."
+        },
+        {
+          "shot": "Mistake one",
+          "framing": "Medium shot",
+          "notes": "Setup A",
+          "spoken_text": "The first mistake is quitting the moment something feels hard instead of boring."
+        },
+        {
+          "shot": "Mistake two",
+          "framing": "Medium shot",
+          "notes": "Setup B",
+          "spoken_text": "Second, you measure the actual cost of *not* doing it, and you never do the math."
+        },
+        {
+          "shot": "Mistake three",
+          "framing": "Punch in closer",
+          "notes": "Setup B",
+          "spoken_text": "And the third mistake is treating every new idea as evidence the old one was wrong."
+        },
+        {
+          "shot": "CTA",
+          "framing": "Medium shot",
+          "notes": "Setup B",
+          "spoken_text": "Save this video so you have it the next time you want to quit."
+        }
+      ],
+      "captions": ["Shiny object syndrome isn't what you think"],
+      "edit_checklist": ["Cut on each mistake"],
+      "caption_packet": { "caption_style": "bold", "pacing": "fast", "emphasis": "keywords", "export": "srt" },
+      "publish_plan": [
+        { "platform": "youtube", "caption": "Not a focus problem", "hashtags": ["#productivity"], "best_time": "9am" }
+      ],
+      "production_sprint": [{ "minute": "0-5", "task": "Set up phone, ring light." }]
+    },
+    "product_entities": [],
+    "beat_audit": {
+      "enumeration_checker": { "promised": 3, "delivered": 3, "warning_fired": false },
+      "product_capture_card": { "fired": true, "reason": "no product info supplied" },
+      "reference_phrase_overlap": null
+    }
+  }
+}

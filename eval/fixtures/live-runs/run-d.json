@@ -1,0 +1,140 @@
+{
+  "id": "run-d",
+  "settings": {
+    "advanced_fidelity_slider": "loose",
+    "q3_fidelity_answer": "keep_it_close",
+    "tone": "calm_credibility",
+    "goal": "get_people_talking",
+    "subject": "something_ive_experienced"
+  },
+  "reference": {
+    "url": "https://www.youtube.com/shorts/hormozi-3-reasons-business",
+    "note": "3 reasons your business isn't making more money",
+    "text": "Measuring the risk of taking action while ignoring the risk of doing nothing is exactly what keeps people poorer than they ought to be. If you want a different life, you have to start taking more shots on goal, because staffing is always the bottleneck once revenue crosses a million."
+  },
+  "known_defects": [
+    "Header rendered 'Loosely inspired' even though Q3 was separately answered 'Keep it close' — the advanced slider silently won; two controls for one property.",
+    "Best/most original script of the four qualitatively; CTA correctly matches goal (get_people_talking) — PRESERVE as a positive fixture assertion.",
+    "Hook option 2 fabricates a checkable $1M+ revenue fact never supplied.",
+    "Hook option 4 assumes an unmentioned subscription/churn business.",
+    "Zero first-person 'I' statements despite subject='something I've experienced' being selected — every line is second-person 'you'.",
+    "Even at fidelity=loose, script reproduces Hormozi's exact phrasing near-verbatim in two lines.",
+    "Tone (calm/credibility) actively CONTRADICTED by same-screen video-idea text describing 'rapid jump cuts to mimic energetic delivery'.",
+    "Coaching panel describes the reference's 6-beat structure for a 5-scene script; names a lead magnet that doesn't exist; mislabels reason one.",
+    "Scene 5 setup 'Extreme tight shot' in teleprompter vs 'Medium shot' in shot list for the identical beat — contradicting framings.",
+    "Header claims 1m 19s (79s); beat_plan target_sec sums to 49s (4+12+12+12+9).",
+    "Setup sequence C,A,B,C (wrong start letter, repeats)."
+  ],
+  "ui_header": { "claimed_seconds": 79, "claimed_scenes": 5, "claimed_fidelity_label": "Loosely inspired" },
+  "generation": {
+    "id": "fixture-run-d",
+    "user_id": "fixture-user-d",
+    "reference_url": "https://www.youtube.com/shorts/hormozi-3-reasons-business",
+    "reference_note": "3 reasons your business isn't making more money",
+    "fidelity": "loose",
+    "created_at": "2026-08-23T12:00:00.000Z",
+    "blueprint": {
+      "reference_read": {
+        "platform": "youtube",
+        "format_label": "The Numbered Framework",
+        "why_it_works": ["Six structural beats build inevitability toward the close."],
+        "retention_map": [
+          { "beat": "Hook", "goal": "internal belief and self-sabotage" },
+          { "beat": "Reason 1", "goal": "Promotion." },
+          { "beat": "Reason 2", "goal": "Product." },
+          { "beat": "Reason 3", "goal": "Culture." },
+          { "beat": "Lead magnet offer", "goal": "Drive to the free download." },
+          { "beat": "CTA", "goal": "Close." }
+        ]
+      },
+      "hook_options": [
+        "You should only hire a strategist or operator if you consider them your intellectual equal or superior in that domain. Otherwise, you just bought yourself a management job.",
+        "We do over a million in revenue, but here are the 3 reasons staffing is still our bottleneck.",
+        "The people you hired to save time are the reason you have none left.",
+        "Stop blaming your churn on the product when the real leak is who you hired to hold it.",
+        "You already know who on your team should not be there."
+      ],
+      "beat_plan": [
+        { "section": "Hook", "target_sec": 4 },
+        { "section": "Reason 1", "target_sec": 12 },
+        { "section": "Reason 2", "target_sec": 12 },
+        { "section": "Reason 3", "target_sec": 12 },
+        { "section": "CTA", "target_sec": 9 }
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "You should only hire a strategist or operator if you consider them your intellectual equal or superior in that domain. Otherwise, you just bought yourself a management job.",
+          "direction": "Calm, direct to camera."
+        },
+        {
+          "section": "Reason 1",
+          "line": "Measuring the risk of taking action while ignoring the risk of doing nothing is exactly what keeps people poorer than they ought to be.",
+          "direction": "Medium shot, calm."
+        },
+        {
+          "section": "Reason 2",
+          "line": "You have to start taking more shots on goal, because most of what you call caution is just fear with better branding.",
+          "direction": "Medium shot, calm."
+        },
+        {
+          "section": "Reason 3",
+          "line": "You hired for comfort instead of competence, and now comfort is running your company.",
+          "direction": "Steady, low energy."
+        },
+        {
+          "section": "CTA",
+          "line": "So — what is the actual cost of your business doing exactly what it did today for the next five years?",
+          "direction": "Straight to camera, pause before delivering.",
+          "location": "Extreme tight shot"
+        }
+      ],
+      "shot_list": [
+        {
+          "shot": "Hook",
+          "framing": "Medium shot",
+          "notes": "Setup C",
+          "spoken_text": "You should only hire a strategist or operator if you consider them your intellectual equal or superior in that domain. Otherwise, you just bought yourself a management job."
+        },
+        {
+          "shot": "Reason one",
+          "framing": "Medium shot",
+          "notes": "Setup A",
+          "spoken_text": "Measuring the risk of taking action while ignoring the risk of doing nothing is exactly what keeps people poorer than they ought to be."
+        },
+        {
+          "shot": "Reason two",
+          "framing": "Medium shot",
+          "notes": "Setup B",
+          "spoken_text": "You have to start taking more shots on goal, because most of what you call caution is just fear with better branding."
+        },
+        {
+          "shot": "Reason three",
+          "framing": "Steady",
+          "notes": "Setup C",
+          "spoken_text": "You hired for comfort instead of competence, and now comfort is running your company."
+        },
+        {
+          "shot": "Call to action",
+          "framing": "Medium shot",
+          "notes": "Setup C",
+          "spoken_text": "So — what is the actual cost of your business doing exactly what it did today for the next five years?"
+        }
+      ],
+      "captions": ["The real cost of who you hired"],
+      "edit_checklist": ["Cut on the pause before the CTA question"],
+      "caption_packet": { "caption_style": "minimal", "pacing": "measured", "emphasis": "none", "export": "srt" },
+      "publish_plan": [
+        { "platform": "youtube", "caption": "Who you hired is costing you", "hashtags": ["#leadership"], "best_time": "9am" }
+      ],
+      "production_sprint": [
+        { "minute": "0-5", "task": "A direct to camera philosophical rant... rapid jump cuts to mimic the energetic delivery." }
+      ]
+    },
+    "product_entities": [],
+    "beat_audit": {
+      "first_person_lines": 0,
+      "reference_phrase_overlap": null
+    }
+  }
+}

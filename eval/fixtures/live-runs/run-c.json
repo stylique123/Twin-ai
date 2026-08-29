@@ -1,0 +1,150 @@
+{
+  "id": "run-c",
+  "settings": {
+    "onboarded": true,
+    "fidelity": "close_to_the_reference",
+    "tone": "high_energy",
+    "goal": "get_customers_or_leads",
+    "subject": "something_ive_experienced",
+    "product_questions_skipped": ["relationship_to_offer", "what_the_offer_does", "post_watch_action"]
+  },
+  "reference": {
+    "url": "https://www.youtube.com/shorts/hormozi-3-reasons-business",
+    "note": "3 reasons your business isn't making more money",
+    "text": "There are three reasons your business is not making as much money as you want. Number one is promotion. Number two is the product or service itself. And number three is what happens every single day inside your business. We partner with founders to scale their businesses at Acquisition dot com, and we put all the education out for free. You just have to apply it."
+  },
+  "known_defects": [
+    "CATASTROPHIC: CTA inserted the REFERENCE creator's own business (Acquisition.com) as if it were the video-creator's, first-person-plural 'we partner with founders'.",
+    "Enumeration checker false positive again.",
+    "Scene 5 rendered a refusal AS spoken dialogue instead of routing to an ask, followed by unrelated stage direction.",
+    "Header claims 6 scenes / 57s; only 5 rendered in teleprompter; shot list has 7 entries including a whole extra beat not in the teleprompter.",
+    "Beat budgets sum to 30s (3+7+6+8+6), missing the 6th scene from the count entirely.",
+    "tone='high energy' had zero observable effect anywhere in the output.",
+    "Setup sequence B,A,B (wrong start letter, repeats), comma-split location again.",
+    "Hook-variety note reported '3 of these 5 start with 3 reasons you' when all 5 actually share that opener (3-word window missed it)."
+  ],
+  "ui_header": { "claimed_seconds": 57, "claimed_scenes": 6 },
+  "generation": {
+    "id": "fixture-run-c",
+    "user_id": "fixture-user-c",
+    "reference_url": "https://www.youtube.com/shorts/hormozi-3-reasons-business",
+    "reference_note": "3 reasons your business isn't making more money",
+    "fidelity": "close",
+    "created_at": "2026-08-22T12:00:00.000Z",
+    "blueprint": {
+      "reference_read": {
+        "platform": "youtube",
+        "format_label": "The Numbered Framework",
+        "why_it_works": ["A clean numbered list holds attention to the end."],
+        "retention_map": [
+          { "beat": "Hook", "goal": "State the promise and the count." },
+          { "beat": "Reason 1", "goal": "Promotion." },
+          { "beat": "Reason 2", "goal": "Product." },
+          { "beat": "Reason 3", "goal": "Culture." },
+          { "beat": "The pivot", "goal": "Reframe toward scale." },
+          { "beat": "CTA", "goal": "Close." }
+        ]
+      },
+      "hook_options": [
+        "3 reasons you are losing customers to competitors who are worse than you.",
+        "3 reasons your leads go cold before you ever call them back.",
+        "3 reasons you are chasing customers instead of attracting them.",
+        "3 reasons your offer isn't converting even though it's a good offer.",
+        "3 reasons the people who need you most never find you."
+      ],
+      "beat_plan": [
+        { "section": "Hook", "target_sec": 3 },
+        { "section": "Reason 1", "target_sec": 7 },
+        { "section": "Reason 2", "target_sec": 6 },
+        { "section": "Reason 3", "target_sec": 8 },
+        { "section": "CTA", "target_sec": 6 }
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "3 reasons you are losing customers to competitors who are worse than you.",
+          "direction": "Straight to camera."
+        },
+        {
+          "section": "Reason 1",
+          "line": "Number one, you promote inconsistently, so people forget you exist between posts.",
+          "direction": "Medium shot."
+        },
+        {
+          "section": "Reason 2",
+          "line": "Number two, your offer sounds like everyone else's offer, so there is nothing to remember.",
+          "direction": "Medium shot."
+        },
+        {
+          "section": "Reason 3",
+          "line": "This beat needs a real detail about your product, and nothing about it was supplied. What does it actually do here? How to stand & move: Maintain eye contact and deliver with total conviction.",
+          "direction": "Lean in.",
+          "substance": "needs_user"
+        },
+        {
+          "section": "CTA",
+          "line": "We partner with founders to scale their businesses at Acquisition dot com, and we put all the education out for free. You just have to apply it.",
+          "direction": "Straight to camera."
+        }
+      ],
+      "shot_list": [
+        {
+          "shot": "Hook",
+          "framing": "Medium shot",
+          "notes": "Setup B",
+          "spoken_text": "3 reasons you are losing customers to competitors who are worse than you."
+        },
+        {
+          "shot": "Reason one",
+          "framing": "Medium shot",
+          "notes": "Setup A",
+          "spoken_text": "Number one, you promote inconsistently, so people forget you exist between posts."
+        },
+        {
+          "shot": "Reason two",
+          "framing": "Medium shot",
+          "notes": "Setup B · Standing in a well lit room · Punch in closer",
+          "spoken_text": "Number two, your offer sounds like everyone else's offer, so there is nothing to remember."
+        },
+        {
+          "shot": "Reason three",
+          "framing": "Lean in",
+          "notes": "Setup B",
+          "spoken_text": "This beat needs a real detail about your product, and nothing about it was supplied. What does it actually do here?"
+        },
+        {
+          "shot": "The pivot",
+          "framing": "Medium shot",
+          "notes": "Setup A",
+          "spoken_text": "If you want to scale, you have to stop looking for easy pivots and start looking for hard truths."
+        },
+        {
+          "shot": "CTA",
+          "framing": "Medium shot",
+          "notes": "Setup B",
+          "spoken_text": "We partner with founders to scale their businesses at Acquisition dot com, and we put all the education out for free. You just have to apply it."
+        },
+        {
+          "shot": "Re-hook cutaway",
+          "framing": "Wide",
+          "notes": "Setup A",
+          "spoken_text": ""
+        }
+      ],
+      "captions": ["3 reasons you're losing customers"],
+      "edit_checklist": ["Cut on each reason"],
+      "caption_packet": { "caption_style": "bold", "pacing": "fast", "emphasis": "numbers", "export": "srt" },
+      "publish_plan": [
+        { "platform": "youtube", "caption": "3 reasons you're losing customers", "hashtags": ["#sales"], "best_time": "9am" }
+      ],
+      "production_sprint": [{ "minute": "0-5", "task": "Set up phone, ring light." }]
+    },
+    "product_entities": [],
+    "beat_audit": {
+      "enumeration_checker": { "promised": 3, "delivered": 0, "warning_fired": true, "actually_delivered": 3 },
+      "hook_variety_note": { "reported": "3 of these 5 start with '3 reasons you'", "actual_shared_opener_count": 5 },
+      "tone_effect_observed": false,
+      "reference_phrase_overlap": null
+    }
+  }
+}
