@@ -113,6 +113,27 @@ const EVENTS = {
       + '`reference_phrase_overlap` (0131-pattern), so this is the one-off log of what '
       + 'the repair call actually did.',
   },
+  // ⚠️ FIX 2 (Wave 1). A CTA that names, or first-person-plural claims, a
+  // business absent from `product_entities`. Run C shipped "We partner with
+  // founders ... at Acquisition dot com" — the REFERENCE creator's own
+  // company — because the writer had no offer on file and reached for the
+  // nearest one in context. `found`/`replaced` on the same `generations.
+  // beat_audit` row every other 0131 counter lands on, per the exact pattern
+  // `reference_phrase_overlap` above uses.
+  cta_entity_unmatched: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'CTA beats naming or first-person-plural claiming a business not on this '
+      + "creator's product_entities, and how many were replaced with the deterministic "
+      + 'non-commercial fallback before shipping. Null when the check never ran.',
+  },
+  cta_entity_unmatched_repair: {
+    kind: 'incident',
+    why: 'What the CTA-entity repair pass replaced. Same shape as '
+      + 'reference_phrase_overlap_repair beside it: the durable rate already lives on '
+      + '`cta_entity_unmatched` (0131-pattern), so this is the one-off log of what the '
+      + 'repair call actually did.',
+  },
   beat_substance: {
     kind: 'counter',
     stored: 'generations.beat_audit',
