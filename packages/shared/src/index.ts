@@ -182,6 +182,7 @@ export * from './script/hookBodyCollision'
 // script grounded in a reference's numbers but zero first-person evidence
 // cannot hide behind one blended score.
 export * from './script/witnessScore'
+export * from './script/toneEffect'
 
 // ⚖️ FIX 13. What the frames pass saw, read into the prompt at last — the
 // cache (`reference_content_profiles.visual_profile`) has been populated

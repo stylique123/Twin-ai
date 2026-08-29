@@ -29,6 +29,7 @@ import { deliveredItemCount } from '../referenceMechanism.js'
 import { compareRuntime } from '../script/runtimeCompare.js'
 import { splitEmphasis } from '../script/emphasis.js'
 import { resolveFidelity, type ReferenceUse } from '../videoIntent.js'
+import { toneEffect } from '../script/toneEffect.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURES_DIR = join(HERE, '..', '..', '..', '..', 'eval', 'fixtures', 'live-runs')
@@ -437,6 +438,18 @@ describe('10. fidelity has one value visible in both the advanced-setting surfac
 })
 
 // ── 11. Tone visibly changes delivery notes, never contradicted ────────────
+//
+// ⚠️ FIX 11 (Wave 4). THE SHIPPED DEFECT, DOCUMENTED. run-c and run-d's
+// frozen fixtures still record the audited failure: run-c's tone
+// ("high energy" / `punchy`) left zero observable trace anywhere in the
+// output, and run-d's tone ("calm/credibility" / `understated`) was directly
+// contradicted by "rapid jump cuts to mimic the energetic delivery" sitting
+// in the very sprint plan meant to tell the creator how to shoot it. These
+// two `it.fails` stay red on the frozen fixtures on purpose — they are
+// reconstructed evidence of what the audited runs actually produced, not a
+// spec for what should ship, and rewriting them to pass would just be lying
+// about the baseline the same way a passing assertion on a known-red fixture
+// would (see file header).
 describe('11. tone visibly changes direction/delivery notes and is never contradicted', () => {
   it.fails('run-c: tone="high energy" had zero observable effect', () => {
     expect(fixtures['run-c'].generation.beat_audit.tone_effect_observed).toBe(true)
@@ -446,6 +459,48 @@ describe('11. tone visibly changes direction/delivery notes and is never contrad
       ? JSON.stringify(fixtures['run-d'].generation.blueprint)
       : ''
     expect(/energetic delivery|rapid jump cuts/i.test(sprintText)).toBe(false)
+  })
+
+  // The FIX itself: run the real `toneEffect` — the same detector now wired
+  // into `generate-blueprint`'s `beat_audit.tone_effect` (see
+  // `toneEffectInline` in `supabase/functions/generate-blueprint/index.ts`,
+  // parity-mirrored here) — over delivery text shaped exactly like each
+  // fixture's audited defect, translated into the real tone enum
+  // (`punchy`/`understated`, from `V2Create.tsx`'s tone picker).
+  it('run-c shape: a punchy tone with no energy language anywhere is caught as unobserved', () => {
+    const script = [{ direction: 'Medium shot, facing the window.' }, { direction: 'Straight to camera.' }]
+    const sprint = [{ minute: '0-5', task: 'Film the intro in one clean take.' }]
+    const result = toneEffect(script, sprint, 'punchy')
+    expect(result.tone_effect_observed).toBe(false)
+    expect(result.contradictions).toBe(0)
+  })
+
+  it('run-c shape, fixed: a punchy tone that DOES surface energy language is observed', () => {
+    const script = [{ direction: 'Medium shot, energetic.' }, { direction: 'Straight to camera.' }]
+    const sprint = [{ minute: '0-5', task: 'Quick cuts, fast pacing, keep the momentum up.' }]
+    const result = toneEffect(script, sprint, 'punchy')
+    expect(result.tone_effect_observed).toBe(true)
+    expect(result.contradictions).toBe(0)
+  })
+
+  it('run-d shape: an understated tone contradicted by "rapid jump cuts... energetic delivery" is caught', () => {
+    const script = [{ direction: 'Medium shot, calm.' }, { direction: 'Medium shot, calm.' }]
+    const sprint = [{ minute: '0-5', task: 'A direct to camera philosophical rant... rapid jump cuts to mimic the energetic delivery.' }]
+    const result = toneEffect(script, sprint, 'understated')
+    expect(result.tone_effect_observed).toBe(true) // "calm" also appears in the same text
+    expect(result.contradictions).toBeGreaterThan(0) // but so does the energetic contradiction
+  })
+
+  it('run-d shape, fixed: an understated tone with only calm language, no contradiction', () => {
+    const script = [{ direction: 'Medium shot, calm.' }, { direction: 'Medium shot, steady.' }]
+    const sprint = [{ minute: '0-5', task: 'A composed, measured direct to camera piece, no hype.' }]
+    const result = toneEffect(script, sprint, 'understated')
+    expect(result.tone_effect_observed).toBe(true)
+    expect(result.contradictions).toBe(0)
+  })
+
+  it('balanced tone always reads as observed with no contradictions (nothing is required of it)', () => {
+    expect(toneEffect([], [], 'balanced')).toEqual({ tone: 'balanced', tone_effect_observed: true, contradictions: 0 })
   })
 })
 
