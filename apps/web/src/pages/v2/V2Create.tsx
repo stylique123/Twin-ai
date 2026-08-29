@@ -6,22 +6,28 @@
 // PRODUCT_VISION §7.
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Link2, Wand2, Target, Shuffle, Feather, Wind, Activity, Flame, SlidersHorizontal, ChevronDown } from 'lucide-react'
+import { Link2, Wand2, Wind, Activity, Flame, SlidersHorizontal, ChevronDown } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { listGenerations } from '../../lib/api'
 import { videosFromCredits } from '../../lib/brand'
 import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
 
-type Fidelity = 'close' | 'balanced' | 'loose'
 type Tone = 'understated' | 'balanced' | 'punchy'
 
-const FIDELITY = [
-  { id: 'close', label: 'Close', note: 'Stay tight to the reference structure.', icon: Target },
-  { id: 'balanced', label: 'Balanced', note: 'Proven shape, your spin.', icon: Shuffle },
-  { id: 'loose', label: 'Loose', note: 'Just the inspiration, mostly you.', icon: Feather },
-] as const
-
+// ⚠️ FIX 10 (Wave 4). ONE HOME FOR FIDELITY — THE SLIDER USED TO LIVE HERE.
+// "How close to the reference" duplicated the always-asked `reference_use`
+// question ("How much of the original should Twin keep?", asked on every
+// build a screen later) and generate-blueprint fed BOTH into the prompt as
+// separate, unreconciled directives. Run D proved they can disagree: this
+// slider said "loose" while `reference_use` said "Keep it close", and the
+// header showed this slider's answer while the prompt carried both
+// instructions at once. `reference_use` is the first-class, always-answered
+// control (this one was one tap behind a collapsed "Advanced settings"
+// panel most creators never opened) so it is now the ONLY closeness control
+// — see `resolveFidelity` in `videoIntent.ts`, which derives the writer's
+// fidelity rule from it. Nothing here can disagree with it because nothing
+// here asks the question anymore.
 const TONE = [
   { id: 'understated', label: 'Understated', note: 'Calm, credible, no hype.', icon: Wind },
   { id: 'balanced', label: 'Balanced', note: 'Natural energy, your default.', icon: Activity },
@@ -50,7 +56,6 @@ export default function V2Create() {
   const [params] = useSearchParams()
   const [input, setInput] = useState(() => initialInput(params.get('ref')))
   const [advanced, setAdvanced] = useState(false)
-  const [fidelity, setFidelity] = useState<Fidelity>('balanced')
   const [tone, setTone] = useState<Tone>('balanced') // recommended default
   const [checking, setChecking] = useState(false)
   // A generation that already used this exact link — surfaced so we can offer to
@@ -67,7 +72,7 @@ export default function V2Create() {
       // screen only carries out the ask, and it remounts. Two deliberate clicks
       // mint two keys and correctly cost two remixes; a remount, a back-and-
       // forward or a refresh reuses this one and costs nothing extra.
-      state: { reference_url: looksUrl ? t : '', reference_note: looksUrl ? '' : t, fidelity, tone, idempotency_key: crypto.randomUUID() },
+      state: { reference_url: looksUrl ? t : '', reference_note: looksUrl ? '' : t, tone, idempotency_key: crypto.randomUUID() },
     })
   }
 
@@ -111,9 +116,11 @@ export default function V2Create() {
 
       {/* ── One focused column on the brand canvas: input → advanced settings
           (collapsed) → Remix. Fully responsive — the same studio page on phone
-          (narrower, tighter type) and desktop. Both knobs are REAL: fidelity +
-          tone ride the request into generate-blueprint, where each maps to a
-          hard prompt rule — switching them changes the script you get back. ── */}
+          (narrower, tighter type) and desktop. Tone is REAL: it rides the
+          request into generate-blueprint, where it maps to a hard prompt rule —
+          switching it changes the script you get back. Closeness to the
+          reference is asked once, on the next screen (`reference_use`, always
+          asked, not a buried setting) — see the FIX 10 comment above. ── */}
       {/* Centered on phone AND desktop, and keyboard-aware. Phone height is dvh
           (DYNAMIC viewport) minus the app chrome (~8rem = top bar + bottom tab bar),
           so the box fills exactly the VISIBLE area between them. dvh shrinks when the
@@ -166,7 +173,6 @@ export default function V2Create() {
           </button>
           {advanced && (
             <div className="mx-auto mt-4 max-w-md space-y-6 rounded-panel border border-white/8 bg-ink2/50 p-5 text-left backdrop-blur-sm">
-              <OptionRow label="How close to the reference" options={FIDELITY} value={fidelity} onPick={(v) => setFidelity(v as Fidelity)} />
               <OptionRow label="How it should sound" options={TONE} value={tone} onPick={(v) => setTone(v as Tone)} />
               {/* ⚠️ "WHAT THIS VIDEO IS FOR" IS NO LONGER HERE. It was an
                   INTENT question buried in a collapsed panel two clicks from
@@ -177,9 +183,12 @@ export default function V2Create() {
                   remix starts, where it is asked rather than discovered. What
                   stays here is what genuinely belongs here: how the writing
                   should be executed, not what the video is for. */}
+              {/* ⚠️ "HOW CLOSE TO THE REFERENCE" IS NO LONGER HERE EITHER — see
+                  FIX 10 above. It duplicated `reference_use`, asked on the next
+                  screen for every build, and the two could silently disagree. */}
               <p className="text-xs leading-relaxed text-stone">
-                These steer the writing for real: <span className="text-sand">closeness</span> decides how tightly the script mirrors the reference's structure,{' '}
-                and <span className="text-sand">sound</span> sets the energy of the hooks and lines.
+                This steers the writing for real: <span className="text-sand">sound</span> sets the energy of the hooks and lines.
+                How closely to follow the reference is asked next.
               </p>
             </div>
           )}

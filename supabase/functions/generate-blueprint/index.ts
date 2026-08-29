@@ -1741,6 +1741,26 @@ const KEEPS_REFERENCE_TOPIC_INLINE: Record<string, boolean> = {
   structure: false, idea_structure: true, stay_close: true, inspiration: false,
 }
 
+// ⚠️ FIX 10 (Wave 4). ONE HOME FOR FIDELITY, INLINED FROM `videoIntent.ts` AND
+// PARITY-TESTED (see `videoIntentParity.test.ts`). `reference_use` (asked on
+// every build) and the legacy fidelity slider (buried in Advanced Settings)
+// both claimed to answer "how closely should this follow the reference" and
+// were fed to the prompt as two separate, unreconciled directives — Run D's
+// slider said "loose" while `reference_use` said "stay_close" ("Keep it
+// close"). `resolveFidelityInline` is now the one place that decides
+// `fidelity`: it wins with `reference_use` whenever the creator answered it,
+// and falls back to the slider only when they have not.
+const FIDELITY_FROM_REFERENCE_USE_INLINE: Record<string, 'close' | 'balanced' | 'loose'> = {
+  structure: 'close', idea_structure: 'balanced', stay_close: 'close', inspiration: 'loose',
+}
+function resolveFidelityInline(
+  referenceUse: string | null,
+  legacyFidelitySlider: string | null,
+): 'close' | 'balanced' | 'loose' {
+  if (referenceUse !== null) return FIDELITY_FROM_REFERENCE_USE_INLINE[referenceUse]
+  return (legacyFidelitySlider as 'close' | 'balanced' | 'loose' | null) ?? 'balanced'
+}
+
 // ⚠️ INLINED, AND THE REASON IT EXISTS IS THE SAME ON BOTH SIDES: the outcome
 // question left the remix screen and its behaviour did not. The goal implies an
 // outcome so the CTA payoff and the substance floor keep working; it never feeds
@@ -3406,7 +3426,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; readiness_answers?: Record<string, string> }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string> }
   try {
     body = await req.json()
   } catch {
@@ -3419,9 +3439,19 @@ Deno.serve(async (req: Request) => {
   // Bound user-controlled inputs that flow into the model prompt (cost + abuse).
   const reference_note = (body.reference_note ?? '').trim().slice(0, 2000)
   const transcript_id = (body.transcript_id ?? '').trim()
-  const fidelity = ['close', 'balanced', 'loose'].includes(body.fidelity ?? '')
+  // ⚠️ FIX 10 (Wave 4). ONE HOME FOR FIDELITY. `reference_use` (asked on every
+  // build, first-class) is authoritative whenever the creator answered it;
+  // the legacy Advanced Settings slider is used only as a fallback. See
+  // `resolveFidelityInline` above — this is the ONLY place `fidelity` is
+  // decided, so the slider and `reference_use` can no longer disagree.
+  const legacyFidelitySlider = ['close', 'balanced', 'loose'].includes(body.fidelity ?? '')
     ? body.fidelity!
-    : 'balanced'
+    : null
+  const normalizedReferenceUseForFidelity = typeof body.reference_use === 'string'
+    && REFERENCE_USE_INLINE.includes(body.reference_use)
+    ? body.reference_use
+    : null
+  const fidelity = resolveFidelityInline(normalizedReferenceUseForFidelity, legacyFidelitySlider)
   // Make fidelity actually change the output, not just be a label. Each level is a
   // hard directive the model must obey when shaping the script + structure.
   const FIDELITY_RULE: Record<string, string> = {
