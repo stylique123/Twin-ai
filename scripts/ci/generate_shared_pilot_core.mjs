@@ -57,6 +57,12 @@ const SOURCES = [
   // naming the reference creator's own company, "Acquisition.com") would
   // survive its own fix.
   ['packages/shared/src/script/ctaEntity.ts', 'supabase/functions/_shared/ctaEntity.ts'],
+  // ⚠️ FIX 3 (Wave 1). The hook-entity check. Generated rather than retyped so
+  // the writer path's demotion condition and the tested module agree by
+  // construction — a hand copy is exactly how Run A's "revenue was stagnant"
+  // and Run D's "we do over a million in revenue" / "stop blaming your churn"
+  // would survive their own fix.
+  ['packages/shared/src/script/hookEntity.ts', 'supabase/functions/_shared/hookEntity.ts'],
   ['packages/shared/src/script/advisoryRead.ts', 'supabase/functions/_shared/advisoryRead.ts'],
   // ⚠️ FIX 8b. The trigger the edge function's judge call must obey — "2+
   // substantive soft beats", never the payoff branch G20 forbids. Generated

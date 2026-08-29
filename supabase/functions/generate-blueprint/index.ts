@@ -32,6 +32,7 @@ import { lexicalFloor } from '../_shared/repetition.ts'
 import { shouldAsk, readVerdict } from '../_shared/advisoryRead.ts'
 import { findPhraseOverlaps, MIN_OVERLAP_CONTENT_WORDS } from '../_shared/phraseOverlap.ts'
 import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
+import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { evaluateSemanticRepetitionTrigger } from '../_shared/semanticRepetition.ts'
 import {
   productSceneGuidance, productSceneDirection,
@@ -5426,6 +5427,15 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // com" — the REFERENCE creator's own business — because the writer had no
     // offer on file and reached for the nearest one in context.
     let ctaEntityUnmatched: { found: number; replaced: number } | null = null
+    // ⚠️ FIX 3 (Wave 1). NULL MEANS THE CHECK NEVER RAN — never zero. `found` is
+    // hook options (across all five, not just hook_options[0]) that asserted a
+    // currency/magnitude figure, a first-person-plural business claim, or a
+    // business-model term (churn/subscribers/headcount) absent from this
+    // creator's `product_entities`; `demoted` is how many were pushed behind
+    // the clean hooks rather than deleted. Run A's shipped hook said "revenue
+    // was stagnant"; Run D's said "we do over a million in revenue" and "stop
+    // blaming your churn" — no product_entities backed either.
+    let hookUnsupportedClaim: { found: number; demoted: number } | null = null
     // WHERE THE CONTENT CAME FROM, COUNTED — and the declaration checked against
     // what the prompt actually carried. ⚖️ `speakable` and not `kRows`: checking
     // against the fuller store would excuse exactly the fabrication this exists
@@ -5493,6 +5503,54 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         }
       }
     } catch { /* never fail a generation on a hook filter */ }
+
+    // ── AND THE BUSINESS FACT NOBODY GAVE IT ────────────────────────────────
+    //
+    // ⚠️ FIX 3 (Wave 1). RUN A / RUN D, MEASURED. The check above catches a
+    // fabricated PERSONAL HISTORY in a hook ("I used to have so many failed 3D
+    // prints"); it does not catch a fabricated BUSINESS FACT, which is a
+    // different claim shape entirely — first-person-PLURAL ("we do"), a bare
+    // figure ("over a million"), or a business-model assumption ("your churn")
+    // rather than a first-person-singular life event. `claimStrength`'s ladder
+    // has no rung for any of the three, so Run A's "revenue was stagnant" and
+    // Run D's "we do over a million in revenue" / "stop blaming your churn"
+    // shipped straight through it.
+    //
+    // ⚖️ REUSES `ctaEntityViolations`'s JUDGMENT, NOT A SECOND COPY. FIX 2
+    // already decided a first-person-plural business claim needs a
+    // `product_entities` match; `demoteUnsupportedHooks` asks the identical
+    // ownership question of every hook option, not just the CTA.
+    //
+    // ⚖️ DEMOTED, NOT DROPPED — DELIBERATELY DIFFERENT FROM THE CHECK ABOVE.
+    // The history filter above discards a failing hook outright, which is safe
+    // because a fabricated life event has no honest edit; a fabricated business
+    // FIGURE is a preference the creator might still want to see and correct
+    // ("no, we don't do a million, we do half that") rather than never learn
+    // the writer proposed. So this check reorders instead: every flagged hook
+    // sorts behind every clean one, and `hook_options[0]` — the recommended
+    // pick — is never a flagged hook unless all five are. When all five ARE
+    // flagged, `demoteUnsupportedHooks` returns the list unchanged rather than
+    // inventing an order among equally-bad options: the safest available
+    // fallback is the writer's own original ranking, and the generation still
+    // ships rather than blocking on a hook-quality question no creator asked.
+    try {
+      const bpB = templated.bp as { hook_options?: unknown }
+      const rawHooks = Array.isArray(bpB.hook_options)
+        ? (bpB.hook_options as unknown[]).filter((h): h is string => typeof h === 'string')
+        : []
+      if (rawHooks.length > 0) {
+        const demotion = demoteUnsupportedHooks(rawHooks, csEntities)
+        hookUnsupportedClaim = { found: demotion.found, demoted: demotion.demoted }
+        if (demotion.found > 0) {
+          bpB.hook_options = [...demotion.hooks]
+          console.warn(JSON.stringify({
+            event: 'hook_unsupported_claim', found: demotion.found, demoted: demotion.demoted, of: rawHooks.length,
+          }))
+        }
+      } else {
+        hookUnsupportedClaim = { found: 0, demoted: 0 }
+      }
+    } catch { /* never fail a generation on a hook business-claim filter */ }
 
     // ── AND THE RULE THE PROMPT STATES ABOUT HOOK LENGTH ────────────────────
     //
@@ -5947,6 +6005,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // `product_entities`; `replaced` is how many shipped with the
       // deterministic non-commercial fallback instead.
       cta_entity_unmatched: ctaEntityUnmatched,
+      // ⚠️ FIX 3 (Wave 1). NULL means the check never ran — never zero. `found`
+      // is hook options (across all five) asserting a currency figure,
+      // first-person-plural business claim, or business-model term absent from
+      // `product_entities`; `demoted` is how many were pushed behind the clean
+      // hooks rather than deleted.
+      hook_unsupported_claim: hookUnsupportedClaim,
       by_source: bySource,
       creator_knowledge_depth: byDepth,
       knowledge_supplied: speakable.length,
