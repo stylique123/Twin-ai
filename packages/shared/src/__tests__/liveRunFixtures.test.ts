@@ -23,6 +23,7 @@ import { dirname, join } from 'node:path'
 import { findPhraseOverlaps, MIN_OVERLAP_CONTENT_WORDS } from '../script/phraseOverlap.js'
 import { demoteUnsupportedHooks } from '../script/hookEntity.js'
 import { checkCtaEntity } from '../script/ctaEntity.js'
+import { syncRetentionMapToScript } from '../script/retentionMapSync.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURES_DIR = join(HERE, '..', '..', '..', '..', 'eval', 'fixtures', 'live-runs')
@@ -177,19 +178,63 @@ describe('4. shot list and teleprompter carry identical lines and counts', () =>
 
 // ── 5. Coaching panels reference only real beats ────────────────────────────
 describe('5. coaching panels reference only beats that exist in the produced script', () => {
+  // ⚠️ FIX 5 (Wave 2). Frozen fixtures still document the SHIPPED (buggy)
+  // panel — the raw `retention_map` as the model wrote it, never resynced
+  // against the final script, exactly like §4's shot lists before Fix 4.
   const panelMatchesScript = (f: Fixture) => {
     const scriptSections = new Set(f.generation.blueprint.script.map((b) => b.section.toLowerCase()))
     return f.generation.blueprint.reference_read.retention_map
       .every((r) => scriptSections.has(r.beat.toLowerCase()))
   }
-  it.fails('run-b: the retention map describes the reference\'s CTA (lead magnet), not the shipped save-this CTA', () => {
+  it.fails('run-b: the raw retention map describes the reference\'s CTA (lead magnet), not the shipped save-this CTA', () => {
     expect(panelMatchesScript(fixtures['run-b'])).toBe(true)
   })
-  it.fails('run-c: the retention map includes "The pivot", a beat the shipped script does not have', () => {
+  it.fails('run-c: the raw retention map includes "The pivot", a beat the shipped script does not have', () => {
     expect(panelMatchesScript(fixtures['run-c'])).toBe(true)
   })
-  it.fails('run-d: the retention map claims 6 structural beats for a 5-scene script', () => {
+  it.fails('run-d: the raw retention map claims 6 structural beats for a 5-scene script', () => {
     expect(panelMatchesScript(fixtures['run-d'])).toBe(true)
+  })
+
+  // The FIX itself: run the real `syncRetentionMapToScript` module (the same
+  // one wired into generate-blueprint after every script-mutating repair,
+  // including Fix 4's shot-list resync) over these same frozen fixtures and
+  // prove the panel it produces agrees with the script that actually ships.
+  const syncedMatchesScript = (f: Fixture) => {
+    const scriptSections = new Set(f.generation.blueprint.script.map((b) => b.section.toLowerCase()))
+    const synced = syncRetentionMapToScript(
+      f.generation.blueprint.reference_read.retention_map,
+      f.generation.blueprint.script,
+    )
+    return synced.retentionMap.length === f.generation.blueprint.script.length
+      && synced.retentionMap.every((r) => scriptSections.has(String(r.beat).toLowerCase()))
+  }
+  it('run-b: synced retention map matches the shipped save-this CTA, not the reference lead magnet', () => {
+    expect(syncedMatchesScript(fixtures['run-b'])).toBe(true)
+    const synced = syncRetentionMapToScript(
+      fixtures['run-b'].generation.blueprint.reference_read.retention_map,
+      fixtures['run-b'].generation.blueprint.script,
+    )
+    const cta = synced.retentionMap[synced.retentionMap.length - 1] as { beat: string; goal: string }
+    expect(cta.beat.toLowerCase()).toBe('cta')
+    expect(cta.goal).not.toMatch(/lead magnet/i)
+  })
+  it('run-c: synced retention map drops "The pivot" — the beat the shipped teleprompter never shows', () => {
+    expect(syncedMatchesScript(fixtures['run-c'])).toBe(true)
+    const synced = syncRetentionMapToScript(
+      fixtures['run-c'].generation.blueprint.reference_read.retention_map,
+      fixtures['run-c'].generation.blueprint.script,
+    )
+    expect(synced.retentionMap.some((r) => String(r.beat).toLowerCase() === 'the pivot')).toBe(false)
+    expect(synced.dropped).toBeGreaterThan(0)
+  })
+  it('run-d: synced retention map never claims more structural beats than the 5-scene script', () => {
+    expect(syncedMatchesScript(fixtures['run-d'])).toBe(true)
+    const synced = syncRetentionMapToScript(
+      fixtures['run-d'].generation.blueprint.reference_read.retention_map,
+      fixtures['run-d'].generation.blueprint.script,
+    )
+    expect(synced.retentionMap).toHaveLength(fixtures['run-d'].generation.blueprint.script.length)
   })
 })
 

@@ -165,6 +165,23 @@ const EVENTS = {
       + '(an extra beat a repair dropped) and were blanked. Null when the generation '
       + 'carried no shot list to reconcile.',
   },
+  // ⚠️ FIX 5 (Wave 2). Same defect shape as shot_list_resync above, one panel
+  // over: `reference_read.retention_map` is written by the same model call as
+  // `script`, then only `script` gets rewritten by every repair since. Run
+  // B's retention map shipped describing the reference's own lead-magnet
+  // CTA over the shipped save-this CTA; Run C's included "The pivot", a beat
+  // absent from the final teleprompter; Run D's claimed 6 structural beats
+  // for a 5-scene script (liveRunFixtures.test.ts §5).
+  retention_map_resync: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: "How many output retention-map rows landed on a beat whose name the model's "
+      + 'original row still used (that row\'s prose is discarded regardless — every '
+      + 'goal is synthesized fresh from the FINAL script beat, never copied from the '
+      + "reference-era reasoning), and how many original rows named a beat the final "
+      + 'script no longer has and were dropped rather than shipped stale. Null when '
+      + 'the generation carried no retention map to reconcile.',
+  },
   beat_substance: {
     kind: 'counter',
     stored: 'generations.beat_audit',
