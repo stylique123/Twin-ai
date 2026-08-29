@@ -238,10 +238,20 @@ export function deliveredItemCount(beats: readonly MechanismScriptBeat[]): numbe
     for (const [word, n] of Object.entries(ORDINAL_WORDS)) {
       if (new RegExp(`\\b${word}\\b`, 'i').test(line) && n > highest) highest = n
     }
-    // "number 3", "#3", "3." at the start of a clause — digits used as ordinals.
+    // "number 3", "#3" — digits used as ordinals.
     for (const m of line.matchAll(/(?:\bnumber\s+|#)(\d{1,2})\b/gi)) {
       const n = Number(m[1])
       if (n >= 1 && n <= MAX_COUNT && n > highest) highest = n
+    }
+    // "Number one", "number two" — the digit spelled out after "number". This is
+    // as common as the digit form ("Number one, you are not promoting enough")
+    // and was previously missed entirely: the digit-only regex above requires
+    // `\d`, so a script that counts this way registered zero delivered items
+    // and the count contract false-fired an "undelivered" warning against a
+    // script that had, in fact, delivered every item it promised.
+    for (const m of line.matchAll(/\bnumber\s+([a-z]+)\b/gi)) {
+      const n = NUMBER_WORDS[m[1].toLowerCase()]
+      if (n !== undefined && n > highest) highest = n
     }
   }
   return highest

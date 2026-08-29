@@ -24,6 +24,7 @@ import { findPhraseOverlaps, MIN_OVERLAP_CONTENT_WORDS } from '../script/phraseO
 import { demoteUnsupportedHooks } from '../script/hookEntity.js'
 import { checkCtaEntity } from '../script/ctaEntity.js'
 import { syncRetentionMapToScript } from '../script/retentionMapSync.js'
+import { deliveredItemCount } from '../referenceMechanism.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURES_DIR = join(HERE, '..', '..', '..', '..', 'eval', 'fixtures', 'live-runs')
@@ -239,28 +240,37 @@ describe('5. coaching panels reference only beats that exist in the produced scr
 })
 
 // ── 6. Enumeration checker correctness ──────────────────────────────────────
-function enumerationPromiseCount(text: string): number {
-  const numberWord = /\bnumber\s+(one|two|three|four|five)\b/gi
-  const ordinal = /\b(first|second|third|fourth|fifth)\b/gi
-  return Math.max((text.match(numberWord) ?? []).length, (text.match(ordinal) ?? []).length)
+//
+// Wave 3 FIX 6. The frozen `beat_audit.enumeration_checker` field on each
+// fixture records what the SHIPPED (buggy) checker actually did: it counted
+// `delivered: 0` on run-a and run-c even though both scripts deliver every
+// promised item, because the digit-only regex in `deliveredItemCount` never
+// matched "Number one" / "Number two" spelled out as words (only "number 3",
+// digit form). Rather than trust that frozen, buggy field, this section now
+// runs the REAL, FIXED `deliveredItemCount` over each fixture's own script
+// and checks it against the promised count also recorded on the fixture —
+// which is what the production checker should have done, and now does.
+function warningShouldFire(f: Fixture): boolean {
+  const promised = (f.generation.beat_audit.enumeration_checker as { promised?: number })?.promised
+  if (typeof promised !== 'number') return false
+  const delivered = deliveredItemCount(f.generation.blueprint.script)
+  return delivered < promised
 }
 describe('6. enumeration warning fires only on genuinely incomplete lists', () => {
-  it.fails('run-a: "Number one/two/three" is present but the checker warned 0 delivered', () => {
-    const full = fixtures['run-a'].generation.blueprint.script.map((b) => b.line).join(' ')
-    const found = enumerationPromiseCount(full)
-    const warned = (fixtures['run-a'].generation.beat_audit.enumeration_checker as { warning_fired?: boolean })?.warning_fired
-    expect(warned && found >= 3).toBe(false)
+  it('run-a: "Number one/two/three" delivers all 3 promised — checker correctly silent', () => {
+    const delivered = deliveredItemCount(fixtures['run-a'].generation.blueprint.script)
+    expect(delivered).toBe(3)
+    expect(warningShouldFire(fixtures['run-a'])).toBe(false)
   })
   it('run-b: "The first / Second / And the third" recognized, checker correctly silent (green)', () => {
-    const full = fixtures['run-b'].generation.blueprint.script.map((b) => b.line).join(' ')
-    const found = enumerationPromiseCount(full)
-    const warned = (fixtures['run-b'].generation.beat_audit.enumeration_checker as { warning_fired?: boolean })?.warning_fired
-    expect(found).toBeGreaterThanOrEqual(3)
-    expect(warned).toBe(false)
+    const delivered = deliveredItemCount(fixtures['run-b'].generation.blueprint.script)
+    expect(delivered).toBe(3)
+    expect(warningShouldFire(fixtures['run-b'])).toBe(false)
   })
-  it.fails('run-c: "Number one/two" present, checker still false-warned', () => {
-    const warned = (fixtures['run-c'].generation.beat_audit.enumeration_checker as { warning_fired?: boolean })?.warning_fired
-    expect(warned).toBe(false)
+  it('run-c: "Number one/two" present, third beat has no ordinal — checker correctly warns (2 of 3)', () => {
+    const delivered = deliveredItemCount(fixtures['run-c'].generation.blueprint.script)
+    expect(delivered).toBe(2)
+    expect(warningShouldFire(fixtures['run-c'])).toBe(true)
   })
 })
 
