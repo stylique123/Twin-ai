@@ -31,6 +31,7 @@ import { businessFactLines, businessFactProvenanceCounts } from '../_shared/bran
 import { lexicalFloor } from '../_shared/repetition.ts'
 import { shouldAsk, readVerdict } from '../_shared/advisoryRead.ts'
 import { findPhraseOverlaps, MIN_OVERLAP_CONTENT_WORDS } from '../_shared/phraseOverlap.ts'
+import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { evaluateSemanticRepetitionTrigger } from '../_shared/semanticRepetition.ts'
 import {
   productSceneGuidance, productSceneDirection,
@@ -5417,6 +5418,14 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // contiguous run with the reference transcript; `repaired` is how many were
     // rewritten (or turned into an `ask`) before the script shipped.
     let referencePhraseOverlap: { found: number; repaired: number } | null = null
+    // ⚠️ FIX 2 (Wave 1). NULL MEANS THE CHECK NEVER RAN — never zero. `found` is
+    // CTA beats that named or first-person-plural-claimed a business absent
+    // from this creator's `product_entities`; `replaced` is how many were
+    // swapped for a deterministic non-commercial fallback before the script
+    // shipped. Run C shipped "We partner with founders ... at Acquisition dot
+    // com" — the REFERENCE creator's own business — because the writer had no
+    // offer on file and reached for the nearest one in context.
+    let ctaEntityUnmatched: { found: number; replaced: number } | null = null
     // WHERE THE CONTENT CAME FROM, COUNTED — and the declaration checked against
     // what the prompt actually carried. ⚖️ `speakable` and not `kRows`: checking
     // against the fuller store would excuse exactly the fabrication this exists
@@ -5933,6 +5942,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // model rewrite that broke the shared run AND a line turned into an
       // `ask` because no safe rewrite was found.
       reference_phrase_overlap: referencePhraseOverlap,
+      // ⚠️ FIX 2 (Wave 1). NULL means the check never ran — never zero.
+      // `found` is CTA beats naming/claiming a business absent from
+      // `product_entities`; `replaced` is how many shipped with the
+      // deterministic non-commercial fallback instead.
+      cta_entity_unmatched: ctaEntityUnmatched,
       by_source: bySource,
       creator_knowledge_depth: byDepth,
       knowledge_supplied: speakable.length,
@@ -6170,6 +6184,58 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         }))
       }
     } catch { /* never fail a generation on a craft-beat repair */ }
+
+    // ── A CTA MAY ONLY POINT AT SOMETHING THIS CREATOR OWNS ─────────────────
+    //
+    // ⚠️ FIX 2 (Wave 1). RUN C, MEASURED. goal="Get customers or leads" demanded
+    // a commercial CTA; the creator skipped all three product questions, so
+    // `product_entities` was empty; the writer needed an offer and had none; the
+    // nearest one in context was the REFERENCE's own business, and
+    // fidelity="Close to the reference" told it to stay near the original. The
+    // shipped line named Acquisition.com in first-person-plural — "we partner
+    // with founders" — as if it were this creator's company.
+    //
+    // ⚖️ RUNS AFTER THE CRAFT-BEAT FALLBACK ABOVE, ON PURPOSE. That pass only
+    // replaces a beat that reads as a placeholder; a CTA that reads as REAL
+    // prose (like Run C's) sails straight through it. This is the check for
+    // exactly that case: a written, speakable CTA that still names or claims a
+    // business absent from `product_entities`.
+    //
+    // ⚖️ SKIPPING THE PRODUCT QUESTIONS IS AN ANSWER, NOT A BLANK. Empty
+    // `product_entities` reaches `ctaEntityViolations` as a fact — "no offer on
+    // record" — and `checkCtaEntity` reads it as such: it can only ever make
+    // this stricter, never quietly excuse a claim because nothing was on file.
+    //
+    // ⚖️ DETERMINISTIC, NOT A MODEL REWRITE. Reuses `fallbackCta`, the exact
+    // same non-commercial ladder the craft-beat check above already ships, so
+    // there is one authority for "what a CTA says when there is nothing to
+    // sell" rather than two that could disagree.
+    try {
+      const violations = ctaEntityViolations(
+        Array.isArray(declared) ? declared as Array<{ section?: unknown; line?: unknown }> : [],
+        csEntities,
+      )
+      ctaEntityUnmatched = { found: violations.length, replaced: 0 }
+      if (violations.length > 0) {
+        console.warn(JSON.stringify({
+          event: 'cta_entity_unmatched',
+          found: violations.length,
+          reasons: violations.map((v) => v.result.reason),
+        }))
+        let replaced = 0
+        for (const v of violations) {
+          const b = (declared as Array<{ line?: string; substance?: string }>)[v.index]
+          if (!b) continue
+          b.line = fallbackCta(intent.goal, offer === 'unspecified' ? null : offer)
+          b.substance = 'general'
+          replaced++
+        }
+        ctaEntityUnmatched = { found: violations.length, replaced }
+        console.warn(JSON.stringify({ event: 'cta_entity_unmatched_repair', found: violations.length, replaced }))
+      }
+    } catch (err) {
+      console.error('cta_entity_unmatched_failed', err instanceof Error ? err.message : err)
+    }
 
     // ── EMPHASIS IS DIRECTION, NOT WORDS ────────────────────────────────────
     //

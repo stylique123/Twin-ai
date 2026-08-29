@@ -51,6 +51,12 @@ const SOURCES = [
   // Run D evidence (verbatim reference sentences at fidelity="loose") would
   // survive its own fix.
   ['packages/shared/src/script/phraseOverlap.ts', 'supabase/functions/_shared/phraseOverlap.ts'],
+  // ⚠️ FIX 2 (Wave 1). The CTA-entity check. Generated rather than retyped so
+  // the writer path's fallback-trigger condition and the tested module agree
+  // by construction — a hand copy is exactly how the Run C evidence (a CTA
+  // naming the reference creator's own company, "Acquisition.com") would
+  // survive its own fix.
+  ['packages/shared/src/script/ctaEntity.ts', 'supabase/functions/_shared/ctaEntity.ts'],
   ['packages/shared/src/script/advisoryRead.ts', 'supabase/functions/_shared/advisoryRead.ts'],
   // ⚠️ FIX 8b. The trigger the edge function's judge call must obey — "2+
   // substantive soft beats", never the payoff branch G20 forbids. Generated
