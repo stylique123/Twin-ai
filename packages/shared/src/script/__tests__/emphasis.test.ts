@@ -86,6 +86,75 @@ describe('the words it hands to the caption renderer', () => {
   })
 })
 
+describe('markdown emphasis syntax leaves the line and becomes direction', () => {
+  // ⚠️ THE REAL LINE FROM THE SECOND AUDITED SCRIPT.
+  it('a single *word* is stripped and joins emphasisWords', () => {
+    const r = splitEmphasis('Second, you measure the actual cost of *not* doing it.')
+    expect(r.line).toBe('Second, you measure the actual cost of not doing it.')
+    expect(r.emphasisWords).toEqual(['not'])
+    expect(r.runs).toBe(1)
+  })
+
+  it('a single _word_ is stripped and joins emphasisWords', () => {
+    const r = splitEmphasis('This is _urgent_ and cannot wait.')
+    expect(r.line).toBe('This is urgent and cannot wait.')
+    expect(r.emphasisWords).toEqual(['urgent'])
+    expect(r.runs).toBe(1)
+  })
+
+  it('a **word** double-asterisk span is stripped and joins emphasisWords', () => {
+    const r = splitEmphasis('You need to **stop** right now.')
+    expect(r.line).toBe('You need to stop right now.')
+    expect(r.emphasisWords).toEqual(['stop'])
+    expect(r.runs).toBe(1)
+  })
+
+  it('a multi-word markdown span is stripped and every word joins emphasisWords', () => {
+    const r = splitEmphasis('This is *two words* that matter.')
+    expect(r.line).toBe('This is two words that matter.')
+    expect(r.emphasisWords).toEqual(['two', 'words'])
+    expect(r.runs).toBe(1)
+  })
+
+  it('trailing punctuation after the closing marker survives on the line', () => {
+    const r = splitEmphasis('Do it *now*, not later.')
+    expect(r.line).toBe('Do it now, not later.')
+    expect(r.emphasisWords).toEqual(['now'])
+  })
+
+  it('a line with both CAPS and markdown emphasis combines into one emphasisWords list', () => {
+    const r = splitEmphasis('YOU HAVE TIME, but *not* forever.')
+    expect(r.line).toBe('You have time, but not forever.')
+    expect(r.emphasisWords).toEqual(['not', 'you', 'have', 'time'])
+    expect(r.runs).toBe(2)
+  })
+
+  // ⚠️ FALSE-POSITIVE GUARD: a lone marker with no matching close must not be
+  // treated as emphasis or corrupt the line.
+  it('a lone asterisk used as multiplication is left completely alone', () => {
+    const line = 'Two * three is six.'
+    const r = splitEmphasis(line)
+    expect(r.line).toBe(line)
+    expect(r.runs).toBe(0)
+    expect(r.emphasisWords).toEqual([])
+  })
+
+  it('an unmatched trailing underscore is left completely alone', () => {
+    const line = 'The file is named report_.'
+    const r = splitEmphasis(line)
+    expect(r.line).toBe(line)
+    expect(r.runs).toBe(0)
+  })
+
+  it('an underscore inside a normal word is left completely alone', () => {
+    const line = 'We shipped state_of_the_art tooling.'
+    const r = splitEmphasis(line)
+    expect(r.line).toBe(line)
+    expect(r.runs).toBe(0)
+    expect(r.emphasisWords).toEqual([])
+  })
+})
+
 /**
  * ⚠️ THE SPLIT IS ONLY REAL IF THE WRITER RUNS IT, and only useful if the second
  * reader gets the list. Both are pinned here.
