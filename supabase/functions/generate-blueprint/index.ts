@@ -1240,6 +1240,55 @@ function premiseInstructionInline(referenceText: string | null | undefined, hasE
     + '"5 things I stopped doing" becomes "5 things founders should stop doing".'
 }
 
+// ── SUBJECT SOURCE (inlined from packages/shared/src/script/subjectSource.ts) ──
+//
+// ⚠️ FIX 12 (Wave 4). PARITY: mirrors `resolveSubjectSource` in
+// `packages/shared/src/script/subjectSource.ts`. Content-focus values whose
+// whole premise is something only the creator can supply — "Something I've
+// experienced" reached this codebase as a soft re-ranking preference
+// (`FOCUS_PREFERS_INLINE`) with no gate behind it: `wantsOwnExperience` was
+// computed and never read. Run D shipped a script with zero first-person
+// lines under this exact focus, and nothing recorded why.
+const SUBJECT_SOURCE_ASK_INLINE =
+  "What's something you personally did, learned, tried or went through that this video could be about? One sentence is enough."
+const REQUIRES_OWN_EXPERIENCE_INLINE: ReadonlySet<string> = new Set(['experience', 'story'])
+
+interface SubjectSourceVerdictInline {
+  focus: string | null
+  requires_own_source: boolean
+  source_available: boolean
+  needs_user: boolean
+}
+
+function resolveSubjectSourceInline(
+  focus: string | null | undefined, hasExperience: boolean,
+): { verdict: SubjectSourceVerdictInline; instruction: string } {
+  const f = typeof focus === 'string' && focus.trim() !== '' ? focus : null
+  if (f === null || !REQUIRES_OWN_EXPERIENCE_INLINE.has(f)) {
+    return { verdict: { focus: f, requires_own_source: false, source_available: true, needs_user: false }, instruction: '' }
+  }
+  if (hasExperience) {
+    return {
+      verdict: { focus: f, requires_own_source: true, source_available: true, needs_user: false },
+      instruction:
+        'THE CREATOR CHOSE "SOMETHING I\'VE EXPERIENCED" AS THE SUBJECT OF THIS VIDEO. '
+        + 'Ground it in a supplied experience item — ground the premise in what they '
+        + 'actually told us, not in a generic explainer wearing a first-person voice.',
+    }
+  }
+  return {
+    verdict: { focus: f, requires_own_source: true, source_available: false, needs_user: true },
+    instruction:
+      'THE CREATOR CHOSE "SOMETHING I\'VE EXPERIENCED" AS THE SUBJECT OF THIS VIDEO, AND '
+      + 'NOTHING ON RECORD IS A STATED EXPERIENCE.\n'
+      + 'Do NOT invent one, and do NOT silently write it as generic second-person advice '
+      + 'instead — that answers a question the creator asked with an answer they did not '
+      + 'give. Where a beat needs the missing experience, mark it `needs_user` with a '
+      + `specific question ("${SUBJECT_SOURCE_ASK_INLINE}") rather than writing a line that `
+      + 'reads as if the subject question had never been asked.',
+  }
+}
+
 // ── STYLE COMPILER (inlined from packages/shared/src/styleCompiler.ts) ──────
 //
 // ⚠️ INLINED BECAUSE EDGE FUNCTIONS CANNOT IMPORT `@twinai/shared`, and kept
@@ -5215,6 +5264,13 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         const creatorHasExperience = knowledgeRows.some(
           (k) => String(k?.kind) === 'experience' && String(k?.basis) === 'stated')
         const premiseInstruction = premiseInstructionInline(ref?.text ?? null, creatorHasExperience)
+        // ⚠️ FIX 12 (Wave 4). SAME `creatorHasExperience` READ, DIFFERENT
+        // QUESTION: `premiseInstruction` above asks whether the REFERENCE's own
+        // premise demands narrator experience; this asks whether the CREATOR's
+        // stated content-focus does. Both read the identical evidence and both
+        // must refuse to invent rather than guess.
+        const subjectSource = resolveSubjectSourceInline(intent.focus, creatorHasExperience)
+        const subjectSourceInstruction = subjectSource.instruction
         // ── THE SHAPE, WITH ITS HOLES NAMED ──────────────────────────
         //
         // ⚠️ THE WRITER HAS ALWAYS INVENTED THE BEAT PLAN. It is handed a
@@ -5379,12 +5435,12 @@ ${fenced('derived structure', ref.structure ? JSON.stringify(ref.structure).slic
 ${fenced('reference transcript', clip(ref.text ?? '', 6000))}
 - Creator's angle/note:
 ${fenced("creator's note", reference_note || '(none provided)')}
-- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderVideoIntentInline(intent)}${containerBlock}`
+- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderVideoIntentInline(intent)}${containerBlock}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
 ${fenced("creator's note", reference_note || '(none provided)')}
-- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderVideoIntentInline(intent)}${containerBlock}`
+- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderVideoIntentInline(intent)}${containerBlock}`
 
     // The DNA is fenced too. It reads like our own text, but every field in it
     // was synthesized from captions we scraped — so it is exactly as
@@ -6287,6 +6343,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         (templated.bp as { production_sprint?: unknown })?.production_sprint,
         appliedTone,
       ),
+      // ⚠️ FIX 12 (Wave 4). `null` means this focus made no exclusive claim on
+      // the creator's own material — `expertise`/`opinion`/`product`/etc all
+      // route through the pool without a gate, same as before. Non-null means
+      // "experience"/"story" was chosen; `source_available: false` with
+      // `needs_user: true` is the case that used to ship silently as if the
+      // subject question had never been asked (Run D).
+      subject_source: subjectSource.verdict.requires_own_source ? subjectSource.verdict : null,
     }
     console.log(JSON.stringify({
       event: 'beat_substance',
