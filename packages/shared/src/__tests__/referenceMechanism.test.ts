@@ -148,6 +148,48 @@ describe('how many items the script actually delivers', () => {
     expect(deliveredItemCount([{ section: 'b-roll', line: null }, { section: 'x', line: '  ' }]))
       .toBe(0)
   })
+
+  // Wave 3 FIX 6. A run-a/run-c-shaped script ("Number one, you are not
+  // promoting enough... Number two...") delivered every promised item but the
+  // checker reported zero: the digit regex above requires `\d` and never
+  // matched the spelled-out word after "number", so a script that counted
+  // this way looked undelivered even though a viewer heard all three.
+  it('reads the number word spelled out after "number" ("Number one", "number two")', () => {
+    expect(deliveredItemCount([
+      { section: 'Reason 1', line: 'Number one, you are not promoting enough.' },
+      { section: 'Reason 2', line: 'Number two, your product stopped improving.' },
+      { section: 'Reason 3', line: 'Number three, you hire soft pansies.' },
+    ])).toBe(3)
+  })
+
+  it('still reads ordinal words ("first", "second", "third") — unaffected by the word-number fix', () => {
+    expect(deliveredItemCount([
+      { section: 'Mistake 1', line: 'The first mistake is quitting the moment something feels hard.' },
+      { section: 'Mistake 2', line: 'Second, you measure the actual cost of not doing it.' },
+      { section: 'Mistake 3', line: 'And the third mistake is treating every new idea as evidence.' },
+    ])).toBe(3)
+  })
+
+  it('does not over-count a single non-enumerating ordinal ("This is the first time I...")', () => {
+    // One "first" with no "second"/"third" following it is not a list — the
+    // highest ordinal reached is 1, same as it would be for a genuine
+    // one-item list, which is the correct, unambiguous answer for this
+    // function: it reports the highest ordinal reached, and leaves "is this
+    // actually a list" to the caller that has the promised count to compare
+    // against (`countContractIssues`, which only fires when the reference
+    // itself is enumerated).
+    expect(deliveredItemCount([
+      { section: 'Hook', line: 'This is the first time I have ever tried this.' },
+    ])).toBe(1)
+  })
+
+  it('mixes digit-word and ordinal-word forms without double counting past the highest', () => {
+    expect(deliveredItemCount([
+      { section: 'a', line: 'Number one is pricing.' },
+      { section: 'b', line: 'The second mistake is positioning.' },
+      { section: 'c', line: 'Number three is patience.' },
+    ])).toBe(3)
+  })
 })
 
 describe('THE REAL RUN — five promised, and every way it broke', () => {
