@@ -2326,6 +2326,57 @@ function witnessScoreInline(
   return { firstPersonBeats, figuresSpoken }
 }
 
+// FIX 11 (Wave 4) — TONE MUST BE VISIBLE WHERE IT CLAIMS TO ACT, AND NEVER
+// CONTRADICTED THERE. Reads the SAME free text a creator reads for delivery
+// direction (per-beat `direction`, `production_sprint[].task`) — never the
+// script's spoken lines, which the TONE_RULE instruction above already
+// targets and which is not where the audits found the gap (run-c: tone
+// "punchy" left zero trace anywhere; run-d: tone "understated" was
+// contradicted by "rapid jump cuts to mimic the energetic delivery").
+//
+// ⚖️ PARITY: mirrors toneEffect in packages/shared/src/script/toneEffect.ts
+// -- the edge cannot import @twinai/shared, so the rule lives twice and the
+// shared copy is the tested one.
+const ENERGETIC_MARKERS_INLINE =
+  /\b(?:energetic|energy|rapid[- ]fire|rapid jump cuts?|fast[- ]paced|high[- ]energy|(?<!no )hype|explosive|punchy|bold|fast cuts?|quick cuts?|amped|intense pace)\b/i
+const CALM_MARKERS_INLINE =
+  /\b(?:calm|understated|measured|steady|credible|composed|low[- ]key|no[- ]hype|quiet confidence|even[- ]keeled)\b/i
+
+function toneEffectInline(
+  script: unknown,
+  productionSprint: unknown,
+  appliedTone: 'understated' | 'balanced' | 'punchy',
+): { tone: string; tone_effect_observed: boolean; contradictions: number } {
+  const texts: string[] = []
+  if (Array.isArray(script)) {
+    for (const b of script) {
+      const beat = (b ?? {}) as { direction?: unknown }
+      if (typeof beat.direction === 'string' && beat.direction.trim() !== '') texts.push(beat.direction)
+    }
+  }
+  if (Array.isArray(productionSprint)) {
+    for (const s of productionSprint) {
+      const step = (s ?? {}) as { task?: unknown }
+      if (typeof step.task === 'string' && step.task.trim() !== '') texts.push(step.task)
+    }
+  }
+  const joined = texts.join(' \n ')
+
+  if (appliedTone === 'balanced') return { tone: 'balanced', tone_effect_observed: true, contradictions: 0 }
+
+  if (appliedTone === 'punchy') {
+    const observed = ENERGETIC_MARKERS_INLINE.test(joined)
+    let contradictions = 0
+    for (const t of texts) if (CALM_MARKERS_INLINE.test(t) && !observed) contradictions += 1
+    return { tone: 'punchy', tone_effect_observed: observed, contradictions }
+  }
+
+  const observed = CALM_MARKERS_INLINE.test(joined)
+  let contradictions = 0
+  for (const t of texts) if (ENERGETIC_MARKERS_INLINE.test(t)) contradictions += 1
+  return { tone: 'understated', tone_effect_observed: observed, contradictions }
+}
+
 // FIX 13 — WHAT THE FRAMES SHOWED, READ INTO THE PROMPT.
 //
 // ⚠️ `reference_content_profiles.visual_profile` HAS BEEN WRITTEN SINCE
@@ -2979,7 +3030,7 @@ CAPTIONS (burned-in, for our own renderer):
 - Short, 3 to 6 words each, punchy, matched to the spoken line. These are the on-screen kinetic captions.
 
 EDIT CHECKLIST (treat editing as a 9/10 craft, not an afterthought):
-- Cohesion: the finished piece must feel like ONE coherent video, not ten stitched clips. Call out jump-cut pacing, removing dead air and filler ("um", long pauses), and matching energy across cuts.
+- Cohesion: the finished piece must feel like ONE coherent video, not ten stitched clips. Call out removing dead air and filler ("um", long pauses), and matching energy across cuts. ⚠️ The cutting pace you name here MUST agree with the TONE instruction given below (it applies to this section too, not only the script words) — never describe "rapid jump cuts" or "energetic delivery" for an understated/calm tone, and never describe a slow, static cut for a punchy tone.
 - Sound design: specify a music bed mood and that it is ducked under the voice, plus 1 or 2 sound-effect or whoosh accents on key transitions. Audio normalized to about -14 LUFS for platform loudness.
 - Visual change: name 2 to 3 concrete changes tied to specific lines — a move to a new position, a prop already in reach picked up, a change of framing or angle — so the visuals reinforce the words instead of one static frame. These are things the creator does ON CAMERA, never cutaway footage they would have to go and film.
 - Cover frame: specify the thumbnail / cover frame and the text overlay on it, because the cover drives the tap from a profile or grid.
@@ -2994,7 +3045,7 @@ PUBLISH PLAN:
 
 RETENTION MAP: for each beat give the goal AND the concrete tactic that holds attention there (open loop, visual change, tension, payoff), so the creator knows WHY each beat earns the next second. One beat in the middle MUST be the re-hook that resets attention at the predictable drop-off point.
 
-PRODUCTION SPRINT: compress filming, caption/edit, and review into about 20 focused minutes of concrete tasks.
+PRODUCTION SPRINT: compress filming, caption/edit, and review into about 20 focused minutes of concrete tasks. Every task's delivery language must agree with the TONE instruction given below (it applies to this section too, not only the script words) — describing a shoot or edit style that contradicts the creator's chosen tone is a failure of this section, not a stylistic choice.
 
 FINAL CHECK (do this before returning): reread every hook and every script line against the CREATOR DNA — their vocabulary, hook patterns, point of view and enemy. If any line could belong to a generic creator in this niche, rewrite it until it is unmistakably this creator's. Confirm there are zero em or en dashes anywhere.
 
@@ -5408,6 +5459,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
 - packaging: decide the title + thumbnail (the package that earns the click) for THAT concept, FOLLOWING the creator's title style and thumbnail style from CREATOR DNA and using their brand colors. Every hook and script beat must pay off that exact promise.
 - ${fidelityRule}${toneClampLine}
 - ${toneRule}
+- ⚠️ TONE MUST ALSO APPEAR IN THE DELIVERY DIRECTION, NOT ONLY THE SCRIPT WORDS. Every per-beat direction and every production_sprint task describes HOW to perform, shoot and cut this video — that is the tone's whole job, and it was found to leave zero trace there or to actively contradict the chosen tone. Applied tone for this generation is ${appliedTone.toUpperCase()}. ${appliedTone === 'punchy' ? 'At least one direction or production_sprint task MUST name the fast/high-energy delivery this tone calls for (e.g. quick cuts, fast pacing, bold energy) — never write calm/understated language anywhere.' : appliedTone === 'understated' ? 'At least one direction or production_sprint task MUST name the calm/steady delivery this tone calls for (e.g. measured pace, composed, no hype) — never write energetic/fast-cut/high-energy language anywhere, even as a generic editing tip.' : 'Delivery direction should read as natural, unforced energy — neither hyped nor deliberately subdued.'}
 - Open by hitting the audience pain above, then pay off the dream outcome by the end. Carry the creator's point of view through the script, and include the mid-video re-hook beat so the middle never sags.
 - Make the single CTA concrete and point it at the creator's product or offer above. If the offer is unspecified, fall back to a save or a comment-bait question.
 - publish_plan: produce ONE entry for EACH platform listed in CREATOR DNA, using only those platforms. Never invent a platform the creator does not use.
@@ -6223,6 +6275,18 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // codebase already commits to for a reference video
       // (`DEFAULT_REFERENCE_BOUNDS.maxDurationSec`, 180s).
       runtime_ceiling_warning: runtimeCeilingWarningInline(declared, ref?.duration_sec ?? null),
+      // ⚠️ FIX 11 (Wave 4). Whether the chosen TONE actually shows up in the
+      // delivery direction a creator reads (per-beat `direction` and
+      // `production_sprint`), and whether it is directly contradicted there.
+      // `tone_effect_observed: false` under `punchy`/`understated`, or a
+      // nonzero `contradictions`, is exactly the shape the audits quoted —
+      // and, unlike the fixtures documenting the shipped defect, the prompt
+      // now explicitly requires this, so a regression is falsifiable here.
+      tone_effect: toneEffectInline(
+        declared,
+        (templated.bp as { production_sprint?: unknown })?.production_sprint,
+        appliedTone,
+      ),
     }
     console.log(JSON.stringify({
       event: 'beat_substance',
