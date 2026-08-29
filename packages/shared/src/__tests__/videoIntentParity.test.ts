@@ -14,8 +14,8 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { transformSync } from 'esbuild'
 import {
-  VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES,
-  compileVideoIntent, preferKinds, renderVideoIntent,
+  VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
+  compileVideoIntent, preferKinds, renderVideoIntent, resolveFidelity,
 } from '../videoIntent'
 import { SUBSTANCE_FLOOR } from '../knowledgeSelection'
 
@@ -47,11 +47,13 @@ function loadInline() {
     prefer: preferKindsInline,
     render: renderVideoIntentInline,
     isGoal: isVideoGoalInline,
+    resolveFidelity: resolveFidelityInline,
   }`)() as {
     compile: (a: Record<string, unknown>) => Record<string, unknown>
     prefer: (r: readonly { kind: string }[], p: readonly string[]) => { kind: string }[]
     render: (i: Record<string, unknown>) => string
     isGoal: (v: unknown) => boolean
+    resolveFidelity: (referenceUse: string | null, legacyFidelitySlider: string | null) => string
   }
 }
 
@@ -113,6 +115,19 @@ describe('edge ↔ shared intent parity, executed', () => {
       const prefers = compileVideoIntent({ focus }).prefersKinds
       expect(inline.prefer(rows, prefers).map((r) => r.kind))
         .toEqual(preferKinds(rows, prefers).map((r) => r.kind))
+    }
+  })
+})
+
+// ── FIX 10 (Wave 4). ONE HOME FOR FIDELITY, ON BOTH SIDES ──────────────────
+describe('edge ↔ shared fidelity resolution parity, executed', () => {
+  const SLIDERS = [...(['close', 'balanced', 'loose'] as const), null]
+  it('resolves identically for every reference_use x slider combination', () => {
+    for (const use of [...REFERENCE_USE, null]) {
+      for (const slider of SLIDERS) {
+        const where = `use=${use} slider=${slider}`
+        expect(inline.resolveFidelity(use, slider), where).toBe(resolveFidelity(use, slider))
+      }
     }
   })
 })

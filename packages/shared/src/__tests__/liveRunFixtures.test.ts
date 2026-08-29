@@ -28,6 +28,7 @@ import { syncSetupLabels } from '../script/setupLabelSync.js'
 import { deliveredItemCount } from '../referenceMechanism.js'
 import { compareRuntime } from '../script/runtimeCompare.js'
 import { splitEmphasis } from '../script/emphasis.js'
+import { resolveFidelity, type ReferenceUse } from '../videoIntent.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURES_DIR = join(HERE, '..', '..', '..', '..', 'eval', 'fixtures', 'live-runs')
@@ -392,10 +393,46 @@ describe('9. no markdown emphasis characters in spoken lines', () => {
 })
 
 // ── 10. Fidelity: one value across the advanced surface and Q3 ─────────────
+//
+// ⚠️ FIX 10 (Wave 4). THE SHIPPED DEFECT, DOCUMENTED. run-d's frozen fixture
+// still records two disagreeing raw answers — the buried Advanced Settings
+// slider said "loose" while the always-asked reference-use question ("Q3")
+// said "Keep it close" (`stay_close` in the real enum) — and generate-
+// blueprint fed BOTH into the prompt as separate, unreconciled directives.
 describe('10. fidelity has one value visible in both the advanced-setting surface and Q3', () => {
-  it.fails('run-d: advanced slider "loose" silently overrode Q3\'s "Keep it close"', () => {
+  it('run-d: the frozen fixture still documents the shipped disagreement (slider != Q3)', () => {
     const s = fixtures['run-d'].settings as { advanced_fidelity_slider?: string; q3_fidelity_answer?: string }
-    expect(s.advanced_fidelity_slider).toBe(s.q3_fidelity_answer)
+    expect(s.advanced_fidelity_slider).not.toBe(s.q3_fidelity_answer)
+  })
+
+  // The FIX itself: run the real `resolveFidelity` — the one function that now
+  // decides `fidelity` on both the shared and edge sides (see
+  // `videoIntentParity.test.ts`) — over run-d's own disagreeing raw answers,
+  // translated into the real enum. Q3 (`reference_use`) is authoritative
+  // whenever it was answered, so the buried slider can no longer win, and the
+  // result is a single deterministic value — never two.
+  it('run-d: resolveFidelity picks Q3\'s answer over the buried slider, deterministically', () => {
+    const s = fixtures['run-d'].settings as { advanced_fidelity_slider?: string; q3_fidelity_answer?: string }
+    expect(s.advanced_fidelity_slider).toBe('loose')
+    const legacySlider = s.advanced_fidelity_slider as 'close' | 'balanced' | 'loose'
+    // "Keep it close" is `stay_close` in the real REFERENCE_USE enum.
+    const q3AsRealEnum: ReferenceUse = 'stay_close'
+    const resolved = resolveFidelity(q3AsRealEnum, legacySlider)
+    // Q3 wins: "stay_close" resolves to "close", not the slider's "loose".
+    expect(resolved).toBe('close')
+    expect(resolved).not.toBe(legacySlider)
+    // Deterministic and reproducible from the same two inputs.
+    expect(resolveFidelity(q3AsRealEnum, legacySlider)).toBe(resolved)
+  })
+
+  it('the two controls can never disagree once Q3 has been answered, for every combination', () => {
+    const SLIDERS = ['close', 'balanced', 'loose'] as const
+    const USES: ReferenceUse[] = ['structure', 'idea_structure', 'stay_close', 'inspiration']
+    for (const use of USES) {
+      const resolutions = new Set(SLIDERS.map((slider) => resolveFidelity(use, slider)))
+      // The slider's value never changes the outcome once Q3 has an answer.
+      expect(resolutions.size, use).toBe(1)
+    }
   })
 })
 

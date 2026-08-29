@@ -131,6 +131,49 @@ export const KEEPS_REFERENCE_TOPIC: Record<ReferenceUse, boolean> = {
   inspiration: false,
 }
 
+// ── FIX 10 (Wave 4). ONE HOME FOR FIDELITY ─────────────────────────────────
+//
+// ⚠️ THE BUG. `reference_use` (this question, first-class and asked on every
+// build) and the legacy `fidelity` slider ('close'|'balanced'|'loose', tucked
+// behind V2Create's collapsed Advanced Settings) both claimed to answer "how
+// closely should this follow the reference" — and generate-blueprint fed BOTH
+// into the prompt as separate, unreconciled directives. Run D proved they can
+// disagree: the slider said "loose" while `reference_use` said `stay_close`
+// ("Keep it close"), and the header showed the slider's answer while the
+// prompt carried both instructions at once.
+//
+// ⚖️ ONE HOME, NOT A THIRD MECHANISM. `reference_use` is the first-class,
+// always-asked control; the fidelity slider is the buried, easy-to-miss one.
+// So `reference_use` — when a creator has answered it — is authoritative, and
+// this table is what makes `fidelity` DERIVED from it rather than an
+// independent, disagreeing signal. `resolveFidelity` below is the one place
+// that reads both and picks a winner; nothing else should compare them again.
+export const FIDELITY_FROM_REFERENCE_USE: Record<ReferenceUse, 'close' | 'balanced' | 'loose'> = {
+  // Keeps the beat order and hook mechanism tight, same as fidelity=close.
+  structure: 'close',
+  // Keeps the idea and skeleton but rewrites freely — fidelity=balanced.
+  idea_structure: 'balanced',
+  // "Stay as close as the facts allow" is literally fidelity=close.
+  stay_close: 'close',
+  // Only the strongest mechanic survives — fidelity=loose.
+  inspiration: 'loose',
+}
+
+/**
+ * The one function that decides `fidelity`. `referenceUse` wins whenever the
+ * creator answered it (it is asked on every build, per the module comment
+ * above); the legacy slider value is used only as a fallback when they have
+ * not, and never consulted alongside a real `referenceUse` answer — so the two
+ * controls can no longer disagree, because only one of them is ever read.
+ */
+export function resolveFidelity(
+  referenceUse: ReferenceUse | null,
+  legacyFidelitySlider: 'close' | 'balanced' | 'loose' | null,
+): 'close' | 'balanced' | 'loose' {
+  if (referenceUse !== null) return FIDELITY_FROM_REFERENCE_USE[referenceUse]
+  return legacyFidelitySlider ?? 'balanced'
+}
+
 export const VIEWER_OUTCOME_LABELS: Record<ViewerOutcome, string> = {
   learn: 'Learn something useful',
   change_mind: 'Change their mind',

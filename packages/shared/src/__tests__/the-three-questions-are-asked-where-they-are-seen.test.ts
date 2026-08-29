@@ -36,13 +36,20 @@ describe('Advanced Settings keeps execution and loses intent', () => {
     expect(CREATE).not.toMatch(/\{ goal \}/)
   })
 
-  it('KEEPS closeness and sound, which are execution preferences', () => {
-    // ⚖️ They belong in Advanced Settings precisely because they are about HOW
-    // the writing is done rather than what the video is for. Both must still
-    // work and still be independent of each other.
-    expect(CREATE).toMatch(/How close to the reference/)
+  it('KEEPS sound, an execution preference; closeness moved out under FIX 10', () => {
+    // ⚖️ Sound belongs in Advanced Settings because it is about HOW the
+    // writing is done rather than what the video is for.
+    //
+    // ⚠️ FIX 10 (Wave 4). "How close to the reference" USED TO LIVE HERE TOO,
+    // as a second, buried control that duplicated the always-asked
+    // `reference_use` question below — and the two could silently disagree
+    // (Run D: slider said "loose", `reference_use` said "Keep it close").
+    // `reference_use` is now the ONLY closeness control; this panel no longer
+    // asks the question at all, so it cannot re-open the conflict.
+    expect(CREATE).not.toMatch(/label="How close to the reference"/)
+    expect(CREATE).not.toMatch(/const \[fidelity, setFidelity\]/)
     expect(CREATE).toMatch(/How it should sound/)
-    expect(CREATE).toMatch(/fidelity, tone, idempotency_key/)
+    expect(CREATE).toMatch(/tone, idempotency_key/)
   })
 
   it('stops promising an effect the panel no longer has', () => {
