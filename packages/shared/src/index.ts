@@ -207,6 +207,14 @@ export * from './script/phraseOverlap'
 // edge-only, cost-gated, and lives beside `advisoryRead`'s call site.
 export * from './script/semanticRepetition'
 
+// ⚖️ FIX 4 (Wave 2). `shot_list[].spoken_text` and `script[i].line` are
+// written together, once, by the same model call — then only `script` gets
+// rewritten by every repair after it (Fix 1/2/3, entitlement, ask/answer
+// fill). This resyncs the shot list against the FINAL script, after every
+// repair has already run, so the shot card and the teleprompter never
+// disagree about what a beat says.
+export * from './script/shotListSync'
+
 // ⚖️ FIVE HOOKS THAT ARE REALLY ONE. Two production menus open with the same
 // three words five times over; three more do it three times. The opener is the
 // creator's own signature, so this reports the COLLISION, never the words.

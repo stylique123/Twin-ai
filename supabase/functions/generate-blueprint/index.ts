@@ -33,6 +33,7 @@ import { shouldAsk, readVerdict } from '../_shared/advisoryRead.ts'
 import { findPhraseOverlaps, MIN_OVERLAP_CONTENT_WORDS } from '../_shared/phraseOverlap.ts'
 import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
+import { syncShotListSpokenText } from '../_shared/shotListSync.ts'
 import { evaluateSemanticRepetitionTrigger } from '../_shared/semanticRepetition.ts'
 import {
   productSceneGuidance, productSceneDirection,
@@ -5414,6 +5415,14 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // shot_list came back empty or malformed never looked, and reporting that as
     // "0 numbered shots" would be the cleanest possible reading of no data.
     let shotsNumberedNotNamed: number | null = null
+    // ⚠️ FIX 4 (Wave 2). NULL MEANS THE GENERATION CARRIED NO SHOT LIST TO
+    // RECONCILE — never zero. `resynced` is how many shot-list rows had their
+    // `spoken_text` rewritten to match the FINAL script beat at that position
+    // (after every repair above already ran); `orphaned` is how many spoken
+    // rows had no beat left to match at all — an extra beat the writer
+    // proposed that a later repair or ask dropped — and were blanked rather
+    // than left quoting a line the teleprompter no longer says.
+    let shotListResync: { resynced: number; orphaned: number } | null = null
     // ⚖️ FIX 1 (Wave 1). NULL MEANS THE REFERENCE HAD NO READABLE TRANSCRIPT TO
     // CHECK AGAINST — never zero. `found` is beats that shared a ≥6-content-word
     // contiguous run with the reference transcript; `repaired` is how many were
@@ -5995,6 +6004,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // WRITER stopped doing it, which is the only thing that tells us the new
       // instruction is not inert.
       shots_named_by_number: shotsNumberedNotNamed,
+      // ⚠️ FIX 4 (Wave 2). NULL means no shot list to reconcile. `resynced`
+      // rising with a flat script is exactly the shape every other 0131
+      // counter takes: the repair is running, and this is what makes that
+      // falsifiable rather than assumed.
+      shot_list_resync: shotListResync,
       // ⚠️ FIX 1 (Wave 1). NULL means the reference had no readable transcript
       // to check the script against — never zero. `repaired` counts both a
       // model rewrite that broke the shared run AND a line turned into an
@@ -6664,6 +6678,42 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         removals: linkRemovals.slice(0, 20),
       }))
     }
+
+    // ── THE SHOT LIST MUST QUOTE THE SCRIPT THAT ACTUALLY SHIPS ──────────────
+    //
+    // ⚠️ MEASURED ACROSS THE FOUR-RUN HARNESS: shot_list and script are written
+    // together, once, by the model that produced this blueprint — then only
+    // `script` gets rewritten by everything above (phrase-overlap repair, the
+    // CTA-entity fallback, entitlement repair, the ask/answer fill, the hook
+    // substitution). By this line every one of those repairs has already run
+    // against `declared` — which IS `blueprint.script`, the same array,
+    // mutated in place — so this is the FIRST point where the final script
+    // exists and the LAST point before shipping. Run it any earlier and a
+    // later repair drifts the two again; run it any later and a shot list
+    // that already shipped can't be reached.
+    //
+    // ⚖️ RUNS UNCONDITIONALLY, LIKE shots_named_by_number ABOVE. A shot list
+    // that came back empty or malformed syncs zero rows and costs nothing.
+    try {
+      const shots = (blueprint as { shot_list?: unknown })?.shot_list
+      const script = (blueprint as { script?: unknown })?.script
+      if (Array.isArray(shots) && shots.length > 0) {
+        const synced = syncShotListSpokenText(
+          shots as Array<{ spoken_text?: unknown }>,
+          Array.isArray(script) ? script as Array<{ line?: unknown }> : [],
+        )
+        ;(blueprint as { shot_list?: unknown }).shot_list = synced.shots
+        shotListResync = { resynced: synced.resynced, orphaned: synced.orphaned }
+        if (synced.resynced > 0 || synced.orphaned > 0) {
+          console.warn(JSON.stringify({
+            event: 'shot_list_resync',
+            resynced: synced.resynced,
+            orphaned: synced.orphaned,
+            of: shots.length,
+          }))
+        }
+      }
+    } catch { /* never fail a generation on a reconciliation pass */ }
 
     // ⚖️ MEASURED ON WHAT SHIPS, not on the raw model output. The link strip and
     // the placeholder drop both change spoken lines, so a reading taken before
