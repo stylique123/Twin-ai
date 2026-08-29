@@ -82,6 +82,12 @@ const SOURCES = [
   // a hand copy is exactly how the coaching panel's drift from the shipped
   // script (see liveRunFixtures.test.ts §5) would survive its own fix.
   ['packages/shared/src/script/retentionMapSync.ts', 'supabase/functions/_shared/retentionMapSync.ts'],
+  // ⚠️ FIX 7 (Wave 3). The setup-letter <-> description resync. Generated
+  // rather than retyped for the same reason as shotListSync.ts above — a
+  // hand copy is exactly how run A-D's comma-split, repeating, non-
+  // deterministic setup letters (see liveRunFixtures.test.ts §7) would
+  // survive its own fix.
+  ['packages/shared/src/script/setupLabelSync.ts', 'supabase/functions/_shared/setupLabelSync.ts'],
 ]
 
 // ⚠️ A SHEBANG IS LEGAL ONLY ON LINE 1, AND THE HEADER PUSHES IT TO LINE 5.

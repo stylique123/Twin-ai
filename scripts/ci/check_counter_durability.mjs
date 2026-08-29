@@ -165,6 +165,22 @@ const EVENTS = {
       + '(an extra beat a repair dropped) and were blanked. Null when the generation '
       + 'carried no shot list to reconcile.',
   },
+  // ⚠️ FIX 7 (Wave 3). Same defect shape as shot_list_resync above, in the
+  // SAME `notes` field: the model writes "Setup <letter> · description ·
+  // framing" once and nothing downstream ever reconciles it. Run A-D's
+  // comma-split location text and non-deterministic, repeating setup
+  // letters (liveRunFixtures.test.ts §7) shipped for exactly this reason.
+  // `relabeled`/`setupCount` on the same `generations.beat_audit` row every
+  // other 0131 counter lands on.
+  setup_label_resync: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'Shot-list rows whose notes setup label was rewritten — a comma-split '
+      + 'location description rejoined, the letter reassigned to the '
+      + 'deterministic first-appearance sequence, or both — and the number of '
+      + 'distinct setups the shot list resolved to. Null when the generation '
+      + 'carried no shot list to relabel.',
+  },
   // ⚠️ FIX 5 (Wave 2). Same defect shape as shot_list_resync above, one panel
   // over: `reference_read.retention_map` is written by the same model call as
   // `script`, then only `script` gets rewritten by every repair since. Run

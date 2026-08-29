@@ -215,6 +215,14 @@ export * from './script/semanticRepetition'
 // disagree about what a beat says.
 export * from './script/shotListSync'
 
+// ⚖️ FIX 7 (Wave 3). `shot_list[].notes` carries a "Setup <letter> ·
+// description · framing" label the model writes once, in the same response
+// as `shot_list` and `script`, and nothing downstream ever reconciles. This
+// resyncs those labels against each other so the same (description, framing)
+// pair always gets the same letter and two different ones never share one —
+// see `liveRunFixtures.test.ts` §7.
+export * from './script/setupLabelSync'
+
 // ⚖️ FIVE HOOKS THAT ARE REALLY ONE. Two production menus open with the same
 // three words five times over; three more do it three times. The opener is the
 // creator's own signature, so this reports the COLLISION, never the words.
