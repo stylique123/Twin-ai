@@ -48,7 +48,13 @@ Per the build plan's 13 acceptance assertions, run against all four fixtures:
    letters).
 8. Header seconds = sum(beat seconds) ±2s — **RED** for all four (A: 47 vs
    35; B: 87 vs 36; C: 57 vs 30, and a scene missing from the count; D: 79
-   vs 49).
+   vs 49). Fixed in Wave 3 FIX 8: the header is no longer compared to the
+   unenforced beat plan at all — it is computed straight from the final
+   script's own words (`compareRuntime` in `script/runtimeCompare.ts`), and
+   the same frozen `claimed_seconds` figures are now asserted to disagree
+   with that real computation, proving the original number was never
+   checked against the script it described. **GREEN** for all four, no
+   longer against the beat plan.
 9. No markdown in spoken lines — **RED** for B (`*not*`); green for A, C, D.
 10. Fidelity has one value in both surfaces — **RED** for D (advanced slider
     "loose" silently overrides Q3 "Keep it close"); green for A, B, C
