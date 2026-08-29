@@ -69,6 +69,14 @@ const SOURCES = [
   // rather than retyped so the edge call site and the tested rule are the
   // same code, not two authors of one blind-tested boundary.
   ['packages/shared/src/script/semanticRepetition.ts', 'supabase/functions/_shared/semanticRepetition.ts'],
+  // ⚠️ FIX 4 (Wave 2). The shot-list <-> teleprompter resync. Generated
+  // rather than retyped so the edge function that ships the blueprint and
+  // the tested module agree by construction — a hand copy is exactly how
+  // run A/B/C's shot-list drift (see liveRunFixtures.test.ts §4) would
+  // survive its own fix. `silentBeat.ts` is copied alongside it because the
+  // resync reuses `isSilentBeat` rather than a second marker check.
+  ['packages/shared/src/script/silentBeat.ts', 'supabase/functions/_shared/silentBeat.ts'],
+  ['packages/shared/src/script/shotListSync.ts', 'supabase/functions/_shared/shotListSync.ts'],
 ]
 
 // ⚠️ A SHEBANG IS LEGAL ONLY ON LINE 1, AND THE HEADER PUSHES IT TO LINE 5.

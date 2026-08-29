@@ -151,6 +151,20 @@ const EVENTS = {
       + "business-model term) not on this creator's product_entities, and how many were "
       + 'demoted behind the clean hooks rather than deleted. Null when the check never ran.',
   },
+  // ⚠️ FIX 4 (Wave 2). shot_list and script are written together by one model
+  // call, then only script gets rewritten by every repair above (Fix 1/2/3,
+  // entitlement, ask/answer fill). Run A/B/C's shot lists all shipped
+  // disagreeing with the teleprompter (liveRunFixtures.test.ts §4) because
+  // nothing ever resynced them. `resynced`/`orphaned` on the same
+  // `generations.beat_audit` row every other 0131 counter lands on.
+  shot_list_resync: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'Shot-list rows whose spoken_text was rewritten to match the FINAL script beat '
+      + 'at that position, and how many spoken rows had no beat left to match at all '
+      + '(an extra beat a repair dropped) and were blanked. Null when the generation '
+      + 'carried no shot list to reconcile.',
+  },
   beat_substance: {
     kind: 'counter',
     stored: 'generations.beat_audit',
