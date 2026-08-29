@@ -30,6 +30,7 @@ import { compareRuntime } from '../script/runtimeCompare.js'
 import { splitEmphasis } from '../script/emphasis.js'
 import { resolveFidelity, type ReferenceUse } from '../videoIntent.js'
 import { toneEffect } from '../script/toneEffect.js'
+import { resolveSubjectSource } from '../script/subjectSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURES_DIR = join(HERE, '..', '..', '..', '..', 'eval', 'fixtures', 'live-runs')
@@ -506,11 +507,69 @@ describe('11. tone visibly changes direction/delivery notes and is never contrad
 
 // ── 12. Each subject option reaches a distinct, explicitly-labelled source ──
 describe('12. subject options reach distinct sources; an empty source says so explicitly', () => {
-  it.fails('run-d: subject="something I\'ve experienced" produced zero first-person lines', () => {
+  // ⚠️ THE FROZEN RECORD IS NOT REWRITTEN. Run D's shipped script really did
+  // carry zero first-person lines under subject="something I've experienced"
+  // — that is what the audit measured, and rewriting the fixture would make
+  // this harness stop documenting the defect it exists to document (same
+  // discipline assertion 1 uses for the reference-overlap fixtures above).
+  // FIX 12 does not retroactively fix a script already shipped; it stops the
+  // NEXT one from shipping the same way silently — proven by the green
+  // assertions below, which exercise the actual fixed logic.
+  it.fails('run-d: subject="something I\'ve experienced" produced zero first-person lines (frozen, pre-fix)', () => {
     const firstPerson = fixtures['run-d'].generation.blueprint.script
       .filter((b) => /\bI\b|\bI'/.test(b.line)).length
     expect(firstPerson).toBeGreaterThan(0)
   })
+
+  // The fixtures record the picker's own slug, not the internal `content_focus`
+  // enum `resolveSubjectSource` reads (`videoIntent.ts`'s `INTENT_QUESTIONS`) —
+  // the same relationship every other fixture assertion in this file has to
+  // its subject: faithful to what was quoted, translated to what the checked
+  // function actually takes.
+  const FOCUS_FROM_FIXTURE_SUBJECT: Record<string, string> = {
+    something_i_know_well: 'expertise',
+    something_ive_experienced: 'experience',
+  }
+
+  // ⚖️ THE FIX, PROVEN AGAINST THE SAME EVIDENCE. Run D's fixture records no
+  // stated-experience knowledge for this creator (the fixture predates this
+  // check and carries none) — exactly the condition that let "something I've
+  // experienced" silently fall through to the same pool "something I know
+  // well" would have used. `resolveSubjectSource` is the function now wired
+  // into `generate-blueprint` at generation time; called on run-d's own
+  // recorded subject and knowledge, it correctly flags `needsUser` instead of
+  // letting that fall-through happen unannounced.
+  it('run-d: the fixed logic asks instead of silently substituting a source', () => {
+    const focus = FOCUS_FROM_FIXTURE_SUBJECT[fixtures['run-d'].settings.subject as string]
+    const verdict = resolveSubjectSource(focus, [])
+    expect(verdict.requiresOwnSource).toBe(true)
+    expect(verdict.sourceAvailable).toBe(false)
+    expect(verdict.needsUser).toBe(true)
+    expect(verdict.instruction).toContain('NOTHING ON RECORD IS A STATED EXPERIENCE')
+  })
+
+  // ⚖️ AND THE OTHER OPTION STILL ROUTES CLEANLY. Runs A/B selected "something
+  // I know well" — `expertise` makes no exclusive claim on the creator's own
+  // life, so an empty knowledge store is never a reason to ask.
+  it('run-a/b: subject="something I know well" never needs the creator, even with nothing on record', () => {
+    for (const id of ['run-a', 'run-b'] as const) {
+      const focus = FOCUS_FROM_FIXTURE_SUBJECT[fixtures[id].settings.subject as string]
+      const verdict = resolveSubjectSource(focus, [])
+      expect(verdict.requiresOwnSource).toBe(false)
+      expect(verdict.needsUser).toBe(false)
+    }
+  })
+
+  // ⚖️ RUN C SHARES RUN D'S FOCUS AND ITS DEFECT. Both picked "something I've
+  // experienced" with nothing stated on record; run C's own known defect list
+  // documents a different symptom of the same missing gate (the CTA borrowed
+  // the reference creator's own business rather than the video-creator's).
+  it('run-c: subject="something I\'ve experienced" needs the creator too, with nothing on record', () => {
+    const focus = FOCUS_FROM_FIXTURE_SUBJECT[fixtures['run-c'].settings.subject as string]
+    const verdict = resolveSubjectSource(focus, [])
+    expect(verdict.needsUser).toBe(true)
+  })
+
   // ⚖️ POSITIVE ASSERTION, NOT A DEFECT. Run C's three product questions were
   // explicitly skipped, and the product-capture card correctly fired for run
   // B under the same "nothing supplied" condition — see Fix 1's `ask` routing

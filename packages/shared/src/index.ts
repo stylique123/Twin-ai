@@ -184,6 +184,12 @@ export * from './script/hookBodyCollision'
 export * from './script/witnessScore'
 export * from './script/toneEffect'
 
+// ⚖️ FIX 12. Whether the chosen subject/content-focus option ("Something I've
+// experienced") points at a source the creator's knowledge genuinely holds,
+// or was about to be silently substituted with the same pool "Something I
+// know well" would have used.
+export * from './script/subjectSource'
+
 // ⚖️ FIX 13. What the frames pass saw, read into the prompt at last — the
 // cache (`reference_content_profiles.visual_profile`) has been populated
 // since migration 0152 and had zero readers. `setting`/`camera_work` show up
