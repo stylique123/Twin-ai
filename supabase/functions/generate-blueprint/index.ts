@@ -2490,6 +2490,53 @@ function timingFlagCountInline(
   return count
 }
 
+// FIX 8 (Wave 3) — THE RUNTIME SHOWN NEVER CAME FROM THE WORDS.
+//
+// ⚖️ PARITY: mirrors packages/shared/src/script/runtimeCompare.ts (and the
+// `measureScriptLength` it wraps) -- the edge cannot import @twinai/shared,
+// so the rule lives twice and the shared copy is the tested one.
+// `estimateDurationSecInline` above is reused directly rather than
+// redefined a third time.
+//
+// ⚖️ THE CEILING IS REUSED, NOT INVENTED. 180s is the same short-form bound
+// `DEFAULT_REFERENCE_BOUNDS.maxDurationSec` in editor/referenceCheck.ts
+// commits to for a reference video; a generated script is the same shape of
+// video by the same product definition.
+const RUNTIME_CEILING_SEC_INLINE = 180
+function computedRuntimeSecInline(script: readonly { line?: unknown; substance?: unknown }[] | null | undefined): number {
+  const beats = Array.isArray(script) ? script : []
+  let total = 0
+  for (const b of beats) {
+    const line = typeof b?.line === 'string' ? b.line : null
+    // Mirrors `scriptLength.ts`'s `hasWords`: a beat with no line, or one
+    // marked as unwritten/silent, contributes no spoken seconds -- the same
+    // "unwritten is not zero seconds of a FINISHED script" rule, applied by
+    // simply not counting it, since this counter (unlike ScriptLength) does
+    // not need to distinguish unwritten from silent for its own purpose.
+    if (!line || !line.trim()) continue
+    total += estimateDurationSecInline(line)
+  }
+  return Math.round(total * 10) / 10
+}
+function runtimeCeilingWarningInline(
+  script: readonly { line?: unknown; substance?: unknown }[] | null | undefined,
+  referenceDurationSec: number | null | undefined,
+): { computed_seconds: number; reference_seconds: number | null; ceiling_seconds: number; exceeded: boolean } | null {
+  const beats = Array.isArray(script) ? script : []
+  if (beats.length === 0) return null
+  const computed = computedRuntimeSecInline(beats)
+  const refSec =
+    typeof referenceDurationSec === 'number' && Number.isFinite(referenceDurationSec) && referenceDurationSec > 0
+      ? referenceDurationSec
+      : null
+  return {
+    computed_seconds: computed,
+    reference_seconds: refSec,
+    ceiling_seconds: RUNTIME_CEILING_SEC_INLINE,
+    exceeded: computed > RUNTIME_CEILING_SEC_INLINE,
+  }
+}
+
 // HOW THIS CREATOR PACKAGES A VIDEO — the reader for what the scan measured.
 //
 // ⚠️ THE GAP THIS CLOSES. `voiceMetrics` shipped as a contract with no reader:
@@ -3779,11 +3826,18 @@ Deno.serve(async (req: Request) => {
   // If the caller analyzed the actual video (worker ingest → transcript), load it
   // (owner-checked). When present, the blueprint is built from the REAL transcript
   // + derived structure instead of inferring from the format pattern.
-  let ref: { text: string | null; structure: Record<string, unknown> | null; platform: string | null } | null = null
+  let ref: {
+    text: string | null; structure: Record<string, unknown> | null; platform: string | null
+    // ⚠️ FIX 8 (Wave 3). The reference's own MEASURED duration — from the
+    // worker's ingest, not a model guess — so the Result screen can show a
+    // creator's computed runtime beside the length of the video they are
+    // adapting. Absent (older rows, or no transcript_id) is not zero.
+    duration_sec: number | null
+  } | null = null
   if (transcript_id) {
     const { data: t } = await admin
       .from('transcripts')
-      .select('text, structure, platform')
+      .select('text, structure, platform, duration_sec')
       .eq('id', transcript_id)
       .eq('owner_id', user.id)
       .maybeSingle()
@@ -6129,6 +6183,16 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         Array.isArray(declared) ? declared : [],
         (templated.bp as { beat_plan?: unknown })?.beat_plan as
           Array<{ target_sec?: unknown }> | undefined),
+      // ⚠️ FIX 8 (Wave 3). NULL means there was no script to measure — never
+      // zero. `computed_seconds` is derived from `declared`'s own words, the
+      // same script the creator is about to film, not the beat plan's
+      // unenforced target_sec and not a stale/copied figure. `reference_seconds`
+      // is the reference video's own MEASURED duration when the analyzer
+      // captured one; absent means unknown, never zero. `exceeded` is true
+      // only when the computed runtime clears the short-form ceiling this
+      // codebase already commits to for a reference video
+      // (`DEFAULT_REFERENCE_BOUNDS.maxDurationSec`, 180s).
+      runtime_ceiling_warning: runtimeCeilingWarningInline(declared, ref?.duration_sec ?? null),
     }
     console.log(JSON.stringify({
       event: 'beat_substance',
@@ -6841,6 +6905,20 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // extra model call — `unrecordedProduct` is already a boolean sitting in
     // scope from the prompt-assembly pass. There is no cost gate to design.
     ;(blueprint as Record<string, unknown>).product_capture_prompt = unrecordedProduct
+
+    // ── THE REFERENCE'S OWN KNOWN LENGTH, CARRIED TO THE CLIENT ──────────────
+    //
+    // ⚠️ FIX 8 (Wave 3). Written here, deterministically, from the transcript
+    // row's measured `duration_sec` — never from the model, the same reason
+    // `product_capture_prompt` above is written server-side rather than asked
+    // of the writer. Without this the Result screen has a computed runtime
+    // for the creator's OWN script and nothing to show it beside; the
+    // creator cannot tell whether their script comparably matches the video
+    // they took the idea from. Absent (no transcript, or an ingest that
+    // never measured a duration) stays absent — never a fabricated 0.
+    ;(blueprint as { reference_read?: Record<string, unknown> }).reference_read &&
+      ((blueprint as { reference_read: Record<string, unknown> }).reference_read.reference_duration_sec =
+        ref?.duration_sec ?? null)
 
     // ── ONE ADVISORY READ, AFTER THE SCRIPT IS ALREADY SAFE ──────────────────
     //

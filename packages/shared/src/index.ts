@@ -147,6 +147,7 @@ export * from './script/shotLabel'
 // longer than the reference they adapted, 10 run >25% shorter, one is 4 seconds
 // — and no screen said so. Disclosure, never enforcement.
 export * from './script/scriptLength'
+export * from './script/runtimeCompare'
 
 // ⚖️ FIX 7. "Write to target_sec" was prose; nothing computed it. Per-beat
 // detection only -- the spec's own repair step assumes a target_sec reader

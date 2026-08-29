@@ -32,7 +32,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, sentenceUniformityNote } from '@twinai/shared'
+import { shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, sentenceUniformityNote, compareRuntime, spokenTime } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -602,6 +602,11 @@ export default function Result() {
       platform: rr.platform ?? '',
       why_it_works: Array.isArray(rr.why_it_works) ? rr.why_it_works : [],
       retention_map: Array.isArray(rr.retention_map) ? rr.retention_map : [],
+      // ⚠️ FIX 8 (Wave 3). This normaliser rebuilds `reference_read` field by
+      // field, which is exactly how `visual_hook` and `beat_plan[].proof`
+      // were discarded on arrival before (see the comments below). Naming
+      // this field is what keeps it from joining them.
+      reference_duration_sec: rr.reference_duration_sec ?? null,
     },
     b_roll_stats: {
       original_b_roll_count: br.original_b_roll_count ?? '0',
@@ -660,6 +665,26 @@ export default function Result() {
   // REPAIRED script above, because that is the one they will read. Disclosure
   // only — a creator may shoot any length they like.
   const lengthLine = lengthSentence(measureScriptLength(updatedScript))
+  // ⚠️ FIX 8 (Wave 3). The SAME computed runtime `lengthLine` is built from,
+  // now shown beside the reference video's own known length (when the
+  // analyzer measured one) and with a warning when it clears the short-form
+  // ceiling. `b.reference_read.reference_duration_sec` is absent for every
+  // blueprint generated before this existed, or a reference the ingest
+  // never measured a duration for — both read as "no reference length to
+  // compare against", never a fabricated 0.
+  const runtimeCompare = compareRuntime(updatedScript, b.reference_read.reference_duration_sec ?? null)
+  // ⚖️ THE BASE SENTENCE STAYS `lengthLine` — it already covers the states
+  // `runtimeComparisonSentence` does not (unwritten beats, implausibly
+  // short). This is the SAME computed number, extended only with what
+  // `lengthLine` cannot say: the reference's own length, and the ceiling.
+  // Rendered only when it has something to add.
+  const referenceCompareLine =
+    runtimeCompare.referenceSec !== null
+      ? `The reference runs about ${spokenTime(runtimeCompare.referenceSec)}.`
+      : null
+  const ceilingWarningLine = runtimeCompare.exceedsCeiling
+    ? `That is longer than a short-form video normally runs (over ${spokenTime(runtimeCompare.ceilingSec)}) — worth trimming before you record.`
+    : null
 
   return (
     <main className="relative min-h-screen overflow-clip bg-ink text-sand pb-20">
@@ -1077,6 +1102,8 @@ export default function Result() {
                 <span className="text-xs text-stone">{updatedScript.length} scenes</span>
               </div>
               <p className="text-xs text-stone/80">{lengthLine}</p>
+              {referenceCompareLine && <p className="text-xs text-stone/80">{referenceCompareLine}</p>}
+              {ceilingWarningLine && <p className="text-xs text-amber">{ceilingWarningLine}</p>}
               
               <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />
@@ -1441,6 +1468,8 @@ export default function Result() {
                   <span className="text-xs text-stone">{updatedScript.length} scenes</span>
                 </div>
                 <p className="text-xs text-stone/80">{lengthLine}</p>
+              {referenceCompareLine && <p className="text-xs text-stone/80">{referenceCompareLine}</p>}
+              {ceilingWarningLine && <p className="text-xs text-amber">{ceilingWarningLine}</p>}
                 
                 <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />

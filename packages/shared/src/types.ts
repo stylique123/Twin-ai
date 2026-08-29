@@ -118,6 +118,13 @@ export interface Blueprint {
     // the count check rather than failing a script against a number nobody
     // promised.
     mechanism?: unknown
+    // ⚠️ FIX 8 (Wave 3). The reference video's own MEASURED duration, written
+    // server-side from the transcript row (never the model) so the Result
+    // screen can show a creator's computed runtime beside the length of the
+    // video they are adapting. Optional/null: every blueprint generated
+    // before this existed lacks it, and a reference with no measured
+    // duration on file is not a video with a duration of zero.
+    reference_duration_sec?: number | null
   }
   // CONCEPT & ADAPTATION — the actual video idea for THIS creator, plus an honest
   // translation of the reference's production scale down to what one person with a
