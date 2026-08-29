@@ -27,6 +27,7 @@ import { syncRetentionMapToScript } from '../script/retentionMapSync.js'
 import { syncSetupLabels } from '../script/setupLabelSync.js'
 import { deliveredItemCount } from '../referenceMechanism.js'
 import { compareRuntime } from '../script/runtimeCompare.js'
+import { splitEmphasis } from '../script/emphasis.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURES_DIR = join(HERE, '..', '..', '..', '..', 'eval', 'fixtures', 'live-runs')
@@ -364,11 +365,29 @@ describe('8. the runtime shown is computed from the final script\'s own words, n
 // ── 9. No markdown in spoken lines ──────────────────────────────────────────
 describe('9. no markdown emphasis characters in spoken lines', () => {
   const MARKDOWN = /[*_]{1,2}\S/
-  it.fails('run-b: "*not*" is literal markdown in a spoken line', () => {
-    expect(fixtures['run-b'].generation.blueprint.script.some((b) => MARKDOWN.test(b.line))).toBe(false)
+
+  // ⚠️ THE SHIPPED DEFECT, DOCUMENTED. run-b's frozen fixture still carries the
+  // raw generation as it shipped: "*not*" literally inside the spoken line.
+  it('run-b: the frozen fixture still documents the shipped "*not*" defect', () => {
+    expect(fixtures['run-b'].generation.blueprint.script.some((b) => MARKDOWN.test(b.line))).toBe(true)
   })
-  it.each(['run-a', 'run-c', 'run-d'] as const)('%s: no markdown (green)', (id) => {
-    expect(fixtures[id].generation.blueprint.script.some((b) => MARKDOWN.test(b.line))).toBe(false)
+
+  // The FIX itself: run the real `splitEmphasis` module — the same one wired
+  // into generate-blueprint after the rescue point — over every fixture's
+  // script and prove no markdown survives, and that the stripped word landed
+  // in `emphasis_words` rather than being silently discarded.
+  it('run-b: splitEmphasis strips "*not*" from the line and moves it into emphasisWords', () => {
+    const beat = fixtures['run-b'].generation.blueprint.script.find((b) => MARKDOWN.test(b.line))
+    expect(beat).toBeTruthy()
+    const split = splitEmphasis(beat!.line)
+    expect(MARKDOWN.test(split.line)).toBe(false)
+    expect(split.emphasisWords).toContain('not')
+    expect(split.runs).toBeGreaterThan(0)
+  })
+
+  it.each(RUNS)('%s: after splitEmphasis runs over every beat, no markdown survives', (id) => {
+    const cleaned = fixtures[id].generation.blueprint.script.map((b) => splitEmphasis(b.line).line)
+    expect(cleaned.some((line) => MARKDOWN.test(line))).toBe(false)
   })
 })
 
