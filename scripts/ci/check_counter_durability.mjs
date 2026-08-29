@@ -91,6 +91,28 @@ const EVENTS = {
       + 'this is the one-occurrence failure of the optional second call, not a rate '
       + 'anything downstream currently depends on.',
   },
+  // ⚠️ FIX 1 (Wave 1). Reference-copying, not reference-claim-borrowing —
+  // `reference_claim_leak` below already covers a MEASUREMENT the reference
+  // creator took; this is the reference's own WORDING reaching a script as
+  // this creator's speech. Run A shipped a Hormozi line verbatim as spoken
+  // dialogue; Run D reproduced a near-verbatim sentence even at
+  // fidelity="loose". `found`/`repaired` on the same row every other 0131
+  // counter already lands on, so a rising `found` with a flat `repaired` is
+  // visible without a second query.
+  reference_phrase_overlap: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'Spoken lines sharing a >=6-content-word contiguous run with the reference '
+      + 'transcript, and how many were rewritten or turned into an ask before shipping. '
+      + 'Null when the reference had no readable transcript to check against.',
+  },
+  reference_phrase_overlap_repair: {
+    kind: 'incident',
+    why: 'What the phrase-overlap repair pass rewrote or turned into an ask. Same shape '
+      + 'as reference_claim_leak_repair beside it: the durable rate already lives on '
+      + '`reference_phrase_overlap` (0131-pattern), so this is the one-off log of what '
+      + 'the repair call actually did.',
+  },
   beat_substance: {
     kind: 'counter',
     stored: 'generations.beat_audit',

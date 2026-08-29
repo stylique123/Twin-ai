@@ -1,0 +1,150 @@
+{
+  "id": "run-a",
+  "settings": {
+    "onboarded": true,
+    "creator_type": "coach_consultant",
+    "sells": "consulting_services",
+    "goal": "reach_more_people",
+    "subject": "something_i_know_well",
+    "fidelity": "just_how_it_is_built",
+    "tone": null
+  },
+  "reference": {
+    "url": "https://www.youtube.com/shorts/hormozi-3-reasons-business",
+    "note": "3 reasons your business isn't making more money",
+    "text": "There are three reasons your business is not making as much money as you want. Number one is promotion. You are not putting your product or service in front of enough people, and you are scared to spend money on advertising because you have never tracked what a customer is actually worth to you. Number two is the product or service itself. You built something once and you stopped improving it, so the market moved on without you. Number three is what happens every single day inside your business. You hire soft pansies who complain about the market instead of doing the work, and then you wonder why revenue is flat. Fix those three things in that order and you will make more money."
+  },
+  "known_defects": [
+    "Verbatim reference line reproduced as spoken dialogue: 'You hire soft pansies who complain about the market instead of doing the work.'",
+    "Header claims 47s of talking; beat_plan target_sec sums to 35s (4+6+6+8+8+3).",
+    "Enumeration checker false positive: script literally says Number one/two/three but checker warned 'promises 3, delivers 0'.",
+    "Shot list 'Opening line, straight to camera' quotes a DIFFERENT, non-selected hook option than hook_options[0].",
+    "Hook option 3 fabricates an unattributed revenue claim ('Revenue last year was stagnant').",
+    "Setup sequence renders D,A,B,C,D,E (does not start at A, repeats D).",
+    "First location string comma-split into fake fields: 'Standing in the center of a clean, brightly lit room' rendered as 'Setup D · Standing in the center of a clean · brightly lit room · Medium shot'."
+  ],
+  "ui_header": { "claimed_seconds": 47, "claimed_scenes": 5 },
+  "generation": {
+    "id": "fixture-run-a",
+    "user_id": "fixture-user-a",
+    "reference_url": "https://www.youtube.com/shorts/hormozi-3-reasons-business",
+    "reference_note": "3 reasons your business isn't making more money",
+    "fidelity": "close",
+    "created_at": "2026-08-20T12:00:00.000Z",
+    "blueprint": {
+      "reference_read": {
+        "platform": "youtube",
+        "format_label": "The Numbered Framework",
+        "why_it_works": [
+          "Front-loads a specific number so the viewer commits to finishing the list.",
+          "Each reason escalates in stakes, ending on the one closest to the viewer's own behavior."
+        ],
+        "retention_map": [
+          { "beat": "Hook", "goal": "State the promise and the count." },
+          { "beat": "Reason 1", "goal": "Promotion." },
+          { "beat": "Reason 2", "goal": "Product." },
+          { "beat": "Reason 3", "goal": "Culture." },
+          { "beat": "CTA", "goal": "Close." }
+        ]
+      },
+      "hook_options": [
+        "Beating your competition is simple. Avoid these 3 business-killing mistakes.",
+        "There are exactly 3 reasons your business is not making as much money as you want.",
+        "Revenue last year was stagnant. Here are the 3 reasons you are not scaling right now.",
+        "3 reasons your business is stuck, and none of them are the economy.",
+        "3 mistakes are costing you money every single day."
+      ],
+      "beat_plan": [
+        { "section": "Hook", "target_sec": 4 },
+        { "section": "Reason 1", "target_sec": 6 },
+        { "section": "Reason 2", "target_sec": 6 },
+        { "section": "Reason 3", "target_sec": 8 },
+        { "section": "CTA", "target_sec": 8 },
+        { "section": "Re-hook", "target_sec": 3 }
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Beating your competition is simple. Avoid these 3 business-killing mistakes.",
+          "direction": "Straight to camera, direct eye contact."
+        },
+        {
+          "section": "Reason 1",
+          "line": "Number one, you are not promoting enough. You are scared to spend on ads because you never tracked what a customer is worth.",
+          "direction": "Medium shot, count on fingers."
+        },
+        {
+          "section": "Reason 2",
+          "line": "Number two, your product stopped improving the day you shipped it, and the market moved on without you.",
+          "direction": "Medium shot."
+        },
+        {
+          "section": "Reason 3",
+          "line": "Number three, you hire soft pansies who complain about the market instead of doing the work.",
+          "direction": "Lean in, harder tone."
+        },
+        {
+          "section": "CTA",
+          "line": "Fix those three things in that order, and follow for the breakdown of each one.",
+          "direction": "Straight to camera."
+        }
+      ],
+      "shot_list": [
+        {
+          "shot": "Opening line, straight to camera",
+          "framing": "Medium shot",
+          "notes": "Setup A",
+          "spoken_text": "There are exactly 3 reasons your business is not making as much money as you want."
+        },
+        {
+          "shot": "Reason one",
+          "framing": "Medium shot",
+          "notes": "Setup D · Standing in the center of a clean · brightly lit room · Medium shot",
+          "spoken_text": "Number one, you are not promoting enough. You are scared to spend on ads because you never tracked what a customer is worth."
+        },
+        {
+          "shot": "Reason two",
+          "framing": "Medium shot",
+          "notes": "Setup A",
+          "spoken_text": "Number two, your product stopped improving the day you shipped it, and the market moved on without you."
+        },
+        {
+          "shot": "Reason three",
+          "framing": "Punch in closer",
+          "notes": "Setup B",
+          "spoken_text": "Number three, you hire soft pansies who complain about the market instead of doing the work."
+        },
+        {
+          "shot": "CTA",
+          "framing": "Medium shot",
+          "notes": "Setup C",
+          "spoken_text": "Fix those three things in that order, and follow for the breakdown of each one."
+        },
+        {
+          "shot": "Re-hook cutaway",
+          "framing": "Wide",
+          "notes": "Setup D",
+          "spoken_text": ""
+        },
+        {
+          "shot": "Return to camera",
+          "framing": "Medium shot",
+          "notes": "Setup E",
+          "spoken_text": ""
+        }
+      ],
+      "captions": ["3 reasons your business isn't making more money"],
+      "edit_checklist": ["Cut on each 'number'"],
+      "caption_packet": { "caption_style": "bold", "pacing": "fast", "emphasis": "numbers", "export": "srt" },
+      "publish_plan": [
+        { "platform": "youtube", "caption": "3 reasons you're stuck", "hashtags": ["#business"], "best_time": "9am" }
+      ],
+      "production_sprint": [{ "minute": "0-5", "task": "Set up phone, ring light." }]
+    },
+    "product_entities": [],
+    "beat_audit": {
+      "enumeration_checker": { "promised": 3, "delivered": 0, "warning_fired": true, "actually_delivered": 3 },
+      "reference_phrase_overlap": null
+    }
+  }
+}

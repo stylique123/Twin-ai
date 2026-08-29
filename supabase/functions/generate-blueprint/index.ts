@@ -30,6 +30,7 @@ import { projectBrandTruth, validateBrandTruthSnapshot } from '../_shared/brandT
 import { businessFactLines, businessFactProvenanceCounts } from '../_shared/brandTruthPrompt.ts'
 import { lexicalFloor } from '../_shared/repetition.ts'
 import { shouldAsk, readVerdict } from '../_shared/advisoryRead.ts'
+import { findPhraseOverlaps, MIN_OVERLAP_CONTENT_WORDS } from '../_shared/phraseOverlap.ts'
 import { evaluateSemanticRepetitionTrigger } from '../_shared/semanticRepetition.ts'
 import {
   productSceneGuidance, productSceneDirection,
@@ -5411,6 +5412,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // shot_list came back empty or malformed never looked, and reporting that as
     // "0 numbered shots" would be the cleanest possible reading of no data.
     let shotsNumberedNotNamed: number | null = null
+    // ⚖️ FIX 1 (Wave 1). NULL MEANS THE REFERENCE HAD NO READABLE TRANSCRIPT TO
+    // CHECK AGAINST — never zero. `found` is beats that shared a ≥6-content-word
+    // contiguous run with the reference transcript; `repaired` is how many were
+    // rewritten (or turned into an `ask`) before the script shipped.
+    let referencePhraseOverlap: { found: number; repaired: number } | null = null
     // WHERE THE CONTENT CAME FROM, COUNTED — and the declaration checked against
     // what the prompt actually carried. ⚖️ `speakable` and not `kRows`: checking
     // against the fuller store would excuse exactly the fabrication this exists
@@ -5922,6 +5928,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // WRITER stopped doing it, which is the only thing that tells us the new
       // instruction is not inert.
       shots_named_by_number: shotsNumberedNotNamed,
+      // ⚠️ FIX 1 (Wave 1). NULL means the reference had no readable transcript
+      // to check the script against — never zero. `repaired` counts both a
+      // model rewrite that broke the shared run AND a line turned into an
+      // `ask` because no safe rewrite was found.
+      reference_phrase_overlap: referencePhraseOverlap,
       by_source: bySource,
       creator_knowledge_depth: byDepth,
       knowledge_supplied: speakable.length,
@@ -6291,6 +6302,90 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       }
     } catch (err) {
       console.error('reference_claim_leak_failed', err instanceof Error ? err.message : err)
+    }
+
+    // ── THE REFERENCE'S OWN SENTENCES MUST NOT BECOME THIS CREATOR'S SPEECH ──
+    //
+    // ⚠️ FIX 1 (Wave 1). `reference_claim_leak` above catches a MEASUREMENT the
+    // reference creator took; this catches the reference's own WORDING, which is
+    // a different failure and was never checked. Run A shipped "You hire soft
+    // pansies who complain about the market instead of doing the work." as this
+    // creator's dialogue; Run D reproduced "measuring the risk of taking action
+    // while ignoring the risk of doing nothing is exactly what keeps people
+    // poorer than they ought to be" near-verbatim EVEN AT fidelity="loose".
+    // Reference material may shape structure, premise and pacing; it must never
+    // become the creator's asserted content or literal sentences.
+    //
+    // ⚖️ REPAIRED WHEN A MODEL CALL CAN SAFELY REWRITE THE LINE; TURNED INTO AN
+    // `ask` WHEN IT CANNOT. A rewrite that keeps the beat's meaning is strictly
+    // better than losing the beat, but only when the beat does not ALSO rest on
+    // creator material the store never had (`beatAsk.ts`'s existing contract) —
+    // in which case fabricating a replacement sentence would be the exact
+    // failure this check exists to catch, moved one step later.
+    try {
+      const refText = typeof ref?.text === 'string' ? ref.text : ''
+      if (refText.trim() !== '' && Array.isArray(declared)) {
+        const overlaps = findPhraseOverlaps(
+          declared as Array<{ line?: unknown }>, refText,
+        )
+        referencePhraseOverlap = { found: overlaps.length, repaired: 0 }
+        if (overlaps.length > 0) {
+          console.warn(JSON.stringify({
+            event: 'reference_phrase_overlap',
+            found: overlaps.length,
+            min_words: MIN_OVERLAP_CONTENT_WORDS,
+            runs: overlaps.map((o) => o.words),
+          }))
+          const overlapPrompt = 'These script lines reproduce SIX OR MORE consecutive words from the'
+            + ' reference video\'s own transcript. That is the reference creator\'s sentence, not this'
+            + ' creator\'s. Rewrite ONLY the lines listed so they express the same idea in different'
+            + ' words — do not invent a new fact, number or experience, and do not shorten the line'
+            + ' into a fragment. Return JSON: {"rewrites":[{"index":<number>,"line":"<new line>"}]}\n\n'
+            + overlaps.map((o) => `index ${o.beatIndex}\nLINE: ${(declared[o.beatIndex] as { line?: unknown })?.line}\nCOPIED PHRASE: ${o.run}`).join('\n\n')
+          const fixed = await callModel(
+            apiKey,
+            'You rewrite single script lines to remove wording copied from a reference video\'s'
+            + ' transcript. You never invent a new fact, number or experience. You return JSON only.',
+            overlapPrompt,
+            REPAIR_SCHEMA,
+          )
+          let applied = 0
+          for (const r of ((fixed as { rewrites?: Array<{ index?: unknown; line?: unknown }> })?.rewrites ?? [])) {
+            const i = typeof r?.index === 'number' ? r.index : -1
+            const line = typeof r?.line === 'string' ? r.line.trim() : ''
+            if (i < 0 || line === '' || !declared[i]) continue
+            const overlap = overlaps.find((o) => o.beatIndex === i)
+            if (!overlap) continue
+            // ⚠️ THE REWRITE MUST ACTUALLY BREAK THE RUN, NEVER SHIP UNCHECKED.
+            // A rewrite that keeps the same six-word run under a different verb
+            // tense is worse than no repair, because it reports success.
+            if (findPhraseOverlaps([{ line }], refText).length > 0) continue
+            ;(declared[i] as { line?: unknown }).line = line
+            applied++
+          }
+          // ⚠️ WHAT REPAIR COULD NOT REACH BECOMES AN ASK, NEVER A SHIPPED COPY.
+          // A line that still overlaps after the repair pass is a line this
+          // check refuses to let through — the creator answers a question
+          // instead of reading the reference creator's sentence.
+          const stillLeaking = findPhraseOverlaps(declared as Array<{ line?: unknown }>, refText)
+          for (const o of stillLeaking) {
+            const b = declared[o.beatIndex] as { line?: unknown; ask?: unknown; substance?: unknown }
+            if (!b) continue
+            b.line = ''
+            b.ask = typeof b.ask === 'string' && b.ask.trim() !== ''
+              ? b.ask
+              : 'This line was too close to the reference video\'s own words. What would you actually say here?'
+            b.substance = 'needs_user'
+            applied++
+          }
+          referencePhraseOverlap = { found: overlaps.length, repaired: applied }
+          console.log(JSON.stringify({
+            event: 'reference_phrase_overlap_repair', found: overlaps.length, repaired: applied,
+          }))
+        }
+      }
+    } catch (err) {
+      console.error('reference_phrase_overlap_failed', err instanceof Error ? err.message : err)
     }
 
     // ── AN UNFILLED TEMPLATE IS NOT A SCRIPT ────────────────────────────────

@@ -195,6 +195,12 @@ export * from './script/clichePhrases'
 export * from './script/repetition'
 export * from './script/advisoryRead'
 
+// ⚖️ FIX 1 (Wave 1). A spoken line sharing a ≥6-content-word contiguous run
+// with the reference transcript is the reference's own sentence, not this
+// creator's. Detection only — the writer path decides whether to repair the
+// beat or turn it into an `ask`.
+export * from './script/phraseOverlap'
+
 // ⚖️ FIX 8b. The blind-tested repair trigger only — "2+ substantive soft
 // beats" (3-0), never the payoff branch (1-6, G20 forbids building it). Pure
 // so the trigger is testable without a model call; the judge call itself is

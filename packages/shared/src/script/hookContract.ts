@@ -45,7 +45,10 @@ const FILLER = /\b(literally|actually|basically|really|just)\b/gi
  *  truncation rule that governs spoken lines everywhere else. */
 const FUSERS = /,\s*(?:because|so that|so|which is why|and that's why|and thats why)\s+/i
 
-const STOPWORDS = new Set([
+// ⚠️ EXPORTED SO OTHER PHRASE-LEVEL CHECKS REUSE THIS LIST RATHER THAN
+// GROWING A SECOND ONE. `phraseOverlap.ts` (reference-copying detection)
+// filters on the same content/stop distinction this file already made.
+export const STOPWORDS = new Set([
   'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'you', 'your', 'i',
   'me', 'my', 'it', 'its', 'to', 'of', 'in', 'on', 'at', 'for', 'and', 'or',
   'but', 'that', 'this', 'with', 'into', 'right', 'now', 'if', 'so', 'because',
