@@ -134,6 +134,23 @@ const EVENTS = {
       + '`cta_entity_unmatched` (0131-pattern), so this is the one-off log of what the '
       + 'repair call actually did.',
   },
+  // ⚠️ FIX 3 (Wave 1). A hook option (across all five, not just
+  // hook_options[0]) asserting a currency/magnitude figure, a first-person-
+  // plural business claim, or a business-model term (churn/subscribers/
+  // headcount) absent from `product_entities`. Run A shipped "revenue was
+  // stagnant"; Run D shipped "we do over a million in revenue" and "stop
+  // blaming your churn" — no product_entities backed either. `found`/
+  // `demoted` on the same `generations.beat_audit` row every other 0131
+  // counter lands on, per the `reference_phrase_overlap`/`cta_entity_unmatched`
+  // pattern above — DEMOTED here, never dropped, so a flagged hook is still a
+  // preference datapoint the creator can pick.
+  hook_unsupported_claim: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'Hook options asserting a business fact (figure, first-person-plural claim, or '
+      + "business-model term) not on this creator's product_entities, and how many were "
+      + 'demoted behind the clean hooks rather than deleted. Null when the check never ran.',
+  },
   beat_substance: {
     kind: 'counter',
     stored: 'generations.beat_audit',

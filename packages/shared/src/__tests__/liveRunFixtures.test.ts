@@ -21,6 +21,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { findPhraseOverlaps, MIN_OVERLAP_CONTENT_WORDS } from '../script/phraseOverlap.js'
+import { demoteUnsupportedHooks } from '../script/hookEntity.js'
 import { checkCtaEntity } from '../script/ctaEntity.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -110,10 +111,18 @@ describe('2. no CTA names an entity absent from product_entities', () => {
 
 // ── 3. No unattributed figure in a hook ─────────────────────────────────────
 describe('3. no hook asserts a figure not traceable to creator material', () => {
-  const FIGURE = /\$?\d[\d,.]*\s*(million|k|%|percent)?/i
-  it.fails('run-a: hook option 3 fabricates a revenue claim', () => {
+  // ⚠️ FIX 3 (Wave 1). Wired to the real module instead of a fixture-local
+  // regex, per the same rule Fix 1 and Fix 2's sections above already follow
+  // — a fixture's job is to prove the SHIPPED module catches the shipped
+  // defect, not to restate the rule in different words next to it.
+  it('run-a: hook option 3\'s "Revenue last year was stagnant" is caught and demoted', () => {
     const hooks = fixtures['run-a'].generation.blueprint.hook_options
-    expect(hooks.some((h) => /revenue/i.test(h) && FIGURE.test(h))).toBe(false)
+    const entities = fixtures['run-a'].generation.product_entities as Array<{ name?: string }>
+    const result = demoteUnsupportedHooks(hooks, entities)
+    expect(result.found).toBeGreaterThan(0)
+    // Demoted, never dropped.
+    expect(result.hooks).toHaveLength(hooks.length)
+    expect(new Set(result.hooks)).toEqual(new Set(hooks))
   })
   it.fails('run-c: hooks assert 3-reason figures the creator never gave grounding for', () => {
     // Documented for completeness — run C's hooks are the enumeration count
@@ -121,14 +130,21 @@ describe('3. no hook asserts a figure not traceable to creator material', () => 
     // enumeration/hook-variety defects rather than a fabricated figure.
     expect(fixtures['run-c'].known_defects.some((d) => /opener/i.test(d))).toBe(false)
   })
-  it.fails('run-d: hook options 2 and 4 assume unmentioned revenue/subscription facts', () => {
+  it('run-d: "we do over a million in revenue" and "stop blaming your churn" are caught and demoted', () => {
     const hooks = fixtures['run-d'].generation.blueprint.hook_options
-    const fabricated = hooks.some((h) => /million in revenue|churn/i.test(h))
-    expect(fabricated).toBe(false)
+    const entities = fixtures['run-d'].generation.product_entities as Array<{ name?: string }>
+    const result = demoteUnsupportedHooks(hooks, entities)
+    expect(result.found).toBeGreaterThanOrEqual(2)
+    expect(result.hooks).toHaveLength(hooks.length)
+    expect(new Set(result.hooks)).toEqual(new Set(hooks))
+    // The two fabricated business-fact hooks no longer lead the ranking.
+    expect(/million in revenue|churn/i.test(result.hooks[0])).toBe(false)
   })
   it('run-b: no hook asserts an unattributed figure (green)', () => {
     const hooks = fixtures['run-b'].generation.blueprint.hook_options
-    expect(hooks.some((h) => /\$\d|revenue|churn/i.test(h))).toBe(false)
+    const entities = fixtures['run-b'].generation.product_entities as Array<{ name?: string }>
+    const result = demoteUnsupportedHooks(hooks, entities)
+    expect(result.found).toBe(0)
   })
 })
 
