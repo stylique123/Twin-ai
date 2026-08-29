@@ -34,6 +34,7 @@ import { findPhraseOverlaps, MIN_OVERLAP_CONTENT_WORDS } from '../_shared/phrase
 import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText } from '../_shared/shotListSync.ts'
+import { syncRetentionMapToScript } from '../_shared/retentionMapSync.ts'
 import { evaluateSemanticRepetitionTrigger } from '../_shared/semanticRepetition.ts'
 import {
   productSceneGuidance, productSceneDirection,
@@ -5423,6 +5424,14 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // proposed that a later repair or ask dropped — and were blanked rather
     // than left quoting a line the teleprompter no longer says.
     let shotListResync: { resynced: number; orphaned: number } | null = null
+    // ⚠️ FIX 5 (Wave 2). NULL MEANS THE GENERATION CARRIED NO RETENTION MAP TO
+    // RECONCILE — never zero. `matched` is how many output rows landed on a
+    // beat whose NAME the model's original retention_map still used (that
+    // row's `goal`/`tactic` prose is discarded regardless — see
+    // retentionMapSync.ts); `dropped` is how many original rows named a beat
+    // absent from the final script (an extra beat a repair removed) and were
+    // dropped instead of shipped stale.
+    let retentionMapResync: { matched: number; dropped: number } | null = null
     // ⚖️ FIX 1 (Wave 1). NULL MEANS THE REFERENCE HAD NO READABLE TRANSCRIPT TO
     // CHECK AGAINST — never zero. `found` is beats that shared a ≥6-content-word
     // contiguous run with the reference transcript; `repaired` is how many were
@@ -6009,6 +6018,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // counter takes: the repair is running, and this is what makes that
       // falsifiable rather than assumed.
       shot_list_resync: shotListResync,
+      // ⚠️ FIX 5 (Wave 2). NULL means no retention map to reconcile. `matched`
+      // rising with a flat script is the same shape shot_list_resync takes:
+      // the repair is running, and this is what makes that falsifiable
+      // rather than assumed. `dropped` is beats the panel described that the
+      // final script no longer has.
+      retention_map_resync: retentionMapResync,
       // ⚠️ FIX 1 (Wave 1). NULL means the reference had no readable transcript
       // to check the script against — never zero. `repaired` counts both a
       // model rewrite that broke the shared run AND a line turned into an
@@ -6710,6 +6725,51 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
             resynced: synced.resynced,
             orphaned: synced.orphaned,
             of: shots.length,
+          }))
+        }
+      }
+    } catch { /* never fail a generation on a reconciliation pass */ }
+
+    // ── THE COACHING PANEL MUST DESCRIBE THE SCRIPT THAT ACTUALLY SHIPS ──────
+    //
+    // ⚠️ FIX 5 (Wave 2). Same defect shape as the shot list above, one panel
+    // over: `reference_read.retention_map` is written by the same model call
+    // as `script`, in the same response — then only `script` gets rewritten
+    // by every repair since (phrase-overlap, CTA-entity, hook-entitlement,
+    // the ask/answer fill, the shot-list resync just above). The Result
+    // screen's "Where people keep watching" panel is a photograph of the
+    // FIRST draft; the script the creator is about to film is the LAST one.
+    // `liveRunFixtures.test.ts` assertion 5 documents this against frozen
+    // evidence — run B's retention map ends on the reference's lead-magnet
+    // CTA while the shipped CTA says "save this"; run C's includes "The
+    // pivot", a beat the shot-list resync above already proved does not
+    // exist in the final teleprompter; run D's claims 6 structural beats for
+    // a 5-scene script.
+    //
+    // ⚖️ RUNS AFTER THE SHOT-LIST RESYNC, NOT BEFORE IT — the same
+    // "run after every other repair" placement doctrine Fix 4 established.
+    // Running any earlier would resync the panel against a `script` a later
+    // repair still had a chance to change.
+    //
+    // ⚖️ RUNS UNCONDITIONALLY, LIKE THE SHOT-LIST RESYNC. A retention map that
+    // came back empty or malformed syncs to an empty/derived list and costs
+    // nothing.
+    try {
+      const rr = (blueprint as { reference_read?: { retention_map?: unknown } })?.reference_read
+      const script = (blueprint as { script?: unknown })?.script
+      if (rr && typeof rr === 'object') {
+        const synced = syncRetentionMapToScript(
+          Array.isArray(rr.retention_map) ? rr.retention_map as Array<{ beat?: unknown; goal?: unknown; tactic?: unknown }> : [],
+          Array.isArray(script) ? script as Array<{ section?: unknown; line?: unknown }> : [],
+        )
+        ;(rr as { retention_map?: unknown }).retention_map = synced.retentionMap
+        retentionMapResync = { matched: synced.matched, dropped: synced.dropped }
+        if (synced.dropped > 0) {
+          console.warn(JSON.stringify({
+            event: 'retention_map_resync',
+            matched: synced.matched,
+            dropped: synced.dropped,
+            of: synced.retentionMap.length,
           }))
         }
       }

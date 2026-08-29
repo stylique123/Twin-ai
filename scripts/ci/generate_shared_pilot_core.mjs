@@ -77,6 +77,11 @@ const SOURCES = [
   // resync reuses `isSilentBeat` rather than a second marker check.
   ['packages/shared/src/script/silentBeat.ts', 'supabase/functions/_shared/silentBeat.ts'],
   ['packages/shared/src/script/shotListSync.ts', 'supabase/functions/_shared/shotListSync.ts'],
+  // ⚠️ FIX 5 (Wave 2). The retention-map <-> final-script resync. Generated
+  // rather than retyped for the same reason as shotListSync.ts just above —
+  // a hand copy is exactly how the coaching panel's drift from the shipped
+  // script (see liveRunFixtures.test.ts §5) would survive its own fix.
+  ['packages/shared/src/script/retentionMapSync.ts', 'supabase/functions/_shared/retentionMapSync.ts'],
 ]
 
 // ⚠️ A SHEBANG IS LEGAL ONLY ON LINE 1, AND THE HEADER PUSHES IT TO LINE 5.
