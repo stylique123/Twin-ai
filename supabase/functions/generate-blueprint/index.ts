@@ -35,6 +35,7 @@ import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText } from '../_shared/shotListSync.ts'
 import { syncRetentionMapToScript } from '../_shared/retentionMapSync.ts'
+import { syncSetupLabels } from '../_shared/setupLabelSync.ts'
 import { evaluateSemanticRepetitionTrigger } from '../_shared/semanticRepetition.ts'
 import {
   productSceneGuidance, productSceneDirection,
@@ -5432,6 +5433,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // absent from the final script (an extra beat a repair removed) and were
     // dropped instead of shipped stale.
     let retentionMapResync: { matched: number; dropped: number } | null = null
+    // ⚠️ FIX 7 (Wave 3). NULL MEANS THE GENERATION CARRIED NO SHOT LIST TO
+    // RELABEL — never zero. `relabeled` is how many shot-list rows had their
+    // `notes` setup label rewritten — either the comma-split location text
+    // was rejoined, the letter was reassigned to the deterministic
+    // first-appearance sequence, or both; `setupCount` is the number of
+    // distinct (background, framing) setups this shot list resolved to.
+    let setupLabelResync: { relabeled: number; setupCount: number } | null = null
     // ⚖️ FIX 1 (Wave 1). NULL MEANS THE REFERENCE HAD NO READABLE TRANSCRIPT TO
     // CHECK AGAINST — never zero. `found` is beats that shared a ≥6-content-word
     // contiguous run with the reference transcript; `repaired` is how many were
@@ -6024,6 +6032,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // rather than assumed. `dropped` is beats the panel described that the
       // final script no longer has.
       retention_map_resync: retentionMapResync,
+      // ⚠️ FIX 7 (Wave 3). NULL means no shot list to relabel. `relabeled`
+      // rising with a flat script is the same shape shot_list_resync takes:
+      // the repair is running, and this is what makes that falsifiable
+      // rather than assumed. `setupCount` is the number of distinct setups
+      // this shot list resolved to.
+      setup_label_resync: setupLabelResync,
       // ⚠️ FIX 1 (Wave 1). NULL means the reference had no readable transcript
       // to check the script against — never zero. `repaired` counts both a
       // model rewrite that broke the shared run AND a line turned into an
@@ -6724,6 +6738,39 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
             event: 'shot_list_resync',
             resynced: synced.resynced,
             orphaned: synced.orphaned,
+            of: shots.length,
+          }))
+        }
+      }
+    } catch { /* never fail a generation on a reconciliation pass */ }
+
+    // ── A SETUP LETTER MUST NEVER REPEAT BY ACCIDENT ──────────────────────────
+    //
+    // ⚠️ FIX 7 (Wave 3). Same defect shape as the shot-list resync just above,
+    // in the SAME `notes` field: the model writes "Setup <letter> ·
+    // description · framing" once, in the same response as `shot_list`, and
+    // nothing downstream ever reconciles it. `liveRunFixtures.test.ts` §7
+    // documents runs A-D shipping a comma-split location description (a
+    // clause's own internal comma torn into an extra "·" segment) and a
+    // letter sequence that neither starts at A nor avoids repeats.
+    //
+    // ⚖️ RUNS RIGHT AFTER THE SHOT-LIST RESYNC, over the same array, for the
+    // same reason Fix 5 runs after Fix 4: this is the first point the shot
+    // list is final and the last point before it ships.
+    //
+    // ⚖️ RUNS UNCONDITIONALLY. A shot list with no "Setup X" tokens at all
+    // relabels zero rows and costs nothing.
+    try {
+      const shots = (blueprint as { shot_list?: unknown })?.shot_list
+      if (Array.isArray(shots) && shots.length > 0) {
+        const synced = syncSetupLabels(shots as Array<{ notes?: unknown }>)
+        ;(blueprint as { shot_list?: unknown }).shot_list = synced.shots
+        setupLabelResync = { relabeled: synced.relabeled, setupCount: synced.setupCount }
+        if (synced.relabeled > 0) {
+          console.warn(JSON.stringify({
+            event: 'setup_label_resync',
+            relabeled: synced.relabeled,
+            setupCount: synced.setupCount,
             of: shots.length,
           }))
         }

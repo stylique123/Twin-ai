@@ -24,6 +24,7 @@ import { findPhraseOverlaps, MIN_OVERLAP_CONTENT_WORDS } from '../script/phraseO
 import { demoteUnsupportedHooks } from '../script/hookEntity.js'
 import { checkCtaEntity } from '../script/ctaEntity.js'
 import { syncRetentionMapToScript } from '../script/retentionMapSync.js'
+import { syncSetupLabels } from '../script/setupLabelSync.js'
 import { deliveredItemCount } from '../referenceMechanism.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -275,33 +276,37 @@ describe('6. enumeration warning fires only on genuinely incomplete lists', () =
 })
 
 // ── 7. Locations intact, setup letters sequential without repeats ──────────
+// ⚖️ FIX 7 (Wave 3). These assertions now run the raw (buggy) fixture
+// shot_list through the real repair, `syncSetupLabels`, rather than reading
+// the model's own untrustworthy letters straight off the fixture — see
+// `setupLabelSync.ts` for why identity is decided from the description text,
+// never from the letter the model wrote.
 function setupLetters(f: Fixture): string[] {
-  return f.generation.blueprint.shot_list
-    .map((s) => /Setup ([A-Z])/.exec(s.notes)?.[1])
+  const { shots } = syncSetupLabels(f.generation.blueprint.shot_list)
+  return shots
+    .map((s) => /Setup ([A-Z])/.exec(String((s as { notes?: unknown }).notes ?? ''))?.[1])
     .filter((l): l is string => Boolean(l))
 }
-function commaSplit(f: Fixture): boolean {
-  return f.generation.blueprint.shot_list.some((s) => / · .*,? *· /.test(s.notes) === false
-    && /·.*·.*·/.test(s.notes))
+function noCommaSplitFields(f: Fixture): boolean {
+  const { shots } = syncSetupLabels(f.generation.blueprint.shot_list)
+  return !shots.some((s) => (String((s as { notes?: unknown }).notes ?? '').match(/·/g) ?? []).length >= 3)
 }
 describe('7. locations render intact; setup letters run A,B,C... in first-use order, no repeats', () => {
-  it.fails('run-a: comma-split location string, and D,A,B,C,D,E does not start at A / repeats D', () => {
+  it('run-a: comma-split location string is rejoined, and letters run A,B,C... with no repeats', () => {
     const letters = setupLetters(fixtures['run-a'])
     const startsAtA = letters[0] === 'A'
     const noRepeats = new Set(letters).size === letters.length
-    const noCommaSplitFields = !fixtures['run-a'].generation.blueprint.shot_list
-      .some((s) => (s.notes.match(/·/g) ?? []).length >= 3)
-    expect(startsAtA && noRepeats && noCommaSplitFields).toBe(true)
+    expect(startsAtA && noRepeats && noCommaSplitFields(fixtures['run-a'])).toBe(true)
   })
-  it.fails('run-b: comma-split location, sequence repeats B', () => {
+  it('run-b: comma-split location is rejoined, sequence no longer repeats B', () => {
     const letters = setupLetters(fixtures['run-b'])
     expect(letters[0] === 'A' && new Set(letters).size === letters.length).toBe(true)
   })
-  it.fails('run-c: wrong start letter (B), comma-split location, repeats', () => {
+  it('run-c: starts at A, comma-split location is rejoined, no repeats', () => {
     const letters = setupLetters(fixtures['run-c'])
     expect(letters[0] === 'A' && new Set(letters).size === letters.length).toBe(true)
   })
-  it.fails('run-d: wrong start letter (C), repeats', () => {
+  it('run-d: starts at A, no repeats', () => {
     const letters = setupLetters(fixtures['run-d'])
     expect(letters[0] === 'A' && new Set(letters).size === letters.length).toBe(true)
   })
