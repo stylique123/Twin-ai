@@ -31,45 +31,68 @@ import { Aurora } from '../components/Aurora'
 // "Software", `local_service` as "Local business" — a creator should not have to
 // know which noun the codebase picked.
 //
-// ⚠️ FOUNDER, COACH AND FREELANCER WERE ADDED HERE TO STOP THEM LANDING ON
-// "Something else", AND THAT NEVER HAPPENED WHERE IT COUNTS — D7 of the
-// consolidation spec. `WORK_KIND_LINES` and `CLAIMS_QUESTION_KINDS` in
-// `generate-blueprint/index.ts` — the writer prompt this whole chooser feeds —
-// were checked directly rather than assumed: neither one has an entry for
-// `founder`, `coach` or `freelancer`. Picking any of the three produces the
-// exact same nothing as picking none of them, which is worse than `other`:
-// `other` at least carries the creator's own sentence into the prompt.
-// `profileAssembler.ts` DOES distinguish these three roles, but it is not
-// wired into `generate-blueprint` — nothing there imports it — so its
-// distinctions never reach a script.
+// ⚠️ FOUNDER, COACH AND FREELANCER WERE DELETED FROM THIS CHOOSER, AND THAT
+// WAS THE WRONG HALF OF THE FIX. The reasoning was sound as far as it went:
+// `WORK_KIND_LINES` in `generate-blueprint/index.ts` had no entry for any of
+// the three, so picking one produced the same empty line as picking nothing.
+// The conclusion was not: the three chips describe the exact creators this
+// product is tested on — a coach selling consulting, a founder remixing a
+// business influencer — and removing them forced those people to answer
+// "Something else" about their own occupation.
 //
-// Inventing three new `WORK_KIND_LINES` entries just to keep the chip count
-// at ten would be manufacturing a distinction the writer never asked for.
-// `WORK_KIND_LABEL` keeps all ten so old data (a creator who already picked
-// `founder`, `coach` or `freelancer` before this fix) still renders a real
-// label rather than `undefined` — but `ONBOARDING_WORK_KINDS` below is what
-// a NEW signup is actually offered, and it is the six that provably change
-// what a script says, plus `other`, which is the honest escape hatch every
-// occupation not on the list already had.
+// A question with no reader is a bug, and so is deleting the question instead
+// of writing the reader. `WORK_KIND_LINES` now has a real, distinct entry for
+// all three (see the same file), so these chips reach the prompt like every
+// other one, and `workKindLinesCoverEveryChip.test.ts` fails the build if a
+// chip is ever offered again without one.
+//
+// ⚠️ PRODUCTION ALREADY HOLDS `coach`. Two `brand_voices` rows stored it before
+// the deletion (checked against the live project, not assumed), so the value
+// was never merely hypothetical — it was live data whose owners had just been
+// told their occupation was "something else".
+//
+// ⚖️ SEVEN CHIPS, TEN STORED VALUES, AND NOTHING IS REWRITTEN. The chooser
+// offers seven; `BRIEF_WORK_KINDS` keeps all ten valid. Three values are no
+// longer OFFERED to a new signup but remain perfectly readable if a creator
+// already stored one:
+//
+//   OFFERED CHIP                     STORES        ALSO READ AS (legacy, never rewritten)
+//   Creator / influencer             creator       —
+//   Founder / business owner         founder       —
+//   Coach / consultant / freelancer  coach         freelancer
+//   Licensed professional            professional  —
+//   Ecommerce / brand                ecommerce     brand
+//   Software / local business        saas          local_service
+//   Something else                   other         —
+//
+// This is the safest reading of the rewiring rules: merging two chips does NOT
+// merge two stored values, so no row is silently rewritten and no backfill is
+// owed. `freelancer`, `brand` and `local_service` keep their own labels AND
+// their own `WORK_KIND_LINES` entries, so a creator who stored one still gets
+// the sentence that describes their business rather than the one for the chip
+// that absorbed it.
 const WORK_KIND_LABEL: Record<BriefWorkKind, string> = {
   creator: 'Creator / influencer',
   founder: 'Founder / business owner',
-  coach: 'Coach / consultant',
+  coach: 'Coach / consultant / freelancer',
   freelancer: 'Freelancer / agency',
   professional: 'Licensed professional',
   ecommerce: 'Ecommerce / brand',
   brand: 'Brand / content team',
-  saas: 'Software',
+  saas: 'Software / local business',
   local_service: 'Local business',
   other: 'Something else',
 }
 
-/** What a NEW signup is offered: the six values `WORK_KIND_LINES` in
- *  generate-blueprint actually branches on, plus `other` as the escape hatch.
- *  `BRIEF_WORK_KINDS` (the full ten) stays the stored type so a creator who
- *  answered before this change keeps a valid, labelled value. */
+/** The seven chips a NEW signup is offered. Every one of these MUST have a
+ *  non-empty `WORK_KIND_LINES` entry in `generate-blueprint/index.ts` — pinned
+ *  by `workKindLinesCoverEveryChip.test.ts`, which is the guard that would have
+ *  caught the original bug instead of trading it for a worse one.
+ *
+ *  `BRIEF_WORK_KINDS` (all ten) stays the stored type, so `freelancer`, `brand`
+ *  and `local_service` remain valid values rather than becoming unreadable. */
 const ONBOARDING_WORK_KINDS: readonly BriefWorkKind[] = [
-  'creator', 'professional', 'ecommerce', 'brand', 'saas', 'local_service', 'other',
+  'creator', 'founder', 'coach', 'professional', 'ecommerce', 'saas', 'other',
 ]
 // Q4, REWRITTEN — it now asks ONLY about things the creator does NOT own.
 //
@@ -1468,8 +1491,31 @@ function ConfirmStep({
             written twice rather than templated. `can_record_screen = false`
             HIDES a capture surface; `can_film_objects = false` withholds
             footage SUGGESTIONS. Saying no to the second removes advice, not
-            ability, so the sentence has to promise the right thing. */}
-          <p className="mt-5 text-xs text-sand">Can you have it open on a screen while you film?</p>
+            ability, so the sentence has to promise the right thing.
+
+            ⚠️ THE FIRST QUESTION PROMISED A CAPABILITY THE PIPELINE DOES NOT
+            PLAN. It read "Can you have it open on a screen while you film?"
+            with a helper offering to "capture your screen". Traced end to end
+            before rewording: `clip_medium: 'screen'` can only originate from a
+            `[SHOW SCREEN: …]` marker in the model's script, and NOTHING in the
+            writer's prompt ever teaches that marker — `generate-blueprint`
+            contains no occurrence of it. So a Yes licensed a shot no script can
+            ask for. Meanwhile `productScenes.ts`, which DOES plan the screen
+            moments, already directs the camera-at-screen version in its own
+            words: "have that screen already open on the phone before the take",
+            "hold the phone up and stop moving. Talk to the camera, not to the
+            screen."
+
+            ⚖️ SO THE QUESTION NOW ASKS FOR WHAT IS ACTUALLY PLANNED, and the
+            column is unchanged. `can_record_screen` keeps its name in this
+            change — renaming a column while changing what writes it is the one
+            move that makes a half-finished migration unreadable — but its
+            MEANING is now "can point a camera at a screen", and the one reader
+            that interpreted it as "offer a share-your-screen recorder"
+            (`DeclaredClips.tsx`) was changed in the same commit. A corrected
+            promise with an uncorrected reader is the failure this was meant to
+            fix, not a smaller version of it. */}
+          <p className="mt-5 text-xs text-sand">Can you point your camera at a screen showing it — phone held up, or a laptop in frame?</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {([true, false] as const).map((v) => (
               <button
@@ -1489,8 +1535,8 @@ function ConfirmStep({
             ))}
           </div>
           <p className="mt-1.5 text-[11px] leading-relaxed text-stone">
-            Say yes and Twin can ask you to capture your screen for the moments your script says
-            to show something. Skip it and nothing changes, we just will not offer it yet.
+            Say yes and Twin can plan a shot where you hold your phone up to the camera, or point
+            at your laptop. Skip it and nothing changes, we just will not offer it yet.
           </p>
 
           <p className="mt-4 text-xs text-sand">Can you put a product or object in front of the camera?</p>

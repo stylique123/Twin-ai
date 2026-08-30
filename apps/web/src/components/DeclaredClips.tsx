@@ -24,6 +24,15 @@
 //   screen  → `can_record_screen`, `isExplicitlyTrue`. Silence HIDES it —
 //             `capabilities.ts` names this exact feature as its example of one
 //             that must not appear until asked for.
+//
+//             ⚠️ AND THE FLAG MEANS "CAN POINT A CAMERA AT A SCREEN" NOW. The
+//             onboarding question that writes it used to promise screen
+//             CAPTURE, which no script ever asks for — nothing in the writer's
+//             prompt teaches `[SHOW SCREEN: …]`, so the only planner of screen
+//             moments (`productScenes.ts`) already directs the camera-at-screen
+//             version. The question was reworded to match, and this slot's
+//             capture offer was reordered in the same change so the reader and
+//             the promise agree. The column name is deliberately unchanged.
 //   camera  → `can_film_objects`, `isExplicitlyFalse`. Silence SHOWS it, and
 //             that inversion is deliberate: an unnecessary shot on a list is
 //             friction, a missing one is a video the creator cannot make, and
@@ -396,7 +405,7 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
                           className="btn-ghost !py-1 !text-[11px]"
                           onClick={() => setAnswered((m) => new Map(m).set(slot.label.toLowerCase(), 'screen'))}
                         >
-                          <MonitorPlay className="h-3 w-3" /> on my screen
+                          <MonitorPlay className="h-3 w-3" /> on a screen
                         </button>
                         <button
                           type="button"
@@ -427,16 +436,47 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
                         <Square className="h-3 w-3" /> Stop
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        className="btn-ghost !py-1 !text-[11px]"
-                        onClick={() => { void capture(slot.label) }}
-                        disabled={busy || (state.kind !== 'idle' && state.kind !== 'error')}
-                      >
-                        {busy && state.kind === 'uploading'
-                          ? <><Loader2 className="h-3 w-3 animate-spin" /> Saving…</>
-                          : <><MonitorPlay className="h-3 w-3" /> {existing ? 'Record again' : 'Record screen'}</>}
-                      </button>
+                      // ⚠️ A SCREEN SLOT IS A CAMERA-AT-SCREEN SHOT FIRST, and that
+                      // is a correction, not a preference. This branch used to
+                      // offer `getDisplayMedia` and nothing else, which made
+                      // `can_record_screen = true` mean "hand me a share-your-
+                      // screen picker". The onboarding question that writes the
+                      // flag now asks "can you point your camera at a screen
+                      // showing it — phone held up, or a laptop in frame?", and
+                      // it asks that because it is what the pipeline actually
+                      // PLANS: `productScenes.ts` directs "have that screen
+                      // already open on the phone before the take" and "hold the
+                      // phone up and stop moving. Talk to the camera, not to the
+                      // screen." Nothing in the writer's prompt ever teaches the
+                      // `[SHOW SCREEN: …]` marker, so a true screen recording was
+                      // never a shot any script asked for.
+                      //
+                      // ⚖️ THE RECORDER IS KEPT, DEMOTED RATHER THAN DELETED. A
+                      // creator showing a logged-in dashboard may still genuinely
+                      // want a capture, and removing a working path in the same
+                      // change that corrects a promise is how a half-migration
+                      // becomes unreadable. It is now the second offer, named
+                      // plainly, instead of the only one.
+                      <span className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          className="btn-ghost !py-1 !text-[11px]"
+                          onClick={() => { pendingUpload.current = slot.label; fileInput.current?.click() }}
+                          disabled={busy || (state.kind !== 'idle' && state.kind !== 'error')}
+                        >
+                          {busy && state.kind === 'uploading'
+                            ? <><Loader2 className="h-3 w-3 animate-spin" /> Saving…</>
+                            : <><Camera className="h-3 w-3" /> {existing ? 'Replace footage' : 'Film that screen'}</>}
+                        </button>
+                        <button
+                          type="button"
+                          className="text-[11px] text-stone underline decoration-white/20 underline-offset-2 hover:text-cream"
+                          onClick={() => { void capture(slot.label) }}
+                          disabled={busy || (state.kind !== 'idle' && state.kind !== 'error')}
+                        >
+                          <MonitorPlay className="mr-1 inline h-3 w-3" />{existing ? 'record again' : 'or record the screen'}
+                        </button>
+                      </span>
                     )}
                   </li>
                 )
