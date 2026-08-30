@@ -73,7 +73,37 @@ describe('it is mounted where a creator actually is', () => {
     // zero rows because it waits to be visited.
     expect(RESULT).toMatch(/<CreatorQuestionCard \/>/)
   })
+
+  // Task 8: the card must render once the whole script has been read, never
+  // mid-scene, and always before the shot list starts.
+  it('renders no more than once per layout (desktop, mobile)', () => {
+    const count = (RESULT.match(/<CreatorQuestionCard \/>/g) ?? []).length
+    expect(count).toBe(2) // one for the desktop column, one for the mobile script tab
+  })
+
+  it('sits after the script editor and before the shot list, in both layouts', () => {
+    for (const cardIndex of allIndexesOf(RESULT, '<CreatorQuestionCard />')) {
+      const before = RESULT.slice(0, cardIndex)
+      const after = RESULT.slice(cardIndex)
+      const lastScriptEditorOpen = before.lastIndexOf('<ScriptEditor')
+      const nextShotListHeading = after.indexOf('Shots & extra clips')
+      expect(lastScriptEditorOpen).toBeGreaterThan(-1)
+      expect(nextShotListHeading).toBeGreaterThan(-1)
+      // Nothing else that opens a ScriptEditor or shot list sits closer.
+      expect(before.lastIndexOf('Shots & extra clips')).toBeLessThan(lastScriptEditorOpen)
+    }
+  })
 })
+
+function allIndexesOf(haystack: string, needle: string): number[] {
+  const out: number[] = []
+  let i = haystack.indexOf(needle)
+  while (i !== -1) {
+    out.push(i)
+    i = haystack.indexOf(needle, i + 1)
+  }
+  return out
+}
 
 // ── A QUESTION SHOWN IS NOT A QUESTION REFUSED ───────────────────────────────
 //

@@ -15,7 +15,7 @@
 // one because a select failed would re-ask something the creator already
 // declined, which is precisely how an optional prompt earns being ignored.
 import { useEffect, useState } from 'react'
-import { nextQuestion, askedProgress, ANSWER_MAX, type CreatorQuestion } from '@twinai/shared'
+import { nextQuestion, ANSWER_MAX, type CreatorQuestion } from '@twinai/shared'
 import { loadQuestionsPut, answerQuestion, skipQuestion, markQuestionShown } from '../lib/creatorAnswers'
 import { cn } from '../lib/cn'
 
@@ -28,7 +28,6 @@ const REFUSAL: Record<string, string> = {
 
 export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | null }) {
   const [question, setQuestion] = useState<CreatorQuestion | null>(null)
-  const [progress, setProgress] = useState<{ put: number; of: number } | null>(null)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
@@ -41,8 +40,6 @@ export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | nul
       if (!live || put === null) return // not-knowing: ask nothing
       const q = nextQuestion(put)
       setQuestion(q)
-      const p = askedProgress(put)
-      setProgress({ put: p.put, of: p.of })
       // ⚠️ RECORDED HERE BECAUSE HERE IS WHERE IT IS TRUE. The impression is
       // written only once a question actually exists to render -- not on mount,
       // which happens on every Result page including the ones that show nothing.
@@ -90,16 +87,13 @@ export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | nul
 
   return (
     <div className="rounded-card border border-white/10 bg-white/[0.03] p-4">
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
-          Teach your twin
-        </p>
-        {progress && progress.put > 0 && (
-          <span className="shrink-0 text-[11px] tabular-nums text-stone">
-            {progress.put}/{progress.of}
-          </span>
-        )}
-      </div>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
+        Teach your twin
+      </p>
+      {/* ⚖️ NO FRACTION HERE. "3/10" implies a target of 10 to hit — a number
+          nobody set and the creator would end up optimising for. This is one
+          question, asked because we don't know the answer, not a quest with a
+          finish line. See twinStrength.ts for the same call made elsewhere. */}
       <p className="mt-2 text-base font-medium text-cream">{question.ask}</p>
       <p className="mt-1 text-xs text-stone">{question.hint}</p>
       <textarea
