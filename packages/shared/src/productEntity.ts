@@ -904,6 +904,14 @@ export function entityStatus(entity: DraftEntity): EntityStatus {
 /** How many live product_entities rows must exist, across more than one owner,
  *  before the claim stop's blast radius can be measured at all.
  *
+ *  ⚠️ RE-MEASURED 2026-08-30: TWO ROWS, TWO OWNERS, NONE ARCHIVED, created
+ *  2026-08-18 and 2026-08-27. Six days bought one row. Both are OWN_PRODUCT,
+ *  both `user_confirmed` with `source = 'user_answer'`, and BOTH carry NO
+ *  evidence at all -- so both would return missing_information today. Two is
+ *  still not a rate (see below); what the second row adds is a shape worth
+ *  watching, not a proportion: it is `user_confirmed` with NO NAME, which
+ *  means a creator confirmed an entity the form never made them name.
+ *
  *  ⚠️ MEASURED 2026-08-24: THE WHOLE TABLE HELD ONE ROW. One owner, created
  *  2026-08-18, none archived. `mayGenerateClaims` and `entityStatus` still have
  *  zero production callers, and the reason they stay unwired is no longer "it
@@ -911,10 +919,11 @@ export function entityStatus(entity: DraftEntity): EntityStatus {
  *  described does not exist. It is that NOTHING IS KNOWN about what the stop
  *  would block.
  *
- *  ⚖️ 100% OF ONE ROW IS NOT A RATE. That single row would return
+ *  ⚖️ 100% OF TWO ROWS IS NOT A RATE EITHER. Both rows would return
  *  missing_information, and quoting it as "100% would be blocked" would be the
  *  same error as the assumption it replaced, pointing the other way. This
- *  number is the threshold below which the question is simply not askable. */
+ *  number is the threshold below which the question is simply not askable, and
+ *  at two rows of the twenty-five it needs, it is not askable yet. */
 export const CLAIM_STOP_MIN_POPULATION = 25
 
 /** May a script generate CLAIMS about this entity? The hard half of §14. */
