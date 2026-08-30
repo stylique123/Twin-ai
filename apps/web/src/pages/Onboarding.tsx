@@ -5,14 +5,14 @@ import { Loader2, Check, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { pollDna, saveCapabilityDefaults, savePreScriptBrief, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
 import type { Platform, Profile, VoiceProfile } from '../lib/types'
-import { asksForbiddenClaims, BRIEF_WORK_KINDS, BRIEF_GOALS, type BriefWorkKind, type BriefGoal } from '../lib/api'
+import { asksForbiddenClaims, BRIEF_GOALS, type BriefWorkKind, type BriefGoal } from '../lib/api'
 import {
   profileQuestionsFor, asksScreenCapability, asksProductCapability,
   asksOwnProductKind, asksOwnServiceKind, MAX_CONTENT_GOALS,
-  AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE, DESIRED_FORMATS, FORMAT_EXPLORATION,
+  AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE,
   COMMERCIAL_TIES, OWN_PRODUCT_KINDS, OWN_SERVICE_KINDS, CAPABILITY_ANSWERS,
   type ProfileQuestionId, type AudienceSegment,
-  type AudienceKnowledge, type DesiredFormat, type FormatExploration,
+  type AudienceKnowledge,
   type CommercialTie, type OwnProductKind, type OwnServiceKind, type CapabilityAnswer,
 } from '../lib/api'
 import {
@@ -29,9 +29,28 @@ import { Aurora } from '../components/Aurora'
  *  ids are the contract, and how they are phrased to a person is not. */
 // ⚖️ PLAIN ENGLISH, AND THE INTERNAL NAME IS NEVER THE LABEL. `saas` reads as
 // "Software", `local_service` as "Local business" — a creator should not have to
-// know which noun the codebase picked. The three new kinds are here because
-// founders, coaches and freelancers were all landing on "Something else", which
-// told Twin nothing about a person who has a great deal to say.
+// know which noun the codebase picked.
+//
+// ⚠️ FOUNDER, COACH AND FREELANCER WERE ADDED HERE TO STOP THEM LANDING ON
+// "Something else", AND THAT NEVER HAPPENED WHERE IT COUNTS — D7 of the
+// consolidation spec. `WORK_KIND_LINES` and `CLAIMS_QUESTION_KINDS` in
+// `generate-blueprint/index.ts` — the writer prompt this whole chooser feeds —
+// were checked directly rather than assumed: neither one has an entry for
+// `founder`, `coach` or `freelancer`. Picking any of the three produces the
+// exact same nothing as picking none of them, which is worse than `other`:
+// `other` at least carries the creator's own sentence into the prompt.
+// `profileAssembler.ts` DOES distinguish these three roles, but it is not
+// wired into `generate-blueprint` — nothing there imports it — so its
+// distinctions never reach a script.
+//
+// Inventing three new `WORK_KIND_LINES` entries just to keep the chip count
+// at ten would be manufacturing a distinction the writer never asked for.
+// `WORK_KIND_LABEL` keeps all ten so old data (a creator who already picked
+// `founder`, `coach` or `freelancer` before this fix) still renders a real
+// label rather than `undefined` — but `ONBOARDING_WORK_KINDS` below is what
+// a NEW signup is actually offered, and it is the six that provably change
+// what a script says, plus `other`, which is the honest escape hatch every
+// occupation not on the list already had.
 const WORK_KIND_LABEL: Record<BriefWorkKind, string> = {
   creator: 'Creator / influencer',
   founder: 'Founder / business owner',
@@ -44,6 +63,14 @@ const WORK_KIND_LABEL: Record<BriefWorkKind, string> = {
   local_service: 'Local business',
   other: 'Something else',
 }
+
+/** What a NEW signup is offered: the six values `WORK_KIND_LINES` in
+ *  generate-blueprint actually branches on, plus `other` as the escape hatch.
+ *  `BRIEF_WORK_KINDS` (the full ten) stays the stored type so a creator who
+ *  answered before this change keeps a valid, labelled value. */
+const ONBOARDING_WORK_KINDS: readonly BriefWorkKind[] = [
+  'creator', 'professional', 'ecommerce', 'brand', 'saas', 'local_service', 'other',
+]
 // Q4, REWRITTEN — it now asks ONLY about things the creator does NOT own.
 //
 // The old Q4 ("what do your videos promote", with "my own product" as a chip)
@@ -1301,7 +1328,7 @@ function ConfirmStep({
             question below is asked at all. */}
         <Labeled label="What do you do?">
           <div className="flex flex-wrap gap-2">
-            {BRIEF_WORK_KINDS.map((k) => (
+            {ONBOARDING_WORK_KINDS.map((k) => (
               <button
                 key={k}
                 type="button"
@@ -1737,26 +1764,10 @@ const CONTENT_GOAL_LABEL: Record<BriefGoal, string> = {
   personal_brand: 'Build my name',
 }
 
-const FORMAT_LABEL: Record<DesiredFormat, string> = {
-  talking_head: 'Talking to camera',
-  educational: 'Explaining things',
-  founder: 'Behind the business',
-  review: 'Reviews & comparisons',
-  product: 'Showing a product',
-  story: 'Stories & experiences',
-  opinion: 'Opinions & takes',
-  pov: 'POV / simple skits',
-  trend: 'Trends & current topics',
-  walking: 'Walking & casual talking',
-  recommend: 'Let Twin suggest',
-}
-
-const EXPLORATION_LABEL: Record<FormatExploration, string> = {
-  stay_close: 'Mostly what I already make',
-  fit_goals: 'Whatever fits my goals',
-  try_new: 'Help me try new things',
-  mixed: 'A mix',
-}
+// FORMAT_LABEL and EXPLORATION_LABEL (the `desiredFormats` / `formatExploration`
+// wording) moved to Gallery.tsx along with the question itself — see D7 of the
+// consolidation spec: "what kinds of videos do you want to make" no longer asks
+// at signup, it is a filter on the Gallery.
 
 const TIE_LABEL: Record<CommercialTie, string> = {
   own_product: 'Something I sell',
@@ -1843,7 +1854,7 @@ function ProfileQuestion({ id, draft, onDraftChange }: {
       <>
         {ask('What best describes what you do?')}
         <Chips
-          values={BRIEF_WORK_KINDS} label={WORK_KIND_LABEL} chosen={draft.workKind}
+          values={ONBOARDING_WORK_KINDS} label={WORK_KIND_LABEL} chosen={draft.workKind}
           onPick={(k) => set({ workKind: draft.workKind === k ? null : k })}
         />
       </>
@@ -1886,25 +1897,6 @@ function ProfileQuestion({ id, draft, onDraftChange }: {
           }}
         />
         {note(full ? 'Two is the limit — tap one to swap it.' : 'Pick up to two.')}
-      </>
-    )
-  }
-
-  if (id === 'desiredFormats') {
-    return (
-      <>
-        {ask('What kinds of videos do you want Twin to help you make?')}
-        <Chips
-          values={DESIRED_FORMATS} label={FORMAT_LABEL} chosen={draft.desiredFormats}
-          onPick={(f) => set({ desiredFormats: toggle(draft.desiredFormats, f) })}
-        />
-        {/* ⚖️ NOT DERIVABLE FROM THE LIST ABOVE. Somebody can pick three formats
-            they already make and still want to be pushed. */}
-        <p className="mt-4 text-xs text-sand">Should Twin stay close to what you already do?</p>
-        <Chips
-          values={FORMAT_EXPLORATION} label={EXPLORATION_LABEL} chosen={draft.formatExploration}
-          onPick={(e) => set({ formatExploration: draft.formatExploration === e ? null : e })}
-        />
       </>
     )
   }

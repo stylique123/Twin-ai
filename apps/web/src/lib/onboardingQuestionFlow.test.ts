@@ -20,10 +20,13 @@ describe('the list really does shrink under the creator', () => {
     // ⚠️ THE PRECONDITION FOR THE BUG, ASSERTED SO IT CANNOT BE ARGUED AWAY.
     // If this ever stops being true the guard below is still correct, but the
     // reason for it changes and somebody should know.
+    // ⚠️ FIVE AND FOUR, NOT SIX AND FIVE: `desiredFormats` no longer has a slot
+    // in this list (D7 of the consolidation spec moved it to a Gallery filter),
+    // so the whole set is one shorter than it used to be.
     const before = profileQuestionsFor({ workKind: 'saas' } as never)
     const after = profileQuestionsFor({ workKind: 'creator', commercialTies: ['none'] } as never)
-    expect(before.length).toBe(6)
-    expect(after.length).toBe(5)
+    expect(before.length).toBe(5)
+    expect(after.length).toBe(4)
   })
 })
 
