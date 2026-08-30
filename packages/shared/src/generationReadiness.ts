@@ -129,6 +129,12 @@ const ASK: Record<ReadinessField, string> = {
   audience: 'Who is this video for?',
   angle: 'What is this video about?',
   offer: 'Which product or offer should this video point at?',
+  // ⚠️ D2: KEPT ONLY AS A FALLBACK LABEL, NEVER SHOWN AS A TEXT BOX. Product
+  // Library owns this question now — four chips writing straight to
+  // `product_entities.relationship`, the enum every claim rule and disclosure
+  // check reads. This string still names the field for a caller that has not
+  // been updated to route to Product Library instead (V2Building.tsx's
+  // `renderAsk` does; anything reusing this map directly should too).
   relationship: 'What is your relationship to it — do you own it, earn from it, are you paid to feature it, or are you just covering it?',
   cta: 'What should viewers do after watching?',
   claims: 'What does the OFFER do? Specific features, numbers or outcomes this video is allowed to state.',
