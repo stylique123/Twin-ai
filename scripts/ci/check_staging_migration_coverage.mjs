@@ -169,6 +169,21 @@ export const EXCLUDED = {
     + 'to be applied before merge, not after: `api.ts` unconditionally SELECTs and INSERTs '
     + 'this column, so shipping the code first would have broken every Product Library read '
     + 'and write in production, not just the new fallback field.',
+  '0178_a_lesson_without_its_price_is_biography':
+    'Adds `cost` and `consensus` to `creator_knowledge`, and replaces '
+    + '`merge_creator_knowledge` so the primary write path carries them. '
+    + '`0121_creator_knowledge` is itself EXCLUDED, so staging has no such table and '
+    + 'both statements would fail on their first line rather than pass vacuously. THE '
+    + 'EXCLUSION IS INHERITED, not a new judgement. ⚠️ MANUAL APPLY, DONE: applied to '
+    + 'production via the Supabase MCP before this merged -- verified both columns '
+    + 'exist, `merge_creator_knowledge` is present, and all 930 existing rows were '
+    + 'left NULL (nothing backfilled, because inventing a price is worse than '
+    + 'recording none). Applying it before merge was prudent rather than forced: an '
+    + 'unmigrated database degrades gracefully -- the old merge function ignores the '
+    + 'two extra jsonb keys and `knowledgeInsert` catches PGRST204 -- so the fields '
+    + 'would have been dropped silently rather than erroring. Applied anyway, because '
+    + 'a feature that silently stores nothing is indistinguishable from one that does '
+    + 'not work.',
   '0169_a_failed_read_leaves_a_trace':
     'Adds `knowledge_failed_at` and `knowledge_error` to `product_entities`, which is '
     + 'itself excluded above for the staging FK-ordering reason -- staging has no such '
