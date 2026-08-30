@@ -300,9 +300,11 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   // are only honoured inside the owner's own folder, and without this the check
   // has nothing to compare against.
   const { data: entity } = await db.from('product_entities')
-    .select('product_url, owner_id').eq('id', entityId).maybeSingle()
+    .select('product_url, owner_id, name, creator_summary').eq('id', entityId).maybeSingle()
   const productUrl = (entity as { product_url?: string | null } | null)?.product_url ?? null
   const ownerId = (entity as { owner_id?: string | null } | null)?.owner_id ?? ''
+  const existingName = (entity as { name?: string | null } | null)?.name ?? null
+  const creatorSummary = (entity as { creator_summary?: string | null } | null)?.creator_summary ?? null
 
   const text = url ? await fetchPageText(url) : null
   // ⚠️ THE UNREADABLE-PAGE BRANCH MUST NOT SWALLOW AN IMAGE-ONLY JOB. It writes
@@ -310,12 +312,27 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   // no link would read as "we looked at your photos and found nothing" — while
   // never having opened one.
   if ((!text || text.length < 80) && imagePaths.length === 0) {
-    // ⚖️ AN UNREADABLE PAGE IS RECORDED AS EMPTY, NOT LEFT NULL. Null means
-    // "never extracted" and would show the creator "add a link" for a link they
-    // already added; `[]` means "we read it and got nothing", which is what
-    // happened and what they need to know.
+    // ⚠️ AND THE CREATOR'S OWN SENTENCE IS THE FLOOR UNDER THAT FAILURE, WHERE
+    // THEY GAVE ONE. `[]` used to be the honest end of the story — "we read it
+    // and got nothing" — but a creator who answered "what is it and who is it
+    // for?" on the add form gave us something usable even when the page did not
+    // cooperate. It arrives with `source: 'user_confirmed'`, the same authority
+    // a page never earns, because it is literally the creator speaking — the
+    // exact provenance `readExtractedFact` cannot assign on its own, so it is
+    // built by hand here.
+    const fallback: ExtractedFact[] = creatorSummary
+      ? [{
+          field: 'description', value: creatorSummary, source: 'user_confirmed',
+          sourceUrl: null, trust: 'usable', extractedAt: new Date().toISOString(),
+        }]
+      : []
+    // ⚖️ AN UNREADABLE PAGE IS RECORDED AS EMPTY (OR AS THE FALLBACK), NOT LEFT
+    // NULL. Null means "never extracted" and would show the creator "add a
+    // link" for a link they already added; `[]` (or the fallback fact) means
+    // "we read it and got nothing (of our own)", which is what happened and
+    // what they need to know.
     await db.from('product_entities').update({
-      knowledge: [],
+      knowledge: fallback,
       knowledge_extracted_at: new Date().toISOString(),
       knowledge_source_url: url,
       // ⚠️ CLEARED, BECAUSE THIS ATTEMPT DID NOT FAIL. A product that failed
@@ -324,7 +341,7 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
       knowledge_failed_at: null,
       knowledge_error: null,
     }).eq('id', entityId)
-    return { extracted: 0, reason: 'unreadable' }
+    return { extracted: fallback.length, reason: 'unreadable' }
   }
 
   const source = sourceFor(url, productUrl)
@@ -435,6 +452,22 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
 
   const { knowledge, changes } = mergeExtraction(previous, facts)
 
+  // ⚠️ THE PAGE'S OWN NAME NEVER REACHED `product_entities.name`, AND THAT WAS
+  // THE GAP: a creator who trusted "Twin will read this from the page" and left
+  // the add form's name field blank got a `name` FACT filed correctly into
+  // `knowledge` and a NAME COLUMN that stayed null forever, so the detail
+  // card's Name field kept showing its placeholder no matter how many times the
+  // page was read.
+  //
+  // ⚖️ WRITTEN ONLY WHEN THE CREATOR NEVER TYPED ONE. `name` is theirs to set —
+  // the add form and the card's own editable Name field both write it directly
+  // — and an extraction that ran afterwards must never overwrite a name a
+  // person chose on purpose. Absent or blank is the only case this may fill.
+  const extractedName = facts.find((f) => f.field === 'name')?.value ?? null
+  const nameUpdate = (existingName === null || existingName.trim() === '') && extractedName
+    ? { name: extractedName }
+    : {}
+
   const { error } = await db.from('product_entities').update({
     knowledge,
     knowledge_extracted_at: now,
@@ -442,6 +475,7 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
     // Same clearing as the unreadable path, for the same reason.
     knowledge_failed_at: null,
     knowledge_error: null,
+    ...nameUpdate,
   }).eq('id', entityId)
   if (error) throw new Error(`extract_product could not store knowledge: ${error.message}`)
 

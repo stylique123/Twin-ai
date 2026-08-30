@@ -80,10 +80,13 @@ describe('the extractor is never asked to grade itself', () => {
     expect(job).toMatch(/\^https:\\\/\\\//)
   })
 
-  it('an unreadable page is recorded as EMPTY, never left null', () => {
+  it('an unreadable page is recorded as EMPTY (or the creator\'s own fallback), never left null', () => {
     // ⚖️ null means "never extracted" and would tell the creator to add a link
-    // they already added. `[]` means "we read it and got nothing" — which is
-    // what happened, and what they need to know. Same `unset ≠ false` rule.
+    // they already added. `[]` means "we read it and got nothing of our own" —
+    // and, since migration 0177, a creator who answered the add form's "what is
+    // it and who is it for?" question is not left with nothing either: `[]`
+    // becomes a one-fact array built from `creator_summary`. Same `unset ≠
+    // false` rule, extended to a fallback the creator supplied themselves.
     const job = readFileSync(join(REPO, 'worker/src/jobs/extractProduct.ts'), 'utf8')
     // ⚠️ THE CONDITION GREW A SECOND CLAUSE AND THE ANCHOR FOLLOWED IT. The
     // branch is now guarded by `&& imagePaths.length === 0`, because an
@@ -94,6 +97,11 @@ describe('the extractor is never asked to grade itself', () => {
     const at = job.indexOf('if ((!text || text.length')
     expect(at, 'could not find the unreadable-page branch').toBeGreaterThan(-1)
     const branch = job.slice(at)
-    expect(branch.slice(0, branch.indexOf('return'))).toMatch(/knowledge: \[\]/)
+    const upToReturn = branch.slice(0, branch.indexOf('return'))
+    // Never the OLD literal empty array -- it must go through the fallback
+    // variable, or a creator's own answer would be computed and then discarded.
+    expect(upToReturn).not.toMatch(/knowledge: \[\],/)
+    expect(upToReturn).toMatch(/const fallback: ExtractedFact\[\] = creatorSummary/)
+    expect(upToReturn).toMatch(/knowledge: fallback,/)
   })
 })

@@ -1548,6 +1548,7 @@ export async function loadReferenceProfiles(
 interface ProductEntityRow {
   id: string
   name: string | null
+  creator_summary?: string | null
   type: string
   relationship: string
   personal_use: string
@@ -1569,7 +1570,7 @@ interface ProductEntityRow {
 }
 
 const ENTITY_COLUMNS =
-  'id, name, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at, archived_at, knowledge, knowledge_extracted_at, knowledge_source_url, knowledge_failed_at, knowledge_error, community_map'
+  'id, name, creator_summary, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at, archived_at, knowledge, knowledge_extracted_at, knowledge_source_url, knowledge_failed_at, knowledge_error, community_map'
 
 /** Read `restrictions` back defensively. `approvedClaims` is the field §5a.5
  *  turns on — an outcome claim needs a permission that EXISTS — so a malformed
@@ -1603,9 +1604,12 @@ function readEntityRow(row: ProductEntityRow): ProductEntityRecord | null {
   if (!isEntityType(row.type)) return null
   if (!isEntityRelationship(row.relationship)) return null
   const name = typeof row.name === 'string' && row.name.trim() !== '' ? row.name.trim() : null
+  const creatorSummary = typeof row.creator_summary === 'string' && row.creator_summary.trim() !== ''
+    ? row.creator_summary.trim() : null
   return {
     id: row.id,
     name,
+    creatorSummary,
     type: row.type,
     relationship: row.relationship,
     // A malformed personal-use value falls back to the SAFE side, never the
@@ -2014,6 +2018,7 @@ export async function claimProductEntity(
     // moment the creator later claims something they own.
     voice_id: owned ? voiceId : null,
     name: entity.name,
+    creator_summary: entity.creatorSummary,
     type: entity.type,
     relationship: entity.relationship,
     personal_use: entity.personalUse,
@@ -2121,6 +2126,9 @@ export async function deleteProductEntity(id: string): Promise<void> {
  *  what the creator claimed and when, never through here. */
 export interface EntityPresentationEdit {
   name?: string | null
+  /** The creator's own one-line fallback — see migration 0177. Editable for the
+   *  same reason `name` is: neither is an entitlement field. */
+  creatorSummary?: string | null
   productUrl?: string | null
   showability?: Showability
 }
@@ -2141,6 +2149,9 @@ export async function updateEntityPresentation(
   // compile-time guarantee is only worth what the runtime one is.
   const row: Record<string, unknown> = {}
   if ('name' in edit) row.name = edit.name === null ? null : String(edit.name).trim() || null
+  if ('creatorSummary' in edit) {
+    row.creator_summary = edit.creatorSummary === null ? null : String(edit.creatorSummary).trim() || null
+  }
   if ('productUrl' in edit) row.product_url = edit.productUrl === null ? null : String(edit.productUrl).trim() || null
   if ('showability' in edit) row.showability = edit.showability
   // An empty edit must not issue a no-op UPDATE that only bumps `updated_at`,
