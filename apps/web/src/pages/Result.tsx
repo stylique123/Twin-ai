@@ -1486,6 +1486,12 @@ export default function Result() {
                     so the thing that changes them sits above the thing that
                     fills them. */}
                 <DeclaredClips generationId={gen.id} />
+                {/* ⚠️ SAME SPOT AS THE DESKTOP COLUMN: after the last beat,
+                    before the shot list — never mid-scene. Mirrors the
+                    desktop CreatorQuestionCard/ProductCaptureCard placement
+                    below; this tab was silently missing both. */}
+                <CreatorQuestionCard />
+                <ProductCaptureCard shown={readProductCapturePrompt(b)} voiceId={gen.brand_voice_id ?? null} />
               </div>
 
               {/* Shot List */}
