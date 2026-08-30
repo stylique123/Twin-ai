@@ -158,6 +158,17 @@ export const EXCLUDED = {
     + 'is SAFE here, where merging 0169 early would have made every successful extraction '
     + 'store nothing. The capture flow and the writer integration are the units that must '
     + 'wait for the column to exist, and they are not in this change.',
+  '0177_the_fallback_nobody_could_write':
+    'Adds `creator_summary` to `product_entities`, which is itself excluded above for the '
+    + 'staging FK-ordering reason -- staging has no such table, so this would fail on its '
+    + 'first statement rather than pass vacuously. THE EXCLUSION IS INHERITED, not a new '
+    + 'judgement. The editor never reads `product_entities`; entities reach the blueprint '
+    + 'through the prompt. ⚠️ MANUAL APPLY: excluding it here means nothing applies it '
+    + 'anywhere, so it was applied to production BY HAND (via the Supabase MCP) before this '
+    + 'PR merged -- verified: `product_entities.creator_summary` exists, type text. It had '
+    + 'to be applied before merge, not after: `api.ts` unconditionally SELECTs and INSERTs '
+    + 'this column, so shipping the code first would have broken every Product Library read '
+    + 'and write in production, not just the new fallback field.',
   '0169_a_failed_read_leaves_a_trace':
     'Adds `knowledge_failed_at` and `knowledge_error` to `product_entities`, which is '
     + 'itself excluded above for the staging FK-ordering reason -- staging has no such '
