@@ -51,6 +51,46 @@ export const VIDEO_GOAL_LABELS: Record<VideoGoal, string> = {
   personal_brand: 'Build my personal brand',
 }
 
+// ── D1 · THE ONBOARDING GOAL AS A STARTING POINT FOR THIS ONE VIDEO ────────
+//
+// ⚠️ NOT A DUPLICATE QUESTION — A DEFAULT FOR ONE. `contentGoals` (onboarding,
+// up to two, `brief.contentGoals`) states what the creator's content should do
+// IN GENERAL; `video_goal` (this screen) states what THIS video is for, and the
+// server already prefers the per-video answer whenever it exists (see
+// `generate-blueprint/index.ts`, `const goal = intent.goalDirective ??
+// standingGoalDirectiveInline(...)`). Forcing a blank re-pick every single video
+// ignores a standing preference the creator already gave Twin; this maps it onto
+// the nearest chip so the screen opens pre-selected and a single tap either
+// confirms or overrides it.
+//
+// ⚖️ THE FIRST RECOGNISED GOAL, NEVER A BLEND — same rule the server's
+// `standingGoalDirectiveInline` uses for the same stored list, so the value a
+// creator sees suggested here is the same one that would silently back it up on
+// the server if this chip were left unanswered.
+const CONTENT_GOAL_TO_VIDEO_GOAL: Partial<Record<string, VideoGoal>> = {
+  followers: 'followers',
+  authority: 'authority',
+  educate: 'educate',
+  leads: 'leads',
+  sell: 'sell',
+  entertain: 'entertain',
+  // ⚖️ NOT A TOP-LEVEL CHIP ON THIS SCREEN (see INTENT_QUESTIONS below) — it is
+  // reached here by picking "Show I know my stuff", the nearest chip a creator
+  // whose standing goal is "build my personal brand" would actually tap.
+  personal_brand: 'authority',
+}
+
+export function defaultVideoGoalFromContentGoals(
+  goals: readonly string[] | null | undefined,
+): VideoGoal | null {
+  if (!Array.isArray(goals)) return null
+  for (const g of goals) {
+    const mapped = typeof g === 'string' ? CONTENT_GOAL_TO_VIDEO_GOAL[g] : undefined
+    if (mapped) return mapped
+  }
+  return null
+}
+
 // ── Q2 · WHAT DO YOU WANT THIS VIDEO TO FOCUS ON? ──────────────────────────
 //
 // ⚖️ THIS IS THE RETRIEVAL QUESTION, and it is the one the old single goal could

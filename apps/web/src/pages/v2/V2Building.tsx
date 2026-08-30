@@ -16,6 +16,7 @@ import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   INTENT_QUESTIONS, type IntentQuestion, type VideoGoal,
+  defaultVideoGoalFromContentGoals,
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE } from '../../lib/api'
@@ -580,6 +581,19 @@ export default function V2Building() {
               : missing
             const ask: AskItem[] = [...unanswered, ...relevant.slice(0, MAX_TEXT_QUESTIONS)]
             if (ask.length && alive) {
+              // D1: THE STANDING GOAL PRE-FILLS THE PER-VIDEO CHIP, NOT SKIPS IT.
+              // The question still shows — a creator sees exactly what Twin
+              // assumed and can change it in one tap — but it opens on their
+              // onboarding preference instead of a blank slate they have to
+              // re-pick for every video. Only when the chip is actually being
+              // asked (`unanswered`) and only when nothing was already typed or
+              // restored for THIS build (`askAnswers` from sessionStorage).
+              if (unanswered.some((q) => q.field === 'video_goal')
+                && !(askAnswers.video_goal ?? '').trim()) {
+                const suggested = defaultVideoGoalFromContentGoals(
+                  Array.isArray(vBrief.contentGoals) ? vBrief.contentGoals as string[] : null)
+                if (suggested) answer('video_goal', suggested)
+              }
               // No spend, no ingest, no wait — and `active` stays at 0 so the
               // bar does not pretend work is happening behind the card.
               rememberAsk(key, ask)
