@@ -8,12 +8,13 @@ import type { Platform, Profile, VoiceProfile } from '../lib/types'
 import { asksForbiddenClaims, BRIEF_GOALS, type BriefWorkKind, type BriefGoal } from '../lib/api'
 import {
   profileQuestionsFor, asksScreenCapability, asksProductCapability,
-  asksOwnProductKind, asksOwnServiceKind, MAX_CONTENT_GOALS,
+  MAX_CONTENT_GOALS, ONBOARDING_SELLS_ANSWERS, sellsAnswerOf, SELLS_ANSWER_TO_TIES,
+  type OnboardingSellsAnswer,
   AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE,
-  COMMERCIAL_TIES, OWN_PRODUCT_KINDS, OWN_SERVICE_KINDS, CAPABILITY_ANSWERS,
+  CAPABILITY_ANSWERS,
   type ProfileQuestionId, type AudienceSegment,
   type AudienceKnowledge,
-  type CommercialTie, type OwnProductKind, type OwnServiceKind, type CapabilityAnswer,
+  type CapabilityAnswer,
 } from '../lib/api'
 import {
   Q4_ANSWERS, mintFromWorkKind, mintsOwnedEntity, q4AsksOwnership,
@@ -1814,40 +1815,25 @@ const CONTENT_GOAL_LABEL: Record<BriefGoal, string> = {
 // wording) moved to Gallery.tsx along with the question itself — see D7 of the
 // consolidation spec: "what kinds of videos do you want to make" no longer asks
 // at signup, it is a filter on the Gallery.
+//
+// TIE_LABEL, PRODUCT_KIND_LABEL and SERVICE_KIND_LABEL are gone for the same
+// reason: they were the wording for six tie chips and their thirteen follow-up
+// options, and onboarding no longer asks which KIND of commercial thing exists
+// — only whether one does. The FIELDS survive and are still read; only this
+// screen's copy for them is gone, and the Product Library has its own.
 
-const TIE_LABEL: Record<CommercialTie, string> = {
-  own_product: 'Something I sell',
-  own_service: 'A service I offer',
-  affiliate: 'Products I earn commission on',
-  sponsor: 'Sponsored products',
-  review: 'Things I review',
-  none: 'Nothing commercial',
-  // ⚖️ NOT OFFERED AS A CHIP ANYWHERE. `unspecified` is what the surviving
-  // yes/no writes for "Yes"; it needs a label only because this map is
-  // exhaustive over the vocabulary and because Settings renders stored ties
-  // back to the creator. The wording stays vague on purpose — it is the one
-  // value that asserts a commercial thing exists WITHOUT saying what it is.
-  unspecified: 'Something I sell or promote',
+/** ⚖️ "NOT RIGHT NOW" RATHER THAN "NO", BECAUSE IT IS A STATE AND NOT A REFUSAL.
+ *  Somebody who has not started selling yet will start; a chip that reads as a
+ *  permanent no makes the honest answer feel like a door closing, and this
+ *  question is asked of people mid-signup who are guessing about their own
+ *  future. Both answers are equally cheap to change later in the Product
+ *  Library, and the copy should say that rather than imply a verdict. */
+const SELLS_LABEL: Record<OnboardingSellsAnswer, string> = {
+  yes: 'Yes',
+  not_right_now: 'Not right now',
 }
 
-const PRODUCT_KIND_LABEL: Record<OwnProductKind, string> = {
-  software: 'Software or an app',
-  physical: 'A physical product',
-  digital: 'A digital product',
-  course: 'A course',
-  marketplace: 'A marketplace or store',
-  other: 'Something else',
-}
 
-const SERVICE_KIND_LABEL: Record<OwnServiceKind, string> = {
-  consulting: 'Consulting',
-  coaching: 'Coaching',
-  agency: 'Agency work',
-  freelance: 'Freelance work',
-  training: 'Training',
-  community: 'A community',
-  other: 'Something else',
-}
 
 const CAPABILITY_LABEL: Record<CapabilityAnswer, string> = {
   yes: 'Yes',
@@ -1889,7 +1875,7 @@ function Chips<T extends string>({ values, label, chosen, onPick }: {
  * so tapping the chosen answer again returns to unanswered everywhere, rather
  * than only where somebody remembered to write it.
  */
-function ProfileQuestion({ id, draft, onDraftChange }: {
+export function ProfileQuestion({ id, draft, onDraftChange }: {
   id: ProfileQuestionId | undefined
   draft: OnboardingDraft
   onDraftChange: (next: OnboardingDraft) => void
@@ -1954,42 +1940,48 @@ function ProfileQuestion({ id, draft, onDraftChange }: {
   }
 
   if (id === 'commercialTies') {
+    // THIRTEEN OPTIONS BECAME ONE YES/NO.
+    //
+    // ⚠️ THIS SCREEN USED TO ASK WHAT THE PRODUCT LIBRARY ALREADY OWNS. Six
+    // tie chips, plus a seven-chip "what kind of service?" follow-up, plus a
+    // six-chip product-kind follow-up — asked at signup, before the creator had
+    // any reason to care, and asked again in full by the Product Library where
+    // the answer is attested and can actually be used. Two questions holding
+    // one fact is how the same person gets interrogated twice and trusts the
+    // second answer less.
+    //
+    // ⚖️ WHAT ONBOARDING LEGITIMATELY OWNS IS ONLY WHETHER A COMMERCIAL THING
+    // EXISTS AT ALL, because that single bit decides whether Twin ever offers a
+    // product scene or a commercial CTA. The kind, the relationship, and the
+    // offer facts are properties OF THE THING, and the thing is named in the
+    // Product Library — behind an attestation, which is the only place a claim
+    // may be granted. A chip tapped during a loading screen is not consent.
+    //
+    // ⚖️ NOTHING IS DELETED. `ownProductKind` and `ownServiceKind` are still
+    // real stored fields, still loaded, still saved, still read by
+    // `asksScreenCapability` for accounts that hold them. This stops ASKING;
+    // it does not stop reading. And the answer still lands in `commercialTies`
+    // through `SELLS_ANSWER_TO_TIES`, so every existing reader —
+    // `productDnaStatus`, `onlyNone`, the capability gates, the Gallery's
+    // profile — keeps working with no vocabulary migration.
+    const sells = sellsAnswerOf(draft.commercialTies)
     return (
       <>
-        {ask('Do you make content about anything you sell or promote?')}
+        {ask('Do you sell or promote anything in your videos?')}
         <Chips
-          values={COMMERCIAL_TIES} label={TIE_LABEL} chosen={draft.commercialTies}
-          onPick={(t) => {
-            // ⚠️ "NOTHING COMMERCIAL" IS EXCLUSIVE, IN BOTH DIRECTIONS. Chosen
-            // alongside a real tie it means nothing, and leaving both selected
-            // would make the adaptive rules read a contradiction.
-            if (t === 'none') {
-              set({ commercialTies: draft.commercialTies.includes('none') ? [] : ['none'] })
-              return
-            }
-            const next = toggle(draft.commercialTies.filter((x) => x !== 'none'), t)
-            set({ commercialTies: next })
-          }}
+          values={ONBOARDING_SELLS_ANSWERS}
+          label={SELLS_LABEL}
+          chosen={sells}
+          onPick={(a) => set({
+            // ⚠️ TAPPING THE CHOSEN ANSWER AGAIN CLEARS IT, like every other
+            // chip on these screens. An empty list is UNANSWERED and is not
+            // "nothing to sell" — `sellsAnswerOf` keeps those apart, and
+            // turning silence into a commercial statement is the error this
+            // whole screen exists to avoid.
+            commercialTies: sells === a ? [] : [...SELLS_ANSWER_TO_TIES[a]],
+          })}
         />
-        {asksOwnProductKind(profileAnswersOf(draft)) && (
-          <>
-            <p className="mt-4 text-xs text-sand">What kind of thing do you sell?</p>
-            <Chips
-              values={OWN_PRODUCT_KINDS} label={PRODUCT_KIND_LABEL} chosen={draft.ownProductKind}
-              onPick={(k) => set({ ownProductKind: draft.ownProductKind === k ? null : k })}
-            />
-          </>
-        )}
-        {asksOwnServiceKind(profileAnswersOf(draft)) && (
-          <>
-            <p className="mt-4 text-xs text-sand">What kind of service?</p>
-            <Chips
-              values={OWN_SERVICE_KINDS} label={SERVICE_KIND_LABEL} chosen={draft.ownServiceKind}
-              onPick={(k) => set({ ownServiceKind: draft.ownServiceKind === k ? null : k })}
-            />
-          </>
-        )}
-        {note('This only tells Twin what kind of thing exists — you claim the actual product later.')}
+        {note('Just so Twin knows whether to offer it. You add the actual product later, in your Product Library.')}
       </>
     )
   }
