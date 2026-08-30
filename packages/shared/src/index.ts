@@ -209,6 +209,8 @@ export * from './script/advisoryRead'
 // creator's. Detection only — the writer path decides whether to repair the
 // beat or turn it into an `ask`.
 export * from './script/phraseOverlap'
+export * from './script/verbatimOverlap'
+export * from './script/referenceExposure'
 
 // ⚖️ FIX 8b. The blind-tested repair trigger only — "2+ substantive soft
 // beats" (3-0), never the payoff branch (1-6, G20 forbids building it). Pure

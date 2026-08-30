@@ -51,6 +51,13 @@ const SOURCES = [
   // Run D evidence (verbatim reference sentences at fidelity="loose") would
   // survive its own fix.
   ['packages/shared/src/script/phraseOverlap.ts', 'supabase/functions/_shared/phraseOverlap.ts'],
+  // ⚠️ THE FIDELITY→EXPOSURE BUDGET. Generated rather than retyped for the same
+  // reason as `phraseOverlap` beside it: this table is what decides how much of
+  // the reference's verbatim speech reaches the writer, and a hand copy that
+  // drifted upward would silently restore the unconditional 6,000 characters
+  // that produced the Run A / Run D leaks — while the tested module still
+  // reported the fix as present.
+  ['packages/shared/src/script/referenceExposure.ts', 'supabase/functions/_shared/referenceExposure.ts'],
   // ⚠️ FIX 2 (Wave 1). The CTA-entity check. Generated rather than retyped so
   // the writer path's fallback-trigger condition and the tested module agree
   // by construction — a hand copy is exactly how the Run C evidence (a CTA

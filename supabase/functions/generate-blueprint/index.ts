@@ -31,6 +31,7 @@ import { businessFactLines, businessFactProvenanceCounts } from '../_shared/bran
 import { lexicalFloor } from '../_shared/repetition.ts'
 import { shouldAsk, readVerdict } from '../_shared/advisoryRead.ts'
 import { findPhraseOverlaps, MIN_OVERLAP_CONTENT_WORDS } from '../_shared/phraseOverlap.ts'
+import { verbatimBudget, referenceShapeDigest, renderShapeDigest, REFERENCE_EXPOSURE, type ReferenceUseLevel } from '../_shared/referenceExposure.ts'
 import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText } from '../_shared/shotListSync.ts'
@@ -63,6 +64,12 @@ function json(body: unknown, status = 200) {
 // Keep the opening AND closing of long source text. A hard head-only cut loses
 // the ending (the payoff/CTA), which the retention read depends on.
 function clip(s: string, max: number): string {
+  // ⚠️ A ZERO BUDGET MUST RETURN NOTHING, AND USED TO RETURN EVERYTHING.
+  // `s.slice(-(max - head))` with `max === 0` is `s.slice(-0)`, and `-0` is `0`
+  // in a slice — so the "trim to nothing" case emitted the ENTIRE string. That
+  // is harmless for a budget nobody ever set to zero and catastrophic for one
+  // that is now computed from a creator's setting.
+  if (max <= 0) return ''
   if (s.length <= max) return s
   const head = Math.floor(max * 0.7)
   return s.slice(0, head) + '\n...[middle of transcript trimmed for length]...\n' + s.slice(-(max - head))
@@ -5499,6 +5506,45 @@ ${beatLines.join('\n')}`
           console.log(JSON.stringify({ event: 'container_template_absent', reason: 'read_failed', detail: String(e).slice(0, 120) }))
         }
 
+        // ── HOW MUCH OF THE REFERENCE'S ACTUAL LANGUAGE THE WRITER SEES ──
+        //
+        // ⚠️ THE DEFECT THIS CLOSES. Until now the line below read
+        // `clip(ref.text ?? '', 6000)` — SIX THOUSAND CHARACTERS OF THE
+        // REFERENCE CREATOR'S VERBATIM SPEECH, UNCONDITIONALLY, AT EVERY
+        // FIDELITY SETTING — and the control was a sentence of prose in the
+        // same prompt asking the model not to reuse them. Four audited runs
+        // settled that argument: Run A shipped the reference's own sentence as
+        // this creator's dialogue, Run D reproduced a seventeen-content-word
+        // run of it at the LOOSEST setting, and Run C shipped the reference
+        // creator's company as the CTA. A directive cannot out-argue the
+        // presence of the text; the only lever a model cannot ignore is what is
+        // actually in its context.
+        //
+        // ⚠️ KEYED ON `reference_use`, NOT ON `fidelity`, AND THAT IS LOAD-
+        // BEARING. `FIDELITY_FROM_REFERENCE_USE` maps BOTH `structure` and
+        // `stay_close` to `'close'` — so `fidelity` literally cannot tell
+        // most-mine from most-theirs, and budgeting on it would have given the
+        // creator who asked for least of the reference exactly as much of it as
+        // the creator who asked for most. `reference_use` is the control that
+        // owns this axis, so it is the one that governs the exposure.
+        //
+        // ⚖️ AN UNANSWERED CONTROL TAKES THE MIDDLE BUDGET, not the widest —
+        // see `verbatimBudget`. For a creator who only ever moved the legacy
+        // Advanced Settings slider this IS a real reduction in what the writer
+        // sees, and it is deliberate: the slider was never the owner of this
+        // axis, and defaulting to maximum exposure is how the previous version
+        // failed for everyone who did not answer.
+        const referenceExposureLevel: ReferenceUseLevel =
+          (normalizedReferenceUseForFidelity ?? 'idea_structure') as ReferenceUseLevel
+        const referenceVerbatimChars = verbatimBudget(referenceExposureLevel, (ref?.text ?? '').length)
+        console.log(JSON.stringify({
+          event: 'reference_exposure',
+          reference_use: normalizedReferenceUseForFidelity ?? null,
+          level: referenceExposureLevel,
+          transcript_chars: (ref?.text ?? '').length,
+          verbatim_chars: referenceVerbatimChars,
+        }))
+
         const referenceBlock =
       ref && (ref.structure || ref.text)
         ? `REFERENCE (REAL — analyzed from the actual video. Base reference_read.why_it_works and retention_map on THIS specific video below, not on a generic format pattern.)
@@ -5506,16 +5552,19 @@ ${beatLines.join('\n')}`
 - Platform: ${ref.platform ?? 'unknown'}
 - Derived structure:
 ${fenced('derived structure', ref.structure ? JSON.stringify(ref.structure).slice(0, 4000) : '(none)')}
-- Transcript excerpt:
-${fenced('reference transcript', clip(ref.text ?? '', 6000))}
+- Measured shape of this specific video (computed from the WHOLE transcript, so
+  reference_read.why_it_works and retention_map stay grounded in THIS video at
+  every setting — these are measurements, not the video's words):
+${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
+- What this creator's choice supplies from the reference: ${REFERENCE_EXPOSURE[referenceExposureLevel].supplies}
+- Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
+${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}
-- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderVideoIntentInline(intent)}${containerBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderVideoIntentInline(intent)}${containerBlock}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}
-- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderVideoIntentInline(intent)}${containerBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderVideoIntentInline(intent)}${containerBlock}`
 
     // The DNA is fenced too. It reads like our own text, but every field in it
     // was synthesized from captions we scraped — so it is exactly as
