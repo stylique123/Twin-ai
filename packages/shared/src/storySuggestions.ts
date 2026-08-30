@@ -62,6 +62,39 @@
 // finding a marker that is actually discriminating; it does not mean relaxing
 // these. A caption-only creator still sees all three blank boxes — and that is
 // exactly the creator who most needs to be asked.
+//
+// ── WHAT CHANGED, AND WHAT DID NOT ────────────────────────────────────────
+//
+// The measurement above stands and is reproduced: on the live store today,
+// 69 stated `experience` rows still yield ONE cost marker and 129 stated
+// `opinion` rows still yield ZERO named consensuses. Nothing about those rows
+// improved, and this module still refuses to mine them.
+//
+// ⚖️ WHAT CHANGED IS THE EXTRACTOR, NOT THE HEURISTIC. `creator_knowledge` now
+// carries two recorded fields — `cost` (what a thing took from them) and
+// `consensus` (the belief they named and argued against) — because the
+// extraction prompt now asks for them. Both are written ONLY from speech and
+// only when the creator said the thing outright.
+//
+// That is why `expensive_lesson` and `contrarian` become fillable here without
+// loosening anything. The old objection was that slotting them meant a
+// heuristic over free text, and "a wrong prefill is strictly worse than a blank
+// box". These two slots are no longer filled by a heuristic at all: they are
+// filled by a field the extractor was asked for and either recorded or left
+// null. `best_result` still has no such field and still uses its measured
+// ACHIEVEMENT + FIGURE regex, unchanged.
+//
+// ⚠️ AND EVERY EXISTING GUARD STILL APPLIES TO ALL THREE. Transcript-and-stated
+// only, never re-offering an `asked:` row, `SOMEONE_ELSES` on every slot, and
+// storable-as-typed. A row whose `cost` is null is not a lesson with a small
+// price; it is a row nobody recorded a price for, and it is not offered.
+//
+// ⚠️ UNMEASURED, SAID PLAINLY: no row in production carries `cost` or
+// `consensus` yet, because no scan has run against the new prompt. Until one
+// does, these two branches are correct code over an empty column and the yield
+// is UNKNOWN — not zero, and certainly not the improvement it is designed to
+// be. The frozen fixture test pins the contract; only a real scan can pin the
+// rate.
 import { ANSWER_MAX, ANSWER_MIN, type CreatorQuestion } from './creatorQuestions'
 
 /** The subset of a stored row this module reads. Deliberately narrow: anything
@@ -72,6 +105,12 @@ export interface StoredKnowledgeItem {
   basis?: string | null
   source?: string | null
   source_ref?: string | null
+  /** What it cost them, as the extractor recorded it. Null/absent means nobody
+   *  recorded a cost — never "it was cheap". */
+  cost?: string | null
+  /** The belief they named and argued against. Null/absent means they never
+   *  named one — never "they argue with nobody". */
+  consensus?: string | null
 }
 
 /** One extracted item offered back for confirmation. */
@@ -83,8 +122,11 @@ export interface StorySuggestion {
   text: string
 }
 
-/** The only slot the current store can fill. See the measurement above. */
-export const SUGGESTIBLE_SLOTS: readonly string[] = Object.freeze(['best_result'])
+/** The slots this module can fill. `best_result` from the measured regex over
+ *  free text; the other two ONLY from a recorded field. See the note above. */
+export const SUGGESTIBLE_SLOTS: readonly string[] = Object.freeze([
+  'best_result', 'expensive_lesson', 'contrarian',
+])
 
 /** ⚠️ ONLY SPOKEN MATERIAL MAY BE OFFERED BACK. A caption proves a video was
  *  made, never what it concluded, which is why caption extraction is clamped to
@@ -119,6 +161,59 @@ const FIGURE = /\d/
  *  ("a famous influencer's framework in the creator's mouth") this whole column
  *  exists to prevent. */
 const SOMEONE_ELSES = /\b(invested in|invested \$?[\d,]+ in|on behalf of|his client|her client|their client|a client named|the .{2,30} app\b|works? with over)\b/i
+
+/** A non-empty recorded field, normalised. Absent, null, blank and
+ *  whitespace-only all collapse to null — the extractor emitting "" for a field
+ *  it had nothing for must not read as a recorded value. */
+function recorded(v: string | null | undefined): string | null {
+  const t = String(v ?? '').trim().replace(/\s+/g, ' ')
+  return t === '' ? null : t
+}
+
+/** ⚠️ THE COST MAKES THE LESSON, SO A ROW WITHOUT ONE IS NOT ONE. This is the
+ *  whole reason the field was added: an `experience` with no recorded cost is
+ *  the flat biography the old store was full of ("Currently works at
+ *  Microsoft"), and offering that under "what did you learn the expensive way"
+ *  would ask a creator to confirm a lesson they never described. */
+function fillsExpensiveLesson(item: StoredKnowledgeItem): string | null {
+  if (item.kind !== 'experience') return null
+  const cost = recorded(item.cost)
+  if (cost === null) return null
+  if (SOMEONE_ELSES.test(item.text ?? '') || SOMEONE_ELSES.test(cost)) return null
+  const text = recorded(item.text)
+  return text === null ? null : `${text} — it cost ${cost}`
+}
+
+/** ⚠️ AND THE CONSENSUS MAKES THE STANCE. An `opinion` with no named consensus
+ *  is a bare assertion, which is what 129 of 129 stored opinions are. */
+function fillsContrarian(item: StoredKnowledgeItem): string | null {
+  if (item.kind !== 'opinion') return null
+  const consensus = recorded(item.consensus)
+  if (consensus === null) return null
+  if (SOMEONE_ELSES.test(item.text ?? '') || SOMEONE_ELSES.test(consensus)) return null
+  const text = recorded(item.text)
+  // ⚖️ WHAT THEY BELIEVE, THEN WHAT THE CREATOR BELIEVES INSTEAD — the order
+  // the question itself asks for ("Name what they believe, then what you
+  // believe instead"). A suggestion carrying only the creator's half answers
+  // half a question.
+  return text === null ? null : `Most people think ${consensus}. ${text}`
+}
+
+/**
+ * ⚖️ ONE DECISION POINT PER SLOT, RETURNING THE LINE RATHER THAN A BOOLEAN.
+ *
+ * An earlier shape had a `fills…` predicate and a separate composer, and both
+ * re-checked whether the field was recorded. Two places deciding one question
+ * is how the answers start disagreeing — and it made the predicate's own guard
+ * dead code, which a mutation run caught: deleting "the cost must be recorded"
+ * changed nothing, because the composer refused it a second time. A guard that
+ * can be deleted without breaking anything is not a guard. So each slot now has
+ * exactly one function, it returns the composed line or null, and every reason
+ * to refuse lives in it.
+ */
+function fillsBestResultLine(item: StoredKnowledgeItem): string | null {
+  return fillsBestResult(item) ? recorded(item.text) : null
+}
 
 function fillsBestResult(item: StoredKnowledgeItem): boolean {
   if (item.kind !== 'experience' && item.kind !== 'claim') return false
@@ -161,12 +256,24 @@ export function suggestStoryAnswers(
 
   for (const q of questions ?? []) {
     if (!q || discarded.has(q.id)) continue
-    // ⚠️ THE SWITCH IS EXHAUSTIVE BY OMISSION, ON PURPOSE. `expensive_lesson`
-    // and `contrarian` have no branch because the store cannot fill them, and
-    // adding an empty branch would read as an oversight rather than a finding.
-    if (q.id !== 'best_result') continue
-    const hit = usable.find((it) => fillsBestResult(it) && isStorable(it.text))
-    if (hit) out[q.id] = { questionId: q.id, text: hit.text.trim().replace(/\s+/g, ' ') }
+    // ⚠️ STILL EXHAUSTIVE BY OMISSION. A slot with no predicate gets no branch
+    // and therefore no suggestion — a blank box — rather than an empty branch
+    // that reads as an oversight. `SUGGESTIBLE_SLOTS` names exactly the three
+    // with a predicate, and the parity test holds the two in step.
+    const fills = q.id === 'best_result' ? fillsBestResultLine
+      : q.id === 'expensive_lesson' ? fillsExpensiveLesson
+      : q.id === 'contrarian' ? fillsContrarian
+      : null
+    if (!fills) continue
+    for (const it of usable) {
+      // ⚠️ `isStorable` IS APPLIED TO THE COMPOSED LINE, NOT TO THE TEXT ALONE.
+      // The join is what gets stored on confirm, and two halves that each fit
+      // can exceed ANSWER_MAX together. A blank box is the honest fallback.
+      const composed = fills(it)
+      if (!composed || !isStorable(composed)) continue
+      out[q.id] = { questionId: q.id, text: composed }
+      break
+    }
   }
   return out
 }

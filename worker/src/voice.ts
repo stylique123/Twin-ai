@@ -216,6 +216,11 @@ const knowledgeSchema = obj(
           times_seen: { type: 'STRING' },
           confidence: { type: 'STRING' },
           source_video: { type: 'STRING' },
+          // ⚖️ DELIBERATELY NOT REQUIRED. An item that cost nothing and argues
+          // with nobody is the ordinary case, and forcing a value here would
+          // manufacture a price for every errand the creator ran.
+          cost: { type: 'STRING' },
+          consensus: { type: 'STRING' },
         },
         ['kind', 'text', 'basis', 'times_seen', 'confidence', 'source_video'],
       ),
@@ -235,6 +240,11 @@ const KNOWLEDGE_SYSTEM = `You are TwinAI's Creator Knowledge engine. You are giv
 - times_seen is how many of the supplied videos carried it, as a digit.
 - confidence is how sure YOU are that this is really what they meant, as a decimal between 0 and 1. It is a different question from basis: basis is HOW you know, confidence is HOW WELL. A remark you heard clearly but only once is "stated" with a middling confidence. Do not round it up to 1 to look decisive.
 - source_video is the number of the VIDEO this came from, as a digit matching the "--- VIDEO n ---" headings below. Where an item appears in several, give the first. A creator correcting an item needs to be able to go and watch the thing you read it out of.
+- TWO OPTIONAL FIELDS RECORD THE HALF OF A SENTENCE THIS EXTRACTOR HAS ALWAYS DROPPED. Both are usually empty, and an empty one is the normal, correct, unpenalised answer. Fill them only when the creator SAID the thing.
+- cost — fill ONLY on an item where they said what it COST THEM: money, months, a job, a client, a launch, a thing they had to undo. "$40,000 of inventory that never sold", "lost the client", "two years". A lesson with a price on it is the most useful thing a creator can hand a script, and dropping the price is how a lesson gets recorded as flat biography: "Currently works at Microsoft" is what gets written when nobody asked what anything cost. If they described doing something but never said what it cost, LEAVE cost EMPTY. Do not price it for them, do not restate the effort as a cost, and do not call an ordinary activity expensive so the field has something in it.
+- consensus — fill ONLY on an item where they NAMED a belief other people hold and then contradicted it. Record THE OTHER SIDE, in their framing: "most people think you need 10,000 followers before you can sell anything", "the standard advice is to post daily". The item's own text stays THEIR position; consensus is what they are arguing AGAINST. A stance stored without it — "believes chai is better than coffee" — has lost the half that made it an argument. A PREFERENCE OR A COMPARISON IS NOT A CONSENSUS: "true success is inner peace rather than accumulating wealth" ranks two things the creator likes differently and names nobody who believes otherwise, so its consensus is EMPTY. If they did not say what the other side believes, LEAVE consensus EMPTY.
+- NEITHER FIELD CHANGES kind, AND NEITHER IS A NEW kind. A costly lesson is still an "experience"; a stance with a named consensus is still an "opinion". File every item exactly as you do now — these two fields add the missing half, they do not re-file anything, and the plain biographical and named-product items must keep coming out exactly as before.
+- BOTH FIELDS OBEY EVERY RULE ABOVE. Fill them from what was actually said and never from what would merely be plausible, keep the real names inside them, and never round basis up because an item now carries a cost.
 - RETURN AN EMPTY LIST IF THE TRANSCRIPTS CARRY NO SUBSTANCE. That is a real and useful answer. Do NOT pad it, do NOT invent positions that would merely be plausible for someone in this niche, and do NOT convert a generic remark into a belief to have something to write.`
 
 export interface RawKnowledgeItem {
@@ -249,6 +259,11 @@ export interface RawKnowledgeItem {
   /** Which "--- VIDEO n ---" it was read out of, so the caller can map it back
    *  to a real URL. Provenance a creator can act on beats an opaque id. */
   source_video: string
+  /** What the thing COST them, when they said so. Absent is the normal case. */
+  cost?: string
+  /** The belief they NAMED and argued against, when they named one. Absent is
+   *  the normal case. */
+  consensus?: string
 }
 
 /** Distil what a creator knows from what they said. Returns raw rows for the
@@ -341,8 +356,32 @@ Record what these videos are about, what products they name, and what subjects a
  * loses its `stated` and is demoted to coverage. That costs the writer one
  * quotable line. The alternative costs a creator a stance they never took.
  */
+/**
+ * ⚖️ AND THE SAME ARGUMENT RETIRES `cost` AND `consensus` FROM CAPTIONS.
+ *
+ * A caption proves a video was made and nothing about what it concluded, which
+ * is the entire reason `basis` is clamped above. `cost` says what a thing took
+ * from this creator and `consensus` says what they were arguing against — both
+ * are conclusions, and both are exactly the sort a declarative-looking headline
+ * invites the model to supply. "I lost everything on my first store" is a
+ * title; nobody heard him say what it cost, and the story step would then ask
+ * him to confirm a price he never named.
+ *
+ * `CAPTION_SYSTEM` is not asked for these fields at all. That is a prompt rule,
+ * and prompt rules in this file have now failed four times, so the call site —
+ * which knows by construction that it is holding captions — decides it instead.
+ */
 export function clampCaptionBasis(items: RawKnowledgeItem[]): RawKnowledgeItem[] {
-  return items.map((i) => (i?.basis === 'demonstrated' ? i : { ...i, basis: 'demonstrated' }))
+  return items.map((i) => {
+    // ⚖️ AN ALREADY-CORRECT ITEM IS RETURNED AS THE SAME OBJECT. The clamp is a
+    // boundary, not a rewriter, and copying every row on the way through would
+    // make "this batch was untouched" unobservable — which `captionBasis.test`
+    // pins deliberately.
+    const clean = i?.basis === 'demonstrated' && i.cost === undefined && i.consensus === undefined
+    if (clean) return i
+    const { cost: _cost, consensus: _consensus, ...rest } = i ?? ({} as RawKnowledgeItem)
+    return { ...rest, basis: 'demonstrated' } as RawKnowledgeItem
+  })
 }
 
 /** How much spoken text one extraction call may carry.

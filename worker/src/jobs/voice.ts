@@ -276,6 +276,13 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
       ...fromAudio.map((r) => ({ ...r, __source: 'transcript' as const })),
       ...fromCaptions.map((r) => ({ ...r, __source: 'caption' as const })),
     ]
+    // A recorded optional line, or null. Blank and whitespace-only collapse to
+    // null so an extractor that emits "" for a field it had nothing for cannot
+    // be read as having recorded something.
+    const shortOrNull = (v: unknown): string | null => {
+      const t = String(v ?? '').trim().replace(/\s+/g, ' ')
+      return t === '' ? null : t.slice(0, 240)
+    }
     let rows = raw
       .filter((r) => typeof r?.text === 'string' && r.text.trim().length > 0)
       .slice(0, KNOWLEDGE_ROWS_PER_SCAN)
@@ -306,6 +313,12 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
           return Number.isInteger(i) && i >= 1 && i <= urls.length ? urls[i - 1] : null
         })(),
         last_observed_at: new Date().toISOString(),
+        // ⚖️ THE TWO HALVES THE EXTRACTOR USED TO DROP. Both are OPTIONAL and
+        // both normalise an absent/blank/whitespace value to null: "nobody
+        // recorded a cost" and "it cost nothing" are different states, and only
+        // null says the first. Capped at 240 like `text`, for the same reason.
+        cost: shortOrNull(r.cost),
+        consensus: shortOrNull(r.consensus),
       }))
     // ⚠️ THE TAXONOMY IS A CLOSED SET AND THE MODEL DOES NOT KNOW THAT.
     // `creator_knowledge_kind_valid` CHECKs this list, so an unlisted kind is a
