@@ -1720,8 +1720,34 @@ const VIDEO_GOALS_INLINE = [
 ] as const
 const CONTENT_FOCUS_INLINE = [
   'expertise', 'product', 'experience', 'opinion', 'review', 'story',
-  'reference_adapted', 'trending',
 ] as const
+// ⚠️ THE COMMITTED OLD→NEW TABLE, MIRRORED FROM `videoIntent.ts`. Old clients
+// and un-backfilled rows still send `reference_adapted` and `trending`, and the
+// server must keep READING them — stop writing a value, keep reading it, ship.
+// Both map to null because null is what preserves their behaviour EXACTLY:
+// each compiled to an empty kind preference, no product substance and no
+// own-experience requirement, which is what an unanswered focus compiles to.
+// `reference_adapted` was a fidelity setting inside the subject question
+// (`reference_use` owns that axis); `trending` had no reader anywhere.
+const CONTENT_FOCUS_MIGRATION_INLINE: Record<string, string | null> = {
+  expertise: 'expertise',
+  product: 'product',
+  experience: 'experience',
+  opinion: 'opinion',
+  review: 'review',
+  story: 'story',
+  reference_adapted: null,
+  trending: null,
+}
+function normalizeContentFocusInline(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const mapped = CONTENT_FOCUS_MIGRATION_INLINE[v] ?? null
+  // ⚖️ THE TARGET MUST BE A VALUE THE SCREEN CAN STILL WRITE. A mapping that
+  // pointed at a retired value would be a migration to nowhere, and this is the
+  // cheap place to notice rather than three prompt stages later.
+  return mapped !== null && (CONTENT_FOCUS_INLINE as readonly string[]).includes(mapped)
+    ? mapped : null
+}
 const VIEWER_OUTCOMES_INLINE = [
   'learn', 'change_mind', 'feel_inspired', 'remember_me', 'comment', 'share',
   'follow', 'check_out_offer', 'convert',
@@ -1749,8 +1775,6 @@ const FOCUS_PREFERS_INLINE: Record<string, readonly string[]> = {
   opinion: ['opinion', 'claim'],
   review: ['product', 'experience', 'claim'],
   story: ['experience', 'example'],
-  reference_adapted: [],
-  trending: [],
 }
 
 const OUTCOME_PAYOFF_INLINE: Record<string, string> = {
@@ -1775,19 +1799,36 @@ const OUTCOME_FLOOR_INLINE: Record<string, number> = {
 // ⚠️ INLINED FROM `videoIntent.ts` AND PARITY-TESTED. Edge functions cannot
 // import @twinai/shared, so this is a deliberate copy — the parity test executes
 // BOTH copies against every value rather than comparing their text.
-const REFERENCE_USE_INLINE: readonly string[] = ['structure', 'idea_structure', 'stay_close', 'inspiration']
+const REFERENCE_USE_INLINE: readonly string[] = ['structure', 'idea_structure', 'stay_close']
+// ⚠️ THE COMMITTED OLD→NEW TABLE, MIRRORED FROM `videoIntent.ts`. Four options
+// read as two pairs of paraphrases to creators; this is the ordered three-point
+// scale that replaces them, most-mine to most-theirs. `inspiration` →
+// `structure` is a REAL behaviour change, not a rename: both replace the
+// reference's subject, but `inspiration` derived fidelity `loose` and
+// `structure` derives `close`. Old clients still send `inspiration`, so this
+// keeps reading it.
+const REFERENCE_USE_MIGRATION_INLINE: Record<string, string> = {
+  structure: 'structure',
+  idea_structure: 'idea_structure',
+  stay_close: 'stay_close',
+  inspiration: 'structure',
+}
+function normalizeReferenceUseInline(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const mapped = REFERENCE_USE_MIGRATION_INLINE[v] ?? null
+  // Same guard as the focus normalizer: a mapping must land on a live value.
+  return mapped !== null && REFERENCE_USE_INLINE.includes(mapped) ? mapped : null
+}
 const REFERENCE_USE_DIRECTIVE_INLINE: Record<string, string> = {
   structure:
-    'TAKE THE MECHANICS, NOT THE SUBJECT. Keep the beat order, the hook mechanism and the escalation, and replace what every beat is ABOUT with the creator\'s own material.',
+    'KEEP THE MECHANICS, REPLACE THE SUBJECT. Keep the beat order, the hook mechanism and the escalation; replace what every single beat is ABOUT with the creator\'s own material. The reference decides the SHAPE and nothing else — if a beat still names the reference\'s topic, it has not been rewritten.',
   idea_structure:
-    'TAKE THE CENTRAL IDEA AND THE MECHANICS. Keep what the reference is arguing and how it argues it, and re-ground every example, number and story in the creator\'s own world.',
+    'KEEP THE POINT, REPLACE THE EVIDENCE. Keep what the reference is arguing and the order it argues it in; replace every example, number, story and named case with the creator\'s own. The claim may survive; not one of the things used to support it may.',
   stay_close:
-    'STAY AS CLOSE AS THE FACTS ALLOW. Preserve the format, the beat count and the topic where the creator can honestly speak to it — and the moment a beat would need a fact they do not have, re-ground that beat rather than borrowing the reference\'s.',
-  inspiration:
-    'TAKE ONLY THE STRONGEST MECHANIC. Use the one device that makes the reference work and build a freer video around it; the beat order and the topic are not binding.',
+    'KEEP AS MUCH AS THE CREATOR CAN HONESTLY SAY, REPLACE THE REST. Preserve the format, the beat count and the topic wherever the creator can speak to it from their own knowledge — and the moment a beat would need a fact, a number or an experience they do not have, re-ground that beat in something they do rather than borrowing the reference\'s.',
 }
 const KEEPS_REFERENCE_TOPIC_INLINE: Record<string, boolean> = {
-  structure: false, idea_structure: true, stay_close: true, inspiration: false,
+  structure: false, idea_structure: true, stay_close: true,
 }
 
 // ⚠️ FIX 10 (Wave 4). ONE HOME FOR FIDELITY, INLINED FROM `videoIntent.ts` AND
@@ -1800,7 +1841,7 @@ const KEEPS_REFERENCE_TOPIC_INLINE: Record<string, boolean> = {
 // `fidelity`: it wins with `reference_use` whenever the creator answered it,
 // and falls back to the slider only when they have not.
 const FIDELITY_FROM_REFERENCE_USE_INLINE: Record<string, 'close' | 'balanced' | 'loose'> = {
-  structure: 'close', idea_structure: 'balanced', stay_close: 'close', inspiration: 'loose',
+  structure: 'close', idea_structure: 'balanced', stay_close: 'close',
 }
 function resolveFidelityInline(
   referenceUse: string | null,
@@ -1852,15 +1893,11 @@ function compileVideoIntentInline(answers: {
   goal?: unknown; focus?: unknown; outcome?: unknown; referenceUse?: unknown
 }): VideoIntentInline {
   const goal = isVideoGoalInline(answers.goal) ? String(answers.goal) : null
-  const focus = typeof answers.focus === 'string'
-    && (CONTENT_FOCUS_INLINE as readonly string[]).includes(answers.focus)
-    ? answers.focus : null
+  const focus = normalizeContentFocusInline(answers.focus)
   const outcome = typeof answers.outcome === 'string'
     && (VIEWER_OUTCOMES_INLINE as readonly string[]).includes(answers.outcome)
     ? answers.outcome : null
-  const referenceUse = typeof answers.referenceUse === 'string'
-    && REFERENCE_USE_INLINE.includes(answers.referenceUse)
-    ? answers.referenceUse : null
+  const referenceUse = normalizeReferenceUseInline(answers.referenceUse)
   const resolutions: string[] = []
 
   let goalDirective = goal ? GOAL_DIRECTIVE_INLINE[goal] : null
@@ -3547,10 +3584,7 @@ Deno.serve(async (req: Request) => {
   const legacyFidelitySlider = ['close', 'balanced', 'loose'].includes(body.fidelity ?? '')
     ? body.fidelity!
     : null
-  const normalizedReferenceUseForFidelity = typeof body.reference_use === 'string'
-    && REFERENCE_USE_INLINE.includes(body.reference_use)
-    ? body.reference_use
-    : null
+  const normalizedReferenceUseForFidelity = normalizeReferenceUseInline(body.reference_use)
   const fidelity = resolveFidelityInline(normalizedReferenceUseForFidelity, legacyFidelitySlider)
   // Make fidelity actually change the output, not just be a label. Each level is a
   // hard directive the model must obey when shaping the script + structure.

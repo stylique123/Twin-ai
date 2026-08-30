@@ -40,52 +40,107 @@ export const VIDEO_GOALS = [
 ] as const
 export type VideoGoal = (typeof VIDEO_GOALS)[number]
 
-export const VIDEO_GOAL_LABELS: Record<VideoGoal, string> = {
-  followers: 'Grow my audience',
-  authority: 'Build authority',
+
+// ── THE CANONICAL GOAL VOCABULARY, DEFINED ONCE, HERE ─────────────────────
+//
+// ⚠️ TWO SURFACES WERE ASKING ONE QUESTION IN TWO VOCABULARIES. Onboarding
+// stores a STANDING goal in `brand_voices.pre_script_brief.contentGoals`, from
+// `BRIEF_GOALS` in `preScriptBrief.ts`; the remix screen asked a SECOND,
+// per-video goal from `VIDEO_GOALS` here. The two lists were nearly the same
+// list with different labels — "Teach people" against "Teach something", "Get
+// leads or clients" against "Get customers or leads" — which is the same fact
+// owned twice and described differently in each place.
+//
+// ⚖️ SO `VIDEO_GOALS` IS DECLARED THE CANONICAL SET AND THE OTHER SURFACE IS A
+// SUBSET OF IT. `BRIEF_GOALS` is, today, exactly `VIDEO_GOALS` minus
+// `conversations` — so no value has to be renamed, no stored answer changes
+// meaning, and there is no migration to run. Onboarding should import
+// `CANONICAL_GOALS` (or a chosen subset of it) rather than restate a list;
+// `standingGoalIsCanonical` below is the guard that FAILS THE BUILD the moment
+// the two drift apart again.
+export const CANONICAL_GOALS = VIDEO_GOALS
+export type CanonicalGoal = VideoGoal
+
+/**
+ * THE ONE SET OF WORDS FOR THE GOAL, EVERYWHERE.
+ *
+ * ⚠️ THE SAME CONCEPT HAD TWO NAMES IN TWO PLACES. Settings said "Teach people"
+ * and "Get leads or clients"; the remix screen said "Teach something" and "Get
+ * customers or leads". A creator meeting both could not know they were the same
+ * question — which is what makes the second one feel like a new question worth
+ * answering differently.
+ *
+ * ⚖️ SO THE LABELS LIVE HERE, WITH THE VOCABULARY, AND EVERY SURFACE IMPORTS
+ * THEM. Onboarding and Settings should render `CANONICAL_GOAL_LABELS[value]`
+ * rather than restating a string; a fact and the words for it belong to the
+ * same owner.
+ */
+export const CANONICAL_GOAL_LABELS: Record<CanonicalGoal, string> = {
+  followers: 'Reach more people',
+  authority: 'Build trust and reputation',
   educate: 'Teach something',
-  conversations: 'Start conversations',
-  leads: 'Get leads',
+  conversations: 'Get people talking',
+  leads: 'Get leads or clients',
   sell: 'Sell something',
   entertain: 'Entertain',
   personal_brand: 'Build my personal brand',
 }
 
-// ── D1 · THE ONBOARDING GOAL AS A STARTING POINT FOR THIS ONE VIDEO ────────
-//
-// ⚠️ NOT A DUPLICATE QUESTION — A DEFAULT FOR ONE. `contentGoals` (onboarding,
-// up to two, `brief.contentGoals`) states what the creator's content should do
-// IN GENERAL; `video_goal` (this screen) states what THIS video is for, and the
-// server already prefers the per-video answer whenever it exists (see
-// `generate-blueprint/index.ts`, `const goal = intent.goalDirective ??
-// standingGoalDirectiveInline(...)`). Forcing a blank re-pick every single video
-// ignores a standing preference the creator already gave Twin; this maps it onto
-// the nearest chip so the screen opens pre-selected and a single tap either
-// confirms or overrides it.
-//
-// ⚖️ THE FIRST RECOGNISED GOAL, NEVER A BLEND — same rule the server's
-// `standingGoalDirectiveInline` uses for the same stored list, so the value a
-// creator sees suggested here is the same one that would silently back it up on
-// the server if this chip were left unanswered.
-const CONTENT_GOAL_TO_VIDEO_GOAL: Partial<Record<string, VideoGoal>> = {
+/** @deprecated The old name for `CANONICAL_GOAL_LABELS`. Kept for one release
+ *  so no importer breaks while the surfaces move across — rule one: stop
+ *  writing a name before deleting it, never both at once. */
+export const VIDEO_GOAL_LABELS = CANONICAL_GOAL_LABELS
+
+/**
+ * EVERY STANDING (onboarding) GOAL VALUE → ITS CANONICAL VALUE.
+ *
+ * ⚠️ TOTAL AND EXPLICIT, NOT A CAST. This is the committed old→new table. Each
+ * key is a value `BRIEF_GOALS` can hold today; each maps to exactly one
+ * canonical goal. `standingGoalIsCanonical` asserts the table covers the live
+ * `BRIEF_GOALS`, so adding an onboarding chip without deciding what it MEANS to
+ * the writer stops the build instead of silently reaching nothing.
+ *
+ * ⚠️ `personal_brand` NOW MAPS TO ITSELF, AND THAT FIXES A LIVE DOWNGRADE. It
+ * used to map to `authority` because `personal_brand` was not a remix chip — but
+ * the pre-selected chip is SENT, so a creator whose standing goal was "build my
+ * personal brand" had it rewritten to `authority` on the way to the writer, and
+ * received the authority directive instead of the personal-brand one that
+ * `standingGoalDirectiveInline` would have given them had the chip been left
+ * blank. Pre-filling a field must not change the value it pre-fills.
+ */
+export const STANDING_GOAL_TO_CANONICAL: Record<string, CanonicalGoal> = {
   followers: 'followers',
   authority: 'authority',
   educate: 'educate',
   leads: 'leads',
   sell: 'sell',
   entertain: 'entertain',
-  // ⚖️ NOT A TOP-LEVEL CHIP ON THIS SCREEN (see INTENT_QUESTIONS below) — it is
-  // reached here by picking "Show I know my stuff", the nearest chip a creator
-  // whose standing goal is "build my personal brand" would actually tap.
-  personal_brand: 'authority',
+  personal_brand: 'personal_brand',
 }
 
+/** ⚖️ THE ONE VALUE ONBOARDING CANNOT EXPRESS, NAMED RATHER THAN HIDDEN.
+ *  `conversations` exists only per-video: it was split out of `leads` because
+ *  `leads` grants the creator's half of the sell permission and a creator asking
+ *  for replies was granting themselves a pitch. Onboarding has no such chip, so
+ *  a standing goal can never resolve to it — only an explicit per-video change
+ *  can. That is a real gap and it is deliberate, not an oversight. */
+export const REMIX_ONLY_GOALS: readonly CanonicalGoal[] = ['conversations']
+
+/**
+ * The standing goal, as a canonical value — the fact the remix screen DISPLAYS
+ * instead of re-asking.
+ *
+ * ⚖️ THE FIRST RECOGNISED GOAL, NEVER A BLEND — the same rule the server's
+ * `standingGoalDirectiveInline` uses on the same stored list, so what the
+ * creator is shown here is the same goal that would have backed them up on the
+ * server had this screen shown nothing at all.
+ */
 export function defaultVideoGoalFromContentGoals(
   goals: readonly string[] | null | undefined,
-): VideoGoal | null {
+): CanonicalGoal | null {
   if (!Array.isArray(goals)) return null
   for (const g of goals) {
-    const mapped = typeof g === 'string' ? CONTENT_GOAL_TO_VIDEO_GOAL[g] : undefined
+    const mapped = typeof g === 'string' ? STANDING_GOAL_TO_CANONICAL[g] : undefined
     if (mapped) return mapped
   }
   return null
@@ -100,9 +155,63 @@ export function defaultVideoGoalFromContentGoals(
 // rather than "what I have an opinion about". That is what this answers.
 export const CONTENT_FOCUS = [
   'expertise', 'product', 'experience', 'opinion', 'review', 'story',
-  'reference_adapted', 'trending',
 ] as const
 export type ContentFocus = (typeof CONTENT_FOCUS)[number]
+
+/** Every value `content_focus` has ever been stored as, including the two
+ *  retired ones. Kept so old rows and old clients can still be READ. */
+export const LEGACY_CONTENT_FOCUS = [
+  'expertise', 'product', 'experience', 'opinion', 'review', 'story',
+  'reference_adapted', 'trending',
+] as const
+export type LegacyContentFocus = (typeof LEGACY_CONTENT_FOCUS)[number]
+
+/**
+ * THE COMMITTED OLD→NEW TABLE for `generation_choices.selected_focus`.
+ *
+ * ⚠️ TOTAL OVER `LEGACY_CONTENT_FOCUS` — an unmapped value fails the build in
+ * `content-focus-mapping-is-total.test.ts` rather than defaulting silently.
+ *
+ * ⚠️ `reference_adapted` ("This reference idea — keep the main idea, but make
+ * it fit me") WAS A FIDELITY SETTING LIVING INSIDE THE SUBJECT QUESTION. "Keep
+ * the main idea but make it fit me" is word-for-word what `reference_use:
+ * idea_structure` means, so one property had two controls and a creator could
+ * set them against each other. Fidelity has one home and it is `reference_use`.
+ *
+ * ⚠️ `trending` ("Something happening now") HAD NO READER AT ALL. Every reader
+ * of `focus` was checked: `FOCUS_PREFERS` gave it `[]`, `wantsProductSubstance`
+ * is `product`/`review`, `wantsOwnExperience` is `experience`/`story`,
+ * `resolveSubjectSource` treats it as no-own-source, and no conflict rule names
+ * it. Its compiled record was byte-identical to answering nothing. A question
+ * nobody reads is a tax on the creator, so it is gone.
+ *
+ * ⚖️ BOTH MAP TO `null`, AND `null` IS WHAT PRESERVES BEHAVIOUR EXACTLY — not
+ * a near-miss. Both compiled to an empty kind preference, no product substance
+ * and no own-experience requirement, which is precisely what an unanswered
+ * focus compiles to. Mapping either onto a surviving option would have ADDED a
+ * retrieval tilt the creator never asked for, so the honest target is silence.
+ */
+export const CONTENT_FOCUS_MIGRATION: Record<LegacyContentFocus, ContentFocus | null> = {
+  expertise: 'expertise',
+  product: 'product',
+  experience: 'experience',
+  opinion: 'opinion',
+  review: 'review',
+  story: 'story',
+  reference_adapted: null,
+  trending: null,
+}
+
+/** The one ingress for `content_focus`. */
+export function normalizeContentFocus(v: unknown): ContentFocus | null {
+  if (typeof v !== 'string') return null
+  const mapped = CONTENT_FOCUS_MIGRATION[v as LegacyContentFocus] ?? null
+  // ⚖️ THE TARGET MUST BE A VALUE THE SCREEN CAN STILL WRITE. A mapping that
+  // pointed at a retired value would be a migration to nowhere, and this is the
+  // cheap place to notice rather than three prompt stages later.
+  return mapped !== null && (CONTENT_FOCUS as readonly string[]).includes(mapped)
+    ? mapped : null
+}
 
 export const CONTENT_FOCUS_LABELS: Record<ContentFocus, string> = {
   expertise: 'My expertise or ideas',
@@ -111,8 +220,6 @@ export const CONTENT_FOCUS_LABELS: Record<ContentFocus, string> = {
   opinion: 'An opinion or hot take',
   review: 'A review or comparison',
   story: 'A story',
-  reference_adapted: 'The reference idea, adapted to me',
-  trending: 'Something trending or current',
 }
 
 // ── Q3 · WHAT SHOULD THE VIEWER LEAVE WITH? ────────────────────────────────
@@ -141,8 +248,62 @@ export type ViewerOutcome = (typeof VIEWER_OUTCOMES)[number]
 // experience, ownership or exact wording. Those are refused at every value,
 // which is why `stay_close` can exist at all: it is the most faithful setting
 // available and it is still bounded by what may be transferred.
-export const REFERENCE_USE = ['structure', 'idea_structure', 'stay_close', 'inspiration'] as const
+// ⚠️ IT WAS FOUR OPTIONS THAT READ AS TWO PAIRS OF PARAPHRASES. "Just how it is
+// built — same shape and hook style, but about my own thing" and "Just the good
+// bit — take what makes it work and go my own way" are the same sentence to a
+// creator; so are "The idea and how it is built" and "Keep it close". A control
+// whose options cannot be told apart is not a control, it is a coin toss the
+// creator is asked to perform.
+//
+// ⚖️ SO IT IS AN ORDERED THREE-POINT SCALE, most-mine to most-theirs, and the
+// ORDER is the thing that makes it decidable: each step gives up one more thing
+// to the reference. Declaration order here IS presentation order.
+//
+// ⚠️ AND IT IS NOT A CLAIM ABOUT BORROWING. Four live runs proved this control
+// does NOT currently govern content borrowing — at the loosest setting the
+// reference's exact sentences still reached the draft. Renaming the options
+// makes the promise LEGIBLE, not TRUE. The behavioural fix is a separate change
+// and is not in this one; nobody reading this file should believe otherwise.
+export const REFERENCE_USE = ['structure', 'idea_structure', 'stay_close'] as const
 export type ReferenceUse = (typeof REFERENCE_USE)[number]
+
+/** Every value `reference_use` has ever been stored as, including the retired
+ *  one. Kept so the server can still READ what old clients and old rows hold. */
+export const LEGACY_REFERENCE_USE = [
+  'structure', 'idea_structure', 'stay_close', 'inspiration',
+] as const
+export type LegacyReferenceUse = (typeof LEGACY_REFERENCE_USE)[number]
+
+/**
+ * THE COMMITTED OLD→NEW TABLE for `generation_choices.reference_use`.
+ *
+ * ⚠️ TOTAL OVER `LEGACY_REFERENCE_USE`, so a value nobody has mapped cannot
+ * compile — `reference-use-mapping-is-total.test.ts` fails the build rather
+ * than letting an unmapped value default silently to anything.
+ *
+ * ⚠️ `inspiration` → `structure`, AND IT IS A REAL BEHAVIOUR CHANGE, NOT A
+ * RENAME. Both replace the reference's subject (`keepsReferenceTopic: false`),
+ * so the axis this control owns is unchanged — but `inspiration` derived
+ * `fidelity: 'loose'` and `structure` derives `fidelity: 'close'`. Two
+ * production rows held `inspiration` and are backfilled by the migration
+ * beside this change. Saying "this is only a rename" would be false.
+ */
+export const REFERENCE_USE_MIGRATION: Record<LegacyReferenceUse, ReferenceUse> = {
+  structure: 'structure',
+  idea_structure: 'idea_structure',
+  stay_close: 'stay_close',
+  inspiration: 'structure',
+}
+
+/** The one ingress for `reference_use`. Anything unrecognised stays null —
+ *  unanswered is not a default answer. */
+export function normalizeReferenceUse(v: unknown): ReferenceUse | null {
+  if (typeof v !== 'string') return null
+  const mapped = REFERENCE_USE_MIGRATION[v as LegacyReferenceUse] ?? null
+  // Same guard as the focus normalizer: a mapping must land on a live value.
+  return mapped !== null && (REFERENCE_USE as readonly string[]).includes(mapped)
+    ? mapped : null
+}
 
 /** What each setting instructs the writer to carry across.
  *
@@ -151,13 +312,11 @@ export type ReferenceUse = (typeof REFERENCE_USE)[number]
  *  mechanism, replace every subject" is a decidable instruction. */
 export const REFERENCE_USE_DIRECTIVE: Record<ReferenceUse, string> = {
   structure:
-    'TAKE THE MECHANICS, NOT THE SUBJECT. Keep the beat order, the hook mechanism and the escalation, and replace what every beat is ABOUT with the creator\'s own material.',
+    'KEEP THE MECHANICS, REPLACE THE SUBJECT. Keep the beat order, the hook mechanism and the escalation; replace what every single beat is ABOUT with the creator\'s own material. The reference decides the SHAPE and nothing else — if a beat still names the reference\'s topic, it has not been rewritten.',
   idea_structure:
-    'TAKE THE CENTRAL IDEA AND THE MECHANICS. Keep what the reference is arguing and how it argues it, and re-ground every example, number and story in the creator\'s own world.',
+    'KEEP THE POINT, REPLACE THE EVIDENCE. Keep what the reference is arguing and the order it argues it in; replace every example, number, story and named case with the creator\'s own. The claim may survive; not one of the things used to support it may.',
   stay_close:
-    'STAY AS CLOSE AS THE FACTS ALLOW. Preserve the format, the beat count and the topic where the creator can honestly speak to it — and the moment a beat would need a fact they do not have, re-ground that beat rather than borrowing the reference\'s.',
-  inspiration:
-    'TAKE ONLY THE STRONGEST MECHANIC. Use the one device that makes the reference work and build a freer video around it; the beat order and the topic are not binding.',
+    'KEEP AS MUCH AS THE CREATOR CAN HONESTLY SAY, REPLACE THE REST. Preserve the format, the beat count and the topic wherever the creator can speak to it from their own knowledge — and the moment a beat would need a fact, a number or an experience they do not have, re-ground that beat in something they do rather than borrowing the reference\'s.',
 }
 
 /** ⚖️ HOW MUCH TOPIC SURVIVES, as a separate question from how much STRUCTURE
@@ -168,7 +327,6 @@ export const KEEPS_REFERENCE_TOPIC: Record<ReferenceUse, boolean> = {
   structure: false,
   idea_structure: true,
   stay_close: true,
-  inspiration: false,
 }
 
 // ── FIX 10 (Wave 4). ONE HOME FOR FIDELITY ─────────────────────────────────
@@ -191,12 +349,10 @@ export const KEEPS_REFERENCE_TOPIC: Record<ReferenceUse, boolean> = {
 export const FIDELITY_FROM_REFERENCE_USE: Record<ReferenceUse, 'close' | 'balanced' | 'loose'> = {
   // Keeps the beat order and hook mechanism tight, same as fidelity=close.
   structure: 'close',
-  // Keeps the idea and skeleton but rewrites freely — fidelity=balanced.
+  // Keeps the point but rewrites all the evidence — fidelity=balanced.
   idea_structure: 'balanced',
-  // "Stay as close as the facts allow" is literally fidelity=close.
+  // "Keep as much as the creator can honestly say" is literally fidelity=close.
   stay_close: 'close',
-  // Only the strongest mechanic survives — fidelity=loose.
-  inspiration: 'loose',
 }
 
 /**
@@ -291,12 +447,6 @@ const FOCUS_PREFERS: Record<ContentFocus, readonly string[]> = {
   opinion: ['opinion', 'claim'],
   review: ['product', 'experience', 'claim'],
   story: ['experience', 'example'],
-  // ⚖️ EMPTY ON PURPOSE, AND IT IS NOT A GAP. "Adapt the reference idea to me"
-  // says where the SHAPE comes from, not where the substance does — so it must
-  // not tilt retrieval toward any kind. Tilting it would quietly answer a
-  // question the creator did not ask.
-  reference_adapted: [],
-  trending: [],
 }
 
 // ── WHAT A GOAL IMPLIES WHEN NOBODY WAS ASKED ─────────────────────────────
@@ -377,13 +527,9 @@ const SELLING_OUTCOMES: ReadonlySet<ViewerOutcome> = new Set<ViewerOutcome>(['co
 
 const isGoal = (v: unknown): v is VideoGoal =>
   typeof v === 'string' && (VIDEO_GOALS as readonly string[]).includes(v)
-const isFocus = (v: unknown): v is ContentFocus =>
-  typeof v === 'string' && (CONTENT_FOCUS as readonly string[]).includes(v)
 const isOutcome = (v: unknown): v is ViewerOutcome =>
   typeof v === 'string' && (VIEWER_OUTCOMES as readonly string[]).includes(v)
 
-const isReferenceUse = (v: unknown): v is ReferenceUse =>
-  typeof v === 'string' && (REFERENCE_USE as readonly string[]).includes(v)
 
 /**
  * Turn three answers into one record with named readers.
@@ -403,9 +549,9 @@ export function compileVideoIntent(answers: {
   referenceUse?: unknown
 }): VideoIntent {
   const goal = isGoal(answers.goal) ? answers.goal : null
-  const focus = isFocus(answers.focus) ? answers.focus : null
+  const focus = normalizeContentFocus(answers.focus)
   const outcome = isOutcome(answers.outcome) ? answers.outcome : null
-  const referenceUse = isReferenceUse(answers.referenceUse) ? answers.referenceUse : null
+  const referenceUse = normalizeReferenceUse(answers.referenceUse)
   const resolutions: string[] = []
 
   let goalDirective = goal ? GOAL_DIRECTIVE[goal] : null
@@ -534,9 +680,10 @@ export function compileVideoIntent(answers: {
  * would replace the caller's relevance with this module's, which is exactly what
  * `selectSpeakable` refuses to do and for the same reason.
  *
- * ⚖️ AN EMPTY PREFERENCE IS THE IDENTITY. `reference_adapted` and `trending` say
- * where the SHAPE comes from, not the substance, so they must leave the ranking
- * untouched rather than tilt it toward a kind nobody asked for.
+ * ⚖️ AN EMPTY PREFERENCE IS THE IDENTITY, and it is still reachable: an
+ * unanswered focus, and every retired value that `CONTENT_FOCUS_MIGRATION`
+ * sends to null, leaves the ranking untouched rather than tilting it toward a
+ * kind nobody asked for.
  */
 export function preferKinds<T extends { kind: string }>(
   ranked: readonly T[],
@@ -628,27 +775,48 @@ export const INTENT_QUESTIONS: readonly IntentQuestion[] = [
     field: 'video_goal',
     question: 'What do you want this video to do for you?',
     options: [
-      { value: 'followers', label: 'Reach more people', hint: 'Get more views and grow your audience' },
-      { value: 'authority', label: 'Show I know my stuff', hint: 'Build trust and credibility' },
-      { value: 'educate', label: 'Teach something', hint: 'Help people learn something useful' },
-      { value: 'conversations', label: 'Get people talking', hint: 'Start comments and conversations' },
-      // ⚖️ KEPT APART ON PURPOSE. Making people interested and asking them to buy
-      // now are different videos, and only the second may carry a purchase CTA.
-      { value: 'leads', label: 'Get customers or leads', hint: 'Make people interested in buying or contacting you' },
-      { value: 'sell', label: 'Sell something', hint: 'Ask people to buy or sign up now' },
-      { value: 'entertain', label: 'Entertain people', hint: 'Make something fun, interesting or memorable' },
+      // ⚠️ THIS IS THE "CHANGE" SHEET, NOT A QUESTION EVERY CREATOR ANSWERS.
+      // The remix screen DISPLAYS the creator's standing goal and only reveals
+      // these chips when they tap to change it — zero taps when their standing
+      // goal is right, one tap when it is not. The list is still here because
+      // the exception needs somewhere to go.
+      //
+      // ⚖️ AND THE LABELS COME FROM `CANONICAL_GOAL_LABELS`, so this screen and
+      // Settings say the same words for the same value. Restating them was how
+      // "Teach people" and "Teach something" became two questions.
+      { value: 'followers', label: CANONICAL_GOAL_LABELS.followers, hint: 'Get more views and grow your audience' },
+      { value: 'authority', label: CANONICAL_GOAL_LABELS.authority, hint: 'Build trust and credibility' },
+      { value: 'educate', label: CANONICAL_GOAL_LABELS.educate, hint: 'Help people learn something useful' },
+      { value: 'conversations', label: CANONICAL_GOAL_LABELS.conversations, hint: 'Start comments and conversations' },
+      // ⚖️ KEPT APART ON PURPOSE, AND THE WRITER PROVES IT. `sell` and `leads`
+      // differ in five places: the goal directive ("never a purchase on the
+      // spot" against "name it plainly at the end"), the implied outcome
+      // (`check_out_offer` against `convert`), the payoff directive, the
+      // substance floor (7 against 8) and `outcomeEvidenceNeed`. Merging them
+      // would silently rewrite every commercial CTA.
+      { value: 'leads', label: CANONICAL_GOAL_LABELS.leads, hint: 'Make people interested in buying or contacting you' },
+      { value: 'sell', label: CANONICAL_GOAL_LABELS.sell, hint: 'Ask people to buy or sign up now' },
+      { value: 'entertain', label: CANONICAL_GOAL_LABELS.entertain, hint: 'Make something fun, interesting or memorable' },
     ],
   },
   {
     field: 'content_focus',
     question: 'What should this video be about?',
     options: [
-      { value: 'expertise', label: 'Something I know well', hint: 'My advice, expertise or ideas' },
-      { value: 'experience', label: "Something I've experienced", hint: 'Something I did, learned, tried or went through' },
-      { value: 'opinion', label: 'Something I believe', hint: 'My opinion, or something I disagree with' },
-      { value: 'product', label: 'A product or service', hint: 'Something I sell, promote, review or work with' },
-      { value: 'reference_adapted', label: 'This reference idea', hint: 'Keep the main idea, but make it fit me' },
-      { value: 'trending', label: 'Something happening now', hint: 'A trend, new topic or recent update' },
+      // ⚖️ FOUR OPTIONS, AND EVERY ONE OF THEM IS THE CREATOR. The subject
+      // question asks where the SUBSTANCE comes from; every survivor names a
+      // different well inside the creator, and each tilts retrieval somewhere
+      // different. "This reference idea" and "Something happening now" named no
+      // well of the creator's at all — see `CONTENT_FOCUS_MIGRATION` for why
+      // each left and what now carries it.
+      { value: 'expertise', label: 'My advice', hint: 'Something I know well' },
+      // ⚖️ THE LABEL SAYS "STORY", THE STORED VALUE STAYS `experience`. They
+      // compile identically (same preferred kinds, same own-source
+      // requirement), so wording the chip the way a creator thinks about it
+      // costs nothing and migrates nothing.
+      { value: 'experience', label: 'My story', hint: 'Something I did, learned or went through' },
+      { value: 'opinion', label: 'My opinion', hint: 'Something I believe or disagree with' },
+      { value: 'product', label: 'My product or service' },
     ],
   },
   // ⚠️ "WHAT SHOULD THE VIEWER LEAVE WITH" USED TO SIT HERE, AND ITS BEHAVIOUR
@@ -676,26 +844,25 @@ export const INTENT_QUESTIONS: readonly IntentQuestion[] = [
   {
     field: 'reference_use',
     question: 'How much of the original should Twin keep?',
+    // ⚖️ AN ORDERED SCALE, AND THE ORDER IS THE ANSWER. Most-mine first,
+    // most-theirs last; each step hands one more thing to the reference. The
+    // old four were two pairs of paraphrases and a creator could not tell which
+    // of a pair they wanted, because there was no difference to tell.
     options: [
       {
         value: 'structure',
-        label: 'Just how it is built',
-        hint: 'Same shape and hook style, but about my own thing',
+        label: 'My topic, their structure',
+        hint: 'Same shape and hook style, completely my subject',
       },
       {
         value: 'idea_structure',
-        label: 'The idea and how it is built',
-        hint: 'Same point, made with my own examples',
+        label: 'Their topic, my take',
+        hint: 'Same point, but my examples and my opinions',
       },
       {
         value: 'stay_close',
-        label: 'Keep it close',
-        hint: 'Stay near the original wherever I can honestly say it',
-      },
-      {
-        value: 'inspiration',
-        label: 'Just the good bit',
-        hint: 'Take what makes it work and go my own way',
+        label: 'Stay close',
+        hint: 'Follow the original wherever I can honestly say it',
       },
     ],
   },

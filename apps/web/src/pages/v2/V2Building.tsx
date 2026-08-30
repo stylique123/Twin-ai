@@ -16,7 +16,7 @@ import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   INTENT_QUESTIONS, type IntentQuestion, type VideoGoal,
-  defaultVideoGoalFromContentGoals,
+  defaultVideoGoalFromContentGoals, CANONICAL_GOAL_LABELS,
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE } from '../../lib/api'
@@ -349,6 +349,10 @@ export default function V2Building() {
     rememberAnswers(buildKey(state), next)
     return next
   })
+  // ⚖️ THE ONE PIECE OF STATE THE "CHANGE" AFFORDANCE NEEDS. False is the whole
+  // point: the standing goal is shown, not asked, and the eight chips exist for
+  // the exception rather than the rule.
+  const [changingGoal, setChangingGoal] = useState(false)
   const [retryNonce, setRetryNonce] = useState(0)
   const started = useRef(false)
   // Set ONLY by the explicit Cancel button — so leaving via the nav (Library,
@@ -579,21 +583,46 @@ export default function V2Building() {
             const relevant = decidedCommercially && !showsCommercialBlock(answeredIntent)
               ? missing.filter((m) => !isCommercialField(m.field))
               : missing
-            const ask: AskItem[] = [...unanswered, ...relevant.slice(0, MAX_TEXT_QUESTIONS)]
+            // ⚠️ THE GOAL IS DISPLAYED, NOT ASKED — AND THIS IS WHERE THAT
+            // HAPPENS. `contentGoals` is a standing preference the creator
+            // already gave Twin during onboarding; re-asking it every single
+            // video is the same fact owned in two places, and the previous fix
+            // (pre-select the chip, still show all eight) only made the
+            // duplicate question cheaper to answer, not gone.
+            //
+            // ⚖️ SO: PRE-ANSWER IT AND TAKE IT OUT OF THE QUESTION LIST. The
+            // card then renders it as one line — "For: Teach something ·
+            // Change" — which is zero taps when their standing goal is right
+            // and one tap when it is not. The value is still SENT, so the
+            // per-video answer still wins on the server.
+            //
+            // ⚖️ AND ONLY WHEN THERE IS A STANDING GOAL TO SHOW. A creator who
+            // never gave one still gets the full question, because displaying a
+            // fact nobody owns would be inventing one.
+            const standingGoal = defaultVideoGoalFromContentGoals(
+              Array.isArray(vBrief.contentGoals) ? vBrief.contentGoals as string[] : null)
+            // ⚖️ WRITTEN BEFORE THE LIST IS BUILT, because the list is what asks
+            // and this is what stops it asking. Only when the chip was actually
+            // going to be asked, and only when nothing was already picked or
+            // restored for THIS build — a tab reclaimed mid-answer must not
+            // have the creator's own choice overwritten in front of them.
+            if (standingGoal
+              && unanswered.some((q) => q.field === 'video_goal')
+              && !(askAnswers.video_goal ?? '').trim()) {
+              answer('video_goal', standingGoal)
+            }
+            // ⚠️ NOT READ BACK OUT OF `answersRef`, AND THAT WAS THE BUG WAITING
+            // TO HAPPEN. `answer` writes React state; `answersRef` is only
+            // reconciled when the build button is pressed. Reading the ref
+            // immediately after writing would have seen the OLD value, silently
+            // left the goal in the question list, and re-asked it anyway — the
+            // exact thing this change exists to stop.
+            const goalIsDisplayed = Boolean(standingGoal)
+            const ask: AskItem[] = [
+              ...unanswered.filter((q) => !(goalIsDisplayed && q.field === 'video_goal')),
+              ...relevant.slice(0, MAX_TEXT_QUESTIONS),
+            ]
             if (ask.length && alive) {
-              // D1: THE STANDING GOAL PRE-FILLS THE PER-VIDEO CHIP, NOT SKIPS IT.
-              // The question still shows — a creator sees exactly what Twin
-              // assumed and can change it in one tap — but it opens on their
-              // onboarding preference instead of a blank slate they have to
-              // re-pick for every video. Only when the chip is actually being
-              // asked (`unanswered`) and only when nothing was already typed or
-              // restored for THIS build (`askAnswers` from sessionStorage).
-              if (unanswered.some((q) => q.field === 'video_goal')
-                && !(askAnswers.video_goal ?? '').trim()) {
-                const suggested = defaultVideoGoalFromContentGoals(
-                  Array.isArray(vBrief.contentGoals) ? vBrief.contentGoals as string[] : null)
-                if (suggested) answer('video_goal', suggested)
-              }
               // No spend, no ingest, no wait — and `active` stays at 0 so the
               // bar does not pretend work is happening behind the card.
               rememberAsk(key, ask)
@@ -958,6 +987,19 @@ export default function V2Building() {
     return () => { alive = false }
   }, [askQuestions, products])
 
+  // ── THE GOAL, DISPLAYED RATHER THAN RE-ASKED ─────────────────────────────
+  //
+  // ⚠️ DERIVED, NOT STORED, SO A RECLAIMED TAB STILL SHOWS IT. The condition is
+  // exactly "we have an answer for the goal and we are not asking for one" —
+  // which is true both when the pre-check just filled it from the standing
+  // preference and when sessionStorage restored it, without a second flag that
+  // could disagree with the first.
+  const goalQuestion = INTENT_QUESTIONS.find((q) => q.field === 'video_goal') ?? null
+  const displayedGoal = !(askQuestions ?? []).some((q) => q.field === 'video_goal')
+    ? ((VIDEO_GOALS as readonly string[]).includes(askAnswers.video_goal ?? '')
+      ? askAnswers.video_goal as VideoGoal : null)
+    : null
+
   const decisions = (askQuestions ?? []).filter(isChip)
   const commercial = (askQuestions ?? []).filter((q) => !isChip(q))
   const hasTwoBlocks = decisions.length > 0 && commercial.length > 0
@@ -1176,6 +1218,39 @@ export default function V2Building() {
                 {hasTwoBlocks && (
                   <span className="block text-[11px] uppercase tracking-wide text-stone/70">What this video is for</span>
                 )}
+                {/* ⚠️ ONE FACT, ONE OWNER, DISPLAYED WITH A WAY TO CHANGE IT.
+                    The creator told Twin what their content is for during
+                    onboarding. Re-asking that here, every video, is the same
+                    question in two places — so this SHOWS the answer and offers
+                    to change it. Zero taps when it is right, one tap when it is
+                    not, and the value is still sent so the per-video answer
+                    still outranks the standing one on the server. */}
+                {displayedGoal && !changingGoal && (
+                  <div className="block">
+                    <span className="text-sm leading-relaxed text-cream">This video is for</span>
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-coral/50 bg-coral/[0.08] px-3.5 py-2 text-[13px] text-cream">
+                        {CANONICAL_GOAL_LABELS[displayedGoal]}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setChangingGoal(true)}
+                        className="rounded-full px-2 py-1 text-[12px] text-stone underline underline-offset-2 transition-colors hover:text-cream"
+                      >Change</button>
+                    </div>
+                    {/* ⚖️ SAYING WHERE IT CAME FROM IS WHAT MAKES IT A DISPLAY
+                        RATHER THAN A GUESS. A prefilled value with no
+                        provenance is indistinguishable from Twin deciding. */}
+                    <span className="mt-1.5 block text-[11px] leading-snug text-stone/70">
+                      From what you told us your content is for. Changing it here only affects this video.
+                    </span>
+                  </div>
+                )}
+                {/* ⚖️ NOT GATED ON `displayedGoal`, DELIBERATELY. Tapping an active
+                    chip clears it, so the displayed value can legitimately
+                    become empty while the creator is mid-change — gating on it
+                    would make the whole question vanish under their finger. */}
+                {changingGoal && goalQuestion && renderAsk(goalQuestion)}
                 {decisions.map(renderAsk)}
               </div>
               {commercial.length > 0 && (

@@ -25,7 +25,8 @@
 // should not be merged, because a suite that answers both answers neither
 // clearly.
 import { describe, expect, it } from 'vitest'
-import { compileVideoIntent, CONTENT_FOCUS, CONTENT_FOCUS_LABELS, VIDEO_GOALS } from '../videoIntent'
+import { compileVideoIntent, CONTENT_FOCUS, CONTENT_FOCUS_LABELS, VIDEO_GOALS,
+  CONTENT_FOCUS_MIGRATION, normalizeContentFocus } from '../videoIntent'
 import { claimRulesFor, mayWriteCommercialCta } from '../productEntity'
 import { extractionTrust } from '../productExtraction'
 import { assembleCreatorProfile, toPlannerView, toWriterView } from '../profileAssembler'
@@ -512,9 +513,23 @@ describe('Scenario 1 — SaaS founder, own product, cross-niche reference', () =
 // current and the plan says no research is required, the test fails at the plan
 // — which is precisely why CDP was pulled forward.
 describe('Scenario 7 — trending content requires research', () => {
-  it('INPUT — "something trending or current" is a real answer creators pick', () => {
-    expect(CONTENT_FOCUS).toContain('trending')
-    expect(CONTENT_FOCUS_LABELS.trending).toMatch(/trending or current/i)
+  // ⚠️ THE OPTION IS GONE, AND THIS SCENARIO IS WHY. It recorded, in the two
+  // tests below, that `trending` tilted retrieval toward nothing and that the
+  // fix was a research stage nobody built. Every reader of `focus` was checked
+  // again: `FOCUS_PREFERS` gave it `[]`, `wantsProductSubstance` is
+  // product/review, `wantsOwnExperience` is experience/story,
+  // `resolveSubjectSource` treats it as no-own-source, and no conflict rule
+  // names it. Its compiled record was byte-identical to answering nothing.
+  //
+  // ⚖️ SO IT WAS RETIRED RATHER THAN LEFT ASKING. A question with no reader is a
+  // tax on the creator and a promise the system cannot keep — it invites
+  // somebody to pick "something happening now" and quietly changes nothing. The
+  // scenario stays as the standing record of the missing research stage; if that
+  // stage is ever built, the option comes back WITH its reader.
+  it('INPUT — the option was retired, and the gap it named is still open', () => {
+    expect(CONTENT_FOCUS).not.toContain('trending')
+    expect(CONTENT_FOCUS_MIGRATION.trending).toBeNull()
+    expect(normalizeContentFocus('trending')).toBeNull()
   })
 
   it('PROFILE — nothing magical happens; it must not manufacture current facts', () => {
