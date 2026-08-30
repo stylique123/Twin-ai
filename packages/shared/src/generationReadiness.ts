@@ -137,6 +137,16 @@ const ASK: Record<ReadinessField, string> = {
   // `renderAsk` does; anything reusing this map directly should too).
   relationship: 'What is your relationship to it — do you own it, earn from it, are you paid to feature it, or are you just covering it?',
   cta: 'What should viewers do after watching?',
+  // ⚖️ D3: A FALLBACK QUESTION, NOT A DEFAULT ONE. `claims`'s state below
+  // resolves from `input.productFacts` — the caller's read of the matched
+  // product entity's `evidence.sections` — and is only MISSING_REQUIRED
+  // when that is empty. The server mirrors this with `readyFacts` in
+  // `generate-blueprint/index.ts`. A caller that never populates
+  // `productFacts` (V2Building.tsx before D3) makes this fire on every
+  // promoting video, including ones whose product entity already has full
+  // extracted facts — asked, then silently discarded server-side once
+  // `readyFacts.length > 0`. See `libraryFacts` in V2Building.tsx for the
+  // client-side mirror that closes that gap.
   claims: 'What does the OFFER do? Specific features, numbers or outcomes this video is allowed to state.',
   referenceTransfer: '',
 }
