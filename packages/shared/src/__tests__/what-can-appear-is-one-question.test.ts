@@ -34,7 +34,11 @@ const CONFIRM = SRC.slice(SRC.indexOf('function ConfirmStep('), SRC.indexOf('fun
 
 describe('the three are asked while the scan is running', () => {
   it('asks all three on the scan screen', () => {
-    expect(BUILDING).toMatch(/Do you make content about anything you sell or promote\?/)
+    // ⚠️ THE COMMERCIAL QUESTION IS NOW ONE YES/NO, NOT SIX CHIPS PLUS A
+    // SEVEN-CHIP FOLLOW-UP. It is still asked on this screen — that is what
+    // this line protects — but it asks only whether a commercial thing exists,
+    // because the kind and the relationship belong to the Product Library.
+    expect(BUILDING).toMatch(/Do you sell or promote anything in your videos\?/)
     expect(BUILDING).toMatch(/Can you record your screen when Twin needs it\?/)
     expect(BUILDING).toMatch(/Can you usually show the product on camera\?/)
   })
@@ -54,9 +58,11 @@ describe('the three are asked while the scan is running', () => {
     // only answerable once they have said what they do and what they sell —
     // `asksScreenCapability` reads both — so last is not cosmetic.
     expect(PROFILE_QUESTION_IDS[PROFILE_QUESTION_IDS.length - 1]).toBe('capabilities')
-    expect(PROFILE_QUESTION_IDS.indexOf('workKind'))
-      .toBeLessThan(PROFILE_QUESTION_IDS.indexOf('capabilities'))
-    expect(PROFILE_QUESTION_IDS.indexOf('commercialTies'))
+    // `workKind` and `commercialTies` are both asked on the merged `whoYouAre`
+    // screen now, so the ordering claim is made against that screen — the
+    // property is unchanged: what a creator can film is only answerable after
+    // they have said what they do and whether they sell.
+    expect(PROFILE_QUESTION_IDS.indexOf('whoYouAre'))
       .toBeLessThan(PROFILE_QUESTION_IDS.indexOf('capabilities'))
   })
 

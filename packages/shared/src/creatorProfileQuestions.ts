@@ -272,8 +272,27 @@ export function asksOwnServiceKind(a: CreatorProfileAnswers): boolean {
  * something to browse against and can change their mind on a return visit
  * rather than being locked into a day-one guess.
  */
+// ⚠️ FOUR SCREENS BECAME TWO, AND `whoYouAre` IS WHY. `workKind`, `audience`
+// and `commercialTies` were three separate screens asking three halves of one
+// thought — who you are, who you are for, and whether you sell. Split across
+// three taps they read as an interrogation; together they read as a single
+// introduction, which is what they are. The knowledge level has always ridden
+// with `audience` and still does: the same subject for beginners and for
+// experts is two different videos, so it belongs beside the audience it
+// qualifies rather than on a screen of its own.
+//
+// ⚖️ NO FIELD MOVED AND NONE WAS LOST. `workKind`, `audienceSeg`,
+// `audienceKnowledge` and `commercialTies` are written exactly as before, to
+// exactly the same keys, by exactly the same draft. This list names SCREENS,
+// not fields, and grouping three screens into one changes where a question is
+// asked and nothing about what is stored.
+//
+// ⚖️ `capabilities` STAYS LAST AND STAYS CONDITIONAL. It is the one question
+// here that most creators should never see, and after the commercial-ties
+// collapse most will not: it applies to somebody with software to screen-record
+// or a physical thing to hold up, and it is asked only of them.
 export const PROFILE_QUESTION_IDS = [
-  'workKind', 'audience', 'contentGoals', 'commercialTies', 'capabilities',
+  'whoYouAre', 'contentGoals', 'capabilities',
 ] as const
 export type ProfileQuestionId = (typeof PROFILE_QUESTION_IDS)[number]
 

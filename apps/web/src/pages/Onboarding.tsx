@@ -1843,6 +1843,53 @@ const CAPABILITY_LABEL: Record<CapabilityAnswer, string> = {
 
 /** The answers the adaptive rules read, lifted off the draft. */
 
+/**
+ * A QUESTION AS A TITLED BLOCK, NOT A LINE OF TEXT ABOVE SOME BUTTONS.
+ *
+ * ⚠️ QUESTIONS AND ANSWERS DID NOT READ AS PAIRS. Every question was one weight
+ * of text followed by chips, with the next question's text at the same weight
+ * directly under the previous question's chips — so on a screen with three
+ * questions there was no visual boundary saying which chips belonged to which
+ * question. The label is heavier, the hint is muted beneath it, and the block
+ * owns its spacing.
+ *
+ * ⚖️ THE HINT SITS ABOVE THE CHIPS BECAUSE IT CONSTRAINS THEM. "Pick up to two"
+ * was printed UNDER the options it limits, where it is a correction rather than
+ * an instruction — read only after somebody has already tapped a third time and
+ * wondered why nothing happened.
+ */
+function Field({ label, hint, children }: {
+  label: string
+  hint?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="mt-5 first:mt-0">
+      <p className="text-sm font-semibold leading-snug text-cream">{label}</p>
+      {hint && <p className="mt-1 text-[11px] leading-snug text-stone">{hint}</p>}
+      {children}
+    </div>
+  )
+}
+
+/**
+ * ⚠️ A FIXED GRID, NOT A WRAPPING FLEX ROW. Chips of different label lengths in
+ * a `flex-wrap` row produce a ragged edge that reflows every time a value is
+ * added, and long labels pushed the grid into shapes that fit neither a phone
+ * nor a laptop. Two columns on a phone, three on a desktop, every cell the same
+ * height, and a label too long for its cell truncates rather than growing the
+ * row it sits in.
+ *
+ * ⚠️ SELECTED IS A FILL, NOT AN OUTLINE. The chosen chip was a thin `coral/15`
+ * wash behind a `cream` label — on this near-black background that is a border
+ * a shade or two off the unselected one, and creators could not tell what they
+ * had picked. Selected now inverts: a solid coral fill with near-black text, so
+ * it reads as chosen at a glance rather than on inspection.
+ *
+ * ⚖️ 44px MINIMUM HEIGHT, because these are tapped on a phone and a chip
+ * smaller than a fingertip is a chip that gets mis-tapped — expensive here,
+ * where a mis-tap on a capability question hides a surface.
+ */
 function Chips<T extends string>({ values, label, chosen, onPick }: {
   values: readonly T[]
   label: Record<T, string>
@@ -1852,18 +1899,24 @@ function Chips<T extends string>({ values, label, chosen, onPick }: {
 }) {
   const isOn = (v: T) => (Array.isArray(chosen) ? (chosen as readonly T[]).includes(v) : chosen === v)
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
+    <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-3">
       {values.map((v) => (
         <button
           key={v}
           type="button"
           aria-pressed={isOn(v)}
+          title={label[v]}
           onClick={() => onPick(v)}
           className={cn(
-            'rounded-full border px-3 py-1.5 text-xs transition',
-            isOn(v) ? 'border-coral bg-coral/15 text-cream' : 'border-white/15 text-sand hover:bg-white/5',
+            'flex min-h-[44px] items-center justify-center rounded-xl border px-2.5 py-2',
+            'text-center text-xs leading-tight transition',
+            isOn(v)
+              ? 'border-coral bg-coral font-semibold text-ink'
+              : 'border-white/15 text-sand hover:border-white/30 hover:bg-white/5',
           )}
-        >{label[v]}</button>
+        >
+          <span className="w-full truncate">{label[v]}</span>
+        </button>
       ))}
     </div>
   )
@@ -1884,36 +1937,75 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
   const set = (patch: Partial<OnboardingDraft>) => onDraftChange({ ...draft, ...patch })
   const toggle = <T extends string>(list: readonly T[], v: T): T[] =>
     list.includes(v) ? list.filter((x) => x !== v) : [...list, v]
-  const ask = (text: string) => <p className="mt-2 text-base font-medium text-cream">{text}</p>
   const note = (text: string) => <p className="mt-2 text-[11px] text-stone">{text}</p>
 
-  if (id === 'workKind') {
+  if (id === 'whoYouAre') {
+    // THREE SCREENS, ONE THOUGHT.
+    //
+    // ⚠️ WHO YOU ARE, WHO YOU ARE FOR, AND WHETHER YOU SELL used to be three
+    // separate screens. Asked one at a time they read as an interrogation;
+    // asked together they read as an introduction, which is what they are.
+    // Nothing about what is stored changed — the same four fields, the same
+    // keys, the same draft.
+    const sells = sellsAnswerOf(draft.commercialTies)
     return (
       <>
-        {ask('What best describes what you do?')}
-        <Chips
-          values={ONBOARDING_WORK_KINDS} label={WORK_KIND_LABEL} chosen={draft.workKind}
-          onPick={(k) => set({ workKind: draft.workKind === k ? null : k })}
-        />
-      </>
-    )
-  }
+        <Field label="What best describes what you do?">
+          <Chips
+            values={ONBOARDING_WORK_KINDS} label={WORK_KIND_LABEL} chosen={draft.workKind}
+            onPick={(k) => set({ workKind: draft.workKind === k ? null : k })}
+          />
+        </Field>
 
-  if (id === 'audience') {
-    return (
-      <>
-        {ask('Who do you mainly want to reach?')}
-        <Chips
-          values={AUDIENCE_SEGMENTS} label={AUDIENCE_LABEL} chosen={draft.audienceSeg}
-          onPick={(a) => set({ audienceSeg: draft.audienceSeg === a ? null : a })}
-        />
-        {/* ⚖️ THE SECOND HALF CHANGES DEPTH, NOT TONE. The same subject for
-            beginner founders and expert founders is two different videos. */}
-        <p className="mt-4 text-xs text-sand">How much do they already know?</p>
-        <Chips
-          values={AUDIENCE_KNOWLEDGE} label={KNOWLEDGE_LABEL} chosen={draft.audienceKnowledge}
-          onPick={(k) => set({ audienceKnowledge: draft.audienceKnowledge === k ? null : k })}
-        />
+        {/* ⚖️ AUDIENCE AND DEPTH SIT SIDE BY SIDE BECAUSE THEY ARE ONE QUESTION
+            IN TWO HALVES, and neither is answerable without the other in view.
+            The same subject for beginner founders and expert founders is two
+            different videos. */}
+        <div className="mt-5 grid gap-5 sm:grid-cols-2">
+          <Field label="Who do you mainly want to reach?">
+            <Chips
+              values={AUDIENCE_SEGMENTS} label={AUDIENCE_LABEL} chosen={draft.audienceSeg}
+              onPick={(a) => set({ audienceSeg: draft.audienceSeg === a ? null : a })}
+            />
+          </Field>
+          <Field label="How much do they already know?">
+            <Chips
+              values={AUDIENCE_KNOWLEDGE} label={KNOWLEDGE_LABEL} chosen={draft.audienceKnowledge}
+              onPick={(k) => set({ audienceKnowledge: draft.audienceKnowledge === k ? null : k })}
+            />
+          </Field>
+        </div>
+
+        {/* THIRTEEN OPTIONS BECAME ONE YES/NO, AND IT NO LONGER OWNS A SCREEN.
+            It asked six tie chips plus a seven-chip "what kind of service?"
+            follow-up — for facts the Product Library already collects in full,
+            behind an attestation, where a claim can actually be granted. What
+            onboarding legitimately owns is only whether a commercial thing
+            EXISTS, because that bit gates whether Twin ever offers a product
+            scene. The rest is a property of the thing, and the thing gets
+            named later.
+
+            ⚖️ NOTHING IS DELETED. `ownProductKind` and `ownServiceKind` are
+            still stored, still loaded, still saved, still read by
+            `asksScreenCapability` for accounts that hold them. This stops
+            ASKING; reading continues. The answer still lands in
+            `commercialTies` via `SELLS_ANSWER_TO_TIES`, so every reader keeps
+            working with no migration. */}
+        <Field
+          label="Do you sell or promote anything in your videos?"
+          hint="Just so Twin knows whether to offer it. You add the actual product later, in your Product Library."
+        >
+          <Chips
+            values={ONBOARDING_SELLS_ANSWERS} label={SELLS_LABEL} chosen={sells}
+            onPick={(a) => set({
+              // ⚠️ TAPPING THE CHOSEN ANSWER AGAIN CLEARS IT. An empty list is
+              // UNANSWERED and is not "nothing to sell" — turning silence into
+              // a commercial statement is the error this screen exists to
+              // avoid, and `sellsAnswerOf` keeps the two apart.
+              commercialTies: sells === a ? [] : [...SELLS_ANSWER_TO_TIES[a]],
+            })}
+          />
+        </Field>
       </>
     )
   }
@@ -1921,8 +2013,13 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
   if (id === 'contentGoals') {
     const full = draft.contentGoals.length >= MAX_CONTENT_GOALS
     return (
-      <>
-        {ask('What do you want your content to help you do?')}
+      <Field
+        label="What do you want your content to help you do?"
+        // ⚖️ THE LIMIT IS STATED BEFORE THE OPTIONS IT LIMITS. Printed
+        // underneath, "Pick up to two" is a correction somebody reads after
+        // tapping a third chip and wondering why nothing lit up.
+        hint={full ? 'Two is the limit — tap one to swap it.' : 'Pick up to two.'}
+      >
         <Chips
           values={BRIEF_GOALS} label={CONTENT_GOAL_LABEL} chosen={draft.contentGoals}
           onPick={(g) => {
@@ -1934,55 +2031,7 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
             set({ contentGoals: toggle(draft.contentGoals, g) })
           }}
         />
-        {note(full ? 'Two is the limit — tap one to swap it.' : 'Pick up to two.')}
-      </>
-    )
-  }
-
-  if (id === 'commercialTies') {
-    // THIRTEEN OPTIONS BECAME ONE YES/NO.
-    //
-    // ⚠️ THIS SCREEN USED TO ASK WHAT THE PRODUCT LIBRARY ALREADY OWNS. Six
-    // tie chips, plus a seven-chip "what kind of service?" follow-up, plus a
-    // six-chip product-kind follow-up — asked at signup, before the creator had
-    // any reason to care, and asked again in full by the Product Library where
-    // the answer is attested and can actually be used. Two questions holding
-    // one fact is how the same person gets interrogated twice and trusts the
-    // second answer less.
-    //
-    // ⚖️ WHAT ONBOARDING LEGITIMATELY OWNS IS ONLY WHETHER A COMMERCIAL THING
-    // EXISTS AT ALL, because that single bit decides whether Twin ever offers a
-    // product scene or a commercial CTA. The kind, the relationship, and the
-    // offer facts are properties OF THE THING, and the thing is named in the
-    // Product Library — behind an attestation, which is the only place a claim
-    // may be granted. A chip tapped during a loading screen is not consent.
-    //
-    // ⚖️ NOTHING IS DELETED. `ownProductKind` and `ownServiceKind` are still
-    // real stored fields, still loaded, still saved, still read by
-    // `asksScreenCapability` for accounts that hold them. This stops ASKING;
-    // it does not stop reading. And the answer still lands in `commercialTies`
-    // through `SELLS_ANSWER_TO_TIES`, so every existing reader —
-    // `productDnaStatus`, `onlyNone`, the capability gates, the Gallery's
-    // profile — keeps working with no vocabulary migration.
-    const sells = sellsAnswerOf(draft.commercialTies)
-    return (
-      <>
-        {ask('Do you sell or promote anything in your videos?')}
-        <Chips
-          values={ONBOARDING_SELLS_ANSWERS}
-          label={SELLS_LABEL}
-          chosen={sells}
-          onPick={(a) => set({
-            // ⚠️ TAPPING THE CHOSEN ANSWER AGAIN CLEARS IT, like every other
-            // chip on these screens. An empty list is UNANSWERED and is not
-            // "nothing to sell" — `sellsAnswerOf` keeps those apart, and
-            // turning silence into a commercial statement is the error this
-            // whole screen exists to avoid.
-            commercialTies: sells === a ? [] : [...SELLS_ANSWER_TO_TIES[a]],
-          })}
-        />
-        {note('Just so Twin knows whether to offer it. You add the actual product later, in your Product Library.')}
-      </>
+      </Field>
     )
   }
 
@@ -1990,10 +2039,8 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
   const answers = profileAnswersOf(draft)
   return (
     <>
-      {ask('What can Twin ask you to show when you record?')}
       {asksScreenCapability(answers) && (
-        <>
-          <p className="mt-3 text-xs text-sand">Can you record your screen when Twin needs it?</p>
+        <Field label="Can you record your screen when Twin needs it?">
           <Chips
             values={CAPABILITY_ANSWERS} label={CAPABILITY_LABEL} chosen={draft.screenCapability}
             onPick={(v) => {
@@ -2005,11 +2052,10 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
               set({ screenCapability: next, canRecordScreen: next === 'yes' ? true : next === 'no' ? false : null })
             }}
           />
-        </>
+        </Field>
       )}
       {asksProductCapability(answers) && (
-        <>
-          <p className="mt-4 text-xs text-sand">Can you usually show the product on camera?</p>
+        <Field label="Can you usually show the product on camera?">
           <Chips
             values={CAPABILITY_ANSWERS} label={CAPABILITY_LABEL} chosen={draft.productCapability}
             onPick={(v) => {
@@ -2017,7 +2063,7 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
               set({ productCapability: next, canFilmObjects: next === 'yes' ? true : next === 'no' ? false : null })
             }}
           />
-        </>
+        </Field>
       )}
       {note('Say no and we stop suggesting shots you cannot film. Skip it and nothing is decided.')}
     </>

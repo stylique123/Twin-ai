@@ -13,7 +13,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { cleanup, render, screen, fireEvent } from '@testing-library/react'
 import { ProfileQuestion } from './Onboarding'
 import { emptyProfileAnswers, type OnboardingDraft } from '../lib/onboardingDraft'
-import { COMMERCIAL_TIES, sellsAnswerOf } from '@twinai/shared'
+import { COMMERCIAL_TIES, sellsAnswerOf, profileQuestionsFor } from '@twinai/shared'
 
 const draftOf = (patch: Partial<OnboardingDraft> = {}): OnboardingDraft => ({
   version: 3, userId: 'u1', voiceId: null, platform: 'instagram', handle: 'h',
@@ -27,7 +27,7 @@ const draftOf = (patch: Partial<OnboardingDraft> = {}): OnboardingDraft => ({
 const renderSells = (patch: Partial<OnboardingDraft> = {}) => {
   let latest = draftOf(patch)
   const view = render(
-    <ProfileQuestion id="commercialTies" draft={latest} onDraftChange={(n) => { latest = n }} />,
+    <ProfileQuestion id="whoYouAre" draft={latest} onDraftChange={(n) => { latest = n }} />,
   )
   return { view, get: () => latest }
 }
@@ -104,5 +104,35 @@ describe('what a returning creator sees', () => {
     renderSells({ commercialTies: ['own_service'], ownServiceKind: 'consulting' })
     expect(sellsAnswerOf(['own_service'])).toBe('yes')
     expect(screen.getByText('Yes')).toBeTruthy()
+  })
+})
+
+describe('the step count is what the change claims', () => {
+  // ⚠️ THE CLAIM IS "FOUR STEPS BECAME THREE", so it gets asserted rather than
+  // asserted-in-a-commit-message. A creator with nothing to sell answers TWO
+  // profile screens; the story screen is the third and is gated separately.
+  it('a creator with nothing to sell sees two profile screens, not four', () => {
+    const ids = profileQuestionsFor({
+      workKind: 'creator', audience: 'consumers', audienceKnowledge: 'basics',
+      commercialTies: ['none'],
+    })
+    expect(ids).toEqual(['whoYouAre', 'contentGoals'])
+  })
+
+  // ⚖️ AND THE CONDITIONAL ONE IS STILL CONDITIONAL. `capabilities` earns its
+  // place only for somebody with a screen to record or a thing to hold up.
+  it('a saas creator still gets the capabilities screen', () => {
+    const ids = profileQuestionsFor({ workKind: 'saas' })
+    expect(ids).toEqual(['whoYouAre', 'contentGoals', 'capabilities'])
+  })
+
+  // ⚠️ THE THREE MERGED QUESTIONS ARE ALL ON ONE SCREEN, which is the whole
+  // point of the merge — three screens asking three halves of one thought.
+  it('the merged screen carries all four of its questions', () => {
+    renderSells()
+    expect(screen.getByText('What best describes what you do?')).toBeTruthy()
+    expect(screen.getByText('Who do you mainly want to reach?')).toBeTruthy()
+    expect(screen.getByText('How much do they already know?')).toBeTruthy()
+    expect(screen.getByText('Do you sell or promote anything in your videos?')).toBeTruthy()
   })
 })

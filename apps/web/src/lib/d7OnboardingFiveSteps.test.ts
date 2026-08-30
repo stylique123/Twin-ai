@@ -123,7 +123,13 @@ describe('4. capabilities / commercial-ties: confirmed unchanged', () => {
 describe('5. desiredFormats is out of onboarding and into the Gallery', () => {
   it('is no longer in the onboarding question list', () => {
     expect(PROFILE_QUESTION_IDS).not.toContain('desiredFormats')
-    expect(PROFILE_QUESTION_IDS).toEqual(['workKind', 'audience', 'contentGoals', 'commercialTies', 'capabilities'])
+    // ⚠️ THREE IDS, NOT FIVE, AND THE FIELDS DID NOT MOVE. `workKind`,
+    // `audience` and `commercialTies` were three screens asking three halves of
+    // one thought and are now one screen, `whoYouAre`; the commercial question
+    // itself collapsed from thirteen options to a single yes/no. This list
+    // names SCREENS, not fields — `workKind`, `audienceSeg`, `audienceKnowledge`
+    // and `commercialTies` are all still written, to the same keys.
+    expect(PROFILE_QUESTION_IDS).toEqual(['whoYouAre', 'contentGoals', 'capabilities'])
   })
 
   it('the onboarding screen no longer asks the question', () => {

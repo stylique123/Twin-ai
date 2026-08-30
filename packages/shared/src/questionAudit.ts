@@ -132,7 +132,14 @@ export const AUDITED_QUESTIONS: readonly AuditedQuestion[] = Object.freeze([
   Object.freeze({
     asked: 'What kind of service?',
     field: 'ownServiceKind',
-    screen: 'Onboarding scan step (conditional)',
+    screen: 'Retired from onboarding with the thirteen-option collapse; field still read',
+    // ⚠️ RETIRED FROM THE SCREEN, NOT FROM THE CODEBASE, and the distinction is
+    // the whole point of this entry. Onboarding asked six commercial-tie chips
+    // plus this follow-up — thirteen options for facts the Product Library
+    // already collects behind an attestation. It now asks one yes/no. The FIELD
+    // is untouched: still stored, still loaded, still saved, and still consumed
+    // by `refinedEntityType` at mint time exactly as the cost note below says.
+    // Stop asking, keep reading.
     verdict: 'ORPHANED_NO_READER',
     absentFrom: GENERATION_DIRS,
     // ⚠️ THIS NOTE SAID "ZERO CONSUMERS OF ANY KIND" AND THAT WAS FALSE. The
@@ -151,7 +158,14 @@ export const AUDITED_QUESTIONS: readonly AuditedQuestion[] = Object.freeze([
   Object.freeze({
     asked: 'What kind of thing do you sell?',
     field: 'ownProductKind',
-    screen: 'Onboarding scan step (conditional)',
+    screen: 'Retired from onboarding with the thirteen-option collapse; field still read',
+    // ⚠️ RETIRED FROM THE SCREEN, NOT FROM THE CODEBASE, and the distinction is
+    // the whole point of this entry. Onboarding asked six commercial-tie chips
+    // plus this follow-up — thirteen options for facts the Product Library
+    // already collects behind an attestation. It now asks one yes/no. The FIELD
+    // is untouched: still stored, still loaded, still saved, and still consumed
+    // by `refinedEntityType` at mint time exactly as the cost note below says.
+    // Stop asking, keep reading.
     verdict: 'ORPHANED_NO_READER',
     absentFrom: GENERATION_DIRS,
     // ⚠️ AND THIS ONE SAID "AND NOTHING ELSE", WHICH WAS ALSO FALSE. It gates the
