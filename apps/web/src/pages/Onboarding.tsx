@@ -1822,6 +1822,12 @@ const TIE_LABEL: Record<CommercialTie, string> = {
   sponsor: 'Sponsored products',
   review: 'Things I review',
   none: 'Nothing commercial',
+  // ⚖️ NOT OFFERED AS A CHIP ANYWHERE. `unspecified` is what the surviving
+  // yes/no writes for "Yes"; it needs a label only because this map is
+  // exhaustive over the vocabulary and because Settings renders stored ties
+  // back to the creator. The wording stays vague on purpose — it is the one
+  // value that asserts a commercial thing exists WITHOUT saying what it is.
+  unspecified: 'Something I sell or promote',
 }
 
 const PRODUCT_KIND_LABEL: Record<OwnProductKind, string> = {

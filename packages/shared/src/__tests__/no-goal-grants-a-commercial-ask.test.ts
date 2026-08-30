@@ -93,7 +93,11 @@ describe('no goal grants a commercial ask', () => {
     // totality check the old regex could not express at all.
     for (const tie of COMMERCIAL_TIES) {
       const rel = creator([tie]).relationship
-      expect(CANONICAL_RELATIONSHIPS, tie).toContain(rel!)
+      // `unspecified` is the onboarding yes/no's "yes" — a commercial thing
+      // exists, relationship not yet named. It decides on NO relationship, and
+      // that null IS the decided answer, not a fall-through.
+      if (tie === 'unspecified') expect(rel, tie).toBeNull()
+      else expect(CANONICAL_RELATIONSHIPS, tie).toContain(rel!)
     }
   })
 })

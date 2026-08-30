@@ -142,13 +142,22 @@ const LEVEL_OF: Record<AudienceKnowledge, CanonicalLevel> = {
 
 /** ⚠️ ORDERED BY WHAT EACH LICENSES, NOT ALPHABETICALLY, because the reducer
  *  below takes the FIRST match and the order therefore decides the answer. */
-const RELATIONSHIP_OF: Record<CommercialTie, CanonicalRelationship> = {
+/** ⚠️ `null` IS A REAL ENTRY, NOT A GAP. `unspecified` is the onboarding
+ *  yes/no's "yes": a commercial thing exists, but its KIND and the creator's
+ *  RELATIONSHIP to it are unknown until they name it in the Product Library.
+ *  Mapping it to any canonical relationship would invent an authority nobody
+ *  granted — `NONE` would deny a tie that exists and could suppress a
+ *  disclosure, `OWN_PRODUCT` would license "we built this" about someone else's
+ *  product. An unknown relationship must stay unknown, so it resolves to no
+ *  `relationship` at all, exactly as an unanswered question does. */
+export const RELATIONSHIP_OF: Record<CommercialTie, CanonicalRelationship | null> = {
   own_product: 'OWN_PRODUCT',
   own_service: 'OWN_SERVICE',
   affiliate: 'AFFILIATE',
   sponsor: 'SPONSOR',
   review: 'REVIEW_ONLY',
   none: 'NONE',
+  unspecified: null,
 }
 
 /** ⚖️ THE MOST PERMISSIVE TIE WINS, AND IT IS STATED RATHER THAN INCIDENTAL. A
@@ -157,7 +166,12 @@ const RELATIONSHIP_OF: Record<CommercialTie, CanonicalRelationship> = {
  *  software. The reverse error — reading an affiliate as an owner — is the one
  *  that puts a false claim in somebody's mouth, so the order runs from most to
  *  least authority and never the other way. */
-const TIE_PRECEDENCE: readonly CommercialTie[] = [
+/** ⚠️ `unspecified` IS DELIBERATELY ABSENT. Precedence ranks how much authority
+ *  a tie carries; an unknown relationship carries none and has no rank. Left in
+ *  the list it would resolve to a `relationship`, which is the one thing it must
+ *  never do. Its absence is asserted by the exhaustiveness test rather than left
+ *  to be noticed. */
+export const TIE_PRECEDENCE: readonly CommercialTie[] = [
   'own_product', 'own_service', 'affiliate', 'sponsor', 'review', 'none',
 ]
 
@@ -251,7 +265,9 @@ export function assembleCreatorProfile(input: AssembleInput): CreatorProfile {
     // ⚖️ AN EMPTY LIST IS UNANSWERED, exactly as `[]` and absent are the same
     // fact everywhere else in this codebase.
     goals: goals && goals.length > 0 ? confirmed(goals, goals, now) : null,
-    relationship: tie ? confirmed(RELATIONSHIP_OF[tie], tie, now) : null,
+    // `RELATIONSHIP_OF[tie]` can be null (`unspecified`), and a null there means
+    // the same thing an unanswered question means: no relationship is asserted.
+    relationship: tie && RELATIONSHIP_OF[tie] ? confirmed(RELATIONSHIP_OF[tie]!, tie, now) : null,
     defaultCta: cta !== '' ? confirmed(cta, input.defaultCta, now) : null,
     // ⚖️ `confirmed`, NOT `derived`, AND THE DISTINCTION MATTERS HERE MORE THAN
     // ANYWHERE. `role` is inferred from `workKind` and says so. This is the

@@ -94,8 +94,64 @@ export type FormatExploration = (typeof FORMAT_EXPLORATION)[number]
 // the entity contract exists to refuse.
 export const COMMERCIAL_TIES = [
   'own_product', 'own_service', 'affiliate', 'sponsor', 'review', 'none',
+  'unspecified',
 ] as const
 export type CommercialTie = (typeof COMMERCIAL_TIES)[number]
+
+/**
+ * WHAT ONBOARDING STILL ASKS, AFTER THE THIRTEEN OPTIONS WENT AWAY.
+ *
+ * ⚠️ ONBOARDING NO LONGER ASKS WHICH KIND OF TIE. It asked six chips plus a
+ * seven-chip service follow-up — thirteen taps — for facts the Product Library
+ * already collects in full, behind an attestation, where they belong. The only
+ * part onboarding legitimately owns is whether a commercial thing EXISTS AT
+ * ALL, because that is what decides whether Twin ever offers a product scene.
+ *
+ * ⚖️ SO `unspecified` MEANS "SOMETHING EXISTS, KIND AND RELATIONSHIP UNKNOWN",
+ * AND IT IS A DISTINCT STATE FROM ALL SIX OTHERS — not a synonym for any of
+ * them. It must never be read as ownership: an unknown relationship licenses
+ * nothing, which is why `RELATIONSHIP_OF` maps it to `null` and it is absent
+ * from `TIE_PRECEDENCE`. The creator names the real relationship in the Product
+ * Library, and until they do, the honest answer downstream is "we do not know".
+ *
+ * ⚖️ THE OTHER SIX ARE STILL READ AND STILL VALID. Onboarding stops WRITING
+ * them; every reader keeps accepting them, because accounts already hold them
+ * (two rows at the time of this change, both `own_service`). Stop writing, keep
+ * reading — deleting the values in the same change is the failure mode this
+ * codebase has a rule against.
+ */
+export const ONBOARDING_SELLS_ANSWERS = ['yes', 'not_right_now'] as const
+export type OnboardingSellsAnswer = (typeof ONBOARDING_SELLS_ANSWERS)[number]
+
+/**
+ * THE COMMITTED OLD→NEW MAPPING FOR THE COLLAPSE.
+ *
+ * The yes/no the creator now taps is stored in the SAME `commercialTies` field
+ * the thirteen options wrote, using this table and nothing else. It is exported
+ * so the exhaustiveness test can prove every answer has a target and no answer
+ * silently defaults.
+ */
+export const SELLS_ANSWER_TO_TIES: Record<OnboardingSellsAnswer, readonly CommercialTie[]> = {
+  yes: ['unspecified'],
+  not_right_now: ['none'],
+}
+
+/**
+ * Read the stored ties back as the yes/no, so the collapsed question can show
+ * the creator what they already answered — including answers written by the
+ * thirteen-option question this replaced.
+ *
+ * ⚠️ `null` IS UNANSWERED AND IS NOT `not_right_now`. An empty list is somebody
+ * who never reached the question; turning that into "nothing to sell" would
+ * assert a commercial fact nobody stated.
+ */
+export function sellsAnswerOf(
+  ties: readonly CommercialTie[] | null | undefined,
+): OnboardingSellsAnswer | null {
+  if (!Array.isArray(ties) || ties.length === 0) return null
+  if (ties.length === 1 && ties[0] === 'none') return 'not_right_now'
+  return 'yes'
+}
 
 /** Only asked when `own_product` is among the ties. Decides what may be filmed,
  *  which is why it is asked at all rather than inferred from the work kind. */
