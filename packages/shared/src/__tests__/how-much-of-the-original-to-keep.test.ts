@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   compileVideoIntent, REFERENCE_USE, REFERENCE_USE_DIRECTIVE, KEEPS_REFERENCE_TOPIC,
-  INTENT_QUESTIONS, reachableIntentValues,
+  INTENT_QUESTIONS, reachableIntentValues, REFERENCE_USE_MIGRATION,
 } from '../videoIntent'
 
 describe('the answer reaches the writer as an instruction', () => {
@@ -43,7 +43,11 @@ describe('structure and topic are two questions, not one dial', () => {
     // structure" quietly kept the reference's topic — answering a question the
     // creator did not ask.
     expect(KEEPS_REFERENCE_TOPIC.structure).toBe(false)
-    expect(KEEPS_REFERENCE_TOPIC.inspiration).toBe(false)
+    // ⚖️ `inspiration` USED TO BE ASSERTED HERE AND IS NOW A MIGRATION ENTRY.
+    // It agreed with `structure` on this exact axis — the subject is replaced —
+    // which is what made collapsing the two honest rather than convenient. The
+    // agreement is still pinned, one line down, through the migration.
+    expect(KEEPS_REFERENCE_TOPIC[REFERENCE_USE_MIGRATION.inspiration]).toBe(false)
     expect(KEEPS_REFERENCE_TOPIC.idea_structure).toBe(true)
     expect(KEEPS_REFERENCE_TOPIC.stay_close).toBe(true)
   })
@@ -86,7 +90,13 @@ describe('what the creator reads', () => {
   it('is asked on the remix screen', () => {
     const q = INTENT_QUESTIONS.find((x) => x.field === 'reference_use')
     expect(q).toBeTruthy()
-    expect(q!.options).toHaveLength(4)
+    // ⚠️ THREE, NOT FOUR. The four read as two pairs of paraphrases — "just how
+    // it is built" against "just the good bit", "the idea and how it is built"
+    // against "keep it close" — and a control whose options cannot be told apart
+    // is a coin toss the creator is asked to perform. This is now an ordered
+    // three-point scale, and declaration order is presentation order.
+    expect(q!.options).toHaveLength(3)
+    expect(q!.options.map((o) => o.value)).toEqual(['structure', 'idea_structure', 'stay_close'])
   })
 
   it('offers exactly the values the compiler accepts', () => {
@@ -133,7 +143,7 @@ describe('the edge copy says exactly what the shared one says', () => {
 
   it('agrees on which settings keep the topic', () => {
     expect(EDGE).toMatch(
-      /structure: false, idea_structure: true, stay_close: true, inspiration: false/)
+      /structure: false, idea_structure: true, stay_close: true,/)
   })
 
   it('defaults to keeping the topic when unanswered, on both sides', () => {

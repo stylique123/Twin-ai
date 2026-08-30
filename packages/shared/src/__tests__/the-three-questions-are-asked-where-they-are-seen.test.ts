@@ -16,6 +16,7 @@ import { dirname, join } from 'node:path'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   INTENT_QUESTIONS, reachableIntentValues, compileVideoIntent,
+  CONTENT_FOCUS_MIGRATION,
 } from '../videoIntent'
 
 const V2 = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..',
@@ -158,11 +159,13 @@ describe('the three questions open with the remix', () => {
     // ⚖️ They are not a repair for an incomplete profile. They are about a video
     // that does not exist yet, so there is nothing to be complete about.
     expect(BUILD).toMatch(/const unanswered = INTENT_QUESTIONS\.filter\(/)
-    // ⚖️ THE CLAIM IS UNCHANGED. `unanswered` still leads the list, so the
-    // intent chips are asked for every video. What follows them is now
-    // `relevant` rather than `missing` — the same readiness questions with the
-    // commercial ones dropped when this video sells nothing.
-    expect(BUILD).toMatch(/\[\.\.\.unanswered, \.\.\.relevant\.slice\(0, MAX_TEXT_QUESTIONS\)\]/)
+    // ⚖️ THE CLAIM IS NARROWED, AND DELIBERATELY. `unanswered` still leads the
+    // list, so the intent chips are asked for every video — EXCEPT the goal,
+    // which the creator already answered during onboarding and which the card
+    // now DISPLAYS with a "Change" affordance instead of re-asking. That is the
+    // one filter in the expression below; everything else is as it was.
+    expect(BUILD).toMatch(/\.\.\.unanswered\.filter\(\(q\) => !\(goalIsDisplayed && q\.field === 'video_goal'\)\)/)
+    expect(BUILD).toMatch(/\.\.\.relevant\.slice\(0, MAX_TEXT_QUESTIONS\)/)
   })
 
   it('CAPS the free-text tail, which is what made the card a form', () => {
@@ -240,7 +243,13 @@ describe('the answers reach the request as intent, not as profile facts', () => 
       expect(typeof v).toBe('string')
     }
     expect(VIDEO_GOALS).toContain('conversations')
-    expect(CONTENT_FOCUS).toContain('reference_adapted')
+    // ⚠️ `reference_adapted` WAS ASSERTED HERE AND IS NOW A MIGRATION ENTRY.
+    // "Keep the main idea, but make it fit me" is word-for-word what
+    // `reference_use: idea_structure` means — a FIDELITY setting living inside
+    // the SUBJECT question, so one property had two controls a creator could set
+    // against each other. Fidelity has one home and it is `reference_use`.
+    expect(CONTENT_FOCUS).not.toContain('reference_adapted')
+    expect(CONTENT_FOCUS_MIGRATION.reference_adapted).toBeNull()
     expect(VIEWER_OUTCOMES).toContain('convert')
   })
 })

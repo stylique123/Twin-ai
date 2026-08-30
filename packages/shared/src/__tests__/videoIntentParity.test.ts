@@ -67,7 +67,11 @@ const ALL = [
 
 describe('edge ↔ shared intent parity, executed', () => {
   it('covers every combination, so a rule cannot hide in an untested corner', () => {
-    expect(ALL.length).toBe(9 * 9 * 11)
+    // 9 goals (8 + unanswered) x 7 focuses (6 + unanswered) x 11 outcomes.
+    // The focus axis lost two values — `reference_adapted` and `trending` — and
+    // both are covered instead by the migration tests, which assert they still
+    // compile to exactly what an unanswered focus compiles to.
+    expect(ALL.length).toBe(9 * 7 * 11)
   })
 
   it('compiles identically on all of them, field for field', () => {
