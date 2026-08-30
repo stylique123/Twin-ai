@@ -12,7 +12,7 @@
 // experience than a lost answer, and the creator can always say it again in
 // their own words. Ordering follows from that: log first, knowledge second.
 import { supabase } from './supabase'
-import { answerToKnowledge, type CreatorQuestion } from '@twinai/shared'
+import { answerToKnowledge, type CreatorQuestion, type StoredKnowledgeItem } from '@twinai/shared'
 
 /**
  * Record that a question was DISPLAYED.
@@ -141,5 +141,44 @@ async function markPut(questionId: string, outcome: 'answered' | 'skipped' | 'sh
   } catch (err) {
     console.warn('question-put not recorded', err)
     return false
+  }
+}
+
+/** Everything the scan already extracted for this creator, for the three story
+ *  slots to be CONFIRMED against rather than asked for cold.
+ *
+ *  ⚠️ RETURNS null, NOT [], WHEN IT CANNOT READ — the same distinction
+ *  `loadQuestionsPut` draws, for the same reason. An empty array means "the
+ *  scan found nothing, show blank boxes", which is a true and common state; a
+ *  failed read means we do not know. Both end in blank boxes here, so the
+ *  creator is never worse off, but collapsing them would hide a broken read
+ *  behind a legitimate-looking outcome.
+ *
+ *  ⚖️ READ-ONLY, AND IT WRITES NOTHING. Showing a creator their own sentence is
+ *  not the creator saying it. Nothing lands in the store until they confirm. */
+export async function loadExtractedKnowledge(): Promise<StoredKnowledgeItem[] | null> {
+  try {
+    const { data: auth } = await supabase.auth.getUser()
+    const ownerId = auth?.user?.id
+    if (!ownerId) return null
+    const { data, error } = await supabase
+      .from('creator_knowledge')
+      .select('kind, text, basis, source, source_ref')
+      .eq('owner_id', ownerId)
+      // ⚠️ SPOKEN MATERIAL ONLY. A caption never attested anything — see
+      // `storySuggestions.ts`. Filtering here as well as in the matcher keeps
+      // the rows that cannot possibly qualify off the wire.
+      .eq('source', 'transcript')
+      .eq('basis', 'stated')
+      .order('last_observed_at', { ascending: false, nullsFirst: false })
+      .limit(200)
+    if (error) {
+      console.warn('extracted knowledge not read', error.message)
+      return null
+    }
+    return (data ?? []) as StoredKnowledgeItem[]
+  } catch (err) {
+    console.warn('extracted knowledge not read', err)
+    return null
   }
 }
