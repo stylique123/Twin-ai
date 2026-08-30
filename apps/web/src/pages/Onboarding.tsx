@@ -1713,15 +1713,32 @@ function ConfirmStep({
  * unanswered. That is not a wording problem — a form nobody can see the shape of
  * is a form people abandon partway and believe they finished.
  *
- * So each group states what it is and how many answers are still open, and only
- * the group being worked on is expanded. `<details>` rather than a `useState`
- * accordion on purpose: it is keyboard-accessible, it survives without
- * JavaScript, and the browser gives the open/closed animation for free.
+ * ⚠️ AND IT IS USED ONCE, ON PURPOSE — THIS COMMENT USED TO CLAIM OTHERWISE.
+ * It said "each group states what it is and how many answers are still open,
+ * and only the group being worked on is expanded", describing an accordion over
+ * the whole screen that was never built: there is exactly one `<Section>`, and
+ * ten of the eleven fields sit outside it. A comment describing a system that
+ * does not exist is worse than no comment, because the next reader concludes
+ * the screen is already chunked and moves on.
  *
- * ⚖️ COLLAPSED IS NOT HIDDEN. Every group renders its fields in the DOM whether
- * open or shut, so nothing here can silently drop an answer the creator gave
- * before collapsing it — and the summary line tells them what is left rather
- * than making them open each one to find out.
+ * What the screen actually does, and why each part is right:
+ *   · The four answers no scan can read are ALWAYS OPEN under their own heading.
+ *     Collapsing those would hide the only fields that change what a script
+ *     says — the precise questions the production run found unanswered.
+ *   · The ownership question is the one `<Section>`, because it is the one
+ *     field whose absence is a decision (see Q4's three-state rule) and so the
+ *     one that earns a "Not answered" badge.
+ *   · The ten scan-drafted voice fields are behind a Show/Hide toggle, because
+ *     a draft the creator need not touch should not occupy the screen.
+ *
+ * `<details>` rather than a `useState` accordion on purpose: it is
+ * keyboard-accessible, it survives without JavaScript, and the browser gives
+ * the open/closed animation for free.
+ *
+ * ⚖️ COLLAPSED IS NOT HIDDEN. The fields render in the DOM whether open or
+ * shut, so nothing here can silently drop an answer the creator gave before
+ * collapsing it — and the summary line tells them what is left rather than
+ * making them open it to find out.
  */
 function Section({
   title, hint, open, badge, children,
