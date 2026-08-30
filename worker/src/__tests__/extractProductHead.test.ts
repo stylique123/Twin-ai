@@ -118,7 +118,7 @@ describe('the official-product-page source is reachable', () => {
     // ⚖️ A factual claim about two URLs matching, not a permission granted
     // because someone said they own something.
     expect(src).toMatch(/productUrl && sameHost\(url, productUrl\)/)
-    expect(SRC).toMatch(/select\('product_url, owner_id'\)/)
+    expect(SRC).toMatch(/select\('product_url, owner_id, name, creator_summary'\)/)
   })
 
   it('treats www and bare hosts as the same site', () => {

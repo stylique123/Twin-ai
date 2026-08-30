@@ -100,6 +100,11 @@ describe('a creator may edit how a product is presented, never what it entitles'
     expect(captured.row).toEqual({ name: null, product_url: null })
   })
 
+  it('forwards creator_summary the same way it forwards name', async () => {
+    await updateEntityPresentation('e1', { creatorSummary: 'A tripod for phones.' })
+    expect(captured.row).toEqual({ creator_summary: 'A tripod for phones.' })
+  })
+
   it('an EMPTY edit issues no write at all', async () => {
     // A no-op UPDATE still bumps `updated_at`, which afterwards reads as a
     // change the creator never made.

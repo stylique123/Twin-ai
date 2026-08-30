@@ -114,7 +114,7 @@ describe('the worker enforces what the prompt asks', () => {
 
   it('refuses a storage path outside the owner folder', () => {
     expect(JOB).toMatch(/if \(!path\.startsWith\(`\$\{ownerId\}\/`\)\)/)
-    expect(JOB).toMatch(/select\('product_url, owner_id'\)/)
+    expect(JOB).toMatch(/select\('product_url, owner_id, name, creator_summary'\)/)
   })
 
   it('caps how many images one job will inline', () => {

@@ -66,6 +66,19 @@ describe('attestedEntity records what was asserted, and nothing more', () => {
     expect(attestedEntity(base).restrictions.approvedClaims).toEqual([])
     expect(attestedEntity(base).evidence).toBeNull()
   })
+
+  it('carries the creator\'s own fallback sentence through, trimmed', () => {
+    // ⚠️ THIS IS THE ONE-LINE ANSWER migration 0177 gives a column to. It is not
+    // extracted knowledge, so it travels through the attestation the same way
+    // `name` does — never inferred, never derived off a page.
+    expect(attestedEntity({ ...base, creatorSummary: '  A tripod for phones.  ' }).creatorSummary)
+      .toBe('A tripod for phones.')
+  })
+
+  it('leaves the fallback sentence null when it was never asked or answered', () => {
+    expect(attestedEntity(base).creatorSummary).toBeNull()
+    expect(attestedEntity({ ...base, creatorSummary: '   ' }).creatorSummary).toBeNull()
+  })
 })
 
 // ── THE WRITE PATH ─────────────────────────────────────────────────────────
@@ -113,6 +126,15 @@ describe('claiming writes an entitlement, and refuses to overwrite one', () => {
     // index the moment the creator later claims something they actually own.
     void claimProductEntity('u1', 'v1', { ...attest, relationship: 'AFFILIATE' })
     expect(captured.row?.voice_id).toBeNull()
+  })
+
+  it('writes creator_summary onto the row it inserts', async () => {
+    // ⚠️ THIS IS THE WRITE HALF OF BUG 3'S SIBLING FEATURE. Without this line,
+    // the add form's new "in one line" field would collect an answer nobody
+    // ever persisted -- recorded and ignored, exactly what the spec says not to
+    // ship.
+    await claimProductEntity('u1', 'v1', { ...attest, creatorSummary: 'A tripod for phones.' })
+    expect(captured.row).toMatchObject({ creator_summary: 'A tripod for phones.' })
   })
 
   it('REFUSES a second owned product rather than overwriting the first', async () => {
