@@ -69,9 +69,13 @@ describe('the fitness creator with nothing to sell is asked five questions and l
     expect(asksScreenCapability(FITNESS_CREATOR)).toBe(false)
     expect(asksProductCapability(FITNESS_CREATOR)).toBe(false)
   })
-  it('so the sixth question does not exist for them', () => {
-    expect(profileQuestionsFor(FITNESS_CREATOR)).toHaveLength(5)
+  it('so the fifth question does not exist for them', () => {
+    // ⚠️ FOUR, NOT FIVE: `desiredFormats` moved off onboarding entirely (D7 of
+    // the consolidation spec) and into a Gallery filter, so it is never in
+    // this list to begin with.
+    expect(profileQuestionsFor(FITNESS_CREATOR)).toHaveLength(4)
     expect(profileQuestionsFor(FITNESS_CREATOR)).not.toContain('capabilities')
+    expect(profileQuestionsFor(FITNESS_CREATOR)).not.toContain('desiredFormats')
   })
   it('and no product or service follow-up appears', () => {
     expect(asksOwnProductKind(FITNESS_CREATOR)).toBe(false)
