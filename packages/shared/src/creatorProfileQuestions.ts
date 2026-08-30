@@ -198,15 +198,26 @@ export function asksOwnServiceKind(a: CreatorProfileAnswers): boolean {
 }
 
 /**
- * WHICH OF THE SIX APPLY TO THIS PERSON, in order.
+ * WHICH OF THE FIVE APPLY TO THIS PERSON, in order.
  *
- * ⚖️ FIVE CORE QUESTIONS AND ONE THAT EARNS ITS PLACE. Six screens for everybody
- * would be a round number bought with irrelevant questions; a fitness creator
- * with nothing to sell answers five and is done, and the two follow-ups appear
- * only for the people they describe.
+ * ⚖️ FOUR CORE QUESTIONS AND ONE THAT EARNS ITS PLACE. Five screens for
+ * everybody would be a round number bought with irrelevant questions; a
+ * fitness creator with nothing to sell answers four and is done, and the
+ * follow-up appears only for the people it describes.
+ *
+ * ⚠️ `desiredFormats` WAS HERE AND IS NOT ANYMORE — D7 OF THE CONSOLIDATION
+ * SPEC. "What kinds of videos do you want Twin to help you make?" asked a
+ * creator to commit to a fixed answer before they had made anything with
+ * Twin, at the one moment they had the least basis to answer it. The field
+ * itself is untouched — `desiredFormats` and `formatExploration` are still
+ * real, read fields (`compileCreatorProfile`, `DESIRED_FORMAT_PREMISE` in
+ * generate-blueprint) — this only removes the ONBOARDING STEP that asked at
+ * signup. It now surfaces as a filter on the Gallery, where a creator has
+ * something to browse against and can change their mind on a return visit
+ * rather than being locked into a day-one guess.
  */
 export const PROFILE_QUESTION_IDS = [
-  'workKind', 'audience', 'contentGoals', 'desiredFormats', 'commercialTies', 'capabilities',
+  'workKind', 'audience', 'contentGoals', 'commercialTies', 'capabilities',
 ] as const
 export type ProfileQuestionId = (typeof PROFILE_QUESTION_IDS)[number]
 

@@ -99,11 +99,12 @@ export const AUDITED_QUESTIONS: readonly AuditedQuestion[] = Object.freeze([
   Object.freeze({
     asked: 'What kinds of videos do you want Twin to help you make?',
     field: 'desiredFormats',
-    screen: 'Onboarding scan step',
-    // ⚠️ THIS VERDICT WAS TRUE UNTIL THE READER WAS WIRED, AND THE GUARD
-    // FAILED THE MOMENT IT WAS. That is the audit doing its job: good news
-    // breaks the test on purpose, so a fix cannot land while the record
-    // still calls it an orphan.
+    screen: 'Gallery filter',
+    // ⚠️ D7 OF THE CONSOLIDATION SPEC MOVED THIS OFF ONBOARDING. Asking a
+    // creator to commit to a fixed answer about what they want to MAKE before
+    // they had seen a single Twin script was the worst moment to ask it. The
+    // question is now a Gallery filter, changeable on every visit -- the
+    // field and its reader are unchanged; only where it is asked moved.
     verdict: 'LIVE',
     cost:
       'None any more. generate-blueprint reads it through renderDesiredFormatsInline, which '
@@ -115,11 +116,11 @@ export const AUDITED_QUESTIONS: readonly AuditedQuestion[] = Object.freeze([
   Object.freeze({
     asked: 'Should Twin stay close to what you already do?',
     field: 'formatExploration',
-    screen: 'Onboarding scan step',
-    // ⚠️ THIS VERDICT WAS TRUE UNTIL THE READER WAS WIRED, AND THE GUARD
-    // FAILED THE MOMENT IT WAS. That is the audit doing its job: good news
-    // breaks the test on purpose, so a fix cannot land while the record
-    // still calls it an orphan.
+    screen: 'Retired with the onboarding desiredFormats step (D7)',
+    // ⚠️ ASKED ALONGSIDE `desiredFormats` UNTIL D7 REMOVED THE SHARED STEP.
+    // No Gallery home was built for this one specifically -- out of D7's
+    // stated scope -- so it is simply unanswered from here forward, exactly
+    // as it already was for every creator who skipped it.
     verdict: 'LIVE',
     cost:
       'None any more. It is the WEIGHT between the formats the scan observed and the ones '

@@ -10,7 +10,7 @@ import {
   listGalleryItems, listBrandVoices, logEvent, loadReferenceProfiles,
   loadProductEntities, galleryCreatorView, emptyReferenceProfile,
   loadPreScriptBrief, assembleCreatorProfile, briefToProfileAnswers,
-  type CreatorProfile,
+  DESIRED_FORMATS, type CreatorProfile, type DesiredFormat,
   type GalleryItem, type ReferenceProfile, type FillableEntity,
 } from '../lib/api'
 import { decideGallery } from '../lib/galleryDecisions'
@@ -42,6 +42,76 @@ const NICHE_SIGNALS: Record<string, string[]> = {
   Education: ['education', 'learn', 'tutorial', 'explain', 'teach', 'science', 'history', 'study', 'how to', 'coding', 'developer', 'tech', 'software'],
   Lifestyle: ['lifestyle', 'vlog', 'travel', 'comedy', 'relatable', 'gen z', 'genz', 'funny', 'day in the life', 'routine', 'aesthetic', 'mom', 'dating', 'creator'],
   Beauty: ['beauty', 'makeup', 'skincare', 'skin', 'cosmetic', 'hair', 'nails', 'glow', 'try-on', 'try on', 'virtual try', 'fashion', 'style', 'outfit', 'wardrobe', 'grwm'],
+}
+
+// ── D7 OF THE CONSOLIDATION SPEC: "WHAT KINDS OF VIDEOS DO YOU WANT TO MAKE"
+// MOVED HERE FROM ONBOARDING. ──────────────────────────────────────────────
+//
+// ⚠️ IT WAS ASKED AT THE WORST POSSIBLE MOMENT. Onboarding asked a creator to
+// commit to a fixed answer about what they want to MAKE before they had seen
+// a single example of what Twin can produce — the one moment they had the
+// least basis to answer it. `desiredFormats` and `formatExploration` are
+// still real, read fields (`compileCreatorProfile`, `DESIRED_FORMAT_PREMISE`
+// in generate-blueprint) — nothing about the backend changed. This is a
+// browsing filter, not a commitment: a creator can change their mind on
+// every visit instead of being locked into a day-one guess.
+//
+// Same vocabulary as onboarding used to show (`DESIRED_FORMATS`), minus
+// `recommend` — "let Twin suggest" is an abstention everywhere else and has
+// nothing to filter FOR here. The labels are the Gallery's own words: they
+// describe what a card LOOKS like ("a review", "a walk-and-talk") rather than
+// what a creator wants to make, which is a different (if related) sentence.
+// Derived from the shared union rather than retyped, so a new format added to
+// `DESIRED_FORMATS` shows up here automatically (as "unlabelled" if nobody has
+// filled in `FORMAT_LABEL` / `FORMAT_SIGNALS` yet) instead of silently
+// vanishing from the Gallery filter.
+const GALLERY_FORMATS: readonly DesiredFormat[] = DESIRED_FORMATS.filter(
+  (f): f is DesiredFormat => f !== 'recommend',
+)
+
+// A total Record over `DesiredFormat` (including `recommend`, even though it
+// is never offered as a chip) rather than a narrowed type — `DESIRED_FORMATS`
+// is a plain string tuple with no per-member type to filter against, and a
+// total map is what keeps this in sync with the shared union without a cast.
+const FORMAT_LABEL: Record<DesiredFormat, string> = {
+  talking_head: 'Talking to camera',
+  educational: 'Explainers',
+  founder: 'Behind the business',
+  review: 'Reviews & comparisons',
+  product: 'Product spotlights',
+  story: 'Stories & experiences',
+  opinion: 'Opinions & takes',
+  pov: 'POV / skits',
+  trend: 'Trends',
+  walking: 'Walking & talking',
+  recommend: '',
+}
+
+// ⚠️ BEST-EFFORT, NOT A TAXONOMY. Cards in this gallery (the curated FEATURED
+// set and community submissions) carry no `format` column — retrofitting one
+// onto every existing row is a migration this task does not need. The filter
+// instead reads the same free text a creator already reads (`label`, `hook`,
+// `why`), which is honest about what it can and cannot know: a card whose
+// text does not mention any signal for the selected kind simply is not
+// offered, rather than being guessed into a bucket it may not belong to.
+const FORMAT_SIGNALS: Record<DesiredFormat, string[]> = {
+  talking_head: ['talking', 'to camera', 'straight to camera', 'monologue'],
+  educational: ['explain', 'teaches', 'how to', 'tutorial', 'breakdown', 'lesson'],
+  founder: ['founder', 'business', 'behind the scenes', 'behind-the-scenes', 'factory', 'company'],
+  review: ['review', 'comparison', 'verdict', 'unbox'],
+  product: ['product', 'demo', 'showcase', 'spotlight'],
+  story: ['story', 'day in', 'vlog', 'narrative', 'arc'],
+  opinion: ['opinion', 'take', 'reacts', 'callout', 'stitch'],
+  pov: ['pov', 'skit', 'bit', 'scene'],
+  trend: ['trend', 'viral', 'current', 'right now'],
+  walking: ['walk', 'walking', 'stroll'],
+  recommend: [],
+}
+
+function cardMatchesFormat(c: { label: string; hook: string; why: string }, format: DesiredFormat): boolean {
+  if (format === 'recommend') return true
+  const blob = `${c.label} ${c.hook} ${c.why}`.toLowerCase()
+  return (FORMAT_SIGNALS[format] ?? []).some((s) => blob.includes(s))
 }
 
 // Natural neighbors: when the creator's own niche is sparse, surface these next so
@@ -245,6 +315,9 @@ export default function Gallery() {
     .filter(Boolean).join(' ').trim()
   const userSubNiche = voiceSubNiche.trim()
   const [niche, setNiche] = useState<string>('All')
+  // D7: the onboarding "what kinds of videos" question, now a browsing filter
+  // instead of a signup commitment. `null` = no format filter (every card).
+  const [formatFilter, setFormatFilter] = useState<DesiredFormat | null>(null)
   const [q, setQ] = useState('')
   // Playbook format filter (no longer hijacks the search box — that left "hook"
   // stuck in search). null = no format filter.
@@ -467,6 +540,7 @@ export default function Gallery() {
     }
     const isForYou = (!!mySubNiche && niche === mySubNiche) || (!!myNiche && niche === myNiche)
     if (niche !== 'All' && !isForYou) out = out.filter((c) => c.niche === niche)
+    if (formatFilter) out = out.filter((c) => cardMatchesFormat(c, formatFilter))
     const rank = (c: Card) =>
       c.niche === mySubNiche ? 0 : c.niche === myNiche ? 1 : related.includes(c.niche) ? 2 : 3
     if (isForYou) {
@@ -497,7 +571,7 @@ export default function Gallery() {
     const relevanceOf = (c: Card) =>
       (isForYou ? (3 - rank(c)) * 1_000_000 : 0) + (place.get(c.id) ?? 0)
     return diversify(out, relevanceOf)
-  }, [all, myNiche, mySubNiche, niche, q, searchBlobs, related, factsById, decisions])
+  }, [all, myNiche, mySubNiche, niche, formatFilter, q, searchBlobs, related, factsById, decisions])
 
   // Only the cards actually on screen need a thumbnail. YouTube thumbnails derive
   // straight from the video id; TikTok needs an oembed round-trip; Instagram keeps
@@ -591,8 +665,36 @@ export default function Gallery() {
             </div>
           </div>
         </Reveal>
+        {/* D7: "what kinds of videos do you want to make" — moved off onboarding
+            and in here as a browsing filter. Every chip toggles off (tap the
+            active one again to clear it), same as the onboarding chips this
+            replaced: a mis-tap costs nothing, and "no filter" always means
+            every card rather than a stuck, unclearable choice. */}
+        <Reveal delay={0.06}>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-stone">Kind of video:</span>
+            {GALLERY_FORMATS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={formatFilter === f}
+                onClick={() => { touched.current = true; setShowAll(false); setFormatFilter((cur) => (cur === f ? null : f)) }}
+                className={cn(
+                  'rounded-full border px-3 py-1 text-xs transition',
+                  formatFilter === f ? 'border-coral bg-coral/15 text-cream' : 'border-white/15 text-sand hover:bg-white/5',
+                )}
+              >
+                {FORMAT_LABEL[f]}
+              </button>
+            ))}
+          </div>
+        </Reveal>
         {shown.length === 0 ? (
-          <div className="glass mt-10 grid place-items-center p-12 text-center text-sand">Nothing here for that yet. Try another niche, or paste a video you love in the Studio.</div>
+          <div className="glass mt-10 grid place-items-center p-12 text-center text-sand">
+            {formatFilter
+              ? <>Nothing tagged as {FORMAT_LABEL[formatFilter].toLowerCase()} yet. <button type="button" className="underline hover:text-cream" onClick={() => setFormatFilter(null)}>Clear that filter</button>, or try another niche.</>
+              : 'Nothing here for that yet. Try another niche, or paste a video you love in the Studio.'}
+          </div>
         ) : (
           <Stagger immediate className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4" gap={0.05}>
             {visible.map((c) => {
