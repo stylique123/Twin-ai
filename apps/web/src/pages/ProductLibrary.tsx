@@ -473,6 +473,8 @@ export default function ProductLibrary() {
 
   async function claim(s: ProductSuggestion | null, a: {
     relationship: EntityRelationship; personalUse: PersonalUse; type: EntityType; name: string
+    /** The creator's own one-line fallback. See migration 0177. */
+    creatorSummary?: string | null
     /** ⚖️ THE LINK IS PART OF THE ATTESTATION, NOT A LATER EDIT. A creator who
      *  starts from a page is telling us WHICH thing they mean; storing it on the
      *  mint is what lets Twin read it without asking them to find it twice. */
@@ -567,7 +569,12 @@ export default function ProductLibrary() {
   }
 
   async function learn(id: string) {
-    const url = (learnUrl[id] ?? '').trim()
+    // ⚠️ FALLS BACK TO THE ENTITY'S OWN LINK, THE SAME FALLBACK THE BOX DISPLAYS.
+    // The retry box is pre-filled with `e.productUrl` without requiring a
+    // keystroke to populate `learnUrl` -- so reading `learnUrl` alone here would
+    // send an empty string for the exact tap the box shows a real link for.
+    const entity = (entities ?? []).find((x) => x.id === id)
+    const url = (learnUrl[id] ?? entity?.productUrl ?? '').trim()
     setErr(null)
     const ownerId = session?.user?.id
     if (!ownerId) { setErr('Please sign in again.'); return }
@@ -589,7 +596,6 @@ export default function ProductLibrary() {
       // ⚖️ AND IT DOES NOT OVERWRITE AN IDENTICAL VALUE. `save` round-trips to
       // the server; skipping the no-op keeps a re-read from touching updated_at
       // and looking like an edit nobody made.
-      const entity = (entities ?? []).find((x) => x.id === id)
       if (url && url !== (entity?.productUrl ?? '')) {
         await save(id, { productUrl: url })
       }
@@ -882,23 +888,34 @@ export default function ProductLibrary() {
               </>
             ) : e.knowledge === null ? (
               <>
+                {/* ⚠️ THE BANNER PROMISES "retry from the product below", AND THIS
+                    IS WHAT MAKES THAT TRUE RATHER THAN A DEAD END. `learn` already
+                    re-enqueues the exact same job `requestProductExtraction`
+                    starts on the first attempt — a failed IMPORT_FAILED read
+                    reuses it rather than inventing a second mechanism, and the
+                    link box is pre-filled with the URL already on file so a retry
+                    is one tap, not a re-paste. */}
                 <p className="mt-1 text-sm text-sand">
-                  Paste a link to its page and Twin will read it, so your scripts can say
-                  what it actually does instead of guessing.
+                  {productLifecycle(e, photoPathsOf(e).length) === 'IMPORT_FAILED'
+                    ? 'Try the same link again, or paste a different one.'
+                    : 'Paste a link to its page and Twin will read it, so your scripts can say what it actually does instead of guessing.'}
                 </p>
                 <div className="mt-2 flex gap-2">
                   <input
                     className="w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
                     placeholder="https://"
-                    value={learnUrl[e.id] ?? ''}
+                    value={learnUrl[e.id] ?? e.productUrl ?? ''}
                     onChange={(ev) => setLearnUrl((p) => ({ ...p, [e.id]: ev.target.value }))}
                   />
                   <button
                     type="button"
-                    disabled={learning === e.id || (learnUrl[e.id] ?? '').trim() === ''}
+                    disabled={learning === e.id || (learnUrl[e.id] ?? e.productUrl ?? '').trim() === ''}
                     className="whitespace-nowrap btn-gradient rounded-lg px-3 py-1.5 text-sm disabled:opacity-40"
                     onClick={() => void learn(e.id)}
-                  >{learning === e.id ? 'Reading…' : 'Read the page'}</button>
+                  >{learning === e.id
+                      ? 'Reading…'
+                      : productLifecycle(e, photoPathsOf(e).length) === 'IMPORT_FAILED' ? 'Retry' : 'Read the page'}
+                  </button>
                 </div>
                 {learning === e.id && (
                   <p className="mt-2 text-xs text-stone">
@@ -1409,6 +1426,8 @@ function StartFromLink({ onCancel, onClaim, busy }: {
   onClaim: (a: {
     relationship: EntityRelationship; personalUse: PersonalUse
     type: EntityType; name: string; productUrl?: string | null; imagePaths?: string[]
+    /** The creator's own one-line fallback. See migration 0177. */
+    creatorSummary?: string | null
     /** ⚖️ THE ANSWER TO THE ONE CAPABILITY QUESTION THIS PRODUCT WARRANTED.
      *  Absent when the type warranted none — a service — and absent is NOT a
      *  denial: `attestedEntity` reads a missing flag as UNKNOWN. */
@@ -1430,6 +1449,11 @@ function StartFromLink({ onCancel, onClaim, busy }: {
   const [uploading, setUploading] = useState(false)
   const [imgErr, setImgErr] = useState<string | null>(null)
   const [name, setName] = useState('')
+  // ⚠️ THE FALLBACK, IN THE CREATOR'S OWN WORDS. Not the summary Twin might read
+  // off a page -- the one thing that survives a page that cannot be read at all,
+  // because the worker turns this into a `user_confirmed` fact exactly where
+  // extraction itself produced nothing. See `worker/src/jobs/extractProduct.ts`.
+  const [summary, setSummary] = useState('')
   const [relationship, setRelationship] = useState<EntityRelationship | null>(null)
   const [type, setType] = useState<EntityType | null>(null)
   const [personalUse, setPersonalUse] = useState<PersonalUse | null>(null)
@@ -1514,12 +1538,12 @@ function StartFromLink({ onCancel, onClaim, busy }: {
         )}
       </div>
 
-      {/* ⚖️ OFFERED, NOT REQUIRED, AND ONLY WHEN THERE IS NO LINK TO READ. Some
-          products have no page — a service, a community, something not launched —
-          and refusing those would make the link the price of entry. */}
+      {/* ⚖️ THE NAME IS OFFERED, NOT REQUIRED, ONLY WHEN A LINK CAN SUPPLY ONE.
+          Some products have no page — a service, a community, something not
+          launched — and refusing those would make the link the price of entry. */}
       <div>
         <label className="text-xs font-medium uppercase tracking-wide text-stone" htmlFor="product-name">
-          {link ? 'Or give it a name (optional)' : 'What do you call it?'}
+          {link ? 'Name (what you call it on camera)' : 'What do you call it?'}
         </label>
         <input
           id="product-name"
@@ -1529,6 +1553,28 @@ function StartFromLink({ onCancel, onClaim, busy }: {
           placeholder={link ? 'Twin will read this from the page' : 'e.g. Twin'}
           className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
         />
+      </div>
+
+      {/* ⚠️ THE SENTENCE THAT SURVIVES A PAGE THAT CANNOT BE READ. Evidently
+          common — see the "we could not start reading that page" report — and
+          until now a failed scrape left the entity with nothing at all to fall
+          back on. The worker turns this into the entity's first fact exactly
+          where extraction itself produced nothing; see `extractProduct.ts`. */}
+      <div>
+        <label className="text-xs font-medium uppercase tracking-wide text-stone" htmlFor="product-summary">
+          In one line, what is it and who is it for?
+        </label>
+        <input
+          id="product-summary"
+          type="text"
+          value={summary}
+          onChange={(e) => setSummary(e.target.value)}
+          placeholder="e.g. A editing app for creators who film on their phone"
+          className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+        />
+        <p className="mt-1 text-xs text-stone">
+          Used if the page cannot be read — Twin will not leave this product with nothing.
+        </p>
       </div>
 
       {/* ⚖️ PHOTOGRAPHS ESTABLISH WHAT A THING IS AND WHAT IT LOOKS LIKE, and
@@ -1650,7 +1696,7 @@ function StartFromLink({ onCancel, onClaim, busy }: {
             // experience claim out of silence.
             personalUse: asksPersonalUse(ctx) ? personalUse! : 'NOT_CONFIRMED',
             type: type!,
-            name: name.trim(), productUrl: link || null, imagePaths,
+            name: name.trim(), creatorSummary: summary.trim() || null, productUrl: link || null, imagePaths,
             // ⚠️ THE ANSWER ABOUT THIS PRODUCT, WHICH BEATS THE ACCOUNT DEFAULT.
             // `attestedEntity` derives showability from flags, so the flag that
             // matches the question asked is the one sent.

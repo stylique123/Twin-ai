@@ -340,6 +340,8 @@ export function mintFromWorkKind(
   const type = refinedEntityType(mint.type, opts)
   return {
     name: name === '' ? null : name,
+    // A Q3 mint never asks this question, so it has nothing to carry.
+    creatorSummary: null,
     type,
     relationship: mint.relationship,
     // The default, and nothing here may move it. A founder owning a product
@@ -399,6 +401,10 @@ export interface EntityAttestation {
   personalUse: PersonalUse
   type: EntityType
   name: string | null
+  /** ⚠️ THE FALLBACK, IN THE CREATOR'S OWN WORDS. Optional -- most claims arrive
+   *  with a link Twin can read, and this exists for the ones that do not, or the
+   *  ones whose page fails. See migration 0177. */
+  creatorSummary?: string | null
   productUrl?: string | null
   flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
   /** ⚠️ THE THREE-WAY ANSWER THE FORM ALREADY SHOWS THEM. Absent means they
@@ -423,8 +429,10 @@ export interface EntityAttestation {
 export function attestedEntity(a: EntityAttestation): DraftEntity {
   const name = (a.name ?? '').trim()
   const url = (a.productUrl ?? '').trim()
+  const summary = (a.creatorSummary ?? '').trim()
   return {
     name: name === '' ? null : name,
+    creatorSummary: summary === '' ? null : summary,
     type: a.type,
     relationship: a.relationship,
     personalUse: a.personalUse,
@@ -777,6 +785,10 @@ export function emptyRestrictions(): EntityRestrictions {
  *  what the confirm screen edits. */
 export interface DraftEntity {
   name: string | null
+  /** ⚠️ THE FORM'S OWN FALLBACK, NOT EXTRACTED KNOWLEDGE. One sentence, in the
+   *  creator's own words, kept for the moment a pasted page cannot be read.
+   *  See migration 0177. Null means the question was skipped or left blank. */
+  creatorSummary: string | null
   type: EntityType
   relationship: EntityRelationship
   personalUse: PersonalUse

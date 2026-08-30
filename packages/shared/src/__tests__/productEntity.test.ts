@@ -26,6 +26,7 @@ const NOW = '2026-08-09T00:00:00.000Z'
 
 const entity = (over: Partial<DraftEntity> = {}): DraftEntity => ({
   name: 'Twin AI',
+  creatorSummary: null,
   type: 'SAAS',
   relationship: 'OWN_PRODUCT',
   personalUse: 'NOT_CONFIRMED',
