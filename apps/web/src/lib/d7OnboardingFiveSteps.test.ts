@@ -3,11 +3,16 @@
 // Four separate defects, each verified against the ACTUAL current code rather
 // than assumed from the audit's numbering:
 //
-//   1. Occupation chips (10 -> 6 that provably change the writer prompt, +
-//      `other` as the honest escape hatch every occupation not on the list
-//      already had). `founder`, `coach` and `freelancer` have no entry in
-//      `WORK_KIND_LINES` or `CLAIMS_QUESTION_KINDS` in generate-blueprint —
-//      picking any of them produces the exact same nothing as picking none.
+//   1. Occupation chips (10 -> 7 offered). ⚠️ THIS ITEM WAS FIXED THE WRONG WAY
+//      ROUND AND HAS BEEN CORRECTED. The original D7 change removed `founder`,
+//      `coach` and `freelancer` from the chooser because `WORK_KIND_LINES` in
+//      generate-blueprint had no entry for them. The premise was true and the
+//      remedy was backwards: those three chips describe the creators this
+//      product is tested on, and deleting them made a coach answer "Something
+//      else" about their own occupation. The writer now has a real, distinct
+//      line for all three, so the chips are back and the assertions below pin
+//      the OFFERED SET AND ITS READER TOGETHER — see
+//      workKindLinesCoverEveryChip.test.ts.
 //   2. Goal question: untouched. Fixed in D1 (#607), out of scope here.
 //   3. The three story questions ("expensive lesson", "best result",
 //      "contrarian") merge into ONE screen with three fields, still writing
@@ -31,36 +36,62 @@ const GALLERY = readFileSync(join(REPO, 'apps/web/src/pages/Gallery.tsx'), 'utf8
 const STORY = readFileSync(join(REPO, 'apps/web/src/components/StoryInterview.tsx'), 'utf8')
 const PRE_SCRIPT_BRIEF = readFileSync(join(REPO, 'packages/shared/src/preScriptBrief.ts'), 'utf8')
 
-describe('1. occupation chips: 10 down to 7 offered (6 productive + other)', () => {
-  it('the writer prompt really does treat founder/coach/freelancer as dead-equal', () => {
-    // Pinned against the ACTUAL edge function, not the audit's claim about it.
+describe('1. occupation chips: 10 stored values, 7 offered, every one answered', () => {
+  it('the writer prompt now has a real line for founder, coach and freelancer', () => {
+    // ⚠️ THE INVERSION OF WHAT THIS ONCE ASSERTED. It used to pin that the three
+    // had NO entry — treating the gap as the settled state and deleting the
+    // chips to match. The gap was the bug. Pinned against the actual edge
+    // function, not against a claim about it.
     const wkl = EDGE.slice(EDGE.indexOf('const WORK_KIND_LINES'), EDGE.indexOf('const workKindOther'))
-    for (const dead of ['founder', 'coach', 'freelancer']) {
-      expect(wkl, `${dead} must have no WORK_KIND_LINES entry`).not.toMatch(new RegExp(`\\b${dead}:`))
+    for (const kind of ['founder', 'coach', 'freelancer']) {
+      expect(wkl, `${kind} must have a WORK_KIND_LINES entry`).toMatch(new RegExp(`\\b${kind}: '`))
     }
+  })
+
+  it('and those three lines say genuinely different things', () => {
+    // ⚖️ RESTORING THE CHIPS WOULD BE WORTHLESS IF THE LINES WERE COPIES. A
+    // founder speaks FOR something they own; a coach has no object to film at
+    // all; a freelancer sells capacity. Each line has to carry its own fact.
+    const wkl = EDGE.slice(EDGE.indexOf('const WORK_KIND_LINES'), EDGE.indexOf('const workKindOther'))
+    const lineOf = (k: string) => wkl.match(new RegExp(`^\\s+${k}: '(.*)',$`, 'm'))![1]
+    const [founder, coach, freelancer] = ['founder', 'coach', 'freelancer'].map(lineOf)
+    expect(new Set([founder, coach, freelancer]).size).toBe(3)
+    // The one fact about a coach that changes what can be shot at all.
+    expect(coach).toMatch(/NO OBJECT TO FILM/)
+    expect(founder).toMatch(/own/i)
+    expect(freelancer).toMatch(/CAPACITY/)
+  })
+
+  it('the claims question is deliberately NOT widened to the three', () => {
+    // ⚖️ THE FILE'S OWN DOCTRINE, APPLIED RATHER THAN OVERRIDDEN. `saas` is
+    // excluded because its constraints are competitive, not regulatory, and
+    // "asking a compliance question of someone with no compliance regime trains
+    // them to skip it, which is how the doctor skips it too." A founder and a
+    // freelancer are the same case. A coach has no licensing body either.
+    // Restoring a chip is not a reason to widen a liability question.
     expect(PRE_SCRIPT_BRIEF).toMatch(/CLAIMS_QUESTION_KINDS: readonly BriefWorkKind\[\] = \['professional', 'ecommerce', 'brand'\]/)
   })
 
-  it('a new signup is offered only the six that change the prompt, plus other', () => {
+  it('a new signup is offered the seven chips, founder and coach among them', () => {
     expect(ONBOARDING).toMatch(
-      /const ONBOARDING_WORK_KINDS: readonly BriefWorkKind\[\] = \[\s*'creator', 'professional', 'ecommerce', 'brand', 'saas', 'local_service', 'other',\s*\]/)
-    expect(ONBOARDING).not.toMatch(/ONBOARDING_WORK_KINDS[\s\S]{0,200}'founder'/)
-    expect(ONBOARDING).not.toMatch(/ONBOARDING_WORK_KINDS[\s\S]{0,200}'coach'/)
-    expect(ONBOARDING).not.toMatch(/ONBOARDING_WORK_KINDS[\s\S]{0,200}'freelancer'/)
+      /const ONBOARDING_WORK_KINDS: readonly BriefWorkKind\[\] = \[\s*'creator', 'founder', 'coach', 'professional', 'ecommerce', 'saas', 'other',\s*\]/)
   })
 
-  it('both chip renders use the reduced set, not the full stored type', () => {
+  it('both chip renders use the offered set, not the full stored type', () => {
     expect(ONBOARDING).toMatch(/\{ONBOARDING_WORK_KINDS\.map\(\(k\) => \(/)
     expect(ONBOARDING).toMatch(/values=\{ONBOARDING_WORK_KINDS\} label=\{WORK_KIND_LABEL\} chosen=\{draft\.workKind\}/)
   })
 
-  it('the stored type keeps all ten, so old answers still label correctly', () => {
-    // Backward compatibility: a creator who already picked founder/coach/
-    // freelancer before this fix must still see a real label, not undefined.
-    expect(BRIEF_WORK_KINDS).toContain('founder')
-    expect(BRIEF_WORK_KINDS).toContain('coach')
-    expect(BRIEF_WORK_KINDS).toContain('freelancer')
+  it('the stored type keeps all ten, so nothing already answered is rewritten', () => {
+    // ⚖️ SEVEN CHIPS IS NOT SEVEN VALUES. `freelancer`, `brand` and
+    // `local_service` are folded into a chip for NEW signups but remain valid
+    // stored values with their own labels and their own writer lines — so no
+    // row is silently rewritten and no backfill is owed.
+    for (const k of ['founder', 'coach', 'freelancer', 'brand', 'local_service']) {
+      expect(BRIEF_WORK_KINDS).toContain(k)
+    }
     expect(ONBOARDING).toMatch(/founder: 'Founder \/ business owner'/)
+    expect(ONBOARDING).toMatch(/freelancer: 'Freelancer \/ agency'/)
   })
 })
 

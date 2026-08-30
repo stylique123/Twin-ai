@@ -5149,7 +5149,29 @@ Deno.serve(async (req: Request) => {
     // UNANSWERED EMITS NOTHING, exactly as `promotes` and the claims block do.
     // A default would be this system telling the model what someone does for a
     // living because nobody asked.
+    // ⚠️ `founder`, `coach` AND `freelancer` USED TO BE MISSING FROM THIS MAP,
+    // and the onboarding chooser had the three chips DELETED to match — which
+    // fixed the empty line by removing the people. They are back in the chooser
+    // and they are answered here, because these three are not variations on
+    // `creator` or `other`: each one changes what a script is allowed to be
+    // ABOUT and what it can physically show.
+    //
+    //   founder     speaks FOR a thing they own — first-person authority over
+    //               the product's promises, which a reviewer never has.
+    //   coach       sells expertise with NO OBJECT TO FILM. The single most
+    //               consequential fact about them: every `[SHOW: …]` instinct
+    //               has nothing to point at, so the proof has to be a method or
+    //               an outcome, said out loud.
+    //   freelancer  sells CAPACITY — time and skill applied to someone else's
+    //               problem. The proof is finished work, and finished work
+    //               usually belongs to a client.
+    //
+    // `workKindLinesCoverEveryChip.test.ts` fails the build if the chooser ever
+    // offers a value this map has no entry for.
     const WORK_KIND_LINES: Record<string, string> = {
+      founder: 'is a FOUNDER speaking FOR a business they own. They may state plainly what their own company does and promises, in the first person — an authority a reviewer of the same product does not have. Write from inside the business, not as an observer describing it.',
+      coach: 'sells EXPERTISE, and there is NO OBJECT TO FILM. Do not write beats that hold something up or show a product working — there is nothing to hold. The proof is the method itself: name the specific thing they do differently, or a before-and-after, and never identify a client who has not agreed to be named.',
+      freelancer: 'sells CAPACITY — their time and skill applied to someone else\'s problem. The proof is finished work rather than an owned product, so write beats that point at outcomes they delivered, and never show client work as if it were theirs to publish unless the creator has said it is.',
       saas: 'runs a SOFTWARE product. Their proof is the product working — a screen SHOWN TO CAMERA, not a claim. Their constraints are competitive, not regulatory.',
       professional: 'is a CREDENTIALED PROFESSIONAL whose advice carries real-world consequences. Prefer "in my experience" and "for many people" over universal promises, and never imply an outcome is guaranteed.',
       ecommerce: 'sells a PHYSICAL PRODUCT. The object itself is the proof — write beats that hold it, use it and show the result, rather than describing it.',
