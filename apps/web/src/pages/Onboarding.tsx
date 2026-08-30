@@ -336,7 +336,16 @@ export default function Onboarding() {
            as a narrow strip with the whole display empty either side and most
            of the form below the fold. When the scan comes back thin, that strip
            is fifteen EMPTY boxes, which is the worst version of it. */
-        className={cn('relative w-full', mode === 'confirm' ? 'max-w-4xl' : 'max-w-xl')}
+        /* ⚠️ AND THE QUESTION SCREEN IS NOT A SIDE RAIL EITHER. `max-w-xl` is
+           576px — right for pasting a handle, wrong for a screen that now
+           carries four questions and their chip grids, which rendered as a
+           narrow strip with a three-column grid squeezed into it and the
+           button far below the fold. 768px is wide enough for two short
+           questions side by side and still a readable measure. */
+        className={cn(
+          'relative w-full',
+          mode === 'confirm' ? 'max-w-4xl' : mode === 'building' ? 'max-w-3xl' : 'max-w-xl',
+        )}
       >
         {/* p-8 is 64px of horizontal padding, which is 16% of a 390px phone
             spent on nothing. The confirm step is the longest screen in the
@@ -819,6 +828,15 @@ function BuildingStep({
           <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
             While we read · {qAt + 1} of {asked.length}
           </p>
+
+          {/* WHAT THEY ALREADY SAID, WITHOUT SCROLLING BACK FOR IT.
+              ⚠️ ONCE A QUESTION IS BEHIND THEM THE ANSWER IS GONE FROM THE
+              SCREEN, so checking one costs a scroll back and a scroll forward,
+              and the common outcome is not checking. This is a compact,
+              read-only summary of the answers so far — it never renders on the
+              first question, because there is nothing to summarise yet. */}
+          <AnswerSummary draft={draft} />
+
           <ProfileQuestion
             id={asked[qAt]}
             draft={draft}
@@ -827,8 +845,15 @@ function BuildingStep({
           {/* THE CREATOR MOVES THE QUESTIONS, NOTHING ELSE DOES.
               Skipping is unpunished: a required question on a waiting screen
               turns a wait into a toll, and all three are asked again on the
-              confirm screen where they stay editable. */}
-          <div className="mt-4 flex items-center gap-3">
+              confirm screen where they stay editable.
+
+              ⚠️ THE BUTTON STICKS TO THE BOTTOM ON A PHONE. It used to sit at
+              the natural end of the content, which on a screen carrying four
+              questions put it below the fold — a creator who had answered
+              everything still had to hunt for the way forward. It is pinned
+              within the card on small screens and sits inline once there is
+              room for it. */}
+          <div className="sticky bottom-0 -mx-4 mt-5 flex items-center gap-3 border-t border-white/10 bg-ink2/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:backdrop-blur-none">
             <button
               type="button"
               onClick={() => {
@@ -838,14 +863,20 @@ function BuildingStep({
                 if (qAt + 1 >= asked.length) setFinished(true)
                 else setQIndex(qAt + 1)
               }}
-              className="btn-gradient flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold"
+              className="btn-gradient min-h-[44px] flex-1 rounded-xl px-3 text-sm font-semibold"
             >
               {qAt + 1 >= asked.length ? 'Done' : 'Next'}
             </button>
+            {/* ⚖️ QUIET, BUT A REAL TARGET. Skipping should not shout — it is
+                the answer we least want and must still be honestly available —
+                but it was a 12px text link with 8px of padding, which is a
+                tap target well under the 44px minimum on the screen where a
+                mis-tap costs the creator the whole question set. Quiet is a
+                matter of colour and weight, not of being hard to hit. */}
             <button
               type="button"
               onClick={() => setFinished(true)}
-              className="shrink-0 px-2 py-2 text-xs text-stone hover:text-cream"
+              className="inline-flex min-h-[44px] shrink-0 items-center rounded-xl px-3 text-xs text-stone transition hover:bg-white/5 hover:text-cream"
             >
               Skip all
             </button>
@@ -1842,6 +1873,46 @@ const CAPABILITY_LABEL: Record<CapabilityAnswer, string> = {
 }
 
 /** The answers the adaptive rules read, lifted off the draft. */
+
+/**
+ * THE ANSWERS SO FAR, SO NOBODY SCROLLS BACK TO CHECK ONE.
+ *
+ * ⚠️ AN ANSWERED QUESTION LEAVES THE SCREEN COMPLETELY. Moving to the next
+ * question replaces the previous one, so "wait, did I say founders or
+ * professionals?" costs a scroll back, a scroll forward, and the risk of
+ * changing an answer by mis-tapping a chip on the way past. The common outcome
+ * is not checking at all, and then correcting it on the confirm screen — or not.
+ *
+ * ⚖️ READ-ONLY, AND DELIBERATELY NOT EDITABLE HERE. Making these tappable would
+ * put two ways to change one answer on one screen, and the confirm screen
+ * already owns editing. This answers "what did I say" and nothing else.
+ *
+ * ⚖️ IT RENDERS NOTHING WHEN THERE IS NOTHING TO SAY, which is the whole of the
+ * first question and every screen for a creator who is skipping. A summary bar
+ * that appears empty is a band of chrome charging rent on a phone screen.
+ */
+export function AnswerSummary({ draft }: { draft: OnboardingDraft }) {
+  const sells = sellsAnswerOf(draft.commercialTies)
+  const parts: string[] = [
+    draft.workKind ? WORK_KIND_LABEL[draft.workKind] : '',
+    draft.audienceSeg ? AUDIENCE_LABEL[draft.audienceSeg] : '',
+    draft.audienceKnowledge ? KNOWLEDGE_LABEL[draft.audienceKnowledge] : '',
+    ...draft.contentGoals.map((g) => CONTENT_GOAL_LABEL[g]),
+    sells ? SELLS_LABEL[sells] : '',
+  ].filter((x) => x !== '')
+
+  if (parts.length === 0) return null
+  return (
+    <div className="mt-3 flex flex-wrap gap-1.5 border-b border-white/10 pb-3">
+      {parts.map((p) => (
+        <span
+          key={p}
+          className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-sand"
+        >{p}</span>
+      ))}
+    </div>
+  )
+}
 
 /**
  * A QUESTION AS A TITLED BLOCK, NOT A LINE OF TEXT ABOVE SOME BUTTONS.
