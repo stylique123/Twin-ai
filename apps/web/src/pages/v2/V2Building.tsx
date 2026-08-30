@@ -164,6 +164,49 @@ type AskItem = ReadinessQuestion | ChipQuestion
 const isChip = (q: AskItem): q is ChipQuestion =>
   Array.isArray((q as ChipQuestion).options)
 
+// ── D2: THE RELATIONSHIP CHIP LIVES IN ONE PLACE, AND THIS IS NOT IT ──────
+//
+// ⚠️ THIS SCREEN USED TO ASK IT AGAIN, AS FREE TEXT. Product Library already
+// has the real question — four chips, own it / earn from it / paid to
+// feature it / just covering it — writing straight to
+// `product_entities.relationship`, the enum every claim rule and disclosure
+// check reads. This screen's own copy asked the same thing in prose and sent
+// it to `readiness_answers.relationship`, which the server read only to
+// satisfy a boolean gate (`READINESS_RELATIONSHIPS.includes(...)` — an
+// exact-string match, never a parse), then discarded. It was never
+// interpolated into a script and never written to a column. Typing "I get
+// paid to feature it" did nothing a creator could see; only the four exact
+// enum spellings, typed verbatim, ever passed the gate — which never
+// happened in practice. A duplicate question with a dead-end answer.
+//
+// ⚖️ SO THE GATE NOW READS THE ENTITY DIRECTLY. `libraryRelationship` below
+// resolves the same fact from Product Library instead, and the free-text box
+// is gone — see `renderAsk`'s `relationship` branch, which is a link to
+// Product Library, not an `<input>`.
+/** Resolve the creator's relationship to the named offer from what Product
+ *  Library already has on record, so the readiness check can be satisfied
+ *  without ever re-asking it here.
+ *
+ *  ⚖️ NAME MATCH FIRST, SOLE ANSWER SECOND. A creator with several products
+ *  is disambiguated by the offer name this build already settled on; a
+ *  creator with exactly one answered product needs no disambiguation at
+ *  all — asking them to match a name to itself would be its own tiny
+ *  duplicate question. */
+function libraryRelationship(
+  products: readonly ProductEntityRecord[] | null,
+  offer: string | null | undefined,
+): string | null {
+  if (!products?.length) return null
+  const answered = products.filter((p) => p.relationship && p.relationship !== 'NONE')
+  if (!answered.length) return null
+  const offerNorm = (offer ?? '').trim().toLowerCase()
+  if (offerNorm) {
+    const hit = answered.find((p) => (p.name ?? '').trim().toLowerCase() === offerNorm)
+    if (hit) return hit.relationship
+  }
+  return answered.length === 1 ? answered[0].relationship : null
+}
+
 /** ⚠️ A RESTORED ANSWER IS UNTRUSTED INPUT. sessionStorage can hold a value
  *  written by an older build whose enum has since changed, and a cast would
  *  send it anyway. Unknown reads as unanswered, which is the safe state. */
@@ -420,11 +463,26 @@ export default function V2Building() {
           (q) => (answersRef.current[q.field] ?? '').trim())
         if (!askQuestions && !(intentAnswered && Object.keys(answersRef.current).length)) {
           try {
-            const voices = await listBrandVoices()
+            // ⚖️ THE LIBRARY IS READ ALONGSIDE THE VOICE, NOT AFTER IT. Both are
+            // cheap indexed reads, and the relationship verdict below needs the
+            // library's answer before it can decide whether to ask anything —
+            // fetching it later, only once a question was already on screen,
+            // would mean asking first and checking second.
+            const [voices, libraryProducts] = await Promise.all([
+              listBrandVoices(),
+              // A failed read falls back to "nothing on file" — the same
+              // conservative default `assessReadiness` already treats a gap
+              // as, never a reason to block this courtesy pre-check.
+              loadProductEntities().catch(() => [] as ProductEntityRecord[]),
+            ])
+            // Reused by the `offer` chip's product picker below, so a creator
+            // who reaches that branch does not pay for the same fetch twice.
+            if (products === null) setProducts(libraryProducts)
             const v = voices.find((x) => x.is_default) ?? voices[0] ?? null
             const vBrief = ((v as { pre_script_brief?: Record<string, unknown> } | null)
               ?.pre_script_brief ?? {}) as Record<string, unknown>
             const str = (x: unknown) => (typeof x === 'string' ? x : undefined)
+            const offerName = str(vBrief.offer) ?? null
             const verdict = assessReadiness({
               goal: state.goal ?? str(vBrief.goal) ?? null,
               angle: state.reference_note || refUrl || str(vBrief.idea) || null,
@@ -433,10 +491,15 @@ export default function V2Building() {
               // made every creator "promoting" and put two mandatory product
               // questions on the card — including for one whose stored answer
               // was `nothing_to_sell`.
-              offer: str(vBrief.offer) ?? null,
-              // ⚖️ "Nothing to sell" is an ANSWER. Passing it through as the
-              // relationship keeps `assessReadiness` from treating it as a gap.
-              relationship: str(vBrief.promotes) ?? null,
+              offer: offerName,
+              // ⚖️ ONE FACT, ONE OWNER (D2). Product Library's entity is the
+              // real answer to this question — read it first. `vBrief.promotes`
+              // is what a NON-owned tie (affiliate, sponsor) is recorded under,
+              // for a creator whose product row is not theirs to answer for.
+              // "Nothing to sell" is an ANSWER too, and passing it through as
+              // the relationship keeps `assessReadiness` from treating it as a
+              // gap.
+              relationship: libraryRelationship(libraryProducts, offerName) ?? str(vBrief.promotes) ?? null,
               cta: str(vBrief.cta) ?? null,
               audience: str(vBrief.audience) ?? str(v?.profile?.audience) ?? null,
               referenceRead: Boolean(refUrl),
@@ -987,6 +1050,24 @@ export default function V2Building() {
                   placeholder="Or type something else"
                 />
                 </>
+              ) : q.field === 'relationship' ? (
+                // ⚠️ D2: NOT A TEXT BOX. This is a duplicate of Product
+                // Library's own four-chip question ("own it / earn from it /
+                // paid to feature it / just covering it"), which writes the
+                // real enum column (`product_entities.relationship`) that
+                // every claim rule and disclosure check reads. A free-text
+                // answer here never reached any of that — it only ever
+                // satisfied a gate that matched it against the exact enum
+                // spelling, which a typed sentence never is. So this sends the
+                // creator to the one place that answer actually counts,
+                // instead of asking it again for nothing.
+                <button
+                  type="button"
+                  onClick={() => nav('/products')}
+                  className="mt-2.5 w-full rounded-xl border border-white/10 bg-white/[0.02] px-3.5 py-2.5 text-left text-[13px] text-sand transition-colors hover:border-white/20 hover:bg-white/[0.04]"
+                >
+                  Open Product Library to set it →
+                </button>
               ) : (
                 <input
                   type="text"

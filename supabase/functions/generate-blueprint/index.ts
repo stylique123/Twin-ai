@@ -3869,11 +3869,30 @@ Deno.serve(async (req: Request) => {
   const readyNothingToSell = String(brief.promotes ?? '') === 'nothing_to_sell'
   const readyPromoting = !readyNothingToSell
     && (readyPresent(readyOfferStated) || readyCommercial)
-  // ⚖️ EITHER AUTHORITY SETTLES IT. `product_entities.relationship` covers the
-  // creator's OWN product; `brief.promotes` is where an affiliate or sponsor
-  // tie to SOMEBODY ELSE'S product is recorded. Reading only the first would
-  // ask an affiliate a question they already answered.
-  const readyRel = answers.relationship ?? ownedEntity?.relationship ?? brief.promotes
+  // ⚖️ D2: THE ENTITY SETTLES IT FIRST — A TYPED ANSWER IS A LAST RESORT. Product
+  // Library's four-chip question (own it / earn from it / paid to feature it /
+  // just covering it) writes straight onto `product_entities.relationship`, and
+  // that is now the only place this fact is asked. `ownedEntity` covers the
+  // creator's OWN product; `readyLibraryRel` looks the named offer up in the
+  // wider library for an affiliate or sponsor tie recorded against a row that is
+  // not voice-scoped (0120: a non-owned entity's `voice_id` is null); `brief.
+  // promotes` is the same fact from an older write path some accounts still
+  // carry. `answers.relationship` is read LAST, purely for a caller this UI no
+  // longer produces (an old client, a direct POST) — the Quick-things screen
+  // stopped asking this as free text (D2) because typing it never reached any of
+  // the above: this gate matched it only against the exact enum spelling, which
+  // a typed sentence never is, so it could not outrank a real entity answer even
+  // when it happened to satisfy the check.
+  const readyLibraryRel = (() => {
+    const offerNorm = String(readyOffer ?? '').trim().toLowerCase()
+    if (!offerNorm) return null
+    const hit = (libraryRows ?? []).find((r) => {
+      const nm = String((r as { name?: unknown }).name ?? '').trim().toLowerCase()
+      return nm !== '' && nm === offerNorm
+    }) as { relationship?: string | null } | undefined
+    return hit?.relationship ?? null
+  })()
+  const readyRel = ownedEntity?.relationship ?? readyLibraryRel ?? brief.promotes ?? answers.relationship
   const readyEv = productEvidence as { sections?: Array<{ label?: string }> } | 'declined' | null | undefined
   const readyFacts = readyEv && typeof readyEv === 'object' && Array.isArray(readyEv.sections)
     ? readyEv.sections.map((x) => String(x?.label ?? '')).filter((x) => x.trim() !== '')
