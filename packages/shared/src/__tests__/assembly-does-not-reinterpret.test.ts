@@ -39,9 +39,17 @@ describe('every onboarding value has a canonical meaning', () => {
     }
   })
 
-  it('maps every commercial tie', () => {
+  // ⚠️ ONE TIE IS EXEMPT, AND THE EXEMPTION IS NAMED RATHER THAN LOOSENED.
+  // `unspecified` is what onboarding's surviving yes/no writes for "yes, I sell
+  // something": a commercial thing exists, but its kind and the creator's
+  // relationship to it are unknown until they name it in the Product Library.
+  // Giving it any canonical relationship would invent authority nobody granted.
+  // Every OTHER tie must still resolve, which is what this test protects.
+  it('maps every commercial tie except the deliberately-unknown one', () => {
     for (const t of COMMERCIAL_TIES) {
-      expect(of({ commercialTies: [t] }).relationship).not.toBeNull()
+      const rel = of({ commercialTies: [t] }).relationship
+      if (t === 'unspecified') expect(rel, t).toBeNull()
+      else expect(rel, t).not.toBeNull()
     }
   })
 })

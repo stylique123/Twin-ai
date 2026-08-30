@@ -70,10 +70,13 @@ describe('the fitness creator with nothing to sell is asked five questions and l
     expect(asksProductCapability(FITNESS_CREATOR)).toBe(false)
   })
   it('so the fifth question does not exist for them', () => {
-    // ⚠️ FOUR, NOT FIVE: `desiredFormats` moved off onboarding entirely (D7 of
-    // the consolidation spec) and into a Gallery filter, so it is never in
-    // this list to begin with.
-    expect(profileQuestionsFor(FITNESS_CREATOR)).toHaveLength(4)
+    // ⚠️ TWO, NOT FIVE, AND THIS TEST'S POINT IS SHARPER FOR IT. `desiredFormats`
+    // moved to a Gallery filter (D7); then `workKind`, `audience` and the
+    // commercial question merged into the single `whoYouAre` screen. A fitness
+    // creator with nothing to sell now answers TWO screens and is left alone —
+    // which is exactly what "nobody is interrogated about what they do not
+    // have" was always asking for.
+    expect(profileQuestionsFor(FITNESS_CREATOR)).toHaveLength(2)
     expect(profileQuestionsFor(FITNESS_CREATOR)).not.toContain('capabilities')
     expect(profileQuestionsFor(FITNESS_CREATOR)).not.toContain('desiredFormats')
   })

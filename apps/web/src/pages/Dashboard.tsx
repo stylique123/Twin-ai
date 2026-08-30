@@ -11,6 +11,7 @@ import type { BrandVoice, Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { TwinStrengthCard } from '../components/TwinStrengthCard'
 import { OwnAccountFitCard } from '../components/OwnAccountFitCard'
+import { AddYourProductCard } from '../components/AddYourProductCard'
 import { OutcomeHistory } from '../components/OutcomeHistory'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Counter } from '../components/Counter'
@@ -163,6 +164,16 @@ export default function Dashboard() {
                 WORRY. One says what the twin knows; this says what it had to
                 learn from. Both render nothing when they cannot speak. */}
             <OwnAccountFitCard voiceId={brand?.id ?? null} />
+            {/* ⚠️ THE CARD THAT PAYS FOR A REMOVAL. Onboarding stopped asking
+                thirteen options about what a creator sells and now asks one
+                yes/no. Somebody who answers yes has stated a commercial fact
+                with nowhere to put it, and the Product Library is the page this
+                repo measured nobody visits. This is the reason to go.
+
+                It appears only for a creator who SAID yes and has no product
+                row yet, and it stops the moment they add one — see the card for
+                why "not right now" and "never answered" are both silence. */}
+            <AddYourProductCard voiceId={brand?.id ?? null} />
           </div>
           {/* The welcome name is the brand handle; show its platform so it's clear
               which brand voice is active. No email — that's not the creator identity. */}

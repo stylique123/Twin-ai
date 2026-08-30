@@ -20,13 +20,15 @@ describe('the list really does shrink under the creator', () => {
     // ⚠️ THE PRECONDITION FOR THE BUG, ASSERTED SO IT CANNOT BE ARGUED AWAY.
     // If this ever stops being true the guard below is still correct, but the
     // reason for it changes and somebody should know.
-    // ⚠️ FIVE AND FOUR, NOT SIX AND FIVE: `desiredFormats` no longer has a slot
-    // in this list (D7 of the consolidation spec moved it to a Gallery filter),
-    // so the whole set is one shorter than it used to be.
+    // ⚠️ THREE AND TWO. `desiredFormats` left for a Gallery filter (D7), and
+    // then `workKind` + `audience` + `commercialTies` merged into the single
+    // `whoYouAre` screen. What this test actually protects is unchanged and is
+    // the whole reason it exists: the list SHRINKS as answers arrive, so an
+    // index into it can outrun it.
     const before = profileQuestionsFor({ workKind: 'saas' } as never)
     const after = profileQuestionsFor({ workKind: 'creator', commercialTies: ['none'] } as never)
-    expect(before.length).toBe(5)
-    expect(after.length).toBe(4)
+    expect(before.length).toBe(3)
+    expect(after.length).toBe(2)
   })
 })
 
