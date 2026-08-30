@@ -199,13 +199,20 @@ export async function insertKnowledge(
   const { error } = await db.from('creator_knowledge').insert(rows)
   if (!error) return { error: null, sourceStored: true, merged: false }
   const missingColumn = error.code === 'PGRST204'
-    || /column .*source.* does not exist/i.test(String(error.message ?? ''))
+    || /column .*(source|cost|consensus).* does not exist/i.test(String(error.message ?? ''))
   if (!missingColumn) return { error, sourceStored: false, merged: false }
   console.warn(JSON.stringify({
     event: 'creator_knowledge_source_column_absent',
-    detail: 'migration 0122 not applied; storing rows WITHOUT provenance',
+    detail: 'migration 0122/0178 not applied; storing rows WITHOUT provenance, cost or consensus',
   }))
+  // ⚠️ `cost` AND `consensus` ARE STRIPPED ALONGSIDE `source`, AND THE REASON IS
+  // THE ONE THIS BLOCK WAS ALREADY WRITTEN FOR. PostgREST rejects the WHOLE
+  // batch with PGRST204 on ONE unknown column, so a worker deployed a minute
+  // ahead of its migration does not lose two new fields — it loses every row of
+  // creator knowledge, silently, exactly as shipping `source` naively once did.
+  // Dropping the two new halves costs a re-scan; dropping the batch costs the
+  // scan.
   const { error: retryErr } = await db.from('creator_knowledge')
-    .insert(rows.map(({ source, ...rest }) => rest))
+    .insert(rows.map(({ source, cost, consensus, ...rest }) => rest))
   return { error: retryErr, sourceStored: false, merged: false }
 }

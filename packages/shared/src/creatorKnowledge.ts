@@ -145,6 +145,44 @@ export interface KnowledgeItem {
    *  the source was never retained in the first place, which is the strongest
    *  state rather than a missing value. */
   sourceExpiry: string | null
+  /**
+   * WHAT THIS COST THEM, when they said so. Null is the ordinary case.
+   *
+   * ⚠️ MEASURED, AND THE REASON THIS FIELD EXISTS. Of 69 `stated` `experience`
+   * rows live in production, exactly ONE carries any cost, loss or mistake
+   * marker. That is not a fact about creators; it is a fact about the prompt,
+   * which defined `experience` as "something they personally did" and was
+   * faithfully obeyed — "Has googled himself.", "Currently works at Microsoft."
+   * Nothing anywhere asked what a thing had taken from them, so nothing
+   * recorded it, and the story step's "what did you learn the expensive way"
+   * had no stored answer to offer back.
+   *
+   * ⚖️ A FIELD RATHER THAN A NEW `kind`. A costly lesson is still an
+   * experience, and it must keep reaching every reader that already asks for
+   * one — `KIND_RANK` puts `experience` top, and both `creatorState` and
+   * `knowledgeResolver` gate personal beats on `kind === 'experience' &&
+   * basis === 'stated'`. Re-filing the richest items under a new kind would
+   * have quietly removed them from all three. This adds the missing half of
+   * the sentence and moves nothing.
+   */
+  cost: string | null
+  /**
+   * THE BELIEF THEY NAMED AND ARGUED AGAINST, when they named one. Null is the
+   * ordinary case.
+   *
+   * ⚠️ ALSO MEASURED: of 129 `stated` `opinion` rows, ZERO name a consensus and
+   * contradict it. `opinion` was defined as "a position they hold, theirs and
+   * contestable", which produces the assertion and drops the argument —
+   * "Believes Pakistani chai is better than coffee". The half this stores is
+   * the half that makes a stance worth putting on camera.
+   *
+   * ⚖️ AND IT IS NOT A LOOSER `text`. A comparison is not a consensus. "True
+   * success is inner peace rather than accumulating wealth" ranks two things
+   * the creator likes differently and names nobody who believes otherwise;
+   * reading that as a fighting position is precisely the mis-slotting that
+   * `storySuggestions` refuses to do from free text.
+   */
+  consensus: string | null
 }
 
 /** What an audience keeps asking, as a summary and a count. Never a comment,
@@ -211,6 +249,11 @@ export function readKnowledgeItem(raw: unknown): KnowledgeItem | null {
     sourceUrl: line(src.sourceUrl ?? src.source_url),
     lastObservedAt: line(src.lastObservedAt ?? src.last_observed_at),
     sourceExpiry: line(src.sourceExpiry ?? src.source_expiry),
+    // ⚖️ ABSENT READS AS NULL, NEVER AS THE EMPTY STRING. "Recorded as costing
+    // nothing" and "nobody asked what it cost" are different states, and only
+    // null can say the second one. `line` already collapses "" to null.
+    cost: line(src.cost),
+    consensus: line(src.consensus),
   }
 }
 
@@ -269,6 +312,26 @@ export function freshness(item: KnowledgeItem, now: Date): Freshness {
   if (months <= 6) return 'recent'
   if (months <= 18) return 'established'
   return 'ageing'
+}
+
+/**
+ * The lessons that carry a price, and the stances that name their opposition.
+ *
+ * ⚖️ NAMED READERS, AND THE REASON THE TWO FIELDS ARE ALLOWED TO EXIST. This
+ * repo does not ship a column with nothing reading it. `storySuggestions` uses
+ * both to prefill the two story slots that were previously unfillable, and
+ * `knowledgePromptLine` below renders both into the writer's briefing so the
+ * missing half reaches the script and not just the form.
+ *
+ * ⚖️ `writableClaims` FIRST, SO `inferred` NEVER QUALIFIES. A cost we guessed at
+ * is a debt we invented for somebody.
+ */
+export function costlyLessons(k: CreatorKnowledge): KnowledgeItem[] {
+  return writableClaims(k).filter((i) => i.cost !== null)
+}
+
+export function contrarianStances(k: CreatorKnowledge): KnowledgeItem[] {
+  return writableClaims(k).filter((i) => i.consensus !== null)
 }
 
 /** What they have already made a video about. The writer needs this to avoid
@@ -473,7 +536,16 @@ export function knowledgePromptLine(
       + ' [recent] is safe to state flatly, [ageing] should be framed as something'
       + ' they have said rather than something that is true today, and [undated]'
       + ' means nobody recorded when — treat it as ageing.\n'
-      + claims.map((c) => `  * (${c.kind}) [${freshness(c, now)}] ${c.text}`).join('\n'))
+      // ⚖️ THE COST AND THE CONSENSUS ARE RENDERED WITH THE ITEM, NOT AS A
+      // SEPARATE LIST. They are halves of one sentence: a lesson away from its
+      // price reads as biography, and a stance away from what it argues with
+      // reads as an assertion. Splitting them here would hand the writer back
+      // the same two fragments this whole change exists to rejoin.
+      + claims.map((c) => {
+        const cost = c.cost ? ` — cost them: ${c.cost}` : ''
+        const against = c.consensus ? ` — argued against: ${c.consensus}` : ''
+        return `  * (${c.kind}) [${freshness(c, now)}] ${c.text}${cost}${against}`
+      }).join('\n'))
   }
   if (covered.length) {
     parts.push(
