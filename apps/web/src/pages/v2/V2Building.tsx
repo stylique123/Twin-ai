@@ -207,6 +207,35 @@ function libraryRelationship(
   return answered.length === 1 ? answered[0].relationship : null
 }
 
+// ⚖️ D3: THE SAME FALLBACK SHAPE AS D2, ONE FIELD OVER. The server
+// (`generate-blueprint/index.ts`, `readyFacts`) already treats the
+// Quick-things "What does the OFFER do?" answer as a fallback — it is
+// consulted only when the matched product entity's `evidence.sections` is
+// empty. Mirroring that HERE, before the question is ever put on screen, is
+// what makes the fallback actually work: without it, a creator whose product
+// already carries full extracted facts is still asked to retype them, and
+// the answer is then silently discarded server-side because `readyFacts.
+// length > 0`. Asked-and-ignored is a worse experience than never asked.
+//
+// ⚠️ MIRRORS THE SERVER'S DERIVATION EXACTLY: `evidence.sections` labels,
+// not `knowledge` (the separate URL-extraction table) — matching
+// `readyFacts` in `generate-blueprint/index.ts` line-for-line so client and
+// server agree on when the fallback question is needed.
+function libraryFacts(
+  products: readonly ProductEntityRecord[] | null,
+  offer: string | null | undefined,
+): readonly string[] | null {
+  if (!products?.length) return null
+  const offerNorm = (offer ?? '').trim().toLowerCase()
+  const match = offerNorm
+    ? products.find((p) => (p.name ?? '').trim().toLowerCase() === offerNorm)
+    : (products.length === 1 ? products[0] : null)
+  if (!match) return null
+  const ev = match.evidence
+  if (!ev || ev === 'declined' || typeof ev !== 'object' || !Array.isArray(ev.sections)) return null
+  return ev.sections.map((s) => String(s?.label ?? '')).filter((x) => x.trim() !== '')
+}
+
 /** ⚠️ A RESTORED ANSWER IS UNTRUSTED INPUT. sessionStorage can hold a value
  *  written by an older build whose enum has since changed, and a cast would
  *  send it anyway. Unknown reads as unanswered, which is the safe state. */
@@ -504,6 +533,10 @@ export default function V2Building() {
               audience: str(vBrief.audience) ?? str(v?.profile?.audience) ?? null,
               referenceRead: Boolean(refUrl),
               hasCreatorKnowledge: Boolean(v?.profile),
+              // D3: same source the server falls back to (`readyFacts`) — a
+              // product entity with usable evidence means the free-text
+              // claims question is not needed, here or on the server.
+              productFacts: libraryFacts(libraryProducts, str(vBrief.offer)),
             })
             const missing: AskItem[] = verdict.fields
               .filter((f) => f.state === 'MISSING_REQUIRED' && f.question)
