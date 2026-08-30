@@ -796,7 +796,29 @@ export interface DraftEntity {
    *  never inferred, in either direction. */
   showability: Showability
   productUrl: string | null
-  /** Present ⇒ there is a commercial tie. See `promoteToAffiliate`. */
+  /** Present ⇒ there is a commercial tie. See `promoteToAffiliate`.
+   *
+   *  ⚠️ MEASURED 2026-08-30: NOTHING WRITES THIS AND NOTHING READS IT. The
+   *  column is selected in `api.ts` and mapped onto every entity that loads, so
+   *  it looks live at a glance and is not:
+   *    · `promoteToAffiliate`, its only writer, has ZERO callers outside tests
+   *    · no field in the Product Library or anywhere else in apps/web sets it
+   *    · `generate-blueprint` mentions `affiliateUrl` ZERO times
+   *
+   *  ⚖️ THE TIE IS LIVE; ONLY THE ADDRESS IS ORPHANED, and confusing the two is
+   *  the mistake this note exists to prevent. Whether a creator earns a
+   *  commission DOES reach the writer — through `brief.promotes`, which
+   *  generate-blueprint reads FIFTEEN times and which drives the disclosure
+   *  rules. What never arrives is WHERE the affiliate link points.
+   *
+   *  ⚖️ NOT DELETED, DELIBERATELY. An affiliate address is a real thing a
+   *  creator can tell us and a plausible CTA target; the defect is that no
+   *  surface asks for it and no reader wants it yet, which is a missing reader,
+   *  not a surplus field. Deleting it would throw away the schema for a fact we
+   *  will want the moment a CTA needs to point somewhere specific. Wiring a
+   *  reader speculatively would be the opposite error. This note is here so the
+   *  next person finds a measurement instead of an assumption in either
+   *  direction. */
   affiliateUrl: string | null
   /** The product itself — a link we READ or images of the thing. `'declined'`
    *  is a real answer ("there is nothing to show"); absent is not.
