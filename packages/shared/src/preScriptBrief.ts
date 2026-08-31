@@ -124,6 +124,28 @@ export type BriefWorkKind = (typeof BRIEF_WORK_KINDS)[number]
 // STORAGE IS UNCHANGED. 0109's CHECK constrains the KEY SET and requires a
 // non-empty string; it never pinned these values, so this needs no migration.
 // Verified against the migration before this comment was written.
+/** ⚠️ THE CAPABILITY NOBODY WAS ASKED ABOUT, AND THE ONE THAT DECIDES WHETHER A
+ *  SCRIPT IS FILMABLE AT ALL.
+ *
+ *  A faceless voiceover channel receives a script whose every scene is a note
+ *  about how to stand and move, because the writer is told
+ *  `location: WHERE THE CREATOR PHYSICALLY STANDS` on every generation. That is
+ *  not a weaker script for them; it is an unusable one, and it is an entire
+ *  daily-posting segment the product cannot currently serve.
+ *
+ *  ⚖️ THE SCHEMA COULD ALWAYS DESCRIBE THIS. `recordingScript.ts` says a b_roll
+ *  scene "is never a teleprompter scene unless it carries voiceover", so
+ *  voice-over-footage has always been expressible. Only the question was
+ *  missing — and a capability nobody is asked about is a capability nobody has.
+ *
+ *  ⚖️ THREE ANSWERS, NOT TWO. `mixed` is not fence-sitting: a creator who opens
+ *  to camera and narrates the rest needs staging for the beats they are in and
+ *  none for the beats they are not, which is a different script from either
+ *  pure case. Collapsing it into `on_camera` would hand them staging for every
+ *  beat, which is the defect this exists to fix, wearing a smaller hat. */
+export const BRIEF_ON_CAMERA = ['on_camera', 'voice_only', 'mixed'] as const
+export type BriefOnCamera = (typeof BRIEF_ON_CAMERA)[number]
+
 export const BRIEF_PROMOTES = ['affiliate', 'sponsor', 'review_only', 'none'] as const
 export type BriefPromotes = (typeof BRIEF_PROMOTES)[number]
 
@@ -262,6 +284,10 @@ export interface BriefAnswers {
   ownServiceKind?: string | null
   /** ⚠️ USER-TYPED ONLY. `cta.ts` refuses to write a generated sentence here. */
   defaultCta?: string | null
+  /** Whether the creator is in frame. `string` rather than `BriefOnCamera` for
+   *  the reason given above: this is the STORED shape, and a value read back
+   *  from an older row is untrusted input. */
+  onCamera?: string | null
   /** Q1 */
   goal?: BriefGoal | null
   /** Q2 — the chosen audience, plus the free text §8a requires of every "Other"
@@ -345,6 +371,17 @@ export const BRIEF_QUESTIONS: readonly BriefQuestion[] = [
     id: 'promotes', stage: 'on_confirm', prompt: 'What do your videos promote?',
     prefilled: true,
     because: 'Partly observable from captions and CTAs, so it arrives pre-filled and is corrected rather than composed.',
+  },
+  {
+    id: 'onCamera', stage: 'during_scan', prompt: 'Are you on camera in these videos?',
+    options: BRIEF_ON_CAMERA, prefilled: false,
+    because: 'Intent. Decides whether a beat may carry physical staging direction at '
+      + 'all, and a faceless creator told where to stand gets a script they cannot '
+      + 'film. It READS like an observable — the scan can often see a face — and it '
+      + 'is not: a face in past posts says what they HAVE done, not what they intend '
+      + 'for these videos, and a creator moving to faceless is exactly the person '
+      + 'whose old videos would answer it wrong. Pre-filling it would be confidently '
+      + 'wrong for the one creator it exists to serve.',
   },
   {
     id: 'alsoWantsToMake', stage: 'on_confirm', prompt: 'Anything else you want to make?',
@@ -445,6 +482,9 @@ export const BRIEF_STORED_KEYS = [
   // makes provenance structural: a field generated text cannot reach cannot
   // later be mistaken for a preference somebody expressed.
   'defaultCta',
+  // ⚖️ WHETHER THE CREATOR IS IN FRAME. Read by generate-blueprint, which uses
+  // it to decide whether physical staging direction may be written at all.
+  'onCamera',
 ] as const
 
 /** ⚠️ THE MULTI-SELECTS, NAMED ONCE. The CHECK admits arrays for exactly these
@@ -492,7 +532,13 @@ export function sanitizeBriefForWrite(answers: BriefAnswers): Record<string, unk
       .map((x) => x.trim())
     if (clean.length > 0) out[k] = clean
   }
-  for (const k of ['audienceKnowledge', 'formatExploration', 'ownProductKind', 'ownServiceKind', 'defaultCta'] as const) {
+  // ⚠️ `onCamera` IS IN THIS LIST BECAUSE A KEY IN BRIEF_STORED_KEYS THAT THE
+  // WRITE PATH DOES NOT NAME IS STORED IN NAME ONLY. The first version of this
+  // change added the question, the stored key, the migration and the reader, and
+  // the answer still never reached the database — every layer agreed the field
+  // existed and the one that writes it had never heard of it. Caught by the test
+  // that asserts a real answer survives `sanitizeBriefForWrite`, not by review.
+  for (const k of ['audienceKnowledge', 'formatExploration', 'ownProductKind', 'ownServiceKind', 'defaultCta', 'onCamera'] as const) {
     const v = (answers as Record<string, unknown>)[k]
     if (typeof v === 'string' && v.trim() !== '') out[k] = v.trim()
   }
