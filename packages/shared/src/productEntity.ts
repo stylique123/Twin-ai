@@ -811,6 +811,17 @@ export interface DraftEntity {
    *  generate-blueprint reads FIFTEEN times and which drives the disclosure
    *  rules. What never arrives is WHERE the affiliate link points.
    *
+   *  ⚠️ AND A READER CANNOT SIMPLY BE HUNG OFF `ownedEntity`. Tried, and
+   *  reverted, 2026-08-31: generate-blueprint's entity query filters
+   *  `.in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])`, so `ownedEntity` can
+   *  NEVER be an AFFILIATE and a line conditioned on its `affiliate_url` would
+   *  be permanently empty — a reader that looks wired and never fires, which is
+   *  worse than none. (The same filter is why `rel === 'AFFILIATE'` in that
+   *  file's disclosure block is unreachable through that path; disclosure
+   *  actually arrives via `brief.promotes`.) A real reader needs a SECOND query
+   *  for the non-owned entity, which is a larger change than a link box and
+   *  should be designed against real rows rather than guessed at.
+   *
    *  ⚖️ NOT DELETED, DELIBERATELY. An affiliate address is a real thing a
    *  creator can tell us and a plausible CTA target; the defect is that no
    *  surface asks for it and no reader wants it yet, which is a missing reader,
