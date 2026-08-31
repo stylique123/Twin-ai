@@ -117,13 +117,30 @@ const render = (from, src0) => {
   + `// Edit the source instead. CI regenerates this file and fails on a diff.\n`
   + `// @ts-nocheck\n`
   + src
+    // ⚠️ THE THREE KEBAB SOURCES ARE RENAMED, NOT JUST RE-EXTENSIONED, so they
+    // stay explicit: the Deno copy is camelCase where the Node source is not.
     .replace(/from '\.\/pilot-core\.mjs'/g, "from './pilotCore.ts'")
     .replace(/from '\.\/pilot-db\.mjs'/g, "from './pilotDb.ts'")
     .replace(/from '\.\/d1-core\.mjs'/g, "from './d1Core.ts'")
-    .replace(/from '\.\/brandTruth\.js'/g, "from './brandTruth.ts'")
-    .replace(/from '\.\/repetition\.js'/g, "from './repetition.ts'")
-    .replace(/from '\.\/craftBeats\.js'/g, "from './craftBeats.ts'")
-    .replace(/from '\.\/hookContract\.js'/g, "from './hookContract.ts'")
+    // ⚠️ EVERY OTHER RELATIVE IMPORT IS REWRITTEN BY RULE, NOT BY NAME, AND
+    // THAT IS THE FIX. This used to be one hand-written line per import —
+    // brandTruth, repetition, craftBeats, hookContract — so a NEW cross-import
+    // between mirrored modules silently kept its Node `.js` specifier, which
+    // Deno cannot resolve. `shotListSync.ts` picked up `./silentBeat.js` and
+    // the edge deploy died on `Module not found ... Maybe change the extension
+    // to '.ts'` — in the DEPLOY, which nothing was watching, not in CI. A rule
+    // cannot be forgotten; a list can, and was.
+    .replace(/(from\s+'\.\/[A-Za-z0-9_-]+)\.m?js'/g, "$1.ts'")
+}
+
+// ⚠️ AND THE RULE IS ASSERTED, because a rewrite that silently stops matching
+// looks exactly like a rewrite that had nothing to do. Any relative `.js`/`.mjs`
+// specifier left in a generated file is a module Deno will fail to resolve at
+// deploy time, so it fails HERE instead, where someone is looking.
+const unresolvableImports = (text) => {
+  const out = []
+  for (const m of text.matchAll(/from\s+'(\.\/[^']+\.m?js)'/g)) out.push(m[1])
+  return out
 }
 
 const check = process.argv.includes('--check')
@@ -132,6 +149,14 @@ for (const [from, to] of SOURCES) {
   const want = render(from, readFileSync(from, 'utf8'))
   let have = null
   try { have = readFileSync(to, 'utf8') } catch { /* absent counts as stale */ }
+  const unresolvable = unresolvableImports(want)
+  if (unresolvable.length > 0) {
+    console.error(`::error::${to} would import ${unresolvable.join(', ')} — Deno cannot resolve a `
+      + `relative .js specifier and the edge deploy fails on "Module not found ... Maybe change `
+      + `the extension to '.ts'". Fix the rewrite in this script, not the generated file.`)
+    stale++
+    continue
+  }
   if (have === want) { console.log(`  fresh: ${to}`); continue }
   if (check) {
     console.error(`::error::${to} has drifted from ${from}. Run `
