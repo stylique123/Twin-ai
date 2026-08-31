@@ -24,6 +24,7 @@ import { frameSampleTargets } from '../referenceProfileTypes.js'
 import { runVisualPass } from '../visualPass.js'
 import { readCachedTranscript, writeCachedTranscript } from '../transcriptCache.js'
 import { decideRouting, goesToFrames } from '../transcriptRouting.js'
+import { classifyReferenceFailure, isFetchDefect } from './referenceOutcome.js'
 import { recordRoutingDecision } from '../transcriptRoutingRecord.js'
 
 /** How much transcript the model is shown.
@@ -277,7 +278,7 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
     const { data: done } = await db.from('reference_content_profiles')
       .select('url, visual_profile').eq('url', url).is('error', null).maybeSingle()
     if (shouldSkipAlreadyAssessed(done, p.frames === true)) {
-      return { url, skipped: 'already_assessed' }
+      return { url, skipped: 'already_assessed', outcome: 'assessed' as const }
     }
   }
 
@@ -342,7 +343,27 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
       download_trace: trace,
       error: why.slice(0, 500), assessed_at: assessedAt,
     }, { onConflict: 'url' })
-    return { url, error: why.slice(0, 200) }
+    // ⚠️ THE JOB SUCCEEDS AND THE REFERENCE IS UNUSABLE, AND BOTH ARE TRUE.
+    // Measured 2026-08-30: 154 of 1,188 `assess_reference` jobs ended here, and
+    // a queue-level count of failures saw NONE of them -- it reported 227 when
+    // the real number was 381. The swallow above is right and stays (see
+    // `referenceOutcome.ts`); what was missing was a field to count.
+    //
+    // ⚖️ `outcome` IS THE COUNT AND `reasonClass` IS THE DIAGNOSIS. One says
+    // whether an assessment exists, which is what a health check needs; the
+    // other says what to do about it, which is what a person needs. `error`
+    // stays exactly as it was so nothing reading it today breaks.
+    const reasonClass = classifyReferenceFailure(why)
+    return {
+      url,
+      error: why.slice(0, 200),
+      outcome: 'unusable' as const,
+      reasonClass,
+      // Whether OUR fetching is at fault, as opposed to the video genuinely
+      // having nothing in it. This is the figure to watch before spending a
+      // backlog on downloads.
+      fetchDefect: isFetchDefect(reasonClass),
+    }
   }
 
   // ⚖️ WRITTEN BEFORE ANYTHING CAN FAIL AFTER IT. The no-speech branch, the
@@ -445,6 +466,11 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
       } : {}),
     }, { onConflict: 'url' })
     return {
+      // ⚖️ ASSESSED, NOT UNUSABLE. The video was fetched and read; it simply had
+      // no speech, and it goes down the visual route rather than nowhere. The
+      // fetch worked, so counting this against fetching would be a lie -- see
+      // `no_speech` in `referenceOutcome.ts`.
+      outcome: 'assessed' as const,
       url, skipped: 'no_speech', routed_to: 'visual_route',
       transcript_chars: full.length, actual_chars: routing.actualChars,
       stored_chars: routing.storedChars, delta_chars: routing.deltaChars,
@@ -536,6 +562,7 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
   if (wrote) throw new Error(`assess_reference: could not store the profile: ${wrote.message}`)
 
   return {
+    outcome: 'assessed' as const,
     url,
     fields_accepted: fieldsAccepted,
     rejected: rejections.length,
