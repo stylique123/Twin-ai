@@ -36,6 +36,7 @@ import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText } from '../_shared/shotListSync.ts'
 import { syncRetentionMapToScript } from '../_shared/retentionMapSync.ts'
+import { syncWhyItWorksToScript } from '../_shared/whyItWorksSync.ts'
 import { syncSetupLabels } from '../_shared/setupLabelSync.ts'
 import { evaluateSemanticRepetitionTrigger } from '../_shared/semanticRepetition.ts'
 import {
@@ -2604,9 +2605,18 @@ function observedVisualCountInline(profile: ReferenceVisualProfileInline | null 
 // `estimateDurationSec` at the natural (150 wpm) rate, so this check and the
 // teleprompter can never quote two different lengths for the same words.
 //
-// ⚠️ DETECTION ONLY, NO REPAIR. beat_plan's target_sec is never returned in
-// the shipped blueprint and nothing downstream resolves it today -- repairing
-// an unread field is the exact defect this session's audit found twice.
+// ⚠️ "NOTHING DOWNSTREAM RESOLVES IT" WAS TRUE ONCE AND IS NOW FALSE. This said
+// beat_plan's target_sec "is never returned in the shipped blueprint and nothing
+// downstream resolves it today". It is resolved: `recordingScriptAdapter` copies
+// beatPlan[idx].targetSec onto RecordingScene.target_sec, and ScriptEditor's
+// `BeatLength` renders it to a creator as "Xs beat". Reading this comment sent
+// an audit hunting for a missing surface when the surface had been live all
+// along -- the same rot that made a nine-hour-old claim about affiliateUrl wrong.
+//
+// ⚖️ DETECTION ONLY, NO REPAIR -- STILL, ON BETTER GROUNDS. A target the writer
+// DECIDED is the honest thing to compare the words against. Silently rewriting
+// it to match whatever arrived would delete the disagreement the Plan screen
+// exists to show, which is the whole value of having two numbers.
 const NATURAL_WPM_INLINE = 150
 function estimateDurationSecInline(dialogue: string | null): number {
   if (!dialogue) return 2.5
@@ -7164,6 +7174,53 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
             matched: synced.matched,
             dropped: synced.dropped,
             of: synced.retentionMap.length,
+          }))
+        }
+      }
+    } catch { /* never fail a generation on a reconciliation pass */ }
+
+    // ── AND THE TICKS ABOVE IT MUST DESCRIBE THE SAME SCRIPT ─────────────────
+    //
+    // ⚠️ THE OTHER HALF OF THE SAME CARD, AND THE LAST ONE LEFT.
+    // `reference_read.why_it_works` comes from the same one model call as
+    // `retention_map` just above and describes the REFERENCE video's virtues.
+    // On Result the two render together: "Why it works" as a green-ticked list,
+    // "Where people keep watching" directly beneath it, under a tab labelled
+    // "Why it works" that sits beside "Film & edit" and "Post it" — two tabs
+    // unambiguously about the creator's own video. After the resync above, that
+    // one card held two lists, one about this script and one about a stranger's,
+    // with a green tick beside every line of both and nothing telling the reader
+    // which was which.
+    //
+    // ⚖️ RUNS IMMEDIATELY AFTER THE RETENTION RESYNC, OVER THE SAME FINAL
+    // `script`, for the same placement reason: any earlier and it would describe
+    // a script a later repair still had a chance to change.
+    try {
+      const rr = (blueprint as { reference_read?: { why_it_works?: unknown } })?.reference_read
+      const script = (blueprint as { script?: unknown })?.script
+      if (rr && typeof rr === 'object') {
+        const synced = syncWhyItWorksToScript(
+          Array.isArray(rr.why_it_works) ? rr.why_it_works : [],
+          Array.isArray(script) ? script as Array<{ section?: unknown; line?: unknown }> : [],
+        )
+        ;(rr as { why_it_works?: unknown }).why_it_works = synced.whyItWorks
+        // ⚠️ WRITTEN ONTO `beatAudit` HERE, NOT READ INTO ITS LITERAL ABOVE.
+        // The literal is built earlier in this handler than this pass runs, so a
+        // `why_it_works_resync: someLocal` line up there would persist whatever
+        // that local held BEFORE the resync — which is nothing. `semantic_repetition`
+        // already mutates the object in place for exactly this reason, and this
+        // follows it rather than adding a counter that stores its own absence.
+        if (beatAudit) {
+          beatAudit.why_it_works_resync = {
+            dropped: synced.dropped,
+            derived: synced.whyItWorks.length,
+          }
+        }
+        if (synced.dropped > 0) {
+          console.warn(JSON.stringify({
+            event: 'why_it_works_resync',
+            dropped: synced.dropped,
+            derived: synced.whyItWorks.length,
           }))
         }
       }
