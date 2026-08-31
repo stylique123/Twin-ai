@@ -1483,8 +1483,10 @@ function renderDefaultRegisterCardInline(): string {
 - Short sentences. Most under 12 words. One idea each.
 - Speak straight to the viewer as "you" — this is a conversation, not a report.
 - Contractions throughout ("don't", "it's", "you're") — written speech reads stiff without them.
-- Open on a claim or a direct address, never a scene-setting preamble.
-- No hedging language ("I think", "maybe", "sort of") — say the thing.`
+- Open on something concrete, never a scene-setting preamble.
+- ⚠️ THIS CREATOR HAS SHOWN NO TRACK RECORD YET, SO THE SCRIPT MAY NOT SPEND ONE. Do not diagnose the viewer's life or character — no "you stay poor even though you work all day", no "you refuse to fire the people who suck", no "you're chasing shiny objects". That register reads as authority, and it only lands from someone whose results the audience already knows. From everyone else it reads as arrogance, and the comments say so.
+- SAME IDEA, OWNED INSTEAD OF BORROWED. Put the claim where the creator can actually stand behind it: "I stayed poor while working all day", "nobody told me this", "here is what I got wrong". First person about their own experience needs no track record — it IS the evidence. A question to the viewer works too. An accusation does not.
+- Say the thing plainly: no padding ("I think", "maybe", "sort of", "in my opinion"). Owning a claim in the first person is not padding — "I got this wrong for two years" is a stronger sentence than "you are getting this wrong", not a weaker one.`
 }
 
 /**
