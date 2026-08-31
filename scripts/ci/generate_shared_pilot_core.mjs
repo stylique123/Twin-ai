@@ -89,6 +89,12 @@ const SOURCES = [
   // a hand copy is exactly how the coaching panel's drift from the shipped
   // script (see liveRunFixtures.test.ts §5) would survive its own fix.
   ['packages/shared/src/script/retentionMapSync.ts', 'supabase/functions/_shared/retentionMapSync.ts'],
+  // ⚠️ THE OTHER HALF OF THE SAME CARD. `why_it_works` renders as green ticks
+  // directly above the retention map on Result, from the same one model call,
+  // and was the last list still describing the REFERENCE video rather than the
+  // script the creator is about to film. Generated, not retyped, for the reason
+  // directly above.
+  ['packages/shared/src/script/whyItWorksSync.ts', 'supabase/functions/_shared/whyItWorksSync.ts'],
   // ⚠️ FIX 7 (Wave 3). The setup-letter <-> description resync. Generated
   // rather than retyped for the same reason as shotListSync.ts above — a
   // hand copy is exactly how run A-D's comma-split, repeating, non-

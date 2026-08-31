@@ -96,13 +96,22 @@ describe('a scene is paced by the beat that planned ITS words', () => {
     expect(t['Grab the preset pack in my bio.']).toBe(5)
   })
 
-  it('paces the HOOK to its plan, which it never used to', () => {
-    // ⚖️ THE BEAT WHERE LENGTH MATTERS MOST was the one beat guaranteed to be
-    // estimated. Scene 1 is built before the filter knows which entry it
-    // displaced, so the decided target sat in the plan unused.
+  it('gives the HOOK its planned TARGET, which it never used to', () => {
+    // ⚖️ THE BEAT WHERE LENGTH MATTERS MOST had no target at all. Scene 1 is
+    // built before the filter knows which entry it displaced, so the decided
+    // target sat in the plan unused.
+    //
+    // ⚠️ AND THIS TEST WAS HALF WRONG. It also asserted
+    // `duration_sec === 3` — that the hook be PACED to its plan. That is the
+    // defect, not the fix: assigning both fields the same number makes
+    // `sceneOverrunSec` identically 0, so `BeatLength` rendered a bare "3s
+    // beat" and the hook became the one beat that could never show drift. The
+    // target assertion was always right and stays; the duration assertion
+    // asserted the bug and is replaced by its negation. See
+    // `aBeatLengthMustBeAbleToDisagree.test.ts`.
     const rs = buildRecordingScript({ generationId: 'g', blueprint: bp() })
     expect(rs.scenes[0].target_sec).toBe(3)
-    expect(rs.scenes[0].duration_sec).toBe(3)
+    expect(rs.scenes[0].duration_sec).not.toBe(3)
   })
 
   it('takes the FIRST hook-like line, so a re-hook keeps its own beat', () => {

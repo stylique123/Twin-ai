@@ -30,11 +30,44 @@
  */
 import { STOPWORDS } from './hookContract.ts'
 
-/** ⚠️ SIX IS THE FLOOR MEASURED AGAINST THE RUN D EVIDENCE. "measuring the
- *  risk of taking action" is six content words in the reference's own order;
- *  below that, ordinary shared phrasing ("the risk of doing", "more shots
- *  on") reads as coincidence rather than copying. */
-export const MIN_OVERLAP_CONTENT_WORDS = 6
+/** ⚠️ FOUR, AND SIX WAS CALIBRATED AGAINST A WORRY THE SKELETONISER HAD
+ *  ALREADY HANDLED.
+ *
+ *  This read SIX, justified like so: "'measuring the risk of taking action' is
+ *  six content words in the reference's own order; below that, ordinary shared
+ *  phrasing ('the risk of doing', 'more shots on') reads as coincidence rather
+ *  than copying."
+ *
+ *  Both of those innocent examples are TWO content words, not five.
+ *  `contentSkeleton` drops stopwords and anything under four letters before
+ *  anything is counted, so "the risk of doing" is `risk doing` and "more shots
+ *  on" is `shots goal`. The floor was set six words above the phrases it was
+ *  set to protect.
+ *
+ *  ⚠️ MEASURED ACROSS ALL FOUR FROZEN LIVE RUNS, not argued. Every maximal
+ *  shared run of two or more content words, by run:
+ *
+ *    A  never tracked what customer (4) · those three things order (4)
+ *       market moved without (3) · hire soft pansies complain about market
+ *       instead doing work (9)
+ *    B  NOTHING, at any length down to two
+ *    C  partner founders scale their businesses acquisition education free
+ *       just have apply (11)
+ *    D  measuring risk taking action while ignoring risk doing nothing exactly
+ *       what keeps people poorer than they ought (17) · have start taking more
+ *       shots goal (6) · exactly what (2)
+ *
+ *  ⚖️ RUN B IS THE REASON THIS IS SAFE TO LOWER. It is the one clean run — the
+ *  negative control — and it stays at ZERO all the way down to a two-word
+ *  floor. Lowering the threshold does not flood the innocent case; it catches
+ *  two more borrowed runs in run A and changes nothing anywhere else.
+ *
+ *  ⚖️ FOUR, NOT THREE, AND NOT TWO. Three would add "market moved without",
+ *  which is real but thin, and two would start admitting "exactly what" and
+ *  "number three" — pairs common enough that a creator discussing the same
+ *  subject would trip them. Four is the shortest run in this evidence that is
+ *  unambiguously the reference's phrasing rather than its topic. */
+export const MIN_OVERLAP_CONTENT_WORDS = 4
 
 function normalize(s: unknown): string {
   return String(s ?? '').toLowerCase().replace(/[^a-z0-9' ]/g, ' ').replace(/\s+/g, ' ').trim()

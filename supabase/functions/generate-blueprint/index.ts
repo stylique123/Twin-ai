@@ -36,6 +36,7 @@ import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText } from '../_shared/shotListSync.ts'
 import { syncRetentionMapToScript } from '../_shared/retentionMapSync.ts'
+import { syncWhyItWorksToScript } from '../_shared/whyItWorksSync.ts'
 import { syncSetupLabels } from '../_shared/setupLabelSync.ts'
 import { evaluateSemanticRepetitionTrigger } from '../_shared/semanticRepetition.ts'
 import {
@@ -1483,8 +1484,10 @@ function renderDefaultRegisterCardInline(): string {
 - Short sentences. Most under 12 words. One idea each.
 - Speak straight to the viewer as "you" — this is a conversation, not a report.
 - Contractions throughout ("don't", "it's", "you're") — written speech reads stiff without them.
-- Open on a claim or a direct address, never a scene-setting preamble.
-- No hedging language ("I think", "maybe", "sort of") — say the thing.`
+- Open on something concrete, never a scene-setting preamble.
+- ⚠️ THIS CREATOR HAS SHOWN NO TRACK RECORD YET, SO THE SCRIPT MAY NOT SPEND ONE. Do not diagnose the viewer's life or character — no "you stay poor even though you work all day", no "you refuse to fire the people who suck", no "you're chasing shiny objects". That register reads as authority, and it only lands from someone whose results the audience already knows. From everyone else it reads as arrogance, and the comments say so.
+- SAME IDEA, OWNED INSTEAD OF BORROWED. Put the claim where the creator can actually stand behind it: "I stayed poor while working all day", "nobody told me this", "here is what I got wrong". First person about their own experience needs no track record — it IS the evidence. A question to the viewer works too. An accusation does not.
+- Say the thing plainly: no padding ("I think", "maybe", "sort of", "in my opinion"). Owning a claim in the first person is not padding — "I got this wrong for two years" is a stronger sentence than "you are getting this wrong", not a weaker one.`
 }
 
 /**
@@ -2085,6 +2088,41 @@ function standingGoalDirectiveInline(goals: readonly string[] | null | undefined
   return null
 }
 
+/**
+ * WHETHER THIS CREATOR IS IN FRONT OF THE CAMERA, AND WHAT THAT FORBIDS.
+ *
+ * ⚠️ THE WRITER WAS NEVER TOLD. `location: WHERE THE CREATOR PHYSICALLY STANDS`
+ * is issued on every generation, so a faceless voiceover channel — a segment
+ * that posts daily and buys tools — receives a script whose every scene is a
+ * note about how to stand and move. That is not a weaker script for them. It is
+ * one they cannot film, and it is the whole reason they leave.
+ *
+ * ⚖️ THE SCHEMA COULD ALWAYS DESCRIBE THE ANSWER. `recordingScript` treats a
+ * b_roll scene carrying `dialogue` as a teleprompter scene, so voice-over-
+ * footage has always been expressible. Nothing was missing but the question.
+ *
+ * ⚖️ SILENT WHEN UNANSWERED, AND THAT IS THE SAFE DIRECTION. An absent answer
+ * renders nothing and the writer behaves exactly as it does today. Defaulting
+ * an unanswered creator to `voice_only` would strip staging from everyone who
+ * never saw the question, which is a worse failure than the one being fixed:
+ * it would break the majority case to serve the minority. Absent is not zero.
+ */
+function renderOnCameraInline(onCamera: string | null | undefined): string {
+  if (onCamera === 'voice_only') {
+    return `\n\n⚠️ THIS CREATOR IS NEVER ON CAMERA. They record voice over footage; no shot will contain them.
+- Do NOT write physical staging anywhere. No "where the creator stands", no wardrobe, no framing of a person, no eye-line, no gesture, no "step toward the camera". A direction about a body is a direction they cannot carry out.
+- location describes WHAT IS ON SCREEN instead: the footage, screen recording, or graphic the voice is running over. Say what a viewer sees while the line is spoken.
+- Every spoken beat is voice over visuals. The words still matter exactly as much; only the picture changes.
+- The hook must work WITHOUT a face. A face carries the first second for an on-camera creator; here the first frame and the first sentence have to do that work alone, so open on something visibly specific rather than on presence.`
+  }
+  if (onCamera === 'mixed') {
+    return `\n\n⚠️ THIS CREATOR IS ON CAMERA FOR SOME BEATS AND NOT OTHERS. Decide per beat and say which.
+- A beat they appear in may carry physical staging direction. A beat that is voice over footage may NOT — describe what is on screen instead.
+- Do not hedge by giving every beat both. A direction that covers both cases tells them nothing about either.`
+  }
+  return ''
+}
+
 function renderDesiredFormatsInline(
   desired: readonly string[] | null | undefined,
   exploration: string | null | undefined,
@@ -2602,9 +2640,18 @@ function observedVisualCountInline(profile: ReferenceVisualProfileInline | null 
 // `estimateDurationSec` at the natural (150 wpm) rate, so this check and the
 // teleprompter can never quote two different lengths for the same words.
 //
-// ⚠️ DETECTION ONLY, NO REPAIR. beat_plan's target_sec is never returned in
-// the shipped blueprint and nothing downstream resolves it today -- repairing
-// an unread field is the exact defect this session's audit found twice.
+// ⚠️ "NOTHING DOWNSTREAM RESOLVES IT" WAS TRUE ONCE AND IS NOW FALSE. This said
+// beat_plan's target_sec "is never returned in the shipped blueprint and nothing
+// downstream resolves it today". It is resolved: `recordingScriptAdapter` copies
+// beatPlan[idx].targetSec onto RecordingScene.target_sec, and ScriptEditor's
+// `BeatLength` renders it to a creator as "Xs beat". Reading this comment sent
+// an audit hunting for a missing surface when the surface had been live all
+// along -- the same rot that made a nine-hour-old claim about affiliateUrl wrong.
+//
+// ⚖️ DETECTION ONLY, NO REPAIR -- STILL, ON BETTER GROUNDS. A target the writer
+// DECIDED is the honest thing to compare the words against. Silently rewriting
+// it to match whatever arrived would delete the disagreement the Plan screen
+// exists to show, which is the whole value of having two numbers.
 const NATURAL_WPM_INLINE = 150
 function estimateDurationSecInline(dialogue: string | null): number {
   if (!dialogue) return 2.5
@@ -5560,11 +5607,11 @@ ${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
 - Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
 ${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderVideoIntentInline(intent)}${containerBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderVideoIntentInline(intent)}${containerBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}`
 
     // The DNA is fenced too. It reads like our own text, but every field in it
     // was synthesized from captions we scraped — so it is exactly as
@@ -6854,7 +6901,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
             min_words: MIN_OVERLAP_CONTENT_WORDS,
             runs: overlaps.map((o) => o.words),
           }))
-          const overlapPrompt = 'These script lines reproduce SIX OR MORE consecutive words from the'
+          // ⚠️ THE NUMBER COMES FROM THE CONSTANT, NEVER FROM A LITERAL. This
+          // said "SIX OR MORE" in prose while the threshold was a shared
+          // export, so lowering the floor to four would have kept telling the
+          // model six — the repair prompt naming a rule the check no longer
+          // enforces, on lines the model would then judge innocent.
+          const overlapPrompt = `These script lines reproduce ${MIN_OVERLAP_CONTENT_WORDS} OR MORE consecutive meaningful words from the`
             + ' reference video\'s own transcript. That is the reference creator\'s sentence, not this'
             + ' creator\'s. Rewrite ONLY the lines listed so they express the same idea in different'
             + ' words — do not invent a new fact, number or experience, and do not shorten the line'
@@ -7162,6 +7214,53 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
             matched: synced.matched,
             dropped: synced.dropped,
             of: synced.retentionMap.length,
+          }))
+        }
+      }
+    } catch { /* never fail a generation on a reconciliation pass */ }
+
+    // ── AND THE TICKS ABOVE IT MUST DESCRIBE THE SAME SCRIPT ─────────────────
+    //
+    // ⚠️ THE OTHER HALF OF THE SAME CARD, AND THE LAST ONE LEFT.
+    // `reference_read.why_it_works` comes from the same one model call as
+    // `retention_map` just above and describes the REFERENCE video's virtues.
+    // On Result the two render together: "Why it works" as a green-ticked list,
+    // "Where people keep watching" directly beneath it, under a tab labelled
+    // "Why it works" that sits beside "Film & edit" and "Post it" — two tabs
+    // unambiguously about the creator's own video. After the resync above, that
+    // one card held two lists, one about this script and one about a stranger's,
+    // with a green tick beside every line of both and nothing telling the reader
+    // which was which.
+    //
+    // ⚖️ RUNS IMMEDIATELY AFTER THE RETENTION RESYNC, OVER THE SAME FINAL
+    // `script`, for the same placement reason: any earlier and it would describe
+    // a script a later repair still had a chance to change.
+    try {
+      const rr = (blueprint as { reference_read?: { why_it_works?: unknown } })?.reference_read
+      const script = (blueprint as { script?: unknown })?.script
+      if (rr && typeof rr === 'object') {
+        const synced = syncWhyItWorksToScript(
+          Array.isArray(rr.why_it_works) ? rr.why_it_works : [],
+          Array.isArray(script) ? script as Array<{ section?: unknown; line?: unknown }> : [],
+        )
+        ;(rr as { why_it_works?: unknown }).why_it_works = synced.whyItWorks
+        // ⚠️ WRITTEN ONTO `beatAudit` HERE, NOT READ INTO ITS LITERAL ABOVE.
+        // The literal is built earlier in this handler than this pass runs, so a
+        // `why_it_works_resync: someLocal` line up there would persist whatever
+        // that local held BEFORE the resync — which is nothing. `semantic_repetition`
+        // already mutates the object in place for exactly this reason, and this
+        // follows it rather than adding a counter that stores its own absence.
+        if (beatAudit) {
+          beatAudit.why_it_works_resync = {
+            dropped: synced.dropped,
+            derived: synced.whyItWorks.length,
+          }
+        }
+        if (synced.dropped > 0) {
+          console.warn(JSON.stringify({
+            event: 'why_it_works_resync',
+            dropped: synced.dropped,
+            derived: synced.whyItWorks.length,
           }))
         }
       }
