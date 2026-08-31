@@ -798,12 +798,20 @@ export interface DraftEntity {
   productUrl: string | null
   /** Present ⇒ there is a commercial tie. See `promoteToAffiliate`.
    *
-   *  ⚠️ MEASURED 2026-08-30: NOTHING WRITES THIS AND NOTHING READS IT. The
-   *  column is selected in `api.ts` and mapped onto every entity that loads, so
-   *  it looks live at a glance and is not:
-   *    · `promoteToAffiliate`, its only writer, has ZERO callers outside tests
-   *    · no field in the Product Library or anywhere else in apps/web sets it
-   *    · `generate-blueprint` mentions `affiliateUrl` ZERO times
+   *  ⚠️ THIS NOTE SAID "NOTHING WRITES THIS AND NOTHING READS IT" AND WAS TRUE
+   *  FOR ABOUT NINE HOURS. It was measured on 2026-08-30, shipped, and falsified
+   *  the next morning by the Product Library's own "Affiliate link" box — which
+   *  the same author added, having read this very comment. That is not an
+   *  embarrassment to hide; it is the entire disease in miniature, and the
+   *  reason `aWiringClaimMustBeTrue.test.ts` now exists: a prose claim about
+   *  wiring cannot notice when it stops being true, so this one is asserted in a
+   *  test that FAILS the moment the counts move.
+   *
+   *  ⚠️ AS ASSERTED THERE, AND RE-CHECKED ON EVERY RUN:
+   *    · WRITTEN by `updateEntityPresentation` and the Product Library's
+   *      AFFILIATE-only box (#621), plus `promoteToAffiliate` on a
+   *      relationship change
+   *    · READ by generate-blueprint ZERO times — this half is still true
    *
    *  ⚖️ THE TIE IS LIVE; ONLY THE ADDRESS IS ORPHANED, and confusing the two is
    *  the mistake this note exists to prevent. Whether a creator earns a
