@@ -115,3 +115,54 @@ describe('every exit from assessReference declares an outcome', () => {
     expect(missing, `return(s) with no outcome:\n${missing.join('\n---\n')}`).toEqual([])
   })
 })
+
+// ── THE ESCALATION, AND EVERY CLASS IT MUST REFUSE ─────────────────────────
+//
+// Residential egress is metered per GB, so the value of this ladder is as much
+// in what it declines to do as in what it does. These assert the decision
+// itself, using the same predicate the handler uses.
+describe('escalating to the paid rung', () => {
+  const wouldEscalate = (msg: string) => classifyReferenceFailure(msg) === 'blocked_by_host'
+
+  it('escalates an IP block, which is the one a different address fixes', () => {
+    expect(wouldEscalate(REAL.tiktokIpBlocked)).toBe(true)
+  })
+
+  it('refuses every failure a proxy cannot fix', () => {
+    // A proxy cannot re-parse a page, undelete a video, or put speech into a
+    // silent one. Escalating these spends money to fail identically.
+    expect(wouldEscalate(REAL.tiktokUnexpected)).toBe(false)
+    expect(wouldEscalate(REAL.tiktokWarning)).toBe(false)
+    expect(wouldEscalate(REAL.instagramNoAudio)).toBe(false)
+    expect(wouldEscalate(REAL.noCaptions)).toBe(false)
+    expect(wouldEscalate(REAL.missingModule)).toBe(false)
+  })
+
+  it('refuses an unrecognised failure rather than paying to find out', () => {
+    // `unknown` must not become "try the expensive thing and see". Silence is
+    // not permission.
+    expect(wouldEscalate('something nobody has seen yet')).toBe(false)
+  })
+
+  it('the handler gates on route and credentials too, not just the class', () => {
+    // Read from source: the escalation must be conditional on starting from the
+    // FREE rung (never paid→paid, which would loop) and on the password being
+    // present (`downloadArgsFor` throws otherwise, turning a recorded failure
+    // into a thrown one).
+    const here = dirname(fileURLToPath(import.meta.url))
+    const src = readFileSync(join(here, '../jobs/assessReference.ts'), 'utf8')
+    const gate = src.slice(src.indexOf('const canEscalate'), src.indexOf('if (canEscalate)'))
+    expect(gate).toContain("firstClass === 'blocked_by_host'")
+    expect(gate).toContain("route.kind === 'local_impersonated'")
+    expect(gate).toContain('apifyProxyPassword')
+  })
+
+  it('never retries more than once', () => {
+    // A loop on a metered route turns one measurement into an open-ended bill.
+    const here = dirname(fileURLToPath(import.meta.url))
+    const src = readFileSync(join(here, '../jobs/assessReference.ts'), 'utf8')
+    const block = src.slice(src.indexOf('if (canEscalate)'), src.indexOf('if (!transcript)'))
+    expect((block.match(/transcribeFromUrl\(/g) ?? []).length).toBe(1)
+    expect(block).not.toMatch(/\b(for|while)\s*\(/)
+  })
+})
