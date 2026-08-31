@@ -32,7 +32,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, sentenceUniformityNote, compareRuntime, spokenTime } from '@twinai/shared'
+import { shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -1920,6 +1920,11 @@ function BlueprintScriptCards(
   // second and independent structural-cadence check.
   const uniformityNote = sentenceUniformityNote(
     script.flatMap((s) => (isSilentBeat(s.line) ? [] : [s.line ?? ''])))
+  // ⚖️ WAVE 3 — THE FIVE CRAFT CONTRACTS, computed over the WHOLE script for
+  // the same reason the two above are: each asks about a relationship between
+  // beats (does the ending add to the opening, do the beats depend on each
+  // other), which no per-card check can see. Advisory like every note here.
+  const craftNotes = craftContractNotes(script)
   return (
     <div className="space-y-6">
       {triadNote && (
@@ -1928,6 +1933,9 @@ function BlueprintScriptCards(
       {uniformityNote && (
         <p className="text-xs text-amber/90">{uniformityNote}</p>
       )}
+      {craftNotes.map((n) => (
+        <p key={n} className="text-xs text-amber/90">{n}</p>
+      ))}
       {script.map((s, i) => {
         const isHook = s.section?.toLowerCase().includes('hook')
         const isRehook = s.section?.toLowerCase().includes('re-hook') || s.section?.toLowerCase().includes('rehook')
