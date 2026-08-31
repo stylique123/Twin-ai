@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, Check, Loader2, Pencil, AtSign, Sparkles, AlertCircle, Building2, X, Star,
-  ScanSearch, FileText, Share2,
+  ScanSearch, FileText, Share2, Users,
 } from 'lucide-react'
 import {
   listBrandVoices, setDefaultBrandVoice, renameBrandVoice, ensureBrandShareToken, startDna, pollDna,
@@ -118,6 +119,35 @@ export default function Brands() {
           <div className="text-xs text-stone">brand voices · {plan.name} plan</div>
         </div>
       </div>
+
+      {/* ⚠️ THE TWO FEATURES BUILT FOR THIS PAGE THAT NOBODY HAS EVER USED.
+        *
+        * MEASURED 2026-08-31: workspace_members 0, workspace_invites 0,
+        * brand_voices carrying a share_token 0 — while THREE owners hold more
+        * than one brand voice and one holds TEN. The agency workload is real
+        * and every feature serving it is invisible: the client report is a
+        * text-stone link at the bottom of a card whose purpose lives only in a
+        * `title` tooltip, and the teammate invite is in Settings, a page away
+        * from the work.
+        *
+        * ⚖️ SHOWN ONLY TO SOMEONE ACTUALLY RUNNING MORE THAN ONE BRAND. A solo
+        * creator with one voice has no client to report to and no teammate to
+        * invite, and telling them about both is how a product teaches people to
+        * skim past its own guidance. `voices.length > 1` is the cheapest honest
+        * signal that the agency workflow is live for this person. */}
+      {!loading && voices.length > 1 && (
+        <div className="mt-6 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3 text-sm text-sand">
+          <Users className="h-4 w-4 shrink-0 text-stone" />
+          <span>Running {voices.length} brands?</span>
+          <span className="text-stone">
+            Each card can copy a login-free results link for that client, and you can
+          </span>
+          <Link to="/settings" className="text-cream underline decoration-white/25 underline-offset-2 hover:decoration-cream">
+            add a teammate
+          </Link>
+          <span className="text-stone">to this workspace.</span>
+        </div>
+      )}
 
       {err && (
         <div className="mt-6 flex items-center gap-2 rounded-xl bg-coral/10 px-4 py-3 text-sm text-coral">
@@ -308,8 +338,22 @@ function BrandCard({
           </button>
         )}
         {voice.status === 'ready' && (
-          <button onClick={shareReport} className="mt-2 inline-flex w-full items-center justify-center gap-1.5 text-xs text-stone transition-colors hover:text-cream" title="Copy a login-free results report to send this client">
-            {shared ? <><Check className="h-3.5 w-3.5 text-teal" /> Link copied</> : <><Share2 className="h-3.5 w-3.5" /> Share report with client</>}
+          /* ⚠️ THE PURPOSE USED TO LIVE ONLY IN A `title`. A tooltip is invisible
+           * on a phone and invisible until hover everywhere else, so the one
+           * sentence explaining what this button does was unreadable to most of
+           * the people it was written for. It is visible text now.
+           *
+           * ⚖️ STILL SECONDARY, DELIBERATELY. "Make active" is the action this
+           * card exists for and stays primary; this only stops reading as
+           * decoration. `text-stone` is the dimmest token in the palette and it
+           * was doing the work of a disabled state on a live control. */
+          <button onClick={shareReport} className="mt-3 w-full rounded-xl border border-white/8 px-3 py-2 text-left transition-colors hover:border-white/20 hover:bg-white/[0.03]">
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-sand">
+              {shared ? <><Check className="h-3.5 w-3.5 text-teal" /> Link copied</> : <><Share2 className="h-3.5 w-3.5" /> Send this client their results</>}
+            </span>
+            <span className="mt-0.5 block text-[11px] leading-snug text-stone">
+              {shared ? 'Paste it anywhere — they will not need an account.' : 'Copies a link they can open without an account.'}
+            </span>
           </button>
         )}
       </div>
