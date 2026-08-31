@@ -2086,6 +2086,41 @@ function standingGoalDirectiveInline(goals: readonly string[] | null | undefined
   return null
 }
 
+/**
+ * WHETHER THIS CREATOR IS IN FRONT OF THE CAMERA, AND WHAT THAT FORBIDS.
+ *
+ * ⚠️ THE WRITER WAS NEVER TOLD. `location: WHERE THE CREATOR PHYSICALLY STANDS`
+ * is issued on every generation, so a faceless voiceover channel — a segment
+ * that posts daily and buys tools — receives a script whose every scene is a
+ * note about how to stand and move. That is not a weaker script for them. It is
+ * one they cannot film, and it is the whole reason they leave.
+ *
+ * ⚖️ THE SCHEMA COULD ALWAYS DESCRIBE THE ANSWER. `recordingScript` treats a
+ * b_roll scene carrying `dialogue` as a teleprompter scene, so voice-over-
+ * footage has always been expressible. Nothing was missing but the question.
+ *
+ * ⚖️ SILENT WHEN UNANSWERED, AND THAT IS THE SAFE DIRECTION. An absent answer
+ * renders nothing and the writer behaves exactly as it does today. Defaulting
+ * an unanswered creator to `voice_only` would strip staging from everyone who
+ * never saw the question, which is a worse failure than the one being fixed:
+ * it would break the majority case to serve the minority. Absent is not zero.
+ */
+function renderOnCameraInline(onCamera: string | null | undefined): string {
+  if (onCamera === 'voice_only') {
+    return `\n\n⚠️ THIS CREATOR IS NEVER ON CAMERA. They record voice over footage; no shot will contain them.
+- Do NOT write physical staging anywhere. No "where the creator stands", no wardrobe, no framing of a person, no eye-line, no gesture, no "step toward the camera". A direction about a body is a direction they cannot carry out.
+- location describes WHAT IS ON SCREEN instead: the footage, screen recording, or graphic the voice is running over. Say what a viewer sees while the line is spoken.
+- Every spoken beat is voice over visuals. The words still matter exactly as much; only the picture changes.
+- The hook must work WITHOUT a face. A face carries the first second for an on-camera creator; here the first frame and the first sentence have to do that work alone, so open on something visibly specific rather than on presence.`
+  }
+  if (onCamera === 'mixed') {
+    return `\n\n⚠️ THIS CREATOR IS ON CAMERA FOR SOME BEATS AND NOT OTHERS. Decide per beat and say which.
+- A beat they appear in may carry physical staging direction. A beat that is voice over footage may NOT — describe what is on screen instead.
+- Do not hedge by giving every beat both. A direction that covers both cases tells them nothing about either.`
+  }
+  return ''
+}
+
 function renderDesiredFormatsInline(
   desired: readonly string[] | null | undefined,
   exploration: string | null | undefined,
@@ -5570,11 +5605,11 @@ ${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
 - Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
 ${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderVideoIntentInline(intent)}${containerBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderVideoIntentInline(intent)}${containerBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}`
 
     // The DNA is fenced too. It reads like our own text, but every field in it
     // was synthesized from captions we scraped — so it is exactly as
