@@ -198,6 +198,26 @@ const EVENTS = {
       + 'script no longer has and were dropped rather than shipped stale. Null when '
       + 'the generation carried no retention map to reconcile.',
   },
+  // ⚠️ FIX 5's SIBLING, ONE LIST UP. `why_it_works` renders as green ticks
+  // directly above the retention map on Result, from the same one model call,
+  // and described the REFERENCE video rather than the script the creator is
+  // about to film. `dropped` is how many of the model's reference-era claims
+  // were discarded (all of them, always — none is ever carried forward);
+  // `derived` is how many checkable claims the FINAL script supported. Derived
+  // falling toward 1 on real scripts would mean the claim set is too strict to
+  // say anything, which is the failure mode worth watching.
+  //
+  // ⚖️ WRITTEN BY MUTATING `beatAudit` AT THE RESYNC SITE, not by a field in
+  // the object literal — the literal is constructed earlier in the handler than
+  // this pass runs, so a literal field would durably store the value the
+  // counter had before it was computed.
+  why_it_works_resync: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'How many reference-describing claims were dropped and how many '
+      + 'script-derived claims replaced them. Absent when the generation carried '
+      + 'no reference_read to reconcile.',
+  },
   beat_substance: {
     kind: 'counter',
     stored: 'generations.beat_audit',
