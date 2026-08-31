@@ -6864,7 +6864,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
             min_words: MIN_OVERLAP_CONTENT_WORDS,
             runs: overlaps.map((o) => o.words),
           }))
-          const overlapPrompt = 'These script lines reproduce SIX OR MORE consecutive words from the'
+          // ⚠️ THE NUMBER COMES FROM THE CONSTANT, NEVER FROM A LITERAL. This
+          // said "SIX OR MORE" in prose while the threshold was a shared
+          // export, so lowering the floor to four would have kept telling the
+          // model six — the repair prompt naming a rule the check no longer
+          // enforces, on lines the model would then judge innocent.
+          const overlapPrompt = `These script lines reproduce ${MIN_OVERLAP_CONTENT_WORDS} OR MORE consecutive meaningful words from the`
             + ' reference video\'s own transcript. That is the reference creator\'s sentence, not this'
             + ' creator\'s. Rewrite ONLY the lines listed so they express the same idea in different'
             + ' words — do not invent a new fact, number or experience, and do not shorten the line'

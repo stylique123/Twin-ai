@@ -25,14 +25,27 @@
  * fixtures. Anything that needed a model call could not produce a baseline
  * anyone could re-derive.
  */
-import { longestContentRun, MIN_OVERLAP_CONTENT_WORDS } from './phraseOverlap.js'
+import { longestContentRun } from './phraseOverlap.js'
 
-/** ⚠️ THE SAME SIX. A sentence sharing a six-content-word run with the
- *  reference, in order, is the shape a copy-paste or a too-faithful paraphrase
- *  leaves — the threshold was measured against the Run D evidence and is
- *  reused, not re-picked, so "high overlap" here means what "must repair"
- *  means in the writer path. */
-export const HIGH_OVERLAP_RUN_WORDS = MIN_OVERLAP_CONTENT_WORDS
+/** ⚠️ SIX, PINNED, AND DELIBERATELY NO LONGER `MIN_OVERLAP_CONTENT_WORDS`.
+ *
+ *  This tracked the writer path's repair threshold, on the reasoning that
+ *  "high overlap" here should mean what "must repair" means there. That
+ *  coupling is what makes this number useless the first time the repair
+ *  threshold moves — and it has now moved, from six to four.
+ *
+ *  ⚖️ A MEASURING STICK THAT MOVES WHEN THE POLICY MOVES CANNOT SHOW WHETHER
+ *  THE POLICY WORKED. `referenceBorrowingBaseline` exists to hold a measured
+ *  "before" against which a change to the writer is compared. Had this stayed
+ *  coupled, lowering the repair floor would have silently rewritten the
+ *  baseline's own `high` and `share` figures for runs it never regenerated —
+ *  the frozen evidence would have reported an improvement, or a regression,
+ *  that nothing in the product actually did.
+ *
+ *  So this is a literal six now, and it stays six: the number the four audited
+ *  runs were measured at. Changing it means re-freezing the baseline, out
+ *  loud, in a change that says so. */
+export const HIGH_OVERLAP_RUN_WORDS = 6
 
 export interface SentenceOverlap {
   /** Index of the spoken line this sentence came from. */
