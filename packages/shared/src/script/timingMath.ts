@@ -12,16 +12,23 @@
 // product already commits to everywhere else, so the Plan screen and the
 // teleprompter can never quote two different lengths for the same words.
 //
-// ⚠️ DETECTION ONLY, NO REPAIR. The spec's own repair step ("prefer adjusting
-// target_sec to the line") assumes something downstream reads `target_sec` —
-// it does not. `beat_plan` is planning-stage model output; it is never
-// returned in the shipped blueprint and nothing on the client resolves it
-// today (confirmed: only `script`, `hook_options`, `concept` and `packaging`
-// reach the creator). Repairing a field with no reader is the exact defect
-// this session's own audit found twice already (a register with no caller
-// looks healthier than an absent one). So this measures and flags; wiring an
-// actual repair is a second PR, once a real consumer of the adjusted value
-// exists to make the repair observable.
+// ⚠️ THAT "NOTHING READS target_sec" CLAIM WAS TRUE ONCE AND IS NOW FALSE, AND
+// IT COST A DAY. This block used to argue that `beat_plan` is planning-stage
+// output which "is never returned in the shipped blueprint and nothing on the
+// client resolves it today (confirmed: only `script`, `hook_options`, `concept`
+// and `packaging` reach the creator)". It has a reader:
+// `recordingScriptAdapter` copies `beatPlan[idx].targetSec` onto
+// `RecordingScene.target_sec`, and `ScriptEditor`'s `BeatLength` renders it to
+// a creator as "Xs beat". A confident parenthesised "confirmed" outlived the
+// thing it confirmed, and reading it sent an audit looking for a missing
+// surface when the surface had been live all along.
+//
+// ⚖️ SO THE NO-REPAIR RULE NOW RESTS ON ITS OTHER LEG, WHICH STILL HOLDS.
+// Repair is still not this module's job — but because a target the writer
+// DECIDED is the honest thing to compare against, and silently rewriting it to
+// match whatever words arrived would delete the disagreement the Plan screen
+// exists to show. Detection here, disagreement on the surface, judgement with
+// the creator.
 //
 // ⚖️ ONE BEAT PER SCRIPT ENTRY, EXACTLY — the writer's own contract
 // (beat_plan's schema comment: "EMIT EXACTLY ONE BEAT PER script ENTRY, in

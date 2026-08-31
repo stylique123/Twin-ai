@@ -248,21 +248,35 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
     usable.push({ seg, idx })
   })
 
-  // ⚠️ AND THE HOOK GETS THE LENGTH THAT WAS PLANNED FOR IT. Scene 1 is built
-  // above, before `looksLikeHook` exists to say WHICH script entry it displaced,
-  // so it was estimated from its own word count while a decided target sat in
-  // the plan unused. The hook is the beat where length matters most — it is the
-  // only one whose overrun costs the whole video — and it was the one beat
-  // guaranteed to be paced by the estimator.
+  // ⚠️ AND THE HOOK GETS THE TARGET THAT WAS PLANNED FOR IT — THE TARGET ONLY.
+  // Scene 1 is built above, before `looksLikeHook` exists to say WHICH script
+  // entry it displaced, so the decided target sat in the plan unused. The hook
+  // is the beat where length matters most: it is the only one whose overrun
+  // costs the whole video.
+  //
+  // ⚠️ AND IT NO LONGER OVERWRITES `duration_sec`. This assigned BOTH fields the
+  // same number, which made `sceneOverrunSec` — (live − target) — exactly 0 for
+  // the hook on every freshly generated script. `overrunWorthShowing(0)` is
+  // false, so `BeatLength` took its bare branch and rendered "8s beat" with no
+  // drift line, forever, on a hook of any length. The drift indicator was not
+  // unwired from the surface; it was wired to a value defined to agree with
+  // itself, and it could only ever come alive after a creator edited the line
+  // (`applyDialogueEdit` re-estimates from words). MEASURED: run G shipped a
+  // twelve-word CTA labelled "28s beat" with no drift line, and six of seven
+  // audited runs show the same silence.
+  //
+  // ⚖️ TWO FIELDS, TWO MEANINGS, AND THEY MUST BE ALLOWED TO DISAGREE.
+  // `target_sec` is what the writer PLANNED; `duration_sec` is what the words
+  // it actually wrote will TAKE. Seeding the second from the first destroys the
+  // only comparison either one exists to support.
   //
   // ⚖️ PATCHED, NOT RE-ORDERED. Moving the hook push below the filter would put
   // the scene-numbering and the caption-uniqueness counter behind it too, for a
-  // value that is two assignments. Silent when no plan entry applies: an absent
+  // value that is one assignment. Silent when no plan entry applies: an absent
   // target means "no target", and `target_sec` stays off the scene rather than
   // arriving as a zero the recorder would read as a countdown.
   const plannedHook = hookIdx === null ? null : (beatPlan?.[hookIdx]?.targetSec ?? null)
   if (plannedHook !== null) {
-    scenes[0].duration_sec = plannedHook
     scenes[0].target_sec = plannedHook
   }
   // The LAST CTA-labelled beat, not the first: if the model labels more than
@@ -373,7 +387,12 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
       ...(ask ? { ask, beat_index: idx } : {}),
       // DECIDED, not derived — the plan's target when there is one, and the
       // words-over-speaking-rate estimate when there is not.
-      duration_sec: beatDurationSec(beatPlan, idx, estimateDurationSec(line, wpm)),
+      // ⚠️ THE WORDS, NEVER THE PLAN. This read
+      // `beatDurationSec(beatPlan, idx, estimateDurationSec(line, wpm))`, where
+      // the word estimate was only the FALLBACK — so whenever the writer gave a
+      // target (which it does for every beat) the scene's "live" length WAS the
+      // target, and the drift the editor exists to show was structurally zero.
+      duration_sec: estimateDurationSec(line, wpm),
       // Kept beside it, so an edit that stretches the line cannot erase what the
       // beat was planned to be.
       ...(beatPlan?.[idx]?.targetSec != null ? { target_sec: beatPlan[idx].targetSec } : {}),
@@ -483,7 +502,9 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
     scene_type: 'cta',
     purpose: ctaBeat?.seg.section?.trim() || 'End with one clear final action',
     dialogue: cta,
-    duration_sec: plannedCta ?? estimateDurationSec(cta, wpm),
+    // ⚠️ SAME DEFECT, SAME FIX: this was `plannedCta ?? estimateDurationSec(...)`.
+    // Run G's CTA is twelve words — about 5 seconds — against a planned 28.
+    duration_sec: estimateDurationSec(cta, wpm),
     ...(plannedCta !== null ? { target_sec: plannedCta } : {}),
     ...framingFor(scenes.length, blueprint, ctaBeat?.seg ?? undefined),
     caption_text: pushCaption(captionFromLine(cta), ctaN),
