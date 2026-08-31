@@ -15,7 +15,8 @@
 // recorded as such, because otherwise it is indistinguishable from one never
 // attempted and every later run pays again to rediscover it.
 import { db, type Job } from '../db.js'
-import { parseRoute } from '../downloadRoute.js'
+import { parseRoute, stickySessionId, type DownloadRoute } from '../downloadRoute.js'
+import { env } from '../env.js'
 import { transcribeFromUrl } from '../media.js'
 import { geminiJson } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
@@ -317,7 +318,55 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
   }
   try {
     transcript = cached ? cached.transcript : await transcribeFromUrl(url, route)
-  } catch (e) {
+  } catch (first) {
+    // ── ONE ESCALATION, FOR THE ONE FAILURE A DIFFERENT IP ACTUALLY FIXES ──
+    //
+    // ⚠️ THE PAID RUNG EXISTED AND HAD NEVER RUN. Measured on production
+    // 2026-08-30: of 780 assessed references, 481 went `local_impersonated`,
+    // 299 recorded no route, and `residential_proxy` was used ZERO times. The
+    // rung is fully built -- argv, sticky session, a refusal to downgrade
+    // silently, its own enum value in 0150 -- and nothing ever asked for it,
+    // because the route arrives in the JOB PAYLOAD and no caller sets it. So 48
+    // references died on "Your IP address is blocked" while the tool built
+    // precisely to defeat an IP block sat unused.
+    //
+    // ⚖️ ONLY `blocked_by_host`, AND THAT NARROWNESS IS THE DESIGN. Residential
+    // egress is metered per GB. An IP block is the one class where the video is
+    // fine, the binary is fine, and the single thing wrong is which address
+    // asked -- so it is the one class where a different address is the remedy
+    // rather than a hope. A proxy cannot re-parse a page (`extractor_stale`),
+    // cannot undelete a video (`source_gone`), and cannot put speech into a
+    // silent one (`no_speech`). Escalating those would spend money to fail
+    // identically, one rung more expensively.
+    //
+    // ⚖️ ONCE, AND NEVER FROM THE PAID RUNG. If the residential attempt fails we
+    // record that failure, not a third try: the point is to learn whether IP
+    // reputation was the wall, and a loop would turn one measurement into an
+    // open-ended bill.
+    let e = first
+    const firstClass = classifyReferenceFailure(first instanceof Error ? first.message : String(first))
+    const canEscalate = firstClass === 'blocked_by_host'
+      && route.kind === 'local_impersonated'
+      && env.apifyProxyPassword.trim() !== ''
+    if (canEscalate) {
+      // ⚖️ STICKY ON THE URL, so a retry of the same video reuses the same exit
+      // address rather than rolling a fresh one and confounding the answer.
+      const escalated: DownloadRoute = { kind: 'residential_proxy', sessionId: stickySessionId(url) }
+      console.log(JSON.stringify({ event: 'download_route_escalated', url,
+        from: 'local_impersonated', to: 'residential_proxy', because: firstClass }))
+      try {
+        transcript = await transcribeFromUrl(url, escalated)
+      } catch (second) {
+        e = second
+      }
+    }
+    // ⚠️ THE ESCALATION MAY HAVE WORKED, and the rest of this catch assumes it
+    // did not. Falling through with a transcript in hand would record a failure
+    // for a video we just successfully read.
+    if (transcript) {
+      console.log(JSON.stringify({ event: 'download_route_escalation_succeeded', url }))
+    }
+    if (!transcript) {
     // ⚠️ RECORDED, NOT THROWN. A host the allowlist refuses, a deleted video, a
     // clip with no speech — all are real properties of the library, and the run
     // that discovers them should be the last one that has to.
@@ -363,6 +412,7 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
       // having nothing in it. This is the figure to watch before spending a
       // backlog on downloads.
       fetchDefect: isFetchDefect(reasonClass),
+      }
     }
   }
 
