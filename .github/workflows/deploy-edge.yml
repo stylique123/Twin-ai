@@ -84,10 +84,20 @@ jobs:
           # enqueues nothing and spends nothing, which is why a status page is
           # allowed to exist at all. Same platform_admins check with the service
           # role. PRODUCTION because the state it reports IS production's.
-          PROD="admin admin-metrics billing billing-webhook brand-logo brand-truth clip-asset \
-                dna-poll editor-output generate-blueprint generate-thumbnail ingest-reference \
-                owner-console pilot-review pilot-start product-image referral review social \
-                source-asset start-dna start-editor-v2 watched-session"
+          # answer-beat-ask — the ONLY write path for a `needs_user` beat's
+          # question. PRODUCTION because a creator calls it: ScriptEditor.tsx
+          # invokes answerBeatAsk() the moment someone answers or skips a beat
+          # the writer refused to fabricate. It went unclassified when it was
+          # added, and because this list is CLOSED, that failed every edge
+          # deploy from 2026-08-30 onward — so the function itself never
+          # reached production AND four merged writer changes sat undeployed
+          # behind it. Working as designed: the closed list refused to guess,
+          # and refusing loudly is why this was findable at all.
+          PROD="admin admin-metrics answer-beat-ask billing billing-webhook brand-logo \
+                brand-truth clip-asset dna-poll editor-output generate-blueprint \
+                generate-thumbnail ingest-reference owner-console pilot-review pilot-start \
+                product-image referral review social source-asset start-dna start-editor-v2 \
+                watched-session"
 
           unclassified=""
           for d in supabase/functions/*/; do
