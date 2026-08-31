@@ -2130,6 +2130,16 @@ export interface EntityPresentationEdit {
    *  same reason `name` is: neither is an entitlement field. */
   creatorSummary?: string | null
   productUrl?: string | null
+  /** ⚖️ WHERE THE COMMISSION LINK POINTS — a DIFFERENT fact from `productUrl`,
+   *  and the reason both exist. `product_url` is where the thing lives and is
+   *  what the extractor reads; an affiliate address is where the CREATOR is
+   *  paid, and sending a viewer to the plain product page instead is the one
+   *  mistake that costs them the sale they disclosed.
+   *
+   *  Editable here and nowhere else: `promoteToAffiliate` sets it during a
+   *  relationship change, which is a different event from a creator correcting
+   *  a link. */
+  affiliateUrl?: string | null
   showability?: Showability
 }
 
@@ -2153,6 +2163,7 @@ export async function updateEntityPresentation(
     row.creator_summary = edit.creatorSummary === null ? null : String(edit.creatorSummary).trim() || null
   }
   if ('productUrl' in edit) row.product_url = edit.productUrl === null ? null : String(edit.productUrl).trim() || null
+  if ('affiliateUrl' in edit) row.affiliate_url = edit.affiliateUrl === null ? null : String(edit.affiliateUrl).trim() || null
   if ('showability' in edit) row.showability = edit.showability
   // An empty edit must not issue a no-op UPDATE that only bumps `updated_at`,
   // which would read afterwards as a change the creator never made.

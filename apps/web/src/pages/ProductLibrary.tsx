@@ -775,6 +775,46 @@ export default function ProductLibrary() {
             }}
           />
 
+          {/* ⚠️ ONLY FOR AN AFFILIATE, AND THE FIELD EXISTED BEFORE THE BOX DID.
+              `affiliate_url` has been on every entity since the entity contract
+              was written, is selected on every load, and — measured 2026-08-30 —
+              was written by NOTHING and read by NOTHING. `promoteToAffiliate`,
+              its only writer, has no callers outside tests. So a creator who
+              earns a commission had nowhere to tell us where the commission
+              link points, and a script that mentioned the product could only
+              ever send a viewer to the plain product page.
+
+              ⚖️ A DIFFERENT FACT FROM `Link`, WHICH IS WHY IT IS A SECOND BOX
+              RATHER THAN A RENAMED ONE. The link above is where the thing LIVES
+              and is what the extractor reads; this is where the creator is PAID.
+              Merging them would break the extractor for everyone who fills this
+              in, and defaulting one to the other would quietly send viewers
+              through a commission link on videos that never disclosed one.
+
+              ⚖️ SHOWN ONLY WHEN THERE IS A COMMISSION TO POINT AT. Asking a
+              creator for an affiliate address on a product they simply own is a
+              question with no right answer, which is how a form teaches people
+              to ignore it. */}
+          {e.relationship === 'AFFILIATE' && (
+            <>
+              <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-stone">
+                Affiliate link
+              </label>
+              <input
+                className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
+                defaultValue={e.affiliateUrl ?? ''}
+                placeholder="https://"
+                onBlur={(ev) => {
+                  const v = ev.target.value.trim()
+                  if (v !== (e.affiliateUrl ?? '')) void save(e.id, { affiliateUrl: v || null })
+                }}
+              />
+              <p className="mt-1 text-[11px] text-stone">
+                Where you get paid. Scripts point people here instead of the plain product page. Leave it empty and they go to the link above.
+              </p>
+            </>
+          )}
+
           {/* ⚠️ THE SAME QUESTION THE ADD FORM ASKS, IN THE SAME WORDS. This
               panel asked its own generic "Can you put it on screen?" of every
               product, while the add form asked a physical product whether they
