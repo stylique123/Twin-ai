@@ -76,9 +76,33 @@ describe('affiliateUrl: the claim in productEntity.ts, asserted', () => {
     // finally wires the second query the comment describes, this breaks and
     // forces the note to be rewritten in the same PR. A guard whose failure is
     // planned is not a nuisance; it is a handover.
+    // ⚠️ CODE LINES ONLY, AND THIS FILE ALREADY MADE THE OPPOSITE MISTAKE ONCE.
+    // The `<Section` assertion below originally counted three where the truth
+    // was one, because it matched the two mentions inside the comment it exists
+    // to protect. This assertion had the identical defect and it fired: a
+    // comment in generate-blueprint that merely NAMES affiliateUrl — while
+    // explaining that a nine-hour-old claim about it went stale — was counted
+    // as generate-blueprint reading it. A guard that cannot tell a mention from
+    // a call will be silenced rather than believed the first time it cries
+    // wolf, and this one is meant to survive until somebody really wires it.
+    //
+    // ⚖️ WHOLE-LINE COMMENTS ONLY, NOT TRAILING ONES. Stripping from `//` to end
+    // of line would also eat a real read sitting after a string containing
+    // "https://" — a false NEGATIVE in the exact guard that is supposed to
+    // notice a wiring. Over-strip and it stops catching; this way it only stops
+    // miscounting.
     const blueprint = [join(REPO, 'supabase/functions/generate-blueprint/index.ts')]
+    const codeOnly = readFileSync(blueprint[0], 'utf8')
+      .split('\n')
+      .filter((l) => {
+        const t = l.trim()
+        return t !== '' && !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*')
+      })
+      .join('\n')
+    const reads =
+      codeOnly.split('affiliate_url').length - 1 + (codeOnly.split('affiliateUrl').length - 1)
     expect(
-      occurrences(blueprint, 'affiliate_url') + occurrences(blueprint, 'affiliateUrl'),
+      reads,
       'generate-blueprint now reads affiliateUrl — update the note in productEntity.ts, which still says it does not',
     ).toBe(0)
   })
