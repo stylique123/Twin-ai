@@ -50,7 +50,7 @@
  * at generation time (an ask that resolved to no safe line, for instance).
  */
 
-import { isSilentBeat } from './silentBeat.js'
+import { isSilentBeat } from './silentBeat.ts'
 
 export interface SyncedScriptBeat {
   line?: unknown
