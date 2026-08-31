@@ -94,9 +94,22 @@ as $function$
       );
 $function$;
 
-alter table public.brand_voices
-  drop constraint if exists brand_voices_pre_script_brief_shape;
-
-alter table public.brand_voices
-  add constraint brand_voices_pre_script_brief_shape
-  check (public.is_pre_script_brief(pre_script_brief));
+-- ⚠️ NO `alter table` HERE, AND THAT IS THE WHOLE REASON THE FIRST VERSION OF
+-- THIS FILE BROKE STAGING. It ended with a drop-and-re-add of
+-- `brand_voices_pre_script_brief_shape`, copied from 0109 where the constraint
+-- was being created for the first time. On staging `brand_voices` is a
+-- STAGING-ONLY FIXTURE applied AFTER the migration loop
+-- (scripts/staging-integration/staging-brand-schema.sql), so the loop hit
+-- `ERROR: column "pre_script_brief" does not exist` and the matrix died three
+-- minutes in. 0171's exclusion note says exactly this, and it was read before
+-- this file was written.
+--
+-- ⚖️ AND THE RE-ADD WAS NEVER NEEDED. The constraint already exists and calls
+-- `is_pre_script_brief` BY NAME, so replacing the function body is the whole
+-- change — which is precisely why 0136, the last migration to widen this key
+-- set, touches no table either. Re-adding a constraint that is already there
+-- buys nothing and costs the one environment that can catch a drift.
+--
+-- ⚖️ NO BACKFILL, DELIBERATELY. Every existing brief is valid under the widened
+-- rule unchanged, and nothing here can invent an answer a creator never gave.
+-- An absent key means "not asked yet", which is what it means for all of them.
