@@ -35,6 +35,9 @@ export * from './containerSupply'
 export * from './bestTime'
 export * from './api'
 export * from './outcomeLog'
+// The join nobody had made: which format a creator's own posts actually got
+// watched for. Pure read over posts + generations; see formatOutcomes.ts.
+export * from './formatOutcomes'
 export * from './capture'
 export * from './preflight'
 export * from './preScriptBrief'
