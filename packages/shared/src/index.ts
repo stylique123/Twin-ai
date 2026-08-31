@@ -246,6 +246,7 @@ export * from './script/hookVariety'
 // structural AI-tell detector — a triadic list once is ordinary language,
 // twice across one script is the templated cadence.
 export * from './script/parallelTriads'
+export * from './script/craftContracts'
 export * from './script/sentenceUniformity'
 
 // ⚖️ THE SHOOTING NOTE THAT WAS THROWN AWAY. `beat_plan[].proof` is 20-of-20
