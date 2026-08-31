@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest'
 import {
   measureVerbatimOverlap, HIGH_OVERLAP_RUN_WORDS,
 } from '../verbatimOverlap.js'
-import { MIN_OVERLAP_CONTENT_WORDS } from '../phraseOverlap.js'
+import { MIN_OVERLAP_CONTENT_WORDS, longestContentRun } from '../phraseOverlap.js'
 
 const REFERENCE =
   'Measuring the risk of taking action while ignoring the risk of doing nothing '
@@ -19,10 +19,37 @@ const REFERENCE =
   + 'Most businesses fail because they never fix their pricing.'
 
 describe('measureVerbatimOverlap', () => {
-  it('reuses the enforcement threshold rather than picking a second one', () => {
-    // Two "copied" definitions in one codebase is how a fix looks good in the
-    // measure while the writer path disagrees about the same sentence.
-    expect(HIGH_OVERLAP_RUN_WORDS).toBe(MIN_OVERLAP_CONTENT_WORDS)
+  it('shares the enforcement MEASURE while keeping its own threshold', () => {
+    // ⚠️ THIS ASSERTED `HIGH_OVERLAP_RUN_WORDS === MIN_OVERLAP_CONTENT_WORDS`,
+    // to stop "two 'copied' definitions in one codebase — how a fix looks good
+    // in the measure while the writer path disagrees about the same sentence".
+    //
+    // ⚖️ THE WORRY IS RIGHT AND IT WAS GUARDING THE WRONG THING. There are not
+    // two definitions of copying: there is one, `longestContentRun`, and both
+    // paths call it on the same skeleton. What differed was the CUTOFF, and the
+    // two cutoffs answer different questions. `MIN_OVERLAP_CONTENT_WORDS` is
+    // live policy — how much borrowing the writer repairs, lowered to 4 once
+    // the four frozen runs showed 6 sat above the phrases it was set to
+    // protect. `HIGH_OVERLAP_RUN_WORDS` is a historical marker: the number the
+    // baseline's "before" was measured at.
+    //
+    // ⚠️ KEEPING THEM EQUAL IS WHAT BREAKS THE MEASURE. Measured, by reverting
+    // the split: at a repair floor of 4, the coupled baseline reports high: 6
+    // where the frozen truth is high: 4 — evidence announcing a 50% regression
+    // on runs nobody regenerated. A baseline that tracks the policy it exists
+    // to judge cannot judge it.
+    //
+    // So the invariant worth holding is that ONE function defines copying, and
+    // that the thresholds are free to differ.
+    // ⚠️ ON ONE SENTENCE, because `measureVerbatimOverlap` splits into sentences
+    // before measuring and `longestContentRun` does not. Comparing the whole
+    // multi-sentence REFERENCE would compare a per-sentence maximum against a
+    // whole-text one (17 against 30) and prove nothing about the shared measure.
+    const ONE = 'You need to start taking more shots on goal'
+    expect(measureVerbatimOverlap([ONE], ONE).longestRun)
+      .toBe(longestContentRun(ONE, ONE))
+    expect(HIGH_OVERLAP_RUN_WORDS).toBe(6)
+    expect(MIN_OVERLAP_CONTENT_WORDS).toBe(4)
   })
 
   it('finds a lifted sentence and reports the run length', () => {
