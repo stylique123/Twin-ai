@@ -15,8 +15,8 @@ import { templateFor } from '../_shared/containerTemplates.ts'
 import { buildSlots, filledFrom, slotsReady } from '../_shared/writerInput.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
 import { applyHookContract } from '../_shared/hookContract.ts'
-import { craftBeatsThatAsked, readsAsPlaceholder, fallbackCta } from '../_shared/craftBeats.ts'
-import { askIsUsable, scaffoldWithoutAnswer } from '../_shared/beatAsk.ts'
+import { craftBeatsThatAsked, readsAsPlaceholder, fallbackCta, craftSectionKind } from '../_shared/craftBeats.ts'
+import { askForBeat, askIsUsable, scaffoldWithoutAnswer } from '../_shared/beatAsk.ts'
 import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
@@ -6366,17 +6366,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // deterministic ladder rescued; `shipped_over` how many were demoted and
       // still offered. NULL means the contract did not run — never zero.
       hook_length: hookLengthAudit,
-      // ⚠️ THE BEAT THAT COULD ALWAYS BE WRITTEN AND WAS NOT. Rising means the
-      // writer started marking craft beats `needs_user` again; the check caught
-      // it and the creator still got a readable line.
-      cta_fallbacks: ctaFallbacks,
-      // ⚠️ THE SUPPLY SIGNAL. `emitted` is how many beats rested on something
-      // only this creator knows; `with_scaffold` is how many of those the writer
-      // left a real sentence around, so the beat can be completed by one typed
-      // fact rather than rewritten. A high emitted with a low with_scaffold means
-      // the writer is refusing without offering a way forward.
-      beat_asks: { emitted: beatAsksEmitted, with_scaffold: beatAsksWithScaffold },
-      caps_emphasis_runs: capsRuns,
+      // ⚠️ `cta_fallbacks`, `beat_asks` AND `caps_emphasis_runs` ARE NOT IN
+      // THIS LITERAL. They are written onto `beatAudit` further down, after
+      // the passes that compute them have run — see the block that follows the
+      // emphasis split. Reading them here stored their own absence; measured
+      // below.
       // ⚠️ MEASURED BEFORE THE PROMPT LINE EXISTED: 98 of 223 shot-list rows --
       // 44% -- carried a bare ordinal in `shot`, and the card renders that field
       // as its heading, so a creator scanning their shot list saw a card called
@@ -6622,7 +6616,15 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         ? (declared[f.index] as { line?: string; substance?: string; ask?: string; line_scaffold?: string } | undefined)
         : undefined
       if (!b) continue
-      const q = f.ask ?? 'Only you can supply this. What would you actually say here?'
+      // ⚠️ THE BEAT ALREADY KNOWS WHAT IT IS FOR, AND THIS USED TO THROW THAT
+      // AWAY. Measured in production, generation 4608dc73: five unanswered
+      // beats all showed the identical fallback below, while each carried its
+      // own `section` (Setup, Inciting Incident, False Resolution, Re-hook,
+      // Two-Front War) and its own direction. `askForBeat` keeps the writer's
+      // question whenever it is specific and derives one from the section only
+      // when it is not — so a creator is asked five different questions about
+      // five different moments instead of the same blank one five times.
+      const q = askForBeat((b as { section?: unknown }).section, f.ask)
       b.ask = q
       // ⚖️ AND THE SPOKEN LINE IS WHATEVER SURVIVES WITHOUT THE PERSONAL FACT.
       // When the writer gave a usable scaffold, the sentence around the slot is
@@ -6661,6 +6663,36 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     try {
       const asked = craftBeatsThatAsked(Array.isArray(declared) ? declared : [])
       if (asked.length > 0) {
+        // ⚠️ ONLY THE LAST DEAD CTA BEAT IS FILLED, AND THAT IS A SECOND DEFECT
+        // FROM THE SAME LINE OF CODE. MEASURED 2026-09-01, generation
+        // 45d06b93: beat 5 "Call to action setup" and beat 6 "Call to action"
+        // shipped the IDENTICAL sentence — "Tell me if you have done this
+        // differently. I want to hear it." — which is verbatim
+        // `FALLBACK_CTA.conversations`. `fallbackCta` is a pure function of
+        // (goal, offer), so every CTA-class beat repaired in one script is
+        // repaired to the SAME STRING. Section-awareness does not catch this:
+        // "Call to action setup" genuinely IS cta-class, so both beats route
+        // here correctly and then say the same thing twice in a row.
+        //
+        // ⚖️ THE LAST ONE, NOT THE FIRST. A setup beat leads into the ask; the
+        // ask itself is the final beat. Filling in index order would leave the
+        // real call to action as the empty one, which is the defect upside
+        // down. The earlier CTA-class beats stay `needs_user` — the same
+        // refusal the payoff branch takes, for the same reason: there is
+        // exactly ONE deterministic CTA line and it is already spoken, so a
+        // second would be invented substance, not a fallback.
+        let lastDeadCta = -1
+        for (const v of asked) {
+          const c = (declared as Array<{ line?: string; section?: unknown }>)[v.index]
+          if (!c || !readsAsPlaceholder(c.line)) continue
+          if (craftSectionKind(c.section) === 'cta') lastDeadCta = v.index
+        }
+        // ⚠️ COUNTED, NOT ASSUMED. `asked.length` is how many beats ASKED; the
+        // hook, payoff and superseded-CTA branches all decline to write one, so
+        // logging the ask count as the fallback count reports repairs that did
+        // not happen — and `cta_fallback` is the event this behaviour is
+        // audited by.
+        let ctaReplacements = 0
         for (const v of asked) {
           const b = (declared as Array<{ line?: string; substance?: string }>)[v.index]
           if (!b) continue
@@ -6671,14 +6703,52 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
           // in would produce "If you want unspecified, the link is in my bio."
           // A sentinel is not an offer; it is the absence of one, and the
           // fallback already has a line for that case.
+          // ⚠️ THE SECTION DECIDES THE REPAIR. MEASURED 2026-09-01, generation
+          // 4608dc73: this branch used to write `fallbackCta(...)` into EVERY
+          // craft beat that asked, so an empty HOOK was stamped with the CTA
+          // line and the shipped script opened on "Follow if you want the rest
+          // of this." — the same sentence as its own beat 7. Six runs of
+          // "the shot list puts the CTA on the hook shot" were this: the shot
+          // list was mirroring a script that really did say that.
+          const kind = craftSectionKind((b as { section?: unknown }).section)
           if (readsAsPlaceholder(b.line)) {
-            b.line = fallbackCta(intent.goal, offer === 'unspecified' ? null : offer)
+            if (kind === 'cta') {
+              if (v.index !== lastDeadCta) continue
+              b.line = fallbackCta(intent.goal, offer === 'unspecified' ? null : offer)
+              ctaReplacements++
+            } else if (kind === 'hook') {
+              // ⚖️ THE HOOK ALREADY HAS A DETERMINISTIC SOURCE, and it is not the
+              // CTA. `normalizeHookLine` fills beat 0 from the recommended
+              // option; if that has not produced a line by now there is nothing
+              // honest to write here, so the beat stays an ask.
+              // ⚠️ `templated.bp`, NOT `blueprint` — which is declared LATER in
+              // this function and reading it here is TS2448, the exact trap the
+              // edge-parse guard lists as one of three that have shipped before.
+              // CI caught it; `declared` on line 5832 reads the same object.
+              const opts = (templated.bp as { hook_options?: unknown }).hook_options
+              const first = Array.isArray(opts)
+                ? (opts as unknown[]).find((h): h is string => typeof h === 'string' && !!h.trim())
+                : undefined
+              if (!first) continue
+              b.line = first.trim()
+              ctaReplacements++
+            } else {
+              // ⚖️ A PAYOFF HAS NO DETERMINISTIC FALLBACK. Writing one would be
+              // inventing the creator's substance — the exact fabrication the
+              // ask-beat mechanism exists to refuse. It stays `needs_user`.
+              continue
+            }
           }
+          // ⚠️ COUNTED AT THE WRITE, NOT HERE. A beat can ask and still carry
+          // real words; `readsAsPlaceholder` is false for it, nothing is
+          // replaced, and only its substance is settled. Incrementing here
+          // would report a fallback for a line the writer actually wrote —
+          // the same over-reporting as `asked.length`, in a new shape.
           b.substance = 'general'
         }
-        ctaFallbacks = asked.length
+        ctaFallbacks = ctaReplacements
         console.warn(JSON.stringify({
-          event: 'cta_fallback', beats: asked.length,
+          event: 'cta_fallback', beats: ctaReplacements, asked: asked.length,
           sections: asked.map((v) => v.section),
         }))
       }
@@ -6765,6 +6835,37 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       capsRuns = runs
       if (runs > 0) console.warn(JSON.stringify({ event: 'caps_emphasis_moved', runs }))
     } catch { /* never fail a generation on an emphasis split */ }
+
+    // ── THREE COUNTERS THAT WERE STORING THEIR OWN ABSENCE ──────────────────
+    //
+    // ⚠️ MEASURED, AND IT EXPLAINS WHY NOBODY SAW THE CTA DEFECT COMING.
+    // `cta_fallbacks`, `beat_asks` and `caps_emphasis_runs` were READ INTO the
+    // `beatAudit` object literal hundreds of lines above, while the passes that
+    // compute them run down here. A literal captures the VALUE AT THE MOMENT IT
+    // IS BUILT, so all three persisted their initialisers — `null`, `0`, `0` —
+    // for every generation ever written.
+    //
+    // Production settles it rather than suspecting it: of 15 rows carrying the
+    // key, 15 store `cta_fallbacks: null` and 0 store a number; `beat_asks`
+    // reads `emitted: 0` in every row; `caps_emphasis_runs` is null in all of
+    // them. The decisive pair is generations 4608dc73 and 45d06b93 — the two
+    // whose SHIPPED SCRIPTS prove the craft repair ran and wrote fallback CTA
+    // lines. Both stored null and zero.
+    //
+    // ⚖️ SO THE INSTRUMENT BUILT TO CATCH THIS DEFECT REPORTED NOTHING WHILE IT
+    // SHIPPED SIX TIMES. `check_counter_durability` registers `cta_fallback` as
+    // a counter whose value is "a RISING rate is the signal that matters" — and
+    // the rate could not rise, because the stored number never moved off its
+    // initialiser. A counter that cannot change is not a quiet counter; it is a
+    // broken one, and its silence read as good news.
+    //
+    // ⚖️ MUTATION, NOT A LITERAL — the pattern `semantic_repetition` and
+    // `why_it_works_resync` already use, and for exactly this reason.
+    if (beatAudit) {
+      beatAudit.cta_fallbacks = ctaFallbacks
+      beatAudit.beat_asks = { emitted: beatAsksEmitted, with_scaffold: beatAsksWithScaffold }
+      beatAudit.caps_emphasis_runs = capsRuns
+    }
 
     // ── A SHOT CARD MUST SAY WHAT THE SHOT IS ───────────────────────────────
     //

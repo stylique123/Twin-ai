@@ -30,7 +30,7 @@
 // reports the discrepancy and names which artifact carries it.
 import { useMemo } from 'react'
 import { TriangleAlert } from 'lucide-react'
-import { blueprintCountIssues, breaksOnCamera } from '../lib/api'
+import { blueprintCountIssues, breaksOnCamera, needsUserCount } from '../lib/api'
 import type { Blueprint } from '../lib/types'
 
 /** Where the creator should go to fix each kind of fault. The issue's `detail`
@@ -62,6 +62,21 @@ export function CountPromise({ blueprint }: { blueprint: Blueprint }) {
   if (issues.length === 0) return null
 
   const onCamera = breaksOnCamera(issues)
+
+  // ⚠️ UNANSWERED IS NOT ABANDONED, AND THE OLD COPY COULD NOT TELL THEM APART.
+  // Reported across production runs H, I and J: the hook promised three items,
+  // the three item beats were unanswered ASKS, and the panel said "Add the
+  // missing items, or lower the number the hook promises." The check was
+  // right — the creator had not failed at anything. Twin had asked them three
+  // questions and was scolding them for not having answered yet.
+  //
+  // ⚖️ SAME CHECK, TWO STATES. When beats are still waiting on the creator, the
+  // panel points at the questions above it — the action that actually exists.
+  // Only once nothing is pending does "lower the number" become real advice.
+  const pending = needsUserCount(
+    (blueprint as { script?: Parameters<typeof needsUserCount>[0] })?.script,
+  )
+  const waiting = pending > 0 && issues.some((i) => i.code === 'undelivered_count')
   return (
     <div
       className={
@@ -76,7 +91,9 @@ export function CountPromise({ blueprint }: { blueprint: Blueprint }) {
         />
         <div className="min-w-0">
           <p className="text-xs font-semibold text-cream">
-            {onCamera
+            {waiting
+              ? `${pending === 1 ? 'One question stands' : `${pending} questions stand`} between you and this script`
+              : onCamera
               // Named as what it costs, not as what it is. "Count mismatch" is a
               // developer's sentence; this is the creator's.
               ? 'This video promises a number it does not deliver'
@@ -86,13 +103,20 @@ export function CountPromise({ blueprint }: { blueprint: Blueprint }) {
             {issues.map((issue, i) => (
               <li key={`${issue.code}-${i}`} className="text-[11px] leading-relaxed text-sand">
                 {issue.detail}
-                {FIX[issue.code] && (
-                  <span className="block text-stone">{FIX[issue.code]}</span>
+                {waiting && issue.code === 'undelivered_count' ? (
+                  <span className="block text-stone">
+                    Answer them and your list is complete. Skip them and Twin
+                    lowers the hook&rsquo;s number to match what you deliver.
+                  </span>
+                ) : (
+                  FIX[issue.code] && (
+                    <span className="block text-stone">{FIX[issue.code]}</span>
+                  )
                 )}
               </li>
             ))}
           </ul>
-          {onCamera && (
+          {onCamera && !waiting && (
             <p className="mt-2 text-[11px] leading-relaxed text-stone">
               An enumerated list is the format, not a detail of it. A video that
               announces a count and abandons it breaks in front of the audience —

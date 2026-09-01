@@ -2124,3 +2124,194 @@ a bare code — `detected` (whisper) vs `assumed` (the hardcoded caption paths).
 Only `detected` may be read as fact. The two hardcoded `'en'` literals should
 become an explicit "unknown", not a better guess. **Nothing is built on the
 111 fabricated rows.**
+
+## G44 — the surfaces never learned that a beat can be unwritten
+
+Five defects reported across production runs H, I, J and the 2026-09-01
+fresh-account run turned out to be **one defect wearing five faces**, and the
+owner's own Part 9 named it before the code did: *"the surfaces around the
+script haven't caught up to a script that can be partially unwritten."*
+
+Every one of these counted only beats that HAVE words, then presented the
+result as a finished verdict:
+
+| surface | what it said | on a script of |
+|---|---|---|
+| Why it works | "It runs 2 spoken beats" | 7 beats |
+| Runtime vs reference | "24s of talking · reference 59s" | 2 of 7 written |
+| Retention map | one sentence, three times | every middle beat |
+| Count promise | "Add the missing items" | 3 unanswered asks |
+| Beat ask | one blank question, ×5 | 5 distinct sections |
+
+⚖️ **AND IN THREE OF THE FIVE, THE HONEST VERSION ALREADY EXISTED.**
+`lengthSentence` says "5 lines are waiting on you, so the real video will run
+longer" for the SAME measurement `runtimeComparisonSentence` reported as a
+comparison. `measureScriptLength` has always returned `unwrittenBeats`;
+`runtimeCompare` read `spokenSec` and dropped it. `askIsGeneric` was built to
+catch exactly the blank ask that shipped and never fired, because that string
+was not in its list. `needsUserCount` already counted pending beats for the
+refund notice while `CountPromise` had no idea any were pending.
+
+**Not missing. Not wired.** The same shape as #637, three more times.
+
+## G45 — the CTA was written into the hook, and the shot list took the blame for six runs
+
+`isCraftSection()` answers "may this beat be repaired at all" and returns true
+for **hook, payoff and cta**. The caller read that `true` as "so write the CTA
+line into it", then set `substance = 'general'` so nothing downstream knew the
+beat was still unanswered. Generation `4608dc73` shipped with beat 1 (hook) and
+beat 7 (cta) carrying the identical sentence.
+
+⚠️ **THE SHOT LIST WAS INNOCENT.** "The shot list puts the CTA on the hook shot"
+was filed six consecutive times and called the oldest unfixed defect in the
+product. `syncShotListSpokenText` was mirroring, position by position, a script
+whose hook really did say that. **The mirror was never wrong. Nobody had read
+the script it was mirroring.** Six runs of engineering attention went to a
+component with no bug in it.
+
+## G46 — duration was never clamped, and the clamp hypothesis was wrong
+
+Reported as "duration matching is a clamp, not a match", from three data points
+(103→34, 59→24, 29→19) and the conclusion that every script lands in a 19–27s
+band. Measured across every generation carrying both numbers:
+
+| reference | planned | | reference | planned |
+|---|---|---|---|---|
+| 103s | 75s | | 29s | 41s |
+| 103s | 61s | | 27s | 40 / 45 / 41s |
+| **59s** | **56s** | | 20s | 37s |
+
+Planned totals span 37–75s and track the reference — a 59-second reference
+planned 56 seconds. **There is no band and the target derivation works.** The
+defect was one sentence timing written beats only. Recorded because the wrong
+diagnosis was three-quarters convincing and would have sent someone to rewrite
+a working matcher.
+
+## G47 — DECIDED AGAINST: the fidelity chip is not broken
+
+Reported as "three runs, three settings, two labels, none matching". Measured:
+
+| reference_use | fidelity | dates |
+|---|---|---|
+| structure → close | ✓ | **2026-09-01** |
+| idea_structure → balanced | ✓ | **2026-09-01** |
+| stay_close → close | ✓ | **2026-09-01** |
+| structure → balanced | ✗ | 27–30 Aug |
+| stay_close → loose / balanced | ✗ | 27–30 Aug |
+| `inspiration` → close / balanced | ✗ | 27–30 Aug (retired value) |
+
+**Every mismatch predates the `resolveFidelity` fix.** Every row from today
+obeys it exactly, and the chip reads the derived value correctly.
+
+What remains true is that `structure` and `stay_close` BOTH resolve to `close`
+— by design, because both mean "stay near the reference" — so two different
+picks render one chip. Whether to differentiate that is a product judgement,
+not a defect, and it was left for the owner rather than changed on a
+misdiagnosis. ⚖️ **A REFUSAL RECORDED IS WORTH AS MUCH AS A FIX SHIPPED**, and
+this list has more entries retracted than most have shipped.
+
+## G48 — one deterministic CTA line, said twice in a row
+
+`fallbackCta` is a **pure function of (goal, offer)**, so every CTA-class beat
+repaired in a script is repaired to the *same string*.
+
+Measured across seven days of production: exactly **one** adjacent-duplicate
+pair existed, generation `45d06b93`:
+
+| beat | section | line |
+|---|---|---|
+| 5 | Call to action setup | "Tell me if you have done this differently. I want to hear it." |
+| 6 | Call to action | "Tell me if you have done this differently. I want to hear it." |
+
+— verbatim `FALLBACK_CTA.conversations`, off the teleprompter, twice.
+
+**This is not G44 (#641), and #641 does not close it.** G44 was the *wrong*
+section receiving the CTA line. Here `craftSectionKind('Call to action setup')`
+returns `'cta'` **correctly** — a setup beat genuinely is CTA-class — so both
+beats route to the repair as intended and then say the same sentence. Section
+awareness cannot see this defect, which is why it survived the fix that looked
+like it should have caught it.
+
+**Only the LAST dead CTA beat is filled.** Not the first: a setup beat leads
+into the ask, so filling in index order would leave the real call to action as
+the empty one — the defect upside down. Earlier CTA-class beats stay
+`needs_user`, the same refusal the payoff branch already takes and for the same
+reason: there is exactly one deterministic CTA line, it is already spoken, and a
+second would be invented substance rather than a fallback.
+
+### A logged count that was reporting work that never happened
+
+`ctaFallbacks = asked.length` counted beats that **asked**, not beats that were
+**repaired**. Three branches decline to write a line — hook-without-options,
+payoff, and now superseded-CTA — so `cta_fallback`, the event this behaviour is
+audited by, has been over-reporting since #641 introduced the first two. It now
+counts at the write site. ⚠️ **Not at the bottom of the loop**: a beat can ask
+and still carry real words, in which case nothing is replaced and only its
+substance is settled — counting there would have reproduced the same lie in a
+new shape.
+
+### Two tests that passed for the wrong reason
+
+- **The −1 trap.** `expect(skip).toBeLessThan(substance)` held precisely when
+  the guard had been *deleted*, because `indexOf` returns `-1`. Found by
+  mutation, not review; the assertion now requires `skip > -1` first.
+- **A byte-count window.** G44's payoff guard sliced `src.slice(i, i + 1600)`
+  and failed here because a *comment* above the block grew. It reported a payoff
+  regression that did not exist. Now anchored to the block's own end.
+
+Mutation-checked: restoring the shipped defect fails **2 of 6**; 227 files /
+4,713 tests pass.
+
+## G49 — three counters that were storing their own absence
+
+⚠️ **This is why G44/G48 shipped six times with nobody seeing a number move.**
+
+`cta_fallbacks`, `beat_asks` and `caps_emphasis_runs` were read into the
+`beatAudit` **object literal** hundreds of lines above the passes that compute
+them. A literal captures the value at the moment it is built, so all three
+persisted their initialisers for every generation ever written.
+
+| counter | read into literal | actually assigned | production |
+|---|---|---|---|
+| `cta_fallbacks` | 6372 | **6755** | 15 of 15 rows `null`, 0 numeric |
+| `beat_asks` | 6378 | **6645** | `emitted: 0` in every row |
+| `caps_emphasis_runs` | 6379 | **6841** | `null` in every row |
+
+**Production settles it rather than suspecting it.** The decisive pair is
+generations `4608dc73` and `45d06b93` — the two whose *shipped scripts prove*
+the craft repair ran and wrote fallback CTA lines. Both store
+`cta_fallbacks: null` and `beat_asks.emitted: 0`.
+
+`check_counter_durability` registers `cta_fallback` on the grounds that "a
+RISING rate is the signal that matters". **The rate could not rise.** A counter
+that cannot change is not a quiet counter, it is a broken one — and its silence
+read as good news.
+
+Fixed by mutation after computation, the pattern `semantic_repetition` and
+`why_it_works_resync` already use and which is commented in this very file as
+the reason not to use a literal.
+
+### ⚠️ TWO GUARDS WERE PINNING THE DEFECT IN PLACE
+
+This is the part worth remembering. Both counters had a test, and both tests
+**required the broken form**:
+
+- `beatAsk.test.ts` asserted `beat_asks: { emitted: beatAsksEmitted, ... }` —
+  i.e. the literal.
+- `emphasis.test.ts` was titled *"the counter defaults to null and lands in
+  beat_audit"* and asserted `caps_emphasis_runs: capsRuns`. **It did not land in
+  beat_audit.** The title stated the thing the assertion failed to check.
+
+A guard that demands the broken form is worse than no guard: it converts a
+defect into a rule, and every future correction reads as a regression. Both now
+assert the mutation form and refuse the literal one.
+
+### Scope note
+
+The note's suspicion about `retention_map_resync` / `shot_list_resync` /
+`setup_label_resync` is a *different* set of keys and remains unsettled — those
+are written by mutation already; the open question there is whether the passes
+run at all. Not touched here.
+
+Mutation-checked: restoring the shipped literal fails **7 of 8**; 227 files /
+4,721 tests pass; `tsc -p packages/shared` clean; `check_counter_durability` OK.
