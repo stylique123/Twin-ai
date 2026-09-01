@@ -49,6 +49,11 @@ export interface RuntimeComparison {
    *  diff against. */
   diffFromReferenceSec: number | null
   exceedsCeiling: boolean
+  /** Beats that still have no words. ⚠️ WHEN THIS IS NON-ZERO, `computedSec`
+   *  TIMES ONLY PART OF THE SCRIPT, and comparing it to a whole reference
+   *  video is comparing two different things. Optional so a comparison built
+   *  before this field existed still reads as "no claim", never as zero. */
+  unwrittenBeats?: number
 }
 
 /**
@@ -66,7 +71,8 @@ export function compareRuntime(
   wpm: WpmPreset = DEFAULT_WPM,
   ceilingSec: number = RUNTIME_CEILING_SEC,
 ): RuntimeComparison {
-  const computedSec = measureScriptLength(beats, wpm).spokenSec
+  const measured = measureScriptLength(beats, wpm)
+  const computedSec = measured.spokenSec
   const refSec =
     typeof referenceSec === 'number' && Number.isFinite(referenceSec) && referenceSec > 0
       ? referenceSec
@@ -77,6 +83,11 @@ export function compareRuntime(
     ceilingSec,
     diffFromReferenceSec: refSec === null ? null : Math.round((computedSec - refSec) * 10) / 10,
     exceedsCeiling: computedSec > ceilingSec,
+    // ⚠️ CARRIED SO THE SENTENCE CAN REFUSE TO COMPARE. `computedSec` counts
+    // WRITTEN beats only; comparing that against a whole reference video is
+    // comparing two different things and reporting the gap as if it were a
+    // choice the writer made.
+    unwrittenBeats: measured.unwrittenBeats,
   }
 }
 
@@ -86,6 +97,32 @@ export function compareRuntime(
  * whether the creator should trim it (see `scriptLength.ts`'s same rule).
  */
 export function runtimeComparisonSentence(cmp: RuntimeComparison): string {
+  const pending = cmp.unwrittenBeats ?? 0
+
+  // ⚠️ A PARTIAL SCRIPT MAY NOT BE COMPARED TO A WHOLE VIDEO. Reported from
+  // production as "duration matching is a clamp": a 103-second reference
+  // against a 34-second script, a 59-second reference against 24. Neither
+  // number was a clamp. `computedSec` counts only the beats that HAVE words,
+  // so a seven-beat script with five unanswered asks times two beats and the
+  // panel presented that against the full reference as though the writer had
+  // chosen to cut it by two thirds.
+  //
+  // ⚖️ THE BEAT PLAN WAS NEVER THE PROBLEM. Measured across production, its
+  // `target_sec` totals track the reference (a 59s reference planned 56s). The
+  // defect is entirely in this sentence.
+  //
+  // ⚖️ SO WHILE BEATS ARE PENDING, SAY WHAT IS TIMED AND STOP. `lengthSentence`
+  // in scriptLength.ts already does exactly this for the same measurement; two
+  // sentences about one script must not disagree about whether it is finished.
+  if (pending > 0) {
+    const base = `About ${spokenTime(cmp.computedSec)} of talking so far — ${pending} ${
+      pending === 1 ? 'line is' : 'lines are'
+    } still waiting on you, so this will grow.`
+    return cmp.referenceSec === null
+      ? base
+      : `${base} The reference runs about ${spokenTime(cmp.referenceSec)}.`
+  }
+
   const base = `About ${spokenTime(cmp.computedSec)} of talking.`
   const refPart =
     cmp.referenceSec === null ? '' : ` The reference runs about ${spokenTime(cmp.referenceSec)}.`
