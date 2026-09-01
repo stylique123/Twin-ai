@@ -44,6 +44,16 @@ const GENERIC_ASKS: readonly RegExp[] = Object.freeze([
   /^\s*what(?:'s| is) your (?:story|background|journey)\b/i,
   /^\s*talk about\b/i,
   /^\s*can you (?:tell|describe|share)\b/i,
+  // ⚠️ THE ONE THAT ACTUALLY SHIPS, AND THE DETECTOR DID NOT KNOW IT. Measured
+  // in production, generation 4608dc73: all FIVE unanswered beats showed the
+  // creator the identical sentence "Only you can supply this. What would you
+  // actually say here?" while each beat carried its own `section` (Inciting
+  // Incident, False Resolution, Re-hook, Two-Front War) and its own direction.
+  // The writer planned the whole arc and asked the same blank question five
+  // times. This validator existed and never fired, because the string it was
+  // built to catch was not in its list.
+  /only you can supply this/i,
+  /^\s*what would you actually say here\b/i,
 ])
 
 export function askIsGeneric(ask: unknown): boolean {
@@ -210,4 +220,47 @@ export function resolveAskAnswer(
   // No usable scaffold: the creator's own words ARE the line.
   if (a.length > ANSWER_MAX_CHARS) return { line: '', state: 'unanswered' }
   return { line: a, state: 'answered' }
+}
+
+/**
+ * The question a creator can actually answer, derived from the beat's own
+ * section when the writer's ask is generic.
+ *
+ * ⚠️ THE INFORMATION WAS ALWAYS THERE. A `needs_user` beat ships with a
+ * `section` naming its narrative job — "Inciting Incident", "False Resolution",
+ * "Re-hook" — and a `direction` describing the emotional turn it should carry.
+ * Showing the creator "What would you actually say here?" five times throws all
+ * of it away and asks them to guess what the beat is for.
+ *
+ * ⚖️ THE WRITER'S OWN ASK WINS WHENEVER IT IS SPECIFIC. This is a floor, not a
+ * replacement: a model that wrote a real question about a real moment knows
+ * more about this script than a lookup table does. Only a generic ask is
+ * overwritten.
+ *
+ * ⚖️ AND AN UNRECOGNISED SECTION STILL NAMES ITSELF. Falling back to the
+ * original generic sentence would reintroduce the defect for every section not
+ * in this table; naming the beat is worse than a hand-written question and far
+ * better than asking about nothing.
+ */
+const SECTION_ASKS: ReadonlyArray<readonly [RegExp, string]> = Object.freeze([
+  [/inciting|incident|trigger/i, 'What actually happened that set this off for you?'],
+  [/false resolution|failed fix|first attempt/i, 'What looked like it fixed the problem but did not?'],
+  [/re-?hook|reset|second hook/i, 'What is the turn that makes someone keep watching here?'],
+  [/setup|background|context/i, 'What was your situation right before this started?'],
+  [/stake|war|conflict|struggle|obstacle/i, 'What was the hardest part of this for you?'],
+  [/proof|evidence|result|outcome/i, 'What is the specific result or number you can point to?'],
+  [/lesson|takeaway|insight/i, 'What did you learn that you would tell someone else?'],
+])
+
+export function askForBeat(section: unknown, writersAsk: unknown): string {
+  const written = String(writersAsk ?? '').trim()
+  if (written !== '' && !askIsGeneric(written)) return written
+
+  const s = String(section ?? '').trim()
+  for (const [pattern, question] of SECTION_ASKS) {
+    if (pattern.test(s)) return question
+  }
+  return s === ''
+    ? 'What would you say here, in your own words?'
+    : `This beat is your ${s.toLowerCase()}. What happened?`
 }

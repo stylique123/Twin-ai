@@ -16,7 +16,7 @@ import { buildSlots, filledFrom, slotsReady } from '../_shared/writerInput.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
 import { applyHookContract } from '../_shared/hookContract.ts'
 import { craftBeatsThatAsked, readsAsPlaceholder, fallbackCta, craftSectionKind } from '../_shared/craftBeats.ts'
-import { askIsUsable, scaffoldWithoutAnswer } from '../_shared/beatAsk.ts'
+import { askForBeat, askIsUsable, scaffoldWithoutAnswer } from '../_shared/beatAsk.ts'
 import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
@@ -6622,7 +6622,15 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         ? (declared[f.index] as { line?: string; substance?: string; ask?: string; line_scaffold?: string } | undefined)
         : undefined
       if (!b) continue
-      const q = f.ask ?? 'Only you can supply this. What would you actually say here?'
+      // ⚠️ THE BEAT ALREADY KNOWS WHAT IT IS FOR, AND THIS USED TO THROW THAT
+      // AWAY. Measured in production, generation 4608dc73: five unanswered
+      // beats all showed the identical fallback below, while each carried its
+      // own `section` (Setup, Inciting Incident, False Resolution, Re-hook,
+      // Two-Front War) and its own direction. `askForBeat` keeps the writer's
+      // question whenever it is specific and derives one from the section only
+      // when it is not — so a creator is asked five different questions about
+      // five different moments instead of the same blank one five times.
+      const q = askForBeat((b as { section?: unknown }).section, f.ask)
       b.ask = q
       // ⚖️ AND THE SPOKEN LINE IS WHATEVER SURVIVES WITHOUT THE PERSONAL FACT.
       // When the writer gave a usable scaffold, the sentence around the slot is

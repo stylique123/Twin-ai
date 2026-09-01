@@ -168,7 +168,17 @@ describe('the writer never puts a question where a spoken line goes', () => {
   })
 
   it('imports the contract rather than restating it inline', () => {
-    expect(bp).toMatch(/import \{ askIsUsable, scaffoldWithoutAnswer \} from '\.\.\/_shared\/beatAsk\.ts'/)
+    // ⚠️ THE SYMBOLS, NOT THE EXACT LIST. This used to pin the import line
+    // verbatim, so adding a THIRD contract symbol (`askForBeat`) failed a test
+    // whose stated point is "imports the contract rather than restating it
+    // inline" — which that change does not violate. A guard that breaks when
+    // the thing it protects is used MORE is measuring the wrong property.
+    // Still exactly one import of this module: a second line would shadow the
+    // wiring guards, which is its own defect and has its own assertion below.
+    const imp = bp.match(/import \{([^}]*)\} from '\.\.\/_shared\/beatAsk\.ts'/g) ?? []
+    expect(imp).toHaveLength(1)
+    expect(imp[0]).toContain('askIsUsable')
+    expect(imp[0]).toContain('scaffoldWithoutAnswer')
   })
 
   // ⚠️ THE COUNTER STARTS AT ZERO, NOT NULL, and that is deliberate: this loop
