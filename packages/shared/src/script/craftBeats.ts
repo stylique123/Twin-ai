@@ -53,6 +53,42 @@ export interface BeatLike {
   line?: unknown
 }
 
+/**
+ * WHICH craft section this is — because the repair is not the same for all three.
+ *
+ * ⚠️ MEASURED IN PRODUCTION 2026-09-01, generation 4608dc73. `isCraftSection`
+ * answers "may this beat be repaired at all", and the caller treated a `true`
+ * as "so write the CTA line into it". A HOOK beat that came back empty was
+ * therefore stamped with `fallbackCta(...)` and its substance flipped to
+ * `general`. The shipped script opened with:
+ *
+ *   beat 1 (hook)  "Follow if you want the rest of this."
+ *   beat 7 (cta)   "Follow if you want the rest of this."
+ *
+ * ⚖️ AND IT WAS BLAMED ON THE SHOT LIST FOR SIX RUNS. The shot card quoting the
+ * CTA on the opening shot was `syncShotListSpokenText` doing its job perfectly —
+ * faithfully mirroring a script whose hook really did say that. The mirror was
+ * never the defect; nobody had read the script it was mirroring.
+ *
+ * ⚖️ ONE PREDICATE CANNOT CARRY TWO DECISIONS. `isCraftSection` stays exactly as
+ * it is — it answers eligibility, and every existing caller and test depends on
+ * that. This answers a different question, and the caller must branch on it.
+ */
+export type CraftSectionKind = 'cta' | 'hook' | 'payoff'
+
+export function craftSectionKind(section: unknown): CraftSectionKind | null {
+  if (!isCraftSection(section)) return null
+  const s = normalise(section)
+  // ⚠️ CTA IS TESTED FIRST AND HOOK LAST, because "Payoff/CTA" and "Hook + CTA"
+  // are both real writer output. A beat that names a CTA at all is a CTA: it is
+  // the only one of the three with a deterministic replacement, so resolving the
+  // ambiguity towards it is the reading that can actually be repaired.
+  if (/(^| )c t a( |$)/.test(s) || /\bcta\b/.test(s) || s.includes('call to action')) return 'cta'
+  if (s.includes('payoff')) return 'payoff'
+  if (s.includes('hook')) return 'hook'
+  return null
+}
+
 export interface CraftViolation {
   index: number
   section: string

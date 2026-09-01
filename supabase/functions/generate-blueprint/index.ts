@@ -15,7 +15,7 @@ import { templateFor } from '../_shared/containerTemplates.ts'
 import { buildSlots, filledFrom, slotsReady } from '../_shared/writerInput.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
 import { applyHookContract } from '../_shared/hookContract.ts'
-import { craftBeatsThatAsked, readsAsPlaceholder, fallbackCta } from '../_shared/craftBeats.ts'
+import { craftBeatsThatAsked, readsAsPlaceholder, fallbackCta, craftSectionKind } from '../_shared/craftBeats.ts'
 import { askIsUsable, scaffoldWithoutAnswer } from '../_shared/beatAsk.ts'
 import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
@@ -6671,8 +6671,34 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
           // in would produce "If you want unspecified, the link is in my bio."
           // A sentinel is not an offer; it is the absence of one, and the
           // fallback already has a line for that case.
+          // ⚠️ THE SECTION DECIDES THE REPAIR. MEASURED 2026-09-01, generation
+          // 4608dc73: this branch used to write `fallbackCta(...)` into EVERY
+          // craft beat that asked, so an empty HOOK was stamped with the CTA
+          // line and the shipped script opened on "Follow if you want the rest
+          // of this." — the same sentence as its own beat 7. Six runs of
+          // "the shot list puts the CTA on the hook shot" were this: the shot
+          // list was mirroring a script that really did say that.
+          const kind = craftSectionKind((b as { section?: unknown }).section)
           if (readsAsPlaceholder(b.line)) {
-            b.line = fallbackCta(intent.goal, offer === 'unspecified' ? null : offer)
+            if (kind === 'cta') {
+              b.line = fallbackCta(intent.goal, offer === 'unspecified' ? null : offer)
+            } else if (kind === 'hook') {
+              // ⚖️ THE HOOK ALREADY HAS A DETERMINISTIC SOURCE, and it is not the
+              // CTA. `normalizeHookLine` fills beat 0 from the recommended
+              // option; if that has not produced a line by now there is nothing
+              // honest to write here, so the beat stays an ask.
+              const opts = (blueprint as { hook_options?: unknown }).hook_options
+              const first = Array.isArray(opts)
+                ? (opts as unknown[]).find((h): h is string => typeof h === 'string' && !!h.trim())
+                : undefined
+              if (!first) continue
+              b.line = first.trim()
+            } else {
+              // ⚖️ A PAYOFF HAS NO DETERMINISTIC FALLBACK. Writing one would be
+              // inventing the creator's substance — the exact fabrication the
+              // ask-beat mechanism exists to refuse. It stays `needs_user`.
+              continue
+            }
           }
           b.substance = 'general'
         }
