@@ -2032,3 +2032,95 @@ text that names the cause into `media_upload_attempts`. **Owner action.**
 **Decided against:** routing everything through single PUT as a stopgap. It is
 the code this repo deliberately deleted, and it trades a diagnosable failure for
 one dropped connection restarting a five-minute take at byte zero.
+
+## G42 — "TikTok references are broken" — TikTok is fine; the reading budget is gone
+
+Reported as a TikTok reference stuck at 40% for five minutes. Measured over the
+last 24 hours of `assess_reference` jobs, before touching anything:
+
+| platform | done | failed | queued | failures that are the Gemini daily quota |
+|---|---|---|---|---|
+| tiktok | **138** | 23 | 0 | **23 of 23** |
+| youtube | 101 | 22 | 7 | **29 of 29** |
+| instagram | 1 | 0 | 0 | — |
+
+**Zero download failures. Zero IP blocks. On either platform.** Every one of the
+52 failures is the same string:
+
+```
+Gemini 429 class=daily status=RESOURCE_EXHAUSTED
+quotaId=GenerateRequestsPerDayPerProjectPerModel
+```
+
+The download works; the READING budget is spent. This also answers, in passing,
+the standing question about the residential proxy: TikTok is not today's
+bottleneck, and 138 completed reads say so.
+
+⚠️ **THE 40% IS A JOB RETRYING AGAINST A QUOTA THAT WILL NOT CLEAR TODAY.** The
+client polls 60 × 1.2s = 72s. A job on daily-quota backoff never reaches
+`failed` inside that window, so it fell out of the loop as `read_timed_out`.
+
+⚖️ **AND THAT MADE THE SCREEN SAY TWO FALSE THINGS.** "This video is taking
+longer to read than we can hold you here for" — the video is not slow, and was
+never the subject. "Try a different reference" — **no reference can work**; the
+next one hits the identical wall. That is worse than saying nothing: it sends a
+creator to spend an afternoon re-picking videos to discover what we already
+knew.
+
+**Fix:** a fifth cause, `read_unavailable`, decided from the job's error text
+**while the job is still `queued`** — checked BEFORE the status branches,
+because `failed` never arrives in time. It says: *"Twin has used up how much
+video it can read today, so this is not about your link — no reference can be
+read until that resets."* The button becomes **Build from my own idea**, the
+one way out that actually works.
+
+⚖️ **`class=daily` ONLY.** A per-minute 429 genuinely is transient and the retry
+may well succeed; calling that "unavailable" would refuse a build that was about
+to work. `class=daily` is the worker's own word for the one a retry cannot fix.
+
+8 assertions; all three behavioural claims mutation-tested (drop the daily
+class → 1 fails; move the check below the status branches → 1 fails; revert the
+screen to one shared way out → 2 fail).
+
+⚠️ **THIS DOES NOT GET THE REFERENCE READ, AND MUST NOT BE REPORTED AS IF IT
+DID.** It makes the refusal honest and immediate instead of false and five
+minutes long. The quota is **owner action**, and it converges with the standing
+key rotation: a new Gemini key on a fresh project both closes the leaked-key
+exposure and resets the daily quota. One action, two problems.
+
+## G43 — the language work again: a field that exists, a value that is fabricated
+
+Following the standing rule before building Step 1, and it changed the plan
+twice.
+
+**First:** the spoken-language question does NOT belong in `visualPrompt.ts`.
+That is the FRAMES pass — it cannot hear. Putting it there would have repeated
+the exact error of assuming a capability from a module's name.
+
+**Second, and larger:** `structure.ts` already sends `LANGUAGE: ${t.language}`
+into the model. A transcript language exists TODAY and is thrown away rather
+than stored. But it is only sometimes real:
+
+| producer | rows | language |
+|---|---|---|
+| `local_whisper` (TikTok, direct media) | **231** | genuinely detected — `--language auto` |
+| `youtube_captions_paid` | 109 | **hardcoded `'en'`** (`media.ts:695`) |
+| `youtube_captions_free` | 2 | **hardcoded `'en'`** |
+| Instagram Apify | — | **hardcoded `'en'`** (`media.ts:789`) |
+
+⚠️ **SO STORING `t.language` TODAY WOULD WRITE "en" FOR EVERY YOUTUBE AND
+INSTAGRAM REFERENCE, TRUE OR NOT** — 111 of 342 rows, fabricated with the same
+confidence as the 231 real ones, and indistinguishable afterwards. That is
+`unrecorded is not none` again, and it is the failure the owner named in
+advance: **undetermined must never resolve to English by default.**
+
+Also measured: `information_schema` has exactly ONE language column in the whole
+public schema — `transcripts.language`. None on `reference_transcripts`, none on
+`reference_content_profiles`, none on `brand_voices`.
+
+**Revised Step 1, cheaper than the original spec for 231 rows and honest about
+the rest:** carry the transcript's language through with its PROVENANCE, not as
+a bare code — `detected` (whisper) vs `assumed` (the hardcoded caption paths).
+Only `detected` may be read as fact. The two hardcoded `'en'` literals should
+become an explicit "unknown", not a better guess. **Nothing is built on the
+111 fabricated rows.**

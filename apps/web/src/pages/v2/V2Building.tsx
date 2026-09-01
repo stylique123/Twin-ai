@@ -19,7 +19,7 @@ import {
   defaultVideoGoalFromContentGoals, CANONICAL_GOAL_LABELS,
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
-import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE } from '../../lib/api'
+import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE, isReadCapacityExhausted } from '../../lib/api'
 import { READINESS_INCOMPLETE_CODE, SELL_WITHOUT_TARGET_CODE } from '../../lib/api'
 import type { ReadinessQuestion } from '../../lib/api'
 import { isSupportedReference, platformFromUrl } from '@twinai/shared'
@@ -283,6 +283,12 @@ export default function V2Building() {
   // is a decision about the INPUT, taken before any credit is spent, so the copy
   // says what to do next rather than apologising for a failure.
   const [unusableRef, setUnusableRef] = useState<string | null>(null)
+  // ⚠️ THE SENTENCE ALONE WAS NOT ENOUGH TO DECIDE THE WAY OUT. Every cause
+  //  used to share one button — "Try a different reference" — which is right
+  //  for a video we could not read and WRONG when Twin's reading budget is
+  //  spent, because the next reference fails identically. The screen needs to
+  //  know WHICH refusal it is showing, so the cause is kept beside the copy.
+  const [unreadCause, setUnreadCause] = useState<keyof typeof REFERENCE_UNREAD_TEXT | null>(null)
   // ── THE TALKING-HEAD WARNING ──────────────────────────────────────────────
   //
   // ⚠️ IT WARNS AND WAITS; IT DOES NOT REFUSE. Unlike `unusableRef` above, which
@@ -468,7 +474,7 @@ export default function V2Building() {
         // host was unsupported, or the read timed out rather than failed — so
         // the creator is told what to change instead of what went wrong.
         const halt = (cause: keyof typeof REFERENCE_UNREAD_TEXT) => {
-          if (alive) { setUnusableRef(REFERENCE_UNREAD_TEXT[cause]); setActive(0) }
+          if (alive) { setUnusableRef(REFERENCE_UNREAD_TEXT[cause]); setUnreadCause(cause); setActive(0) }
         }
 
         // ── ASK BEFORE THE WAIT, NOT AFTER IT ──────────────────────────
@@ -754,6 +760,14 @@ export default function V2Building() {
                 // A job that finished WITHOUT a transcript is a different fact
                 // from one that failed, and from one still running. Naming it
                 // stops all three collapsing into "taking too long".
+                // ⚠️ CHECKED BEFORE THE STATUS, AND WHILE THE JOB IS STILL
+                // `queued`. A job retrying against an exhausted DAILY quota
+                // never reaches `failed` inside this 72s window, so it used to
+                // fall out of the loop as `read_timed_out` — telling the
+                // creator their video was slow when nothing about their video
+                // was involved. The error text is on the row from the first
+                // attempt, which is what makes it answerable in time.
+                if (isReadCapacityExhausted(job.error)) { unread = 'read_unavailable'; break }
                 if (job.status === 'done') { unread = 'read_empty'; break }
                 if (job.status === 'failed') { unread = 'read_failed'; break }
               }
@@ -1343,12 +1357,30 @@ export default function V2Building() {
             {/* The two ways out are the same whichever check refused, so they
                 live here rather than in the per-cause sentence above. "Shorter"
                 used to be here and is advice about only one of them. */}
-            <p className="mt-3 text-xs leading-relaxed text-stone/80">
-              No remix was used. Try another short-form video from TikTok,
-              Instagram or YouTube — or build from your own idea with no
-              reference at all, which costs nothing extra.
-            </p>
-            <button onClick={() => nav('/v2', { replace: true })} className="btn-gradient mt-6 w-full">Try a different reference</button>
+            {/* ⚖️ THE WAY OUT DEPENDS ON THE CAUSE, AND ONLY HERE. For every
+                other refusal another video really is the answer. When Twin's
+                own reading budget is spent it is not: the next reference hits
+                the identical wall, so sending someone off to re-pick videos
+                would cost them an afternoon to learn what we already know. */}
+            {unreadCause === 'read_unavailable' ? (
+              <>
+                <p className="mt-3 text-xs leading-relaxed text-stone/80">
+                  No remix was used, and another link will not help — this is on
+                  our side, not yours. You can build from your own idea now,
+                  which costs nothing extra, or come back later and use the link.
+                </p>
+                <button onClick={() => nav('/v2', { replace: true })} className="btn-gradient mt-6 w-full">Build from my own idea</button>
+              </>
+            ) : (
+              <>
+                <p className="mt-3 text-xs leading-relaxed text-stone/80">
+                  No remix was used. Try another short-form video from TikTok,
+                  Instagram or YouTube — or build from your own idea with no
+                  reference at all, which costs nothing extra.
+                </p>
+                <button onClick={() => nav('/v2', { replace: true })} className="btn-gradient mt-6 w-full">Try a different reference</button>
+              </>
+            )}
           </div>
         ) : error ? (
           <div className="glass gradient-border p-7 text-center">
