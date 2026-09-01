@@ -2124,3 +2124,88 @@ a bare code — `detected` (whisper) vs `assumed` (the hardcoded caption paths).
 Only `detected` may be read as fact. The two hardcoded `'en'` literals should
 become an explicit "unknown", not a better guess. **Nothing is built on the
 111 fabricated rows.**
+
+## G44 — the surfaces never learned that a beat can be unwritten
+
+Five defects reported across production runs H, I, J and the 2026-09-01
+fresh-account run turned out to be **one defect wearing five faces**, and the
+owner's own Part 9 named it before the code did: *"the surfaces around the
+script haven't caught up to a script that can be partially unwritten."*
+
+Every one of these counted only beats that HAVE words, then presented the
+result as a finished verdict:
+
+| surface | what it said | on a script of |
+|---|---|---|
+| Why it works | "It runs 2 spoken beats" | 7 beats |
+| Runtime vs reference | "24s of talking · reference 59s" | 2 of 7 written |
+| Retention map | one sentence, three times | every middle beat |
+| Count promise | "Add the missing items" | 3 unanswered asks |
+| Beat ask | one blank question, ×5 | 5 distinct sections |
+
+⚖️ **AND IN THREE OF THE FIVE, THE HONEST VERSION ALREADY EXISTED.**
+`lengthSentence` says "5 lines are waiting on you, so the real video will run
+longer" for the SAME measurement `runtimeComparisonSentence` reported as a
+comparison. `measureScriptLength` has always returned `unwrittenBeats`;
+`runtimeCompare` read `spokenSec` and dropped it. `askIsGeneric` was built to
+catch exactly the blank ask that shipped and never fired, because that string
+was not in its list. `needsUserCount` already counted pending beats for the
+refund notice while `CountPromise` had no idea any were pending.
+
+**Not missing. Not wired.** The same shape as #637, three more times.
+
+## G45 — the CTA was written into the hook, and the shot list took the blame for six runs
+
+`isCraftSection()` answers "may this beat be repaired at all" and returns true
+for **hook, payoff and cta**. The caller read that `true` as "so write the CTA
+line into it", then set `substance = 'general'` so nothing downstream knew the
+beat was still unanswered. Generation `4608dc73` shipped with beat 1 (hook) and
+beat 7 (cta) carrying the identical sentence.
+
+⚠️ **THE SHOT LIST WAS INNOCENT.** "The shot list puts the CTA on the hook shot"
+was filed six consecutive times and called the oldest unfixed defect in the
+product. `syncShotListSpokenText` was mirroring, position by position, a script
+whose hook really did say that. **The mirror was never wrong. Nobody had read
+the script it was mirroring.** Six runs of engineering attention went to a
+component with no bug in it.
+
+## G46 — duration was never clamped, and the clamp hypothesis was wrong
+
+Reported as "duration matching is a clamp, not a match", from three data points
+(103→34, 59→24, 29→19) and the conclusion that every script lands in a 19–27s
+band. Measured across every generation carrying both numbers:
+
+| reference | planned | | reference | planned |
+|---|---|---|---|---|
+| 103s | 75s | | 29s | 41s |
+| 103s | 61s | | 27s | 40 / 45 / 41s |
+| **59s** | **56s** | | 20s | 37s |
+
+Planned totals span 37–75s and track the reference — a 59-second reference
+planned 56 seconds. **There is no band and the target derivation works.** The
+defect was one sentence timing written beats only. Recorded because the wrong
+diagnosis was three-quarters convincing and would have sent someone to rewrite
+a working matcher.
+
+## G47 — DECIDED AGAINST: the fidelity chip is not broken
+
+Reported as "three runs, three settings, two labels, none matching". Measured:
+
+| reference_use | fidelity | dates |
+|---|---|---|
+| structure → close | ✓ | **2026-09-01** |
+| idea_structure → balanced | ✓ | **2026-09-01** |
+| stay_close → close | ✓ | **2026-09-01** |
+| structure → balanced | ✗ | 27–30 Aug |
+| stay_close → loose / balanced | ✗ | 27–30 Aug |
+| `inspiration` → close / balanced | ✗ | 27–30 Aug (retired value) |
+
+**Every mismatch predates the `resolveFidelity` fix.** Every row from today
+obeys it exactly, and the chip reads the derived value correctly.
+
+What remains true is that `structure` and `stay_close` BOTH resolve to `close`
+— by design, because both mean "stay near the reference" — so two different
+picks render one chip. Whether to differentiate that is a product judgement,
+not a defect, and it was left for the owner rather than changed on a
+misdiagnosis. ⚖️ **A REFUSAL RECORDED IS WORTH AS MUCH AS A FIX SHIPPED**, and
+this list has more entries retracted than most have shipped.
