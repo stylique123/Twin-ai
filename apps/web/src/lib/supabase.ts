@@ -90,6 +90,22 @@ async function uploadResumable(
       },
       uploadDataDuringCreation: true,
       removeFingerprintOnSuccess: true,
+      // ⚠️ A SIGNED TOKEN CANNOT RESUME AN UPLOAD MINTED UNDER A DIFFERENT ONE.
+      // tus-js-client's default browser fingerprint keys on the BLOB alone
+      // (name/type/size/lastModified) — nothing about who authorized the write.
+      // So a second attempt at the same recording found the first attempt's
+      // stored upload URL and resumed against it, carrying a fresh `x-signature`
+      // to a URL created under an expired one. That is not a resumable upload,
+      // it is a replay of a dead one, and it is the only structural difference
+      // between this path (0 successes) and the single-PUT path (which keeps no
+      // fingerprint at all and has never failed for this reason).
+      //
+      // ⚖️ SCOPED BY TOKEN, NOT DISABLED. Within one attempt tus still resumes
+      // from wherever the connection dropped — that is the case the chunking
+      // exists for, and it uses this upload's own URL, not the store. What no
+      // longer happens is resuming ACROSS attempts, which could never have
+      // worked, because each attempt is authorized by a different signature.
+      fingerprint: async (file) => ['twinai-source', target.path, target.token, file.size].join('/'),
       onError: (e) => reject(e),
       // ⚠️ STILL BYTES SENT, NOT BYTES KEPT. Resumable does not change that;
       // only finalize does.
