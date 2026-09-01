@@ -57,8 +57,14 @@ describe('the CTA line can no longer reach the hook', () => {
   })
 
   it('a payoff that asked is left as an ask, never invented', () => {
+    // ⚠️ ANCHORED TO THE BLOCK, NOT A BYTE COUNT. This was `slice(i, i + 1600)`
+    // and it broke the moment the block grew — reporting a payoff regression
+    // when all that had changed was the length of a comment above it.
     const i = src.indexOf('const kind = craftSectionKind(')
-    const seg = src.slice(i, i + 1600)
+    const end = src.indexOf("b.substance = 'general'", i)
+    expect(i).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(i)
+    const seg = src.slice(i, end)
     // The else branch must continue (leave needs_user), not assign a line.
     expect(seg).toMatch(/} else \{[\s\S]*?continue/)
   })

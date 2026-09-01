@@ -2209,3 +2209,55 @@ picks render one chip. Whether to differentiate that is a product judgement,
 not a defect, and it was left for the owner rather than changed on a
 misdiagnosis. ⚖️ **A REFUSAL RECORDED IS WORTH AS MUCH AS A FIX SHIPPED**, and
 this list has more entries retracted than most have shipped.
+
+## G48 — one deterministic CTA line, said twice in a row
+
+`fallbackCta` is a **pure function of (goal, offer)**, so every CTA-class beat
+repaired in a script is repaired to the *same string*.
+
+Measured across seven days of production: exactly **one** adjacent-duplicate
+pair existed, generation `45d06b93`:
+
+| beat | section | line |
+|---|---|---|
+| 5 | Call to action setup | "Tell me if you have done this differently. I want to hear it." |
+| 6 | Call to action | "Tell me if you have done this differently. I want to hear it." |
+
+— verbatim `FALLBACK_CTA.conversations`, off the teleprompter, twice.
+
+**This is not G44 (#641), and #641 does not close it.** G44 was the *wrong*
+section receiving the CTA line. Here `craftSectionKind('Call to action setup')`
+returns `'cta'` **correctly** — a setup beat genuinely is CTA-class — so both
+beats route to the repair as intended and then say the same sentence. Section
+awareness cannot see this defect, which is why it survived the fix that looked
+like it should have caught it.
+
+**Only the LAST dead CTA beat is filled.** Not the first: a setup beat leads
+into the ask, so filling in index order would leave the real call to action as
+the empty one — the defect upside down. Earlier CTA-class beats stay
+`needs_user`, the same refusal the payoff branch already takes and for the same
+reason: there is exactly one deterministic CTA line, it is already spoken, and a
+second would be invented substance rather than a fallback.
+
+### A logged count that was reporting work that never happened
+
+`ctaFallbacks = asked.length` counted beats that **asked**, not beats that were
+**repaired**. Three branches decline to write a line — hook-without-options,
+payoff, and now superseded-CTA — so `cta_fallback`, the event this behaviour is
+audited by, has been over-reporting since #641 introduced the first two. It now
+counts at the write site. ⚠️ **Not at the bottom of the loop**: a beat can ask
+and still carry real words, in which case nothing is replaced and only its
+substance is settled — counting there would have reproduced the same lie in a
+new shape.
+
+### Two tests that passed for the wrong reason
+
+- **The −1 trap.** `expect(skip).toBeLessThan(substance)` held precisely when
+  the guard had been *deleted*, because `indexOf` returns `-1`. Found by
+  mutation, not review; the assertion now requires `skip > -1` first.
+- **A byte-count window.** G44's payoff guard sliced `src.slice(i, i + 1600)`
+  and failed here because a *comment* above the block grew. It reported a payoff
+  regression that did not exist. Now anchored to the block's own end.
+
+Mutation-checked: restoring the shipped defect fails **2 of 6**; 227 files /
+4,713 tests pass.

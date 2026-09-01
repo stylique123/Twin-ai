@@ -6669,6 +6669,36 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     try {
       const asked = craftBeatsThatAsked(Array.isArray(declared) ? declared : [])
       if (asked.length > 0) {
+        // ⚠️ ONLY THE LAST DEAD CTA BEAT IS FILLED, AND THAT IS A SECOND DEFECT
+        // FROM THE SAME LINE OF CODE. MEASURED 2026-09-01, generation
+        // 45d06b93: beat 5 "Call to action setup" and beat 6 "Call to action"
+        // shipped the IDENTICAL sentence — "Tell me if you have done this
+        // differently. I want to hear it." — which is verbatim
+        // `FALLBACK_CTA.conversations`. `fallbackCta` is a pure function of
+        // (goal, offer), so every CTA-class beat repaired in one script is
+        // repaired to the SAME STRING. Section-awareness does not catch this:
+        // "Call to action setup" genuinely IS cta-class, so both beats route
+        // here correctly and then say the same thing twice in a row.
+        //
+        // ⚖️ THE LAST ONE, NOT THE FIRST. A setup beat leads into the ask; the
+        // ask itself is the final beat. Filling in index order would leave the
+        // real call to action as the empty one, which is the defect upside
+        // down. The earlier CTA-class beats stay `needs_user` — the same
+        // refusal the payoff branch takes, for the same reason: there is
+        // exactly ONE deterministic CTA line and it is already spoken, so a
+        // second would be invented substance, not a fallback.
+        let lastDeadCta = -1
+        for (const v of asked) {
+          const c = (declared as Array<{ line?: string; section?: unknown }>)[v.index]
+          if (!c || !readsAsPlaceholder(c.line)) continue
+          if (craftSectionKind(c.section) === 'cta') lastDeadCta = v.index
+        }
+        // ⚠️ COUNTED, NOT ASSUMED. `asked.length` is how many beats ASKED; the
+        // hook, payoff and superseded-CTA branches all decline to write one, so
+        // logging the ask count as the fallback count reports repairs that did
+        // not happen — and `cta_fallback` is the event this behaviour is
+        // audited by.
+        let ctaReplacements = 0
         for (const v of asked) {
           const b = (declared as Array<{ line?: string; substance?: string }>)[v.index]
           if (!b) continue
@@ -6689,7 +6719,9 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
           const kind = craftSectionKind((b as { section?: unknown }).section)
           if (readsAsPlaceholder(b.line)) {
             if (kind === 'cta') {
+              if (v.index !== lastDeadCta) continue
               b.line = fallbackCta(intent.goal, offer === 'unspecified' ? null : offer)
+              ctaReplacements++
             } else if (kind === 'hook') {
               // ⚖️ THE HOOK ALREADY HAS A DETERMINISTIC SOURCE, and it is not the
               // CTA. `normalizeHookLine` fills beat 0 from the recommended
@@ -6705,6 +6737,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
                 : undefined
               if (!first) continue
               b.line = first.trim()
+              ctaReplacements++
             } else {
               // ⚖️ A PAYOFF HAS NO DETERMINISTIC FALLBACK. Writing one would be
               // inventing the creator's substance — the exact fabrication the
@@ -6712,11 +6745,16 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
               continue
             }
           }
+          // ⚠️ COUNTED AT THE WRITE, NOT HERE. A beat can ask and still carry
+          // real words; `readsAsPlaceholder` is false for it, nothing is
+          // replaced, and only its substance is settled. Incrementing here
+          // would report a fallback for a line the writer actually wrote —
+          // the same over-reporting as `asked.length`, in a new shape.
           b.substance = 'general'
         }
-        ctaFallbacks = asked.length
+        ctaFallbacks = ctaReplacements
         console.warn(JSON.stringify({
-          event: 'cta_fallback', beats: asked.length,
+          event: 'cta_fallback', beats: ctaReplacements, asked: asked.length,
           sections: asked.map((v) => v.section),
         }))
       }
