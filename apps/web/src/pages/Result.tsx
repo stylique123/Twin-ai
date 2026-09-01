@@ -32,7 +32,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime } from '@twinai/shared'
+import { notBilledNotice, shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -796,6 +796,26 @@ export default function Result() {
               )}
             </div>
           </motion.div>
+
+          {/* ⚠️ WE DID NOT CHARGE YOU, AND NOBODY EVER SAID SO. Measured on a
+              fresh signup 2026-09-01: five generations, five `-10 blueprint`
+              charges, five `+10 blueprint_refund_quality` refunds. The remix
+              counter dropped and returned every time, which reads as a broken
+              counter. It is not — 50% to 71% of every script's beats were
+              `needs_user`, so generate-blueprint declined to bill and wrote
+              `credits_spent: 0`.
+              ⚖️ THAT FIELD HAD ZERO READERS IN THIS APP. The one value stating
+              the charge was reversed was stored and never shown, which turned
+              honest behaviour into a bug report. It is shown here, above the
+              media row, because this is the screen a creator lands on after the
+              wait they just sat through. */}
+          {notBilledNotice(b ? { credits_spent: gen.credits_spent, script: b.script } : null) && (
+            <div className="mt-6 rounded-card border border-amber/25 bg-amber/[0.06] p-4">
+              <p className="text-sm text-cream">
+                {notBilledNotice({ credits_spent: gen.credits_spent, script: b.script })}
+              </p>
+            </div>
+          )}
 
           {/* MEDIA ROW — the finished video and its AI cover image, side by side, each
               hugging its own frame. The cover lives HERE (not inside the Title card) so

@@ -191,6 +191,15 @@ export interface Blueprint {
     /** The full spoken line with exactly one `{answer}` slot, so the beat can be
      *  completed by one typed fact and no second model call. */
     line_scaffold?: string
+    /** ⚠️ WHERE THIS BEAT'S CONTENT CAME FROM, and the field the billing
+     *  decision counts. `generate-blueprint` refunds a generation whose beats
+     *  are ≥40% `needs_user` (`script_mostly_questions`), so this drives a real
+     *  charge — yet it went undeclared here while production rows carried it on
+     *  every beat. Measured 2026-09-01: a fresh signup's five scripts ran 50% to
+     *  71% `needs_user`, every one refunded. Declared so `notBilled.ts` can read
+     *  it without a cast, because a cast would have defeated the compiler on the
+     *  one field that decides whether a creator is billed. */
+    substance?: string | null
   }[]
   shot_list: {
     shot: string
@@ -229,6 +238,12 @@ export interface Generation {
   fidelity: 'close' | 'balanced' | 'loose'
   blueprint: Blueprint
   transcript_id?: string | null
+  /** ⚠️ WHAT WAS KEPT, NOT WHAT WAS RESERVED. `generate-blueprint` writes
+   *  `unbillable ? 0 : BLUEPRINT_COST`, so an explicit 0 means the charge was
+   *  reversed (`blueprint_refund_quality`) — a decision, not an absence. NULL
+   *  predates the column and says nothing; see `notBilled.ts`, which is the
+   *  reader this field went without for its whole life. */
+  credits_spent?: number | null
   // Creator's choices that drive the back half of the loop.
   selected_hook?: string | null // which of the 5 hooks to shoot (teleprompter + cover)
   /** 0134. HOW `selected_hook` got its value. `selected_hook` alone cannot say:

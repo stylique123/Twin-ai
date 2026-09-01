@@ -1878,3 +1878,101 @@ asserts its absence.
 none of them would learn preference — they would learn this table's artefacts.
 The reader (`scripts/qa/read-hook-choices.mjs`) prints position counts and says
 plainly that they are counts.
+
+## G38 — "it still shows 3 remixes": the counter was right and the silence was the bug
+
+The owner ran **4 remixes on a fresh sign-up** and the sidebar still read 3; it
+dropped to 2 on a reference link and came back to 3. That reads like an
+off-by-one in a counter. It is not.
+
+Measured in production for `ec4f127d-2760-41b4-b3a8-0fab2bafa248`:
+
+| fact | value |
+|---|---|
+| generations today | 5 |
+| `credits_spent` on each | **0** |
+| `credit_events` `-10 blueprint` | 5 |
+| `credit_events` `+10 blueprint_refund_quality` | 5 |
+| beats marked `needs_user` | 3/5, 4/6, 3/6, 5/7, 4/6 (50–71%) |
+| `beats_with_our_ask` | 0 everywhere |
+
+Every run crossed the 40% threshold at `generate-blueprint/index.ts` and was
+classified `script_mostly_questions`, so `refundOnce('blueprint_refund_quality')`
+gave the credits back and wrote `credits_spent: 0`. The balance genuinely did not
+move. The dip to 2 is the charge; the return to 3 is the refund landing.
+
+⚠️ **THE DEFECT IS THAT `credits_spent` HAD ZERO READERS IN THE WEB APP.** Grepped
+before building: the column was written deliberately and never displayed. A
+creator watching the number bounce has no way to learn that the script was free
+*because it was mostly questions* — so the refund, which is the honest behaviour,
+looks like a broken counter, and the reason the script was thin stays invisible.
+
+**Fix:** `packages/shared/src/notBilled.ts` — `wasNotBilled()` +
+`notBilledNotice()`, rendered on `Result.tsx` above the media row:
+
+> This one is free. 4 of the 6 beats need a detail only you can give, so Twin did
+> not take a remix for it. Fill those in and the next run will be stronger.
+
+⚖️ **ABSENT IS NOT ZERO, AGAIN.** `wasNotBilled` demands
+`typeof spent === 'number' && Number.isFinite(spent) && spent === 0` — the null
+check precedes the coercion, so a row predating the column (NULL) says nothing
+rather than claiming a refund that never happened. `apps/web/src/__tests__/the-refund-is-never-silent.test.ts`
+fails if the render block is deleted; both assertions were mutation-checked.
+
+**Not built:** any change to the refund threshold. 40% is doing its job — five
+scripts that were half questions were correctly not charged for. The follow-up
+worth having is *why* so many beats come back `needs_user` on a fresh sign-up,
+which is a scan-coverage question, not a billing one.
+
+## G39 — the language filter is not buildable as specified: 0 of 1,012 profiles carry a language
+
+Spec assumed "the creator's language is known from their scan and the reference's
+language is derivable from its transcript". Counted before building, per the
+standing rule:
+
+| fact | value |
+|---|---|
+| `reference_content_profiles` rows | 1,012 |
+| rows carrying any language value | **0** |
+| language columns on `reference_content_profiles` | **0** |
+| language columns on `brand_voices` | **0** |
+| `preScriptBrief` asks for language | **never** |
+| profiles with a transcript | 297 |
+| transcripts ≥200 chars (backfillable) | **218** |
+| profiles needing a re-scrape to backfill | 715 |
+
+Neither side of the comparison exists. The filter is the third step, not the
+first.
+
+**Ordering (do not reorder — the column must not precede the question that fills it):**
+
+1. **Reference language.** The assessor prompt asks for it and stores it, mirroring
+   the #637 pattern where the question must speak the parser's language. It is the
+   **spoken** language, not the caption language. Three states: a language code,
+   `mixed`, and `undetermined` for the ~20% of references with no speech.
+   **`undetermined` must never resolve to English by default.** Backfill of the
+   218 usable transcripts is a **separate PR** from the writer.
+2. **Creator language,** derived from the creator's own transcripts — the cheaper
+   source. Only ask if derivation fails.
+3. **The filter.** A mismatch excludes; `mixed` matches either; `undetermined`
+   does not silently pass.
+
+## G40 — the reference-visual-profile spec assumed three reusable modules; one does not exist
+
+Same rule, applied to my own earlier document. I wrote that face detection, VAD
+and scene-detect were "reusable from the editor" — that came from reading a module
+list, not from checking they were callable outside the editor pipeline.
+
+| module | claim | measured |
+|---|---|---|
+| face detection | reusable | exists (`runVisualBridge` → `editor_visual.py`, pinned YuNet ONNX) but **pipeline-bound to a local file** |
+| VAD | reusable | exists (`editorSpeech.ts`), **same binding** |
+| scene detect | reusable | **does not exist at all** |
+
+The spec needs re-writing before any of it is built: two modules need an
+extraction step they do not have, and the third needs writing from scratch.
+
+⚖️ **THE STANDING RULE THIS REINFORCES IS THE OWNER'S, NOT MINE: before treating a
+field or a module as available, count it.** Three documents in a row assumed
+availability from a name. Two were caught by counting; the third (`credits_spent`)
+was caught by grepping for the reader.

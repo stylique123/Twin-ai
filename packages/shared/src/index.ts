@@ -247,6 +247,7 @@ export * from './script/hookVariety'
 // twice across one script is the templated cadence.
 export * from './script/parallelTriads'
 export * from './script/craftContracts'
+export * from './notBilled'
 export * from './script/sentenceUniformity'
 
 // ⚖️ THE SHOOTING NOTE THAT WAS THROWN AWAY. `beat_plan[].proof` is 20-of-20
