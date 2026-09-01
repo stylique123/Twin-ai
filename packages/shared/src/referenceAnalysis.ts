@@ -97,6 +97,24 @@ export type ReferenceUnreadCause =
   | 'read_timed_out'
   /** The read finished and produced nothing usable. */
   | 'read_empty'
+  /**
+   * ⚠️ NOT A FACT ABOUT THIS VIDEO. Twin's own reading capacity is spent, so
+   * EVERY reference fails identically until it resets. Measured 2026-09-01:
+   * of 52 failed `assess_reference` jobs in 24h, 52 were
+   * `RESOURCE_EXHAUSTED quotaId=GenerateRequestsPerDayPerProjectPerModel`,
+   * across BOTH TikTok (23) and YouTube (29) — while 239 other jobs on the
+   * same platforms finished fine. The download works; the reading budget is
+   * gone.
+   *
+   * ⚖️ THIS EXISTS BECAUSE `read_timed_out` WAS TELLING A CREATOR SOMETHING
+   * FALSE. A job retrying on an exhausted daily quota never finishes inside
+   * the client's 72s poll, so it fell through to "this video is taking longer
+   * to read than we can hold you here for" and offered "Try a different
+   * reference" — advice that CANNOT work, because the next reference hits the
+   * same wall. A wrong cause that sends someone to spend their afternoon
+   * re-picking videos is worse than no cause.
+   */
+  | 'read_unavailable'
 
 /**
  * What to tell the creator, per cause. One sentence of fact, then nothing —
@@ -113,6 +131,27 @@ export const REFERENCE_UNREAD_TEXT: Record<ReferenceUnreadCause, string> = {
   read_failed: 'We could not read this video — it may be private, deleted, or from an account that blocks us.',
   read_timed_out: 'This video is taking longer to read than we can hold you here for.',
   read_empty: 'We reached this video but the read came back empty, so there is nothing for us to follow.',
+  read_unavailable: 'Twin has used up how much video it can read today, so this is not about your link — no reference can be read until that resets.',
+}
+
+/**
+ * Does this job error mean Twin's own reading capacity is spent, rather than
+ * anything about the creator's video?
+ *
+ * ⚠️ THE JOB IS STILL `queued` WHEN THIS IS TRUE. It is retrying with backoff
+ * against a quota that will not clear today, so waiting for `failed` would
+ * mean waiting past the client's whole poll window and then reporting a
+ * timeout. The error text is on the row from the FIRST attempt onward, which
+ * is what makes this answerable in time to say something true.
+ *
+ * ⚖️ MATCHES THE DAILY CLASS ONLY. A per-minute 429 genuinely IS transient and
+ * the next attempt may well succeed, so calling that "unavailable" would
+ * refuse a build that was about to work. `class=daily` is the worker's own
+ * word for the one that does not clear on a retry.
+ */
+export function isReadCapacityExhausted(error: string | null | undefined): boolean {
+  if (typeof error !== 'string' || !error) return false
+  return /class=daily/.test(error) && /RESOURCE_EXHAUSTED/.test(error)
 }
 
 /** The code the server returns, and the client recognises, for the hard stop. */
