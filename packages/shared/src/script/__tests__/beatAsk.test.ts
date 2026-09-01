@@ -187,7 +187,14 @@ describe('the writer never puts a question where a spoken line goes', () => {
   // file are null-defaulted because their checks can be skipped entirely.
   it('records how many asks were emitted and how many had a real sentence', () => {
     expect(bp).toMatch(/let beatAsksEmitted = 0/)
-    expect(bp).toMatch(/beat_asks: \{ emitted: beatAsksEmitted, with_scaffold: beatAsksWithScaffold \}/)
+    // ⚠️ THIS ASSERTION USED TO PIN THE DEFECT IN PLACE. It required
+    // `beat_asks: { emitted: beatAsksEmitted, ... }` inside the `beatAudit`
+    // OBJECT LITERAL — which is built long before the ask loop increments the
+    // counter, so every generation persisted the initialiser. Production: 0 in
+    // every row, including two whose shipped scripts prove asks were emitted.
+    // A guard that demands the broken form is worse than no guard.
+    expect(bp).toMatch(/beatAudit\.beat_asks = \{ emitted: beatAsksEmitted, with_scaffold: beatAsksWithScaffold \}/)
+    expect(bp).not.toMatch(/^\s+beat_asks: \{ emitted/m)
   })
 })
 

@@ -2261,3 +2261,57 @@ new shape.
 
 Mutation-checked: restoring the shipped defect fails **2 of 6**; 227 files /
 4,713 tests pass.
+
+## G49 — three counters that were storing their own absence
+
+⚠️ **This is why G44/G48 shipped six times with nobody seeing a number move.**
+
+`cta_fallbacks`, `beat_asks` and `caps_emphasis_runs` were read into the
+`beatAudit` **object literal** hundreds of lines above the passes that compute
+them. A literal captures the value at the moment it is built, so all three
+persisted their initialisers for every generation ever written.
+
+| counter | read into literal | actually assigned | production |
+|---|---|---|---|
+| `cta_fallbacks` | 6372 | **6755** | 15 of 15 rows `null`, 0 numeric |
+| `beat_asks` | 6378 | **6645** | `emitted: 0` in every row |
+| `caps_emphasis_runs` | 6379 | **6841** | `null` in every row |
+
+**Production settles it rather than suspecting it.** The decisive pair is
+generations `4608dc73` and `45d06b93` — the two whose *shipped scripts prove*
+the craft repair ran and wrote fallback CTA lines. Both store
+`cta_fallbacks: null` and `beat_asks.emitted: 0`.
+
+`check_counter_durability` registers `cta_fallback` on the grounds that "a
+RISING rate is the signal that matters". **The rate could not rise.** A counter
+that cannot change is not a quiet counter, it is a broken one — and its silence
+read as good news.
+
+Fixed by mutation after computation, the pattern `semantic_repetition` and
+`why_it_works_resync` already use and which is commented in this very file as
+the reason not to use a literal.
+
+### ⚠️ TWO GUARDS WERE PINNING THE DEFECT IN PLACE
+
+This is the part worth remembering. Both counters had a test, and both tests
+**required the broken form**:
+
+- `beatAsk.test.ts` asserted `beat_asks: { emitted: beatAsksEmitted, ... }` —
+  i.e. the literal.
+- `emphasis.test.ts` was titled *"the counter defaults to null and lands in
+  beat_audit"* and asserted `caps_emphasis_runs: capsRuns`. **It did not land in
+  beat_audit.** The title stated the thing the assertion failed to check.
+
+A guard that demands the broken form is worse than no guard: it converts a
+defect into a rule, and every future correction reads as a regression. Both now
+assert the mutation form and refuse the literal one.
+
+### Scope note
+
+The note's suspicion about `retention_map_resync` / `shot_list_resync` /
+`setup_label_resync` is a *different* set of keys and remains unsettled — those
+are written by mutation already; the open question there is whether the passes
+run at all. Not touched here.
+
+Mutation-checked: restoring the shipped literal fails **7 of 8**; 227 files /
+4,721 tests pass; `tsc -p packages/shared` clean; `check_counter_durability` OK.

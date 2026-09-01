@@ -190,6 +190,12 @@ describe('the writer applies the split and the caption packet can read it', () =
   // different facts and do not share a value.
   it('the counter defaults to null and lands in beat_audit', () => {
     expect(bp).toMatch(/let capsRuns: number \| null = null/)
-    expect(bp).toMatch(/caps_emphasis_runs: capsRuns/)
+    // ⚠️ THE TITLE SAID "lands in beat_audit" AND IT DID NOT. `caps_emphasis_runs:
+    // capsRuns` sat in the `beatAudit` object literal, built hundreds of lines
+    // above the emphasis split that assigns `capsRuns` — so the stored value was
+    // the initialiser, `null`, in every production row. Asserted on the form
+    // that actually persists.
+    expect(bp).toMatch(/beatAudit\.caps_emphasis_runs = capsRuns/)
+    expect(bp).not.toMatch(/^\s+caps_emphasis_runs: capsRuns/m)
   })
 })

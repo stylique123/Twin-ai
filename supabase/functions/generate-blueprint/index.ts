@@ -6366,17 +6366,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // deterministic ladder rescued; `shipped_over` how many were demoted and
       // still offered. NULL means the contract did not run — never zero.
       hook_length: hookLengthAudit,
-      // ⚠️ THE BEAT THAT COULD ALWAYS BE WRITTEN AND WAS NOT. Rising means the
-      // writer started marking craft beats `needs_user` again; the check caught
-      // it and the creator still got a readable line.
-      cta_fallbacks: ctaFallbacks,
-      // ⚠️ THE SUPPLY SIGNAL. `emitted` is how many beats rested on something
-      // only this creator knows; `with_scaffold` is how many of those the writer
-      // left a real sentence around, so the beat can be completed by one typed
-      // fact rather than rewritten. A high emitted with a low with_scaffold means
-      // the writer is refusing without offering a way forward.
-      beat_asks: { emitted: beatAsksEmitted, with_scaffold: beatAsksWithScaffold },
-      caps_emphasis_runs: capsRuns,
+      // ⚠️ `cta_fallbacks`, `beat_asks` AND `caps_emphasis_runs` ARE NOT IN
+      // THIS LITERAL. They are written onto `beatAudit` further down, after
+      // the passes that compute them have run — see the block that follows the
+      // emphasis split. Reading them here stored their own absence; measured
+      // below.
       // ⚠️ MEASURED BEFORE THE PROMPT LINE EXISTED: 98 of 223 shot-list rows --
       // 44% -- carried a bare ordinal in `shot`, and the card renders that field
       // as its heading, so a creator scanning their shot list saw a card called
@@ -6841,6 +6835,37 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       capsRuns = runs
       if (runs > 0) console.warn(JSON.stringify({ event: 'caps_emphasis_moved', runs }))
     } catch { /* never fail a generation on an emphasis split */ }
+
+    // ── THREE COUNTERS THAT WERE STORING THEIR OWN ABSENCE ──────────────────
+    //
+    // ⚠️ MEASURED, AND IT EXPLAINS WHY NOBODY SAW THE CTA DEFECT COMING.
+    // `cta_fallbacks`, `beat_asks` and `caps_emphasis_runs` were READ INTO the
+    // `beatAudit` object literal hundreds of lines above, while the passes that
+    // compute them run down here. A literal captures the VALUE AT THE MOMENT IT
+    // IS BUILT, so all three persisted their initialisers — `null`, `0`, `0` —
+    // for every generation ever written.
+    //
+    // Production settles it rather than suspecting it: of 15 rows carrying the
+    // key, 15 store `cta_fallbacks: null` and 0 store a number; `beat_asks`
+    // reads `emitted: 0` in every row; `caps_emphasis_runs` is null in all of
+    // them. The decisive pair is generations 4608dc73 and 45d06b93 — the two
+    // whose SHIPPED SCRIPTS prove the craft repair ran and wrote fallback CTA
+    // lines. Both stored null and zero.
+    //
+    // ⚖️ SO THE INSTRUMENT BUILT TO CATCH THIS DEFECT REPORTED NOTHING WHILE IT
+    // SHIPPED SIX TIMES. `check_counter_durability` registers `cta_fallback` as
+    // a counter whose value is "a RISING rate is the signal that matters" — and
+    // the rate could not rise, because the stored number never moved off its
+    // initialiser. A counter that cannot change is not a quiet counter; it is a
+    // broken one, and its silence read as good news.
+    //
+    // ⚖️ MUTATION, NOT A LITERAL — the pattern `semantic_repetition` and
+    // `why_it_works_resync` already use, and for exactly this reason.
+    if (beatAudit) {
+      beatAudit.cta_fallbacks = ctaFallbacks
+      beatAudit.beat_asks = { emitted: beatAsksEmitted, with_scaffold: beatAsksWithScaffold }
+      beatAudit.caps_emphasis_runs = capsRuns
+    }
 
     // ── A SHOT CARD MUST SAY WHAT THE SHOT IS ───────────────────────────────
     //
