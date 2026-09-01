@@ -1976,3 +1976,59 @@ extraction step they do not have, and the third needs writing from scratch.
 field or a module as available, count it.** Three documents in a row assumed
 availability from a name. Two were caught by counting; the third (`credits_spent`)
 was caught by grepping for the reader.
+
+## G41 — the resumable path is 0-for-4 because tus resumed uploads a dead signature had authorized
+
+Routing by size, measured in production:
+
+| size | transport | result |
+|---|---|---|
+| 5.8 MB | single PUT | **object exists in storage** |
+| 39.0 MB | resumable | 400 at create |
+| 59.8 MB | resumable | no object |
+| 62.7 MB | resumable | refused (old limit) |
+| 123.7 MB | resumable | no object |
+
+Every upload that ever succeeded was small enough to skip TUS; every one that
+took TUS failed. Two candidates were on the table and I refused to guess between
+them. **Reading settled one of them and turned up a third.**
+
+**Candidate 1 is eliminated, and it pointed the wrong way.**
+`uploadDataDuringCreation: true` is already set at `apps/web/src/lib/supabase.ts`.
+The docs' presigned (`x-signature`) example omits it; only the Bearer example
+sets it. So the open question there is whether to *remove* it, not add it — and
+the 400 landing **at create**, which is exactly where this option puts a 6 MB
+body, is consistent with that. Still not shipped as a fix: that is a
+reconstruction of a symptom, and the response body will say.
+
+⚠️ **THE THIRD FINDING IS A BUG ON ITS OWN TERMS, WHICHEVER CANDIDATE CAUSED THE 400.**
+`findPreviousUploads()` / `resumeFromPreviousUpload()` ran against
+tus-js-client's **default** fingerprint, which keys on the blob alone —
+name, type, size, lastModified — and carries nothing about who authorized the
+write. Each attempt mints a **fresh** `x-signature` from `source-asset`, but the
+stored fingerprint pointed at the **previous** attempt's upload URL, created
+under a signature that is now dead. Attempt 2 onward was not resuming an upload;
+it was replaying an expired one.
+
+That is precisely the structural difference between the two transports: the
+single-PUT path keeps no fingerprint store at all, and it is 1-for-1.
+
+**Fix:** a custom `fingerprint` mixing `target.path` and `target.token`, so a new
+token can never match an old upload. Resumption *within* an attempt — the dropped
+phone connection the chunking exists for — is untouched, because that uses the
+upload's own URL rather than the store. What stops is resumption *across*
+attempts, which could never have worked.
+
+`apps/web/src/__tests__/a-dead-signature-cannot-resume.test.ts` — 3 assertions,
+both mutations checked: deleting the fingerprint fails 3 of 3, dropping the token
+from it fails 1 of 3.
+
+⚖️ **THIS DOES NOT CLOSE THE UPLOAD DEFECT AND MUST NOT BE REPORTED AS THOUGH IT DID.**
+It removes one certain cause. The 400 at create is still unexplained, and
+`source-asset` v32 now stores 1,000 characters of the response body instead of
+200 — one recording over ~10 seconds (so it clears the 6 MB threshold) puts the
+text that names the cause into `media_upload_attempts`. **Owner action.**
+
+**Decided against:** routing everything through single PUT as a stopgap. It is
+the code this repo deliberately deleted, and it trades a diagnosable failure for
+one dropped connection restarting a five-minute take at byte zero.
