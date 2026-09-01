@@ -287,7 +287,9 @@ export function buildAttemptReport(b: Record<string, unknown>): { report: Attemp
     }
     // Bounded rather than rejected: a long code is a client bug, and losing the
     // whole report over it would lose the evidence we built this for.
-    failure = b.failure_code.trim().slice(0, 200)
+    // Bound stated by `uploadAttemptReport.FAILURE_CODE_MAX_CHARS`; 200 truncated
+    // the response body that named the cause of the only real failure we have.
+    failure = b.failure_code.trim().slice(0, 1000)
   }
   return {
     report: {

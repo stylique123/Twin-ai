@@ -63,6 +63,21 @@ export function attemptBody(assetId: string, r: AttemptReportInput): Record<stri
   }
 }
 
+/** The bound on a stored failure description.
+ *
+ * ⚠️ 200 CUT OFF THE ANSWER. MEASURED 2026-09-01: the only record of why the
+ * last real take failed reads
+ *   "tus: unexpected response while creating upload, originated from request
+ *    (method: POST, url: .../upload/resumable, response code: 400, response t"
+ * — it stops mid-word at exactly 200 characters, one word before the response
+ * BODY, which is the single field that would have named the cause. A bound that
+ * truncates the diagnosis is not a bound, it is a second failure.
+ *
+ * ⚖️ STILL BOUNDED, JUST ABOVE THE THING BEING DIAGNOSED. An unbounded string
+ * from a browser error would turn a diagnostic column into a free-text channel,
+ * which is the reason the original limit existed and is still right. */
+export const FAILURE_CODE_MAX_CHARS = 1000
+
 /**
  * ⚖️ A CODE, NOT A MESSAGE. The thrown text is the only description we have, so
  * it is kept — but trimmed and bounded, because an unbounded string from a
@@ -70,7 +85,7 @@ export function attemptBody(assetId: string, r: AttemptReportInput): Record<stri
  */
 export function failureCode(raw: unknown): string | null {
   const s = typeof raw === 'string' ? raw.trim() : raw instanceof Error ? String(raw.message).trim() : ''
-  return s === '' ? null : s.slice(0, 200)
+  return s === '' ? null : s.slice(0, FAILURE_CODE_MAX_CHARS)
 }
 
 /** Fire and forget. Never throws, never rejects, never blocks the caller. */

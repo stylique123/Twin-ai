@@ -837,15 +837,39 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
                 duplication this codebase keeps deleting.
                 Shown only once the source is SAVED, because an edit of a take
                 that has not finished uploading has nothing to read. */}
-            {saveState === 'saved' && (
-              <button
-                onClick={() => nav(`/result/${genId}`)}
-                className="btn-gradient w-full rounded-2xl px-3 py-4 text-center text-sm font-semibold"
-              >
-                Turn this into a video
-                <div className="text-[11px] font-normal opacity-80">Twin edits your take — captions, cuts, export</div>
-              </button>
-            )}
+            {/* ⚠️ ALWAYS ON SCREEN, NEVER CONDITIONAL ON SUCCESS. This used to
+                render only when `saveState === 'saved'`, and MEASURED IN
+                PRODUCTION 2026-09-01 that state has never once been reached: of
+                the five source assets ever created, four sit in `uploading`
+                with no storage object behind them and one was rejected. So the
+                button had never been shown to anyone, and the screen's only
+                exits were re-record, download raw, and leave.
+                THE ABSENCE OF A BUTTON IS INDISTINGUISHABLE FROM THE ABSENCE OF
+                A FEATURE, which is exactly the conclusion a creator reported:
+                "TwinAI has no editor". It has one. It had not received the
+                take.
+                ⚖️ SO THE PATH IS ALWAYS VISIBLE AND THE STATE IS ATTACHED TO IT
+                rather than deciding whether it exists. Enabled when the take is
+                saved; disabled and SAYING WHY otherwise. */}
+            <button
+              onClick={() => nav(`/result/${genId}`)}
+              disabled={saveState !== 'saved'}
+              aria-disabled={saveState !== 'saved'}
+              className={saveState === 'saved'
+                ? 'btn-gradient w-full rounded-2xl px-3 py-4 text-center text-sm font-semibold'
+                : 'w-full rounded-2xl border border-white/12 bg-white/[0.04] px-3 py-4 text-center text-sm font-semibold text-cream/60'}
+            >
+              Turn this into a video
+              <div className="text-[11px] font-normal opacity-80">
+                {saveState === 'saved' && 'Twin edits your take — captions, cuts, export'}
+                {saveState === 'saving' && 'Twin will edit this as soon as the upload lands.'}
+                {/* ⚖️ NAMES THE RETRY THAT IS ALREADY ON SCREEN rather than
+                    repeating the button. The creator needs to know the edit is
+                    waiting on the upload, not that Twin cannot edit. */}
+                {saveState === 'failed' && 'Waiting on the upload — Retry above, and this opens.'}
+                {saveState === 'idle' && 'Save this take first and Twin can edit it.'}
+              </div>
+            </button>
             <button onClick={reRecord} className="w-full rounded-2xl border border-white/12 bg-white/[0.04] px-3 py-4 text-center hover:bg-white/[0.08]">
               <RotateCcw className="mx-auto h-4 w-4 text-cream" />
               <div className="mt-1 text-sm font-semibold text-cream">Record again</div>
