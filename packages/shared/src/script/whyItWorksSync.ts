@@ -83,6 +83,10 @@ export function syncWhyItWorksToScript(
     .map((b) => ({ section: text(b?.section), line: text(b?.line) }))
     .filter((b) => b.line !== '')
 
+  // How many beats the creator still owes an answer for. Beats WITHOUT a line
+  // are not absent from the script — they are its unanswered asks.
+  const pending = beats.length - spoken.length
+
   // ⚠️ NO SCRIPT, NO CLAIMS. An empty panel and a panel of ticks about a
   // stranger's video are not equally wrong: one says nothing, the other says
   // something false. Fix 5 settled this for the retention map and it settles
@@ -140,11 +144,36 @@ export function syncWhyItWorksToScript(
 
   // 7. THE FLOOR. Always true of any script that exists, so the panel is never
   //    empty for a real script — but it is a real measurement, not filler.
+  //
+  // ⚠️ THE DENOMINATOR IS PART OF THE MEASUREMENT. Reported in production on a
+  // SEVEN-beat script as "It runs 2 spoken beats, each doing one job." Both
+  // numbers were true of `spoken` and the sentence was still false about the
+  // script, because five beats were unanswered asks carrying no line. A count
+  // with a hidden denominator is how a partial score reads as a finished one.
   if (claims.length < MAX_CLAIMS) {
     claims.push(
-      `It runs ${spoken.length} spoken beats, each doing one job.`,
+      pending > 0
+        ? `It has ${spoken.length} written beats of ${beats.length} so far, each doing one job.`
+        : `It runs ${spoken.length} spoken beats, each doing one job.`,
     )
   }
 
-  return { whyItWorks: claims.slice(0, MAX_CLAIMS), dropped: originalCount }
+  // ⚖️ AND THE WHOLE PANEL SAYS WHAT IT WAS SCORED ON, FIRST. Every claim above
+  // is measured over `spoken` only — the hook's length, the longest beat, the
+  // close. That is the honest thing to measure (an unanswered beat has no words
+  // to judge) but presenting it unlabelled hands the creator a verdict on a
+  // script that does not exist yet. This sentence goes FIRST so it frames the
+  // ones after it rather than trailing them as a footnote.
+  //
+  // ⚖️ IT COSTS A CLAIM SLOT RATHER THAN WIDENING THE PANEL. MAX_CLAIMS is what
+  // the surface was designed to hold; a partial script has fewer real things to
+  // say about it anyway, so the trade lands where it should.
+  const out = pending > 0
+    ? [
+        `Scored on the ${spoken.length} ${spoken.length === 1 ? 'beat' : 'beats'} you have words for — the other ${pending} ${pending === 1 ? 'is' : 'are'} waiting on your answers.`,
+        ...claims.slice(0, MAX_CLAIMS - 1),
+      ]
+    : claims.slice(0, MAX_CLAIMS)
+
+  return { whyItWorks: out, dropped: originalCount }
 }
