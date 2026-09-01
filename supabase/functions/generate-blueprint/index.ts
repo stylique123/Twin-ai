@@ -6687,7 +6687,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
               // CTA. `normalizeHookLine` fills beat 0 from the recommended
               // option; if that has not produced a line by now there is nothing
               // honest to write here, so the beat stays an ask.
-              const opts = (blueprint as { hook_options?: unknown }).hook_options
+              // ⚠️ `templated.bp`, NOT `blueprint` — which is declared LATER in
+              // this function and reading it here is TS2448, the exact trap the
+              // edge-parse guard lists as one of three that have shipped before.
+              // CI caught it; `declared` on line 5832 reads the same object.
+              const opts = (templated.bp as { hook_options?: unknown }).hook_options
               const first = Array.isArray(opts)
                 ? (opts as unknown[]).find((h): h is string => typeof h === 'string' && !!h.trim())
                 : undefined
