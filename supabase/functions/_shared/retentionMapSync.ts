@@ -81,13 +81,41 @@ export interface RetentionMapSyncResult {
   dropped: number
 }
 
-const POSITION_GOAL = (index: number, total: number): string => {
+/** A beat whose section says it re-opens the video partway through. */
+const REHOOK_SECTION = /re-?hook|second hook|reset/i
+
+/**
+ * ⚠️ EVERY MIDDLE BEAT USED TO READ THE SAME SENTENCE. The old rule returned
+ * 'Add a reason to keep watching before attention drifts.' for every beat in
+ * the first 60%, so a seven-beat script showed that one line three times and a
+ * creator scrolling the panel learned nothing from the second or third row.
+ * Reported from production runs H, I and J: "the same sentence twice", "the
+ * retention map is still generic".
+ *
+ * ⚖️ THE PROGRESSION IS THE POINT, NOT THE VARIETY. These are not synonyms
+ * shuffled to look different — they are the four jobs a middle beat actually
+ * does, in the order a short video does them. Indexing by the beat's own
+ * position through the middle means consecutive beats CANNOT land on the same
+ * line, which is the property the guard asserts.
+ */
+const MIDDLE_GOALS = [
+  'Give the first real reason to stay.',
+  'Raise what is at stake so the next beat matters.',
+  'Turn the corner — this is where it changes.',
+  'Close the loop the hook opened.',
+] as const
+
+const POSITION_GOAL = (index: number, total: number, section?: unknown): string => {
   if (total <= 1) return 'Carry the whole idea in one beat.'
   if (index === 0) return 'Earn the next three seconds.'
   if (index === total - 1) return 'Land the ask this video was building toward.'
-  const throughLine = (index + 1) / total
-  if (throughLine <= 0.6) return 'Add a reason to keep watching before attention drifts.'
-  return 'Build toward the close without losing the thread.'
+  // ⚖️ A RE-HOOK NAMES ITS OWN JOB, so it is read from the beat rather than
+  // inferred from position — that is the one middle beat whose purpose the
+  // writer already declared.
+  if (typeof section === 'string' && REHOOK_SECTION.test(section)) {
+    return 'Reset attention for anyone who started drifting.'
+  }
+  return MIDDLE_GOALS[(index - 1) % MIDDLE_GOALS.length]!
 }
 
 /**
@@ -127,7 +155,7 @@ export function syncRetentionMapToScript(
     // not proof of surviving content.
     return {
       beat: section || `Beat ${index + 1}`,
-      goal: POSITION_GOAL(index, beats.length),
+      goal: POSITION_GOAL(index, beats.length, section),
     }
   })
 
