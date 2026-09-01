@@ -22,9 +22,6 @@
 // rather than "frames were read".
 
 import { NOT_DETERMINED } from './referenceExtraction.js'
-// ⚠️ THE VALIDATOR'S OWN LIST, NOT A COPY OF IT. See the primaryMode
-//  question below for what a second copy cost.
-import { PRODUCTION_MODES } from '@twinai/shared'
 
 // ⚠️ DERIVED FROM `packages/shared/src/visualExtraction.ts` — the paths only.
 // The worker has NO runtime dependency on @twinai/shared (see
@@ -86,8 +83,18 @@ export const FIELD_QUESTIONS: Record<string, string> = {
   //  teaching the parser a second name for one concept is how a vocabulary
   //  becomes two vocabularies. Interpolated rather than retyped so this can
   //  never drift again; the guard beside it asserts the two agree.
+  //  ⚖️ MIRRORED, NOT IMPORTED, AND THE TEST IS WHAT KEEPS THEM HONEST. The
+  //  worker has NO runtime dependency on @twinai/shared — `earlyLookRules.ts`
+  //  states that and exists for the same reason — and CI installs this package
+  //  standalone, so importing PRODUCTION_MODES here fails `tsc` with
+  //  "Cannot find module '@twinai/shared'". The parity instead lives in
+  //  `the-question-must-speak-the-parsers-language.test.ts`, which runs in the
+  //  root workspace and CAN see both lists, exactly as the other worker parity
+  //  tests do. A mirror with a parity test is this repo's existing answer; a
+  //  mirror without one is what produced the defect above.
   'primaryMode': 'Overall, how is this video made? Answer with exactly one of these words: '
-    + `${PRODUCTION_MODES.join(', ')}. `
+    + 'talking_head, walk_and_talk, pov_skit, review_comparison, product_led, '
+    + 'screen_software, podcast_interview, other_unsupported. '
     + 'Use other_unsupported when it is made in a way none of the others describe.',
   'people.count': 'How many real people appear on camera — "one" or "multiple"? Drawn or animated characters are not people on camera.',
   'setting.changes': 'Does the location change during the video?',
