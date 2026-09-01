@@ -91,10 +91,28 @@ describe('the body it builds', () => {
   })
 
   it('bounds a failure code instead of letting it become a free-text channel', () => {
-    expect(failureCode('x'.repeat(500))).toHaveLength(200)
+    // ⚖️ THE BOUND IS THE POINT AND IT STAYS. Only the number moved, and the
+    // literal here is deliberately NOT the exported constant — a test that
+    // reads the value it is checking cannot catch the value changing.
+    expect(failureCode('x'.repeat(5000))).toHaveLength(1000)
     expect(failureCode(new Error('upload timed out after 1000ms'))).toBe('upload timed out after 1000ms')
     expect(failureCode('   ')).toBeNull()
     expect(failureCode(undefined)).toBeNull()
+  })
+
+  // ⚠️ THE REAL STRING THAT WAS CUT OFF, from production 2026-09-01. At 200 it
+  // stopped one word before the response body — the only field that would have
+  // named why the upload was refused. This is the regression that matters: not
+  // "is there a bound" but "does the bound still eat the diagnosis".
+  it('keeps the part of a transport error that names the cause', () => {
+    const real = 'tus: unexpected response while creating upload, originated from request '
+      + '(method: POST, url: https://jmdecibuytznsonrasxw.storage.supabase.co/storage/v1/'
+      + 'upload/resumable, response code: 400, response text: {"statusCode":"400",'
+      + '"error":"InvalidRequest","message":"the reason this failed"})'
+    expect(real.length).toBeGreaterThan(200)
+    const kept = failureCode(real)
+    expect(kept).toContain('response text')
+    expect(kept).toContain('the reason this failed')
   })
 })
 

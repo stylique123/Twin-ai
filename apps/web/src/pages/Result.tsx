@@ -821,17 +821,36 @@ export default function Result() {
                       here would only ever produce `source_not_ready`. Hidden once
                       an edit exists unless that edit ended without a video, which
                       is the one case where trying again is the right move. */}
-                  {serverSourceAssetId && (!editProject || editProject.status === 'failed' || editProject.status === 'cancelled') && (
+                  {(!editProject || editProject.status === 'failed' || editProject.status === 'cancelled') && (
                     <>
+                      {/* ⚠️ SHOWN WITHOUT A READY ASSET TOO, DISABLED AND SAYING
+                          WHY. The old rule — render nothing until
+                          `serverSourceAssetId` exists — was defensible on paper
+                          (the button could only produce `source_not_ready`) and
+                          wrong in practice: MEASURED 2026-09-01, no source asset
+                          has EVER reached ready in production, so this control
+                          has never rendered on either screen. A creator who
+                          recorded a take saw a raw video and no way to edit it,
+                          and concluded the editor does not exist.
+                          ⚖️ A DISABLED CONTROL THAT NAMES ITS BLOCKER IS THE
+                          HONEST SHAPE. It still cannot be pressed — nothing is
+                          sent that would fail — but the path is legible. */}
                       <button
                         onClick={startEdit}
-                        disabled={editStarting}
+                        disabled={editStarting || !serverSourceAssetId}
+                        aria-disabled={editStarting || !serverSourceAssetId}
                         className="btn-gradient mt-3 w-full justify-center py-2.5 text-xs font-semibold disabled:opacity-60"
                       >
                         {editStarting
                           ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Starting…</>
                           : <><Wand2 className="h-3.5 w-3.5" /> {editProject ? 'Try the AI edit again' : 'Make my AI edit'}</>}
                       </button>
+                      {!serverSourceAssetId && !editStarting && (
+                        <p className="mt-2 text-center text-[11px] leading-relaxed text-stone">
+                          Twin is still receiving this take. The edit opens as soon as the
+                          upload finishes — you can leave this page, it keeps going.
+                        </p>
+                      )}
                       {editStartErr && <p className="mt-2 text-center text-xs text-coral">{editStartErr}</p>}
                     </>
                   )}
