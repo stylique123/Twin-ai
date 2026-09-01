@@ -22,6 +22,9 @@
 // rather than "frames were read".
 
 import { NOT_DETERMINED } from './referenceExtraction.js'
+// ⚠️ THE VALIDATOR'S OWN LIST, NOT A COPY OF IT. See the primaryMode
+//  question below for what a second copy cost.
+import { PRODUCTION_MODES } from '@twinai/shared'
 
 // ⚠️ DERIVED FROM `packages/shared/src/visualExtraction.ts` — the paths only.
 // The worker has NO runtime dependency on @twinai/shared (see
@@ -60,7 +63,32 @@ const VISUAL_FIELD_PATHS: readonly string[] = [
  *  profile would report it unobservable rather than unasked — the same
  *  `unset ≠ false` collision this codebase keeps paying for. */
 export const FIELD_QUESTIONS: Record<string, string> = {
-  'primaryMode': 'Overall, how is this video made? One of: talking_head, voiceover_broll, demonstration, skit, interview, screen_recording.',
+  // ⚠️ MEASURED IN PRODUCTION 2026-09-01, AND THIS ONE LINE EXPLAINS THE WHOLE
+  //  GALLERY. The question used to name its own six words — talking_head,
+  //  voiceover_broll, demonstration, skit, interview, screen_recording — while
+  //  `visualExtraction` validates against `PRODUCTION_MODES`. The two lists
+  //  shared EXACTLY ONE WORD: talking_head.
+  //
+  //  So every non-talking-head answer the model gave was thrown away by the
+  //  parser as `not_in_vocabulary`. The rejections are on the rows: primaryMode
+  //  refused for "demonstration", "screen_recording", "skit" and
+  //  "voiceover_broll". Across all 158 assessed references the only surviving
+  //  mode is talking_head (19 rows); 141 have no mode at all.
+  //
+  //  ⚖️ WHICH IS WHY THE GALLERY RECOMMENDS VIDEOS TWIN CANNOT MAKE. The refusal
+  //  `galleryPolicy.eligibility` exists to raise — `unsupported_production` —
+  //  keys on this field, and the field was never allowed to hold a value that
+  //  would raise it. The gate was built, wired and starved. `other_unsupported`
+  //  in particular was never once ASKED FOR, so the model could not have said it.
+  //
+  //  ⚖️ THE QUESTION MOVES, NOT THE VALIDATOR. `PRODUCTION_MODES` is the
+  //  product's taxonomy — it is what every reader downstream switches on — and
+  //  teaching the parser a second name for one concept is how a vocabulary
+  //  becomes two vocabularies. Interpolated rather than retyped so this can
+  //  never drift again; the guard beside it asserts the two agree.
+  'primaryMode': 'Overall, how is this video made? Answer with exactly one of these words: '
+    + `${PRODUCTION_MODES.join(', ')}. `
+    + 'Use other_unsupported when it is made in a way none of the others describe.',
   'people.count': 'How many real people appear on camera — "one" or "multiple"? Drawn or animated characters are not people on camera.',
   'setting.changes': 'Does the location change during the video?',
   'setting.complexity': 'How involved is the setting — "simple" (a room, a wall), "moderate", or "complex" (a set, a venue, a busy location)?',
