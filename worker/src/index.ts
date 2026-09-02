@@ -16,7 +16,7 @@ import { capabilitySummary, darkCapabilityWarnings, readCapabilities } from './c
 import { probeDownloader } from './downloaderProbe.js'
 import { probeAlignment, alignmentSummary } from './alignmentCapabilities.js'
 import { isLeaseLost, isPermanent } from './errors.js'
-import { redact } from './sanitizeError.js'
+import { redact, errorText } from './sanitizeError.js'
 
 let running = true
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -123,7 +123,7 @@ async function tick(): Promise<boolean> {
     await completeJob(job.id, result, job.attempts)
     log('info', 'done', { job: job.id, type: job.type })
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    const message = errorText(err)
     // WHAT GOES IN A ROW A CLIENT CAN READ.
     //
     // sanitizeError.ts states the rule for durable state — signed URLs, tokens,
@@ -199,7 +199,7 @@ async function main() {
   // ever points at production, so the only place holding legitimate production
   // access is this process. The check lives where the access already is.
   await refreshSchemaHealth('startup').catch((e) =>
-    log('warn', 'schema_health check failed', { error: String(e) }))
+    log('warn', 'schema_health check failed', { error: errorText(e) }))
 
   // ⚠️ WHAT THE CONTAINER CAN DO, WHICH IS A DIFFERENT QUESTION FROM WHAT IT WAS
   // CONFIGURED TO DO. `curl-cffi` is pinned in requirements.txt precisely so
@@ -240,7 +240,7 @@ async function main() {
       detail: probe.detail,
       probed_at: new Date().toISOString(),
     })
-  }).catch((e) => log('warn', 'downloader_probe failed', { error: String(e) }))
+  }).catch((e) => log('warn', 'downloader_probe failed', { error: errorText(e) }))
 
   // ⚠️ AND WHAT THIS IMAGE CAN DO TO A TIMESTAMP. Same lesson as the downloader
   // probe, different dependency: `whisper_transcribe.py` described a three-tier
@@ -252,7 +252,7 @@ async function main() {
   // confirmation, not an alarm. `unknown` is the line worth reading twice.
   probeAlignment().then((caps) => {
     log('info', 'alignment_probe', { event: 'alignment_probe', ...caps, summary: alignmentSummary(caps) })
-  }).catch((e) => log('warn', 'alignment_probe failed', { error: String(e) }))
+  }).catch((e) => log('warn', 'alignment_probe failed', { error: errorText(e) }))
   // Graceful shutdown: finish the current job, then exit.
   for (const sig of ['SIGTERM', 'SIGINT']) {
     process.on(sig, () => {
@@ -267,7 +267,7 @@ async function main() {
       const didWork = await tick()
       if (!didWork) await sleep(env.pollMs) // idle backoff when the queue is empty
     } catch (err) {
-      log('error', 'loop error', { error: err instanceof Error ? err.message : String(err) })
+      log('error', 'loop error', { error: errorText(err) })
       await sleep(env.pollMs)
     }
   }
@@ -278,10 +278,10 @@ async function main() {
 // Safety net for the many fire-and-forget best-effort writes: a floating promise
 // that slips through must never take the whole worker down mid-render.
 process.on('unhandledRejection', (err) => {
-  log('error', 'unhandled rejection', { error: err instanceof Error ? err.message : String(err) })
+  log('error', 'unhandled rejection', { error: errorText(err) })
 })
 
 main().catch((err) => {
-  log('error', 'fatal', { error: err instanceof Error ? err.message : String(err) })
+  log('error', 'fatal', { error: errorText(err) })
   process.exit(1)
 })

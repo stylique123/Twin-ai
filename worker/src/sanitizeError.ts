@@ -27,6 +27,50 @@ const REDACTIONS: Array<[RegExp, string]> = [
   [/postgres(?:ql)?:\/\/\S+/gi, '[dsn]'],
 ]
 
+/**
+ * WHAT WAS THROWN, IN WORDS, NEVER "[object Object]".
+ *
+ * ⚠️ `String(err)` ON A PLAIN OBJECT IS THE STRING "[object Object]", and that
+ * string was reachable from SIX call sites — including this file's own
+ * `sanitizeError`, whose output lands in `jobs.error` and `ops_events.detail`,
+ * both owner-readable. A throw of `{ code: 'x', status: 503 }` would have been
+ * recorded as a phrase carrying none of it, and the row that exists to explain
+ * a failure would explain nothing.
+ *
+ * ⚖️ MEASURED BEFORE FIXING: across 301 jobs carrying an error and 290 dead
+ * letters, "[object Object]" appears ZERO times. Everything thrown so far has
+ * been a real Error, so this is a LATENT defect, not an active one — recorded
+ * plainly rather than dressed up, because the honest reason to fix it is that
+ * it costs ten lines and destroys a diagnosis on the day it finally fires.
+ *
+ * ⚖️ IT NEVER RETURNS AN EMPTY STRING EITHER. A caller writing `''` into
+ * `jobs.error` produces a row that reads as "no error" beside a failed job —
+ * the same class of lie in the opposite direction.
+ */
+export function errorText(err: unknown): string {
+  if (err instanceof Error) {
+    // `.message` can be empty on a bare `new Error()`; the name still says something.
+    return err.message.trim() !== '' ? err.message : `${err.name || 'Error'} (no message)`
+  }
+  if (typeof err === 'string') return err.trim() !== '' ? err : '(empty string thrown)'
+  if (typeof err === 'number' || typeof err === 'boolean' || typeof err === 'bigint') return String(err)
+  if (err === null) return '(null thrown)'
+  if (err === undefined) return '(undefined thrown)'
+  // ⚠️ AN OBJECT IS WHERE String() LIES, so it is serialised instead. Supabase
+  // and fetch both reject with plain objects carrying `code`/`status`/`details`,
+  // which is exactly the shape that must survive.
+  try {
+    const json = JSON.stringify(err)
+    if (typeof json === 'string' && json !== '{}' && json !== 'null') return json
+  } catch { /* circular or unserialisable — fall through */ }
+  // Last resort: name the shape rather than the useless phrase. An object whose
+  // own keys are all non-enumerable still tells us its constructor.
+  const name = (err as { constructor?: { name?: string } })?.constructor?.name
+  let keys = ''
+  try { keys = Object.keys(err as object).join(',') } catch { /* exotic proxy */ }
+  return `(unserialisable ${name || 'object'}${keys ? ` keys=${keys}` : ''})`
+}
+
 export function redact(text: string): string {
   let out = text
   for (const [re, sub] of REDACTIONS) out = out.replace(re, sub)
@@ -34,7 +78,7 @@ export function redact(text: string): string {
 }
 
 export function sanitizeError(err: unknown, stage: string): SafeError {
-  const raw = err instanceof Error ? err.message : String(err)
+  const raw = errorText(err)
   // `declaresPermanent`, not `instanceof`: an EditPlanError is permanent too,
   // and recording it as `retryable` told the operational record the opposite of
   // what the queue does with it. Deliberately the NARROW predicate — the code
