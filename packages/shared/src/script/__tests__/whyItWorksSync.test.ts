@@ -70,12 +70,36 @@ describe('why it works describes the script that ships', () => {
     expect(spelled.whyItWorks.some((c) => /names a number/.test(c))).toBe(true)
   })
 
-  it('reports the longest beat honestly, and stays silent when one stalls', () => {
-    const stalls = syncWhyItWorksToScript(null, [
-      { section: 'Hook', line: 'Your room is the problem' },
-      { section: 'Setup', line: Array.from({ length: 55 }, () => 'word').join(' ') },
+  it('never praises the pace, at any beat length', () => {
+    // ⚠️ THE CLAIM PRAISED THE VIOLATION IT EXISTED TO CATCH. It fired whenever
+    // the longest beat was <= 40 words, so a 21-word opener — reported from
+    // production — was ticked as a virtue. 40 words is about SIXTEEN SECONDS on
+    // one beat at the recorder's own WPM, so a sentence claiming the pace "never
+    // stalls" was gated on a threshold permitting a sixteen-second stall.
+    //
+    // ⚖️ PINNED AT THREE LENGTHS, not just the long one. The old test only
+    // checked silence at 55 words — above the threshold — so it would have
+    // passed unchanged while the defect shipped. The 21-word case is the one
+    // that was actually wrong, and a guard that misses it is not a guard.
+    for (const n of [7, 21, 55]) {
+      const r = syncWhyItWorksToScript(null, [
+        { section: 'Hook', line: Array.from({ length: n }, () => 'word').join(' ') },
+        { section: 'CTA', line: 'Follow for more.' },
+      ])
+      expect(
+        r.whyItWorks.some((c) => /pace never stalls|No single beat runs longer/.test(c)),
+        `a pace claim came back for a ${n}-word beat`,
+      ).toBe(false)
+    }
+  })
+
+  it('still says something about a real script, so the panel is never empty', () => {
+    // Removing a claim must not empty the panel — claim 7 is the floor.
+    const { whyItWorks } = syncWhyItWorksToScript(null, [
+      { section: 'Hook', line: 'Three things ruin home audio' },
+      { section: 'CTA', line: 'Save this for later.' },
     ])
-    expect(stalls.whyItWorks.some((c) => /pace never stalls/.test(c))).toBe(false)
+    expect(whyItWorks.length).toBeGreaterThan(0)
   })
 
   it('an empty script produces an empty panel, never a reassuring one', () => {
