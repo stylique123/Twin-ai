@@ -189,6 +189,49 @@ describe('the prompt and the check ban the same openers', () => {
 })
 
 /**
+ * THE PROMPT MUST QUOTE THE SAME NUMBERS THE CHECK ENFORCES.
+ *
+ * ⚠️ MEASURED BEFORE THIS WAS TIGHTENED, ACROSS 90 SHIPPED HOOKS (18
+ * generations, 27 Aug - 2 Sep 2026): 51 ran over 12 words, 30 over 14, mean
+ * 17.8 when over, longest 23. The instruction at the time said "under ~12
+ * words" — a hedge inside a run-on sentence that also demanded ordering,
+ * scroll-stopping and two triggers. Those numbers are the PRE-REGISTERED
+ * BASELINE for judging whether the reworded instruction did anything.
+ *
+ * ⚖️ AND THIS TEST EXISTS BECAUSE A PROMPT AND A CONSTANT DRIFT SILENTLY. If
+ * HOOK_TARGET_WORDS moves to 10 and the prompt still says 12, the writer is
+ * told one rule and judged by another, and the audit counts a violation the
+ * writer was never asked to avoid. Same failure class as a check constraint
+ * disagreeing with the type that feeds it.
+ */
+describe('the prompt states the same hook length the contract enforces', () => {
+  const repo = join(import.meta.dirname, '..', '..', '..', '..', '..')
+  const bp = readFileSync(join(repo, 'supabase', 'functions', 'generate-blueprint', 'index.ts'), 'utf8')
+  const line = bp.split('\n').find((l) => l.includes('HOOK LENGTH IS A COUNT'))
+
+  it('the instruction exists to be compared', () => {
+    expect(line, 'the hook-length prompt line was not found').toBeTruthy()
+  })
+
+  it('quotes the target and the ceiling, both from this module', () => {
+    expect(line).toContain(`${HOOK_TARGET_WORDS} words or fewer`)
+    expect(line).toContain(`over ${HOOK_MAX_WORDS} words`)
+  })
+
+  it('states it as a count to perform, not an approximation to feel', () => {
+    // ⚠️ THE HEDGE WAS THE DEFECT. "under ~12 words" invites 13 and got 17.8.
+    expect(line).toMatch(/count the words/i)
+    expect(line ?? '').not.toMatch(/~\s*\d+\s*words/)
+  })
+
+  it('names the real consequence, which the code actually performs', () => {
+    // applyHookContract demotes rather than deletes; saying so is true, and a
+    // consequence the writer can act on beats an unexplained limit.
+    expect(line).toMatch(/DEMOTED/)
+  })
+})
+
+/**
  * ⚠️ THE RULE IS ONLY REAL IF THE WRITER RUNS IT. Every check in this repo that
  * turned out to be decoration passed a token search while the call site was
  * gone. So this pins the CALL, the ORDER, and the DESTINATION.

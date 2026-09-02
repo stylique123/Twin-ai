@@ -128,12 +128,27 @@ export function startsSetup(plan: SetupPlan, sceneNumber: number): boolean {
  * stay in the full description on the card that opens the setup; this is the
  * glance, not the record.
  */
-export function setupStrip(setup: Setup, maxParts = 3): string[] {
-  const parts = setup.background
-    .split(/[·,;]|\s+with\s+|\s+and\s+/i)
-    .map((p) => p.replace(/\.$/, '').trim())
-    .filter((p) => p !== '')
-    .slice(0, maxParts)
+export function setupStrip(setup: Setup): string[] {
+  // ⚠️ THE BACKGROUND IS RETURNED WHOLE, AND THIS USED TO SPLIT IT.
+  // It split on `[·,;]`, " with " and " and ", so "Standing in front of your
+  // tool wall, facing the main light source" reached the strip as two dotted
+  // parts while the card immediately below rendered the same string intact.
+  // Reported from production: the two disagreed and the header read as an error.
+  //
+  // ⚖️ THE OLD SPLIT HAD A REAL REASON AND IT IS OVERRULED ON PURPOSE. It
+  // existed so a long background clipped at a CLAUSE rather than mid-phrase
+  // ("Dark studio setting with a subtle…"). But an ellipsis is an affordance
+  // every reader understands, and silently RE-PUNCTUATING a creator's own
+  // sentence is not — it invents a rhythm they did not write, on the one
+  // surface whose whole job is to agree with the card underneath it. Clipping
+  // is handled by the component's `truncate`, and the full text is one line away.
+  const background = setup.background.replace(/\.$/, '').trim()
   const framing = setup.framing.replace(/\.$/, '').trim()
-  return [`Setup ${setup.id}`, ...parts, ...(framing ? [framing] : [])]
+  // ⚖️ THE DOT STILL SEPARATES FIELDS, never clauses within one field: the
+  // setup label, the place, and the framing are three different answers.
+  return [
+    `Setup ${setup.id}`,
+    ...(background ? [background] : []),
+    ...(framing ? [framing] : []),
+  ]
 }
