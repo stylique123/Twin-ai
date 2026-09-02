@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
+import { creatorFacingMessage } from '@twinai/shared'
 import { loadProductEntities } from '../../lib/api'
 import type { ProductEntityRecord } from '../../lib/api'
 import { assessReadiness, isCommercialField } from '../../lib/api'
@@ -47,6 +48,25 @@ const STEP_PCT = [12, 34, 58, 80, 94, 100]
 // reported from a real run as "it stayed on ninety-four for five minutes". It
 // creeps toward this ceiling instead: never still, never claiming to be done.
 const LAST_STEP_CEILING = 99
+
+// ⚖️ HOW OFTEN THE RECOVERY POLL ASKS "IS IT DONE YET". One indexed read on
+// `idempotency_key`, only while this screen is visible AND still believes it is
+// building. Three seconds is well under the time a creator will wait before
+// deciding the product is broken, and far above anything that would trouble the
+// database.
+const RECOVERY_POLL_MS = 3000
+// ⚠️ BOUNDED, BUT GENEROUSLY. Measured 2026-09-02: a real build with a live
+// reference read took 2m35s end to end. 100 attempts is ~5 minutes, comfortably
+// past that, and the loop simply STOPS rather than showing an error — the work
+// may still be running server-side, and saying otherwise would be a claim we
+// cannot support. Returning to the tab resets the budget.
+const RECOVERY_MAX_ATTEMPTS = 100
+
+// ⚖️ HOW LONG A LOST REQUEST WAITS BEFORE IT IS CALLED A FAILURE. 30 attempts
+// at 3s is 90 seconds — five times the 18-second gap that stranded a real
+// creator, and still short enough that a genuine failure is not held behind a
+// spinner for minutes.
+const RESCUE_ATTEMPTS = 30
 
 // ⚠️ THE HOST LIST MOVED TO @twinai/shared, because there were two of them and
 // only one was ever consulted. This copy answered "is it supported?" while the
@@ -893,7 +913,48 @@ export default function V2Building() {
           // A code with no questions is a server we do not understand. Falling
           // through to the generic error beats rendering an empty form.
         }
-        setError(e instanceof Error ? e.message : 'Something went wrong building your plan.')
+        // ── ASKING ONCE, AT THE WORST POSSIBLE MOMENT ────────────────────
+        //
+        // ⚠️ MEASURED 2026-09-02, AND THIS IS THE RACE. The single lookup above
+        // fires the INSTANT the request died — which is exactly when the server
+        // is most likely to still be finishing. Real numbers from production:
+        // charged 13:55:33, generation row written 13:58:08. A fetch that died
+        // around 13:57:50 got its one lookup at 13:57:51, EIGHTEEN SECONDS
+        // before the script existed, found nothing, and showed "We hit a snag".
+        // The row landed moments later and nothing looked again.
+        //
+        // ⚠️ THE CREATOR WAS CHARGED, TOLD IT FAILED, AND THE SCRIPT WAS SITTING
+        // IN THEIR LIBRARY. That is the worst of the three possible outcomes:
+        // worse than a clean failure with a refund, and worse than a slow
+        // success, because they have no reason to go looking for the thing they
+        // were just told does not exist.
+        //
+        // ⚖️ SO KEEP ASKING BEFORE DECLARING FAILURE. Placed BELOW the coded
+        // refusals on purpose: REFERENCE_UNREAD, SELL_WITHOUT_TARGET and
+        // READINESS_INCOMPLETE are decisions, not lost answers — no generation
+        // is coming for them and waiting would only stall a creator who needs to
+        // act. This waits only on the genuinely-unknown failure.
+        for (let i = 0; i < RESCUE_ATTEMPTS; i++) {
+          await new Promise((r) => setTimeout(r, RECOVERY_POLL_MS))
+          if (!alive) return
+          try {
+            const late = await findGenerationByKey(key)
+            if (late) {
+              if (alive) { setActive(STEPS.length); setPct(100); nav(`/result/${late.id}`, { replace: true }) }
+              return
+            }
+          } catch (lookupErr) {
+            // A failed read is not evidence the build failed. Keep asking.
+            console.warn('[build] late lookup failed', lookupErr)
+          }
+        }
+        // ⚠️ NEVER THE LIBRARY'S OWN WORDS. `e.message` here was
+        // "Edge Function returned a non-2xx status code" on a real creator's
+        // screen — supabase-js's FunctionsHttpError, printed verbatim. The
+        // original still reaches the console for whoever is debugging; the
+        // creator gets a sentence written for them.
+        console.warn('[build] failed', e)
+        setError(creatorFacingMessage(e))
       }
     })()
 
@@ -921,18 +982,77 @@ export default function V2Building() {
   // screen still believes it is building, ask whether the build already exists.
   // It is one indexed read on a user gesture, it cannot double-charge, and a
   // failure leaves the screen exactly as it was.
+  //
+  // ⚠️ A ONE-SHOT LOOKUP ON THE GESTURE WAS NOT ENOUGH, AND THE GAP IS THE
+  // COMMON CASE. Returning to the tab fires this once. If the build is still
+  // in flight at that instant the lookup finds nothing, and when it finishes
+  // ten seconds later NOTHING NOTICES — the screen sits at its frozen
+  // percentage until the creator switches tabs again to re-trigger the very
+  // handler meant to rescue them. Reported from production: "when I minimize
+  // the tab it gets stuck without moving forward".
+  //
+  // ⚠️ AND THE BAR FREEZING IS NOT THE BUG, IT IS THE SYMPTOM. Both intervals
+  // on this screen are cosmetic — the progress climb and the step ticker.
+  // Browsers throttle background timers, so the animation stalls while the real
+  // work, a single long `await` on generate-blueprint, continues server-side.
+  // What actually strands the creator is the fetch itself being dropped when a
+  // mobile browser reclaims a background tab: the promise never settles, and no
+  // amount of returning to the tab settles it.
+  //
+  // ⚖️ SO RECOVERY IS A POLL WHILE VISIBLE, NOT A SINGLE SHOT. It costs one
+  // indexed read on `idempotency_key` every few seconds, only while this screen
+  // still believes it is building, and it cannot double-charge because it only
+  // ever reads. It covers both cases at once: the fetch that died in the
+  // background, and the fetch that is still running fine.
   useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible') return
-      // Nothing to recover if the screen has already settled into an outcome.
-      if (error || unusableRef || contradiction || askQuestions) return
-      const key = buildKey(state)
+    // Nothing to recover once the screen has settled into an outcome.
+    if (error || unusableRef || contradiction || askQuestions) return
+    const key = buildKey(state)
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let stopped = false
+    let attempts = 0
+
+    const stop = () => { stopped = true; if (timer) { clearTimeout(timer); timer = null } }
+
+    const look = () => {
+      if (stopped || document.visibilityState !== 'visible') return
+      // ⚖️ BOUNDED. A screen left open for an hour must not read forever; the
+      // cap is far beyond any real build and simply stops the loop rather than
+      // showing an error, because the work may genuinely still be running.
+      if (attempts >= RECOVERY_MAX_ATTEMPTS) return
+      attempts += 1
       void findGenerationByKey(key)
-        .then((done) => { if (done) { setActive(STEPS.length); setPct(100); nav(`/result/${done.id}`, { replace: true }) } })
-        .catch((e) => console.warn('[build] visibility lookup failed', e))
+        .then((done) => {
+          if (stopped) return
+          if (done) {
+            stop()
+            setActive(STEPS.length); setPct(100)
+            nav(`/result/${done.id}`, { replace: true })
+            return
+          }
+          timer = setTimeout(look, RECOVERY_POLL_MS)
+        })
+        .catch((e) => {
+          if (stopped) return
+          console.warn('[build] recovery lookup failed', e)
+          // A failed read is not evidence the build failed — keep looking.
+          timer = setTimeout(look, RECOVERY_POLL_MS)
+        })
     }
+
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') { if (timer) { clearTimeout(timer); timer = null } ; return }
+      // ⚖️ RE-ARM ON EVERY RETURN. Attempts reset so a creator who steps away
+      // repeatedly is never quietly out of budget.
+      attempts = 0
+      if (!timer) look()
+    }
+
     document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
+    // Start immediately when the screen is already in front of them: a dropped
+    // fetch does not wait for a tab switch to strand someone.
+    if (document.visibilityState === 'visible') look()
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisible) }
   }, [state, error, unusableRef, contradiction, askQuestions, nav])
 
   // ⚠️ THE ROW IS WRITTEN BEFORE THE FLOW RESUMES, and the buttons are disabled

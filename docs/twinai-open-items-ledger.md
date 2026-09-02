@@ -2315,3 +2315,65 @@ run at all. Not touched here.
 
 Mutation-checked: restoring the shipped literal fails **7 of 8**; 227 files /
 4,721 tests pass; `tsc -p packages/shared` clean; `check_counter_durability` OK.
+
+## G50 — both "blocked on Run G" items were keyed on shapes production never stores
+
+Two items sat blocked for weeks on "two lines the owner must paste", each
+described as having **two candidate causes needing opposite fixes**. Measured
+across **every generation in production** — 56, spanning 2026-06-29 to
+2026-09-01 — neither cause was the real one, and no line from Run G could have
+revealed that.
+
+### Item 4 — setup dedupe
+
+`syncSetupLabels` acts only on a `shot_list[].notes` string shaped
+`Setup <letter> · <description> · <framing>`. **Zero production rows carry it.**
+Exactly one row's notes even begin with the word, and it is prose: *"Setup beat.
+Simulating a different character or perspective."* The word appears 17 times
+across the table, always as ordinary English.
+
+The only producer of that string is **`setupStrip()` — a client-side display
+helper** that returns an array for `ScriptEditor`'s SetupStrip component. It is
+in-memory, renders to React, and never writes a blueprint. So a server-side
+pass in `generate-blueprint` reconciles a format nothing on the server emits: it
+relabels **0 rows on 100% of generations, and always has.**
+
+⚠️ **BOTH PROPOSED FIXES WERE UNTESTABLE.** "Take framing out of the identity
+key" and "strengthen `norm`" each change how two rows *compare* — and no two
+rows ever reach the comparison. Either would have passed its own unit test,
+shipped, and changed nothing a creator sees.
+
+⚖️ **THE CODE IS NOT BROKEN.** Asked that first: given its input format it works
+correctly, and two rows describing the same place do share a letter. What is
+missing is a producer. Whether to point it at the real `shot`/`framing` fields
+or retire it is a product decision, not a defect fix — **not changed here.**
+
+### Item 3 — the dangling ordinal
+
+The rule was to fire "when `enumeration.is_enumerated`". `enumeration` **is not
+a blueprint field** — 0 of 56 generations carry it under that name or any other.
+The real value is `referenceMechanism.ts`'s `enumeration.isEnumerated`:
+camelCase, computed at runtime from the reference, never persisted. A guard
+written against the snake_case blueprint path reads `undefined` on every
+generation and can never fire.
+
+### The pattern, third time this week
+
+G49 was a counter that could not rise. This is a repair that cannot run and a
+condition that cannot be true. In all three the code looked right, the tests
+passed, and the mechanism was never connected to real data — **so silence read
+as success.** The check that finds these is not a better unit test; it is one
+query against production asking "does this shape exist at all".
+
+## G51 — CORRECTION: the tone rule was reported as unbuilt and is not
+
+An earlier status of mine listed "tone must steer the hook register and
+direction notes or be removed" as **not started**. That was wrong. It is built:
+a tone clamp at index.ts:4021, an explicit prompt requirement at :5689 that tone
+appear in per-beat direction and `production_sprint`, and a `tone_effect`
+measurement at :6506 with a `toneEffectInline` reader.
+
+Checked for the G49 defect specifically, since `tone_effect` is computed inside
+the same `beatAudit` literal: it reads `direction` and `production_sprint`, and
+**nothing mutates either after that point** — verified, not assumed. Unlike the
+three counters in G49, this measurement is taken over final data and is sound.
