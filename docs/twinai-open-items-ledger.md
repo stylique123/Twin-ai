@@ -2377,3 +2377,49 @@ Checked for the G49 defect specifically, since `tone_effect` is computed inside
 the same `beatAudit` literal: it reads `direction` and `production_sprint`, and
 **nothing mutates either after that point** — verified, not assumed. Unlike the
 three counters in G49, this measurement is taken over final data and is sound.
+
+## G52 — The ask-beat answer path is WIRED but has never carried a row
+
+**Measured 2026-09-02, `creator_knowledge`:** 930 rows across 22 owners,
+**0** with `source: 'asked'`. Not one answer has ever been given, so the
+dedicated read below has returned an empty array on every generation this
+product has run.
+
+Both planning documents (Complete System PART 11 #1, Auto-Learning PART 8 #1)
+rank "prove one answer reaches the writer" first, and both are RIGHT that the
+path is unexercised. **The implied cause is wrong.** It is wired end to end, and
+the second query below exists precisely because someone already anticipated the
+failure the documents warn about.
+
+### The provenance table
+
+| Row | Link | Where | Verdict |
+|-----|------|-------|---------|
+| 1 | Client submits an answer | `packages/shared/src/api.ts` `answerBeatAsk` → invokes `answer-beat-ask` | BUILT |
+| 2 | Server stores it | `answer-beat-ask` patches `blueprint.script[i]` (`line`, `ask_state`, `answer`) **and** writes a `creator_knowledge` row with `source: 'asked'` | BUILT |
+| 3 | Writer reads it | `generate-blueprint/index.ts:3774` — a **dedicated second query**, `.eq('source','asked')`, limit 20, newest first | BUILT |
+| 4 | Ordered ahead of ranked rows | `:3856` `[...askedRows, ...rankedRows]` | BUILT |
+| 5 | Reaches the assembled prompt | `:4866` `knowledgeParts.push('WHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID…')` | BUILT |
+| 6 | Second consumer | `:4695` `askedSpeech` | BUILT |
+| 7 | Production rows | **0** | NEVER EXERCISED |
+
+⚠️ **Why row 3 exists, in the code's own words:** the top-40-by-`times_seen`
+read *cannot see an answered question* — `times_seen` counts how many videos
+carried a position, so a row the creator stated once is a `1`, and on a
+caption-derived store of 374 items forty rows of 2-and-3 sit above it. "The
+creator would answer, the row would land, and the writer would never see it."
+
+⚖️ **Zero asked rows is safe today rather than dangerous**, because absent is
+silent: an empty store yields a thinner script, never an invented one
+(`An empty knowledge store cannot manufacture a story`).
+
+### What remains
+
+The wiring needs no work. **The chain needs a single human answer** — generate,
+answer the asks, regenerate with identical settings, diff. That is the
+change-propagation test both documents specify, and it is the owner's to run.
+
+Until then `an-answer-must-reach-the-writer.test.ts` is the chain's ONLY
+protection: a link no production row has ever traversed cannot be caught
+breaking by traffic. It would break silently and stay broken until the first
+creator finally answered and got nothing back.
