@@ -24,6 +24,7 @@ import { parseContentExtraction, NOT_DETERMINED, NO_REHOOK } from '../referenceE
 import { frameSampleTargets } from '../referenceProfileTypes.js'
 import { runVisualPass } from '../visualPass.js'
 import { tierZeroColumns } from '../referenceTierZeroPass.js'
+import { speechActiveMs } from '../referenceTierZero.js'
 import { readCachedTranscript, writeCachedTranscript } from '../transcriptCache.js'
 import { decideRouting, goesToFrames } from '../transcriptRouting.js'
 import { classifyReferenceFailure, isFetchDefect } from './referenceOutcome.js'
@@ -267,6 +268,23 @@ interface Payload {
   frameCount?: unknown
 }
 
+/** Speech-active milliseconds, but ONLY from a transcript we timed ourselves.
+ *
+ * ⚠️ CAPTION TIMINGS ARE AUTHORED, NOT MEASURED. Tier 0's whole premise is
+ * arithmetic off the FILE — no model, no publisher. A YouTube caption track's
+ * start/end values are whatever the uploader's tooling wrote, and folding them
+ * into a "% of runtime with speech" would put someone else's editorial decision
+ * into a column whose other four numbers came from pixels.
+ *
+ * ⚖️ SO NULL ON THOSE ROUTES IS THE CORRECT ANSWER, not a gap to be filled
+ * later. `local_whisper` is the only route where we ran the recogniser.
+ */
+const ASR_ROUTES: ReadonlySet<string> = new Set(['local_whisper'])
+function ownSpeechMs(t: { source?: unknown; segments?: unknown } | null | undefined): number | null {
+  if (!t || typeof t.source !== 'string' || !ASR_ROUTES.has(t.source)) return null
+  return speechActiveMs(t.segments)
+}
+
 export async function handleAssessReference(job: Job): Promise<Record<string, unknown>> {
   const p = (job.payload ?? {}) as Payload
   const url = typeof p.url === 'string' ? p.url.trim() : ''
@@ -473,6 +491,7 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
     // it.
     const visual = p.frames === true ? await runVisualPass(url, route, {
       count: typeof p.frameCount === 'number' ? p.frameCount : undefined,
+      speechMs: ownSpeechMs(transcript),
     }) : null
 
     await db.from('reference_content_profiles').upsert({
@@ -570,6 +589,7 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
   const visual = p.frames === true
     ? await runVisualPass(url, route, {
         count: typeof p.frameCount === 'number' ? p.frameCount : undefined,
+        speechMs: ownSpeechMs(transcript),
         at: frameSampleTargets(profile),
       })
     : null

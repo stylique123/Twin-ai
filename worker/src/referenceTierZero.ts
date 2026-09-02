@@ -50,6 +50,48 @@ export interface TierZeroProfile {
   speechPct: number | null
 }
 
+/** One speech interval as the transcript carries it, in SECONDS. */
+export interface SpeechSegment { start?: unknown; end?: unknown }
+
+/**
+ * Speech-active milliseconds from a transcript's own segments.
+ *
+ * ⚠️ OVERLAPPING SEGMENTS MUST BE MERGED, NOT SUMMED. Whisper emits segments
+ * that can overlap at their boundaries, and captions frequently do — summing
+ * raw durations then reports MORE speech than the video has runtime, which
+ * `pct()` would hand back as a percentage above 100. Merging first is the
+ * difference between a measurement and a number that merely looks like one.
+ *
+ * ⚠️ AND A ZERO-LENGTH OR BACKWARDS SEGMENT CONTRIBUTES NOTHING rather than a
+ * negative, which would silently reduce the total below the truth.
+ *
+ * Returns null when there is nothing to measure — never 0, which would claim a
+ * silent video.
+ */
+export function speechActiveMs(segments: unknown): number | null {
+  if (!Array.isArray(segments)) return null
+  const spans: Array<[number, number]> = []
+  for (const seg of segments) {
+    const a = num((seg as SpeechSegment)?.start)
+    const b = num((seg as SpeechSegment)?.end)
+    if (a === null || b === null) continue
+    if (b <= a) continue
+    spans.push([a * 1000, b * 1000])
+  }
+  if (spans.length === 0) return null
+  spans.sort((x, y) => x[0] - y[0])
+  let total = 0
+  let [curStart, curEnd] = spans[0]!
+  for (let i = 1; i < spans.length; i++) {
+    const [s, e] = spans[i]!
+    if (s <= curEnd) { if (e > curEnd) curEnd = e; continue }
+    total += curEnd - curStart
+    curStart = s; curEnd = e
+  }
+  total += curEnd - curStart
+  return Math.round(total)
+}
+
 const num = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) ? v : null
 

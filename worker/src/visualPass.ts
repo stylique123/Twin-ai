@@ -93,7 +93,7 @@ const NOT_RUN = (
 export async function runVisualPass(
   rawUrl: string,
   route: DownloadRoute,
-  opts: { count?: number; at?: readonly number[] } = {},
+  opts: { count?: number; at?: readonly number[]; speechMs?: number | null } = {},
 ): Promise<VisualPassResult> {
   const dir = await mkdtemp(join(tmpdir(), 'twinai-vis-'))
   const videoPath = join(dir, 'video.mp4')
@@ -117,7 +117,7 @@ export async function runVisualPass(
     // that is the trade taken on purpose: a reference job that produces five
     // real numbers slowly beats one that produces nothing quickly. It cannot
     // throw and it cannot fail the job — see `runTierZeroPass`.
-    const tierZero = await runTierZeroPass(videoPath)
+    const tierZero = await runTierZeroPass(videoPath, opts.speechMs ?? null)
 
     const sample = await sampleFrames(videoPath, { count: opts.count ?? DEFAULT_FRAME_COUNT, at: opts.at })
     // ⚠️ NO FRAMES MEANS THE PASS DID NOT HAPPEN. `extractVisualProfile` would
