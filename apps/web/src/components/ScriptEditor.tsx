@@ -413,7 +413,15 @@ function SetupStrip({ plan, activeSetupId }: { plan: SetupPlan; activeSetupId: s
   if (!setup) return null
   const parts = setupStrip(setup)
   return (
-    <div className="sticky top-2 z-20 rounded-full border border-white/10 bg-ink2/90 px-4 py-2 shadow-glass backdrop-blur-md">
+    // ⚠️ IT SAYS WHAT IT IS, BECAUSE IT MOVES. This strip follows the scene
+    // being READ, so it can show "Setup B" above a script that opens on Setup A
+    // — correct behaviour that was reported as a bug, twice, because a bare
+    // setup line looks like static content that disagrees with the page. The
+    // label and the divider are the whole fix: they say "this is where you are
+    // now", so a changing value reads as tracking rather than as an error.
+    <div className="sticky top-2 z-20 flex items-center gap-2 rounded-full border border-amber/25 bg-ink2/90 px-4 py-2 shadow-glass backdrop-blur-md">
+      <span className="shrink-0 text-[10px] uppercase tracking-wide text-stone">Now filming</span>
+      <span aria-hidden className="h-3 w-px shrink-0 bg-white/15" />
       <p className="truncate text-[11px] text-sand">
         <span className="font-semibold text-amber">{parts[0]}</span>
         {parts.slice(1).map((p) => <span key={p}> · {p}</span>)}

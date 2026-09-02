@@ -111,12 +111,18 @@ describe('what must never join a setup', () => {
 describe('the strip is a glance, not the record', () => {
   it('reads as the creator would say it', () => {
     const plan = planSetups([scene(1, STUDIO), scene(2, STUDIO)])
+    // ⚠️ THE BACKGROUND COMES BACK WHOLE. This test previously asserted the
+    // SPLIT — 'Dark studio setting' + 'a subtle yellow backlight…' — and the
+    // TEST was the thing that was wrong about what a creator should see, not
+    // the code. Reported from production: the strip showed dotted fragments
+    // while the card below rendered the same sentence intact, so the header
+    // read as an error. The dot now separates FIELDS only.
     expect(setupStrip(plan.setups[0])).toEqual([
-      'Setup A', 'Dark studio setting', 'a subtle yellow backlight illuminating the wall', 'Chest-up shot',
+      'Setup A', 'Dark studio setting with a subtle yellow backlight illuminating the wall', 'Chest-up shot',
     ])
   })
 
-  it('splits on clauses, never mid-phrase', () => {
+  it('never truncates a part itself — clipping is the component\'s job', () => {
     // ⚠️ A word-count truncation gives "Dark studio setting with a subtle…" —
     // longer AND less useful than the clause it came from.
     for (const part of setupStrip(plan1().setups[0])) {
