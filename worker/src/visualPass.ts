@@ -25,6 +25,7 @@ import { modelForTask } from './modelRouting.js'
 import { persistFrames } from './referenceFrames.js'
 import { ffmpegPresent } from './frameSample.js'
 import { classifyDownloadFailure, phaseOf } from './downloadFailure.js'
+import { runTierZeroPass, type TierZeroPassResult } from './referenceTierZeroPass.js'
 import type { DownloadRoute } from './downloadRoute.js'
 
 const SYSTEM = `You describe what is visible in still frames from a video.
@@ -53,9 +54,14 @@ export interface VisualPassResult {
    *  failure on the same video are comparable rather than two vocabularies. */
   failure_code: string | null
   phase: string | null
+  /** What came off the FILE, with no model involved. Present even when the
+   *  model call failed — that is the entire reason it is computed first. */
+  tier_zero: TierZeroPassResult | null
 }
 
-const NOT_RUN = (failure_code: string | null, phase: string | null): VisualPassResult => ({
+const NOT_RUN = (
+  failure_code: string | null, phase: string | null, tier_zero: TierZeroPassResult | null = null,
+): VisualPassResult => ({
   ran: false,
   visual_profile: null,
   visual_rejections: null,
@@ -63,6 +69,10 @@ const NOT_RUN = (failure_code: string | null, phase: string | null): VisualPassR
   frame_schedule_basis: null,
   failure_code,
   phase,
+  // ⚠️ DEFAULTS TO null, NOT TO AN EMPTY PROFILE. A download that never landed
+  // leaves no file to measure, and a Tier 0 row of nulls there would claim a
+  // reading of a video nobody ever had.
+  tier_zero,
 })
 
 /**
@@ -97,6 +107,18 @@ export async function runVisualPass(
       return NOT_RUN(classifyDownloadFailure(e), phaseOf(e))
     }
 
+    // ⚠️ TIER 0 RUNS HERE — AFTER THE DOWNLOAD, BEFORE ANYTHING CAN FAIL.
+    // Every path below this point returns early on failure: no frames, frames
+    // not persisted, model refused. Those are exactly the runs where a creator
+    // learns nothing today. Measuring first is what makes this a floor rather
+    // than a bonus on the happy path only.
+    //
+    // ⚖️ IT COSTS UP TO TIER_ZERO_TIMEOUT_MS ON JOBS THAT GO ON TO FAIL, and
+    // that is the trade taken on purpose: a reference job that produces five
+    // real numbers slowly beats one that produces nothing quickly. It cannot
+    // throw and it cannot fail the job — see `runTierZeroPass`.
+    const tierZero = await runTierZeroPass(videoPath)
+
     const sample = await sampleFrames(videoPath, { count: opts.count ?? DEFAULT_FRAME_COUNT, at: opts.at })
     // ⚠️ NO FRAMES MEANS THE PASS DID NOT HAPPEN. `extractVisualProfile` would
     // refuse to read a response produced from nothing anyway — a model answering
@@ -116,7 +138,7 @@ export async function runVisualPass(
       // `ffmpegPresent` was written for exactly this and had never been called
       // by anything — a check that exists and never runs is not a check.
       const haveFfmpeg = await ffmpegPresent()
-      return NOT_RUN(haveFfmpeg ? 'NO_FRAMES_SAMPLED' : 'FFMPEG_MISSING', 'media_download')
+      return NOT_RUN(haveFfmpeg ? 'NO_FRAMES_SAMPLED' : 'FFMPEG_MISSING', 'media_download', tierZero)
     }
 
     // ⚠️ THE FRAMES ARE KEPT BEFORE THEY ARE SHOWN. This pass used to sample
@@ -131,7 +153,7 @@ export async function runVisualPass(
     // we cannot store is a claim we cannot check, and a claim nobody can check
     // is worse than no claim: it reads like a finding.
     const kept = await persistFrames(rawUrl, sample)
-    if (kept.failure !== null) return NOT_RUN('FRAMES_NOT_PERSISTED', 'media_download')
+    if (kept.failure !== null) return NOT_RUN('FRAMES_NOT_PERSISTED', 'media_download', tierZero)
 
     let raw: unknown
     try {
@@ -145,7 +167,7 @@ export async function runVisualPass(
         [...sample.frames],
       )
     } catch (e) {
-      return NOT_RUN('VISUAL_MODEL_FAILED', 'complete')
+      return NOT_RUN('VISUAL_MODEL_FAILED', 'complete', tierZero)
     }
 
     // ⚖️ `framesSampled` IS WHAT LANDED, and it is the number every citation is
@@ -165,6 +187,7 @@ export async function runVisualPass(
       frame_schedule_basis: sample.scheduleBasis,
       failure_code: null,
       phase: 'complete',
+      tier_zero: tierZero,
     }
   } finally {
     // Analyze-and-discard the VIDEO, same as every other media path here. The
