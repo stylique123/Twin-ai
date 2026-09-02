@@ -25,6 +25,7 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 const REQS = readFileSync(join(REPO, 'worker/requirements.txt'), 'utf8')
 const OPENCV_REQS = readFileSync(join(REPO, 'worker/requirements-opencv.txt'), 'utf8')
 const VISUAL_PY = readFileSync(join(REPO, 'worker/editor_visual.py'), 'utf8')
+const TIER_ZERO_PASS = readFileSync(join(REPO, 'worker/src/referenceTierZeroPass.ts'), 'utf8')
 const VISUAL_PASS = readFileSync(join(REPO, 'worker/src/visualPass.ts'), 'utf8')
 
 describe('three questions, never a ranked ladder', () => {
@@ -65,12 +66,43 @@ describe('the analyzers already exist — this item is wiring, not a build', () 
     expect(VISUAL_PY).toMatch(/"faceCoverage"/)
   })
 
-  it('and none of it has ever been aimed at the reference', () => {
-    // ⚖️ THE ACTUAL GAP. The reference path asks Gemini, which is why a spent
-    // daily quota takes the whole visual profile with it. If this ever fails,
-    // the wiring landed and this test should become an assertion that it stays.
+  // ⚖️ THIS BLOCK USED TO ASSERT THE GAP. It said: "if this ever fails, the
+  // wiring landed and this test should become an assertion that it stays."
+  // It landed. These are that assertion.
+  it('is now aimed at the reference, alongside the model rather than instead of it', () => {
     expect(VISUAL_PASS).toMatch(/geminiJson/)
-    expect(VISUAL_PASS).not.toMatch(/editor_visual|editorVisual/)
+    expect(VISUAL_PASS).toMatch(/runTierZeroPass/)
+    expect(TIER_ZERO_PASS).toMatch(/runVisualBridge/)
+  })
+
+  it('measures BEFORE the model call, so a spent quota still leaves numbers', () => {
+    // ⚠️ THE ORDER IS THE WHOLE POINT. Every failure path in the pass returns
+    // early — no frames, frames not persisted, model refused. Measuring after
+    // any of them would deliver Tier 0 only on runs that never needed it.
+    const t0 = VISUAL_PASS.indexOf('runTierZeroPass(')
+    const gem = VISUAL_PASS.indexOf('await geminiJson(')
+    expect(t0).toBeGreaterThan(-1)
+    expect(gem).toBeGreaterThan(-1)
+    expect(t0).toBeLessThan(gem)
+  })
+
+  it('the model-failed row still carries the Tier 0 reading', () => {
+    // The measured case: 52 of 52 assess_reference failures in 24h on
+    // 2026-09-01 were RESOURCE_EXHAUSTED. That row must not come back empty.
+    expect(VISUAL_PASS).toMatch(/NOT_RUN\('VISUAL_MODEL_FAILED', 'complete', tierZero\)/)
+  })
+
+  it('a download that never landed carries NO Tier 0 reading', () => {
+    // ⚠️ THE OTHER HALF. With no file on disk there is nothing to measure, and
+    // a profile of nulls there would claim a reading of a video nobody had.
+    // NOT_RUN defaults tier_zero to null, and the download failure passes none.
+    expect(VISUAL_PASS).toMatch(/return NOT_RUN\(classifyDownloadFailure\(e\), phaseOf\(e\)\)/)
+  })
+
+  it('the bonus pass can never fail the job it rides on', () => {
+    // A throw here would turn a free extra into a new way to lose a reference.
+    expect(TIER_ZERO_PASS).not.toMatch(/^\s*throw /m)
+    expect(TIER_ZERO_PASS).toMatch(/TIER_ZERO_TIMEOUT_MS/)
   })
 })
 
