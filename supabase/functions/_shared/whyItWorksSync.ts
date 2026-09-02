@@ -136,15 +136,34 @@ export function syncWhyItWorksToScript(
     )
   }
 
-  // 6. THE PACE, MEASURED ON THE LONGEST BEAT RATHER THAN THE AVERAGE — an
-  //    average hides the one beat that stalls, and the one beat is what loses
-  //    the viewer.
-  const longest = Math.max(...spoken.map((b) => words(b.line).length))
-  if (longest <= 40) {
-    claims.push(
-      `No single beat runs longer than ${longest} words, so the pace never stalls in one place.`,
-    )
-  }
+  // 6. THERE IS NO PACE CLAIM, AND ITS REMOVAL IS THE POINT.
+  //
+  // ⚠️ IT PRAISED THE VIOLATION IT EXISTED TO CATCH. The claim read "No single
+  // beat runs longer than N words, so the pace never stalls in one place" and
+  // was emitted whenever N <= 40. Reported from production on a script whose
+  // opener ran 21 words: the panel called that a virtue. The hook had cleared a
+  // bar set at nearly double what a hook should be.
+  //
+  // ⚠️ AND THE CHECK DID NOT SUPPORT THE SENTENCE. 40 words at the recorder's
+  // own WPM is about SIXTEEN SECONDS on one beat. A sentence claiming the pace
+  // "never stalls" was gated on a threshold that permits a sixteen-second stall,
+  // so the check could pass while the claim was false — the one claim in this
+  // file that broke the file's own rule, stated at the top: every claim is a
+  // property CHECKED against the final script and emitted only when the check
+  // passes.
+  //
+  // ⚖️ AND IT IS NOT REPLACED WITH A TIGHTER NUMBER, deliberately. No hook or
+  // beat length has been measured on this product's scripts; a bar chosen today
+  // would be calibrated on the handful of runs that exposed the defect, and a
+  // constraint that has only ever seen the population it was written for looks
+  // like a working constraint. A claim needing a judgement is not made at all.
+  //
+  // ⚖️ NOTHING IS LOST, BECAUSE THE HONEST VERSION ALREADY SHIPS ELSEWHERE.
+  // `ScriptEditor`'s BeatLength compares each beat against ITS OWN planned
+  // `target_sec` and says so in the creator's words -- "8.4s against a 6s beat,
+  // about 2.4s long". That is per-beat, uses the plan's own number, and needs no
+  // invented ceiling. This panel's version was a worse duplicate of a working
+  // reader, and a half-true tick is worse than an absent one.
 
   // 7. THE FLOOR. Always true of any script that exists, so the panel is never
   //    empty for a real script — but it is a real measurement, not filler.
