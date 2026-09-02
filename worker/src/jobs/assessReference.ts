@@ -23,6 +23,7 @@ import { modelForTask } from '../modelRouting.js'
 import { parseContentExtraction, NOT_DETERMINED, NO_REHOOK } from '../referenceExtraction.js'
 import { frameSampleTargets } from '../referenceProfileTypes.js'
 import { runVisualPass } from '../visualPass.js'
+import { tierZeroColumns } from '../referenceTierZeroPass.js'
 import { readCachedTranscript, writeCachedTranscript } from '../transcriptCache.js'
 import { decideRouting, goesToFrames } from '../transcriptRouting.js'
 import { classifyReferenceFailure, isFetchDefect } from './referenceOutcome.js'
@@ -486,6 +487,10 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
       transcript_chars: full.length,
       error: `no_speech: transcript was ${routing.actualChars} characters (visual_route)`,
       assessed_at: assessedAt,
+      // ⚠️ OUTSIDE THE `ran` GATE, DELIBERATELY. Tier 0 is measured before the
+      // model call precisely so it survives the model failing; folding it into
+      // `visual?.ran` would discard it on exactly the runs it exists for.
+      ...tierZeroColumns(visual?.tier_zero, assessedAt),
       // ⚠️ WRITTEN ONLY WHEN THE PASS RAN, so `null` keeps meaning "nobody
       // looked" rather than "looked and saw nothing". Those are different facts
       // and the pilot's attrition report depends on telling them apart.
@@ -576,6 +581,9 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
     profile,
     rejections,
     fields_accepted: fieldsAccepted,
+    // ⚠️ OUTSIDE THE `ran` GATE — see the no-speech write above. The numbers off
+    // the file are the whole point on a run where the model refused.
+    ...tierZeroColumns(visual?.tier_zero, assessedAt),
     // ⚠️ WRITTEN ONLY WHEN THE PASS RAN. A pass that could not look leaves these
     // null and does NOT stamp `visual_assessed_at`, so a later run knows to try
     // again — "we looked and learned nothing" and "we never looked" are

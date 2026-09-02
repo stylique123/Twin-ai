@@ -183,3 +183,40 @@ export async function runTierZeroPass(videoPath: string): Promise<TierZeroPassRe
     if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
 }
+
+/**
+ * The Tier 0 columns for one row, from one pass result.
+ *
+ * ⚠️ IT ENCODES THE SAME THREE RULES MIGRATION 0180 CHECKS, ON PURPOSE. The
+ * database refuses a row carrying both a profile and a failure code, and refuses
+ * a `measured_at` without a profile. Duplicating those here is not belt and
+ * braces: a constraint violation surfaces as a failed write on a job that had
+ * already done all its work, so the shape is settled before it is sent.
+ *
+ * ⚠️ AN ABSENT RESULT WRITES NOTHING. `{}` leaves the existing columns alone,
+ * which is what a job that never reached the pass should do — clearing them
+ * would erase a real earlier reading on behalf of a run that never looked.
+ * That is different from `ran: false`, which HAS something to say: a code.
+ */
+export function tierZeroColumns(
+  r: TierZeroPassResult | null | undefined, measuredAt: string,
+): Record<string, unknown> {
+  if (!r) return {}
+  if (r.ran && r.profile !== null) {
+    return {
+      tier_zero_profile: r.profile,
+      // Cleared on success: a success and a failure are not both true, and a
+      // re-run that worked must not leave the old code beside the new numbers
+      // for a later count to guess between.
+      tier_zero_failure_code: null,
+      tier_zero_measured_at: measuredAt,
+    }
+  }
+  return {
+    tier_zero_profile: null,
+    tier_zero_failure_code: r.failureCode,
+    // ⚠️ THE CODE, BUT NO TIMESTAMP. A later run selects on the stamp's absence
+    // to retry; stamping a failure would retire a reference nobody ever measured.
+    tier_zero_measured_at: null,
+  }
+}
