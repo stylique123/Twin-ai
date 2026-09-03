@@ -72,6 +72,24 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0181_a_remix_needs_something_to_be_a_remix_of':
+    'Replaces `user_case_study` to add `opens` and `remix_rate`. ⚠️ EXCLUDED BECAUSE THE '
+    + 'EDITOR MATRIX HAS NO `analytics_events` — that table comes from 0024, which is not in '
+    + 'the matrix loop and should not be: the loop applies the EDITOR schema, and analytics '
+    + 'is a different subsystem. Postgres validates a `language sql` body at CREATE time, so '
+    + 'the function cannot be created against a database without the table, and it failed '
+    + 'exactly that way on the first run (run 33789858998: `relation "public.analytics_events" '
+    + 'does not exist`). Widening the loop to pull in 0024 would change the staging schema for '
+    + 'an unrelated subsystem to make one function compile, which is a bigger change than the '
+    + 'one being tested. '
+    + '⚠️ SO THIS IS A MANUAL APPLY, and per this file\'s own header that is a debt I am '
+    + 'recording rather than discharging: NOTHING will run 0181 anywhere until someone applies '
+    + 'it to production by hand. The safety condition the header sets is met — no code in the '
+    + 'PR that adds this reads `user_case_study`; the `gallery_opened` event it also adds '
+    + 'writes to `analytics_events` and is unaffected by whether the function is replaced. So '
+    + 'an unapplied 0181 costs a missing column in one investor-facing rollup, not a 503. '
+    + 'It is `create or replace` with an unchanged signature and unchanged grants, so applying '
+    + 'it late, twice, or never are all safe.',
   '0171_the_sample_is_written_down_or_it_never_happened':
     'Adds four own_sample_* columns to `brand_voices`. ⚠️ EXCLUDED FROM THE LOOP, NOT FROM '
     + 'STAGING — and the distinction is the whole reason for this wording. On staging '
