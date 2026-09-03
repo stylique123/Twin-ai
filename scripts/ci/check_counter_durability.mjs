@@ -240,6 +240,17 @@ const EVENTS = {
   //
   // ⚖️ EACH OF THESE IS A DEBT, VISIBLE HERE RATHER THAN DISCOVERED LATER BY
   // SOMEBODY WRITING A QUERY THAT RETURNS NOTHING.
+  voice_corpus_bounded: {
+    kind: 'counter_ephemeral',
+    why: 'How much of a creator\'s transcript corpus the voice synthesiser could actually '
+      + 'read — used, whole, excerpted, dropped. It exists because the previous bound was '
+      + 'SILENT: a `.slice(0, 12000)` on a front-loaded join read ~1.5 videos for a '
+      + 'long-form creator and ~11 for a short-form one, against 25 transcribed for free, '
+      + 'and nothing said so. Ephemeral rather than stored because the durable answer is '
+      + 'the voice profile itself; this line is how we see the bound biting while the '
+      + 'yield curve is measured. Promote it to a counter if the window is ever tuned '
+      + 'against a target rather than against a measurement.',
+  },
   reference_transfer_shadow: {
     kind: 'counter_ephemeral',
     why: 'Shadow measurement of reference-claim transfer. Its finding (#368) is already '

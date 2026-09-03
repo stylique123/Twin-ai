@@ -1,6 +1,12 @@
 import { splitDisclaimersFromCtas } from './claimDisclaimers.js'
 import { geminiJson, obj, arr, str, type InlineImage } from './gemini.js'
 import type { ScrapedPost } from './media.js'
+import { buildVoiceCorpus } from './voiceCorpus.js'
+
+/** The voice synthesiser's single-call window. Same size as the
+ *  extractor's per-batch window; what changed is that every transcript now
+ *  gets a share of it rather than the first few consuming it. */
+const VOICE_WINDOW_CHARS = 12_000
 
 // Re-synthesize a creator's brand voice from their ACTUAL spoken transcripts
 // (not just captions). This closes the premortem's #2 finding: the voice now
@@ -55,10 +61,25 @@ export async function synthesizeVoiceFromAudio(
   platform: string,
   transcripts: string[],
 ): Promise<VoiceProfile> {
-  const corpus = transcripts
-    .map((t, i) => `--- VIDEO ${i + 1} (spoken) ---\n${t}`)
-    .join('\n\n')
-    .slice(0, 12000)
+  // ⚠️ THIS USED TO BE A FRONT-LOADED JOIN AND A `.slice(0, 12000)`, which is
+  // the same defect `extractKnowledge` below was fixed for and this site was
+  // not. Measured in production 2026-09-03 (reference_transcripts n=551, mean
+  // 7,901 chars, median 1,061): that read about 1.5 videos for a long-form
+  // creator and about 11 for a short-form one, never the 25 TikTok transcribes
+  // for free. Signature words, recurring CTAs, tone, pacing, hook style and the
+  // DO rules were all built from whatever happened to come first.
+  const built = buildVoiceCorpus(transcripts, VOICE_WINDOW_CHARS)
+  // ⚠️ SAID OUT LOUD WHEN MATERIAL IS STILL DROPPED, the same way the extractor
+  // says it. A bound that discards silently is the thing being fixed here.
+  if (built.dropped > 0 || built.excerpted > 0) {
+    console.warn(JSON.stringify({
+      event: 'voice_corpus_bounded',
+      transcripts: transcripts.length,
+      used: built.used, whole: built.whole,
+      excerpted: built.excerpted, dropped: built.dropped,
+    }))
+  }
+  const corpus = built.text
 
   const prompt = `CREATOR: @${handle} on ${platform}
 SPOKEN TRANSCRIPTS (how they actually talk):
