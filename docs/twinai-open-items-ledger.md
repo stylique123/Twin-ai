@@ -2652,3 +2652,57 @@ listicle turns out to be the top format AND beats the rest by 1.2×. Silence in
 that case is the contract working, not a bug — which is exactly why this is
 worth doing: it is the first real test of a refusal we have only ever seen
 refuse for lack of data.
+
+---
+
+## G57 — G56 was wrong twice, and the second error is the instructive one
+
+G56 said six posts sat one step from lighting up the format-insight panel, and
+that entering their view counts was the whole ask. Both halves are false.
+
+### Error 1 — six rows are not six videos
+
+| | |
+|---|---|
+| post rows | 6 |
+| status `posted` | 4 |
+| status `failed` (`TikTok not connected`) | 2 |
+| distinct generations behind those rows | 5 |
+
+One of the failures is a retry of the SAME generation as a successful post, so
+the "Rapid Fire Myth Busting Listicle, n = 2" in G56 was **one video counted
+twice**. Every format actually holds n = 1, and `computeFormatInsight` requires
+the top format at n ≥ 2. The panel refuses, correctly, and would have kept
+refusing after the entry work.
+
+### ⚠️ Error 2 — THE PANEL IS PER-CREATOR AND THE QUERY WAS NOT
+
+`listPosts` is scoped to the signed-in owner, so `computeFormatInsight` only
+ever sees one creator's posts. The measurement behind G56 aggregated across
+every owner in the table. Grouped properly:
+
+| owner | posts |
+|---|---|
+| 4bad9990… | 1 |
+| 363e0b27… | 1 |
+| cf33f11e… | 1 |
+| 8184f0e7… | 3 (one posted, two failed) |
+
+Six posts across **four separate accounts**. No account holds two successful
+posts in one format; no account ever could have lit the panel. And the owner's
+own dashboard — confirmed from a screenshot — reads "Nothing published yet",
+because none of those rows belong to them. The instruction to go and type
+numbers into them was not merely low-value, it was **impossible to carry out**.
+
+⚖️ **THE LESSON IS ABOUT SCOPE, NOT ARITHMETIC.** A per-creator feature must be
+measured per creator. An aggregate over a table whose reader filters by owner
+answers a question nobody asked, and it will look like a finding — it has real
+rows behind it, and every number in it is true. `status` and `owner_id` were
+both one column away in a query that had already been written.
+
+### What actually unblocks the outcome loops
+
+Nothing in the existing rows. The signed-in account holds 5 drafts and 0
+published. LOOP 7 begins at that account's first Publish, followed by a view
+count entered against it. The format-insight panel needs a SECOND published
+video in the same format after that.
