@@ -111,7 +111,12 @@ jobs:
             docker run -d --name twinai-worker --restart unless-stopped \
               --env-file /opt/twinai-worker.env twinai-worker
             sleep 8
-            if ! docker ps --filter name=twinai-worker --filter status=running -q | grep -q .; then
+            # ⚠️ ANCHORED. `--filter name=twinai-worker` is a SUBSTRING match, so
+            # this guard could be satisfied by a DIFFERENT container whose name
+            # merely contains the string — including a stale one. A rollback
+            # check that can pass on the wrong container is worse than none: it
+            # reports a healthy deploy while the new image lies dead.
+            if ! docker ps --filter name='^twinai-worker$' --filter status=running -q | grep -q .; then
               echo "::error::new worker image crashed on boot — rolling back to previous image"
               docker logs --tail 30 twinai-worker || true
               docker rm -f twinai-worker 2>/dev/null || true
@@ -120,7 +125,36 @@ jobs:
               exit 1
             fi
             docker image prune -f >/dev/null 2>&1 || true
+
+            # ⚠️ ONE WORKER, OR THIS DEPLOY IS A LIE.
+            #
+            # MEASURED 2026-09-03, in this workflow's own log: the final
+            # `docker ps` printed TWO lines —
+            #     STATUS: Up 8 seconds (healthy)
+            #     STATUS: Up 25 hours (healthy)
+            # A second container whose name contains `twinai-worker` had been
+            # running for a DAY, claiming from the same queue on a day-old
+            # build. `docker rm -f twinai-worker` removes only the exact name,
+            # so nothing here ever replaced or even noticed it.
+            #
+            # The cost is not theoretical. Whether a merged change took effect
+            # became a coin flip decided by which container claimed the job,
+            # and every green deploy said the change was live. Tier 0 columns
+            # written by one build and not the other read as an intermittent
+            # application bug for hours.
+            #
+            # So: fail the deploy. A stale sibling is not a warning, because a
+            # warning in a log nobody reads is how this survived 25 hours.
+            OTHERS="$(docker ps --filter name=twinai-worker --format '{{.Names}}' \
+                      | grep -vx 'twinai-worker' || true)"
+            if [ -n "$OTHERS" ]; then
+              echo "::error::a second worker container is claiming the same queue: $OTHERS"
+              echo "::error::remove it (docker rm -f $OTHERS) — until then, which build handles a job is a coin flip"
+              docker ps --filter name=twinai-worker --format 'LEFTOVER: {{.Names}} | {{.Status}} | {{.Image}}'
+              exit 1
+            fi
+
             echo "deployed: $(git rev-parse --short HEAD)"
             docker logs --tail 3 twinai-worker
-            docker ps --filter name=twinai-worker --format 'STATUS: {{.Status}}'
+            docker ps --filter name='^twinai-worker$' --format 'STATUS: {{.Status}}'
           REMOTE

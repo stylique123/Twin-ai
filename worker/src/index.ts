@@ -182,8 +182,20 @@ async function main() {
   // hit it, and what it said — "not configured yet, contact support" — reads as
   // a product limitation rather than a missing variable.
   const caps = readCapabilities(env)
+  // ⚠️ THE BUILD, NOT JUST THE FACT THAT SOMETHING BOOTED. Measured 2026-09-03:
+  // TWO `twinai-worker` containers were claiming from the same queue — one 8
+  // seconds old carrying the just-deployed image, one 25 HOURS old carrying
+  // whatever main looked like a day earlier. Both reported healthy. Nothing in
+  // any log, row or check said which build handled a given job, so a feature
+  // merged and deployed appeared to be "not working" when it was simply not the
+  // container that picked the job up. `WORKER_GIT_SHA` was baked into the image
+  // by the Dockerfile and read by nobody: a field written and never read.
+  //
+  // `unknown` is deliberate and not a crash. A locally-run worker has no sha,
+  // and refusing to boot without one would turn a provenance gap into an outage.
   log('info', 'worker up', {
     types: env.jobTypes, model: env.whisperModel, capabilities: capabilitySummary(caps),
+    build: process.env.WORKER_GIT_SHA ?? 'unknown',
   })
   // ⚖️ WARN, NOT FAIL. A worker without Apify still transcribes, renders and
   // scans TikTok — reduced capability is a legitimate state and crashing on it
