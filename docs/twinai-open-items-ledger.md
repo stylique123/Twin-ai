@@ -2497,3 +2497,69 @@ It never edits the shipped script. On a trigger it records the flagged beat
 pairs and offers three candidate rewrites for the creator to accept or
 ignore — the G18 shape. So turning it on cannot change what a paying creator
 receives; it can only start telling us how often the 67% is real.
+
+---
+
+## G54 — G-C (hook distinctness) is real, and a lexical guard would hide it
+
+The audit's G-C item says the three hook options are not drawn from distinct
+trigger families. There is no trigger-family concept anywhere in the code —
+`grep -rn 'triggerFamily|trigger_family|TRIGGER_FAMIL'` returns nothing — so
+building this would be net-new. Measured first.
+
+### The problem is real
+
+One production generation's three options, 2026-09-02:
+
+> "I have an opinion about the big guys in construction that makes people
+> angry, but I will **stand by it forever**."
+>
+> "They told me the construction industry was not built for women, which led
+> to a realization I will **defend until I die**."
+>
+> "I picked up my first tool five years ago, and discovered a truth about
+> gatekeeping I will **never back down from**."
+
+Three options, one move: the personal-conviction declaration. And across two
+separate generations the same day: *"You're not scaling because you're afraid
+to outgrow yourself"* / *"You're not scaling because you refuse to make hard
+decisions."*
+
+### ⚠️ AND A CHEAP GUARD WOULD REPORT THAT AS HEALTHY
+
+The obvious lexical proxy — do two options in a set share their opening three
+words — measured across all 59 production hook sets:
+
+| | |
+|---|---|
+| hook option sets, 90 days | 59 |
+| sets where two options share their first three words | 8 (13.6%) |
+| of the collisions above, caught by that proxy | **0** |
+
+"Stand by it forever", "defend until I die" and "never back down from" share
+no words at all. The proxy finds a disjoint 13.6% and misses every collision a
+reader can see in one glance.
+
+⚖️ **This is the G-F shape exactly** — a lexical floor reading 4.9% against a
+panel's 67%. A distinctness guard built on string overlap would ship, report a
+low number, look like coverage, and stop anyone from looking at the thing it
+structurally cannot see. **A guard that cannot see the failure is worse than
+no guard**, because a zero from a blind instrument is indistinguishable from a
+zero from a working one.
+
+### Decision: G-C waits for the judge, and is NOT built lexically
+
+Everything G-C needs already exists behind `SEMANTIC_REPETITION_JUDGE_ENABLED`
+(G53): a model pass over structured beats, a shared trigger rule, a daily
+ceiling that fails closed, a durable `beat_audit` record, and the
+offered-never-imposed repair shape. Once that switch is on and the machinery
+has met real traffic, G-C is a second prompt through the same pipe rather than
+a second system.
+
+⚖️ **And when it is built, repair DEMOTES, never rewrites.** Reordering the
+options so a duplicated family drops below a distinct one costs nothing if the
+judgement is wrong. Rewriting a hook the creator may have wanted costs them the
+option.
+
+So one owner action — the G53 environment variable — unblocks two audit items,
+not one.
