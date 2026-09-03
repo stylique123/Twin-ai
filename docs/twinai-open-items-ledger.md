@@ -2451,7 +2451,7 @@ It has never run.
 |---|---|
 | generations with a `beat_audit`, last 90 days | 20 |
 | carrying a `semantic_repetition` key | **0** |
-| carrying `reference_phrase_overlap` (the sibling advisory) | 11 |
+| generations whose `blueprint` carries an `advisory` key | **0** of 59 |
 
 Zero is the decisive number, and it is not the budget: the budget-exhausted
 path *also* writes the key, with `ran: false` and a `skipped_reason`. An
@@ -2459,14 +2459,32 @@ absent key means the block was never entered at all.
 
 `grep -rn SEMANTIC_REPETITION_JUDGE_ENABLED` returns exactly one hit — the
 `if` at `:7587` that reads it. Nothing sets it, in any workflow, script, or
-doc. The sibling switch (`SCRIPT_ADVISORY_ENABLED`, same shape, same file) IS
-set, which is why its key appears 11 times. Off-by-default was the right
-call for a new recurring model spend; nobody flipped it afterwards.
+doc. Off-by-default was the right call for a new recurring model spend;
+nobody flipped it afterwards.
+
+⚠️ **CORRECTION, and it makes this bigger.** The first draft of this entry
+claimed the sibling switch `SCRIPT_ADVISORY_ENABLED` was on, citing 11
+production rows carrying `beat_audit.reference_phrase_overlap`. That
+inference was wrong. `reference_phrase_overlap` is written unconditionally
+at `:6495`; the advisory block does not touch `beat_audit` at all — it
+writes `blueprint.advisory` at `:7542`. Measured properly: **0 of 59**
+generations in the last 90 days carry a `blueprint.advisory` key.
+
+**Both switches are off.** Two independent, built, tested, rescue-point-safe
+script-quality reads have never executed in production.
+
+⚖️ **They are not equally safe to flip.** The judge has a hard 50/day
+ceiling that fails closed on an unreadable count. The advisory has none —
+its own comment concedes it is "a cost gate in shape only", because
+`shouldAsk` clears on most scripts (production mean 6.3 beats against a
+threshold of 4) rather than because anything caps the spend. Turn the judge
+on first; the advisory deserves a ceiling of its own before it is enabled.
 
 ### ⚠️ OWNER ACTION — one environment variable
 
 Set `SEMANTIC_REPETITION_JUDGE_ENABLED=true` on the `generate-blueprint` edge
-function. No code change, no migration, no deploy of ours.
+function. No code change, no migration, no deploy of ours. Leave
+`SCRIPT_ADVISORY_ENABLED` alone for now — see the correction above.
 
 ⚖️ **The spend is bounded twice over.** The ceiling is 50 judged generations
 per UTC day; production ran 25 generations in the last THIRTY days. The
