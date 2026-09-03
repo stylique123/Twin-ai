@@ -2563,3 +2563,48 @@ option.
 
 So one owner action — the G53 environment variable — unblocks two audit items,
 not one.
+
+---
+
+## G55 — the Auto-Learning build order has nothing left to build
+
+The Auto-Learning document specifies loops 1 (recordings → store), 3 (edits +
+accepted final), and 7 (outcomes). I went to build LOOP 1 and greped for the
+reader first, per the standing rule. Every loop's capture chain is already
+wired end to end.
+
+| Loop | Table | Writer | Reader | Rows |
+|---|---|---|---|---|
+| 1 — recordings | `media_upload_attempts` | `source-asset/index.ts:394` | `uploadForensics.ts` | 2 |
+| 3 — edits | `script_edits` | `ScriptEditor.tsx:147` | `_shared/d1Core.ts:105` | **0** |
+| 7 — outcomes | `post_outcome_observations` | `Dashboard.tsx:419` → `recordPostStats` → `appendObservation` | `listPostObservations` | **0** |
+
+⚠️ **THE WRITERS ARE CALLED, NOT MERELY DEFINED**, and that distinction is the
+whole point of checking. `recordScriptEdit` is invoked at `ScriptEditor.tsx:147`
+and `apps/web/src/lib/scriptEditWiring.test.ts` pins the call site so it cannot
+quietly regress. `appendObservation` looks uncalled on a naive grep — it has
+zero direct callers outside its own module — but `recordPostStats` calls it at
+`outcomeLog.ts:165` and `:168`, and the Dashboard calls that.
+
+### The zeros are traffic, not code
+
+Against 59 generations: nobody has edited a script in the editor, and nobody
+has typed a post's stats into the Dashboard. LOOP 3 may draw its first
+selection-level lesson at 20 edit pairs and holds zero.
+
+⚖️ **Building "the capture layer" would have rebuilt working code** — the
+seventh time a named cause turned out to be already built, and the first where
+it would have cost a whole night. The Auto-Learning system is not waiting on
+engineering. One creator recording a video, editing the script, posting it and
+entering the view count starts filling three tables at once.
+
+### One genuine dormancy, different in kind
+
+`mintPostAttribution`, `listPostAttributions` and `listDnaClaims` in
+`outcomeLog.ts` each have ZERO non-test callers — writer *and* reader both
+unreached.
+
+⚖️ **That is a dormant subsystem, not the ledger's defect class.** Nothing is
+written and silently dropped; the code simply never runs, so no measurement is
+being quietly falsified. Giving attribution a surface is a product decision
+rather than a wiring fix, and it is recorded here rather than acted on.
