@@ -61,12 +61,27 @@ describe('it supplies facts and issues no instruction', () => {
   })
 
   it('includes the fields a creator would notice repeating', () => {
+    // ⚠️ THE FIXTURE NOW STATES PROVENANCE, BECAUSE THE RENDERER NOW READS IT.
+    // This assertion used to pass on a fixture that said nothing about who chose
+    // the hook, which is exactly the ambiguity `hook_choice` was added to end —
+    // a row with no provenance renders as `opened (unconfirmed):` now, and that
+    // is the correct output, not a regression. Asserting the confirmed wording
+    // requires supplying the fact that makes it true.
     const o = renderContentHistory([
-      vid({ premise: 'Why pricing pages fail' }), vid({ hook: 'Second' }),
+      vid({ premise: 'Why pricing pages fail', hookChoice: { source: 'creator', index: 2 } }),
+      vid({ hook: 'Second', hookChoice: { source: 'creator', index: 1 } }),
     ])
     expect(o).toMatch(/format: The Trust Builder/)
     expect(o).toMatch(/premise: Why pricing pages fail/)
     expect(o).toMatch(/opened: "Most founders get this wrong"/)
+  })
+
+  it('a hook with no recorded provenance is rendered unconfirmed, not as fact', () => {
+    // The rows that predate 0134. They are real hooks and stay visible; what
+    // changes is that the block stops asserting the creator chose them.
+    const o = renderContentHistory([vid({ premise: 'p' }), vid({ hook: 'Second' })])
+    expect(o).toMatch(/opened \(unconfirmed\): "Most founders get this wrong"/)
+    expect(o).not.toMatch(/(?<!\()opened: "/)
   })
 
   it('caps the list so it cannot crowd out the reference', () => {

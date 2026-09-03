@@ -39,8 +39,14 @@ function loadInline(startMarker: string, endMarker: string, exportName: string):
     .replace(/: ReadonlySet<string>/g, '')
     .replace(/: RegExp\[\]/g, '')
     .replace(/: string\[\]/g, '')
-    .replace(/interface \w+Inline \{[^}]*\}/g, '')
-    .replace(/: Array<\{[^}]*\}>/g, '')
+    // ⚠️ ONE LEVEL OF NESTING, BECAUSE THE MIRRORS NOW HAVE IT. `[^}]*` stops at
+    // the FIRST `}`, so a parameter type containing an inline object — such as
+    // `hookChoice?: { source: ...; index: ... } | null` — left a dangling brace
+    // and the harness died with `SyntaxError: Unexpected token ':'` instead of
+    // reporting a parity result. A guard that cannot load the thing it guards
+    // reports nothing, which is worse than reporting a failure.
+    .replace(/interface \w+Inline \{(?:[^{}]|\{[^{}]*\})*\}/g, '')
+    .replace(/: Array<\{(?:[^{}]|\{[^{}]*\})*\}>/g, '')
     .replace(/\)\s*:\s*\{[^}]*\}\s*\{/g, ') {')
     .replace(/: unknown\b/g, '')
     .replace(/: string \| null \| undefined/g, '')

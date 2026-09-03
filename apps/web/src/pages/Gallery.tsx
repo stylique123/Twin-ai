@@ -679,6 +679,27 @@ export default function Gallery() {
   // Deep-link into the Studio with the reference prefilled. Studio reads `ref`
   // from the query string, so pass it there (a `state` payload was silently
   // dropped, which left Studio empty when you clicked Remix).
+  // ⚠️ THE DENOMINATOR `gallery_remix` NEVER HAD. Remixes were counted from the
+  // first day; opens were not, so a reference nobody remixed was indistinguishable
+  // from one nobody was ever shown. That is the difference between "creators
+  // reject this format" and "this card is on page three" — opposite conclusions
+  // from the same silence, and the ranking read the first one.
+  //
+  // ⚖️ THE OPEN, NOT THE IMPRESSION. A card scrolled past is not consideration
+  // and logging every visible tile would drown the signal it is meant to
+  // sharpen. Opening the detail is the cheapest act that means "I am thinking
+  // about this one", and it is the honest denominator for a remix.
+  //
+  // Same fields as the remix event, deliberately: a funnel whose two ends carry
+  // different facts cannot be joined on the thing that varies.
+  const openDetail = (c: Card) => {
+    void logEvent('gallery_opened', {
+      url: c.url, niche: c.niche, creator: c.creator,
+      niche_relation: factsById.get(c.id)?.nicheRelation ?? 'unknown',
+    })
+    setDetail(c)
+  }
+
   const remix = (c: Card) => {
     // The remix-click is the core interaction signal — logging it builds the data
     // set that lets discovery graduate from content-based to collaborative filtering.
@@ -778,7 +799,7 @@ export default function Gallery() {
                     {/* Reel-shaped (9:16) tile — the gallery now browses like a
                         feed of vertical videos. The WHOLE tile opens the detail
                         modal; Play opens the original; Remix deep-links the Studio. */}
-                    <div onClick={() => setDetail(c)} className={cn('group relative flex aspect-[9/16] cursor-pointer flex-col justify-end overflow-hidden rounded-card border border-white/8 transition-all duration-300 hover:-translate-y-0.5', glowClass)}>
+                    <div onClick={() => openDetail(c)} className={cn('group relative flex aspect-[9/16] cursor-pointer flex-col justify-end overflow-hidden rounded-card border border-white/8 transition-all duration-300 hover:-translate-y-0.5', glowClass)}>
                       {/* Backdrop: gradient skin, a soft shimmer while the thumb
                           loads (so an empty tile reads as "loading", not broken),
                           then the real cover frame fades in. */}
