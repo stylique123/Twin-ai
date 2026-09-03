@@ -252,6 +252,20 @@ export interface Generation {
    *  indistinguishable from that default. Only `source: 'creator'` is a
    *  preference. NULL predates the column — never "no choice was made". */
   hook_choice?: HookChoice | null
+  /** 0182. THE VERSION THEY TOOK TO CAMERA, and the terminus `script_edits` has
+   *  never had. An edit trail without a last version is a list of attempts with
+   *  no answer to "and then what did they shoot".
+   *
+   *  ⚠️ NOT CRYPTOGRAPHIC. FNV-1a over the spoken lines only — see
+   *  `acceptedFinal.ts`, the only writer. Identity, not integrity.
+   *
+   *  ⚠️ ALL THREE OR NONE; a CHECK constraint refuses a partial acceptance,
+   *  because a sha with no timestamp is a half-written row that reads like
+   *  evidence. NULL means no acceptance has been recorded — never "they
+   *  accepted nothing". */
+  accepted_final_sha?: string | null
+  accepted_final_at?: string | null
+  accepted_final_word_count?: number | null
   edit_style?: string | null // LEGACY (old editor) — kept so stored rows still parse
   // The finished video MP4 + its cover JPEG (storage paths in the private `edits`
   // bucket; sign to display/play). Written by the old editor historically; the

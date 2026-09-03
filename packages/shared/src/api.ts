@@ -7,6 +7,7 @@ import {
 import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
 import { sanitizeBriefForWrite, readStoredBrief, type BriefAnswers } from './preScriptBrief'
 import type { HookChoice } from './hookChoice'
+import type { AcceptedFinalStamp } from './acceptedFinal'
 import { mapIsUsable, type CommunityMap } from './communityMap'
 import { readStoredReferenceProfile, type StoredProfileRow } from './storedReferenceProfile'
 import type { ReferenceProfile } from './referenceProfile'
@@ -111,6 +112,27 @@ const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
 // ---- Analytics (data layer) ----------------------------------------------
 // Fire-and-forget client event logging for the metrics/data room. NEVER throws —
 // analytics must never break a user action. Server events are logged service-side.
+/**
+ * Record the script the creator took to camera (0182).
+ *
+ * ⚖️ BEST EFFORT, LIKE EVERY MEASUREMENT ON A CREATOR'S PATH. A failure here
+ * must never stand between somebody and their teleprompter, so this swallows
+ * its own errors — the same contract `logEvent` has.
+ *
+ * ⚠️ THREE COLUMNS WRITTEN TOGETHER, because the CHECK constraint refuses a
+ * partial acceptance. A sha with no timestamp is a half-written row that reads
+ * like evidence.
+ */
+export async function stampAcceptedFinalLive(stamp: AcceptedFinalStamp): Promise<void> {
+  try {
+    await supabase.from('generations').update({
+      accepted_final_sha: stamp.sha,
+      accepted_final_at: new Date().toISOString(),
+      accepted_final_word_count: stamp.wordCount,
+    }).eq('id', stamp.generationId)
+  } catch { /* never block the recorder on a measurement */ }
+}
+
 export async function logEvent(event: string, props: Record<string, unknown> = {}, timeSavedMinutes = 0): Promise<void> {
   try {
     const { data: auth } = await supabase.auth.getUser()

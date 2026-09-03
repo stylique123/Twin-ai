@@ -12,6 +12,7 @@
 // experience than a lost answer, and the creator can always say it again in
 // their own words. Ordering follows from that: log first, knowledge second.
 import { supabase } from './supabase'
+import type { StoreCounts } from '@twinai/shared'
 import { answerToKnowledge, type CreatorQuestion, type StoredKnowledgeItem } from '@twinai/shared'
 
 /**
@@ -156,6 +157,46 @@ async function markPut(questionId: string, outcome: 'answered' | 'skipped' | 'sh
  *
  *  ⚖️ READ-ONLY, AND IT WRITES NOTHING. Showing a creator their own sentence is
  *  not the creator saying it. Nothing lands in the store until they confirm. */
+/**
+ * How many knowledge rows of each kind this creator has, for deficit weighting.
+ *
+ * ⚠️ EVERY SOURCE, UNLIKE `loadExtractedKnowledge`. That one filters to spoken
+ * transcript material because it feeds story SUGGESTIONS, where a caption never
+ * attested anything. This counts the STORE, and an answered question fills the
+ * store just as truly as an extracted one — filtering by source here would
+ * report a creator who has answered five questions as having none, and ask them
+ * the same kind forever.
+ *
+ * ⚠️ NULL MEANS UNREADABLE, NEVER EMPTY. `nextQuestionByDeficit` treats null as
+ * "fall back to bank order"; returning `{}` on a failed read would claim every
+ * kind is scarce and silently disable the weighting while looking like it works.
+ */
+export async function loadKnowledgeCounts(): Promise<StoreCounts | null> {
+  try {
+    const { data: auth } = await supabase.auth.getUser()
+    const ownerId = auth?.user?.id
+    if (!ownerId) return null
+    const { data, error } = await supabase
+      .from('creator_knowledge')
+      .select('kind')
+      .eq('owner_id', ownerId)
+      .limit(1000)
+    if (error) {
+      console.warn('knowledge counts not read', error.message)
+      return null
+    }
+    const counts: Record<string, number> = {}
+    for (const row of data ?? []) {
+      const k = String((row as { kind?: unknown }).kind ?? '').trim()
+      if (k) counts[k] = (counts[k] ?? 0) + 1
+    }
+    return counts as StoreCounts
+  } catch (err) {
+    console.warn('knowledge counts not read', err)
+    return null
+  }
+}
+
 export async function loadExtractedKnowledge(): Promise<StoredKnowledgeItem[] | null> {
   try {
     const { data: auth } = await supabase.auth.getUser()

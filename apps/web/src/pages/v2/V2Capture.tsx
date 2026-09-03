@@ -18,6 +18,7 @@ import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Sparkles
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { PreflightPanel } from '../../components/PreflightPanel'
 import { loadRecordingScript, setWpm, establishDurableRecordingScriptLive, prepareCaptureMode } from '../../lib/api'
+import { acceptedFinalStamp, stampAcceptedFinalLive } from '../../lib/api'
 import { buildRecordingScript } from '../../lib/api'
 import { pickRecorderMime, getGeneration, uploadSourceRecording, newRecordingAttemptId, UploadOnce } from '../../lib/api'
 import { buildTeleprompterIntent, captureScriptSha256, sha256Hex, normalizeDialogue } from '../../lib/api'
@@ -63,6 +64,22 @@ export default function V2Capture() {
 // a prepare failure blocks recording visibly + retryably — never a lost take.
 type CaptureFailure = 'load' | 'persist_failed' | 'reload_failed' | 'mismatch' | 'unexpected'
 
+// ⚖️ BEST EFFORT, LIKE EVERY MEASUREMENT ON A CREATOR'S PATH. A telemetry
+// failure must never stand between someone and their teleprompter, so this
+// swallows its own errors and is deliberately not awaited by the caller.
+//
+// ⚠️ NULL IS A REAL ANSWER AND IS NOT WRITTEN. A script with no spoken words is
+// not an acceptance of an empty script; it is an event that did not happen, and
+// a row saying otherwise would be a phantom in the corpus this exists to keep
+// clean.
+async function stampAcceptedFinal(script: RecordingScript): Promise<void> {
+  try {
+    const stamp = acceptedFinalStamp(script)
+    if (!stamp) return
+    await stampAcceptedFinalLive(stamp)
+  } catch { /* never block the recorder on a measurement */ }
+}
+
 function CaptureGate({ genId, mode, onBack }: { genId: string; mode: 'upload' | 'record'; onBack: () => void }) {
   const [timeline, setTimeline] = useState<RecordingScript | null>(null)
   const [uploadReady, setUploadReady] = useState(false)
@@ -83,7 +100,21 @@ function CaptureGate({ genId, mode, onBack }: { genId: string; mode: 'upload' | 
         })
         if (!alive) return
         if (r.ready && r.mode === 'upload') { setUploadReady(true); return }
-        if (r.ready && r.mode === 'record') { setTimeline(r.script); return }
+        if (r.ready && r.mode === 'record') {
+          // ⚠️ THE ONE MOMENT A CREATOR STOPS ARGUING WITH THE SCRIPT. `script_edits`
+          // records every change with its before and after, and cannot say which
+          // version they stopped at — so the pair that carries signal (what we
+          // wrote → what they were willing to say out loud) has never been
+          // assemblable. Opening the recorder is the acceptance; a save is
+          // mid-thought.
+          //
+          // ⚖️ STAMPED, NOT COUNTED. Creators open the recorder, back out, change
+          // a line and return. The stamp carries a hash of the spoken words so a
+          // reader takes the latest DISTINCT hash; counting entries would report
+          // someone checking their script three times as three acceptances.
+          void stampAcceptedFinal(r.script)
+          setTimeline(r.script); return
+        }
         console.warn('capture_prepare_failed', { generationId: genId, reason: r.reason })
         setFailed(r.reason)
       } catch {
