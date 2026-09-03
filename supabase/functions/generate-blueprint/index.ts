@@ -1214,7 +1214,23 @@ function unsupplyableShotCountInline(script: unknown): number {
   for (const b of script) {
     if (!b || typeof b !== 'object') continue
     const rec = b as Record<string, unknown>
-    if (asksForScreenCaptureInline(rec.editor_intent) || asksForBrollInline(rec.editor_intent)) n += 1
+    // ⚠️ `broll_request` COUNTS TOO, AND IT DID NOT UNTIL NOW. Measured in
+    // production 2026-09-03: a beat carried
+    // `broll_request: "Screen recording of deleting a social media draft."`
+    // — very nearly the exact string this module's own docstring cites as the
+    // motivating real-world failure — and BOTH counters read straight past it,
+    // because one reads `proof`/`direction` and this one read `editor_intent`.
+    // The count said zero while the violation sat in the row.
+    //
+    // ⚖️ IT IS THE MEASUREMENT THAT WAS WRONG, NOT THE CREATOR'S SCRIPT.
+    // Nothing renders `broll_request` — `placeToStand` is forbidden from
+    // reaching it and no other reader exists — so this never reached anybody
+    // holding a phone. That is exactly why it had to be caught here: a
+    // violation in an unread field is invisible to the creator AND to us, and
+    // the counter's whole job is to tell us whether the prompt is holding.
+    const unsupplyable = (v: unknown) =>
+      asksForScreenCaptureInline(v) || asksForBrollInline(v)
+    if (unsupplyable(rec.editor_intent) || unsupplyable(rec.broll_request)) n += 1
   }
   return n
 }
