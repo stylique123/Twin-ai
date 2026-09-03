@@ -2608,3 +2608,47 @@ unreached.
 written and silently dropped; the code simply never runs, so no measurement is
 being quietly falsified. Giving attribution a surface is a product decision
 rather than a wiring fix, and it is recorded here rather than acted on.
+
+---
+
+## G56 — G-E is built and honest, and six rows away from lighting up
+
+The audit's **G-E** asks whether a suggestion makes a claim the creator's data
+can support. It does, and the contract is already the strict kind: the
+Dashboard's format-insight panel builds its claim through `validateClaim`
+(`Dashboard.tsx:500`) and renders the wording from `claimQualifier`
+(`:267`), so the n≥2 floor is a REFUSAL rather than a convention, and the
+panel cannot drift from any other surface showing the same claim. The comment
+above it records why — it once shipped as a causal instruction ("Make more
+like it") with the sample size computed and then dropped at render.
+
+Nothing to build.
+
+### ⚠️ AND IT IS CLOSER TO LIVE THAN "NO TRAFFIC" SUGGESTED
+
+`computeFormatInsight` needs three things: at least 2 formats with views, the
+top format at n≥2, and a margin of 1.2×. Measured in production, 2026-09-03:
+
+| | |
+|---|---|
+| posts | 6 |
+| linked to a generation | 6 (all of them) |
+| **carrying a view count** | **0** |
+| distinct formats across those posts | 5 |
+| best-represented format | Rapid Fire Myth Busting Listicle, **n = 2** |
+
+⚖️ **The posting step already happened six times.** What has never happened is
+somebody coming back to type in a number. The structural preconditions are
+ALREADY MET — 5 formats clears the ≥2 floor, and the listicle's n=2 clears the
+sample floor exactly.
+
+### ⚠️ OWNER ACTION — six numbers, not a new video
+
+Open the Dashboard and enter the view count for the six posts already there
+(2026-06-14 ×3, 2026-06-23 ×3). That is the whole ask.
+
+⚖️ **And the panel may still, correctly, say nothing.** It fires only if the
+listicle turns out to be the top format AND beats the rest by 1.2×. Silence in
+that case is the contract working, not a bug — which is exactly why this is
+worth doing: it is the first real test of a refusal we have only ever seen
+refuse for lack of data.
