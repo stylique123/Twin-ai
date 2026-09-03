@@ -2423,3 +2423,77 @@ Until then `an-answer-must-reach-the-writer.test.ts` is the chain's ONLY
 protection: a link no production row has ever traversed cannot be caught
 breaking by traffic. It would break silently and stay broken until the first
 creator finally answered and got nothing back.
+
+---
+
+## G53 — The semantic-repetition judge is built, tested, budgeted, and OFF
+
+The audit's G-F item cites a 67% panel report of scripts that repeat
+themselves in substance. The code agrees with that number and says so at
+`generate-blueprint/index.ts:7574`:
+
+> `repetition.ts`'s lexical floor measured 4.9% on 41 real scripts against a
+> 67% panel report — the gap is meaning no word-overlap check can reach, and
+> the only evidenced route is a judge.
+
+The judge is that route, and it is complete: an LLM pass over the numbered
+beats, the shared `evaluateSemanticRepetitionTrigger` decision (never
+re-derived at the call site), three offered rewrite candidates on trigger, a
+durable `beat_audit.semantic_repetition` record, a 50/day cost ceiling that
+fails closed on an unreadable count, and a non-fatal wrapper so a throw costs
+the audit and never the script.
+
+It has never run.
+
+### Measured, production, 2026-09-03
+
+| | |
+|---|---|
+| generations with a `beat_audit`, last 90 days | 20 |
+| carrying a `semantic_repetition` key | **0** |
+| generations whose `blueprint` carries an `advisory` key | **0** of 59 |
+
+Zero is the decisive number, and it is not the budget: the budget-exhausted
+path *also* writes the key, with `ran: false` and a `skipped_reason`. An
+absent key means the block was never entered at all.
+
+`grep -rn SEMANTIC_REPETITION_JUDGE_ENABLED` returns exactly one hit — the
+`if` at `:7587` that reads it. Nothing sets it, in any workflow, script, or
+doc. Off-by-default was the right call for a new recurring model spend;
+nobody flipped it afterwards.
+
+⚠️ **CORRECTION, and it makes this bigger.** The first draft of this entry
+claimed the sibling switch `SCRIPT_ADVISORY_ENABLED` was on, citing 11
+production rows carrying `beat_audit.reference_phrase_overlap`. That
+inference was wrong. `reference_phrase_overlap` is written unconditionally
+at `:6495`; the advisory block does not touch `beat_audit` at all — it
+writes `blueprint.advisory` at `:7542`. Measured properly: **0 of 59**
+generations in the last 90 days carry a `blueprint.advisory` key.
+
+**Both switches are off.** Two independent, built, tested, rescue-point-safe
+script-quality reads have never executed in production.
+
+⚖️ **They are not equally safe to flip.** The judge has a hard 50/day
+ceiling that fails closed on an unreadable count. The advisory has none —
+its own comment concedes it is "a cost gate in shape only", because
+`shouldAsk` clears on most scripts (production mean 6.3 beats against a
+threshold of 4) rather than because anything caps the spend. Turn the judge
+on first; the advisory deserves a ceiling of its own before it is enabled.
+
+### ⚠️ OWNER ACTION — one environment variable
+
+Set `SEMANTIC_REPETITION_JUDGE_ENABLED=true` on the `generate-blueprint` edge
+function. No code change, no migration, no deploy of ours. Leave
+`SCRIPT_ADVISORY_ENABLED` alone for now — see the correction above.
+
+⚖️ **The spend is bounded twice over.** The ceiling is 50 judged generations
+per UTC day; production ran 25 generations in the last THIRTY days. The
+repair call fires only on the trigger, and only after the rescue point, so a
+failure there loses three suggested rewrites and nothing else.
+
+### What it does NOT do, deliberately
+
+It never edits the shipped script. On a trigger it records the flagged beat
+pairs and offers three candidate rewrites for the creator to accept or
+ignore — the G18 shape. So turning it on cannot change what a paying creator
+receives; it can only start telling us how often the 67% is real.
