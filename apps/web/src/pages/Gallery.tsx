@@ -299,6 +299,25 @@ const ACCENT_GLOW: Record<string, string> = {
   'text-coral': 'hover:border-coral/40 hover:shadow-[0_0_24px_rgba(255,91,123,0.15)]',
 }
 
+/**
+ * "For you" widens to the whole shelf when the creator's own niche tiers are too
+ * thin to fill a page. That widening is CORRECT — an almost-empty page is worse
+ * than a broad one — but it must not be silent: the tab still says "For you",
+ * and a creator reading other people's niches deserves to know we widened.
+ *
+ * `widened` is only true when there was a narrower page to replace. Zero
+ * relevant cards is not a widening, it is simply an unassessed shelf, and
+ * saying "not enough in your niche" there would be a claim we cannot support.
+ */
+export function widenForYou<T>(
+  relevant: readonly T[],
+  all: readonly T[],
+  min = 6,
+): { cards: readonly T[]; widened: boolean } {
+  if (relevant.length >= min) return { cards: relevant, widened: false }
+  return { cards: all, widened: relevant.length > 0 }
+}
+
 export default function Gallery() {
   const navigate = useNavigate()
   const { profile } = useAuth()
@@ -532,8 +551,14 @@ export default function Gallery() {
     blank: (card) => emptyReferenceProfile(card.id, all.find((c) => c.id === card.id)?.niche ?? null),
   }), [all, profiles, factsById, me, entities])
 
-  const shown = useMemo(() => {
+  // ⚠️ THE WIDENING MUST SAY SO. When "For you" has fewer than six cards in the
+  // creator's own niche tiers we fall back to the whole shelf — which is the
+  // right behaviour, but it used to happen SILENTLY: the tab still said "For
+  // you" and the creator read a page of other people's niches as if we had
+  // chosen it for them. `widened` is that fact, and it has a reader below.
+  const { cards: shown, widened } = useMemo(() => {
     let out = all
+    let widened = false
     if (q.trim()) {
       const needle = q.trim().toLowerCase()
       out = out.filter((c) => (searchBlobs.get(c.id) ?? '').includes(needle))
@@ -544,8 +569,9 @@ export default function Gallery() {
     const rank = (c: Card) =>
       c.niche === mySubNiche ? 0 : c.niche === myNiche ? 1 : related.includes(c.niche) ? 2 : 3
     if (isForYou) {
-      const relevant = out.filter((c) => rank(c) < 3)
-      out = relevant.length >= 6 ? relevant : out
+      const w = widenForYou(out.filter((c) => rank(c) < 3), out)
+      out = [...w.cards]
+      widened = w.widened
     }
     // Order: the "for you" niche tier first, then §7a's comparator. `diversify`
     // wants a number, so the comparator's position in the sorted list becomes
@@ -570,7 +596,7 @@ export default function Gallery() {
     const place = new Map(byFit.map((c, i) => [c.id, byFit.length - i]))
     const relevanceOf = (c: Card) =>
       (isForYou ? (3 - rank(c)) * 1_000_000 : 0) + (place.get(c.id) ?? 0)
-    return diversify(out, relevanceOf)
+    return { cards: diversify(out, relevanceOf), widened }
   }, [all, myNiche, mySubNiche, niche, formatFilter, q, searchBlobs, related, factsById, decisions])
 
   // Only the cards actually on screen need a thumbnail. YouTube thumbnails derive
@@ -689,6 +715,12 @@ export default function Gallery() {
             ))}
           </div>
         </Reveal>
+        {widened && (
+          <div className="glass mt-6 p-4 text-sm text-sand" data-testid="gallery-widened-notice">
+            Not enough in your niche yet, so this is the whole shelf. Pick a niche
+            above to narrow it, or paste a video you love in the Studio.
+          </div>
+        )}
         {shown.length === 0 ? (
           <div className="glass mt-10 grid place-items-center p-12 text-center text-sand">
             {formatFilter
