@@ -15,8 +15,8 @@
 // one because a select failed would re-ask something the creator already
 // declined, which is precisely how an optional prompt earns being ignored.
 import { useEffect, useState } from 'react'
-import { nextQuestion, ANSWER_MAX, type CreatorQuestion } from '@twinai/shared'
-import { loadQuestionsPut, answerQuestion, skipQuestion, markQuestionShown } from '../lib/creatorAnswers'
+import { nextQuestionByDeficit, ANSWER_MAX, type CreatorQuestion } from '@twinai/shared'
+import { loadQuestionsPut, answerQuestion, skipQuestion, markQuestionShown, loadKnowledgeCounts } from '../lib/creatorAnswers'
 import { cn } from '../lib/cn'
 
 const REFUSAL: Record<string, string> = {
@@ -38,7 +38,15 @@ export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | nul
     void (async () => {
       const put = await loadQuestionsPut()
       if (!live || put === null) return // not-knowing: ask nothing
-      const q = nextQuestion(put)
+      // ⚠️ ASK ABOUT WHAT THE STORE LACKS. Three complete scripts on the physio
+      // account contained ZERO first-person episodes — not because the writer
+      // refused them, but because there were none to use. A store full of
+      // opinions reads as full, and the fixed question order kept asking for
+      // more opinions. Counts are read separately and MAY FAIL: null falls back
+      // to the old fixed order rather than claiming every kind is scarce.
+      const counts = await loadKnowledgeCounts()
+      if (!live) return
+      const q = nextQuestionByDeficit(put, counts)
       setQuestion(q)
       // ⚠️ RECORDED HERE BECAUSE HERE IS WHERE IT IS TRUE. The impression is
       // written only once a question actually exists to render -- not on mount,
