@@ -37,8 +37,21 @@
 export interface PriorVideo {
   /** The reference format the blueprint named — the closest thing to "shape". */
   formatLabel?: string | null
-  /** What the creator actually shot, or the recommended opener if they never chose. */
+  /** The hook stored on the generation. ⚠️ THIS FIELD ALONE CANNOT SAY WHETHER
+   *  THE CREATOR CHOSE IT — see `hookChoice`. */
   hook?: string | null
+  /** 0134 provenance for `hook`, and the reason this interface changed.
+   *
+   *  ⚖️ `Result.tsx` captures the RECOMMENDED hook on load when none is stored,
+   *  so `selected_hook` is non-empty for rows nobody picked anything in: 14 of
+   *  23 production rows equal `option[0]`. Rendering those as `opened:` told the
+   *  writer, as a FACT about the creator's catalogue, that they had opened a
+   *  video with a line we wrote and they may never have said.
+   *
+   *  ⚠️ NULL IS NOT `default` AND NOT `creator`. A row predating 0134 carries no
+   *  provenance, and guessing either way manufactures the thing this field
+   *  exists to prevent. It renders as unconfirmed. */
+  hookChoice?: { source: 'creator' | 'default' | 'freeform'; index: number | null } | null
   /** The premise, when the blueprint carried one (11 of 39 rows do). */
   premise?: string | null
   createdAt?: string | null
@@ -73,7 +86,18 @@ export function renderContentHistory(prior: readonly PriorVideo[]): string {
     const bits: string[] = []
     if (clean(p.formatLabel)) bits.push(`format: ${clean(p.formatLabel)}`)
     if (clean(p.premise)) bits.push(`premise: ${clean(p.premise).slice(0, 160)}`)
-    if (clean(p.hook)) bits.push(`opened: "${clean(p.hook).slice(0, 120)}"`)
+    // ⚖️ THREE LABELS, BECAUSE THERE ARE THREE FACTS. What the creator opened
+    // with, what WE put in front of them, and a row too old to tell. Collapsing
+    // the second into the first is how a recommendation becomes evidence of a
+    // preference — and this block is read by the writer as catalogue fact.
+    const hook = clean(p.hook)
+    if (hook) {
+      const src = p.hookChoice?.source ?? null
+      const shown = hook.slice(0, 120)
+      if (src === 'default') bits.push(`we suggested: "${shown}"`)
+      else if (src === null) bits.push(`opened (unconfirmed): "${shown}"`)
+      else bits.push(`opened: "${shown}"`)
+    }
     return `${i + 1}. ${bits.join(' · ')}`
   })
 

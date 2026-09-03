@@ -990,7 +990,15 @@ const MIN_PRIOR_VIDEOS = 2
 const MAX_PRIOR_SHOWN = 8
 
 function renderContentHistoryInline(
-  prior: Array<{ formatLabel?: string | null; hook?: string | null; premise?: string | null }>,
+  prior: Array<{
+    formatLabel?: string | null
+    hook?: string | null
+    // 0134 provenance. A `default` hook is one WE captured on load, not one the
+    // creator picked — 14 of 23 production rows. Rendering it as `opened:` states
+    // a fact about their catalogue that may never have happened.
+    hookChoice?: { source: 'creator' | 'default' | 'freeform'; index: number | null } | null
+    premise?: string | null
+  }>,
 ): string {
   const clean = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim()
   const rows = prior
@@ -1001,7 +1009,16 @@ function renderContentHistoryInline(
     const bits: string[] = []
     if (clean(p.formatLabel)) bits.push(`format: ${clean(p.formatLabel)}`)
     if (clean(p.premise)) bits.push(`premise: ${clean(p.premise).slice(0, 160)}`)
-    if (clean(p.hook)) bits.push(`opened: "${clean(p.hook).slice(0, 120)}"`)
+    // Three labels, three facts: what they opened with, what we suggested, and a
+    // row too old to tell. Mirrors packages/shared/src/contentHistory.ts.
+    const hook = clean(p.hook)
+    if (hook) {
+      const src = p.hookChoice?.source ?? null
+      const shown = hook.slice(0, 120)
+      if (src === 'default') bits.push(`we suggested: "${shown}"`)
+      else if (src === null) bits.push(`opened (unconfirmed): "${shown}"`)
+      else bits.push(`opened: "${shown}"`)
+    }
     return `${i + 1}. ${bits.join(' · ')}`
   })
   return `ALREADY MADE FOR THIS CREATOR (${rows.length} most recent, newest first).
@@ -4731,7 +4748,7 @@ Deno.serve(async (req: Request) => {
     try {
       const { data: priorRows } = await admin
         .from('generations')
-        .select('id, selected_hook, blueprint, created_at')
+        .select('id, selected_hook, hook_choice, blueprint, created_at')
         .eq('user_id', ownerId)
         .order('created_at', { ascending: false })
         .limit(MAX_PRIOR_SHOWN)
@@ -4740,7 +4757,13 @@ Deno.serve(async (req: Request) => {
         return {
           formatLabel: bp?.reference_read?.format_label ?? null,
           premise: bp?.concept?.premise ?? null,
-          hook: r?.selected_hook ?? bp?.hook_options?.[0] ?? null,
+          // ⚠️ NO FALLBACK TO `hook_options[0]`. That substituted an option we
+          // OFFERED for a hook the creator never stored, and printed it under a
+          // heading that calls these facts about their catalogue. A row with no
+          // stored hook contributes its format and premise and says nothing
+          // about how it opened, because nothing is known about how it opened.
+          hook: r?.selected_hook ?? null,
+          hookChoice: r?.hook_choice ?? null,
         }
       }))
     } catch {
