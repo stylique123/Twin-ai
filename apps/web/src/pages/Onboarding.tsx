@@ -1001,7 +1001,25 @@ function ConfirmStep({
   // all; `forbiddenClaims` is the answer no model can infer.
   const [workKind, setWorkKind] = useState<BriefWorkKind | null>(draft.workKind)
   const [workKindOther, setWorkKindOther] = useState<string>(draft.workKindOther ?? '')
-  const [forbiddenClaims, setForbiddenClaims] = useState(draft.forbiddenClaims ?? '')
+  // ⚠️ THE SCAN ALREADY FOUND HIS RESTRICTION AND FILED IT AS A CTA. Measured on
+  // a real Senior MSK Physiotherapist: "Always discuss this with your
+  // physiotherapist or surgeon." was captured as a recurring CTA while THIS
+  // field sat empty, asking him to invent restrictions from scratch. The worker
+  // now splits disclaimers out of `recurring_ctas` and carries them here.
+  //
+  // ⚖️ A GUESS, AND NEVER OVER THE CREATOR'S OWN ANSWER. Prefilled only when the
+  // draft holds nothing: a saved answer is a decision, and re-suggesting over it
+  // would silently replace what they told us with what we inferred.
+  const foundDisclaimers = Array.isArray((vp as { claim_disclaimers?: unknown })?.claim_disclaimers)
+    ? ((vp as { claim_disclaimers?: unknown[] }).claim_disclaimers ?? [])
+        .filter((d): d is string => typeof d === 'string' && d.trim() !== '')
+    : []
+  const claimsGuess = foundDisclaimers.join(' · ')
+  const [forbiddenClaims, setForbiddenClaims] = useState(draft.forbiddenClaims ?? claimsGuess)
+  // True only while the creator is still looking at OUR words, so the note
+  // disappears the moment they touch the field.
+  const [claimsAreGuessed, setClaimsAreGuessed] = useState(
+    (draft.forbiddenClaims ?? '') === '' && claimsGuess !== '')
   const [q4, setQ4] = useState<Q4Answer | null>(draft.q4 ?? null)
   // WHETHER THE CREATOR KEPT THE ENTITY Q3 MINTED. Defaults to keeping it when
   // Q3 was informative — that is what "pre-filled" means — and the screen gives
@@ -1604,9 +1622,14 @@ function ConfirmStep({
             <input
               className="field"
               value={forbiddenClaims}
-              onChange={(e) => setForbiddenClaims(e.target.value)}
+              onChange={(e) => { setForbiddenClaims(e.target.value); setClaimsAreGuessed(false) }}
               placeholder="e.g. no guaranteed outcomes, never the word “cure”"
             />
+            {claimsAreGuessed ? (
+              <p className="mt-1 text-[11px] text-amber">
+                We found this in your posts — is this right? Edit it if not.
+              </p>
+            ) : null}
             <p className="mt-1 text-[11px] text-stone">
               We will keep these out of every script. Write “none” if there are no restrictions.
             </p>

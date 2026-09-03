@@ -1,3 +1,4 @@
+import { splitDisclaimersFromCtas } from './claimDisclaimers.js'
 import { geminiJson, obj, arr, str, type InlineImage } from './gemini.js'
 import type { ScrapedPost } from './media.js'
 
@@ -135,6 +136,7 @@ function enrichVoiceProfile(raw: Record<string, unknown>, handle: string, platfo
   if (hookPatterns.length < 2 && sampleHooks.length) {
     hookPatterns = Array.from(new Set([...hookPatterns, ...sampleHooks.map((h) => `Their own opener — "${h}"`)])).slice(0, 5)
   }
+  const split = splitDisclaimersFromCtas(raw.recurring_ctas)
   return {
     ...raw,
     sub_niche: asStr(raw.sub_niche) || niche,
@@ -142,7 +144,22 @@ function enrichVoiceProfile(raw: Record<string, unknown>, handle: string, platfo
     vocabulary: asArr(raw.vocabulary),
     hook_patterns: hookPatterns,
     pov: asArr(raw.pov),
-    recurring_ctas: asArr(raw.recurring_ctas),
+    // ⚠️ A DISCLAIMER IS NOT A CTA, AND THE MODEL CANNOT TELL THEM APART.
+    // Measured on a real Senior MSK Physiotherapist: the scan filed "Always
+    // discuss this with your physiotherapist or surgeon." as a recurring CTA.
+    // A CTA is something scripts may END ON; a claim restriction is something
+    // scripts must OBEY. Same sentence, opposite behaviour, decided here.
+    //
+    // ⚖️ DETERMINISTIC, NOT A PROMPT RULE. "Never call a disclaimer a CTA" is
+    // an instruction a model may follow; a split is a guarantee. And the
+    // compliance pipe it feeds is already live — `forbiddenClaims` reaches the
+    // writer as a non-negotiable COMPLIANCE block — so the only thing that was
+    // ever missing is putting the sentence in the right array.
+    recurring_ctas: split.ctas,
+    // ⚠️ WRITTEN WITH ITS READER IN THE SAME CHANGE. `Onboarding.tsx` prefills
+    // the "anything you are not allowed to claim?" field from this, marked as
+    // a guess. A field with no reader is the defect this repo keeps producing.
+    claim_disclaimers: split.disclaimers,
     dos: asArr(raw.dos),
     donts: asArr(raw.donts),
     sample_hooks: sampleHooks,
