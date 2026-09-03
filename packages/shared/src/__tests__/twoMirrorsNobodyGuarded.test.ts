@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { renderContentHistory } from '../contentHistory'
+import { classifyRegenerate } from '../regenerateReason'
 import { resolveSubjectSource } from '../script/subjectSource'
 
 /**
@@ -137,6 +138,40 @@ describe('resolveSubjectSourceInline matches the shared original', () => {
       // The instruction is the half the writer actually reads. A drift here is
       // invisible in every verdict field and changes the script.
       expect(a.instruction).toBe(b.instruction)
+    })
+  }
+})
+
+// ⚠️ A MIRROR NOBODY GUARDS IS THE DEFECT THIS FILE IS NAMED FOR. The regenerate
+// classifier now exists twice — shared and inlined in generate-blueprint — and
+// the rule it encodes (a prior row carrying none of the compared fields is
+// `unknown`, never `without_edit`) is exactly the kind that rots silently in
+// one copy while the other keeps telling the truth.
+describe('classifyRegenerateInline matches the shared original', () => {
+  const inline = loadInline(
+    'function classifyRegenerateInline',
+    '// ── PREMISE COMPATIBILITY',
+    'classifyRegenerateInline',
+  ) as (p: unknown, n: unknown, f: string[]) => unknown
+
+  const FIELDS = ['fidelity', 'reference_note']
+  const cases: Array<[string, unknown, unknown]> = [
+    ['nothing moved', { fidelity: 'balanced', reference_note: 'n' }, { fidelity: 'balanced', reference_note: 'n' }],
+    ['fidelity moved', { fidelity: 'balanced' }, { fidelity: 'loose' }],
+    ['both moved', { fidelity: 'close', reference_note: 'a' }, { fidelity: 'loose', reference_note: 'b' }],
+    ['prior carries none of the fields', { id: 'x' }, { fidelity: 'loose' }],
+    ['prior is null', null, { fidelity: 'loose' }],
+    ['prior is undefined', undefined, { fidelity: 'loose' }],
+    ['a null on the prior is not comparable', { fidelity: 'close', reference_note: null }, { fidelity: 'close', reference_note: 'now' }],
+    ['blank string on the prior is absent', { fidelity: 'close', reference_note: '  ' }, { fidelity: 'close', reference_note: 'now' }],
+    ['casing and spacing are not edits', { fidelity: 'Balanced ', reference_note: 'my  note' }, { fidelity: 'balanced', reference_note: 'my note' }],
+    ['clearing a note is an edit', { reference_note: 'steer' }, {}],
+  ]
+
+  for (const [name, prior, next] of cases) {
+    it(name, () => {
+      expect(inline(prior, next, FIELDS))
+        .toEqual(classifyRegenerate(prior as never, next as never, FIELDS))
     })
   }
 })

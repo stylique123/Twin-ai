@@ -1026,6 +1026,35 @@ These are facts about their existing catalogue, not a list to avoid.
 ${lines.join('\n')}`
 }
 
+// ── REGENERATE PROVENANCE (inlined from packages/shared/src/regenerateReason.ts)
+//
+// ⚠️ ONLY FIELDS THE PRIOR ROW ACTUALLY CARRIES ARE COMPARED. A generation
+// written before a column existed holds null there, and counting that null as
+// "unchanged" would fabricate a `without_edit` from a row that cannot testify.
+// A prior carrying none of them is `unknown` -- never `without_edit`.
+function classifyRegenerateInline(prior: unknown, next: unknown, fields: string[]) {
+  // ⚠️ NO CASTS. This function is loaded and executed by the mirror-parity test,
+  // which strips TypeScript with regexes; an `as` assertion survives every rule
+  // it has and kills the harness with a SyntaxError, so the guard reports
+  // nothing instead of reporting a drift. Reading through Object.entries costs
+  // one allocation per field and keeps the mirror runnable.
+  const get = (o: unknown, k: string): unknown => {
+    if (!o || typeof o !== 'object') return undefined
+    const hit = Object.entries(o).find((e) => e[0] === k)
+    return hit ? hit[1] : undefined
+  }
+  const present = (v: unknown) =>
+    v !== null && v !== undefined && !(typeof v === 'string' && v.trim() === '')
+  const norm = (v: unknown) =>
+    typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().toLowerCase() : JSON.stringify(v ?? null)
+  const none = { kind: 'unknown', changed: [], compared: [] }
+  if (!prior || typeof prior !== 'object') return none
+  const compared = fields.filter((f) => present(get(prior, f)))
+  if (compared.length === 0) return none
+  const changed = compared.filter((f) => norm(get(prior, f)) !== norm(get(next, f)))
+  return { kind: changed.length > 0 ? 'with_edit' : 'without_edit', changed, compared }
+}
+
 // ── PREMISE COMPATIBILITY (inlined from packages/shared/src/premiseCompatibility.ts)
 //
 // ⚠️ THE STRUCTURE TRANSFERS; THE AUTOBIOGRAPHY DOES NOT. A reference opening
@@ -4203,6 +4232,58 @@ Deno.serve(async (req: Request) => {
       .eq('idempotency_key', idempotency_key)
       .maybeSingle()
     if (prior) return json(prior)
+  }
+
+  // ── A SECOND SCRIPT FOR THE SAME REFERENCE IS A REFUSAL ──────────────────
+  //
+  // ⚠️ MEASURED NOWHERE UNTIL NOW. A creator who regenerates has rejected what
+  // we wrote, and whether they CHANGED anything first is the only free
+  // diagnosis in the loop: a moved fidelity dial says the script clung too
+  // close to the reference, in the one vocabulary the product gave them.
+  // Regenerating with nothing changed says "not this, and I cannot tell you
+  // why". Merged, the two teach a ranking model only that creators regenerate.
+  //
+  // ⚖️ HERE AND NOT AT THE DUPLICATE-LINK DIALOG. `V2Create` detects the
+  // refusal first and cannot classify it: at that moment the creator has picked
+  // nothing — fidelity and the three intent answers are chosen afterwards. A
+  // verdict there would read `without_edit` for every row because nothing had
+  // been edited YET. This is the first point where the prior generation and the
+  // complete new request both exist.
+  //
+  // Inlined from packages/shared/src/regenerateReason.ts (the edge cannot
+  // import @twinai/shared), where the rationale and its 11 tests live.
+  if (reference_url) {
+    try {
+      const { data: priorForRef } = await admin
+        .from('generations')
+        .select('id, reference_note, fidelity, created_at')
+        .eq('user_id', user.id)
+        .eq('reference_url', reference_url)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (priorForRef) {
+        const verdict = classifyRegenerateInline(
+          priorForRef,
+          { reference_note, fidelity },
+          ['fidelity', 'reference_note'],
+        )
+        await admin.from('ops_events').insert({
+          kind: 'script_regenerated',
+          severity: 'info',
+          user_id: user.id,
+          detail: {
+            prior_generation_id: priorForRef.id,
+            kind: verdict.kind,
+            changed: verdict.changed,
+            compared: verdict.compared,
+          },
+        }).then(() => {}, () => {})
+      }
+    } catch {
+      // ⚖️ NEVER BLOCK A BUILD ON A MEASUREMENT. Same treatment the history and
+      // knowledge reads get: thinner, never wronger.
+    }
   }
 
   // THE HARD STOP (§12 step 1). A reference we could not read is not a cheaper
