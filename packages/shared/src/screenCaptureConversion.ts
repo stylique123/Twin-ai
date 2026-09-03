@@ -154,8 +154,27 @@ export function asksForUnsupplyableShot(direction: string): boolean {
  * ⚠️ ADVISORY, COUNTED. Matches the discipline every other beat_audit counter
  * in this repository already uses: measured before it is ever enforced.
  */
-export function unsupplyableShotCount(script: readonly { editor_intent?: unknown }[]): number {
+export function unsupplyableShotCount(
+  script: readonly { editor_intent?: unknown; broll_request?: unknown }[],
+): number {
   if (!Array.isArray(script)) return 0
-  return script.filter((b) => asksForUnsupplyableShot(
-    typeof b?.editor_intent === 'string' ? b.editor_intent : '')).length
+  // ⚠️ `broll_request` COUNTS TOO, AND IT DID NOT UNTIL NOW. Measured in
+  // production 2026-09-03: a beat carried
+  // `broll_request: "Screen recording of deleting a social media draft."` —
+  // very nearly the exact string this file's own docstring cites as the
+  // motivating real-world failure — and every counter read past it, because
+  // they looked at `editor_intent`, `direction` and `proof` and nothing else.
+  // The count said zero while the violation sat in the row.
+  //
+  // ⚖️ IT IS THE MEASUREMENT THAT WAS WRONG, NOT THE CREATOR'S SCRIPT. Nothing
+  // renders `broll_request` — `placeToStand` is forbidden from reaching it and
+  // no other reader exists — so this never reached anybody holding a phone.
+  // That is precisely why it had to be caught here: a violation in an unread
+  // field is invisible to the creator AND to us, and this counter's whole job
+  // is to say whether the prompt is holding.
+  const str = (v: unknown) => (typeof v === 'string' ? v : '')
+  return script.filter((b) => (
+    asksForUnsupplyableShot(str(b?.editor_intent))
+    || asksForUnsupplyableShot(str(b?.broll_request))
+  )).length
 }
