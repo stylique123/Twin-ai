@@ -300,6 +300,46 @@ const ACCENT_GLOW: Record<string, string> = {
 }
 
 /**
+ * ⚠️ THE SAME VIDEO, UP TO 51 TIMES. `gallery_items` has no unique index on
+ * `url` (only `gallery_items_pkey` on id and `gallery_pub_idx` on
+ * visibility+created_at), and the ingest runs daily. Measured in production on
+ * 2026-09-03: 13,765 rows over 5,318 distinct URLs — 8,447 duplicate rows
+ * across 1,723 URLs, 1,602 of which repeat WITHIN one niche, worst offender 51
+ * rows. Per-day the counts match exactly (280 rows / 280 URLs), so nothing
+ * duplicates inside a run: it is the same URL re-discovered on a later day and
+ * inserted again because nothing stops it.
+ *
+ * ⚖️ THIS IS THE READER-SIDE HALF ONLY, ON PURPOSE. Deduplicating the table
+ * needs a migration that deletes 8,447 production rows, which is the owner's
+ * call and not a thing to slip into a UI fix. Collapsing on read costs nothing
+ * and stops a creator scrolling the same video 51 times today.
+ *
+ * The surviving row is the one carrying the most real content, because the
+ * later re-ingest is often the thinner record. `fromDb` fills every display
+ * field with a fallback, so richness has to be measured against those
+ * fallbacks rather than against emptiness. Ties keep the FIRST row, so the
+ * order the query returned is preserved wherever the rows say the same thing.
+ */
+export function dedupeByUrl<T extends {
+  url: string; label: string; hook: string; creator: string; reach: string; loves: string
+}>(cards: readonly T[]): T[] {
+  const richness = (c: T) =>
+    (c.label && c.label !== 'Community pick' ? 1 : 0) +
+    (c.hook && c.hook !== c.url ? 1 : 0) +
+    (c.creator && c.creator !== 'creator' ? 1 : 0) +
+    (c.reach && c.reach !== '\u00b7' ? 1 : 0) +
+    (c.loves && c.loves !== '\u00b7' ? 1 : 0)
+  const best = new Map<string, T>()
+  const order: string[] = []
+  for (const c of cards) {
+    const seen = best.get(c.url)
+    if (seen === undefined) { best.set(c.url, c); order.push(c.url); continue }
+    if (richness(c) > richness(seen)) best.set(c.url, c)
+  }
+  return order.map((u) => best.get(u)!)
+}
+
+/**
  * "For you" widens to the whole shelf when the creator's own niche tiers are too
  * thin to fill a page. That widening is CORRECT — an almost-empty page is worse
  * than a broad one — but it must not be silent: the tab still says "For you",
@@ -375,7 +415,7 @@ export default function Gallery() {
   useEffect(() => {
     listGalleryItems()
       .then((items) => {
-        const cards = items.filter((i) => i.visibility === 'public').map(fromDb)
+        const cards = dedupeByUrl(items.filter((i) => i.visibility === 'public').map(fromDb))
         COMMUNITY_CACHE = cards
         setCommunity(cards)
         // ⚖️ ONE QUERY FOR THE WHOLE PAGE, AFTER the cards are on screen. The
