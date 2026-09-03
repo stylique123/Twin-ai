@@ -2628,6 +2628,66 @@ function observedVisualBlockInline(profile: ReferenceVisualProfileInline | null 
     + 'creator’s own video should show:\n'
     + lines.map((l) => `  - ${l.line}`).join('\n')
 }
+/** The Tier 0 numbers, as the reducer stores them. Narrow on purpose: a reader
+ *  that accepts the whole row invites new fields to be read without anyone
+ *  deciding they should be. */
+interface TierZeroInline {
+  cuts?: unknown
+  cutsPerMinute?: unknown
+  medianShotSec?: unknown
+  faceCoveragePct?: unknown
+  speechPct?: unknown
+}
+
+/**
+ * WHAT CAME OFF THE FILE, KEPT APART FROM WHAT THE MODEL SAW.
+ *
+ * ⚠️ A SEPARATE BLOCK FROM `observedVisualBlockInline`, AND THAT IS THE WHOLE
+ * POINT. `visual_profile` is a MODEL'S READING of eight still frames; this is
+ * ARITHMETIC over every frame in the file. Only one of them can be wrong about
+ * what it saw, so the prompt has to say which is which — the same argument
+ * migration 0180 makes for keeping the columns apart.
+ *
+ * ⚠️ NULL MEANS NOT MEASURED, NEVER ZERO. A reference with no cuts and a
+ * reference nobody scanned are opposite facts, and a `0` covering both is how a
+ * prompt starts asserting a static video it has no evidence for. Every absent
+ * number is simply omitted rather than defaulted.
+ *
+ * ⚖️ IT STATES NUMBERS AND REFUSES TO LABEL THEM. No "montage" or "talking
+ * head" verdict is derived here: that needs a threshold, and no threshold has
+ * been measured on this product's references. `referenceTierZero.ts` refuses the
+ * same classification for the same reason, and a label is far easier for a model
+ * to over-trust than the numbers under it.
+ */
+function measuredFromFileBlockInline(t: TierZeroInline | null | undefined): string | null {
+  if (!t || typeof t !== 'object') return null
+  const n = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null
+  const lines: string[] = []
+  const cuts = n(t.cuts)
+  const cpm = n(t.cutsPerMinute)
+  const med = n(t.medianShotSec)
+  const face = n(t.faceCoveragePct)
+  const speech = n(t.speechPct)
+  if (cuts !== null) {
+    lines.push(cuts === 0
+      ? 'The picture never cuts — it is one continuous shot.'
+      : `The picture cuts ${cuts} ${cuts === 1 ? 'time' : 'times'}.`)
+  }
+  if (cpm !== null) lines.push(`That is about ${cpm} cuts per minute.`)
+  if (med !== null) lines.push(`A shot lasts about ${med}s, at the median.`)
+  if (face !== null) lines.push(`A face is visible in ${face}% of the sampled frames.`)
+  if (speech !== null) lines.push(`Someone is speaking for about ${speech}% of the runtime.`)
+  if (lines.length === 0) return null
+  return 'MEASURED FROM THE REFERENCE’S FILE, not read by a model (tier_zero — '
+    + 'arithmetic over every frame, so it cannot be mistaken about what it saw the '
+    + 'way a reading of eight stills can). Use it to judge the reference’s PACE and '
+    + 'how much of it is a person talking, so the beat plan is shaped like something '
+    + 'this creator can actually shoot. It describes the REFERENCE, never this '
+    + 'creator’s own video:\n'
+    + lines.map((l) => `  - ${l}`).join('\n')
+}
+
 function observedVisualCountInline(profile: ReferenceVisualProfileInline | null | undefined): number {
   return profile?.visualPassRan ? profile.fieldsObserved : 0
 }
@@ -5443,6 +5503,38 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
           const visualBlock = observedVisualBlockInline(visualProfile)
           visualDimensionsObserved = observedVisualCountInline(visualProfile)
           if (visualBlock) containerBlock += `\n\n${visualBlock}`
+          // ⚠️ THE SECOND PROVENANCE. Tier 0 has been written since #643 and
+          // NOTHING read it — the exact "a field written and never read is not a
+          // feature" defect this repo has found nine times, created by the same
+          // change that added the column. This is its reader.
+          //
+          // ⚖️ APPENDED SEPARATELY, never merged into `visualBlock`: one is a
+          // model's reading of eight stills, the other is arithmetic over every
+          // frame, and a prompt that blurs them invites the model to trust the
+          // weaker evidence as much as the stronger.
+          // ⚠️ A SECOND QUERY, NOT AN EXTRA COLUMN ON THE ONE ABOVE, AND THAT
+          // IS A SAFETY DECISION WITH A MEASUREMENT BEHIND IT. Migration 0180
+          // is NOT applied to production yet (verified 2026-09-02: the column
+          // does not exist). supabase-js does not throw on an unknown column —
+          // it returns `{ data: null, error }`, and this code reads only `data`.
+          // So folding `tier_zero_profile` into the select above would have made
+          // `assessed` null on EVERY generation until the migration lands,
+          // silently taking the container template and the observed-visual block
+          // down with it. A separate read fails alone.
+          //
+          // ⚖️ THE SAME SHAPE AS THE `askedRows` SECOND READ, for the same
+          // reason: when one query cannot safely carry two questions, ask twice.
+          try {
+            const { data: measured } = await admin
+              .from('reference_content_profiles')
+              .select('tier_zero_profile')
+              .eq('url', reference_url)
+              .is('error', null)
+              .maybeSingle()
+            const measuredBlock = measuredFromFileBlockInline(
+              measured?.tier_zero_profile as TierZeroInline | null)
+            if (measuredBlock) containerBlock += `\n\n${measuredBlock}`
+          } catch { /* a missing column or a failed read costs the block, nothing else */ }
           const container = (assessed?.profile as
             { structure?: { containerType?: { value?: string; basis?: string } } } | null)
             ?.structure?.containerType
