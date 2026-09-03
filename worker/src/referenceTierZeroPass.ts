@@ -123,12 +123,15 @@ export function displayDims(f: ProbedFacts): { displayWidth: number; displayHeig
  * temp path — that is the whole reason this is cheap. Adding a download here
  * would make a free second opinion cost a second pull of the same bytes.
  *
- * ⚠️ `speechMs` IS NOT SUPPLIED, so `speechPct` comes back null — correctly.
- * The VAD runs in the TRANSCRIPT pass, against audio this pass never holds.
- * Passing a guess, or passing duration as a stand-in, would put a fabricated
- * number in the one field designed to say "not measured".
+ * ⚖️ `speechMs` COMES FROM THE CALLER, NOT FROM HERE. The transcript pass has
+ * already timed the speech and this pass never holds the audio, so the honest
+ * arrangement is to be HANDED the number rather than re-derive it. Null is a
+ * real answer: `tierZeroProfile` turns it into a null percentage rather than a
+ * zero, which would claim a silent video.
  */
-export async function runTierZeroPass(videoPath: string): Promise<TierZeroPassResult> {
+export async function runTierZeroPass(
+  videoPath: string, speechMs: number | null = null,
+): Promise<TierZeroPassResult> {
   const caps = await probeReferenceVisual()
   if (!tierZeroUsable(caps)) return NOT_RUN('CAPABILITIES_UNAVAILABLE')
 
@@ -171,6 +174,10 @@ export async function runTierZeroPass(videoPath: string): Promise<TierZeroPassRe
       shotBoundaries: bridge.shotBoundaries,
       faceCoverage: bridge.faceCoverage,
       durationMs: probed.durationMs,
+      // ⚠️ SUPPLIED BY THE CALLER, FROM THE TRANSCRIPT PASS. Never measured
+      // here and never guessed: null means the caller had no ASR timings, and
+      // `tierZeroProfile` turns that into a null percentage, not a zero.
+      speechMs,
     })
     // A row of five nulls is not a reading. Storing it would let a surface say
     // "we looked and found nothing" about a pass that measured nothing at all.
