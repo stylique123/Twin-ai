@@ -30,7 +30,7 @@ import { Check, HelpCircle, Loader2, Pencil, Sparkles, SlidersHorizontal, Triang
 import {
   answerBeatAsk, applyAskAnswerEdit, applyDialogueEdit, applyHookEdit, buildRecordingScript,
   changesTheRecordedScript, establishDurableRecordingScriptLive, loadRecordingScript,
-  SCRIPT_EDIT_MESSAGE, sceneOverrunSec, overrunWorthShowing,
+  SCRIPT_EDIT_MESSAGE, readBeatLength,
   type RecordingScene, type RecordingScript, type ScriptEditResult,
 } from '../lib/api'
 import {
@@ -370,14 +370,24 @@ function safeBuild(
  *  are different facts and only one of them means the line is the right length,
  *  so an absent plan shows an absent indicator rather than a reassuring one. */
 function BeatLength({ scene }: { scene?: RecordingScene }) {
-  if (!scene || typeof scene.target_sec !== 'number') return null
-  const over = sceneOverrunSec(scene)
-  if (!overrunWorthShowing(over)) {
-    return <span className="text-[11px] text-sand/60">{scene.target_sec}s beat</span>
+  const reading = readBeatLength(scene)
+  if (reading === null) return null
+  if (reading.kind === 'unplanned') {
+    // NOT the same sentence as a planned beat. "about" and "no beat length
+    // planned" together say: this is an estimate of the words as written, and
+    // nothing decided it should be that long.
+    return (
+      <span className="text-[11px] text-sand/50">
+        about {reading.liveSec}s · no beat length planned
+      </span>
+    )
+  }
+  if (reading.kind === 'on_plan') {
+    return <span className="text-[11px] text-sand/60">{reading.targetSec}s beat</span>
   }
   return (
     <span className="text-[11px] text-coral">
-      {scene.duration_sec}s against a {scene.target_sec}s beat, about {over}s long
+      {reading.liveSec}s against a {reading.targetSec}s beat, about {reading.overSec}s long
     </span>
   )
 }

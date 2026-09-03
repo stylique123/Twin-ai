@@ -20,3 +20,4 @@ __pycache__/
 # words and an operator's un-locked judgments.
 .twinai-labels/
 .twinai-d1/
+*.tsbuildinfo

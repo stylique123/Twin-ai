@@ -29,6 +29,7 @@ import { readCachedTranscript, writeCachedTranscript } from '../transcriptCache.
 import { decideRouting, goesToFrames } from '../transcriptRouting.js'
 import { classifyReferenceFailure, isFetchDefect } from './referenceOutcome.js'
 import { recordRoutingDecision } from '../transcriptRoutingRecord.js'
+import { tierZeroSilence } from '../tierZeroSilence.js'
 
 /** How much transcript the model is shown.
  *
@@ -593,6 +594,23 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
         at: frameSampleTargets(profile),
       })
     : null
+
+  // ⚠️ A ROW THAT SAYS NOTHING IS REPORTED, BECAUSE THE ROW ITSELF CANNOT SAY
+  // SO. Measured 2026-09-03: 2 of 5 passes that RAN wrote neither
+  // `tier_zero_profile` nor `tier_zero_failure_code`, and the two code paths
+  // that produce that leave identical rows — `{}` when the result is absent,
+  // and an explicit null code when a result carries no reason. This names which
+  // shape occurred, on the row it occurred for, into a table that can be read
+  // back. It changes no behaviour; it ends a question the database cannot
+  // answer about itself.
+  const silence = tierZeroSilence(visual)
+  if (silence !== null) {
+    await db.from('ops_events').insert({
+      kind: 'tier_zero_silent_row',
+      severity: 'warn',
+      detail: { url, platform, shape: silence, frames_sampled: visual?.frames_sampled ?? null },
+    }).then(() => {}, () => {})
+  }
 
   const { error: wrote } = await db.from('reference_content_profiles').upsert({
     url,

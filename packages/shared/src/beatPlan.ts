@@ -295,3 +295,47 @@ export const OVERRUN_TOLERANCE_SEC = 1.5
 export function overrunWorthShowing(overrunSec: number | null): boolean {
   return typeof overrunSec === 'number' && overrunSec > OVERRUN_TOLERANCE_SEC
 }
+
+/** What a scene card can honestly say about its own length.
+ *
+ *  ⚖️ THE BLANK WAS THE BUG. `sceneOverrunSec` and `overrunWorthShowing`
+ *  answer "has this drifted", and both are unanswerable without a target — so
+ *  the editor rendered NOTHING for a beat the writer gave no `target_sec`. In
+ *  the H1 physio run that was scene 6: the creator got a length for scenes 2
+ *  and 4 and, for the beat right after them, no number at all. A blank does not
+ *  read as "no plan applied here"; it reads as "nothing to think about", which
+ *  is the one thing it does not mean.
+ *
+ *  The estimate exists regardless — `duration_sec` is computed from the words
+ *  in the beat and re-estimated on every edit. So an unplanned beat can still
+ *  be shown its own length, clearly marked as an estimate against no plan,
+ *  rather than being shown silence.
+ *
+ *  ⚠️ `unplanned` MUST NOT be rendered in the same voice as `on_plan`. A number
+ *  standing on its own is not a number that has been checked against anything,
+ *  and collapsing the two states back together in the UI would re-introduce the
+ *  exact confusion this type exists to prevent. */
+export type BeatLengthReading =
+  | { kind: 'unplanned'; liveSec: number }
+  | { kind: 'on_plan'; targetSec: number }
+  | { kind: 'over'; targetSec: number; liveSec: number; overSec: number }
+
+const usableSec = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null
+
+/**
+ * Returns null only when the scene can say nothing true — no target AND no
+ * usable estimate. Every other case yields a reading, because a creator holding
+ * a phone deserves a number or an explicit absence, never an ambiguous gap.
+ */
+export function readBeatLength(
+  scene: { duration_sec?: number | null; target_sec?: number | null } | null | undefined,
+): BeatLengthReading | null {
+  if (!scene) return null
+  const target = usableSec(scene.target_sec)
+  const live = usableSec(scene.duration_sec)
+  if (target === null) return live === null ? null : { kind: 'unplanned', liveSec: live }
+  const over = sceneOverrunSec({ duration_sec: live, target_sec: target })
+  if (!overrunWorthShowing(over) || live === null) return { kind: 'on_plan', targetSec: target }
+  return { kind: 'over', targetSec: target, liveSec: live, overSec: over as number }
+}
