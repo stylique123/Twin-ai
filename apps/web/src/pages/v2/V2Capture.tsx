@@ -19,6 +19,7 @@ import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { PreflightPanel } from '../../components/PreflightPanel'
 import { loadRecordingScript, setWpm, establishDurableRecordingScriptLive, prepareCaptureMode } from '../../lib/api'
 import { acceptedFinalStamp, stampAcceptedFinalLive } from '../../lib/api'
+import { upgradeOnCapture, updateGenerationChoice } from '../../lib/api'
 import { buildRecordingScript } from '../../lib/api'
 import { pickRecorderMime, getGeneration, uploadSourceRecording, newRecordingAttemptId, UploadOnce } from '../../lib/api'
 import { buildTeleprompterIntent, captureScriptSha256, sha256Hex, normalizeDialogue } from '../../lib/api'
@@ -80,6 +81,35 @@ async function stampAcceptedFinal(script: RecordingScript): Promise<void> {
   } catch { /* never block the recorder on a measurement */ }
 }
 
+// AGREEMENT AND INATTENTION WERE THE SAME ROW.
+//
+// ⚠️ `Result.tsx` WRITES `default` IN ITS LOAD EFFECT, before the creator has had
+// time to read anything — so the value records that a browser fetched a row, not
+// anything about a person. A creator who read all five options and was happy
+// with ours is stored identically to one who glanced at the page and never came
+// back.
+//
+// ⚖️ THE ALTERNATIVES ARE NOT HIDDEN — all five render in one always-visible grid
+// on `Result`, no toggle — so the missing fact was never "did they see the
+// others". It is whether they reached a moment where keeping ours cost them
+// something. This is that moment: they are entering the teleprompter with our
+// recommendation still selected, which is AGREEMENT.
+//
+// ⚠️ AN UPGRADE ONLY, AND `upgradeOnCapture` IS WHAT ENFORCES IT. A `creator`
+// row is a real preference and must survive; `freeform` is their own words; an
+// already-upgraded row is a re-entry, and re-entering is not a second agreement
+// any more than it is a second acceptance. A NULL choice stays NULL — minting
+// agreement from nothing would claim we know they saw a recommendation we cannot
+// prove was ever shown.
+async function markHookAgreement(genId: string): Promise<void> {
+  try {
+    const g = await getGeneration(genId)
+    const next = upgradeOnCapture(g?.hook_choice ?? null)
+    if (!next) return
+    await updateGenerationChoice(genId, { hook_choice: next })
+  } catch { /* never block the recorder on a measurement */ }
+}
+
 function CaptureGate({ genId, mode, onBack }: { genId: string; mode: 'upload' | 'record'; onBack: () => void }) {
   const [timeline, setTimeline] = useState<RecordingScript | null>(null)
   const [uploadReady, setUploadReady] = useState(false)
@@ -113,6 +143,10 @@ function CaptureGate({ genId, mode, onBack }: { genId: string; mode: 'upload' | 
           // reader takes the latest DISTINCT hash; counting entries would report
           // someone checking their script three times as three acceptances.
           void stampAcceptedFinal(r.script)
+          // ⚖️ THE SAME SEAM, THE SAME RULE. Both are measurements of the one
+          // moment a creator stops arguing; neither is awaited, and neither may
+          // stand between someone and their teleprompter.
+          void markHookAgreement(genId)
           setTimeline(r.script); return
         }
         console.warn('capture_prepare_failed', { generationId: genId, reason: r.reason })
