@@ -63,6 +63,7 @@ export * from './shotDirection'
 export * from './setupPlan'
 // Figures spoken about a product must trace to a stored product fact.
 export * from './productClaimCheck'
+export * from './comparativeClaim'
 // Only a named thing with real commercial evidence may be suggested as a product.
 export * from './productSuggestionConfidence'
 // The six onboarding questions asked while the scan runs, and what they change.
