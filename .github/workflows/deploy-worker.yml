@@ -125,6 +125,54 @@ jobs:
               exit 1
             fi
             docker image prune -f >/dev/null 2>&1 || true
+            # ⚠️ AND THE BUILD CACHE, WHICH IS THE BIGGER HALF AND WAS NOT SWEPT.
+            #
+            # MEASURED ON THE VPS, 2026-09-04: `docker system df` reported
+            # Images 82.42GB (17.83GB reclaimable) and BUILD CACHE 94.68GB with
+            # 86.2GB reclaimable across 1,451 entries — ZERO of them active. The
+            # disk was at 85% of 150GB with 23GB left. Pruning the cache by hand
+            # took it to 29% and returned 104GB.
+            #
+            # ⚖️ THE LINE ABOVE WAS ALREADY DOING HALF THIS JOB. `docker image
+            # prune` sweeps dangling IMAGES, and someone clearly thought about
+            # housekeeping when they wrote it — but BuildKit's layer cache is a
+            # separate store that `image prune` never touches, and it is where
+            # five sixths of the space actually went. Half a sweep looks like a
+            # whole one right up until the disk fills.
+            #
+            # ⚠️ A FULL DISK DOES NOT ANNOUNCE ITSELF AS A FULL DISK. The worker
+            # would fail to write, and the errors surface as scan and job
+            # failures with unrelated-looking messages — the expensive kind of
+            # outage, diagnosed from the wrong end.
+            #
+            # ⚖️ AN AGE FILTER, NOT `--keep-storage`, AND THE REASON IS PORTABILITY.
+            # `--keep-storage` caps by SIZE, which reads like the better fit —
+            # but it is deprecated in current Docker in favour of
+            # `--reserved-space`, so the flag this box accepts depends on a
+            # version nobody here pins. `--filter until=` has been stable across
+            # every version in between. At the measured growth rate (94GB over
+            # ~5 weeks, ~19GB/week) a 7-day window caps the cache near 20GB,
+            # which is the same outcome by a route that cannot go stale.
+            #
+            # ⚖️ AND IT KEEPS THE WEEK THAT MATTERS. Layers touched in the last
+            # 7 days are the ones an incremental build actually reuses, so
+            # deploys stay fast; older entries are the dead weight — all 1,451
+            # of the entries measured above were inactive.
+            #
+            # ⚠️ NOT SILENCED, AND THAT IS DELIBERATE. Written as
+            # `>/dev/null 2>&1 || true` this would fail OPEN AND INVISIBLY: a
+            # rejected flag, a BuildKit that is not running, any error at all,
+            # and the sweep simply never happens while the log looks exactly
+            # like success. That is the failure this repo keeps finding —
+            # absence of an error is not evidence a check ran. So the output is
+            # printed: the deploy log now says how much was reclaimed, and a
+            # sweep that stops working says so instead of disappearing.
+            #
+            # ⚖️ IT STILL DOES NOT FAIL THE DEPLOY. Reclaiming disk is not worth
+            # failing a deploy that has already booted a healthy worker, so the
+            # `|| true` stays — what changes is that the failure is visible.
+            echo "-- build cache sweep (older than 7 days) --"
+            docker builder prune -f --filter until=168h || echo "::warning::build-cache sweep failed — disk will grow until this is fixed"
 
             # ⚠️ ONE WORKER, OR THIS DEPLOY IS A LIE.
             #
