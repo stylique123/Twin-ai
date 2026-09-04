@@ -87,10 +87,35 @@ drop policy if exists entry_impressions_insert_own on public.entry_impressions;
 create policy entry_impressions_insert_own on public.entry_impressions
   for insert with check (auth.uid() = owner_id);
 
+-- ⚠️ THE POLICIES ABOVE DO NOT MAKE THIS APPEND-ONLY, AND I SHIPPED IT BELIEVING
+-- THEY DID. `check_client_write_grants.sql` failed this migration on its first
+-- staging run and was exactly right:
+--
+--   client roles hold TRUNCATE on: entry_impressions. Row security does not
+--   gate TRUNCATE, so the grant is the whole permission.
+--
+-- Supabase's default privileges hand `anon` and `authenticated` the full verb
+-- set on every new table in `public`. Omitting an update policy stops an UPDATE,
+-- because RLS gates it — but nothing gates TRUNCATE, so the table's comment
+-- claimed "no update or delete policy: a log that can be rewritten is not
+-- evidence" while any signed-in client could empty it in one statement. The
+-- header was true about policies and false about the table.
+--
+-- ⚖️ `revoke all` FIRST, THEN GRANT BACK EXACTLY TWO VERBS — 0172's ruling, and
+-- it names the reason: enumerating verbs to revoke is precisely how TRUNCATE
+-- was missed before. A default that grows a new verb must arrive revoked.
+-- ⚠️ AND `anon` GETS NOTHING BACK. Both policies test `auth.uid()`, so an
+-- anonymous caller could never satisfy them; leaving it a grant it cannot use
+-- is a lock left unlocked.
+revoke all on table public.entry_impressions from anon, authenticated;
+grant select, insert on table public.entry_impressions to authenticated;
+
 comment on table public.entry_impressions is
   'One row per time a creator starts a video: which door they took, whether they '
   'chose it or the screen preselected it, and which doors were on screen. Holds '
-  'no creator text. Append-only — there is no update or delete policy.';
+  'no creator text. Append-only, enforced at BOTH layers: no update or delete '
+  'policy, and client roles hold only select and insert — RLS does not gate '
+  'TRUNCATE, so the policies alone would not have made this true.';
 
 comment on column public.entry_impressions.offered is
   'Doors visible at that moment, including the one taken. Stored per row, not '
