@@ -3070,6 +3070,23 @@ const CMP_COMPARATIVE: readonly RegExp[] = [
  * ever substantiate the claim, which is why this is the high-risk case and not
  * the low-risk one — the opposite reading to the figure check, deliberately.
  */
+/** Stored product facts, as a count.
+ *
+ * ⚠️ A FUNCTION AND NOT A LOCAL, because the two readers live in DIFFERENT
+ * BLOCK SCOPES: the script report sees `productFactValues`, the repair loop
+ * below it does not. The first version of this wiring read that local from the
+ * repair loop and `edge-functions-parse` rejected it with TS2304 — twice, on
+ * the two lines that needed it. One derivation, reachable from both, is the fix
+ * that cannot drift back apart.
+ */
+function productFactCountOf(ownedEntity: unknown): number {
+  const k = (ownedEntity as { knowledge?: unknown } | null)?.knowledge
+  return Array.isArray(k)
+    ? k.filter((f) => typeof (f as { value?: unknown })?.value === 'string'
+        && (f as { value: string }).value !== '').length
+    : 0
+}
+
 function comparativeFailures(
   beats: unknown,
   commercial: boolean,
@@ -6737,7 +6754,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // and an absent counter would look identical to it — which is why it is
       // written even when nothing is found.
       comparative_claim_gaps: comparativeFailures(
-        declared, goal === 'sell' || ownedEntity !== null, productFactValues.length).length,
+        declared, goal === 'sell' || ownedEntity !== null, productFactCountOf(ownedEntity)).length,
       proof_quality: proofQualityCounts(
         (templated.bp as { beat_plan?: unknown })?.beat_plan),
       // ⚠️ THE SHOT THE CREATOR CANNOT SUPPLY. Twin stopped directing screen
@@ -6863,7 +6880,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // second thing to get subtly wrong, and this one already has the shape.
     let entFails = [
       ...entitlementFailures(declared, suppliedForCheck),
-      ...comparativeFailures(declared, isCommercial, productFactValues.length),
+      ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
     ]
     const creatorQuestions: string[] = []
     if (entFails.length) {
@@ -6902,7 +6919,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         // from the first draft.
         entFails = [
           ...entitlementFailures(declared, suppliedForCheck),
-          ...comparativeFailures(declared, isCommercial, productFactValues.length),
+          ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
         ]
         console.log(JSON.stringify({ event: 'entitlement_repair', applied, still_failing: entFails.length }))
       } catch (e) {
