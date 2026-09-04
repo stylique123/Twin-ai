@@ -5,6 +5,7 @@ import { selectVideosToTranscribe, transcriptBudgetFor, scrapePoolFor } from '..
 import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { synthesizeVoiceFromPosts, extractKnowledgeFromCaptions } from '../voice.js'
 import { byReachDesc, averagePlays, reachOf } from '../reach.js'
+import { scrapedPostRows } from '../scrapedPostRows.js'
 import type { InlineImage } from '../gemini.js'
 import { env } from '../env.js'
 import { ProxyAgent } from 'undici'
@@ -402,6 +403,40 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   //
   // ⚖️ ENRICHMENT, NEVER A GATE — the rule the audio path already follows. A
   // creator whose extraction fails must still get their voice.
+  // ── KEEP THE CATALOGUE, BECAUSE UNTIL NOW WE READ IT AND THREW IT AWAY ────
+  //
+  // ⚠️ `dna_cache` STORES THE SYNTHESISED PROFILE AND NOT ONE POST. Measured on
+  // 2026-09-04: 31 scans, 23 profile keys, none of them the posts. The captions
+  // and the play counts pass through this function and go out of scope, so a
+  // creator's real view counts exist nowhere and the caption cap cannot be
+  // judged against the input it is capping.
+  //
+  // ⚖️ WRITTEN BEFORE THE EXTRACTOR RUNS, ON PURPOSE. Knowledge extraction makes
+  // a model call and is explicitly allowed to fail; the posts are already in
+  // hand and cost nothing to keep. Ordering it after would throw the catalogue
+  // away every time the model was unavailable — which is the failure mode this
+  // whole block exists to stop being invisible.
+  //
+  // ⚖️ AND IT IS ENRICHMENT, NEVER A GATE, like everything else on this path. A
+  // creator whose post store fails must still get their voice.
+  if (ownerId) try {
+    const rows = scrapedPostRows({ ownerId, voiceId, platform, handle, posts })
+    if (rows.length) {
+      // ⚠️ UPSERT ON (owner_id, url). A re-scan re-observes the same videos; an
+      // insert would duplicate the whole catalogue every time the creator
+      // pressed the button, and any count over this table would then grow with
+      // the number of scans rather than the number of videos.
+      const { error } = await db.from('scraped_posts')
+        .upsert(rows, { onConflict: 'owner_id,url' })
+      if (error) stage('posts_stored', 'failed', error.message)
+      else stage('posts_stored', 'ok', `${rows.length} of ${posts.length} posts`)
+    } else {
+      stage('posts_stored', 'skipped', 'no post carried both a url and a caption')
+    }
+  } catch (err) {
+    stage('posts_stored', 'failed', err instanceof Error ? err.message : String(err))
+  }
+
   if (ownerId) try {
     const captions = posts.map((x) => String(x.text ?? '')).filter((t) => t.trim().length > 0)
     const items = captions.length ? await extractKnowledgeFromCaptions(handle, platform, captions) : []
