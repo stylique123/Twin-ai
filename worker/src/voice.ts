@@ -1,5 +1,6 @@
 import { splitDisclaimersFromCtas } from './claimDisclaimers.js'
 import { geminiJson, obj, arr, str, type InlineImage } from './gemini.js'
+import { byReachDesc, reachOf } from './reach.js'
 import type { ScrapedPost } from './media.js'
 import { buildVoiceCorpus } from './voiceCorpus.js'
 
@@ -196,13 +197,22 @@ export async function synthesizeVoiceFromPosts(
   images: InlineImage[] = [],
 ): Promise<Record<string, unknown>> {
   // Rank by reach so the model studies their WINNERS first (mirrors the edge synth).
-  const ranked = [...posts].sort((a, b) => (b.plays || b.likes) - (a.plays || a.likes)).slice(0, 25)
+  // ⚠️ AN UNREAD COUNT NO LONGER SORTS AS A FLOP. `(b.plays || b.likes)` put a
+  // post whose count the platform withheld BELOW a post with one view, so a
+  // creator whose catalogue came back without numbers had their winners ranked
+  // last — and the model was then told to study those as their best work.
+  const ranked = [...posts].sort(byReachDesc).slice(0, 25)
   const corpus = ranked
     .map((p, i) => {
-      const r = p.plays || p.likes
-      const reach = r ? ` (${r.toLocaleString()} views/likes)` : ''
+      const r = reachOf(p)
+      // ⚠️ 0 IS A REAL REACH AND IS NOT SILENCE. `r ?` would have hidden a
+      // genuine zero the same way the old `||` hid it.
+      const reach = r !== null ? ` (${r.toLocaleString()} views/likes)` : ''
       const tags = p.hashtags.length ? ` [#${p.hashtags.join(' #')}]` : ''
-      const tier = i < 5 && r ? ' [TOP PERFORMER]' : ''
+      // ⚖️ AND AN UNMEASURED POST IS NEVER CALLED A TOP PERFORMER. It may well
+      // be one; we do not know, and telling the model we do is the guess this
+      // whole change exists to stop.
+      const tier = i < 5 && r !== null && r > 0 ? ' [TOP PERFORMER]' : ''
       return `${i + 1}.${tier}${reach} ${p.text}${tags}`
     })
     .join('\n')

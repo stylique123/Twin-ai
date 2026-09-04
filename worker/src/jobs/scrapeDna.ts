@@ -4,6 +4,7 @@ import { assessScanTarget } from '../scanTarget.js'
 import { selectVideosToTranscribe, transcriptBudgetFor, scrapePoolFor } from '../transcriptSelection.js'
 import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { synthesizeVoiceFromPosts, extractKnowledgeFromCaptions } from '../voice.js'
+import { byReachDesc, averagePlays, reachOf } from '../reach.js'
 import type { InlineImage } from '../gemini.js'
 import { env } from '../env.js'
 import { ProxyAgent } from 'undici'
@@ -79,7 +80,7 @@ async function fetchInlineImages(urls: string[], max = 4): Promise<InlineImage[]
 
 function topCovers(posts: ScrapedPost[], max = 4): string[] {
   return [...posts]
-    .sort((a, b) => (b.plays || b.likes) - (a.plays || a.likes))
+    .sort(byReachDesc)
     .map((p) => p.cover)
     .filter((u): u is string => typeof u === 'string' && /^https:\/\//i.test(u))
     .slice(0, max)
@@ -270,8 +271,15 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     // rather than "0 followers".
     followers: profileFacts?.audience ?? 0,
     videos: n,
-    avg_views: n ? Math.round(posts.reduce((a, x) => a + (x.plays || 0), 0) / n) : 0,
-    avg_likes: n ? Math.round(posts.reduce((a, x) => a + (x.likes || 0), 0) / n) : 0,
+    // ⚠️ AVERAGED OVER THE POSTS THAT CARRY A NUMBER, not over all of them.
+    // This used to sum readable posts and divide by `n`, so every post whose
+    // count the platform withheld quietly pulled the reported average down.
+    // ⚖️ AND 0 IS STILL WHAT THE DASHBOARD GETS, because it cannot render a
+    // null — the same compromise the `followers` line above documents. The
+    // difference is that the 0 is now only ever "nothing was readable", not
+    // "some of it was readable and the rest was counted as flops".
+    avg_views: averagePlays(posts).average ?? 0,
+    avg_likes: averagePlays(posts.map((x) => ({ plays: x.likes }))).average ?? 0,
   }
 
   // Auto-fill the brand palette from the colors read off the imagery — but NEVER

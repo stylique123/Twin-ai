@@ -153,8 +153,15 @@ export interface Transcript {
 
 export interface ScrapedPost {
   text: string
-  likes: number
-  plays: number
+  /** ⚠️ null MEANS NOT READ, AND IS NOT ZERO — the same three-state rule this
+   *  file already states for the follower count twenty lines below, and then
+   *  did not apply here. Every scraper coerced a missing count to 0 via a local
+   *  `num()`, so a post whose view count the extractor simply did not return was
+   *  stored as "nobody watched it" and sorted to the bottom of every ranking as
+   *  though it had flopped. `nullableInt` — already in this file, written for
+   *  exactly this — is the reader. */
+  likes: number | null
+  plays: number | null
   hashtags: string[]
   url: string
   cover?: string // best-effort video cover/thumbnail URL, for reading the brand palette
@@ -341,7 +348,6 @@ async function readProfileRecords(
 }
 
 
-const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 const nullableInt = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const nonEmpty = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? v.trim().replace(/^@/, '') : null)
 const tags = (text: string) =>
@@ -370,8 +376,8 @@ async function tiktokProfileViaApify(handle: string, limit: number) {
       const meta = (e.videoMeta ?? {}) as Record<string, unknown>
       return {
         text,
-        likes: num(e.diggCount),
-        plays: num(e.playCount),
+        likes: nullableInt(e.diggCount),
+        plays: nullableInt(e.playCount),
         hashtags: tags(text),
         url: String(e.webVideoUrl ?? ''),
         cover: typeof meta.coverUrl === 'string' ? meta.coverUrl : undefined,
@@ -412,7 +418,7 @@ async function youtubeChannelViaApify(handle: string, limit: number) {
         // The channel scraper reports views but not likes. 0 is the honest read
         // of "not returned" for a metric the DNA synth only ranks by.
         likes: 0,
-        plays: num(e.viewCount),
+        plays: nullableInt(e.viewCount),
         hashtags: tags(text),
         url: String(e.url ?? ''),
         cover: typeof e.thumbnailUrl === 'string' ? e.thumbnailUrl : undefined,
@@ -451,8 +457,8 @@ async function instagramProfileViaApify(handle: string, limit: number) {
       const text = String(e.caption ?? '').replace(/\s+/g, ' ').trim()
       return {
         text,
-        likes: num(e.likesCount),
-        plays: num(e.videoPlayCount) || num(e.videoViewCount),
+        likes: nullableInt(e.likesCount),
+        plays: nullableInt(e.videoPlayCount) ?? nullableInt(e.videoViewCount),
         hashtags: tags(text),
         url: String(e.url ?? ''),
         cover: typeof e.displayUrl === 'string' ? e.displayUrl : undefined,
@@ -587,7 +593,6 @@ export async function scrapeProfile(
 }
 
 function buildPosts(entries: Record<string, unknown>[]): ScrapedPost[] {
-  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
   // Best-effort cover URL — yt-dlp's flat-playlist TikTok extractor often includes
   // `thumbnails[]`; grab the last (largest) one. Absent on some accounts — that's
   // fine, the DNA synth just falls back to caption-only color inference.
@@ -603,7 +608,7 @@ function buildPosts(entries: Record<string, unknown>[]): ScrapedPost[] {
     .map((e) => {
       const text = String(e.title || e.description || '').replace(/\s+/g, ' ').trim()
       const hashtags = Array.from(new Set((text.match(/#[\p{L}\p{N}_]+/gu) ?? []).map((t) => t.slice(1)))).slice(0, 6)
-      return { text, likes: num(e.like_count), plays: num(e.view_count), hashtags, url: String(e.url ?? ''), cover: cover(e) }
+      return { text, likes: nullableInt(e.like_count), plays: nullableInt(e.view_count), hashtags, url: String(e.url ?? ''), cover: cover(e) }
     })
     .filter((p) => p.text.length > 0)
 }
