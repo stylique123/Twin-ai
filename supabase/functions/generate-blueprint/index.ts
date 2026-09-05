@@ -5315,10 +5315,20 @@ Deno.serve(async (req: Request) => {
       || rel === 'AFFILIATE' || rel === 'SPONSOR'
       ? 'only_if_intended'
       : 'forbidden'
-    // ⚠️ NOT DERIVED FROM `rel`, AND THAT IS DELIBERATE. `rel` is the SAFER of
+    // ⚠️ THE OLD FORM WAS DEAD CODE, NOT A WORKING RULE. It read
+    // `rel === 'AFFILIATE' || rel === 'SPONSOR'`, and `rel` came from an entity
+    // query filtered to `['OWN_PRODUCT', 'OWN_SERVICE']` — so neither side of
+    // that `||` could ever be true. Disclosure was structurally unreachable
+    // here for every creator. Nothing is mis-disclosed today only because ZERO
+    // production voices and ZERO entities carry affiliate or sponsor at all
+    // (measured 2026-09-05); the rule itself had no way to fire.
+    //
+    // ⚖️ NOT DERIVED FROM `rel`, AND THAT IS DELIBERATE. `rel` is the SAFER of
     // two possibly-conflicting claims, and resolving a conflict downward is
-    // right for what may be asserted and wrong for what a viewer must be told.
-    // A union: if EITHER store says affiliate or sponsor, disclose.
+    // right for what may be ASSERTED and wrong for what a viewer must be TOLD.
+    // A union: if EITHER store says affiliate or sponsor, disclose. Since the
+    // entity half cannot carry either, the onboarding answer is in practice the
+    // only route by which this can now become true — which is the fix.
     const disclosureRequired = requiresDisclosureInline(briefTies, ownedEntity?.relationship)
     const marketingClaims = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
       ? 'allowed'
@@ -5563,11 +5573,16 @@ Deno.serve(async (req: Request) => {
     // So the refusal is narrowed to what is true under BOTH possibilities: do
     // not write a scene that DEPENDS on one. That is safe if they have no
     // product and harmless if they do, and it claims nothing we did not observe.
-    // ⚠️ THIS BRANCH HAD NEVER ONCE BEEN TRUE. It read
-    // `ownedEntity.relationship === 'NONE'`, and ZERO of the seven entities in
-    // production carries NONE — the "I sell nothing" answer writes
-    // `commercialTies`, which this file never read. So the creator who answered
-    // most clearly fell through to the weaker unrecorded wording below.
+    // ⚠️ THIS BRANCH COULD NOT FIRE, AND THE REASON IS STRUCTURAL RATHER THAN
+    // STATISTICAL. It read `ownedEntity.relationship === 'NONE'` — and the
+    // query that produces `ownedEntity` filters
+    // `.in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])` (see the lookup
+    // above). A NONE row cannot come back from it at all, so the condition was
+    // dead by construction, not merely unmet by today's data. (Production
+    // agrees: ZERO of the seven stored entities carries NONE.) Meanwhile the
+    // "I sell nothing" answer writes `pre_script_brief.commercialTies`, which
+    // this file never read — so the creator who answered most clearly fell
+    // through to the weaker unrecorded wording below.
     const recordedNoProduct = saysSellsNothingInline(briefTies, ownedEntity?.relationship)
     // ⚖️ UNRECORDED NOW MEANS BOTH STORES ARE SILENT, not just this one. An
     // onboarding answer with no entity row is an ANSWER, and treating it as

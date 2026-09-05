@@ -151,13 +151,20 @@ export function saysSellsNothing(
  * video that did not need one costs a line of script; a missing one on a video
  * that did is the failure this exists to prevent.
  *
- * ⚠️ AND generate-blueprint COERCES THE OTHER WAY TODAY. `const rel =
- * (ownedEntity?.relationship ?? 'NONE')` turns "no entity row" into an answered
- * NONE, and `disclosureRequired` reads that `rel` — so a creator with no entity
- * gets no disclosure regardless of what they told onboarding. Measured
- * 2026-09-05: ZERO production voices and ZERO entities carry affiliate or
- * sponsor, so nothing is mis-disclosed today. It is latent, not live, and it is
- * still the wrong direction to fail in.
+ * ⚠️ AND generate-blueprint's OLD RULE WAS DEAD CODE, NOT MERELY LATENT. It
+ * read `rel === 'AFFILIATE' || rel === 'SPONSOR'` where `rel` came from
+ * `ownedEntity?.relationship ?? 'NONE'` — and that entity query filters
+ * `.in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])`. Neither side of the
+ * `||` could ever be true, for anyone. Two separate faults stacked: the `??`
+ * turned an absent row into an answered NONE, and the row itself could never
+ * have said affiliate or sponsor in the first place.
+ *
+ * ⚖️ NOTHING IS MIS-DISCLOSED TODAY, AND THAT IS LUCK RATHER THAN DESIGN.
+ * Measured 2026-09-05: ZERO production voices and ZERO entities carry affiliate
+ * or sponsor at all. The rule had no way to fire; there was simply nobody it
+ * needed to fire for. Since the entity half still cannot carry either value,
+ * the onboarding answer is in practice the only route by which disclosure can
+ * now become true.
  */
 export function requiresDisclosure(
   ties: readonly CommercialTie[] | null | undefined,
