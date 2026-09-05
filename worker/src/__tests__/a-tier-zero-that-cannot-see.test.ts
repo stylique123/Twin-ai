@@ -95,8 +95,21 @@ describe('the analyzers already exist — this item is wiring, not a build', () 
   it('a download that never landed carries NO Tier 0 reading', () => {
     // ⚠️ THE OTHER HALF. With no file on disk there is nothing to measure, and
     // a profile of nulls there would claim a reading of a video nobody had.
-    // NOT_RUN defaults tier_zero to null, and the download failure passes none.
-    expect(VISUAL_PASS).toMatch(/return NOT_RUN\(classifyDownloadFailure\(e\), phaseOf\(e\)\)/)
+    //
+    // ⚠️ ASSERTED ON THE PROPERTY, NOT ON THE ARGUMENT COUNT. This matched the
+    // literal `NOT_RUN(classifyDownloadFailure(e), phaseOf(e))` and broke the
+    // day a FOURTH argument was added to carry the unmapped failure text —
+    // while the property it exists for, "a failed download passes no tier_zero",
+    // stayed true throughout. A guard pinned to incidental syntax reports a
+    // defect that is not there and says nothing about the one that would be.
+    const catchBlock = VISUAL_PASS.slice(
+      VISUAL_PASS.indexOf('await downloadReference(rawUrl, route'),
+      VISUAL_PASS.indexOf('TIER 0 RUNS HERE'))
+    expect(catchBlock, 'the download catch block was not found').toContain('NOT_RUN(')
+    // It RETURNS — a NOT_RUN that is built and dropped is a throw with extra steps.
+    expect(catchBlock).toMatch(/return NOT_RUN\(/)
+    // And tier_zero — the third positional — is null on this path.
+    expect(catchBlock).toMatch(/NOT_RUN\([^)]*phaseOf\(e\),\s*null/s)
   })
 
   it('the bonus pass can never fail the job it rides on', () => {

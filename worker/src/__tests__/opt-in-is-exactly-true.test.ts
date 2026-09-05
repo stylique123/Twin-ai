@@ -45,8 +45,18 @@ describe('a second pass may not erase a first', () => {
     // A transcript that succeeded must survive a frames pass that did not.
     // `runVisualPass` returns NOT_RUN for every failure rather than throwing,
     // which is 0143's rule applied one layer up.
+    //
+    // ⚠️ THE PROPERTY IS "RETURNS RATHER THAN THROWS", NOT A CALL SIGNATURE.
+    // This pinned the literal two-argument call and broke when a fourth
+    // argument was added to carry the unmapped failure text — a change that
+    // could not affect whether the pass throws.
     expect(PASS).toContain('THROWS FOR NOTHING')
-    expect(PASS).toContain('NOT_RUN(classifyDownloadFailure(e), phaseOf(e))')
+    const catchBlock = PASS.slice(
+      PASS.indexOf('await downloadReference(rawUrl, route'),
+      PASS.indexOf('TIER 0 RUNS HERE'))
+    expect(catchBlock, 'the download catch block was not found').toContain('classifyDownloadFailure(e)')
+    expect(catchBlock).toMatch(/return NOT_RUN\(/)
+    expect(catchBlock).not.toMatch(/^\s*throw /m)
   })
 
   it('reuses the transcript ladder failure vocabulary', () => {
