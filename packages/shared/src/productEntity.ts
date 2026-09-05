@@ -256,6 +256,31 @@ export function answeredShowability(
   return answer
 }
 
+/**
+ * Turn a picked capability answer into the flag `answeredShowability` will read,
+ * WITHOUT "I am not sure yet" becoming "no".
+ *
+ * ⚠️ THE ONE ANSWER THAT DOES NOT WIN OVER THE FLAGS. `answeredShowability`
+ * returns every answer verbatim except UNKNOWN, which it hands to
+ * `inferShowability(type, flags)` — and that reads `false` as NEVER and null as
+ * UNKNOWN. So a form building its flag as `answer === 'ALWAYS'` turns the option
+ * a creator picks to say they do not know into a stored denial, silently
+ * forbidding every scene that shows the product.
+ *
+ * ⚖️ SOMETIMES AND NEVER ALSO PRODUCE `false` HERE, AND THAT IS CORRECT. They are
+ * real answers, so `answeredShowability` returns them and never consults the
+ * flag at all. UNKNOWN is the single value that must arrive as null, which is
+ * why the null check precedes the coercion rather than following it.
+ *
+ * ⚖️ LIVES HERE, NOT ON THE FORM. Two add flows need it and a test asserts it;
+ * three hand-written copies of a rule about THIS file's function is the drift
+ * this file keeps catching.
+ */
+export function capabilityFlag(answer: Showability | null | undefined): boolean | null {
+  if (answer === null || answer === undefined || answer === 'UNKNOWN') return null
+  return answer === 'ALWAYS'
+}
+
 /** The relationships that mean the creator owns the thing. Used in enough
  *  places that a second hand-written list would eventually disagree with this
  *  one — which is the drift bug this repo keeps catching. */

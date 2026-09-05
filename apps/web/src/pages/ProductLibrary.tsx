@@ -47,6 +47,7 @@ import {
   signEditUrls,
   bestSuggestion,
   asksPersonalUse, capabilityQuestion, CAPABILITY_PROMPT, capabilityAnswerIsUsed,
+  capabilityFlag,
   productLifecycle, LIFECYCLE_MESSAGE,
   CAPTURE_COPY, PLATFORM_CHOICES, PRIVACY_CHOICES, RATHER_NOT_SAY, FIGURE_HINT,
   surfaceChoices, buildCommunityMap, whatIsMissing,
@@ -107,12 +108,38 @@ const TYPE_CHOICES: Array<{ value: EntityType; label: string }> = [
  *  two vocabularies for one stored field is how a creator learns their answer
  *  did not mean what they thought. `Not set` is listed because a product can
  *  arrive here never having been asked, and a blank row reads as a bug. */
-const SHOW_OPTIONS: Array<{ value: Showability; label: string; note: string }> = [
-  { value: 'ALWAYS', label: 'Usually', note: 'A scene can show it directly.' },
-  { value: 'SOMETIMES', label: 'Sometimes', note: 'It can be mentioned, and no scene will fall apart without it.' },
-  { value: 'NEVER', label: 'No', note: 'Scripts stay talking-only for this one.' },
-  { value: 'UNKNOWN', label: 'Not set', note: 'Until you answer, no scene will depend on showing it.' },
+const SHOW_OPTIONS: Array<{ value: Showability; label: string; askLabel: string; note: string }> = [
+  { value: 'ALWAYS', label: 'Usually', askLabel: 'Usually', note: 'A scene can show it directly.' },
+  { value: 'SOMETIMES', label: 'Sometimes', askLabel: 'Sometimes', note: 'It can be mentioned, and no scene will fall apart without it.' },
+  { value: 'NEVER', label: 'No', askLabel: 'No', note: 'Scripts stay talking-only for this one.' },
+  // ⚠️ `label` DESCRIBES A STATE, `askLabel` OFFERS A CHOICE, and they are not
+  // the same sentence. The card reports what is on file — "Not set". A form
+  // asking the question now cannot offer "Not set" as an answer; it has to let
+  // a person say they do not know, in those words.
+  { value: 'UNKNOWN', label: 'Not set', askLabel: 'I am not sure yet', note: 'Until you answer, no scene will depend on showing it.' },
 ]
+
+/**
+ * The capability question's answers, for a form that is ASKING it.
+ *
+ * ⚠️ THE ADD FORMS OFFERED THREE OF THE FOUR, AND THE MISSING ONE WAS THE
+ * HONEST ONE. Both flows listed Usually / Sometimes / No, spelled out twice in
+ * this file, and neither would submit until one was picked. A creator who did
+ * not yet know whether they could have the thing on camera had no way to say so
+ * — so the form extracted a guess and stored it as an answer.
+ *
+ * ⚠️ AND THE COERCED GUESS IS NOT HARMLESS IN EITHER DIRECTION. `ALWAYS` is what
+ * licenses a scene built around SHOWING the object; that is the failure Run G
+ * produced when it invented a whiteboard on a capability nobody had answered.
+ * `NEVER` silently forbids one. UNKNOWN is the state the writer already knows
+ * how to be careful with — it is not the absence of an answer, it is the answer
+ * that stops a scene from depending on an object we were never told about.
+ *
+ * ⚖️ DERIVED FROM `SHOW_OPTIONS`, NOT RE-TYPED. The two hand-written copies had
+ * already drifted from the card's list by one whole option; a third copy would
+ * only pick a new moment to drift.
+ */
+const CAPABILITY_CHOICES = SHOW_OPTIONS.map((o) => ({ value: o.value, label: o.askLabel }))
 
 /** What a creator is told about a type whose answer would change nothing.
  *  ⚠️ NEVER MAKE THE CREATOR THINK ABOUT TWIN'S ARCHITECTURE: these say what
@@ -269,11 +296,7 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
       {capability !== null && (
         <Choices
           label={CAPABILITY_PROMPT[capability]}
-          options={[
-            { value: 'ALWAYS' as Showability, label: 'Usually' },
-            { value: 'SOMETIMES' as Showability, label: 'Sometimes' },
-            { value: 'NEVER' as Showability, label: 'No' },
-          ]}
+          options={CAPABILITY_CHOICES}
           chosen={showability}
           onPick={(v) => setShowability(v)}
         />
@@ -291,8 +314,16 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
             // wins over `flags` in `answeredShowability`; `flags` still travels
             // as the honest pre-fill for anything this question did not ask.
             showability,
-            flags: capability === 'physical' ? { canFilmObjects: showability === 'ALWAYS' }
-              : capability === 'screen' ? { canRecordScreen: showability === 'ALWAYS' }
+            // ⚠️ AND "NOT SURE" TRAVELS AS null, NOT AS false. `answeredShowability`
+            // returns `inferShowability(type, flags)` for an UNKNOWN answer —
+            // it is the ONE answer that does not win over the flags — and
+            // `inferShowability` reads `false` as NEVER and null as UNKNOWN.
+            // So `showability === 'ALWAYS'` would have turned the option a
+            // creator picks to say "I do not know yet" into a stored denial,
+            // silently forbidding every scene that shows the thing. The null
+            // check has to precede the coercion, here as everywhere.
+            flags: capability === 'physical' ? { canFilmObjects: capabilityFlag(showability) }
+              : capability === 'screen' ? { canRecordScreen: capabilityFlag(showability) }
                 : undefined,
           })}
           className="btn-gradient rounded-lg px-3 py-1.5 text-sm disabled:opacity-40"
@@ -1852,11 +1883,7 @@ function StartFromLink({ onCancel, onClaim, busy }: {
       {capability !== null && (
         <Choices
           label={CAPABILITY_PROMPT[capability]}
-          options={[
-            { value: 'ALWAYS' as Showability, label: 'Usually' },
-            { value: 'SOMETIMES' as Showability, label: 'Sometimes' },
-            { value: 'NEVER' as Showability, label: 'No' },
-          ]}
+          options={CAPABILITY_CHOICES}
           chosen={showability}
           onPick={(v) => setShowability(v)}
         />
@@ -1908,8 +1935,16 @@ function StartFromLink({ onCancel, onClaim, busy }: {
             // because they are the honest pre-fill for anything that did not
             // ask; `answeredShowability` prefers the answer where one was given.
             showability,
-            flags: capability === 'physical' ? { canFilmObjects: showability === 'ALWAYS' }
-              : capability === 'screen' ? { canRecordScreen: showability === 'ALWAYS' }
+            // ⚠️ AND "NOT SURE" TRAVELS AS null, NOT AS false. `answeredShowability`
+            // returns `inferShowability(type, flags)` for an UNKNOWN answer —
+            // it is the ONE answer that does not win over the flags — and
+            // `inferShowability` reads `false` as NEVER and null as UNKNOWN.
+            // So `showability === 'ALWAYS'` would have turned the option a
+            // creator picks to say "I do not know yet" into a stored denial,
+            // silently forbidding every scene that shows the thing. The null
+            // check has to precede the coercion, here as everywhere.
+            flags: capability === 'physical' ? { canFilmObjects: capabilityFlag(showability) }
+              : capability === 'screen' ? { canRecordScreen: capabilityFlag(showability) }
                 : undefined,
           })}
           className="btn-gradient rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"

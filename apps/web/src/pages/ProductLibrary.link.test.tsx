@@ -33,7 +33,11 @@ const KNOWN_ENTITY: ProductEntityRecord = {
   restrictions: { approvedClaims: [], forbiddenClaims: [], complianceNotes: null },
   source: 'user_answer', userConfirmed: true, updated: '2026-08-24T00:00:00Z',
   communityMap: null, archivedAt: null,
-  knowledge: [{ field: 'what it is', value: 'A travel tripod', trust: 'usable', origin: null, asOf: null }],
+  knowledge: [{
+    field: 'description', value: 'A travel tripod', trust: 'usable',
+    source: 'official_product_page', sourceUrl: 'https://peakdesign.example/tripod',
+    extractedAt: '2026-08-24T00:05:00Z',
+  }],
   knowledgeExtractedAt: '2026-08-24T00:05:00Z',
   knowledgeSourceUrl: 'https://peakdesign.example/tripod',
   knowledgeFailedAt: null, knowledgeError: null,
@@ -135,5 +139,27 @@ describe('the product card has one link field, and it can be read from', () => {
     fireEvent.blur(link)
     await waitFor(() => expect(updateEntityPresentation).toHaveBeenCalledWith(
       'e1', { productUrl: 'https://peakdesign.example/tripod-v2' }))
+  })
+})
+
+// ⚠️ ASSERTED ON THE FORM, NOT ONLY ON THE STORAGE CHAIN. The sibling suite
+// proves that an UNKNOWN answer survives being stored; it passed unchanged when
+// UNKNOWN was deliberately removed from the list of options, because nothing
+// there looks at the screen. A state that cannot be picked is not a state.
+describe('the capability question offers the answer a creator may honestly have', () => {
+  it('offers all four states, including not knowing yet', async () => {
+    current = UNREAD_ENTITY
+    const { default: ProductLibrary } = await import('./ProductLibrary')
+    render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add another product' }))
+    // The question appears once a type and relationship make one apply.
+    fireEvent.click(await screen.findByRole('button', {
+      name: 'A physical product (food, handmade, apparel — anything you ship or hand over)' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'I make or sell it' }))
+
+    for (const label of ['Usually', 'Sometimes', 'No', 'I am not sure yet']) {
+      expect(await screen.findByRole('button', { name: label })).toBeTruthy()
+    }
   })
 })
