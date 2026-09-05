@@ -262,3 +262,10 @@ export * from './script/sentenceUniformity'
 // describes what the CREATOR performs — never a b-roll or screen-recording
 // request, both of which appear in the real data and are out of scope.
 export * from './script/beatProof'
+
+// ⚖️ THE LIBRARY STORES SHAPES, NEVER WORDS. Every row in
+// `reference_content_profiles.profile` carries an `evidence` key holding a
+// verbatim source sentence. A cross-creator library that copied the profile
+// would be a phrase store. This is a WHITELIST projection: enum tokens and
+// counts only, and `evidence` is unreachable from it.
+export * from './shapeLibrary'
