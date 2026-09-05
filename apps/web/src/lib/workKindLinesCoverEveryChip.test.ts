@@ -89,6 +89,37 @@ describe('every offered work-kind chip reaches the writer', () => {
     for (const k of ['founder', 'coach']) expect(offeredChips()).toContain(k)
   })
 
+  // ⚠️ SOFTWARE AND A LOCAL BUSINESS SHARED ONE CHIP WHILE THE PROMPT HELD TWO
+  // OPPOSED ANSWERS FOR THEM. `saas` says the proof is a screen shown to camera
+  // and the constraints are competitive; `local_service` says the buyer is
+  // nearby, the action is booking or calling, and completed work is the proof.
+  // A plumber who picked the merged chip stored `saas` and was told to record
+  // their screen. One of two written lines was unreachable — a reader with
+  // nothing routed to it.
+  it('offers software and a local business as SEPARATE chips', () => {
+    expect(offeredChips()).toContain('saas')
+    expect(offeredChips()).toContain('local_service')
+  })
+
+  // ⚖️ AND THE SPLIT ONLY MEANS ANYTHING IF THE TWO ANSWERS DIFFER. Re-pointing
+  // local_service at the saas sentence would satisfy every other assertion here
+  // while restoring the exact bug.
+  it('answers them with genuinely different sentences', () => {
+    const saas = workKindLine('saas')
+    const local = workKindLine('local_service')
+    expect(saas.length).toBeGreaterThan(40)
+    expect(local.length).toBeGreaterThan(40)
+    expect(local).not.toBe(saas)
+  })
+
+  // ⚠️ THE LABEL IS THE HALF THE CREATOR ACTUALLY READS. Splitting the ids while
+  // one label still reads "Software / local business" would leave the chooser
+  // exactly as ambiguous as before.
+  it('does not label either chip as both', () => {
+    const labels = ONBOARDING.match(/const WORK_KIND_LABEL[\s\S]*?\n\}/)?.[0] ?? ''
+    expect(labels).not.toMatch(/Software \/ local business/i)
+  })
+
   it('still answers the legacy values it no longer offers', () => {
     // `freelancer`, `brand` and `local_service` are not offered to a new signup
     // — each is folded into a chip — but rows already hold them, and a stored
