@@ -276,3 +276,10 @@ export * from './shapeLibrary'
 // topic-shaped values, reports coverage alongside the list, and names the
 // fragmentation instead of inventing a synonym table to hide it.
 export * from './topicLibrary'
+
+// ⚖️ A SHAPE FOR THE IDEA DOOR, WHERE THERE IS NO REFERENCE TO READ ONE FROM.
+// containerTemplates holds fourteen complete shapes and every path to them is
+// gated on `reference_url`. This picks one from the corpus instead — and, on
+// today's data, refuses for six goals in seven, because only `entertainment`
+// separates its leading container by more than sampling noise.
+export * from './shapeForGoal'
