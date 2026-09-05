@@ -74,11 +74,18 @@ export const REGISTRY = {
   'creativeTransferPlan.ts': {
     symbols: ['TransferPlanError', 'computePlanSha256', 'finalizeTransferPlan',
       'validateCreativeTransferPlan', 'canonicalTransferPlan'],
+    // ⚠️ THE TWO COLUMNS OF THIS LINEAGE ARE NAMED IN `check_column_readers`'s
+    // OWN REGISTRY AND MUST NOT BE SPELLED OUT HERE. Naming them made that
+    // guard see a reader for columns it had registered as unread, and it failed
+    // the build — this file mentioning a column is not code consuming it. The
+    // same self-reference this guard asserts against for its own symbols, caused
+    // one guard over, in the commit that added the assertion. Two debt registers
+    // that can read each other are two guards that excuse each other.
     why: 'The whole CreativeTransferPlan lineage is measured dead: 0 rows in '
-      + 'production and no caller for any of its exported functions. Already '
-      + 'registered on the column side (creative_transfer_plans.model_identity '
-      + 'and .prompt_version in check_column_readers). DECIDE as one unit — wire '
-      + 'the lineage or drop it — and not one symbol at a time.',
+      + 'production and no caller for any of its exported functions. Its two '
+      + 'dead columns are already registered on the column side, in '
+      + 'check_column_readers\'s own registry — deliberately not repeated here. '
+      + 'DECIDE as one unit — wire the lineage or drop it — not one symbol at a time.',
   },
   'communityChecks.ts': {
     symbols: ['unsupportedFigures', 'offMapLinks', 'checkCommunityScene', 'surfacesNotInCatalog'],
