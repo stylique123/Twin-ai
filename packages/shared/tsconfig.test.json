@@ -17,7 +17,6 @@
     "src/__tests__/desiredFormatModes.test.ts",
     "src/__tests__/four-creators-diverge-once-assessed.test.ts",
     "src/__tests__/liveRunFixtures.test.ts",
-    "src/__tests__/no-goal-grants-a-commercial-ask.test.ts",
     "src/__tests__/pipeline-scenarios.test.ts",
     "src/__tests__/settings-tells-you-what-to-do-next.test.ts",
     "src/__tests__/the-gallery-sees-a-projection.test.ts",

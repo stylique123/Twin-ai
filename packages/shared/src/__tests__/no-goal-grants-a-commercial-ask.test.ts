@@ -28,7 +28,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { validateCreativeDecisionPlan, type CreativeDecisionPlan } from '../creativeDecisionPlan'
+import { validateCreativeDecisionPlan, blankPlan, type CreativeDecisionPlan } from '../creativeDecisionPlan'
 import { assembleCreatorProfile, toPlannerView, CANONICAL_RELATIONSHIPS } from '../profileAssembler'
 import { VIDEO_GOALS } from '../videoIntent'
 import { COMMERCIAL_TIES } from '../creatorProfileQuestions'
@@ -39,11 +39,28 @@ const NOW = '2026-08-17T00:00:00.000Z'
 const creator = (ties: string[]) =>
   toPlannerView(assembleCreatorProfile({ answers: { commercialTies: ties } as never, now: NOW }))
 
-const plan = (over: Partial<CreativeDecisionPlan>): CreativeDecisionPlan => ({
-  objective: 'educate', focus: null, products: ['p'],
-  ownershipLanguage: false, commercialCta: false, disclosureRequired: true, cta: null,
-  ...over,
-})
+// ⚠️ THE BASE OMITTED `audienceLevel`, WHICH IS REQUIRED. It is
+//  `CanonicalLevel | null` on `CreativeDecisionPlan` and the empty plan sets it
+//  to `null` explicitly (creativeDecisionPlan.ts:128); this fixture set nothing,
+//  so every plan it built carried `undefined` in a field production always fills.
+//  The `{ ...base, ...over }` spread is what hid it: `Partial<T>` makes every
+//  property `| undefined`, so the result type absorbed the omission instead of
+//  reporting it. Second instance of this exact shape in this sweep.
+//
+//  ⚖️ `Object.assign` IS NOT A CAST — it is typed `<T, U>(t: T, u: U) => T & U`,
+//  so overrides stay checked against the real field types and only the spread's
+//  phantom `undefined` goes away.
+//  ⚖️ BUILT FROM `blankPlan`, THE REAL CONSTRUCTOR, rather than from a
+//  hand-written literal. Once the spread stopped absorbing omissions this
+//  fixture turned out to be missing NINE required fields, not one — topic,
+//  angle, format, targetSeconds, structure, hookStrategy, productRole,
+//  restrictions and audienceLevel. Listing them here would put a second
+//  definition of "an empty plan" in the repo, to drift from the first on the
+//  next field anyone adds; `blankPlan`'s own comment warns about exactly that.
+const plan = (over: Partial<CreativeDecisionPlan>): CreativeDecisionPlan =>
+  Object.assign(blankPlan('educate'), {
+    products: ['p'], disclosureRequired: true,
+  }, over)
 
 /** Ties that establish no stake at all. `none` is an answered "I sell nothing";
  *  `review` is a real tie to a thing the creator is party to in no way. */
