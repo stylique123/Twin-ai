@@ -1927,6 +1927,16 @@ function resolveFidelityInline(
 // question left the remix screen and its behaviour did not. The goal implies an
 // outcome so the CTA payoff and the substance floor keep working; it never feeds
 // `wantsSale`, which stays computed from what the creator actually said.
+// ⚠️ MIRRORS `GOAL_IMPLIES_FOCUS` IN packages/shared/src/videoIntent.ts.
+// "Sell something" and "My product or service" read as one question asked
+// twice on the remix screen; the goal now fills the subject in. Only `sell` —
+// `leads` was left out because someone asking for leads frequently teaches.
+// ⚖️ THE PARITY TEST EXECUTES BOTH COPIES over every combination, so a drift
+// here is caught rather than shipped.
+const GOAL_IMPLIES_FOCUS_INLINE: Record<string, string> = {
+  sell: 'product',
+}
+
 const GOAL_IMPLIES_OUTCOME_INLINE: Record<string, string> = {
   followers: 'share',
   authority: 'remember_me',
@@ -1981,7 +1991,14 @@ function compileVideoIntentInline(answers: {
   }
   let payoffDirective = impliedOutcome ? OUTCOME_PAYOFF_INLINE[impliedOutcome] : null
   let substanceFloor = impliedOutcome ? OUTCOME_FLOOR_INLINE[impliedOutcome] : SUBSTANCE_FLOOR
-  const prefersKinds = focus ? FOCUS_PREFERS_INLINE[focus] : []
+  // ⚠️ THE SUBJECT THE GOAL IMPLIES. A pre-selected chip that changes nothing
+  // would be worse than not asking, so the untapped implication takes effect
+  // here and the resolution records that it was inferred, not given.
+  const effectiveFocus = focus ?? (goal ? (GOAL_IMPLIES_FOCUS_INLINE[goal] ?? null) : null)
+  if (!focus && effectiveFocus) {
+    resolutions.push(`goal ${goal} → subject taken from ${effectiveFocus}`)
+  }
+  const prefersKinds = effectiveFocus ? FOCUS_PREFERS_INLINE[effectiveFocus] : []
 
   if (goal === 'sell' && (focus === 'expertise' || focus === 'experience')
       && (outcome === 'learn' || outcome === 'change_mind')) {
