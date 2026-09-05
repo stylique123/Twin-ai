@@ -21,7 +21,10 @@ import { describe, expect, it } from 'vitest'
 import {
   compareForCreator, eligibility, type GalleryCreatorView, type RankableReference,
 } from '../galleryPolicy'
-import { emptyReferenceProfile, type ReferenceProfile } from '../referenceProfile'
+import {
+  emptyReferenceProfile,
+  type ReferenceProfile, type FrameCitation, type VisualObservation,
+} from '../referenceProfile'
 import type { GalleryFacts, NicheRelation } from '../galleryRank'
 import type { Assessed } from '../assessed'
 import type { ContentSlot, LikelyGoal } from '../referenceContentProfile'
@@ -31,6 +34,16 @@ import type { ProductionMode } from '../referenceProfile'
 const AT = '2026-01-01T00:00:00.000Z'
 const seen = <T,>(value: T, evidence: string): Assessed<T> =>
   ({ value, basis: 'observed', evidence, assessedAt: AT })
+
+// ⚠️ SECOND FILE WITH ONE HELPER SERVING TWO TYPES. `contentSlots` is an
+//  `Assessed<T>` — value, basis, prose evidence, assessedAt — while
+//  `visual.primaryMode` is a `VisualObservation<T>`, which is exactly
+//  `{ value, evidence: { frames } }`. `seen` produced the first for both, so
+//  every primaryMode these four creators were ranked on carried prose where the
+//  type requires a frame citation, and `basis`/`assessedAt` that do not exist
+//  on it. Same shape as `twin-can-finish-this-beats-your-niche`.
+const seenVisual = <T,>(value: T, frames: FrameCitation = [1]): VisualObservation<T> =>
+  ({ value, evidence: { frames } })
 
 interface Spec {
   id: string
@@ -59,7 +72,7 @@ const assessed = (s: Spec): ReferenceProfile => {
         ),
       },
     },
-    visual: { ...p.visual, primaryMode: seen(s.mode, 'sampled frames') },
+    visual: { ...p.visual, primaryMode: seenVisual(s.mode) },
   }
 }
 
@@ -93,7 +106,12 @@ const SPECS: Spec[] = [
   },
   {
     id: 'pure-teach', niche: 'same_sub_niche', reach: 5_000,
-    goals: ['educate'], mode: 'talking_head', posture: 'NONE',
+    // ⚠️ 'education', NOT 'educate' — A DIFFERENT UNION FROM THE ONE ABOVE. This
+    //  `Spec` field takes authority|leads|growth|education|conversation|sales|
+    //  entertainment; `GalleryCreatorView.goals` takes followers|authority|
+    //  educate|leads|sell|entertain|personal_brand. Two vocabularies, both
+    //  spelled `goals`, one file.
+    goals: ['education'], mode: 'talking_head', posture: 'NONE',
     slots: [{ kind: 'example', label: 'worked_example' }],
   },
   {
