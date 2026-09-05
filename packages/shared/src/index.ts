@@ -291,3 +291,10 @@ export * from './shapeForGoal'
 // conflict and resolves it to the LESS permissive claim — it never rewrites
 // either answer.
 export * from './commercialConsistency'
+
+// ⚖️ THREE LINES BEFORE THE CREDIT IS SPENT, AND THE THIRD IS THE POINT.
+// "What I don't have" is where a fabricated claim gets caught before it is
+// written. Every gap is derived from a predicate the WRITER uses —
+// carriesFigure, isFirstPerson, wasSpoken, SUBSTANCE_KINDS — never a parallel
+// re-implementation, so the screen cannot promise what the script will lack.
+export * from './videoPlan'

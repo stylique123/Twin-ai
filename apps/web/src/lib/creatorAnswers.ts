@@ -223,3 +223,84 @@ export async function loadExtractedKnowledge(): Promise<StoredKnowledgeItem[] | 
     return null
   }
 }
+
+/**
+ * The rows the PLAN SCREEN needs — THE SAME ROWS THE WRITER WILL SEE.
+ *
+ * ⚠️ `kind, text, source` — NOT `kind` ALONE. Counts can answer "no story" (no
+ * `experience` row) and CANNOT answer "no numbers": `carriesFigure` tests the
+ * TEXT. A plan built from counts would state the numbers gap as a guess.
+ *
+ * ⚠️⚠️ AND IT MIRRORS `generate-blueprint`'s TWO READS EXACTLY, BECAUSE A
+ * PANEL THAT READS DIFFERENT ROWS IS PREDICTING RATHER THAN REPORTING. The
+ * first draft of this function filtered by `voice_id`, took 500 rows and
+ * imposed no ordering. The server does none of those things, so the two would
+ * have answered from different data and the third line could have named a gap
+ * the writer did not have — the same class as a refusal screen predicting a
+ * refund instead of reading `credit_events`.
+ *
+ * The writer's input is a UNION of two queries (index.ts:4062 and :4079):
+ *
+ *   owner_id only, ORDER BY times_seen DESC, LIMIT 40
+ *   owner_id + source='asked', ORDER BY created_at DESC, LIMIT 20
+ *
+ * ⚖️ THE SECOND EXISTS BECAUSE THE FIRST CANNOT SEE AN ANSWERED QUESTION.
+ * `times_seen` counts how many videos carried a position, so a row the creator
+ * STATED once is a 1, and on a caption-derived store forty rows of 2-and-3 sit
+ * above it. Dropping that half here would re-open the bug it was added to
+ * close, one surface over — and the plan would tell a creator their own answer
+ * is not there.
+ *
+ * ⚠️ NO `voice_id` FILTER, DELIBERATELY, EVEN THOUGH IT LOOKS LIKE AN
+ * IMPROVEMENT. The server reads across the owner; narrowing here would hide
+ * rows the writer will still use.
+ *
+ * ⚠️ null IS NOT AN EMPTY STORE. A failed read must not render as "I have
+ * nothing from you" — that is a claim about the creator made out of our own
+ * outage. The caller shows no plan at all on null.
+ */
+export async function loadKnowledgeForPlan(): Promise<
+  Array<{ kind: string; text: string; source: string | null }> | null
+> {
+  try {
+    const { data: auth } = await supabase.auth.getUser()
+    const ownerId = auth?.user?.id
+    if (!ownerId) return null
+
+    const [top, asked] = await Promise.all([
+      supabase.from('creator_knowledge')
+        .select('kind, text, source')
+        .eq('owner_id', ownerId)
+        .order('times_seen', { ascending: false })
+        .limit(40),
+      supabase.from('creator_knowledge')
+        .select('kind, text, source')
+        .eq('owner_id', ownerId)
+        .eq('source', 'asked')
+        .order('created_at', { ascending: false })
+        .limit(20),
+    ])
+    // ⚖️ EITHER FAILING MEANS WE DO NOT KNOW THE SET. Rendering the half that
+    // arrived would show a gap that only exists because a query failed.
+    if (top.error || asked.error) {
+      console.warn('[plan] knowledge not read', top.error?.message ?? asked.error?.message)
+      return null
+    }
+    const rows = [...(top.data ?? []), ...(asked.data ?? [])].map((r) => ({
+      kind: String((r as { kind?: unknown }).kind ?? ''),
+      text: String((r as { text?: unknown }).text ?? ''),
+      source: ((r as { source?: unknown }).source ?? null) as string | null,
+    }))
+    // The two queries overlap; the writer sees each row once and so must this.
+    const seen = new Set<string>()
+    return rows.filter((r) => {
+      const k = `${r.kind}\u0000${r.text}`
+      if (seen.has(k)) return false
+      seen.add(k)
+      return true
+    })
+  } catch (e) {
+    console.warn('[plan] knowledge read threw', e)
+    return null
+  }
+}

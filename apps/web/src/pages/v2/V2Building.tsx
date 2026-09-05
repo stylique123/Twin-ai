@@ -27,6 +27,9 @@ import { isSupportedReference, platformFromUrl } from '@twinai/shared'
 import { useAuth } from '../../context/AuthContext'
 import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
+import { VideoPlanCard } from '../../components/VideoPlanCard'
+import type { VideoPlanInput } from '@twinai/shared'
+import { loadKnowledgeForPlan } from '../../lib/creatorAnswers'
 import { LogoMark } from '../../components/Logo'
 import { buildRecordingScript } from '../../lib/api'
 import { saveRecordingScript } from '../../lib/api'
@@ -263,6 +266,34 @@ function libraryFacts(
 const asOneOf = <T extends string>(all: readonly T[], v: string | undefined): T | undefined =>
   (v && (all as readonly string[]).includes(v)) ? v as T : undefined
 
+// ── THE PLAN SCREEN'S TWO PIECES OF MEMORY ────────────────────────────────
+//
+// ⚖️ ONE PER BUILD, NOT ONE PER MOUNT. `sessionStorage`, keyed the same way the
+// questions are, so a reclaimed tab returns to a build that already showed its
+// plan without showing it a second time.
+const planSlot = (key: string) => `twin.plan.shown.${key}`
+function planShown(key: string): boolean {
+  try { return sessionStorage.getItem(planSlot(key)) === '1' } catch { return false }
+}
+function markPlanShown(key: string): void {
+  try { sessionStorage.setItem(planSlot(key), '1') } catch { /* storage off — shows once more */ }
+}
+
+// ⚠️ THE OPT-OUT IS `localStorage`, SO IT OUTLIVES THE TAB — a preference that
+// forgot itself every session would be a worse tax than the screen.
+//
+// ⚖️ AND IT IS PER-DEVICE, WHICH IS HONEST RATHER THAN IDEAL. A server-side
+// preference is the right home once anyone actually uses this; storing it there
+// today would be a write on the paid path for a setting nobody has expressed.
+// Recorded so the follow-up is a decision rather than a discovery.
+const PLAN_SKIP_KEY = 'twin.plan.skip'
+function planSkipped(): boolean {
+  try { return localStorage.getItem(PLAN_SKIP_KEY) === '1' } catch { return false }
+}
+function skipPlanAlways(): void {
+  try { localStorage.setItem(PLAN_SKIP_KEY, '1') } catch { /* storage off — asked again next time */ }
+}
+
 // ⚠️ HOW MANY QUESTIONS MAY SHARE ONE CARD. Reported with a screenshot: three
 // chip rows and three free-text boxes, twenty-five options, in one scroll. The
 // three intent chips are the normal path; a readiness question is an exception
@@ -348,6 +379,13 @@ export default function V2Building() {
   // a void, which is the one thing this project never ships.
   // ⚠️ RESTORED, NOT RESET. A tab the browser reclaimed comes back to the card
   // it left — with the questions still open and the words still in the boxes.
+  // ⚠️ THE PLAN IS A PAUSE, NOT A GATE, AND IT SITS EXACTLY WHERE THE QUESTION
+  // CARD DOES: after the answers are in, before any ingest and before any
+  // spend. Non-null means "show it and wait"; `null` means there is nothing to
+  // show, which is also what a FAILED knowledge read produces — a plan built on
+  // an outage would tell a creator "I have nothing from you" about a store that
+  // is full.
+  const [plan, setPlan] = useState<VideoPlanInput | null>(null)
   const [askQuestions, setAskQuestions] = useState<AskItem[] | null>(
     () => recallAsk(buildKey((loc.state || {}) as BuildState)))
   const [askAnswers, setAskAnswers] = useState<Record<string, string>>(
@@ -656,6 +694,41 @@ export default function V2Building() {
               setActive(0)
               setIngesting(false)
               return
+            }
+
+            // ⚠️ THE PLAN, ONCE, AFTER THE QUESTIONS AND BEFORE THE SPEND. It
+            // sits here rather than earlier because the angle is only settled
+            // once the intent answers are in, and later would be after money.
+            //
+            // ⚖️ SKIPPED SILENTLY IN THREE CASES, AND ALL THREE ARE DELIBERATE:
+            // the creator turned it off, this build key already showed it (a
+            // reclaimed tab must not re-ask), or the knowledge read FAILED —
+            // because a plan assembled from an outage would tell a creator
+            // "I have nothing from you" about a store that is full.
+            if (alive && !planSkipped() && !planShown(key)) {
+              const items = await loadKnowledgeForPlan()
+              if (!alive) return
+              if (items) {
+                markPlanShown(key)
+                setPlan({
+                  // ⚖️ THE SAME EXPRESSION THE READINESS CHECK CALLS "angle"
+                  // twenty lines above. Two notions of what this video is
+                  // would be two answers to the creator's question.
+                  angle: state.reference_note || refUrl || str(vBrief.idea) || null,
+                  knowledge: items,
+                  // ⚖️ AND THE SAME `libraryFacts` THE SERVER MIRRORS. This is
+                  // what makes "no confirmed facts" true of the actual script.
+                  readyFacts: libraryFacts(libraryProducts, str(vBrief.offer)),
+                  // ⚠️ `canShowProduct` IS DELIBERATELY NOT PASSED. The
+                  // capability is not on `pre_script_brief` — it is written and
+                  // read elsewhere — and passing a key that does not exist
+                  // would assert "they cannot film it" from a lookup miss.
+                  // Unanswered is not no, and a wrong gap is worse than none.
+                })
+                setActive(0)
+                setIngesting(false)
+                return
+              }
             }
           } catch (e) {
             // ⚖️ A FAILED PRE-CHECK MUST NOT BLOCK A BUILD. The server asks the
@@ -1353,7 +1426,33 @@ export default function V2Building() {
           column, and stretching it to three inches of whitespace on a desktop
           to keep one class name simple would make every one of them worse. */}
       <div className={cn('relative w-full max-w-md', hasTwoBlocks && 'lg:max-w-3xl')}>
-        {askQuestions ? (
+        {/* ⚠️ THE PLAN SITS AHEAD OF THE QUESTION CARD IN THIS CHAIN AND CAN
+            NEVER COLLIDE WITH IT: it is only ever set once `askQuestions` came
+            back empty, which is the one path that reaches it. Ordered this way
+            so the reader can see there is no state where both are open — ONE
+            screen, never two, is a promise about the flow and not only a
+            promise about this card. */}
+        {plan ? (
+          <VideoPlanCard
+            input={plan}
+            busy={false}
+            onWrite={() => {
+              // ⚖️ CLEARING THE PLAN IS WHAT RESUMES THE BUILD. `markPlanShown`
+              // already fired, so the retry runs straight past this block to
+              // the ingest and the spend — no second pause, no second read.
+              setPlan(null)
+              setRetryNonce((n) => n + 1)
+            }}
+            onSkipAlways={() => {
+              // ⚖️ HONOURED IMMEDIATELY, NOT NEXT TIME. A preference that took
+              // effect on the following build would look broken on the one
+              // where it was expressed.
+              skipPlanAlways()
+              setPlan(null)
+              setRetryNonce((n) => n + 1)
+            }}
+          />
+        ) : askQuestions ? (
           // NOT an error, and the copy leads with the thing that protects the
           // creator: nothing was charged. Twin declined to write a script it
           // would have had to fill with questions, and is asking the few things
