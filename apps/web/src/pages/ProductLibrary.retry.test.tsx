@@ -55,10 +55,22 @@ describe('a failed read offers a real retry, on the product itself', () => {
     await screen.findByText('Twin could not read that page. Try again, or add the details yourself.')
     expect(screen.queryByText('Twin is reading the page. This keeps going if you leave.')).toBeNull()
 
+    // ⚠️ ONE BOX, ASSERTED IN THE OTHER STATE THAT USED TO CARRY TWO.
+    //    IMPORT_FAILED and NEEDS_SOURCE are the only lifecycles that rendered
+    //    the second link box; the sibling suite covers NEEDS_SOURCE, this
+    //    covers IMPORT_FAILED, and between them the duplicate has nowhere left
+    //    to come back in unobserved.
+    expect(screen.getAllByPlaceholderText('https://')).toHaveLength(1)
+
     const retryButton = await screen.findByRole('button', { name: 'Retry' })
-    // Two "https://" boxes exist on the card (the Link field, and this retry
-    // box) -- the retry box is the one right beside the Retry button.
-    const linkInput = retryButton.previousElementSibling as HTMLInputElement
+    // ⚠️ ANCHORED ON THE LABEL, NOT ON DOM ADJACENCY. This read the button's
+    // `previousElementSibling` and explained that "two https:// boxes exist on
+    // the card (the Link field, and this retry box)" -- an assertion that was
+    // TRUE, and was the defect: one fact with two inputs that could disagree.
+    // Collapsing them to one field left the sibling walk pointing at nothing
+    // while every behavioural claim below still held, so the anchor moved to
+    // the label and the claims are untouched.
+    const linkInput = screen.getByLabelText('Link') as HTMLInputElement
     // ⚠️ PRE-FILLED, NOT BLANK. A retry that made the creator re-type a link
     // already on file is the "retry" that never actually worked.
     expect(linkInput.value).toBe('https://peakdesign.example/tripod')

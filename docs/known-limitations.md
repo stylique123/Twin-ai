@@ -198,3 +198,41 @@ first place that could be seen.
 
 **What it will cost.** Leaving it costs nothing until somebody quotes the per-type direction as
 proven. The failure it guards against is exactly that quote.
+
+---
+
+## `ASSERTIONS_PINNED_TO_CALL_SHAPE` — OPEN
+
+**What is wrong.** Two source-text guards broke on 2026-09-05 from a refactor that changed no
+behaviour. `a-tier-zero-that-cannot-see` and `opt-in-is-exactly-true` both pinned the literal
+`NOT_RUN(classifyDownloadFailure(e), phaseOf(e))`; adding a fourth argument broke both while the
+properties they exist for — *a failed download passes no `tier_zero`*, *the visual pass returns
+rather than throws* — stayed true throughout. `theWriterGetsTheCommunityMap` broke the same day for
+the same reason, anchored on a column **order** rather than on the query.
+
+Swept: **546 test files, 241 read source text, 84 assertions pin a call with two or more
+arguments** — the exact shape that broke.
+
+**What was decided.** Not gated, and the 84 is an **exposure bound rather than a defect count**.
+
+⚠️ **Most of the 84 are correct.** `imagePaths.slice(0, MAX_IMAGES)`,
+`setTimeout(look, RECOVERY_POLL_MS)`, `sanitizeBlueprintLinks(rescue.bp, rescue.allow)` — in each
+the arguments *are* the property being asserted. What broke was different: assertions whose stated
+intent concerned only the return value, while the argument list was incidental to it.
+
+⚖️ **And the distinction is semantic, so no grep decides it.** A ratchet on this number would fail
+84 correct tests, and a guard that accuses correct code is how a guard teaches people to ignore it —
+the lesson `check_column_readers` paid for at 29-apparent-versus-7-real. The refinement that took
+the symbol inventory from 232 to 39 has no equivalent here, because the residue is not mechanically
+separable.
+
+**Revisit when.** ⚠️ **A third refactor breaks assertions whose properties still hold.** Two
+occurrences in one day is a pattern; three is a rule — the same threshold the phase-3 fixture
+failures are held to. At that point the thing to build is not a gate but a **watch list**: print the
+assertions that pin a signature *before* changing one, so the author sees them rather than CI
+accusing them afterwards.
+
+**What it will cost.** Leaving it costs a broken build on some future signature change, and the
+author paying ten minutes to tell a brittle proxy from a real property. That is the **right** ten
+minutes — it is the judgement the grep cannot make. Gating it would cost that ten minutes on all 84,
+mostly to conclude the test was already correct.

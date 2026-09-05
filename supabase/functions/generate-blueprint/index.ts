@@ -4185,7 +4185,7 @@ Deno.serve(async (req: Request) => {
     // so every generation recorded "no product was chosen" no matter which
     // product it was written about. A column that is read must be selected; the
     // optional chain made the absence look like a legitimate null.
-    .select('id, name, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
+    .select('id, name, creator_summary, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
     .eq('owner_id', ownerId)
     .eq('voice_id', voice?.id ?? null)
     .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
@@ -5483,6 +5483,33 @@ Deno.serve(async (req: Request) => {
       claimLines.push('\n- WHAT IS TRUE ABOUT THIS PRODUCT, read from its own pages and safe to state:\n'
         + usableProductFacts.join('\n')
         + '\n  Use these rather than inventing capabilities. Anything about this product NOT listed here is unverified — describe it in general terms or leave it out.')
+    }
+
+    // ── THE ONE LINE THE CREATOR TYPED THEMSELVES ────────────────────────
+    //
+    // ⚠️ `creator_summary` WAS WRITTEN AND NEVER READ. The add form asks "in one
+    // line, what is it and who is it for?" and stores the answer
+    // (`ProductLibrary.tsx` → `api.ts` → `product_entities.creator_summary`);
+    // this function's select omitted the column, so every creator who typed it
+    // watched a script get written without it. Same defect class as
+    // `selected_product_id` above: a column that is read must be selected.
+    //
+    // IT IS A FALLBACK, NOT A PEER OF THE GRADED FACTS. When the page read
+    // succeeded, `usableProductFacts` carries claims a classifier graded and the
+    // creator reviewed; adding an ungraded sentence beside them would put two
+    // authorities on one question and let an unreviewed line inherit the trust
+    // of reviewed ones. When the read FAILED — NEEDS_SOURCE, IMPORT_FAILED, or
+    // a product that has no page at all — the writer otherwise has a name and
+    // nothing else, and a name is not enough to write from. So it is emitted
+    // ONLY in that case, and LABELLED as the creator's own description rather
+    // than as verified fact, because it was never verified against anything.
+    const creatorSummaryLine = typeof (ownedEntity as { creator_summary?: unknown } | null)?.creator_summary === 'string'
+      ? String((ownedEntity as { creator_summary: string }).creator_summary).trim()
+      : ''
+    if (usableProductFacts.length === 0 && creatorSummaryLine !== '') {
+      claimLines.push('\n- HOW THE CREATOR DESCRIBES THIS PRODUCT, in their own words: '
+        + creatorSummaryLine.slice(0, 300)
+        + '\n  Nothing has been verified about this product beyond this line — it is the creator\'s own description, not a checked fact. Use it to know what the thing IS and who it is FOR. Do not turn it into a capability claim, a result or a figure.')
     }
 
     const claimRulesBlock = claimLines.join('')
