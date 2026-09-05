@@ -824,6 +824,39 @@ export default function ProductLibrary() {
             }}
           />
 
+          {/* ⚠️ COLLECTED ONCE AND THEN UNREACHABLE. The add form asks "In one
+              line, what is it and who is it for?" and stores it; this card never
+              showed it, so it could not be corrected, and a product created
+              before the field existed could never gain one.
+
+              ⚠️ AND IT IS THE FIELD THAT MAKES A LINKLESS PRODUCT POSSIBLE.
+              Observed live: a baker selling bread by pre-order, no website and
+              never will be, met "Add a link or a photo and Twin can learn what
+              this is" and then "Please paste a full https:// link" — two prompts
+              demanding a URL, with the one field that answers them both absent
+              from this card. A link is ONE way to describe a product, not the
+              only one.
+
+              ⚖️ AND THE WRITE PATH ALREADY EXISTED. `updateEntityPresentation`
+              has accepted `creatorSummary` since 0177 and nothing ever called
+              it with one — built, tested, and unreachable from the screen that
+              needed it. */}
+          <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-stone">
+            In one line, what is it and who is it for?
+          </label>
+          <input
+            className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
+            defaultValue={e.creatorSummary ?? ''}
+            placeholder="Sourdough loaves, baked to order for people near me"
+            onBlur={(ev) => {
+              const v = ev.target.value.trim()
+              if (v !== (e.creatorSummary ?? '')) void save(e.id, { creatorSummary: v || null })
+            }}
+          />
+          <p className="mt-1 text-xs text-stone">
+            Used if the page cannot be read — Twin will not leave this product with nothing.
+          </p>
+
           <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-stone">
             Link
           </label>
