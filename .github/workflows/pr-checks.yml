@@ -661,6 +661,10 @@ jobs:
         run: |
           node scripts/ci/check_staging_migration_coverage.mjs --selftest
           node scripts/ci/check_staging_migration_coverage.mjs
+      - name: Error matchers resolve (a matcher given undefined accepts anything)
+        run: |
+          node scripts/ci/check_error_matchers_resolve.mjs --selftest
+          node scripts/ci/check_error_matchers_resolve.mjs
       - name: Probe-residue classifier (partial/complete cleanup cannot silently pass)
         run: node scripts/prod-smoke/probe_residue_report.mjs --selftest
       - name: Takes storage-policy inventory (no client DELETE-capable policy; migration-derived)
