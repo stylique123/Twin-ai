@@ -46,6 +46,36 @@
 // ⚠️ `other` IS EXCLUDED. It is the largest bucket in the corpus and it is not
 // a shape — there is no template for it, and there could not be.
 
+// ── INERT SINCE 2026-09-05, AND HERE IS THE TRIGGER TO RE-OPEN IT ─────────
+//
+// ⚠️ NOTHING CALLS THIS YET, AND THAT IS A DECISION RATHER THAN AN OVERSIGHT.
+// The reader that would use it is `generate-blueprint`, and the corpus read it
+// needs costs 311ms — measured 2026-09-05 with EXPLAIN ANALYZE: a sequential
+// scan, 8,034 shared buffers, 601 rows, because the whole `profile` jsonb is
+// detoasted per row and no index the planner can use exists (it estimated 7
+// rows and got 601). That cost lands on EVERY generation, on a paid path, and
+// it grows with the corpus.
+//
+// ⚖️ 311ms ON EVERY GENERATION TO SERVE ONE GOAL IN SEVEN IS A BAD TRADE.
+// `entertainment` is the only goal whose leading container separates by more
+// than sampling noise; the other six return null and the writer keeps the
+// judgement it already has. So this stays built and uncalled.
+//
+// ⚠️ INERT CODE THAT NOBODY RE-EXAMINES BECOMES DEAD CODE THAT LOOKS LIVE.
+// The next reader sees a wired-looking module and assumes it runs. So the
+// deferral carries a TRIGGER rather than a vague "later" — re-open when EITHER:
+//
+//   · the corpus separates a shape for 4 OR MORE of the 7 goals
+//     (check with `rankShapesForGoal(...).decisive` across VIDEO_GOALS), OR
+//   · the per-call corpus read drops below ~100ms — which needs an aggregate
+//     refreshed by the assess job, not a live scan of `profile`.
+//
+// ⚖️ AND THE FIRST TRIGGER IS A BACKLOG JOB, NOT A TRAFFIC ONE. Measured
+// 2026-09-05: 4,805 already-fetched references are unassessed, and 17 niches
+// hold 20+ references with fewer than 20 assessed. Shapes and topics fall out
+// of the SAME assess pass, so one backlog run moves both this and
+// `topicLibrary`. No new creators are required.
+
 import type { VideoGoal } from './videoIntent'
 import type { LikelyGoal, ContainerType } from './referenceContentProfile'
 import type { ShapeRow } from './shapeLibrary'
