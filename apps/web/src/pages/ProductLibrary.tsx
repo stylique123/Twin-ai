@@ -316,6 +316,24 @@ const PHOTO_SLOTS = 4
  *  store page back to them under the heading "Your photos" would be a lie about
  *  where it came from, which is the whole failure the provenance work exists to
  *  stop. `form: 'images'` is what distinguishes them. */
+/**
+ * Does this look like a page Twin could actually fetch?
+ *
+ * ⚠️ ONE RULE, TWO SCREENS. The add form refused a malformed link before
+ * submitting; the detail card's Link box refused nothing and simply saved
+ * whatever was typed, so the same creator typing the same thing was told
+ * "That does not look like a full link" in one place and nothing at all in
+ * the other — and the silent one is the box a product spends its life in.
+ *
+ * ⚖️ EMPTY IS VALID. A product with no page is a product, not a mistake; the
+ * add form has said so since a baker with no website reached it. Emptiness is
+ * refused, when it must be, by whoever needs a URL — never by this predicate.
+ */
+function looksLikeLink(v: string): boolean {
+  const s = v.trim()
+  return s === '' || /^https:\/\/\S+\.\S+/i.test(s)
+}
+
 function photoPathsOf(e: ProductEntityRecord): string[] {
   const ev = e.evidence
   if (!ev || ev === 'declined' || ev.form !== 'images') return []
@@ -345,6 +363,8 @@ export default function ProductLibrary() {
   // Loaded WITH archived so the page can show what was withdrawn. The live list
   // stays the default everywhere else.
   const [archivedAll, setArchived] = useState<ProductEntityRecord[] | null>(null)
+  // Seeded lazily from each entity's `product_url`; an entry exists only once a
+  // creator has typed in that card's Link box.
   const [learnUrl, setLearnUrl] = useState<Record<string, string>>({})
   const [learning, setLearning] = useState<string | null>(null)
   const [claimBusy, setClaimBusy] = useState(false)
@@ -857,18 +877,71 @@ export default function ProductLibrary() {
             Used if the page cannot be read — Twin will not leave this product with nothing.
           </p>
 
-          <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-stone">
+          {/* ⚠️ TWO BOXES FOR ONE FACT, AND THE SECOND ONE WAS THE ONLY ONE
+              WITH A BUTTON. This Link field saved `product_url` and could not
+              ask Twin to read it; the box inside "What Twin knows about it"
+              could read a page — but existed ONLY while `knowledge === null`.
+              So a creator whose page had been read once had no way to say "read
+              it again", and a creator who had not could edit the address in the
+              box above and watch the button below act on it. One fact wants one
+              field.
+
+              ⚖️ CONTROLLED, SO THE BUTTON ACTS ON WHAT IS ON SCREEN. The field
+              was uncontrolled and saved on blur; a click saves and reads in the
+              same gesture, and blur-then-click would have raced the state the
+              button reads. `learnUrl` is that state, and `learn` already
+              preferred it over the stored URL. */}
+          <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-stone" htmlFor={`link-${e.id}`}>
             Link
           </label>
-          <input
-            className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
-            defaultValue={e.productUrl ?? ''}
-            placeholder="https://"
-            onBlur={(ev) => {
-              const v = ev.target.value.trim()
-              if (v !== (e.productUrl ?? '')) void save(e.id, { productUrl: v || null })
-            }}
-          />
+          <div className="mt-1 flex gap-2">
+            <input
+              id={`link-${e.id}`}
+              className="w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
+              value={learnUrl[e.id] ?? e.productUrl ?? ''}
+              placeholder="https://"
+              onChange={(ev) => setLearnUrl((p) => ({ ...p, [e.id]: ev.target.value }))}
+              onBlur={(ev) => {
+                const v = ev.target.value.trim()
+                // ⚖️ A MALFORMED LINK IS NOT SAVED. Storing it would hand the
+                // worker a job that can only fail, and the failure would arrive
+                // minutes later on a card that had already said "saved".
+                if (!looksLikeLink(v)) return
+                if (v !== (e.productUrl ?? '')) void save(e.id, { productUrl: v || null })
+              }}
+            />
+            {/* ⚖️ ALWAYS OFFERED, NOT ONLY BEFORE THE FIRST READ. A page that
+                changed is the ordinary case — a price, a new size, a product
+                that sold out — and "Read it again" is how a creator says so. */}
+            <button
+              type="button"
+              disabled={
+                learning === e.id
+                || (learnUrl[e.id] ?? e.productUrl ?? '').trim() === ''
+                || !looksLikeLink(learnUrl[e.id] ?? e.productUrl ?? '')
+              }
+              className="whitespace-nowrap btn-gradient rounded-lg px-3 py-1.5 text-sm disabled:opacity-40"
+              onClick={() => void learn(e.id)}
+            >{learning === e.id
+                ? 'Reading…'
+                // ⚖️ THE WORD THE BANNER PROMISED. A failed import tells the
+                // creator "You can retry from the product below"; a button
+                // reading "Read the page" is not the thing they were sent to
+                // find. The lifecycle names the state, so the label follows it
+                // rather than re-deriving one from `knowledge === null` — which
+                // cannot tell a failed read from a page never given.
+                : productLifecycle(e, photoPathsOf(e).length) === 'IMPORT_FAILED' ? 'Retry'
+                  : e.knowledge === null ? 'Read the page' : 'Read it again'}
+            </button>
+          </div>
+          {/* ⚠️ NEXT TO ITS CAUSE. Errors on this page went to one banner at the
+              top, so a creator who mistyped a link was told about it above the
+              fold, away from the field that caused it. */}
+          {!looksLikeLink(learnUrl[e.id] ?? '') && (
+            <p className="mt-1 text-xs text-coral">
+              That does not look like a full link. It should start with https://
+            </p>
+          )}
 
           {/* ⚠️ ONLY FOR AN AFFILIATE, AND THE FIELD EXISTED BEFORE THE BOX DID.
               `affiliate_url` has been on every entity since the entity contract
@@ -1032,26 +1105,13 @@ export default function ProductLibrary() {
                     is one tap, not a re-paste. */}
                 <p className="mt-1 text-sm text-sand">
                   {productLifecycle(e, photoPathsOf(e).length) === 'IMPORT_FAILED'
-                    ? 'Try the same link again, or paste a different one.'
-                    : 'Paste a link to its page and Twin will read it, so your scripts can say what it actually does instead of guessing.'}
+                    ? 'That read did not finish. Press Read the page above to try the same link again, or change it first.'
+                    : 'Add a link above and press Read the page, so your scripts can say what it actually does instead of guessing.'}
                 </p>
-                <div className="mt-2 flex gap-2">
-                  <input
-                    className="w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
-                    placeholder="https://"
-                    value={learnUrl[e.id] ?? e.productUrl ?? ''}
-                    onChange={(ev) => setLearnUrl((p) => ({ ...p, [e.id]: ev.target.value }))}
-                  />
-                  <button
-                    type="button"
-                    disabled={learning === e.id || (learnUrl[e.id] ?? e.productUrl ?? '').trim() === ''}
-                    className="whitespace-nowrap btn-gradient rounded-lg px-3 py-1.5 text-sm disabled:opacity-40"
-                    onClick={() => void learn(e.id)}
-                  >{learning === e.id
-                      ? 'Reading…'
-                      : productLifecycle(e, photoPathsOf(e).length) === 'IMPORT_FAILED' ? 'Retry' : 'Read the page'}
-                  </button>
-                </div>
+                {/* ⚖️ THE SECOND LINK BOX LIVED HERE AND IS GONE. It is the
+                    Link field above, which now carries the button — so this
+                    panel points at it rather than offering a rival input whose
+                    value could disagree with the one on file. */}
                 {learning === e.id && (
                   <p className="mt-2 text-xs text-stone">
                     This keeps running if you leave — come back and it will be here.
@@ -1604,7 +1664,7 @@ function StartFromLink({ onCancel, onClaim, busy }: {
   // ⚖️ REFUSED HERE SO THE CREATOR IS TOLD NOW, not after a job fails silently
   // on the worker minutes later. `requestProductExtraction` refuses the same
   // shape; this is the copy that reaches a person.
-  const linkLooksReal = link === '' || /^https:\/\/\S+\.\S+/i.test(link)
+  const linkLooksReal = looksLikeLink(link)
   // ⚠️ A NAME IS REQUIRED ONLY WHEN THERE IS NO LINK. With one, extraction
   // supplies it; without one, nothing else will, and a nameless entity reaches
   // the prompt as "the product".
