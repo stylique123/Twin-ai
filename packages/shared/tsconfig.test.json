@@ -1,20 +1,12 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": [
-      "vitest/globals",
-      "node"
-    ],
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "types": ["vitest/globals", "node"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "allowImportingTsExtensions": true
   },
-  "include": [
-    "src"
-  ],
+  "include": ["src"],
+
   "exclude": [
     "src/__tests__/a-disagreement-that-changes-nothing.test.ts",
     "src/__tests__/a401IsNotAVerdict.test.ts",
@@ -26,12 +18,10 @@
     "src/__tests__/four-creators-diverge-once-assessed.test.ts",
     "src/__tests__/liveRunFixtures.test.ts",
     "src/__tests__/no-goal-grants-a-commercial-ask.test.ts",
-    "src/__tests__/no-legacy-editor.test.ts",
     "src/__tests__/pipeline-scenarios.test.ts",
     "src/__tests__/settings-tells-you-what-to-do-next.test.ts",
     "src/__tests__/the-gallery-sees-a-projection.test.ts",
     "src/__tests__/twin-can-finish-this-beats-your-niche.test.ts",
-    "src/editor/__tests__/capture.test.ts",
     "src/editor/__tests__/outputBundle.test.ts",
     "src/editor/__tests__/sourceCreate.test.ts",
     "src/script/__tests__/observedVisual.test.ts"
