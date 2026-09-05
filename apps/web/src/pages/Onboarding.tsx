@@ -52,8 +52,29 @@ import { Aurora } from '../components/Aurora'
 // was never merely hypothetical — it was live data whose owners had just been
 // told their occupation was "something else".
 //
-// ⚖️ SEVEN CHIPS, TEN STORED VALUES, AND NOTHING IS REWRITTEN. The chooser
-// offers seven; `BRIEF_WORK_KINDS` keeps all ten valid. Three values are no
+// ⚠️ "SOFTWARE / LOCAL BUSINESS" WAS ONE CHIP FOR TWO BUSINESSES THAT SHARE
+// NOTHING, AND THE PROMPT ALREADY KNEW IT. `WORK_KIND_LINES` has always carried
+// two genuinely opposed sentences for them:
+//
+//   saas           "proof is the product working — a screen SHOWN TO CAMERA...
+//                   constraints are competitive, not regulatory"
+//   local_service  "buyer is nearby and the action is booking or calling, not
+//                   buying online. Completed work is the proof."
+//
+// A plumber who picked the merged chip stored `saas` and was told their proof
+// was a screen recording. The two lines were written, distinct, and one of them
+// was unreachable — a reader with nothing routed to it, which is the same
+// defect as a field with no reader, wearing the other shoe.
+//
+// ⚖️ SPLIT, NEVER BACKFILLED. Measured in production 2026-09-05: ONE voice
+// stores `saas` and ZERO store `local_service`, because the latter was never
+// offered. That single row is NOT rewritten — nothing here can tell whether
+// they are software or a local business, and guessing on their behalf is the
+// silent rewrite this file's rules exist to forbid. They keep `saas`; only new
+// signups see the two chips.
+//
+// ⚖️ EIGHT CHIPS, TEN STORED VALUES, AND NOTHING IS REWRITTEN. The chooser
+// offers eight; `BRIEF_WORK_KINDS` keeps all ten valid. Two values are no
 // longer OFFERED to a new signup but remain perfectly readable if a creator
 // already stored one:
 //
@@ -63,15 +84,16 @@ import { Aurora } from '../components/Aurora'
 //   Coach / consultant / freelancer  coach         freelancer
 //   Licensed professional            professional  —
 //   Ecommerce / brand                ecommerce     brand
-//   Software / local business        saas          local_service
+//   Software product                 saas          —
+//   Local business                   local_service —
 //   Something else                   other         —
 //
 // This is the safest reading of the rewiring rules: merging two chips does NOT
 // merge two stored values, so no row is silently rewritten and no backfill is
-// owed. `freelancer`, `brand` and `local_service` keep their own labels AND
-// their own `WORK_KIND_LINES` entries, so a creator who stored one still gets
-// the sentence that describes their business rather than the one for the chip
-// that absorbed it.
+// owed. `freelancer` and `brand` keep their own labels AND their own
+// `WORK_KIND_LINES` entries, so a creator who stored one still gets the
+// sentence that describes their business rather than the one for the chip that
+// absorbed it.
 const WORK_KIND_LABEL: Record<BriefWorkKind, string> = {
   creator: 'Creator / influencer',
   founder: 'Founder / business owner',
@@ -80,7 +102,7 @@ const WORK_KIND_LABEL: Record<BriefWorkKind, string> = {
   professional: 'Licensed professional',
   ecommerce: 'Ecommerce / brand',
   brand: 'Brand / content team',
-  saas: 'Software / local business',
+  saas: 'Software product',
   local_service: 'Local business',
   other: 'Something else',
 }
@@ -93,7 +115,8 @@ const WORK_KIND_LABEL: Record<BriefWorkKind, string> = {
  *  `BRIEF_WORK_KINDS` (all ten) stays the stored type, so `freelancer`, `brand`
  *  and `local_service` remain valid values rather than becoming unreadable. */
 const ONBOARDING_WORK_KINDS: readonly BriefWorkKind[] = [
-  'creator', 'founder', 'coach', 'professional', 'ecommerce', 'saas', 'other',
+  'creator', 'founder', 'coach', 'professional', 'ecommerce', 'saas',
+  'local_service', 'other',
 ]
 // Q4, REWRITTEN — it now asks ONLY about things the creator does NOT own.
 //
