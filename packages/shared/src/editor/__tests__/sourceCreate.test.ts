@@ -244,7 +244,19 @@ describe('sourceCreate: runSourceCreate injectable handler (behavioral)', () => 
     const d = deps({ asset_id: 'a', storage_path: 'p', status: 'ready' })
     const r = await runSourceCreate(body(), OWNER, d)
     expect(r.body.token).toBeNull()
-    expect((d.signUpload as { mock: { calls: unknown[] } }).mock.calls.length).toBe(0)
+    // ⚠️ `vi.mocked`, NOT A CAST TO A SHAPE VITEST ALREADY DESCRIBES. This read
+    //  the mock metadata through `(d.signUpload as { mock: { calls: unknown[] } })`,
+    //  which asserts a structure rather than checking one — if `signUpload` ever
+    //  stopped being a mock, the cast would keep compiling and the assertion
+    //  would read `undefined.length`. `vi.mocked` narrows an actual mock and
+    //  fails on anything that is not one.
+    //
+    //  ⚖️ NOT the `calls` helper three describes up, which belongs to a DIFFERENT
+    //  `deps` — that one exposes `_` and takes an argument; this block's `deps`
+    //  returns a zero-arg `calls()` and no `_`. I reached for it once on that
+    //  assumption and broke the file; the scoping is why this reads differently
+    //  from its neighbours.
+    expect(vi.mocked(d.signUpload).mock.calls.length).toBe(0)
   })
 
   it('RPC error maps to a stable non-500 status via createErrorStatus', async () => {
