@@ -19,7 +19,7 @@ const fact = (trust: 'usable' | 'needs_confirmation'): ExtractedFact => ({
   sourceUrl: 'https://example.com', trust, extractedAt: '2026-08-24T00:00:00Z',
 })
 
-const entity = (over: Partial<ProductEntityRecord> = {}): ProductEntityRecord => ({
+const entityBase = (): ProductEntityRecord => ({
   id: 'e1', name: 'Thing', creatorSummary: null, type: 'SAAS', relationship: 'OWN_PRODUCT',
   personalUse: 'NOT_CONFIRMED', showability: 'UNKNOWN',
   productUrl: null, affiliateUrl: null, evidence: null,
@@ -27,8 +27,30 @@ const entity = (over: Partial<ProductEntityRecord> = {}): ProductEntityRecord =>
   updated: '2026-08-24T00:00:00Z',
   archivedAt: null, knowledge: null, knowledgeExtractedAt: null,
   knowledgeSourceUrl: null, knowledgeFailedAt: null, knowledgeError: null,
-  ...over,
+  // ⚠️ NEVER SET HERE UNTIL NOW, AND THE SPREAD IS WHAT HID IT. `communityMap` is
+  //  `CommunityMap | null` — required, nullable — and this base simply omitted
+  //  it, so every entity the file built carried `undefined`. `null` is what a
+  //  non-community product actually holds; `undefined` is what nothing holds.
+  communityMap: null,
 })
+
+/**
+ * ⚠️ THE OVERRIDE USED TO BE SPREAD INTO THE LITERAL — `{ ...base, ...over }` —
+ * and that does not typecheck. `Partial<T>` makes every property `| undefined`,
+ * so the spread's result type has `communityMap: CommunityMap | null | undefined`
+ * where the record requires `CommunityMap | null`. TypeScript is right: written
+ * that way, `entity({ communityMap: undefined })` compiles and produces a record
+ * production can never hold.
+ *
+ * ⚖️ `Object.assign` IS NOT A CAST. It is typed `<T, U>(t: T, u: U) => T & U`, so
+ * the result is `ProductEntityRecord & Partial<ProductEntityRecord>` — which IS
+ * `ProductEntityRecord`. Every override is still checked against the real field
+ * type; what goes away is only the phantom `undefined` the spread introduced.
+ * Silencing this with a cast would have been the easy move and would have let a
+ * genuinely impossible record through.
+ */
+const entity = (over: Partial<ProductEntityRecord> = {}): ProductEntityRecord =>
+  Object.assign(entityBase(), over)
 
 describe('the three states that used to look alike', () => {
   it('no link and no photo is NEEDS_SOURCE, not "reading"', () => {
