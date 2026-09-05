@@ -52,9 +52,19 @@ function bp(over: Record<string, unknown> = {}): Blueprint {
 function targetsByLine(blueprint: Blueprint): Record<string, number | undefined> {
   const rs = buildRecordingScript({ generationId: 'g', blueprint })
   const out: Record<string, number | undefined> = {}
-  for (const s of rs.scenes as Array<Record<string, unknown>>) {
-    const d = typeof s.dialogue === 'string' ? s.dialogue : ''
-    if (d) out[d] = s.target_sec as number | undefined
+  // ⚠️ THE CAST WAS UNNECESSARY AND IT COST THE CHECKING. `target_sec` IS on
+  //  `RecordingScene` — `number | null | undefined` — and `dialogue` is
+  //  `string | null`, so both reads type on their own. Widening the scene to a
+  //  bag of keys bought nothing and switched off the compiler for every field
+  //  read through it: the sibling file `beatProof` used the identical cast to
+  //  read `proof`, which is NOT on the type, and nobody could tell the two apart.
+  //
+  //  ⚖️ `null` AND `undefined` ARE BOTH "no target" HERE and the map's value type
+  //  already says `number | undefined`, so the coalesce is the honest narrowing
+  //  rather than a cast that asserts the null away.
+  for (const s of rs.scenes) {
+    const d = s.dialogue ?? ''
+    if (d) out[d] = s.target_sec ?? undefined
   }
   return out
 }
@@ -148,9 +158,9 @@ describe('an absent target stays absent', () => {
     const rs = buildRecordingScript({
       generationId: 'g', blueprint: bp({ beat_plan: undefined }),
     })
-    for (const s of rs.scenes as Array<Record<string, unknown>>) {
+    for (const s of rs.scenes) {
       expect(s.target_sec).toBeUndefined()
-      expect(s.duration_sec as number).toBeGreaterThan(0)
+      expect(s.duration_sec).toBeGreaterThan(0)
     }
   })
 
@@ -167,7 +177,7 @@ describe('an absent target stays absent', () => {
         ],
       }),
     })
-    for (const s of rs.scenes as Array<Record<string, unknown>>) {
+    for (const s of rs.scenes) {
       expect(s.target_sec).toBeUndefined()
     }
   })
@@ -193,7 +203,7 @@ describe('an absent target stays absent', () => {
         ],
       }),
     })
-    const last = rs.scenes[rs.scenes.length - 1] as Record<string, unknown>
+    const last = rs.scenes[rs.scenes.length - 1]
     expect(last.dialogue).toBe('Follow for more')
     expect(last.target_sec).toBeUndefined()
   })
