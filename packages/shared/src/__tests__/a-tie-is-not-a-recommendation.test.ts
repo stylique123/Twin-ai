@@ -149,3 +149,34 @@ describe('what it refuses to count', () => {
     }
   })
 })
+
+// ── THE DEFERRAL, AS A TRIPWIRE RATHER THAN A COMMENT ─────────────────────
+//
+// ⚠️ A COMMENT SAYING "RE-OPEN LATER" IS READ ONCE AND THEN NEVER AGAIN.
+// `shapeForGoal` is deliberately uncalled: wiring it costs 311ms on every
+// generation (measured, sequential scan over `profile`) to serve ONE goal in
+// seven. The header names the condition to re-open it. This turns that
+// condition into something that FAILS when it is met, so the decision is
+// revisited by CI rather than by somebody remembering.
+describe('the deferral trigger — this test failing is GOOD NEWS', () => {
+  it('still separates fewer than 4 of the 7 goals', () => {
+    const decisive = VIDEO_GOALS.filter((g) => rankShapesForGoal(g, CORPUS).decisive)
+    expect(
+      decisive.length,
+      `${decisive.length} goals now separate (${decisive.join(', ')}). If this is 4 or more on the`
+      + ' REAL corpus, the trade in shapeForGoal.ts has changed: re-open the wiring, or move the'
+      + ' corpus read to an aggregate refreshed by the assess job. Update CORPUS here first —'
+      + ' this fixture is a 2026-09-05 snapshot, not live data.',
+    ).toBeLessThan(4)
+  })
+
+  // ⚖️ AND THE FIXTURE MUST NOT SILENTLY BECOME THE ARGUMENT. If someone edits
+  // CORPUS to make the tripwire pass, that is a fixture change, not a finding.
+  // Pinning the snapshot's own shape makes such an edit visible in review.
+  it('is measured against the 2026-09-05 snapshot, not an invented one', () => {
+    expect(rankShapesForGoal('entertain', CORPUS).shapes[0])
+      .toEqual({ container: 'story', transferable: 60 })
+    expect(rankShapesForGoal('educate', CORPUS).shapes[0])
+      .toEqual({ container: 'tutorial', transferable: 94 })
+  })
+})
