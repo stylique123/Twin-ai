@@ -106,6 +106,27 @@ const EVENTS = {
       + 'transcript, and how many were rewritten or turned into an ask before shipping. '
       + 'Null when the reference had no readable transcript to check against.',
   },
+  // ⚠️ A FRAMES-ONLY SWEEP THAT COVERED 600 OF 1,008 IS A FINDING ABOUT THE
+  // TRANSCRIPT CACHE, NOT A MYSTERY ABOUT THE OTHER 408. `framesOnly` refuses
+  // BEFORE the acquisition ladder when no stored transcript exists, because a
+  // job that silently upgrades itself into a full re-assessment turns a
+  // one-download sweep into a two-download one across a thousand references.
+  //
+  // ⚖️ EPHEMERAL, AND THE REASON IS THE ROW ITSELF. What a later query needs is
+  // "which references still have no visual pass" — and that is already
+  // answerable from `reference_content_profiles.visual_assessed_at`, which the
+  // sweep leaves untouched on a miss precisely so the reference stays visible
+  // to the next pass. A durable counter here would store a number derivable
+  // from the rows it describes, which is the second authority this registry
+  // exists to prevent.
+  frames_only_no_cached_transcript: {
+    kind: 'counter_ephemeral',
+    why: 'A frames-only job found no stored transcript for the URL and returned '
+      + 'without acquiring one. Not persisted because the durable form of this '
+      + 'question already exists: reference_content_profiles rows with '
+      + 'visual_assessed_at still null are exactly the references a sweep could '
+      + 'not cover, and the miss deliberately leaves that column untouched.',
+  },
   reference_phrase_overlap_repair: {
     kind: 'incident',
     why: 'What the phrase-overlap repair pass rewrote or turned into an ask. Same shape '
