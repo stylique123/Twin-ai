@@ -112,6 +112,64 @@ export function normalizeTopic(raw: unknown): string | null {
   return words.map(depluralize).join(' ')
 }
 
+// ── SIX SPELLINGS OF ONE BUCKET, NAMED ONE AT A TIME ──────────────────────
+//
+// ⚠️ THE HEAD OF THE CORPUS IS ONE TOPIC SPLIT SIX WAYS, and surface
+// normalisation cannot join them because they are not surface variants — they
+// are different words for the same subject. Measured 2026-09-05:
+//
+//   entrepreneurship 21 · business idea 16 · business and entrepreneurship 8
+//   business strategy 7 · business 4 · business growth 4
+//
+// Merged they are 63 — the LARGEST supported topic in the corpus, ahead of
+// entertainment (22) and artificial intelligence (21). Left apart, the biggest
+// thing the corpus knows about is invisible.
+//
+// ⚖️ SIX ENTRIES BY HAND, NOT A SYNONYM ENGINE. A general synonym rule is a
+// guess applied forever: the day it decides `skincare` and `beauty` are one
+// thing, the library asserts something nobody measured. A fixed list with its
+// counts written beside it is auditable, and the next merge has to be argued
+// for on its own evidence rather than inherited from a rule.
+//
+// ⚖️ AND IT IS DONE NOW *BECAUSE* NOTHING READS THIS LIBRARY YET. Merging
+// buckets with no consumers is free. Doing it once the gallery and the angle
+// engine read these labels would mean changing a taxonomy under live readers,
+// and reasoning about references already assessed under the old ones.
+//
+// ⚠️ THE STORED VALUE IS NEVER REWRITTEN, WHICH IS WHY THIS IS SAFE. This is a
+// READ-TIME projection: `reference_content_profiles.profile.topic` keeps the
+// creator's original string, so old and new rows stay distinguishable by
+// construction — the failure `known-limitations.md` records for `visualVersion`,
+// where a classification changed without a version stamp and old and new rows
+// became indistinguishable, cannot happen here. The version below exists for
+// the other half of that lesson: anything that CACHES a derived topic must be
+// able to say which map produced it.
+export const TOPIC_ALIAS_VERSION = 'topic-alias-1'
+
+/** Canonical form on the right. Keys are post-`normalizeTopic` surface forms —
+ *  `business ideas` arrives here already depluralised to `business idea`. */
+export const TOPIC_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  'entrepreneurship': 'business',
+  'business idea': 'business',
+  'business and entrepreneurship': 'business',
+  'business strategy': 'business',
+  'business growth': 'business',
+})
+
+/**
+ * A topic reduced to surface form AND then to its canonical bucket.
+ *
+ * ⚖️ SEPARATE FROM `normalizeTopic` ON PURPOSE. That function is surface-only
+ * and its header promises so; `fragmentsOf` depends on that promise to report
+ * collisions the aliases have not resolved. Folding the map into it would make
+ * the fragmentation report blind to exactly the merges still worth making.
+ */
+export function canonicalTopic(raw: unknown): string | null {
+  const surface = normalizeTopic(raw)
+  if (!surface) return null
+  return TOPIC_ALIASES[surface] ?? surface
+}
+
 export interface TopicCount {
   topic: string
   /** How many references carry it. */
@@ -120,10 +178,16 @@ export interface TopicCount {
 
 /** Every normalised topic and its count, most frequent first. Includes the
  *  singletons: a caller that wants only what is supported asks for that. */
-export function topicCounts(rawTopics: readonly unknown[]): TopicCount[] {
+export function topicCounts(
+  rawTopics: readonly unknown[],
+  /** ⚖️ `normalizeTopic` KEEPS THE SPELLINGS APART, `canonicalTopic` MERGES THE
+   *  named six. The default is the surface form, so an existing caller's
+   *  numbers do not move under it. */
+  normalise: (raw: unknown) => string | null = normalizeTopic,
+): TopicCount[] {
   const by = new Map<string, number>()
   for (const raw of rawTopics) {
-    const topic = normalizeTopic(raw)
+    const topic = normalise(raw)
     if (!topic) continue
     by.set(topic, (by.get(topic) ?? 0) + 1)
   }
@@ -132,8 +196,11 @@ export function topicCounts(rawTopics: readonly unknown[]): TopicCount[] {
 }
 
 /** Only the topics the corpus can actually support a statement about. */
-export function supportedTopics(rawTopics: readonly unknown[]): TopicCount[] {
-  return topicCounts(rawTopics).filter((t) => t.count >= MIN_TOPIC_SUPPORT)
+export function supportedTopics(
+  rawTopics: readonly unknown[],
+  normalise: (raw: unknown) => string | null = normalizeTopic,
+): TopicCount[] {
+  return topicCounts(rawTopics, normalise).filter((t) => t.count >= MIN_TOPIC_SUPPORT)
 }
 
 /** What share of assessed references the supported topics account for.
@@ -141,10 +208,13 @@ export function supportedTopics(rawTopics: readonly unknown[]): TopicCount[] {
  *  ⚠️ THIS NUMBER TRAVELS WITH THE LIST. Measured at 31%: a topic card built on
  *  this speaks for under a third of the corpus, and a caller that does not know
  *  that will overstate what Twin has seen. */
-export function topicCoverage(rawTopics: readonly unknown[]): {
+export function topicCoverage(
+  rawTopics: readonly unknown[],
+  normalise: (raw: unknown) => string | null = normalizeTopic,
+): {
   supported: number; total: number; covered: number; ratio: number
 } {
-  const all = topicCounts(rawTopics)
+  const all = topicCounts(rawTopics, normalise)
   const total = all.reduce((n, t) => n + t.count, 0)
   const supported = all.filter((t) => t.count >= MIN_TOPIC_SUPPORT)
   const covered = supported.reduce((n, t) => n + t.count, 0)
