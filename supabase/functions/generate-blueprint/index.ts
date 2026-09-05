@@ -3037,6 +3037,101 @@ function entitlementFailures(
   return out
 }
 
+// ── AN INVENTED COMPARATIVE PRODUCT CLAIM ─────────────────────────────────
+//
+// ⚠️ MIRRORS `findComparativeClaims` IN packages/shared/src/comparativeClaim.ts.
+// Same duplication rule as `findProductClaimGaps` above: the edge function
+// cannot import from the workspace, so the vocabulary lives twice and the two
+// copies must not drift.
+//
+// ⚠️ MEASURED, CANDLE RUN N1, SCENE 3, on an account that SELLS candles:
+// "a thirty-dollar hand-poured candle ... lasts SIX TIMES LONGER than standard
+// box store alternatives. That makes it HALF THE PRICE PER BURN HOUR." Nobody
+// supplied either figure; her onboarding said her first batch burned through in
+// six hours, which is the OPPOSITE of a durability claim.
+//
+// ⚖️ AND `findProductClaimGaps` COULD NOT HAVE CAUGHT IT — measured, not
+// assumed. `claimedValues` on that sentence returns THE EMPTY SET: number words
+// are not matched and multiples are not extracted even as digits. So the
+// obvious fix (dropping its empty-fact-set suppression) would have changed
+// nothing. This asks a different question with its own vocabulary.
+const CMP_NUMBER_WORD =
+  '(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|hundred|half|twice|double|triple|quadruple)'
+const CMP_MAGNITUDE: readonly RegExp[] = [
+  new RegExp(`\\b(?:${CMP_NUMBER_WORD}|\\d+(?:\\.\\d+)?)\\s*(?:x|times)\\s+(?:as\\s+\\w+|\\w+er|more|less|longer|cheaper|faster|stronger)\\b`, 'i'),
+  /\btwice\s+as\s+\w+\b/i,
+  new RegExp(`\\b(?:${CMP_NUMBER_WORD}|a\\s+(?:third|quarter))\\s+(?:the|of\\s+the)\\s+(?:price|cost|time|life|size|weight)\\b`, 'i'),
+  new RegExp(`\\blasts?\\s+(?:${CMP_NUMBER_WORD}|\\d+)\\s*(?:x|times|hours?|days?|weeks?|months?|years?)\\b`, 'i'),
+]
+// ⚖️ A COMPARATIVE NEEDS AN EXPLICIT TARGET OR A SUPERLATIVE. A bare adjective
+// ("a long-burning soy candle") is marketing language, and refusing that would
+// block honest copy — the false-positive case the shared tests pin.
+const CMP_COMPARATIVE: readonly RegExp[] = [
+  /\b\w+er\s+than\b/i,
+  /\b(?:more|less|better|worse|longer|cheaper|faster|stronger|cleaner|safer)\s+than\b/i,
+  /\bcompared\s+(?:to|with)\b/i,
+  /\bunlike\s+(?:most|other|store|shop|big|cheap)\b/i,
+  /\b(?:the\s+)?(?:best|cheapest|longest[- ]lasting|strongest|safest|purest)\b/i,
+]
+
+/**
+ * Beats making a comparative or magnitude product claim with nothing on record.
+ *
+ * ⚠️ SUBSTANCE-BLIND ON PURPOSE. `findProductClaimGaps` reads only beats tagged
+ * `product_dna`, and an INVENTED claim is never tagged that — there was no
+ * product record to cite. Gating on the tag exempts exactly the dangerous case.
+ *
+ * ⚠️ AND IT ONLY FIRES WITH AN EMPTY PRODUCT RECORD. With facts on file the
+ * figure check above is the right instrument, because it can actually compare
+ * the number against a stored one. With NO facts there is nothing that could
+ * ever substantiate the claim, which is why this is the high-risk case and not
+ * the low-risk one — the opposite reading to the figure check, deliberately.
+ */
+/** Stored product facts, as a count.
+ *
+ * ⚠️ A FUNCTION AND NOT A LOCAL, because the two readers live in DIFFERENT
+ * BLOCK SCOPES: the script report sees `productFactValues`, the repair loop
+ * below it does not. The first version of this wiring read that local from the
+ * repair loop and `edge-functions-parse` rejected it with TS2304 — twice, on
+ * the two lines that needed it. One derivation, reachable from both, is the fix
+ * that cannot drift back apart.
+ */
+function productFactCountOf(ownedEntity: unknown): number {
+  const k = (ownedEntity as { knowledge?: unknown } | null)?.knowledge
+  return Array.isArray(k)
+    ? k.filter((f) => typeof (f as { value?: unknown })?.value === 'string'
+        && (f as { value: string }).value !== '').length
+    : 0
+}
+
+function comparativeFailures(
+  beats: unknown,
+  commercial: boolean,
+  productFactCount: number,
+): EntitlementFail[] {
+  if (!commercial || productFactCount > 0 || !Array.isArray(beats)) return []
+  const out: EntitlementFail[] = []
+  beats.forEach((raw, index) => {
+    const line = typeof (raw as { line?: unknown })?.line === 'string' ? (raw as { line: string }).line : ''
+    if (!line.trim()) return
+    const hit = CMP_MAGNITUDE.find((re) => re.test(line)) ? 'magnitude'
+      : CMP_COMPARATIVE.find((re) => re.test(line)) ? 'comparative' : null
+    if (!hit) return
+    out.push({
+      index,
+      line,
+      repair: 'Rewrite WITHOUT any comparison to other products and WITHOUT any figure about'
+        + ' this product. Nothing is on record that could support it. Say what the product IS'
+        + ' and who it is for — never how it compares, how long it lasts, or what it costs per use.',
+      // ⚖️ THE QUESTION THAT WOULD HAVE PREVENTED IT. A creator naming what
+      // actually makes their product different produces a better video than the
+      // safest rewrite of a claim they never made.
+      ask: 'What actually makes yours different? Only say what you can back up.',
+    })
+  })
+  return out
+}
+
 // Gemini responseSchema (OpenAPI subset: uppercase types, no additionalProperties).
 // Guarantees the shape the frontend renders.
 const obj = (properties: Record<string, unknown>, required: string[]) => ({
@@ -6671,6 +6766,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       product_claim_gaps: findProductClaimGaps(
         (Array.isArray(declared) ? declared : []) as Array<Record<string, unknown>>,
         productFactValues).length,
+      // ⚠️ THE N1 COUNTER. Comparative or magnitude claims about a product on a
+      // commercial creator with NOTHING on record. Zero is the expected reading
+      // and an absent counter would look identical to it — which is why it is
+      // written even when nothing is found.
+      comparative_claim_gaps: comparativeFailures(
+        declared, goal === 'sell' || ownedEntity !== null, productFactCountOf(ownedEntity)).length,
       proof_quality: proofQualityCounts(
         (templated.bp as { beat_plan?: unknown })?.beat_plan),
       // ⚠️ THE SHOT THE CREATOR CANNOT SUPPLY. Twin stopped directing screen
@@ -6785,7 +6886,19 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // real spend on a path the creator already paid for, so this buys exactly
     // one attempt and then stops guessing. Beats that survive the attempt are
     // NOT shipped as written — see below.
-    let entFails = entitlementFailures(declared, suppliedForCheck)
+    // ⚖️ COMMERCIAL MEANS "SELLS OR PROMOTES SOMETHING", and the two signals we
+    // have are the stated goal and an owned product entity. N1 carried a
+    // commercial goal with an EMPTY offer field, which is exactly the shape
+    // that must still count.
+    const isCommercial = goal === 'sell' || ownedEntity !== null
+    // ⚠️ MERGED INTO THE SAME LIST SO IT GETS THE SAME TREATMENT: one repair
+    // call, a re-check, and — for anything that survives — the existing "never
+    // spoken as written" path below. A second parallel mechanism would be a
+    // second thing to get subtly wrong, and this one already has the shape.
+    let entFails = [
+      ...entitlementFailures(declared, suppliedForCheck),
+      ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
+    ]
     const creatorQuestions: string[] = []
     if (entFails.length) {
       console.warn(JSON.stringify({
@@ -6821,7 +6934,10 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         }
         // RE-CHECK. A repair nobody verified is the same trust we just withdrew
         // from the first draft.
-        entFails = entitlementFailures(declared, suppliedForCheck)
+        entFails = [
+          ...entitlementFailures(declared, suppliedForCheck),
+          ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
+        ]
         console.log(JSON.stringify({ event: 'entitlement_repair', applied, still_failing: entFails.length }))
       } catch (e) {
         console.error('entitlement repair failed', String((e as Error)?.message ?? e))
