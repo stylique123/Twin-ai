@@ -43,7 +43,12 @@ beforeEach(() => {
   ordered.length = 0
   initApi({
     client: { from: () => chain() } as never,
-    uploadTake: (() => Promise.resolve('')) as never,
+    // ⚠️ `uploadTake` USED TO SIT HERE AND `initApi` HAS NO SUCH OPTION — the
+    //  injector is `uploadSigned`. With tsc never reading test files the key was
+    //  silently discarded, so this line read as "this test wires an uploader"
+    //  while wiring nothing. Removed rather than renamed: nothing in this file's
+    //  path uploads, and adding a real `uploadSigned` would be inventing wiring
+    //  the test does not need in order to make a dead key look alive.
   })
 })
 

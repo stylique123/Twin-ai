@@ -28,9 +28,7 @@
     "src/__tests__/the-gallery-sees-a-projection.test.ts",
     "src/__tests__/twin-can-finish-this-beats-your-niche.test.ts",
     "src/editor/__tests__/capture.test.ts",
-    "src/editor/__tests__/finishedOutput.test.ts",
     "src/editor/__tests__/outputBundle.test.ts",
-    "src/editor/__tests__/reviewBundleIdentity.test.ts",
     "src/editor/__tests__/sourceCreate.test.ts",
     "src/script/__tests__/observedVisual.test.ts"
   ]
