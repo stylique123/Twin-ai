@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   normalizeTopic, topicCounts, supportedTopics, topicCoverage, fragmentsOf,
-  MIN_TOPIC_SUPPORT,
+  MIN_TOPIC_SUPPORT, canonicalTopic, TOPIC_ALIASES, TOPIC_ALIAS_VERSION,
 } from '../topicLibrary'
 
 // ⚠️ REAL VALUES, READ OUT OF `reference_content_profiles` ON 2026-09-05.
@@ -146,5 +146,59 @@ describe('fragmentation is named, never merged', () => {
 
   it('returns nothing for input that is not a topic', () => {
     expect(fragmentsOf(REAL_SUBTOPICS[0], topicCounts(REAL_TOPICS))).toEqual([])
+  })
+})
+
+// ── THE SIX SPELLINGS, MERGED BY NAME ─────────────────────────────────────
+describe('six spellings of one bucket, and nothing else', () => {
+  it('merges all six into `business`, and it becomes the largest topic', () => {
+    const counts = topicCounts(REAL_TOPICS, canonicalTopic)
+    const business = counts.find((c) => c.topic === 'business')
+    // 4 + 16 + 7 + 4 + 8 + 21 across the six spellings in the real sample.
+    expect(business?.count).toBe(60)
+    // ⚠️ THE POINT OF THE MERGE. Apart, the biggest thing the corpus knows
+    // about is invisible behind `entertainment` (22).
+    expect(counts[0].topic).toBe('business')
+  })
+
+  it('leaves the surface counts untouched for callers that did not ask', () => {
+    const surface = topicCounts(REAL_TOPICS).map((c) => c.topic)
+    expect(surface).toContain('entrepreneurship')
+    expect(surface).toContain('business strategy')
+    expect(topicCounts(REAL_TOPICS).find((c) => c.topic === 'business')?.count).toBe(4)
+  })
+
+  // ⚖️ THE MAP IS A LIST, NOT A RULE. Every key is one somebody argued for.
+  it('merges nothing it was not explicitly told to', () => {
+    expect(canonicalTopic('skincare')).toBe('skincare')
+    expect(canonicalTopic('beauty')).toBe('beauty')
+    expect(canonicalTopic('music')).toBe('music')
+    // A word CONTAINING `business` is not a listed alias.
+    expect(canonicalTopic('business case study')).toBe('business case study')
+  })
+
+  it('still refuses everything normalizeTopic refuses', () => {
+    for (const s of REAL_SUBTOPICS) expect(canonicalTopic(s)).toBeNull()
+    expect(canonicalTopic(null)).toBeNull()
+    expect(canonicalTopic('')).toBeNull()
+  })
+
+  // ⚠️ EVERY ALIAS KEY MUST SURVIVE `normalizeTopic`, or it can never match.
+  // `business ideas` depluralises to `business idea`; a key written in the
+  // plural would sit in the map forever and merge nothing.
+  it('every alias key is already in surface form', () => {
+    for (const key of Object.keys(TOPIC_ALIASES)) {
+      expect(normalizeTopic(key), `alias key ${key} is not its own surface form`).toBe(key)
+    }
+  })
+
+  it('no alias points at another alias', () => {
+    for (const target of Object.values(TOPIC_ALIASES)) {
+      expect(TOPIC_ALIASES[target], `${target} is both a target and a key`).toBeUndefined()
+    }
+  })
+
+  it('carries a version, because a cached derived topic must name its map', () => {
+    expect(TOPIC_ALIAS_VERSION).toMatch(/^topic-alias-\d+$/)
   })
 })
