@@ -49,7 +49,16 @@ describe('the relationship-derived rules are word-for-word identical', () => {
     // instruction is deliberately stronger than the shared summary — see the
     // note on `prohibitions`.
     expect(SHARED).toMatch(/rules\.disclosureRequired/)
-    expect(EDGE).toMatch(/const disclosureRequired = rel === 'AFFILIATE' \|\| rel === 'SPONSOR'/)
+    // ⚠️ THE EDGE NOW TAKES A UNION OF BOTH STORES, WHICH CAN ONLY FIRE MORE
+    // OFTEN. It used to read `rel`, and `rel` was `ownedEntity?.relationship ??
+    // 'NONE'` — so a creator with no entity row got NO disclosure whatever they
+    // told onboarding. Every other permission resolves a conflict DOWNWARD, and
+    // this is the one where downward suppresses a notice the viewer was owed.
+    expect(EDGE).toMatch(
+      /const disclosureRequired = requiresDisclosureInline\(briefTies, ownedEntity\?\.relationship\)/)
+    // And it must NOT be re-derived from the resolved claim: `['none']` against
+    // a SPONSOR entity resolves to NONE, which would drop the disclosure.
+    expect(EDGE).not.toMatch(/const disclosureRequired = rel === 'AFFILIATE'/)
     expect(EDGE).toMatch(/A DISCLOSURE IS REQUIRED AND IS NOT OPTIONAL/)
   })
 

@@ -29,8 +29,23 @@ const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/inde
 
 describe('the product refusal separates a recorded NONE from an unrecorded one', () => {
   it('the two states are derived SEPARATELY, not collapsed into one flag', () => {
-    expect(EDGE).toMatch(/const recordedNoProduct = !!ownedEntity && ownedEntity\.relationship === 'NONE'/)
-    expect(EDGE).toMatch(/const unrecordedProduct = !ownedEntity/)
+    // ⚠️ THE SOURCE CHANGED AND THE SEPARATION DID NOT. Both states used to be
+    // read off `ownedEntity` ALONE, and that made `recordedNoProduct`
+    // unreachable: ZERO production entities carry NONE, because the "I sell
+    // nothing" answer writes `pre_script_brief.commercialTies`, which this file
+    // never read. Both now consult both stores; they remain two derivations.
+    expect(EDGE).toMatch(
+      /const recordedNoProduct = saysSellsNothingInline\(briefTies, ownedEntity\?\.relationship\)/)
+    expect(EDGE).toMatch(/const unrecordedProduct = tieConsistency\.verdict === 'unrecorded'/)
+  })
+
+  // ⚖️ AND THE ENTITY-ONLY FORM MUST NOT COME BACK. It is not merely narrower —
+  // it is a condition that was never once true in production, so restoring it
+  // silently disables the refusal rather than weakening it.
+  it('never re-derives the recorded case from the entity alone', () => {
+    expect(EDGE).not.toMatch(
+      /const recordedNoProduct = !!ownedEntity && ownedEntity\.relationship === 'NONE'/)
+    expect(EDGE).not.toMatch(/const unrecordedProduct = !ownedEntity\b/)
   })
 
   it('the exact collapsed expression never comes back', () => {

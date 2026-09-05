@@ -2152,6 +2152,69 @@ function briefListInline(raw: Record<string, unknown>, key: string): string[] | 
   return kept.length > 0 ? kept : undefined
 }
 
+// ── COMMERCIAL CONSISTENCY, INLINED ───────────────────────────────────────
+//
+// ⚠️ TWO STORES HOLD ONE FACT AND THREE OF SEVEN PRODUCTION VOICES DISAGREE.
+// `pre_script_brief.commercialTies` (onboarding) and
+// `product_entities.relationship` (the confirm step) both record what a creator
+// sells, and until now this function read only the second — `commercialTies`
+// appeared NOWHERE in this file. Mirrors `commercialConsistency.ts`; the parity
+// test executes both.
+const RELATIONSHIP_OF_TIE_INLINE: Record<string, string | null> = {
+  own_product: 'OWN_PRODUCT',
+  own_service: 'OWN_SERVICE',
+  affiliate: 'AFFILIATE',
+  sponsor: 'SPONSOR',
+  review: 'REVIEW_ONLY',
+  none: 'NONE',
+  unspecified: null,
+}
+const TIE_PRECEDENCE_INLINE = [
+  'own_product', 'own_service', 'sponsor', 'affiliate', 'review', 'none',
+]
+/** Least to most permissive — what makes "take the smaller" well defined. */
+const PERMISSIVENESS_INLINE = [
+  'NONE', 'REVIEW_ONLY', 'AFFILIATE', 'SPONSOR', 'OWN_SERVICE', 'OWN_PRODUCT',
+]
+
+function commercialConsistencyInline(ties: unknown, entityRelationship: unknown): {
+  fromTies: string | null; fromEntity: string | null
+  verdict: 'agrees' | 'contradicts' | 'unrecorded'; safe: string | null
+} {
+  const list = Array.isArray(ties) ? ties.filter((t) => typeof t === 'string') : []
+  const tie = TIE_PRECEDENCE_INLINE.find((t) => list.includes(t))
+  const fromTies = tie ? RELATIONSHIP_OF_TIE_INLINE[tie] ?? null : null
+  const fromEntity = typeof entityRelationship === 'string'
+    && PERMISSIVENESS_INLINE.includes(entityRelationship) ? entityRelationship : null
+
+  if (fromTies === null && fromEntity === null) {
+    return { fromTies, fromEntity, verdict: 'unrecorded', safe: null }
+  }
+  if (fromTies === null || fromEntity === null) {
+    return { fromTies, fromEntity, verdict: 'agrees', safe: fromTies ?? fromEntity }
+  }
+  if (fromTies === fromEntity) return { fromTies, fromEntity, verdict: 'agrees', safe: fromTies }
+  const safe = PERMISSIVENESS_INLINE.indexOf(fromTies) <= PERMISSIVENESS_INLINE.indexOf(fromEntity)
+    ? fromTies : fromEntity
+  return { fromTies, fromEntity, verdict: 'contradicts', safe }
+}
+
+/** An uncontradicted "I sell nothing", from EITHER store. */
+function saysSellsNothingInline(ties: unknown, entityRelationship: unknown): boolean {
+  const c = commercialConsistencyInline(ties, entityRelationship)
+  return c.verdict !== 'contradicts' && c.safe === 'NONE'
+}
+
+/** ⚠️ A UNION, NOT A RESOLUTION — the one place "take the smaller claim" is the
+ *  wrong rule. Resolving disclosure downward suppresses a notice the VIEWER was
+ *  owed, which is the only failure here with a legal shape. */
+function requiresDisclosureInline(ties: unknown, entityRelationship: unknown): boolean {
+  const c = commercialConsistencyInline(ties, entityRelationship)
+  const needs = (r: string | null) => r === 'AFFILIATE' || r === 'SPONSOR'
+  return needs(c.fromTies) || needs(c.fromEntity)
+}
+// ── END COMMERCIAL CONSISTENCY ────────────────────────────────────────────
+
 /** The same rule for a single stored string. */
 function briefTextInline(raw: Record<string, unknown>, key: string): string | undefined {
   const v = raw[key]
@@ -5231,7 +5294,19 @@ Deno.serve(async (req: Request) => {
     // Derived, never stored — a stored permission set is a second authority
     // that drifts from the relationship it came from, and then nobody knows
     // which one the script obeyed.
-    const rel = (ownedEntity?.relationship ?? 'NONE') as string
+    // ⚠️ THIS LINE READ `ownedEntity?.relationship ?? 'NONE'`, WHICH IS THE
+    // EXACT COERCION THE `recordedNoProduct` BLOCK BELOW WAS FIXED FOR — an
+    // absent entity became an ANSWERED "no commercial tie". Two consequences,
+    // one of them one-directional: every permission below silently tightened
+    // (recoverable), and `disclosureRequired` silently went FALSE (not).
+    //
+    // ⚖️ THE ONBOARDING ANSWER IS NOW READ TOO. `commercialTies` appeared
+    // NOWHERE in this file; a creator's clearest statement about their own
+    // business never arrived. On a conflict the SAFER claim wins — see
+    // commercialConsistency.ts for why that direction rather than a winner.
+    const briefTies = briefListInline(briefRaw, 'commercialTies')
+    const tieConsistency = commercialConsistencyInline(briefTies, ownedEntity?.relationship)
+    const rel = (tieConsistency.safe ?? 'NONE') as string
     const personalUse = (ownedEntity?.personal_use ?? 'NOT_CONFIRMED') as string
     // The one line that is NOT per-relationship: personal experience is
     // established by the creator alone, so no relationship may override it.
@@ -5240,7 +5315,11 @@ Deno.serve(async (req: Request) => {
       || rel === 'AFFILIATE' || rel === 'SPONSOR'
       ? 'only_if_intended'
       : 'forbidden'
-    const disclosureRequired = rel === 'AFFILIATE' || rel === 'SPONSOR'
+    // ⚠️ NOT DERIVED FROM `rel`, AND THAT IS DELIBERATE. `rel` is the SAFER of
+    // two possibly-conflicting claims, and resolving a conflict downward is
+    // right for what may be asserted and wrong for what a viewer must be told.
+    // A union: if EITHER store says affiliate or sponsor, disclose.
+    const disclosureRequired = requiresDisclosureInline(briefTies, ownedEntity?.relationship)
     const marketingClaims = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
       ? 'allowed'
       : rel === 'AFFILIATE' || rel === 'SPONSOR'
@@ -5484,8 +5563,16 @@ Deno.serve(async (req: Request) => {
     // So the refusal is narrowed to what is true under BOTH possibilities: do
     // not write a scene that DEPENDS on one. That is safe if they have no
     // product and harmless if they do, and it claims nothing we did not observe.
-    const recordedNoProduct = !!ownedEntity && ownedEntity.relationship === 'NONE'
-    const unrecordedProduct = !ownedEntity
+    // ⚠️ THIS BRANCH HAD NEVER ONCE BEEN TRUE. It read
+    // `ownedEntity.relationship === 'NONE'`, and ZERO of the seven entities in
+    // production carries NONE — the "I sell nothing" answer writes
+    // `commercialTies`, which this file never read. So the creator who answered
+    // most clearly fell through to the weaker unrecorded wording below.
+    const recordedNoProduct = saysSellsNothingInline(briefTies, ownedEntity?.relationship)
+    // ⚖️ UNRECORDED NOW MEANS BOTH STORES ARE SILENT, not just this one. An
+    // onboarding answer with no entity row is an ANSWER, and treating it as
+    // silence is the same defect this block already names, one store over.
+    const unrecordedProduct = tieConsistency.verdict === 'unrecorded'
     const noProduct = recordedNoProduct || unrecordedProduct
     const cannotShow = !noProduct && showability !== 'ALWAYS'
     const doNotUse = [

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { commercialConsistency, saysSellsNothing } from '../commercialConsistency'
+import { commercialConsistency, saysSellsNothing, requiresDisclosure } from '../commercialConsistency'
 import type { CommercialTie } from '../creatorProfileQuestions'
 
 // ⚠️ THE SEVEN REAL PAIRS, READ OUT OF PRODUCTION 2026-09-05. Every voice that
@@ -112,5 +112,39 @@ describe('saysSellsNothing — the answer the writer cannot currently see', () =
     expect(saysSellsNothing([], null)).toBe(false)
     expect(saysSellsNothing(['own_product'], 'OWN_PRODUCT')).toBe(false)
     expect(saysSellsNothing(['unspecified'], null)).toBe(false)
+  })
+})
+
+describe('disclosure is a union, not a resolution', () => {
+  // ⚠️ THE ONE ASYMMETRY. Every other permission resolves DOWN on a conflict,
+  // which withholds a claim and is recoverable. Resolving disclosure down
+  // suppresses a notice a viewer was owed.
+  it('requires disclosure when only the onboarding answer says affiliate', () => {
+    expect(requiresDisclosure(['affiliate'], null)).toBe(true)
+    expect(requiresDisclosure(['affiliate'], 'OWN_PRODUCT')).toBe(true)
+  })
+
+  it('requires disclosure when only the entity says sponsor', () => {
+    expect(requiresDisclosure(null, 'SPONSOR')).toBe(true)
+    expect(requiresDisclosure(['none'], 'SPONSOR')).toBe(true)
+  })
+
+  // ⚖️ AND IT SURVIVES THE RESOLUTION THAT WOULD HAVE HIDDEN IT. `['none']` vs
+  // SPONSOR resolves to NONE under the safe-claim rule — which is right for
+  // what may be CLAIMED and would silently drop the disclosure.
+  it('still requires it where the safe claim resolves to NONE', () => {
+    expect(commercialConsistency(['none'], 'SPONSOR').safe).toBe('NONE')
+    expect(requiresDisclosure(['none'], 'SPONSOR')).toBe(true)
+  })
+
+  it('does not require it when neither store says affiliate or sponsor', () => {
+    expect(requiresDisclosure(['own_product'], 'OWN_PRODUCT')).toBe(false)
+    expect(requiresDisclosure(['none'], null)).toBe(false)
+    expect(requiresDisclosure(null, null)).toBe(false)
+    expect(requiresDisclosure(['review'], 'REVIEW_ONLY')).toBe(false)
+  })
+
+  it('is false for all seven production voices, which is why this is latent', () => {
+    for (const p of PRODUCTION) expect(requiresDisclosure(p.ties, p.entity)).toBe(false)
   })
 })

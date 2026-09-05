@@ -136,3 +136,34 @@ export function saysSellsNothing(
   const c = commercialConsistency(ties, entityRelationship)
   return c.verdict !== 'contradicts' && c.safe === 'NONE'
 }
+
+/**
+ * Must this script carry a paid/affiliate disclosure?
+ *
+ * ⚠️ THIS IS THE ONE QUESTION WHERE "TAKE THE SMALLER CLAIM" IS THE WRONG RULE,
+ * AND GETTING IT BACKWARDS IS THE ONLY FAILURE HERE WITH A LEGAL SHAPE. Every
+ * other permission is about what a creator may ASSERT, so resolving a conflict
+ * downward withholds a claim — recoverable. Disclosure is about what the VIEWER
+ * must be told, so resolving downward suppresses a notice somebody was owed.
+ *
+ * ⚖️ SO IT IS A UNION, NOT A RESOLUTION: if EITHER store says affiliate or
+ * sponsor, the disclosure is required, contradiction or not. A disclosure on a
+ * video that did not need one costs a line of script; a missing one on a video
+ * that did is the failure this exists to prevent.
+ *
+ * ⚠️ AND generate-blueprint COERCES THE OTHER WAY TODAY. `const rel =
+ * (ownedEntity?.relationship ?? 'NONE')` turns "no entity row" into an answered
+ * NONE, and `disclosureRequired` reads that `rel` — so a creator with no entity
+ * gets no disclosure regardless of what they told onboarding. Measured
+ * 2026-09-05: ZERO production voices and ZERO entities carry affiliate or
+ * sponsor, so nothing is mis-disclosed today. It is latent, not live, and it is
+ * still the wrong direction to fail in.
+ */
+export function requiresDisclosure(
+  ties: readonly CommercialTie[] | null | undefined,
+  entityRelationship: unknown,
+): boolean {
+  const c = commercialConsistency(ties, entityRelationship)
+  const needs = (r: CanonicalRelationship | null) => r === 'AFFILIATE' || r === 'SPONSOR'
+  return needs(c.fromTies) || needs(c.fromEntity)
+}
