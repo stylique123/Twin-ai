@@ -28,7 +28,10 @@ import { syncSetupLabels } from '../script/setupLabelSync.js'
 import { deliveredItemCount } from '../referenceMechanism.js'
 import { compareRuntime } from '../script/runtimeCompare.js'
 import { splitEmphasis } from '../script/emphasis.js'
-import { resolveFidelity, type ReferenceUse } from '../videoIntent.js'
+import {
+  resolveFidelity, LEGACY_REFERENCE_USE, REFERENCE_USE_MIGRATION,
+  type ReferenceUse, type LegacyReferenceUse,
+} from '../videoIntent.js'
 import { toneEffect } from '../script/toneEffect.js'
 import { resolveSubjectSource } from '../script/subjectSource.js'
 
@@ -49,6 +52,12 @@ interface Fixture {
       beat_plan: Array<{ section: string; target_sec: number }>
       hook_options: string[]
       reference_read: { retention_map: Array<{ beat: string; goal: string }> }
+      // ⚠️ THE FIXTURES CARRY THIS AND THE INTERFACE DID NOT DECLARE IT, so the
+      //  only test that reads it — run-d's "tone contradicted by the sprint
+      //  plan" — was reading a property TypeScript says does not exist. With
+      //  test files unchecked it worked; declared, it is now the same shape the
+      //  production `Blueprint` holds. All four stored blueprints have it.
+      production_sprint?: Array<{ minute: string; task: string }>
     }
     product_entities: unknown[]
     beat_audit: Record<string, unknown>
@@ -429,11 +438,27 @@ describe('10. fidelity has one value visible in both the advanced-setting surfac
 
   it('the two controls can never disagree once Q3 has been answered, for every combination', () => {
     const SLIDERS = ['close', 'balanced', 'loose'] as const
-    const USES: ReferenceUse[] = ['structure', 'idea_structure', 'stay_close', 'inspiration']
-    for (const use of USES) {
+    // ⚠️ THIS LISTED `'inspiration'` AS A `ReferenceUse` AND IT IS NOT ONE. It is
+    //  the RETIRED value, alive only in `LEGACY_REFERENCE_USE` for reading old
+    //  rows, and `resolveFidelity` takes the current union. Untypechecked, the
+    //  fourth iteration indexed `FIDELITY_FROM_REFERENCE_USE['inspiration']`,
+    //  got `undefined` for all three sliders, and `new Set([undefined]).size`
+    //  is 1 — so the case PASSED by producing nothing, in the test asserting the
+    //  two controls can never disagree.
+    //
+    //  ⚖️ THE LEGACY VALUE STILL GETS COVERED, through the door production uses
+    //  for it: `REFERENCE_USE_MIGRATION` maps a stored row's value to a current
+    //  one first. That is the real path, and it is now asserted rather than
+    //  silently short-circuited.
+    const USES: LegacyReferenceUse[] = [...LEGACY_REFERENCE_USE]
+    for (const legacy of USES) {
+      const use = REFERENCE_USE_MIGRATION[legacy]
       const resolutions = new Set(SLIDERS.map((slider) => resolveFidelity(use, slider)))
       // The slider's value never changes the outcome once Q3 has an answer.
-      expect(resolutions.size, use).toBe(1)
+      expect(resolutions.size, legacy).toBe(1)
+      // ⚖️ AND THE ONE THING THE OLD SHAPE COULD NOT ASSERT: that the outcome is
+      //  a real fidelity rather than the `undefined` an unmapped key returns.
+      expect(['close', 'balanced', 'loose'], legacy).toContain([...resolutions][0])
     }
   })
 })

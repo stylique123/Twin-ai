@@ -17,9 +17,6 @@
   ],
   "exclude": [
     "src/__tests__/campaignIntent.test.ts",
-    "src/__tests__/cdpEdgeParity.test.ts",
-    "src/__tests__/liveRunFixtures.test.ts",
-    "src/__tests__/pipeline-scenarios.test.ts",
-    "src/__tests__/the-gallery-sees-a-projection.test.ts"
+    "src/__tests__/pipeline-scenarios.test.ts"
   ]
 }

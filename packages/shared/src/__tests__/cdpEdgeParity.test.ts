@@ -12,7 +12,8 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { validateCreativeDecisionPlan } from '../creativeDecisionPlan'
+import { validateCreativeDecisionPlan, blankPlan } from '../creativeDecisionPlan'
+import type { VideoGoal } from '../videoIntent'
 import { assembleCreatorProfile, toPlannerView } from '../profileAssembler'
 import { VIDEO_GOALS } from '../videoIntent'
 
@@ -38,12 +39,19 @@ const edgeRefuses = (i: EdgeInput): boolean => {
   return i.goal === 'sell' && !hasTarget
 }
 
-const shared = (goal: string, products: string[]) =>
+// ⚠️ THIS BUILT A NINE-FIELD LITERAL AND CALLED IT A PLAN. `CreativeDecisionPlan`
+//  has eighteen fields; the eight it omitted -- `audienceLevel`, `topic`, `angle`,
+//  `format`, `targetSeconds`, `structure`, `hookStrategy`, `productRole`,
+//  `restrictions` -- were `undefined` on the object the validator was handed. The
+//  parity this file asserts was measured against a shape production cannot hold,
+//  and `PRODUCT_ROLE_WITHOUT_PRODUCT` reads `productRole`.
+//
+//  ⚖️ `blankPlan` IS THE PRODUCTION BUILDER, so the fixture is plan-shaped by
+//  construction rather than by my remembering eighteen field names. And `goal`
+//  is now a `VideoGoal`, not a `string` laundered through `as never`.
+const shared = (goal: VideoGoal, products: string[]) =>
   validateCreativeDecisionPlan(
-    {
-      objective: goal as never, focus: null, products,
-      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null,
-    },
+    { ...blankPlan(goal), products },
     toPlannerView(assembleCreatorProfile({ answers: {} as never, now: '2026-08-17T00:00:00.000Z' })),
   ).map((v) => v.code).includes('SELL_WITHOUT_COMMERCIAL_TARGET')
 
@@ -112,10 +120,7 @@ describe('the refusal is placed and worded like the others', () => {
 
   it('carries the shared validator\'s message and remedies verbatim', () => {
     const v = validateCreativeDecisionPlan(
-      {
-        objective: 'sell', focus: null, products: [],
-        ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null,
-      },
+      blankPlan('sell'),
       toPlannerView(assembleCreatorProfile({ answers: {} as never, now: '2026-08-17T00:00:00.000Z' })),
     ).find((x) => x.code === 'SELL_WITHOUT_COMMERCIAL_TARGET')!
     expect(EDGE).toContain(v.message)
