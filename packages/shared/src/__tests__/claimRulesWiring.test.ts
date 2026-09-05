@@ -81,6 +81,48 @@ describe('the edge decides CTAs from the relationship, not just the goal', () =>
     expect(EDGE).toMatch(/HAS NOT CONFIRMED THEY PERSONALLY USE THIS/)
   })
 
+  it('grants the maker claim the canonical rules already carried', () => {
+    // ⚠️ THE PERMISSION HALF REACHED NO PROMPT. `claimRulesFor` grants an owner
+    // `ownershipLanguage: true` — "my product", "we built this" — as a claim
+    // SEPARATE from `creatorExperience`. The edge derived `ownershipLanguage`
+    // only for the restriction union, where it is read NEGATIVELY: false
+    // forbids, true says nothing. So an owner got the usage PROHIBITION below
+    // and no ownership PERMISSION at all, and a baker could not have Twin write
+    // "I bake these every morning" about her own bread.
+    expect(claimRulesFor('OWN_PRODUCT').ownershipLanguage).toBe(true)
+    expect(claimRulesFor('AFFILIATE').ownershipLanguage).toBe(false)
+    expect(EDGE).toMatch(/THEY MAY SAY SO IN THE FIRST PERSON/)
+    // Emitted on the ownership flag, never on the personal-use one.
+    expect(EDGE).toMatch(/if \(ownershipLanguage\) \{\s*\n\s*claimLines\.push/)
+  })
+
+  it('narrows the usage refusal for an owner instead of lifting it', () => {
+    // ⚠️ OWNERSHIP IS NOT A TESTIMONIAL, and the tempting fix was to make
+    // `creatorExperience` true for owners. That manufactures a testimonial out
+    // of a company registration — §12 with the relationship swapped — and a
+    // founder who has never opened their own dashboard would be licensed to say
+    // it changed their workflow. So the owner keeps a refusal; it is narrowed to
+    // the CUSTOMER claim.
+    expect(claimRulesFor('OWN_PRODUCT', 'NOT_CONFIRMED').creatorExperience).toBe(false)
+    expect(EDGE).toMatch(/HAVE NOT CONFIRMED THEY USE IT AS A CUSTOMER DOES/)
+    // ⚖️ AND THE FULL REFUSAL SURVIVES FOR EVERYONE WHO DOES NOT MAKE THE THING.
+    // An unconfirmed affiliate is exactly the case §12 was written for.
+    expect(EDGE).toMatch(/HAS NOT CONFIRMED THEY PERSONALLY USE THIS/)
+    // The two are the arms of one conditional, so neither can be dropped
+    // without the other becoming unconditional.
+    expect(EDGE).toMatch(/claimLines\.push\(ownershipLanguage/)
+
+    // ⚠️ AND THE EDGE'S OWN DERIVATION MUST NOT LEARN ABOUT OWNERSHIP. The
+    // shared `claimRulesFor` is guarded above, but the edge keeps a hand-inlined
+    // copy it cannot import — so widening THAT one to `|| rel === 'OWN_PRODUCT'`
+    // reinstated the fabricated testimonial with every assertion still green.
+    // Found by mutation, which is the only thing that could have found it.
+    const derivation = EDGE.split('\n').find((l) => l.includes('const creatorExperience ='))
+    expect(derivation).toBeDefined()
+    expect(derivation).toContain("personalUse === 'CONFIRMED'")
+    expect(derivation).not.toMatch(/\brel\b|relationship|OWN_/)
+  })
+
   it('the block actually reaches the prompt', () => {
     // A block that is computed and never interpolated is the defect this whole
     // file exists for, one level down.
