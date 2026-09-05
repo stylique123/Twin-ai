@@ -22,7 +22,7 @@
 // guessing, whichever way the creator answered.
 import { useEffect, useState } from 'react'
 import {
-  claimProductEntity, OwnedEntityExistsError, ProductLibraryFullError,
+  claimProductEntity, ProductLibraryFullError,
   type EntityType, type ProductEntityRecord,
 } from '../lib/api'
 import { supabase } from '../lib/supabase'
@@ -135,11 +135,12 @@ export function ProductCaptureCard(
       if (!record) throw new Error('not saved')
       setStep('thanks')
     } catch (err) {
-      // ⚠️ ALREADY-OWNED IS NOT A FAILURE FROM THE CREATOR'S SIDE. If another
-      // tab or a Product Library edit already minted their owned product
-      // between page load and this tap, the fact they came here to record is
-      // already true — say so, not "try again".
-      if (err instanceof OwnedEntityExistsError) { setStep('thanks'); return }
+      // ⚖️ THE ALREADY-OWNED BRANCH IS GONE WITH THE RULE IT HANDLED. It caught
+      // `OwnedEntityExistsError` and showed 'thanks', on the reasoning that a
+      // creator whose product was minted in another tab had already got what
+      // they came for. 0186 removed the one-owned-per-voice rule — a second
+      // product is now simply saved — so nothing raises that error and the
+      // branch could only ever be dead code claiming to handle something.
       if (err instanceof ProductLibraryFullError) {
         setProblem(`You've reached your product limit (${err.limit}). Manage them in your Product Library.`)
       } else {
