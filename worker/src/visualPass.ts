@@ -21,6 +21,7 @@ import { sampleFrames, DEFAULT_FRAME_COUNT, type ScheduleBasis } from './frameSa
 import { visualPrompt } from './visualPrompt.js'
 import { extractVisualProfile } from './visualExtractionRules.js'
 import { geminiJson } from './gemini.js'
+import { redact, errorText } from './sanitizeError.js'
 import { modelForTask } from './modelRouting.js'
 import { persistFrames } from './referenceFrames.js'
 import { ffmpegPresent } from './frameSample.js'
@@ -54,6 +55,31 @@ export interface VisualPassResult {
    *  failure on the same video are comparable rather than two vocabularies. */
   failure_code: string | null
   phase: string | null
+  /**
+   * ⚠️ WHAT THE CLASSIFIER COULD NOT NAME — AND ONLY THEN.
+   *
+   * 222 YouTube references carry `UNKNOWN_DOWNLOAD_FAILURE` with
+   * `download_trace` NULL and `download_route` NULL. Measured 2026-09-05: that
+   * is every one of them. The code says "unrecognised" and nothing anywhere
+   * says WHAT was unrecognised, so 222 failures are one indistinguishable lump
+   * that no amount of re-running can diagnose.
+   *
+   * `downloadFailure.ts` already states the principle this violates: "if code
+   * 10231 turns out to be forty rows, that is a number somebody can go
+   * investigate, where forty rows inside UNKNOWN_DOWNLOAD_FAILURE are
+   * invisible." The codes are TikTok-shaped and YouTube's wording matched none
+   * of them, so the whole platform fell through the gap the comment predicted.
+   *
+   * ⚖️ POPULATED ONLY FOR THE UNKNOWN CODE, DELIBERATELY. A recognised failure
+   * has already been reduced to the fact worth keeping; storing its prose too
+   * would grow every row to make one class legible. This is the residue, and
+   * the residue is the only part nobody can reconstruct.
+   *
+   * ⚖️ AND IT GOES THROUGH `redact`, WHICH IS NOT OPTIONAL. This lands in
+   * durable state, and yt-dlp's messages routinely carry the signed URL it was
+   * fetching. Same rule as jobs.error — the raw text stays in stdout.
+   */
+  unmapped_detail: string | null
   /** What came off the FILE, with no model involved. Present even when the
    *  model call failed — that is the entire reason it is computed first. */
   tier_zero: TierZeroPassResult | null
@@ -61,8 +87,10 @@ export interface VisualPassResult {
 
 const NOT_RUN = (
   failure_code: string | null, phase: string | null, tier_zero: TierZeroPassResult | null = null,
+  unmapped_detail: string | null = null,
 ): VisualPassResult => ({
   ran: false,
+  unmapped_detail,
   visual_profile: null,
   visual_rejections: null,
   frames_sampled: null,
@@ -104,7 +132,13 @@ export async function runVisualPass(
       // ⚠️ THE SAME CODES AS THE TRANSCRIPT LADDER. A video that is IP-blocked
       // for frames is IP-blocked for audio; giving the two passes different
       // words for it would make the library's failure counts uncomparable.
-      return NOT_RUN(classifyDownloadFailure(e), phaseOf(e))
+      // ⚠️ THE ONE PLACE THE RESIDUE STILL EXISTS. After this line the raw
+      // error is gone and only a code survives; 222 rows prove that a code
+      // alone cannot be investigated later. Kept ONLY when the classifier
+      // failed to name it, redacted, and bounded by `redact` at 300 chars.
+      const code = classifyDownloadFailure(e)
+      return NOT_RUN(code, phaseOf(e), null,
+        code === 'UNKNOWN_DOWNLOAD_FAILURE' ? redact(errorText(e)) : null)
     }
 
     // ⚠️ TIER 0 RUNS HERE — AFTER THE DOWNLOAD, BEFORE ANYTHING CAN FAIL.
@@ -177,6 +211,10 @@ export async function runVisualPass(
     const { profile, rejections } = extractVisualProfile(raw, { framesSampled: sample.framesSampled })
     return {
       ran: true,
+      // ⚖️ NULL ON THE SUCCESS PATH BECAUSE THERE IS NO RESIDUE. A pass that ran
+      // has no unnamed failure to keep, and defaulting it here rather than in
+      // the type is what makes the compiler demand a decision at every return.
+      unmapped_detail: null,
       visual_profile: profile,
       // Rejections are evidence about the PROMPT, not noise: "which fields does
       // the model struggle to answer from frames" is the question the pilot
