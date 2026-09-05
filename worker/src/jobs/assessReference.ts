@@ -264,6 +264,26 @@ interface Payload {
    *  A truthy-but-not-true value (the string "false", 1, {}) must not enable
    *  spending; the same rule `parseRoute` follows for the paid rungs. */
   frames?: unknown
+  /**
+   * ⚠️ FRAMES WITHOUT RE-ACQUIRING THE AUDIO OR RE-ASKING THE MODEL.
+   *
+   * 1,008 of 1,471 references have no visual pass. Enqueuing them as ordinary
+   * `assess_reference` jobs would re-download the audio, re-run whisper and
+   * re-pay for the text assessment on every one — to reach a branch that only
+   * needs pixels. It would also drag the TikTok block question back in on 729
+   * rows that have nothing to do with it.
+   *
+   * ⚖️ IT DOES NOT MAKE THE PASS FREE, AND SAYING SO MATTERS. `runVisualPass`
+   * downloads the VIDEO — frames need pixels, and no cache removes that. What
+   * this removes is the SECOND acquisition: the audio ladder, whisper, and the
+   * Gemini text call. One download instead of two, and no text spend.
+   *
+   * ⚠️ A CACHE MISS IS A REFUSAL, NOT A FALLBACK. If there is no stored
+   * transcript this returns without acquiring one, because a job that silently
+   * upgrades itself into a full assessment is how a cheap sweep becomes an
+   * expensive one nobody authorised.
+   */
+  framesOnly?: unknown
   /** How many stills. Absent means DEFAULT_FRAME_COUNT — the pilot's job is to
    *  argue with that number, not this file's. */
   frameCount?: unknown
@@ -335,6 +355,23 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
   if (cached) {
     console.log(JSON.stringify({ event: 'transcript_cache_hit', url,
       chars: cached.chars, captured_at: cached.capturedAt }))
+  }
+
+  // ── FRAMES ONLY: NO SECOND ACQUISITION, AND NO SILENT UPGRADE ────────────
+  //
+  // ⚠️ THE REFUSAL COMES BEFORE THE DOWNLOAD, WHICH IS THE ONLY PLACE IT MEANS
+  // ANYTHING. Returning here on a cache miss is the whole guarantee: a
+  // frames-only sweep costs exactly one video download per reference and never
+  // quietly becomes a full re-assessment. Putting this check after the ladder
+  // would still have paid for the audio before deciding not to want it.
+  //
+  // ⚖️ RECORDED, NOT SWALLOWED. "We had no transcript for this URL" is a real
+  // finding about the cache — it is why a sweep covered 600 of 1,008 rather
+  // than a mystery about the other 408 — so it returns an outcome rather than
+  // throwing, and nothing is written to the profile row.
+  if (p.framesOnly === true && !cached) {
+    console.warn(JSON.stringify({ event: 'frames_only_no_cached_transcript', url }))
+    return { url, skipped: 'no_cached_transcript', outcome: 'skipped' as const }
   }
   try {
     transcript = cached ? cached.transcript : await transcribeFromUrl(url, route)
@@ -532,6 +569,15 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
         // blocked download from a job that never ran — three different next
         // actions, one number.
         visual_failure_code: visual.failure_code,
+        // ⚠️ AND WHAT THE CLASSIFIER COULD NOT NAME, OR THE ROW IS ANOTHER OF
+        // THE 222. Measured 2026-09-05: every YouTube row carrying
+        // UNKNOWN_DOWNLOAD_FAILURE has download_trace NULL and download_route
+        // NULL — 222 failures reduced to one word that cannot be investigated.
+        // A code with no residue is a failure nobody recorded, in the shape the
+        // codes were invented to prevent.
+        ...(visual.unmapped_detail
+          ? { download_trace: { unmapped_detail: visual.unmapped_detail } }
+          : {}),
         // ⚠️ AND `visual_assessed_at` IS DELIBERATELY NOT STAMPED. frame-pilot
         // selects candidates with `!r.visual_assessed_at`, so stamping it on a
         // failure would permanently exclude a reference that failed for a
@@ -643,6 +689,10 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
             // path: the stamp is what excludes a reference from a later pass,
             // and a transient block must not exclude anything permanently.
             visual_failure_code: visual.failure_code,
+            // The same residue as the no-speech path — see the note there.
+            ...(visual.unmapped_detail
+              ? { download_trace: { unmapped_detail: visual.unmapped_detail } }
+              : {}),
           }
         : {}),
     transcript_source: transcript.source ?? null,

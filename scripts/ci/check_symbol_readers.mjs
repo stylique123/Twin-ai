@@ -167,15 +167,14 @@ export const REGISTRY = {
       + 'are the read API for a surface that should exist, and the registry is '
       + 'the thing that matters.',
   },
-  'referenceAssessment.ts': {
-    symbols: ['assessFromText', 'isConclusive'],
-    why: '9,504 gallery cards carry null in both of 0106 columns and nothing has '
-      + 'ever written one, so the gallery ranks on niche alone. This is the '
-      + 'cheap half — assess from the text already on the card, before paying for '
-      + 'a model call per card. Unreached because no backfill has been run. '
-      + 'HIGHEST-VALUE ENTRY IN THIS REGISTRY: it has a caller-shaped hole and '
-      + 'the data to fill it.',
-  },
+  // ⚖️ `referenceAssessment.ts` WAS THE HIGHEST-VALUE ENTRY IN THIS REGISTRY AND
+  //  THE DEBT IS PAID. `assessFromText` and `isConclusive` were registered as
+  //  having a caller-shaped hole and the data to fill it;
+  //  scripts/qa/gallery-requirements-backfill.mjs is that caller, and it bundles
+  //  the real function from source rather than restating the marker lists.
+  //  Removed rather than kept with a note: an entry for a symbol that HAS a
+  //  reader is what this guard exists to reject, and leaving it would make the
+  //  guard fail on every branch from here on.
   'shapeForGoal.ts': {
     symbols: ['rankShapesForGoal', 'shapeForGoal'],
     why: 'A deferral with a trigger, not a comment saying later (#682). Measured '
