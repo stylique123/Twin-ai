@@ -75,16 +75,30 @@ const RELATIONSHIP_CHOICES: Array<{ value: EntityRelationship; label: string }> 
 /** ⚖️ ORDERED BY HOW OFTEN CREATORS PICK THEM, not by the enum. `OTHER` sits
  *  last and is deliberately offered: forcing a misclassification is worse than
  *  an unspecific answer, because `inferShowability` reads this to tell the
- *  Director what it may ask for on camera. */
+ *  Director what it may ask for on camera.
+ *
+ *  ⚠️ AND THE ORDER WAS WRONG, MEASURED AGAINST A REAL CREATOR. A baker read
+ *  this list, saw `Software`, `A mobile app` and `A digital product` in the
+ *  first four, and reasonably concluded none of them described a loaf of bread.
+ *  A loaf IS a physical product — the label just did not look like it was for
+ *  her. Three software-shaped entries at the top and nothing naming food,
+ *  handmade goods, clothing, art or books is a SaaS worldview rendered as a
+ *  question, and the creator who cannot find themselves in it answers
+ *  "Something else" or gives up. That is a labelling failure, not a user error.
+ *
+ *  ⚖️ SO THE COMMON CASES LEAD AND `PHYSICAL_PRODUCT` SAYS WHAT IT COVERS.
+ *  The enum is untouched — this is wording and order only, so no stored row
+ *  changes meaning and `inferShowability` reads exactly what it read before. */
 const TYPE_CHOICES: Array<{ value: EntityType; label: string }> = [
-  { value: 'SAAS', label: 'Software' },
-  { value: 'APP', label: 'A mobile app' },
-  { value: 'PHYSICAL_PRODUCT', label: 'A physical product' },
+  { value: 'PHYSICAL_PRODUCT',
+    label: 'A physical product (food, handmade, apparel — anything you ship or hand over)' },
+  { value: 'SERVICE', label: 'A service' },
   { value: 'DIGITAL_PRODUCT', label: 'A digital product (template, preset…)' },
   { value: 'COURSE', label: 'A course' },
   { value: 'COMMUNITY', label: 'A community or membership' },
-  { value: 'SERVICE', label: 'A service' },
   { value: 'MARKETPLACE', label: 'A marketplace or store' },
+  { value: 'SAAS', label: 'Software' },
+  { value: 'APP', label: 'A mobile app' },
   { value: 'OTHER', label: 'Something else' },
 ]
 
