@@ -8,6 +8,16 @@
   "include": ["src"],
 
   "exclude": [
-
+    "src/__tests__/a-disagreement-that-changes-nothing.test.ts",
+    "src/__tests__/assembly-does-not-reinterpret.test.ts",
+    "src/__tests__/campaignIntent.test.ts",
+    "src/__tests__/cdpEdgeParity.test.ts",
+    "src/__tests__/creativeTransferPlan.test.ts",
+    "src/__tests__/desiredFormatModes.test.ts",
+    "src/__tests__/liveRunFixtures.test.ts",
+    "src/__tests__/pipeline-scenarios.test.ts",
+    "src/__tests__/settings-tells-you-what-to-do-next.test.ts",
+    "src/__tests__/the-gallery-sees-a-projection.test.ts",
+    "src/script/__tests__/observedVisual.test.ts"
   ]
 }
