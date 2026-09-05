@@ -93,7 +93,7 @@ const SPECS: Spec[] = [
   },
   {
     id: 'pure-teach', niche: 'same_sub_niche', reach: 5_000,
-    goals: ['education'], mode: 'talking_head', posture: 'NONE',
+    goals: ['educate'], mode: 'talking_head', posture: 'NONE',
     slots: [{ kind: 'example', label: 'worked_example' }],
   },
   {
@@ -111,17 +111,17 @@ const SAAS_FOUNDER: GalleryCreatorView = {
   canFilmObjects: false, canRecordScreen: true,
 }
 const AFFILIATE_REVIEWER: GalleryCreatorView = {
-  goals: ['growth'], preferredFormats: ['review_comparison', 'screen_software'],
+  goals: ['followers'], preferredFormats: ['review_comparison', 'screen_software'],
   relationship: 'AFFILIATE', productCount: 4,
   canFilmObjects: true, canRecordScreen: true,
 }
 const EDUCATOR: GalleryCreatorView = {
-  goals: ['education'], preferredFormats: ['talking_head'],
+  goals: ['educate'], preferredFormats: ['talking_head'],
   relationship: 'NONE', productCount: 0,
   canFilmObjects: false, canRecordScreen: false,
 }
 const ENTERTAINER: GalleryCreatorView = {
-  goals: ['entertainment'], preferredFormats: ['pov_skit'],
+  goals: ['entertain'], preferredFormats: ['pov_skit'],
   relationship: 'NONE', productCount: 0,
   canFilmObjects: true, canRecordScreen: false,
 }
