@@ -2205,14 +2205,6 @@ function saysSellsNothingInline(ties: unknown, entityRelationship: unknown): boo
   return c.verdict !== 'contradicts' && c.safe === 'NONE'
 }
 
-/** ⚠️ A UNION, NOT A RESOLUTION — the one place "take the smaller claim" is the
- *  wrong rule. Resolving disclosure downward suppresses a notice the VIEWER was
- *  owed, which is the only failure here with a legal shape. */
-function requiresDisclosureInline(ties: unknown, entityRelationship: unknown): boolean {
-  const c = commercialConsistencyInline(ties, entityRelationship)
-  const needs = (r: string | null) => r === 'AFFILIATE' || r === 'SPONSOR'
-  return needs(c.fromTies) || needs(c.fromEntity)
-}
 // ── END COMMERCIAL CONSISTENCY ────────────────────────────────────────────
 
 /** The same rule for a single stored string. */
@@ -5294,19 +5286,22 @@ Deno.serve(async (req: Request) => {
     // Derived, never stored — a stored permission set is a second authority
     // that drifts from the relationship it came from, and then nobody knows
     // which one the script obeyed.
-    // ⚠️ THIS LINE READ `ownedEntity?.relationship ?? 'NONE'`, WHICH IS THE
-    // EXACT COERCION THE `recordedNoProduct` BLOCK BELOW WAS FIXED FOR — an
-    // absent entity became an ANSWERED "no commercial tie". Two consequences,
-    // one of them one-directional: every permission below silently tightened
-    // (recoverable), and `disclosureRequired` silently went FALSE (not).
+    // ⚠️ `rel` IS DELIBERATELY LEFT READING THE ENTITY ALONE, AND A DRAFT OF
+    // THIS CHANGE HAD IT READ BOTH STORES. `scripts/ci/brief_consumers.json`
+    // records why that is wrong, and it is right: `brief.promotes` ALREADY
+    // reaches this prompt with per-relationship instructions — including the
+    // affiliate and sponsor disclosures, which `promotesLine` states as
+    // non-optional. Deriving these permissions from a SECOND store as well
+    // would put two interpretations of one fact in one prompt, which is the
+    // drift ProfileAssembler exists to end.
     //
-    // ⚖️ THE ONBOARDING ANSWER IS NOW READ TOO. `commercialTies` appeared
-    // NOWHERE in this file; a creator's clearest statement about their own
-    // business never arrived. On a conflict the SAFER claim wins — see
-    // commercialConsistency.ts for why that direction rather than a winner.
+    // ⚖️ SO THE TIES ARE READ FOR EXACTLY ONE THING: the product-scene refusal
+    // below, which has NO second channel. `readyNothingToSell` gates only the
+    // readiness questions, and `promotes === 'none'` is about somebody else's
+    // product, not about this creator having none.
     const briefTies = briefListInline(briefRaw, 'commercialTies')
     const tieConsistency = commercialConsistencyInline(briefTies, ownedEntity?.relationship)
-    const rel = (tieConsistency.safe ?? 'NONE') as string
+    const rel = (ownedEntity?.relationship ?? 'NONE') as string
     const personalUse = (ownedEntity?.personal_use ?? 'NOT_CONFIRMED') as string
     // The one line that is NOT per-relationship: personal experience is
     // established by the creator alone, so no relationship may override it.
@@ -5315,21 +5310,18 @@ Deno.serve(async (req: Request) => {
       || rel === 'AFFILIATE' || rel === 'SPONSOR'
       ? 'only_if_intended'
       : 'forbidden'
-    // ⚠️ THE OLD FORM WAS DEAD CODE, NOT A WORKING RULE. It read
-    // `rel === 'AFFILIATE' || rel === 'SPONSOR'`, and `rel` came from an entity
-    // query filtered to `['OWN_PRODUCT', 'OWN_SERVICE']` — so neither side of
-    // that `||` could ever be true. Disclosure was structurally unreachable
-    // here for every creator. Nothing is mis-disclosed today only because ZERO
-    // production voices and ZERO entities carry affiliate or sponsor at all
-    // (measured 2026-09-05); the rule itself had no way to fire.
+    // ⚠️ THIS CONDITION CANNOT BE TRUE, AND IT IS LEFT ALONE ON PURPOSE. `rel`
+    // comes from a query filtered `.in('relationship', ['OWN_PRODUCT',
+    // 'OWN_SERVICE'])`, so neither side of this `||` is reachable. The working
+    // disclosure is `promotesLine` above, which states the affiliate and
+    // sponsor cases and calls the sponsorship one non-optional.
     //
-    // ⚖️ NOT DERIVED FROM `rel`, AND THAT IS DELIBERATE. `rel` is the SAFER of
-    // two possibly-conflicting claims, and resolving a conflict downward is
-    // right for what may be ASSERTED and wrong for what a viewer must be TOLD.
-    // A union: if EITHER store says affiliate or sponsor, disclose. Since the
-    // entity half cannot carry either, the onboarding answer is in practice the
-    // only route by which this can now become true — which is the fix.
-    const disclosureRequired = requiresDisclosureInline(briefTies, ownedEntity?.relationship)
+    // ⚖️ MAKING THIS LINE LIVE WOULD BE A SECOND DISCLOSURE CHANNEL, NOT A FIX.
+    // Two independent paths emitting the same obligation is how they drift into
+    // disagreeing. Removing it is also not this PR's business: it is dead, not
+    // wrong, and deleting a branch is a change to reason about on its own.
+    // Filed rather than done.
+    const disclosureRequired = rel === 'AFFILIATE' || rel === 'SPONSOR'
     const marketingClaims = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
       ? 'allowed'
       : rel === 'AFFILIATE' || rel === 'SPONSOR'

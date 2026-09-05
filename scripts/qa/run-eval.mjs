@@ -43,13 +43,6 @@ import { readFileSync } from 'node:fs'
 // here is to measure the object production would send; a harness-local copy
 // would measure the harness, which this file has been burned by five times.
 import { PACKET_SYSTEM, packetPrompt, packetPromptLine, packetShape } from '../../packages/shared/src/substancePacket.ts'
-// ⚖️ IMPORTED UNDER THE EDGE'S NAME, NOT RE-TYPED. The edge function cannot
-// import shared code and carries an inlined `requiresDisclosureInline`; this
-// harness CAN import, so it takes the real function and aliases it to the same
-// identifier. The declaration below is then character-identical to the edge's —
-// which is what `harnessClaimRulesParity` checks — with one implementation
-// instead of a third copy to drift.
-import { requiresDisclosure as requiresDisclosureInline } from '../../packages/shared/src/commercialConsistency.ts'
 
 /** Production's cap, lifted so a change there is a change here. Overridable per
  *  case ONLY for the experiment that varies it. */
@@ -225,12 +218,6 @@ const RELATIONSHIPS = ['NONE', 'REVIEW_ONLY', 'AFFILIATE', 'SPONSOR', 'OWN_PRODU
  * edge's — see `harnessClaimRulesParity.test.ts`.
  */
 function claimRules(truth, goalRaw) {
-  // ⚖️ THE FIXTURE'S SHAPE, NAMED AS THE EDGE NAMES ITS ROW. Fixtures carry no
-  // onboarding answer, so `briefTies` is undefined here and every rule below
-  // resolves exactly as it did before this alias existed — the harness measures
-  // the same product, through the shipped function rather than a copy of it.
-  const briefTies = truth?.commercialTies
-  const ownedEntity = { relationship: truth?.relationshipCode }
   const rel = truth?.relationshipCode
   if (!RELATIONSHIPS.includes(rel)) {
     console.error(`FATAL: creator truth has relationshipCode=${JSON.stringify(rel)}.`)
@@ -243,11 +230,7 @@ function claimRules(truth, goalRaw) {
     || rel === 'AFFILIATE' || rel === 'SPONSOR'
     ? 'only_if_intended'
     : 'forbidden'
-  // ⚠️ NOT DERIVED FROM `rel`, AND THAT IS DELIBERATE. `rel` is the SAFER of
-  // two possibly-conflicting claims, and resolving a conflict downward is
-  // right for what may be asserted and wrong for what a viewer must be told.
-  // A union: if EITHER store says affiliate or sponsor, disclose.
-  const disclosureRequired = requiresDisclosureInline(briefTies, ownedEntity?.relationship)
+  const disclosureRequired = rel === 'AFFILIATE' || rel === 'SPONSOR'
   const marketingClaims = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
     ? 'allowed'
     : rel === 'AFFILIATE' || rel === 'SPONSOR'
