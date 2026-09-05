@@ -465,6 +465,72 @@ const FOCUS_PREFERS: Record<ContentFocus, readonly string[]> = {
 // An inference must not create an obligation, and a pitch is the obligation
 // that rule exists for: `sell` already carries its own selling intent, so
 // nothing is lost by refusing to let a derived `convert` add one.
+// ── "SELL SOMETHING" AND "MY PRODUCT OR SERVICE" READ AS ONE QUESTION ─────
+//
+// ⚠️ MEASURED ON THE REMIX SCREEN, CANDLE RUN. Goal offers "Sell something";
+// subject offers "My product or service". To a creator those are the same
+// sentence asked twice: picking both feels redundant, picking one feels like a
+// mistake, and nothing on the screen explains why both exist.
+//
+// ⚖️ THEY ARE NOT THE SAME FIELD, AND THAT IS THE PROBLEM. `goal` drives the
+// CTA doctrine — what the ending asks for. `focus` drives RETRIEVAL — which
+// well the substance is drawn from. A creator can legitimately sell at the end
+// of a video whose substance is their own story. The labels simply never said
+// so.
+//
+// ⚖️ SO THE RELATIONSHIP IS MADE VISIBLE RATHER THAN THE VOCABULARY CHANGED.
+// Renaming both questions was the alternative and it was rejected: the wording
+// is stable, shipped, and creators have already learned it. Pre-selecting the
+// implied chip and SAYING WHY costs one tap and explains the pair in situ.
+//
+// ⚠️⚠️ AND AN IMPLIED ANSWER IS NOT A CHOSEN ONE. This is the `default_taken`
+// lesson from the hook picker, one screen over: a pre-selected chip a creator
+// never touches is agreement OR inattention, and storing it as a preference
+// makes the two indistinguishable forever. `source` keeps them apart, so a
+// later reader asking "did creators actually want product-focused sell videos"
+// gets an answer instead of an artefact of the default.
+export const GOAL_IMPLIES_FOCUS: Partial<Record<VideoGoal, ContentFocus>> = {
+  // ⚖️ ONLY `sell`. `leads` was considered and left out deliberately: someone
+  // asking for leads frequently teaches, and pre-selecting product for them
+  // would push the substance toward a pitch they did not ask for. One mapping
+  // with a measured complaint behind it beats a table built from symmetry.
+  sell: 'product',
+}
+
+/** Whether the creator picked the subject, or it was filled in from the goal. */
+export type FocusSource = 'chosen' | 'implied'
+
+export interface FocusReading {
+  focus: ContentFocus | null
+  source: FocusSource
+  /** The sentence the chip shows, e.g. "because you chose Sell something".
+   *  null when nothing was implied. */
+  because: string | null
+}
+
+/**
+ * The subject to show pre-selected, and whether the creator actually chose it.
+ *
+ * ⚠️ AN EXPLICIT ANSWER ALWAYS OUTRANKS THE IMPLICATION — the same rule
+ * `GOAL_IMPLIES_OUTCOME` follows twenty lines down. A creator who picks "My
+ * story" while selling gets their story; the implication only ever fills a gap.
+ */
+export function focusForGoal(input: {
+  goal?: VideoGoal | null
+  focus?: ContentFocus | null
+}): FocusReading {
+  const chosen = input.focus ?? null
+  if (chosen) return { focus: chosen, source: 'chosen', because: null }
+  const goal = input.goal ?? null
+  const implied = goal ? (GOAL_IMPLIES_FOCUS[goal] ?? null) : null
+  if (!implied) return { focus: null, source: 'chosen', because: null }
+  return {
+    focus: implied,
+    source: 'implied',
+    because: `because you chose ${CANONICAL_GOAL_LABELS[goal as CanonicalGoal]}`,
+  }
+}
+
 const GOAL_IMPLIES_OUTCOME: Record<VideoGoal, ViewerOutcome> = {
   followers: 'share',
   authority: 'remember_me',
@@ -564,7 +630,16 @@ export function compileVideoIntent(answers: {
   }
   let payoffDirective = impliedOutcome ? OUTCOME_PAYOFF[impliedOutcome] : null
   let substanceFloor = impliedOutcome ? OUTCOME_FLOOR[impliedOutcome] : DEFAULT_FLOOR
-  const prefersKinds = focus ? FOCUS_PREFERS[focus] : []
+  // ⚠️ THE SUBJECT THE GOAL IMPLIES, APPLIED THE SAME WAY THE OUTCOME IS.
+  // "One tap instead of two" only means anything if the untapped chip actually
+  // takes effect — otherwise the screen shows a pre-selection that changes
+  // nothing, which is worse than asking. The resolution is recorded so a reader
+  // of the compiled intent can see the answer was inferred and not given.
+  const effectiveFocus = focusForGoal({ goal, focus }).focus
+  if (!focus && effectiveFocus) {
+    resolutions.push(`goal ${goal} → subject taken from ${effectiveFocus}`)
+  }
+  const prefersKinds = effectiveFocus ? FOCUS_PREFERS[effectiveFocus] : []
 
   // ── CONFLICTS, RESOLVED EXPLICITLY AND NAMED ──────────────────────────────
   //
