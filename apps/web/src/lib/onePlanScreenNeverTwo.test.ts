@@ -78,9 +78,19 @@ describe('the third line cannot be a guess', () => {
   // ⚠️ THE CONSTRAINT PART 1 UNCOVERED. `loadKnowledgeCounts` selects `kind`
   // alone, which cannot answer "no numbers" because `carriesFigure` tests the
   // TEXT. The plan's own reader must select all three.
-  it('reads kind, text AND source — not kind alone', () => {
+  // ⚠️ BOTH QUERIES, NOT ONE OF THEM — AND A MUTATION FOUND THIS. The first
+  // version of this assertion was a single `toMatch`, which passes while only
+  // one of the union's two reads selects the full shape. Rewriting the
+  // `times_seen` read to `select('kind')` left the guard green, and the plan
+  // would then have judged "no numbers" over 40 rows whose text it never
+  // loaded — stating as fact the very guess `videoPlan.ts` warns against.
+  it('reads kind, text AND source in BOTH queries — not kind alone', () => {
     expect(ANSWERS).toMatch(/loadKnowledgeForPlan/)
-    expect(ANSWERS).toMatch(/\.select\('kind, text, source'\)/)
+    const full = ANSWERS.match(/\.select\('kind, text, source'\)/g) ?? []
+    expect(full.length, 'the plan read is a union of TWO queries; both must select text').toBe(2)
+    // And neither of them may be the counts-shaped read.
+    const planBody = ANSWERS.slice(ANSWERS.indexOf('loadKnowledgeForPlan'))
+    expect(planBody.slice(0, 1400)).not.toMatch(/\.select\('kind'\)/)
   })
 
   // ⚠️⚠️ THE SECOND-AUTHORITY GUARD, AND THE REASON IT EXISTS. The first draft
