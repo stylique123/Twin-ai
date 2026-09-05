@@ -146,7 +146,12 @@ describe('the edge prefers spoken material by the same rule', () => {
     // stores scored 73% grounded / 8% generic against 58% / 23% with caption
     // rows mixed in — but WHICH experience is still relevance's call.
     expect(EDGE).toMatch(/const spoken = substance\.filter\(wasSpoken\)/)
-    expect(EDGE).toMatch(/const keepSubstance = \[\.\.\.spoken, \.\.\.rest\]\.slice/)
+    expect(EDGE).toMatch(/const bySpokenFirst = \[\.\.\.spoken, \.\.\.rest\]/)
+    expect(EDGE).toMatch(/const keepSubstance = bySpokenFirst\.slice\(0, floorSlots\)/)
+    // ⚠️ AND THE FIRST-PERSON SLOT IS HELD IN THE EDGE COPY TOO. A physio with
+    // two stored episodes got three scripts containing none; the floor swaps one
+    // into the LAST reserved slot, never the first.
+    expect(EDGE).toMatch(/keepSubstance\[floorSlots - 1\] = episode/)
   })
 
   it('treats an absent source as unrecorded in both copies', () => {
@@ -169,7 +174,10 @@ describe('the HARNESS runs the current selector, not the previous one', () => {
   // was hand-written. A constant is not a rule.
   it('partitions spoken material first, like the edge does', () => {
     expect(HARNESS).toMatch(/const spoken = substance\.filter\(wasSpoken\)/)
-    expect(HARNESS).toMatch(/\[\.\.\.spoken, \.\.\.rest\]\.slice/)
+    expect(HARNESS).toMatch(/const bySpokenFirst = \[\.\.\.spoken, \.\.\.rest\]/)
+    // ⚠️ AND IT HOLDS THE FIRST-PERSON SLOT, or the harness measures a selector
+    // that no longer ships — the failure this block already records once.
+    expect(HARNESS).toMatch(/keep\[floorSlots - 1\] = episode/)
   })
 
   it('reads which sources count as spoken OUT OF the edge, rather than assuming', () => {

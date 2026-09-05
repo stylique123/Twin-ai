@@ -394,7 +394,19 @@ function selectSpeakable(ranked, cap, floor = SUBSTANCE_FLOOR) {
   const substance = ranked.filter((i) => SUBSTANCE_KINDS.has(i.kind))
   const spoken = substance.filter(wasSpoken)
   const rest = substance.filter((i) => !wasSpoken(i))
-  const keep = [...spoken, ...rest].slice(0, Math.min(floor, cap))
+  const bySpokenFirst = [...spoken, ...rest]
+  const floorSlots = Math.min(floor, cap)
+  // ⚠️ ONE SLOT HELD FOR A FIRST-PERSON EPISODE — mirrors FIRST_PERSON_FLOOR in
+  // packages/shared/src/knowledgeSelection.ts and the edge copy. Without this
+  // the harness would measure the PREVIOUS selector while reporting on the
+  // current product, which is exactly what happened once before with the
+  // spoken-first partition and went unnoticed for a day.
+  const isEpisode = (i) => String(i.kind) === 'experience'
+  const keep = bySpokenFirst.slice(0, floorSlots)
+  if (floorSlots > 0 && !keep.some(isEpisode)) {
+    const episode = bySpokenFirst.find(isEpisode)
+    if (episode) keep[floorSlots - 1] = episode
+  }
   const taken = new Set(keep)
   const out = [...keep]
   for (const item of ranked) {
