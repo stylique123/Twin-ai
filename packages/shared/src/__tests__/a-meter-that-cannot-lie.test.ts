@@ -165,8 +165,22 @@ describe('unrecorded is not none', () => {
   })
 
   it('and an unknown capability costs no percentage point', () => {
-    const p = contentProfile({ answers: full({ capabilities: [] }), dnaReady: true, cta: 'follow' })
-    expect(p.percent).toBe(100)
+    // ⚠️ THIS PASSED `{ capabilities: [] }` — A FIELD `CreatorProfileAnswers` DOES
+    //  NOT HAVE. TypeScript never saw this file, so the override was silently
+    //  ignored as an excess property and the call was simply `full({})`: the
+    //  test asserted that a COMPLETE profile is 100%, which is trivially true
+    //  and covered elsewhere. The claim in its own name — that an UNKNOWN
+    //  capability costs nothing — was never exercised.
+    //
+    //  ⚖️ THE REAL FIELDS ARE `canShowProduct` AND `canRecordScreen`, and `null`
+    //  is what "not answered" looks like on both. Asserted together, because a
+    //  meter that stayed at 100 for one and dropped for the other would be the
+    //  same silent lie in half the cases.
+    const unanswered = contentProfile({
+      answers: full({ canShowProduct: null, canRecordScreen: null }),
+      dnaReady: true, cta: 'follow',
+    })
+    expect(unanswered.percent).toBe(100)
   })
 })
 

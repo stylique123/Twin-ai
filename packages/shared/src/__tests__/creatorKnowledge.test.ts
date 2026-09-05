@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import {
   emptyKnowledge, readKnowledge, readKnowledgeItem, writableClaims, alreadyCovered,
   rankedKnowledge, isBareLabel, sourceExpired, knowledgePromptLine, selectRelevantKnowledge, freshness, KNOWLEDGE_KINDS,
-  type CreatorKnowledge,
+  type CreatorKnowledge, type KnowledgeItem,
 } from '../creatorKnowledge'
 
 const TECH: CreatorKnowledge = readKnowledge({
@@ -266,8 +266,20 @@ describe('how current a thing is — the niche moves', () => {
 
 // ── THE RANKING PREFERRED THE WEAKEST MATERIAL ──────────────────────────────
 describe('rankedKnowledge puts lived material above subject headings', () => {
-  const item = (kind: string, text: string, basis: string, timesSeen: number) =>
-    ({ kind, text, basis, timesSeen, sourceRef: null, sourceExpiry: null }) as unknown as KnowledgeItem
+  // ⚠️ THE `as unknown as KnowledgeItem` HERE DEFEATED THE COMPILER ENTIRELY, and
+  //  the name it cast to was not even imported — so it resolved to nothing and
+  //  checked nothing. Typed through `readKnowledgeItem`, which is what production
+  //  uses to turn a stored row into an item, the fixture is now built the same
+  //  way the real path builds one.
+  const item = (kind: string, text: string, basis: string, timesSeen: number): KnowledgeItem => {
+    const read = readKnowledgeItem({ kind, text, basis, timesSeen, sourceRef: null, sourceExpiry: null })
+    // ⚠️ `readKnowledgeItem` RETURNS null FOR A ROW IT REFUSES, and the old cast
+    //  hid that: a fixture the real reader rejects would have become `null` and
+    //  been ranked as one, quietly. Throwing here means a fixture that could not
+    //  exist in production fails the test that relies on it.
+    if (read === null) throw new Error(`fixture rejected by readKnowledgeItem: ${kind}/${basis}`)
+    return read
+  }
 
   it('an experience seen ONCE outranks a topic seen twelve times', () => {
     // ⚠️ THE EXACT SHAPE FROM PRODUCTION. Topics recur across every caption, so
