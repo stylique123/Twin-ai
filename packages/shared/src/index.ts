@@ -283,3 +283,11 @@ export * from './topicLibrary'
 // today's data, refuses for six goals in seven, because only `entertainment`
 // separates its leading container by more than sampling noise.
 export * from './shapeForGoal'
+
+// ⚠️ TWO STORES HOLD ONE FACT AND THREE OF SEVEN PRODUCTION VOICES DISAGREE.
+// `pre_script_brief.commercialTies` and `product_entities.relationship` both
+// record what a creator sells; nothing has ever compared them. One creator
+// answered "I sell nothing" and carries an OWN_SERVICE entity. This reports the
+// conflict and resolves it to the LESS permissive claim — it never rewrites
+// either answer.
+export * from './commercialConsistency'
