@@ -105,7 +105,11 @@ beforeEach(() => {
       from: (t: string) => chain(t),
       functions: { invoke: () => Promise.resolve({ data: outputResponse, error: null }) },
     } as never,
-    uploadTake: (() => Promise.resolve('')) as never,
+    // ⚠️ THE THIRD `uploadTake` IN THIS SWEEP. `initApi` has no such option —
+    //  the injector is `uploadSigned` — so with tsc never reading test files the
+    //  key was silently discarded here exactly as it was in `finishedOutput` and
+    //  `reviewBundleIdentity`. Three files carried the same dead line, which is
+    //  a rename that outran its call sites rather than three separate slips.
   })
 })
 
@@ -122,8 +126,14 @@ describe('only the ready bundle carries a video', () => {
     projectRow = proj('completed', null)
     const b = await getOutputBundle(PROJECT)
     expect(b.state).toBe('empty')
-    expect((b as Record<string, unknown>).output).toBeUndefined()
-    expect((b as Record<string, unknown>).craft).toBeUndefined()
+    // ⚠️ `in`, NOT A CAST TO `Record` PLUS `toBeUndefined()`. `OutputBundle` is a
+    //  discriminated union whose `empty` variant genuinely has no `output` or
+    //  `craft`, so reaching for them needs a widening — but the claim this test
+    //  makes, in its own name, is "has no output FIELD", and `toBeUndefined()`
+    //  cannot tell an absent key from one present and set to undefined.
+    //  `in` tests exactly the stated property and needs no cast at all.
+    expect('output' in b).toBe(false)
+    expect('craft' in b).toBe(false)
   })
 
   it('a row that says ready but cannot be SIGNED is UNAVAILABLE, not empty', async () => {
@@ -139,7 +149,7 @@ describe('only the ready bundle carries a video', () => {
     outputResponse = null
     const b = await getOutputBundle(PROJECT)
     expect(b.state).toBe('unavailable')
-    expect((b as Record<string, unknown>).output).toBeUndefined()
+    expect('output' in b).toBe(false)
     // It names WHAT is missing, which is what makes a retry and a log possible
     // and is precisely what `empty` cannot carry.
     if (b.state !== 'unavailable') throw new Error('unreachable')
@@ -152,7 +162,7 @@ describe('only the ready bundle carries a video', () => {
     projectRow = proj('completed', null)
     const b = await getOutputBundle(PROJECT)
     expect(b.state).toBe('empty')
-    expect((b as Record<string, unknown>).outputAssetId).toBeUndefined()
+    expect('outputAssetId' in b).toBe(false)
   })
 
   it('craft checks are NOT_CHECKED when the plan is unreadable — never passes', async () => {
