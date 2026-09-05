@@ -499,6 +499,29 @@ export default function ProductLibrary() {
     } finally { setAddingPhotoTo(null) }
   }
 
+  // ⚠️ ESCAPE CLOSES THE ADD DIALOG, AND THE BACKDROP DOES NOT. A dialog that
+  //  cannot be dismissed from the keyboard traps anyone not using a mouse, so
+  //  Escape is not optional. The backdrop is the opposite case: this form holds
+  //  typed answers and uploaded photos, and a mis-aimed click outside it would
+  //  discard them with no undo. A deliberate keypress and a mis-aimed click are
+  //  not the same gesture and must not have the same effect.
+  //
+  //  ⚖️ AND THE PAGE BEHIND IT DOES NOT SCROLL. Without this a phone scrolls the
+  //  library under the dialog while the dialog stands still, which reads as the
+  //  form having broken.
+  useEffect(() => {
+    if (!addingNew) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setAddingNew(false) }
+    window.addEventListener('keydown', onKey)
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      // Restored to what it WAS, not to '' — another component may own it.
+      document.body.style.overflow = previous
+    }
+  }, [addingNew])
+
   useEffect(() => {
     let alive = true
     ;(async () => {
@@ -816,9 +839,45 @@ export default function ProductLibrary() {
         </div>
       )}
 
+      {/* ⚠️ A PANEL IN THE FLOW SHOVED THE LIST DOWN THE PAGE. This was a
+          `<section>` between the header and the products, so opening the form
+          pushed everything a creator was looking at out from under them — and on
+          a phone the list they were comparing against left the screen entirely.
+          The form is a task on top of the library, not a new region of it.
+
+          ⚖️ THE LIST STAYS MOUNTED BEHIND IT. Replacing the page would lose
+          scroll position and any card state on cancel; a creator who opens the
+          form to add a second product is usually looking at the first. */}
       {addingNew && (
-        <section className="rounded-xl border border-white/10 p-4">
-          <h2 className="text-sm font-semibold">Add a product</h2>
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 sm:p-8"
+          // ⚠️ THE BACKDROP DELIBERATELY DOES NOT CLOSE, and that is not an
+          // oversight. This form holds typed answers and uploaded photos; a
+          // mis-aimed click outside it would discard work with no undo, which is
+          // the most expensive accident this screen can have. Escape still
+          // closes — a11y requires it and it is a deliberate keypress — and so
+          // do Cancel and the × below.
+          onMouseDown={(ev) => ev.stopPropagation()}
+        >
+          {/* ⚖️ `bg-ink2`, NOT `bg-ink`. `ink` is the PAGE background, so a dialog
+              painted in it is a dialog with no visible edge against the thing it
+              sits on — which is exactly what `product-library-is-readable`
+              refuses, and it caught this on the first run. */}
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-product-title"
+            className="w-full max-w-xl rounded-xl border border-white/10 bg-ink2 p-4 shadow-2xl"
+          >
+          <div className="flex items-start justify-between gap-3">
+            <h2 id="add-product-title" className="text-sm font-semibold">Add a product</h2>
+            <button
+              type="button"
+              aria-label="Close"
+              className="-mt-1 rounded-lg px-2 py-1 text-lg leading-none text-stone hover:text-cream"
+              onClick={() => setAddingNew(false)}
+            >×</button>
+          </div>
           {/* ── GIVE TWIN SOMETHING TO INSPECT ──────────────────────────────
               ⚠️ THE OLD FLOW ASKED A CREATOR TO DESCRIBE THEIR OWN PRODUCT INTO
               A BLANK BOX, which is both the slowest way in and the least
@@ -835,7 +894,8 @@ export default function ProductLibrary() {
             onCancel={() => setAddingNew(false)}
             onClaim={(a) => void claim(null, a)}
           />
-        </section>
+          </section>
+        </div>
       )}
 
       {tab === 'live' && entities.length > 0 && !addingNew && (
