@@ -4163,12 +4163,28 @@ Deno.serve(async (req: Request) => {
     seenKnowledge.add(k)
     return true
   })
-  const { data: audienceRows } = await admin
-    .from('audience_questions')
-    .select('summary, asked')
-    .eq('owner_id', ownerId)
-    .order('asked', { ascending: false })
-    .limit(8)
+  // ⚠️ THE `audience_questions` READ IS GONE, AND ITS ABSENCE IS THE FEATURE.
+  // It selected the top 8 rows by `asked` and interpolated them into the
+  // knowledge block. The table has ZERO rows, has never had one, and has no
+  // writer anywhere: its RLS grants SELECT and DELETE to `authenticated` and no
+  // INSERT to anyone. A live read against a table nothing can fill is the
+  // "written and never read" defect inverted — read and never written — and it
+  // made the prompt look like it carried audience demand when it never could.
+  //
+  // ⚖️ AND THE CORPUS CANNOT FILL IT EITHER, WHICH IS WHY THIS IS A DELETION
+  // RATHER THAN A WRITER. Measured 2026-09-05: of 1,080 stored `creator_knowledge`
+  // rows, ONE carries an audience-asks frame. Captions and transcripts are never
+  // persisted, so there is no other text to mine. A worker writing from that
+  // corpus would ship a feature whose on and off states are indistinguishable.
+  //
+  // ⚠️ REOPEN WHEN COMMENT INGESTION LANDS, AND NOT BEFORE. What this block
+  // wanted is what a creator's AUDIENCE asks; the scan only ever captured what
+  // the CREATOR says. Those are different corpora. Comments are the real source
+  // — public, already inside the Apify pipeline, and `commentsDatasetUrl` is
+  // already present in the scrape output. Recorded as
+  // AUDIENCE_QUESTIONS_HAS_NO_SUPPLY in knownLimitations.ts so the next person
+  // finds the reason instead of rediscovering the empty table and rebuilding
+  // this read.
 
   // ⚠️ ARCHIVED ENTITIES ARE EXCLUDED, AND THIS IS THE READER THAT MAKES ARCHIVE
   // SAFE TO HAVE AT ALL. An archived row reaching this read would keep granting
@@ -5222,7 +5238,6 @@ Deno.serve(async (req: Request) => {
     // compiler clamps it so no answer can ever ask for LESS.
     const speakable = selectSpeakable(focusOrdered, 10, intent.substanceFloor)
     const coveredRows = kRows.filter((k) => k.kind === 'covered')
-    const aRows = Array.isArray(audienceRows) ? audienceRows : []
     const knowledgeParts: string[] = []
     if (speakable.length) {
       knowledgeParts.push('\nWHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID — real substance, not style. Build the video out of THIS. These are their own positions and examples, so you may put them in their mouth; anything you add that is not here is yours, and they did not say it.\n'
@@ -5235,10 +5250,6 @@ Deno.serve(async (req: Request) => {
       // unchecked claim about their back catalogue.
       knowledgeParts.push('\nALREADY COVERED — they have made a video about each of these. Do NOT hand them their own upload back; go at the topic from an angle they have not used. THIS LIST IS NEVER SPOKEN. It steers what you choose and must not appear in any line: a script that says "we\'ve had a video on this" is narrating our notes to the audience. Pick a DIFFERENT angle, then write as though the earlier video were simply not the subject.\n'
         + coveredRows.map((k) => `  * ${k.text}`).join('\n'))
-    }
-    if (aRows.length) {
-      knowledgeParts.push('\nWHAT THEIR AUDIENCE KEEPS ASKING — summarised, never quoted. A video that answers one of these is wanted before it is made. THIS LIST IS NEVER SPOKEN EITHER. Answer the question; do not announce that it was asked — a line like "one my audience asks about a lot" narrates our notes to the room and asserts something about their comment section that nobody verified.\n'
-        + aRows.map((a) => `  * ${a.summary} (asked ~${a.asked}x)`).join('\n'))
     }
     const knowledgeBlock = knowledgeParts.join('\n')
 

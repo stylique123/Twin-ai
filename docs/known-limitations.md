@@ -201,6 +201,44 @@ proven. The failure it guards against is exactly that quote.
 
 ---
 
+## `AUDIENCE_QUESTIONS_HAS_NO_SUPPLY` — OPEN
+
+**What is wrong.** `generate-blueprint` read the top 8 `audience_questions` rows and interpolated
+them into the knowledge block as *"WHAT THEIR AUDIENCE KEEPS ASKING"*. The table has **zero rows,
+has never had one, and has no writer anywhere**: 0121 grants SELECT and DELETE to `authenticated`
+and INSERT to nobody. A live read against a table nothing can fill is the "written and never read"
+defect inverted — read and never written — and it made the prompt look like it carried audience
+demand when it never could.
+
+**What was decided.** The reader is deleted, and a writer was deliberately **not** built instead.
+
+⚠️ **The earlier ruling was "the worker writes it, service-role, no client policy", and the
+measurement retired it.** Of 1,080 stored `creator_knowledge` rows, **one** carries an audience-asks
+frame; 18 mention "ask" at all and 6 mention "question". Captions and transcripts are never
+persisted — `brand_voices.profile` has no captions key across all 44 rows — so `creator_knowledge`
+is the whole available corpus. A worker writing from it would produce roughly one row across every
+creator on the platform: a feature whose ON and OFF states are indistinguishable, which is the exact
+failure the ruling was trying to avoid.
+
+⚖️ **And the client-typed version was refused for a different reason.** Asking a creator to type
+three questions their audience asks is a fourth place we ask for something we could observe, against
+a product direction that is otherwise infer-confirm-never-ask.
+
+**Revisit when.** **Comment ingestion lands.** What this block wanted is what a creator's *audience*
+asks; the scan only ever captured what the *creator* says, and those are different corpora. Comments
+are the real source: public, already inside the Apify pipeline, and `commentsDatasetUrl` is already
+present in the scrape output. The supply is one fetch away, not one feature away. When it lands,
+restore the read **and** the block together — a writer without the reader repeats this entry from
+the other side.
+
+**What it will cost.** Deleting costs nothing measurable: the block could only ever render empty, so
+no prompt changes for any creator. Leaving it would have cost the next person the same
+investigation — find the empty table, assume the writer is missing, build one against a corpus that
+supports a single row. That is the cost this entry exists to prevent, and it is why the reason is
+recorded rather than the code simply removed.
+
+---
+
 ## `ASSERTIONS_PINNED_TO_CALL_SHAPE` — OPEN
 
 **What is wrong.** Two source-text guards broke on 2026-09-05 from a refactor that changed no
