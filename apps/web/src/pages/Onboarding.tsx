@@ -1284,7 +1284,17 @@ function ConfirmStep({
             // thing — so it is derived, marked inferred, and correctable from
             // the Product Library rather than costing another tap here.
             mintFromWorkKind(workKind, {
+              // ⚠️ THE SAME GATE THE BRIEF ALREADY HONOURS, AND THE ENTITY DID
+              // NOT. `offer` above is written as `offerTouched ? product : null`
+              // because this screen promises "we will not use it until you edit
+              // it". The entity mint took `product` unconditionally and wrote it
+              // into `product_entities.name` — so an untouched guess became a
+              // stored product with a sentence for a name, observed live as
+              // "Fresh artisan sourdough loaves ... via link in bio" on a
+              // creator with no bio link. One promise, two consumers, one of
+              // which kept it.
               name: product.trim() || null,
+              offerConfirmed: offerTouched,
               flags: { canRecordScreen, canFilmObjects },
               // ⚠️ THE FINER ANSWER, WHICH REACHED NOTHING UNTIL NOW. The scan
               // step asks "What kind of thing do you sell?" and the entity was
