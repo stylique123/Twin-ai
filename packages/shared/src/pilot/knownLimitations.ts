@@ -164,9 +164,18 @@ export const KNOWN_LIMITATIONS: readonly KnownLimitation[] = Object.freeze([
     cost:
       'Low to wire, high to get wrong in either direction, and CHEAP TO LEAVE RIGHT NOW. '
       + 'Leaving it costs the guarantee \u00a714 was written to give -- a script may currently '
-      + 'make claims about an entity with no name and no evidence -- but that exposure is '
-      + 'bounded by the same measurement: one entity, one owner. The cost of wiring it blind is '
-      + 'unchanged and unbounded, because nobody knows what it would block.',
+      + 'make claims about an entity with no name and no evidence.\n\n'
+      + '\u26a0\ufe0f THE BOUND ON THAT EXPOSURE WAS STALE AND IS CORRECTED HERE. It read '
+      + '"bounded by the same measurement: one entity, one owner". Re-measured 2026-09-05, '
+      + 'read-only, live rows only: EIGHT rows across EIGHT DISTINCT OWNERS, all eight with '
+      + 'evidence null and THREE with no name at all. The exposure grew 8x while the decision '
+      + 'did not change, and a cost note that describes last month\u2019s population is the '
+      + 'way a deferral quietly stops being the one that was agreed.\n\n'
+      + '\u2696\ufe0f THE TRIGGER STILL HAS NOT FIRED, AND THIS STAYS OPEN. '
+      + 'CLAIM_STOP_MIN_POPULATION is 25; eight is short of it. Only the "more than one '
+      + 'owner" half of the condition is now satisfied, and half a trigger is not a trigger. '
+      + 'The cost of wiring it blind is unchanged and unbounded, because nobody knows what it '
+      + 'would block.',
     status: 'OPEN',
   }),
   Object.freeze({
