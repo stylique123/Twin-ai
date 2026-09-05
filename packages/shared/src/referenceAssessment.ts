@@ -1,9 +1,27 @@
 // WHAT A REFERENCE TAKES TO FILM — ANSWERED ONLY WHERE IT IS ACTUALLY VISIBLE.
 //
-// ⚠️ 9,504 GALLERY CARDS CARRY NULL IN BOTH OF 0106's COLUMNS, AND NOTHING HAS
-// EVER WRITTEN ONE. `production_mode_match` is the signal §7a called the most
-// valuable, and `recreate_feasibility` is the second question the same field
-// answers. Both are dark for every card, so the gallery ranks on niche alone.
+// ⚠️ EVERY GALLERY CARD CARRIES NULL IN ALL THREE OF 0106's COLUMNS, AND NOTHING HAS
+// EVER WRITTEN ONE. Re-measured 2026-09-05: 14,712 cards, all 14,712 null in
+// `requires_filming_objects`, `requires_screen_recording` AND
+// `requirements_source`. The gallery ranks on niche alone.
+//
+// ⚠️ AND THE NAMES DRIFTED, WHICH COST A GREP AND ALMOST COST A REBUILD. §7a
+// calls these signals `production_mode_match` — the one it called most valuable
+// — and `recreate_feasibility`, and this header used those names for months.
+// NEITHER EXISTS IN THE DATABASE: 0106 created the three `requires_*` columns
+// named above. Searching for the documented name returns nothing, which reads
+// exactly like "this was never built", and the feature is one grep away from
+// being rediscovered and rewritten. So both vocabularies are written here
+// together, once — CONCEPTS: production_mode_match, recreate_feasibility.
+// COLUMNS: requires_filming_objects, requires_screen_recording,
+// requirements_source.
+//
+// ⚖️ AND THE COUNT CARRIES ITS DATE, BECAUSE A COUNT IN PROSE IS A SNAPSHOT
+// WITH NO EXPIRY. This header said 9,504 and was right when written; the table
+// reached 14,712 and the stale figure became a planning input. Third time that
+// shape has been caught in one session. `scripts/qa/gallery-requirements-
+// backfill.mjs --candidate-sql` re-derives the population in one step, which is
+// the real fix: put the query next to the number.
 //
 // ⚖️ AND THE MEASUREMENT IS NOT A MODEL CALL PER CARD, AT LEAST NOT FIRST. A
 // card carries a hook, a label and a "why it works" blurb. Some of those name
