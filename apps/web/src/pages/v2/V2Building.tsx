@@ -16,7 +16,7 @@ import { TalkingHeadWarning } from '../../components/TalkingHeadWarning'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
-  INTENT_QUESTIONS, type IntentQuestion, type VideoGoal,
+  INTENT_QUESTIONS, type IntentQuestion, type VideoGoal, focusForGoal,
   defaultVideoGoalFromContentGoals, CANONICAL_GOAL_LABELS,
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
@@ -1161,6 +1161,22 @@ export default function V2Building() {
                     const active = kids.length
                       ? kids.some((c) => c.value === picked)
                       : picked === o.value
+                    // ⚠️ "SELL SOMETHING" AND "MY PRODUCT OR SERVICE" READ AS ONE
+                    // QUESTION ASKED TWICE, and a creator said so. The goal now
+                    // fills the subject in and the chip SAYS WHY, so the pair
+                    // explains itself where it is asked rather than in a doc.
+                    //
+                    // ⚖️ SHOWN, NOT STORED. `askAnswers` stays empty until the
+                    // creator taps: an implied answer written as a chosen one
+                    // makes "did creators actually want this" unanswerable
+                    // forever — the `default_taken` lesson from the hook picker.
+                    // The compiler applies the same implication server-side, so
+                    // the untapped chip still takes effect.
+                    const implied = !picked && q.field === 'content_focus'
+                      && focusForGoal({
+                        goal: asOneOf(VIDEO_GOALS, askAnswers.video_goal),
+                        focus: null,
+                      }).focus === o.value
                     return (
                       <button
                         key={o.value}
@@ -1179,10 +1195,22 @@ export default function V2Building() {
                           'rounded-full border px-3.5 py-2 text-left text-[13px] transition-colors',
                           active
                             ? 'border-coral/50 bg-coral/[0.08] text-cream'
-                            : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20 hover:bg-white/[0.04]',
+                            : implied
+                              // ⚖️ DIMMER THAN A REAL CHOICE, ON PURPOSE. It reads
+                              // as "already handled" without claiming the creator
+                              // picked it.
+                              ? 'border-coral/25 bg-coral/[0.04] text-cream/90'
+                              : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20 hover:bg-white/[0.04]',
                         )}
                       >
                         <span className="block leading-tight">{o.label}</span>
+                        {implied && (
+                          <span className="mt-0.5 block text-[11px] leading-snug text-coral/70">
+                            {focusForGoal({
+                              goal: asOneOf(VIDEO_GOALS, askAnswers.video_goal), focus: null,
+                            }).because}
+                          </span>
+                        )}
                         {/* ⚖️ THE HINT IS THE DISAMBIGUATION, so it only
                             appears where two labels could be confused. */}
                         {o.hint && (
