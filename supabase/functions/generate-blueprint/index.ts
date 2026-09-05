@@ -4190,6 +4190,29 @@ Deno.serve(async (req: Request) => {
     .eq('voice_id', voice?.id ?? null)
     .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
     .is('archived_at', null)
+    // ⚠️ THIS WAS `.maybeSingle()`, WHICH THROWS ON A SECOND ROW. Under the old
+    // one-owned-per-voice index a second row was impossible, so the throw was
+    // unreachable. 0186 makes it possible — three of five real accounts own two
+    // things — and an unchanged `.maybeSingle()` would mean NO SCRIPT GENERATES
+    // AT ALL for them: a clean, honest refusal turned into an outage by a
+    // migration in another file.
+    //
+    // ⚠️ AND THE ROW IT PICKS IS A STOPGAP, NOT THE ANSWER. Oldest-first is
+    // deterministic and stable — the same creator gets the same product every
+    // time rather than whatever the planner happened to return — but "the one
+    // they registered first" is not "the one this video is about". The real
+    // answer is the picker: one product auto-selects, several are chosen by the
+    // creator inside the step that already asks what they are making content
+    // for, and Reference and Idea Mode get none unless the goal is commercial
+    // and they say which. Until that lands this reads ONE product where the
+    // creator may have two, and a script may talk about the wrong one.
+    //
+    // ⚖️ WHY THE WRITER MUST NOT SIMPLY CHOOSE. Picking among three products
+    // would have Twin infer commercial intent from nothing a creator said, which
+    // is the entitlement `entryDoor.ts` has a mutation-tested clamp against. A
+    // stable wrong-sometimes beats an inferred entitlement.
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle()
   if (ownedEntityErr) {
     console.error('product_entities lookup failed', ownedEntityErr)

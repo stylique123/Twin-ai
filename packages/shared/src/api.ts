@@ -1880,15 +1880,16 @@ export async function loadProductSuggestions(
 
 /** Raised when the plan's Product Library allowance is used up.
  *
- *  ⚠️ THIS IS A DIFFERENT KIND OF FAILURE FROM `OwnedEntityExistsError`, AND
- *  CONFLATING THEM WOULD MISLEAD EVERY USER WHO HIT EITHER.
+ *  ⚠️ A COMMERCIAL LIMIT IS NOT A CORRECTNESS REFUSAL, AND CONFLATING THEM
+ *  WOULD MISLEAD EVERY USER WHO HIT EITHER. This error means a COMMERCIAL limit
+ *  fired: the request is perfectly valid, the creator is simply past what their
+ *  plan covers, and buying more is a real answer.
  *
- *      OwnedEntityExistsError   a CORRECTNESS guard fired. Something is already
- *                               there; adding again would duplicate it. Nothing
- *                               the creator can buy changes this.
- *      ProductLibraryFullError  a COMMERCIAL limit fired. The request is
- *                               perfectly valid; they are simply past what
- *                               their plan covers.
+ *  ⚖️ IT USED TO BE CONTRASTED WITH `OwnedEntityExistsError`, WHICH IS GONE. That
+ *  was the correctness refusal — "only one owned product per voice" — and 0186
+ *  established that the rule itself was wrong: three of five real accounts own
+ *  two things. The distinction this comment draws still matters; there is simply
+ *  no second error left to confuse this one with.
  *
  *  ⚖️ AND A COMMERCIAL LIMIT MUST NEVER WEAR A TECHNICAL ERROR'S CLOTHES. "This
  *  product has already been added" shown to someone who hit a plan cap sends
@@ -1920,27 +1921,6 @@ export class ProductLibraryFullError extends Error {
 export function productLibraryLimit(entitlements: Record<string, unknown> | null | undefined): number {
   const raw = entitlements?.product_library_limit
   return typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 ? raw : Infinity
-}
-
-/** Raised when a creator claims a SECOND owned product for the same voice.
- *
- *  ⚠️ THE ALTERNATIVE WAS SILENT DATA LOSS. `saveMintedEntity` answers a 23505
- *  from the partial unique index by UPDATING the existing owned row, which is
- *  right there — that path exists for a remount replay arriving twice, where
- *  both writes are the same product. It is exactly wrong here: a creator
- *  claiming a second, different product would have their first one overwritten
- *  in place, silently, with no way to notice. So this path refuses and says why.
- *
- *  ⚖️ AND THE REFUSAL IS THE HONEST ANSWER, NOT A LIMITATION TO ROUTE AROUND.
- *  The database allows ONE owned product per voice by design — the whole
- *  entitlement model assumes "the thing this creator sells" is singular. A
- *  creator who genuinely has two needs a second voice or a schema change, and
- *  both are decisions someone should make deliberately. */
-export class OwnedEntityExistsError extends Error {
-  constructor() {
-    super('You already have a product registered for this voice. Only one owned product is supported per voice.')
-    this.name = 'OwnedEntityExistsError'
-  }
 }
 
 /** Turn a mention the creator has CLAIMED into an entity that carries permissions.
@@ -2067,9 +2047,18 @@ export async function claimProductEntity(
     .select(ENTITY_COLUMNS)
     .single()
   if (error) {
-    // 23505 here means the partial unique index caught a SECOND owned product.
-    // Unlike the mint path, the correct answer is to refuse — see the error.
-    if (error.code === '23505') throw new OwnedEntityExistsError()
+    // ⚠️ THE REFUSAL IS GONE BECAUSE THE RULE IT ENFORCED WAS WRONG. This threw
+    // `OwnedEntityExistsError` — "Only one owned product is supported per
+    // voice" — on 23505 from the old index. Measured on real accounts, three of
+    // the five scanned break that model: bread and bagels, a course and a
+    // membership, two product lines. 0186 narrows the index to the UNCONFIRMED
+    // MINT, and this path writes `user_answer` / confirmed, so it can no longer
+    // collide with it at all. A branch that cannot be reached is not a guard.
+    //
+    // ⚖️ 23505 IS STILL AN ERROR, JUST NOT THIS ONE. Any remaining unique
+    // violation here is a constraint nobody has anticipated, and swallowing it
+    // as "you already have a product" would report the wrong cause to a creator
+    // and hide the real one from us. It falls through to `throw error`.
     throw error
   }
   return readEntityRow(data as ProductEntityRow)
@@ -2304,14 +2293,37 @@ export async function saveMintedEntity(
     user_confirmed: entity.userConfirmed,
   }
 
-  // Scoped exactly like the partial index, so "already minted" here means the
-  // same thing it means to the database.
+  // ⚠️ SCOPED TO THE UNCONFIRMED MINT, WHICH IS WHAT THE INDEX NOW GUARDS. Both
+  // queries below said "the owned entity for this voice" — true while a voice
+  // could hold only one. 0186 lets a creator own two, so that phrase now matches
+  // rows the constraint does not guard, and read and constraint would disagree
+  // about what "already minted" means: the pre-read would find the creator's
+  // SECOND, deliberately-added product and update THAT with the guess.
+  //
+  // ⚖️ MEASURED, NOT ASSUMED, THAT THIS COVERS EVERY MINT. `mintFromWorkKind` is
+  // the only producer reaching here — Onboarding passes its result straight
+  // through — and it writes `source: 'inferred', userConfirmed: false`
+  // unconditionally. So a remount replay still collides with this row, still
+  // returns 23505, and is still answered by the update it should have been.
+  //
+  // ⚖️ ONE PREDICATE, APPLIED THREE TIMES. The read, the update and 0186's index
+  // must agree exactly; three hand-written copies of a rule is how they stop
+  // agreeing, so it is written once here.
+  // ⚖️ THE FOUR PREDICATES ARE WRITTEN OUT TWICE, DELIBERATELY. A generic helper
+  // that applied them to both builders is the obvious shape and TypeScript
+  // refuses it — supabase-js's builder types recurse past the instantiation
+  // depth limit ("Type instantiation is excessively deep"), and the casts that
+  // silence that erase the very types that make these queries safe. So they are
+  // repeated, and `saveMintedEntity-matches-its-index` asserts that both copies
+  // and 0186's index still say the same thing. A guard beats a cast.
   const updateOwned = async () => {
     const { data, error } = await supabase
       .from('product_entities')
       .update(row)
       .eq('voice_id', voiceId)
       .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
+      .eq('source', 'inferred')
+      .eq('user_confirmed', false)
       .select(ENTITY_COLUMNS)
       .single()
     if (error) throw error
@@ -2323,6 +2335,8 @@ export async function saveMintedEntity(
     .select('id')
     .eq('voice_id', voiceId)
     .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
+    .eq('source', 'inferred')
+    .eq('user_confirmed', false)
     .maybeSingle()
   if (readErr) throw readErr
   if (existing) return await updateOwned()
