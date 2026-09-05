@@ -31,6 +31,24 @@ import { claimRulesFor, mayWriteCommercialCta } from '../productEntity'
 import { extractionTrust } from '../productExtraction'
 import { assembleCreatorProfile, toPlannerView, toWriterView } from '../profileAssembler'
 import { validateCreativeDecisionPlan, isCertified, blankPlan } from '../creativeDecisionPlan'
+import type { CreativeDecisionPlan } from '../creativeDecisionPlan'
+import type { Provenanced } from '../authority'
+import type { CanonicalRelationship } from '../profileAssembler'
+
+// ⚠️ TWELVE CALL SITES BUILT A SEVEN-FIELD LITERAL AND CALLED IT A PLAN.
+//  `CreativeDecisionPlan` has eighteen fields; the eleven each one omitted --
+//  `audienceLevel`, `topic`, `angle`, `format`, `targetSeconds`, `structure`,
+//  `hookStrategy`, `productRole`, `restrictions` among them -- arrived at the
+//  validator as `undefined`, and `PRODUCT_ROLE_WITHOUT_PRODUCT` reads
+//  `productRole`. Every scenario in this file was certifying a shape production
+//  cannot hold.
+//
+//  ⚖️ `blankPlan` IS THE PRODUCTION BUILDER, so the base is plan-shaped by
+//  construction. Each site still states exactly the fields its scenario is
+//  about; what changed is that the other eleven are now real values rather
+//  than absent ones.
+const cdp = (over: Partial<CreativeDecisionPlan> & { objective: CreativeDecisionPlan['objective'] }): CreativeDecisionPlan =>
+  Object.assign(blankPlan(over.objective), over)
 import { mayUseOwnershipLanguage, mayClaimPersonalUse, mayAdaptObservedTrait } from '../authority'
 
 const NOW = '2026-08-17T00:00:00.000Z'
@@ -74,24 +92,18 @@ describe('Scenario 6 — sell with nothing to sell', () => {
 
   it('CDP — refuses the plan by name, so no writer is called', () => {
     // ⚠️ THE ASSERTION THIS WHOLE SCENARIO EXISTS FOR, AND IT NOW RUNS.
-    const v = validateCreativeDecisionPlan({
-      objective: 'sell', focus: 'expertise', products: [],
-      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null,
-    }, creator(['none']))
+    const v = validateCreativeDecisionPlan(cdp({ objective: 'sell', focus: 'expertise', products: [],
+      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null }), creator(['none']))
     expect(v.map((x) => x.code)).toContain('SELL_WITHOUT_COMMERCIAL_TARGET')
-    expect(isCertified({
-      objective: 'sell', focus: 'expertise', products: [],
-      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null,
-    }, creator(['none']))).toBe(false)
+    expect(isCertified(cdp({ objective: 'sell', focus: 'expertise', products: [],
+      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null }), creator(['none']))).toBe(false)
   })
 
   it('CDP — and `leads` is NOT refused the same way', () => {
     // ⚖️ A coach, consultant or realtor generates leads with nothing in the
     // library. Gating on a `commercial === false` flag would block all of them.
-    expect(isCertified({
-      objective: 'leads', focus: 'expertise', products: [],
-      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null,
-    }, creator(['own_service']))).toBe(true)
+    expect(isCertified(cdp({ objective: 'leads', focus: 'expertise', products: [],
+      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null }), creator(['own_service']))).toBe(true)
   })
 
   it('PRODUCTION — and the refusal is wired, not merely validated', () => {
@@ -162,10 +174,8 @@ describe('Scenario 2 — affiliate, personal use not confirmed', () => {
   })
 
   it('CDP — refuses ownership language and demands the disclosure', () => {
-    const v = validateCreativeDecisionPlan({
-      objective: 'authority', focus: 'review', products: ['p'],
-      ownershipLanguage: true, commercialCta: true, disclosureRequired: false, cta: null,
-    }, creator(['affiliate']))
+    const v = validateCreativeDecisionPlan(cdp({ objective: 'authority', focus: 'review', products: ['p'],
+      ownershipLanguage: true, commercialCta: true, disclosureRequired: false, cta: null }), creator(['affiliate']))
     const codes = v.map((x) => x.code)
     expect(codes).toContain('OWNERSHIP_WITHOUT_OWNED_PRODUCT')
     expect(codes).toContain('DISCLOSURE_MISSING_FOR_PAID_TIE')
@@ -229,17 +239,13 @@ describe('Scenario 3 — non-commercial educator', () => {
   })
 
   it('CDP — a teaching plan with no product is certified', () => {
-    expect(isCertified({
-      objective: 'educate', focus: 'expertise', products: [],
-      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null,
-    }, creator(['none']))).toBe(true)
+    expect(isCertified(cdp({ objective: 'educate', focus: 'expertise', products: [],
+      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null }), creator(['none']))).toBe(true)
   })
 
   it('CDP — but a purchase ask on that same video is refused', () => {
-    const v = validateCreativeDecisionPlan({
-      objective: 'educate', focus: 'expertise', products: [],
-      ownershipLanguage: false, commercialCta: true, disclosureRequired: false, cta: null,
-    }, creator(['none']))
+    const v = validateCreativeDecisionPlan(cdp({ objective: 'educate', focus: 'expertise', products: [],
+      ownershipLanguage: false, commercialCta: true, disclosureRequired: false, cta: null }), creator(['none']))
     expect(v.map((x) => x.code)).toContain('COMMERCIAL_CTA_WITHOUT_RELATIONSHIP')
   })
 
@@ -364,8 +370,16 @@ describe('Scenario 5 — the role abstracts, the work kind survives', () => {
   const shop = assembleCreatorProfile({ answers: { workKind: 'ecommerce' } as never, now: NOW })
 
   it('INPUT — two creators answered two different things', () => {
-    expect(saas.workKind!.rawValue).toBe('saas')
-    expect(shop.workKind!.rawValue).toBe('ecommerce')
+    // ⚠️ `rawValue` IS ON ONE VARIANT OF FOUR. Reading it off the union read a
+    //  field an observed or inferred `workKind` does not have; asserting the
+    //  source first is the claim — a work kind Twin INFERRED has no raw answer
+    //  to preserve, so "the answer survives assembly" would be unprovable.
+    for (const [p, raw] of [[saas, 'saas'], [shop, 'ecommerce']] as const) {
+      const wk = p.workKind!
+      expect(wk.source).toBe('user_answer')
+      if (wk.source !== 'user_answer') throw new Error('unreachable')
+      expect(wk.rawValue).toBe(raw)
+    }
   })
 
   it('PROFILE — the answer is confirmed, the role is derived and says so', () => {
@@ -378,10 +392,8 @@ describe('Scenario 5 — the role abstracts, the work kind survives', () => {
     // ⚖️ THE ABSTRACTION EARNING ITS PLACE. Nothing about certifying a plan turns
     // on whether the founder ships software or parcels.
     expect(toPlannerView(saas).role).toBe(toPlannerView(shop).role)
-    expect(isCertified({
-      objective: 'sell', focus: 'expertise', products: ['p'],
-      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null,
-    }, toPlannerView(saas))).toBe(true)
+    expect(isCertified(cdp({ objective: 'sell', focus: 'expertise', products: ['p'],
+      ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null }), toPlannerView(saas))).toBe(true)
   })
 
   it('WRITER VIEW — and the writer is told which trade it is', () => {
@@ -394,7 +406,7 @@ describe('Scenario 5 — the role abstracts, the work kind survives', () => {
     // ⚠️ WIDENING THE PROFILE MUST NOT WIDEN THE WRITER'S AUTHORITY. More
     // resolution about WHAT THEY DO is not more permission about what they may
     // claim, and the projection is what keeps those two apart.
-    const w = toWriterView(saas) as Record<string, unknown>
+    const w = toWriterView(saas)
     expect(w).not.toHaveProperty('relationship')
     expect(w).not.toHaveProperty('mayUseOwnershipLanguage')
   })
@@ -451,11 +463,9 @@ describe('Scenario 1 — SaaS founder, own product, cross-niche reference', () =
   })
 
   it('CDP — an owner selling their own product is certified', () => {
-    const plan = {
-      objective: 'sell' as const, focus: 'product' as const, products: ['twin-ai'],
+    const plan = cdp({ objective: 'sell' as const, focus: 'product' as const, products: ['twin-ai'],
       ownershipLanguage: true, commercialCta: true, disclosureRequired: false,
-      cta: 'Try Twin free',
-    }
+      cta: 'Try Twin free' })
     expect(validateCreativeDecisionPlan(plan, toPlannerView(profile))).toEqual([])
   })
 
@@ -464,10 +474,8 @@ describe('Scenario 1 — SaaS founder, own product, cross-niche reference', () =
     // permission meaningful rather than incidental.
     const affiliate = assembleCreatorProfile({
       answers: { ...(answers as object), commercialTies: ['affiliate'] } as never, now: NOW })
-    const plan = {
-      objective: 'sell' as const, focus: 'product' as const, products: ['twin-ai'],
-      ownershipLanguage: true, commercialCta: true, disclosureRequired: true, cta: null,
-    }
+    const plan = cdp({ objective: 'sell' as const, focus: 'product' as const, products: ['twin-ai'],
+      ownershipLanguage: true, commercialCta: true, disclosureRequired: true, cta: null })
     expect(validateCreativeDecisionPlan(plan, toPlannerView(affiliate)).map((v) => v.code))
       .toContain('OWNERSHIP_WITHOUT_OWNED_PRODUCT')
   })
@@ -497,7 +505,7 @@ describe('Scenario 1 — SaaS founder, own product, cross-niche reference', () =
   })
 
   it('SCRIPT — and the writer cannot see the relationship it would reason from', () => {
-    const w = toWriterView(profile) as Record<string, unknown>
+    const w = toWriterView(profile)
     expect(w).not.toHaveProperty('relationship')
   })
 })
@@ -647,10 +655,8 @@ describe('Scenario 9 — the disclosure a paid tie owes', () => {
   })
 
   it('CDP — a sponsored plan without a disclosure is refused', () => {
-    const v = validateCreativeDecisionPlan({
-      objective: 'sell', focus: 'product', products: ['p'],
-      ownershipLanguage: false, commercialCta: true, disclosureRequired: false, cta: null,
-    }, sponsor)
+    const v = validateCreativeDecisionPlan(cdp({ objective: 'sell', focus: 'product', products: ['p'],
+      ownershipLanguage: false, commercialCta: true, disclosureRequired: false, cta: null }), sponsor)
     expect(v.map((x) => x.code)).toContain('DISCLOSURE_MISSING_FOR_PAID_TIE')
   })
 
@@ -658,10 +664,8 @@ describe('Scenario 9 — the disclosure a paid tie owes', () => {
     // ⚠️ EVERY GOAL OWES IT. A creator who is paid to feature something owes the
     // disclosure on an entertaining video exactly as much as on a selling one.
     for (const goal of VIDEO_GOALS) {
-      const v = validateCreativeDecisionPlan({
-        objective: goal, focus: null, products: ['p'],
-        ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null,
-      }, sponsor)
+      const v = validateCreativeDecisionPlan(cdp({ objective: goal, focus: null, products: ['p'],
+        ownershipLanguage: false, commercialCta: false, disclosureRequired: false, cta: null }), sponsor)
       expect(v.map((x) => x.code), goal).toContain('DISCLOSURE_MISSING_FOR_PAID_TIE')
     }
   })
@@ -709,27 +713,30 @@ describe('Scenario 10 — observed style, borrowed account, zero authority', () 
   })
 
   it('CDP — nothing observed may authorise ownership language', () => {
-    const observed = {
-      value: 'OWN_PRODUCT', source: 'observed' as const,
-      evidence: { seen: 40 }, updatedAt: NOW,
+    // ⚠️ `evidence` WAS `{ seen: 40 }` AND `EvidenceCount` IS `{ seen, of }`.
+    //  Every observation fixture in this file was missing the denominator — the
+    //  half that says forty sightings out of WHAT. `mayUseOwnershipLanguage`
+    //  refuses on `source` alone so the verdicts were right, but the fixtures
+    //  were not observations the store can produce.
+    const observed: Provenanced<CanonicalRelationship> = {
+      value: 'OWN_PRODUCT', source: 'observed',
+      evidence: { seen: 40, of: 40 }, updatedAt: NOW,
     }
     expect(mayUseOwnershipLanguage(observed)).toBe(false)
     // ⚖️ AND NOT AT ANY VOLUME OF EVIDENCE. Forty sightings of somebody calling a
     // product theirs is forty observations, not one assertion.
-    expect(mayUseOwnershipLanguage({ ...observed, evidence: { seen: 4000 } })).toBe(false)
+    expect(mayUseOwnershipLanguage({ ...observed, evidence: { seen: 4000, of: 4000 } })).toBe(false)
   })
 
   it('CDP — nor personal experience, which is asked separately', () => {
     expect(mayClaimPersonalUse({
-      value: 'CONFIRMED', source: 'observed', evidence: { seen: 20 }, updatedAt: NOW,
+      value: 'CONFIRMED', source: 'observed', evidence: { seen: 20, of: 20 }, updatedAt: NOW,
     })).toBe(false)
   })
 
   it('CDP — a plan built on borrowed observation fails by name', () => {
-    const v = validateCreativeDecisionPlan({
-      objective: 'sell', focus: 'product', products: ['p'],
-      ownershipLanguage: true, commercialCta: true, disclosureRequired: false, cta: null,
-    }, creator([]))
+    const v = validateCreativeDecisionPlan(cdp({ objective: 'sell', focus: 'product', products: ['p'],
+      ownershipLanguage: true, commercialCta: true, disclosureRequired: false, cta: null }), creator([]))
     expect(v.map((x) => x.code)).toContain('OWNERSHIP_WITHOUT_OWNED_PRODUCT')
     expect(v.map((x) => x.code)).toContain('COMMERCIAL_CTA_WITHOUT_RELATIONSHIP')
   })
@@ -740,11 +747,11 @@ describe('Scenario 10 — observed style, borrowed account, zero authority', () 
     // and what it claims.
     expect(mayAdaptObservedTrait({
       value: 'short punchy sentences', source: 'observed',
-      evidence: { seen: 12 }, updatedAt: NOW,
+      evidence: { seen: 12, of: 12 }, updatedAt: NOW,
     })).toBe(true)
     // ⚠️ ONE SIGHTING IS A COINCIDENCE, and imitating it copies a single video.
     expect(mayAdaptObservedTrait({
-      value: 'shouted intro', source: 'observed', evidence: { seen: 1 }, updatedAt: NOW,
+      value: 'shouted intro', source: 'observed', evidence: { seen: 1, of: 1 }, updatedAt: NOW,
     })).toBe(false)
   })
 })

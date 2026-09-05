@@ -9,7 +9,7 @@ import {
   buildCampaignIntent, validateCampaignIntent, canonicalCampaignIntent,
   dimensionEligibility, CampaignIntentError,
   LAYER_POLICY, DIMENSION_LAYER, TRANSFER_DIMENSIONS,
-  type CampaignIntentV1,
+  type CampaignIntentV1, type TransferDimension,
 } from '../campaignIntent.js'
 
 const OWNER = '11111111-1111-4111-8111-111111111111'
@@ -25,7 +25,15 @@ const legacyRequest = (): CampaignIntentV1 => buildCampaignIntent({
 })
 
 /** What the contract's UI would supply once §4's explicit scope exists. */
-const explicitRequest = (dims = ['hook_mechanic', 'shot_rhythm'] as const): CampaignIntentV1 =>
+// ⚠️ THE PARAMETER TOOK ITS TYPE FROM ITS OWN DEFAULT. With `as const` and no
+//  annotation, `dims` was the tuple `readonly ['hook_mechanic', 'shot_rhythm']`,
+//  so every other call in this file — `['topic_strategy']`, `['hook_mechanic']`,
+//  the reordered pair — was a type error nobody was compiling. Naming the real
+//  element type is what makes a misspelt dimension fail here instead of
+//  travelling into `requestedDimensions` and being silently ineligible.
+const explicitRequest = (
+  dims: readonly TransferDimension[] = ['hook_mechanic', 'shot_rhythm'],
+): CampaignIntentV1 =>
   buildCampaignIntent({
     ownerId: OWNER, generationId: GEN,
     goal: 'sell the 12-week programme',
@@ -62,7 +70,7 @@ describe('the §4 layer table is frozen and enforced', () => {
   it('MUTATION: requesting a dimension in a `never` layer is refused, not dropped', () => {
     // Today no dimension maps to business_truth, so this reaches the check by
     // moving one there — proving the guard would fire if the table ever changed.
-    const broken = clone(explicitRequest(['topic_strategy'] as const))
+    const broken = clone(explicitRequest(['topic_strategy']))
     broken.layerPolicy.content_strategy = 'never'
     expect(() => validateCampaignIntent(broken)).toThrow(/never transferable/)
   })
@@ -112,7 +120,7 @@ describe('the legacy fidelity knob cannot become an explicit transfer scope', ()
   it('CONTROL: an EXPLICIT request does make content strategy eligible', () => {
     // Without this the two cases above could be passing because nothing is ever
     // eligible.
-    const i = explicitRequest(['topic_strategy'] as const)
+    const i = explicitRequest(['topic_strategy'])
     const e = dimensionEligibility(i, REF, 'topic_strategy')
     expect(e.eligible).toBe(true)
     expect(e.explicitlyRequested).toBe(true)
@@ -120,7 +128,7 @@ describe('the legacy fidelity knob cannot become an explicit transfer scope', ()
   })
 
   it('an explicit scope EXCLUDES what it does not name', () => {
-    const i = explicitRequest(['hook_mechanic'] as const)
+    const i = explicitRequest(['hook_mechanic'])
     expect(dimensionEligibility(i, REF, 'hook_mechanic').eligible).toBe(true)
     const other = dimensionEligibility(i, REF, 'caption_style')
     expect(other.eligible).toBe(false)
@@ -186,12 +194,12 @@ describe('user intent is asserted or absent — never manufactured', () => {
 
 describe('hashing', () => {
   it('is stable under key order and sensitive to a real change', () => {
-    const a = explicitRequest(['hook_mechanic', 'shot_rhythm'] as const)
-    const b = explicitRequest(['shot_rhythm', 'hook_mechanic'] as const)
+    const a = explicitRequest(['hook_mechanic', 'shot_rhythm'])
+    const b = explicitRequest(['shot_rhythm', 'hook_mechanic'])
     // Requested dimensions are a SET; the order the UI happened to send them in
     // must not change the hash.
     expect(canonicalCampaignIntent(b)).toEqual(canonicalCampaignIntent(a))
-    const c = explicitRequest(['hook_mechanic'] as const)
+    const c = explicitRequest(['hook_mechanic'])
     expect(canonicalCampaignIntent(c)).not.toEqual(canonicalCampaignIntent(a))
   })
 })

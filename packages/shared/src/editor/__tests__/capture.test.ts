@@ -149,7 +149,15 @@ describe('capture: validation hostile shapes', () => {
     expect(code(() => validateCaptureIntentInput(t))).toBe('capture_intent_bad_script_sha')
   })
   it('upload rejects a MISSING recordingScriptSha256 key (undefined !== null)', () => {
-    const b = base() as Record<string, unknown>
+    // ⚠️ A DELIBERATE WIDENING, AND THE ONLY ONE IN THIS SWEEP THAT WAS EARNED:
+    //  the test DELETES a required key to prove the validator rejects its
+    //  absence, and you cannot `delete` a required property from a typed object.
+    //
+    //  ⚖️ A SPREAD INTO A `Record` IS NOT A CAST. `{ ...base() }` copies the real
+    //  object into a bag of keys the same way, and the compiler still checks
+    //  `base()` — where `as Record<string, unknown>` asserted a relationship
+    //  between two types that do not overlap and silenced it.
+    const b: Record<string, unknown> = { ...base() }
     delete b.recordingScriptSha256
     expect(code(() => validateCaptureIntentInput(b))).toBe('capture_intent_upload_shape')
   })

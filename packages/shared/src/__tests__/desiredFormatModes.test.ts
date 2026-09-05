@@ -83,11 +83,17 @@ describe('the answer reaches the gallery', () => {
   })
 })
 
+// ⚠️ THESE TWO LITERALS CARRIED `rawValue: null` AND NO `evidence`, WHICH IS
+//  THE ONE COMBINATION `Provenanced<T>` EXISTS TO FORBID. `rawValue` lives only
+//  on the `user_answer` variant, and `observed` REQUIRES an `EvidenceCount` —
+//  the union's own comment says why: "an observation nobody counted is an
+//  inference wearing a better word." Untypechecked, these were observations
+//  nobody counted, in the very tests asserting that history is only evidence.
 describe('preference outranks history, which is the whole point', () => {
   it('a format they asked for is preferred even when never observed', () => {
     const p = assembleCreatorProfile({ answers: { desiredFormats: ['pov'] }, now: NOW })
     const v = formatStance('pov_skit', {
-      observedFormats: { value: ['talking_head'], rawValue: null, source: 'observed', updatedAt: NOW },
+      observedFormats: { value: ['talking_head'], source: 'observed', evidence: { seen: 40, of: 40 }, updatedAt: NOW },
       preferredFormats: p.preferredFormats,
     })
     expect(v.stance).toBe('preferred')
@@ -99,7 +105,7 @@ describe('preference outranks history, which is the whole point', () => {
   it('a format they only have a history of is familiar, not preferred', () => {
     const p = assembleCreatorProfile({ answers: { desiredFormats: ['pov'] }, now: NOW })
     const v = formatStance('talking_head', {
-      observedFormats: { value: ['talking_head'], rawValue: null, source: 'observed', updatedAt: NOW },
+      observedFormats: { value: ['talking_head'], source: 'observed', evidence: { seen: 40, of: 40 }, updatedAt: NOW },
       preferredFormats: p.preferredFormats,
     })
     expect(v.stance).toBe('familiar')

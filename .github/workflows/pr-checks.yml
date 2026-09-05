@@ -30,6 +30,15 @@ jobs:
       - run: npm ci
       - name: Typecheck all workspaces
         run: npm run typecheck
+      # ⚠️ HERE, NOT IN `no-legacy-editor`, AND THE FIRST ATTEMPT PUT IT THERE.
+      # That job runs `actions/checkout` and NOTHING else — no `npm ci`, no
+      # node_modules — because every other guard in it is a dependency-free node
+      # script. This one shells out to `tsc` and needs @types/node and vitest's
+      # types, so it failed with "Cannot find type definition file for 'node'".
+      # A guard placed where its tooling does not exist reports on the runner,
+      # not on the code.
+      - name: Test typecheck ratchet (a test that does not typecheck may not mean what it reads)
+        run: node scripts/ci/check_test_typecheck_ratchet.mjs
       - name: Build web
         run: npm run web:build
 

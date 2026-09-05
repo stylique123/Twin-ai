@@ -8,16 +8,31 @@ import { galleryCreatorView, usableProductCount } from '../galleryCreatorView'
 import { eligibility } from '../galleryPolicy'
 import { emptyReferenceProfile } from '../referenceProfile'
 import type { CreatorProfile } from '../profileAssembler'
+import type { Provenanced } from '../authority'
 import type { ResolvedCapabilities } from '../editor/capabilities'
 import type { FillableEntity } from '../slotFill'
 
 const AT = '2026-01-01T00:00:00.000Z'
-const said = <T,>(value: T) => ({ value, rawValue: value, source: 'user_answer' as const, updatedAt: AT })
+// ⚠️ WITHOUT THE RETURN ANNOTATION `said` INFERRED `T` FROM THE ARGUMENT ALONE,
+//  so `said(['education', 'growth'])` was `Provenanced<string[]>` and nothing
+//  ever compared those strings to `BriefGoal`. Neither value is in that union —
+//  it is `followers|authority|educate|leads|sell|entertain|personal_brand` — so
+//  the projection test asserting "the goals come through" was asserting that two
+//  goals which cannot exist come through. Annotating the return is what lets the
+//  contextual type reach the array literal.
+const said = <T,>(value: T): Provenanced<T> =>
+  ({ value, rawValue: value, source: 'user_answer' as const, updatedAt: AT })
 
-const profile = (over: Partial<CreatorProfile> = {}): CreatorProfile => ({
-  workKind: null, role: null, businessType: null, audienceSegment: null,
-  audienceLevel: null, goals: null, relationship: null, defaultCta: null, ...over,
-})
+// ⚠️ AND THIS OMITTED `preferredFormats`, which is required-and-nullable. Every
+//  profile the file built carried `undefined` there — the one field whose whole
+//  point is that `null` (unasked) and `[]` (asked, declined to narrow) are
+//  different answers, and `undefined` is neither.
+const profile = (over: Partial<CreatorProfile> = {}): CreatorProfile =>
+  Object.assign({
+    workKind: null, role: null, businessType: null, audienceSegment: null,
+    audienceLevel: null, goals: null, relationship: null, defaultCta: null,
+    preferredFormats: null,
+  } as CreatorProfile, over)
 
 const caps = (film: boolean | null, screen: boolean | null): ResolvedCapabilities => ({
   can_film_objects: { value: film, source: film === null ? 'unset' : 'account' },
@@ -81,11 +96,11 @@ describe('the format preference this file refuses to invent', () => {
 describe('what does come through', () => {
   it('carries the goals and the one relationship the profile settled', () => {
     const v = galleryCreatorView({
-      profile: profile({ goals: said(['education', 'growth']), relationship: said('NONE') }),
+      profile: profile({ goals: said(['educate', 'followers']), relationship: said('NONE') }),
       capabilities: caps(false, true),
       entities: [],
     })
-    expect(v.goals).toEqual(['education', 'growth'])
+    expect(v.goals).toEqual(['educate', 'followers'])
     expect(v.relationship).toBe('NONE')
     expect(v.canFilmObjects).toBe(false)
     expect(v.canRecordScreen).toBe(true)

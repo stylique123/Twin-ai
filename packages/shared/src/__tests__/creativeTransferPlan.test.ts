@@ -304,9 +304,9 @@ describe('model output cannot smuggle unreviewed fields or unbounded payloads', 
   })
   it('a hostile modelIdentity or promptVersion is refused', () => {
     for (const field of ['modelIdentity', 'promptVersion'] as const) {
-      const p = clone(draftPlan()); (p as Record<string, unknown>)[field] = 'a b; rm -rf /'
+      const p = clone(draftPlan()); p[field] = 'a b; rm -rf /'
       expect(() => validateCreativeTransferPlan(rehash(p), CTX), field).toThrow(/plain identifier/)
-      const q = clone(draftPlan()); (q as Record<string, unknown>)[field] = 'x'.repeat(LIMITS.identity + 1)
+      const q = clone(draftPlan()); q[field] = 'x'.repeat(LIMITS.identity + 1)
       expect(() => validateCreativeTransferPlan(rehash(q), CTX), field).toThrow(/over the/)
     }
   })

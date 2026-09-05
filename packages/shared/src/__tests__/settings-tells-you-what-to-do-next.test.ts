@@ -14,11 +14,17 @@ import {
   setupAreas, setupSummary, SETUP_STATES, SETUP_AREA_IDS,
   type SetupInput,
 } from '../setupAreas'
+import type { CreatorProfileAnswers } from '../creatorProfileQuestions'
 
-const ANSWERED = {
+// ⚠️ `as never` IS NOT A TYPE, IT IS THE ABSENCE OF ONE. Spreading it is not
+//  even legal ("Spread types may only be created from object types"), and every
+//  field name below went unchecked — a misspelt `commercialTies` or a tie value
+//  that is not in the union would have read exactly the same. The annotation is
+//  what makes these five answers assertions about the real shape.
+const ANSWERED: CreatorProfileAnswers = {
   contentGoals: ['authority'], audience: 'founders', workKind: 'saas',
   desiredFormats: ['talking_head'], commercialTies: ['own_product'],
-} as never
+}
 
 const of = (over: Partial<SetupInput> = {}) =>
   setupAreas({ answers: ANSWERED, dnaReady: true, dnaConfirmed: true, cta: 'Try Twin free', productCount: 1, ...over })
@@ -93,7 +99,7 @@ describe('brand kit never lowers content readiness', () => {
 })
 
 describe('nothing to sell is an answer, not a gap', () => {
-  const nonCommercial = { ...ANSWERED, commercialTies: ['none'] } as never
+  const nonCommercial: CreatorProfileAnswers = { ...ANSWERED, commercialTies: ['none'] }
 
   it('reports not needed rather than missing', () => {
     expect(area({ answers: nonCommercial, productCount: 0 }, 'products').state).toBe('not_needed')
@@ -112,7 +118,7 @@ describe('nothing to sell is an answer, not a gap', () => {
   })
 
   it('while an unanswered tie still asks, because silence is not "no"', () => {
-    const silent = { ...ANSWERED, commercialTies: [] } as never
+    const silent: CreatorProfileAnswers = { ...ANSWERED, commercialTies: [] }
     expect(area({ answers: silent, productCount: 0 }, 'products').state).toBe('needs_setup')
   })
 })
@@ -160,7 +166,7 @@ describe('one next step, and it moves', () => {
     const withDna = { ...nothing, dnaReady: true, dnaConfirmed: true }
     expect(setupSummary(of(withDna)).next!.id).toBe('content_profile')
 
-    const withProfile = { ...withDna, answers: { ...(ANSWERED as object), commercialTies: [] } as never }
+    const withProfile = { ...withDna, answers: { ...ANSWERED, commercialTies: [] } }
     expect(setupSummary(of(withProfile)).next!.id).toBe('products')
 
     const withProduct = { ...withProfile, productCount: 1 }
