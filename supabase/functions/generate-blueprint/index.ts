@@ -2255,7 +2255,22 @@ function selectSpeakable<T extends { kind: string }>(
   // so relevance still decides WHICH experience.
   const spoken = substance.filter(wasSpoken)
   const rest = substance.filter((i) => !wasSpoken(i))
-  const keepSubstance = [...spoken, ...rest].slice(0, Math.min(floor, cap))
+  const bySpokenFirst = [...spoken, ...rest]
+  const floorSlots = Math.min(floor, cap)
+  // ⚠️ ONE SLOT HELD FOR A FIRST-PERSON EPISODE. Mirrors FIRST_PERSON_FLOOR in
+  // packages/shared/src/knowledgeSelection.ts. A physio with TWO stored
+  // `experience` rows got three scripts with zero first-person episodes — his
+  // floor was filled by claims, facts and frameworks, which are all substance
+  // and all rank ahead of two lone episodes. Reserves, never injects: with no
+  // episode in the store this is a no-op.
+  const isEpisode = (i: T) => String((i as { kind?: string }).kind) === 'experience'
+  const keepSubstance = bySpokenFirst.slice(0, floorSlots)
+  if (floorSlots > 0 && !keepSubstance.some(isEpisode)) {
+    const episode = bySpokenFirst.find(isEpisode)
+    // Takes the LAST reserved slot, never the first — guaranteeing presence and
+    // dictating the lead are different powers.
+    if (episode) keepSubstance[floorSlots - 1] = episode
+  }
   const taken = new Set<T>(keepSubstance)
   const out = [...keepSubstance]
   for (const item of ranked) {

@@ -144,6 +144,29 @@ export interface SelectableItem {
  * floor requires. Never returns duplicates, and never fewer items than the old
  * behaviour would have.
  */
+/** The kinds that are a FIRST-PERSON EPISODE — something the creator did, not
+ *  something they know.
+ *
+ *  ⚠️ `experience` ONLY, AND `example` IS DELIBERATELY OUT. An example can be a
+ *  worked case about anyone; an experience is the creator's own. Widening this
+ *  to feel more generous would let a third-party example satisfy a reservation
+ *  that exists to guarantee the creator appears in their own script. */
+const FIRST_PERSON_KINDS: ReadonlySet<string> = new Set(['experience'])
+
+/** How many of the reserved substance slots are held for a first-person episode
+ *  when the store has one.
+ *
+ *  ⚠️ ONE, NOT MORE. The floor guarantees the creator appears; it must not turn
+ *  every script into a memoir. A store with six episodes still gets six if
+ *  relevance ranks them that way — this only stops the count reaching ZERO while
+ *  episodes sit unread in the store. */
+export const FIRST_PERSON_FLOOR = 1
+
+/** Is this item a first-person episode? */
+export function isFirstPerson(item: { kind?: string }): boolean {
+  return FIRST_PERSON_KINDS.has(String(item?.kind))
+}
+
 export function selectSpeakable<T extends SelectableItem>(
   ranked: readonly T[],
   cap: number,
@@ -166,7 +189,48 @@ export function selectSpeakable<T extends SelectableItem>(
   // 58% / 23% for the same stores with caption rows mixed in.
   const spoken = substance.filter(wasSpoken)
   const rest = substance.filter((i) => !wasSpoken(i))
-  const keepSubstance = [...spoken, ...rest].slice(0, Math.min(floor, cap))
+  const bySpokenFirst = [...spoken, ...rest]
+  const floorSlots = Math.min(floor, cap)
+
+  // ── ONE SLOT HELD FOR A FIRST-PERSON EPISODE ────────────────────────────
+  //
+  // ⚠️ MEASURED, 2026-09-05. `creator_knowledge` holds 104 `experience` rows
+  // across 23 voices, so extraction works. A physiotherapist with TWO of them
+  // received three complete scripts containing ZERO first-person episodes —
+  // his substance floor was satisfied entirely by claims, facts, frameworks and
+  // opinions, which are all `SUBSTANCE_KINDS` and all rank ahead of two lone
+  // episodes in a store where 26 of 50 items are caption-derived coverage.
+  //
+  // ⚖️ SO THE GAP WAS SELECTION, NOT COLLECTION, and the fix belongs HERE. The
+  // diagnosis matters: the same symptom would have justified building a
+  // recordings-capture pipeline, which would not have moved this creator at all
+  // because his episodes were already stored.
+  //
+  // ⚖️ AND IT IS A SELECTION PREFERENCE, NOT A PROMPT INSTRUCTION. Telling the
+  // writer to "include a personal story" was measured INERT; changing what
+  // reaches it won 17-7. A floor changes the input, which is the half that
+  // moves.
+  //
+  // ⚠️ IT RESERVES, IT DOES NOT INJECT. When the store holds no episode this is
+  // a no-op and the selection is byte-identical to before — a creator with
+  // nothing to tell is never handed an empty slot to fill, which is how a floor
+  // becomes an invitation to invent one.
+  // ⚖️ IT TAKES THE LAST RESERVED SLOT, NOT THE FIRST. An earlier draft put the
+  // episode at the head of the reservation and the scenario suite caught it:
+  // three different intents — teach, story, sell — all began with the same
+  // `experience`, collapsing a distinction the compiler exists to produce. A
+  // selling video should not be made to OPEN on a personal story merely because
+  // one was guaranteed. Guaranteeing presence and dictating the lead are
+  // different powers, and only the first one belongs to a floor.
+  const keepSubstance = bySpokenFirst.slice(0, floorSlots)
+  if (floorSlots > 0 && !keepSubstance.some(isFirstPerson)) {
+    const episode = bySpokenFirst.find(isFirstPerson)
+    // ⚠️ ONLY WHEN ONE EXISTS AND NONE GOT IN. With no episode in the store this
+    // is a no-op and the selection is byte-identical to before — a creator with
+    // nothing to tell is never handed an empty slot, which is how a floor turns
+    // into an invitation to invent one.
+    if (episode) keepSubstance[floorSlots - 1] = episode
+  }
   const taken = new Set<T>(keepSubstance)
   const out = [...keepSubstance]
 
