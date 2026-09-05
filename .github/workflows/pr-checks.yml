@@ -628,6 +628,16 @@ jobs:
         run: |
           node scripts/ci/check_column_readers.mjs --selftest
           node scripts/ci/check_column_readers.mjs
+      # ⚠️ AND SYMBOLS, WHICH IS WHERE THIS DEFECT ACTUALLY COST MONEY. Two rules
+      # found by hand on 2026-09-05 had zero production callers: isBillableScript,
+      # which decides whether a script that asks the creator to fill its own
+      # blanks may be CHARGED for, and claimsQuestionFor, which puts the offer's
+      # real name in the readiness question. Both were heavily unit-tested — high
+      # coverage on an unreached function is the trap, not the reassurance.
+      - name: Symbol readers (a function nobody calls is a rule nobody runs)
+        run: |
+          node scripts/ci/check_symbol_readers.mjs --selftest
+          node scripts/ci/check_symbol_readers.mjs
       # ⚠️ THE COST MODEL HAS A CALLER NOW. renderCost.ts was written, exported,
       # tested and called by nothing — the same defect as a column nobody reads.
       # The selftest runs the caller with no database, including the re-key trap
