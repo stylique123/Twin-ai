@@ -20,8 +20,25 @@ describe('the map reaches the writer at all', () => {
   // shipped here: `id` was read from `ownedEntity?.id` and omitted from the
   // select, so every generation recorded "no product was chosen". The optional
   // chain made the absence look like a legitimate null.
+  //
+  // ⚠️ AND THE ANCHOR IS THE QUERY'S IDENTITY, NOT ITS COLUMN ORDER. This guard
+  // used to slice from `.select('id, name, type` — which named the owned-entity
+  // query only by accident of the order its columns happened to be written in.
+  // Adding `creator_summary` before `type` moved that prefix off the owned
+  // select and onto the plural LIBRARY select further down, which correctly has
+  // no `community_map`; the guard then failed while asserting about a query it
+  // was never meant to police. A guard that can silently change subject is
+  // worse than no guard, so the anchor is now the one clause only the
+  // owned-entity read carries.
   it('selects community_map, or the block could only ever be empty', () => {
-    const sel = bp.slice(bp.indexOf(".select('id, name, type"), bp.indexOf(".select('id, name, type") + 300)
+    const marker = bp.indexOf(".in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])")
+    expect(marker, 'the owned-entity query was not found by its relationship filter').toBeGreaterThan(-1)
+    const selStart = bp.lastIndexOf('.select(', marker)
+    expect(selStart, 'no .select() precedes the owned-entity relationship filter').toBeGreaterThan(-1)
+    const sel = bp.slice(selStart, marker)
+    // The slice must be the select and its immediate chain, not a swallowed
+    // half of the file — a runaway anchor would match `community_map` anywhere.
+    expect(sel.length).toBeLessThan(600)
     expect(sel).toMatch(/community_map/)
   })
 
