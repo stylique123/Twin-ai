@@ -2089,6 +2089,53 @@ export async function claimProductEntity(
  *  guard against onboarding remount replay, not a quota, so archiving an owned
  *  product does not let another be minted. Swapping the product a creator sells
  *  is a deliberate act that deserves its own flow. */
+/**
+ * Record that the extraction never STARTED, so every reader agrees it failed.
+ *
+ * ⚠️ THE BANNER WAS RIGHT AND THE ROW WAS WRONG. When `requestProductExtraction`
+ * throws in the browser, the Library shows "Added, but we could not start
+ * reading that page" — and writes nothing. `productLifecycle` then sees a source,
+ * no knowledge and no `knowledgeFailedAt`, and correctly-by-its-own-rules returns
+ * READING. The observed screenshot is both messages stacked: the banner saying it
+ * failed, the card underneath saying "Twin is reading the page."
+ *
+ * ⚖️ SO THE FIX IS A WRITE, NOT A SECOND RENDERER. Making the banner read
+ * `productLifecycle` too would have silenced the only component that KNEW, and
+ * the card, the retry button and the writer's own entity lookup would all have
+ * carried on believing a read was in flight. The client holds a fact; the row is
+ * where facts live.
+ *
+ * ⚠️ `knowledge_failed_at` HAD EXACTLY ONE WRITER AND IT WAS THE WORKER
+ * (`extractProduct.ts:248`). A job that never got queued has no worker to record
+ * it, which is precisely the case migration 0169 could not cover.
+ *
+ * ⚖️ AND IT SELF-HEALS IF THIS IS A FALSE ALARM. If the enqueue actually landed
+ * and only the response was lost, the worker clears `knowledge_failed_at` on
+ * success — so the worst case is a card that says "could not read" for the
+ * minutes until the job finishes, which is what the creator was told anyway.
+ * The reverse — staying silent — leaves READING forever.
+ */
+export async function recordExtractionNeverStarted(
+  entityId: string,
+  reason: unknown,
+  now?: string,
+): Promise<void> {
+  // ⚠️ ONLY EVER A FAILURE MARKER. `knowledge` is deliberately untouched: a
+  // failure means nothing was learned THIS TIME, and `productLifecycle` reads
+  // IMPORT_FAILED only where the store is still empty, so an entity that already
+  // carries facts keeps them.
+  const { error } = await supabase
+    .from('product_entities')
+    .update({
+      knowledge_failed_at: now ?? new Date().toISOString(),
+      knowledge_error: String(
+        (reason as { message?: unknown } | null)?.message ?? reason ?? 'enqueue failed',
+      ).slice(0, 500),
+    })
+    .eq('id', entityId)
+  if (error) throw error
+}
+
 export async function archiveProductEntity(id: string, now?: string): Promise<void> {
   const { error } = await supabase
     .from('product_entities')

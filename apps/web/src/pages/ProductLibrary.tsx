@@ -40,7 +40,8 @@ import { useSearchParams } from 'react-router-dom'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation,
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
-  requestProductExtraction, confirmProductFacts, uploadProductImage,
+  requestProductExtraction, recordExtractionNeverStarted,
+  confirmProductFacts, uploadProductImage,
   listBrandVoices, OwnedEntityExistsError, ProductLibraryFullError,
   isStale, factAgeDays, SOURCE_LABEL, sourceWarrantsAttention,
   signEditUrls,
@@ -409,7 +410,22 @@ export default function ProductLibrary() {
         added.push(await uploadProductImage(dataUrl))
       }
       if (added.length === 0) return
-      await requestProductExtraction(ownerId, entity.id, entity.productUrl ?? '', [...existing, ...added])
+      // ⚠️ ONLY THE ENQUEUE IS WRAPPED, NOT THE UPLOAD ABOVE IT. The outer catch
+      // also covers a failed photo upload, where no read was ever attempted —
+      // recording an import failure for that would invent a state rather than
+      // report one, which is the defect this change exists to remove.
+      try {
+        await requestProductExtraction(ownerId, entity.id, entity.productUrl ?? '', [...existing, ...added])
+      } catch (e) {
+        try {
+          await recordExtractionNeverStarted(entity.id, e)
+          setEntities((prev) => (prev ?? []).map((x) => (
+            x.id === entity.id
+              ? { ...x, knowledgeFailedAt: new Date().toISOString() }
+              : x)))
+        } catch { /* leave the row as it was; the message below still lands */ }
+        throw e
+      }
       const signed = await signEditUrls(added)
       setThumbs((prev) => ({ ...prev, ...signed }))
       setSaved(entity.id)
@@ -517,7 +533,27 @@ export default function ProductLibrary() {
         const imgs = a.imagePaths ?? []
         if (url || imgs.length > 0) {
           try { await requestProductExtraction(ownerId, created.id, url, imgs) }
-          catch { setErr('Added, but we could not start reading that page. You can retry from the product below.') }
+          catch (e) {
+            // ⚠️ THE BANNER USED TO BE THE ONLY THING THAT KNEW. It said "we
+            // could not start reading that page" and wrote nothing, so
+            // `productLifecycle` — seeing a source, no knowledge and no
+            // failure — returned READING and the card underneath said "Twin is
+            // reading the page." Both messages on one screen, from one event.
+            //
+            // ⚖️ RECORDING IT MAKES EVERY READER AGREE: the card derives
+            // IMPORT_FAILED, its Retry button appears, and the banner's promise
+            // that you "can retry from the product below" becomes true.
+            // Best-effort — a failed marker must never cost the creator the
+            // product they just claimed, which is the part that had to succeed.
+            try {
+              await recordExtractionNeverStarted(created.id, e)
+              setEntities((prev) => (prev ?? []).map((x) => (
+                x.id === created.id
+                  ? { ...x, knowledgeFailedAt: new Date().toISOString() }
+                  : x)))
+            } catch { /* the row keeps its old state; the banner still says so */ }
+            setErr('Added, but we could not start reading that page. You can retry from the product below.')
+          }
         }
         // Drop it from the suggestions — it is claimed now, and leaving it there
         // invites a second claim of the same thing.
@@ -599,7 +635,19 @@ export default function ProductLibrary() {
       if (url && url !== (entity?.productUrl ?? '')) {
         await save(id, { productUrl: url })
       }
-      await requestProductExtraction(ownerId, id, url)
+      // ⚠️ THE RETRY PATH NEEDS THIS MOST. A creator who pressed "Try again" and
+      // watched it fail silently would be returned to a card that says READING —
+      // the state they pressed the button to escape.
+      try {
+        await requestProductExtraction(ownerId, id, url)
+      } catch (e) {
+        try {
+          await recordExtractionNeverStarted(id, e)
+          setEntities((prev) => (prev ?? []).map((x) => (
+            x.id === id ? { ...x, knowledgeFailedAt: new Date().toISOString() } : x)))
+        } catch { /* the outer catch still tells them */ }
+        throw e
+      }
       // ⚖️ POLLS THE ENTITY, NOT THE JOB. A creator who reloads or comes back
       // tomorrow sees whatever the worker got to; watching a job id would lose
       // the result the moment the tab did.
