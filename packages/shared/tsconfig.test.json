@@ -15,8 +15,5 @@
   "include": [
     "src"
   ],
-  "exclude": [
-    "src/__tests__/campaignIntent.test.ts",
-    "src/__tests__/pipeline-scenarios.test.ts"
-  ]
+  "exclude": []
 }

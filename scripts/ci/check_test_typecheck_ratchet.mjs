@@ -35,7 +35,7 @@ const CONFIG = join(REPO, 'packages/shared/tsconfig.test.json')
 /** ⚠️ THE CEILING IS A NUMBER IN THIS FILE, NOT IN THE CONFIG IT MEASURES. A
  *  ratchet whose limit lives in the thing being ratcheted can be raised in the
  *  same edit that breaks it, which is not a ratchet. */
-const MAX_EXCLUDED = 2
+const MAX_EXCLUDED = 0
 
 const cfg = JSON.parse(readFileSync(CONFIG, 'utf8'))
 const excluded = cfg.exclude ?? []
