@@ -1,12 +1,20 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["vitest/globals", "node"],
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [
+      "vitest/globals",
+      "node"
+    ],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "allowImportingTsExtensions": true
   },
-  "include": ["src"],
-
+  "include": [
+    "src"
+  ],
   "exclude": [
     "src/__tests__/a-disagreement-that-changes-nothing.test.ts",
     "src/__tests__/a-slot-says-something-or-it-is-not-filled.test.ts",
@@ -14,7 +22,6 @@
     "src/__tests__/aHalfCreatedProductSaysWhichHalf.test.ts",
     "src/__tests__/assembly-does-not-reinterpret.test.ts",
     "src/__tests__/beatPlanAlignment.test.ts",
-    "src/__tests__/beatProof.test.ts",
     "src/__tests__/campaignIntent.test.ts",
     "src/__tests__/cdpEdgeParity.test.ts",
     "src/__tests__/creativeTransferPlan.test.ts",
