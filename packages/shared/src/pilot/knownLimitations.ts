@@ -311,6 +311,43 @@ export const KNOWN_LIMITATIONS: readonly KnownLimitation[] = Object.freeze([
     status: 'OPEN',
   }),
   Object.freeze({
+    id: 'TWO_SPELLINGS_OF_A_STATED_SOURCE',
+    what:
+      '`KNOWLEDGE_SOURCES` now contains BOTH `user` ("the creator answered '
+      + 'directly. The highest authority there is") and `asked` ("the only source '
+      + 'in this product a creator STATED rather than a model inferred"). They '
+      + 'mean the same thing. `asked` is what the only live writer -- '
+      + '`answer-beat-ask`, since migration 0128 -- actually emits; `user` is what '
+      + 'the union documented and what test fixtures and `filledFrom`\'s comment '
+      + 'referred to. The union omitted the written one, so `readKnowledgeItem` '
+      + 'validated it away and the highest-provenance row in the product reached '
+      + 'the writer with no provenance.',
+    decision:
+      'ADD `asked` NOW, COLLAPSE THE PAIR LATER, AND THE SPLIT IS DELIBERATE.\n\n'
+      + '\u26a0\ufe0f THE RENAME LIVES IN AN EDGE FUNCTION. Changing what '
+      + '`answer-beat-ask` writes makes the change DB_EDGE_AUTH and puts it behind '
+      + 'the staging matrix lane; adding the member is static and fixes the '
+      + 'reader today. Shipping the smaller half first is not a shortcut here -- '
+      + 'the reader is the side that was losing data.\n\n'
+      + '\u2696\ufe0f AND NO DATA HAS TO MOVE WHICHEVER WINS. Production holds '
+      + 'ZERO rows carrying either value: 610 `caption`, 478 `transcript`, and '
+      + 'nothing else. The pair can be collapsed by editing two files rather than '
+      + 'by backfilling a column, and that stays true until the first creator '
+      + 'answers a beat ask.',
+    revisitWhen:
+      'THE FIRST `asked` ROW IS STORED, or the edge function is being changed for '
+      + 'another reason and the rename is free. After that a collapse needs a '
+      + 'backfill, and the cheap window has closed.',
+    cost:
+      'Two members meaning one thing is exactly the "two near-identical truth '
+      + 'systems" this codebase keeps paying to remove, and leaving it invites a '
+      + 'future reader to treat them as a meaningful distinction -- to decide that '
+      + '`user` outranks `asked`, or the reverse, on no evidence. The guard '
+      + '`check_knowledge_sources_agree` stops the union and the writers drifting '
+      + 'again, but it cannot tell two spellings of one idea from two ideas.',
+    status: 'OPEN',
+  }),
+  Object.freeze({
     id: 'ASSERTIONS_PINNED_TO_CALL_SHAPE',
     what:
       'TWO source-text guards broke on 2026-09-05 from a refactor that changed no '

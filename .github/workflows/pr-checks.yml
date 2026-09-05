@@ -634,6 +634,19 @@ jobs:
       # blanks may be CHARGED for, and claimsQuestionFor, which puts the offer's
       # real name in the readiness question. Both were heavily unit-tested — high
       # coverage on an unreached function is the trap, not the reassurance.
+      # ⚠️ AND SOURCES, WHERE THE WRITER AND THE READER SPOKE DIFFERENT WORDS.
+      # `answer-beat-ask` has written `source: 'asked'` since migration 0128 --
+      # "the only source in this product a creator STATED rather than a model
+      # inferred" -- and `KNOWLEDGE_SOURCES` did not contain it, so
+      # `readKnowledgeItem` validated it away and the highest-provenance row in
+      # the product reached the writer with no provenance. Nothing was broken
+      # yet: production holds zero `asked` rows, so every reader agreed and every
+      # test passed. A guard is the only thing that catches a contract that is
+      # wrong but not yet exercised.
+      - name: Knowledge sources (a source the reader cannot name is provenance lost)
+        run: |
+          node scripts/ci/check_knowledge_sources_agree.mjs --selftest
+          node scripts/ci/check_knowledge_sources_agree.mjs
       - name: Symbol readers (a function nobody calls is a rule nobody runs)
         run: |
           node scripts/ci/check_symbol_readers.mjs --selftest
