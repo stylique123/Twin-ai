@@ -16,7 +16,16 @@ describe('the pass never ran, or ran and read nothing', () => {
   it('visualPassRan: false produces no lines even with fields set', () => {
     // Should never happen per extractVisualProfile's own contract, but the
     // reader must not trust a field value it has no business reading.
-    const p = { ...emptyVisualProfile(), primaryMode: { value: 'talking_head', evidence: { frames: [1] as const } } }
+    // ⚠️ `as const` ON THE FRAMES WAS DOING THE OPPOSITE OF WHAT IT LOOKED LIKE.
+    // It froze `frames` to `readonly [1]` and left `value` inferred as `string`,
+    // so `primaryMode` was NOT a `VisualObservation<ProductionMode>` and the whole
+    // object was not a `ReferenceVisualProfile`. An annotation on the binding is
+    // what makes the literal contextually typed, so `'talking_head'` is checked
+    // against the union rather than widened past it.
+    const p: ReferenceVisualProfile = {
+      ...emptyVisualProfile(),
+      primaryMode: { value: 'talking_head', evidence: { frames: [1] } },
+    }
     expect(observedVisualLines(p)).toEqual([])
     expect(observedVisualBlock(p)).toBeNull()
   })

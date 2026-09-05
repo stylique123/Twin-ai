@@ -95,7 +95,15 @@ describe('the answer survives assembly unchanged', () => {
     // paraphrasing is not — and the raw value proves which happened.
     const p = of({}, '  Try Twin free  ')
     expect(p.defaultCta!.value).toBe('Try Twin free')
-    expect(p.defaultCta!.rawValue).toBe('  Try Twin free  ')
+    // ⚠️ `rawValue` LIVES ON ONE VARIANT ONLY, and reading it off the union was
+    //  reading a field that three of the four sources do not have. Asserting the
+    //  source first is not ceremony: a CTA that arrived `observed` or `inferred`
+    //  has no raw form to compare against, so "trimmed, not paraphrased" would be
+    //  unprovable — and the unnarrowed read would have quietly said `undefined`.
+    const cta = p.defaultCta!
+    expect(cta.source).toBe('user_answer')
+    if (cta.source !== 'user_answer') throw new Error('unreachable')
+    expect(cta.rawValue).toBe('  Try Twin free  ')
   })
 
   it('is a pure function of its input', () => {
@@ -190,7 +198,7 @@ describe('each stage sees only what it may know', () => {
     // ⚠️ A WRITER THAT COULD SEE IT WOULD BE A WRITER THAT COULD REASON ABOUT IT,
     // which is the second interpretation of the creator this module abolishes.
     // Permission is decided once, by the planner, and arrives as a restriction.
-    const w = toWriterView(p) as Record<string, unknown>
+    const w = toWriterView(p)
     expect(w).not.toHaveProperty('relationship')
     expect(w).not.toHaveProperty('mayUseOwnershipLanguage')
     expect(w).not.toHaveProperty('defaultCta')
