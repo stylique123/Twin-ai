@@ -9,7 +9,6 @@
 
   "exclude": [
     "src/__tests__/a-disagreement-that-changes-nothing.test.ts",
-    "src/__tests__/a401IsNotAVerdict.test.ts",
     "src/__tests__/assembly-does-not-reinterpret.test.ts",
     "src/__tests__/campaignIntent.test.ts",
     "src/__tests__/cdpEdgeParity.test.ts",
