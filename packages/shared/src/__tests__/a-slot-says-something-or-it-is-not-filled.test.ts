@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest'
 import { filledFrom, type EntitySay } from '../writerInput'
 import type { TemplateResolution } from '../knowledgeResolver'
+import { readKnowledgeItem, type KnowledgeItem } from '../creatorKnowledge'
 
 const beat = (over: Partial<TemplateResolution>): TemplateResolution => ({
   container: { id: 'b', about: 'why it matters', needs: 'opinion' },
@@ -22,9 +23,24 @@ const beat = (over: Partial<TemplateResolution>): TemplateResolution => ({
   ...over,
 })
 
-const item = (text: string, source: 'user' | 'caption' = 'user') => ({
-  kind: 'experience' as const, text, basis: 'stated' as const, source, timesSeen: 1,
-})
+// ⚠️ THIS BUILT A BARE OBJECT LITERAL AND CALLED IT EVIDENCE. `KnowledgeItem`
+//  requires `confidence`, `sourceRef`, `sourceUrl`, `lastObservedAt` and three
+//  more; the literal supplied five fields and none of those. With tsc never
+//  reading test files it passed as `evidence`, so `filledFrom` was being handed
+//  a shape the store cannot produce.
+//
+//  ⚖️ BUILT BY `readKnowledgeItem`, the same function that turns a stored row
+//  into an item in production, so the fixture is production-shaped by
+//  construction rather than by my remembering seven field names. It returns
+//  null for a row it REFUSES, and throwing on that means a fixture which could
+//  not exist fails the test relying on it.
+const item = (text: string, source: 'user' | 'caption' = 'user'): KnowledgeItem => {
+  const read = readKnowledgeItem({
+    kind: 'experience', text, basis: 'stated', source, timesSeen: 1,
+  })
+  if (read === null) throw new Error(`fixture rejected by readKnowledgeItem: ${text}`)
+  return read
+}
 
 describe('filledFrom', () => {
   it('fills a beat from the evidence that resolved it, and names where it came from', () => {
@@ -62,7 +78,13 @@ describe('filledFrom', () => {
   })
 
   it('drops blank evidence text rather than joining it into whitespace', () => {
-    const r = beat({ label: 'lesson', evidence: [item('  '), item('Real point.')] })
+    // ⚠️ BUILT BY HAND, AND THAT IS THE POINT. `readKnowledgeItem` REFUSES blank
+    //  text outright (`if (!text) return null`), so blank evidence cannot reach
+    //  `filledFrom` from storage — this asserts `filledFrom`'s OWN defence
+    //  against an input the layer above already excludes. Routing it through the
+    //  reader like every other fixture here would not test that; it would throw.
+    const blank = { ...item('placeholder'), text: '  ' }
+    const r = beat({ label: 'lesson', evidence: [blank, item('Real point.')] })
     expect(filledFrom([r], new Map()).get('lesson')?.text).toBe('Real point.')
   })
 })
