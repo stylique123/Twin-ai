@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { medianPlays, bandFor, whatWorks } from '../ownPerformance'
+import { medianPlays, bandFor, whatWorks, messageForWhatWorks, timesTheirNormal, MIN_MEASURED_FOR_A_CLAIM } from '../ownPerformance'
 
 const p = (plays: number | null, url = `u${Math.random()}`) => ({ plays, url })
 
@@ -117,5 +117,48 @@ describe('whatWorks reports its own coverage', () => {
 
   it('an empty catalogue does not throw', () => {
     expect(whatWorks([])).toMatchObject({ median: null, counted: 0, total: 0, unmeasured: 0 })
+  })
+})
+
+describe('whether there is anything honest to say', () => {
+  const posts = (n: number, plays: number) => Array.from({ length: n }, () => p(plays))
+
+  // ⚠️ SILENCE IS THE DEFAULT AND NOT A FAILURE. A flat account is a fine thing
+  // to have and a terrible thing to be told about in a "what works" card.
+  it('says nothing when no post stands out', () => {
+    expect(messageForWhatWorks(whatWorks(posts(20, 1_000))).kind).toBe('silent')
+  })
+
+  it('says nothing when too few posts carry a count', () => {
+    const thin = [...posts(5, 1_000), p(50_000), ...Array.from({ length: 30 }, () => p(null))]
+    const w = whatWorks(thin)
+    expect(w.counted).toBeLessThan(MIN_MEASURED_FOR_A_CLAIM)
+    expect(messageForWhatWorks(w).kind).toBe('silent')
+  })
+
+  it('says nothing when nothing was measured at all', () => {
+    expect(messageForWhatWorks(whatWorks(Array.from({ length: 40 }, () => p(null)))).kind).toBe('silent')
+  })
+
+  // ⚠️ THE PHYSIO CASE: 50 measured posts, median 588, a 543,300 parody.
+  it('speaks when a real outlier exists over enough measured posts', () => {
+    const w = whatWorks([...posts(48, 588), p(543_300), p(70_600)])
+    const m = messageForWhatWorks(w)
+    expect(m.kind).toBe('breakouts')
+    if (m.kind !== 'breakouts') return
+    expect(m.median).toBe(588)
+    expect(m.best.plays).toBe(543_300)
+    expect(m.alsoRan).toBe(1)
+    expect(m.counted).toBe(50)
+  })
+
+  it('reports the multiple the way a person reads it', () => {
+    expect(timesTheirNormal(543_300, 588)).toBe(924)
+    expect(timesTheirNormal(3_000, 588)).toBe(5)
+  })
+
+  it('a zero or missing median cannot produce a multiple', () => {
+    expect(timesTheirNormal(1_000, 0)).toBe(0)
+    expect(timesTheirNormal(Number.NaN, 588)).toBe(0)
   })
 })

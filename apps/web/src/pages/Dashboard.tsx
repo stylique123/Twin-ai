@@ -11,6 +11,7 @@ import type { BrandVoice, Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { TwinStrengthCard } from '../components/TwinStrengthCard'
 import { OwnAccountFitCard } from '../components/OwnAccountFitCard'
+import { WhatWorksCard } from '../components/WhatWorksCard'
 import { AddYourProductCard } from '../components/AddYourProductCard'
 import { OutcomeHistory } from '../components/OutcomeHistory'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
@@ -164,6 +165,10 @@ export default function Dashboard() {
                 WORRY. One says what the twin knows; this says what it had to
                 learn from. Both render nothing when they cannot speak. */}
             <OwnAccountFitCard voiceId={brand?.id ?? null} />
+            {/* ⚠️ THEIR OWN NUMBERS, WHICH THE SCAN HAS ALWAYS STORED AND NOTHING
+                EVER READ. Renders only when the shared rule finds a real outlier
+                over enough measured posts — silence is the default. */}
+            <WhatWorksCard voiceId={brand?.id ?? null} />
             {/* ⚠️ THE CARD THAT PAYS FOR A REMOVAL. Onboarding stopped asking
                 thirteen options about what a creator sells and now asks one
                 yes/no. Somebody who answers yes has stated a commercial fact

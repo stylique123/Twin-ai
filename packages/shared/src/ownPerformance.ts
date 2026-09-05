@@ -107,3 +107,57 @@ export function whatWorks(posts: readonly OwnPost[]): WhatWorks {
   breakouts.sort((a, b) => (b.plays ?? 0) - (a.plays ?? 0))
   return { median, counted, total: posts.length, breakouts, bands, unmeasured }
 }
+
+// ── WHETHER THERE IS ANYTHING HONEST TO SAY ───────────────────────────────
+//
+// ⚖️ THE RULE DECIDES, NOT THE CARD. `messageForOwnAccount` established this
+// shape: a screen asks the shared rule whether to speak, so every judgement
+// about what counts as enough lives in one tested place rather than in a
+// component's early return.
+
+export type WhatWorksMessage =
+  /** Say nothing. Not enough measured posts, or no outlier worth naming. */
+  | { kind: 'silent' }
+  /** Their own outliers, with the median that makes them outliers. */
+  | { kind: 'breakouts'; median: number; best: OwnPost; alsoRan: number; counted: number }
+
+/** Below this a "what works for you" claim is a guess dressed as a finding.
+ *
+ *  ⚠️ TEN, AND IT IS A FLOOR ON MEASURED POSTS, NOT ON POSTS. A catalogue of
+ *  forty where the platform withheld thirty-five counts has five data points,
+ *  and a median drawn from five is not a creator's normal. */
+export const MIN_MEASURED_FOR_A_CLAIM = 10
+
+/**
+ * What, if anything, to tell this creator about their own numbers.
+ *
+ * ⚠️ SILENCE IS THE DEFAULT AND IT IS NOT A FAILURE STATE. A creator whose
+ * catalogue has no breakout has a consistent account, which is a fine thing to
+ * have and a terrible thing to be told about in a card headed "what works".
+ * Manufacturing a "top post" out of a flat distribution would teach them to
+ * chase noise.
+ */
+export function messageForWhatWorks(w: WhatWorks): WhatWorksMessage {
+  if (w.median === null) return { kind: 'silent' }
+  if (w.counted < MIN_MEASURED_FOR_A_CLAIM) return { kind: 'silent' }
+  const best = w.breakouts[0]
+  if (!best) return { kind: 'silent' }
+  return {
+    kind: 'breakouts',
+    median: w.median,
+    best,
+    // ⚖️ HOW MANY OTHERS CLEARED THE SAME BAR. One outlier is an accident; four
+    // is a pattern, and the creator can tell the difference if we show it.
+    alsoRan: Math.max(0, w.breakouts.length - 1),
+    counted: w.counted,
+  }
+}
+
+/** How many times better than their own normal, rounded for a human.
+ *
+ *  ⚠️ NOT A PERCENTAGE. "924x your normal" is legible; "92,300% above median"
+ *  is a number a person has to decode before they can feel it. */
+export function timesTheirNormal(plays: number, median: number): number {
+  if (!Number.isFinite(plays) || !Number.isFinite(median) || median <= 0) return 0
+  return Math.round(plays / median)
+}
