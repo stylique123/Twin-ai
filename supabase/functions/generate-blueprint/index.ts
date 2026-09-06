@@ -1467,6 +1467,50 @@ ${lines.join('\n')}`
 const SUBSTANCE_ENUM = /^(?:creator_knowledge|creator_experience|creator_opinion|product_dna|general|needs_user)$/i
 const NAMES_A_SOURCE = /^(?:the\s+)?(?:creator'\s?s?\b|creators'\b|creator\s+(?:experience|knowledge|expertise|opinion)\b|general (?:knowledge|observation)\b|product_dna\b|reference structure\b|specific knowledge\b)/i
 
+// ── HOW HABITUAL A "RECURRING" CTA ACTUALLY IS ────────────────────────────
+//
+// ⚠️ THE FIELD ASSERTED A HABIT NOTHING EVER COUNTED. `recurring_ctas` is parsed
+// straight out of a model response in `worker/src/voice.ts`. Measured in
+// production 2026-09-06, across the 32 entries belonging to a voice whose
+// creator has their own transcripts on file: 16 appeared in ZERO of that
+// creator's videos, 13 in exactly ONE, and NONE in three or more. Not one
+// "recurring" CTA recurred.
+//
+// ⚠️ AND THIS LINE IS WHERE IT REACHED THE SCRIPT. A TikTok baker's script
+// closed on "subscribe to our channel" because her own list genuinely contained
+// it — she said it once, in one of four videos, and nothing here said so.
+//
+// ⚖️ THE COUNT IS SHOWN, THE CTA IS NOT DROPPED. `worker/src/ctaEvidence.ts`
+// records three states and this renders all three: a number ("said in 1 of
+// their 4 videos"), a checked zero ("not found ... treat as a guess"), and
+// `null` ("not checked") for a voice with no transcripts or a CTA too short to
+// verify. A missing evidence array falls back to the bare list unchanged, so an
+// older voice reads exactly as it did before.
+function renderRecurringCtasInline(vp: Record<string, unknown>): string {
+  const ctas = Array.isArray(vp?.recurring_ctas)
+    ? (vp.recurring_ctas as unknown[]).filter((c): c is string => typeof c === 'string')
+    : []
+  const ev = Array.isArray(vp?.recurring_ctas_evidence)
+    ? (vp.recurring_ctas_evidence as Array<Record<string, unknown>>)
+    : []
+  if (ev.length === 0) return ctas.join(', ')
+  const byCta = new Map<string, Record<string, unknown>>()
+  for (const e of ev) if (typeof e?.cta === 'string') byCta.set(e.cta, e)
+  return ctas.map((c) => {
+    const e = byCta.get(c)
+    // ⚠️ THE NULL CHECK PRECEDES THE COERCION. `seen ?? 0` here would turn "we
+    // never read their speech" into "they never said it" — the exact collapse
+    // ctaEvidence.ts exists to prevent.
+    const seen = e === undefined ? undefined : e.observed_verbatim_in
+    const of = typeof e?.of_videos === 'number' ? e.of_videos : 0
+    if (e === undefined || seen === null || seen === undefined) return `${c} (not checked)`
+    if (typeof seen !== 'number') return `${c} (not checked)`
+    const noun = of === 1 ? 'video' : 'videos'
+    if (seen === 0) return `${c} (not found in their ${of} ${noun} — treat as a guess)`
+    return `${c} (said in ${seen} of their ${of} ${noun})`
+  }).join(', ')
+}
+
 // ── SIGNATURE PHRASES (inlined from packages/shared/src/signaturePhrases.ts) ─
 //
 // ⚠️ VOICE CAUSE 3. "Use their signature vocabulary" (below, and in dna.ts)
@@ -6001,7 +6045,7 @@ Deno.serve(async (req: Request) => {
 - Their THUMBNAIL style (follow this for the packaging.thumbnail): ${thumbStyleLine}
 - Hooks they ACTUALLY wrote (real winners — study the phrasing, do not copy verbatim): ${sampleHooks.join(' / ') || '(none captured)'}
 - Signature vocabulary: ${(vp.vocabulary ?? []).join(', ')}
-- Recurring CTAs: ${(vp.recurring_ctas ?? []).join(', ')}
+- Recurring CTAs: ${renderRecurringCtasInline(vp)}
 - Point of view (beliefs they repeat — the script should carry their stance): ${povLine}
 - Enemy (the bad advice / villain they push against): ${enemyLine}
 - Do: ${(vp.dos ?? []).join('; ')}
