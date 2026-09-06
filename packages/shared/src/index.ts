@@ -63,6 +63,8 @@ export * from './shotDirection'
 export * from './setupPlan'
 // Figures spoken about a product must trace to a stored product fact.
 export * from './productClaimCheck'
+export * from './comparativeClaim'
+export * from './ownPerformance'
 // Only a named thing with real commercial evidence may be suggested as a product.
 export * from './productSuggestionConfidence'
 // The six onboarding questions asked while the scan runs, and what they change.
@@ -260,3 +262,39 @@ export * from './script/sentenceUniformity'
 // describes what the CREATOR performs — never a b-roll or screen-recording
 // request, both of which appear in the real data and are out of scope.
 export * from './script/beatProof'
+
+// ⚖️ THE LIBRARY STORES SHAPES, NEVER WORDS. Every row in
+// `reference_content_profiles.profile` carries an `evidence` key holding a
+// verbatim source sentence. A cross-creator library that copied the profile
+// would be a phrase store. This is a WHITELIST projection: enum tokens and
+// counts only, and `evidence` is unreachable from it.
+export * from './shapeLibrary'
+
+// ⚖️ A TOPIC IS NOT A SENTENCE, AND MOST OF THE CORPUS HAS NEITHER. 458 of 530
+// stored topic values appear exactly once, and `subtopic` is a per-video
+// description — one names a living person and their company. This admits only
+// topic-shaped values, reports coverage alongside the list, and names the
+// fragmentation instead of inventing a synonym table to hide it.
+export * from './topicLibrary'
+
+// ⚖️ A SHAPE FOR THE IDEA DOOR, WHERE THERE IS NO REFERENCE TO READ ONE FROM.
+// containerTemplates holds fourteen complete shapes and every path to them is
+// gated on `reference_url`. This picks one from the corpus instead — and, on
+// today's data, refuses for six goals in seven, because only `entertainment`
+// separates its leading container by more than sampling noise.
+export * from './shapeForGoal'
+
+// ⚠️ TWO STORES HOLD ONE FACT AND THREE OF SEVEN PRODUCTION VOICES DISAGREE.
+// `pre_script_brief.commercialTies` and `product_entities.relationship` both
+// record what a creator sells; nothing has ever compared them. One creator
+// answered "I sell nothing" and carries an OWN_SERVICE entity. This reports the
+// conflict and resolves it to the LESS permissive claim — it never rewrites
+// either answer.
+export * from './commercialConsistency'
+
+// ⚖️ THREE LINES BEFORE THE CREDIT IS SPENT, AND THE THIRD IS THE POINT.
+// "What I don't have" is where a fabricated claim gets caught before it is
+// written. Every gap is derived from a predicate the WRITER uses —
+// carriesFigure, isFirstPerson, wasSpoken, SUBSTANCE_KINDS — never a parallel
+// re-implementation, so the screen cannot promise what the script will lack.
+export * from './videoPlan'

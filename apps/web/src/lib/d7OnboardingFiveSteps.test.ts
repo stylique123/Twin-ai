@@ -36,7 +36,7 @@ const GALLERY = readFileSync(join(REPO, 'apps/web/src/pages/Gallery.tsx'), 'utf8
 const STORY = readFileSync(join(REPO, 'apps/web/src/components/StoryInterview.tsx'), 'utf8')
 const PRE_SCRIPT_BRIEF = readFileSync(join(REPO, 'packages/shared/src/preScriptBrief.ts'), 'utf8')
 
-describe('1. occupation chips: 10 stored values, 7 offered, every one answered', () => {
+describe('1. occupation chips: 10 stored values, 8 offered, every one answered', () => {
   it('the writer prompt now has a real line for founder, coach and freelancer', () => {
     // ⚠️ THE INVERSION OF WHAT THIS ONCE ASSERTED. It used to pin that the three
     // had NO entry — treating the gap as the settled state and deleting the
@@ -72,9 +72,15 @@ describe('1. occupation chips: 10 stored values, 7 offered, every one answered',
     expect(PRE_SCRIPT_BRIEF).toMatch(/CLAIMS_QUESTION_KINDS: readonly BriefWorkKind\[\] = \['professional', 'ecommerce', 'brand'\]/)
   })
 
-  it('a new signup is offered the seven chips, founder and coach among them', () => {
+  // ⚠️ EIGHT SINCE `saas` AND `local_service` WERE SPLIT. They shared one chip
+  // while WORK_KIND_LINES held two opposed answers — a plumber picking
+  // "Software / local business" stored `saas` and was told their proof was a
+  // screen recording. The pair is pinned by name in
+  // workKindLinesCoverEveryChip.test.ts; this stays an exact-list assertion so
+  // an accidental addition still has to be deliberate.
+  it('a new signup is offered the eight chips, founder and coach among them', () => {
     expect(ONBOARDING).toMatch(
-      /const ONBOARDING_WORK_KINDS: readonly BriefWorkKind\[\] = \[\s*'creator', 'founder', 'coach', 'professional', 'ecommerce', 'saas', 'other',\s*\]/)
+      /const ONBOARDING_WORK_KINDS: readonly BriefWorkKind\[\] = \[\s*'creator', 'founder', 'coach', 'professional', 'ecommerce', 'saas',\s*'local_service', 'other',\s*\]/)
   })
 
   it('both chip renders use the offered set, not the full stored type', () => {

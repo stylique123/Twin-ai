@@ -89,3 +89,221 @@ to save a round would hide exactly the difference being measured.
 labelling. It cannot be recovered from `7204de6f` by re-analysis — re-running frame analysis on a
 live pilot is not permitted, and re-drawing would discard the labels already given.
 
+
+---
+
+## `THE_CLAIM_STOP_IS_DECLARED_BUT_NOT_ENFORCED` — OPEN
+
+**What is wrong.** `entityStatus` and `mayGenerateClaims` in `productEntity.ts` implement what
+their own comment calls "the hard half of §14": `missing_information` is *"a STOP, not a warning:
+an entity in that state may be MENTIONED but must not have claims generated about it."* Both
+functions have **zero production callers** — grep finds them only in their own test file.
+`generate-blueprint` reads the owned entity and uses `name` for a beat-audit signal, but nothing
+anywhere consults the status before letting a script make claims about a product. The rule was
+written, tested, and never connected.
+
+**What was decided.** Still not wired, and the reason has changed because the measurement was
+taken. An earlier version of this entry asserted that "most entities in production carry evidence
+null" and that enforcing the stop "would silence product claims for MOST existing products" — an
+assumption stated as fact. Measured 2026-08-24, read-only: `public.product_entities` contained
+**one row in total**, one owner. There was no "most"; the sentence described a population that did
+not exist.
+
+**Why the measurement did not settle it either.** That single row would indeed return
+`missing_information`, which is 100% of the table and evidence of nothing: n=1 cannot distinguish
+"the mint never collects evidence" from "this one row happens to lack it". Reporting 100% there
+would have been the same error in the opposite direction. So the refusal stood on a new footing —
+not that wiring the stop would break most products, but that **nothing is known** about what it
+would do, and a rule whose blast radius is unmeasured must not be connected to a creator-facing
+path.
+
+**Re-measured 2026-09-05**, same read-only query, live rows only:
+
+| | 2026-08-24 | 2026-09-05 |
+|---|---|---|
+| live rows | 1 | **8** |
+| distinct owners | 1 | **8** |
+| `evidence is null` | 1 | **8** |
+| rows with no name | — | **3** |
+
+⚠️ **The trigger has NOT fired, and this entry stays OPEN.** `CLAIM_STOP_MIN_POPULATION` is 25;
+eight rows is short of it. Only the "more than one owner" half of the condition is now satisfied.
+
+⚠️ **But one sentence in the old cost note is now stale and is corrected here.** The exposure was
+described as "bounded by the same measurement: one entity, one owner". It is not: a script may
+currently make claims about an entity with no name and no evidence, and that now reaches **eight
+entities across eight distinct owners**, three of which have no name at all. The bound grew by 8×
+while the decision did not change.
+
+**Revisit when.** At least `CLAIM_STOP_MIN_POPULATION` live rows across more than one owner, at
+which point re-run the same query. If most of that population would return `missing_information`,
+the defect is that the mint never collects evidence and **that** is the fix. If few would, wire the
+stop. The older trigger — "someone has counted" — is spent: it was counted, and the count was 1. A
+trigger a single query can satisfy while teaching nothing is not a trigger.
+
+**What it will cost.** Low to wire, high to get wrong in either direction. The cost of wiring it
+blind is unchanged and unbounded, because nobody knows what it would block.
+
+---
+
+## `STAGING_PHASE5_CANCEL_TEARDOWN_FLAKE` — OPEN
+
+**What is wrong.** On 2026-08-24 the staging matrix failed phase 5 on head `9798b1df` with
+`AssertionError [ERR_ASSERTION]: assert(!this.paused)` thrown from `Parser.finish`
+(`node:internal/deps/undici/undici`) during the deliberate SIGTERM in the `cancel-during_extract`
+case. The diff under test touched only `generate-blueprint` show-moment wiring and a generated edge
+copy — nothing in the cancellation path, the worker, or the HTTP client. A single
+`workflow_dispatch` re-run of the **same head** then passed, and the change merged.
+
+**What was decided.** Recorded as observed-and-recovered, and deliberately **not** as a diagnosis.
+Two runs of one head separate "reproducible on this commit" from "not reproducible on this commit";
+they do not establish why an undici parser was mid-body when the socket was torn down. Writing
+"flaky teardown race" here as a *cause* would make the next person reading it stop looking, and a
+cancellation bug that surfaces once every N runs is exactly the kind that gets dismissed by an
+inherited label. What is known is the signature, the step, and that it did not recur on the same
+commit.
+
+⚖️ The outcome was **pre-registered** before the re-run — pass meant merge without claiming a
+cause, the same failure meant stop and investigate — so the merge is not a decision made after
+seeing a convenient result.
+
+**Revisit when.** The same `assert(!this.paused)` signature appears in phase 5 on a **different**
+head. One occurrence is an anecdote; a second on unrelated code makes it a property of the
+cancellation teardown rather than of a commit. At that point the thing to look at is the undici
+response body on the aborted extract call — specifically whether it is consumed or destroyed before
+the socket goes away.
+
+**What it will cost.** Investigating now costs a matrix trip per attempt against a failure that has
+not recurred and cannot be forced. Leaving it costs a re-run when it happens again — and the
+standing rule already caps that at **one** re-run of the same head before it must be routed to the
+staging-harness issue rather than re-run until it goes green.
+
+---
+
+## `PER_TYPE_SCENE_DIRECTION_IS_UNFILMED` — OPEN
+
+**What is wrong.** Every screen-shown type now gets its own moments, and **not one of them has been
+followed by a person holding a phone**. The direction is written, parity-checked against the edge
+copy, and unit-tested for shape. None of that is evidence that a creator can film it.
+
+**What was decided.** ⚠️ Recorded as its own limitation rather than folded into the one it
+succeeds. `SCENE_GUIDANCE_DOES_NOT_READ_THE_TYPE` was a defect — five types, one script — and it is
+fixed. This is a different claim: that the words now written are words somebody can act on. Marking
+the first RESOLVED and stopping there would let a wiring change stand as evidence about a filmed
+video, which it is not.
+
+**Revisit when.** A real recording exists of a creator following the moments for something that is
+**not** a SaaS dashboard. The two teleprompter recordings and the watched creator session are the
+first place that could be seen.
+
+**What it will cost.** Leaving it costs nothing until somebody quotes the per-type direction as
+proven. The failure it guards against is exactly that quote.
+
+---
+
+## `AUDIENCE_QUESTIONS_HAS_NO_SUPPLY` — OPEN
+
+**What is wrong.** `generate-blueprint` read the top 8 `audience_questions` rows and interpolated
+them into the knowledge block as *"WHAT THEIR AUDIENCE KEEPS ASKING"*. The table has **zero rows,
+has never had one, and has no writer anywhere**: 0121 grants SELECT and DELETE to `authenticated`
+and INSERT to nobody. A live read against a table nothing can fill is the "written and never read"
+defect inverted — read and never written — and it made the prompt look like it carried audience
+demand when it never could.
+
+**What was decided.** The reader is deleted, and a writer was deliberately **not** built instead.
+
+⚠️ **The earlier ruling was "the worker writes it, service-role, no client policy", and the
+measurement retired it.** Of 1,080 stored `creator_knowledge` rows, **one** carries an audience-asks
+frame; 18 mention "ask" at all and 6 mention "question". Captions and transcripts are never
+persisted — `brand_voices.profile` has no captions key across all 44 rows — so `creator_knowledge`
+is the whole available corpus. A worker writing from it would produce roughly one row across every
+creator on the platform: a feature whose ON and OFF states are indistinguishable, which is the exact
+failure the ruling was trying to avoid.
+
+⚖️ **And the client-typed version was refused for a different reason.** Asking a creator to type
+three questions their audience asks is a fourth place we ask for something we could observe, against
+a product direction that is otherwise infer-confirm-never-ask.
+
+**Revisit when.** **Comment ingestion lands.** What this block wanted is what a creator's *audience*
+asks; the scan only ever captured what the *creator* says, and those are different corpora. Comments
+are the real source: public, already inside the Apify pipeline, and `commentsDatasetUrl` is already
+present in the scrape output. The supply is one fetch away, not one feature away. When it lands,
+restore the read **and** the block together — a writer without the reader repeats this entry from
+the other side.
+
+**What it will cost.** Deleting costs nothing measurable: the block could only ever render empty, so
+no prompt changes for any creator. Leaving it would have cost the next person the same
+investigation — find the empty table, assume the writer is missing, build one against a corpus that
+supports a single row. That is the cost this entry exists to prevent, and it is why the reason is
+recorded rather than the code simply removed.
+
+---
+
+## `TWO_SPELLINGS_OF_A_STATED_SOURCE` — OPEN
+
+**What is wrong.** `KNOWLEDGE_SOURCES` now contains both `user` — *"the creator answered
+directly. The highest authority there is"* — and `asked` — *"the only source in this product a
+creator STATED rather than a model inferred"*. They mean the same thing. `asked` is what the only
+live writer emits (`answer-beat-ask`, since migration 0128); `user` is what the union documented,
+what test fixtures use, and what `filledFrom`'s comment refers to. The union omitted the written
+one, so `readKnowledgeItem` validated it away and the highest-provenance row in the product
+reached the writer carrying no provenance at all.
+
+**The decision.** Add `asked` now, collapse the pair later, and the split is deliberate.
+
+⚠️ The rename lives in an edge function. Changing what `answer-beat-ask` writes makes the change
+DB_EDGE_AUTH and puts it behind the staging matrix lane; adding the member is static and fixes the
+reader today. Shipping the smaller half first is not a shortcut here — the reader is the side that
+was losing data.
+
+⚖️ And no data has to move whichever wins. Production holds **zero** rows carrying either value:
+610 `caption`, 478 `transcript`, and nothing else. The pair can be collapsed by editing two files
+rather than by backfilling a column, and that stays true until the first creator answers a beat ask.
+
+**Revisit when.** The first `asked` row is stored, or the edge function is being changed for
+another reason and the rename is free. After that a collapse needs a backfill, and the cheap window
+has closed.
+
+**The cost of leaving it.** Two members meaning one thing is exactly the "two near-identical truth
+systems" this codebase keeps paying to remove, and leaving it invites a future reader to treat them
+as a meaningful distinction — to decide that `user` outranks `asked`, or the reverse, on no
+evidence. The guard `check_knowledge_sources_agree` stops the union and the writers drifting again,
+but it cannot tell two spellings of one idea from two ideas.
+
+---
+
+## `ASSERTIONS_PINNED_TO_CALL_SHAPE` — OPEN
+
+**What is wrong.** Two source-text guards broke on 2026-09-05 from a refactor that changed no
+behaviour. `a-tier-zero-that-cannot-see` and `opt-in-is-exactly-true` both pinned the literal
+`NOT_RUN(classifyDownloadFailure(e), phaseOf(e))`; adding a fourth argument broke both while the
+properties they exist for — *a failed download passes no `tier_zero`*, *the visual pass returns
+rather than throws* — stayed true throughout. `theWriterGetsTheCommunityMap` broke the same day for
+the same reason, anchored on a column **order** rather than on the query.
+
+Swept: **546 test files, 241 read source text, 84 assertions pin a call with two or more
+arguments** — the exact shape that broke.
+
+**What was decided.** Not gated, and the 84 is an **exposure bound rather than a defect count**.
+
+⚠️ **Most of the 84 are correct.** `imagePaths.slice(0, MAX_IMAGES)`,
+`setTimeout(look, RECOVERY_POLL_MS)`, `sanitizeBlueprintLinks(rescue.bp, rescue.allow)` — in each
+the arguments *are* the property being asserted. What broke was different: assertions whose stated
+intent concerned only the return value, while the argument list was incidental to it.
+
+⚖️ **And the distinction is semantic, so no grep decides it.** A ratchet on this number would fail
+84 correct tests, and a guard that accuses correct code is how a guard teaches people to ignore it —
+the lesson `check_column_readers` paid for at 29-apparent-versus-7-real. The refinement that took
+the symbol inventory from 232 to 39 has no equivalent here, because the residue is not mechanically
+separable.
+
+**Revisit when.** ⚠️ **A third refactor breaks assertions whose properties still hold.** Two
+occurrences in one day is a pattern; three is a rule — the same threshold the phase-3 fixture
+failures are held to. At that point the thing to build is not a gate but a **watch list**: print the
+assertions that pin a signature *before* changing one, so the author sees them rather than CI
+accusing them afterwards.
+
+**What it will cost.** Leaving it costs a broken build on some future signature change, and the
+author paying ten minutes to tell a brittle proxy from a real property. That is the **right** ten
+minutes — it is the judgement the grep cannot make. Gating it would cost that ten minutes on all 84,
+mostly to conclude the test was already correct.

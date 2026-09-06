@@ -189,8 +189,20 @@ export function assessReadiness(input: ReadinessInputs): ReadinessVerdict {
   const promoting = present(input.offer) || commercial
 
   const v: FieldVerdict[] = []
+  // ⚠️ `claimsQuestionFor` EXISTED AND NOTHING CALLED IT. `ASK[field]` served the
+  // generic wording for every field including `claims`, so the client asked
+  // "What does the OFFER do?" — with the literal word OFFER in it — while the
+  // server's inlined `readyClaimsQuestion` (generate-blueprint/index.ts:4577)
+  // asked "What does Acme Coaching actually do?" for the same field. The edge's
+  // comment there says it MIRRORS this function; nothing mirrored back.
+  //
+  // ⚖️ AND IT IS PER-FIELD, NOT A NEW BRANCH PER QUESTION. Only `claims` has a
+  // subject worth naming; the rest are about the video, not about a thing the
+  // creator owns, so a generic table entry is the right answer for them.
+  const questionFor = (field: ReadinessField): string | null =>
+    field === 'claims' ? claimsQuestionFor(input.offer) : (ASK[field] || null)
   const put = (field: ReadinessField, state: ReadinessState) =>
-    v.push({ field, state, question: state === 'MISSING_REQUIRED' ? (ASK[field] || null) : null })
+    v.push({ field, state, question: state === 'MISSING_REQUIRED' ? questionFor(field) : null })
 
   // GOAL — always required. Everything below reads it, so a wrong guess here
   // mis-shapes every other decision rather than one line.

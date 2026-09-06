@@ -212,12 +212,59 @@ async function getEvents(projectId) {
   const { data } = await admin.from('edit_events').select('*').eq('project_id', projectId).order('seq', { ascending: true })
   return data ?? []
 }
+/**
+ * WAIT FOR A PROJECT TO REACH A STATE, AND SAY WHAT HAPPENED IF IT DOES NOT.
+ *
+ * ⚠️ THE OLD MESSAGE WAS `timeout (status X)` AND IT COST TWO RE-RUNS. On #622
+ * and again on #669 the matrix went red here with three reconciler failures and
+ * nothing to distinguish "the reconciler never healed the project" from "the
+ * query watching for the heal timed out". Those need opposite responses — one is
+ * a real defect in the diff, the other is the environment — and telling them
+ * apart cost a full re-run each time.
+ *
+ * ⚠️ AND A FAILED READ LOOKED EXACTLY LIKE A MISSING ROW. `getProject`
+ * destructures `{ data }` and discards `error`, so a Postgres statement timeout
+ * returns null and the poll simply carries on as though the project were not
+ * there yet. That is the ambiguity, one layer down.
+ *
+ * ⚖️ SO THE READ IS DONE HERE WITH THE ERROR VISIBLE, and a transient failure no
+ * longer ends the wait — it is counted and the poll continues inside the same
+ * budget. This is NOT weakening the assertion: the test asserts the reconciler
+ * heals the project, and a query that failed to look is not evidence it did not.
+ * The budget is unchanged, so a genuinely stuck project still fails.
+ *
+ * ⚖️ THE TIMELINE IS THE POINT. Every status change is recorded with the
+ * milliseconds it arrived at, so the error names the stage that consumed the
+ * time instead of only the state it was in when the clock ran out.
+ */
 async function waitProject(id, pred, timeoutMs = 90_000, label = '') {
   const start = Date.now()
+  /** Status changes, as `status@ms` — not every poll, only transitions. */
+  const timeline = []
+  let readErrors = 0
+  let lastReadError = ''
+  let last
   for (;;) {
-    const p = await getProject(id)
-    if (p && pred(p)) return p
-    if (Date.now() - start > timeoutMs) throw new Error(`waitProject ${label || id}: timeout (status ${p?.status})`)
+    const { data: p, error } = await admin
+      .from('edit_projects').select('*').eq('id', id).maybeSingle()
+    if (error) {
+      readErrors++
+      lastReadError = String(error.message ?? error)
+    } else if (p) {
+      if (p.status !== last) { timeline.push(`${p.status}@${Date.now() - start}ms`); last = p.status }
+      if (pred(p)) return p
+    }
+    if (Date.now() - start > timeoutMs) {
+      // ⚠️ EVERY FACT THE NEXT READER NEEDS, IN ONE LINE. Which states it passed
+      // through and when, how many reads failed, and the last thing the database
+      // said — so "environment or diff" is answerable from the log rather than
+      // from another hour of matrix.
+      const seen = timeline.length ? timeline.join(' -> ') : 'NO STATUS EVER READ'
+      const reads = readErrors > 0 ? ` | ${readErrors} failed read(s), last: ${lastReadError}` : ''
+      throw new Error(
+        `waitProject ${label || id}: timeout after ${timeoutMs}ms | stages: ${seen}${reads}`,
+      )
+    }
     await sleep(500)
   }
 }

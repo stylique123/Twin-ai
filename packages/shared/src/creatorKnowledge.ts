@@ -72,9 +72,33 @@
  *                    an opinion or experience beat.
  *    user            the creator answered directly. The highest authority there
  *                    is, and the only source for facts nothing public reveals.
+ *    asked           the creator answered a BEAT ASK — the same authority as
+ *                    `user`, reached through a different door.
  *    previous_video  carried forward from an earlier generation of their own.
+ *
+ * ⚠️ `asked` WAS MISSING WHILE THE ONLY LIVE WRITER OF IT WAS SHIPPING. Since
+ * migration 0128, `answer-beat-ask` has written `source: 'asked'` and called it
+ * "the only source in this product a creator STATED rather than a model
+ * inferred". This union did not contain it, so `readKnowledgeItem` validated it
+ * away to `undefined` and the highest-provenance row in the product arrived at
+ * the writer carrying no provenance at all. Measured: the attribution came out
+ * as the EMPTY STRING, not as a wrong label — `[undefined].join(', ')` is `''` —
+ * so a creator-stated fact was indistinguishable from one with no source.
+ *
+ * ⚖️ AND IT COST NOTHING YET, WHICH IS WHY IT SURVIVED. Production holds 610
+ * `caption` rows and 478 `transcript` rows and ZERO `asked` rows, so no stored
+ * row was ever mislabelled; the defect was waiting for the first creator to
+ * answer a beat ask. A constraint that has only ever seen the population it was
+ * written for looks like a working constraint.
+ *
+ * ⚠️ TWO SPELLINGS OF ONE IDEA REMAIN, DELIBERATELY, FOR ONE RELEASE.
+ * `user` and `asked` both mean "the creator said this"; collapsing them is
+ * correct and is NOT done here, because the rename lives in an edge function
+ * and this change is deliberately static. Filed as
+ * `TWO_SPELLINGS_OF_A_STATED_SOURCE`. Neither has a stored row, so whichever
+ * survives, no data has to move.
  */
-export const KNOWLEDGE_SOURCES = ['caption', 'transcript', 'user', 'previous_video'] as const
+export const KNOWLEDGE_SOURCES = ['caption', 'transcript', 'user', 'asked', 'previous_video'] as const
 export type KnowledgeSource = (typeof KNOWLEDGE_SOURCES)[number]
 
 export const KNOWLEDGE_BASIS = ['stated', 'demonstrated', 'inferred'] as const
@@ -254,6 +278,25 @@ export function readKnowledgeItem(raw: unknown): KnowledgeItem | null {
     // null can say the second one. `line` already collapses "" to null.
     cost: line(src.cost),
     consensus: line(src.consensus),
+    // ⚠️ DROPPED ON THE WAY OUT UNTIL NOW, AND `attribution` IS WHAT PAID FOR IT.
+    //  `source` is on `KnowledgeItem` and this reader — the ONLY path from a
+    //  stored row to an item — omitted it entirely. So `filledFrom` computed
+    //  `[...new Set(r.evidence.map((e) => e.source))]` over a list where every
+    //  `source` was `undefined`, and `WriterSlot.attribution` — "named so a
+    //  validator can check a claim against the same source the writer was given"
+    //  — could never name anything in production.
+    //
+    //  ⚠️ AND ITS TEST PASSED THROUGHOUT, because the fixture built the item as a
+    //  bare literal with `source` set by hand, bypassing this function. Building
+    //  the same fixture through this reader is what surfaced it.
+    //
+    //  ⚖️ VALIDATED, NOT PASSED THROUGH. An unrecognised value becomes undefined
+    //  rather than reaching a reader that maps it with `CLASS_FOR_SOURCE[...] ??
+    //  'forbidden'` — the field's own comment is explicit that `undefined` means
+    //  NOT RECORDED and must never be read as "caption".
+    source: (KNOWLEDGE_SOURCES as readonly string[]).includes(String(src.source))
+      ? (String(src.source) as KnowledgeSource)
+      : undefined,
   }
 }
 

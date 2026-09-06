@@ -1927,6 +1927,16 @@ function resolveFidelityInline(
 // question left the remix screen and its behaviour did not. The goal implies an
 // outcome so the CTA payoff and the substance floor keep working; it never feeds
 // `wantsSale`, which stays computed from what the creator actually said.
+// ⚠️ MIRRORS `GOAL_IMPLIES_FOCUS` IN packages/shared/src/videoIntent.ts.
+// "Sell something" and "My product or service" read as one question asked
+// twice on the remix screen; the goal now fills the subject in. Only `sell` —
+// `leads` was left out because someone asking for leads frequently teaches.
+// ⚖️ THE PARITY TEST EXECUTES BOTH COPIES over every combination, so a drift
+// here is caught rather than shipped.
+const GOAL_IMPLIES_FOCUS_INLINE: Record<string, string> = {
+  sell: 'product',
+}
+
 const GOAL_IMPLIES_OUTCOME_INLINE: Record<string, string> = {
   followers: 'share',
   authority: 'remember_me',
@@ -1981,7 +1991,14 @@ function compileVideoIntentInline(answers: {
   }
   let payoffDirective = impliedOutcome ? OUTCOME_PAYOFF_INLINE[impliedOutcome] : null
   let substanceFloor = impliedOutcome ? OUTCOME_FLOOR_INLINE[impliedOutcome] : SUBSTANCE_FLOOR
-  const prefersKinds = focus ? FOCUS_PREFERS_INLINE[focus] : []
+  // ⚠️ THE SUBJECT THE GOAL IMPLIES. A pre-selected chip that changes nothing
+  // would be worse than not asking, so the untapped implication takes effect
+  // here and the resolution records that it was inferred, not given.
+  const effectiveFocus = focus ?? (goal ? (GOAL_IMPLIES_FOCUS_INLINE[goal] ?? null) : null)
+  if (!focus && effectiveFocus) {
+    resolutions.push(`goal ${goal} → subject taken from ${effectiveFocus}`)
+  }
+  const prefersKinds = effectiveFocus ? FOCUS_PREFERS_INLINE[effectiveFocus] : []
 
   if (goal === 'sell' && (focus === 'expertise' || focus === 'experience')
       && (outcome === 'learn' || outcome === 'change_mind')) {
@@ -2135,6 +2152,61 @@ function briefListInline(raw: Record<string, unknown>, key: string): string[] | 
   return kept.length > 0 ? kept : undefined
 }
 
+// ── COMMERCIAL CONSISTENCY, INLINED ───────────────────────────────────────
+//
+// ⚠️ TWO STORES HOLD ONE FACT AND THREE OF SEVEN PRODUCTION VOICES DISAGREE.
+// `pre_script_brief.commercialTies` (onboarding) and
+// `product_entities.relationship` (the confirm step) both record what a creator
+// sells, and until now this function read only the second — `commercialTies`
+// appeared NOWHERE in this file. Mirrors `commercialConsistency.ts`; the parity
+// test executes both.
+const RELATIONSHIP_OF_TIE_INLINE: Record<string, string | null> = {
+  own_product: 'OWN_PRODUCT',
+  own_service: 'OWN_SERVICE',
+  affiliate: 'AFFILIATE',
+  sponsor: 'SPONSOR',
+  review: 'REVIEW_ONLY',
+  none: 'NONE',
+  unspecified: null,
+}
+const TIE_PRECEDENCE_INLINE = [
+  'own_product', 'own_service', 'sponsor', 'affiliate', 'review', 'none',
+]
+/** Least to most permissive — what makes "take the smaller" well defined. */
+const PERMISSIVENESS_INLINE = [
+  'NONE', 'REVIEW_ONLY', 'AFFILIATE', 'SPONSOR', 'OWN_SERVICE', 'OWN_PRODUCT',
+]
+
+function commercialConsistencyInline(ties: unknown, entityRelationship: unknown): {
+  fromTies: string | null; fromEntity: string | null
+  verdict: 'agrees' | 'contradicts' | 'unrecorded'; safe: string | null
+} {
+  const list = Array.isArray(ties) ? ties.filter((t) => typeof t === 'string') : []
+  const tie = TIE_PRECEDENCE_INLINE.find((t) => list.includes(t))
+  const fromTies = tie ? RELATIONSHIP_OF_TIE_INLINE[tie] ?? null : null
+  const fromEntity = typeof entityRelationship === 'string'
+    && PERMISSIVENESS_INLINE.includes(entityRelationship) ? entityRelationship : null
+
+  if (fromTies === null && fromEntity === null) {
+    return { fromTies, fromEntity, verdict: 'unrecorded', safe: null }
+  }
+  if (fromTies === null || fromEntity === null) {
+    return { fromTies, fromEntity, verdict: 'agrees', safe: fromTies ?? fromEntity }
+  }
+  if (fromTies === fromEntity) return { fromTies, fromEntity, verdict: 'agrees', safe: fromTies }
+  const safe = PERMISSIVENESS_INLINE.indexOf(fromTies) <= PERMISSIVENESS_INLINE.indexOf(fromEntity)
+    ? fromTies : fromEntity
+  return { fromTies, fromEntity, verdict: 'contradicts', safe }
+}
+
+/** An uncontradicted "I sell nothing", from EITHER store. */
+function saysSellsNothingInline(ties: unknown, entityRelationship: unknown): boolean {
+  const c = commercialConsistencyInline(ties, entityRelationship)
+  return c.verdict !== 'contradicts' && c.safe === 'NONE'
+}
+
+// ── END COMMERCIAL CONSISTENCY ────────────────────────────────────────────
+
 /** The same rule for a single stored string. */
 function briefTextInline(raw: Record<string, unknown>, key: string): string | undefined {
   const v = raw[key]
@@ -2238,7 +2310,22 @@ function selectSpeakable<T extends { kind: string }>(
   // so relevance still decides WHICH experience.
   const spoken = substance.filter(wasSpoken)
   const rest = substance.filter((i) => !wasSpoken(i))
-  const keepSubstance = [...spoken, ...rest].slice(0, Math.min(floor, cap))
+  const bySpokenFirst = [...spoken, ...rest]
+  const floorSlots = Math.min(floor, cap)
+  // ⚠️ ONE SLOT HELD FOR A FIRST-PERSON EPISODE. Mirrors FIRST_PERSON_FLOOR in
+  // packages/shared/src/knowledgeSelection.ts. A physio with TWO stored
+  // `experience` rows got three scripts with zero first-person episodes — his
+  // floor was filled by claims, facts and frameworks, which are all substance
+  // and all rank ahead of two lone episodes. Reserves, never injects: with no
+  // episode in the store this is a no-op.
+  const isEpisode = (i: T) => String((i as { kind?: string }).kind) === 'experience'
+  const keepSubstance = bySpokenFirst.slice(0, floorSlots)
+  if (floorSlots > 0 && !keepSubstance.some(isEpisode)) {
+    const episode = bySpokenFirst.find(isEpisode)
+    // Takes the LAST reserved slot, never the first — guaranteeing presence and
+    // dictating the lead are different powers.
+    if (episode) keepSubstance[floorSlots - 1] = episode
+  }
   const taken = new Set<T>(keepSubstance)
   const out = [...keepSubstance]
   for (const item of ranked) {
@@ -3015,6 +3102,101 @@ function entitlementFailures(
       ask: strength === 'history'
         ? 'This beat only works as something you have personally done. What is your real example?'
         : null,
+    })
+  })
+  return out
+}
+
+// ── AN INVENTED COMPARATIVE PRODUCT CLAIM ─────────────────────────────────
+//
+// ⚠️ MIRRORS `findComparativeClaims` IN packages/shared/src/comparativeClaim.ts.
+// Same duplication rule as `findProductClaimGaps` above: the edge function
+// cannot import from the workspace, so the vocabulary lives twice and the two
+// copies must not drift.
+//
+// ⚠️ MEASURED, CANDLE RUN N1, SCENE 3, on an account that SELLS candles:
+// "a thirty-dollar hand-poured candle ... lasts SIX TIMES LONGER than standard
+// box store alternatives. That makes it HALF THE PRICE PER BURN HOUR." Nobody
+// supplied either figure; her onboarding said her first batch burned through in
+// six hours, which is the OPPOSITE of a durability claim.
+//
+// ⚖️ AND `findProductClaimGaps` COULD NOT HAVE CAUGHT IT — measured, not
+// assumed. `claimedValues` on that sentence returns THE EMPTY SET: number words
+// are not matched and multiples are not extracted even as digits. So the
+// obvious fix (dropping its empty-fact-set suppression) would have changed
+// nothing. This asks a different question with its own vocabulary.
+const CMP_NUMBER_WORD =
+  '(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|hundred|half|twice|double|triple|quadruple)'
+const CMP_MAGNITUDE: readonly RegExp[] = [
+  new RegExp(`\\b(?:${CMP_NUMBER_WORD}|\\d+(?:\\.\\d+)?)\\s*(?:x|times)\\s+(?:as\\s+\\w+|\\w+er|more|less|longer|cheaper|faster|stronger)\\b`, 'i'),
+  /\btwice\s+as\s+\w+\b/i,
+  new RegExp(`\\b(?:${CMP_NUMBER_WORD}|a\\s+(?:third|quarter))\\s+(?:the|of\\s+the)\\s+(?:price|cost|time|life|size|weight)\\b`, 'i'),
+  new RegExp(`\\blasts?\\s+(?:${CMP_NUMBER_WORD}|\\d+)\\s*(?:x|times|hours?|days?|weeks?|months?|years?)\\b`, 'i'),
+]
+// ⚖️ A COMPARATIVE NEEDS AN EXPLICIT TARGET OR A SUPERLATIVE. A bare adjective
+// ("a long-burning soy candle") is marketing language, and refusing that would
+// block honest copy — the false-positive case the shared tests pin.
+const CMP_COMPARATIVE: readonly RegExp[] = [
+  /\b\w+er\s+than\b/i,
+  /\b(?:more|less|better|worse|longer|cheaper|faster|stronger|cleaner|safer)\s+than\b/i,
+  /\bcompared\s+(?:to|with)\b/i,
+  /\bunlike\s+(?:most|other|store|shop|big|cheap)\b/i,
+  /\b(?:the\s+)?(?:best|cheapest|longest[- ]lasting|strongest|safest|purest)\b/i,
+]
+
+/**
+ * Beats making a comparative or magnitude product claim with nothing on record.
+ *
+ * ⚠️ SUBSTANCE-BLIND ON PURPOSE. `findProductClaimGaps` reads only beats tagged
+ * `product_dna`, and an INVENTED claim is never tagged that — there was no
+ * product record to cite. Gating on the tag exempts exactly the dangerous case.
+ *
+ * ⚠️ AND IT ONLY FIRES WITH AN EMPTY PRODUCT RECORD. With facts on file the
+ * figure check above is the right instrument, because it can actually compare
+ * the number against a stored one. With NO facts there is nothing that could
+ * ever substantiate the claim, which is why this is the high-risk case and not
+ * the low-risk one — the opposite reading to the figure check, deliberately.
+ */
+/** Stored product facts, as a count.
+ *
+ * ⚠️ A FUNCTION AND NOT A LOCAL, because the two readers live in DIFFERENT
+ * BLOCK SCOPES: the script report sees `productFactValues`, the repair loop
+ * below it does not. The first version of this wiring read that local from the
+ * repair loop and `edge-functions-parse` rejected it with TS2304 — twice, on
+ * the two lines that needed it. One derivation, reachable from both, is the fix
+ * that cannot drift back apart.
+ */
+function productFactCountOf(ownedEntity: unknown): number {
+  const k = (ownedEntity as { knowledge?: unknown } | null)?.knowledge
+  return Array.isArray(k)
+    ? k.filter((f) => typeof (f as { value?: unknown })?.value === 'string'
+        && (f as { value: string }).value !== '').length
+    : 0
+}
+
+function comparativeFailures(
+  beats: unknown,
+  commercial: boolean,
+  productFactCount: number,
+): EntitlementFail[] {
+  if (!commercial || productFactCount > 0 || !Array.isArray(beats)) return []
+  const out: EntitlementFail[] = []
+  beats.forEach((raw, index) => {
+    const line = typeof (raw as { line?: unknown })?.line === 'string' ? (raw as { line: string }).line : ''
+    if (!line.trim()) return
+    const hit = CMP_MAGNITUDE.find((re) => re.test(line)) ? 'magnitude'
+      : CMP_COMPARATIVE.find((re) => re.test(line)) ? 'comparative' : null
+    if (!hit) return
+    out.push({
+      index,
+      line,
+      repair: 'Rewrite WITHOUT any comparison to other products and WITHOUT any figure about'
+        + ' this product. Nothing is on record that could support it. Say what the product IS'
+        + ' and who it is for — never how it compares, how long it lasts, or what it costs per use.',
+      // ⚖️ THE QUESTION THAT WOULD HAVE PREVENTED IT. A creator naming what
+      // actually makes their product different produces a better video than the
+      // safest rewrite of a claim they never made.
+      ask: 'What actually makes yours different? Only say what you can back up.',
     })
   })
   return out
@@ -3981,12 +4163,28 @@ Deno.serve(async (req: Request) => {
     seenKnowledge.add(k)
     return true
   })
-  const { data: audienceRows } = await admin
-    .from('audience_questions')
-    .select('summary, asked')
-    .eq('owner_id', ownerId)
-    .order('asked', { ascending: false })
-    .limit(8)
+  // ⚠️ THE `audience_questions` READ IS GONE, AND ITS ABSENCE IS THE FEATURE.
+  // It selected the top 8 rows by `asked` and interpolated them into the
+  // knowledge block. The table has ZERO rows, has never had one, and has no
+  // writer anywhere: its RLS grants SELECT and DELETE to `authenticated` and no
+  // INSERT to anyone. A live read against a table nothing can fill is the
+  // "written and never read" defect inverted — read and never written — and it
+  // made the prompt look like it carried audience demand when it never could.
+  //
+  // ⚖️ AND THE CORPUS CANNOT FILL IT EITHER, WHICH IS WHY THIS IS A DELETION
+  // RATHER THAN A WRITER. Measured 2026-09-05: of 1,080 stored `creator_knowledge`
+  // rows, ONE carries an audience-asks frame. Captions and transcripts are never
+  // persisted, so there is no other text to mine. A worker writing from that
+  // corpus would ship a feature whose on and off states are indistinguishable.
+  //
+  // ⚠️ REOPEN WHEN COMMENT INGESTION LANDS, AND NOT BEFORE. What this block
+  // wanted is what a creator's AUDIENCE asks; the scan only ever captured what
+  // the CREATOR says. Those are different corpora. Comments are the real source
+  // — public, already inside the Apify pipeline, and `commentsDatasetUrl` is
+  // already present in the scrape output. Recorded as
+  // AUDIENCE_QUESTIONS_HAS_NO_SUPPLY in knownLimitations.ts so the next person
+  // finds the reason instead of rediscovering the empty table and rebuilding
+  // this read.
 
   // ⚠️ ARCHIVED ENTITIES ARE EXCLUDED, AND THIS IS THE READER THAT MAKES ARCHIVE
   // SAFE TO HAVE AT ALL. An archived row reaching this read would keep granting
@@ -4003,11 +4201,34 @@ Deno.serve(async (req: Request) => {
     // so every generation recorded "no product was chosen" no matter which
     // product it was written about. A column that is read must be selected; the
     // optional chain made the absence look like a legitimate null.
-    .select('id, name, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
+    .select('id, name, creator_summary, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
     .eq('owner_id', ownerId)
     .eq('voice_id', voice?.id ?? null)
     .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
     .is('archived_at', null)
+    // ⚠️ THIS WAS `.maybeSingle()`, WHICH THROWS ON A SECOND ROW. Under the old
+    // one-owned-per-voice index a second row was impossible, so the throw was
+    // unreachable. 0186 makes it possible — three of five real accounts own two
+    // things — and an unchanged `.maybeSingle()` would mean NO SCRIPT GENERATES
+    // AT ALL for them: a clean, honest refusal turned into an outage by a
+    // migration in another file.
+    //
+    // ⚠️ AND THE ROW IT PICKS IS A STOPGAP, NOT THE ANSWER. Oldest-first is
+    // deterministic and stable — the same creator gets the same product every
+    // time rather than whatever the planner happened to return — but "the one
+    // they registered first" is not "the one this video is about". The real
+    // answer is the picker: one product auto-selects, several are chosen by the
+    // creator inside the step that already asks what they are making content
+    // for, and Reference and Idea Mode get none unless the goal is commercial
+    // and they say which. Until that lands this reads ONE product where the
+    // creator may have two, and a script may talk about the wrong one.
+    //
+    // ⚖️ WHY THE WRITER MUST NOT SIMPLY CHOOSE. Picking among three products
+    // would have Twin infer commercial intent from nothing a creator said, which
+    // is the entitlement `entryDoor.ts` has a mutation-tested clamp against. A
+    // stable wrong-sometimes beats an inferred entitlement.
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle()
   if (ownedEntityErr) {
     console.error('product_entities lookup failed', ownedEntityErr)
@@ -5040,7 +5261,6 @@ Deno.serve(async (req: Request) => {
     // compiler clamps it so no answer can ever ask for LESS.
     const speakable = selectSpeakable(focusOrdered, 10, intent.substanceFloor)
     const coveredRows = kRows.filter((k) => k.kind === 'covered')
-    const aRows = Array.isArray(audienceRows) ? audienceRows : []
     const knowledgeParts: string[] = []
     if (speakable.length) {
       knowledgeParts.push('\nWHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID — real substance, not style. Build the video out of THIS. These are their own positions and examples, so you may put them in their mouth; anything you add that is not here is yours, and they did not say it.\n'
@@ -5053,10 +5273,6 @@ Deno.serve(async (req: Request) => {
       // unchecked claim about their back catalogue.
       knowledgeParts.push('\nALREADY COVERED — they have made a video about each of these. Do NOT hand them their own upload back; go at the topic from an angle they have not used. THIS LIST IS NEVER SPOKEN. It steers what you choose and must not appear in any line: a script that says "we\'ve had a video on this" is narrating our notes to the audience. Pick a DIFFERENT angle, then write as though the earlier video were simply not the subject.\n'
         + coveredRows.map((k) => `  * ${k.text}`).join('\n'))
-    }
-    if (aRows.length) {
-      knowledgeParts.push('\nWHAT THEIR AUDIENCE KEEPS ASKING — summarised, never quoted. A video that answers one of these is wanted before it is made. THIS LIST IS NEVER SPOKEN EITHER. Answer the question; do not announce that it was asked — a line like "one my audience asks about a lot" narrates our notes to the room and asserts something about their comment section that nobody verified.\n'
-        + aRows.map((a) => `  * ${a.summary} (asked ~${a.asked}x)`).join('\n'))
     }
     const knowledgeBlock = knowledgeParts.join('\n')
 
@@ -5104,15 +5320,49 @@ Deno.serve(async (req: Request) => {
     // Derived, never stored — a stored permission set is a second authority
     // that drifts from the relationship it came from, and then nobody knows
     // which one the script obeyed.
+    // ⚠️ `rel` IS DELIBERATELY LEFT READING THE ENTITY ALONE, AND A DRAFT OF
+    // THIS CHANGE HAD IT READ BOTH STORES. `scripts/ci/brief_consumers.json`
+    // records why that is wrong, and it is right: `brief.promotes` ALREADY
+    // reaches this prompt with per-relationship instructions — including the
+    // affiliate and sponsor disclosures, which `promotesLine` states as
+    // non-optional. Deriving these permissions from a SECOND store as well
+    // would put two interpretations of one fact in one prompt, which is the
+    // drift ProfileAssembler exists to end.
+    //
+    // ⚖️ SO THE TIES ARE READ FOR EXACTLY ONE THING: the product-scene refusal
+    // below, which has NO second channel. `readyNothingToSell` gates only the
+    // readiness questions, and `promotes === 'none'` is about somebody else's
+    // product, not about this creator having none.
+    const briefTies = briefListInline(briefRaw, 'commercialTies')
+    const tieConsistency = commercialConsistencyInline(briefTies, ownedEntity?.relationship)
     const rel = (ownedEntity?.relationship ?? 'NONE') as string
     const personalUse = (ownedEntity?.personal_use ?? 'NOT_CONFIRMED') as string
     // The one line that is NOT per-relationship: personal experience is
     // established by the creator alone, so no relationship may override it.
     const creatorExperience = personalUse === 'CONFIRMED'
+    // ⚠️ HOISTED, AND IT USED TO BE DERIVED 60 LINES BELOW THE BLOCK THAT NEEDED
+    // IT. `claimRulesFor` grants an owner `ownershipLanguage: true` — "my
+    // product", "we built this" — as a SEPARATE entitlement from
+    // `creatorExperience`. This file derived it only for the restriction union,
+    // where it is read NEGATIVELY: false forbids ownership language, true says
+    // nothing. So the permission half of the canonical rule reached no prompt,
+    // while the usage refusal below reached every one of them.
+    const ownershipLanguage = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
     const commercialCta = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
       || rel === 'AFFILIATE' || rel === 'SPONSOR'
       ? 'only_if_intended'
       : 'forbidden'
+    // ⚠️ THIS CONDITION CANNOT BE TRUE, AND IT IS LEFT ALONE ON PURPOSE. `rel`
+    // comes from a query filtered `.in('relationship', ['OWN_PRODUCT',
+    // 'OWN_SERVICE'])`, so neither side of this `||` is reachable. The working
+    // disclosure is `promotesLine` above, which states the affiliate and
+    // sponsor cases and calls the sponsorship one non-optional.
+    //
+    // ⚖️ MAKING THIS LINE LIVE WOULD BE A SECOND DISCLOSURE CHANNEL, NOT A FIX.
+    // Two independent paths emitting the same obligation is how they drift into
+    // disagreeing. Removing it is also not this PR's business: it is dead, not
+    // wrong, and deleting a branch is a change to reason about on its own.
+    // Filed rather than done.
     const disclosureRequired = rel === 'AFFILIATE' || rel === 'SPONSOR'
     const marketingClaims = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
       ? 'allowed'
@@ -5169,10 +5419,30 @@ Deno.serve(async (req: Request) => {
       // repeating the vendor's copy is an advertisement in a review's clothes.
       claimLines.push('\n- THIS IS A REVIEW, NOT AN ADVERTISEMENT. Do NOT repeat the maker\'s marketing claims at all, attributed or otherwise. A review may be built from exactly two things: observable product facts, and what the creator personally experienced.')
     }
+    // ⚠️ THE PERMISSION HALF WAS MISSING, AND THE REFUSAL BELOW FIRED ON EVERY
+    // GENERATION. `claimRulesFor` grants an owner TWO separate things —
+    // `ownershipLanguage` (they make and sell it) and `creatorExperience` (they
+    // use it as a customer does). This file emitted the second as a prohibition
+    // and the first as nothing at all. Combined with a `product_personal_use`
+    // question the registry deliberately never asks an owner, and an entity
+    // query filtered to owned relationships, the result was unconditional: a
+    // baker selling her own bread could not have Twin write "I bake these every
+    // morning" about it.
+    if (ownershipLanguage) {
+      claimLines.push('\n- THIS IS THE CREATOR\'S OWN PRODUCT AND THEY MAY SAY SO IN THE FIRST PERSON. "I make these", "I bake them fresh every morning", "we built this" — claims about MAKING or SELLING it are theirs to make, and a script that refuses them leaves a maker unable to describe their own work.')
+    }
     if (!creatorExperience && rel !== 'NONE') {
-      // Sharpens the same rule the substance check enforces per beat: nothing
-      // licenses a personal history except the creator being on record for it.
-      claimLines.push('\n- THE CREATOR HAS NOT CONFIRMED THEY PERSONALLY USE THIS. Write NO first-person usage claim about it — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Talk about what it does, never about what it did for them.')
+      // ⚖️ NARROWED FOR AN OWNER, NOT LIFTED. Making a thing is not being its
+      // customer: a founder who has never opened their own dashboard saying "it
+      // changed my workflow" is a fabricated testimonial no differently from an
+      // affiliate doing it, which is §12 with the relationship swapped. So an
+      // owner loses the CUSTOMER claim and keeps the MAKER one; everyone else
+      // keeps the full refusal, unchanged.
+      claimLines.push(ownershipLanguage
+        ? '\n- BUT THEY HAVE NOT CONFIRMED THEY USE IT AS A CUSTOMER DOES. Write no claim about being its USER — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Making it is not the same as living with it.'
+        // Sharpens the same rule the substance check enforces per beat: nothing
+        // licenses a personal history except the creator being on record for it.
+        : '\n- THE CREATOR HAS NOT CONFIRMED THEY PERSONALLY USE THIS. Write NO first-person usage claim about it — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Talk about what it does, never about what it did for them.')
     }
     if (disclosureRequired) {
       // A property of the entity, not a pacing decision the writer may weigh.
@@ -5208,11 +5478,9 @@ Deno.serve(async (req: Request) => {
         if (t !== '') unionForbidden.push(t)
       }
     }
-    // ⚠️ DERIVED HERE RATHER THAN ASSUMED. A first draft of this block referenced
-    // an `ownershipLanguage` that does not exist in this file — it lives in
-    // `claimRulesFor`, which this function cannot import. Reading it off `rel`
-    // the same way the lines above do keeps one source of truth in this scope.
-    const ownershipLanguage = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
+    // ⚖️ `ownershipLanguage` IS DERIVED ONCE, ABOVE, beside the claim lines that
+    // now also need it — it used to be computed here, where only this block
+    // could see it.
     if (ownedEntity && !ownershipLanguage) {
       unionForbidden.push('Do not imply the creator owns, makes or sells this — they do not.')
     }
@@ -5275,6 +5543,33 @@ Deno.serve(async (req: Request) => {
       claimLines.push('\n- WHAT IS TRUE ABOUT THIS PRODUCT, read from its own pages and safe to state:\n'
         + usableProductFacts.join('\n')
         + '\n  Use these rather than inventing capabilities. Anything about this product NOT listed here is unverified — describe it in general terms or leave it out.')
+    }
+
+    // ── THE ONE LINE THE CREATOR TYPED THEMSELVES ────────────────────────
+    //
+    // ⚠️ `creator_summary` WAS WRITTEN AND NEVER READ. The add form asks "in one
+    // line, what is it and who is it for?" and stores the answer
+    // (`ProductLibrary.tsx` → `api.ts` → `product_entities.creator_summary`);
+    // this function's select omitted the column, so every creator who typed it
+    // watched a script get written without it. Same defect class as
+    // `selected_product_id` above: a column that is read must be selected.
+    //
+    // IT IS A FALLBACK, NOT A PEER OF THE GRADED FACTS. When the page read
+    // succeeded, `usableProductFacts` carries claims a classifier graded and the
+    // creator reviewed; adding an ungraded sentence beside them would put two
+    // authorities on one question and let an unreviewed line inherit the trust
+    // of reviewed ones. When the read FAILED — NEEDS_SOURCE, IMPORT_FAILED, or
+    // a product that has no page at all — the writer otherwise has a name and
+    // nothing else, and a name is not enough to write from. So it is emitted
+    // ONLY in that case, and LABELLED as the creator's own description rather
+    // than as verified fact, because it was never verified against anything.
+    const creatorSummaryLine = typeof (ownedEntity as { creator_summary?: unknown } | null)?.creator_summary === 'string'
+      ? String((ownedEntity as { creator_summary: string }).creator_summary).trim()
+      : ''
+    if (usableProductFacts.length === 0 && creatorSummaryLine !== '') {
+      claimLines.push('\n- HOW THE CREATOR DESCRIBES THIS PRODUCT, in their own words: '
+        + creatorSummaryLine.slice(0, 300)
+        + '\n  Nothing has been verified about this product beyond this line — it is the creator\'s own description, not a checked fact. Use it to know what the thing IS and who it is FOR. Do not turn it into a capability claim, a result or a figure.')
     }
 
     const claimRulesBlock = claimLines.join('')
@@ -5357,8 +5652,21 @@ Deno.serve(async (req: Request) => {
     // So the refusal is narrowed to what is true under BOTH possibilities: do
     // not write a scene that DEPENDS on one. That is safe if they have no
     // product and harmless if they do, and it claims nothing we did not observe.
-    const recordedNoProduct = !!ownedEntity && ownedEntity.relationship === 'NONE'
-    const unrecordedProduct = !ownedEntity
+    // ⚠️ THIS BRANCH COULD NOT FIRE, AND THE REASON IS STRUCTURAL RATHER THAN
+    // STATISTICAL. It read `ownedEntity.relationship === 'NONE'` — and the
+    // query that produces `ownedEntity` filters
+    // `.in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])` (see the lookup
+    // above). A NONE row cannot come back from it at all, so the condition was
+    // dead by construction, not merely unmet by today's data. (Production
+    // agrees: ZERO of the seven stored entities carries NONE.) Meanwhile the
+    // "I sell nothing" answer writes `pre_script_brief.commercialTies`, which
+    // this file never read — so the creator who answered most clearly fell
+    // through to the weaker unrecorded wording below.
+    const recordedNoProduct = saysSellsNothingInline(briefTies, ownedEntity?.relationship)
+    // ⚖️ UNRECORDED NOW MEANS BOTH STORES ARE SILENT, not just this one. An
+    // onboarding answer with no entity row is an ANSWER, and treating it as
+    // silence is the same defect this block already names, one store over.
+    const unrecordedProduct = tieConsistency.verdict === 'unrecorded'
     const noProduct = recordedNoProduct || unrecordedProduct
     const cannotShow = !noProduct && showability !== 'ALWAYS'
     const doNotUse = [
@@ -6654,6 +6962,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       product_claim_gaps: findProductClaimGaps(
         (Array.isArray(declared) ? declared : []) as Array<Record<string, unknown>>,
         productFactValues).length,
+      // ⚠️ THE N1 COUNTER. Comparative or magnitude claims about a product on a
+      // commercial creator with NOTHING on record. Zero is the expected reading
+      // and an absent counter would look identical to it — which is why it is
+      // written even when nothing is found.
+      comparative_claim_gaps: comparativeFailures(
+        declared, goal === 'sell' || ownedEntity !== null, productFactCountOf(ownedEntity)).length,
       proof_quality: proofQualityCounts(
         (templated.bp as { beat_plan?: unknown })?.beat_plan),
       // ⚠️ THE SHOT THE CREATOR CANNOT SUPPLY. Twin stopped directing screen
@@ -6768,7 +7082,19 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // real spend on a path the creator already paid for, so this buys exactly
     // one attempt and then stops guessing. Beats that survive the attempt are
     // NOT shipped as written — see below.
-    let entFails = entitlementFailures(declared, suppliedForCheck)
+    // ⚖️ COMMERCIAL MEANS "SELLS OR PROMOTES SOMETHING", and the two signals we
+    // have are the stated goal and an owned product entity. N1 carried a
+    // commercial goal with an EMPTY offer field, which is exactly the shape
+    // that must still count.
+    const isCommercial = goal === 'sell' || ownedEntity !== null
+    // ⚠️ MERGED INTO THE SAME LIST SO IT GETS THE SAME TREATMENT: one repair
+    // call, a re-check, and — for anything that survives — the existing "never
+    // spoken as written" path below. A second parallel mechanism would be a
+    // second thing to get subtly wrong, and this one already has the shape.
+    let entFails = [
+      ...entitlementFailures(declared, suppliedForCheck),
+      ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
+    ]
     const creatorQuestions: string[] = []
     if (entFails.length) {
       console.warn(JSON.stringify({
@@ -6804,7 +7130,10 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         }
         // RE-CHECK. A repair nobody verified is the same trust we just withdrew
         // from the first draft.
-        entFails = entitlementFailures(declared, suppliedForCheck)
+        entFails = [
+          ...entitlementFailures(declared, suppliedForCheck),
+          ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
+        ]
         console.log(JSON.stringify({ event: 'entitlement_repair', applied, still_failing: entFails.length }))
       } catch (e) {
         console.error('entitlement repair failed', String((e as Error)?.message ?? e))
@@ -7314,7 +7643,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         // which is the one thing this repo's standing rule forbids. Its own test
         // caught it. Reuse the canonical marker; do not paraphrase it.
         const q = 'Only you can supply this. This beat came back as an unfilled template — what would you actually say here?'
-        b.line = q
+        // ⚠️ THE QUESTION GOES IN `ask`, NOT IN THE SPOKEN LINE — the same fix as
+        // the product-claim site below, and for the same reason: `line` is what
+        // the teleprompter reads out. The wording is still load-bearing and is
+        // still the canonical marker; what changed is the FIELD it is written to
+        // and, with it, where `asksCreator` looks for it.
+        b.ask = q
+        b.line = ''
         b.substance = 'needs_user'
         b.substance_evidence = ''
         if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
@@ -7353,7 +7688,25 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       const q = f.code === 'impossible_product_claim'
         ? 'This beat needs a real detail about your product, and nothing about it was supplied. What does it actually do here?'
         : 'This beat describes your product in a way the supplied details do not cover. What is the accurate version?'
-      b.line = q
+      // ⚠️ THE QUESTION GOES IN `ask`, AND THE SPOKEN LINE GOES EMPTY. This site
+      // used to write the question into `b.line` and never set `b.ask` at all,
+      // and `line` is the SPOKEN field: `recordingScriptAdapter` decides an ask
+      // card on `seg.ask` (lines 192 and 337) and knows nothing about
+      // `substance`. So the question passed every filter the adapter has — it is
+      // ordinary prose, not a bracketed placeholder — and reached the
+      // teleprompter and the shot list under WHAT TO SAY. Measured in a real
+      // run: a creator was told to say, on camera, "This beat needs a real
+      // detail about your product, and nothing about it was supplied. What does
+      // it actually do here?"
+      //
+      // ⚖️ THE OTHER TWO ESCALATION PATHS ALREADY DO THIS, AND THIS ONE WAS THE
+      // ODD ONE OUT. The personal-fact ask sets `b.ask` and empties the line —
+      // "there is NO line, and empty is honest" — and so does the
+      // reference-overlap repair. Three writers of the same state, and only the
+      // two that agreed were correct. That is why every previously observed
+      // ask-beat rendered as a question card: those took the other two paths.
+      b.ask = q
+      b.line = ''
       b.substance = 'needs_user'
       b.substance_evidence = ''
       if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
@@ -7958,8 +8311,22 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       'nothing on record supports this beat',
       'this beat only works as something you have personally done',
     ]
+    // ⚠️ `ask` IS READ HERE BECAUSE THAT IS WHERE THE QUESTIONS LIVE NOW, and
+    // reading only `line` was ALREADY missing two of the four escalation sites.
+    // The personal-fact ask and the reference-overlap repair have always set
+    // `ask` and emptied `line`, so their questions were invisible to this check
+    // and only the 40% density rule could catch them — a script with one or two
+    // such beats was BILLABLE while asking the creator to write it. Moving the
+    // other two sites off `line` without moving this read would have widened
+    // that hole to all four.
+    //
+    // ⚖️ BOTH FIELDS, NOT EITHER. A stored generation written before this change
+    // still carries its question in `line`, and a billing rule that stopped
+    // reading `line` would re-bill nothing but would misreport every old row a
+    // reader asks about later.
     const asksCreator = finalBeats.some((b) => {
-      const l = String((b as { line?: unknown })?.line ?? '').toLowerCase()
+      const r = b as { line?: unknown; ask?: unknown }
+      const l = `${String(r?.line ?? '')} ${String(r?.ask ?? '')}`.toLowerCase()
       return OUR_ASKS.some((a) => l.includes(a))
     })
     const unbillable = asksCreator

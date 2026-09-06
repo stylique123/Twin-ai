@@ -73,12 +73,34 @@ describe('what it keeps and what it drops', () => {
     expect(BUILD).toMatch(/const askSlot = \(key: string\) => `twinai\.ask\.\$\{key\}`/)
   })
 
+  // ⚠️ SCOPED TO THE ANSWER HELPERS THEMSELVES, NOT TO EVERYTHING BEFORE THE
+  // COMPONENT. This assertion used to slice from `function rememberAnswers` all
+  // the way to `export default function` and forbid `localStorage` anywhere in
+  // it — which is right about the answers and wrong about its neighbours. The
+  // plan screen's OPT-OUT is a standing preference and belongs in localStorage
+  // precisely because it must outlive the tab; landing it in this span turned a
+  // correct change into a failure of an unrelated guard.
+  //
+  // ⚖️ THE INTENT IS UNCHANGED AND NARROWER: each ANSWER slot helper, checked on
+  // its own body. A span that grows with its neighbours stops describing what it
+  // was written to protect — the same defect as the fixed 1400-character slice
+  // this repo has already corrected once.
   it('uses sessionStorage, which dies with the tab like the transcript slot', () => {
-    // ⚖️ localStorage would outlive the tab and hand a stale answer to an
-    // unrelated video weeks later.
-    const region = BUILD.slice(BUILD.indexOf('function rememberAnswers'), BUILD.indexOf('export default function'))
-    expect(region).toMatch(/sessionStorage\.setItem/)
-    expect(region).not.toMatch(/localStorage/)
+    // ⚖️ EVERY LINE THAT TOUCHES AN ANSWER SLOT, rather than a span of source.
+    // Keying on `answersSlot(`/`askSlot(` is what these slots ARE, so a renamed
+    // helper or a reordered file changes nothing here — and a new read added
+    // years from now is covered the day it is written.
+    const lines = BUILD.split('\n').filter((l) => /\b(answersSlot|askSlot)\(/.test(l))
+    // Guards the guard: an empty list would pass every assertion below.
+    expect(lines.length, 'no answer-slot accesses found — the marker moved')
+      .toBeGreaterThanOrEqual(4)
+    for (const l of lines) {
+      if (/=>\s*`twinai\./.test(l)) continue // the slot-name definitions themselves
+      expect(l, `an answer slot reached for the wrong storage: ${l.trim()}`)
+        .not.toMatch(/localStorage/)
+      expect(l, `an answer slot must use sessionStorage: ${l.trim()}`)
+        .toMatch(/sessionStorage\./)
+    }
   })
 
   it('treats a CORRUPT slot as an empty one', () => {

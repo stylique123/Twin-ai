@@ -256,6 +256,31 @@ export function answeredShowability(
   return answer
 }
 
+/**
+ * Turn a picked capability answer into the flag `answeredShowability` will read,
+ * WITHOUT "I am not sure yet" becoming "no".
+ *
+ * ⚠️ THE ONE ANSWER THAT DOES NOT WIN OVER THE FLAGS. `answeredShowability`
+ * returns every answer verbatim except UNKNOWN, which it hands to
+ * `inferShowability(type, flags)` — and that reads `false` as NEVER and null as
+ * UNKNOWN. So a form building its flag as `answer === 'ALWAYS'` turns the option
+ * a creator picks to say they do not know into a stored denial, silently
+ * forbidding every scene that shows the product.
+ *
+ * ⚖️ SOMETIMES AND NEVER ALSO PRODUCE `false` HERE, AND THAT IS CORRECT. They are
+ * real answers, so `answeredShowability` returns them and never consults the
+ * flag at all. UNKNOWN is the single value that must arrive as null, which is
+ * why the null check precedes the coercion rather than following it.
+ *
+ * ⚖️ LIVES HERE, NOT ON THE FORM. Two add flows need it and a test asserts it;
+ * three hand-written copies of a rule about THIS file's function is the drift
+ * this file keeps catching.
+ */
+export function capabilityFlag(answer: Showability | null | undefined): boolean | null {
+  if (answer === null || answer === undefined || answer === 'UNKNOWN') return null
+  return answer === 'ALWAYS'
+}
+
 /** The relationships that mean the creator owns the thing. Used in enough
  *  places that a second hand-written list would eventually disagree with this
  *  one — which is the drift bug this repo keeps catching. */
@@ -332,16 +357,52 @@ export function mintFromWorkKind(
      *  step and was minted SAAS anyway. */
     ownProductKind?: OwnProductKind | null
     ownServiceKind?: OwnServiceKind | null
+    /**
+     * ⚠️ DID THE CREATOR ACTUALLY TOUCH THE OFFER FIELD?
+     *
+     * The scan GUESSES an offer from their posts and the screen says so out
+     * loud: "We guessed this from your posts. We will not use it until you edit
+     * it." `brief.offer` keeps that promise — it is written as
+     * `offerTouched ? product : null`. THE ENTITY MINT DID NOT.
+     *
+     * Observed live on a real bakery account: a product she never added, named
+     * "Fresh artisan sourdough loaves for local orders and curated home baking
+     * gear recommendations via link in bio". That is the raw guess in a NAME
+     * field, and it asserts a commercial channel — a bio link — she does not
+     * have. She was then blocked from adding the products she does sell,
+     * by a row created from a sentence nobody confirmed.
+     *
+     * ⚖️ SO AN UNTOUCHED GUESS NOW MINTS NEITHER A NAME NOR A DESCRIPTION.
+     * Absent is honest; a guess wearing a creator's voice is not.
+     */
+    offerConfirmed?: boolean
   } = {},
 ): DraftEntity | null {
   const mint = kind ? WORK_KIND_MINT[kind] : undefined
   if (!mint) return null
-  const name = (opts.name ?? '').trim()
   const type = refinedEntityType(mint.type, opts)
+  // ⚠️ THE OFFER STRING IS A DESCRIPTION, AND IT WAS BEING WRITTEN AS A NAME.
+  // "Fresh artisan sourdough loaves for local orders" answers "what is it and
+  // who is it for", not "what do you call it". A name field holding a sentence
+  // is what a creator sees at the top of their Product Library, and it reads as
+  // something the system decided about them.
+  //
+  // ⚖️ AND IT IS ONLY KEPT AT ALL IF THEY TOUCHED IT. Untouched means the screen
+  // promised not to use it, so neither field takes it: `name` stays null and the
+  // Product Library asks "What do you call it?" like it does for any product
+  // with no name. THE PROMOTION OF A GUESS INTO A STORED ENTITY NEEDS THE SAME
+  // CONFIRMATION THE ONBOARDING SCREEN OFFERED.
+  const offered = (opts.name ?? '').trim()
+  const confirmed = opts.offerConfirmed === true && offered !== ''
   return {
-    name: name === '' ? null : name,
-    // A Q3 mint never asks this question, so it has nothing to carry.
-    creatorSummary: null,
+    // ⚠️ NEVER THE OFFER STRING. A Q3 mint has no name to give — the creator was
+    // never asked one — and null is the state the Product Library knows how to
+    // ask about. Inventing one from the offer is what produced a sentence.
+    name: null,
+    // ⚖️ THE CONFIRMED OFFER LANDS HERE, WHERE IT IS TRUE. `creator_summary`
+    // reaches the writer labelled as the creator's OWN description of the
+    // product, which an edited offer line is and an unedited guess is not.
+    creatorSummary: confirmed ? offered : null,
     type,
     relationship: mint.relationship,
     // The default, and nothing here may move it. A founder owning a product

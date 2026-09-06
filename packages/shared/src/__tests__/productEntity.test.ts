@@ -70,9 +70,26 @@ describe('Q3 mints ownership, so Q4 never re-asks it', () => {
     }
   })
 
-  it('software mints a SaaS product the creator owns', () => {
+  // ⚠️ THIS TEST USED TO ASSERT `name: 'Twin AI'`, AND THE FIXTURE IS WHY IT
+  // PASSED FOR SO LONG. The `name` option is fed from `profile.offer` — an OFFER
+  // DESCRIPTION written by the scan, not a product name. A fixture of "Twin AI"
+  // is a clean name production never supplies; the real value looked like
+  // "Fresh artisan sourdough loaves for local orders and curated home baking
+  // gear recommendations via link in bio", which is what a bakery creator found
+  // sitting in her Product Library as a product she never added.
+  //
+  // So the test blessed the conflation rather than catching it. A Q3 mint now
+  // produces NO name — the creator was never asked one — and the Product
+  // Library asks "What do you call it?" the way it does for any unnamed product.
+  it('software mints a SaaS product the creator owns, and gives it no name', () => {
     const e = mintFromWorkKind('saas', { name: 'Twin AI', now: NOW })
-    expect(e).toMatchObject({ type: 'SAAS', relationship: 'OWN_PRODUCT', name: 'Twin AI' })
+    expect(e).toMatchObject({ type: 'SAAS', relationship: 'OWN_PRODUCT', name: null })
+  })
+
+  // ⚖️ AND A CONFIRMED OFFER IS KEPT, AS THE DESCRIPTION IT IS.
+  it('a confirmed offer becomes the description, never the name', () => {
+    const e = mintFromWorkKind('saas', { name: 'Twin AI', offerConfirmed: true, now: NOW })
+    expect(e).toMatchObject({ name: null, creatorSummary: 'Twin AI' })
   })
 
   it('the licensed professional and the local service mint a SERVICE they own', () => {

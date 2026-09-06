@@ -176,6 +176,24 @@ export const EXCLUDED = {
     + 'is SAFE here, where merging 0169 early would have made every successful extraction '
     + 'store nothing. The capture flow and the writer integration are the units that must '
     + 'wait for the column to exist, and they are not in this change.',
+  '0186_three_places_agreed_on_one_wrong_thing':
+    'Narrows the owned-entity uniqueness index on `product_entities`, which is itself '
+    + 'excluded above for the staging FK-ordering reason -- staging has no such table, so '
+    + 'this fails on its first statement rather than passing vacuously. THE EXCLUSION IS '
+    + 'INHERITED, not a new judgement, and it is the FOURTH migration to inherit it (0169, '
+    + '0170, 0177 were the first three).\n\n'
+    + '\u26a0\ufe0f AND IT WAS APPLIED HERE FIRST, WHICH WAS WRONG, AND THE MATRIX SAID SO '
+    + 'IN 2m57s: "relation \\"public.product_entities\\" does not exist". The rule that a '
+    + 'new migration belongs in the APPLIED list is right and has a documented exception '
+    + 'for exactly this table; applying the general rule without reading the exception is '
+    + 'how a run dies before a single test executes. `check_staging_migration_coverage` '
+    + 'could not catch it: it asks whether every migration is applied or excluded, never '
+    + 'whether an APPLIED migration\'s table is created by one that is.\n\n'
+    + '\u26a0\ufe0f MANUAL APPLY, NOT YET DONE. Excluding it means nothing applies it '
+    + 'anywhere, so it must be applied to production BY HAND before the plural-entity '
+    + 'behaviour is real. Until then production still holds the OLD index and still refuses '
+    + 'a creator their second owned product -- the code in this PR is correct and inert. '
+    + 'This is the debt every exclusion here carries, stated rather than assumed.',
   '0177_the_fallback_nobody_could_write':
     'Adds `creator_summary` to `product_entities`, which is itself excluded above for the '
     + 'staging FK-ordering reason -- staging has no such table, so this would fail on its '

@@ -164,9 +164,18 @@ export const KNOWN_LIMITATIONS: readonly KnownLimitation[] = Object.freeze([
     cost:
       'Low to wire, high to get wrong in either direction, and CHEAP TO LEAVE RIGHT NOW. '
       + 'Leaving it costs the guarantee \u00a714 was written to give -- a script may currently '
-      + 'make claims about an entity with no name and no evidence -- but that exposure is '
-      + 'bounded by the same measurement: one entity, one owner. The cost of wiring it blind is '
-      + 'unchanged and unbounded, because nobody knows what it would block.',
+      + 'make claims about an entity with no name and no evidence.\n\n'
+      + '\u26a0\ufe0f THE BOUND ON THAT EXPOSURE WAS STALE AND IS CORRECTED HERE. It read '
+      + '"bounded by the same measurement: one entity, one owner". Re-measured 2026-09-05, '
+      + 'read-only, live rows only: EIGHT rows across EIGHT DISTINCT OWNERS, all eight with '
+      + 'evidence null and THREE with no name at all. The exposure grew 8x while the decision '
+      + 'did not change, and a cost note that describes last month\u2019s population is the '
+      + 'way a deferral quietly stops being the one that was agreed.\n\n'
+      + '\u2696\ufe0f THE TRIGGER STILL HAS NOT FIRED, AND THIS STAYS OPEN. '
+      + 'CLAIM_STOP_MIN_POPULATION is 25; eight is short of it. Only the "more than one '
+      + 'owner" half of the condition is now satisfied, and half a trigger is not a trigger. '
+      + 'The cost of wiring it blind is unchanged and unbounded, because nobody knows what it '
+      + 'would block.',
     status: 'OPEN',
   }),
   Object.freeze({
@@ -257,6 +266,125 @@ export const KNOWN_LIMITATIONS: readonly KnownLimitation[] = Object.freeze([
     cost:
       'Leaving it costs nothing until somebody quotes the per-type direction as proven. '
       + 'The failure it guards against is exactly that quote.',
+    status: 'OPEN',
+  }),
+  Object.freeze({
+    id: 'AUDIENCE_QUESTIONS_HAS_NO_SUPPLY',
+    what:
+      'generate-blueprint read the top 8 `audience_questions` rows and '
+      + 'interpolated them into the knowledge block as "WHAT THEIR AUDIENCE KEEPS '
+      + 'ASKING". The table has ZERO rows, has never had one, and has no writer '
+      + 'anywhere: 0121 grants SELECT and DELETE to `authenticated` and INSERT to '
+      + 'nobody. A live read against a table nothing can fill is the '
+      + '"written and never read" defect inverted -- read and never written -- and '
+      + 'it made the prompt look like it carried audience demand when it never could.',
+    decision:
+      'THE READER IS DELETED, AND A WRITER WAS DELIBERATELY NOT BUILT INSTEAD.\n\n'
+      + '\u26a0\ufe0f THE EARLIER RULING WAS "the worker writes it, service-role, no '
+      + 'client policy", and the measurement retired it. Of 1,080 stored '
+      + '`creator_knowledge` rows, ONE carries an audience-asks frame; 18 mention '
+      + '"ask" at all and 6 mention "question". Captions and transcripts are never '
+      + 'persisted -- `brand_voices.profile` has no captions key across all 44 rows -- '
+      + 'so `creator_knowledge` is the whole available corpus. A worker writing from '
+      + 'it would produce roughly one row across every creator on the platform: a '
+      + 'feature whose ON and OFF states are indistinguishable, which is the exact '
+      + 'failure the ruling was trying to avoid.\n\n'
+      + '\u2696\ufe0f AND THE CLIENT-TYPED VERSION WAS REFUSED FOR A DIFFERENT REASON. '
+      + 'Asking a creator to type three questions their audience asks is a FOURTH '
+      + 'place we ask for something we could observe, against a product direction '
+      + 'that is otherwise infer-confirm-never-ask.',
+    revisitWhen:
+      'COMMENT INGESTION LANDS. What this block wanted is what a creator\u2019s '
+      + 'AUDIENCE asks; the scan only ever captured what the CREATOR says, and those '
+      + 'are different corpora. Comments are the real source: public, already inside '
+      + 'the Apify pipeline, and `commentsDatasetUrl` is already present in the '
+      + 'scrape output. The supply is one fetch away, not one feature away. When it '
+      + 'lands, restore the read AND the block together -- a writer without the '
+      + 'reader repeats this entry from the other side.',
+    cost:
+      'Deleting costs nothing measurable: the block could only ever render empty, so '
+      + 'no prompt changes for any creator. Leaving it would have cost the next '
+      + 'person the same investigation -- find the empty table, assume the writer is '
+      + 'missing, build one against a corpus that supports a single row. That is the '
+      + 'cost this entry exists to prevent, and it is why the reason is recorded '
+      + 'rather than the code simply removed.',
+    status: 'OPEN',
+  }),
+  Object.freeze({
+    id: 'TWO_SPELLINGS_OF_A_STATED_SOURCE',
+    what:
+      '`KNOWLEDGE_SOURCES` now contains BOTH `user` ("the creator answered '
+      + 'directly. The highest authority there is") and `asked` ("the only source '
+      + 'in this product a creator STATED rather than a model inferred"). They '
+      + 'mean the same thing. `asked` is what the only live writer -- '
+      + '`answer-beat-ask`, since migration 0128 -- actually emits; `user` is what '
+      + 'the union documented and what test fixtures and `filledFrom`\'s comment '
+      + 'referred to. The union omitted the written one, so `readKnowledgeItem` '
+      + 'validated it away and the highest-provenance row in the product reached '
+      + 'the writer with no provenance.',
+    decision:
+      'ADD `asked` NOW, COLLAPSE THE PAIR LATER, AND THE SPLIT IS DELIBERATE.\n\n'
+      + '\u26a0\ufe0f THE RENAME LIVES IN AN EDGE FUNCTION. Changing what '
+      + '`answer-beat-ask` writes makes the change DB_EDGE_AUTH and puts it behind '
+      + 'the staging matrix lane; adding the member is static and fixes the '
+      + 'reader today. Shipping the smaller half first is not a shortcut here -- '
+      + 'the reader is the side that was losing data.\n\n'
+      + '\u2696\ufe0f AND NO DATA HAS TO MOVE WHICHEVER WINS. Production holds '
+      + 'ZERO rows carrying either value: 610 `caption`, 478 `transcript`, and '
+      + 'nothing else. The pair can be collapsed by editing two files rather than '
+      + 'by backfilling a column, and that stays true until the first creator '
+      + 'answers a beat ask.',
+    revisitWhen:
+      'THE FIRST `asked` ROW IS STORED, or the edge function is being changed for '
+      + 'another reason and the rename is free. After that a collapse needs a '
+      + 'backfill, and the cheap window has closed.',
+    cost:
+      'Two members meaning one thing is exactly the "two near-identical truth '
+      + 'systems" this codebase keeps paying to remove, and leaving it invites a '
+      + 'future reader to treat them as a meaningful distinction -- to decide that '
+      + '`user` outranks `asked`, or the reverse, on no evidence. The guard '
+      + '`check_knowledge_sources_agree` stops the union and the writers drifting '
+      + 'again, but it cannot tell two spellings of one idea from two ideas.',
+    status: 'OPEN',
+  }),
+  Object.freeze({
+    id: 'ASSERTIONS_PINNED_TO_CALL_SHAPE',
+    what:
+      'TWO source-text guards broke on 2026-09-05 from a refactor that changed no '
+      + 'behaviour. `a-tier-zero-that-cannot-see` and `opt-in-is-exactly-true` both '
+      + 'pinned the literal `NOT_RUN(classifyDownloadFailure(e), phaseOf(e))`; adding '
+      + 'a fourth argument broke both while the properties they exist for -- a failed '
+      + 'download passes no tier_zero, the visual pass returns rather than throws -- '
+      + 'stayed true throughout. `theWriterGetsTheCommunityMap` broke the same day '
+      + 'for the same reason, anchored on a column ORDER rather than on the query. '
+      + 'Swept: 546 test files, 241 read source text, and 84 assertions pin a call '
+      + 'with two or more arguments -- the exact shape that broke.',
+    decision:
+      'NOT GATED, AND THE 84 IS AN EXPOSURE BOUND RATHER THAN A DEFECT COUNT.\n\n'
+      + '\u26a0\ufe0f MOST OF THE 84 ARE CORRECT. `imagePaths.slice(0, MAX_IMAGES)`, '
+      + '`setTimeout(look, RECOVERY_POLL_MS)`, `sanitizeBlueprintLinks(rescue.bp, '
+      + 'rescue.allow)` -- in each the arguments ARE the property being asserted. '
+      + 'What broke was different: assertions whose stated intent concerned only the '
+      + 'return value while the argument list was incidental to it.\n\n'
+      + '\u2696\ufe0f AND THE DISTINCTION IS SEMANTIC, SO NO GREP DECIDES IT. A '
+      + 'ratchet on this number would fail 84 correct tests, and a guard that accuses '
+      + 'correct code is how a guard teaches people to ignore it -- the lesson '
+      + '`check_column_readers` paid for at 29-apparent-versus-7-real. The refinement '
+      + 'that took the symbol inventory from 232 to 39 has no equivalent here, '
+      + 'because the residue is not mechanically separable.',
+    revisitWhen:
+      '\u26a0\ufe0f A THIRD REFACTOR BREAKS ASSERTIONS WHOSE PROPERTIES STILL HOLD. '
+      + 'Two occurrences in one day is a pattern; three is a rule, which is the same '
+      + 'threshold the phase-3 fixture failures are held to. At that point the thing '
+      + 'to build is not a gate but a WATCH LIST -- print the assertions that pin a '
+      + 'signature before changing one, so the author sees them rather than CI '
+      + 'accusing them afterwards.',
+    cost:
+      'Leaving it costs a broken build on some future signature change, and the '
+      + 'author paying the ten minutes to tell a brittle proxy from a real property. '
+      + 'That is the RIGHT ten minutes -- it is the judgement the grep cannot make. '
+      + 'Gating it would cost that ten minutes on all 84, mostly to conclude the test '
+      + 'was already correct.',
     status: 'OPEN',
   }),
   Object.freeze({
