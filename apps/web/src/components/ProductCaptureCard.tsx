@@ -163,7 +163,7 @@ export function ProductCaptureCard(
     <div className="rounded-card border border-white/10 bg-white/[0.03] p-4">
       <div className="flex items-start justify-between gap-3">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
-          Teach your twin
+          My Twin
         </p>
         <button type="button" onClick={dismiss} className="text-xs text-stone hover:text-cream">
           Not now

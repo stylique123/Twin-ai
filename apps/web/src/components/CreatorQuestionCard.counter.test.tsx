@@ -25,7 +25,7 @@ afterEach(() => cleanup())
 describe('the card never shows an invented target', () => {
   it('renders the question with no N/10-style fraction anywhere', async () => {
     render(<CreatorQuestionCard />)
-    await waitFor(() => expect(screen.getByText('Teach your twin')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('My Twin')).toBeTruthy())
     // The bank is 10 questions long and 3 are already put — if a progress
     // fraction still rendered it would say "3/10". It must not.
     expect(screen.queryByText(/^\d+\/10$/)).toBeNull()
@@ -47,7 +47,7 @@ describe('the card asks about what the store lacks', () => {
     render(<CreatorQuestionCard />)
     // The bank's first question is an OPINION ("what does everyone believe that
     // is wrong"). With no experience on record, the card must not ask it.
-    await waitFor(() => expect(screen.getByText('Teach your twin')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('My Twin')).toBeTruthy())
     expect(screen.queryByText(/almost everyone in your niche believe/i)).toBeNull()
     expect(screen.getByText(/learned the expensive way/i)).toBeTruthy()
   })
