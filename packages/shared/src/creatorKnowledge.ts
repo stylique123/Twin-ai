@@ -273,21 +273,6 @@ export function readKnowledgeItem(raw: unknown): KnowledgeItem | null {
     sourceUrl: line(src.sourceUrl ?? src.source_url),
     lastObservedAt: line(src.lastObservedAt ?? src.last_observed_at),
     sourceExpiry: line(src.sourceExpiry ?? src.source_expiry),
-    // ⚠️ THE READER DROPPED THIS FIELD ENTIRELY, AND IT IS THE BIGGER HALF OF
-    // THIS CHANGE. `source` is stored on all 1,088 production rows — 610
-    // caption, 478 transcript — and `readKnowledgeItem` never returned it, so
-    // EVERY beat handed to the writer carried `attribution: ''`. Not just the
-    // `asked` rows: all of them. The writer has never once been able to tell a
-    // confirmed answer from a line lifted off a caption, which is precisely the
-    // distinction `filledFrom`'s own comment says the attribution exists for.
-    //
-    // ⚖️ VALIDATED AGAINST THE UNION, NOT COERCED INTO IT. An unrecognised
-    // value becomes `undefined` — "we do not know where this came from" — and
-    // never a guess, for the same reason an absent `basis` degrades to
-    // `inferred` rather than being promoted to `stated`.
-    source: (KNOWLEDGE_SOURCES as readonly string[]).includes(String(src.source))
-      ? (String(src.source) as KnowledgeSource)
-      : undefined,
     // ⚖️ ABSENT READS AS NULL, NEVER AS THE EMPTY STRING. "Recorded as costing
     // nothing" and "nobody asked what it cost" are different states, and only
     // null can say the second one. `line` already collapses "" to null.
