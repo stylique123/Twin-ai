@@ -37,6 +37,7 @@ import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText } from '../_shared/shotListSync.ts'
 import { syncRetentionMapToScript } from '../_shared/retentionMapSync.ts'
 import { syncWhyItWorksToScript } from '../_shared/whyItWorksSync.ts'
+import { hooksWithoutASubject } from '../_shared/hookSubject.ts'
 import { syncSetupLabels } from '../_shared/setupLabelSync.ts'
 import { evaluateSemanticRepetitionTrigger } from '../_shared/semanticRepetition.ts'
 import {
@@ -7116,6 +7117,24 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // is why it is written even when nothing is found.
       screen_capture_directions: screenCaptureDirectionsInline(
         (templated.bp as { beat_plan?: unknown })?.beat_plan),
+      // ⚠️ FIX 8 (bakery). Hook options that name NOTHING — no subject, no
+      // promise, only words that point outside the video. Measured twice in
+      // production as `hook_options[0]`, the RECOMMENDED pick: "I am doing a
+      // little bit of the same thing right here."
+      //
+      // ⚠️ THE ANALYSIS FILED THIS AS "signature phrases must not become
+      // hooks" AND THAT CAUSE IS DISPROVEN. `extractSignaturePhrases` needs a
+      // phrase in 3 different videos; "little bit of the same" is in ONE of
+      // that creator's four. It was never in the store, so a rule guarding the
+      // store could not have fired on either hook.
+      //
+      // ⚖️ COUNTED, NOT ENFORCED, and in that order deliberately. Thirty hooks
+      // from four accounts is one population, and `demoteUnsupportedHooks` is
+      // already the place to reorder on when this is worth acting on. Zero is
+      // the expected reading and an absent counter would look identical to it,
+      // which is why this is written even when nothing is found.
+      hooks_without_a_subject: hooksWithoutASubject(
+        (templated.bp as { hook_options?: unknown })?.hook_options as unknown[]),
       // ⚠️ FIX 8a. How many body beats restate a non-selected hook option.
       // hook_options[0] is skipped by construction, never filtered after.
       hook_body_collisions: hookBodyCollisionBeatCountInline(
