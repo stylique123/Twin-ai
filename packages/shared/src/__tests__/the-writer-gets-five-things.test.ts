@@ -16,10 +16,25 @@ import type { TemplateResolution } from '../knowledgeResolver'
 const STYLE = compileStyle(['I stopped paying for three tools last month.', 'Here is what I use now.'])
 const TEMPLATE = templateFor('recommendation')!
 
-const resolution = (label: string, source: TemplateResolution['source']): TemplateResolution => ({
-  container: { id: label, about: `what ${label} is for`, needs: 'coverage' },
-  source, evidence: [], fallback: null, label, entityId: source === 'product_dna' ? 'e1' : null,
-})
+const resolution = (label: string, source: TemplateResolution['source']): TemplateResolution => {
+  const entityId = source === 'product_dna' ? 'e1' : null
+  return {
+    container: { id: label, about: `what ${label} is for`, needs: 'coverage' },
+    source, evidence: [], fallback: null, label, entityId,
+    // ⚠️ OMITTED ENTIRELY UNTIL NOW, AND `provenance` IS REQUIRED. Every
+    //  resolution production builds carries "how this slot came to be decided";
+    //  this fixture carried `undefined`, so any reader of it was being handed a
+    //  shape the resolver never produces. Derived from the two fields already
+    //  set rather than invented: a slot filled from an entity was decided by
+    //  entity_assignment and names that entity, an unresolved slot names
+    //  nothing, and everything else came up the evidence ladder.
+    provenance: source === 'unresolved'
+      ? { by: 'unresolved', from: [] }
+      : entityId !== null
+        ? { by: 'entity_assignment', from: [entityId] }
+        : { by: 'evidence_ladder', from: [] },
+  }
+}
 
 const allFilled = (labels: string[]) =>
   new Map(labels.map((l) => [l, { text: `content for ${l}`, attribution: 'Product Library' }]))

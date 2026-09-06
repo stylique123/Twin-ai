@@ -254,6 +254,25 @@ export function readKnowledgeItem(raw: unknown): KnowledgeItem | null {
     // null can say the second one. `line` already collapses "" to null.
     cost: line(src.cost),
     consensus: line(src.consensus),
+    // ⚠️ DROPPED ON THE WAY OUT UNTIL NOW, AND `attribution` IS WHAT PAID FOR IT.
+    //  `source` is on `KnowledgeItem` and this reader — the ONLY path from a
+    //  stored row to an item — omitted it entirely. So `filledFrom` computed
+    //  `[...new Set(r.evidence.map((e) => e.source))]` over a list where every
+    //  `source` was `undefined`, and `WriterSlot.attribution` — "named so a
+    //  validator can check a claim against the same source the writer was given"
+    //  — could never name anything in production.
+    //
+    //  ⚠️ AND ITS TEST PASSED THROUGHOUT, because the fixture built the item as a
+    //  bare literal with `source` set by hand, bypassing this function. Building
+    //  the same fixture through this reader is what surfaced it.
+    //
+    //  ⚖️ VALIDATED, NOT PASSED THROUGH. An unrecognised value becomes undefined
+    //  rather than reaching a reader that maps it with `CLASS_FOR_SOURCE[...] ??
+    //  'forbidden'` — the field's own comment is explicit that `undefined` means
+    //  NOT RECORDED and must never be read as "caption".
+    source: (KNOWLEDGE_SOURCES as readonly string[]).includes(String(src.source))
+      ? (String(src.source) as KnowledgeSource)
+      : undefined,
   }
 }
 

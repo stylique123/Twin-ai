@@ -44,10 +44,24 @@ function bp(over: Record<string, unknown> = {}): Blueprint {
 
 function byLine(blueprint: Blueprint) {
   const rs = buildRecordingScript({ generationId: 'g', blueprint })
-  const out: Record<string, { proof?: string | null; purpose?: string }> = {}
-  for (const s of rs.scenes as Array<Record<string, unknown>>) {
+  // ⚠️ THIS COLLECTED `proof` AND NOTHING EVER READ IT — the defect in this
+  //  file's own header, reproduced inside the file. `buildRecordingScript` does
+  //  not put `proof` on a scene (it lives on `beat_plan`, and the adapter
+  //  mentions it only in a comment), so `s.proof` was ALWAYS undefined; and no
+  //  assertion anywhere reads `out[...].proof`, so undefined never showed.
+  //
+  //  ⚖️ THE CAST WAS WHAT ALLOWED IT. `as Array<Record<string, unknown>>` widened
+  //  a typed `RecordingScene` into a bag of keys, so reading a field the type
+  //  does not have compiled silently. Dropping the dead collection removes the
+  //  need for the cast, and the scenes are now walked as what they are.
+  //
+  //  ⚖️ THE FILE'S REAL PROOF COVERAGE IS UNTOUCHED: `readProof`, `proofAt` and
+  //  the "n/a" rejection cases test `beat_plan` directly, which is where `proof`
+  //  actually lives.
+  const out: Record<string, { purpose?: string }> = {}
+  for (const s of rs.scenes) {
     const d = typeof s.dialogue === 'string' ? s.dialogue : ''
-    if (d) out[d] = { proof: s.proof as string | null, purpose: s.purpose as string }
+    if (d) out[d] = { purpose: s.purpose }
   }
   return out
 }

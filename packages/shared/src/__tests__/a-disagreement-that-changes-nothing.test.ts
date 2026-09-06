@@ -15,26 +15,41 @@ import { describe, it, expect } from 'vitest'
 import {
   CREATOR_PANEL, downstreamVerdicts, downstreamDisagreements, hardContradictions,
 } from '../extractionParityDecisions'
-import { emptyContentProfile } from '../referenceContentProfile'
+import {
+  emptyContentProfile,
+  type ReferenceContentProfile, type ContentSlot,
+} from '../referenceContentProfile'
+import type { Assessed } from '../assessed'
+import type { CanonicalRelationship } from '../profileAssembler'
 
 // ⚠️ `basis` IS NOT OPTIONAL. Without it `isKnown()` is false and every gate
 // below silently skips — the fixture would report "no disagreement" for a flip
 // that costs a creator the whole reference.
-const known = <T>(value: T) =>
+const known = <T>(value: T): Assessed<T> =>
   ({ value, basis: 'observed' as const, evidence: 'x', assessedAt: '2026-01-01T00:00:00Z' })
 
-function profile(over: Record<string, unknown> = {}) {
-  const p = emptyContentProfile('ref-1', null) as Record<string, unknown>
-  return { ...p, ...over } as never
+// ⚠️ THIS WENT THROUGH `Record<string, unknown>` AND CAME OUT `as never`, which
+//  is two casts to switch off the one check that matters here. `withPosture` took
+//  a bare `string`, so `withPosture('OWNER_PRODUCT')` — a typo for
+//  `OWN_PRODUCT` — would have compiled, produced a posture no `eligibility()`
+//  branch matches, and reported "no disagreement" for a flip the file exists to
+//  catch. The parameters now name the real unions.
+//
+//  ⚖️ `Object.assign` RATHER THAN A SPREAD, for the reason the sibling file
+//  records: `{ ...base, ...over }` types every property `| undefined` and lets
+//  `profile({ commercial: undefined })` through. `Object.assign` is `(t: T, u: U)
+//  => T & U`, so each override is still checked against its real field type.
+function profile(over: Partial<ReferenceContentProfile> = {}): ReferenceContentProfile {
+  return Object.assign(emptyContentProfile('ref-1', null), over)
 }
 
-const withPosture = (v: string) => profile({
+const withPosture = (v: CanonicalRelationship) => profile({
   commercial: { posture: known(v) },
 })
-const withSlots = (kinds: string[]) => profile({
+const withSlots = (kinds: ContentSlot['kind'][]) => profile({
   requirements: {
-    ...(emptyContentProfile('ref-1', null) as Record<string, never>).requirements,
-    contentSlots: known(kinds.map((kind) => ({ kind, label: 'x' }))),
+    ...emptyContentProfile('ref-1', null).requirements,
+    contentSlots: known(kinds.map((kind, i) => ({ id: String(i + 1), kind, label: 'x', required: true }))),
   },
 })
 
