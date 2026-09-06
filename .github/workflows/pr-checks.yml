@@ -656,6 +656,17 @@ jobs:
         run: |
           node scripts/ci/check_knowledge_sources_agree.mjs --selftest
           node scripts/ci/check_knowledge_sources_agree.mjs
+      # ⚠️ AND ASK BEATS, WHERE THE COST WAS A CREATOR READING TWIN'S QUESTION
+      # ALOUD. Four sites escalate a beat to `needs_user`; two set `ask` and
+      # empty `line`, two wrote the question INTO `line`. `line` is the spoken
+      # field -- `recordingScriptAdapter` decides an ask card on `seg.ask` and
+      # knows nothing about `substance` -- so those questions reached the
+      # teleprompter and the shot list under WHAT TO SAY. The guard is on the
+      # invariant, not on a string.
+      - name: Ask beats (a question Twin asks is never a line Twin speaks)
+        run: |
+          node scripts/ci/check_ask_beats_are_not_lines.mjs --selftest
+          node scripts/ci/check_ask_beats_are_not_lines.mjs
       - name: Symbol readers (a function nobody calls is a rule nobody runs)
         run: |
           node scripts/ci/check_symbol_readers.mjs --selftest

@@ -7643,7 +7643,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         // which is the one thing this repo's standing rule forbids. Its own test
         // caught it. Reuse the canonical marker; do not paraphrase it.
         const q = 'Only you can supply this. This beat came back as an unfilled template — what would you actually say here?'
-        b.line = q
+        // ⚠️ THE QUESTION GOES IN `ask`, NOT IN THE SPOKEN LINE — the same fix as
+        // the product-claim site below, and for the same reason: `line` is what
+        // the teleprompter reads out. The wording is still load-bearing and is
+        // still the canonical marker; what changed is the FIELD it is written to
+        // and, with it, where `asksCreator` looks for it.
+        b.ask = q
+        b.line = ''
         b.substance = 'needs_user'
         b.substance_evidence = ''
         if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
@@ -7682,7 +7688,25 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       const q = f.code === 'impossible_product_claim'
         ? 'This beat needs a real detail about your product, and nothing about it was supplied. What does it actually do here?'
         : 'This beat describes your product in a way the supplied details do not cover. What is the accurate version?'
-      b.line = q
+      // ⚠️ THE QUESTION GOES IN `ask`, AND THE SPOKEN LINE GOES EMPTY. This site
+      // used to write the question into `b.line` and never set `b.ask` at all,
+      // and `line` is the SPOKEN field: `recordingScriptAdapter` decides an ask
+      // card on `seg.ask` (lines 192 and 337) and knows nothing about
+      // `substance`. So the question passed every filter the adapter has — it is
+      // ordinary prose, not a bracketed placeholder — and reached the
+      // teleprompter and the shot list under WHAT TO SAY. Measured in a real
+      // run: a creator was told to say, on camera, "This beat needs a real
+      // detail about your product, and nothing about it was supplied. What does
+      // it actually do here?"
+      //
+      // ⚖️ THE OTHER TWO ESCALATION PATHS ALREADY DO THIS, AND THIS ONE WAS THE
+      // ODD ONE OUT. The personal-fact ask sets `b.ask` and empties the line —
+      // "there is NO line, and empty is honest" — and so does the
+      // reference-overlap repair. Three writers of the same state, and only the
+      // two that agreed were correct. That is why every previously observed
+      // ask-beat rendered as a question card: those took the other two paths.
+      b.ask = q
+      b.line = ''
       b.substance = 'needs_user'
       b.substance_evidence = ''
       if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
@@ -8287,8 +8311,22 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       'nothing on record supports this beat',
       'this beat only works as something you have personally done',
     ]
+    // ⚠️ `ask` IS READ HERE BECAUSE THAT IS WHERE THE QUESTIONS LIVE NOW, and
+    // reading only `line` was ALREADY missing two of the four escalation sites.
+    // The personal-fact ask and the reference-overlap repair have always set
+    // `ask` and emptied `line`, so their questions were invisible to this check
+    // and only the 40% density rule could catch them — a script with one or two
+    // such beats was BILLABLE while asking the creator to write it. Moving the
+    // other two sites off `line` without moving this read would have widened
+    // that hole to all four.
+    //
+    // ⚖️ BOTH FIELDS, NOT EITHER. A stored generation written before this change
+    // still carries its question in `line`, and a billing rule that stopped
+    // reading `line` would re-bill nothing but would misreport every old row a
+    // reader asks about later.
     const asksCreator = finalBeats.some((b) => {
-      const l = String((b as { line?: unknown })?.line ?? '').toLowerCase()
+      const r = b as { line?: unknown; ask?: unknown }
+      const l = `${String(r?.line ?? '')} ${String(r?.ask ?? '')}`.toLowerCase()
       return OUR_ASKS.some((a) => l.includes(a))
     })
     const unbillable = asksCreator
