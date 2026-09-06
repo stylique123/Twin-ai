@@ -103,7 +103,14 @@ describe('recording + teleprompter data path still builds from a blueprint (no e
     const FORBIDDEN = ['broll_instruction', 'cut_point', 'transition', 'edl', 'zoom', 'keyframe', 'render', 'output_path', 'segments']
     for (const scene of tl.scenes) {
       for (const key of FORBIDDEN) {
-        expect(scene as Record<string, unknown>).not.toHaveProperty(key)
+        // ⚠️ THE CAST WAS UNNECESSARY EVEN HERE, and this is the one file where
+        //  the INTENT behind it was legitimate: these keys are deliberately NOT
+        //  on `RecordingScene`, so the assertion is about runtime shape rather
+        //  than about the type. `expect()` takes `unknown`, and
+        //  `toHaveProperty` takes a string — neither needs the value widened, so
+        //  the widening only switched the compiler off for the two typed
+        //  assertions below it.
+        expect(scene).not.toHaveProperty(key)
       }
       // recording fields ARE present
       expect(scene).toHaveProperty('dialogue')

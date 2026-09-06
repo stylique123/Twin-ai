@@ -4206,6 +4206,29 @@ Deno.serve(async (req: Request) => {
     .eq('voice_id', voice?.id ?? null)
     .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
     .is('archived_at', null)
+    // ⚠️ THIS WAS `.maybeSingle()`, WHICH THROWS ON A SECOND ROW. Under the old
+    // one-owned-per-voice index a second row was impossible, so the throw was
+    // unreachable. 0186 makes it possible — three of five real accounts own two
+    // things — and an unchanged `.maybeSingle()` would mean NO SCRIPT GENERATES
+    // AT ALL for them: a clean, honest refusal turned into an outage by a
+    // migration in another file.
+    //
+    // ⚠️ AND THE ROW IT PICKS IS A STOPGAP, NOT THE ANSWER. Oldest-first is
+    // deterministic and stable — the same creator gets the same product every
+    // time rather than whatever the planner happened to return — but "the one
+    // they registered first" is not "the one this video is about". The real
+    // answer is the picker: one product auto-selects, several are chosen by the
+    // creator inside the step that already asks what they are making content
+    // for, and Reference and Idea Mode get none unless the goal is commercial
+    // and they say which. Until that lands this reads ONE product where the
+    // creator may have two, and a script may talk about the wrong one.
+    //
+    // ⚖️ WHY THE WRITER MUST NOT SIMPLY CHOOSE. Picking among three products
+    // would have Twin infer commercial intent from nothing a creator said, which
+    // is the entitlement `entryDoor.ts` has a mutation-tested clamp against. A
+    // stable wrong-sometimes beats an inferred entitlement.
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle()
   if (ownedEntityErr) {
     console.error('product_entities lookup failed', ownedEntityErr)
@@ -5317,6 +5340,14 @@ Deno.serve(async (req: Request) => {
     // The one line that is NOT per-relationship: personal experience is
     // established by the creator alone, so no relationship may override it.
     const creatorExperience = personalUse === 'CONFIRMED'
+    // ⚠️ HOISTED, AND IT USED TO BE DERIVED 60 LINES BELOW THE BLOCK THAT NEEDED
+    // IT. `claimRulesFor` grants an owner `ownershipLanguage: true` — "my
+    // product", "we built this" — as a SEPARATE entitlement from
+    // `creatorExperience`. This file derived it only for the restriction union,
+    // where it is read NEGATIVELY: false forbids ownership language, true says
+    // nothing. So the permission half of the canonical rule reached no prompt,
+    // while the usage refusal below reached every one of them.
+    const ownershipLanguage = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
     const commercialCta = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
       || rel === 'AFFILIATE' || rel === 'SPONSOR'
       ? 'only_if_intended'
@@ -5388,10 +5419,30 @@ Deno.serve(async (req: Request) => {
       // repeating the vendor's copy is an advertisement in a review's clothes.
       claimLines.push('\n- THIS IS A REVIEW, NOT AN ADVERTISEMENT. Do NOT repeat the maker\'s marketing claims at all, attributed or otherwise. A review may be built from exactly two things: observable product facts, and what the creator personally experienced.')
     }
+    // ⚠️ THE PERMISSION HALF WAS MISSING, AND THE REFUSAL BELOW FIRED ON EVERY
+    // GENERATION. `claimRulesFor` grants an owner TWO separate things —
+    // `ownershipLanguage` (they make and sell it) and `creatorExperience` (they
+    // use it as a customer does). This file emitted the second as a prohibition
+    // and the first as nothing at all. Combined with a `product_personal_use`
+    // question the registry deliberately never asks an owner, and an entity
+    // query filtered to owned relationships, the result was unconditional: a
+    // baker selling her own bread could not have Twin write "I bake these every
+    // morning" about it.
+    if (ownershipLanguage) {
+      claimLines.push('\n- THIS IS THE CREATOR\'S OWN PRODUCT AND THEY MAY SAY SO IN THE FIRST PERSON. "I make these", "I bake them fresh every morning", "we built this" — claims about MAKING or SELLING it are theirs to make, and a script that refuses them leaves a maker unable to describe their own work.')
+    }
     if (!creatorExperience && rel !== 'NONE') {
-      // Sharpens the same rule the substance check enforces per beat: nothing
-      // licenses a personal history except the creator being on record for it.
-      claimLines.push('\n- THE CREATOR HAS NOT CONFIRMED THEY PERSONALLY USE THIS. Write NO first-person usage claim about it — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Talk about what it does, never about what it did for them.')
+      // ⚖️ NARROWED FOR AN OWNER, NOT LIFTED. Making a thing is not being its
+      // customer: a founder who has never opened their own dashboard saying "it
+      // changed my workflow" is a fabricated testimonial no differently from an
+      // affiliate doing it, which is §12 with the relationship swapped. So an
+      // owner loses the CUSTOMER claim and keeps the MAKER one; everyone else
+      // keeps the full refusal, unchanged.
+      claimLines.push(ownershipLanguage
+        ? '\n- BUT THEY HAVE NOT CONFIRMED THEY USE IT AS A CUSTOMER DOES. Write no claim about being its USER — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Making it is not the same as living with it.'
+        // Sharpens the same rule the substance check enforces per beat: nothing
+        // licenses a personal history except the creator being on record for it.
+        : '\n- THE CREATOR HAS NOT CONFIRMED THEY PERSONALLY USE THIS. Write NO first-person usage claim about it — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Talk about what it does, never about what it did for them.')
     }
     if (disclosureRequired) {
       // A property of the entity, not a pacing decision the writer may weigh.
@@ -5427,11 +5478,9 @@ Deno.serve(async (req: Request) => {
         if (t !== '') unionForbidden.push(t)
       }
     }
-    // ⚠️ DERIVED HERE RATHER THAN ASSUMED. A first draft of this block referenced
-    // an `ownershipLanguage` that does not exist in this file — it lives in
-    // `claimRulesFor`, which this function cannot import. Reading it off `rel`
-    // the same way the lines above do keeps one source of truth in this scope.
-    const ownershipLanguage = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
+    // ⚖️ `ownershipLanguage` IS DERIVED ONCE, ABOVE, beside the claim lines that
+    // now also need it — it used to be computed here, where only this block
+    // could see it.
     if (ownedEntity && !ownershipLanguage) {
       unionForbidden.push('Do not imply the creator owns, makes or sells this — they do not.')
     }
