@@ -96,7 +96,7 @@ export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | nul
   return (
     <div className="rounded-card border border-white/10 bg-white/[0.03] p-4">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
-        Teach your twin
+        My Twin
       </p>
       {/* ⚖️ NO FRACTION HERE. "3/10" implies a target of 10 to hit — a number
           nobody set and the creator would end up optimising for. This is one

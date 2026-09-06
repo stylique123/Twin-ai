@@ -667,6 +667,12 @@ jobs:
         run: |
           node scripts/ci/check_ask_beats_are_not_lines.mjs --selftest
           node scripts/ci/check_ask_beats_are_not_lines.mjs
+      # ⚠️ SIXTH FLAG. The label was renamed before and came back. A string a
+      # person can retype is not a decision until something fails when they do.
+      - name: The twin belongs to the creator (never "teach your twin")
+        run: |
+          node scripts/ci/check_twin_is_not_a_verb.mjs --selftest
+          node scripts/ci/check_twin_is_not_a_verb.mjs
       - name: Symbol readers (a function nobody calls is a rule nobody runs)
         run: |
           node scripts/ci/check_symbol_readers.mjs --selftest
