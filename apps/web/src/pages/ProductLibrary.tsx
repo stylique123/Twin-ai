@@ -42,7 +42,7 @@ import {
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
   requestProductExtraction, recordExtractionNeverStarted,
   confirmProductFacts, uploadProductImage,
-  listBrandVoices, OwnedEntityExistsError, ProductLibraryFullError,
+  listBrandVoices, ProductLibraryFullError,
   isStale, factAgeDays, SOURCE_LABEL, sourceWarrantsAttention,
   signEditUrls,
   bestSuggestion,
@@ -653,15 +653,14 @@ export default function ProductLibrary() {
       // ⚖️ THE ONE-PRODUCT-PER-VOICE REFUSAL GETS ITS OWN MESSAGE. Falling back
       // to a generic failure would leave a creator retrying a thing that will
       // never succeed, with no idea why.
-      // ⚖️ THREE DISTINCT SITUATIONS, THREE DISTINCT MESSAGES. A correctness
-      // refusal ("already added") shown to someone at their plan cap sends them
-      // hunting for a duplicate that does not exist; a commercial refusal shown
-      // to a replayed mint invites them to buy their way out of our bug.
+      // ⚖️ TWO SITUATIONS NOW, NOT THREE, AND THE DISTINCTION THAT REMAINS IS THE
+      // ONE THAT MATTERED. A commercial refusal must never wear a correctness
+      // refusal's clothes. The third arm handled `OwnedEntityExistsError` —
+      // "only one owned product per voice" — and 0186 established that rule was
+      // wrong on three of five real accounts, so nothing raises it any more.
       setErr(e instanceof ProductLibraryFullError
         ? `${e.message} Archive a product you no longer use, or upgrade your plan.`
-        : e instanceof OwnedEntityExistsError
-          ? e.message
-          : e instanceof Error ? e.message : 'Could not add that product.')
+        : e instanceof Error ? e.message : 'Could not add that product.')
     } finally {
       setClaimBusy(false)
     }

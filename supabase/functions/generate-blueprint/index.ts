@@ -4163,12 +4163,28 @@ Deno.serve(async (req: Request) => {
     seenKnowledge.add(k)
     return true
   })
-  const { data: audienceRows } = await admin
-    .from('audience_questions')
-    .select('summary, asked')
-    .eq('owner_id', ownerId)
-    .order('asked', { ascending: false })
-    .limit(8)
+  // ⚠️ THE `audience_questions` READ IS GONE, AND ITS ABSENCE IS THE FEATURE.
+  // It selected the top 8 rows by `asked` and interpolated them into the
+  // knowledge block. The table has ZERO rows, has never had one, and has no
+  // writer anywhere: its RLS grants SELECT and DELETE to `authenticated` and no
+  // INSERT to anyone. A live read against a table nothing can fill is the
+  // "written and never read" defect inverted — read and never written — and it
+  // made the prompt look like it carried audience demand when it never could.
+  //
+  // ⚖️ AND THE CORPUS CANNOT FILL IT EITHER, WHICH IS WHY THIS IS A DELETION
+  // RATHER THAN A WRITER. Measured 2026-09-05: of 1,080 stored `creator_knowledge`
+  // rows, ONE carries an audience-asks frame. Captions and transcripts are never
+  // persisted, so there is no other text to mine. A worker writing from that
+  // corpus would ship a feature whose on and off states are indistinguishable.
+  //
+  // ⚠️ REOPEN WHEN COMMENT INGESTION LANDS, AND NOT BEFORE. What this block
+  // wanted is what a creator's AUDIENCE asks; the scan only ever captured what
+  // the CREATOR says. Those are different corpora. Comments are the real source
+  // — public, already inside the Apify pipeline, and `commentsDatasetUrl` is
+  // already present in the scrape output. Recorded as
+  // AUDIENCE_QUESTIONS_HAS_NO_SUPPLY in knownLimitations.ts so the next person
+  // finds the reason instead of rediscovering the empty table and rebuilding
+  // this read.
 
   // ⚠️ ARCHIVED ENTITIES ARE EXCLUDED, AND THIS IS THE READER THAT MAKES ARCHIVE
   // SAFE TO HAVE AT ALL. An archived row reaching this read would keep granting
@@ -4190,6 +4206,29 @@ Deno.serve(async (req: Request) => {
     .eq('voice_id', voice?.id ?? null)
     .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
     .is('archived_at', null)
+    // ⚠️ THIS WAS `.maybeSingle()`, WHICH THROWS ON A SECOND ROW. Under the old
+    // one-owned-per-voice index a second row was impossible, so the throw was
+    // unreachable. 0186 makes it possible — three of five real accounts own two
+    // things — and an unchanged `.maybeSingle()` would mean NO SCRIPT GENERATES
+    // AT ALL for them: a clean, honest refusal turned into an outage by a
+    // migration in another file.
+    //
+    // ⚠️ AND THE ROW IT PICKS IS A STOPGAP, NOT THE ANSWER. Oldest-first is
+    // deterministic and stable — the same creator gets the same product every
+    // time rather than whatever the planner happened to return — but "the one
+    // they registered first" is not "the one this video is about". The real
+    // answer is the picker: one product auto-selects, several are chosen by the
+    // creator inside the step that already asks what they are making content
+    // for, and Reference and Idea Mode get none unless the goal is commercial
+    // and they say which. Until that lands this reads ONE product where the
+    // creator may have two, and a script may talk about the wrong one.
+    //
+    // ⚖️ WHY THE WRITER MUST NOT SIMPLY CHOOSE. Picking among three products
+    // would have Twin infer commercial intent from nothing a creator said, which
+    // is the entitlement `entryDoor.ts` has a mutation-tested clamp against. A
+    // stable wrong-sometimes beats an inferred entitlement.
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle()
   if (ownedEntityErr) {
     console.error('product_entities lookup failed', ownedEntityErr)
@@ -5222,7 +5261,6 @@ Deno.serve(async (req: Request) => {
     // compiler clamps it so no answer can ever ask for LESS.
     const speakable = selectSpeakable(focusOrdered, 10, intent.substanceFloor)
     const coveredRows = kRows.filter((k) => k.kind === 'covered')
-    const aRows = Array.isArray(audienceRows) ? audienceRows : []
     const knowledgeParts: string[] = []
     if (speakable.length) {
       knowledgeParts.push('\nWHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID — real substance, not style. Build the video out of THIS. These are their own positions and examples, so you may put them in their mouth; anything you add that is not here is yours, and they did not say it.\n'
@@ -5235,10 +5273,6 @@ Deno.serve(async (req: Request) => {
       // unchecked claim about their back catalogue.
       knowledgeParts.push('\nALREADY COVERED — they have made a video about each of these. Do NOT hand them their own upload back; go at the topic from an angle they have not used. THIS LIST IS NEVER SPOKEN. It steers what you choose and must not appear in any line: a script that says "we\'ve had a video on this" is narrating our notes to the audience. Pick a DIFFERENT angle, then write as though the earlier video were simply not the subject.\n'
         + coveredRows.map((k) => `  * ${k.text}`).join('\n'))
-    }
-    if (aRows.length) {
-      knowledgeParts.push('\nWHAT THEIR AUDIENCE KEEPS ASKING — summarised, never quoted. A video that answers one of these is wanted before it is made. THIS LIST IS NEVER SPOKEN EITHER. Answer the question; do not announce that it was asked — a line like "one my audience asks about a lot" narrates our notes to the room and asserts something about their comment section that nobody verified.\n'
-        + aRows.map((a) => `  * ${a.summary} (asked ~${a.asked}x)`).join('\n'))
     }
     const knowledgeBlock = knowledgeParts.join('\n')
 
@@ -5306,6 +5340,14 @@ Deno.serve(async (req: Request) => {
     // The one line that is NOT per-relationship: personal experience is
     // established by the creator alone, so no relationship may override it.
     const creatorExperience = personalUse === 'CONFIRMED'
+    // ⚠️ HOISTED, AND IT USED TO BE DERIVED 60 LINES BELOW THE BLOCK THAT NEEDED
+    // IT. `claimRulesFor` grants an owner `ownershipLanguage: true` — "my
+    // product", "we built this" — as a SEPARATE entitlement from
+    // `creatorExperience`. This file derived it only for the restriction union,
+    // where it is read NEGATIVELY: false forbids ownership language, true says
+    // nothing. So the permission half of the canonical rule reached no prompt,
+    // while the usage refusal below reached every one of them.
+    const ownershipLanguage = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
     const commercialCta = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
       || rel === 'AFFILIATE' || rel === 'SPONSOR'
       ? 'only_if_intended'
@@ -5377,10 +5419,30 @@ Deno.serve(async (req: Request) => {
       // repeating the vendor's copy is an advertisement in a review's clothes.
       claimLines.push('\n- THIS IS A REVIEW, NOT AN ADVERTISEMENT. Do NOT repeat the maker\'s marketing claims at all, attributed or otherwise. A review may be built from exactly two things: observable product facts, and what the creator personally experienced.')
     }
+    // ⚠️ THE PERMISSION HALF WAS MISSING, AND THE REFUSAL BELOW FIRED ON EVERY
+    // GENERATION. `claimRulesFor` grants an owner TWO separate things —
+    // `ownershipLanguage` (they make and sell it) and `creatorExperience` (they
+    // use it as a customer does). This file emitted the second as a prohibition
+    // and the first as nothing at all. Combined with a `product_personal_use`
+    // question the registry deliberately never asks an owner, and an entity
+    // query filtered to owned relationships, the result was unconditional: a
+    // baker selling her own bread could not have Twin write "I bake these every
+    // morning" about it.
+    if (ownershipLanguage) {
+      claimLines.push('\n- THIS IS THE CREATOR\'S OWN PRODUCT AND THEY MAY SAY SO IN THE FIRST PERSON. "I make these", "I bake them fresh every morning", "we built this" — claims about MAKING or SELLING it are theirs to make, and a script that refuses them leaves a maker unable to describe their own work.')
+    }
     if (!creatorExperience && rel !== 'NONE') {
-      // Sharpens the same rule the substance check enforces per beat: nothing
-      // licenses a personal history except the creator being on record for it.
-      claimLines.push('\n- THE CREATOR HAS NOT CONFIRMED THEY PERSONALLY USE THIS. Write NO first-person usage claim about it — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Talk about what it does, never about what it did for them.')
+      // ⚖️ NARROWED FOR AN OWNER, NOT LIFTED. Making a thing is not being its
+      // customer: a founder who has never opened their own dashboard saying "it
+      // changed my workflow" is a fabricated testimonial no differently from an
+      // affiliate doing it, which is §12 with the relationship swapped. So an
+      // owner loses the CUSTOMER claim and keeps the MAKER one; everyone else
+      // keeps the full refusal, unchanged.
+      claimLines.push(ownershipLanguage
+        ? '\n- BUT THEY HAVE NOT CONFIRMED THEY USE IT AS A CUSTOMER DOES. Write no claim about being its USER — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Making it is not the same as living with it.'
+        // Sharpens the same rule the substance check enforces per beat: nothing
+        // licenses a personal history except the creator being on record for it.
+        : '\n- THE CREATOR HAS NOT CONFIRMED THEY PERSONALLY USE THIS. Write NO first-person usage claim about it — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Talk about what it does, never about what it did for them.')
     }
     if (disclosureRequired) {
       // A property of the entity, not a pacing decision the writer may weigh.
@@ -5416,11 +5478,9 @@ Deno.serve(async (req: Request) => {
         if (t !== '') unionForbidden.push(t)
       }
     }
-    // ⚠️ DERIVED HERE RATHER THAN ASSUMED. A first draft of this block referenced
-    // an `ownershipLanguage` that does not exist in this file — it lives in
-    // `claimRulesFor`, which this function cannot import. Reading it off `rel`
-    // the same way the lines above do keeps one source of truth in this scope.
-    const ownershipLanguage = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
+    // ⚖️ `ownershipLanguage` IS DERIVED ONCE, ABOVE, beside the claim lines that
+    // now also need it — it used to be computed here, where only this block
+    // could see it.
     if (ownedEntity && !ownershipLanguage) {
       unionForbidden.push('Do not imply the creator owns, makes or sells this — they do not.')
     }
