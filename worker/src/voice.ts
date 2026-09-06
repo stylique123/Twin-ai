@@ -3,6 +3,7 @@ import { geminiJson, obj, arr, str, type InlineImage } from './gemini.js'
 import { byReachDesc, reachOf } from './reach.js'
 import type { ScrapedPost } from './media.js'
 import { buildVoiceCorpus } from './voiceCorpus.js'
+import { ctaEvidenceFor, type CtaEvidence } from './ctaEvidence.js'
 
 /** The voice synthesiser's single-call window. Same size as the
  *  extractor's per-batch window; what changed is that every transcript now
@@ -28,6 +29,11 @@ export interface VoiceProfile {
   donts: string[]
   sample_hooks: string[]
   voiced_from_audio?: boolean
+  /** ⚠️ HOW HABITUAL EACH `recurring_ctas` ENTRY ACTUALLY IS. Written here
+   *  because this is the only place the CTAs and the creator's own transcripts
+   *  are in scope together. See `ctaEvidence.ts` for the production counts that
+   *  made this necessary: 0 of 32 entries recurred. */
+  recurring_ctas_evidence?: CtaEvidence[]
 }
 
 const schema = obj(
@@ -90,6 +96,18 @@ Synthesize this creator's voice profile from how they really speak.`
 
   const profile = (await geminiJson(SYSTEM, prompt, schema, 40_000)) as VoiceProfile
   profile.voiced_from_audio = true
+  // ⚠️ COUNTED HERE BECAUSE THIS IS THE ONLY PLACE BOTH HALVES EXIST. The model
+  // has just asserted which CTAs "recur"; `transcripts` is the creator's own
+  // speech, in scope, and is discarded on return. Measured in production before
+  // this shipped: of 32 recurring_ctas entries belonging to a voice with own
+  // transcripts, 16 appeared in ZERO of that creator's videos, 13 in exactly
+  // one, and NONE in three or more.
+  //
+  // ⚖️ THE FULL `transcripts` ARGUMENT, NOT `built.text`. The corpus above is
+  // windowed to VOICE_WINDOW_CHARS for the prompt; counting against the window
+  // would report "not said" about videos nobody read, which is the null this
+  // module refuses to collapse.
+  profile.recurring_ctas_evidence = ctaEvidenceFor(profile.recurring_ctas, transcripts)
   return profile
 }
 
