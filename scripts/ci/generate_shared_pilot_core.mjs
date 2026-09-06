@@ -101,6 +101,10 @@ const SOURCES = [
   // deterministic setup letters (see liveRunFixtures.test.ts §7) would
   // survive its own fix.
   ['packages/shared/src/script/setupLabelSync.ts', 'supabase/functions/_shared/setupLabelSync.ts'],
+  // ⚠️ FIX 8 (bakery). "A hook must name something" — two production hooks
+  // shipped as the RECOMMENDED option naming nothing at all. Generated rather
+  // than retyped for the same reason as shotListSync.ts above.
+  ['packages/shared/src/script/hookSubject.ts', 'supabase/functions/_shared/hookSubject.ts'],
 ]
 
 // ⚠️ A SHEBANG IS LEGAL ONLY ON LINE 1, AND THE HEADER PUSHES IT TO LINE 5.

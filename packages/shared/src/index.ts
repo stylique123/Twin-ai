@@ -243,6 +243,10 @@ export * from './script/shotListSync'
 // pair always gets the same letter and two different ones never share one —
 // see `liveRunFixtures.test.ts` §7.
 export * from './script/setupLabelSync'
+// ⚠️ FIX 8 (bakery). A hook that names nothing shipped twice as the RECOMMENDED
+// option. Counted, not enforced — see the module banner for why the cause the
+// analysis filed ("signature phrases become hooks") is disproven.
+export * from './script/hookSubject'
 
 // ⚖️ FIVE HOOKS THAT ARE REALLY ONE. Two production menus open with the same
 // three words five times over; three more do it three times. The opener is the
