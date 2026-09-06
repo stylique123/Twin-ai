@@ -16,7 +16,7 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import {
   initApi, claimProductEntity, productLibraryLimit,
-  ProductLibraryFullError, OwnedEntityExistsError,
+  ProductLibraryFullError,
 } from '../api'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -99,14 +99,30 @@ describe('the two failures never wear each other\'s clothes', () => {
       .rejects.toThrow(/Product Library limit of 3/)
   })
 
-  it('a duplicate mint refuses with the CORRECTNESS error even when there is room', async () => {
-    // ⚠️ THE ORDERING TEST. Plenty of allowance left, but the database says this
-    // owned entity already exists — a replay. The creator must not be told to
-    // upgrade to fix that.
+  it('surfaces an unexpected 23505 as itself, not as a plan limit', async () => {
+    // ⚠️ THIS TEST ASSERTED THE DEFECT AND IS REWRITTEN, NOT RELAXED. It read
+    // "a duplicate mint refuses with the CORRECTNESS error even when there is
+    // room" and pinned `OwnedEntityExistsError` — the "only one owned product
+    // per voice" rule. 0186 established that rule was WRONG: three of five real
+    // accounts own two things, and a creator adding a second product now simply
+    // gets it. There is no correctness refusal left to assert.
+    //
+    // ⚠️ IT ALSO PASSED VACUOUSLY THE MOMENT THE CLASS WAS DELETED. The import
+    // resolved to `undefined` and `.rejects.toThrow(undefined)` accepts ANY
+    // error — demonstrated directly, an unrelated TypeError satisfies it — so
+    // the suite stayed green while the assertion meant nothing. This tsconfig
+    // excludes `src/**/__tests__/**`, so tsc never saw the missing import either.
+    //
+    // ⚖️ THE ORDERING CLAIM IT WAS REALLY MAKING SURVIVES, AND IS WHAT THIS NOW
+    // TESTS: a database error must never be reported as a commercial limit. A
+    // creator with plenty of allowance who hits an unexpected constraint must
+    // see that constraint, not an invitation to upgrade.
     state.count = 0
     state.insertErr = { code: '23505', message: 'duplicate key' }
     await expect(claimProductEntity('u1', 'v1', ATTEST, { product_library_limit: 99 }))
-      .rejects.toThrow(OwnedEntityExistsError)
+      .rejects.toThrow(/duplicate key/)
+    await expect(claimProductEntity('u1', 'v1', ATTEST, { product_library_limit: 99 }))
+      .rejects.not.toThrow(ProductLibraryFullError)
   })
 
   it('counts LIVE entities only, so archiving really does make room', async () => {
