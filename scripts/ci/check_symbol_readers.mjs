@@ -232,6 +232,26 @@ export function exportedSymbols(body) {
  * or worker file carries its `<name>Inline` twin, or — transitively — its own
  * file names it from a symbol that is itself reached.
  */
+/** ⚠️ A DECLARATION IS NOT A USE, AND THIS IS WHERE THAT BIT HARDEST. The
+ *  transitive step asked `mentions(body, name)` — and a file ALWAYS mentions
+ *  its own export, in the line `export function name(`. So the rule reduced to
+ *  "any file with one reached export has ALL its exports reached", and the
+ *  guard's real granularity was the FILE, not the symbol.
+ *
+ *  ⚖️ Proven rather than reasoned: two exports in one file, only one called
+ *  anywhere, and the uncalled one came back reached. That fixture is now a
+ *  selftest case, and it fails without this function.
+ *
+ *  This is the mention-versus-declaration trap the repo has now hit four times
+ *  — and the fourth was inside the guard written to catch unreached symbols. */
+export function mentionedBesidesItsOwnDeclaration(body, name) {
+  const withoutDecl = body.replace(
+    new RegExp(`^export\\s+(?:async\\s+)?(?:function|const|class)\\s+${name}\\b`, 'gm'),
+    '',
+  )
+  return new RegExp(`\\b${name}\\b`).test(withoutDecl)
+}
+
 export function reachedSymbols(symbols, prodSources) {
   const mentions = (body, n) => new RegExp(`\\b${n}\\b`).test(body)
   const reached = new Set()
@@ -254,7 +274,9 @@ export function reachedSymbols(symbols, prodSources) {
       if (!body) continue
       const byReached = symbols.some((o) =>
         o.file === s.file && o.name !== s.name && reached.has(o.name))
-      if (byReached && mentions(body, s.name)) { reached.add(s.name); grew = true }
+      if (byReached && mentionedBesidesItsOwnDeclaration(body, s.name)) {
+        reached.add(s.name); grew = true
+      }
     }
   }
   return reached
@@ -277,6 +299,26 @@ if (process.argv.includes('--selftest')) {
   const S = (name, file) => ({ name, file })
   check('a caller in another file reaches it', [...reachedSymbols(
     [S('used', '/a.ts')], new Map([['/a.ts', 'export function used(){}'], ['/b.ts', 'used()']]))], ['used'])
+  // ⚠️ THE CASE THE TRANSITIVE RULE GOT WRONG FOR ITS WHOLE LIFE. Two exports in
+  // one file; only `used` is called anywhere. `neverCalled` was reported REACHED,
+  // because the file "mentions" it — in its own declaration line. Verified
+  // against the real tree: this fixture's bug was hiding 101 symbols.
+  check('A SIBLING IS NOT A CALLER: an uncalled export in a reached file stays unreached',
+    [...reachedSymbols(
+      [{ name: 'used', file: '/f/a.ts' }, { name: 'neverCalled', file: '/f/a.ts' }],
+      new Map([
+        ['/f/a.ts', 'export function used(){}\nexport function neverCalled(){}\n'],
+        ['/f/caller.ts', 'import { used } from "./a"; used()'],
+      ]),
+    )].sort(), ['used'])
+
+  // ⚖️ AND THE HELPER ITSELF, BOTH WAYS: a declaration alone is not a mention,
+  // a real second use is.
+  check('a declaration alone is not a mention',
+    mentionedBesidesItsOwnDeclaration('export function foo(){}\n', 'foo'), false)
+  check('a genuine second use IS a mention',
+    mentionedBesidesItsOwnDeclaration('export function foo(){}\nconst x = foo()\n', 'foo'), true)
+
   check('the barrel re-export is NOT a reader', [...reachedSymbols(
     [S('bare', '/a.ts')],
     new Map([['/a.ts', 'export function bare(){}'],
@@ -351,10 +393,30 @@ for (const [file, entry] of Object.entries(REGISTRY)) {
 const unregistered = orphans.filter((o) =>
   !registered.has(`${relative(SHARED, o.file).replace(/\\/g, '/')}::${o.name}`))
 
+// ⚠️ A RATCHET, BECAUSE THE FIX TO THE TRANSITIVE RULE REVEALED 101 SYMBOLS AT
+// ONCE. Before `mentionedBesidesItsOwnDeclaration`, a file's own declaration
+// counted as a mention, so ANY file with one reached export had ALL its exports
+// marked reached: 801 of 839 looked reached, and 700 actually are.
+//
+// ⚖️ AND THE 101 ARE NOT REGISTERED WHOLESALE, WHICH WOULD BE THE DISHONEST
+// MOVE. The REGISTRY's own instruction is "verify by hand first: this
+// instrument cannot see a dynamic call", and 101 verifications is not a thing to
+// do in one pass — it is how a registry fills with entries nobody checked, which
+// is worse than the hole it closes. So the true number is reported, the ceiling
+// can only go DOWN, and each symbol gets wired, deleted or registered with a
+// real reason as it is actually examined. Same shape as the test-typecheck
+// ratchet, and for the same reason.
+//
+// ⚠️ THE CEILING LIVES HERE, IN THE GUARD, not in the REGISTRY it measures. A
+// ratchet whose limit sits inside the thing being ratcheted can be raised in the
+// same edit that breaks it.
+const MAX_UNREGISTERED = 101
+
+console.log(`symbol-readers: unregistered ${unregistered.length} of ceiling ${MAX_UNREGISTERED}`)
 console.log(`symbol-readers: ${symbols.length} exported symbols, ${reached.size} reached, `
   + `${orphans.length} unreached (${registered.size} registered)`)
 
-if (unregistered.length > 0) {
+if (unregistered.length > MAX_UNREGISTERED) {
   console.error('\nUNREGISTERED SYMBOLS WITH NO PRODUCTION READER:\n')
   for (const o of unregistered) {
     console.error(`  ${o.name}  —  ${relative(REPO, o.file)}`)
