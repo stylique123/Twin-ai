@@ -62,8 +62,27 @@ describe('and the counter says whether it worked', () => {
     expect(EDGE).toMatch(/shotsNumberedNotNamed = bare/)
   })
 
-  it('it reaches beat_audit, which is what makes it durable', () => {
-    expect(EDGE).toMatch(/shots_named_by_number: shotsNumberedNotNamed/)
+  // ⚠️ THIS TEST WAS WRONG, AND IT WAS WRONG ABOUT THE ONE THING IT EXISTED TO
+  // ASSERT. It pinned `shots_named_by_number: shotsNumberedNotNamed` inside the
+  // `beat_audit` object literal and called that durability. The literal is built
+  // around line 7123; `shotsNumberedNotNamed` is not assigned until around 7721.
+  // The literal read the initialiser, so MEASURED IN PRODUCTION the counter was
+  // null in 37 of 37 stored rows — while this test was green the whole time.
+  // The test was the wrong one, not the code: reaching the literal is not
+  // reaching `beat_audit`.
+  it('it reaches beat_audit by MUTATION, after the scan has run', () => {
+    expect(EDGE).toMatch(/beatAudit\.shots_named_by_number = shotsNumberedNotNamed/)
+  })
+
+  it('and it is NOT read into the literal, where it would capture the initialiser', () => {
+    expect(EDGE).not.toMatch(/^\s*shots_named_by_number: shotsNumberedNotNamed,$/m)
+  })
+
+  // ⚖️ THE ORDER IS THE WHOLE POINT. A mutation that ran before the scan would
+  // store the initialiser just as surely as the literal did.
+  it('the mutation comes after the assignment in the shipped source', () => {
+    expect(EDGE.indexOf('beatAudit.shots_named_by_number = shotsNumberedNotNamed'))
+      .toBeGreaterThan(EDGE.indexOf('shotsNumberedNotNamed = bare'))
   })
 
   it('the check uses the COPIED reader, not a second regex', () => {
