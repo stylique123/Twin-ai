@@ -176,6 +176,20 @@ export const EXCLUDED = {
     + 'is SAFE here, where merging 0169 early would have made every successful extraction '
     + 'store nothing. The capture flow and the writer integration are the units that must '
     + 'wait for the column to exist, and they are not in this change.',
+  '0187_a_creator_could_never_store_their_own_answer':
+    'Adds the missing INSERT policy and grant on `creator_knowledge`, which is itself '
+    + 'excluded above (0121) because staging applies the brand-voice fixture AFTER the '
+    + 'migration loop, so the FK target does not exist at apply time. Inherits that '
+    + 'exclusion for the same reason: the table is not there to hold a policy. '
+    + '⚠️ AND THIS IS THE EXCLUSION COMING DUE. 0121\'s own reason said the absent INSERT '
+    + 'policy was unexercised on staging and that "nothing proves before production that '
+    + 'a creator cannot insert claims about themselves". Production has now proved the '
+    + 'opposite of what that sentence assumed was safe: 12 answers from 4 creators were '
+    + 'accepted, logged as answered, and refused at the grant and policy layers, so '
+    + '`creator_knowledge` holds 0 rows sourced `asked` or `user` against 1,088 total. '
+    + 'The absence read as a protection; it was blocking the product\'s own intake path. '
+    + '⚠️ MANUAL APPLY REQUIRED: like 0120/0121/0186 this must be applied to production '
+    + 'by hand, and until it is, every typed answer is still lost.',
   '0186_three_places_agreed_on_one_wrong_thing':
     'Narrows the owned-entity uniqueness index on `product_entities`, which is itself '
     + 'excluded above for the staging FK-ordering reason -- staging has no such table, so '
