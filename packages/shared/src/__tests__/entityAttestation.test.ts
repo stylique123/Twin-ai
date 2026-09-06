@@ -13,7 +13,7 @@
 // the properties that make that more than a naming convention.
 import { describe, expect, it, beforeEach } from 'vitest'
 import { attestedEntity } from '../productEntity'
-import { initApi, claimProductEntity, OwnedEntityExistsError } from '../api'
+import { initApi, claimProductEntity } from '../api'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 describe('attestedEntity records what was asserted, and nothing more', () => {
@@ -137,14 +137,34 @@ describe('claiming writes an entitlement, and refuses to overwrite one', () => {
     expect(captured.row).toMatchObject({ creator_summary: 'A tripod for phones.' })
   })
 
-  it('REFUSES a second owned product rather than overwriting the first', async () => {
-    // ⚠️ THE DATA LOSS THIS PREVENTS. `saveMintedEntity` answers 23505 by
-    // updating the existing owned row, which is correct THERE — that path exists
-    // for a remount replay where both writes are the same product. Reusing it
-    // here would silently replace a creator's registered product with a
-    // different one they just claimed, with nothing to notice it by.
-    failWith = { code: '23505', message: 'duplicate key' }
-    await expect(claimProductEntity('u1', 'v1', attest)).rejects.toThrow(OwnedEntityExistsError)
+  it('SAVES a second owned product instead of refusing it', async () => {
+    // ⚠️ THIS TEST ASSERTED THE DEFECT AND IS REWRITTEN, NOT RELAXED. It read
+    // "REFUSES a second owned product rather than overwriting the first" and
+    // pinned `OwnedEntityExistsError`. Its stated worry — that reusing the
+    // mint's update-in-place would silently replace one product with another —
+    // was RIGHT, and is still honoured: `saveMintedEntity` now scopes its update
+    // to `source='inferred' AND user_confirmed=false`, so it can only ever
+    // overwrite the unconfirmed guess it wrote itself.
+    //
+    // ⚠️ WHAT WAS WRONG IS THE CONCLUSION IT DREW: that the only safe answer was
+    // to refuse. Measured on real accounts, three of five own two things — bread
+    // and bagels, a course and a membership, two product lines — and each was
+    // told "Only one owned product is supported per voice." The refusal was the
+    // data loss's cure and the creator's dead end.
+    //
+    // ⚖️ SO THE CLAIM FLIPS: no 23505, the insert lands, and the row carries the
+    // creator's own answers.
+    failWith = null
+    const saved = await claimProductEntity('u1', 'v1', attest)
+    expect(saved).not.toBeNull()
+    expect(captured.row).toMatchObject({
+      voice_id: 'v1',
+      relationship: attest.relationship,
+      // The deliberate act, never the guess — which is exactly what keeps it
+      // outside the narrowed index's reach.
+      source: 'user_answer',
+      user_confirmed: true,
+    })
   })
 
   it('does not disguise other database errors as the duplicate case', async () => {
