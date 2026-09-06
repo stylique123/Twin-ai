@@ -239,6 +239,39 @@ recorded rather than the code simply removed.
 
 ---
 
+## `TWO_SPELLINGS_OF_A_STATED_SOURCE` — OPEN
+
+**What is wrong.** `KNOWLEDGE_SOURCES` now contains both `user` — *"the creator answered
+directly. The highest authority there is"* — and `asked` — *"the only source in this product a
+creator STATED rather than a model inferred"*. They mean the same thing. `asked` is what the only
+live writer emits (`answer-beat-ask`, since migration 0128); `user` is what the union documented,
+what test fixtures use, and what `filledFrom`'s comment refers to. The union omitted the written
+one, so `readKnowledgeItem` validated it away and the highest-provenance row in the product
+reached the writer carrying no provenance at all.
+
+**The decision.** Add `asked` now, collapse the pair later, and the split is deliberate.
+
+⚠️ The rename lives in an edge function. Changing what `answer-beat-ask` writes makes the change
+DB_EDGE_AUTH and puts it behind the staging matrix lane; adding the member is static and fixes the
+reader today. Shipping the smaller half first is not a shortcut here — the reader is the side that
+was losing data.
+
+⚖️ And no data has to move whichever wins. Production holds **zero** rows carrying either value:
+610 `caption`, 478 `transcript`, and nothing else. The pair can be collapsed by editing two files
+rather than by backfilling a column, and that stays true until the first creator answers a beat ask.
+
+**Revisit when.** The first `asked` row is stored, or the edge function is being changed for
+another reason and the rename is free. After that a collapse needs a backfill, and the cheap window
+has closed.
+
+**The cost of leaving it.** Two members meaning one thing is exactly the "two near-identical truth
+systems" this codebase keeps paying to remove, and leaving it invites a future reader to treat them
+as a meaningful distinction — to decide that `user` outranks `asked`, or the reverse, on no
+evidence. The guard `check_knowledge_sources_agree` stops the union and the writers drifting again,
+but it cannot tell two spellings of one idea from two ideas.
+
+---
+
 ## `ASSERTIONS_PINNED_TO_CALL_SHAPE` — OPEN
 
 **What is wrong.** Two source-text guards broke on 2026-09-05 from a refactor that changed no

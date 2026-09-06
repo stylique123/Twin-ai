@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import {
   emptyKnowledge, readKnowledge, readKnowledgeItem, writableClaims, alreadyCovered,
   rankedKnowledge, isBareLabel, sourceExpired, knowledgePromptLine, selectRelevantKnowledge, freshness, KNOWLEDGE_KINDS,
-  type CreatorKnowledge,
+  type CreatorKnowledge, type KnowledgeItem,
 } from '../creatorKnowledge'
 
 const TECH: CreatorKnowledge = readKnowledge({
@@ -265,9 +265,47 @@ describe('how current a thing is — the niche moves', () => {
 })
 
 // ── THE RANKING PREFERRED THE WEAKEST MATERIAL ──────────────────────────────
+describe('source survives the reader, and only a recognised one does', () => {
+  // ⚠️ `source` WAS DROPPED BY `readKnowledgeItem` ENTIRELY. It is on the
+  //  interface, and the only path from a stored row to an item omitted it — so
+  //  `filledFrom`'s `attribution`, "named so a validator can check a claim
+  //  against the same source the writer was given", could never name anything.
+  it('keeps a recognised source', () => {
+    const read = readKnowledgeItem({ kind: 'experience', text: 'I ran it.', basis: 'stated', source: 'caption' })
+    expect(read?.source).toBe('caption')
+  })
+
+  // ⚠️ AND AN UNRECOGNISED ONE BECOMES undefined, NOT ITSELF. The field's own
+  //  comment is explicit that `undefined` means NOT RECORDED and must never read
+  //  as "caption"; passing an unknown value through would hand a reader a source
+  //  that no `KnowledgeSource` describes. Mutation found this unguarded: passing
+  //  `src.source` straight through kept every other assertion green.
+  it('refuses a source outside the vocabulary', () => {
+    const read = readKnowledgeItem({ kind: 'experience', text: 'I ran it.', basis: 'stated', source: 'twitter' })
+    expect(read?.source).toBeUndefined()
+  })
+
+  it('leaves an absent source absent rather than defaulting it', () => {
+    const read = readKnowledgeItem({ kind: 'experience', text: 'I ran it.', basis: 'stated' })
+    expect(read?.source).toBeUndefined()
+  })
+})
+
 describe('rankedKnowledge puts lived material above subject headings', () => {
-  const item = (kind: string, text: string, basis: string, timesSeen: number) =>
-    ({ kind, text, basis, timesSeen, sourceRef: null, sourceExpiry: null }) as unknown as KnowledgeItem
+  // ⚠️ THE `as unknown as KnowledgeItem` HERE DEFEATED THE COMPILER ENTIRELY, and
+  //  the name it cast to was not even imported — so it resolved to nothing and
+  //  checked nothing. Typed through `readKnowledgeItem`, which is what production
+  //  uses to turn a stored row into an item, the fixture is now built the same
+  //  way the real path builds one.
+  const item = (kind: string, text: string, basis: string, timesSeen: number): KnowledgeItem => {
+    const read = readKnowledgeItem({ kind, text, basis, timesSeen, sourceRef: null, sourceExpiry: null })
+    // ⚠️ `readKnowledgeItem` RETURNS null FOR A ROW IT REFUSES, and the old cast
+    //  hid that: a fixture the real reader rejects would have become `null` and
+    //  been ranked as one, quietly. Throwing here means a fixture that could not
+    //  exist in production fails the test that relies on it.
+    if (read === null) throw new Error(`fixture rejected by readKnowledgeItem: ${kind}/${basis}`)
+    return read
+  }
 
   it('an experience seen ONCE outranks a topic seen twelve times', () => {
     // ⚠️ THE EXACT SHAPE FROM PRODUCTION. Topics recur across every caption, so

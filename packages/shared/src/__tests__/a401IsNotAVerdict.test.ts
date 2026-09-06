@@ -23,7 +23,19 @@ const P5 = readFileSync(join(root, 'scripts', 'staging-integration', 'phase5.mjs
 // The helper is plain JS in an .mjs the suite cannot import directly under this
 // config, so its BEHAVIOUR is reproduced here from the same source text and the
 // source is asserted to still say what this models.
-async function callEdgeAuthRetried(call, client, _label) {
+// ⚠️ THE PARAMETERS WERE UNTYPED, SO THE MODEL HAD NO CONTRACT. This function
+//  exists to reproduce `authSession.mjs`'s behaviour for a suite that cannot
+//  import it, with the source asserted below to still say what this models. An
+//  untyped reproduction can drift from what it reproduces in a way no assertion
+//  here would notice — `call` returning something without `status`, `client`
+//  being a bare object with no `auth`. Typing them states the contract the
+//  parity assertion is about.
+type EdgeCall = () => Promise<{ status: number }>
+type RefreshableClient = { auth: { refreshSession: () => Promise<unknown> } } | null
+
+async function callEdgeAuthRetried(
+  call: EdgeCall, client: RefreshableClient, _label: string,
+): Promise<{ status: number }> {
   const first = await call()
   if (first.status !== 401 || !client) return first
   await client.auth.refreshSession()
