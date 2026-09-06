@@ -136,8 +136,22 @@ export function filledFrom(
     // ⚖️ WHERE IT CAME FROM, NOT MERELY THAT IT DID. `source` is a closed union
     // — caption, transcript, user, previous_video — so a validator checking a
     // claim can tell a confirmed answer from a line lifted off a caption.
+    //
+    // ⚠️ AN UNKNOWN SOURCE USED TO BECOME A BLANK ATTRIBUTION, SILENTLY.
+    //  `source` is optional on a `KnowledgeItem` — `readKnowledgeItem` returns
+    //  `undefined` for any value outside the union — and `[undefined].join(', ')`
+    //  is the EMPTY STRING, not the word "undefined". So a row whose provenance
+    //  the reader could not name arrived as `attribution: ''`, which is present
+    //  and falsy and reads to a validator as "attributed to nothing" rather than
+    //  as "we do not know". Dropping the unknowns and falling back to `null`
+    //  keeps the two apart: `null` is the value the field already uses for
+    //  "nothing to attribute", and every consumer already handles it.
     const refs = [...new Set(r.evidence.map((e) => e.source))]
-    out.set(r.label, { text: texts.join(' '), attribution: refs.join(', ') })
+      .filter((x): x is NonNullable<typeof x> => x !== undefined && x !== null)
+    out.set(r.label, {
+      text: texts.join(' '),
+      attribution: refs.length > 0 ? refs.join(', ') : null,
+    })
   }
   return out
 }

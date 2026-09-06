@@ -15,7 +15,10 @@ import {
   compareForCreator, eligibility, PRIORITY_GROUPS,
   type GalleryCreatorView, type RankableReference,
 } from '../galleryPolicy'
-import { emptyReferenceProfile, type ReferenceProfile } from '../referenceProfile'
+import {
+  emptyReferenceProfile,
+  type ReferenceProfile, type FrameCitation, type VisualObservation,
+} from '../referenceProfile'
 import { compareByFit, type GalleryFacts, type NicheRelation } from '../galleryRank'
 
 const NOW = '2026-08-18T00:00:00.000Z'
@@ -49,6 +52,20 @@ const slotted = (id: string, kind: string, label: string, evidence: string): Ref
 
 const observed = <T,>(value: T, evidence: string) =>
   ({ value, basis: 'observed' as const, evidence, assessedAt: NOW })
+
+// ⚠️ `primaryMode` IS NOT AN `Assessed<T>`, AND ONE HELPER WAS SERVING BOTH.
+//  `Assessed<T>` really does carry `basis` / `evidence: string` / `assessedAt`,
+//  so `observed` above is right for `contentSlots` and `commercial.posture`. But
+//  `visual.primaryMode` is a `VisualObservation<T>` — exactly
+//  `{ value, evidence: { frames } }` — and passing it the prose observation
+//  built a shape the visual pass never produces.
+//
+//  ⚖️ FRAMES, NOT PROSE, AND THE TYPE MEANS IT. `FrameCitation` is a one- or
+//  two-element frame index because the evidence has to be something a person can
+//  go and look at; "multi-camera, three speakers" is a description of what
+//  somebody already concluded.
+const observedVisual = <T,>(value: T, frames: FrameCitation = [1]): VisualObservation<T> =>
+  ({ value, evidence: { frames } })
 
 describe('an unassessed library ranks exactly as it does today', () => {
   it('because unknown SKIPS a term rather than failing it', () => {
@@ -105,7 +122,7 @@ describe('the ordering the module was written for', () => {
 describe('hard filters need a known fact on BOTH sides', () => {
   const withMode = (m: string): ReferenceProfile => {
     const p = emptyReferenceProfile('m')
-    return { ...p, visual: { ...p.visual, primaryMode: observed(m as never, 'multi-camera, three speakers') } }
+    return { ...p, visual: { ...p.visual, primaryMode: observedVisual(m as never) } }
   }
 
   it('refuses a production Twin cannot help recreate', () => {
