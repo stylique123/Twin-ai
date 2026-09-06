@@ -667,6 +667,16 @@ jobs:
         run: |
           node scripts/ci/check_ask_beats_are_not_lines.mjs --selftest
           node scripts/ci/check_ask_beats_are_not_lines.mjs
+      # ⚠️ THE FIGURE VOCABULARY LIVES TWICE AND ONLY THE EDGE COPY RUNS.
+      # `claimEntailment.ts` has no production reader; `generate-blueprint`
+      # carries the copy that executes. So the shared tests can stay green
+      # against a file nobody runs while the counter in production reads zero.
+      # resolver, script_validator and speech_polish each had a parity guard.
+      # This vocabulary did not.
+      - name: Figure vocabulary (the two copies must not drift)
+        run: |
+          node scripts/ci/check_figure_vocabulary_parity.mjs --selftest
+          node scripts/ci/check_figure_vocabulary_parity.mjs
       - name: Symbol readers (a function nobody calls is a rule nobody runs)
         run: |
           node scripts/ci/check_symbol_readers.mjs --selftest

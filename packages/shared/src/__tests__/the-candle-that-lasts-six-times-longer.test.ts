@@ -8,8 +8,27 @@ describe('the claim the existing guard could not see', () => {
   // ⚠️⚠️ THE MEASUREMENT THAT REDIRECTED THE WHOLE FIX. Removing the
   // empty-fact-set suppression would have caught NOTHING, because the shared
   // matcher never extracted the claim in the first place.
-  it('claimedValues extracts nothing from N1 — this is why a new detector exists', () => {
-    expect([...claimedValues(N1)]).toEqual([])
+  //
+  // ⚠️ UPDATED 2026-09-06, AND THE REASON FOR THE DETECTOR IS UNCHANGED. This
+  // used to assert `claimedValues(N1)` was EMPTY, pinning the first of the four
+  // holes: "number WORDS are not matched". That hole is now deliberately closed
+  // — production writes every figure in words, so a matcher blind to them was
+  // blind to 8 of 8 money claims — and "thirty-dollar" is read as $30.
+  //
+  // ⚖️ WHAT JUSTIFIES A SEPARATE DETECTOR SURVIVES INTACT, and is now asserted
+  // more sharply than before: the PRICE is visible in both spellings, the
+  // MULTIPLE is visible in neither. "six times longer" is the claim that makes
+  // N1 a liability, and `claimedValues` still cannot see it in any notation.
+  it('sees the price in words — and STILL not the multiple, which is why a new detector exists', () => {
+    const v = [...claimedValues(N1)]
+    expect(v).toContain('30$')
+    // ⚠️ THE LOAD-BEARING HALF. A multiple must not appear in any spelling.
+    expect(v.join(' ')).not.toMatch(/6/)
+  })
+
+  it('the word and digit spellings of N1 now agree exactly', () => {
+    expect([...claimedValues(N1)]).toEqual(
+      [...claimedValues('A $30 candle lasts 6 times longer than standard box store alternatives.')])
   })
 
   it('and only the price from the digit form — never the multiple', () => {
