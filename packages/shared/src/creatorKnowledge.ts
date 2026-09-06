@@ -72,9 +72,33 @@
  *                    an opinion or experience beat.
  *    user            the creator answered directly. The highest authority there
  *                    is, and the only source for facts nothing public reveals.
+ *    asked           the creator answered a BEAT ASK — the same authority as
+ *                    `user`, reached through a different door.
  *    previous_video  carried forward from an earlier generation of their own.
+ *
+ * ⚠️ `asked` WAS MISSING WHILE THE ONLY LIVE WRITER OF IT WAS SHIPPING. Since
+ * migration 0128, `answer-beat-ask` has written `source: 'asked'` and called it
+ * "the only source in this product a creator STATED rather than a model
+ * inferred". This union did not contain it, so `readKnowledgeItem` validated it
+ * away to `undefined` and the highest-provenance row in the product arrived at
+ * the writer carrying no provenance at all. Measured: the attribution came out
+ * as the EMPTY STRING, not as a wrong label — `[undefined].join(', ')` is `''` —
+ * so a creator-stated fact was indistinguishable from one with no source.
+ *
+ * ⚖️ AND IT COST NOTHING YET, WHICH IS WHY IT SURVIVED. Production holds 610
+ * `caption` rows and 478 `transcript` rows and ZERO `asked` rows, so no stored
+ * row was ever mislabelled; the defect was waiting for the first creator to
+ * answer a beat ask. A constraint that has only ever seen the population it was
+ * written for looks like a working constraint.
+ *
+ * ⚠️ TWO SPELLINGS OF ONE IDEA REMAIN, DELIBERATELY, FOR ONE RELEASE.
+ * `user` and `asked` both mean "the creator said this"; collapsing them is
+ * correct and is NOT done here, because the rename lives in an edge function
+ * and this change is deliberately static. Filed as
+ * `TWO_SPELLINGS_OF_A_STATED_SOURCE`. Neither has a stored row, so whichever
+ * survives, no data has to move.
  */
-export const KNOWLEDGE_SOURCES = ['caption', 'transcript', 'user', 'previous_video'] as const
+export const KNOWLEDGE_SOURCES = ['caption', 'transcript', 'user', 'asked', 'previous_video'] as const
 export type KnowledgeSource = (typeof KNOWLEDGE_SOURCES)[number]
 
 export const KNOWLEDGE_BASIS = ['stated', 'demonstrated', 'inferred'] as const
