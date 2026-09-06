@@ -3359,6 +3359,61 @@ function productFactCountOf(ownedEntity: unknown): number {
     : 0
 }
 
+// ── A SCRIPT MAY NOT TELL A CREATOR WHAT THE LAW ALLOWS ───────────────────
+//
+// ⚠️ MIRRORS `regulatoryFailures` IN packages/shared/src/regulatoryClaim.ts.
+// Same duplication rule as `comparativeFailures` below: the edge function
+// cannot import from the workspace, so the vocabulary lives twice and the two
+// copies must not drift.
+//
+// ⚠️ MEASURED, IDEA-MODE RUN I2, 2026-09-06 19:57, on a Florida cottage
+// sourdough baker: "you max out your cottage license limits" (substance: none,
+// citing "Standard sign-off and procedural conclusion") and "cottage food laws
+// hold you back because of kitchen size limits". Florida cottage food law has an
+// annual GROSS SALES cap — no per-batch loaf limit, no kitchen size limit. A
+// creator filming this explains food-safety licensing, incorrectly, on camera.
+//
+// ⚖️ AND THE THIRD LINE IN THAT SAME SCRIPT IS LEFT ALONE. "our Florida cottage
+// food setup" cited "Starting and launching a cottage sourdough microbakery in
+// Florida" — genuinely hers. Naming her own situation is not a claim about what
+// the law permits. CONTEXT IS NOT A RULE, and that difference is the whole rule:
+// both a regulatory NOUN and a rule WORD are required, on the line AND in the
+// evidence that would clear it.
+const REG_NOUN_INLINE =
+  /\b(licen[cs]e|licensing|permit|permitted|cottage food|health department|food safety|food hygiene|inspection|inspector|regulations?|regulatory|ordinance|statute|zoning|liability insurance|certification|certified kitchen|commercial kitchen licen|compliance|the law|legally|legal requirement)\b/i
+const REG_RULE_INLINE =
+  /\b(limits?|limited|max(?:es|ed)? out|maximum|cap(?:s|ped)?|allowed|not allowed|disallow|permits? you|requires?|required|mandatory|must|cannot|can't|up to|no more than|at most|restricts?|restricted|exempt|threshold|per (?:batch|loaf|year|month|week|day)|annual(?:ly)?)\b/i
+
+function statesARegulatoryRuleInline(text: unknown): boolean {
+  const t = String(text ?? '')
+  return REG_NOUN_INLINE.test(t) && REG_RULE_INLINE.test(t)
+}
+
+function regulatoryFailuresInline(
+  script: readonly { line?: unknown }[] | null | undefined,
+  supplied: readonly unknown[] | null | undefined,
+): Array<{ index: number; line: string; repair: string }> {
+  const beats = Array.isArray(script) ? script : []
+  const evidence = Array.isArray(supplied) ? supplied : []
+  // ⚠️ AN ABSENT EVIDENCE LIST IS "NOTHING WAS SUPPLIED", which is exactly when
+  // this must fire — never a reason to skip.
+  if (evidence.some((e) => statesARegulatoryRuleInline(
+    typeof e === 'string' ? e : (e as { text?: unknown })?.text))) return []
+  const out: Array<{ index: number; line: string; repair: string }> = []
+  beats.forEach((b, i) => {
+    const line = typeof b?.line === 'string' ? b.line : ''
+    if (line.trim() === '' || !statesARegulatoryRuleInline(line)) return
+    out.push({
+      index: i,
+      line,
+      repair: 'Remove the claim about what a licence, permit or regulation allows, limits or requires.'
+        + ' Nothing the creator supplied states any such rule, so this sentence is inventing one.'
+        + ' Say what THEY do in their own setup, without describing what the rules permit.',
+    })
+  })
+  return out
+}
+
 function comparativeFailures(
   beats: unknown,
   commercial: boolean,
@@ -7151,6 +7206,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // commercial creator with NOTHING on record. Zero is the expected reading
       // and an absent counter would look identical to it — which is why it is
       // written even when nothing is found.
+      // ⚠️ BEATS TELLING A CREATOR WHAT A LICENCE OR REGULATION PERMITS while
+      // nothing they supplied states any rule at all. Measured on Idea-Mode run
+      // I2 before this shipped: 3 regulatory lines in one script, 2 of them
+      // inventing a limit. Zero is the expected reading and an absent counter
+      // would look identical to it, which is why this is written even when
+      // nothing is found.
+      regulatory_claim_gaps: regulatoryFailuresInline(declared, suppliedForCheck).length,
       comparative_claim_gaps: comparativeFailures(
         declared, goal === 'sell' || ownedEntity !== null, productFactCountOf(ownedEntity)).length,
       proof_quality: proofQualityCounts(
@@ -7297,6 +7359,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     let entFails = [
       ...entitlementFailures(declared, suppliedForCheck),
       ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
+      // ⚠️ MERGED HERE FOR THE REASON THE COMMENT ABOVE GIVES: one repair call,
+      // one re-check, and the ask-beat path for whatever survives. A regulatory
+      // invention is the same failure as an unsupported comparative — a sentence
+      // the creator would read aloud that nobody stood behind — and it gets the
+      // same treatment rather than a second mechanism to get subtly wrong.
+      ...regulatoryFailuresInline(declared, suppliedForCheck),
     ]
     const creatorQuestions: string[] = []
     if (entFails.length) {
@@ -7336,6 +7404,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         entFails = [
           ...entitlementFailures(declared, suppliedForCheck),
           ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
+          ...regulatoryFailuresInline(declared, suppliedForCheck),
         ]
         console.log(JSON.stringify({ event: 'entitlement_repair', applied, still_failing: entFails.length }))
       } catch (e) {

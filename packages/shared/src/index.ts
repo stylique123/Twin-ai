@@ -64,6 +64,9 @@ export * from './setupPlan'
 // Figures spoken about a product must trace to a stored product fact.
 export * from './productClaimCheck'
 export * from './comparativeClaim'
+// ⚠️ A SCRIPT MAY NOT TELL A CREATOR WHAT THE LAW ALLOWS. Idea-Mode run I2 wrote
+// two invented cottage-food licence limits into a Florida baker's script.
+export * from './regulatoryClaim'
 export * from './ownPerformance'
 // Only a named thing with real commercial evidence may be suggested as a product.
 export * from './productSuggestionConfidence'
