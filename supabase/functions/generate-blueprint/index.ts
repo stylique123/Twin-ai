@@ -7083,34 +7083,52 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // "2". `shotLabel` already repairs the RENDER; this counts whether the
       // WRITER stopped doing it, which is the only thing that tells us the new
       // instruction is not inert.
-      shots_named_by_number: shotsNumberedNotNamed,
+      // ⚠️ `shots_named_by_number` IS NOT IN THIS LITERAL. Same reason as the
+      // resync counters below: `shotsNumberedNotNamed` is not assigned until long
+      // after this object is built. MEASURED: null in every stored row.
       // ⚠️ FIX 4 (Wave 2). NULL means no shot list to reconcile. `resynced`
       // rising with a flat script is exactly the shape every other 0131
       // counter takes: the repair is running, and this is what makes that
       // falsifiable rather than assumed.
-      shot_list_resync: shotListResync,
+      // ⚠️ `shot_list_resync` IS NOT IN THIS LITERAL, and was until now. It is
+      // written onto `beatAudit` at its computation site, far below — the
+      // same placement `semantic_repetition` and `cta_fallbacks` use.
+      // MEASURED: read here, it was null in 30 of 30 stored rows, because
+      // this literal is built before the resync pass runs.
       // ⚠️ FIX 5 (Wave 2). NULL means no retention map to reconcile. `matched`
       // rising with a flat script is the same shape shot_list_resync takes:
       // the repair is running, and this is what makes that falsifiable
       // rather than assumed. `dropped` is beats the panel described that the
       // final script no longer has.
-      retention_map_resync: retentionMapResync,
+      // ⚠️ `retention_map_resync` IS NOT IN THIS LITERAL, and was until now. It is
+      // written onto `beatAudit` at its computation site, far below — the
+      // same placement `semantic_repetition` and `cta_fallbacks` use.
+      // MEASURED: read here, it was null in 30 of 30 stored rows, because
+      // this literal is built before the resync pass runs.
       // ⚠️ FIX 7 (Wave 3). NULL means no shot list to relabel. `relabeled`
       // rising with a flat script is the same shape shot_list_resync takes:
       // the repair is running, and this is what makes that falsifiable
       // rather than assumed. `setupCount` is the number of distinct setups
       // this shot list resolved to.
-      setup_label_resync: setupLabelResync,
+      // ⚠️ `setup_label_resync` IS NOT IN THIS LITERAL, and was until now. It is
+      // written onto `beatAudit` at its computation site, far below — the
+      // same placement `semantic_repetition` and `cta_fallbacks` use.
+      // MEASURED: read here, it was null in 30 of 30 stored rows, because
+      // this literal is built before the resync pass runs.
       // ⚠️ FIX 1 (Wave 1). NULL means the reference had no readable transcript
       // to check the script against — never zero. `repaired` counts both a
       // model rewrite that broke the shared run AND a line turned into an
       // `ask` because no safe rewrite was found.
-      reference_phrase_overlap: referencePhraseOverlap,
+      // ⚠️ `reference_phrase_overlap` IS NOT IN THIS LITERAL. Same reason as the
+      // resync counters below: `referencePhraseOverlap` is not assigned until long
+      // after this object is built. MEASURED: null in every stored row.
       // ⚠️ FIX 2 (Wave 1). NULL means the check never ran — never zero.
       // `found` is CTA beats naming/claiming a business absent from
       // `product_entities`; `replaced` is how many shipped with the
       // deterministic non-commercial fallback instead.
-      cta_entity_unmatched: ctaEntityUnmatched,
+      // ⚠️ `cta_entity_unmatched` IS NOT IN THIS LITERAL. Same reason as the
+      // resync counters below: `ctaEntityUnmatched` is not assigned until long
+      // after this object is built. MEASURED: null in every stored row.
       // ⚠️ FIX 3 (Wave 1). NULL means the check never ran — never zero. `found`
       // is hook options (across all five) asserting a currency figure,
       // first-person-plural business claim, or business-model term absent from
@@ -8088,6 +8106,39 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         }
       }
     } catch { /* never fail a generation on a reconciliation pass */ }
+
+    // ── SIX COUNTERS ARE WRITTEN HERE, NOT IN THE LITERAL ───────────────────
+    //
+    // ⚠️ MEASURED IN PRODUCTION, 39 rows with a stored `beat_audit`:
+    //   shot_list_resync        key on 30 rows · non-null 0
+    //   retention_map_resync    key on 30 rows · non-null 0
+    //   setup_label_resync      key on 30 rows · non-null 0
+    //   shots_named_by_number   key on 37 rows · non-null 0
+    //   reference_phrase_overlap key on 30 rows · non-null 0
+    //   cta_entity_unmatched    key on 30 rows · non-null 0
+    //   semantic_repetition                      non-null 19  ← mutated
+    //   cta_fallbacks                            non-null 3   ← mutated
+    // Not because the passes did not run — they are wired, unconditional and
+    // working — but because the `beat_audit` literal is built around line 7123
+    // and every one of these locals is assigned around lines 7600-8150. The
+    // literal captured their initialisers. The only two counters that ever held
+    // a value are the two written by mutation. No resync, no shot-naming rate,
+    // no phrase-overlap repair and no CTA-entity replacement has ever been
+    // observable in production.
+    //
+    // ⚖️ MUTATION, NOT A LITERAL, AND UNCONDITIONAL — the pattern
+    // `semantic_repetition` and `cta_fallbacks` already use. Unconditional so
+    // that NULL still means "there was nothing to reconcile" and a missing key
+    // still means the instrumentation itself failed. Absent is not zero, and
+    // null is not zero either.
+    if (beatAudit) {
+      beatAudit.shot_list_resync = shotListResync
+      beatAudit.retention_map_resync = retentionMapResync
+      beatAudit.setup_label_resync = setupLabelResync
+      beatAudit.shots_named_by_number = shotsNumberedNotNamed
+      beatAudit.reference_phrase_overlap = referencePhraseOverlap
+      beatAudit.cta_entity_unmatched = ctaEntityUnmatched
+    }
 
     // ── AND THE TICKS ABOVE IT MUST DESCRIBE THE SAME SCRIPT ─────────────────
     //

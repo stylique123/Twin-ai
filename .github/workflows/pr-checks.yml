@@ -625,6 +625,17 @@ jobs:
         run: |
           node scripts/ci/check_counter_durability.mjs --selftest
           node scripts/ci/check_counter_durability.mjs
+      # ⚠️ THE DURABILITY GUARD ABOVE COULD NOT SEE THIS. It asks whether a
+      # counter is emitted and stored, not whether the value existed yet when it
+      # was read. Six counters in `beat_audit` were read into the object literal
+      # thousands of lines before the passes that compute them ran, and were
+      # therefore NULL in every row production has ever stored — while the
+      # durability guard reported OK. A check that cannot see the thing it
+      # exists for is the defect, not the cure.
+      - name: Counter write order (was the value computed before it was read?)
+        run: |
+          node scripts/ci/check_counter_written_before_read.mjs --selftest
+          node scripts/ci/check_counter_written_before_read.mjs
       # ⚠️ SHAPE, NOT OUTCOME. This cannot verify that a credential was rotated —
       # proving the old one no longer authenticates would mean holding it. It
       # checks that the record is well-formed and, crucially, that a known entry
