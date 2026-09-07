@@ -307,3 +307,64 @@ accusing them afterwards.
 author paying ten minutes to tell a brittle proxy from a real property. That is the **right** ten
 minutes — it is the judgement the grep cannot make. Gating it would cost that ten minutes on all 84,
 mostly to conclude the test was already correct.
+
+---
+
+## `CONTAINER_TEMPLATE_NEVER_REACHED` — OPEN
+
+**What is wrong.** The container-template path in `generate-blueprint` — `templateFor`,
+`resolveTemplate`, the fifteen `CONTAINER_TYPES` and their beat slots, including the five that
+demand `personal_experience` — **has never run in production.** Measured 2026-09-07, three
+independent ways:
+
+1. Of **74** generations carrying a `reference_url`, **zero** join a row in
+   `reference_content_profiles`. One URL was looked up directly by video id and by handle: absent.
+2. `assess_reference` is enqueued **only** by `pilot-start` and `_shared/pilotDb` — never by the
+   generation path. Of **2,822** such jobs, **zero** carry a URL any generation used.
+3. `script_report.slots` is `null`, and `not_run` contains `all_slots_filled`, on **37 of 37**
+   stored script reports.
+
+So `assessed` is null, `known` is false, `tpl` is null, and every generation falls through to
+`container_template_absent` with reason `reference_not_assessed` — logged to console only, into
+logs that expire. The 1,616 rows in `reference_content_profiles` are a scraped pilot corpus,
+disjoint from anything a creator has ever pasted.
+
+**What was decided.** Shelved, not deleted; the person and shape contracts were built in the
+**writer** instead. The owner ruled **C**: the fallback prompt produces every script today, so a
+fix shipped into the template changes nothing tomorrow.
+
+**⚠️ And the rule is not reference-derived — scoping it here would be a category error.** *"The
+episode beat is first person, past tense, and collapses when the store is empty"* needs no
+knowledge of anyone else's video. It is equally true of a pasted URL (Reference), a typed
+paragraph (Idea), a product (Product) and a suggested topic (Suggest). Putting it in the template
+would leave three of the four modes broken forever. The evidence was already in hand: all four
+Idea Mode runs produced the same beat pattern as the eight reference runs, and I4 — a run with
+**no reference at all** — has a second-person body beat.
+
+**⚠️ So when this reopens, do not scope person or shape contracts here.** They belong in the
+writer and apply to all four modes. Without that sentence the next reader lights the template,
+puts the person contract inside it, and three modes stay broken.
+
+**Why deleting it is wrong.** Built, tested and *unreached* is this repository's most common
+shape, not dead code — eight items this note called "unbuilt" this month turned out to be live.
+This is the inverse: live and unreached.
+
+**Revisit when.** Both of these, not either:
+
+1. An assessment can run when the creator **pastes** the URL — option B, best-effort, never
+   inside the paid generation path. Option A (assess inline, blocking) is **ruled out by
+   measurement**: `created_at` → `updated_at` across 1,508 completed jobs is p50 **392s** / p90
+   **3,375s** — an upper bound that conflates queue wait with run time and is still minutes.
+2. The refusal layer states real causes. Today it does not: six refusal messages were observed in
+   one session and at least three misdescribed their own cause — *"Nobody appears on camera"* on a
+   woman talking to camera for 227 seconds; *"This one is long"* on a video that then succeeded on
+   retry from the same URL; *"Nobody in this video is talking to the camera"* on a 19-second
+   talking head. Option B moves that failure layer next to a paid action, so it must be
+   trustworthy first.
+
+**What it will actually cost.** Unknown, honestly — a scrape plus transcript plus model call per
+pasted URL, at a success rate nobody has measured because it has never run on this traffic. And
+one design requirement comes with it: **the honesty panel must say which path produced the
+script.** Best-effort assessment means two qualities of output, and a creator must never receive
+the lesser one with no indication why. The panel already carries *"no transcript was read"* and
+*"we did not analyse the video"*; this is a third line of the same kind, not a new mechanism.
