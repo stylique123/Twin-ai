@@ -66,7 +66,7 @@ function sectionIs(b: CraftBeat, ...needles: string[]): boolean {
  *  CTA are written to a formula on purpose — a CTA with no number in it is not
  *  a vague CTA. Judging them by the body's standards is how a check earns a
  *  reputation for being wrong. */
-function bodyBeats(script: readonly CraftBeat[]): CraftBeat[] {
+export function bodyBeats(script: readonly CraftBeat[]): CraftBeat[] {
   return script.filter((b) => isSpoken(b)
     && !sectionIs(b, 'hook', 'call to action', 'cta', 'payoff'))
 }
@@ -76,6 +76,13 @@ function hookBeat(script: readonly CraftBeat[]): CraftBeat | null {
 }
 
 // ── 1. SPECIFICITY FLOOR ──────────────────────────────────────────────────
+//
+// ⚠️ `hasParticular` AND `bodyBeats` ARE EXPORTED, AND THAT IS DELIBERATE.
+// `particularFloor.ts` decides whether the WRITER should be asked to put a
+// creator's own detail into the script, and it must ask the SAME question this
+// note asks. Two spellings of "is this specific" would let a repair satisfy
+// itself while the creator still reads "nothing here is specific". Re-privatise
+// either one and the two rules fork silently.
 //
 // ⚠️ A NUMBER, A NAME, OR A PRICE — one of the three, somewhere. This is the
 // cheapest possible test for "is this about anything", and it is set at ZERO
@@ -89,7 +96,7 @@ function hookBeat(script: readonly CraftBeat[]): CraftBeat | null {
 const PARTICULAR_DIGIT = /\d/
 const PARTICULAR_MONEY = /[$£€]/
 
-function hasParticular(line: unknown): boolean {
+export function hasParticular(line: unknown): boolean {
   const raw = String(line ?? '')
   if (PARTICULAR_DIGIT.test(raw) || PARTICULAR_MONEY.test(raw)) return true
   const tokens = raw.split(/\s+/).filter((t) => t !== '')
