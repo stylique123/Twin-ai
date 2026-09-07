@@ -32,6 +32,35 @@
 // At three videos it is context. At fifteen it is the only thing standing
 // between a creator and their own house style. Nothing here should be quoted
 // later as having fixed a repetition problem — it was not demonstrated.
+//
+// ── ⚠️ RE-MEASURED 2026-09-07, AND ONE CLAIM ABOVE NEEDS QUALIFYING ───────
+//
+// The audit filed "contentHistory blocks repeat premises" as work. It is not,
+// and this is the evidence. Across 50 generations carrying a premise, 16
+// creators, 11 of them with more than one generation:
+//
+//   premises repeated EXACTLY .......................... 0
+//   premise PAIRS at >=60% content-word overlap ........ 3 of 132  (2.3%)
+//   the highest overlap of any pair .................... 0.86
+//
+// So the header's "does not reproduce" is TOO STRONG for near-duplicates and
+// stays right for exact ones. Two of the three read as plainly the same video
+// written twice ("waiting for commercial gear holds back beginner microbakers"
+// against "waiting for commercial kitchen equipment holds back beginner
+// microbakers"). That is a real defect and it should be recorded as one.
+//
+// ⚖️ AND IT STILL DOES NOT LICENSE A BLOCKER, for a reason the numbers give
+// rather than the doctrine: ALL THREE PAIRS WERE GENERATED ON THE SAME DAY.
+// None is Twin forgetting a script from last month; each is a creator
+// generating twice in one sitting, which is indistinguishable from a retry —
+// and refusing to write a second take on the premise a creator just asked
+// again for is a worse product than repeating one. A rule that cannot tell a
+// repeat from a retry would fire on the retry, because that is all that has
+// ever happened.
+//
+// WHAT WOULD SETTLE IT: a near-duplicate pair generated DAYS APART. Zero exist
+// today. The query is premise pairs per creator by content-word overlap, and
+// the discriminator is whether d1 = d2.
 
 /** One thing already made for this creator. */
 export interface PriorVideo {
