@@ -176,6 +176,26 @@ export const EXCLUDED = {
     + 'is SAFE here, where merging 0169 early would have made every successful extraction '
     + 'store nothing. The capture flow and the writer integration are the units that must '
     + 'wait for the column to exist, and they are not in this change.',
+  '0188_a_balance_no_event_explains':
+    'Reconciles the credit ledger: backfills an opening-balance event per profile and '
+    + 'makes handle_new_user write the signup grant as an event. '
+    + '\u26a0\ufe0f AND IT WAS APPLIED HERE FIRST, WHICH WAS WRONG, AND THE MATRIX SAID SO IN '
+    + '2m00s: "relation \\"public.profiles\\" does not exist". The reasoning for applying it '
+    + 'was that `profiles` and `credit_events` are both created in 0001_init -- true, and '
+    + 'IRRELEVANT, because staging applies only the migrations in THIS list and 0001_init is '
+    + 'not one of them. That was an inference stated as a check. It is the SECOND migration '
+    + 'to make this exact mistake (0186 was the first, with the same error shape on '
+    + 'product_entities), which is why the reason is written out rather than summarised: '
+    + '"the table is in an early migration" says nothing about whether staging has it.\n\n'
+    + 'EXCLUDED for the staging table-availability reason the loop has used since 0121. '
+    + 'Staging has no `profiles` table, so this fails on its first statement rather than '
+    + 'passing vacuously -- which is the honest outcome: a reconciliation of a table that is '
+    + 'not there would prove nothing even if it ran.\n\n'
+    + '\u26a0\ufe0f MANUAL APPLY REQUIRED, and it is the one on this list that touches MONEY. '
+    + 'Like 0120/0121/0186/0187 it must be applied to production by hand. Nobody\'s balance '
+    + 'changes -- 49 of 50 profiles are short by exactly the 30-credit signup grant and none '
+    + 'is short by a spend -- but until it is applied, `balance = sum(credit_events.delta)` '
+    + 'remains false for every account on the platform.',
   '0187_a_creator_could_never_store_their_own_answer':
     'Adds the missing INSERT policy and grant on `creator_knowledge`, which is itself '
     + 'excluded above (0121) because staging applies the brand-voice fixture AFTER the '
