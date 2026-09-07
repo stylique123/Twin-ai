@@ -58,6 +58,12 @@ export type FitReason =
 export interface FitDecision {
   verdict: FitVerdict
   reason: FitReason
+  /** How many frames the verdict was actually derived from.
+   *
+   *  ⚠️ CARRIED SO THE WARNING CAN SAY IT. Without this the creator-facing
+   *  sentence had no way to be honest about its own evidence, and it wasn't:
+   *  see the SAW comment below. */
+  framesLookedAt: number
 }
 
 /** ⚠️ ORDER IS THE RULE, NOT AN IMPLEMENTATION DETAIL. Each branch below is
@@ -80,15 +86,21 @@ export function judgeFit(look: EarlyLook): FitDecision {
   // a NaN through as a real look.
   const frames = look.framesLookedAt
   if (typeof frames !== 'number' || !Number.isFinite(frames) || frames < 1) {
-    return { verdict: 'unsure', reason: 'NOTHING_LOOKED_AT' }
+    return { verdict: 'unsure', reason: 'NOTHING_LOOKED_AT', framesLookedAt: 0 }
   }
-  if (look.looksAnimated === true) return { verdict: 'does_not_fit', reason: 'ANIMATED' }
-  if (look.peopleOnCamera === 'none') return { verdict: 'does_not_fit', reason: 'NOBODY_ON_CAMERA' }
-  if (look.someoneTalkingToCamera === true) return { verdict: 'fits', reason: 'TALKING_TO_CAMERA' }
+  if (look.looksAnimated === true) {
+    return { verdict: 'does_not_fit', reason: 'ANIMATED', framesLookedAt: frames }
+  }
+  if (look.peopleOnCamera === 'none') {
+    return { verdict: 'does_not_fit', reason: 'NOBODY_ON_CAMERA', framesLookedAt: frames }
+  }
+  if (look.someoneTalkingToCamera === true) {
+    return { verdict: 'fits', reason: 'TALKING_TO_CAMERA', framesLookedAt: frames }
+  }
   if (look.someoneTalkingToCamera === false) {
-    return { verdict: 'does_not_fit', reason: 'NOBODY_TALKING_TO_CAMERA' }
+    return { verdict: 'does_not_fit', reason: 'NOBODY_TALKING_TO_CAMERA', framesLookedAt: frames }
   }
-  return { verdict: 'unsure', reason: 'CANNOT_TELL' }
+  return { verdict: 'unsure', reason: 'CANNOT_TELL', framesLookedAt: frames }
 }
 
 /** What the creator reads.
@@ -114,10 +126,45 @@ export interface FitWarning {
 
 const CONTINUE = 'Use it anyway — the script may not sound like you'
 
-const SAW: Record<Exclude<FitReason, 'TALKING_TO_CAMERA' | 'NOTHING_LOOKED_AT' | 'CANNOT_TELL'>, string> = {
-  ANIMATED: 'This looks like a cartoon or animation, not a person filming themselves.',
-  NOBODY_ON_CAMERA: 'Nobody appears on camera in this video.',
-  NOBODY_TALKING_TO_CAMERA: 'Nobody in this video is talking to the camera.',
+/** ⚠️⚠️ THIS FIELD IS DOCUMENTED AS "WHAT TWIN SAW" AND IT USED TO SAY
+ *  SOMETHING ELSE. The three sentences were claims about the WHOLE VIDEO --
+ *  "Nobody appears on camera in this video." -- while the evidence behind them
+ *  is EARLY_LOOK_FRAMES stills, which is TWO. A creator was told nobody appears
+ *  on camera in a video of a woman talking to camera for 227 seconds, and told
+ *  nobody was talking to the camera in a 19-second talking head. Both times the
+ *  model answered honestly about the frames it was shown; the sentence promoted
+ *  that answer into a statement about footage nobody looked at.
+ *
+ *  ⚖️ SO THE SENTENCE NOW REPORTS THE EVIDENCE, NOT A CONCLUSION FROM IT. The
+ *  warning still fires, still costs the same, still offers the same override --
+ *  it simply stops claiming to have watched the video. This is the same rule
+ *  `readEarlyAnswer` already states one layer up: "false is an accusation and
+ *  null is silence." An accusation must at least be about what we saw.
+ *
+ *  ⚠️ AND IT IS NOT FIXED BY LOOKING AT MORE FRAMES. Raising
+ *  EARLY_LOOK_FRAMES would buy coverage and cost model spend on every scanned
+ *  video, and the sentence would STILL be a whole-video claim from a sample.
+ *  The two are independent: this one is free and true at any frame count.
+ *
+ *  ⚖️ PLAIN EVERYDAY ENGLISH, per the standing rule: "the two frames we
+ *  checked", never "the sampled frames" or "n=2". */
+function framesPhrase(n: number): string {
+  // ⚠️ "FRAME" IS BANNED COPY AND THE TEST CAUGHT IT. The first draft of this
+  // said "the two frames we checked"; `uses none of Twin's internal vocabulary`
+  // failed, and it was right -- a creator reads "still pictures", not "frames".
+  // THE TEST WAS RIGHT AND THIS CODE WAS WRONG.
+  if (n === 1) return 'the one still picture we checked'
+  if (n === 2) return 'the two still pictures we checked'
+  return `the ${n} still pictures we checked`
+}
+
+const SAW: Record<
+  Exclude<FitReason, 'TALKING_TO_CAMERA' | 'NOTHING_LOOKED_AT' | 'CANNOT_TELL'>,
+  (n: number) => string
+> = {
+  ANIMATED: (n) => `In ${framesPhrase(n)}, this looks like a cartoon or animation rather than a person filming themselves.`,
+  NOBODY_ON_CAMERA: (n) => `Nobody was on camera in ${framesPhrase(n)}.`,
+  NOBODY_TALKING_TO_CAMERA: (n) => `Nobody was talking to the camera in ${framesPhrase(n)}.`,
 }
 
 /** The warning for ONE video the creator picked to copy.
@@ -126,12 +173,17 @@ const SAW: Record<Exclude<FitReason, 'TALKING_TO_CAMERA' | 'NOTHING_LOOKED_AT' |
  *  pass silently, on purpose. */
 export function warningForPickedVideo(decision: FitDecision): FitWarning | null {
   if (decision.verdict !== 'does_not_fit') return null
-  const saw = SAW[decision.reason as keyof typeof SAW]
+  const sawFor = SAW[decision.reason as keyof typeof SAW]
   // A `does_not_fit` reason not in SAW would be a bug, and an empty card is a
   // worse outcome than no card: say nothing rather than show a blank warning.
-  if (!saw) return null
+  if (!sawFor) return null
+  // ⚠️ A does_not_fit WITH NO FRAMES BEHIND IT IS NOT A THING TO WARN ABOUT.
+  // judgeFit cannot produce one today -- zero frames returns NOTHING_LOOKED_AT
+  // -- but a hand-built decision could, and "nobody was on camera in the 0
+  // frames we checked" is a sentence no creator should ever read.
+  if (!Number.isFinite(decision.framesLookedAt) || decision.framesLookedAt < 1) return null
   return {
-    saw,
+    saw: sawFor(decision.framesLookedAt),
     cost: 'Twin learns how you talk. It cannot learn that from this video, so the script it writes will sound generic.',
     instead: 'Pick a video where someone is speaking straight to the camera — telling a story, giving an opinion, or explaining how to do something.',
     continueLabel: CONTINUE,
