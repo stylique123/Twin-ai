@@ -108,10 +108,46 @@ describe('the eleven it must leave alone, and the rest', () => {
 // ⚠️⚠️ THE TWO RULES MUST AGREE BY CONSTRUCTION, NOT BY LUCK. If the fix could
 // satisfy itself while the floor still fires, the creator reads "nothing here
 // is specific" on a script the writer was told it had fixed.
-describe('the fix and the floor ask the same question', () => {
-  it('every script this flags is a script the floor also flags', () => {
+describe('the fix and the floor agree about MEANING, not about length', () => {
+  it('on a body long enough for the floor, both fire', () => {
     expect(specificityFloorNote(VAGUE)).not.toBeNull()
     expect(particularFailures(VAGUE, SUPPLIED)).toHaveLength(1)
+  })
+
+  // ⚠️⚠️ #718 CLAIMED "EVERY SCRIPT THIS FLAGS IS A SCRIPT THE FLOOR ALSO
+  // FLAGS". THAT WAS FALSE, and the test asserting it passed only because its
+  // fixture happened to have three body beats. The floor needs THREE and
+  // excludes hook, CTA and payoff; Twin's standard Hook/Setup/Re-hook/Payoff/CTA
+  // leaves exactly TWO. Measured over the 33 stored scripts, only 2 are eligible
+  // for the floor at all — it is nearly silent, not noisy.
+  //
+  // ⚖️ THIS FIRES ON THE SUPERSET DELIBERATELY. Adopting the minimum would make
+  // it inert on the same 2 of 33. Pinned so the real relationship is asserted
+  // rather than the flattering one.
+  it('on a TWO-beat body the floor stays silent and this still fires', () => {
+    const short = [
+      { section: 'hook', line: 'Most home bakers give up in the first year.' },
+      { section: 'setup', line: 'the real problem is nobody tells you what it costs.' },
+      { section: 're-hook', line: 'and then it stops being fun.' },
+      { section: 'payoff', line: 'you just have to keep going.' },
+      { section: 'cta', line: 'follow if you want the rest of this.' },
+    ]
+    expect(specificityFloorNote(short)).toBeNull()
+    expect(particularFailures(short, SUPPLIED)).toHaveLength(1)
+  })
+
+  // ⚠️ AND AN EMPTY BODY IS NEITHER'S PROBLEM. 12 of the 33 stored scripts are
+  // hook-and-CTA only, several with the SAME sentence in both. That is a failed
+  // generation, not a vague one, and neither rule should pretend to fix it.
+  it('an empty body is silent on both — it is a different defect', () => {
+    const empty = [
+      { section: 'hook', line: 'Follow if you want the rest of this.' },
+      { section: 'setup', line: '' },
+      { section: 're-hook', line: '' },
+      { section: 'cta', line: 'Follow if you want the rest of this.' },
+    ]
+    expect(specificityFloorNote(empty)).toBeNull()
+    expect(particularFailures(empty, SUPPLIED)).toEqual([])
   })
 
   it('and a script the floor clears, this clears too', () => {

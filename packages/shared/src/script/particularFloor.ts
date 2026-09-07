@@ -5,12 +5,16 @@
  * `witness_score`:
  *
  *     scripts with no number ANYWHERE ................... 31 of 33
- *     scripts that trip the specificity floor ........... 28 of 33  (85%)
+ *     scripts whose BODY carries nothing concrete ....... 30 of 32
  *
- * The floor (`specificityFloorNote`) has been firing on roughly six of every
- * seven scripts and rendering to the creator on the Result page. The owner's
- * call was A: THE NOTE IS RIGHT AND THE WRITER IS WRONG. So the floor is left
- * exactly as it is and this asks the writer to clear it.
+ * The owner's call was A: THE NOTE IS RIGHT AND THE WRITER IS WRONG. So
+ * `specificityFloorNote` is left exactly as it is and this asks the writer to
+ * put something concrete in.
+ *
+ * ⚠️ AN EARLIER VERSION OF THIS HEADER SAID THE FLOOR FIRES ON 28 OF 33, AND
+ * THAT WAS WRONG — see the correction at the end of this comment. The floor is
+ * nearly silent, not noisy. The vagueness is real; the note about it is not
+ * reaching anyone.
  *
  * ── ⚠️ AND IT MUST NEVER ASK FOR A NUMBER TO BE INVENTED ──────────────────
  *
@@ -20,7 +24,8 @@
  * because a repair that adds a FACT is a repair that can fabricate one.
  *
  * ⚖️ SO THIS ONLY EVER SAYS "USE THE ONE THEY GAVE YOU", and it is measurable
- * that this is possible. Of the 28 scripts tripping the floor:
+ * that this is possible. Of the 28 scripts whose body carried nothing concrete
+ * (counted before the floor's own 3-beat minimum is applied):
  *
  *     the creator's store is EMPTY ...................... 11
  *     the store has rows but NO particular ...............  0
@@ -36,6 +41,33 @@
  * ⚖️ THE CANDIDATES ARE HANDED OVER VERBATIM. The repair names the actual
  * supplied lines rather than describing them, so the writer picks one instead
  * of composing something that sounds like one.
+ *
+ * ── ⚠️ A CORRECTION TO WHAT #718 CLAIMED, MEASURED 2026-09-07 ─────────────
+ *
+ * #718 said "every script this flags is a script the floor also flags". THAT IS
+ * FALSE, and the test that passed only did so because its fixture happened to
+ * have three body beats.
+ *
+ * `specificityFloorNote` needs MIN_BODY_BEATS_FOR_SPECIFICITY (3) body beats,
+ * and `bodyBeats` excludes the hook, the CTA AND THE PAYOFF. Twin's standard
+ * structure is Hook / Setup / Re-hook / Payoff / CTA, which leaves exactly TWO
+ * body beats. Measured over the 33 stored scripts:
+ *
+ *     body completely EMPTY ............................ 12
+ *     body of 1 to 2 beats (under the floor's minimum) .. 19
+ *     eligible for the floor at all ......................  2
+ *
+ * So the floor is not wallpaper firing at 85%, which is what #718's body said.
+ * It is very nearly SILENT: at most 2 of 33 scripts can trigger it.
+ *
+ * ⚖️ AND THIS DELIBERATELY DOES NOT ADOPT THAT MINIMUM. Matching it would make
+ * this fire on the same 2 of 33 and be inert by construction — the defect this
+ * repo keeps finding. A two-beat body with nothing concrete in it is still a
+ * script that could be about any business in the world, and the writer can
+ * still be handed the creator's own detail for it. So this fires on a SUPERSET
+ * of what the floor shows the creator, on purpose, and the two agree about what
+ * "specific" MEANS (`hasParticular`, imported) without agreeing about how long a
+ * body has to be before it is worth saying so.
  */
 
 import { bodyBeats, hasParticular, type CraftBeat } from './craftContracts'
