@@ -6233,9 +6233,30 @@ about the topic in general rather than naming a product they never mentioned.`
                   source: String(k.source ?? 'user'),
                   timesSeen: Number(k.times_seen ?? 0),
                 })) as never,
-                audience: aRows.map((a) => ({
-                  question: String(a.summary ?? ''), timesSeen: Number(a.asked ?? 0),
-                })),
+                // ⚠️ EMPTY, AND THIS LINE READ AN UNDECLARED NAME UNTIL NOW.
+                // #694 deleted the `audience_questions` reader on measurement
+                // (the table has zero rows, no writer, and one audience-asks
+                // frame across 1,080 creator_knowledge rows) but left this one
+                // use of `aRows` behind. Nothing in this file declares it, so
+                // reaching this line throws a ReferenceError.
+                //
+                // ⚠️ WHAT I VERIFIED, AND WHAT I DID NOT. VERIFIED by reading
+                // the shipped source: `aRows` is used once and declared nowhere
+                // (`check_edge_functions_parse` names it TS2304 and fails on
+                // main), and this line sits inside the try at ~6195 whose catch
+                // logs `container_template_absent` with reason `read_failed` —
+                // so the throw costs the WHOLE container-template resolution,
+                // not just the audience input. NOT VERIFIED: how often it
+                // actually fired. Edge logs expire and the log query was
+                // unavailable, so the rate is unmeasured. `read_failed` on that
+                // event is the signature to count if anyone wants the number.
+                //
+                // ⚖️ [] IS THE HONEST VALUE, NOT A STOPGAP. Nothing supplies
+                // audience questions today. #694 filed the re-open condition as
+                // AUDIENCE_QUESTIONS_HAS_NO_SUPPLY: comments are the real
+                // corpus and `commentsDatasetUrl` is already in the scrape
+                // output. When that lands, this is where it goes.
+                audience: [],
               },
               // ⚖️ `researchable: false` BECAUSE THIS FUNCTION DOES NO RESEARCH.
               // Saying otherwise would let a beat resolve to `research` and be
