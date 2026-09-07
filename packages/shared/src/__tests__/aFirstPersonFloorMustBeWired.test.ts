@@ -36,6 +36,44 @@ describe('the two copies agree', () => {
   })
 })
 
+// ⚠️⚠️ THIS BLOCK EXISTS BECAUSE THE PARITY TEST WAS BLIND TO THE CHANGE THAT
+// ADDED IT. Scoping the floor to the middle was mutated INTO THE EDGE COPY —
+// reverting it to the old whole-script `beats.some(...)` — and all nine tests
+// here still passed. A guard that cannot see the drift it exists to catch is
+// the defect this repo keeps finding, so the guard was fixed before the change
+// shipped, not after.
+//
+// ⚖️ WHOLE-LINE COMMENTS ARE DROPPED, NEVER "everything after //". Cutting at
+// the first `//` deletes a real read that happens to sit after a string
+// containing "https://", which is how this file's sibling guard went quiet.
+describe('the edge copy scopes the floor to the middle, not the whole script', () => {
+  const codeLines = edge.split('\n').filter((l) => !l.trim().startsWith('//'))
+  const fn = (() => {
+    const start = codeLines.findIndex((l) => l.includes('function firstPersonFailuresInline'))
+    expect(start).toBeGreaterThan(-1)
+    return codeLines.slice(start, start + 40).join('\n')
+  })()
+
+  it('clears on a first-person MIDDLE beat, never on any beat', () => {
+    expect(fn).toContain('middle.some((b) => FIRST_PERSON_MARKER_INLINE.test(lineOf(b)))')
+    // ⚠️ THE NEGATIVE HALF IS THE HALF THAT CATCHES THE REVERT.
+    expect(fn).not.toContain('beats.some((b) => FIRST_PERSON_MARKER_INLINE.test(lineOf(b)))')
+  })
+
+  it('excludes the OPENING hook only, so a re-hook stays a middle beat', () => {
+    expect(fn).toContain("sec.includes('re-hook')")
+    expect(fn).toContain("sec.includes('rehook')")
+  })
+
+  it('repairs a MIDDLE beat, so the repair cannot rewrite the hook', () => {
+    expect(fn).toContain('middle.includes(b)')
+  })
+
+  it('stays silent when the middle carries no text at all', () => {
+    expect(fn).toContain("middle.every((b) => lineOf(b).trim() === '')")
+  })
+})
+
 describe('the wiring, asserted against the shipped source', () => {
   it('it is merged into entFails, not run as a parallel mechanism', () => {
     expect(edge).toMatch(/\.\.\.regulatoryFailuresInline\(declared, suppliedForCheck\),\s*\n\s*\.\.\.firstPersonFailuresInline\(/)
