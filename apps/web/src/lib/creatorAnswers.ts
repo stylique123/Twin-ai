@@ -7,10 +7,29 @@
 // the log as well would create two records that can disagree about what the
 // creator said, and the store would lose.
 //
-// ⚖️ THE LOG IS WRITTEN EVEN WHEN THE KNOWLEDGE WRITE FAILS, AND ON PURPOSE.
-// Being asked the same question twice because an insert failed is a worse
-// experience than a lost answer, and the creator can always say it again in
-// their own words. Ordering follows from that: log first, knowledge second.
+// ⚠️⚠️ THIS HEADER USED TO SAY THE OPPOSITE OF WHAT THE CODE DOES, and it
+// stated the exact reasoning that destroyed twelve creators' answers. It read:
+//
+//   "THE LOG IS WRITTEN EVEN WHEN THE KNOWLEDGE WRITE FAILS, AND ON PURPOSE.
+//    Being asked the same question twice because an insert failed is a worse
+//    experience than a lost answer, and the creator can always say it again in
+//    their own words. Ordering follows from that: log first, knowledge second."
+//
+// #724 reversed the ordering and the header was left behind, so a reader would
+// have taken the old trade-off as current policy — the same defect one layer
+// up from the code: a claim that is no longer true and nothing to catch it.
+//
+// ⚖️ THE ORDER IS NOW KNOWLEDGE FIRST, LOG SECOND, and the trade-off is stated
+// the right way round: being asked twice is an annoyance; losing the only copy
+// is destruction. Marking a question answered before the answer is safe makes
+// the loss silent AND permanent, because the question is never put again.
+//
+// ⚠️ AND "the creator can always say it again" WAS FALSE IN PRACTICE. Measured
+// 2026-09-07: `creator_questions_put` held TWELVE rows marked `answered` from
+// FOUR creators while `creator_knowledge` held ZERO rows with source='asked'.
+// They could not say it again — they were never asked again. The insert had
+// been failing on a CHECK constraint that never listed 'asked' (0189), and
+// this ordering is what hid it for weeks.
 import { supabase } from './supabase'
 import type { StoreCounts } from '@twinai/shared'
 import { answerToKnowledge, type CreatorQuestion, type StoredKnowledgeItem } from '@twinai/shared'

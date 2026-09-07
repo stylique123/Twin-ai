@@ -49,6 +49,30 @@ describe('an answer is saved before the question is marked taken', () => {
   })
 })
 
+// ⚠️ A HEADER THAT CONTRADICTS THE CODE IS THE SAME DEFECT ONE LAYER UP.
+// #724 reversed the ordering and left the file header stating the OLD trade-off
+// ("log first, knowledge second") as current policy — the reasoning that cost
+// four creators twelve answers. Nothing caught it; a reader would have believed
+// it. This is what catches it next time.
+describe('the header does not contradict the code', () => {
+  it('does not state the old log-first ordering as policy', () => {
+    // ⚖️ THE QUOTED HISTORY IS ALLOWED AND THE CLAIM IS NOT. The header quotes
+    // the old text deliberately so the decision is findable, so this asserts on
+    // the ORDER OF THE TWO SENTENCES, not on the words appearing at all: the
+    // correction must come after the quote.
+    const quoted = LIB.indexOf('log first, knowledge second')
+    const corrected = LIB.indexOf('THE ORDER IS NOW KNOWLEDGE FIRST, LOG SECOND')
+    expect(quoted, 'the old text should still be quoted as history').toBeGreaterThan(-1)
+    expect(corrected, 'the correction must be present').toBeGreaterThan(-1)
+    expect(corrected).toBeGreaterThan(quoted)
+  })
+
+  it('does not still claim a creator can simply say it again', () => {
+    // That sentence was measurably false: they were never asked again.
+    expect(LIB).toContain('WAS FALSE IN PRACTICE')
+  })
+})
+
 // ⚖️ THE CONSTRAINT IS HALF THE FIX AND IT LIVES IN SQL, so this is the only
 // place a reader of the client code will find out that the value it writes was
 // once rejected by the database.
