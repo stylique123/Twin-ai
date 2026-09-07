@@ -8,10 +8,15 @@ const look = (o: Partial<EarlyLook>): EarlyLook => ({
   someoneTalkingToCamera: null, peopleOnCamera: null, looksAnimated: null, framesLookedAt: 4, ...o,
 })
 
+// ⚠️ THIS FIXTURE SAYS 4 AND PRODUCTION SENDS 2. `EARLY_LOOK_FRAMES` in
+// worker/src/earlyLookRules.ts is 2, so every real verdict rests on two still
+// pictures. The fixture is not wrong -- judgeFit must work at any count -- but
+// nobody reading only this file would learn how thin the real evidence is.
+
 describe('judgeFit — what was actually seen', () => {
   it('a person talking to camera fits', () => {
     expect(judgeFit(look({ someoneTalkingToCamera: true, peopleOnCamera: 'one' })))
-      .toEqual({ verdict: 'fits', reason: 'TALKING_TO_CAMERA' })
+      .toEqual({ verdict: 'fits', reason: 'TALKING_TO_CAMERA', framesLookedAt: 4 })
   })
 
   // ⚖️ THE PODCAST CASE. Excluding `multiple` outright would refuse interviews
@@ -22,7 +27,7 @@ describe('judgeFit — what was actually seen', () => {
 
   it('a skit — people on camera, none of them addressing it — does not fit', () => {
     expect(judgeFit(look({ someoneTalkingToCamera: false, peopleOnCamera: 'multiple' })))
-      .toEqual({ verdict: 'does_not_fit', reason: 'NOBODY_TALKING_TO_CAMERA' })
+      .toEqual({ verdict: 'does_not_fit', reason: 'NOBODY_TALKING_TO_CAMERA', framesLookedAt: 4 })
   })
 
   it('nobody on camera does not fit', () => {
@@ -33,13 +38,13 @@ describe('judgeFit — what was actually seen', () => {
   // cartoon can appear to talk to camera all day and there is still no person.
   it('animation beats an apparent talking-to-camera answer', () => {
     expect(judgeFit(look({ looksAnimated: true, someoneTalkingToCamera: true, peopleOnCamera: 'one' })))
-      .toEqual({ verdict: 'does_not_fit', reason: 'ANIMATED' })
+      .toEqual({ verdict: 'does_not_fit', reason: 'ANIMATED', framesLookedAt: 4 })
   })
 })
 
 describe('judgeFit — not knowing is not a no', () => {
   it('all-null is unsure, never does_not_fit', () => {
-    expect(judgeFit(look({}))).toEqual({ verdict: 'unsure', reason: 'CANNOT_TELL' })
+    expect(judgeFit(look({}))).toEqual({ verdict: 'unsure', reason: 'CANNOT_TELL', framesLookedAt: 4 })
   })
 
   // ⚠️ ABSENT IS NOT ZERO. If `looksAnimated: null` were read as false the
@@ -51,7 +56,7 @@ describe('judgeFit — not knowing is not a no', () => {
 
   it('zero frames is unsure however confident the other fields read', () => {
     expect(judgeFit(look({ framesLookedAt: 0, someoneTalkingToCamera: false, peopleOnCamera: 'none' })))
-      .toEqual({ verdict: 'unsure', reason: 'NOTHING_LOOKED_AT' })
+      .toEqual({ verdict: 'unsure', reason: 'NOTHING_LOOKED_AT', framesLookedAt: 0 })
   })
 
   // ⚠️ NaN < 1 IS FALSE, so a bare `< 1` test would let NaN through as a look.
@@ -82,12 +87,19 @@ describe('the warning the creator reads', () => {
   // combination cannot arise from judgeFit; that is the point. It isolates the
   // verdict check as the only thing that can return null here.
   it('an unsure verdict stays silent even when card text exists for its reason', () => {
-    expect(warningForPickedVideo({ verdict: 'unsure', reason: 'NOBODY_TALKING_TO_CAMERA' })).toBeNull()
+    expect(warningForPickedVideo({ verdict: 'unsure', reason: 'NOBODY_TALKING_TO_CAMERA', framesLookedAt: 2 })).toBeNull()
   })
 
   it('names what was seen, the cost, and what to use instead', () => {
-    const w = warningForPickedVideo({ verdict: 'does_not_fit', reason: 'NOBODY_TALKING_TO_CAMERA' })!
-    expect(w.saw).toBe('Nobody in this video is talking to the camera.')
+    const w = warningForPickedVideo({ verdict: 'does_not_fit', reason: 'NOBODY_TALKING_TO_CAMERA', framesLookedAt: 2 })!
+    // ⚠️⚠️ THIS ASSERTION USED TO FREEZE 'Nobody in this video is talking to the
+    // camera.' -- a claim about the WHOLE VIDEO, from two still pictures. THE
+    // TEST WAS WRONG: it pinned an untrue sentence and kept it true-looking.
+    // A creator was told this about a 19-second talking head.
+    expect(w.saw).toBe('Nobody was talking to the camera in the two still pictures we checked.')
+    // ⚖️ AND THE EVIDENCE MUST BE NAMED, not just the conclusion softened.
+    expect(w.saw).toContain('we checked')
+    expect(w.saw).not.toContain('in this video')
     expect(w.cost).toContain('sound generic')
     expect(w.instead).toContain('speaking straight to the camera')
   })
@@ -95,13 +107,13 @@ describe('the warning the creator reads', () => {
   // ⚠️ THE COST GOES ON THE BUTTON. A bare "Continue" hides what it costs, and
   // the whole design of warn-but-allow rests on the override being informed.
   it('the continue button states the cost in its own label', () => {
-    const w = warningForPickedVideo({ verdict: 'does_not_fit', reason: 'ANIMATED' })!
+    const w = warningForPickedVideo({ verdict: 'does_not_fit', reason: 'ANIMATED', framesLookedAt: 2 })!
     expect(w.continueLabel).toBe('Use it anyway — the script may not sound like you')
   })
 
   it('every does_not_fit reason produces a card, none blank', () => {
     for (const reason of ['ANIMATED', 'NOBODY_ON_CAMERA', 'NOBODY_TALKING_TO_CAMERA'] as const) {
-      const w = warningForPickedVideo({ verdict: 'does_not_fit', reason })
+      const w = warningForPickedVideo({ verdict: 'does_not_fit', reason, framesLookedAt: 2 })
       expect(w, reason).not.toBeNull()
       expect(w!.saw.length, reason).toBeGreaterThan(10)
     }
@@ -112,10 +124,52 @@ describe('the warning the creator reads', () => {
   it('uses none of Twin’s internal vocabulary', () => {
     const banned = ['talking-head', 'talking head', 'reference', 'profile', 'analysis', 'analyse', 'frame', 'model', 'pipeline']
     for (const reason of ['ANIMATED', 'NOBODY_ON_CAMERA', 'NOBODY_TALKING_TO_CAMERA'] as const) {
-      const w = warningForPickedVideo({ verdict: 'does_not_fit', reason })!
+      const w = warningForPickedVideo({ verdict: 'does_not_fit', reason, framesLookedAt: 2 })!
       const all = `${w.saw} ${w.cost} ${w.instead} ${w.continueLabel}`.toLowerCase()
       for (const word of banned) expect(all, `${reason} / ${word}`).not.toContain(word)
     }
+  })
+})
+
+// ⚠️⚠️ A WARNING MAY NOT CLAIM MORE THAN IT LOOKED AT.
+//
+// Three refusals were observed in one session, each true about the stills the
+// model was shown and false about the video:
+//   · "Nobody appears on camera in this video."      -- 227 seconds of a woman
+//                                                       talking to camera
+//   · "Nobody in this video is talking to the camera." -- a 19-second talking head
+//
+// EARLY_LOOK_FRAMES is 2. Every one of these sentences was a whole-video verdict
+// drawn from two still pictures. The model answered honestly; the copy promoted
+// its answer into a claim about footage nobody looked at.
+//
+// ⚖️ THE WARNING STILL FIRES. This is not a softening -- same trigger, same
+// cost line, same override. It stops saying it watched the video.
+describe('a warning says what was looked at, not what the video is', () => {
+  for (const reason of ['ANIMATED', 'NOBODY_ON_CAMERA', 'NOBODY_TALKING_TO_CAMERA'] as const) {
+    it(`${reason} names the evidence and makes no whole-video claim`, () => {
+      const w = warningForPickedVideo({ verdict: 'does_not_fit', reason, framesLookedAt: 2 })!
+      expect(w.saw).toContain('the two still pictures we checked')
+      // Every one of these fails on the previous source, which said "in this video".
+      expect(w.saw).not.toContain('in this video')
+      expect(w.saw).not.toContain('this video is')
+    })
+  }
+
+  it('the count is the real one, not a fixed phrase', () => {
+    const one = warningForPickedVideo({ verdict: 'does_not_fit', reason: 'NOBODY_ON_CAMERA', framesLookedAt: 1 })!
+    expect(one.saw).toContain('the one still picture we checked')
+    const six = warningForPickedVideo({ verdict: 'does_not_fit', reason: 'NOBODY_ON_CAMERA', framesLookedAt: 6 })!
+    expect(six.saw).toContain('the 6 still pictures we checked')
+  })
+
+  // ⚠️ ZERO FRAMES IS NOT A THING TO ACCUSE ANYBODY OVER. judgeFit cannot
+  // produce this today -- zero returns NOTHING_LOOKED_AT -- but a hand-built
+  // decision could, and "nobody was on camera in the 0 still pictures we
+  // checked" is a sentence no creator should ever read.
+  it('a does_not_fit with no evidence behind it shows nothing', () => {
+    expect(warningForPickedVideo({ verdict: 'does_not_fit', reason: 'NOBODY_ON_CAMERA', framesLookedAt: 0 })).toBeNull()
+    expect(warningForPickedVideo({ verdict: 'does_not_fit', reason: 'NOBODY_ON_CAMERA', framesLookedAt: Number.NaN })).toBeNull()
   })
 })
 
