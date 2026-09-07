@@ -52,14 +52,33 @@ describe('the answer lands in the store, and only there', () => {
     expect(LIB).toMatch(/from\('creator_knowledge'\)\s*\.insert/)
     // ⚖️ THE LOG RECORDS THAT A QUESTION WAS PUT, NEVER WHAT WAS SAID. Two
     // records of the same sentence can disagree, and the store would lose.
+    //
+    // ⚠️ AND THIS IS WHY THE TWELVE LOST ANSWERS ARE UNRECOVERABLE. When the
+    // store rejected them, no second copy existed anywhere — by design. The
+    // design is still right; it is only survivable because the ordering above
+    // now keeps the question OPEN when the store refuses, so the creator is
+    // asked again rather than quietly emptied.
     expect(MIGRATION).not.toMatch(/answer_text|response_text/)
   })
 
-  it('closes the question BEFORE storing the sentence', () => {
-    // ⚠️ ORDERING IS DELIBERATE. If the log failed after a successful knowledge
-    // write, the creator would be asked a question their own answer already
-    // answered — which reads as the product not listening.
-    expect(LIB.indexOf("markPut(question.id, 'answered')")).toBeLessThan(LIB.indexOf("from('creator_knowledge')"))
+  // ⚠️⚠️ THIS TEST USED TO ASSERT THE OPPOSITE AND THE TEST WAS WRONG.
+  //
+  // It read: "closes the question BEFORE storing the sentence — ORDERING IS
+  // DELIBERATE. If the log failed after a successful knowledge write, the
+  // creator would be asked a question their own answer already answered."
+  //
+  // The reasoning is real and it weighed the wrong two outcomes. Being asked
+  // twice is an annoyance. Losing what they typed is destroying the only copy,
+  // and marking the question `answered` first means they are never asked again
+  // — so the loss is silent AND permanent.
+  //
+  // ⚠️ MEASURED IN PRODUCTION 2026-09-07, which settled which failure actually
+  // happens: `creator_questions_put` holds TWELVE rows marked `answered` from
+  // FOUR creators, and `creator_knowledge` holds ZERO rows with source='asked'.
+  // The insert was failing on a CHECK constraint that never listed 'asked'
+  // (fixed in 0189); this ordering is what made it invisible.
+  it('stores the sentence BEFORE closing the question', () => {
+    expect(LIB.indexOf("from('creator_knowledge')")).toBeLessThan(LIB.indexOf("markPut(question.id, 'answered')"))
   })
 
   it('dates it now, so a position stated today is not ranked as ancient', () => {
