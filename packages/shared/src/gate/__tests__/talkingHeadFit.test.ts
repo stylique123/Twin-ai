@@ -68,14 +68,14 @@ describe('judgeFit — not knowing is not a no', () => {
 
 describe('the warning the creator reads', () => {
   it('says nothing at all when the video fits', () => {
-    expect(warningForPickedVideo({ verdict: 'fits', reason: 'TALKING_TO_CAMERA' })).toBeNull()
+    expect(warningForPickedVideo({ verdict: 'fits', reason: 'TALKING_TO_CAMERA', framesLookedAt: 2 })).toBeNull()
   })
 
   // ⚖️ WARNING ON OUR OWN UNCERTAINTY WOULD SPEND THEIR PATIENCE ON OUR
   // IGNORANCE, and the next real warning would be ignored too.
   it('says nothing when Twin could not tell', () => {
-    expect(warningForPickedVideo({ verdict: 'unsure', reason: 'CANNOT_TELL' })).toBeNull()
-    expect(warningForPickedVideo({ verdict: 'unsure', reason: 'NOTHING_LOOKED_AT' })).toBeNull()
+    expect(warningForPickedVideo({ verdict: 'unsure', reason: 'CANNOT_TELL', framesLookedAt: 2 })).toBeNull()
+    expect(warningForPickedVideo({ verdict: 'unsure', reason: 'NOTHING_LOOKED_AT', framesLookedAt: 0 })).toBeNull()
   })
 
   // ⚠️ THE VERDICT IS WHAT SILENCES IT, NOT THE MISSING COPY. The two cases
