@@ -32,7 +32,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { notBilledNotice, shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime } from '@twinai/shared'
+import { cameFromAReference, notBilledNotice, shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -664,6 +664,12 @@ export default function Result() {
   // ⚖️ HOW LONG THIS IS, BEFORE THEY STAND IN FRONT OF A CAMERA. Measured on the
   // REPAIRED script above, because that is the one they will read. Disclosure
   // only — a creator may shoot any length they like.
+  // ⚠️ IS THERE A REFERENCE AT ALL? Asked of the URL, which is the only ground
+  // truth: `reference_read` and `fidelity` are both present on 78 of 78
+  // generations and neither distinguishes the 74 that have a reference from the
+  // 4 that do not. Every surface below that claims something about "the
+  // reference" reads THIS, so a fifth cannot drift from the other four.
+  const hasReference = cameFromAReference(gen.reference_url)
   const lengthLine = lengthSentence(measureScriptLength(updatedScript))
   // ⚠️ FIX 8 (Wave 3). The SAME computed runtime `lengthLine` is built from,
   // now shown beside the reference video's own known length (when the
@@ -760,10 +766,20 @@ export default function Result() {
               </p>
             )}
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="chip text-xs">
-                <ExternalLink className="h-3.5 w-3.5 text-stone" /> {b.reference_read.platform}
-              </span>
-              <span className="chip text-xs">{gen.fidelity === 'close' ? 'Close to the reference' : gen.fidelity === 'loose' ? 'Loosely inspired' : 'Balanced remix'}</span>
+              {/* ⚠️⚠️ NEITHER CHIP MAY APPEAR WITHOUT A REFERENCE, and both used to.
+                  Measured 2026-09-07: all FOUR referenceless generations carry
+                  fidelity='close', so the creator read "Close to the reference"
+                  on a video with no reference, beside a platform chip naming a
+                  reference nobody supplied. Fidelity is defaulted, not absent —
+                  which is why the chip cannot be gated on its own value. */}
+              {hasReference && (
+                <>
+                  <span className="chip text-xs">
+                    <ExternalLink className="h-3.5 w-3.5 text-stone" /> {b.reference_read.platform}
+                  </span>
+                  <span className="chip text-xs">{gen.fidelity === 'close' ? 'Close to the reference' : gen.fidelity === 'loose' ? 'Loosely inspired' : 'Balanced remix'}</span>
+                </>
+              )}
               {isAgency && (
                 <button
                   onClick={toggleApproved}
@@ -1346,7 +1362,7 @@ export default function Result() {
 
               {activeTab === 'strategy' && (
                 <div className="mt-6">
-                  <CreativeTransfer generationId={gen.id} blueprint={b} referenceAnalysis={gen.reference_analysis} />
+                  {hasReference && <CreativeTransfer generationId={gen.id} blueprint={b} referenceAnalysis={gen.reference_analysis} />}
                 </div>
               )}
               {activeTab === 'spec' && (
@@ -1666,7 +1682,7 @@ export default function Result() {
           )}
           {mobileTab === 'strategy' && (
             <div className="mt-6">
-              <CreativeTransfer generationId={gen.id} blueprint={b} referenceAnalysis={gen.reference_analysis} />
+              {hasReference && <CreativeTransfer generationId={gen.id} blueprint={b} referenceAnalysis={gen.reference_analysis} />}
             </div>
           )}
 

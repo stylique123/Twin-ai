@@ -305,3 +305,5 @@ export * from './commercialConsistency'
 // carriesFigure, isFirstPerson, wasSpoken, SUBSTANCE_KINDS — never a parallel
 // re-implementation, so the screen cannot promise what the script will lack.
 export * from './videoPlan'
+
+export * from './cameFromAReference'
