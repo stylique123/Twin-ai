@@ -32,7 +32,7 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { cameFromAReference, notBilledNotice, shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime } from '@twinai/shared'
+import { cameFromAReference, spokenLineIsAnAsk, notBilledNotice, shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -1274,7 +1274,14 @@ export default function Result() {
                       </div>
 
                       {/* Spoken Dialog Overlay (if B-roll has spoken words, or if it's Talking Head) */}
-                      {s.spoken_text && s.spoken_text.trim() !== '' && (
+                      {/* ⚠️⚠️ TWIN'S QUESTION TO HER IS NOT A LINE SHE SAYS.
+                          Measured 2026-09-07: one stored shot carries the
+                          interview ask verbatim in `spoken_text` — "What's
+                          something you personally did... One sentence is
+                          enough." — under this exact heading. Nobody says "one
+                          sentence is enough" on camera. The ask still reaches
+                          her on the question card, where it is a question. */}
+                      {s.spoken_text && s.spoken_text.trim() !== '' && !spokenLineIsAnAsk(s.spoken_text) && (
                         <div className="border-t border-white/[0.04] pt-3 mt-3">
                           <span className="text-[9px] font-bold text-stone uppercase tracking-wider block mb-1">What to say</span>
                           <p className="text-xs italic text-sand pl-2 border-l border-teal/30 leading-relaxed">
@@ -1630,7 +1637,14 @@ export default function Result() {
                           )}
                         </div>
 
-                        {s.spoken_text && s.spoken_text.trim() !== '' && (
+                        {/* ⚠️⚠️ TWIN'S QUESTION TO HER IS NOT A LINE SHE SAYS.
+                          Measured 2026-09-07: one stored shot carries the
+                          interview ask verbatim in `spoken_text` — "What's
+                          something you personally did... One sentence is
+                          enough." — under this exact heading. Nobody says "one
+                          sentence is enough" on camera. The ask still reaches
+                          her on the question card, where it is a question. */}
+                      {s.spoken_text && s.spoken_text.trim() !== '' && !spokenLineIsAnAsk(s.spoken_text) && (
                           <div className="border-t border-white/[0.04] pt-3 mt-3">
                             <span className="text-[9px] font-bold text-stone uppercase tracking-wider block mb-1">What to say</span>
                             <p className="text-xs italic text-sand pl-2 border-l border-teal/30 leading-relaxed">

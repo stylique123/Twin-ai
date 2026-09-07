@@ -710,7 +710,6 @@ function creatorStateAction(
   return { mode, safety, act: safety === 'SAFE_ERASURE' ? 'rewrite' : 'ask' }
 }
 
-
 // ── WHERE SUBSTANCE SHOULD HAVE COME FROM, MEASURED AGAINST WHERE IT CAME ───
 //
 // Inlined from `routeSubstance` in packages/shared/src/traceability.ts and
@@ -749,7 +748,6 @@ function routeSubstance(ctx: RoutingContext): string {
   if (ctx.depth === 'medium' && !ctx.externallyAnswerable) return 'CREATOR_KNOWLEDGE'
   return ctx.externallyAnswerable ? 'RESEARCH' : 'ASK_CREATOR'
 }
-
 
 // ── WHAT MAY TRANSFER FROM THE REFERENCE, RULED ON BEFORE THE WRITER RUNS ────
 //
@@ -1324,6 +1322,7 @@ const SUBJECT_SOURCE_ASK_INLINE =
   "What's something you personally did, learned, tried or went through that this video could be about? One sentence is enough."
 const REQUIRES_OWN_EXPERIENCE_INLINE: ReadonlySet<string> = new Set(['experience', 'story'])
 
+
 interface SubjectSourceVerdictInline {
   focus: string | null
   requires_own_source: boolean
@@ -1361,6 +1360,65 @@ function resolveSubjectSourceInline(
 }
 
 // ── STYLE COMPILER (inlined from packages/shared/src/styleCompiler.ts) ──────
+
+// ⚠️ THIS BLOCK SITS BELOW THE STYLE-COMPILER MARKER ON PURPOSE, AND IT WAS
+// ABOVE IT FIRST. `twoMirrorsNobodyGuarded` slices this file from
+// `const SUBJECT_SOURCE_ASK_INLINE` to that marker and evals the slice to check
+// mirror parity. `askAsLineFailuresInline` takes a
+// `readonly { line?: unknown }[]` and the slice's type-stripper has no rule for
+// that shape, so it left a dangling `:` and the loader died with
+// `SyntaxError: Unexpected token ':'` -- reporting NO parity result rather than
+// a failing one. That file's own comment warns about exactly this. Nothing
+// here belongs to that parity check, so it lives outside the slice.
+// ── TWIN'S QUESTION TO THE CREATOR IS NOT A LINE SHE SAYS ──────────────────
+//
+// ⚠️ MEASURED 2026-09-07. One stored shot carries SUBJECT_SOURCE_ASK verbatim
+// in `spoken_text`, and the Result screen renders that field under the heading
+// "What to say". A creator working from the teleprompter reads Twin's own
+// interview question aloud, "One sentence is enough" included.
+//
+// ⚠️ THE PROMPT IS WHY, AND THE PROMPT IS NOT WRONG. It tells the model to mark
+// the beat `needs_user` with a specific question and QUOTES the ask to say
+// which. The ask is therefore in the instruction; nothing downstream
+// distinguished a question we asked from a line she speaks.
+//
+// ⚖️ MATCHED ON THE KNOWN ASK, NEVER ON "LOOKS LIKE A QUESTION". Ten other
+// stored shots open with a question and every one is a real call to action
+// ("What is the biggest thing holding you back? Let me know in the comments").
+// A heuristic would blank all ten.
+//
+// ⚠️ PARITY: mirrors spokenLineIsAnAsk in
+// packages/shared/src/script/anAskIsNotALine.ts, held by anAskIsNotALine.test.ts.
+const normAskInline = (v: unknown): string =>
+  String(v ?? '').toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/\s+/g, ' ').trim()
+
+function spokenLineIsAnAskInline(line: unknown): boolean {
+  const hay = normAskInline(line)
+  if (hay === '') return false
+  // ⚠️ SUBSTRING, NOT EQUALITY: the production case has the ask followed by
+  // more text, so equality would have missed the only real instance there is.
+  return hay.includes(normAskInline(SUBJECT_SOURCE_ASK_INLINE))
+}
+
+function askAsLineFailuresInline(
+  script: readonly { line?: unknown }[] | null | undefined,
+): Array<{ index: number; line: string; repair: string }> {
+  const beats = Array.isArray(script) ? script : []
+  const out: Array<{ index: number; line: string; repair: string }> = []
+  beats.forEach((b, i) => {
+    const line = typeof b?.line === 'string' ? b.line : ''
+    if (!spokenLineIsAnAskInline(line)) return
+    out.push({
+      index: i,
+      line,
+      repair: 'This spoken line is the QUESTION Twin asked the creator, not something'
+        + ' they would ever say to camera. Leave this beat\'s line EMPTY and mark it'
+        + ' needs_user. The question reaches them on their question card; it must never'
+        + ' appear as words to read out.',
+    })
+  })
+  return out
+}
 //
 // ⚠️ INLINED BECAUSE EDGE FUNCTIONS CANNOT IMPORT `@twinai/shared`, and kept
 // honest by `style-compiler-parity.test.ts`, which runs both copies over the
@@ -4895,7 +4953,6 @@ Deno.serve(async (req: Request) => {
               : 'The analysis came back empty, so the script follows the format instead.',
           }
 
-
   // REPLAY BEFORE SPEND (0119). A remount, a refresh or a double-click sends the
   // SAME key, and the build it names has already been paid for. Returning that
   // row is not a cache — it is the same generation, which is why it returns 200
@@ -7505,6 +7562,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // reading zero: six of the fifteen zero-witness scripts measured had an
       // EMPTY store, and those are correct output, never a gap.
       first_person_floor_gaps: firstPersonFailuresInline(declared, suppliedForCheck.length).length,
+      ask_as_line_gaps: askAsLineFailuresInline(declared).length,
       // ⚠️ AUDIT WAVE 2.2. Rises when a script's body carried nothing concrete
       // WHILE the creator's own store held something it could have used. NOT the
       // same as the specificity floor firing: 11 of the 28 measured have an
@@ -7663,6 +7721,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // same treatment rather than a second mechanism to get subtly wrong.
       ...regulatoryFailuresInline(declared, suppliedForCheck),
       ...firstPersonFailuresInline(declared, suppliedForCheck.length),
+      ...askAsLineFailuresInline(declared),
       ...particularFailuresInline(declared, suppliedForCheck),
     ]
     const creatorQuestions: string[] = []
@@ -7705,6 +7764,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
           ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
           ...regulatoryFailuresInline(declared, suppliedForCheck),
           ...firstPersonFailuresInline(declared, suppliedForCheck.length),
+          ...askAsLineFailuresInline(declared),
           ...particularFailuresInline(declared, suppliedForCheck),
         ]
         console.log(JSON.stringify({ event: 'entitlement_repair', applied, still_failing: entFails.length }))
