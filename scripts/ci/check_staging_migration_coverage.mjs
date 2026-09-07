@@ -176,6 +176,23 @@ export const EXCLUDED = {
     + 'is SAFE here, where merging 0169 early would have made every successful extraction '
     + 'store nothing. The capture flow and the writer integration are the units that must '
     + 'wait for the column to exist, and they are not in this change.',
+  '0189_asked_was_never_an_allowed_source':
+    'Adds \'asked\' to `creator_knowledge_source_check`, the CHECK constraint that has been '
+    + 'silently destroying every answer a creator types. '
+    + '\u26a0\ufe0f EXCLUDED for the staging table-availability reason the loop has used since '
+    + '0121: `creator_knowledge` is created by 0121, which is excluded, so staging has no such '
+    + 'table and this would fail on its first statement. The exclusion is INHERITED, not a new '
+    + 'judgement -- and the coverage guard said so before this ever reached CI, which is the '
+    + 'third time this trap has been laid (0186 and 0188 both hit it in the matrix instead).\n\n'
+    + '\u26a0\ufe0f MANUAL APPLY REQUIRED. Measured 2026-09-07: creator_knowledge holds 1,088 '
+    + 'rows across 26 creators, ALL from caption or transcript, and ZERO with source=\'asked\'. '
+    + 'Meanwhile creator_questions_put records TWELVE questions marked `answered` by FOUR '
+    + 'creators. Proven by execution against production, not by reading: an insert of '
+    + 'source=\'asked\' returns SQLSTATE 23514 on this constraint. Until this is applied by '
+    + 'hand, every answer a creator types is still discarded.\n\n'
+    + '\u2696\ufe0f AND 0187 IS NAMED "a creator could never store their own answer". It fixed '
+    + 'the GRANT and the RLS POLICY and stopped there; nobody then ran an insert to see whether '
+    + 'one succeeded. Half a bug fixed reads exactly like a bug fixed.',
   '0188_a_balance_no_event_explains':
     'Reconciles the credit ledger: backfills an opening-balance event per profile and '
     + 'makes handle_new_user write the signup grant as an event. '

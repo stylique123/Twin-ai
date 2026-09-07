@@ -90,12 +90,25 @@ export async function answerQuestion(
     const ownerId = auth?.user?.id
     if (!ownerId) return { ok: false, reason: 'not_saved' }
 
-    // ⚠️ THE LOG FIRST. If the knowledge insert fails after this, the creator has
-    // lost a sentence; if it were the other way round and the LOG failed, they
-    // would be asked the same question again with their own answer already in
-    // the store — which reads as the product not listening.
-    await markPut(question.id, 'answered')
-
+    // ⚠️⚠️ THE ANSWER FIRST, AND THIS ORDER USED TO BE THE OTHER WAY ROUND.
+    //
+    // The old comment reasoned it out and picked the wrong failure to accept:
+    // "if the knowledge insert fails after this, the creator has lost a
+    // sentence; if it were the other way round they would be asked the same
+    // question again". Being asked twice is a small annoyance. Losing what they
+    // typed is destroying the only copy — and marking it `answered` first means
+    // they are never asked again, so the loss is silent AND permanent.
+    //
+    // ⚠️ IT IS NOT HYPOTHETICAL. Measured in production 2026-09-07:
+    // `creator_questions_put` holds TWELVE rows marked `answered` from FOUR
+    // creators, and `creator_knowledge` holds ZERO rows with source='asked'.
+    // Twelve real answers, every one marked as taken, not one stored. The
+    // insert was failing on a CHECK constraint that did not list 'asked'
+    // (0189), and this ordering is what made the failure invisible.
+    //
+    // ⚖️ SO THE MARK ONLY HAPPENS ONCE THE ANSWER IS SAFE. If the mark then
+    // fails, they may see the question again with their answer already stored —
+    // which is the failure worth having, because nothing is lost.
     const { error } = await supabase.from('creator_knowledge').insert({
       owner_id: ownerId,
       voice_id: voiceId,
@@ -112,9 +125,12 @@ export async function answerQuestion(
       last_observed_at: new Date().toISOString(),
     })
     if (error) {
+      // ⚠️ AND THE QUESTION IS NOT MARKED ANSWERED, so they will be asked
+      // again rather than losing the sentence for good.
       console.warn('answer not stored as knowledge', error.message)
       return { ok: false, reason: 'not_saved' }
     }
+    await markPut(question.id, 'answered')
     return { ok: true }
   } catch (err) {
     console.warn('answer not stored as knowledge', err)
