@@ -30,6 +30,7 @@
 
 import { STOPWORDS } from './hookContract.js'
 import { beatVoice } from './silentBeat.js'
+import { FIRST_PERSON_MARKER } from './witnessScore.js'
 
 /** One beat as the script holds it. Both fields are whatever the model wrote,
  *  so both are checked rather than trusted. */
@@ -96,9 +97,56 @@ function hookBeat(script: readonly CraftBeat[]): CraftBeat | null {
 const PARTICULAR_DIGIT = /\d/
 const PARTICULAR_MONEY = /[$£€]/
 
+// ── THE THIRD WAY TO BE PARTICULAR: SOMETHING THAT HAPPENED ────────────────
+//
+// ⚠️ A FIGURE AND A NAME WERE THE ONLY TWO WAYS TO PASS, AND THAT MISSED THE
+// ONE THIS MEDIUM ACTUALLY RUNS ON. Measured over 32 stored scripts with body
+// text: only 3 carry a first-person past-tense episode anywhere in the body.
+// The owner's reading of the twelve-run audit is that the writer WILL produce
+// numbers and simply produces false ones — $5,000 oven three times, a $10 loaf,
+// a four-loaf licence limit — so the choice a script faces is not "figures or
+// story", it is "particulars or neither".
+//
+// ⚠️ A BARE "I" IS NOT AN EPISODE, and the difference is load-bearing. "I think
+// you should" and "I am going to show you" are opinions and framing; "I lost
+// money on my first hundred loaves" is a thing that happened. Measured: 4 of 32
+// scripts would clear on a bare marker against 3 on a real episode, so the
+// past-tense requirement is doing work rather than decorating.
+//
+// ⚖️ A CLOSED LIST OF ACTION VERBS, NOT `\w+ed`. "I am tired", "I was worried",
+// "I feel excited" all end in -ed and none is an episode; a catch-all would let
+// a feeling clear a floor that exists to demand a fact. Conservative on
+// purpose: a floor that under-counts episodes is safer than one that
+// over-clears, and the two copula-led cases it misses ("I was charged $30")
+// carry a figure anyway and pass on the first path.
+//
+// ⚠️ AND A CLOSED LIST THAT IS TOO SHORT IS ITS OWN DEFECT. The first draft
+// omitted "went", so "my first batch went straight in the bin" — an episode by
+// any reading — did not count. The test caught it and the TEST WAS RIGHT. Every
+// verb below is an action or an event; none is a state or an opinion, because
+// "said", "thought" and "felt" would let a view back in through the door this
+// closes.
+const PARTICULAR_EPISODE_VERB = new RegExp(
+  '\\b(?:lost|made|took|got|spent|started|quit|built|sold|paid|charged|burned|burnt'
+  + '|went|came|began|stopped|broke|fixed|changed|chose|drove|grew|met|put|sat|stood'
+  + '|held|turned|pulled|pushed|poured|mixed|shaped|sliced|packed|weighed|tested|counted'
+  + '|threw|tried|learned|learnt|failed|closed|opened|hired|fired|moved|called|asked'
+  + '|told|saw|found|bought|wasted|saved|earned|ran|gave|left|kept|sent|wrote|showed'
+  + '|taught|worked|baked|cooked|shipped|launched|raised|dropped|cut|added|pitched'
+  + '|switched|scrapped|rebuilt|refunded|delivered|priced)\\b',
+  'i',
+)
+
+/** A first-person EPISODE: their voice AND something that happened in it. */
+export function isFirstPersonEpisode(line: unknown): boolean {
+  const raw = String(line ?? '')
+  return FIRST_PERSON_MARKER.test(raw) && PARTICULAR_EPISODE_VERB.test(raw)
+}
+
 export function hasParticular(line: unknown): boolean {
   const raw = String(line ?? '')
   if (PARTICULAR_DIGIT.test(raw) || PARTICULAR_MONEY.test(raw)) return true
+  if (isFirstPersonEpisode(raw)) return true
   const tokens = raw.split(/\s+/).filter((t) => t !== '')
   // Skip index 0, and any token that opens a new sentence.
   for (let i = 1; i < tokens.length; i++) {

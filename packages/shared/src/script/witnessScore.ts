@@ -27,7 +27,13 @@ import { claimedValues } from '../claimEntailment'
  *  beat's `substance` field has already done that work: `creator_knowledge`
  *  means the line draws on something this creator actually supplied. All
  *  that is left to ask is whether the line is spoken IN THEIR VOICE. */
-const FIRST_PERSON_MARKER = /\b(?:i|i'm|i've|i'd|i'll|me|my|mine|we|we're|we've|our|ours)\b/i
+/** ⚠️ ONE DEFINITION, THREE READERS. `firstPersonFloor` (the Wave 2.1 repair)
+ *  and `craftContracts.hasParticular` (the specificity floor) both import this
+ *  rather than restating it. Three spellings of "is this in their voice" would
+ *  let a beat clear one rule while failing another that claims to ask the same
+ *  question — and #718 shipped exactly that kind of false agreement once
+ *  already. Exported for that reason; do not re-privatise it. */
+export const FIRST_PERSON_MARKER = /\b(?:i|i'm|i've|i'd|i'll|me|my|mine|we|we're|we've|our|ours)\b/i
 
 function hasFirstPersonMarker(line: unknown): boolean {
   return typeof line === 'string' && FIRST_PERSON_MARKER.test(line)
