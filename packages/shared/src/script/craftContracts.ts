@@ -72,8 +72,40 @@ export function bodyBeats(script: readonly CraftBeat[]): CraftBeat[] {
     && !sectionIs(b, 'hook', 'call to action', 'cta', 'payoff'))
 }
 
+/** ⚠️ THE MIDDLE IS NOT THE BODY, AND THE DIFFERENCE IS THE WHOLE POINT OF THIS
+ *  FUNCTION. `bodyBeats` answers "where must the substance be specific", and it
+ *  drops the re-hook on purpose — a re-hook is written to a formula and judging
+ *  its vagueness is how a check earns a reputation for being wrong.
+ *
+ *  This answers a DIFFERENT question: "where must the CREATOR appear". A
+ *  re-hook is a perfectly good place for them to appear, so it stays in. Only
+ *  the opening hook, the payoff and the CTA come out.
+ *
+ *  ⚖️ TWO SPELLINGS OF ONE QUESTION WOULD BE A DEFECT; TWO QUESTIONS NEEDING
+ *  TWO SCOPES IS NOT. #718 shipped a false agreement between two rules that
+ *  claimed to ask the same thing, so this comment says plainly that they do not.
+ *
+ *  ⚠️ MEASURED 2026-09-07 over the 33 stored production scripts. Middle beats
+ *  are labelled by the model, not by any enum: `setup` 29 and `re-hook` 27
+ *  dominate, but the tail is ~40 one-off labels ("reason 1", "the incident",
+ *  "pitfall 2: operational inefficiency"). Several are composites containing
+ *  the word "hook" — "mistake 2 / re-hook", "re-hook: shift in mindset" — which
+ *  is why matching on the substring alone would drop real middle beats. */
+export function middleBeats(script: readonly CraftBeat[]): CraftBeat[] {
+  return script.filter((b) => isSpoken(b)
+    && !isOpeningHook(b)
+    && !sectionIs(b, 'call to action', 'cta', 'payoff'))
+}
+
+/** The FIRST-position hook only. "re-hook", "mistake 2 / re-hook" and
+ *  "re-hook: shift in mindset" are middle beats that happen to contain the
+ *  word, and treating them as the hook removes 27 of the 66 measured middles. */
+function isOpeningHook(b: CraftBeat): boolean {
+  return sectionIs(b, 'hook') && !sectionIs(b, 're-hook', 'rehook', 're hook')
+}
+
 function hookBeat(script: readonly CraftBeat[]): CraftBeat | null {
-  return script.find((b) => isSpoken(b) && sectionIs(b, 'hook') && !sectionIs(b, 're-hook', 'rehook')) ?? null
+  return script.find((b) => isSpoken(b) && isOpeningHook(b)) ?? null
 }
 
 // ── 1. SPECIFICITY FLOOR ──────────────────────────────────────────────────
