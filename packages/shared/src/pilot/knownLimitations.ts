@@ -412,6 +412,62 @@ export const KNOWN_LIMITATIONS: readonly KnownLimitation[] = Object.freeze([
       + 'a reader finds COMMUNITY moments in the file and concludes communities are handled.',
     status: 'RESOLVED',
   }),
+  Object.freeze({
+    id: 'CONTAINER_TEMPLATE_NEVER_REACHED',
+    what:
+      'The container-template path in generate-blueprint -- templateFor, resolveTemplate, the '
+      + 'fifteen CONTAINER_TYPES and their beat slots, including the five that demand '
+      + 'personal_experience -- HAS NEVER RUN IN PRODUCTION. Measured 2026-09-07 three '
+      + 'independent ways. (1) Of 74 generations carrying a reference_url, ZERO join a row in '
+      + 'reference_content_profiles; one URL was looked up directly by video id and by handle '
+      + 'and is simply absent. (2) assess_reference is enqueued only by pilot-start and '
+      + '_shared/pilotDb -- never by the generation path -- and of 2,822 such jobs, ZERO carry '
+      + 'a URL any generation used. (3) script_report.slots is NULL and not_run contains '
+      + 'all_slots_filled on 37 of 37 stored script reports. So `assessed` is null, `known` is '
+      + 'false, tpl is null, and every generation falls through to container_template_absent '
+      + 'with reason reference_not_assessed -- logged to console only, into logs that expire. '
+      + 'The 1,616 rows in reference_content_profiles are a scraped pilot corpus, disjoint '
+      + 'from anything a creator has ever pasted.',
+    decision:
+      'SHELVED, NOT DELETED, and the person/shape contracts were built in the WRITER instead. '
+      + '⚖️ THE OWNER RULED C: the fallback prompt is what produces every script today, so a '
+      + 'fix shipped into the template changes nothing tomorrow. ⚠️⚠️ AND THE RULE ITSELF IS '
+      + 'NOT REFERENCE-DERIVED -- scoping it to the template would be a category error. "The '
+      + 'episode beat is first person, past tense, and collapses when the store is empty" '
+      + 'needs no knowledge of anyone else\'s video: it is equally true of a pasted URL '
+      + '(Reference), a typed paragraph (Idea), a product (Product) and a suggested topic '
+      + '(Suggest). Putting it in the template would leave three of the four modes broken '
+      + 'forever. The evidence was already in hand: all four Idea Mode runs produced the same '
+      + 'beat pattern as the eight reference runs, and I4 -- a run with NO reference at all -- '
+      + 'has a second-person body beat. The defect is in the writer, not the reference path. '
+      + '⚠️ DO NOT SCOPE PERSON OR SHAPE CONTRACTS HERE WHEN THIS REOPENS. They belong in the '
+      + 'writer and apply to all four modes. Without this sentence the next reader lights the '
+      + 'template, puts the person contract inside it, and three modes stay broken. '
+      + '⚖️ AND DO NOT DELETE IT: built, tested and UNREACHED is this repo\'s most common '
+      + 'shape, not dead code -- eight items called "unbuilt" this month turned out to be live. '
+      + 'This is the inverse: live and unreached.',
+    revisitWhen:
+      'BOTH of these, not either. (1) An assessment can be run when the creator PASTES the URL '
+      + '-- option B, best-effort, never inside the paid generation path. Option A (assess '
+      + 'inline, blocking) is RULED OUT by measurement: created_at to updated_at across 1,508 '
+      + 'completed jobs is p50 392s / p90 3,375s, an upper bound that conflates queue wait with '
+      + 'run time and is still minutes, not seconds. (2) The refusal layer states real causes. '
+      + 'Today it does not: six refusal messages were observed in one session and at least '
+      + 'three misdescribed their own cause -- "Nobody appears on camera" on a woman talking to '
+      + 'camera for 227 seconds, "This one is long" on a video that then succeeded on retry '
+      + 'from the same URL, "Nobody in this video is talking to the camera" on a 19-second '
+      + 'talking head. Option B moves that failure layer next to a paid action, so it must be '
+      + 'trustworthy first.',
+    cost:
+      'Reopening is not free and the honest number is unknown. A scrape plus transcript plus '
+      + 'model call per pasted URL, at a rate nobody has measured because it has never run on '
+      + 'this traffic. ⚠️ AND ONE DESIGN REQUIREMENT COMES WITH IT: the honesty panel MUST say '
+      + 'which path produced the script. Best-effort assessment means two qualities of output, '
+      + 'and a creator must never get the lesser one with no indication why -- the panel '
+      + 'already carries "no transcript was read" and "we did not analyse the video", so this '
+      + 'is a third line of the same kind, not a new mechanism.',
+    status: 'OPEN',
+  }),
 ])
 
 export const openLimitations = (): readonly KnownLimitation[] =>
