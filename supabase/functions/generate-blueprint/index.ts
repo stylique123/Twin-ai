@@ -3459,6 +3459,57 @@ function statesARegulatoryRuleInline(text: unknown): boolean {
   return REG_NOUN_INLINE.test(t) && REG_RULE_INLINE.test(t)
 }
 
+// ── A SCRIPT BUILT FROM THE CREATOR'S OWN EXPERIENCE MUST SAY SO IN THEIR VOICE
+//
+// ⚠️ AUDIT WAVE 2.1. MEASURED IN PRODUCTION 2026-09-07, across the 33
+// generations carrying a `witness_score`: 15 (45%) had ZERO first-person beats.
+// Six of those belonged to creators with an EMPTY knowledge store — for them
+// zero witness is the correct output and must never be flagged. NINE belonged
+// to creators with 8 to 50 rows on file.
+//
+// ⚠️ `witnessScore` HAS COUNTED THIS SINCE IT SHIPPED AND NOTHING EVER READ THE
+// NUMBER. Its only consumer was the `beat_audit` counter storing it. This is
+// the reader.
+//
+// ⚖️ ALL NINE ARE ONE SHAPE, WHICH IS WHAT MAKES THE REPAIR SAFE: the
+// creator's material reached the script in 9 of 9 (34 of their 46 beats carry
+// `substance: 'creator_knowledge'`) and never reached it in ZERO. Nothing has
+// to be invented — the material is already in the beat, written as general
+// advice rather than as something that happened to them.
+//
+// ⚠️ PARITY: mirrors firstPersonFailures in
+// packages/shared/src/script/firstPersonFloor.ts, held by
+// aFirstPersonFloorMustBeWired.test.ts.
+const FIRST_PERSON_MARKER_INLINE = /\b(?:i|i'm|i've|i'd|i'll|me|my|mine|we|we're|we've|our|ours)\b/i
+
+function firstPersonFailuresInline(
+  script: readonly { line?: unknown; substance?: unknown }[] | null | undefined,
+  suppliedRows: number,
+): Array<{ index: number; line: string; repair: string }> {
+  const beats = Array.isArray(script) ? script : []
+  // ⚠️ THE SUPPLY CHECK PRECEDES EVERYTHING. A creator with an empty store gets
+  // no flag, because zero witness is the honest output for them.
+  if (!(suppliedRows > 0)) return []
+  const lineOf = (b: { line?: unknown }): string => (typeof b?.line === 'string' ? b.line : '')
+  // ⚖️ ANY first-person beat clears the whole script. This is a floor, not a
+  // quota: a proportion would be a threshold nobody measured.
+  if (beats.some((b) => FIRST_PERSON_MARKER_INLINE.test(lineOf(b)))) return []
+  // ⚠️ ONLY A `creator_knowledge` BEAT MAY BE REWRITTEN. Putting a reference's
+  // fact into the creator's mouth would manufacture the testimony this refuses
+  // to manufacture.
+  const i = beats.findIndex((b) => b?.substance === 'creator_knowledge' && lineOf(b).trim() !== '')
+  if (i < 0) return []
+  return [{
+    index: i,
+    line: lineOf(beats[i]),
+    repair: 'This line uses something the creator told us about their own experience,'
+      + ' but says it as general advice, so nothing in the whole script is spoken as theirs.'
+      + ' Rewrite this one line so they say it happened to them — "I", "we", "my", "our".'
+      + ' Change only who is speaking. Do not add a detail, a number, or an event'
+      + ' that is not already in the line.',
+  }]
+}
+
 function regulatoryFailuresInline(
   script: readonly { line?: unknown }[] | null | undefined,
   supplied: readonly unknown[] | null | undefined,
@@ -7348,6 +7399,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // would look identical to it, which is why this is written even when
       // nothing is found.
       regulatory_claim_gaps: regulatoryFailuresInline(declared, suppliedForCheck).length,
+      // ⚠️ AUDIT WAVE 2.1. Rises when a script spoke none of the creator's own
+      // supplied experience in their voice. NOT the same as `witness_score`
+      // reading zero: six of the fifteen zero-witness scripts measured had an
+      // EMPTY store, and those are correct output, never a gap.
+      first_person_floor_gaps: firstPersonFailuresInline(declared, suppliedForCheck.length).length,
       comparative_claim_gaps: comparativeFailures(
         declared, goal === 'sell' || ownedEntity !== null, productFactCountOf(ownedEntity)).length,
       proof_quality: proofQualityCounts(
@@ -7500,6 +7556,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // the creator would read aloud that nobody stood behind — and it gets the
       // same treatment rather than a second mechanism to get subtly wrong.
       ...regulatoryFailuresInline(declared, suppliedForCheck),
+      ...firstPersonFailuresInline(declared, suppliedForCheck.length),
     ]
     const creatorQuestions: string[] = []
     if (entFails.length) {
@@ -7540,6 +7597,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
           ...entitlementFailures(declared, suppliedForCheck),
           ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
           ...regulatoryFailuresInline(declared, suppliedForCheck),
+          ...firstPersonFailuresInline(declared, suppliedForCheck.length),
         ]
         console.log(JSON.stringify({ event: 'entitlement_repair', applied, still_failing: entFails.length }))
       } catch (e) {
