@@ -3510,6 +3510,87 @@ function firstPersonFailuresInline(
   }]
 }
 
+// ── A SCRIPT MUST USE A DETAIL THE CREATOR ALREADY GAVE US ─────────────────
+//
+// ⚠️ AUDIT WAVE 2.2. MEASURED IN PRODUCTION 2026-09-07 across the 33
+// generations carrying a `witness_score`: 31 of 33 carry no number ANYWHERE,
+// and AT LEAST 28 of 33 (85%) trip `specificityFloorNote`, which renders
+// straight to the creator on the Result screen. A note that fires on six of
+// every seven scripts is wallpaper.
+//
+// ⚖️ THE OWNER'S CALL WAS "FIX THE WRITER, LEAVE THE FLOOR". So the floor is
+// untouched and this asks the writer to clear it.
+//
+// ⚠️ AND IT NEVER ASKS FOR A NUMBER TO BE INVENTED. "Add a figure" is the
+// instruction that produced the worst output in the twelve-run audit. Of the 28
+// tripping scripts: 11 have an EMPTY store and are never flagged, 0 have rows
+// without a particular, and 17 have between 2 and 9 of the creator's OWN
+// concrete details sitting unused. Those 17 are what this fixes, by handing the
+// writer their own lines verbatim.
+//
+// ⚠️ PARITY: mirrors particularFailures in
+// packages/shared/src/script/particularFloor.ts, and `hasParticularInline`
+// mirrors the floor's own exported helper. Held by
+// aParticularFloorMustBeWired.test.ts. If these spellings drift, a repair can
+// satisfy itself while the creator still reads "nothing here is specific".
+const PARTICULAR_DIGIT_INLINE = /\d/
+const PARTICULAR_MONEY_INLINE = /[$£€]/
+
+function hasParticularInline(line: unknown): boolean {
+  const raw = String(line ?? '')
+  if (PARTICULAR_DIGIT_INLINE.test(raw) || PARTICULAR_MONEY_INLINE.test(raw)) return true
+  const tokens = raw.split(/\s+/).filter((t) => t !== '')
+  for (let i = 1; i < tokens.length; i++) {
+    const prev = tokens[i - 1]
+    if (/[.!?]$/.test(prev)) continue
+    if (/^["'(]*[A-Z][a-z]/.test(tokens[i])) return true
+  }
+  return false
+}
+
+const MAX_PARTICULAR_CANDIDATES = 3
+const MAX_PARTICULAR_CANDIDATE_CHARS = 160
+
+function particularFailuresInline(
+  script: readonly { line?: unknown; section?: unknown }[] | null | undefined,
+  supplied: readonly unknown[] | null | undefined,
+): Array<{ index: number; line: string; repair: string }> {
+  const beats = Array.isArray(script) ? script : []
+  // ⚖️ THE FLOOR'S OWN bodyBeats: not the hook, the CTA or the payoff.
+  const isBody = (b: { line?: unknown; section?: unknown }): boolean => {
+    const sec = String(b?.section ?? '').toLowerCase()
+    if (['hook', 'call to action', 'cta', 'payoff'].some((n) => sec.includes(n))) return false
+    return String(b?.line ?? '').trim() !== ''
+  }
+  const body = beats.filter(isBody)
+  if (body.length === 0) return []
+  if (body.some((b) => hasParticularInline(b.line))) return []
+
+  // ⚠️ THE SUPPLY CHECK PRECEDES THE COMPLAINT — 11 of the 28 measured have an
+  // empty store, and asking them to be specific is asking them to invent.
+  const candidates = (Array.isArray(supplied) ? supplied : [])
+    .map((i) => (typeof i === 'string' ? i : String((i as { text?: unknown })?.text ?? '')))
+    .map((t) => t.replace(/\s+/g, ' ').trim())
+    .filter((t) => t !== '' && hasParticularInline(t))
+    .slice(0, MAX_PARTICULAR_CANDIDATES)
+    .map((t) => (t.length > MAX_PARTICULAR_CANDIDATE_CHARS
+      ? `${t.slice(0, MAX_PARTICULAR_CANDIDATE_CHARS).trimEnd()}…` : t))
+  if (candidates.length === 0) return []
+
+  const target = body[0]
+  const quoted = candidates.map((c) => `"${c}"`).join(' · ')
+  return [{
+    index: beats.indexOf(target),
+    line: String(target?.line ?? ''),
+    repair: 'Nothing in the body of this script is concrete — no number, no name, no amount —'
+      + ' so it could be about any business in the world.'
+      + ' Rewrite this one line to use a detail the creator ALREADY told us:'
+      + ` ${quoted}.`
+      + ' Use one of those, in their words. Do not add a number, a name or an amount'
+      + ' that is not in that list.',
+  }]
+}
+
 function regulatoryFailuresInline(
   script: readonly { line?: unknown }[] | null | undefined,
   supplied: readonly unknown[] | null | undefined,
@@ -7404,6 +7485,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // reading zero: six of the fifteen zero-witness scripts measured had an
       // EMPTY store, and those are correct output, never a gap.
       first_person_floor_gaps: firstPersonFailuresInline(declared, suppliedForCheck.length).length,
+      // ⚠️ AUDIT WAVE 2.2. Rises when a script's body carried nothing concrete
+      // WHILE the creator's own store held something it could have used. NOT the
+      // same as the specificity floor firing: 11 of the 28 measured have an
+      // empty store, and those are correct output, never a gap.
+      particular_floor_gaps: particularFailuresInline(declared, suppliedForCheck).length,
       comparative_claim_gaps: comparativeFailures(
         declared, goal === 'sell' || ownedEntity !== null, productFactCountOf(ownedEntity)).length,
       proof_quality: proofQualityCounts(
@@ -7557,6 +7643,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // same treatment rather than a second mechanism to get subtly wrong.
       ...regulatoryFailuresInline(declared, suppliedForCheck),
       ...firstPersonFailuresInline(declared, suppliedForCheck.length),
+      ...particularFailuresInline(declared, suppliedForCheck),
     ]
     const creatorQuestions: string[] = []
     if (entFails.length) {
@@ -7598,6 +7685,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
           ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
           ...regulatoryFailuresInline(declared, suppliedForCheck),
           ...firstPersonFailuresInline(declared, suppliedForCheck.length),
+          ...particularFailuresInline(declared, suppliedForCheck),
         ]
         console.log(JSON.stringify({ event: 'entitlement_repair', applied, still_failing: entFails.length }))
       } catch (e) {
