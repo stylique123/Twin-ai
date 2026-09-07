@@ -3483,7 +3483,7 @@ function statesARegulatoryRuleInline(text: unknown): boolean {
 const FIRST_PERSON_MARKER_INLINE = /\b(?:i|i'm|i've|i'd|i'll|me|my|mine|we|we're|we've|our|ours)\b/i
 
 function firstPersonFailuresInline(
-  script: readonly { line?: unknown; substance?: unknown }[] | null | undefined,
+  script: readonly { section?: unknown; line?: unknown; substance?: unknown }[] | null | undefined,
   suppliedRows: number,
 ): Array<{ index: number; line: string; repair: string }> {
   const beats = Array.isArray(script) ? script : []
@@ -3491,19 +3491,39 @@ function firstPersonFailuresInline(
   // no flag, because zero witness is the honest output for them.
   if (!(suppliedRows > 0)) return []
   const lineOf = (b: { line?: unknown }): string => (typeof b?.line === 'string' ? b.line : '')
-  // ⚖️ ANY first-person beat clears the whole script. This is a floor, not a
-  // quota: a proportion would be a threshold nobody measured.
-  if (beats.some((b) => FIRST_PERSON_MARKER_INLINE.test(lineOf(b)))) return []
-  // ⚠️ ONLY A `creator_knowledge` BEAT MAY BE REWRITTEN. Putting a reference's
-  // fact into the creator's mouth would manufacture the testimony this refuses
-  // to manufacture.
-  const i = beats.findIndex((b) => b?.substance === 'creator_knowledge' && lineOf(b).trim() !== '')
+  // ⚠️⚠️ THE HOOK DOES NOT COUNT. MEASURED 2026-09-07 over the 33 stored
+  // production scripts: FIVE have a first-person hook, a second-person middle
+  // and text in that middle — the creator says "I" in the first line and never
+  // again, and the old whole-script floor was cleared by that one word.
+  // A floor cleared by the hook cannot see the body it exists to protect.
+  //
+  // ⚖️ STILL A FLOOR, NOT A QUOTA: one first-person MIDDLE beat clears it.
+  const isOpeningHookInline = (b: { section?: unknown }): boolean => {
+    const sec = String(b?.section ?? '').toLowerCase()
+    return sec.includes('hook') && !sec.includes('re-hook')
+      && !sec.includes('rehook') && !sec.includes('re hook')
+  }
+  const middle = beats.filter((b) => {
+    const sec = String((b as { section?: unknown })?.section ?? '').toLowerCase()
+    return !isOpeningHookInline(b as { section?: unknown })
+      && !sec.includes('call to action') && !sec.includes('cta') && !sec.includes('payoff')
+  })
+  if (middle.some((b) => FIRST_PERSON_MARKER_INLINE.test(lineOf(b)))) return []
+  // ⚠️ A SCRIPT WITH NO MIDDLE TEXT IS A DIFFERENT DEFECT — ten of the 33 emit
+  // a fully-labelled middle in which no beat carries a line. Silent on purpose.
+  if (middle.every((b) => lineOf(b).trim() === '')) return []
+  // ⚠️ ONLY A `creator_knowledge` BEAT MAY BE REWRITTEN, AND ONLY A MIDDLE ONE.
+  // Putting a reference's fact into the creator's mouth would manufacture the
+  // testimony this refuses to manufacture; repairing the HOOK would clear a
+  // floor that no longer looks at the hook.
+  const i = beats.findIndex((b) => b?.substance === 'creator_knowledge'
+    && lineOf(b).trim() !== '' && middle.includes(b))
   if (i < 0) return []
   return [{
     index: i,
     line: lineOf(beats[i]),
     repair: 'This line uses something the creator told us about their own experience,'
-      + ' but says it as general advice, so nothing in the whole script is spoken as theirs.'
+      + ' but says it as general advice, so nobody speaks as themselves after the hook.'
       + ' Rewrite this one line so they say it happened to them — "I", "we", "my", "our".'
       + ' Change only who is speaking. Do not add a detail, a number, or an event'
       + ' that is not already in the line.',
