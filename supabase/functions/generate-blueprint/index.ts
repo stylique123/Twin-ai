@@ -1486,13 +1486,83 @@ const NAMES_A_SOURCE = /^(?:the\s+)?(?:creator'\s?s?\b|creators'\b|creator\s+(?:
 // `null` ("not checked") for a voice with no transcripts or a CTA too short to
 // verify. A missing evidence array falls back to the bare list unchanged, so an
 // older voice reads exactly as it did before.
-function renderRecurringCtasInline(vp: Record<string, unknown>): string {
+// ⚠️ AND THE STORED ARRAY IS EMPTY FOR EVERY VOICE IN PRODUCTION. Measured
+// 2026-09-07, an hour after the counter shipped: 49 brand_voices, 45 carrying
+// `recurring_ctas`, 106 CTA entries, and `recurring_ctas_evidence` present on
+// ZERO of them. `worker/src/voice.ts` writes it only when a voice is scraped,
+// and no voice has been scraped since. The renderer below falls back to the
+// bare list, so the count reached no creator at all: shipped, wired, and inert.
+//
+// ⚖️ SO COUNT IT HERE, AT READ TIME, FROM THE TRANSCRIPTS THIS FILE ALREADY
+// LOADS. The `ownSpeech` read that feeds the style card and the signature
+// phrases is the same corpus the worker would use — no backfill, no worker run,
+// no extra query, and it works for all 45 voices on the next generation. The
+// stored array stays a fallback for a voice whose speech this read could not
+// see.
+//
+// ⚠️ A THIRD COPY OF THE RULE, HELD BY A PARITY TEST. The edge function cannot
+// import from the worker any more than it can from the workspace; the copies
+// must not drift and `theCtaCopiesMustNotDrift.test.ts` is what makes that
+// enforceable rather than aspirational.
+function normaliseSpeechInline(s: unknown): string {
+  return String(s ?? '')
+    .toLowerCase()
+    .replace(/[’']/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+const MIN_VERIFIABLE_WORDS = 3
+
+interface CtaEvidenceInline {
+  cta: string
+  observed_verbatim_in: number | null
+  of_videos: number
+}
+
+function ctaEvidenceForInline(
+  ctas: readonly unknown[] | null | undefined,
+  transcripts: readonly unknown[] | null | undefined,
+): CtaEvidenceInline[] {
+  const list = Array.isArray(ctas) ? ctas : []
+  const corpus = (Array.isArray(transcripts) ? transcripts : [])
+    .map(normaliseSpeechInline)
+    .filter((t) => t !== '')
+
+  return list
+    .filter((c): c is string => typeof c === 'string' && c.trim() !== '')
+    .map((cta) => {
+      const needle = normaliseSpeechInline(cta)
+      // ⚠️ THE NULL CHECKS PRECEDE THE COUNT. Either of these returning 0 would
+      // assert a fact about the creator that nothing established.
+      const unverifiable = corpus.length === 0
+        || needle.split(' ').filter(Boolean).length < MIN_VERIFIABLE_WORDS
+      return {
+        cta: cta.trim(),
+        observed_verbatim_in: unverifiable
+          ? null
+          : corpus.filter((t) => t.includes(needle)).length,
+        of_videos: corpus.length,
+      }
+    })
+}
+
+function renderRecurringCtasInline(
+  vp: Record<string, unknown>,
+  // ⚖️ THE LIVE COUNT WINS. It was computed against the speech this request
+  // actually read; the stored array is whatever the last scrape happened to
+  // leave, and for every voice in production that is nothing at all.
+  live?: readonly CtaEvidenceInline[] | null,
+): string {
   const ctas = Array.isArray(vp?.recurring_ctas)
     ? (vp.recurring_ctas as unknown[]).filter((c): c is string => typeof c === 'string')
     : []
-  const ev = Array.isArray(vp?.recurring_ctas_evidence)
-    ? (vp.recurring_ctas_evidence as Array<Record<string, unknown>>)
-    : []
+  const ev: Array<Record<string, unknown>> = (Array.isArray(live) && live.length > 0)
+    ? live as unknown as Array<Record<string, unknown>>
+    : (Array.isArray(vp?.recurring_ctas_evidence)
+      ? (vp.recurring_ctas_evidence as Array<Record<string, unknown>>)
+      : [])
   if (ev.length === 0) return ctas.join(', ')
   const byCta = new Map<string, Record<string, unknown>>()
   for (const e of ev) if (typeof e?.cta === 'string') byCta.set(e.cta, e)
@@ -5315,6 +5385,12 @@ Deno.serve(async (req: Request) => {
     let styleRules = ''
     let partialStyleRules = ''
     let signaturePhrasesLine = ''
+    // ⚠️ NULL, NOT [], AND THE DIFFERENCE IS THE WHOLE THREE-STATE CONTRACT.
+    // An empty array would mean "checked, nothing recurs"; null means the
+    // transcript read never happened, and the renderer must fall back to the
+    // stored array rather than print "not found" about speech nobody read.
+    let liveCtaEvidence: CtaEvidenceInline[] | null = null
+    let ctaEvidenceCounted: { checked: number; unverifiable: number; found: number } | null = null
     try {
       const { data: ownSpeech } = await admin
         .from('transcripts')
@@ -5342,6 +5418,18 @@ Deno.serve(async (req: Request) => {
       // did). A failed read degrades this the same way it degrades styleRules.
       signaturePhrasesLine = renderSignaturePhrasesInline(
         extractSignaturePhrasesInline((ownSpeech ?? []).map((r) => ({ id: String(r?.id ?? ''), text: String(r?.text ?? '') }))))
+      // ⚠️ THE SAME CORPUS THE SIGNATURE PHRASES USE, AND FOR THE SAME REASON:
+      // `subject = 'own'` only. Counting a CTA against a reference creator's
+      // transcript would report a stranger's habit as this creator's.
+      liveCtaEvidence = ctaEvidenceForInline(
+        (vp?.recurring_ctas ?? []) as unknown[],
+        (ownSpeech ?? []).map((r) => String(r?.text ?? '')),
+      )
+      ctaEvidenceCounted = {
+        checked: liveCtaEvidence.length,
+        unverifiable: liveCtaEvidence.filter((e) => e.observed_verbatim_in === null).length,
+        found: liveCtaEvidence.filter((e) => (e.observed_verbatim_in ?? 0) > 0).length,
+      }
       const compiledStyle = compileStyleInline([...(ownSpeech ?? []).map((r) => String(r?.text ?? '')), ...askedSpeech])
       styleRules = renderStyleRulesInline(compiledStyle)
       // ⚠️ VOICE CAUSE 1(c) — never both cards; renderPartialStyleRulesInline
@@ -6100,7 +6188,7 @@ Deno.serve(async (req: Request) => {
 - Their THUMBNAIL style (follow this for the packaging.thumbnail): ${thumbStyleLine}
 - Hooks they ACTUALLY wrote (real winners — study the phrasing, do not copy verbatim): ${sampleHooks.join(' / ') || '(none captured)'}
 - Signature vocabulary: ${(vp.vocabulary ?? []).join(', ')}
-- Recurring CTAs: ${renderRecurringCtasInline(vp)}
+- Recurring CTAs: ${renderRecurringCtasInline(vp, liveCtaEvidence)}
 - Point of view (beliefs they repeat — the script should carry their stance): ${povLine}
 - Enemy (the bad advice / villain they push against): ${enemyLine}
 - Do: ${(vp.dos ?? []).join('; ')}
@@ -7159,6 +7247,14 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // "2". `shotLabel` already repairs the RENDER; this counts whether the
       // WRITER stopped doing it, which is the only thing that tells us the new
       // instruction is not inert.
+      // ⚠️ THIS ONE *IS* SAFE IN THE LITERAL, AND THE DIFFERENCE IS THE POINT.
+      // `ctaEvidenceCounted` is assigned during the transcript read, ~1700 lines
+      // ABOVE this object, so the literal reads a computed value rather than an
+      // initialiser. `check_counter_written_before_read.mjs` checks exactly that
+      // and passes it. NULL means the transcript read failed or never ran;
+      // `unverifiable` is CTAs under three words or a creator with no speech on
+      // file, which is never the same as "not found".
+      cta_evidence_counted: ctaEvidenceCounted,
       // ⚠️ `shots_named_by_number` IS NOT IN THIS LITERAL. Same reason as the
       // resync counters below: `shotsNumberedNotNamed` is not assigned until long
       // after this object is built. MEASURED: null in every stored row.
