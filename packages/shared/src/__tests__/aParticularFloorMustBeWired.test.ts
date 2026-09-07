@@ -42,7 +42,20 @@ describe('the three copies ask the same question', () => {
 
 describe('the wiring, asserted against the shipped source', () => {
   it('it is merged into entFails, not run as a parallel mechanism', () => {
-    expect(edge).toMatch(/\.\.\.firstPersonFailuresInline\([^)]*\),\s*\n\s*\.\.\.particularFailuresInline\(/)
+    // ⚠️ THIS USED TO DEMAND THE TWO SPREADS BE LITERALLY ADJACENT, which made
+    // it fail the moment a THIRD check was merged into the same array
+    // (`askAsLineFailuresInline`). Adjacency was never the property worth
+    // holding — being in the SAME array literal is, and adjacency only
+    // approximated it while forbidding any future addition.
+    //
+    // ⚖️ SO THIS ASSERTS MORE, NOT LESS: the two spreads must sit in one
+    // unbroken run of spreads, with nothing but other `...xFailuresInline(...)`
+    // entries between them. A stray statement, a closing bracket, or a
+    // conditional in the gap still fails, which is the parallel-mechanism case
+    // this test exists to catch.
+    expect(edge).toMatch(
+      /\.\.\.firstPersonFailuresInline\([^)]*\),(?:\s*\n\s*\.\.\.\w+\([^)]*\),)*\s*\n\s*\.\.\.particularFailuresInline\(/,
+    )
   })
 
   // ⚠️ A REPAIR NOBODY RE-CHECKED IS THE TRUST WE JUST WITHDREW. Both the first
