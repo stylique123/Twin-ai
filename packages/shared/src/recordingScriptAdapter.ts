@@ -61,6 +61,7 @@ function framingFor(
 }
 
 import { readBeatPlan, beatDurationSec, purposeAt, type PlannedBeat } from './beatPlan'
+import { ctaMechanismIn } from './cta'
 import { blueprintCountIssues, type MechanismIssue } from './referenceMechanism'
 import { placeToStand, readShotDirection, stripPalette } from './shotDirection'
 
@@ -281,9 +282,30 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   }
   // The LAST CTA-labelled beat, not the first: if the model labels more than
   // one, the ending is the one at the end.
+  //
+  // ⚠️ AND A LABEL IS NOT THE ONLY WAY A SCRIPT ENDS. Measured on two runs from
+  // @theofferingmicrobakery: both scripts ended on a beat named `Payoff` that
+  // already asked ("Tell me in the comments, what is the one scent note…" /
+  // "…I will see you in the next video"), each with a planned target of 9 and
+  // 12 seconds. Matching on the section name alone found no CTA, so a generic
+  // "Follow for more" was appended as a SIXTH scene — unplanned, therefore no
+  // beat length, and 1.5 seconds long by estimate. The creator reported exactly
+  // that card. The words were never in their script.
+  //
+  // ⚖️ SO THE LAST BEAT COUNTS AS THE ENDING WHEN IT ASKS FOR SOMETHING, read
+  // through `ctaMechanismIn` — the same `CTA_MECHANISMS` vocabulary the rest of
+  // the CTA code reasons in, never a second private list of ending phrases.
+  //
+  // ⚖️ THE LAST BEAT ONLY, NOT ANY BEAT. A mid-script "comment below" is an
+  // aside, and promoting it would move the middle of the video to the end —
+  // the same failure the `\bhook\b` exclusion above exists to prevent.
   let ctaIdx = -1
   for (let i = usable.length - 1; i >= 0; i--) {
     if (isCtaSection(usable[i].seg.section || '')) { ctaIdx = i; break }
+  }
+  if (ctaIdx < 0 && usable.length > 0) {
+    const last = usable.length - 1
+    if (ctaMechanismIn(usable[last].seg.line || '') !== null) ctaIdx = last
   }
   const ctaBeat = ctaIdx >= 0 ? usable[ctaIdx] : null
   const body = ctaIdx >= 0 ? usable.filter((_, i) => i !== ctaIdx) : usable

@@ -26,11 +26,20 @@ const HOOK = 'Stop scrolling if you rent'
 function blueprint(): Blueprint {
   return {
     hook_options: [HOOK],
+    // ⚠️ THE FIXTURE GAINED A SECTION AND A FOURTH BEAT, AND THE RULE DID NOT
+    // MOVE. It used to end on 'Follow for more.' with no sections at all, and
+    // once the adapter learned to recognise an ask that is already there (see
+    // an-ask-is-an-ending-whatever-it-is-labelled), the filmed scenes came back
+    // IDENTICAL to the beats — a degenerate fixture that could no longer show
+    // the loss it exists to prove. The loss is still real and is the one the
+    // header names: the CTA beat MOVES to the end, so a beat written after it
+    // comes back before it.
     script: [
       // Dropped by the adapter: it restates the hook, which scene 1 already is.
-      { line: HOOK },
-      { line: 'Most people overpay because of [the fee name].' },
-      { line: 'Follow for more.' },
+      { section: 'Hook', line: HOOK },
+      { section: 'Body', line: 'Most people overpay because of [the fee name].' },
+      { section: 'CTA', line: 'Follow for more.' },
+      { section: 'Payoff', line: 'One more thing about the deposit.' },
     ],
   } as unknown as Blueprint
 }
