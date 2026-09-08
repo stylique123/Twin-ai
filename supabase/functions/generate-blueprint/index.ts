@@ -1383,6 +1383,48 @@ function resolveSubjectSourceInline(
 //
 // ⚠️ PARITY: mirrors platformCtaFailures in
 // packages/shared/src/script/ctaFitsThePlatform.ts, held by its own test.
+// ── SUBSTANCE BUDGET (inlined from packages/shared/src/script/substanceBudget.ts)
+//
+// ⚠️ THE COPIES MUST NOT DRIFT, and `a-substance-budget-and-its-twin.test.ts`
+// rebuilds these numbers from THIS source rather than restating them, so a
+// change here that is not made there fails rather than diverges quietly.
+//
+// ⚖️ THIS PASS MEASURES AND LOGS; IT DOES NOT YET CLAMP. The clamp is one
+// `Math.min` away and is already written, unit-tested and mutation-tested in
+// the shared module. It is not switched on here because the budget's calibration
+// is unmeasured on real generations, and a rule that shortens every script on a
+// live product must be turned on against numbers rather than against a belief
+// that the counting is right. `beat_audit.substance_budget` and `length_target`
+// are those numbers. Turn the clamp on when they say the budget tracks reality.
+const POINT_ROLES_INLINE: readonly string[] = ['setup', 'item', 'turn', 'evidence', 'payoff']
+const FREE_BEATS_INLINE = 2
+
+// ⚠️ NULL WHEN NOBODY COUNTED, NEVER ZERO. `structure.beats` is an
+// `Assessed<Beat[]>`: its `not_checked` and `indeterminate` states are findings
+// nobody made, and reading either as "this reference makes no points" would cap
+// every script at two beats on a reference we simply never read.
+function referencePointsFromInline(structure: unknown): number | null {
+  const b = (structure as { beats?: { value?: unknown } } | null | undefined)?.beats
+  const v = (b as { value?: unknown } | null | undefined)?.value
+  if (!Array.isArray(v)) return null
+  return v.filter((x) => POINT_ROLES_INLINE.includes(String(
+    (x as { role?: unknown } | null)?.role ?? ''))).length
+}
+
+interface SubstanceBudgetInline { beats: number | null; enforceable: boolean }
+
+function substanceBudgetInline(
+  referencePoints: number | null,
+  storeItems: number | null,
+  productFacts: number | null,
+): SubstanceBudgetInline {
+  const c = (n: number | null): number | null =>
+    n === null || !Number.isFinite(n) || n < 0 ? null : Math.floor(n)
+  const r = c(referencePoints), st = c(storeItems), p = c(productFacts)
+  if (r === null && st === null && p === null) return { beats: null, enforceable: false }
+  return { beats: (r ?? 0) + (st ?? 0) + (p ?? 0) + FREE_BEATS_INLINE, enforceable: true }
+}
+
 const PLATFORM_WRONG_CTA_INLINE: Record<string, RegExp[]> = {
   tiktok: [/\bsubscribe\b/i, /\bmy channel\b|\bour channel\b|\bthe channel\b/i, /\bring the bell\b|\bnotification bell\b/i],
   instagram: [/\bsubscribe\b/i, /\bmy channel\b|\bour channel\b|\bthe channel\b/i, /\bring the bell\b|\bnotification bell\b/i],
@@ -6505,6 +6547,13 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         // `observedVisualCountInline` documents, kept because `beat_audit` has
         // no separate slot for "ran" vs "ran and learned nothing" today.
         let visualDimensionsObserved = 0
+        // ⚠️ NULL IS THE HONEST INITIALISER HERE, AND IT IS NOT THE SAME CHOICE
+        // `visualDimensionsObserved` MADE ABOVE. That one collapses "never
+        // assessed" into 0 and says so; this one must not, because a budget of
+        // zero is a claim that there is nothing to say, and the whole point of
+        // the third state is that nobody may make that claim without counting.
+        let substanceBudgetBeats: number | null = null
+        let substanceReferencePoints: number | null = null
         try {
           const { data: assessed } = await admin
             .from('reference_content_profiles')
@@ -6553,6 +6602,12 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
               measured?.tier_zero_profile as TierZeroInline | null)
             if (measuredBlock) containerBlock += `\n\n${measuredBlock}`
           } catch { /* a missing column or a failed read costs the block, nothing else */ }
+          // ⚖️ THE SUBSTANCE BUDGET, COUNTED FROM THE SAME READ. The reference's
+          // points come from the structure this block already loaded, so this
+          // costs no extra query — the shape that made the container decision
+          // is the shape that says how much there is to say.
+          substanceReferencePoints = referencePointsFromInline(
+            (assessed?.profile as { structure?: unknown } | null)?.structure)
           const container = (assessed?.profile as
             { structure?: { containerType?: { value?: string; basis?: string } } } | null)
             ?.structure?.containerType
@@ -7491,6 +7546,20 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // ⚖️ COMPUTED ONCE, LOGGED AND STORED — the same discipline 0130 uses, for
     // the same reason: recomputing at insert time risks the stored audit
     // describing a different script from the logged one.
+    // ⚖️ COUNTED HERE, WHERE ALL THREE SOURCES ARE IN SCOPE, and computed once
+    // like everything else in this literal.
+    //
+    // ⚠️ `knowledgeRows` COLLAPSES A FAILED READ INTO AN EMPTY ARRAY, so its
+    // length is a floor rather than a count. That is the conservative direction
+    // — it can only UNDERSTATE the budget, never overstate it — and understating
+    // is the direction that cannot cause padding, which is the defect this
+    // exists to remove. It is still a collapse and it is written down here so
+    // the number is read for what it is.
+    substanceBudgetBeats = substanceBudgetInline(
+      substanceReferencePoints,
+      Array.isArray(knowledgeRows) ? knowledgeRows.length : null,
+      productFactCountOf(ownedEntity),
+    ).beats
     beatAudit = {
       beats: Array.isArray(declared) ? declared.length : 0,
       // ⚠️ THE HOOK RULE THE PROMPT STATES, MEASURED. `raw` counts hooks that
@@ -7678,6 +7747,23 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // counter would look identical to it, which is why this is written
       // even when nothing was found.
       visual_dimensions_observed: visualDimensionsObserved,
+      // ⚠️⚠️ THE TWO NUMBERS THE EXPANSION BAN WILL BE TURNED ON AGAINST.
+      // `length_target` is what was asked for; `substance_budget` is what the
+      // sources could support. Twelve measured runs produced ratios from 6.5x
+      // compression to 1.6x expansion with no rule, and the 1.6x case invented
+      // fifteen seconds of content — which is where "a five thousand dollar
+      // oven" came from. Logging both is what makes the clamp a calibrated
+      // change rather than a hopeful one.
+      //
+      // ⚠️ NULL MEANS NOBODY COULD COUNT, WHICH IS NOT A BUDGET OF ZERO. A
+      // reader that coerces this with `?? 0` will conclude every unread
+      // reference is empty.
+      substance_budget: substanceBudgetBeats,
+      // ⚠️ `length_target` IS DELIBERATELY ABSENT UNTIL THE PICKER EXISTS. A
+      // column that can only ever be null is the same defect in a new place,
+      // and writing 60 here would record a choice the creator was never
+      // offered — exactly what `asTarget` refuses to do in the shared module.
+      substance_reference_points: substanceReferencePoints,
       // ⚠️ FIX 7. Beats whose words don't fit the beat_plan's own target_sec,
       // matched by position (one beat plan entry per script entry). Detection
       // only -- target_sec reaches nothing downstream today, so there is

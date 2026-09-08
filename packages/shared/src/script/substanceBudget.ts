@@ -1,7 +1,14 @@
 /**
- * THE CREATOR PICKS THE LENGTH. THE REFERENCE SUPPLIES THE SUBSTANCE.
- * WHEN THEY DO NOT MATCH, TWIN SAYS SO — IT NEVER PADS AND NEVER QUIETLY
- * DROPS HALF THE VALUE.
+ * HOW MUCH THERE IS TO SAY, COUNTED BEFORE ANYTHING IS WRITTEN.
+ *
+ * ⚠️ THIS FILE IS HALF OF A RULE, AND THE SPLIT WAS NOT MY PLAN — CI FOUND IT.
+ * The intent was to ship the budget and the expansion ban together, on the
+ * reasoning that a budget nobody enforces is just a number. `check_symbol_
+ * readers` then failed the ban with no caller, and it was right: A BAN NEEDS A
+ * TARGET TO BAN AGAINST, and the target comes from the length picker, which is
+ * not built. So the true dependency is budget + ban + picker, and the ban ships
+ * with the picker rather than sitting here unreachable. What is here is wired,
+ * counted on every generation, and logged.
  *
  * ⚠️ MEASURED, NOT ASSUMED. Twelve runs, references from 6 to 519 seconds,
  * scripts from 26 to 87 seconds. Three different behaviours with no visible
@@ -32,48 +39,36 @@
  * collapsing it would either break the product or reintroduce the defect.
  */
 
-/** The three lengths a creator may choose. */
-export const TARGET_SECONDS = [30, 60, 90] as const
-export type TargetSeconds = (typeof TARGET_SECONDS)[number]
+/**
+ * ⚖️ WHICH OF A REFERENCE'S BEATS ARE *POINTS*. `hook` and `cta` are excluded
+ * because every script gets both regardless of how much there is to say —
+ * counting them would credit a reference that contains nothing with two beats
+ * of substance. `rehook` is excluded for the same reason: it is a structural
+ * move, not a thing said.
+ *
+ * ⚠️ THE ROLES COME FROM `BEAT_ROLES` IN referenceContentProfile.ts. If a role
+ * is added there and not considered here, it silently stops counting — which is
+ * why `a-substance-budget-and-its-twin.test.ts` asserts this list against that
+ * one rather than against a copy of itself.
+ */
+export const POINT_ROLES: readonly string[] = Object.freeze([
+  'setup', 'item', 'turn', 'evidence', 'payoff',
+])
 
 /**
- * ⚠️ ADDING LENGTH ADDS BEATS, NOT LONGER BEATS. Measured: every beat overshoots
- * its planned target today, 12 of 12 runs, the worst 18 seconds against a 10
- * second plan. Stretching beats is how a script gets slow; adding beats is how
- * it gets longer, and this table is what makes that structural.
+ * Count the points in a reference's beats.
  *
- * ⚖️ THE EPISODE SLOT ONLY EXISTS AT 60s AND ABOVE. A 30-second script is one
- * idea — there is no room for a story with a before and an after — so a creator
- * choosing 30 is choosing an explainer, and `shapeFor` is what lets a screen
- * tell them that rather than leaving them to discover it.
+ * ⚠️ NULL WHEN THERE ARE NO BEATS TO COUNT, NEVER ZERO. `reference_content_
+ * profiles.profile.structure.beats` is an `Assessed<Beat[]>`, whose
+ * `not_checked` and `indeterminate` states mean nobody established the answer.
+ * Returning 0 for those would say "this reference makes no points", which is a
+ * finding nobody made, and would then cap every script at two beats.
  */
-const SHAPE: Readonly<Record<TargetSeconds, readonly string[]>> = Object.freeze({
-  30: Object.freeze(['hook', 'setup', 'payoff', 'cta']),
-  60: Object.freeze(['hook', 'setup', 'episode', 'consequence', 'payoff', 'cta']),
-  90: Object.freeze([
-    'hook', 'setup', 'episode', 'consequence', 'rehook', 'second point', 'payoff', 'cta',
-  ]),
-})
-
-/** ⚖️ TARGETS, NOT CAPS. At ~2.5 words per second of speech. The measured
- *  failure is thinness — 26 seconds out of a 168-second reference — not
- *  verbosity, so nothing here is allowed to trim a script for being wordy. */
-const WORDS: Readonly<Record<TargetSeconds, number>> = Object.freeze({ 30: 75, 60: 150, 90: 225 })
-
-export function shapeFor(target: TargetSeconds): readonly string[] { return SHAPE[target] }
-export function beatsFor(target: TargetSeconds): number { return SHAPE[target].length }
-export function wordsFor(target: TargetSeconds): number { return WORDS[target] }
-
-/** ⚖️ THE DEFAULT IS 60, NOT 30. The twelve runs show the failure mode is
- *  thinness, so defaulting to the shortest option would make the common case
- *  worse in exactly the direction it is already wrong. */
-export const DEFAULT_TARGET_SECONDS: TargetSeconds = 60
-
-/** Narrow an unknown to a real choice, or null. ⚠️ NULL, NOT A DEFAULT: a
- *  caller that never asked must not be recorded as having chosen 60. */
-export function asTarget(v: unknown): TargetSeconds | null {
-  const n = typeof v === 'number' ? v : Number(v)
-  return (TARGET_SECONDS as readonly number[]).includes(n) ? (n as TargetSeconds) : null
+export function referencePointsFrom(
+  beats: readonly { role?: unknown }[] | null | undefined,
+): number | null {
+  if (!Array.isArray(beats)) return null
+  return beats.filter((b) => POINT_ROLES.includes(String(b?.role ?? ''))).length
 }
 
 /**
@@ -141,73 +136,4 @@ export function substanceBudget(sources: SubstanceSources | null | undefined): S
   const counted = { referencePoints: ref ?? 0, storeItems: store ?? 0, productFacts: product ?? 0 }
   const points = counted.referencePoints + counted.storeItems + counted.productFacts
   return { beats: points + FREE_BEATS, enforceable: true, counted }
-}
-
-export interface LengthPlan {
-  /** Beats the script may actually emit. */
-  beats: number
-  /** The creator's ask, unchanged — so a screen can show both numbers. */
-  targetBeats: number
-  /** Beats of substance beyond the target. ⚖️ NAME WHAT WAS DROPPED. */
-  dropped: number
-  /** True when the budget could not fill the target: end short, never pad. */
-  short: boolean
-  /** ⚠️ FALSE MEANS "WE COULD NOT CHECK", AND A CALLER MAY NOT REPORT IT AS
-   *  "we checked and it was fine". */
-  enforced: boolean
-}
-
-/**
- * THE EXPANSION BAN. A script may not exceed the substance budget. Ever.
- *
- * ⚠️ THE ONE LINE THAT DOES THE WORK IS THE `Math.min`. Everything else is
- * reporting. If the target asks for more beats than the budget supports, the
- * script emits FEWER beats and the panel says why — it never stretches the
- * beats it has to reach a number, because that stretching is where the invented
- * figures came from.
- */
-export function planLength(
-  target: TargetSeconds,
-  budget: SubstanceBudget,
-): LengthPlan {
-  const targetBeats = beatsFor(target)
-
-  // ⚠️ AN UNKNOWN BUDGET DOES NOT BECOME A LICENCE. It also does not become a
-  // refusal. The target stands, and `enforced: false` is the caller's
-  // instruction not to claim the ban ran.
-  if (!budget.enforceable || budget.beats === null) {
-    return { beats: targetBeats, targetBeats, dropped: 0, short: false, enforced: false }
-  }
-  const beats = Math.min(targetBeats, budget.beats)
-  return {
-    beats,
-    targetBeats,
-    dropped: Math.max(0, budget.beats - targetBeats),
-    short: budget.beats < targetBeats,
-    enforced: true,
-  }
-}
-
-/**
- * What the creator is told, in plain everyday English.
- *
- * ⚠️ NO JARGON REACHES THIS STRING. "Budget", "beats" and "substance" are our
- * words for our problem; a creator is told how many seconds there is material
- * for and what they can do about it.
- */
-export function lengthMessage(plan: LengthPlan, target: TargetSeconds): string | null {
-  if (!plan.enforced) return null
-  if (plan.short) {
-    // ⚖️ SECONDS, NOT BEATS, AND ROUNDED DOWN. Promising 37 and delivering 34
-    // is the same broken promise in miniature.
-    const secs = Math.floor((plan.beats / plan.targetBeats) * target / 5) * 5
-    return `You asked for ${target} seconds. There's about ${secs} seconds of substance here — `
-      + `the reference is short and I don't have a story from you on this topic.`
-  }
-  if (plan.dropped > 0) {
-    const n = plan.dropped
-    return `There's more here than fits ${target} seconds — ${n} ${n === 1 ? 'point' : 'points'} `
-      + `didn't make it in. You can keep this length or go longer and keep all of it.`
-  }
-  return null
 }
