@@ -17,7 +17,8 @@ import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   INTENT_QUESTIONS, intentQuestionsFor, type IntentQuestion, type VideoGoal, focusForGoal,
-  mustAskWhichProduct, PRODUCT_CHOICE_FIELD,
+  mustAskWhichProduct, PRODUCT_CHOICE_FIELD, NO_PRODUCT_CHOICE, NO_PRODUCT_EXPLANATION,
+  productChoiceConstraint,
   defaultVideoGoalFromContentGoals, CANONICAL_GOAL_LABELS,
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
@@ -726,7 +727,13 @@ export default function V2Building() {
                     // ⚖️ THEIR OWN NAMES, NOT A SUMMARY. The label is what they
                     // typed into Product Library; a paraphrase here would be a
                     // second name for one thing.
-                    options: ownedProducts.map((p) => ({ value: p.id, label: p.name })),
+                    options: [
+                      ...ownedProducts.map((p) => ({ value: p.id, label: p.name })),
+                      // ⚠️ LAST, AND ALWAYS PRESENT. A commercial video about
+                      // none of these had no honest answer before it: pick a
+                      // wrong product, or abandon the build.
+                      { value: NO_PRODUCT_CHOICE, label: 'None of these' },
+                    ],
                   } as AskItem]
                 : []
             const ask: AskItem[] = [
@@ -1278,7 +1285,79 @@ export default function V2Building() {
   const renderAsk = (q: AskItem) => (
             <div key={q.field} className="block">
               <span className="text-sm leading-relaxed text-cream">{q.question}</span>
-              {isChip(q) ? (
+              {q.field === PRODUCT_CHOICE_FIELD && isChip(q) ? (
+                // ── PART 2: THE PICKER SURFACE ───────────────────────────
+                //
+                // ⚠️ CHIPS CANNOT CARRY THIS QUESTION. The other three are
+                // fixed-enum decisions whose options explain themselves in two
+                // words; these are the creator's own products, and choosing
+                // between them blind is how a script comes back about the wrong
+                // one. A name alone is not enough when two of them are called
+                // "The course" and "The new course".
+                //
+                // ⚖️ IN PLACE, NEVER A NAVIGATION. This is the card the creator
+                // is already answering — sending them to /products mid-build
+                // loses the build.
+                //
+                // ⚖️ AND EVERY OPTION STATES ITS CONSTRAINT, from
+                // `productChoiceConstraint`, which READS `claimRulesFor` rather
+                // than restating it. A creator picking a sponsored product
+                // should learn that the script must disclose it here, at the
+                // moment of choosing, not from the finished script.
+                <div className="mt-2.5 space-y-2">
+                  {q.options.map((o) => {
+                    const picked = (askAnswers[q.field] ?? '') === o.value
+                    const entity = (products ?? []).find((p) => p.id === o.value) ?? null
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        aria-pressed={picked}
+                        onClick={() => answer(q.field, picked ? '' : o.value)}
+                        className={cn(
+                          'block w-full rounded-xl border px-3.5 py-2.5 text-left transition-colors',
+                          picked
+                            ? 'border-coral/50 bg-coral/[0.08] text-cream'
+                            : 'border-white/12 text-sand hover:border-white/25',
+                        )}
+                      >
+                        <span className="block text-[13px] font-medium text-cream">{o.label}</span>
+                        {/* ⚖️ THEIR OWN ONE-LINE DESCRIPTION, the one the
+                            Product Library asks for and `generate-blueprint`
+                            reads when a page has not been read. Absent is
+                            silent — never a placeholder pretending to be one. */}
+                        {entity?.creatorSummary && (
+                          <span className="mt-0.5 block text-xs text-sand">{entity.creatorSummary}</span>
+                        )}
+                        {entity && (
+                          <span className="mt-1 block text-xs text-stone">
+                            {productChoiceConstraint(entity.relationship, entity.personalUse)}
+                          </span>
+                        )}
+                        {o.value === NO_PRODUCT_CHOICE && (
+                          // ⚠️ FIRST-CLASS, NOT A WAY OUT. Without it the card
+                          // has no honest answer for a commercial video about
+                          // none of these — pick a wrong one, or abandon the
+                          // build.
+                          <span className="mt-0.5 block text-xs text-stone">
+                            {NO_PRODUCT_EXPLANATION.creator_chose_none}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                  {/* ⚠️ ADDING A PRODUCT IS NOT IN THIS CARD, AND THAT IS A
+                      DECISION. Registering one means answering relationship,
+                      personal use and type — the three answers that decide what
+                      any script may claim about it. A name box here would mint
+                      an entity with those unanswered, which is entitlement for
+                      a tap: exactly what #746 closed. The Library is where that
+                      question is asked properly. */}
+                  <p className="pt-1 text-xs text-stone">
+                    Something missing? Add it in your Product Library — this video can go ahead without it.
+                  </p>
+                </div>
+              ) : isChip(q) ? (
                 // ⚖️ CHIPS, NOT A TEXT BOX. These three have a fixed set of
                 // answers that map to decisions downstream; free text would
                 // have to be interpreted, and an interpretation is a guess
