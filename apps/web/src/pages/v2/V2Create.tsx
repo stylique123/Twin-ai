@@ -147,7 +147,21 @@ export default function V2Create() {
       // screen only carries out the ask, and it remounts. Two deliberate clicks
       // mint two keys and correctly cost two remixes; a remount, a back-and-
       // forward or a refresh reuses this one and costs nothing extra.
-      state: { ...buildFieldsForDoor(door, t), tone, idempotency_key: crypto.randomUUID() },
+      state: {
+        ...buildFieldsForDoor(door, t),
+        tone,
+        idempotency_key: crypto.randomUUID(),
+        // ⚠️ THE LIBRARY WAS A LIST, NOT A SELECTOR. It showed a creator every
+        // product they own and offered no way to make a video about one — so
+        // the way to start a video about a specific product was to start a
+        // video and hope the picker asked.
+        //
+        // ⚖️ CARRIED, NOT DECIDED. This is the creator's own tap on that
+        // product's card, so it is an answer, not a default — but the build
+        // screen still puts it through `selectProduct`, which refuses it on a
+        // video that may not carry a product at all.
+        ...(params.get('product') ? { selected_product_id: params.get('product') as string } : {}),
+      },
     })
   }
 

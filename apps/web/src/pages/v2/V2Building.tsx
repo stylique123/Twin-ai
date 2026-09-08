@@ -18,6 +18,7 @@ import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   INTENT_QUESTIONS, intentQuestionsFor, type IntentQuestion, type VideoGoal, focusForGoal,
   mustAskWhichProduct, PRODUCT_CHOICE_FIELD, NO_PRODUCT_CHOICE, NO_PRODUCT_EXPLANATION,
+  selectProduct,
   productChoiceConstraint,
   defaultVideoGoalFromContentGoals, CANONICAL_GOAL_LABELS,
 } from '@twinai/shared'
@@ -90,6 +91,11 @@ interface BuildState {
   // Minted by V2Create, one per click of "build". Carried in nav state so a
   // remount of THIS screen reuses it — see buildKey below.
   idempotency_key?: string
+  /** ⚠️ THE PRODUCT THE CREATOR STARTED FROM. Set only when they pressed
+   *  "Make a video about this" on a Library card — their own tap on that
+   *  product, so an answer rather than a default. It is still put through
+   *  `selectProduct` before it is sent. */
+  selected_product_id?: string
 }
 
 // ONE CLICK-INTENT, ONE REMIX.
@@ -403,8 +409,15 @@ export default function V2Building() {
   // ⚖️ SEEDED FROM THE SAME SLOT. The ref is what the build actually sends, so
   // restoring only the visible form would show the creator their answers and
   // then generate without them.
-  const answersRef = useRef<Record<string, string>>(
-    recallAnswers(buildKey((loc.state || {}) as BuildState)))
+  const answersRef = useRef<Record<string, string>>({
+    // ⚖️ THE REMEMBERED ANSWER WINS. A creator who arrived from a product card
+    // and then changed their mind in the picker must not have the card's
+    // choice reinstated by a remount.
+    ...((loc.state as BuildState | null)?.selected_product_id
+      ? { [PRODUCT_CHOICE_FIELD]: String((loc.state as BuildState).selected_product_id) }
+      : {}),
+    ...recallAnswers(buildKey((loc.state || {}) as BuildState)),
+  })
   /** Record one answer and persist it in the same breath.
    *
    *  ⚠️ FIVE AFFORDANCES ANSWER THESE QUESTIONS — a chip, a sub-chip, a product
@@ -943,7 +956,28 @@ export default function V2Building() {
         // persist to the brief, and not one of the three intent enums — it is
         // one video's answer to "which of yours is this about", and it rides
         // its own field so neither bucket has to grow a special case.
-        const chosenProductId = (answersRef.current[PRODUCT_CHOICE_FIELD] ?? '').trim()
+        // ⚠️ AND THE COMMERCIAL GATE IS APPLIED HERE, NOT ONLY WHERE THE
+        // QUESTION IS ASKED. A choice can now arrive from the Product
+        // Library's "Make a video about this" without the picker ever
+        // rendering, so a seeded id would otherwise reach the writer on a
+        // video that may not carry a product at all — the CTA bug in a
+        // different costume. `selectProduct` already orders those branches;
+        // asking it is cheaper than restating them.
+        const seeded = (answersRef.current[PRODUCT_CHOICE_FIELD] ?? '').trim()
+        const decided = selectProduct({
+          ownedProductIds: seeded === '' ? [] : [seeded],
+          chosenId: seeded,
+          mayUseAProduct: showsCommercialBlock(compileVideoIntent({
+            goal: asOneOf(VIDEO_GOALS, answersRef.current.video_goal),
+            focus: asOneOf(CONTENT_FOCUS, answersRef.current.content_focus),
+            outcome: asOneOf(VIEWER_OUTCOMES, answersRef.current.viewer_outcome),
+          })),
+        })
+        const chosenProductId = decided.kind === 'chosen' || decided.kind === 'auto'
+          ? decided.productId
+          // ⚖️ A DECLINE STILL TRAVELS. It is an answer the server must read —
+          // an absence would let the oldest-first stopgap answer for them.
+          : seeded === NO_PRODUCT_CHOICE ? NO_PRODUCT_CHOICE : ''
         for (const [k, v] of Object.entries(answersRef.current)) {
           if (k === PRODUCT_CHOICE_FIELD) continue
           if (INTENT_FIELDS.has(k)) intentAnswers[k] = v

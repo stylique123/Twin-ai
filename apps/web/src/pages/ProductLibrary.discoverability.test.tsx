@@ -22,6 +22,12 @@ vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ session: { user: { id: 'owner-1' } } }),
 }))
 
+const navigated: string[] = []
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return { ...actual, useNavigate: () => (to: string) => { navigated.push(to) } }
+})
+
 const ENTITY: ProductEntityRecord = {
   id: 'e1', name: 'Peak Tripod', creatorSummary: null, type: 'PHYSICAL_PRODUCT',
   relationship: 'OWN_PRODUCT', personalUse: 'NOT_CONFIRMED', showability: 'UNKNOWN',
@@ -55,7 +61,7 @@ vi.mock('@twinai/shared', async () => {
   }
 })
 
-afterEach(() => { cleanup(); updateEntityPresentation.mockClear() })
+afterEach(() => { cleanup(); updateEntityPresentation.mockClear(); navigated.length = 0 })
 
 async function page() {
   const { default: ProductLibrary } = await import('./ProductLibrary')
@@ -232,6 +238,22 @@ describe('two unnamed products are not two identical blank cards', () => {
       expect(screen.getAllByPlaceholderText('What you call it on camera')[0])
         .toHaveProperty('value', '')
     })
+  })
+})
+
+describe('the Library is a selector, not just a list', () => {
+  it('every product card can start a video about that product', async () => {
+    // ⚠️ IT SHOWED A CREATOR EVERY PRODUCT THEY OWN AND OFFERED NO WAY TO MAKE
+    // A VIDEO ABOUT ONE. The route in was to start a video and hope the picker
+    // asked — which it only does when they own two or more.
+    const nameBox = await page()
+    const card = nameBox.closest('section') as HTMLElement
+    const go = within(card).getByRole('button', { name: /make a video about this/i })
+    fireEvent.click(go)
+    // ⚖️ THE ID TRAVELS AS AN ANSWER, on the studio's own route. The build
+    // screen still puts it through `selectProduct`, so it cannot force a
+    // product onto a video that may not carry one.
+    expect(navigated).toContain('/v2?product=e1')
   })
 })
 

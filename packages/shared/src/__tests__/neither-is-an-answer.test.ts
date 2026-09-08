@@ -124,3 +124,43 @@ describe('the decline survives the wire', () => {
     expect(block).not.toMatch(/nav\(|navigate\(|href=/)
   })
 })
+
+// ── AND THE LIBRARY CAN START ONE ─────────────────────────────────────────
+const CREATE = readFileSync(join(REPO, 'apps/web/src/pages/v2/V2Create.tsx'), 'utf8')
+const LIB = readFileSync(join(REPO, 'apps/web/src/pages/ProductLibrary.tsx'), 'utf8')
+
+describe('a product card starts a video about that product', () => {
+  it('the Library links into the studio carrying the id', () => {
+    expect(LIB).toMatch(/Make a video about this/)
+    expect(LIB).toMatch(/\/v2\?product=\$\{encodeURIComponent\(e\.id\)\}/)
+  })
+
+  it('the studio carries it into the build state rather than dropping it', () => {
+    // ⚠️ A LINK THAT LOSES ITS PARAMETER at the first screen is the same as no
+    // link: the creator taps a product and gets a generic build.
+    expect(CREATE).toMatch(/params\.get\('product'\)/)
+    expect(CREATE).toMatch(/selected_product_id: params\.get\('product'\)/)
+  })
+
+  it('the build screen seeds the answer but lets a later change win', () => {
+    expect(CARD).toMatch(/\[PRODUCT_CHOICE_FIELD\]: String\(\(loc\.state as BuildState\)\.selected_product_id\)/)
+    // ⚖️ ORDER IS THE ASSERTION. `recallAnswers` spreads AFTER the seed, so a
+    // creator who arrived from a card and then changed their mind in the picker
+    // does not have the card's choice reinstated by a remount.
+    const seed = CARD.indexOf('[PRODUCT_CHOICE_FIELD]: String(')
+    const recall = CARD.indexOf('...recallAnswers(buildKey((loc.state || {}) as BuildState))')
+    expect(seed).toBeGreaterThan(-1)
+    expect(recall).toBeGreaterThan(seed)
+  })
+
+  it('the commercial gate is applied at the SEND, not only where the picker asks', () => {
+    // ⚠️ A SEEDED ID SKIPS THE QUESTION ENTIRELY. Without this, arriving from a
+    // product card would put a product into a video that may not carry one —
+    // the CTA bug in a different costume.
+    expect(CARD).toMatch(/const decided = selectProduct\(\{/)
+    expect(CARD).toMatch(/mayUseAProduct: showsCommercialBlock\(compileVideoIntent\(\{/)
+    // ⚖️ AND A DECLINE STILL TRAVELS, because an absence is where the stopgap
+    // lives — the same reason the sentinel exists at all.
+    expect(CARD).toMatch(/seeded === NO_PRODUCT_CHOICE \? NO_PRODUCT_CHOICE : ''/)
+  })
+})
