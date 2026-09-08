@@ -25,15 +25,16 @@
 // Owning a thing is a fact held in the Product Library, and the only safe way
 // to learn it is for them to pick it. The rule and its mutation proof live in
 // packages/shared/src/entryDoor.ts.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Link2, Wand2, Wind, Activity, Flame, SlidersHorizontal, ChevronDown, Lightbulb, Package, Compass } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-import { listGenerations } from '../../lib/api'
+import { listGenerations, loadProductEntities } from '../../lib/api'
+import type { ProductEntityRecord } from '../../lib/api'
 import { videosFromCredits } from '../../lib/brand'
 import { recordEntryDoor } from '../../lib/entryDoors'
 import {
-  readEntryDoor, buildFieldsForDoor, looksLikeLink, ALL_DOORS, type EntryDoor,
+  readEntryDoor, buildFieldsForDoor, looksLikeLink, ALL_DOORS, relationshipLabel, type EntryDoor,
 } from '@twinai/shared'
 import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
@@ -137,6 +138,30 @@ export default function V2Create() {
   const { profile } = useAuth()
   const [params] = useSearchParams()
   const [input, setInput] = useState(() => initialInput(params.get('ref')))
+  // ── "SOMETHING I SELL" MUST BE A CHOICE, NOT A REDIRECT ──────────────────
+  //
+  // ⚠️ REPORTED FROM PRODUCTION: "when I click something I sell, pick a
+  // product, why does it still take me to the product library and there's no
+  // option to choose anything?" The door was a HANDOFF — it navigated to
+  // /products and abandoned the build. The creator had said what they wanted to
+  // make a video about and was answered with a filing cabinet.
+  //
+  // ⚖️ SO THE DOOR ANSWERS ITS OWN QUESTION. Picking a product here starts the
+  // build with that product chosen, on the same screen, in the same gesture.
+  // The library is still one tap away for the creator who has nothing in it —
+  // but as an EMPTY-STATE, which is the only case where it was ever the answer.
+  const [picking, setPicking] = useState(false)
+  const [myProducts, setMyProducts] = useState<ProductEntityRecord[] | null>(null)
+  useEffect(() => {
+    let alive = true
+    // ⚠️ NULL IS "WE DO NOT KNOW YET", NOT "YOU HAVE NONE". A failed read must
+    // not render the empty state, which would tell a creator with a full
+    // library that it is empty.
+    void loadProductEntities()
+      .then((rows) => { if (alive) setMyProducts(rows.filter((r) => r.archivedAt === null)) })
+      .catch(() => { if (alive) setMyProducts(null) })
+    return () => { alive = false }
+  }, [])
   // ⚠️ null MEANS "THEY HAVE NOT PICKED", WHICH IS NOT THE SAME AS ANY DOOR.
   // Seeding this with the inferred door would make every entry look chosen and
   // destroy the one distinction the impression table exists to record.
@@ -182,9 +207,16 @@ export default function V2Create() {
     // The handoff doors do not build; they take the creator to the place that
     // holds what they said they have. Both record the door first, because
     // leaving for the Product Library IS taking the product door.
+    if (door === 'product') {
+      // ⚖️ THE DOOR IS RECORDED WHERE IT IS TAKEN, exactly as before — what
+      // changed is what happens next, not what we learn from it.
+      void recordEntryDoor({ door, source, offered: ALL_DOORS, text: input })
+      setPicking(true)
+      return
+    }
     if (isHandoff) {
       void recordEntryDoor({ door, source, offered: ALL_DOORS, text: input })
-      nav(door === 'product' ? '/products' : '/gallery')
+      nav('/gallery')
       return
     }
     const t = input.trim()
@@ -310,6 +342,16 @@ export default function V2Create() {
                   {wordCount(input)} words — keep going if there is more.
                 </p>
               )}
+              {/* ⚖️ NO SPEECH-TO-TEXT, AND THE POINTER INSTEAD. Every phone
+                  keyboard already dictates, and the browser API that would do
+                  it here sends the creator's audio to a third party — a bad
+                  trade on the one surface built to collect their raw thinking.
+                  Shown only where the keyboard has the button. */}
+              {door === 'idea' && (
+                <p className="mt-2 text-[11px] text-sand/50 sm:hidden">
+                  Tip: tap the mic on your keyboard and just talk.
+                </p>
+              )}
               {/* ⚠️ NAMES THE WAY OUT RATHER THAN JUST REFUSING. A creator who
                   typed prose under the reference door has not made a mistake —
                   they are in the wrong room, and the other room is one tap away. */}
@@ -359,6 +401,93 @@ export default function V2Create() {
                 </div>
               )}
             </>
+          )}
+
+          {/* ── PICK A PRODUCT, HERE, WITHOUT LEAVING THE BUILD ─────────────
+              ⚠️ THIS BUTTON USED TO NAVIGATE TO /products. The creator said
+              what they wanted to make a video about and was answered with a
+              filing cabinet — reported as "why does it still take me to the
+              product library and there's no option to choose anything?" */}
+          {picking && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="pick-product-title"
+              className="fixed inset-0 z-[70] grid place-items-center bg-ink/80 p-4 backdrop-blur-sm"
+            >
+              <div className="glass gradient-border w-full max-w-md rounded-2xl p-5 text-left">
+                <div className="flex items-start justify-between gap-3">
+                  <h2 id="pick-product-title" className="font-display text-xl tracking-tight">
+                    Which one is this video about?
+                  </h2>
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    className="-mt-1 px-2 py-1 text-lg leading-none text-stone hover:text-cream"
+                    onClick={() => setPicking(false)}
+                  >×</button>
+                </div>
+
+                {/* ⚠️ THREE STATES, AND NOT KNOWING IS ONE OF THEM. A failed
+                    read must never render as "you have no products". */}
+                {myProducts === null ? (
+                  <p className="mt-4 text-sm text-stone">
+                    We could not read your products just now.{' '}
+                    <button type="button" className="underline underline-offset-2 hover:text-cream" onClick={() => nav('/products')}>
+                      Open your library
+                    </button>
+                  </p>
+                ) : myProducts.length === 0 ? (
+                  <>
+                    <p className="mt-3 text-sm leading-relaxed text-sand">
+                      Nothing in your library yet. Add the thing you sell once, and Twin knows
+                      what it may claim about it in every script after that.
+                    </p>
+                    <button type="button" className="btn-gradient mt-4 w-full" onClick={() => nav('/products?add=1')}>
+                      Add a product
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <ul className="mt-4 space-y-2">
+                      {myProducts.map((p) => (
+                        <li key={p.id}>
+                          <button
+                            type="button"
+                            className="w-full rounded-xl border border-white/10 px-4 py-3 text-left transition-colors hover:border-white/25 hover:bg-white/[0.04]"
+                            onClick={() => {
+                              // ⚖️ THE CHOICE TRAVELS WITH THE BUILD, so the
+                              // building screen does not ask it again.
+                              setPicking(false)
+                              nav('/v2/building', {
+                                state: {
+                                  ...buildFieldsForDoor('idea', input.trim()),
+                                  tone,
+                                  selected_product_id: p.id,
+                                  idempotency_key: crypto.randomUUID(),
+                                },
+                              })
+                            }}
+                          >
+                            <span className="block truncate text-sm font-semibold text-cream">
+                              {(p.name ?? '').trim() || 'Not named yet'}
+                            </span>
+                            <span className="mt-0.5 block truncate text-xs text-stone">
+                              {relationshipLabel(p.relationship)}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      className="mt-3 w-full py-2 text-center text-sm text-stone transition-colors hover:text-cream"
+                      onClick={() => nav('/products?add=1')}
+                    >Add another product</button>
+                  </>
+                )}
+              </div>
+            </div>
           )}
 
           {/* The one CTA — centered, matched to the input width so the column reads

@@ -52,6 +52,7 @@ import {
   CAPTURE_COPY, PLATFORM_CHOICES, PRIVACY_CHOICES, RATHER_NOT_SAY, FIGURE_HINT,
   surfaceChoices, buildCommunityMap, whatIsMissing,
   type ProductSuggestion,
+  relationshipLabel,
 } from '@twinai/shared'
 import { readOnboardingDraft } from '../lib/onboardingDraft'
 import type {
@@ -182,17 +183,9 @@ const FIXED_SHOW_NOTE: Record<string, string> = {
   COMMUNITY: 'Scripts can show this one — you hold your own phone up beside your face and show the feed.',
 }
 
-/** Plain-language names for the fields a creator cannot change here. Showing the
- *  value with no explanation reads as a bug; showing it with one reads as a
- *  decision, which is what it is. */
-const RELATIONSHIP_LABEL: Record<string, string> = {
-  OWN_PRODUCT: 'You own this product',
-  OWN_SERVICE: 'You own this service',
-  AFFILIATE: 'You earn a commission on it',
-  SPONSOR: 'A sponsor pays you to feature it',
-  REVIEW_ONLY: 'You review it, with no commercial tie',
-  NONE: 'No commercial relationship',
-}
+/* ⚖️ THE RELATIONSHIP WORDING MOVED TO packages/shared/productRelationshipLabel
+ *  when the studio's product door began showing it too — see that file for why
+ *  this particular label is worth exactly one copy. */
 
 
 /** The attestation. Two questions, both required, neither derivable.
@@ -448,6 +441,25 @@ export default function ProductLibrary() {
   // ⚖️ TABS IN PLAIN ENGLISH, NOT "Active"/"Archived". "In use" and "Not in use"
   // say what Twin will do with them, which is the only thing the distinction
   // means; the internal word is `archived_at` and the creator never needs it.
+  // ── THE LIBRARY IS A LIST, NOT EVERY FORM AT ONCE ────────────────────────
+  //
+  // ⚠️ REPORTED FROM PRODUCTION, TWICE: "two stupid big boxes in which I cannot
+  // actually select anything", and before that "no proper confirmation of ui of
+  // added products remove or edit". Every product rendered its ENTIRE editor
+  // inline — name, summary, link, capability, photos, facts, relationship — so
+  // two products made a page several screens long with no overview anywhere on
+  // it. The controls existed; the shape of the screen hid them, and a control a
+  // creator cannot find is a control nobody built.
+  //
+  // ⚖️ SO THE LIST ANSWERS "WHAT DO I HAVE" AND THE PANEL ANSWERS "WHAT ABOUT
+  // THIS ONE". Exactly one product is open at a time, by id: two open editors is
+  // the defect being fixed, and a set would let it back in.
+  const [openId, setOpenId] = useState<string | null>(null)
+  /** ⚠️ "I don't even know... it does not confirm me if they have been added."
+   *  The dialog closed and the new row appeared several screens down, below
+   *  whatever was already expanded — so on the one screen that matters, adding a
+   *  product looked exactly like nothing happening. */
+  const [justAdded, setJustAdded] = useState<string | null>(null)
   const [tab, setTab] = useState<'live' | 'retired'>('live')
   /** Storage path → signed URL, for photos already attached to a product. */
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
@@ -561,6 +573,25 @@ export default function ProductLibrary() {
       document.body.style.overflow = previous
     }
   }, [addingNew])
+
+  // ⚖️ THE SAME TWO RULES FOR THE PRODUCT PANEL, and for the same reasons. It is
+  // a dialog, so Escape must close it; the library behind it must not scroll
+  // under a panel that stands still. Closing discards nothing — every field here
+  // saves on blur — so unlike the add form, this one is safe to leave by
+  // keyboard without a confirmation.
+  useEffect(() => {
+    if (openId === null) return
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') { setOpenId(null); setRemovingId(null) }
+    }
+    window.addEventListener('keydown', onKey)
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = previous
+    }
+  }, [openId])
 
   useEffect(() => {
     let alive = true
@@ -716,6 +747,9 @@ export default function ProductLibrary() {
       }
       setClaimingId(null)
       setAddingNew(false)
+      // ⚖️ NAMED, NOT "SAVED". "Added" alone does not tell a creator WHICH thing
+      // landed, which is the actual question after a form closes.
+      if (created) setJustAdded(cardTitle(created))
     } catch (e) {
       // ⚖️ THE ONE-PRODUCT-PER-VOICE REFUSAL GETS ITS OWN MESSAGE. Falling back
       // to a generic failure would leave a creator retrying a thing that will
@@ -982,8 +1016,73 @@ export default function ProductLibrary() {
       {/* ⚠️ ONE NOTE, RENDERED WHERE THE EDIT HAPPENED. Declared here rather
           than inside the map so every field gets the identical wording — the
           card already carries two near-duplicate sentences that drifted. */}
-      {(tab === 'live' ? entities : []).map((e) => (
-        <section key={e.id} className="rounded-xl border border-white/10 p-4">
+      {/* ⚠️ THE CONFIRMATION THE ADD FLOW NEVER GAVE. See `justAdded`. */}
+      {justAdded !== null && (
+        <div className="mb-3 flex items-start justify-between gap-3 rounded-xl border border-teal/30 bg-teal/[0.06] px-4 py-3">
+          <p className="text-sm text-cream">
+            <span className="font-semibold">{justAdded}</span> is in your library.
+            Open it to add a link, photos, or answer what you can film.
+          </p>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            className="shrink-0 text-lg leading-none text-stone hover:text-cream"
+            onClick={() => setJustAdded(null)}
+          >×</button>
+        </div>
+      )}
+
+      {/* ── ONE ROW PER PRODUCT; ONE PANEL FOR THE ONE BEING WORKED ON ──────
+          ⚖️ THE ROW IS A BUTTON, not a card with a link in it. The whole thing
+          is the target, because "click the product" is what a creator does. */}
+      {(tab === 'live' ? entities : []).map((e) => openId !== e.id ? (
+        <button
+          key={e.id}
+          type="button"
+          onClick={() => { setOpenId(e.id); setRemovingId(null) }}
+          // ⚖️ THE ROW NAMES ITSELF: without this the accessible name is every
+          // line inside it run together, which is unreadable aloud.
+          aria-label={`Open ${cardTitle(e)}`}
+          className="mb-2 flex w-full items-center justify-between gap-3 rounded-xl border border-white/10 px-4 py-3 text-left transition-colors hover:border-white/25 hover:bg-white/[0.03]"
+        >
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-cream">{cardTitle(e)}</span>
+            {/* ⚖️ THE SAME SENTENCE THE PANEL SHOWS, from the same shared map —
+                the row must not invent a second account of one product's state. */}
+            <span className="mt-0.5 block truncate text-xs text-stone">
+              {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-sand/70">
+              {relationshipLabel(e.relationship)}
+            </span>
+          </span>
+          {/* ⚠️ THE WORD, NOT ONLY A CHEVRON. "no option to edit or remove it"
+              was reported against a screen where both existed; naming the action
+              on the row is the whole point of the row. */}
+          <span className="shrink-0 text-xs font-medium text-teal">Open</span>
+        </button>
+      ) : (
+        <div
+          key={e.id}
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/60 p-3 backdrop-blur-sm sm:p-6"
+        >
+        <section className="mx-auto max-w-2xl rounded-xl border border-white/10 bg-ink2 p-4 shadow-2xl">
+          {/* ⚖️ CLOSING IS ALWAYS AVAILABLE AND NEVER DESTRUCTIVE. Every field
+              here saves on blur, so there is nothing to discard and no
+              "are you sure" to earn. */}
+          <div className="mb-3 flex items-center justify-end">
+            {/* ⚖️ NO aria-label HERE ON PURPOSE. "Done" is already a real name;
+                an aria-label saying "Close" would mean the button a sighted
+                creator reads as Done is a button voice control only answers to
+                as Close. */}
+            <button
+              type="button"
+              className="rounded-lg border border-white/15 px-2.5 py-1 text-xs text-stone hover:text-cream"
+              onClick={() => { setOpenId(null); setRemovingId(null) }}
+            >Done</button>
+          </div>
           {/* ── WHERE THIS ONE IS, IN ONE LINE ───────────────────────────
               ⚠️ MOST STATES SAID NOTHING AT ALL. A product that was READY, or
               carrying unchecked guesses, or had no source yet, all opened with
@@ -1424,7 +1523,7 @@ export default function ProductLibrary() {
               Your relationship to it
             </p>
             <p className="mt-1 text-sm">
-              {RELATIONSHIP_LABEL[e.relationship] ?? e.relationship}
+              {relationshipLabel(e.relationship)}
               {e.personalUse === 'CONFIRMED' && ' — and you use it yourself'}
             </p>
             <p className="mt-1 text-xs text-stone">
@@ -1443,6 +1542,7 @@ export default function ProductLibrary() {
             </p>
           </div>
         </section>
+        </div>
       ))}
 
       {tab === 'retired' && (
@@ -1457,7 +1557,7 @@ export default function ProductLibrary() {
                 <span>
                   {a.name ?? 'Unnamed product'}
                   <span className="block text-xs text-stone">
-                    {RELATIONSHIP_LABEL[a.relationship] ?? a.relationship}
+                    {relationshipLabel(a.relationship)}
                   </span>
                 </span>
                 <button

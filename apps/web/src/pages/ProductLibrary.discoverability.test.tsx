@@ -60,6 +60,9 @@ afterEach(() => { cleanup(); updateEntityPresentation.mockClear() })
 async function page() {
   const { default: ProductLibrary } = await import('./ProductLibrary')
   render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+  // ⚖️ ONE CLICK IN. See the note in ProductLibrary.link.test.tsx: the editor is
+  // a panel opened from a row, so every field assertion below opens it first.
+  fireEvent.click((await screen.findAllByRole('button', { name: /^Open / }))[0])
   return await screen.findByDisplayValue('Peak Tripod')
 }
 
@@ -157,6 +160,7 @@ describe('the card does not tell a creator it knows nothing they have already to
     try {
       const { default: ProductLibrary } = await import('./ProductLibrary')
       render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+      fireEvent.click((await screen.findAllByRole('button', { name: /^Open / }))[0])
       expect(await screen.findByText(/Twin will use the line you wrote above/i)).toBeTruthy()
       expect(screen.queryByText(/instead of guessing/i)).toBeNull()
     } finally { load.mockImplementation(original!) }
@@ -174,6 +178,7 @@ describe('the card does not tell a creator it knows nothing they have already to
     try {
       const { default: ProductLibrary } = await import('./ProductLibrary')
       render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+      fireEvent.click((await screen.findAllByRole('button', { name: /^Open / }))[0])
       expect(await screen.findByText(/instead of guessing/i)).toBeTruthy()
     } finally { load.mockImplementation(original!) }
   })
@@ -201,8 +206,11 @@ describe('two unnamed products are not two identical blank cards', () => {
       render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
       // ⚖️ `www.` DROPPED, because the point is telling two cards apart, not
       // reproducing a URL the creator can already see in the Link box.
-      expect(await screen.findByRole('heading', { name: 'medicube.example' })).toBeTruthy()
-      expect(screen.getByRole('heading', { name: 'Sourdough loaves, baked to order' })).toBeTruthy()
+      // ⚠️ THE TITLE MOVED FROM A HEADING TO THE ROW'S OWN ACCESSIBLE NAME, and
+      // the rule it serves is unchanged and now stronger: two products must be
+      // tellable apart, and the name a screen reader announces IS the fallback.
+      expect(await screen.findByRole('button', { name: 'Open medicube.example' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Open Sourdough loaves, baked to order' })).toBeTruthy()
     })
   })
 
@@ -216,7 +224,7 @@ describe('two unnamed products are not two identical blank cards', () => {
     try {
       const { default: ProductLibrary } = await import('./ProductLibrary')
       render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
-      expect(await screen.findByRole('heading', { name: 'Not named yet' })).toBeTruthy()
+      expect(await screen.findByRole('button', { name: 'Open Not named yet' })).toBeTruthy()
     } finally { load.mockImplementation(original!) }
   })
 
@@ -226,7 +234,7 @@ describe('two unnamed products are not two identical blank cards', () => {
     await twoUnnamed(async () => {
       const { default: ProductLibrary } = await import('./ProductLibrary')
       render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
-      await screen.findByRole('heading', { name: 'medicube.example' })
+      fireEvent.click(await screen.findByRole('button', { name: 'Open medicube.example' }))
       expect(updateEntityPresentation).not.toHaveBeenCalled()
       // The Name box stays empty, so the placeholder still invites a real name.
       expect(screen.getAllByPlaceholderText('What you call it on camera')[0])

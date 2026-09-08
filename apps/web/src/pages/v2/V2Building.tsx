@@ -91,6 +91,12 @@ interface BuildState {
   // Minted by V2Create, one per click of "build". Carried in nav state so a
   // remount of THIS screen reuses it — see buildKey below.
   idempotency_key?: string
+  /** ⚠️ CHOSEN AT THE DOOR, WHERE "SOMETHING I SELL" IS NOW ANSWERED. The
+   *  product door used to hand the creator off to the library and abandon the
+   *  build; it now picks a product and starts one. Carried here so this screen
+   *  does not put the same question a second time — asking again for something
+   *  they just chose is the duplicate-question defect, not a safety check. */
+  selected_product_id?: string
 }
 
 // ONE CLICK-INTENT, ONE REMIX.
@@ -746,7 +752,10 @@ export default function V2Building() {
             const productQuestion: AskItem[] =
               mustAskWhichProduct({
                 ownedProductIds: ownedProducts.map((p) => p.id),
-                chosenId: answersRef.current[PRODUCT_CHOICE_FIELD] ?? null,
+                // ⚖️ THE DOOR'S CHOICE COUNTS AS AN ANSWER. Without this the
+                // screen re-asks "which one is this video about?" straight
+                // after the creator picked one to get here.
+                chosenId: answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null,
                 mayUseAProduct: showsCommercialBlock(answeredIntent),
               })
                 ? [{
@@ -965,7 +974,7 @@ export default function V2Building() {
         // persist to the brief, and not one of the three intent enums — it is
         // one video's answer to "which of yours is this about", and it rides
         // its own field so neither bucket has to grow a special case.
-        const chosenProductId = (answersRef.current[PRODUCT_CHOICE_FIELD] ?? '').trim()
+        const chosenProductId = (answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? '').trim()
         for (const [k, v] of Object.entries(answersRef.current)) {
           if (k === PRODUCT_CHOICE_FIELD) continue
           if (INTENT_FIELDS.has(k)) intentAnswers[k] = v
