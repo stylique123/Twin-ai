@@ -1109,7 +1109,10 @@ function ConfirmStep({
   // one tap away. Nothing is hidden; it just stops being homework.
   const [showVoice, setShowVoice] = useState(voiceIsEmpty)
 
-  const [canRecordScreen, setCanRecordScreen] = useState<boolean | null>(draft.canRecordScreen)
+  // ⚖️ READ, NEVER SET, ON THIS SCREEN. The value still travels — a creator who
+  // answered before this change keeps their answer, and the Product Library
+  // writes it per product — but nothing here asks for it any more.
+  const [canRecordScreen] = useState<boolean | null>(draft.canRecordScreen)
   const [canFilmObjects, setCanFilmObjects] = useState<boolean | null>(draft.canFilmObjects)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -1522,10 +1525,16 @@ function ConfirmStep({
             "Nothing of anyone else's" additionally means ideas-only and no
             Product DNA at all — which is why the helper line changes with
             `q4AsksOwnership`. */}
+        {/* ⚠️ THE BADGE COUNTED A QUESTION THIS SCREEN NO LONGER ASKS. Left as
+            it was, `canRecordScreen` is permanently null here, so the block
+            would read `Not answered` for ever — which is exactly the report
+            that started this: five consecutive accounts, unanswerable by
+            construction, because two of the three stacked questions can only be
+            answered by a product. */}
         <Section
           title="What can appear in your videos?"
           hint="What a script may promise, and which shots Twin is allowed to ask you for."
-          badge={q4 === null || canRecordScreen === null || canFilmObjects === null ? 'Not answered' : null}
+          badge={q4 === null || canFilmObjects === null ? 'Not answered' : null}
         >
         <Labeled label={q4AsksOwnership(workKind)
           ? 'Do your videos feature any products?'
@@ -1598,29 +1607,24 @@ function ConfirmStep({
             (`DeclaredClips.tsx`) was changed in the same commit. A corrected
             promise with an uncorrected reader is the failure this was meant to
             fix, not a smaller version of it. */}
-          <p className="mt-5 text-xs text-sand">Can you point your camera at a screen showing it — phone held up, or a laptop in frame?</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {([true, false] as const).map((v) => (
-              <button
-                key={String(v)}
-                type="button"
-                aria-pressed={canRecordScreen === v}
-                onClick={() => setCanRecordScreen(canRecordScreen === v ? null : v)}
-                className={cn(
-                  'rounded-full border px-3 py-1.5 text-xs transition',
-                  canRecordScreen === v
-                    ? 'border-coral bg-coral/15 text-cream'
-                    : 'border-white/15 text-sand hover:bg-white/5',
-                )}
-              >
-                {v ? 'Yes' : 'No'}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-[11px] leading-relaxed text-stone">
-            Say yes and Twin can plan a shot where you hold your phone up to the camera, or point
-            at your laptop. Skip it and nothing changes, we just will not offer it yet.
-          </p>
+          {/* ── THE SCREEN QUESTION IS GONE FROM ONBOARDING ────────────────
+              ⚠️ "CAN YOU POINT YOUR CAMERA AT A SCREEN SHOWING **IT**" HAS NO
+              REFERENT HERE. On this screen there is no "it": the creator has
+              not registered a product yet, and the answer differs per product —
+              a course they can open on a laptop and a pad they hold in a hand
+              are not one answer.
+
+              ⚠️ AND THE PRODUCT LIBRARY ALREADY ASKS IT, PER PRODUCT, with the
+              referent in hand: "Can you have it open on a screen while you
+              film?" for a screen product, "Can you have it with you when you
+              film?" for a physical one — chosen by `capabilityQuestion`, which
+              is the one authority for which of those two applies.
+
+              ⚖️ SO ONE FACT KEEPS ONE HOME. Asking it in both places is how
+              this block came to read `Not answered` on five consecutive
+              accounts: three questions stacked into one, two of which only a
+              product can answer. `can_record_screen` is still WRITTEN — by the
+              Product Library, per product — so no reader loses its input. */}
 
           <p className="mt-4 text-xs text-sand">Can you put a product or object in front of the camera?</p>
           <div className="mt-2 flex flex-wrap gap-2">

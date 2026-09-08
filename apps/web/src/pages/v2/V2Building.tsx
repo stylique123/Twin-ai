@@ -14,11 +14,14 @@ import { judgeFit, warningForPickedVideo, recordTalkingHeadChoice } from '../../
 import type { FitWarning, FitReason } from '../../lib/api'
 import { TalkingHeadWarning } from '../../components/TalkingHeadWarning'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
+import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@twinai/shared'
+import { readProfileAnswers } from '../../lib/profileAnswersRead'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   // ⚖️ THE WRITER'S OWN TARGET, shown to the creator before the money moves.
   targetSeconds, spokenTime,
   INTENT_QUESTIONS, intentQuestionsFor, type IntentQuestion, type VideoGoal, focusForGoal,
+  mustAskWhichProduct, PRODUCT_CHOICE_FIELD,
   defaultVideoGoalFromContentGoals, CANONICAL_GOAL_LABELS,
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
@@ -324,10 +327,44 @@ function recallAsk(key: string): AskItem[] | null {
 export default function V2Building() {
   const nav = useNavigate()
   const loc = useLocation()
-  const { refreshProfile } = useAuth()
+  const { refreshProfile, profile } = useAuth()
+  // ── WAVE 5.2: RECOGNITION BEFORE THE SCRIPT ──────────────────────────────
+  //
+  // ⚠️ MEASURED 0 STATED, 34 GUESSED. Twin holds real answers from signup and
+  // the creator never sees them again, so a script arrives reading as though it
+  // were written for nobody in particular — and they cannot tell whether it
+  // missed because the writer is weak or because it never knew who they were.
+  //
+  // ⚖️ SAID WHILE IT BUILDS, WHICH IS THE ONLY MOMENT IT IS NOT AN INTERRUPTION.
+  // The creator is already waiting and already watching this screen.
+  //
+  // ⚠️ THE READ IS BEST-EFFORT AND FAILURE IS SILENCE, NEVER A GUESS. If the
+  // voice does not load, no line appears — citing something as "you told me
+  // this" when we could not read what they told us is the one failure this
+  // feature must not have.
+  const [statedLines, setStatedLines] = useState<RecognitionLine[]>([])
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      try {
+        const voices = await listBrandVoices()
+        const def = voices.find((v) => v.is_default) ?? voices[0]
+        if (!alive) return
+        setStatedLines(recognitionLines(readProfileAnswers(profile?.id, def?.pre_script_brief)))
+      } catch { /* silence, never a guess */ }
+    })()
+    return () => { alive = false }
+  }, [profile?.id])
   const state = (loc.state || {}) as BuildState
   const [active, setActive] = useState(0)
   const [pct, setPct] = useState(6)
+  // ⚠️ THE BAR KEPT CLIMBING AFTER THE REQUEST HAD ALREADY DIED. The rescue
+  // loop below spends up to ninety seconds asking whether the server finished
+  // the thing this fetch lost — a good thing to do, and for the whole of it the
+  // creator was shown a progress bar advancing through steps that were no
+  // longer happening. Progress is a claim about what is being done; once the
+  // request is gone the only honest claim is that we are checking.
+  const [rescuing, setRescuing] = useState(false)
   // True while the reference is being scraped/transcribed (step 0 is held the whole
   // time). Drives a slow crawl so the bar never freezes at 12% and reads as stuck.
   const [ingesting, setIngesting] = useState(false)
@@ -444,7 +481,10 @@ export default function V2Building() {
   // but paced so it doesn't reach the ceiling before the read realistically ends.
   // Once the steps advance, the normal per-step targets take over.
   useEffect(() => {
-    if (error) return
+    // ⚖️ `rescuing` STOPS THE CLIMB THE SAME WAY `error` DOES — the bar freezes
+    // where it stood rather than resetting, because the work up to that point
+    // did happen and rewinding it would be its own lie.
+    if (error || rescuing) return
     const scraping = active === 0 && ingesting
     const writing = active === STEPS.length - 1 // the long model call
     const target = scraping ? 40 : writing ? LAST_STEP_CEILING : STEP_PCT[Math.min(active, STEP_PCT.length - 1)]
@@ -457,7 +497,7 @@ export default function V2Building() {
       setPct((p) => (p >= target ? p : Math.min(target, p + Math.max(floor, (target - p) * factor))))
     }, 90)
     return () => clearInterval(id)
-  }, [active, ingesting, error])
+  }, [active, ingesting, error, rescuing])
 
   useEffect(() => {
     // No input (e.g. refresh) → go back to Create.
@@ -690,8 +730,39 @@ export default function V2Building() {
             // left the goal in the question list, and re-asked it anyway — the
             // exact thing this change exists to stop.
             const goalIsDisplayed = Boolean(standingGoal)
+            // ── WHICH PRODUCT, WHEN THEY OWN MORE THAN ONE ────────────────
+            //
+            // ⚠️ THE SERVER READS THE OLDEST ONE. Deterministic, and still not
+            // "the one this video is about" — three of five real accounts own
+            // two things. The writer must not break the tie: choosing among
+            // them would infer commercial intent from nothing the creator
+            // said, the entitlement `entryDoor.ts` clamps against. So the card
+            // asks, here, where it is already asking what this video is for.
+            //
+            // ⚖️ ONLY WHEN THE VIDEO IS COMMERCIAL, on the SAME expression the
+            // commercial block uses. A second notion of "is this a selling
+            // video" would be two answers to one question.
+            const ownedProducts = libraryProducts.filter(
+              (p) => (p.relationship === 'OWN_PRODUCT' || p.relationship === 'OWN_SERVICE')
+                && p.archivedAt === null)
+            const productQuestion: AskItem[] =
+              mustAskWhichProduct({
+                ownedProductIds: ownedProducts.map((p) => p.id),
+                chosenId: answersRef.current[PRODUCT_CHOICE_FIELD] ?? null,
+                mayUseAProduct: showsCommercialBlock(answeredIntent),
+              })
+                ? [{
+                    field: PRODUCT_CHOICE_FIELD,
+                    question: 'Which one is this video about?',
+                    // ⚖️ THEIR OWN NAMES, NOT A SUMMARY. The label is what they
+                    // typed into Product Library; a paraphrase here would be a
+                    // second name for one thing.
+                    options: ownedProducts.map((p) => ({ value: p.id, label: p.name })),
+                  } as AskItem]
+                : []
             const ask: AskItem[] = [
               ...unanswered.filter((q) => !(goalIsDisplayed && q.field === 'video_goal')),
+              ...productQuestion,
               ...relevant.slice(0, MAX_TEXT_QUESTIONS),
             ]
             if (ask.length && alive) {
@@ -892,7 +963,13 @@ export default function V2Building() {
         // of step with each other.
         const intentAnswers: Record<string, string> = {}
         const readinessAnswers: Record<string, string> = {}
+        // ⚠️ THE PRODUCT CHOICE IS NEITHER. It is not a creator-stable fact to
+        // persist to the brief, and not one of the three intent enums — it is
+        // one video's answer to "which of yours is this about", and it rides
+        // its own field so neither bucket has to grow a special case.
+        const chosenProductId = (answersRef.current[PRODUCT_CHOICE_FIELD] ?? '').trim()
         for (const [k, v] of Object.entries(answersRef.current)) {
+          if (k === PRODUCT_CHOICE_FIELD) continue
           if (INTENT_FIELDS.has(k)) intentAnswers[k] = v
           else readinessAnswers[k] = v
         }
@@ -922,6 +999,10 @@ export default function V2Building() {
           // made instead of charging for it twice (0119).
           idempotency_key: key,
           ...(transcript_id ? { transcript_id } : {}),
+          // ⚖️ ONLY WHEN THEY ANSWERED. An absent field means "not asked or not
+          // answered" and leaves the server's stopgap exactly as it was;
+          // sending '' would be a claim that they chose nothing.
+          ...(chosenProductId ? { selected_product_id: chosenProductId } : {}),
         })
         // A recreation was just spent — refresh so the remixes-left counter is
         // accurate everywhere (AppShell / Dashboard / Settings), not one behind.
@@ -1015,6 +1096,7 @@ export default function V2Building() {
         // READINESS_INCOMPLETE are decisions, not lost answers — no generation
         // is coming for them and waiting would only stall a creator who needs to
         // act. This waits only on the genuinely-unknown failure.
+        if (alive) setRescuing(true)
         for (let i = 0; i < RESCUE_ATTEMPTS; i++) {
           await new Promise((r) => setTimeout(r, RECOVERY_POLL_MS))
           if (!alive) return
@@ -1035,6 +1117,7 @@ export default function V2Building() {
         // original still reaches the console for whoever is debugging; the
         // creator gets a sentence written for them.
         console.warn('[build] failed', e)
+        setRescuing(false)
         setError(creatorFacingMessage(e))
       }
     })()
@@ -1685,16 +1768,52 @@ export default function V2Building() {
               </span>
             </div>
 
-            <h1 className="mt-5 text-center font-display text-2xl tracking-tight">Building your video plan</h1>
-            {targetSec !== null && (
+            <h1 className="mt-5 text-center font-display text-2xl tracking-tight">
+              {rescuing ? 'Checking whether your script finished' : 'Building your video plan'}
+            </h1>
+            {/* ⚖️ THE LENGTH IS A DECISION, SO IT IS STATED — but not during the
+                rescue loop, where the only honest claim is that we are asking
+                the server what happened. Announcing a target for a build we are
+                not sure still exists is the same defect as the climbing bar. */}
+            {!rescuing && targetSec !== null && (
               <p className="mt-1 text-center text-xs text-stone">
                 Aiming for about {spokenTime(targetSec)}.
               </p>
             )}
-            <p className="mt-1 text-center text-sm text-stone">{echo}</p>
+            <p className="mt-1 text-center text-sm text-stone">
+              {/* ⚠️ THE SCREEN USED TO KEEP SAYING "Building" AND KEEP THE BAR
+                  MOVING for the full ninety seconds of the rescue loop, when the
+                  request had already died and nothing was being built. The
+                  server often HAS finished — that is the whole reason the loop
+                  exists — so the honest sentence is that we are looking, not
+                  that it failed and not that it is still writing. */}
+              {rescuing
+                ? 'The connection dropped. Your script may already be finished — we are asking the server before saying anything else.'
+                : echo}
+            </p>
 
-            {/* Live progress */}
-            <div className="mt-6 flex items-center gap-3">
+            {/* ⚖️ RECOGNITION BEFORE THE SCRIPT — and only ever things they
+                actually said. `recognitionLines` returns nothing for an answer
+                that was never given, which is what makes the citation below
+                safe to print. Hidden during the rescue loop: that screen is
+                about whether their script survived, and nothing else. */}
+            {!rescuing && statedLines.length > 0 && (
+              <div className="mt-6 rounded-card border border-white/8 bg-white/[0.02] px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
+                  {RECOGNITION_CITATION}
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {statedLines.map((l) => (
+                    <li key={l.text} className="text-sm leading-relaxed text-cream">{l.text}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Live progress — hidden once there is no request left to make
+                progress. A frozen bar reads as a stall; an absent one matches
+                what is actually true. */}
+            <div className={`mt-6 flex items-center gap-3 ${rescuing ? 'hidden' : ''}`}>
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
                 <div className="h-full rounded-full bg-gradient-to-r from-amber via-coral to-teal transition-[width] duration-200 ease-out" style={{ width: `${shownPct}%` }} />
               </div>
@@ -1702,7 +1821,7 @@ export default function V2Building() {
             </div>
 
             {/* Steps — done / active / pending */}
-            <ul className="mt-6 space-y-3.5">
+            <ul className={`mt-6 space-y-3.5 ${rescuing ? 'hidden' : ''}`}>
               {STEPS.map((s, i) => {
                 const done = i < active
                 const isActive = i === active
