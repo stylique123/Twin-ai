@@ -3310,6 +3310,85 @@ function estimateDurationSecInline(dialogue: string | null): number {
 // ⚖️ MIRRORS `parseTargetSec` IN beatPlan.ts, NOT timingMath.ts's OWN copy --
 // timingMath.ts has none of its own; it imports beatPlan's, so the bounds
 // (1.5-90s) that reject an absurd "0.2" or "600" apply here too.
+// ── HOW LONG THIS VIDEO IS, DECIDED BEFORE A WORD IS WRITTEN ──────────────
+//
+// ⚠️ MEASURED: a 15-second reference produced a 48-second script and a
+// 226-second reference produced a 60-second one. Both land near a minute
+// because a minute is what gets written when nothing decides. The reference's
+// own measured `duration_sec` was on the row the whole time, reaching the audit
+// and never the instruction.
+//
+// ⚖️ MIRRORS `durationContract.ts` in packages/shared — the edge cannot import
+// the workspace, so the rule lives twice and the shared copy is the tested one.
+// A parity test holds the constants together.
+const MIN_TARGET_SEC_INLINE = 15
+const MAX_TARGET_SEC_INLINE = 90
+const DURATION_TOLERANCE_INLINE = 0.2
+const GOAL_TARGET_SEC_INLINE: Record<string, number> = {
+  followers: 30, entertain: 30, authority: 45, educate: 60,
+  conversations: 45, leads: 45, sell: 60, personal_brand: 40,
+}
+function targetSecondsInline(referenceSeconds: number | null, goal: string | null): number | null {
+  if (typeof referenceSeconds === 'number' && Number.isFinite(referenceSeconds) && referenceSeconds > 0) {
+    return Math.min(MAX_TARGET_SEC_INLINE,
+      Math.max(MIN_TARGET_SEC_INLINE, Math.round(referenceSeconds / 5) * 5))
+  }
+  if (goal && goal in GOAL_TARGET_SEC_INLINE) return GOAL_TARGET_SEC_INLINE[goal]
+  return null
+}
+/** ⚖️ THE WORD COUNT COMES FROM THE RECORDER'S OWN RATE — `NATURAL_WPM_INLINE`
+ *  above, the same 150 wpm `estimateDurationSecInline` measures with. A second
+ *  rate here would let the brief ask for a length the teleprompter then reports
+ *  as a different one. */
+/** What the finished script actually did with the budget.
+ *
+ *  ⚖️ COUNTED BEFORE IT IS ENFORCED, in that order and for the reason this
+ *  codebase has now written down three times: a refusal built on a guess about
+ *  frequency is how a safety check becomes the thing people route around. How
+ *  often a briefed writer misses the band is not known, because until this
+ *  change there was no band. */
+function durationAuditInline(
+  script: unknown,
+  referenceSeconds: number | null,
+  goal: string | null,
+): { target_sec: number | null; words: number; over_words: number; under_words: number } {
+  const rows = Array.isArray(script) ? script : []
+  let words = 0
+  for (const b of rows) {
+    const line = typeof (b as { line?: unknown })?.line === 'string' ? (b as { line: string }).line : ''
+    words += line.trim() === '' ? 0 : line.trim().split(/\s+/).length
+  }
+  const target = targetSecondsInline(referenceSeconds, goal)
+  if (target === null) return { target_sec: null, words, over_words: 0, under_words: 0 }
+  const budget = Math.round((target / 60) * NATURAL_WPM_INLINE)
+  const min = Math.round(budget * (1 - DURATION_TOLERANCE_INLINE))
+  const max = Math.round(budget * (1 + DURATION_TOLERANCE_INLINE))
+  return {
+    target_sec: target,
+    words,
+    over_words: Math.max(0, words - max),
+    under_words: Math.max(0, min - words),
+  }
+}
+
+function durationBriefInline(referenceSeconds: number | null, goal: string | null): string {
+  const target = targetSecondsInline(referenceSeconds, goal)
+  if (target === null) return ''
+  const words = Math.round((target / 60) * NATURAL_WPM_INLINE)
+  const minWords = Math.round(words * (1 - DURATION_TOLERANCE_INLINE))
+  const maxWords = Math.round(words * (1 + DURATION_TOLERANCE_INLINE))
+  const minBeats = Math.max(3, Math.floor(target / 12))
+  const maxBeats = Math.max(4, Math.ceil(target / 5))
+  const because = typeof referenceSeconds === 'number' && referenceSeconds > 0
+    ? `the reference they chose runs ${Math.round(referenceSeconds)} seconds`
+    : `what this video is for`
+  return `- LENGTH IS DECIDED, NOT DISCOVERED. This video runs ${target} seconds, because ${because}.`
+    + ` That is ${words} spoken words at a natural pace — write between ${minWords} and ${maxWords}, and count them.`
+    + ` Use between ${minBeats} and ${maxBeats} beats and make the target_sec of every beat add up to ${target}.`
+    + ` If the substance does not fill ${target} seconds, cut the video shorter rather than padding it —`
+    + ` and if it does not fit, cut a point rather than speeding up.`
+}
+
 const MIN_BEAT_SEC_INLINE = 1.5
 const MAX_BEAT_SEC_INLINE = 90
 function parseTargetSecInline(raw: unknown): number | null {
@@ -6978,6 +7057,11 @@ ${fenced('claims this creator may NOT make', forbidden)}
         `Tone: ${tone}`,
       ].join('\n'))
       : null
+    // ⚠️ THE ONE INSTRUCTION THAT WAS MISSING. Empty when nothing decides a
+    // length — a brief that says nothing beats one stating an invented figure
+    // as a requirement.
+    const durationBrief_ = durationBriefInline(ref?.duration_sec ?? null, typeof goal === 'string' ? goal : null)
+    const durationBriefLine = durationBrief_ === '' ? '' : `${durationBrief_}\n`
     const positionBlock = position
       ? `${fenced('what THIS video is (composed from the creator\'s own answers)', position)}
 This is the video's position. Every field below must serve it. If the reference's mechanism pulls away from it, adapt the mechanism and keep the position.
@@ -6992,7 +7076,7 @@ ${positionBlock}${referenceBlock}${historyBlock ? `
 ${fenced("this creator's existing catalogue", historyBlock)}` : ''}
 ${claimsBlock}
 Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
-- beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each one should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds, not a guess after the fact, and beats should differ in length when their jobs differ. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
+${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each one should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds, not a guess after the fact, and beats should differ in length when their jobs differ. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
 - beat_plan[].proof is WHAT THE CAMERA SEES, and it was measured returning the wrong thing on 186 of 192 real beats. It is NOT where the substance came from and NOT what the beat achieves — those are the substance and beat fields, and repeating either here wastes the only field that tells the creator what to physically put in frame. NEVER write "creator_knowledge", "creator_experience", "general", "Creator's experience with X", "Establishes the problem" or "Sets up the framework": the first three are another field's enum, the fourth names a SOURCE, the fifth restates the PURPOSE. Write the thing a person holds, points at, or shows: "The phone in hand, showing the wonky line", "The receipt on the desk", "The dashboard on your laptop, camera over your shoulder, pointing at the graph", "The scar on your left hand". If a beat is you talking straight to camera with nothing to show, write exactly "Straight to camera" — that is a real answer and it is short. NEVER ask for a screen recording, a screen capture, or footage the creator would have to record separately and edit in: everything you name must be something they can do ON CAMERA, in the take, with the thing in their hands. A screen belongs INSIDE the shot — a phone held up beside the face, a laptop turned around — never as a separate recording.
 - visual_hook: what the viewer SEES in the first second, and why it interrupts a scroll. Something that changes on screen, not a description of the spoken line. Achievable with a phone and whatever is already in the creator's room.
 - concept: FIRST nail the actual video premise by adapting ONE of the creator's real video FORMATS (listed in CREATOR DNA) to the reference's winning mechanism, then translate the reference's production down to what one person with a phone can shoot (never assume a team, budget or gear they lack).
@@ -7909,6 +7993,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // and writing 60 here would record a choice the creator was never
       // offered — exactly what `asTarget` refuses to do in the shared module.
       substance_reference_points: substanceReferencePoints,
+      // ⚠️ THE LENGTH CONTRACT, MEASURED — COUNTED, NOT ENFORCED. `target_sec`
+      // is null when nothing decided a length, which is NOT a miss and must not
+      // read as zero. `over_words`/`under_words` are separate because one
+      // number that could mean either direction is unreadable, and because the
+      // two have different causes: padding and running out of substance.
+      duration_contract: durationAuditInline(
+        declared, ref?.duration_sec ?? null, typeof goal === 'string' ? goal : null),
       // ⚠️ FIX 7. Beats whose words don't fit the beat_plan's own target_sec,
       // matched by position (one beat plan entry per script entry). Detection
       // only -- target_sec reaches nothing downstream today, so there is
