@@ -309,3 +309,5 @@ export * from './videoPlan'
 export * from './cameFromAReference'
 
 export * from './script/anAskIsNotALine'
+
+export * from './script/ctaFitsThePlatform'

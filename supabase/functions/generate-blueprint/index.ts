@@ -1361,6 +1361,59 @@ function resolveSubjectSourceInline(
 
 // ── STYLE COMPILER (inlined from packages/shared/src/styleCompiler.ts) ──────
 
+// ── A CALL TO ACTION MAY NOT NAME AN ACTION THE PLATFORM LACKS ─────────────
+//
+// ⚠️ MEASURED 2026-09-07. FOUR stored scripts say "subscribe to our channel".
+// All four are TikTok, and Twin knew it TWICE: reference_read.platform reads
+// `tiktok` on all four and brand_voices.platform reads `tiktok` for every one
+// of those creators. TikTok has no channels and no subscribe button.
+//
+// ⚠️ NO STRING IN THIS REPOSITORY PRODUCES THAT LINE — the model writes it,
+// because nothing downstream compared the CTA to the platform. A copy edit had
+// nothing to edit.
+//
+// ⚖️ NOT "use the creator's own CTA", which was considered and would be inert:
+// ZERO of 37 creators has a defaultCta on file and onboarding never asks. This
+// asks a question the data can answer.
+//
+// ⚠️ AN UNKNOWN PLATFORM FORBIDS NOTHING, and note that line ~4655 defaults an
+// absent platform to 'tiktok' for a different purpose. That coercion is NOT
+// copied here: defaulting would make this rule fire on creators whose platform
+// nobody recorded.
+//
+// ⚠️ PARITY: mirrors platformCtaFailures in
+// packages/shared/src/script/ctaFitsThePlatform.ts, held by its own test.
+const PLATFORM_WRONG_CTA_INLINE: Record<string, RegExp[]> = {
+  tiktok: [/\bsubscribe\b/i, /\bmy channel\b|\bour channel\b|\bthe channel\b/i, /\bring the bell\b|\bnotification bell\b/i],
+  instagram: [/\bsubscribe\b/i, /\bmy channel\b|\bour channel\b|\bthe channel\b/i, /\bring the bell\b|\bnotification bell\b/i],
+}
+
+function platformCtaFailuresInline(
+  script: readonly { section?: unknown; line?: unknown }[] | null | undefined,
+  platform: unknown,
+): Array<{ index: number; line: string; repair: string }> {
+  const p = String(platform ?? '').trim().toLowerCase()
+  const wrong = PLATFORM_WRONG_CTA_INLINE[p]
+  if (!wrong) return []
+  const beats = Array.isArray(script) ? script : []
+  const out: Array<{ index: number; line: string; repair: string }> = []
+  beats.forEach((b, i) => {
+    if (!/cta|call to action/i.test(String(b?.section ?? ''))) return
+    const line = typeof b?.line === 'string' ? b.line : ''
+    if (line.trim() === '') return
+    if (!wrong.some((re) => re.test(line))) return
+    out.push({
+      index: i,
+      line,
+      repair: `This video is going on ${p}, which has no channels and no subscribe button.`
+        + ` Rewrite the call to action using what ${p} actually has -- "follow",`
+        + ' saving the video, commenting, or sharing it. Do not ask anyone to press'
+        + ' something that is not on their screen.',
+    })
+  })
+  return out
+}
+
 // ⚠️ THIS BLOCK SITS BELOW THE STYLE-COMPILER MARKER ON PURPOSE, AND IT WAS
 // ABOVE IT FIRST. `twoMirrorsNobodyGuarded` slices this file from
 // `const SUBJECT_SOURCE_ASK_INLINE` to that marker and evals the slice to check
@@ -7563,6 +7616,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // EMPTY store, and those are correct output, never a gap.
       first_person_floor_gaps: firstPersonFailuresInline(declared, suppliedForCheck.length).length,
       ask_as_line_gaps: askAsLineFailuresInline(declared).length,
+      platform_cta_gaps: platformCtaFailuresInline(declared, voice?.platform).length,
       // ⚠️ AUDIT WAVE 2.2. Rises when a script's body carried nothing concrete
       // WHILE the creator's own store held something it could have used. NOT the
       // same as the specificity floor firing: 11 of the 28 measured have an
@@ -7722,6 +7776,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       ...regulatoryFailuresInline(declared, suppliedForCheck),
       ...firstPersonFailuresInline(declared, suppliedForCheck.length),
       ...askAsLineFailuresInline(declared),
+      ...platformCtaFailuresInline(declared, voice?.platform),
       ...particularFailuresInline(declared, suppliedForCheck),
     ]
     const creatorQuestions: string[] = []
@@ -7765,6 +7820,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
           ...regulatoryFailuresInline(declared, suppliedForCheck),
           ...firstPersonFailuresInline(declared, suppliedForCheck.length),
           ...askAsLineFailuresInline(declared),
+          ...platformCtaFailuresInline(declared, voice?.platform),
           ...particularFailuresInline(declared, suppliedForCheck),
         ]
         console.log(JSON.stringify({ event: 'entitlement_repair', applied, still_failing: entFails.length }))
