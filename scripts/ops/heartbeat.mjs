@@ -15,10 +15,22 @@
 // A public URL can be deleted, geo-blocked or rate-limited, and then the
 // heartbeat alerts on somebody else's platform. Paging yourself at 3am about
 // TikTok's availability is how you learn to ignore the pager.
+//
+// ⚠️⚠️ AND THE SUPPLIED REFERENCE IS A YOUTUBE SHORT, SO THAT WARNING IS NOT
+// HYPOTHETICAL — IT IS MEASURED. The real assess job against it on 2026-09-08
+// returned `outcome: assessed`, `rejected: 0`, 18 fields accepted (the speech
+// gate takes it) alongside `visual_ran: false`,
+// `visual_failure_code: UNKNOWN_DOWNLOAD_FAILURE` and
+// `paid_because: free_path_failed`. Two consequences are wired rather than
+// remembered:
+//   · a download failure is DIGEST, never a page — see `runFromAssess`;
+//   · the run must never fall through to the PAID transcript path, because a
+//     monitor that can spend money spends it hourly, forever.
 
 import {
   decideHeartbeat, runIsBad, INITIAL_PAGE_STATE, PAGE_IF_SLOWER_THAN_MS,
   wrongVoiceFinding, sponsoredSpokenAsLivedFinding, lengthBandFinding,
+  downloadFailureFinding, paidPathFinding, runFromAssess,
 } from '../../packages/shared/src/ops/heartbeatPolicy.ts'
 
 const SELFTEST = process.argv.includes('--selftest')
@@ -37,13 +49,33 @@ export const IDEA_SENTENCE =
 
 /** Findings the frozen store makes decidable, gathered in one place so the
  *  runner cannot check some and forget others. */
-export function inspect(script, producedVoiceId) {
+export function inspect(script, producedVoiceId, run = {}) {
   return [
     wrongVoiceFinding(FROZEN_STORE, producedVoiceId),
     sponsoredSpokenAsLivedFinding(FROZEN_STORE, script),
     lengthBandFinding(FROZEN_STORE, script),
+    // ⚖️ THE TWO PLATFORM FACTS, IN THE SAME LIST AS THE SCRIPT FACTS, so the
+    // runner cannot check some and forget others — the reason this function
+    // exists at all.
+    downloadFailureFinding(run),
+    paidPathFinding(run),
   ].filter(Boolean)
 }
+
+/**
+ * ⚠️ A MONITOR MUST NOT BE ABLE TO SPEND MONEY, AND THIS IS THE GUARD.
+ *
+ * The assess path falls through to a PAID transcript service when the free one
+ * fails — measured on this very URL. Hourly, that is 24 paid fetches a day for
+ * a monitor, growing silently until an invoice explains it.
+ *
+ * ⚖️ IT REFUSES THE FALLTHROUGH RATHER THAN BUDGETING IT. A cap would still
+ * spend, would need tuning, and would fail open the week the free path breaks.
+ * The run uses what the free path returned; if that is nothing, the REFERENCE
+ * variant says so in the digest — and the idea variant, which needs no download
+ * at all, still answers the question the heartbeat is asking.
+ */
+export const ASSESS_OPTIONS = Object.freeze({ allow_paid_transcript: false })
 
 // ── THE PAGER'S MEMORY, READ AND WRITTEN ──────────────────────────────────
 //
@@ -145,6 +177,39 @@ if (SELFTEST) {
     lived.some((f) => f.kind === 'sponsored_product_spoken_as_lived'), JSON.stringify(lived))
   const clean = inspect('word '.repeat(120), FROZEN_STORE.voiceId)
   check('a healthy script produces no findings', clean.length === 0, JSON.stringify(clean))
+
+  // ── THE TWO PLATFORM RULES, ON THE RESULT PRODUCTION ACTUALLY RETURNED ───
+  //
+  // ⚠️ ASSERTED THROUGH `runFromAssess`, WHERE THE DECISION IS MADE. A first
+  // version checked a hand-built run and passed with the classification
+  // DELETED — a run carrying a script was never bad in the first place, so the
+  // assertion proved nothing. This is the exact shape the job came back in.
+  const realResult = {
+    status: 'done', error: '', script: 'word '.repeat(120), durationMs: 41000,
+    visual_failure_code: 'UNKNOWN_DOWNLOAD_FAILURE', paid_because: 'free_path_failed',
+  }
+  const fromReal = runFromAssess(0, 'reference', realResult)
+  check('the measured production result does NOT page', runIsBad(fromReal) === false)
+  check('its download failure is carried, not dropped',
+    fromReal.visualFailureCode === 'UNKNOWN_DOWNLOAD_FAILURE')
+  check('and the paid fallthrough is carried too', fromReal.paidPath === true)
+
+  // ⚠️ THE LIE A STATUS FIELD CAN TELL. Measured: one of the eight most recent
+  // YouTube assess jobs reports `done` while carrying a 400.
+  const lying = runFromAssess(0, 'reference',
+    { status: 'done', error: 'YouTube transcript service error 400', script: '' })
+  check('a job that says done with no script is a FAILURE', runIsBad(lying) === true)
+  check('and the failure names what actually went wrong',
+    (lying.failed ?? '').includes('400'), String(lying.failed))
+  check('a done job with neither script nor error still fails, and says so',
+    (runFromAssess(0, 'idea', { status: 'done', script: '' }).failed ?? '').includes('no script'))
+
+  const downloaded = inspect('word '.repeat(120), FROZEN_STORE.voiceId, fromReal)
+  check('a download failure reaches the digest',
+    downloaded.some((f) => f.kind === 'reference_download_failed'), JSON.stringify(downloaded))
+  check('and the paid fallthrough reaches it as well',
+    downloaded.some((f) => f.kind === 'paid_path_used'), JSON.stringify(downloaded))
+  check('the paid path is refused, not budgeted', ASSESS_OPTIONS.allow_paid_transcript === false)
 
   // The state mapping, which is where a null can quietly become a number.
   check('a never-paged row maps to null, not to zero',
