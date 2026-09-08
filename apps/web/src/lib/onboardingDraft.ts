@@ -49,6 +49,15 @@ export interface OnboardingDraft {
   // and the writer prefers it — see `compileCreatorProfile`.
   audienceSeg: AudienceSegment | null
   audienceKnowledge: AudienceKnowledge | null
+  /** ⚠️ THE SCAN'S OWN SENTENCE, ONCE A HUMAN HAS AGREED TO IT. Stored as the
+   *  TEXT rather than a boolean: a flag would survive a re-scan that changed
+   *  the sentence underneath it, leaving "confirmed" attached to words nobody
+   *  read. `null` means unasked or declined — both mean nobody has agreed.
+   *
+   *  ⚖️ AND DECLINING RECORDS NOTHING. There is no "they said no" value here,
+   *  because a rejected guess is not an answer about their audience. */
+  confirmedAudiencePain: string | null
+  confirmedDreamOutcome: string | null
   /** Up to two, and `[]` is a real answer meaning "asked, chose nothing". */
   contentGoals: BriefGoal[]
   desiredFormats: DesiredFormat[]
@@ -134,9 +143,12 @@ export function onboardingDraftKey(userId: string): string {
 export function emptyProfileAnswers(): Pick<OnboardingDraft,
   'audienceSeg' | 'audienceKnowledge' | 'contentGoals' | 'desiredFormats' |
   'formatExploration' | 'commercialTies' | 'ownProductKind' | 'ownServiceKind' |
-  'screenCapability' | 'productCapability'> {
+  'screenCapability' | 'productCapability' |
+  'confirmedAudiencePain' | 'confirmedDreamOutcome'> {
   return {
     audienceSeg: null,
+    confirmedAudiencePain: null,
+    confirmedDreamOutcome: null,
     audienceKnowledge: null,
     contentGoals: [],
     desiredFormats: [],
@@ -194,6 +206,12 @@ function parseDraft(raw: string | null, userId: string): OnboardingDraft | null 
       // recognises rather than being refused whole, because one bad entry must
       // not discard five good ones.
       audienceSeg: oneOf(value.audienceSeg, AUDIENCE_SEGMENTS),
+      // ⚠️ A RESTORED DRAFT IS UNTRUSTED INPUT, and these are free text. Capped
+      // so a hand-edited draft cannot grow unbounded, same as `handle`.
+      confirmedAudiencePain: typeof value.confirmedAudiencePain === 'string'
+        ? value.confirmedAudiencePain.slice(0, 400) : null,
+      confirmedDreamOutcome: typeof value.confirmedDreamOutcome === 'string'
+        ? value.confirmedDreamOutcome.slice(0, 400) : null,
       audienceKnowledge: oneOf(value.audienceKnowledge, AUDIENCE_KNOWLEDGE),
       contentGoals: manyOf(value.contentGoals, BRIEF_GOALS),
       desiredFormats: manyOf(value.desiredFormats, DESIRED_FORMATS),

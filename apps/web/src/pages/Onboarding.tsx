@@ -11,6 +11,7 @@ import {
   MAX_CONTENT_GOALS, ONBOARDING_SELLS_ANSWERS, sellsAnswerOf, SELLS_ANSWER_TO_TIES,
   type OnboardingSellsAnswer,
   AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE, goalFromCtas, goalConfirmationLine,
+  scannedAudienceFacts, audienceFactConfirmed,
   CAPABILITY_ANSWERS,
   type ProfileQuestionId, type AudienceSegment,
   type AudienceKnowledge,
@@ -1975,6 +1976,11 @@ export function AnswerSummary({ draft }: { draft: OnboardingDraft }) {
     draft.audienceSeg ? AUDIENCE_LABEL[draft.audienceSeg] : '',
     draft.audienceKnowledge ? KNOWLEDGE_LABEL[draft.audienceKnowledge] : '',
     ...draft.contentGoals.map((g) => CONTENT_GOAL_LABEL[g]),
+    // ⚠️ A CONFIRMATION THAT NOTHING READS IS THE DEFECT IT WAS BUILT TO FIX.
+    // The chip says the difference out loud: what Twin believed is now what the
+    // creator has agreed to, and the summary is where they can see it stuck.
+    draft.confirmedAudiencePain ? 'Their problem — confirmed' : '',
+    draft.confirmedDreamOutcome ? 'What they want — confirmed' : '',
     sells ? SELLS_LABEL[sells] : '',
   ].filter((x) => x !== '')
 
@@ -2112,6 +2118,45 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
             onPick={(k) => set({ workKind: draft.workKind === k ? null : k })}
           />
         </Field>
+
+        {/* ── WHAT THE SCAN ALREADY KNOWS, PUT TO THEM ONCE ────────────────
+            ⚠️ 45 OF 47 VOICES CARRY THESE, MEASURED IN PRODUCTION, and the only
+            reader was the writer's prompt. "0 stated, 34 guessed" was never a
+            failure to infer — it was the creator never being shown the
+            inference. Four generated chips would throw away a better answer to
+            ask a worse question.
+            ⚖️ CONFIRMED, NEVER ASSUMED, and the sentence is quoted verbatim: a
+            paraphrase would ask them to agree to something the writer never
+            reads. Declining records nothing. */}
+        {scannedAudienceFacts(draft.profile).map((fact) => {
+          const confirmed = fact.field === 'audience_pain'
+            ? draft.confirmedAudiencePain
+            : draft.confirmedDreamOutcome
+          if (audienceFactConfirmed(confirmed, fact)) return null
+          return (
+            <div key={fact.field} className="mt-5 rounded-card border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-stone">{fact.question}</p>
+              <p className="mt-2 text-sm leading-relaxed text-cream">{fact.text}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn-gradient rounded-lg px-4 py-2 text-sm font-semibold"
+                  onClick={() => set(fact.field === 'audience_pain'
+                    ? { confirmedAudiencePain: fact.text }
+                    : { confirmedDreamOutcome: fact.text })}
+                >Yes, that's them</button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-white/15 px-4 py-2 text-sm text-sand hover:text-cream"
+                  onClick={() => set(fact.field === 'audience_pain'
+                    ? { confirmedAudiencePain: null }
+                    : { confirmedDreamOutcome: null })}
+                >Not quite</button>
+              </div>
+              {note('Read from your own posts. Nothing is saved until you answer.')}
+            </div>
+          )
+        })}
 
         {/* ⚖️ AUDIENCE AND DEPTH SIT SIDE BY SIDE BECAUSE THEY ARE ONE QUESTION
             IN TWO HALVES, and neither is answerable without the other in view.
