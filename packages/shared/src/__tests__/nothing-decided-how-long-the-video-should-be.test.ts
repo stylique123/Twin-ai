@@ -215,8 +215,14 @@ describe('the target is shown, and only where it is true', () => {
     expect(CARD).toMatch(/state\.reference_url\s*\n?\s*\? null/)
   })
 
-  it('renders only when a target exists', () => {
-    expect(CARD).toMatch(/\{targetSec !== null && \(/)
+  it('renders only when a target exists, and never during the rescue loop', () => {
+    // ⚠️ THE SECOND CONDITION ARRIVED WITH A MERGE, and the rule it serves is
+    // the same one the climbing progress bar was fixed for: the rescue loop
+    // runs when the request has already died and we are asking the server what
+    // happened. Announcing "aiming for about forty seconds" over a build we are
+    // not sure still exists states a plan for something that may not be
+    // happening. Pinned rather than left to the next merge to drop.
+    expect(CARD).toMatch(/\{!rescuing && targetSec !== null && \(/)
     expect(CARD).toMatch(/Aiming for about \{spokenTime\(targetSec\)\}/)
   })
 })
