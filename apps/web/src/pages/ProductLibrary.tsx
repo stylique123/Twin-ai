@@ -878,6 +878,21 @@ export default function ProductLibrary() {
         )}
       </header>
 
+      {/* ⚠️ ARRIVED FROM THE STUDIO, AND THE PAGE USED TO SAY NOTHING ABOUT IT.
+          Choosing "something I sell" in the studio navigates here; before this
+          the creator landed on an unchanged list with no statement of why, and
+          no way back into the build. Reported exactly that way. */}
+      {params.get('from') === 'studio' && entities.length > 0 && (
+        <p className="rounded-lg border border-coral/30 bg-coral/[0.06] px-3 py-2 text-sm text-cream">
+          Pick which product this video is about — press <strong>Make a video about this</strong> on
+          one of them. Or <button
+            type="button"
+            className="underline"
+            onClick={() => nav('/v2')}
+          >go back and start without one</button>.
+        </p>
+      )}
+
       {err && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
 
       {/* ⚖️ THE SECOND TAB APPEARS ONLY WHEN THERE IS SOMETHING IN IT. A creator

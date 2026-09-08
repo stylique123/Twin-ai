@@ -257,6 +257,35 @@ describe('the Library is a selector, not just a list', () => {
   })
 })
 
+describe('arriving from the studio is not a dead end', () => {
+  // ⚠️ REPORTED: "I click something I sell, pick a product... why does it still
+  // take me to the product and no option to choose or anything?" The studio's
+  // product door navigated here and the page said nothing about why, with no
+  // way back into the build.
+  const atProducts = async (search: string) => {
+    const { default: ProductLibrary } = await import('./ProductLibrary')
+    render(
+      <MemoryRouter initialEntries={[`/products${search}`]}><ProductLibrary /></MemoryRouter>,
+    )
+    return await screen.findByDisplayValue('Peak Tripod')
+  }
+
+  it('says why they are here and how to leave', async () => {
+    await atProducts('?from=studio')
+    expect(await screen.findByText(/Pick which product this video is about/i)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /go back and start without one/i }))
+    expect(navigated).toContain('/v2')
+  })
+
+  it('says nothing when they came here on their own', async () => {
+    // ⚖️ THE BANNER IS AN ANSWER TO A QUESTION THEY ASKED BY ARRIVING. A
+    // creator who opened their Library to tidy it is not mid-build, and telling
+    // them to pick one would be instructions for a task they are not doing.
+    await atProducts('')
+    expect(screen.queryByText(/Pick which product this video is about/i)).toBeNull()
+  })
+})
+
 describe('a save is confirmed beside the field that was edited', () => {
   it('reports on the NAME field, not at the foot of the card', async () => {
     const nameBox = await page()

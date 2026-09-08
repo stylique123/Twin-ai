@@ -171,7 +171,17 @@ export default function V2Create() {
     // leaving for the Product Library IS taking the product door.
     if (isHandoff) {
       void recordEntryDoor({ door, source, offered: ALL_DOORS, text: input })
-      nav(door === 'product' ? '/products' : '/gallery')
+      // ⚠️ THE PRODUCT DOOR WAS A DEAD END, REPORTED BY THE OWNER: "I click
+      // something I sell, pick a product... why does it still take me to the
+      // product and no option to choose or anything?" It navigated to a LIST
+      // that said nothing about why they were there and offered no way back
+      // into the build. A door that opens onto a room with no exit is worse
+      // than a door that does not open.
+      //
+      // ⚖️ THE FLAG IS WHY THEY ARE THERE, not what they must do. The Library
+      // reads it to say so and to lead with "Make a video about this"; without
+      // it the page is the same page it always was.
+      nav(door === 'product' ? '/products?from=studio' : '/gallery')
       return
     }
     const t = input.trim()

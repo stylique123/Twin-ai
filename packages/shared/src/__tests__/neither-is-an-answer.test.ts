@@ -164,3 +164,13 @@ describe('a product card starts a video about that product', () => {
     expect(CARD).toMatch(/seeded === NO_PRODUCT_CHOICE \? NO_PRODUCT_CHOICE : ''/)
   })
 })
+
+describe('the studio product door is not a dead end', () => {
+  it('the door says why it sent them, and the Library reads it', () => {
+    // ⚠️ IT NAVIGATED TO AN UNCHANGED LIST. The creator picked "something I
+    // sell", landed on their products, and the page neither said why nor
+    // offered a way back into the build.
+    expect(CREATE).toMatch(/'\/products\?from=studio'/)
+    expect(LIB).toMatch(/params\.get\('from'\) === 'studio'/)
+  })
+})
