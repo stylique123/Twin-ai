@@ -48,9 +48,18 @@ const WORDS: Record<string, number> = {
   nine: 9, ten: 10, eleven: 11, twelve: 12,
 }
 
-/** ⚖️ THE SAME UNITS `claimEntailment` ALREADY RECOGNISES, deliberately: a
- *  duration there and a duration here must be the same set, or two modules
- *  disagree about what "3 months" is. */
+/** ⚠️ NOT IDENTICAL TO `claimEntailment`'s DURATION LIST, AND SAYING SO BEATS
+ *  CLAIMING PARITY IT DOES NOT HAVE. An earlier draft of this comment asserted
+ *  the two sets were the same; they are not. `claimEntailment` recognises
+ *  hours, minutes, days, weeks, months and years — it has no SECONDS, because
+ *  its job is spotting a claimed measurement and "5 seconds" is rarely one.
+ *
+ *  ⚖️ THIS LIST ADDS SECONDS DELIBERATELY, because its job is the opposite: to
+ *  stop a number being mistaken for an item count, and "5 seconds in" is
+ *  exactly the kind of line that would otherwise read as a promise of five
+ *  things. A wider list here can only ever REFUSE to call something a count,
+ *  which is the safe direction for this module and the unsafe one for that.
+ *  The difference is pinned by a test rather than left to be rediscovered. */
 const DURATION = /^\s*-?\s*(?:second|sec|minute|min|hour|hr|day|week|month|year)s?\b/i
 const PERCENT = /^\s*%|^\s*percent\b/i
 const MULTIPLE = /^\s*(?:x\b|×|times\b|fold\b)/i
