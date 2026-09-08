@@ -1,0 +1,97 @@
+// WHICH PRODUCT THIS VIDEO IS ABOUT, AND WHO GETS TO DECIDE.
+//
+// ⚠️ THE WRITER MUST NEVER CHOOSE, AND THAT IS THE WHOLE RULE. Picking among
+// three products would have Twin infer commercial intent from nothing the
+// creator said — the same entitlement `entryDoor.ts` keeps a mutation-tested
+// clamp against. A creator who owns a course, a template pack and a coaching
+// offer has not said which this video is for by owning all three.
+//
+// ⚠️ WHAT SHIPPED BEFORE THIS WAS OLDEST-FIRST, A LABELLED STOPGAP.
+// `generate-blueprint` reads `.order('created_at').limit(1)` — deterministic,
+// so the same creator gets the same product every time rather than whatever
+// the planner returned, and still not "the one this video is about". Three of
+// five real accounts own two things.
+//
+// ⚖️ SO THE CHOICE BECOMES AN INPUT. One product auto-selects because there is
+// nothing to decide. Several means the creator says which, on the card that
+// already asks what this video is for. A video that is not commercial gets
+// none at all, whatever they own.
+
+export type NoProductReason =
+  /** They have not registered one. Not a failure; most videos sell nothing. */
+  | 'no_products'
+  /** Two or more, and nobody has asked yet. The writer does NOT break the tie. */
+  | 'creator_has_not_chosen'
+  /** Not a selling video. Owning something is not a reason to pitch it. */
+  | 'not_a_commercial_video'
+  /** An id that is not theirs. Never silently swapped for one that is. */
+  | 'choice_not_theirs'
+
+export type ProductChoice =
+  | { kind: 'auto'; productId: string }
+  | { kind: 'chosen'; productId: string }
+  | { kind: 'none'; reason: NoProductReason }
+
+export interface ProductSelectionInput {
+  /** Ids this creator owns, in whatever order the store returned them. */
+  ownedProductIds: readonly string[]
+  /** What they picked for THIS video, if they were asked. */
+  chosenId?: string | null
+  /**
+   * May this video carry a product at all? The caller decides — it is the
+   * commercial determination the rest of the pipeline already makes, and
+   * duplicating that judgement here would give it two homes.
+   */
+  mayUseAProduct: boolean
+}
+
+/**
+ * ⚖️ THE ORDER OF THESE BRANCHES IS THE POLICY, not an implementation detail.
+ *
+ * The commercial gate comes FIRST, so an explicit choice cannot unlock a
+ * product on a video that may not carry one — otherwise "I picked my course"
+ * would quietly override the creative decision that this is not a selling
+ * video, which is the CTA bug in a different costume.
+ *
+ * Membership is checked BEFORE any fallback, so an id that is not theirs is a
+ * refusal rather than a different product. Substituting silently is how a
+ * script comes back about something the creator never mentioned.
+ */
+export function selectProduct(input: ProductSelectionInput): ProductChoice {
+  if (!input.mayUseAProduct) return { kind: 'none', reason: 'not_a_commercial_video' }
+
+  // THE NULL CHECK PRECEDES THE TRIM. null, undefined and '' all mean "not
+  // asked or not answered", and none of them is an id.
+  const chosen = typeof input.chosenId === 'string' ? input.chosenId.trim() : ''
+  if (chosen !== '') {
+    return input.ownedProductIds.includes(chosen)
+      ? { kind: 'chosen', productId: chosen }
+      : { kind: 'none', reason: 'choice_not_theirs' }
+  }
+
+  if (input.ownedProductIds.length === 0) return { kind: 'none', reason: 'no_products' }
+  if (input.ownedProductIds.length === 1) {
+    // ⚖️ AUTO IS NOT THE WRITER CHOOSING. With one product there is no tie to
+    // break and no intent to infer — arithmetic, not judgement.
+    return { kind: 'auto', productId: input.ownedProductIds[0] }
+  }
+  return { kind: 'none', reason: 'creator_has_not_chosen' }
+}
+
+/** Should the card ask? Read by V2Building, which builds the chips. */
+export function mustAskWhichProduct(input: ProductSelectionInput): boolean {
+  const choice = selectProduct(input)
+  return choice.kind === 'none' && choice.reason === 'creator_has_not_chosen'
+}
+
+/** The field the answer travels under, named once so the screen that writes it
+ *  and the send that reads it cannot disagree. */
+export const PRODUCT_CHOICE_FIELD = 'selected_product'
+
+/** Plain English for a creator, never a reason code on a screen. */
+export const NO_PRODUCT_EXPLANATION: Record<NoProductReason, string> = {
+  no_products: 'No product is in your library yet, so this script will not point at one.',
+  creator_has_not_chosen: 'Pick which one this video is about.',
+  not_a_commercial_video: 'This video is not selling anything, so it will not mention a product.',
+  choice_not_theirs: 'That product is not in your library. Pick one that is.',
+}

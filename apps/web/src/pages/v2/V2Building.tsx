@@ -17,6 +17,7 @@ import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   INTENT_QUESTIONS, intentQuestionsFor, type IntentQuestion, type VideoGoal, focusForGoal,
+  mustAskWhichProduct, PRODUCT_CHOICE_FIELD,
   defaultVideoGoalFromContentGoals, CANONICAL_GOAL_LABELS,
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
@@ -698,8 +699,39 @@ export default function V2Building() {
             // left the goal in the question list, and re-asked it anyway — the
             // exact thing this change exists to stop.
             const goalIsDisplayed = Boolean(standingGoal)
+            // ── WHICH PRODUCT, WHEN THEY OWN MORE THAN ONE ────────────────
+            //
+            // ⚠️ THE SERVER READS THE OLDEST ONE. Deterministic, and still not
+            // "the one this video is about" — three of five real accounts own
+            // two things. The writer must not break the tie: choosing among
+            // them would infer commercial intent from nothing the creator
+            // said, the entitlement `entryDoor.ts` clamps against. So the card
+            // asks, here, where it is already asking what this video is for.
+            //
+            // ⚖️ ONLY WHEN THE VIDEO IS COMMERCIAL, on the SAME expression the
+            // commercial block uses. A second notion of "is this a selling
+            // video" would be two answers to one question.
+            const ownedProducts = libraryProducts.filter(
+              (p) => (p.relationship === 'OWN_PRODUCT' || p.relationship === 'OWN_SERVICE')
+                && p.archivedAt === null)
+            const productQuestion: AskItem[] =
+              mustAskWhichProduct({
+                ownedProductIds: ownedProducts.map((p) => p.id),
+                chosenId: answersRef.current[PRODUCT_CHOICE_FIELD] ?? null,
+                mayUseAProduct: showsCommercialBlock(answeredIntent),
+              })
+                ? [{
+                    field: PRODUCT_CHOICE_FIELD,
+                    question: 'Which one is this video about?',
+                    // ⚖️ THEIR OWN NAMES, NOT A SUMMARY. The label is what they
+                    // typed into Product Library; a paraphrase here would be a
+                    // second name for one thing.
+                    options: ownedProducts.map((p) => ({ value: p.id, label: p.name })),
+                  } as AskItem]
+                : []
             const ask: AskItem[] = [
               ...unanswered.filter((q) => !(goalIsDisplayed && q.field === 'video_goal')),
+              ...productQuestion,
               ...relevant.slice(0, MAX_TEXT_QUESTIONS),
             ]
             if (ask.length && alive) {
@@ -900,7 +932,13 @@ export default function V2Building() {
         // of step with each other.
         const intentAnswers: Record<string, string> = {}
         const readinessAnswers: Record<string, string> = {}
+        // ⚠️ THE PRODUCT CHOICE IS NEITHER. It is not a creator-stable fact to
+        // persist to the brief, and not one of the three intent enums — it is
+        // one video's answer to "which of yours is this about", and it rides
+        // its own field so neither bucket has to grow a special case.
+        const chosenProductId = (answersRef.current[PRODUCT_CHOICE_FIELD] ?? '').trim()
         for (const [k, v] of Object.entries(answersRef.current)) {
+          if (k === PRODUCT_CHOICE_FIELD) continue
           if (INTENT_FIELDS.has(k)) intentAnswers[k] = v
           else readinessAnswers[k] = v
         }
@@ -930,6 +968,10 @@ export default function V2Building() {
           // made instead of charging for it twice (0119).
           idempotency_key: key,
           ...(transcript_id ? { transcript_id } : {}),
+          // ⚖️ ONLY WHEN THEY ANSWERED. An absent field means "not asked or not
+          // answered" and leaves the server's stopgap exactly as it was;
+          // sending '' would be a claim that they chose nothing.
+          ...(chosenProductId ? { selected_product_id: chosenProductId } : {}),
         })
         // A recreation was just spent — refresh so the remixes-left counter is
         // accurate everywhere (AppShell / Dashboard / Settings), not one behind.

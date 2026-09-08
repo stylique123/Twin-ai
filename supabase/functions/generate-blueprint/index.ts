@@ -4543,7 +4543,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string> }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string }
   try {
     body = await req.json()
   } catch {
@@ -4815,7 +4815,34 @@ Deno.serve(async (req: Request) => {
   // than a date comparison: live is the ABSENCE of a withdrawal, not a date
   // range, and a comparison would need a clock this function has no reason to
   // trust.
-  const { data: ownedEntity, error: ownedEntityErr } = await admin
+  // ⚠️ THE CREATOR'S ANSWER, WHEN THE CARD ASKED FOR ONE. Until this existed
+  // the choice had nowhere to travel: `selected_product_id` was WRITTEN to the
+  // generation row and never accepted as INPUT, so a creator who owns three
+  // things could not tell the writer which this video is about, and the writer
+  // read the oldest. Three of five real accounts own two things.
+  //
+  // ⚖️ VALIDATED AGAINST THEIR OWN LIBRARY, NEVER TRUSTED. The id arrives from
+  // a client, so the same owner / voice / relationship / archived filters
+  // apply — an id that is not theirs matches nothing and falls through to the
+  // stopgap rather than reaching another creator's product. `selectProduct` in
+  // packages/shared states this rule; a parity test pins the two together.
+  const requestedProductId = typeof body.selected_product_id === 'string'
+    ? body.selected_product_id.trim() : ''
+  let chosenEntity: unknown = null
+  if (requestedProductId !== '') {
+    const { data: picked } = await admin
+      .from('product_entities')
+      .select('id, name, creator_summary, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
+      .eq('owner_id', ownerId)
+      .eq('voice_id', voice?.id ?? null)
+      .eq('id', requestedProductId)
+      .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
+      .is('archived_at', null)
+      .maybeSingle()
+    chosenEntity = picked ?? null
+  }
+
+  const { data: stopgapEntity, error: ownedEntityErr } = await admin
     .from('product_entities')
     // ⚠️ `id` IS SELECTED BECAUSE IT IS READ. `selected_product_id` is written
     // from `ownedEntity?.id` further down, and this select omitted the column —
@@ -4855,6 +4882,18 @@ Deno.serve(async (req: Request) => {
     console.error('product_entities lookup failed', ownedEntityErr)
     return json({ error: 'We could not read your product details. Please try again.' }, 503)
   }
+
+  // ⚖️ THE CREATOR'S ANSWER OUTRANKS THE STOPGAP, and only ever narrows. When
+  // they picked one it is used; when they did not, behaviour is exactly what it
+  // was, so an older client is unaffected. Nothing here lets the WRITER pick
+  // among several — that entitlement is what `entryDoor.ts` clamps against.
+  //
+  // ⚠️ REBOUND ONTO THE ORIGINAL NAME ON PURPOSE. `ownedEntity` is read at
+  // dozens of sites — grounding, claims, disclosure, the audit row. Introducing
+  // a second name and updating "the ones that matter" is how one reader keeps
+  // the old value and a script cites a product the creator did not pick. One
+  // definition, no site missed.
+  const ownedEntity = chosenEntity ?? stopgapEntity
 
   // ⚠️ THE LIBRARY IS PLURAL AND THE GROUNDING CHECK NEVER SAW IT. The query
   // above answers ONE question — "what does this voice sell" — and it is scoped

@@ -27,6 +27,7 @@ export * from './generationReadiness'
 // because the create screen, the building screen and the readiness gate all need
 // the same enums, and a second copy is what this module exists to end.
 export * from './videoIntent'
+export * from './productSelection'
 // One derivation of "which platform is this link", shared by the client's
 // supported-host check and the ingest function's stored value.
 export * from './referencePlatform'
