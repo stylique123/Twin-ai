@@ -87,21 +87,38 @@ describe('the answer lands in the store, and only there', () => {
 })
 
 describe('it is mounted where a creator actually is', () => {
-  it('sits under the script they were just handed', () => {
-    // Not on a screen of its own: the Product Library is a complete feature with
-    // zero rows because it waits to be visited.
-    expect(RESULT).toMatch(/<CreatorQuestionCard \/>/)
+  // ⚠️ THIS BLOCK REVERSED DIRECTION, ON THE OWNER'S SEVENTH FLAG (Wave 6.1).
+  // It used to require `<CreatorQuestionCard />` here, for a reason that was
+  // measured and is still true: the Product Library is a complete feature with
+  // zero rows because it waits to be visited, and a screen of its own is a wall.
+  //
+  // ⚖️ WHAT CHANGED IS NOT THE EVIDENCE, IT IS WHAT IS BEING TRADED. A textarea
+  // under a script the creator opened to READ turns the surface that just
+  // delivered into one that asks for homework. The question moved to Settings;
+  // a LINE stayed behind, stating what Twin knows and where to add to it. So the
+  // placement rule below is unchanged in substance — after the last beat, before
+  // the shot list, in both layouts — and only the thing being placed is new.
+  //
+  // If answers fall to zero, this is the block that says which change to revert.
+  it('leaves the fact and the door under the script they were just handed', () => {
+    expect(RESULT).toMatch(/<TwinKnowledgeLink /)
+    // And the textarea is genuinely gone, not merely moved down the file.
+    expect(RESULT).not.toContain('<CreatorQuestionCard')
   })
 
-  // Task 8: the card must render once the whole script has been read, never
-  // mid-scene, and always before the shot list starts.
+  // Task 8: it must render once the whole script has been read, never mid-scene,
+  // and always before the shot list starts.
   it('renders no more than once per layout (desktop, mobile)', () => {
-    const count = (RESULT.match(/<CreatorQuestionCard \/>/g) ?? []).length
+    const count = (RESULT.match(/<TwinKnowledgeLink /g) ?? []).length
     expect(count).toBe(2) // one for the desktop column, one for the mobile script tab
   })
 
   it('sits after the script editor and before the shot list, in both layouts', () => {
-    for (const cardIndex of allIndexesOf(RESULT, '<CreatorQuestionCard />')) {
+    // ⚠️ THIS USED TO PASS ON AN EMPTY LIST. A `for` over zero matches asserts
+    // nothing, so a rename that removed every mount would have left this green.
+    const mounts = allIndexesOf(RESULT, '<TwinKnowledgeLink ')
+    expect(mounts).toHaveLength(2)
+    for (const cardIndex of mounts) {
       const before = RESULT.slice(0, cardIndex)
       const after = RESULT.slice(cardIndex)
       const lastScriptEditorOpen = before.lastIndexOf('<ScriptEditor')
