@@ -189,3 +189,57 @@ jobs:
           # Named explicitly. A bare `supabase functions deploy` deploys every
           # directory, which is how ci-bootstrap reached production.
           supabase functions deploy $PROD_FUNCTIONS --project-ref jmdecibuytznsonrasxw
+
+      # ⚠️⚠️ THE DEPLOY TOOL REPORTING SUCCESS IS NOT EVIDENCE THE FUNCTION WORKS.
+      #
+      # `supabase functions deploy` bundles with esbuild, which erases types and
+      # publishes whatever it produced. On 2026-09-06 it published a
+      # generate-blueprint carrying a duplicate top-level `const` — a BOOT-TIME
+      # SyntaxError in Deno. The deploy went green. Every request 500'd. Nothing
+      # in this pipeline noticed for two days, and the outage was found by a
+      # creator's session failing six times in a row.
+      #
+      # ⚖️ SO THE DEPLOY IS VERIFIED BY USING IT. One request per function. This
+      # asks exactly one question — DID THE MODULE BOOT — and it is the only
+      # check here that catches defects nobody predicted, including whatever
+      # ships next month.
+      #
+      # ⚠️ A 4xx IS A PASS AND THAT IS DELIBERATE. `{"__smoke":true}` is not a
+      # valid request for any of these functions; 400/401/404/422 all mean the
+      # module loaded and rejected it, which is the thing being tested. Only 5xx
+      # — the module failed to boot, or crashed before it could answer — fails.
+      # Treating a 4xx as failure would make this a contract test for 27
+      # different payload shapes, and it would rot within a week.
+      - name: Verify every deployed function boots
+        env:
+          SUPABASE_URL: https://jmdecibuytznsonrasxw.supabase.co
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -uo pipefail
+          if [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "::error::SUPABASE_ANON_KEY is not set — the smoke check cannot run, and an unverified deploy is what this step exists to prevent."
+            exit 1
+          fi
+          failed=""
+          for fn in $PROD_FUNCTIONS; do
+            code=$(curl -s -o /tmp/smoke.out -w '%{http_code}' --max-time 30 \
+              -X POST "$SUPABASE_URL/functions/v1/$fn" \
+              -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+              -H 'Content-Type: application/json' \
+              -d '{"__smoke":true}') || code=000
+            # ⚠️ CAPTURED OUTSIDE THE PIPE. A pipe hides the exit code, and a
+            # smoke check that cannot fail is worse than none.
+            if [ "$code" -ge 500 ] || [ "$code" = "000" ]; then
+              echo "::error::$fn returned $code — it did not boot. First 200 bytes of the body:"
+              head -c 200 /tmp/smoke.out; echo
+              failed="$failed $fn"
+            else
+              echo "$fn -> $code (booted)"
+            fi
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::Deployed but not serving:$failed"
+            exit 1
+          fi
+          echo "all deployed functions booted"
+
