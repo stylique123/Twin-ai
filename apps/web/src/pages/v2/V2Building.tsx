@@ -16,6 +16,8 @@ import { TalkingHeadWarning } from '../../components/TalkingHeadWarning'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
+  // ⚖️ THE WRITER'S OWN TARGET, shown to the creator before the money moves.
+  targetSeconds, spokenTime,
   INTENT_QUESTIONS, intentQuestionsFor, type IntentQuestion, type VideoGoal, focusForGoal,
   defaultVideoGoalFromContentGoals, CANONICAL_GOAL_LABELS,
 } from '@twinai/shared'
@@ -1162,6 +1164,30 @@ export default function V2Building() {
   }
 
   const echo = state.reference_url ? 'From your reference link' : 'From your idea'
+  // ── THE LENGTH, SAID BEFORE THE SPEND ────────────────────────────────────
+  //
+  // ⚠️ THE CREATOR FOUND OUT HOW LONG THEIR VIDEO WAS BY READING THE FINISHED
+  // SCRIPT. A 15-second reference produced 48 seconds and a 226-second one
+  // produced 60 — and nothing on this screen said what Twin was aiming for, so
+  // there was no moment at which a wrong target could be noticed.
+  //
+  // ⚖️ THE SAME FUNCTION THE WRITER IS BRIEFED WITH, never a second estimate.
+  // If this line and the brief could disagree, the number a creator reads would
+  // not be the number the script is written to.
+  //
+  // ⚖️ AND NULL STAYS SILENT. Where nothing decides a length the brief says
+  // nothing about it, so this must not invent a figure to fill the space.
+  //
+  // ⚠️ AND IT IS THE GOAL'S TARGET ONLY, DELIBERATELY. On a reference build the
+  // length comes from the reference's MEASURED duration, which lives in
+  // `transcripts.duration_sec` and is not known on this screen — the ingest has
+  // not finished when this renders. Showing the goal default there would state
+  // a number the script will not be written to, which is worse than saying
+  // nothing, so a reference build says nothing and the finished script reports
+  // its own runtime as it always has.
+  const targetSec = state.reference_url
+    ? null
+    : targetSeconds({ goal: asOneOf(VIDEO_GOALS, answersRef.current.video_goal ?? state.goal) })
   const shownPct = Math.round(pct)
   // Only a supported host is actually watched/transcribed; a described idea or an
   // unsupported link is used as a guide (pattern mode). Keep the first step honest so
@@ -1660,6 +1686,11 @@ export default function V2Building() {
             </div>
 
             <h1 className="mt-5 text-center font-display text-2xl tracking-tight">Building your video plan</h1>
+            {targetSec !== null && (
+              <p className="mt-1 text-center text-xs text-stone">
+                Aiming for about {spokenTime(targetSec)}.
+              </p>
+            )}
             <p className="mt-1 text-center text-sm text-stone">{echo}</p>
 
             {/* Live progress */}

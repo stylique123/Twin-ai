@@ -187,3 +187,36 @@ describe('the writer is actually told the length', () => {
     }
   })
 })
+
+// ── AND THE CREATOR SEES IT BEFORE THE MONEY MOVES ────────────────────────
+//
+// ⚠️ THEY USED TO FIND OUT HOW LONG THEIR VIDEO WAS BY READING THE FINISHED
+// SCRIPT. Nothing on the building screen said what Twin was aiming for, so
+// there was no moment at which a wrong target could be noticed — and the
+// measured spread (48 seconds from a 15-second reference, 60 from a 226-second
+// one) is exactly the thing a creator would have caught at a glance.
+const CARD = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..',
+    'apps', 'web', 'src', 'pages', 'v2', 'V2Building.tsx'), 'utf8')
+
+describe('the target is shown, and only where it is true', () => {
+  it('uses the writer\'s own function, never a second estimate', () => {
+    // ⚖️ IF THIS LINE AND THE BRIEF COULD DISAGREE, the number a creator reads
+    // would not be the number the script is written to.
+    expect(CARD).toMatch(/const targetSec = state\.reference_url/)
+    expect(CARD).toMatch(/targetSeconds\(\{ goal: asOneOf\(VIDEO_GOALS/)
+  })
+
+  it('says NOTHING on a reference build', () => {
+    // ⚠️ THE REFERENCE'S MEASURED DURATION LIVES IN `transcripts.duration_sec`
+    // and is not known on this screen — the ingest has not finished when it
+    // renders. Showing the goal default there would state a number the script
+    // will not be written to, which is worse than silence.
+    expect(CARD).toMatch(/state\.reference_url\s*\n?\s*\? null/)
+  })
+
+  it('renders only when a target exists', () => {
+    expect(CARD).toMatch(/\{targetSec !== null && \(/)
+    expect(CARD).toMatch(/Aiming for about \{spokenTime\(targetSec\)\}/)
+  })
+})
