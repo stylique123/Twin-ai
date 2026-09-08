@@ -45,6 +45,58 @@ export function inspect(script, producedVoiceId) {
   ].filter(Boolean)
 }
 
+// ── THE PAGER'S MEMORY, READ AND WRITTEN ──────────────────────────────────
+//
+// ⚠️ WITHOUT THIS THE POLICY CANNOT BE "PAGE ONCE". `decideHeartbeat` is a pure
+// function of the PREVIOUS state; if nothing loads and stores that state, every
+// run starts from INITIAL_PAGE_STATE, every failure looks like the first one,
+// and the thing pages 48 times a day. The table (0190) existed in the first
+// draft of this PR and nothing read it — `check_column_readers` caught exactly
+// that and was right to.
+
+/** DB row → policy state.
+ *
+ *  ⚠️ `last_paged_at` NULL MEANS "NEVER PAGED", AND MUST STAY null. Coercing it
+ *  to 0 or Date.now() would each be a different lie: 0 makes the reminder
+ *  arithmetic say "an hour has passed" on a state that never paged, and now()
+ *  says the opposite. The policy handles null explicitly — it pages — so the
+ *  mapping's only job is to not destroy the distinction.
+ */
+export function rowToState(row) {
+  if (!row) return INITIAL_PAGE_STATE
+  return {
+    failing: row.failing === true,
+    lastPagedAt: row.last_paged_at == null ? null : Date.parse(row.last_paged_at),
+  }
+}
+
+/** Policy state → the columns 0190 declares. */
+export function stateToRow(state) {
+  return {
+    id: true,
+    failing: state.failing,
+    last_paged_at: state.lastPagedAt === null ? null : new Date(state.lastPagedAt).toISOString(),
+    updated_at: new Date().toISOString(),
+  }
+}
+
+export async function loadPageState(db) {
+  const { data, error } = await db
+    .from('heartbeat_page_state')
+    .select('failing, last_paged_at')
+    .maybeSingle()
+  // A read that FAILED is not a state that says "healthy". Throwing here is
+  // deliberate: continuing on a failed read would silently reset the pager to
+  // "never paged" and re-page on a break we already reported.
+  if (error) throw new Error(`heartbeat_page_state unreadable: ${error.message}`)
+  return rowToState(data)
+}
+
+export async function savePageState(db, state) {
+  const { error } = await db.from('heartbeat_page_state').upsert(stateToRow(state))
+  if (error) throw new Error(`heartbeat_page_state unwritable: ${error.message}`)
+}
+
 // ── The self-test: the policy, exercised THROUGH this runner ───────────────
 //
 // ⚖️ A POLICY UNIT-TESTED IN ISOLATION AND CALLED BY NOBODY IS THE DEFECT THIS
@@ -93,6 +145,32 @@ if (SELFTEST) {
     lived.some((f) => f.kind === 'sponsored_product_spoken_as_lived'), JSON.stringify(lived))
   const clean = inspect('word '.repeat(120), FROZEN_STORE.voiceId)
   check('a healthy script produces no findings', clean.length === 0, JSON.stringify(clean))
+
+  // The state mapping, which is where a null can quietly become a number.
+  check('a never-paged row maps to null, not to zero',
+    rowToState({ failing: true, last_paged_at: null }).lastPagedAt === null)
+  check('a missing row is the initial state, not a failing one',
+    rowToState(null).failing === false && rowToState(null).lastPagedAt === null)
+  check('a stored timestamp round-trips',
+    rowToState({ failing: true, last_paged_at: '2026-09-08T12:00:00.000Z' }).lastPagedAt
+      === Date.parse('2026-09-08T12:00:00.000Z'))
+  check('null survives the write mapping too',
+    stateToRow({ failing: true, lastPagedAt: null }).last_paged_at === null)
+  check('the write names the single-row id so two opinions cannot exist',
+    stateToRow({ failing: false, lastPagedAt: 0 }).id === true)
+
+  // ⚠️ THE WHOLE POINT, ASSERTED END TO END: state that round-trips through the
+  // table keeps the pager quiet. A mapping bug here would restore the 48-pages-
+  // a-day behaviour with every unit test still green.
+  {
+    const first = decideHeartbeat(INITIAL_PAGE_STATE, dead(0))
+    const persisted = rowToState({
+      failing: stateToRow(first.nextState).failing,
+      last_paged_at: stateToRow(first.nextState).last_paged_at,
+    })
+    check('state survives a round-trip through the table and stays quiet',
+      first.page === 'started_failing' && decideHeartbeat(persisted, dead(30 * 60_000)).page === null)
+  }
 
   console.log(fail === 0 ? '\nheartbeat selftest: OK' : `\nheartbeat selftest: ${fail} FAILED`)
   process.exit(fail === 0 ? 0 : 1)
