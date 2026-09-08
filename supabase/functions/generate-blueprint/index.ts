@@ -2953,37 +2953,67 @@ function findEntailmentGaps(
 }
 
 /**
- * FIGURES SPOKEN ABOUT THE PRODUCT THAT NO STORED PRODUCT FACT CARRIES.
+ * FIGURES SPOKEN ABOUT THE PRODUCT, SPLIT BY WHY THEY ARE UNGROUNDED.
  *
- * ⚠️ MIRRORS `findProductClaimGaps` IN packages/shared/src/productClaimCheck.ts,
- * and exists for the defect that guard names: a script can state a price the
- * product record contradicts while every existing counter reads clean, because
- * the beat cites the product and the product exists. Nothing asked where the
- * NUMBER came from.
+ * ⚠️ MIRRORS `productClaimFindings` IN packages/shared/src/productClaimCheck.ts,
+ * which carries the full reasoning. The short version: the previous lens read
+ * ZERO on all 44 generations because it demanded `substance === 'product_dna'`,
+ * a label the seven measured skincare runs never once carried, and because an
+ * empty fact set suppressed it entirely. Those readings are void, not clean.
  *
- * ⚖️ IT REUSES `claimedValues` ABOVE — the same normalisation both this and the
- * creator-knowledge check depend on, so 50k and 50,000 stay one figure in both.
+ * ⚖️ CONTRADICTED vs UNSUPPORTED ARE TWO FINDINGS, NOT ONE. A stored $39 and a
+ * spoken $29 is a row somebody can point at; a spoken $29 with nothing on
+ * record is invention. Different rates, different fixes — one counter hides
+ * both, and the split is what makes it safe to stop suppressing the second.
  *
- * ⚖️ AND AN EMPTY FACT SET SUPPRESSES IT. A product Twin has never read has no
- * figures to contradict, and a counter that fires loudest where it knows least
- * teaches an operator to ignore it.
+ * ⚖️ IT REUSES `claimedValues` ABOVE — the same normalisation the
+ * creator-knowledge check depends on, so 50k and 50,000 stay one figure.
  */
-function findProductClaimGaps(
+function unitOfClaimInline(canonical: string): string {
+  return canonical.replace(/^[\d.]+/, '')
+}
+
+/** ⚠️ EITHER DOOR: labelled as sourcing the product record, OR naming the
+ *  product. Names under three characters are ignored — a two-letter brand
+ *  matches inside ordinary words. */
+function beatSourcesProductInline(
+  beat: { line?: unknown; substance?: unknown },
+  productNames: readonly string[],
+): boolean {
+  if (beat?.substance !== 'product_dna') {
+    const line = (typeof beat?.line === 'string' ? beat.line : '').toLowerCase()
+    if (line === '') return false
+    return productNames.some((n) => {
+      const name = String(n ?? '').trim().toLowerCase()
+      return name.length >= 3 && line.includes(name)
+    })
+  }
+  return true
+}
+
+function findProductClaimFindings(
   script: readonly { line?: unknown; substance?: unknown }[],
   factValues: readonly string[],
-): Array<{ beat: number; value: string }> {
+  productNames: readonly string[],
+): { contradicted: Array<{ beat: number; value: string }>; unsupported: Array<{ beat: number; value: string }> } {
   const supported = new Set<string>()
   for (const raw of factValues) for (const v of claimedValues(raw)) supported.add(v)
-  if (supported.size === 0) return []
-  const out: Array<{ beat: number; value: string }> = []
+  const supportedUnits = new Set<string>()
+  for (const v of supported) {
+    const u = unitOfClaimInline(v)
+    if (u !== '') supportedUnits.add(u)
+  }
+  const contradicted: Array<{ beat: number; value: string }> = []
+  const unsupported: Array<{ beat: number; value: string }> = []
   script.forEach((b, i) => {
-    // ⚠️ `product_dna` is the substance vocabulary's word — see SUBSTANCE_ENUM.
-    if (b?.substance !== 'product_dna') return
+    if (!beatSourcesProductInline(b, productNames)) return
     for (const v of claimedValues(typeof b?.line === 'string' ? b.line : '')) {
-      if (!supported.has(v)) out.push({ beat: i + 1, value: v })
+      if (supported.has(v)) continue
+      if (supportedUnits.has(unitOfClaimInline(v))) contradicted.push({ beat: i + 1, value: v })
+      else unsupported.push({ beat: i + 1, value: v })
     }
   })
-  return out
+  return { contradicted, unsupported }
 }
 
 // ⚠️ FIX 11 — SERMON WITHOUT WITNESS, DETECTED. Two separate counts, not one
@@ -7536,6 +7566,21 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         .map((f) => (typeof f?.value === 'string' ? f.value : ''))
         .filter((v) => v !== '')
       : []
+    // ⚠️ THE NAME IS THE FILTER NOW. A beat that says the product's name is a
+    // beat speaking about the product, whatever `substance` claims — and only
+    // the OWNED entity's name is used, because only its facts are loaded here.
+    // Judging a beat about another library product against these facts would
+    // report a gap that is an artefact of the lookup, not of the script.
+    const productNames: string[] = [
+      typeof (ownedEntity as { name?: unknown } | null)?.name === 'string'
+        ? String((ownedEntity as { name: string }).name)
+        : '',
+    ].filter((n) => n.trim() !== '')
+    const productClaimFindings_ = findProductClaimFindings(
+      (Array.isArray(declared) ? declared : []) as Array<Record<string, unknown>>,
+      productFactValues,
+      productNames,
+    )
     let progressChecks = 0
     if (Array.isArray(declared)) {
       for (const b of declared) {
@@ -7671,9 +7716,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // ⚠️ TRUE MEANS THIS SCRIPT WAS WRITTEN FROM AN INCOMPLETE VOICE. Read it
       // before blaming the writer for a thin result.
       voice_build_in_flight: voiceBuildInFlight,
-      product_claim_gaps: findProductClaimGaps(
-        (Array.isArray(declared) ? declared : []) as Array<Record<string, unknown>>,
-        productFactValues).length,
+      // ⚠️ AND THE OLD SINGLE COUNTER IS GONE, NOT RENAMED. It read 0 on all 44
+      // generations through a lens that could not see the defect: seven of seven
+      // measured skincare runs name the product, four state an invented price,
+      // and not one beat in any of them carries `substance: 'product_dna'`.
+      // Every prior reading is void. These two start from nothing.
+      product_claim_contradictions: productClaimFindings_.contradicted.length,
+      product_claim_unsupported: productClaimFindings_.unsupported.length,
       // ⚠️ THE N1 COUNTER. Comparative or magnitude claims about a product on a
       // commercial creator with NOTHING on record. Zero is the expected reading
       // and an absent counter would look identical to it — which is why it is
