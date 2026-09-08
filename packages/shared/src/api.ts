@@ -537,6 +537,32 @@ export async function getGeneration(id: string): Promise<Generation | null> {
   return data as Generation
 }
 
+/**
+ * WHICH PRODUCT A FINISHED SCRIPT WAS WRITTEN ABOUT.
+ *
+ * ⚠️ THE ROW HAS EXISTED SINCE 0137 AND NOTHING EVER READ IT BACK.
+ * `generate-blueprint` writes `selected_product_id` onto `generation_choices`
+ * after every generation, the owner has a select policy on it, and the creator
+ * has never been told which of their products the script they are holding is
+ * about. A record kept and never shown answers a question nobody can ask.
+ *
+ * ⚖️ NULL IS A REAL ANSWER AND NOT A FAILURE. Most videos sell nothing, so most
+ * scripts have no product — the caller must render that as silence, never as
+ * "unknown".
+ */
+export async function loadGenerationProduct(generationId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('generation_choices')
+    .select('selected_product_id')
+    .eq('generation_id', generationId)
+    .maybeSingle()
+  // ⚖️ A FAILED READ IS NOT "NO PRODUCT". It is not knowing, and the screen
+  // says nothing rather than asserting the script was about nothing.
+  if (error || !data) return null
+  const id = (data as { selected_product_id?: unknown }).selected_product_id
+  return typeof id === 'string' && id.trim() !== '' ? id : null
+}
+
 // Persist the creator's hook choice on their generation. Column grants restrict
 // the update to `selected_hook` (recording), so this is safe from the client.
 // `edit_style` (old manual-editor field) is no longer accepted here — its client

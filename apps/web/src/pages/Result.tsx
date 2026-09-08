@@ -32,7 +32,13 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { cameFromAReference, spokenLineIsAnAsk, notBilledNotice, shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime } from '@twinai/shared'
+import { cameFromAReference, spokenLineIsAnAsk, notBilledNotice, shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime,
+  // ⚠️ MERGED INTO THE EXISTING BLOCK, NOT ADDED AS A SECOND ONE. Six wiring
+  // tests match the FIRST `@twinai/shared` import in this file to prove a card
+  // reads a shared helper; a new import above them answered for all six at
+  // once. The guards were right — this file has one shared-import block.
+  loadGenerationProduct, loadProductEntities,
+} from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -232,6 +238,42 @@ const MOCK_GENERATION = {
   selected_hook: 'Here is the part nobody tells you about building AI agents...',
   edit_style: 'cinematic',
   approved: false
+}
+
+/**
+ * The sentence naming the product this script was written about, or null.
+ *
+ * ⚠️ NULL IS THE COMMON CASE AND MUST RENDER AS SILENCE. Most videos sell
+ * nothing; asserting "no product" on every one of them would be noise, and
+ * asserting it after a FAILED read would be a lie.
+ *
+ * ⚖️ THE "WHY" IS DERIVED FROM WHAT IS KNOWN, NOT INVENTED. Whether the choice
+ * was the creator's tap or the only product they own is not stored, so it is
+ * read off the library they still have: one product means there was nothing to
+ * choose between, more than one means they picked. If the library read fails,
+ * the sentence states the product and stops — a reason we cannot support is
+ * worse than no reason.
+ */
+function useProductLine(generationId: string): string | null {
+  const [line, setLine] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const productId = await loadGenerationProduct(generationId).catch(() => null)
+      if (!alive || productId === null) return
+      const rows = await loadProductEntities().catch(() => null)
+      if (!alive) return
+      const hit = (rows ?? []).find((p) => p.id === productId) ?? null
+      const name = typeof hit?.name === 'string' && hit.name.trim() !== '' ? hit.name.trim() : null
+      if (name === null) return
+      const owned = (rows ?? []).filter((p) => p.archivedAt === null).length
+      setLine(rows === null || owned <= 1
+        ? `This script is about ${name}.`
+        : `This script is about ${name}, because you picked it for this video.`)
+    })()
+    return () => { alive = false }
+  }, [generationId])
+  return line
 }
 
 export default function Result() {
@@ -669,6 +711,12 @@ export default function Result() {
   // generations and neither distinguishes the 74 that have a reference from the
   // 4 that do not. Every surface below that claims something about "the
   // reference" reads THIS, so a fifth cannot drift from the other four.
+  // ⚠️ THE SCRIPT NEVER SAID WHICH PRODUCT IT WAS ABOUT. `generate-blueprint`
+  // has written `selected_product_id` onto `generation_choices` since 0137 and
+  // nothing read it back, so a creator holding a script about one of their
+  // three products had to work out which by reading it. A record kept and never
+  // shown answers a question nobody can ask.
+  const productLine = useProductLine(gen.id)
   const hasReference = cameFromAReference(gen.reference_url)
   const lengthLine = lengthSentence(measureScriptLength(updatedScript))
   // ⚠️ FIX 8 (Wave 3). The SAME computed runtime `lengthLine` is built from,
@@ -1159,6 +1207,11 @@ export default function Result() {
               <p className="text-xs text-stone/80">{lengthLine}</p>
               {referenceCompareLine && <p className="text-xs text-stone/80">{referenceCompareLine}</p>}
               {ceilingWarningLine && <p className="text-xs text-amber">{ceilingWarningLine}</p>}
+              {/* ⚖️ BESIDE THE OTHER FACTS ABOUT THIS SCRIPT, not in a badge of
+                  its own. Which product it is about is the same kind of thing as
+                  how long it runs — something true of the script the creator is
+                  holding, said once, where they are already reading. */}
+              {productLine && <p className="text-xs text-stone/80">{productLine}</p>}
               
               <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />
