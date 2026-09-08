@@ -55,6 +55,7 @@
 // toolchain that happened to run it.
 import { execFileSync } from 'node:child_process'
 import { readdirSync, existsSync } from 'node:fs'
+import { buildSync } from 'esbuild'
 
 const FUNCTIONS_DIR = 'supabase/functions'
 
@@ -83,12 +84,14 @@ const DENO_NOISE = [
  * still there, the deployed function will evaluate it. This is not a heuristic
  * about colons and angle brackets — it is the same erasure the runtime gets.
  *
- * ⚠️ SHELLED OUT, NOT IMPORTED, AND THAT IS THIS FILE'S EXISTING CONTRACT. The
- * first version did `import { transformSync } from 'esbuild'` and passed
- * locally, where node_modules exists — and failed in CI, where this job checks
- * out the repo and installs nothing. `tsc` above is invoked through `npx` for
- * exactly that reason. A guard that needs an install is a guard that stops
- * running the moment someone adds a cheaper job.
+ * ⚠️ SHELLED OUT HERE, IMPORTED FOR THE BUNDLE PASS, AND THE DIFFERENCE IS
+ * DELIBERATE. This erasure probe runs per-diagnostic and tolerates esbuild
+ * being absent (it fails closed). The bundle pass below must NOT tolerate that
+ * — an absent bundler there would mean the check silently stopped running — so
+ * it imports esbuild, which is a declared root devDependency, and this guard is
+ * invoked from `web-and-shared`, the job that installs it. The first attempt
+ * put the import in `no-legacy-editor`, which checks out the repo and installs
+ * nothing, and got ERR_MODULE_NOT_FOUND: a verdict about the runner.
  */
 const erasedCache = new Map()
 function survivesTypeErasure(line) {
@@ -157,7 +160,13 @@ const isFatal = (line) => {
   // wrote NO script between 2026-09-06 20:01 and the fix. A creator's session
   // of six attempts produced four five-minute stalls and "we hit a snag", and
   // the cause was read as a rate limit, because nothing named it.
-  if (code === 2451 || code === 2300) return true
+  // ⚖️ TS2451/TS2300 ARE DELIBERATELY NOT LISTED HERE ANY MORE, and removing them
+  // is the point rather than a relaxation. esbuild — run above, before this pass
+  // — refuses to BUILD a duplicate declaration, so it is caught by the criterion
+  // instead of by its name. Listing it here as well would keep the code-list
+  // habit alive and blur which pass owns what: esbuild owns "cannot be built",
+  // tsc owns "builds, then crashes on the first call". Proven by mutation: the
+  // duplicate that took production down still fails this guard with it gone.
   // Block-scoped binding used before declaration / before assignment. Types are
   // erased at deploy; these still throw at runtime.
   return code === 2448 || code === 2454
@@ -184,6 +193,58 @@ if (entries.length === 0) {
   process.exit(1)
 }
 
+// ⚠️⚠️ THE CRITERION, RUN BY THE DEPLOY'S OWN BUNDLER — NOT A LIST OF CODES.
+//
+// This guard's stated rule has always been "the things that genuinely cannot
+// ship". It was IMPLEMENTED as a list of TypeScript error numbers, and a list is
+// an instance fix wearing a category's clothes: TS2304 was added after it cost
+// two paid scripts on 2026-08-16, and TS2451 walked through the same gap five
+// weeks later and took the whole script writer down for two days.
+//
+// ⚖️ SO ASK THE TOOL THAT ACTUALLY PRODUCES THE ARTEFACT. `supabase functions
+// deploy` bundles with esbuild. If esbuild refuses to bundle a file, the deploy
+// cannot produce something that boots — no judgement, no enumeration, and it
+// covers every structural defect including the ones nobody has thought of yet.
+// Verified on the real defect: esbuild reports
+//   `The symbol "FIRST_PERSON_MARKER_INLINE" has already been declared`
+// with both line numbers, for a file `tsc` called a type note.
+//
+// ⚠️ AND IT IS NOT A REPLACEMENT FOR THE tsc PASS BELOW. esbuild ERASES types,
+// so a name that does not exist anywhere (TS2304) bundles cleanly and throws
+// `ReferenceError` on the first call. The two passes catch different halves:
+// esbuild catches what cannot be BUILT, tsc catches what builds and then
+// crashes. Neither alone is the criterion.
+const bundleFailures = []
+for (const entry of entries) {
+  try {
+    buildSync({
+      entryPoints: [entry],
+      bundle: false,
+      write: false,
+      format: 'esm',
+      platform: 'neutral',
+      logLevel: 'silent',
+    })
+  } catch (e) {
+    for (const err of e.errors ?? [{ text: String(e.message) }]) {
+      const at = err.location ? `(${err.location.line},${err.location.column})` : ''
+      bundleFailures.push(`${entry}${at}: ${err.text}`)
+    }
+  }
+}
+
+if (bundleFailures.length > 0) {
+  console.error(
+    `edge-functions-parse guard: FAILED — ${bundleFailures.length} file(s) the deploy's own `
+    + 'bundler refuses.\n')
+  for (const l of bundleFailures) console.error(`  ${l}`)
+  console.error('\nesbuild is what `supabase functions deploy` runs. A file it will not build')
+  console.error('cannot be deployed as something that boots — and the deploy tool reports')
+  console.error('SUCCESS anyway, which is how a duplicate `const` took generate-blueprint')
+  console.error('down from 2026-09-06 to 2026-09-08 with nothing failing.')
+  process.exit(1)
+}
+
 let out = ''
 try {
   execFileSync('npx', [
@@ -197,9 +258,6 @@ try {
 
 const headlines = out.split('\n').filter((l) => /error TS\d+:/.test(l) && !/^\s/.test(l))
 const fatal = headlines.filter(isFatal)
-const advisory = headlines
-  .filter((l) => !isFatal(l))
-  .filter((l) => !DENO_NOISE.some((r) => r.test(l)))
 
 if (fatal.length > 0) {
   console.error(`edge-functions-parse guard: FAILED — ${fatal.length} error(s) that stop a deploy.\n`)
@@ -213,12 +271,13 @@ if (fatal.length > 0) {
   process.exit(1)
 }
 
-// Reported, never fatal. These move with the compiler version and settings, and
-// esbuild erases types at deploy — failing on them would make the guard's
-// verdict a property of the runner rather than of the source.
-if (advisory.length > 0) {
-  console.log(`edge-functions-parse guard: ${advisory.length} type note(s), not deploy-blocking:`)
-  for (const l of advisory.slice(0, 20)) console.log(`  ${l}`)
-}
+// ⚠️ THERE IS NO ADVISORY LANE ANY MORE, AND THAT IS THE POINT. This guard used
+// to print non-fatal findings and pass. It printed TS2451 — the exact error that
+// stopped the script writer booting — as a "type note", and CI went green.
+//
+// ⚖️ A CHECK EITHER FAILS THE BUILD OR IT DOES NOT EXIST. A warning that never
+// blocks is a warning everyone learns to scroll past, and this one was scrolled
+// past for two days. Anything worth printing here is worth failing on; anything
+// not worth failing on is noise that trains people to ignore the output.
 
-console.log(`edge-functions-parse guard: OK (${entries.length} functions parse; no dead-zone reads)`)
+console.log(`edge-functions-parse guard: OK (${entries.length} functions bundle and carry no dead-zone reads)`)

@@ -39,6 +39,22 @@ jobs:
       # not on the code.
       - name: Test typecheck ratchet (a test that does not typecheck may not mean what it reads)
         run: node scripts/ci/check_test_typecheck_ratchet.mjs
+      # The edge functions were the one body of code CI never compiled. A prompt
+      # edit put a backtick in prose inside a template literal, which closed the
+      # literal and made generate-blueprint invalid TypeScript — it could not
+      # have deployed — and every other check stayed green through it, because
+      # the shared package and the web app typecheck their own trees and the
+      # parity test compares this file as a STRING. Underneath it sat a const
+      # read above its own declaration, a guaranteed uncaught 500 per request.
+      # Both are things the compiler names; nothing was asking the compiler.
+      - name: Edge functions compile (a syntax error here cannot deploy)
+        run: node scripts/ci/check_edge_functions_parse.mjs
+      # ⚠️ HERE, NOT IN `no-legacy-editor` — THE SECOND TIME THIS EXACT MOVE WAS
+      # NEEDED. It lived in that job while it was dependency-free; adding the
+      # esbuild bundle pass gave it a real dependency, and a job that runs
+      # `actions/checkout` and nothing else answered ERR_MODULE_NOT_FOUND — a
+      # verdict about the runner, not about the code. esbuild is now a declared
+      # root devDependency because it is what `supabase functions deploy` runs.
       - name: Build web
         run: npm run web:build
 
@@ -751,16 +767,6 @@ jobs:
       # defect lives BETWEEN them, which is the kind nobody is assigned to
       # notice. Unwired keys are declared rather than tolerated, and the
       # declaration self-expires: excusing a key that HAS a reader fails too.
-      # The edge functions were the one body of code CI never compiled. A prompt
-      # edit put a backtick in prose inside a template literal, which closed the
-      # literal and made generate-blueprint invalid TypeScript — it could not
-      # have deployed — and every other check stayed green through it, because
-      # the shared package and the web app typecheck their own trees and the
-      # parity test compares this file as a STRING. Underneath it sat a const
-      # read above its own declaration, a guaranteed uncaught 500 per request.
-      # Both are things the compiler names; nothing was asking the compiler.
-      - name: Edge functions compile (a syntax error here cannot deploy)
-        run: node scripts/ci/check_edge_functions_parse.mjs
       # ⚠️ THE UNWIRED-MODULE DETECTOR WAS ITSELF UNWIRED. Built, tested,
       # correct, and nothing called it in CI — exactly the defect class its
       # own header names four instances of. Reports only, never fails: a
