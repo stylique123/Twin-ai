@@ -10,7 +10,7 @@ import {
   profileQuestionsFor, asksScreenCapability, asksProductCapability,
   MAX_CONTENT_GOALS, ONBOARDING_SELLS_ANSWERS, sellsAnswerOf, SELLS_ANSWER_TO_TIES,
   type OnboardingSellsAnswer,
-  AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE,
+  AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE, goalFromCtas, goalConfirmationLine,
   CAPABILITY_ANSWERS,
   type ProfileQuestionId, type AudienceSegment,
   type AudienceKnowledge,
@@ -2081,6 +2081,14 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
   draft: OnboardingDraft
   onDraftChange: (next: OnboardingDraft) => void
 }) {
+  // ⚠️ BEFORE THE EARLY RETURN, DELIBERATELY. A hook after `if (!id) return
+  // null` changes hook order between renders the moment `id` goes undefined,
+  // which React reports as a wrong-hook error somewhere else entirely.
+  //
+  // ⚖️ "THEY SAID NO TO OUR GUESS" IS NOT AN ANSWER AND MUST NOT BE STORED.
+  // It lives for this screen only: rejecting the inference reveals the full
+  // question, and nothing about the rejection is written to the draft.
+  const [guessRejected, setGuessRejected] = useState(false)
   if (!id) return null
   const set = (patch: Partial<OnboardingDraft>) => onDraftChange({ ...draft, ...patch })
   const toggle = <T extends string>(list: readonly T[], v: T): T[] =>
@@ -2159,6 +2167,43 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
   }
 
   if (id === 'contentGoals') {
+    // ── ASKED THREE TIMES, ANSWERED ON EVERY POST THEY HAVE EVER MADE ───────
+    //
+    // ⚠️ THIRD ASKING. "What do you want your content to do?" is put here, in
+    // the remix pop-up, and again in the intent questions — while the scan has
+    // already read the creator's actual endings into `recurring_ctas`. The
+    // bakery's came back "in bio!!", the physio's "drop an injury in the
+    // comments". Those are not clues about the goal; they are the goal, in the
+    // creator's own words, already extracted.
+    //
+    // ⚖️ CONFIRMED, NEVER ASSUMED. An inference written straight into
+    // `contentGoals` would be indistinguishable to every downstream reader from
+    // something the creator said — the "0 stated, 34 guessed" defect in a
+    // better disguise. So it is a sentence that QUOTES them and takes one tap,
+    // and saying no gives back the full question with nothing recorded.
+    const inferred = draft.contentGoals.length === 0 && !guessRejected
+      ? goalFromCtas(draft.profile?.recurring_ctas)
+      : null
+    if (inferred) {
+      return (
+        <Field label="Is this what your videos are for?">
+          <p className="text-sm leading-relaxed text-cream">{goalConfirmationLine(inferred)}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-gradient rounded-lg px-4 py-2 text-sm font-semibold"
+              onClick={() => set({ contentGoals: [inferred.goal] })}
+            >Yes, that's right</button>
+            <button
+              type="button"
+              className="rounded-lg border border-white/15 px-4 py-2 text-sm text-sand hover:text-cream"
+              onClick={() => setGuessRejected(true)}
+            >Not quite — let me pick</button>
+          </div>
+          {note('Read from how your own videos end. Nothing is saved until you answer.')}
+        </Field>
+      )
+    }
     const full = draft.contentGoals.length >= MAX_CONTENT_GOALS
     return (
       <Field
