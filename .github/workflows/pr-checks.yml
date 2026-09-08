@@ -761,6 +761,20 @@ jobs:
       # Both are things the compiler names; nothing was asking the compiler.
       - name: Edge functions compile (a syntax error here cannot deploy)
         run: node scripts/ci/check_edge_functions_parse.mjs
+      # ⚠️ A FLAG NOBODY FILTERS ON IS WORSE THAN NO FLAG — it looks like the
+      # problem is handled. Two synthetic generations an hour is 48 rows a day
+      # against samples 2000 rows deep, and the bias would surface months later
+      # in the outputs, where nobody is looking for a monitor.
+      - name: The heartbeat teaches Twin nothing (every corpus reader excludes it)
+        run: |
+          node scripts/ci/check_heartbeat_excluded_from_corpus.mjs --selftest
+          node scripts/ci/check_heartbeat_excluded_from_corpus.mjs
+      # ⚖️ THE POLICY, EXERCISED THROUGH ITS RUNNER RATHER THAN BESIDE IT. The
+      # unit tests prove the arithmetic; this proves the scheduled job actually
+      # reaches it. A policy unit-tested in isolation and called by nobody is
+      # the defect this repository keeps paying for.
+      - name: Heartbeat policy is wired to its runner
+        run: node --experimental-strip-types scripts/ops/heartbeat.mjs --selftest
       # ⚠️ THE UNWIRED-MODULE DETECTOR WAS ITSELF UNWIRED. Built, tested,
       # correct, and nothing called it in CI — exactly the defect class its
       # own header names four instances of. Reports only, never fails: a

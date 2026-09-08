@@ -1,0 +1,42 @@
+# THE ONLY CHECK THAT USES THE PRODUCT INSTEAD OF READING IT.
+#
+# ⚠️ EVERY OTHER GUARD ASKS A QUESTION ABOUT THE CODE. `generate-blueprint`
+# could not boot for two days — the deploy reported success, CI was green
+# throughout, and a person found it. Nothing was using the thing on a schedule,
+# so nothing could tell.
+#
+# ⚖️ HOURLY, AND NOT MORE OFTEN. Faster would not have found this outage sooner
+# in any way that mattered (it lasted two days), and it would cost real
+# generations against real quota. The rate that matters is the ALERT rate, and
+# that is capped in the policy, not here.
+name: heartbeat
+
+on:
+  schedule:
+    - cron: '17 * * * *'   # :17 rather than :00 — the hour boundary is crowded
+  workflow_dispatch:
+
+concurrency:
+  # ⚠️ NEVER TWO AT ONCE. Overlapping runs would race on `heartbeat_page_state`
+  # and the quieter one would win, which is precisely the failure this whole
+  # workflow exists to prevent — silence that looks like health.
+  group: heartbeat
+  cancel-in-progress: false
+
+jobs:
+  beat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      # The policy's own wiring, before spending a generation on it. If this
+      # fails the run is not fit to interpret its own results.
+      - name: Policy selftest
+        run: node --experimental-strip-types scripts/ops/heartbeat.mjs --selftest
+      - name: Configuration
+        run: node --experimental-strip-types scripts/ops/heartbeat.mjs --dry-run
+        env:
+          HEARTBEAT_VOICE_ID: ${{ secrets.HEARTBEAT_VOICE_ID }}
+          HEARTBEAT_REFERENCE_URL: ${{ secrets.HEARTBEAT_REFERENCE_URL }}
