@@ -82,11 +82,38 @@ const DOORS: ReadonlyArray<{
 
 // What the box asks for, per door. The reference door is the only one that
 // wants a link, and it is the only one that says so.
-const PROMPT: Record<EntryDoor, { eyebrow: string; placeholder: string }> = {
-  reference: { eyebrow: 'Reference link', placeholder: 'Paste a video link…' },
-  idea: { eyebrow: 'Your idea', placeholder: 'e.g. why most people warm up wrong…' },
-  product: { eyebrow: 'Your product', placeholder: 'Pick a product to talk about…' },
-  browse: { eyebrow: 'Nothing yet', placeholder: '' },
+//
+// ⚠️ WAVE 5.1 — THE IDEA BOX ASKED FOR A HEADLINE AND GOT ONE. Two rows and
+// "e.g. why most people warm up wrong…" is a shape: it tells the creator the
+// right answer is a tidy one-line topic, so that is what they typed, and the
+// writer got a topic where it could have had the person's actual thinking.
+//
+// ⚖️ THE PLACEHOLDER IS THE FEATURE, not decoration around it. Permission to be
+// unfinished has to be given explicitly — "half-thoughts, tangents and 'I don't
+// know' are all fine" — because every other text box this creator has ever used
+// punished exactly that.
+const PROMPT: Record<EntryDoor, { eyebrow: string; placeholder: string; rows: number }> = {
+  reference: { eyebrow: 'Reference link', placeholder: 'Paste a video link…', rows: 2 },
+  idea: {
+    eyebrow: 'Your idea',
+    placeholder: "Say it however it comes out — half-thoughts, tangents and “I don't know” are all fine.",
+    // ⚖️ SIX ROWS, NOT TWO. The box has to look like it expects paragraphs
+    // before anyone will type them; it grows from here as they go.
+    rows: 6,
+  },
+  product: { eyebrow: 'Your product', placeholder: 'Pick a product to talk about…', rows: 2 },
+  browse: { eyebrow: 'Nothing yet', placeholder: '', rows: 2 },
+}
+
+/** ⚠️ NOT A LIMIT AND NOT A TARGET. Nothing truncates — `buildFieldsForDoor`
+ *  passes the whole note through — so this exists only to stop a creator who is
+ *  mid-flow from wondering whether they have said too much. It appears once
+ *  they are clearly past a one-liner and never counts down toward anything. */
+const LONG_ENOUGH_TO_COUNT = 40
+
+function wordCount(text: string): number {
+  const t = text.trim()
+  return t === '' ? 0 : t.split(/\s+/).length
 }
 
 // Pull a starting reference from the acquisition funnels: Gallery's "Remix in my
@@ -269,11 +296,20 @@ export default function V2Create() {
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                rows={2}
+                rows={prompt.rows}
                 autoFocus
                 placeholder={prompt.placeholder}
-                className="mt-2.5 w-full resize-none bg-transparent text-base leading-relaxed outline-none text-cream placeholder:text-sand/35"
+                className="mt-2.5 max-h-[40vh] w-full resize-y bg-transparent text-base leading-relaxed outline-none text-cream placeholder:text-sand/35"
               />
+              {/* ⚖️ A COUNT UP, NEVER A COUNT DOWN. Nothing truncates what they
+                  type, so this must not read as a budget being spent — it is
+                  there so somebody three paragraphs in knows the box is still
+                  with them. */}
+              {door === 'idea' && wordCount(input) >= LONG_ENOUGH_TO_COUNT && (
+                <p className="mt-2 text-[11px] text-sand/50">
+                  {wordCount(input)} words — keep going if there is more.
+                </p>
+              )}
               {/* ⚠️ NAMES THE WAY OUT RATHER THAN JUST REFUSING. A creator who
                   typed prose under the reference door has not made a mistake —
                   they are in the wrong room, and the other room is one tap away. */}
