@@ -46,7 +46,7 @@ import {
   isStale, factAgeDays, SOURCE_LABEL, sourceWarrantsAttention,
   signEditUrls,
   bestSuggestion,
-  asksPersonalUse, capabilityQuestion, CAPABILITY_PROMPT, capabilityAnswerIsUsed,
+  asksPersonalUse, capabilityQuestion, CAPABILITY_PROMPT,
   capabilityFlag,
   productLifecycle, LIFECYCLE_MESSAGE,
   CAPTURE_COPY, PLATFORM_CHOICES, PRIVACY_CHOICES, RATHER_NOT_SAY, FIGURE_HINT,
@@ -140,6 +140,39 @@ const SHOW_OPTIONS: Array<{ value: Showability; label: string; askLabel: string;
  * only pick a new moment to drift.
  */
 const CAPABILITY_CHOICES = SHOW_OPTIONS.map((o) => ({ value: o.value, label: o.askLabel }))
+
+/** What to call this card when the creator has not named the product yet.
+ *
+ *  ⚠️ TWO NAMELESS PRODUCTS RENDERED TWO IDENTICAL CARDS. The card has no
+ *  heading of its own — the first thing on it is an empty `Name` box with a
+ *  placeholder — so a creator who added two things from links, before either
+ *  page was read, was looking at two blank forms and had to open the Link field
+ *  of each to tell them apart.
+ *
+ *  ⚖️ IT IS A FALLBACK LABEL, NOT A WRITE. Nothing is stored: guessing a name
+ *  into `product_entities.name` would hand the writer a title the creator never
+ *  said, which is the whole failure mode this library exists to end. */
+function cardTitle(e: ProductEntityRecord): string {
+  const name = (e.name ?? '').trim()
+  if (name !== '') return name
+  const summary = (e.creatorSummary ?? '').trim()
+  if (summary !== '') return summary.length > 60 ? `${summary.slice(0, 57)}…` : summary
+  const url = (e.productUrl ?? '').trim()
+  if (url !== '') {
+    try { return new URL(url).hostname.replace(/^www\./, '') } catch { /* not a URL yet */ }
+  }
+  return 'Not named yet'
+}
+
+/** Which capability question this stored product warrants — the SAME function
+ *  the add form asks, given the entity's own type and relationship.
+ *
+ *  ⚖️ IT ALSO SUBSUMES THE OLD `capabilityAnswerIsUsed` GATE: `capabilityQuestion`
+ *  returns null exactly where the answer would be discarded, so "should we ask"
+ *  and "which question" stop being two decisions that can disagree. */
+function capabilityQuestionFor(e: ProductEntityRecord): 'screen' | 'physical' | null {
+  return capabilityQuestion({ type: e.type as EntityType, relationship: e.relationship })
+}
 
 /** What a creator is told about a type whose answer would change nothing.
  *  ⚠️ NEVER MAKE THE CREATOR THINK ABOUT TWIN'S ARCHITECTURE: these say what
@@ -380,6 +413,13 @@ export default function ProductLibrary() {
   const [err, setErr] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
+  // ⚠️ THE CONFIRMATION WAS AT THE FOOT OF A CARD HUNDREDS OF PIXELS TALL.
+  // "Saved." existed and was reported as missing, which is the same defect as
+  // not having built it: a creator who edits the Name field looks AT the Name
+  // field, not at the bottom of the card. The key is `${id}:${field}` so the
+  // note appears beside the box that was actually edited.
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [savedKey, setSavedKey] = useState<string | null>(null)
   const [claimingId, setClaimingId] = useState<string | null>(null)
   // `addingNew` is the same attestation with no suggestion behind it.
   /** ⚠️ SETTINGS PROMISES "Add a product →" AND MUST NOT LAND SOMEBODY ON A LIST
@@ -559,6 +599,10 @@ export default function ProductLibrary() {
   }, [])
 
   async function save(id: string, edit: Parameters<typeof updateEntityPresentation>[1]) {
+    // ⚖️ THE FIELD COMES FROM THE EDIT ITSELF, so no call site has to be told
+    // its own name and none can be forgotten as fields are added.
+    const key = `${id}:${Object.keys(edit)[0] ?? ''}`
+    setSavingKey(key)
     setSavingId(id); setErr(null)
     try {
       const updated = await updateEntityPresentation(id, edit)
@@ -567,12 +611,35 @@ export default function ProductLibrary() {
       // saved a product it had not.
       if (updated) setEntities((prev) => (prev ?? []).map((e) => (e.id === id ? updated : e)))
       setSaved(id)
+      setSavedKey(key)
+      window.setTimeout(() => setSavedKey((k) => (k === key ? null : k)), 2000)
       window.setTimeout(() => setSaved((s) => (s === id ? null : s)), 2000)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not save that change.')
     } finally {
       setSavingId(null)
+      // ⚠️ IN `finally`, NOT AFTER THE AWAIT. A failed save that leaves the box
+      // saying "Saving…" for ever is a worse lie than no note at all.
+      setSavingKey((k) => (k === key ? null : k))
     }
+  }
+
+  /** The save state of ONE field, rendered beside that field.
+   *
+   *  ⚠️ THE CARD ALREADY HAD "Saving… / Saved.", at its foot. It was reported
+   *  as a missing save confirmation anyway, and that report is correct: a note
+   *  the creator cannot see while looking at the box they edited is not a
+   *  confirmation. Same state, put where the eye already is.
+   *
+   *  ⚖️ IT RENDERS AN EMPTY, FIXED-HEIGHT LINE WHEN THERE IS NOTHING TO SAY, so
+   *  the fields below do not jump when a save lands. */
+  function fieldNote(id: string, field: string) {
+    const key = `${id}:${field}`
+    return (
+      <p className="mt-1 h-4 text-xs text-stone" data-testid={`save-note-${field}`}>
+        {savingKey === key ? 'Saving…' : savedKey === key ? 'Saved.' : ''}
+      </p>
+    )
   }
 
   async function claim(s: ProductSuggestion | null, a: {
@@ -791,7 +858,17 @@ export default function ProductLibrary() {
             show about each one.
           </p>
         </div>
-        {!addingNew && (
+        {/* ⚠️ ONE ADD CONTROL ON SCREEN AT A TIME, AND THERE WERE THREE.
+            Header, empty state, and a mid-page "Add another product" all opened
+            the same dialog: an empty library showed two identical primary
+            buttons, and a stocked one showed two more. Two buttons doing one
+            thing is not twice the affordance — it is a creator wondering what
+            the difference is.
+
+            ⚖️ THE EMPTY STATE KEEPS ITS OWN, because there the button belongs
+            beside the paragraph explaining why the library is empty. So the
+            header's appears only once there is a list for it to sit above. */}
+        {!addingNew && entities.length > 0 && (
           <button
             type="button"
             className="btn-gradient shrink-0 rounded-lg px-3 py-1.5 text-sm"
@@ -897,14 +974,14 @@ export default function ProductLibrary() {
         </div>
       )}
 
-      {tab === 'live' && entities.length > 0 && !addingNew && (
-        <button
-          type="button"
-          className="rounded-lg border border-white/15 px-3 py-1.5 text-sm"
-          onClick={() => setAddingNew(true)}
-        >Add another product</button>
-      )}
+      {/* ⚖️ THE THIRD ADD BUTTON LIVED HERE, between the tabs and the list,
+          duplicating the header's. Removed rather than relabelled: renaming one
+          of two identical actions only makes the creator look for the
+          difference harder. */}
 
+      {/* ⚠️ ONE NOTE, RENDERED WHERE THE EDIT HAPPENED. Declared here rather
+          than inside the map so every field gets the identical wording — the
+          card already carries two near-duplicate sentences that drifted. */}
       {(tab === 'live' ? entities : []).map((e) => (
         <section key={e.id} className="rounded-xl border border-white/10 p-4">
           {/* ── WHERE THIS ONE IS, IN ONE LINE ───────────────────────────
@@ -917,8 +994,64 @@ export default function ProductLibrary() {
               ⚖️ ONE SENTENCE FROM THE SHARED MAP, never a second copy. The
               state and the words it renders cannot drift apart because there
               is only one of each. */}
+          {/* ⚠️ REPORTED AS "no option to remove a product or edit it", AND BOTH
+              EXIST. Removal has shipped since #355 — as `text-xs text-stone
+              underline` at the foot of a card that runs the height of several
+              screens — and every field is editable with nothing on the card
+              saying so. A control a creator cannot find is, to them, a control
+              nobody built, so the fix is discoverability, not a second button.
+
+              ⚖️ ONE TRIGGER, MOVED — NOT ADDED. The card already carries two
+              add buttons and two capability questions; answering this report
+              with a second remove control would make the same mistake again. */}
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">{cardTitle(e)}</h2>
+              <p className="mt-0.5 text-xs text-stone">
+                {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
+              </p>
+            </div>
+            {removingId !== e.id && (
+              <button
+                type="button"
+                className="shrink-0 rounded-lg border border-white/15 px-2.5 py-1 text-xs"
+                onClick={() => setRemovingId(e.id)}
+              >Archive or remove</button>
+            )}
+          </div>
+          {/* ⚖️ THE CONFIRMATION SITS UNDER THE BUTTON THAT OPENED IT. It used
+              to live in the footer while its trigger moved to the header, which
+              would put the question a screen away from the click that asked it. */}
+          {removingId === e.id && (
+            <div className="mb-3 rounded-lg border border-white/10 p-3">
+              <span className="text-xs">
+                <span className="text-sand">
+                  Archiving stops Twin using it in new videos; your existing scripts keep
+                  their record of it. Removing deletes it entirely.
+                </span>
+                <button
+                  type="button"
+                  className="ml-2 font-medium"
+                  onClick={() => void archive(e.id)}
+                >Archive</button>
+                <button
+                  type="button"
+                  className="ml-2 text-coral"
+                  onClick={() => void remove(e.id)}
+                >Delete for good</button>
+                <button
+                  type="button"
+                  className="ml-2 text-stone"
+                  onClick={() => setRemovingId(null)}
+                >Keep</button>
+              </span>
+            </div>
+          )}
+          {/* ⚠️ THE EDIT AFFORDANCE, SAID IN WORDS. These are plain boxes that
+              save on blur; nothing on the card told a creator either half of
+              that, so "there is no way to edit it" is what the screen taught. */}
           <p className="mb-3 text-xs text-stone">
-            {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
+            Everything below can be changed — type in a box and it saves when you click away.
           </p>
 
           <label className="block text-xs font-medium uppercase tracking-wide text-stone">
@@ -933,6 +1066,7 @@ export default function ProductLibrary() {
               if (v !== (e.name ?? '')) void save(e.id, { name: v || null })
             }}
           />
+          {fieldNote(e.id, 'name')}
 
           {/* ⚠️ COLLECTED ONCE AND THEN UNREACHABLE. The add form asks "In one
               line, what is it and who is it for?" and stores it; this card never
@@ -963,6 +1097,7 @@ export default function ProductLibrary() {
               if (v !== (e.creatorSummary ?? '')) void save(e.id, { creatorSummary: v || null })
             }}
           />
+          {fieldNote(e.id, 'creatorSummary')}
           <p className="mt-1 text-xs text-stone">
             Used if the page cannot be read — Twin will not leave this product with nothing.
           </p>
@@ -1032,6 +1167,7 @@ export default function ProductLibrary() {
               That does not look like a full link. It should start with https://
             </p>
           )}
+          {fieldNote(e.id, 'productUrl')}
 
           {/* ⚠️ ONLY FOR AN AFFILIATE, AND THE FIELD EXISTED BEFORE THE BOX DID.
               `affiliate_url` has been on every entity since the entity contract
@@ -1088,12 +1224,21 @@ export default function ProductLibrary() {
               anyway spends a creator's attention on an answer we throw away,
               which is the founding defect of this rebuild in miniature. They are
               told the fact instead. */}
-          {capabilityAnswerIsUsed(e.type as EntityType) ? (
+          {/* ⚠️ TWO DERIVATIONS OF ONE RULE, HELD TOGETHER BY NOTHING. The add
+              form asked `capabilityQuestion(...)` which branch to show; this
+              card decided for itself with `type === 'PHYSICAL_PRODUCT' ?
+              'physical' : 'screen'`. Enumerated 2026-09-08 over every
+              EntityType × EntityRelationship, the two agree TODAY — so this is
+              not a live wrong answer, it is the shape that produces one later,
+              because nothing makes the copy follow when the authority changes.
+
+              ⚖️ SO THE CARD ASKS THE AUTHORITY, and a parity test walks the
+              whole product to keep it that way. `relationship` is passed
+              because `capabilityQuestion` reads it. */}
+          {capabilityQuestionFor(e) !== null ? (
             <fieldset className="mt-4">
               <legend className="text-xs font-medium uppercase tracking-wide text-stone">
-                {CAPABILITY_PROMPT[
-                  e.type === 'PHYSICAL_PRODUCT' ? 'physical' : 'screen'
-                ]}
+                {CAPABILITY_PROMPT[capabilityQuestionFor(e)!]}
               </legend>
               <div className="mt-2 space-y-1">
                 {SHOW_OPTIONS.map((o) => (
@@ -1193,10 +1338,23 @@ export default function ProductLibrary() {
                     reuses it rather than inventing a second mechanism, and the
                     link box is pre-filled with the URL already on file so a retry
                     is one tap, not a re-paste. */}
+                {/* ⚠️ IT TOLD A CREATOR THEIR SCRIPTS WERE GUESSING WHILE THEIR
+                    OWN SENTENCE SAT IN THE BOX ABOVE. `creator_summary` is not
+                    decoration: `generate-blueprint` reads it at index.ts:6204
+                    and writes it into the prompt when the page has not been
+                    read. So "we know nothing about this" was false for exactly
+                    the creator who had already answered — the baker with no
+                    website, told twice to paste a URL.
+
+                    ⚖️ THE LINK IS STILL OFFERED, because a read page carries
+                    more than one line can. What changes is the claim about what
+                    Twin currently knows, which was simply untrue. */}
                 <p className="mt-1 text-sm text-sand">
                   {productLifecycle(e, photoPathsOf(e).length) === 'IMPORT_FAILED'
                     ? 'That read did not finish. Press Read the page above to try the same link again, or change it first.'
-                    : 'Add a link above and press Read the page, so your scripts can say what it actually does instead of guessing.'}
+                    : (e.creatorSummary ?? '').trim() !== ''
+                      ? 'Twin will use the line you wrote above. Add a link and press Read the page if you want it to learn more than that line.'
+                      : 'Add a link above and press Read the page, so your scripts can say what it actually does instead of guessing.'}
                 </p>
                 {/* ⚖️ THE SECOND LINK BOX LIVED HERE AND IS GONE. It is the
                     Link field above, which now carries the button — so this
@@ -1275,46 +1433,14 @@ export default function ProductLibrary() {
             </p>
           </div>
 
-          <div className="mt-3 flex items-center justify-between">
+          {/* ⚖️ THE CARD-LEVEL NOTE STAYS FOR THE SAVES THAT ARE NOT A FIELD —
+              the photo and capability writes below, which have no box to sit
+              beside. Field edits now report next to the field they changed. */}
+          <div className="mt-3">
             <p className="h-4 text-xs text-stone">
-              {savingId === e.id ? 'Saving…' : saved === e.id ? 'Saved.' : ''}
+              {savingKey === null && savingId === e.id ? 'Saving…'
+                : savedKey === null && saved === e.id ? 'Saved.' : ''}
             </p>
-            {removingId === e.id ? (
-              // ⚖️ TWO WAYS OUT, AND THEY ARE NOT THE SAME ACT. Archiving
-              // withdraws the product from FUTURE videos and keeps the record,
-              // so scripts already written about it still resolve what they
-              // referred to. Removing destroys it. The spec prefers archive
-              // wherever scripts may already reference the entity, which is
-              // every entity that has been used even once — so archive leads and
-              // delete is the smaller, explicitly destructive choice.
-              <span className="text-xs">
-                <span className="text-sand">
-                  Archiving stops Twin using it in new videos; your existing scripts keep
-                  their record of it. Removing deletes it entirely.
-                </span>
-                <button
-                  type="button"
-                  className="ml-2 font-medium"
-                  onClick={() => void archive(e.id)}
-                >Archive</button>
-                <button
-                  type="button"
-                  className="ml-2 text-coral"
-                  onClick={() => void remove(e.id)}
-                >Delete for good</button>
-                <button
-                  type="button"
-                  className="ml-2 text-stone"
-                  onClick={() => setRemovingId(null)}
-                >Keep</button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="text-xs text-stone underline"
-                onClick={() => setRemovingId(e.id)}
-              >Archive or remove</button>
-            )}
           </div>
         </section>
       ))}

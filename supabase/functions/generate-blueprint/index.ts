@@ -4573,7 +4573,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string> }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string }
   try {
     body = await req.json()
   } catch {
@@ -4845,7 +4845,34 @@ Deno.serve(async (req: Request) => {
   // than a date comparison: live is the ABSENCE of a withdrawal, not a date
   // range, and a comparison would need a clock this function has no reason to
   // trust.
-  const { data: ownedEntity, error: ownedEntityErr } = await admin
+  // ⚠️ THE CREATOR'S ANSWER, WHEN THE CARD ASKED FOR ONE. Until this existed
+  // the choice had nowhere to travel: `selected_product_id` was WRITTEN to the
+  // generation row and never accepted as INPUT, so a creator who owns three
+  // things could not tell the writer which this video is about, and the writer
+  // read the oldest. Three of five real accounts own two things.
+  //
+  // ⚖️ VALIDATED AGAINST THEIR OWN LIBRARY, NEVER TRUSTED. The id arrives from
+  // a client, so the same owner / voice / relationship / archived filters
+  // apply — an id that is not theirs matches nothing and falls through to the
+  // stopgap rather than reaching another creator's product. `selectProduct` in
+  // packages/shared states this rule; a parity test pins the two together.
+  const requestedProductId = typeof body.selected_product_id === 'string'
+    ? body.selected_product_id.trim() : ''
+  let chosenEntity: unknown = null
+  if (requestedProductId !== '') {
+    const { data: picked } = await admin
+      .from('product_entities')
+      .select('id, name, creator_summary, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
+      .eq('owner_id', ownerId)
+      .eq('voice_id', voice?.id ?? null)
+      .eq('id', requestedProductId)
+      .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
+      .is('archived_at', null)
+      .maybeSingle()
+    chosenEntity = picked ?? null
+  }
+
+  const { data: stopgapEntity, error: ownedEntityErr } = await admin
     .from('product_entities')
     // ⚠️ `id` IS SELECTED BECAUSE IT IS READ. `selected_product_id` is written
     // from `ownedEntity?.id` further down, and this select omitted the column —
@@ -4885,6 +4912,18 @@ Deno.serve(async (req: Request) => {
     console.error('product_entities lookup failed', ownedEntityErr)
     return json({ error: 'We could not read your product details. Please try again.' }, 503)
   }
+
+  // ⚖️ THE CREATOR'S ANSWER OUTRANKS THE STOPGAP, and only ever narrows. When
+  // they picked one it is used; when they did not, behaviour is exactly what it
+  // was, so an older client is unaffected. Nothing here lets the WRITER pick
+  // among several — that entitlement is what `entryDoor.ts` clamps against.
+  //
+  // ⚠️ REBOUND ONTO THE ORIGINAL NAME ON PURPOSE. `ownedEntity` is read at
+  // dozens of sites — grounding, claims, disclosure, the audit row. Introducing
+  // a second name and updating "the ones that matter" is how one reader keeps
+  // the old value and a script cites a product the creator did not pick. One
+  // definition, no site missed.
+  const ownedEntity = chosenEntity ?? stopgapEntity
 
   // ⚠️ THE LIBRARY IS PLURAL AND THE GROUNDING CHECK NEVER SAW IT. The query
   // above answers ONE question — "what does this voice sell" — and it is scoped
@@ -4927,6 +4966,32 @@ Deno.serve(async (req: Request) => {
     // empty string anyway — dropping them here keeps the logged count honest.
     .filter((e) => e.name.trim() !== '')
 
+  // ⚠️ THE WRITER MAY ONLY NAME WHAT IT WAS GIVEN, AND THIS IS WHERE IT WAS NOT.
+  //
+  // MEASURED 2026-09-08: a creator asked for a non-commercial video about her
+  // own opinion, and three of four idea-mode runs named a sponsor she never
+  // mentioned. One opened "Stop buying the viral Medicube pads before you hear
+  // this", asserted "aggressive physical pads will make redness worse" about a
+  // product her library records she has NEVER USED, invented a price, and
+  // carried no disclosure — on a paid relationship.
+  //
+  // The path was this loop. `libraryRows` is EVERY entity the owner has — the
+  // owned-entity query above filters `relationship in (OWN_PRODUCT,
+  // OWN_SERVICE)`, this one filters nothing — and `entitySay` hands the writer
+  // each one's NAME and FACTS. `claimRulesFor` already says a product with
+  // `personalUse !== 'CONFIRMED'` supports no experience claim; nothing applied
+  // it here.
+  //
+  // ⚖️ GIVEN, NOT OWNED, AND NULL MEANS NAME NOTHING. Most videos sell nothing.
+  // A writer that reaches into the library and picks is inferring commercial
+  // intent from nothing the creator said — the entitlement `entryDoor.ts`
+  // clamps against, defeated from the inside. See `entitiesTheWriterMayName` in
+  // packages/shared; a parity test pins this copy to it.
+  const givenEntityId = (ownedEntity as { id?: unknown } | null)?.id
+  const nameableEntityIds = new Set<string>(
+    typeof givenEntityId === 'string' && givenEntityId.trim() !== ''
+      ? [givenEntityId.trim()] : [])
+
   // THE SAME ROWS, IN THE TWO SHAPES THE RESOLVER STACK ASKS FOR.
   //
   // ⚖️ `archivedAt: null` IS A FACT ABOUT THIS READ, NOT AN ASSUMPTION. The
@@ -4942,7 +5007,13 @@ Deno.serve(async (req: Request) => {
       relationship: String(e.relationship ?? 'NONE'),
       archivedAt: null,
     }
-  }).filter((e) => e.id !== '')
+  })
+    // ⚖️ THE SAME GATE ON THE RESOLVER'S INPUT. `resolveTemplate` assigns an
+    // entity to a beat by TYPE — a deterministic pick, but still a pick among
+    // the creator's products that nobody asked for. Filtering here is what
+    // makes "the writer never selects a product" true of the resolver too,
+    // rather than only of the model.
+    .filter((e) => e.id !== '' && nameableEntityIds.has(e.id))
 
   // ⚠️ ONLY WHAT THE CREATOR ALREADY CONFIRMED. `trust === 'usable'` is the same
   // gate the product-facts block above applies, and it is the whole difference
@@ -4956,6 +5027,8 @@ Deno.serve(async (req: Request) => {
     const id = String(e.id ?? '')
     const name = String(e.name ?? '').trim()
     if (id === '' || name === '') continue
+    // The gate. An entity nobody chose contributes nothing the writer can say.
+    if (!nameableEntityIds.has(id)) continue
     const facts = (Array.isArray(e.knowledge) ? e.knowledge : [])
       .filter((f) => (f as { trust?: unknown })?.trust === 'usable')
       .map((f) => {
@@ -6110,7 +6183,24 @@ Deno.serve(async (req: Request) => {
         ? '\n- BUT THEY HAVE NOT CONFIRMED THEY USE IT AS A CUSTOMER DOES. Write no claim about being its USER — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Making it is not the same as living with it.'
         // Sharpens the same rule the substance check enforces per beat: nothing
         // licenses a personal history except the creator being on record for it.
-        : '\n- THE CREATOR HAS NOT CONFIRMED THEY PERSONALLY USE THIS. Write NO first-person usage claim about it — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Talk about what it does, never about what it did for them.')
+        : '\n- THE CREATOR HAS NOT CONFIRMED THEY PERSONALLY USE THIS. Write NO first-person usage claim about it — no "I\'ve been using this for months", "I switched to it", "it changed my workflow".')
+      // ⚠️⚠️ THE SENTENCE THAT USED TO END THE LINE ABOVE READ "Talk about what
+      // it does, never about what it did for them." IT LICENSED THE FAILURE.
+      //
+      // MEASURED 2026-09-08: a creator with a sponsored pad she has never used
+      // got "aggressive physical pads will make redness worse" — an outcome
+      // asserted about a product nobody in the chain has touched. The model was
+      // not disobeying. It was told to talk about what the product does, and
+      // the only rule beside it forbade first-person history.
+      //
+      // ⚖️ "WHAT IT IS" AND "WHAT IT DOES TO A PERSON" ARE DIFFERENT CLAIMS.
+      // Composition, format, price, who it is for — those are FACTS, already
+      // governed by `productFacts` and `marketingClaims`. An OUTCOME on a body
+      // or a life needs evidence, and for an unused product there is none: not
+      // the creator's experience (they have none) and not the vendor's word
+      // (that is `marketingClaims`, and it is attributed or forbidden, never
+      // the creator's own voice).
+      claimLines.push('\n- AND WRITE NO OUTCOME CLAIM ABOUT IT AT ALL. Nobody in this script has used it, so the script may not say what it does TO or FOR a person — no results, no effects, no "it will", "it won\'t", "it makes", "it fixes", "it causes", no better-or-worse than anything else. State what it IS — what it contains, what it costs, who it is for, what the maker says it is for, attributed — and stop there. An outcome nobody has observed is invented no matter how ordinary it sounds.')
     }
     if (disclosureRequired) {
       // A property of the entity, not a pacing decision the writer may weigh.
