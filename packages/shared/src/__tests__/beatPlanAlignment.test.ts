@@ -182,9 +182,12 @@ describe('an absent target stays absent', () => {
     }
   })
 
-  it('does not pace the fallback CTA to a plan written for other words', () => {
-    // With no CTA-labelled beat, the ending is the literal 'Follow for more' —
-    // a sentence nothing planned, so nothing may claim to have paced it.
+  it('does not pace the creator\'s own ending to a plan written for other words', () => {
+    // ⚠️⚠️ THIS USED TO ASSERT THE LITERAL 'Follow for more', WHICH IS GONE on
+    // the owner's ruling — an ending nobody wrote is what produced the report
+    // it was defending. The PROPERTY is untouched and is the point: an ending
+    // that came from outside the script has no beat, so nothing may claim to
+    // have paced it.
     //
     // ⚖️ IT HOLDS BECAUSE THERE IS NO BEAT, not because the words are checked.
     // An earlier version of the adapter also tested the line for emptiness;
@@ -202,9 +205,10 @@ describe('an absent target stays absent', () => {
           { beat: 'setup', target_sec: '11', scene_type: 'talking_head', proof: 'story' },
         ],
       }),
+      creatorCtas: ['in bio!!'],
     })
     const last = rs.scenes[rs.scenes.length - 1]
-    expect(last.dialogue).toBe('Follow for more')
+    expect(last.dialogue).toBe('in bio!!')
     expect(last.target_sec).toBeUndefined()
   })
 })

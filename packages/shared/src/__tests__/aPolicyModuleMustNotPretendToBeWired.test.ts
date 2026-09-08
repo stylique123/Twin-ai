@@ -92,7 +92,11 @@ describe('cta.ts must not describe itself as wired when it is not', () => {
   // what turns that from a fact I happened to find into one the next person is
   // told.
   const KNOWN_DUPLICATES: Readonly<Record<string, readonly string[]>> = Object.freeze({
-    'Follow for more': Object.freeze(['packages/shared/src/recordingScriptAdapter.ts']),
+    // ⚖️ THE DUPLICATE IS PAID OFF, NOT RE-REGISTERED. `recordingScriptAdapter`
+    // carried its own `ctaLine || 'Follow for more'` and no longer writes any
+    // default ending at all, so cta.ts is once again the ONLY definition. An
+    // entry left here would assert a duplicate that does not exist, which is
+    // how a debt register outlives its debt.
   })
 
   it('no CTA sentence gains a new definition outside cta.ts', () => {
