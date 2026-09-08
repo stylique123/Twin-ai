@@ -152,7 +152,7 @@ describe('the capability question offers the answer a creator may honestly have'
     const { default: ProductLibrary } = await import('./ProductLibrary')
     render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Add another product' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a product' }))
     // The question appears once a type and relationship make one apply.
     fireEvent.click(await screen.findByRole('button', {
       name: 'A physical product (food, handmade, apparel — anything you ship or hand over)' }))

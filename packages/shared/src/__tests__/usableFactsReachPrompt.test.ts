@@ -20,8 +20,16 @@ const API = readFileSync(join(REPO, 'packages/shared/src/api.ts'), 'utf8')
 describe('the prompt sees usable facts and nothing else', () => {
   it('selects the knowledge column at all', () => {
     // A filter over a column nobody selected is a filter over undefined.
-    const read = EDGE.slice(EDGE.indexOf('const { data: ownedEntity'))
-    expect(read.slice(0, read.indexOf('.maybeSingle()'))).toMatch(/knowledge/)
+    // ⚠️ ANCHOR EXISTENCE IS ASSERTED FIRST. `indexOf` returns -1 for a string
+    // that is gone, and `slice(-1)` is the last character — so a rename turns
+    // this into a test that fails for the wrong reason, or passes for one.
+    // Both reads of the table must carry `knowledge`, so both are checked.
+    for (const anchor of ['const { data: stopgapEntity', 'const requestedProductId']) {
+      const at = EDGE.indexOf(anchor)
+      expect(at, `${anchor} not found — did it get renamed?`).toBeGreaterThan(-1)
+      const read = EDGE.slice(at)
+      expect(read.slice(0, read.indexOf('.maybeSingle()')), anchor).toMatch(/knowledge/)
+    }
   })
 
   it('filters on the STORED trust, and only on `usable`', () => {
