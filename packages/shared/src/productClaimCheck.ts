@@ -199,13 +199,14 @@ export function describeProductClaimGap(g: ProductClaimGap): string {
     + ` Use a figure the product record holds, drop the number, or have the creator confirm it.`
 }
 
-/** ⚠️ SAME THREE WAYS OUT, DIFFERENT FACT: here a row DOES disagree, so the
- *  first of the three is the one to take. */
-export function describeProductClaimContradiction(g: ProductClaimGap): string {
-  return `Beat ${g.beat} states ${g.value} about the product, and the stored product facts carry a`
-    + ` different figure in that unit. Use the figure the product record holds, drop the number, or`
-    + ` have the creator correct the record.`
-}
+// ⚠️ A `describeProductClaimContradiction` SENTENCE LIVED HERE AND NOTHING
+// RENDERED IT. The two findings are COUNTED, not enforced — that is this
+// change's whole discipline — so there is no surface yet that shows a creator
+// why a figure was flagged, and a message written for a screen that does not
+// exist is the "written and never read" defect this file exists to end. It goes
+// when there is somewhere to put it; `check_symbol_readers` caught it on the
+// merge with main, and the honest answer to that guard is to delete, not to
+// register.
 
 /** ⚖️ EXPORTED SO A CALLER CAN NORMALISE BEFORE COMPARING — the same function
  *  both sides of this check use, so nobody re-implements "50k is 50,000". */

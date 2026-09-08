@@ -17,7 +17,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   productClaimFindings, beatSourcesProduct, supportedValues,
-  describeProductClaimGap, describeProductClaimContradiction, PRODUCT_SUBSTANCE,
+  describeProductClaimGap, PRODUCT_SUBSTANCE,
 } from '../productClaimCheck'
 
 const FACTS = [
@@ -64,11 +64,14 @@ describe('a figure must come from the product record', () => {
     expect(productClaimFindings([beat('20k users use it.')], FACTS, NAMES).contradicted).toHaveLength(1)
   })
 
-  it('names the figure and the ways out, differently for each finding', () => {
-    const { contradicted } = productClaimFindings([beat('It is $29 a month.')], FACTS, NAMES)
-    expect(describeProductClaimContradiction(contradicted[0])).toMatch(/different figure in that unit/)
+  it('names the figure and the ways out', () => {
+    // ⚠️ ONE SENTENCE, NOT TWO. A separate contradiction message was written and
+    // deleted before it shipped: the findings are COUNTED, not enforced, so
+    // nothing renders a reason to a creator yet, and a message for a screen
+    // that does not exist is exactly the defect this file is about.
     const { unsupported } = productClaimFindings([beat('It cuts breakouts by 40%.')], FACTS, NAMES)
     expect(describeProductClaimGap(unsupported[0])).toMatch(/no stored product fact carries that figure/)
+    expect(describeProductClaimGap(unsupported[0])).toMatch(/drop the number|confirm it/)
   })
 })
 
