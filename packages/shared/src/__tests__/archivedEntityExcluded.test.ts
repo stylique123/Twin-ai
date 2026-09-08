@@ -25,8 +25,21 @@ const MIGRATION = readFileSync(
 
 describe('generation never sees a withdrawn entity', () => {
   it('the OWNED-entity read filters archived rows', () => {
-    const read = EDGE.slice(EDGE.indexOf('const { data: ownedEntity'))
+    // ⚠️ ANCHORED ON `stopgapEntity`, AND THE RENAME IS THE POINT. The
+    // oldest-first read is now the FALLBACK: a creator who picks a product
+    // gets `chosenEntity`, and `ownedEntity` is the rebinding of the two. Both
+    // reads must filter archived rows, so both are asserted — checking only
+    // the fallback would let a withdrawn product reach a script through the
+    // path a creator actually chooses.
+    const at = EDGE.indexOf('const { data: stopgapEntity')
+    expect(at, 'stopgapEntity read not found — did it get renamed?').toBeGreaterThan(-1)
+    const read = EDGE.slice(at)
     expect(read.slice(0, read.indexOf('.maybeSingle()'))).toMatch(/\.is\('archived_at', null\)/)
+
+    const chosenAt = EDGE.indexOf('const requestedProductId')
+    expect(chosenAt, 'chosen-product read not found').toBeGreaterThan(-1)
+    const chosen = EDGE.slice(chosenAt)
+    expect(chosen.slice(0, chosen.indexOf('.maybeSingle()'))).toMatch(/\.is\('archived_at', null\)/)
   })
 
   it('the LIBRARY read filters archived rows too', () => {

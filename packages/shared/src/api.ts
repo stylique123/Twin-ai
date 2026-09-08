@@ -261,6 +261,19 @@ export interface GenerateInput {
    *  them retries the same build; the creator-stable ones are persisted so the
    *  question is never asked twice, while goal/angle/cta stay per-video. */
   readiness_answers?: Record<string, string>
+  /**
+   * Which product THIS video is about, when the creator owns more than one.
+   *
+   * ⚠️ THE WRITER MUST NEVER PICK. `generate-blueprint` reads the OLDEST owned
+   * product as a labelled stopgap; three of five real accounts own two things,
+   * so a script can be about the wrong one. Choosing among them server-side
+   * would infer commercial intent from nothing the creator said — the
+   * entitlement `entryDoor.ts` keeps a mutation-tested clamp against. So the
+   * card asks, and the answer travels here. See `selectProduct`.
+   *
+   * Absent means "not asked or not answered", never "no product".
+   */
+  selected_product_id?: string
   reference_url: string
   reference_note: string
   fidelity: 'close' | 'balanced' | 'loose'

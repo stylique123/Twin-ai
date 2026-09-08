@@ -13,5 +13,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "eval": "node eval/run.mjs",
     "assess-references": "node --experimental-strip-types scripts/assess-references.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.21.5"
   }
 }
