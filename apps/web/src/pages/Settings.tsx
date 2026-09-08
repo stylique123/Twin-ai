@@ -83,8 +83,15 @@ export default function Settings() {
   // for a save that never attempted one, and those need different sentences: one
   // is worth retrying and the other never will be.
   const [ctaErr, setCtaErr] = useState<string | null>(null)
+  // ⚠️ `defaultCta === null` MEANT TWO OPPOSITE THINGS AND THE ROW PICKED THE
+  // WRONG ONE. It is null while the voice list is in flight AND after that read
+  // fails, because the catch below never touched it — so a failed load rendered
+  // "Loading your usual ending…" forever, beside a button disabled forever.
+  // Reported as "the CTA field doesn't accept input": the input was fine, the
+  // door never unlocked. Unknown is not a default in either direction.
+  const [ctaLoadFailed, setCtaLoadFailed] = useState(false)
   const loadVoice = useCallback(() => {
-    setVoiceErr(false); setVoiceLoading(true)
+    setVoiceErr(false); setVoiceLoading(true); setCtaLoadFailed(false)
     listBrandVoices()
       .then((vs) => {
         const def = vs.find((v) => v.is_default && v.status === 'ready') ?? vs.find((v) => v.status === 'ready') ?? vs[0] ?? null
@@ -107,7 +114,10 @@ export default function Settings() {
           }))
         }
       })
-      .catch(() => setVoiceErr(true)) // surface + offer retry — never a silent empty DNA
+      // ⚖️ THE CTA IS MARKED UNREAD, NOT EMPTY. Defaulting it to '' here would
+      // be worse than the dead button: the creator could then "save" over an
+      // answer we never managed to read.
+      .catch(() => { setVoiceErr(true); setCtaLoadFailed(true) }) // surface + offer retry — never a silent empty DNA
       .finally(() => setVoiceLoading(false))
   }, [])
   useEffect(() => { loadVoice() }, [loadVoice])
@@ -576,6 +586,8 @@ export default function Settings() {
             productDna={productDna}
             brandKit={kitStatus}
             cta={defaultCta}
+            ctaLoadFailed={ctaLoadFailed}
+            onCtaRetry={loadVoice}
             onCtaChange={setDefaultCta}
             onCtaCommit={(v) => void saveCta(v)}
             ctaSaved={ctaSaved}
@@ -1152,12 +1164,14 @@ function TeamSeats() {
  *  costs the creator nothing.
  */
 function ProfileStatus({
-  content, productDna, brandKit, cta, onCtaChange, onCtaCommit, ctaSaved, ctaErr,
+  content, productDna, brandKit, cta, ctaLoadFailed, onCtaRetry, onCtaChange, onCtaCommit, ctaSaved, ctaErr,
 }: {
   content: ContentProfile
   productDna: ProductDnaStatus
   brandKit: BrandKitStatus
   cta: string | null
+  ctaLoadFailed: boolean
+  onCtaRetry: () => void
   onCtaChange: (v: string) => void
   onCtaCommit: (v: string) => void
   ctaSaved: boolean
@@ -1211,7 +1225,12 @@ function ProfileStatus({
           <div className="min-w-0">
             <p className="text-sm text-cream">What viewers should do after your videos</p>
             <p className="mt-1 truncate text-sm text-sand">
-              {!ctaLoaded
+              {ctaLoadFailed
+                // ⚠️ NEVER "LOADING" AFTER A FAILED READ. That sentence is a
+                // claim about the future, and it was false — nothing was still
+                // coming. Plain English, and it names what to do next.
+                ? 'We could not load your usual ending.'
+                : !ctaLoaded
                 ? 'Loading your usual ending…'
                 : ctaText
                 ? `“${ctaText}”`
@@ -1221,12 +1240,24 @@ function ProfileStatus({
                 : 'No usual ending — Twin writes one to fit each video.'}
             </p>
           </div>
+          {/* ⚖️ RETRY, NOT A DEAD BUTTON. Editing stays closed while the stored
+              answer is unread — saving from here would overwrite something we
+              never saw — but a creator is given the one action that can fix it
+              instead of a greyed rectangle with no explanation. */}
+          {ctaLoadFailed ? (
+            <button
+              type="button"
+              onClick={onCtaRetry}
+              className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream"
+            >Try again</button>
+          ) : (
           <button
             type="button"
             disabled={cta === null}
             onClick={() => { setCtaDraft(ctaText); setCtaOpen(true) }}
             className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream disabled:opacity-40"
           >{ctaText ? 'Edit' : 'Add one'}</button>
+          )}
         </div>
         {ctaSaved && <p className="mt-2 text-xs text-teal">Saved</p>}
         {ctaErr !== null && <p className="mt-2 text-xs text-coral">{ctaErr}</p>}
