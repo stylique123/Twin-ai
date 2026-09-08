@@ -11,6 +11,7 @@ import {
 } from '@twinai/shared'
 import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
 import { readOnboardingDraft, profileAnswersOf } from '../lib/onboardingDraft'
+import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
@@ -278,6 +279,18 @@ export default function Settings() {
   // what it costs, and who you are.
   const [tab, setTab] = useState<'twin' | 'brand' | 'plan' | 'account'>('twin')
   const nav = useNavigate()
+  // ⚖️ THE LINK UNDER EVERY SCRIPT POINTS AT `#my-twin`, AND A TABBED PAGE DOES
+  // NOT HONOUR A HASH BY ITSELF. Without this the creator lands on Settings and
+  // has to go looking for the thing the link named — which is exactly the
+  // "complete feature, zero rows" failure the move is betting against.
+  useEffect(() => {
+    if (window.location.hash !== '#my-twin') return
+    setTab('twin')
+    const t = setTimeout(() => {
+      document.getElementById('my-twin')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    }, 60)
+    return () => clearTimeout(t)
+  }, [])
   /** ⚖️ COLLAPSED BY DEFAULT, AND IT IS THE SAME RECORD EITHER WAY. Folding is
    *  not hiding: the summary answers "does this sound like me", which is the
    *  question people actually open this page with. */
@@ -577,6 +590,27 @@ export default function Settings() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* ── MY TWIN: THE QUESTION THAT USED TO SIT UNDER THE SCRIPT ────────
+            ⚠️ IT MOVED HERE, IT WAS NOT DELETED. The script screen now carries a
+            line and a link (`TwinKnowledgeLink`) instead of a textarea, so the
+            surface that just delivered a script no longer asks for homework. The
+            asking still has to happen somewhere, and this is the place a creator
+            arrives at having chosen to teach it.
+            ⚖️ THE ANCHOR IS PART OF THE FEATURE, not decoration: the link points
+            at `#my-twin`, and a link that lands on a page without finding what it
+            named is the same broken promise as no link at all. */}
+        {tab === 'twin' && (
+        <Reveal delay={0.03}>
+          <section id="my-twin" className="glass mt-5 p-5 sm:p-6 scroll-mt-24">
+            <p className="eyebrow !text-sand">My Twin</p>
+            <p className="mt-1.5 mb-4 text-xs text-stone">
+              One question at a time. Only you can answer these — your videos cannot.
+            </p>
+            <CreatorQuestionCard voiceId={defaultVoiceId} />
+          </section>
+        </Reveal>
         )}
 
         {tab === 'twin' && (
