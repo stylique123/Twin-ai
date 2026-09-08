@@ -943,6 +943,31 @@ export const INTENT_QUESTIONS: readonly IntentQuestion[] = [
   },
 ]
 
+// ── WHICH QUESTIONS THIS BUILD ACTUALLY HAS ───────────────────────────────
+//
+// ⚠️ IDEA MODE WAS ASKED "HOW MUCH OF THE ORIGINAL SHOULD TWIN KEEP?" — with
+// options "Their topic, my take" and "Stay close" — about a video that does
+// not exist. Somebody who chose to build from their own idea, and pasted no
+// link, had to answer a question about somebody else's original before the
+// build would proceed, because the gate required EVERY intent question and
+// three of the four are genuinely universal.
+//
+// ⚖️ ONE NAME FOR THE RULE, BECAUSE THE CALLERS ARE TWO. The screen filters
+// the questions it asks AND the completeness gate decides what "answered"
+// means; an inline predicate in both places is a pair that drifts, which is
+// how the fidelity slider and `reference_use` came to disagree in the first
+// place (see FIX 10 in V2Create.tsx). The three creator questions are about
+// the person and are identical either way; only `reference_use` is about the
+// reference, so only it depends on there being one.
+//
+// A build with no reference leaves `reference_use` null, and `resolveFidelity`
+// already answers null with 'balanced' — the null check precedes the coercion
+// there, so nothing downstream needs a second one.
+export function intentQuestionsFor(opts: { hasReference: boolean }): readonly IntentQuestion[] {
+  if (opts.hasReference) return INTENT_QUESTIONS
+  return INTENT_QUESTIONS.filter((q) => q.field !== 'reference_use')
+}
+
 /** Every value a creator can reach on screen, including sub-options. */
 export function reachableIntentValues(field: IntentQuestion['field']): string[] {
   const q = INTENT_QUESTIONS.find((x) => x.field === field)

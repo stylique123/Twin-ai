@@ -16,7 +16,7 @@ import { TalkingHeadWarning } from '../../components/TalkingHeadWarning'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
-  INTENT_QUESTIONS, type IntentQuestion, type VideoGoal, focusForGoal,
+  INTENT_QUESTIONS, intentQuestionsFor, type IntentQuestion, type VideoGoal, focusForGoal,
   defaultVideoGoalFromContentGoals, CANONICAL_GOAL_LABELS,
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
@@ -557,7 +557,13 @@ export default function V2Building() {
         // anything been answered". The old form skipped the whole pre-check the
         // moment a single answer existed, which was correct when every question
         // was a repair and wrong now that three of them are always asked.
-        const intentAnswered = INTENT_QUESTIONS.every(
+        // ⚠️ NOT `INTENT_QUESTIONS` — see `intentQuestionsFor`. A build from
+        // the creator's own idea has no original, so requiring an answer about
+        // one held the build behind a question with no true answer.
+        const applicableQuestions = intentQuestionsFor({
+          hasReference: !!(state.reference_url || '').trim(),
+        })
+        const intentAnswered = applicableQuestions.every(
           (q) => (answersRef.current[q.field] ?? '').trim())
         if (!askQuestions && !(intentAnswered && Object.keys(answersRef.current).length)) {
           try {
@@ -619,7 +625,7 @@ export default function V2Building() {
             // ⚖️ ONLY THE ONES NOT ALREADY ANSWERED FOR THIS BUILD. A tab
             // reclaimed mid-answer restores what was picked, and re-asking it
             // would throw the creator's own answer away in front of them.
-            const unanswered = INTENT_QUESTIONS.filter(
+            const unanswered = applicableQuestions.filter(
               (q) => !(answersRef.current[q.field] ?? '').trim())
             // ⚖️ CAPPED, NOT DISCARDED. `assessReadiness` already orders these
             // by what unblocks the most, so the first is the one worth asking.
