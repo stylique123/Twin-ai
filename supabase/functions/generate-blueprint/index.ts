@@ -4897,6 +4897,32 @@ Deno.serve(async (req: Request) => {
     // empty string anyway — dropping them here keeps the logged count honest.
     .filter((e) => e.name.trim() !== '')
 
+  // ⚠️ THE WRITER MAY ONLY NAME WHAT IT WAS GIVEN, AND THIS IS WHERE IT WAS NOT.
+  //
+  // MEASURED 2026-09-08: a creator asked for a non-commercial video about her
+  // own opinion, and three of four idea-mode runs named a sponsor she never
+  // mentioned. One opened "Stop buying the viral Medicube pads before you hear
+  // this", asserted "aggressive physical pads will make redness worse" about a
+  // product her library records she has NEVER USED, invented a price, and
+  // carried no disclosure — on a paid relationship.
+  //
+  // The path was this loop. `libraryRows` is EVERY entity the owner has — the
+  // owned-entity query above filters `relationship in (OWN_PRODUCT,
+  // OWN_SERVICE)`, this one filters nothing — and `entitySay` hands the writer
+  // each one's NAME and FACTS. `claimRulesFor` already says a product with
+  // `personalUse !== 'CONFIRMED'` supports no experience claim; nothing applied
+  // it here.
+  //
+  // ⚖️ GIVEN, NOT OWNED, AND NULL MEANS NAME NOTHING. Most videos sell nothing.
+  // A writer that reaches into the library and picks is inferring commercial
+  // intent from nothing the creator said — the entitlement `entryDoor.ts`
+  // clamps against, defeated from the inside. See `entitiesTheWriterMayName` in
+  // packages/shared; a parity test pins this copy to it.
+  const givenEntityId = (ownedEntity as { id?: unknown } | null)?.id
+  const nameableEntityIds = new Set<string>(
+    typeof givenEntityId === 'string' && givenEntityId.trim() !== ''
+      ? [givenEntityId.trim()] : [])
+
   // THE SAME ROWS, IN THE TWO SHAPES THE RESOLVER STACK ASKS FOR.
   //
   // ⚖️ `archivedAt: null` IS A FACT ABOUT THIS READ, NOT AN ASSUMPTION. The
@@ -4912,7 +4938,13 @@ Deno.serve(async (req: Request) => {
       relationship: String(e.relationship ?? 'NONE'),
       archivedAt: null,
     }
-  }).filter((e) => e.id !== '')
+  })
+    // ⚖️ THE SAME GATE ON THE RESOLVER'S INPUT. `resolveTemplate` assigns an
+    // entity to a beat by TYPE — a deterministic pick, but still a pick among
+    // the creator's products that nobody asked for. Filtering here is what
+    // makes "the writer never selects a product" true of the resolver too,
+    // rather than only of the model.
+    .filter((e) => e.id !== '' && nameableEntityIds.has(e.id))
 
   // ⚠️ ONLY WHAT THE CREATOR ALREADY CONFIRMED. `trust === 'usable'` is the same
   // gate the product-facts block above applies, and it is the whole difference
@@ -4926,6 +4958,8 @@ Deno.serve(async (req: Request) => {
     const id = String(e.id ?? '')
     const name = String(e.name ?? '').trim()
     if (id === '' || name === '') continue
+    // The gate. An entity nobody chose contributes nothing the writer can say.
+    if (!nameableEntityIds.has(id)) continue
     const facts = (Array.isArray(e.knowledge) ? e.knowledge : [])
       .filter((f) => (f as { trust?: unknown })?.trust === 'usable')
       .map((f) => {
