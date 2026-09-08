@@ -326,6 +326,13 @@ export default function V2Building() {
   const state = (loc.state || {}) as BuildState
   const [active, setActive] = useState(0)
   const [pct, setPct] = useState(6)
+  // ⚠️ THE BAR KEPT CLIMBING AFTER THE REQUEST HAD ALREADY DIED. The rescue
+  // loop below spends up to ninety seconds asking whether the server finished
+  // the thing this fetch lost — a good thing to do, and for the whole of it the
+  // creator was shown a progress bar advancing through steps that were no
+  // longer happening. Progress is a claim about what is being done; once the
+  // request is gone the only honest claim is that we are checking.
+  const [rescuing, setRescuing] = useState(false)
   // True while the reference is being scraped/transcribed (step 0 is held the whole
   // time). Drives a slow crawl so the bar never freezes at 12% and reads as stuck.
   const [ingesting, setIngesting] = useState(false)
@@ -442,7 +449,10 @@ export default function V2Building() {
   // but paced so it doesn't reach the ceiling before the read realistically ends.
   // Once the steps advance, the normal per-step targets take over.
   useEffect(() => {
-    if (error) return
+    // ⚖️ `rescuing` STOPS THE CLIMB THE SAME WAY `error` DOES — the bar freezes
+    // where it stood rather than resetting, because the work up to that point
+    // did happen and rewinding it would be its own lie.
+    if (error || rescuing) return
     const scraping = active === 0 && ingesting
     const writing = active === STEPS.length - 1 // the long model call
     const target = scraping ? 40 : writing ? LAST_STEP_CEILING : STEP_PCT[Math.min(active, STEP_PCT.length - 1)]
@@ -455,7 +465,7 @@ export default function V2Building() {
       setPct((p) => (p >= target ? p : Math.min(target, p + Math.max(floor, (target - p) * factor))))
     }, 90)
     return () => clearInterval(id)
-  }, [active, ingesting, error])
+  }, [active, ingesting, error, rescuing])
 
   useEffect(() => {
     // No input (e.g. refresh) → go back to Create.
@@ -1013,6 +1023,7 @@ export default function V2Building() {
         // READINESS_INCOMPLETE are decisions, not lost answers — no generation
         // is coming for them and waiting would only stall a creator who needs to
         // act. This waits only on the genuinely-unknown failure.
+        if (alive) setRescuing(true)
         for (let i = 0; i < RESCUE_ATTEMPTS; i++) {
           await new Promise((r) => setTimeout(r, RECOVERY_POLL_MS))
           if (!alive) return
@@ -1033,6 +1044,7 @@ export default function V2Building() {
         // original still reaches the console for whoever is debugging; the
         // creator gets a sentence written for them.
         console.warn('[build] failed', e)
+        setRescuing(false)
         setError(creatorFacingMessage(e))
       }
     })()
@@ -1659,11 +1671,25 @@ export default function V2Building() {
               </span>
             </div>
 
-            <h1 className="mt-5 text-center font-display text-2xl tracking-tight">Building your video plan</h1>
-            <p className="mt-1 text-center text-sm text-stone">{echo}</p>
+            <h1 className="mt-5 text-center font-display text-2xl tracking-tight">
+              {rescuing ? 'Checking whether your script finished' : 'Building your video plan'}
+            </h1>
+            <p className="mt-1 text-center text-sm text-stone">
+              {/* ⚠️ THE SCREEN USED TO KEEP SAYING "Building" AND KEEP THE BAR
+                  MOVING for the full ninety seconds of the rescue loop, when the
+                  request had already died and nothing was being built. The
+                  server often HAS finished — that is the whole reason the loop
+                  exists — so the honest sentence is that we are looking, not
+                  that it failed and not that it is still writing. */}
+              {rescuing
+                ? 'The connection dropped. Your script may already be finished — we are asking the server before saying anything else.'
+                : echo}
+            </p>
 
-            {/* Live progress */}
-            <div className="mt-6 flex items-center gap-3">
+            {/* Live progress — hidden once there is no request left to make
+                progress. A frozen bar reads as a stall; an absent one matches
+                what is actually true. */}
+            <div className={`mt-6 flex items-center gap-3 ${rescuing ? 'hidden' : ''}`}>
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
                 <div className="h-full rounded-full bg-gradient-to-r from-amber via-coral to-teal transition-[width] duration-200 ease-out" style={{ width: `${shownPct}%` }} />
               </div>
@@ -1671,7 +1697,7 @@ export default function V2Building() {
             </div>
 
             {/* Steps — done / active / pending */}
-            <ul className="mt-6 space-y-3.5">
+            <ul className={`mt-6 space-y-3.5 ${rescuing ? 'hidden' : ''}`}>
               {STEPS.map((s, i) => {
                 const done = i < active
                 const isActive = i === active

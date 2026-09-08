@@ -55,7 +55,7 @@ afterEach(() => { cleanup(); document.body.style.overflow = '' })
 async function open() {
   const { default: ProductLibrary } = await import('./ProductLibrary')
   render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
-  fireEvent.click(await screen.findByRole('button', { name: 'Add another product' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Add a product' }))
   return await screen.findByRole('dialog')
 }
 
