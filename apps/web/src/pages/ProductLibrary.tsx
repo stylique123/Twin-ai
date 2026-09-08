@@ -380,6 +380,13 @@ export default function ProductLibrary() {
   const [err, setErr] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
+  // ⚠️ THE CONFIRMATION WAS AT THE FOOT OF A CARD HUNDREDS OF PIXELS TALL.
+  // "Saved." existed and was reported as missing, which is the same defect as
+  // not having built it: a creator who edits the Name field looks AT the Name
+  // field, not at the bottom of the card. The key is `${id}:${field}` so the
+  // note appears beside the box that was actually edited.
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [savedKey, setSavedKey] = useState<string | null>(null)
   const [claimingId, setClaimingId] = useState<string | null>(null)
   // `addingNew` is the same attestation with no suggestion behind it.
   /** ⚠️ SETTINGS PROMISES "Add a product →" AND MUST NOT LAND SOMEBODY ON A LIST
@@ -559,6 +566,10 @@ export default function ProductLibrary() {
   }, [])
 
   async function save(id: string, edit: Parameters<typeof updateEntityPresentation>[1]) {
+    // ⚖️ THE FIELD COMES FROM THE EDIT ITSELF, so no call site has to be told
+    // its own name and none can be forgotten as fields are added.
+    const key = `${id}:${Object.keys(edit)[0] ?? ''}`
+    setSavingKey(key)
     setSavingId(id); setErr(null)
     try {
       const updated = await updateEntityPresentation(id, edit)
@@ -567,12 +578,35 @@ export default function ProductLibrary() {
       // saved a product it had not.
       if (updated) setEntities((prev) => (prev ?? []).map((e) => (e.id === id ? updated : e)))
       setSaved(id)
+      setSavedKey(key)
+      window.setTimeout(() => setSavedKey((k) => (k === key ? null : k)), 2000)
       window.setTimeout(() => setSaved((s) => (s === id ? null : s)), 2000)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not save that change.')
     } finally {
       setSavingId(null)
+      // ⚠️ IN `finally`, NOT AFTER THE AWAIT. A failed save that leaves the box
+      // saying "Saving…" for ever is a worse lie than no note at all.
+      setSavingKey((k) => (k === key ? null : k))
     }
+  }
+
+  /** The save state of ONE field, rendered beside that field.
+   *
+   *  ⚠️ THE CARD ALREADY HAD "Saving… / Saved.", at its foot. It was reported
+   *  as a missing save confirmation anyway, and that report is correct: a note
+   *  the creator cannot see while looking at the box they edited is not a
+   *  confirmation. Same state, put where the eye already is.
+   *
+   *  ⚖️ IT RENDERS AN EMPTY, FIXED-HEIGHT LINE WHEN THERE IS NOTHING TO SAY, so
+   *  the fields below do not jump when a save lands. */
+  function fieldNote(id: string, field: string) {
+    const key = `${id}:${field}`
+    return (
+      <p className="mt-1 h-4 text-xs text-stone" data-testid={`save-note-${field}`}>
+        {savingKey === key ? 'Saving…' : savedKey === key ? 'Saved.' : ''}
+      </p>
+    )
   }
 
   async function claim(s: ProductSuggestion | null, a: {
@@ -905,6 +939,9 @@ export default function ProductLibrary() {
         >Add another product</button>
       )}
 
+      {/* ⚠️ ONE NOTE, RENDERED WHERE THE EDIT HAPPENED. Declared here rather
+          than inside the map so every field gets the identical wording — the
+          card already carries two near-duplicate sentences that drifted. */}
       {(tab === 'live' ? entities : []).map((e) => (
         <section key={e.id} className="rounded-xl border border-white/10 p-4">
           {/* ── WHERE THIS ONE IS, IN ONE LINE ───────────────────────────
@@ -917,8 +954,61 @@ export default function ProductLibrary() {
               ⚖️ ONE SENTENCE FROM THE SHARED MAP, never a second copy. The
               state and the words it renders cannot drift apart because there
               is only one of each. */}
+          {/* ⚠️ REPORTED AS "no option to remove a product or edit it", AND BOTH
+              EXIST. Removal has shipped since #355 — as `text-xs text-stone
+              underline` at the foot of a card that runs the height of several
+              screens — and every field is editable with nothing on the card
+              saying so. A control a creator cannot find is, to them, a control
+              nobody built, so the fix is discoverability, not a second button.
+
+              ⚖️ ONE TRIGGER, MOVED — NOT ADDED. The card already carries two
+              add buttons and two capability questions; answering this report
+              with a second remove control would make the same mistake again. */}
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <p className="text-xs text-stone">
+              {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
+            </p>
+            {removingId !== e.id && (
+              <button
+                type="button"
+                className="shrink-0 rounded-lg border border-white/15 px-2.5 py-1 text-xs"
+                onClick={() => setRemovingId(e.id)}
+              >Archive or remove</button>
+            )}
+          </div>
+          {/* ⚖️ THE CONFIRMATION SITS UNDER THE BUTTON THAT OPENED IT. It used
+              to live in the footer while its trigger moved to the header, which
+              would put the question a screen away from the click that asked it. */}
+          {removingId === e.id && (
+            <div className="mb-3 rounded-lg border border-white/10 p-3">
+              <span className="text-xs">
+                <span className="text-sand">
+                  Archiving stops Twin using it in new videos; your existing scripts keep
+                  their record of it. Removing deletes it entirely.
+                </span>
+                <button
+                  type="button"
+                  className="ml-2 font-medium"
+                  onClick={() => void archive(e.id)}
+                >Archive</button>
+                <button
+                  type="button"
+                  className="ml-2 text-coral"
+                  onClick={() => void remove(e.id)}
+                >Delete for good</button>
+                <button
+                  type="button"
+                  className="ml-2 text-stone"
+                  onClick={() => setRemovingId(null)}
+                >Keep</button>
+              </span>
+            </div>
+          )}
+          {/* ⚠️ THE EDIT AFFORDANCE, SAID IN WORDS. These are plain boxes that
+              save on blur; nothing on the card told a creator either half of
+              that, so "there is no way to edit it" is what the screen taught. */}
           <p className="mb-3 text-xs text-stone">
-            {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
+            Everything below can be changed — type in a box and it saves when you click away.
           </p>
 
           <label className="block text-xs font-medium uppercase tracking-wide text-stone">
@@ -933,6 +1023,7 @@ export default function ProductLibrary() {
               if (v !== (e.name ?? '')) void save(e.id, { name: v || null })
             }}
           />
+          {fieldNote(e.id, 'name')}
 
           {/* ⚠️ COLLECTED ONCE AND THEN UNREACHABLE. The add form asks "In one
               line, what is it and who is it for?" and stores it; this card never
@@ -963,6 +1054,7 @@ export default function ProductLibrary() {
               if (v !== (e.creatorSummary ?? '')) void save(e.id, { creatorSummary: v || null })
             }}
           />
+          {fieldNote(e.id, 'creatorSummary')}
           <p className="mt-1 text-xs text-stone">
             Used if the page cannot be read — Twin will not leave this product with nothing.
           </p>
@@ -1032,6 +1124,7 @@ export default function ProductLibrary() {
               That does not look like a full link. It should start with https://
             </p>
           )}
+          {fieldNote(e.id, 'productUrl')}
 
           {/* ⚠️ ONLY FOR AN AFFILIATE, AND THE FIELD EXISTED BEFORE THE BOX DID.
               `affiliate_url` has been on every entity since the entity contract
@@ -1275,46 +1368,14 @@ export default function ProductLibrary() {
             </p>
           </div>
 
-          <div className="mt-3 flex items-center justify-between">
+          {/* ⚖️ THE CARD-LEVEL NOTE STAYS FOR THE SAVES THAT ARE NOT A FIELD —
+              the photo and capability writes below, which have no box to sit
+              beside. Field edits now report next to the field they changed. */}
+          <div className="mt-3">
             <p className="h-4 text-xs text-stone">
-              {savingId === e.id ? 'Saving…' : saved === e.id ? 'Saved.' : ''}
+              {savingKey === null && savingId === e.id ? 'Saving…'
+                : savedKey === null && saved === e.id ? 'Saved.' : ''}
             </p>
-            {removingId === e.id ? (
-              // ⚖️ TWO WAYS OUT, AND THEY ARE NOT THE SAME ACT. Archiving
-              // withdraws the product from FUTURE videos and keeps the record,
-              // so scripts already written about it still resolve what they
-              // referred to. Removing destroys it. The spec prefers archive
-              // wherever scripts may already reference the entity, which is
-              // every entity that has been used even once — so archive leads and
-              // delete is the smaller, explicitly destructive choice.
-              <span className="text-xs">
-                <span className="text-sand">
-                  Archiving stops Twin using it in new videos; your existing scripts keep
-                  their record of it. Removing deletes it entirely.
-                </span>
-                <button
-                  type="button"
-                  className="ml-2 font-medium"
-                  onClick={() => void archive(e.id)}
-                >Archive</button>
-                <button
-                  type="button"
-                  className="ml-2 text-coral"
-                  onClick={() => void remove(e.id)}
-                >Delete for good</button>
-                <button
-                  type="button"
-                  className="ml-2 text-stone"
-                  onClick={() => setRemovingId(null)}
-                >Keep</button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="text-xs text-stone underline"
-                onClick={() => setRemovingId(e.id)}
-              >Archive or remove</button>
-            )}
           </div>
         </section>
       ))}
