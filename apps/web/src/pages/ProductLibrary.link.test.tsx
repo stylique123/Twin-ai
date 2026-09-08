@@ -75,9 +75,16 @@ afterEach(() => {
   current = KNOWN_ENTITY
 })
 
+// ⚠️ THE LIBRARY IS A LIST NOW, AND THE FIELDS LIVE ONE CLICK IN. The RULES
+// below are unchanged -- one link box, the refusal at the field, re-reading a
+// read page. What changed is that a product's editor is a panel opened from a
+// row, because two products used to render two full forms and the page had no
+// overview on it at all. So the helper opens the product first; a test that
+// found these fields without opening anything would be pinning the old shape.
 async function openCard() {
   const { default: ProductLibrary } = await import('./ProductLibrary')
   render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+  fireEvent.click((await screen.findAllByRole('button', { name: /^Open / }))[0])
   return await screen.findByLabelText('Link') as HTMLInputElement
 }
 
