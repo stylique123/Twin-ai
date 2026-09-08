@@ -84,12 +84,14 @@ const DENO_NOISE = [
  * still there, the deployed function will evaluate it. This is not a heuristic
  * about colons and angle brackets — it is the same erasure the runtime gets.
  *
- * ⚠️ SHELLED OUT, NOT IMPORTED, AND THAT IS THIS FILE'S EXISTING CONTRACT. The
- * first version did `import { transformSync } from 'esbuild'` and passed
- * locally, where node_modules exists — and failed in CI, where this job checks
- * out the repo and installs nothing. `tsc` above is invoked through `npx` for
- * exactly that reason. A guard that needs an install is a guard that stops
- * running the moment someone adds a cheaper job.
+ * ⚠️ SHELLED OUT HERE, IMPORTED FOR THE BUNDLE PASS, AND THE DIFFERENCE IS
+ * DELIBERATE. This erasure probe runs per-diagnostic and tolerates esbuild
+ * being absent (it fails closed). The bundle pass below must NOT tolerate that
+ * — an absent bundler there would mean the check silently stopped running — so
+ * it imports esbuild, which is a declared root devDependency, and this guard is
+ * invoked from `web-and-shared`, the job that installs it. The first attempt
+ * put the import in `no-legacy-editor`, which checks out the repo and installs
+ * nothing, and got ERR_MODULE_NOT_FOUND: a verdict about the runner.
  */
 const erasedCache = new Map()
 function survivesTypeErasure(line) {
