@@ -90,8 +90,18 @@ describe('and they stay together where they can be changed', () => {
   })
 
   it('reports "not answered" for the whole group, not half of it', () => {
+    // ⚠️ THE ANCHOR NAMED A QUESTION THIS BLOCK NO LONGER ASKS. The screen
+    // half — "can you point your camera at a screen showing IT" — moved to the
+    // Product Library, where "it" has a referent; here its value is now
+    // permanently null, so keeping it in the badge would have made the block
+    // read `Not answered` FOR EVER. The RULE is unchanged: the badge must cover
+    // every question the block still asks, never half of them.
     expect(CONFIRM).toMatch(
-      /badge=\{q4 === null \|\| canRecordScreen === null \|\| canFilmObjects === null \? 'Not answered' : null\}/)
+      /badge=\{q4 === null \|\| canFilmObjects === null \? 'Not answered' : null\}/)
+    // ⚖️ AND IT MUST NOT COUNT THE DEPARTED ONE, which is the half of this rule
+    // that only exists after the move: a badge waiting on an unaskable question
+    // is a permanent false negative.
+    expect(CONFIRM).not.toMatch(/badge=\{[^}]*canRecordScreen/)
   })
 
   it('shows what the creator already said during the scan', () => {
