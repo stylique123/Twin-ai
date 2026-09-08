@@ -1613,8 +1613,8 @@ export default function V2Building() {
               <>
                 <p className="mt-3 text-xs leading-relaxed text-stone/80">
                   No remix was used, and another link will not help — this is on
-                  our side, not yours. You can build from your own idea now,
-                  which costs nothing extra, or come back later and use the link.
+                  our side, not yours. You can build from your own idea now, or
+                  come back later and use the link.
                 </p>
                 <button onClick={() => nav('/v2', { replace: true })} className="btn-gradient mt-6 w-full">Build from my own idea</button>
               </>
@@ -1622,8 +1622,8 @@ export default function V2Building() {
               <>
                 <p className="mt-3 text-xs leading-relaxed text-stone/80">
                   No remix was used. Try another short-form video from TikTok,
-                  Instagram or YouTube — or build from your own idea with no
-                  reference at all, which costs nothing extra.
+                  Instagram or YouTube — or build from your own idea, with no
+                  reference at all.
                 </p>
                 <button onClick={() => nav('/v2', { replace: true })} className="btn-gradient mt-6 w-full">Try a different reference</button>
               </>
