@@ -79,7 +79,10 @@ export default function Settings() {
   // has a CTA, and a save from that box would erase it.
   const [defaultCta, setDefaultCta] = useState<string | null>(null)
   const [ctaSaved, setCtaSaved] = useState(false)
-  const [ctaErr, setCtaErr] = useState(false)
+  // ⚠️ A REASON, NOT A BOOLEAN. "Could not save" was shown for a failed write and
+  // for a save that never attempted one, and those need different sentences: one
+  // is worth retrying and the other never will be.
+  const [ctaErr, setCtaErr] = useState<string | null>(null)
   const loadVoice = useCallback(() => {
     setVoiceErr(false); setVoiceLoading(true)
     listBrandVoices()
@@ -124,12 +127,21 @@ export default function Settings() {
   // and a half-typed one is exactly the kind of not-quite-an-answer the whole
   // three-state discipline exists to keep out of the column.
   const saveCta = async (next: string) => {
-    if (!defaultVoiceId) return
-    setCtaErr(false)
+    // ⚠️ THIS RETURNED SILENTLY AND THE SCREEN SAID SHE HAD SAVED. With no voice
+    // loaded there is nothing to write the CTA onto, so the write never
+    // happened — but the dialog closed, the card showed her sentence (the Save
+    // button sets it locally first), and nothing said otherwise. She learns it
+    // was lost on the next reload, which is the intake defect exactly: an answer
+    // accepted, discarded, and reported as stored.
+    if (!defaultVoiceId) {
+      setCtaErr('We could not save that yet — Twin is still reading your account. Reload the page and try again.')
+      return
+    }
+    setCtaErr(null)
     try {
       await savePreScriptBrief(defaultVoiceId, { defaultCta: next.trim() })
       setCtaSaved(true); setTimeout(() => setCtaSaved(false), 1500)
-    } catch { setCtaErr(true) }
+    } catch { setCtaErr('Could not save that — try again.') }
   }
 
   const saveKit = async (next: BrandKit) => {
@@ -1149,7 +1161,7 @@ function ProfileStatus({
   onCtaChange: (v: string) => void
   onCtaCommit: (v: string) => void
   ctaSaved: boolean
-  ctaErr: boolean
+  ctaErr: string | null
 }) {
   // ⚠️ `null` IS NOT `''`, AND COLLAPSING THEM TELLS A CREATOR SOMETHING FALSE.
   // Null means the voice has not loaded yet; empty means they said they have no
@@ -1217,7 +1229,7 @@ function ProfileStatus({
           >{ctaText ? 'Edit' : 'Add one'}</button>
         </div>
         {ctaSaved && <p className="mt-2 text-xs text-teal">Saved</p>}
-        {ctaErr && <p className="mt-2 text-xs text-coral">Could not save that — try again.</p>}
+        {ctaErr !== null && <p className="mt-2 text-xs text-coral">{ctaErr}</p>}
       </div>
 
       {ctaOpen && (

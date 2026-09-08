@@ -100,6 +100,57 @@ describe('the CTA is the creator’s to type, and only theirs', () => {
     expect(SETTINGS).toMatch(/!ctaLoaded\s*\n?\s*\? 'Loading your usual ending/)
   })
 
+  // ⚠️ THE SAVE THAT NEVER HAPPENED AND NEVER SAID SO. `saveCta` opened with
+  // `if (!defaultVoiceId) return` — a bare early return. The Save button sets the
+  // sentence locally BEFORE committing, so the card showed her CTA, the dialog
+  // closed, and no write was attempted. Identical in shape to the intake bug:
+  // the answer was accepted, discarded, and reported as stored.
+  it('never discards a typed CTA in silence', () => {
+    // ⚖️ ANCHORED ON THE FUNCTION, NOT THE FILE. A `return` guarded by an error
+    // anywhere else in Settings must not satisfy this, and a future early exit
+    // added to THIS function must not slip past it.
+    const at = SETTINGS.indexOf('const saveCta')
+    expect(at).toBeGreaterThan(-1)
+    const end = SETTINGS.indexOf('const saveKit', at)
+    expect(end).toBeGreaterThan(at)
+    const body = SETTINGS.slice(at, end)
+
+    // No exit from this function may be silent.
+    expect(body).not.toMatch(/if \(!defaultVoiceId\) return/)
+
+    // ⚠️ THE FIRST VERSION OF THIS ASSERTION LET A MUTANT THROUGH. It asked
+    // whether `setCtaErr('` appeared ANYWHERE before each return, which the
+    // first guarded return already satisfies for every return after it — so a
+    // newly added silent `if (...) return` passed. Adding one is exactly the
+    // regression this test exists for, so it checks each return against the
+    // line immediately before it instead of against the whole preceding body.
+    const lines = body.split('\n')
+    const returns = lines
+      .map((l, i) => ({ l: l.trim(), i }))
+      .filter(({ l }) => /^return\b/.test(l) || /\breturn$/.test(l))
+    expect(returns.length, 'saveCta should still have its guarded exit').toBeGreaterThan(0)
+    for (const { i } of returns) {
+      let j = i - 1
+      while (j >= 0 && (lines[j].trim() === '' || lines[j].trim().startsWith('//'))) j--
+      expect(
+        lines[j] ?? '',
+        `the exit on line ${i} of saveCta must be preceded by the reason it gives the creator`,
+      ).toMatch(/setCtaErr\('/)
+    }
+  })
+
+  it('tells the two failures apart', () => {
+    // ⚖️ "Try again" IS WRONG ADVICE FOR A SAVE THAT CANNOT BE ATTEMPTED, and a
+    // boolean cannot carry two sentences — so the state holds the reason.
+    expect(SETTINGS).toMatch(/const \[ctaErr, setCtaErr\] = useState<string \| null>\(null\)/)
+    expect(SETTINGS).toMatch(/ctaErr: string \| null/)
+    // The message is rendered, not restated in the markup.
+    expect(SETTINGS).toMatch(/\{ctaErr !== null && <p[^>]*>\{ctaErr\}<\/p>\}/)
+    // ⚠️ `{ctaErr && ...}` WOULD RENDER AN EMPTY STRING AS NOTHING and, worse,
+    // print a bare `0`-style falsy leak for any non-null empty reason.
+    expect(SETTINGS).not.toMatch(/\{ctaErr && </)
+  })
+
   it('says what happens when it is left blank', () => {
     // ⚖️ Twin writing one is not a penalty and should not read as a warning.
     expect(SETTINGS).toMatch(/Twin writes one to fit each video/)
