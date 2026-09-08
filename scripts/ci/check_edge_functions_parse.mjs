@@ -140,6 +140,24 @@ const isFatal = (line) => {
   // Measured cost: two generations on 2026-08-16 with a SUCCEEDED writer, no
   // generation row, and a refunded credit against a script that existed.
   if (code === 2304) return survivesTypeErasure(line)
+  // ⚠️⚠️ TS2451 / TS2300 — A DUPLICATE DECLARATION. THIS SHIPPED, AND IT TOOK
+  // THE ENTIRE SCRIPT WRITER DOWN FOR TWO DAYS.
+  //
+  // #714 declared `const FIRST_PERSON_MARKER_INLINE` at module scope in
+  // generate-blueprint, where #584 had already declared the same name. tsc
+  // reported TS2451, this guard printed it as advisory, and CI went green.
+  //
+  // ⚖️ AND THIS IS THE SHARPEST CASE THE GUARD HAS SEEN, BECAUSE IT NEVER RUNS
+  // A LINE. A duplicate top-level `const` is a BOOT-TIME SyntaxError in Deno —
+  // the module does not evaluate at all, so there is no "first time that line
+  // runs". Every request to the function 500s. Erasing types does not help: the
+  // duplicate is in the emitted JavaScript too.
+  //
+  // Measured cost, from the edge logs and the generations table: production
+  // wrote NO script between 2026-09-06 20:01 and the fix. A creator's session
+  // of six attempts produced four five-minute stalls and "we hit a snag", and
+  // the cause was read as a rate limit, because nothing named it.
+  if (code === 2451 || code === 2300) return true
   // Block-scoped binding used before declaration / before assignment. Types are
   // erased at deploy; these still throw at runtime.
   return code === 2448 || code === 2454

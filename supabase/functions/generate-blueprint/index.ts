@@ -3633,7 +3633,13 @@ function statesARegulatoryRuleInline(text: unknown): boolean {
 // ⚠️ PARITY: mirrors firstPersonFailures in
 // packages/shared/src/script/firstPersonFloor.ts, held by
 // aFirstPersonFloorMustBeWired.test.ts.
-const FIRST_PERSON_MARKER_INLINE = /\b(?:i|i'm|i've|i'd|i'll|me|my|mine|we|we're|we've|our|ours)\b/i
+// ⚠️ `FIRST_PERSON_MARKER_INLINE` IS DECLARED ONCE, ABOVE, AND THIS IS WHERE THE
+// SECOND COPY WAS. #714 added it without noticing #584 had already declared the
+// same name at module scope. In Deno a duplicate top-level `const` is a BOOT
+// SyntaxError, not a runtime one, so `generate-blueprint` stopped booting
+// entirely: every generation died at the first model call with "we hit a snag",
+// and production wrote NO script from 2026-09-06 20:01 until this was found.
+// The two regexes were byte-identical, so the one above serves both readers.
 
 function firstPersonFailuresInline(
   script: readonly { section?: unknown; line?: unknown; substance?: unknown }[] | null | undefined,
