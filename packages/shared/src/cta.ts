@@ -16,6 +16,39 @@
 // person typed; a generated line is produced per video and never written back.
 // A boolean saying "this one is real" can be set wrongly by any writer — a field
 // that generated text cannot reach cannot be wrong.
+//
+// ⚠️⚠️ AND NOW THE PART THAT MATTERS MOST TO WHOEVER READS THIS NEXT:
+// `resolveCta` HAS NO READER. Measured 2026-09-08 across packages/shared,
+// apps/web, supabase/functions and worker: zero non-test call sites. The
+// mechanism table, the commercial suppression and the resolution logic are
+// exercised only by this module's own tests.
+//
+// ⚠️ AND ONE OF THESE SENTENCES SHIPS FROM SOMEWHERE ELSE ENTIRELY. I first
+// wrote here that none of `GENERATED_TEXT` reaches shipping code; the test
+// below caught that as false on its first run. `recordingScriptAdapter.ts`
+// carries its own hard-coded `ctaLine || 'Follow for more'` — a deliberate,
+// documented fallback, and the line a creator actually sees when their CTA beat
+// is empty. So "Follow for more" is defined TWICE, independently, and editing
+// the copy below would change nothing a creator ever reads.
+//
+// ⚖️ THE SHIPPED POLICY LIVES SOMEWHERE ELSE, AND IT IS NOT A PORT OF THIS. This
+// module decides a CTA: given a goal it returns a sentence. The product does not
+// work that way — `generate-blueprint` puts the creator's typed wording into the
+// prompt and instructs the model to use it, and where there is none the model
+// writes the closing ask under the CTA-intent rules. So the two are not two
+// copies of one rule, and a parity test between them would assert an
+// equivalence that does not exist.
+//
+// ⚠️ THE REASON THIS COMMENT EXISTS AT ALL is that everything above it reads as
+// live policy, and a header that describes behaviour the code no longer has is
+// how a day gets spent editing a file that changes nothing. Until someone
+// decides to wire it or delete it, the file must at least say which it is.
+// `aPolicyModuleMustNotPretendToBeWired.test.ts` fails the moment a real reader
+// appears, so this paragraph cannot quietly go stale the way the last one did.
+//
+// ⚖️ WHAT IS LIVE HERE: `CTA_MECHANISMS` (read by referenceExtraction and
+// shapeLibrary) and `hasConfirmedCta` (read by profileCompletion and
+// setupAreas). Deleting the module wholesale would take those with it.
 
 import type { VideoGoal } from './videoIntent'
 
