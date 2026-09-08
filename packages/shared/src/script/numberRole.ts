@@ -97,6 +97,16 @@ export function numberMentions(textValue: string | null | undefined): NumberMent
   return out.sort((a, b) => a.at - b.at)
 }
 
+/** A list a human tracks is small. Two is the shortest thing worth announcing
+ *  as a count, and past a dozen nobody is counting along.
+ *
+ *  ⚠️ THIS BOUND CAME WITH THE RULE, and dropping it in the move would have
+ *  been a silent widening: `itemCounts('a $46 million business in 2025')` would
+ *  report 2025 as a promised list size. The money marker already excludes 46;
+ *  nothing but this excludes the year. */
+export const MIN_ITEM_COUNT = 2
+export const MAX_ITEM_COUNT = 12
+
 /**
  * Does this text state `n` AS AN ITEM COUNT?
  *
@@ -106,6 +116,7 @@ export function numberMentions(textValue: string | null | undefined): NumberMent
  * duration was recorded as honouring an enumeration it never made.
  */
 export function statesCountOfItems(textValue: string | null | undefined, n: number): boolean {
+  if (n < MIN_ITEM_COUNT || n > MAX_ITEM_COUNT) return false
   return numberMentions(textValue).some((m) => m.value === n && m.role === 'enumeration')
 }
 
@@ -113,6 +124,10 @@ export function statesCountOfItems(textValue: string | null | undefined, n: numb
  *  not durations, prices, percentages or multiples. */
 export function itemCounts(textValue: string | null | undefined): number[] {
   const seen = new Set<number>()
-  for (const m of numberMentions(textValue)) if (m.role === 'enumeration') seen.add(m.value)
+  for (const m of numberMentions(textValue)) {
+    if (m.role !== 'enumeration') continue
+    if (m.value < MIN_ITEM_COUNT || m.value > MAX_ITEM_COUNT) continue
+    seen.add(m.value)
+  }
   return [...seen].sort((a, b) => a - b)
 }
