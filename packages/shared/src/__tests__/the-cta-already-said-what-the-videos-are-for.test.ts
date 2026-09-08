@@ -78,19 +78,29 @@ describe('the CTA already said what the videos are for', () => {
     expect(INFERABLE_GOALS.length).toBeLessThan(BRIEF_GOALS.length)
   })
 
-  it('onboarding confirms it, and saying no gives the question back', () => {
+  it('onboarding confirms it — and asks NOTHING when it cannot infer', () => {
+    // ⚠️⚠️ THIS TEST USED TO REQUIRE A FALLBACK TO THE SEVEN CHIPS, AND THE
+    // FALLBACK IS WHY THE DEFECT WAS REPORTED STILL PRESENT AFTER BEING
+    // REPORTED FIXED. Measured over all 47 stored `recurring_ctas` sets, the
+    // inference fired on 12 of 42 accounts — so 71% of creators saw the
+    // unchanged question and my claim to have removed it was false for most of
+    // them. Widening took it to 23 of 42; the rest genuinely ask for nothing.
+    //
+    // ⚖️ SO THE QUESTION IS DELETED RATHER THAN CONDITIONAL. `null` from this
+    // branch means the screen shows nothing at all.
     expect(ONBOARDING).toContain('goalFromCtas(draft.profile?.recurring_ctas)')
     expect(ONBOARDING).toContain('goalConfirmationLine(inferred)')
-    expect(ONBOARDING).toContain("Not quite — let me pick")
-    // ⚠️ NOTHING IS STORED UNTIL THEY ANSWER. The rejection lives in screen
-    // state; only the tap writes contentGoals.
+    expect(ONBOARDING).toContain('if (!inferred) return null')
     expect(ONBOARDING).toContain('onClick={() => set({ contentGoals: [inferred.goal] })}')
-    expect(ONBOARDING).toContain('const [guessRejected, setGuessRejected] = useState(false)')
+    // The seven chips are gone from this screen entirely.
+    expect(ONBOARDING).not.toContain('values={BRIEF_GOALS}')
+    expect(ONBOARDING).not.toContain('Pick up to two.')
   })
 
-  it('the guess is only offered when nothing has been chosen', () => {
-    // ⚖️ Re-guessing over an answer they already gave would be the same
-    // duplicate-question defect pointing the other way.
-    expect(ONBOARDING).toContain('draft.contentGoals.length === 0 && !guessRejected')
+  it('declining records nothing and asks nothing more', () => {
+    // ⚖️ Offering the chips on "Not quite" would be the third asking wearing a
+    // no button.
+    expect(ONBOARDING).toContain('onClick={() => set({ contentGoals: [] })}')
+    expect(ONBOARDING).not.toContain('Not quite — let me pick')
   })
 })

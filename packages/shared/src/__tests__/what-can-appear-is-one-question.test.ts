@@ -80,27 +80,29 @@ describe('the three are asked while the scan is running', () => {
 })
 
 describe('and they stay together where they can be changed', () => {
-  it('keeps all three under one heading on the confirm screen', () => {
-    // ⚖️ STILL EDITABLE, DELIBERATELY. The scan questions are optional and
-    // skippable; a creator who skipped them needs somewhere to answer, and one
-    // who mis-tapped needs somewhere to fix it. What changed is that they are
-    // now one section instead of two halves separated by other fields.
-    expect(CONFIRM).toMatch(/title="What can appear in your videos\?"/)
+  it('the block is GONE from the confirm screen', () => {
+    // ⚠️⚠️ THIS TEST USED TO REQUIRE THE BLOCK, AND THE BLOCK WAS THE DEFECT.
+    // Reported six times, reading `Not answered` on every account — because two
+    // of its three questions can only be answered by a product, and no product
+    // exists on that screen. "Can you point a camera at a screen showing IT"
+    // has no `it`.
+    //
+    // ⚖️ GATHERING THEM UNDER ONE HEADING WAS STILL THE RIGHT FIX FOR THE
+    // PROBLEM IT ADDRESSED — one subject asked in two places. It just gathered
+    // them in the wrong place. Each now lives where it can be answered: the
+    // relationship and the screen question per product in the Library, where
+    // `capabilityQuestion` asks with the referent in hand.
+    expect(CONFIRM).not.toMatch(/title="What can appear in your videos\?"/)
     expect(CONFIRM).not.toMatch(/title="How can you film\?"/)
   })
 
-  it('reports "not answered" for the whole group, not half of it', () => {
-    // ⚠️ THE ANCHOR NAMED A QUESTION THIS BLOCK NO LONGER ASKS. The screen
-    // half — "can you point your camera at a screen showing IT" — moved to the
-    // Product Library, where "it" has a referent; here its value is now
-    // permanently null, so keeping it in the badge would have made the block
-    // read `Not answered` FOR EVER. The RULE is unchanged: the badge must cover
-    // every question the block still asks, never half of them.
-    expect(CONFIRM).toMatch(
-      /badge=\{q4 === null \|\| canFilmObjects === null \? 'Not answered' : null\}/)
-    // ⚖️ AND IT MUST NOT COUNT THE DEPARTED ONE, which is the half of this rule
-    // that only exists after the move: a badge waiting on an unaskable question
-    // is a permanent false negative.
+  it('no badge can report on a question nobody is asked', () => {
+    // ⚠️ THE BADGE WAS THE REPORTED SYMPTOM: `Not answered`, on five
+    // consecutive accounts, permanently, because the block asked what could not
+    // be answered there. With the block deleted the badge has no subject, and
+    // an orphan badge would be the same false report with nothing behind it.
+    expect(CONFIRM).not.toMatch(/badge=\{q4 === null/)
+    expect(CONFIRM).not.toMatch(/badge=\{[^}]*canFilmObjects/)
     expect(CONFIRM).not.toMatch(/badge=\{[^}]*canRecordScreen/)
   })
 
