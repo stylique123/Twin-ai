@@ -162,6 +162,7 @@ export * from './script/shotLabel'
 // — and no screen said so. Disclosure, never enforcement.
 export * from './script/scriptLength'
 export * from './script/runtimeCompare'
+export * from './script/durationContract'
 
 // ⚖️ FIX 7. "Write to target_sec" was prose; nothing computed it. Per-beat
 // detection only -- the spec's own repair step assumes a target_sec reader
