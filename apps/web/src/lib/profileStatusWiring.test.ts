@@ -156,3 +156,49 @@ describe('the CTA is the creator’s to type, and only theirs', () => {
     expect(SETTINGS).toMatch(/Twin writes one to fit each video/)
   })
 })
+
+describe('a field that says "loading" forever is not loading', () => {
+  // ⚠️ REPORTED AS "THE CTA FIELD DOESN'T ACCEPT INPUT". The <input> was always
+  // fine. `defaultCta === null` meant BOTH "still in flight" and "the read
+  // failed" — the catch never touched it — so a failed voice-list read left the
+  // row saying "Loading your usual ending…" beside a button disabled forever.
+  // The door never unlocked, and the page said something false while it stayed
+  // shut. Unknown is not a default in either direction.
+
+  it('a failed load is marked as failed, not left looking like loading', () => {
+    expect(SETTINGS).toMatch(/setCtaLoadFailed\(true\)/)
+    // …and in the SAME catch that already surfaces the voice error, so the two
+    // cannot drift into disagreeing about whether the read worked.
+    expect(SETTINGS).toMatch(/setVoiceErr\(true\); setCtaLoadFailed\(true\)/)
+  })
+
+  it('a retry clears the failure before it starts', () => {
+    // Otherwise the second attempt renders as failed while it is in flight.
+    expect(SETTINGS).toMatch(/setVoiceErr\(false\); setVoiceLoading\(true\); setCtaLoadFailed\(false\)/)
+  })
+
+  it('the failed row does NOT claim to be loading', () => {
+    const at = SETTINGS.indexOf('ctaLoadFailed')
+    expect(at).toBeGreaterThan(-1)
+    expect(SETTINGS).toMatch(/could not load your usual ending/)
+    // The loading copy must sit BEHIND the failure branch, not before it.
+    const failIdx = SETTINGS.indexOf('could not load your usual ending')
+    const loadIdx = SETTINGS.indexOf('Loading your usual ending')
+    expect(failIdx).toBeGreaterThan(-1)
+    expect(loadIdx).toBeGreaterThan(-1)
+    expect(failIdx).toBeLessThan(loadIdx)
+  })
+
+  it('the creator gets a retry, not a greyed rectangle', () => {
+    expect(SETTINGS).toMatch(/onClick=\{onCtaRetry\}/)
+    expect(SETTINGS).toMatch(/>Try again</)
+  })
+
+  it('editing stays closed while the stored answer is unread', () => {
+    // ⚖️ THE FIX IS NOT "LET THEM TYPE ANYWAY". Saving from a failed read would
+    // overwrite an answer nobody managed to read — a worse bug than the dead
+    // button, and a silent one.
+    expect(SETTINGS).toMatch(/disabled=\{cta === null\}/)
+    expect(SETTINGS).not.toMatch(/setDefaultCta\(''\)[^\n]*catch/)
+  })
+})
