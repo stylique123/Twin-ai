@@ -40,6 +40,8 @@ export type DigestFindingKind =
   | 'wrong_voice'
   | 'sponsored_product_spoken_as_lived'
   | 'duration_not_measured'
+  | 'reference_download_failed'
+  | 'paid_path_used'
 
 export interface DigestFinding {
   kind: DigestFindingKind
@@ -60,6 +62,29 @@ export interface HeartbeatRun {
    * to the digest, where an unmeasured run is visible rather than absent.
    */
   durationMs: number | null
+  /**
+   * ⚠️ THE REFERENCE DID NOT DOWNLOAD, AND THAT IS NOT TWIN BEING DOWN.
+   *
+   * MEASURED ON THE HEARTBEAT'S OWN URL, 2026-09-08. The real assess job came
+   * back `outcome: assessed`, `rejected: 0`, 18 fields accepted — and
+   * `visual_ran: false` with `visual_failure_code: UNKNOWN_DOWNLOAD_FAILURE`,
+   * the same code 222 stored references already carry. The captions arrived, so
+   * a script can be written; the video file did not.
+   *
+   * ⚖️ SO IT IS DIGEST, NEVER PAGE. The heartbeat's question is "can Twin write
+   * a script", and it can. Waking somebody at 3am about YouTube's availability
+   * is how a pager gets muted — and a muted pager is the same silence as no
+   * monitor, with the belief that one is watching.
+   */
+  visualFailureCode?: string | null
+  /**
+   * ⚠️ A MONITOR MUST NOT BE ABLE TO SPEND MONEY. The same run showed
+   * `paid_because: free_path_failed` — the free caption route failed and it
+   * fell through to the paid one. Hourly, that is 24 paid fetches a day
+   * forever, growing silently: the class of cost nobody notices until an
+   * invoice explains it.
+   */
+  paidPath?: boolean
 }
 
 export type PageReason = 'started_failing' | 'still_failing' | 'recovered'
@@ -134,6 +159,87 @@ export function decideHeartbeat(
   }
 
   return { page: null, nextState: prev, digest }
+}
+
+/**
+ * AN ASSESS RESULT → A HEARTBEAT RUN. THIS IS WHERE THE TWO FAILURES ARE TOLD
+ * APART, AND IT IS NOT WHERE I FIRST PUT IT.
+ *
+ * ⚠️ MY FIRST VERSION PUT THE SPLIT IN `runIsBad` — `if (visualFailureCode)
+ * return false` — AND MUTATION TESTING SHOWED THAT BRANCH CAN NEVER FIRE.
+ * Deleting it left every assertion green: a download failure that still yields
+ * captions produces a script, so `failed` is already null and the run was never
+ * bad. A guard that reads as deliberate and protects nothing is the exact shape
+ * this repository keeps finding, so the decision moved to the only place it is
+ * actually made — the moment an assess result becomes a run.
+ *
+ * ⚠️ `status === 'done'` IS NOT PROOF A JOB SUCCEEDED. Measured in production:
+ * one of the eight most recent YouTube assess jobs reports itself `done` while
+ * carrying a transcript-service 400 in `result.error`. That is the same shape
+ * as a deploy reporting success for a function that could not boot. So the
+ * error is read from the RESULT and a job with no script is a failure whatever
+ * it calls itself — a monitor that trusts a status field is monitoring the
+ * field, not the product.
+ */
+export interface AssessResultLike {
+  /** The job's own status. Read for the message, never trusted alone. */
+  status?: string | null
+  /** `result.error` — the field the status can contradict. */
+  error?: string | null
+  /** Did words come out? The only thing that decides `failed`. */
+  script?: string | null
+  visual_failure_code?: string | null
+  paid_because?: string | null
+  durationMs?: number | null
+}
+
+export function runFromAssess(
+  at: number,
+  mode: 'reference' | 'idea',
+  r: AssessResultLike | null | undefined,
+): HeartbeatRun {
+  const script = typeof r?.script === 'string' ? r.script.trim() : ''
+  const err = typeof r?.error === 'string' ? r.error.trim() : ''
+  // ⚠️ A SCRIPT IS THE MEASURE, NOT A STATUS. A run that produced words did the
+  // job even if the row is untidy; a run that produced none failed even if the
+  // row says done.
+  const failed = script !== ''
+    ? null
+    : (err !== '' ? err : `no script produced (status=${String(r?.status ?? 'unknown')})`)
+  return {
+    at,
+    mode,
+    failed,
+    durationMs: typeof r?.durationMs === 'number' ? r.durationMs : null,
+    visualFailureCode: typeof r?.visual_failure_code === 'string' && r.visual_failure_code !== ''
+      ? r.visual_failure_code
+      : null,
+    paidPath: typeof r?.paid_because === 'string' && r.paid_because !== '',
+  }
+}
+
+/** ⚠️ THE DOWNLOAD FAILED AND THE SCRIPT STILL CAME. Worth reading in the
+ *  morning, worth nobody's 3am. Named with the platform's own code so a
+ *  recurring one is recognised rather than re-diagnosed each time. */
+export function downloadFailureFinding(run: HeartbeatRun): DigestFinding | null {
+  if (!run.visualFailureCode) return null
+  return {
+    kind: 'reference_download_failed',
+    detail: `The reference did not download (${run.visualFailureCode}). `
+      + 'A script was still produced from captions, so this is the platform, not Twin.',
+  }
+}
+
+/** ⚠️ THE GUARD REPORTS WHEN IT DID NOT HOLD. A monitor that quietly starts
+ *  paying is what this exists to prevent, so a fallthrough is visible in the
+ *  digest rather than only in a bill. */
+export function paidPathFinding(run: HeartbeatRun): DigestFinding | null {
+  if (!run.paidPath) return null
+  return {
+    kind: 'paid_path_used',
+    detail: 'The heartbeat fell through to the PAID transcript path. It must not: '
+      + 'a monitor should not be able to spend money.',
+  }
 }
 
 // ── WHAT THE FROZEN STORE MAKES DECIDABLE ─────────────────────────────────
