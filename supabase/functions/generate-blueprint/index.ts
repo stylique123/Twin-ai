@@ -6153,7 +6153,24 @@ Deno.serve(async (req: Request) => {
         ? '\n- BUT THEY HAVE NOT CONFIRMED THEY USE IT AS A CUSTOMER DOES. Write no claim about being its USER — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Making it is not the same as living with it.'
         // Sharpens the same rule the substance check enforces per beat: nothing
         // licenses a personal history except the creator being on record for it.
-        : '\n- THE CREATOR HAS NOT CONFIRMED THEY PERSONALLY USE THIS. Write NO first-person usage claim about it — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Talk about what it does, never about what it did for them.')
+        : '\n- THE CREATOR HAS NOT CONFIRMED THEY PERSONALLY USE THIS. Write NO first-person usage claim about it — no "I\'ve been using this for months", "I switched to it", "it changed my workflow".')
+      // ⚠️⚠️ THE SENTENCE THAT USED TO END THE LINE ABOVE READ "Talk about what
+      // it does, never about what it did for them." IT LICENSED THE FAILURE.
+      //
+      // MEASURED 2026-09-08: a creator with a sponsored pad she has never used
+      // got "aggressive physical pads will make redness worse" — an outcome
+      // asserted about a product nobody in the chain has touched. The model was
+      // not disobeying. It was told to talk about what the product does, and
+      // the only rule beside it forbade first-person history.
+      //
+      // ⚖️ "WHAT IT IS" AND "WHAT IT DOES TO A PERSON" ARE DIFFERENT CLAIMS.
+      // Composition, format, price, who it is for — those are FACTS, already
+      // governed by `productFacts` and `marketingClaims`. An OUTCOME on a body
+      // or a life needs evidence, and for an unused product there is none: not
+      // the creator's experience (they have none) and not the vendor's word
+      // (that is `marketingClaims`, and it is attributed or forbidden, never
+      // the creator's own voice).
+      claimLines.push('\n- AND WRITE NO OUTCOME CLAIM ABOUT IT AT ALL. Nobody in this script has used it, so the script may not say what it does TO or FOR a person — no results, no effects, no "it will", "it won\'t", "it makes", "it fixes", "it causes", no better-or-worse than anything else. State what it IS — what it contains, what it costs, who it is for, what the maker says it is for, attributed — and stop there. An outcome nobody has observed is invented no matter how ordinary it sounds.')
     }
     if (disclosureRequired) {
       // A property of the entity, not a pacing decision the writer may weigh.
