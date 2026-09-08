@@ -382,6 +382,16 @@ function BeatLength({ scene }: { scene?: RecordingScene }) {
       </span>
     )
   }
+  if (reading.kind === 'planned_unmeasured') {
+    // ⚠️ NOT "{n}s beat". That sentence says the words were checked against the
+    // plan and fit; here there are no words to check. An ask-beat has a plan and
+    // no words BY DESIGN, so this is the common case, not an edge one.
+    return (
+      <span className="text-[11px] text-sand/50">
+        {reading.targetSec}s planned · nothing written yet
+      </span>
+    )
+  }
   if (reading.kind === 'on_plan') {
     return <span className="text-[11px] text-sand/60">{reading.targetSec}s beat</span>
   }
