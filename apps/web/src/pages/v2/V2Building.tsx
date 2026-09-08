@@ -14,6 +14,8 @@ import { judgeFit, warningForPickedVideo, recordTalkingHeadChoice } from '../../
 import type { FitWarning, FitReason } from '../../lib/api'
 import { TalkingHeadWarning } from '../../components/TalkingHeadWarning'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
+import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@twinai/shared'
+import { readProfileAnswers } from '../../lib/profileAnswersRead'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   INTENT_QUESTIONS, intentQuestionsFor, type IntentQuestion, type VideoGoal, focusForGoal,
@@ -323,7 +325,34 @@ function recallAsk(key: string): AskItem[] | null {
 export default function V2Building() {
   const nav = useNavigate()
   const loc = useLocation()
-  const { refreshProfile } = useAuth()
+  const { refreshProfile, profile } = useAuth()
+  // ── WAVE 5.2: RECOGNITION BEFORE THE SCRIPT ──────────────────────────────
+  //
+  // ⚠️ MEASURED 0 STATED, 34 GUESSED. Twin holds real answers from signup and
+  // the creator never sees them again, so a script arrives reading as though it
+  // were written for nobody in particular — and they cannot tell whether it
+  // missed because the writer is weak or because it never knew who they were.
+  //
+  // ⚖️ SAID WHILE IT BUILDS, WHICH IS THE ONLY MOMENT IT IS NOT AN INTERRUPTION.
+  // The creator is already waiting and already watching this screen.
+  //
+  // ⚠️ THE READ IS BEST-EFFORT AND FAILURE IS SILENCE, NEVER A GUESS. If the
+  // voice does not load, no line appears — citing something as "you told me
+  // this" when we could not read what they told us is the one failure this
+  // feature must not have.
+  const [statedLines, setStatedLines] = useState<RecognitionLine[]>([])
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      try {
+        const voices = await listBrandVoices()
+        const def = voices.find((v) => v.is_default) ?? voices[0]
+        if (!alive) return
+        setStatedLines(recognitionLines(readProfileAnswers(profile?.id, def?.pre_script_brief)))
+      } catch { /* silence, never a guess */ }
+    })()
+    return () => { alive = false }
+  }, [profile?.id])
   const state = (loc.state || {}) as BuildState
   const [active, setActive] = useState(0)
   const [pct, setPct] = useState(6)
@@ -1727,6 +1756,24 @@ export default function V2Building() {
                 ? 'The connection dropped. Your script may already be finished — we are asking the server before saying anything else.'
                 : echo}
             </p>
+
+            {/* ⚖️ RECOGNITION BEFORE THE SCRIPT — and only ever things they
+                actually said. `recognitionLines` returns nothing for an answer
+                that was never given, which is what makes the citation below
+                safe to print. Hidden during the rescue loop: that screen is
+                about whether their script survived, and nothing else. */}
+            {!rescuing && statedLines.length > 0 && (
+              <div className="mt-6 rounded-card border border-white/8 bg-white/[0.02] px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
+                  {RECOGNITION_CITATION}
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {statedLines.map((l) => (
+                    <li key={l.text} className="text-sm leading-relaxed text-cream">{l.text}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* Live progress — hidden once there is no request left to make
                 progress. A frozen bar reads as a stall; an absent one matches

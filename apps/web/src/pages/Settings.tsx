@@ -7,10 +7,10 @@ import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import {
   contentProfile, brandKitStatus, productDnaStatus, loadProductEntities,
   setupAreas, setupSummary, type SetupArea, type SetupState,
-  resolveProfileAnswers, readStoredBrief, savePreScriptBrief,
+  readStoredBrief, savePreScriptBrief,
 } from '@twinai/shared'
 import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
-import { readOnboardingDraft, profileAnswersOf } from '../lib/onboardingDraft'
+import { readProfileAnswers } from '../lib/profileAnswersRead'
 import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
 import { Aurora } from '../components/Aurora'
@@ -256,22 +256,10 @@ export default function Settings() {
   // so this reports a lower number than the truth — which is the safe direction
   // (it under-claims what Twin knows rather than over-claiming), but it is a real
   // gap and the fix is to persist the answers, not to assume them here.
-  const profileAnswers = (() => {
-    const id = profile?.id
-    let draft = null
-    try {
-      const d = id ? readOnboardingDraft(localStorage, id) : null
-      draft = d ? profileAnswersOf(d) : null
-    } catch { draft = null }
-    // ⚖️ THE CONFIRMED ANSWER BEATS THE HALF-FINISHED FORM, per field. A stored
-    // brief written before a question existed has no key for it, so preferring
-    // the whole stored object would discard a draft answer to a question the
-    // brief predates — reporting a gap the creator just filled in front of us.
-    return resolveProfileAnswers({
-      stored: readStoredBrief(activeVoice?.pre_script_brief) as never,
-      draft,
-    })
-  })()
+  // ⚖️ ONE READER, TWO SCREENS. This was an inline IIFE here until the build
+  // screen needed the same answers to say them back (Wave 5.2); see
+  // `readProfileAnswers` for why a copy would have been the wrong shape.
+  const profileAnswers = readProfileAnswers(profile?.id, activeVoice?.pre_script_brief)
   // ⚠️ THE PAGE RAN FROM PROFILE INTELLIGENCE INTO CREDIT PACKS INTO BRANDING
   // INTO THE WHOLE DNA RECORD, in one column, so the next useful action was
   // something you had to find rather than something you were told. Tabs are the
