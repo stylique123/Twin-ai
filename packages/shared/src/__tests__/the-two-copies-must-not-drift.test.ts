@@ -94,8 +94,22 @@ describe('the wiring, asserted against the shipped source', () => {
   // after the repair call must include the comparative pass too, or a rewritten
   // line could reintroduce the claim and ship.
   it('the post-repair re-check includes the comparative pass', () => {
-    const after = edge.slice(edge.indexOf('entitlement_repair') - 400, edge.indexOf('entitlement_repair'))
-    expect(after).toContain('comparativeFailures(')
+    // ⚠️ THIS USED TO SLICE A FIXED 400 CHARACTERS BACK FROM `entitlement_repair`
+    // and broke the moment another check was merged into the same re-check array
+    // (`platformCtaFailuresInline` pushed `comparativeFailures(` out of the
+    // window). A byte distance was never the property worth holding — being
+    // inside the re-check's `entFails = [ ... ]` is.
+    //
+    // ⚖️ AND THIS ASSERTS MORE, NOT LESS: the block is bounded by its own
+    // opening `entFails = [`, so a `comparativeFailures(` sitting anywhere else
+    // in the file no longer satisfies it, and nothing between the two can hide
+    // the call. Widening the window would have been the weaker fix.
+    const at = edge.indexOf('entitlement_repair')
+    expect(at).toBeGreaterThan(-1)
+    const opened = edge.lastIndexOf('entFails = [', at)
+    expect(opened, 'the re-check must build entFails as one array').toBeGreaterThan(-1)
+    const reCheck = edge.slice(opened, at)
+    expect(reCheck).toContain('comparativeFailures(')
   })
 
   it('the counter is emitted so zero and absent are distinguishable', () => {
