@@ -34,7 +34,7 @@ import {
   type RecordingScene, type RecordingScript, type ScriptEditResult,
 } from '../lib/api'
 import {
-  describeEdit, planSetups, startsSetup, setupStrip, readSemanticRepetitionRepair,
+  describeEdit, planSetups, startsSetup, setupStrip, openingSetupId, readSemanticRepetitionRepair,
   type ScriptEditRecord, type SetupPlan, type SemanticRepetitionRepair,
 } from '@twinai/shared'
 import { recordScriptEdit } from '../lib/scriptEdits'
@@ -179,7 +179,11 @@ function Editor({ script, setupPlan, hasTake, edited, commit, repair }: {
 }) {
   const [activeScene, setActiveScene] = useState<number | null>(null)
   const activeSetupId = activeScene == null
-    ? (setupPlan.setups[0]?.id ?? null)
+    // ⚠️ THE FIRST SPOKEN SCENE'S SETUP, NOT `setups[0]`. Those are the same
+    // answer only when the letters were assigned in script order, and when they
+    // were not this strip named a room the first card disagreed with — the I3
+    // report, `Setup D` above a scene reading `Setup A`.
+    ? openingSetupId(setupPlan)
     // ⚖️ A SILENT INSERT MAPS TO NULL AND MUST NOT BLANK THE STRIP. It belongs to
     // no room, so the room the creator is standing in has not changed — the last
     // spoken scene's setup is still the true answer.
