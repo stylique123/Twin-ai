@@ -51,6 +51,7 @@
 // setupAreas). Deleting the module wholesale would take those with it.
 
 import type { VideoGoal } from './videoIntent'
+import type { BriefGoal } from './preScriptBrief'
 
 /** What the viewer is asked to do. Twin may decide this. */
 export const CTA_MECHANISMS = [
@@ -92,6 +93,69 @@ export const MECHANISM_FROM_GOAL: Record<VideoGoal, CtaMechanism> = {
   sell: 'link',
   entertain: 'share',
   personal_brand: 'follow',
+}
+
+// ── DOES THIS SENTENCE ALREADY ASK THE VIEWER FOR SOMETHING? ──────────────
+//
+// ⚠️ TWO PRODUCTION RUNS, BOTH ON @theofferingmicrobakery. The recorder showed
+// "Scene 6 · about 1.5s · no beat length planned" carrying the words "Follow for
+// more" — on scripts that contain no such line anywhere. Neither blueprint had
+// a beat named CTA: both ended on a beat named `Payoff` that already asked
+// ("Tell me in the comments, what is the one scent note…" / "…I will see you in
+// the next video"), each with a planned target of 9 and 12 seconds.
+//
+// `recordingScriptAdapter` looked for a CTA by SECTION NAME only, found none,
+// and appended a generic ending of its own — unplanned, so no beat length, and
+// 1.5 seconds long by estimate. Every word on that card was true and the scene
+// should not have existed.
+//
+// ⚖️ SO THE ASK IS RECOGNISED BY WHAT IT ASKS, not by what the writer labelled
+// it. The vocabulary is `CTA_MECHANISMS`, which already exists and is already
+// what the rest of this module reasons in — a second private list of "ending
+// phrases" is how two parts of one system come to disagree about whether a
+// script has an ending.
+//
+// ⚠️ ORDER IS COMMERCE-FIRST AND NOT ALPHABETICAL. "Comment SAUCE and I'll send
+// the link" is two mechanisms in one line, and reading it as a comment prompt
+// loses the fact that it is a sale — which is the reading that carries a
+// disclosure obligation.
+const MECHANISM_PATTERNS: ReadonlyArray<{ mechanism: CtaMechanism; test: RegExp }> = [
+  { mechanism: 'buy', test: /\b(use (my|the) code|discount code|promo code|shop (now|here|the)|order (now|yours|here)|buy (it|now|yours|here)|grab (yours|one))\b/i },
+  { mechanism: 'link', test: /\b(link in (my |the )?bio|in bio|linkinbio|link below|link is in|swipe up|check the link)\b/i },
+  { mechanism: 'book', test: /\b(book (a|your|the) (call|slot|appointment|consult)|dm me|message me|get in touch|work with me|apply (now|here)|enquire)\b/i },
+  { mechanism: 'save', test: /\b(save (this|it|for later)|bookmark|keep this|come back to this)\b/i },
+  { mechanism: 'share', test: /\b(send this to|share this with|tag (someone|a friend)|show this to)\b/i },
+  { mechanism: 'comment', test: /\b(comment|drop (a|an|your)|tell me|let me know|what do you think)\b/i },
+  { mechanism: 'follow', test: /\b(follow (for|me)|hit follow|subscribe|see you in the next|part \d)\b/i },
+]
+
+/**
+ * The thing this line asks the viewer to do, or null if it asks nothing.
+ *
+ * ⚠️ NULL IS A REAL ANSWER AND MUST STAY CHEAP. Most sentences in a script ask
+ * for nothing, and a detector that finds an ask everywhere would suppress the
+ * generated ending on scripts that genuinely have none.
+ */
+export function ctaMechanismIn(text: string | null | undefined): CtaMechanism | null {
+  const t = String(text ?? '').trim()
+  if (t === '') return null
+  return MECHANISM_PATTERNS.find((m) => m.test.test(t))?.mechanism ?? null
+}
+
+/** What a creator whose endings use this mechanism is mostly doing.
+ *
+ *  ⚠️ NOT THE INVERSE OF `MECHANISM_FROM_GOAL`, and it cannot be: three goals
+ *  map to `follow` there, so inverting would have to pick one and would state a
+ *  priority nobody expressed. This is its own judgement, in the safe direction —
+ *  the broadest goal each mechanism is evidence for. */
+export const GOAL_FROM_MECHANISM: Record<CtaMechanism, BriefGoal> = {
+  buy: 'sell',
+  link: 'sell',
+  book: 'leads',
+  save: 'educate',
+  share: 'followers',
+  comment: 'followers',
+  follow: 'followers',
 }
 
 /** The wording Twin uses when it has to write one itself. Deliberately plain:

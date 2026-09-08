@@ -19,23 +19,14 @@
 // guessed" defect wearing a better disguise.
 
 import { BRIEF_GOALS, type BriefGoal } from './preScriptBrief'
+import { ctaMechanismIn, GOAL_FROM_MECHANISM, CTA_MECHANISMS } from './cta'
 
-/** ⚠️ ORDER MATTERS AND IS NOT ALPHABETICAL. A CTA can carry two families at
- *  once — "comment SAUCE and I'll send the link" is both a comment prompt and a
- *  link hand-off — and the more SPECIFIC commercial reading wins, because
- *  mistaking a sale for engagement loses the disclosure question. */
-const FAMILIES: ReadonlyArray<{ goal: BriefGoal; test: RegExp }> = [
-  // Buying: a code, a shop, a price, an order.
-  { goal: 'sell', test: /\b(use (my|the) code|discount code|promo code|shop (now|here|the)|order (now|yours|here)|buy (it|now|yours|here)|on sale|in stock|restock)\b/i },
-  // A hand-off to somewhere they transact or enquire.
-  { goal: 'sell', test: /\b(link in (my )?bio|in bio|linkinbio|link below|swipe up|check the link)\b/i },
-  // Asking for the conversation itself.
-  { goal: 'leads', test: /\b(dm me|message me|book (a|your) (call|slot|appointment|consult)|enquire|get in touch|work with me|apply (now|here))\b/i },
-  // Asking them to keep it: the ending of something taught.
-  { goal: 'educate', test: /\b(save (this|it|for later)|bookmark|keep this|come back to this|send this to)\b/i },
-  // Asking them to say something, or to stay.
-  { goal: 'followers', test: /\b(comment|drop (a|your|an)|tell me|let me know|what do you think|follow for more|hit follow|part \d)\b/i },
-]
+// ⚖️ THE FAMILY TABLE THAT LIVED HERE IS GONE, AND THAT IS THE POINT. It was a
+// second private list of ending phrases, written days before `ctaMechanismIn`
+// needed the same knowledge for the recorder. Two lists deciding "is this a
+// sale or a comment prompt" is how one system comes to give two answers about
+// one sentence — the defect this session keeps closing. The vocabulary is
+// `CTA_MECHANISMS`; this file now only maps it onto a goal.
 
 export interface GoalFromCtas {
   goal: BriefGoal
@@ -65,8 +56,9 @@ export function goalFromCtas(ctas: readonly unknown[] | null | undefined): GoalF
   for (const line of lines) {
     // ⚖️ ONE VOTE PER CTA, from the FIRST family it matches. Letting one line
     // vote twice would make a single chatty CTA outweigh three plain ones.
-    const hit = FAMILIES.find((f) => f.test.test(line))
-    if (!hit) continue
+    const mechanism = ctaMechanismIn(line)
+    if (!mechanism) continue
+    const hit = { goal: GOAL_FROM_MECHANISM[mechanism] }
     const prev = tally.get(hit.goal)
     if (prev) prev.n += 1
     else tally.set(hit.goal, { n: 1, first: line })
@@ -103,4 +95,4 @@ export function goalConfirmationLine(found: GoalFromCtas): string {
 /** The goals this mapping can currently reach. Exported so a test can pin the
  *  gap rather than a reader discovering it. */
 export const INFERABLE_GOALS: readonly BriefGoal[] =
-  BRIEF_GOALS.filter((g) => FAMILIES.some((f) => f.goal === g))
+  BRIEF_GOALS.filter((g) => CTA_MECHANISMS.some((m) => GOAL_FROM_MECHANISM[m] === g))
