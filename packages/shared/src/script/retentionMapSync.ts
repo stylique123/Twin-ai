@@ -81,6 +81,53 @@ export interface RetentionMapSyncResult {
 const REHOOK_SECTION = /re-?hook|second hook|reset/i
 
 /**
+ * ⚠️ THE PANEL NAMED A BEAT "SETUP" AND THE BEAT WAS THE ASK.
+ *
+ * Reference run 3 rendered `Hook → Re-hook → Setup`, and the beat labelled
+ * "Setup" was the one carrying the CTA. Every layer behaved: the writer put
+ * that string in `section`, and the resync below copied the script's own name
+ * faithfully — which is exactly what it was built to do. Faithful copying is
+ * not enough when the name itself contradicts where the beat sits: nothing
+ * anywhere checked that a beat called "Setup" was in a position where a video
+ * can still be setting anything up.
+ *
+ * ⚖️ POSITION WINS OVER THE WRITER'S NOUN, AND ONLY WHERE THEY CONTRADICT.
+ * A middle beat named "Setup" is a real setup and keeps its name. The LAST
+ * beat cannot be one — the last beat is where the video lands — so a name
+ * that promises an opening at the closing position is overruled. Likewise a
+ * bare "Hook" after the first beat: a video has one hook, and the word for the
+ * second one already exists.
+ *
+ * ⚖️ AND THE GOAL IS THEN SYNTHESIZED FROM THE LABEL, NOT FROM THE RAW
+ * SECTION. That is the whole point of doing it here rather than in the screen:
+ * the label and the sentence under it are two readings of one script, and the
+ * defect class this repo keeps hitting is two readers disagreeing. One string
+ * decides both.
+ */
+const OPENS_THE_VIDEO = /\b(hooks?|intros?|introduction|opening|cold ?open|set-? ?ups?|context|premise|background)\b/i
+const BARE_HOOK = /\bhooks?\b/i
+
+/**
+ * The name the coaching panel prints for a beat — the script's own section
+ * name unless the beat's position contradicts it.
+ */
+export function retentionBeatLabel(index: number, total: number, section: string): string {
+  const named = section.trim()
+  if (named === '') return `Beat ${index + 1}`
+  // ⚖️ A ONE-BEAT SCRIPT IS ITS OWN OPENING AND ITS OWN CLOSE, so there is no
+  // contradiction available to detect and the writer's name stands.
+  if (total <= 1) return named
+  const isFirst = index === 0
+  const isLast = index === total - 1
+  // A re-hook is not an opening word — it names a beat that can only exist
+  // after one — so it is excluded before the opening test, not after it.
+  const reopens = REHOOK_SECTION.test(named)
+  if (isLast && !isFirst && !reopens && OPENS_THE_VIDEO.test(named)) return 'Close'
+  if (!isFirst && !reopens && BARE_HOOK.test(named)) return 'Re-hook'
+  return named
+}
+
+/**
  * ⚠️ EVERY MIDDLE BEAT USED TO READ THE SAME SENTENCE. The old rule returned
  * 'Add a reason to keep watching before attention drifts.' for every beat in
  * the first 60%, so a seven-beat script showed that one line three times and a
@@ -149,9 +196,15 @@ export function syncRetentionMapToScript(
     // Always synthesized from THIS beat's own position — never the original
     // row's prose, matched or not. See the module doc: a surviving name is
     // not proof of surviving content.
+    //
+    // ⚖️ THE GOAL READS THE LABEL, NOT THE RAW SECTION. Once position has
+    // overruled a contradicting name, the sentence under it must describe the
+    // same beat the label names — otherwise the fix would produce a panel that
+    // disagrees with itself, which is the defect one line up.
+    const label = retentionBeatLabel(index, beats.length, section)
     return {
-      beat: section || `Beat ${index + 1}`,
-      goal: POSITION_GOAL(index, beats.length, section),
+      beat: label,
+      goal: POSITION_GOAL(index, beats.length, label),
     }
   })
 
