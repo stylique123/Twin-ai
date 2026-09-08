@@ -46,7 +46,7 @@ import {
   isStale, factAgeDays, SOURCE_LABEL, sourceWarrantsAttention,
   signEditUrls,
   bestSuggestion,
-  asksPersonalUse, capabilityQuestion, CAPABILITY_PROMPT, capabilityAnswerIsUsed,
+  asksPersonalUse, capabilityQuestion, CAPABILITY_PROMPT,
   capabilityFlag,
   productLifecycle, LIFECYCLE_MESSAGE,
   CAPTURE_COPY, PLATFORM_CHOICES, PRIVACY_CHOICES, RATHER_NOT_SAY, FIGURE_HINT,
@@ -140,6 +140,16 @@ const SHOW_OPTIONS: Array<{ value: Showability; label: string; askLabel: string;
  * only pick a new moment to drift.
  */
 const CAPABILITY_CHOICES = SHOW_OPTIONS.map((o) => ({ value: o.value, label: o.askLabel }))
+
+/** Which capability question this stored product warrants — the SAME function
+ *  the add form asks, given the entity's own type and relationship.
+ *
+ *  ⚖️ IT ALSO SUBSUMES THE OLD `capabilityAnswerIsUsed` GATE: `capabilityQuestion`
+ *  returns null exactly where the answer would be discarded, so "should we ask"
+ *  and "which question" stop being two decisions that can disagree. */
+function capabilityQuestionFor(e: ProductEntityRecord): 'screen' | 'physical' | null {
+  return capabilityQuestion({ type: e.type as EntityType, relationship: e.relationship })
+}
 
 /** What a creator is told about a type whose answer would change nothing.
  *  ⚠️ NEVER MAKE THE CREATOR THINK ABOUT TWIN'S ARCHITECTURE: these say what
@@ -825,7 +835,17 @@ export default function ProductLibrary() {
             show about each one.
           </p>
         </div>
-        {!addingNew && (
+        {/* ⚠️ ONE ADD CONTROL ON SCREEN AT A TIME, AND THERE WERE THREE.
+            Header, empty state, and a mid-page "Add another product" all opened
+            the same dialog: an empty library showed two identical primary
+            buttons, and a stocked one showed two more. Two buttons doing one
+            thing is not twice the affordance — it is a creator wondering what
+            the difference is.
+
+            ⚖️ THE EMPTY STATE KEEPS ITS OWN, because there the button belongs
+            beside the paragraph explaining why the library is empty. So the
+            header's appears only once there is a list for it to sit above. */}
+        {!addingNew && entities.length > 0 && (
           <button
             type="button"
             className="btn-gradient shrink-0 rounded-lg px-3 py-1.5 text-sm"
@@ -931,13 +951,10 @@ export default function ProductLibrary() {
         </div>
       )}
 
-      {tab === 'live' && entities.length > 0 && !addingNew && (
-        <button
-          type="button"
-          className="rounded-lg border border-white/15 px-3 py-1.5 text-sm"
-          onClick={() => setAddingNew(true)}
-        >Add another product</button>
-      )}
+      {/* ⚖️ THE THIRD ADD BUTTON LIVED HERE, between the tabs and the list,
+          duplicating the header's. Removed rather than relabelled: renaming one
+          of two identical actions only makes the creator look for the
+          difference harder. */}
 
       {/* ⚠️ ONE NOTE, RENDERED WHERE THE EDIT HAPPENED. Declared here rather
           than inside the map so every field gets the identical wording — the
@@ -1181,12 +1198,21 @@ export default function ProductLibrary() {
               anyway spends a creator's attention on an answer we throw away,
               which is the founding defect of this rebuild in miniature. They are
               told the fact instead. */}
-          {capabilityAnswerIsUsed(e.type as EntityType) ? (
+          {/* ⚠️ TWO DERIVATIONS OF ONE RULE, HELD TOGETHER BY NOTHING. The add
+              form asked `capabilityQuestion(...)` which branch to show; this
+              card decided for itself with `type === 'PHYSICAL_PRODUCT' ?
+              'physical' : 'screen'`. Enumerated 2026-09-08 over every
+              EntityType × EntityRelationship, the two agree TODAY — so this is
+              not a live wrong answer, it is the shape that produces one later,
+              because nothing makes the copy follow when the authority changes.
+
+              ⚖️ SO THE CARD ASKS THE AUTHORITY, and a parity test walks the
+              whole product to keep it that way. `relationship` is passed
+              because `capabilityQuestion` reads it. */}
+          {capabilityQuestionFor(e) !== null ? (
             <fieldset className="mt-4">
               <legend className="text-xs font-medium uppercase tracking-wide text-stone">
-                {CAPABILITY_PROMPT[
-                  e.type === 'PHYSICAL_PRODUCT' ? 'physical' : 'screen'
-                ]}
+                {CAPABILITY_PROMPT[capabilityQuestionFor(e)!]}
               </legend>
               <div className="mt-2 space-y-1">
                 {SHOW_OPTIONS.map((o) => (

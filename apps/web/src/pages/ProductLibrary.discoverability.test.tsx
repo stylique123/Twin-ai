@@ -106,6 +106,40 @@ describe('the removal control is findable', () => {
   })
 })
 
+describe('there is exactly ONE way to add a product on screen', () => {
+  // ⚠️ THERE WERE THREE, ALL OPENING THE SAME DIALOG: the header, the empty
+  // state, and a mid-page "Add another product". An empty library showed two
+  // identical primary buttons; a stocked one showed two more. Two buttons doing
+  // one thing is a creator wondering what the difference is.
+  const addButtons = () => screen.queryAllByRole('button', { name: /add (a|another) product/i })
+
+  it('with products: the header owns it, and nothing repeats it mid-page', async () => {
+    await page()
+    expect(addButtons()).toHaveLength(1)
+  })
+
+  it('with no products: the empty state owns it, and the header stands down', async () => {
+    // ⚖️ THE EMPTY STATE KEEPS ITS OWN because there the button belongs beside
+    // the paragraph explaining why the library is empty — so it is the header's
+    // that yields, not the other way round.
+    const shared = await import('@twinai/shared')
+    const load = vi.mocked(shared.loadProductEntities)
+    const original = load.getMockImplementation()
+    load.mockResolvedValue([])
+    try {
+      const { default: ProductLibrary } = await import('./ProductLibrary')
+      render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+      await screen.findByText(/You have not registered a product yet/i)
+      expect(addButtons()).toHaveLength(1)
+    } finally {
+      // ⚠️ A MOCK LEFT REWRITTEN IS A FAILURE IN THE NEXT TEST WITH THIS TEST'S
+      // NAME NOWHERE ON IT. Restored in `finally`, so an assertion failure here
+      // cannot cascade into three unrelated ones.
+      load.mockImplementation(original!)
+    }
+  })
+})
+
 describe('a save is confirmed beside the field that was edited', () => {
   it('reports on the NAME field, not at the foot of the card', async () => {
     const nameBox = await page()
