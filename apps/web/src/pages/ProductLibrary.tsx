@@ -141,6 +141,29 @@ const SHOW_OPTIONS: Array<{ value: Showability; label: string; askLabel: string;
  */
 const CAPABILITY_CHOICES = SHOW_OPTIONS.map((o) => ({ value: o.value, label: o.askLabel }))
 
+/** What to call this card when the creator has not named the product yet.
+ *
+ *  ⚠️ TWO NAMELESS PRODUCTS RENDERED TWO IDENTICAL CARDS. The card has no
+ *  heading of its own — the first thing on it is an empty `Name` box with a
+ *  placeholder — so a creator who added two things from links, before either
+ *  page was read, was looking at two blank forms and had to open the Link field
+ *  of each to tell them apart.
+ *
+ *  ⚖️ IT IS A FALLBACK LABEL, NOT A WRITE. Nothing is stored: guessing a name
+ *  into `product_entities.name` would hand the writer a title the creator never
+ *  said, which is the whole failure mode this library exists to end. */
+function cardTitle(e: ProductEntityRecord): string {
+  const name = (e.name ?? '').trim()
+  if (name !== '') return name
+  const summary = (e.creatorSummary ?? '').trim()
+  if (summary !== '') return summary.length > 60 ? `${summary.slice(0, 57)}…` : summary
+  const url = (e.productUrl ?? '').trim()
+  if (url !== '') {
+    try { return new URL(url).hostname.replace(/^www\./, '') } catch { /* not a URL yet */ }
+  }
+  return 'Not named yet'
+}
+
 /** Which capability question this stored product warrants — the SAME function
  *  the add form asks, given the entity's own type and relationship.
  *
@@ -982,9 +1005,12 @@ export default function ProductLibrary() {
               add buttons and two capability questions; answering this report
               with a second remove control would make the same mistake again. */}
           <div className="mb-3 flex items-start justify-between gap-3">
-            <p className="text-xs text-stone">
-              {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
-            </p>
+            <div>
+              <h2 className="text-sm font-semibold">{cardTitle(e)}</h2>
+              <p className="mt-0.5 text-xs text-stone">
+                {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
+              </p>
+            </div>
             {removingId !== e.id && (
               <button
                 type="button"
@@ -1312,10 +1338,23 @@ export default function ProductLibrary() {
                     reuses it rather than inventing a second mechanism, and the
                     link box is pre-filled with the URL already on file so a retry
                     is one tap, not a re-paste. */}
+                {/* ⚠️ IT TOLD A CREATOR THEIR SCRIPTS WERE GUESSING WHILE THEIR
+                    OWN SENTENCE SAT IN THE BOX ABOVE. `creator_summary` is not
+                    decoration: `generate-blueprint` reads it at index.ts:6204
+                    and writes it into the prompt when the page has not been
+                    read. So "we know nothing about this" was false for exactly
+                    the creator who had already answered — the baker with no
+                    website, told twice to paste a URL.
+
+                    ⚖️ THE LINK IS STILL OFFERED, because a read page carries
+                    more than one line can. What changes is the claim about what
+                    Twin currently knows, which was simply untrue. */}
                 <p className="mt-1 text-sm text-sand">
                   {productLifecycle(e, photoPathsOf(e).length) === 'IMPORT_FAILED'
                     ? 'That read did not finish. Press Read the page above to try the same link again, or change it first.'
-                    : 'Add a link above and press Read the page, so your scripts can say what it actually does instead of guessing.'}
+                    : (e.creatorSummary ?? '').trim() !== ''
+                      ? 'Twin will use the line you wrote above. Add a link and press Read the page if you want it to learn more than that line.'
+                      : 'Add a link above and press Read the page, so your scripts can say what it actually does instead of guessing.'}
                 </p>
                 {/* ⚖️ THE SECOND LINK BOX LIVED HERE AND IS GONE. It is the
                     Link field above, which now carries the button — so this

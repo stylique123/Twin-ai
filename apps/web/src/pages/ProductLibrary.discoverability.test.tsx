@@ -140,6 +140,101 @@ describe('there is exactly ONE way to add a product on screen', () => {
   })
 })
 
+describe('the card does not tell a creator it knows nothing they have already told it', () => {
+  it('with a one-line description and no read page, it says the line will be used', async () => {
+    // ⚠️ THE CARD SAID "so your scripts can say what it actually does instead of
+    // guessing" WHILE THE CREATOR'S OWN SENTENCE SAT IN THE BOX ABOVE IT.
+    // `creator_summary` is read by generate-blueprint (index.ts:6204) and put in
+    // the prompt when the page has not been read, so the claim was false for
+    // exactly the creator who had already answered.
+    const shared = await import('@twinai/shared')
+    const load = vi.mocked(shared.loadProductEntities)
+    const original = load.getMockImplementation()
+    load.mockImplementation(async (o?: { includeArchived?: boolean }) => o?.includeArchived ? [] : [{
+      ...ENTITY, knowledge: null, productUrl: null,
+      creatorSummary: 'Sourdough loaves, baked to order for people near me',
+    }])
+    try {
+      const { default: ProductLibrary } = await import('./ProductLibrary')
+      render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+      expect(await screen.findByText(/Twin will use the line you wrote above/i)).toBeTruthy()
+      expect(screen.queryByText(/instead of guessing/i)).toBeNull()
+    } finally { load.mockImplementation(original!) }
+  })
+
+  it('with no description and no read page, it still asks for a link', async () => {
+    // ⚖️ THE OTHER HALF, PINNED. The fix must not silence the prompt for the
+    // creator who really has told us nothing.
+    const shared = await import('@twinai/shared')
+    const load = vi.mocked(shared.loadProductEntities)
+    const original = load.getMockImplementation()
+    load.mockImplementation(async (o?: { includeArchived?: boolean }) => o?.includeArchived ? [] : [{
+      ...ENTITY, knowledge: null, productUrl: null, creatorSummary: null,
+    }])
+    try {
+      const { default: ProductLibrary } = await import('./ProductLibrary')
+      render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+      expect(await screen.findByText(/instead of guessing/i)).toBeTruthy()
+    } finally { load.mockImplementation(original!) }
+  })
+})
+
+describe('two unnamed products are not two identical blank cards', () => {
+  // ⚠️ THE CARD HAD NO HEADING. The first thing on it is an empty `Name` box
+  // with a placeholder, so a creator who added two things from links — before
+  // either page was read — was looking at two blank forms and had to open the
+  // Link field of each to tell them apart.
+  const twoUnnamed = async (fn: () => Promise<void>) => {
+    const shared = await import('@twinai/shared')
+    const load = vi.mocked(shared.loadProductEntities)
+    const original = load.getMockImplementation()
+    load.mockImplementation(async (o?: { includeArchived?: boolean }) => o?.includeArchived ? [] : [
+      { ...ENTITY, id: 'a', name: null, creatorSummary: null, productUrl: 'https://www.medicube.example/booster' },
+      { ...ENTITY, id: 'b', name: null, creatorSummary: 'Sourdough loaves, baked to order', productUrl: null },
+    ])
+    try { await fn() } finally { load.mockImplementation(original!) }
+  }
+
+  it('falls back to the link host, then the creator\'s own line', async () => {
+    await twoUnnamed(async () => {
+      const { default: ProductLibrary } = await import('./ProductLibrary')
+      render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+      // ⚖️ `www.` DROPPED, because the point is telling two cards apart, not
+      // reproducing a URL the creator can already see in the Link box.
+      expect(await screen.findByRole('heading', { name: 'medicube.example' })).toBeTruthy()
+      expect(screen.getByRole('heading', { name: 'Sourdough loaves, baked to order' })).toBeTruthy()
+    })
+  })
+
+  it('says so plainly when there is nothing to fall back to', async () => {
+    const shared = await import('@twinai/shared')
+    const load = vi.mocked(shared.loadProductEntities)
+    const original = load.getMockImplementation()
+    load.mockImplementation(async (o?: { includeArchived?: boolean }) => o?.includeArchived ? [] : [
+      { ...ENTITY, name: null, creatorSummary: null, productUrl: null },
+    ])
+    try {
+      const { default: ProductLibrary } = await import('./ProductLibrary')
+      render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+      expect(await screen.findByRole('heading', { name: 'Not named yet' })).toBeTruthy()
+    } finally { load.mockImplementation(original!) }
+  })
+
+  it('the fallback is a LABEL and is never written back as the name', async () => {
+    // ⚠️ GUESSING A NAME INTO THE RECORD would hand the writer a title the
+    // creator never said — the exact failure this library exists to end.
+    await twoUnnamed(async () => {
+      const { default: ProductLibrary } = await import('./ProductLibrary')
+      render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+      await screen.findByRole('heading', { name: 'medicube.example' })
+      expect(updateEntityPresentation).not.toHaveBeenCalled()
+      // The Name box stays empty, so the placeholder still invites a real name.
+      expect(screen.getAllByPlaceholderText('What you call it on camera')[0])
+        .toHaveProperty('value', '')
+    })
+  })
+})
+
 describe('a save is confirmed beside the field that was edited', () => {
   it('reports on the NAME field, not at the foot of the card', async () => {
     const nameBox = await page()
