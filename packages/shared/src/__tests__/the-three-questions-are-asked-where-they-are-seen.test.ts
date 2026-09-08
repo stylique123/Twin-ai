@@ -50,7 +50,23 @@ describe('Advanced Settings keeps execution and loses intent', () => {
     expect(CREATE).not.toMatch(/label="How close to the reference"/)
     expect(CREATE).not.toMatch(/const \[fidelity, setFidelity\]/)
     expect(CREATE).toMatch(/How it should sound/)
-    expect(CREATE).toMatch(/tone, idempotency_key/)
+    // ⚠️ THIS USED TO READ `expect(CREATE).toMatch(/tone, idempotency_key/)`
+    // and broke the moment a THIRD field joined the nav state — the length
+    // picker's `target_seconds` was inserted between them. Literal adjacency of
+    // two properties was never the thing worth holding; "tone is carried into
+    // the build" is. Same brittleness class as the fixed-byte slice in
+    // `the-two-copies-must-not-drift`, and fixed the same way: anchor on the
+    // structure, assert the property.
+    //
+    // ⚖️ AND IT ASSERTS MORE, NOT LESS — the fields must be inside the nav
+    // state object, so `tone` appearing anywhere else in the file no longer
+    // satisfies it.
+    const navState = CREATE.slice(
+      CREATE.indexOf('state: { ...buildFieldsForDoor'),
+      CREATE.indexOf('})', CREATE.indexOf('state: { ...buildFieldsForDoor')),
+    )
+    expect(navState, 'the nav state must carry tone').toMatch(/\btone\b/)
+    expect(navState, 'the nav state must mint the idempotency key').toMatch(/\bidempotency_key\b/)
   })
 
   it('stops promising an effect the panel no longer has', () => {

@@ -83,6 +83,8 @@ interface BuildState {
   reference_note?: string
   fidelity?: 'close' | 'balanced' | 'loose'
   tone?: 'understated' | 'balanced' | 'punchy'
+  // How long they asked for. Absent means they were never asked.
+  target_seconds?: 30 | 60 | 90
   // What this video is for. Absent means an engagement CTA — see GenerateInput.
   goal?: VideoGoal
   // Minted by V2Create, one per click of "build". Carried in nav state so a
@@ -109,6 +111,12 @@ function buildKey(state: BuildState): string {
     (state.reference_note || '').trim(),
     state.fidelity ?? 'balanced',
     state.tone ?? 'balanced',
+    // ⚠️ LENGTH IS PART OF THE IDENTITY OF A BUILD, for the same reason goal is.
+    // "The same reference, but sixty seconds" is a different script; without
+    // this it would collide with the thirty-second version already in
+    // sessionStorage and hand the creator the old one back with no sign that
+    // their choice was ignored.
+    state.target_seconds ?? 'unasked',
     // GOAL IS PART OF THE IDENTITY OF A BUILD. Omitting it would make "the same
     // reference, now as a sell video" collide with the awareness version
     // already in sessionStorage, and the creator would be handed the old script
@@ -893,6 +901,7 @@ export default function V2Building() {
           reference_note: state.reference_note || '',
           fidelity: state.fidelity ?? 'balanced',
           tone: state.tone,
+          target_seconds: state.target_seconds,
           // ⚠️ THE THREE INTENT ANSWERS RIDE THE REQUEST, NOT `readiness_answers`.
           // Readiness answers are creator-stable facts that get persisted to the
           // brief so they are never asked twice; these are per-VIDEO and must

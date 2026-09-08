@@ -39,6 +39,44 @@
  * collapsing it would either break the product or reintroduce the defect.
  */
 
+/** The three lengths a creator may choose. */
+export const TARGET_SECONDS = [30, 60, 90] as const
+export type TargetSeconds = (typeof TARGET_SECONDS)[number]
+
+/**
+ * ⚠️ ADDING LENGTH ADDS BEATS, NOT LONGER BEATS. Measured: every beat overshoots
+ * its planned target today, 12 of 12 runs, the worst 18 seconds against a 10
+ * second plan. Stretching beats is how a script gets slow; adding beats is how
+ * it gets longer, and this table is what makes that structural.
+ *
+ * ⚖️ THE EPISODE SLOT ONLY EXISTS AT 60s AND ABOVE. A 30-second script is one
+ * idea — there is no room for a story with a before and an after — so a creator
+ * choosing 30 is choosing an explainer, and the picker says so rather than
+ * leaving them to find out at the teleprompter.
+ */
+const SHAPE: Readonly<Record<TargetSeconds, readonly string[]>> = Object.freeze({
+  30: Object.freeze(['hook', 'setup', 'payoff', 'cta']),
+  60: Object.freeze(['hook', 'setup', 'episode', 'consequence', 'payoff', 'cta']),
+  90: Object.freeze([
+    'hook', 'setup', 'episode', 'consequence', 'rehook', 'second point', 'payoff', 'cta',
+  ]),
+})
+
+export function shapeFor(target: TargetSeconds): readonly string[] { return SHAPE[target] }
+export function beatsFor(target: TargetSeconds): number { return SHAPE[target].length }
+
+/** ⚖️ THE DEFAULT IS 60, NOT 30. The twelve runs show the failure mode is
+ *  thinness, so defaulting to the shortest option would make the common case
+ *  worse in exactly the direction it is already wrong. */
+export const DEFAULT_TARGET_SECONDS: TargetSeconds = 60
+
+/** Narrow an unknown to a real choice, or null. ⚠️ NULL, NOT A DEFAULT: a
+ *  caller that never asked must not be recorded as having chosen 60. */
+export function asTarget(v: unknown): TargetSeconds | null {
+  const n = typeof v === 'number' ? v : Number(v)
+  return (TARGET_SECONDS as readonly number[]).includes(n) ? (n as TargetSeconds) : null
+}
+
 /**
  * ⚖️ WHICH OF A REFERENCE'S BEATS ARE *POINTS*. `hook` and `cta` are excluded
  * because every script gets both regardless of how much there is to say —
@@ -136,4 +174,52 @@ export function substanceBudget(sources: SubstanceSources | null | undefined): S
   const counted = { referencePoints: ref ?? 0, storeItems: store ?? 0, productFacts: product ?? 0 }
   const points = counted.referencePoints + counted.storeItems + counted.productFacts
   return { beats: points + FREE_BEATS, enforceable: true, counted }
+}
+
+export interface LengthPlan {
+  /** Beats the script may actually emit. */
+  beats: number
+  /** The creator's ask, unchanged — so a screen can show both numbers. */
+  targetBeats: number
+  /** Beats of substance beyond the target. ⚖️ NAME WHAT WAS DROPPED. */
+  dropped: number
+  /** True when the budget could not fill the target: end short, never pad. */
+  short: boolean
+  /** ⚠️ FALSE MEANS "WE COULD NOT CHECK", AND A CALLER MAY NOT REPORT IT AS
+   *  "we checked and it was fine". */
+  enforced: boolean
+}
+
+/**
+ * THE EXPANSION BAN. A script may not exceed the substance budget. Ever.
+ *
+ * ⚠️ THE ONE LINE THAT DOES THE WORK IS THE `Math.min`. Everything else is
+ * reporting. If the target asks for more beats than the budget supports, the
+ * script emits FEWER beats — it never stretches the beats it has to reach a
+ * number, because that stretching is where the invented figures came from.
+ *
+ * ⚠️⚠️ AND THE NUMBER IT IS JUDGED AGAINST IS ALREADY FROZEN. Measured
+ * 2026-09-08: removing the source material made the model write 64% MORE
+ * (mean 12.5 -> 20.5 sentences, every run up by mean, run b x2.71). See
+ * `removing-the-substance-makes-it-write-more.test.ts`. Re-running that
+ * comparison with the ban wired must bring the ratio from 1.64 to at or below
+ * 1.0; still above 1.0 means this is not reaching the path that writes.
+ */
+export function planLength(target: TargetSeconds, budget: SubstanceBudget): LengthPlan {
+  const targetBeats = beatsFor(target)
+
+  // ⚠️ AN UNKNOWN BUDGET DOES NOT BECOME A LICENCE. It also does not become a
+  // refusal. The target stands, and `enforced: false` is the caller's
+  // instruction not to claim the ban ran.
+  if (!budget.enforceable || budget.beats === null) {
+    return { beats: targetBeats, targetBeats, dropped: 0, short: false, enforced: false }
+  }
+  const beats = Math.min(targetBeats, budget.beats)
+  return {
+    beats,
+    targetBeats,
+    dropped: Math.max(0, budget.beats - targetBeats),
+    short: budget.beats < targetBeats,
+    enforced: true,
+  }
 }

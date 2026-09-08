@@ -34,6 +34,7 @@ import { videosFromCredits } from '../../lib/brand'
 import { recordEntryDoor } from '../../lib/entryDoors'
 import {
   readEntryDoor, buildFieldsForDoor, looksLikeLink, ALL_DOORS, type EntryDoor,
+  DEFAULT_TARGET_SECONDS, shapeFor, type TargetSeconds,
 } from '@twinai/shared'
 import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
@@ -53,6 +54,15 @@ type Tone = 'understated' | 'balanced' | 'punchy'
 // — see `resolveFidelity` in `videoIntent.ts`, which derives the writer's
 // fidelity rule from it. Nothing here can disagree with it because nothing
 // here asks the question anymore.
+// ⚖️ PLAIN ENGLISH, AND THE NOTE NAMES WHAT THE LENGTH BUYS rather than how
+// many beats it maps to. "Room for a story" is the difference a creator can
+// feel; "six beats" is our word for our problem.
+const LENGTHS = [
+  { id: 30 as const, label: '30 seconds', note: 'Fast, one idea' },
+  { id: 60 as const, label: '60 seconds', note: 'Room for a story' },
+  { id: 90 as const, label: '90 seconds', note: 'A full breakdown' },
+] as const
+
 const TONE = [
   { id: 'understated', label: 'Understated', note: 'Calm, credible, no hype.', icon: Wind },
   { id: 'balanced', label: 'Balanced', note: 'Natural energy, your default.', icon: Activity },
@@ -116,6 +126,10 @@ export default function V2Create() {
   const [picked, setPicked] = useState<EntryDoor | null>(null)
   const [advanced, setAdvanced] = useState(false)
   const [tone, setTone] = useState<Tone>('balanced') // recommended default
+  // ⚖️ DEFAULTS TO 60, NOT 30. The twelve measured runs fail by being THIN, so
+  // opening on the shortest option would push the common case further in the
+  // direction it is already wrong.
+  const [target, setTarget] = useState<TargetSeconds>(DEFAULT_TARGET_SECONDS)
   const [checking, setChecking] = useState(false)
   // A generation that already used this exact link — surfaced so we can offer to
   // open it instead of silently spending another remix on a duplicate.
@@ -147,7 +161,7 @@ export default function V2Create() {
       // screen only carries out the ask, and it remounts. Two deliberate clicks
       // mint two keys and correctly cost two remixes; a remount, a back-and-
       // forward or a refresh reuses this one and costs nothing extra.
-      state: { ...buildFieldsForDoor(door, t), tone, idempotency_key: crypto.randomUUID() },
+      state: { ...buildFieldsForDoor(door, t), tone, target_seconds: target, idempotency_key: crypto.randomUUID() },
     })
   }
 
@@ -284,6 +298,55 @@ export default function V2Create() {
                     Use it as an idea instead
                   </button>
                   , or paste the video's URL.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ── HOW LONG. ────────────────────────────────────────────────────
+              ⚠️ DELIBERATELY NOT IN ADVANCED SETTINGS, and the comment two
+              blocks below says why: "What this video is for" WAS buried in that
+              collapsed panel, defaulted to unset for almost everyone, and every
+              script was told it was not a selling video. Length is the same kind
+              of question — the creator's intent, not an execution preference —
+              and burying it would reproduce that failure exactly.
+
+              ⚖️ AND IT IS ASKED FOR EVERY DOOR. Reference and Product could
+              derive a default from what they were given; Idea and Suggest have
+              nothing to derive from, and today Idea Mode produces whatever
+              length it happens to produce. ── */}
+          {!isHandoff && (
+            <div className="mx-auto mt-7 max-w-md text-left">
+              <div className="eyebrow mb-2.5">How long?</div>
+              <div role="radiogroup" aria-label="How long should the video be?" className="grid grid-cols-3 gap-2.5">
+                {LENGTHS.map((l) => {
+                  const active = target === l.id
+                  return (
+                    <button
+                      key={l.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => setTarget(l.id)}
+                      className={cn(
+                        'rounded-xl border px-3 py-2.5 text-center transition-all',
+                        active
+                          ? 'border-coral/40 bg-coral/10 text-cream'
+                          : 'border-white/8 bg-white/[0.015] text-stone hover:border-white/15',
+                      )}
+                    >
+                      <div className="text-sm font-medium">{l.label}</div>
+                      <div className="mt-0.5 text-[11px] leading-snug text-stone">{l.note}</div>
+                    </button>
+                  )
+                })}
+              </div>
+              {/* ⚠️ THE 30-SECOND TRADE, SAID OUT LOUD. The episode slot only
+                  exists at 60 and above, so choosing 30 is choosing an explainer
+                  — a creator should learn that here, not at the teleprompter. */}
+              {!shapeFor(target).includes('episode') && (
+                <p className="mt-2 text-[11px] leading-relaxed text-sand/70">
+                  At 30 seconds there's room for one idea, not a story with a before and after.
                 </p>
               )}
             </div>

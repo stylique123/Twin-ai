@@ -1397,6 +1397,17 @@ function resolveSubjectSourceInline(
 // that the counting is right. `beat_audit.substance_budget` and `length_target`
 // are those numbers. Turn the clamp on when they say the budget tracks reality.
 const POINT_ROLES_INLINE: readonly string[] = ['setup', 'item', 'turn', 'evidence', 'payoff']
+const TARGET_SECONDS_INLINE: readonly number[] = [30, 60, 90]
+const BEATS_FOR_TARGET_INLINE: Readonly<Record<number, number>> = { 30: 4, 60: 6, 90: 8 }
+
+// ⚠️ NULL WHEN THEY WERE NOT ASKED, AND ALSO WHEN THEY SENT SOMETHING ELSE. A
+// stale client posting 45 has not chosen 45 and has not chosen 60 either;
+// rounding it would record a decision nobody made, which is the same defect as
+// defaulting an absent value.
+function asTargetInline(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : Number(v)
+  return TARGET_SECONDS_INLINE.includes(n) ? n : null
+}
 const FREE_BEATS_INLINE = 2
 
 // ⚠️ NULL WHEN NOBODY COUNTED, NEVER ZERO. `structure.beats` is an
@@ -1412,6 +1423,21 @@ function referencePointsFromInline(structure: unknown): number | null {
 }
 
 interface SubstanceBudgetInline { beats: number | null; enforceable: boolean }
+
+/**
+ * THE EXPANSION BAN. The whole rule is the `Math.min`.
+ *
+ * ⚠️ RETURNS NULL WHEN IT CANNOT BE EVALUATED — no target, or an uncounted
+ * budget — which is NOT "it would have changed nothing". Coercing either to a
+ * number here would put a fabricated decision in the audit column that the
+ * decision to switch the ban on will be made from.
+ */
+function planLengthInline(target: number | null, budget: SubstanceBudgetInline): number | null {
+  if (target === null || !budget.enforceable || budget.beats === null) return null
+  const targetBeats = BEATS_FOR_TARGET_INLINE[target]
+  if (typeof targetBeats !== 'number') return null
+  return Math.min(targetBeats, budget.beats)
+}
 
 function substanceBudgetInline(
   referencePoints: number | null,
@@ -4537,7 +4563,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string> }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string> }
   try {
     body = await req.json()
   } catch {
@@ -6554,6 +6580,8 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         // the third state is that nobody may make that claim without counting.
         let substanceBudgetBeats: number | null = null
         let substanceReferencePoints: number | null = null
+        let lengthTarget: number | null = null
+        let lengthBeatsAllowed: number | null = null
         try {
           const { data: assessed } = await admin
             .from('reference_content_profiles')
@@ -7555,11 +7583,19 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // is the direction that cannot cause padding, which is the defect this
     // exists to remove. It is still a collapse and it is written down here so
     // the number is read for what it is.
-    substanceBudgetBeats = substanceBudgetInline(
+    // ⚖️ THE CREATOR'S ASK, AS ASKED. `length_target` was deliberately left out
+    // of the audit when the budget shipped, because there was no picker and a
+    // column that can only ever be null is the same defect in a new place. The
+    // picker exists now, so this is a real number — or a real null, when an
+    // older client did not send one.
+    lengthTarget = asTargetInline(body.target_seconds)
+    const substanceBudgetComputed = substanceBudgetInline(
       substanceReferencePoints,
       Array.isArray(knowledgeRows) ? knowledgeRows.length : null,
       productFactCountOf(ownedEntity),
-    ).beats
+    )
+    substanceBudgetBeats = substanceBudgetComputed.beats
+    lengthBeatsAllowed = planLengthInline(lengthTarget, substanceBudgetComputed)
     beatAudit = {
       beats: Array.isArray(declared) ? declared.length : 0,
       // ⚠️ THE HOOK RULE THE PROMPT STATES, MEASURED. `raw` counts hooks that
@@ -7764,6 +7800,17 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // and writing 60 here would record a choice the creator was never
       // offered — exactly what `asTarget` refuses to do in the shared module.
       substance_reference_points: substanceReferencePoints,
+      length_target: lengthTarget,
+      // ⚠️⚠️ WHAT THE EXPANSION BAN *WOULD* HAVE DONE, LOGGED BEFORE IT DOES IT.
+      // `planLengthInline` is the ban: beats = min(target, budget). It is
+      // computed and RECORDED here, and deliberately not yet applied to the
+      // prompt, because a rule that shortens every script on a live product
+      // should be switched on against observed numbers rather than against a
+      // belief that the counting is right. This column is those numbers.
+      //
+      // ⚖️ NULL MEANS THE BAN COULD NOT BE EVALUATED — no target, or no budget —
+      // which is not the same as "it would have changed nothing".
+      length_beats_allowed: lengthBeatsAllowed,
       // ⚠️ FIX 7. Beats whose words don't fit the beat_plan's own target_sec,
       // matched by position (one beat plan entry per script entry). Detection
       // only -- target_sec reaches nothing downstream today, so there is

@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { substanceBudget, referencePointsFrom, POINT_ROLES } from '../substanceBudget'
+import {
+  substanceBudget, referencePointsFrom, POINT_ROLES,
+  planLength, asTarget, shapeFor, beatsFor, TARGET_SECONDS, DEFAULT_TARGET_SECONDS,
+} from '../substanceBudget'
 import { BEAT_ROLES } from '../../referenceContentProfile'
 
 describe('the budget, and the third state', () => {
@@ -76,5 +79,82 @@ describe('which beats count as points', () => {
 
   it('a genuinely empty list is a counted zero', () => {
     expect(referencePointsFrom([])).toBe(0)
+  })
+})
+
+describe('the picker and the beat-count mapping', () => {
+  it('adds beats, not longer beats', () => {
+    expect(beatsFor(30)).toBe(4)
+    expect(beatsFor(60)).toBe(6)
+    expect(beatsFor(90)).toBe(8)
+  })
+
+  // ⚖️ A 30-SECOND SCRIPT IS AN EXPLAINER AND THE PICKER SAYS SO.
+  it('the episode slot exists only at 60 and above', () => {
+    expect(shapeFor(30)).not.toContain('episode')
+    expect(shapeFor(60)).toContain('episode')
+    expect(shapeFor(90)).toContain('episode')
+  })
+
+  it('every shape opens on a hook and closes on a CTA', () => {
+    for (const t of TARGET_SECONDS) {
+      expect(shapeFor(t)[0]).toBe('hook')
+      expect(shapeFor(t)[shapeFor(t).length - 1]).toBe('cta')
+    }
+  })
+
+  // ⚠️ DEFAULTING TO 30 WOULD PUSH THE MEASURED FAILURE FURTHER. The twelve runs
+  // are thin, not long.
+  it('defaults to 60', () => { expect(DEFAULT_TARGET_SECONDS).toBe(60) })
+
+  it('accepts only the three real lengths', () => {
+    expect(asTarget(30)).toBe(30)
+    expect(asTarget('90')).toBe(90)
+    expect(asTarget(45)).toBeNull()
+  })
+
+  // ⚠️ A CALLER THAT NEVER ASKED MUST NOT BE RECORDED AS HAVING CHOSEN.
+  it('absent is null, never the default', () => {
+    expect(asTarget(null)).toBeNull()
+    expect(asTarget(undefined)).toBeNull()
+    expect(asTarget('')).toBeNull()
+  })
+})
+
+describe('THE EXPANSION BAN', () => {
+  // ⚠️⚠️ THE 25s -> 40s CASE, WHICH INVENTED FIFTEEN SECONDS OF CONTENT.
+  it('a target above the budget allows FEWER beats and never pads', () => {
+    const budget = substanceBudget({ referencePoints: 2, storeItems: 0, productFacts: 0 }) // 4
+    const plan = planLength(90, budget) // asks for 8
+    expect(plan.beats).toBe(4)
+    expect(plan.short).toBe(true)
+    expect(plan.enforced).toBe(true)
+  })
+
+  it('the plan may never exceed the budget at any target', () => {
+    for (const t of TARGET_SECONDS) {
+      for (let points = 0; points <= 12; points++) {
+        const budget = substanceBudget({ referencePoints: points, storeItems: 0, productFacts: 0 })
+        const plan = planLength(t, budget)
+        expect(plan.beats).toBeLessThanOrEqual(budget.beats as number)
+        expect(plan.beats).toBeLessThanOrEqual(plan.targetBeats)
+      }
+    }
+  })
+
+  // ⚠️⚠️ THE 168s -> 26s CASE: SUBSTANCE EXCEEDED THE TARGET AND NOTHING SAID SO.
+  it('substance beyond the target is counted, not silently dropped', () => {
+    const plan = planLength(30, substanceBudget({ referencePoints: 8, storeItems: 0, productFacts: 0 }))
+    expect(plan.beats).toBe(4)
+    expect(plan.dropped).toBe(6)
+    expect(plan.short).toBe(false)
+  })
+
+  // ⚠️ "WE COULD NOT CHECK" MUST NOT BE REPORTABLE AS "WE CHECKED AND IT PASSED".
+  it('an unknown budget leaves the target alone and says the ban did not run', () => {
+    const plan = planLength(60, substanceBudget({}))
+    expect(plan.beats).toBe(6)
+    expect(plan.enforced).toBe(false)
+    expect(plan.short).toBe(false)
   })
 })
