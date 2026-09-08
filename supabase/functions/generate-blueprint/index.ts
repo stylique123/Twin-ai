@@ -3280,6 +3280,37 @@ function estimateDurationSecInline(dialogue: string | null): number {
 // ⚖️ MIRRORS `parseTargetSec` IN beatPlan.ts, NOT timingMath.ts's OWN copy --
 // timingMath.ts has none of its own; it imports beatPlan's, so the bounds
 // (1.5-90s) that reject an absurd "0.2" or "600" apply here too.
+// ── A PAID BRAND WITH NO DISCLOSURE IS NOT RETURNED ───────────────────────
+//
+// ⚖️ MIRRORS `disclosureCheck.ts` in packages/shared, which carries the full
+// reasoning. The edge cannot import the workspace, so the rule lives twice and
+// the shared copy is the tested one; a parity test holds the phrase list and
+// the position rule together.
+const DISCLOSURE_PHRASES_INLINE: readonly string[] = [
+  'paid partnership', 'sponsored', 'sponsor', 'they sent me', 'they sent this',
+  'gifted', 'i earn a commission', 'commission', 'affiliate', 'this is an ad',
+  'paid to talk about', 'paid me to', 'working with them', 'partnered with',
+]
+function textDisclosesInline(textValue: unknown): boolean {
+  const t = typeof textValue === 'string' ? textValue.toLowerCase() : ''
+  if (t.trim() === '') return false
+  return DISCLOSURE_PHRASES_INLINE.some((p) => t.includes(p))
+}
+/** ⚠️ "EARLY AND OUT LOUD" IS PART OF THE OBLIGATION. A disclosure in the last
+ *  beat is one most viewers never reach. Scripts of one or two beats are exempt
+ *  from the position rule — "not last" is no constraint with nowhere else to
+ *  put it. */
+function scriptDisclosesInline(script: unknown): boolean {
+  const rows = Array.isArray(script) ? script : []
+  const lines = rows.map((b) => (typeof (b as { line?: unknown })?.line === 'string'
+    ? (b as { line: string }).line : ''))
+  if (lines.length === 0) return false
+  const at = lines.findIndex((l) => textDisclosesInline(l))
+  if (at === -1) return false
+  if (lines.length <= 2) return true
+  return at < lines.length - 1
+}
+
 const MIN_BEAT_SEC_INLINE = 1.5
 const MAX_BEAT_SEC_INLINE = 90
 function parseTargetSecInline(raw: unknown): number | null {
@@ -4836,7 +4867,12 @@ Deno.serve(async (req: Request) => {
       .eq('owner_id', ownerId)
       .eq('voice_id', voice?.id ?? null)
       .eq('id', requestedProductId)
-      .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
+      // ⚠️ THE CHOSEN LOOKUP ACCEPTS A PAID TIE; THE STOPGAP BELOW DOES NOT, AND
+      // THE ASYMMETRY IS THE POLICY. A creator asking for a video about their
+      // sponsored product has said so. Auto-selecting one they never mentioned
+      // would infer a paid promotion from nothing — the entitlement clamp, at
+      // its most expensive.
+      .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE', 'AFFILIATE', 'SPONSOR'])
       .is('archived_at', null)
       .maybeSingle()
     chosenEntity = picked ?? null
@@ -6035,11 +6071,14 @@ Deno.serve(async (req: Request) => {
     // disclosure is `promotesLine` above, which states the affiliate and
     // sponsor cases and calls the sponsorship one non-optional.
     //
-    // ⚖️ MAKING THIS LINE LIVE WOULD BE A SECOND DISCLOSURE CHANNEL, NOT A FIX.
-    // Two independent paths emitting the same obligation is how they drift into
-    // disagreeing. Removing it is also not this PR's business: it is dead, not
-    // wrong, and deleting a branch is a change to reason about on its own.
-    // Filed rather than done.
+    // ⚠️ THIS BRANCH IS NO LONGER DEAD, AND THE NOTE ABOVE IS NOW HISTORY.
+    // It was unreachable because `rel` came from a query filtered to
+    // OWN_PRODUCT/OWN_SERVICE; the chosen-product lookup now accepts a paid
+    // tie, so `rel` can be AFFILIATE or SPONSOR and this line reaches the
+    // writer. It is the INSTRUCTION half of Wave 1.3 — the check that refuses a
+    // script which ignores it lives after the writer returns, because an
+    // instruction nobody verifies is the shape this whole session has been
+    // closing.
     const disclosureRequired = rel === 'AFFILIATE' || rel === 'SPONSOR'
     const marketingClaims = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
       ? 'allowed'
@@ -7062,6 +7101,44 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // against the fuller store would excuse exactly the fabrication this exists
     // to catch, because a beat could cite something the writer never saw.
     const declared = (templated.bp as { script?: unknown })?.script
+
+    // ── DISCLOSURE, OR THE SCRIPT IS NOT RETURNED ────────────────────────
+    //
+    // ⚠️ WAVE 1.3, AND UNTIL THIS RELEASE IT COULD NOT FIRE. `disclosureRequired`
+    // below is derived from a relationship read out of a query that filtered to
+    // OWN_PRODUCT/OWN_SERVICE, so it was structurally always false — a
+    // live-looking branch guarding a state the system could not enter. The
+    // chosen-product lookup now accepts a paid tie, which is what turns it into
+    // a real obligation, and a real obligation needs a check rather than an
+    // instruction the model may ignore.
+    //
+    // ⚠️ MEASURED: three of four idea-mode runs named a sponsor the creator
+    // never mentioned; one carried an efficacy claim about a product she has
+    // never used, an invented price, and NO DISCLOSURE, on a paid relationship.
+    //
+    // ⚖️ REFUSED AND REFUNDED, NOT PATCHED. Stripping a brand out of finished
+    // prose leaves sentences that no longer parse, and a disclosure Twin
+    // inserted on its own is a legal statement nobody chose to make. And the
+    // creator has already been charged by this point, so the refusal refunds —
+    // charging for a script we will not hand over is the one outcome worse than
+    // either.
+    const paidRelationship = typeof (ownedEntity as { relationship?: unknown } | null)?.relationship === 'string'
+      ? String((ownedEntity as { relationship: string }).relationship)
+      : null
+    if ((paidRelationship === 'AFFILIATE' || paidRelationship === 'SPONSOR')
+      && !scriptDisclosesInline(declared)) {
+      await refundOnce('disclosure_missing')
+      const productName = typeof (ownedEntity as { name?: unknown } | null)?.name === 'string'
+        ? String((ownedEntity as { name: string }).name).trim() : ''
+      console.warn('disclosure_missing', { ownerId, product: productName })
+      return json({
+        error: `This script talks about ${productName === '' ? 'a product you are paid to feature' : productName}`
+          + ' and never says that you are paid to feature it. That has to be said out loud in the'
+          + ' video, early — not only in the caption — so Twin will not hand you a script that'
+          + ' leaves it out. Your remix has been put back. Try again and it will include it.',
+        code: 'DISCLOSURE_MISSING',
+      }, 409)
+    }
     // ⚖️ THE KNOWLEDGE THE PROMPT ACTUALLY CARRIED, shared by both checks.
     // Checking either against the fuller store would license claims the writer
     // could not have known.

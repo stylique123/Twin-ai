@@ -17,7 +17,7 @@ import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   INTENT_QUESTIONS, intentQuestionsFor, type IntentQuestion, type VideoGoal, focusForGoal,
-  mustAskWhichProduct, PRODUCT_CHOICE_FIELD,
+  mustAskWhichProduct, PRODUCT_CHOICE_FIELD, disclosureRefusalMessage,
   defaultVideoGoalFromContentGoals, CANONICAL_GOAL_LABELS,
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
@@ -404,6 +404,17 @@ export default function V2Building() {
   // then generate without them.
   const answersRef = useRef<Record<string, string>>(
     recallAnswers(buildKey((loc.state || {}) as BuildState)))
+  /** The name of the product this build was about, when we know it.
+   *
+   *  ⚖️ FROM THE LIBRARY ALREADY LOADED FOR THE PICKER, never re-fetched: a
+   *  refusal screen must not depend on a second network call that can fail. */
+  function chosenProductName(): string | null {
+    const id = (answersRef.current[PRODUCT_CHOICE_FIELD] ?? '').trim()
+    if (id === '') return null
+    const hit = (products ?? []).find((p) => p.id === id)
+    return typeof hit?.name === 'string' && hit.name.trim() !== '' ? hit.name : null
+  }
+
   /** Record one answer and persist it in the same breath.
    *
    *  ⚠️ FIVE AFFORDANCES ANSWER THESE QUESTIONS — a chip, a sub-chip, a product
@@ -711,8 +722,22 @@ export default function V2Building() {
             // ⚖️ ONLY WHEN THE VIDEO IS COMMERCIAL, on the SAME expression the
             // commercial block uses. A second notion of "is this a selling
             // video" would be two answers to one question.
+            // ⚠️ PAID TIES ARE SELECTABLE NOW, AND THAT IS THE DECISION THAT
+            // MAKES WAVE 1.3 REAL. Until this line a sponsored or affiliate
+            // product could not be picked, named or scripted at all — so
+            // `disclosureRequired` in generate-blueprint was structurally always
+            // false, a live-looking branch guarding a state the system could not
+            // enter. A creator with a sponsor in their Library simply could not
+            // make a video about it.
+            //
+            // ⚖️ AND THE OBLIGATION TRAVELS WITH THEM. `productChoiceConstraint`
+            // already states "this one has to be disclosed as paid" beside the
+            // option, and the edge refuses a script that names one without
+            // saying so. Offering the choice without the check would be the
+            // measured defect made reachable on purpose.
             const ownedProducts = libraryProducts.filter(
-              (p) => (p.relationship === 'OWN_PRODUCT' || p.relationship === 'OWN_SERVICE')
+              (p) => (p.relationship === 'OWN_PRODUCT' || p.relationship === 'OWN_SERVICE'
+                || p.relationship === 'AFFILIATE' || p.relationship === 'SPONSOR')
                 && p.archivedAt === null)
             const productQuestion: AskItem[] =
               mustAskWhichProduct({
@@ -1025,6 +1050,24 @@ export default function V2Building() {
         // refuse again.
         if ((e as { code?: string } | null)?.code === REFERENCE_UNREAD_CODE) {
           setUnusableRef(e instanceof Error ? e.message : REFERENCE_UNREAD_TEXT.read_failed)
+          setActive(0)
+          return
+        }
+        // ⚠️ A COMPLIANCE REFUSAL, AND THE REMIX WAS PUT BACK. The script named
+        // a product the creator is paid to feature and never said so; the edge
+        // refused it and refunded. It is not a snag — "try again" is exactly
+        // right here, and the next attempt carries the obligation as a hard
+        // instruction.
+        //
+        // ⚖️ THE WORDS COME FROM THE SHARED MODULE, not from the server's
+        // message. Two texts for one rule drift, and the one a creator reads
+        // should live where the rule lives — the server's sentence stays as the
+        // fallback for callers that are not this screen.
+        if ((e as { code?: string } | null)?.code === 'DISCLOSURE_MISSING') {
+          const named = chosenProductName()
+          setUnusableRef(named === null && e instanceof Error
+            ? e.message
+            : disclosureRefusalMessage(named))
           setActive(0)
           return
         }
