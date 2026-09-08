@@ -126,6 +126,16 @@ const MECHANISM_PATTERNS: ReadonlyArray<{ mechanism: CtaMechanism; test: RegExp 
   { mechanism: 'save', test: /\b(save (this|it|for later)|bookmark|keep this|come back to this)\b/i },
   { mechanism: 'share', test: /\b(send this to|share this with|tag (someone|a friend)|show this to)\b/i },
   { mechanism: 'comment', test: /\b(comment|drop (a|an|your)|tell me|let me know|what do you think)\b/i },
+  // ⚠️ A DIRECT QUESTION TO THE VIEWER IS AN ASK, and it took a real creator's
+  // CTA to show it. The bakery's own recurring ending is "have you ever thought
+  // about starting a small business?" — no imperative, no keyword, and the
+  // whole point of the sentence is to get an answer. A detector that missed it
+  // would have refused her own line and ended her script on nothing.
+  //
+  // ⚖️ IT MUST ADDRESS THE VIEWER AND END IN A QUESTION MARK. A rhetorical
+  // question about a third party ("why does bread collapse?") asks the audience
+  // for nothing, and treating it as an ending is the defect one row up.
+  { mechanism: 'comment', test: /\byou(r|rs)?\b[^?]*\?\s*$/i },
   { mechanism: 'follow', test: /\b(follow (for|me)|hit follow|subscribe|see you in the next|part \d)\b/i },
 ]
 

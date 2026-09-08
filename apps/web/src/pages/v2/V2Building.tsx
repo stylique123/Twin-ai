@@ -16,6 +16,7 @@ import { TalkingHeadWarning } from '../../components/TalkingHeadWarning'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@twinai/shared'
 import { readProfileAnswers } from '../../lib/profileAnswersRead'
+import { readCreatorCtas } from '../../lib/creatorCtasRead'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   INTENT_QUESTIONS, intentQuestionsFor, type IntentQuestion, type VideoGoal, focusForGoal,
@@ -1014,11 +1015,17 @@ export default function V2Building() {
         // A recreation was just spent — refresh so the remixes-left counter is
         // accurate everywhere (AppShell / Dashboard / Settings), not one behind.
         void refreshProfile()
+        // ⚖️ THE ENDING IS THEIRS OR THERE ISN'T ONE. Read here because this is
+        // the build that gets PERSISTED — the timeline every later screen loads.
+        // A failed read yields an empty list, which produces the honest
+        // "ends without an ask" state rather than a default sentence.
+        const ownCtas = await readCreatorCtas()
         const timeline = buildRecordingScript({
           generationId: gen.id,
           blueprint: gen.blueprint,
           selectedHook: gen.selected_hook,
           platform: gen.blueprint?.reference_read?.platform,
+          creatorCtas: ownCtas,
         })
         await saveRecordingScript(timeline)
         if (ticker) clearInterval(ticker)

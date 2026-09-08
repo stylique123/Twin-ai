@@ -95,8 +95,15 @@ describe('choosing which beat is the ending', () => {
     const scenes = build(bp).scenes
     const rehook = scenes.find((s) => s.dialogue === 'And here is the part nobody tells you.')
     expect(rehook?.scene_type).not.toBe('cta')
-    // With no CTA beat at all, the ending falls back rather than stealing one.
-    expect(ctaScene(bp)?.dialogue).toBe('Follow for more')
+    // ⚠️⚠️ THE DEFAULT ENDING IS GONE, ON THE OWNER'S RULING. Two production runs
+    // ended on a real ask with a planned duration and the recorder appended a
+    // sixth scene anyway; a creator reading a teleprompter says what is in front
+    // of them. The ending is now the script's own ask, or a CTA this creator
+    // actually says, or none at all.
+    // With no CTA beat and no creator CTA supplied, there is no ending scene —
+    // and crucially the re-hook is still not promoted into one.
+    expect(ctaScene(bp)).toBeUndefined()
+    expect(build(bp).ends_without_ask).toBe(true)
   })
 
   it('matches the section label in the other shapes the model writes it', () => {
@@ -126,19 +133,36 @@ describe('choosing which beat is the ending', () => {
     expect(build(bp).scenes.some((s) => s.dialogue === 'Save this for later')).toBe(true)
   })
 
-  it('falls back when the CTA beat is an empty or placeholder line', () => {
+  it('an empty or placeholder CTA beat ends the script rather than inventing one', () => {
+    // ⚠️⚠️ THE DEFAULT ENDING IS GONE, ON THE OWNER'S RULING. Two production runs
+    // ended on a real ask with a planned duration and the recorder appended a
+    // sixth scene anyway; a creator reading a teleprompter says what is in front
+    // of them. The ending is now the script's own ask, or a CTA this creator
+    // actually says, or none at all.
     const bp = blueprint({
       script: [
         { section: 'Hook', line: 'Most home studios fail for one boring reason', direction: '' },
         { section: 'CTA', line: '   ', direction: '' },
       ],
     })
-    expect(ctaScene(bp)?.dialogue).toBe('Follow for more')
+    expect(ctaScene(bp)).toBeUndefined()
+    expect(build(bp).ends_without_ask).toBe(true)
+
+    // ⚖️ AND THE CREATOR'S OWN LINE IS USED WHEN THERE IS ONE. Same script,
+    // same absence — a different ending, because this one is theirs.
+    const withOwn = buildRecordingScript({
+      generationId: 'g', blueprint: bp, creatorCtas: ['have you ever thought about starting a small business?'],
+    })
+    expect(withOwn.scenes[withOwn.scenes.length - 1]!.dialogue)
+      .toBe('have you ever thought about starting a small business?')
   })
 
   it('survives a blueprint with no script at all', () => {
     const bp = blueprint({ script: [] })
     expect(() => build(bp)).not.toThrow()
-    expect(ctaScene(bp)?.dialogue).toBe('Follow for more')
+    // ⚠️ A HOOK-ONLY TIMELINE IS STILL A TIMELINE. What must not happen is a
+    // sentence nobody wrote being appended to it.
+    expect(ctaScene(bp)).toBeUndefined()
+    expect(JSON.stringify(build(bp))).not.toContain('Follow for more')
   })
 })
