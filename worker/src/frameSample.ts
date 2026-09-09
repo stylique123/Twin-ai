@@ -59,6 +59,19 @@ export interface FrameSample {
    *  their citations suggest. */
   atSeconds: readonly number[]
   scheduleBasis: ScheduleBasis
+  /**
+   * ⚠️ THE VIDEO'S OWN MEASURED LENGTH, WHICH WAS ALREADY BEING COMPUTED AND
+   * THROWN AWAY. `probeDurationSec` runs below to build the frame schedule;
+   * until now its answer died in this function. 701 assessed references had
+   * their duration measured here and discarded, and pacing — the one Layer C
+   * field that exists nowhere — needs exactly this number.
+   *
+   * ⚖️ NULL WHEN THE PROBE FAILED OR NOTHING WAS SAMPLED, NEVER 0. A
+   * zero-length video and a video nobody measured are different facts, and
+   * dividing a beat count by the first gives Infinity while the second should
+   * simply produce no reading.
+   */
+  durationSec: number | null
 }
 
 /** ⚠️ WHERE THE TIMESTAMPS CAME FROM, recorded because the two are not equally
@@ -68,7 +81,7 @@ export interface FrameSample {
 export const SCHEDULE_BASES = ['content_beats', 'uniform'] as const
 export type ScheduleBasis = (typeof SCHEDULE_BASES)[number]
 
-const EMPTY: FrameSample = { frames: [], framesSampled: 0, atSeconds: [], scheduleBasis: 'uniform' }
+const EMPTY: FrameSample = { frames: [], framesSampled: 0, atSeconds: [], scheduleBasis: 'uniform', durationSec: null }
 
 function runCmd(cmd: string, args: string[], timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -219,7 +232,11 @@ export async function sampleFrames(
     }
     // ⚠️ `framesSampled` IS WHAT LANDED. See the header: reporting the request
     // instead of the result would legalise a citation to a frame nobody sent.
-    return { frames, framesSampled: frames.length, atSeconds, scheduleBasis }
+    return {
+      frames, framesSampled: frames.length, atSeconds, scheduleBasis,
+      // Probed above for the schedule; carried out rather than discarded.
+      durationSec: duration > 0 ? duration : null,
+    }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }

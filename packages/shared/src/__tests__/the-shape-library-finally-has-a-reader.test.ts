@@ -26,6 +26,16 @@ import type { ShapeRow } from '../shapeLibrary'
 
 const row = (container: string | null, transferability: 'high' | 'low' | null = 'high', beats = 6): ShapeRow => ({
   container: container as ShapeRow['container'],
+  // ⚠️ ADDED WHEN #781 MADE `pacing` REQUIRED. This fixture predates that field
+  // and the merge was textually clean — nothing conflicted, and the build broke
+  // on `check_test_typecheck_ratchet` instead, which is why main is merged into
+  // a branch BEFORE it takes the lane rather than after.
+  //
+  // ⚖️ `null` IS THE HONEST VALUE for a fixture carrying no duration, and it is
+  // the same value #781 used for the same reason in
+  // `a-tie-is-not-a-recommendation`. A band invented here would make these rows
+  // claim a pacing nobody measured.
+  pacing: null,
   hookMechanism: null,
   payoffType: null,
   ctaMechanism: null,
