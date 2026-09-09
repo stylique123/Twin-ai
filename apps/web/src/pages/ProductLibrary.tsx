@@ -2027,27 +2027,19 @@ function StartFromLink({ onCancel, onClaim, busy }: {
 
   return (
     <div className="mt-3 space-y-3 rounded-lg bg-white/[0.03] p-3">
-      <div>
-        <label className="text-xs font-medium uppercase tracking-wide text-stone" htmlFor="product-link">
-          Paste a link to it
-        </label>
-        <p className="mt-1 text-xs text-stone">
-          Its website, store page, or app listing. Twin will read it and tell you what it
-          found — you only correct what is wrong.
-        </p>
-        <input
-          id="product-link"
-          type="url"
-          inputMode="url"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://…"
-          className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
-        />
-        {!linkLooksReal && (
-          <p className="mt-1 text-xs text-coral">That does not look like a full link. It should start with https://</p>
-        )}
-      </div>
+      {/* ── THE ORDER IS THE INSTRUCTION, AND IT WAS BACKWARDS ─────────────
+          ⚠️ REPORTED: the link came first and is OPTIONAL; the name came
+          second and is what the card is titled by. So the first thing asked
+          was the thing a creator is least likely to have to hand, and the
+          required answer looked like an afterthought.
+
+          ⚖️ THE OLD ORDER HAD A REAL ARGUMENT AND IT IS NARROWED, NOT
+          DISCARDED. "Link first" existed because a creator asked to summarise
+          their own product from memory writes something different every time,
+          and that becomes the only thing the writer knows. True — which is why
+          the link is still here and still reads the page. It just is not the
+          FIRST question, because a form opens with what the person already
+          knows, and everyone knows what they call their own product. */}
 
       {/* ⚖️ THE NAME IS OFFERED, NOT REQUIRED, ONLY WHEN A LINK CAN SUPPLY ONE.
           Some products have no page — a service, a community, something not
@@ -2088,33 +2080,6 @@ function StartFromLink({ onCancel, onClaim, busy }: {
         </p>
       </div>
 
-      {/* ⚖️ PHOTOGRAPHS ESTABLISH WHAT A THING IS AND WHAT IT LOOKS LIKE, and
-          nothing else — not its price, not what it does for anyone. The wording
-          says so plainly, because a creator who uploads a pricing screenshot
-          expecting Twin to learn the price should find that out here rather than
-          from a script that never mentions it. */}
-      <div>
-        <span className="text-xs font-medium uppercase tracking-wide text-stone">
-          Photos of it (optional)
-        </span>
-        <p className="mt-1 text-xs text-stone">
-          Up to four. Twin uses these to know what it looks like, so a scene can show it.
-          It will not take prices or promises from a picture.
-        </p>
-        <input
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          multiple
-          disabled={uploading || imagePaths.length >= 4}
-          onChange={(e) => { void addPhotos(e.target.files); e.target.value = '' }}
-          className="mt-2 block w-full text-xs text-stone file:mr-3 file:rounded-lg file:border file:border-white/15 file:bg-white/5 file:px-3 file:py-1.5 file:text-xs file:text-cream"
-        />
-        {uploading && <p className="mt-1 text-xs text-stone">Uploading…</p>}
-        {imagePaths.length > 0 && (
-          <p className="mt-1 text-xs text-teal">{imagePaths.length} photo{imagePaths.length === 1 ? '' : 's'} ready</p>
-        )}
-        {imgErr && <p className="mt-1 text-xs text-coral">{imgErr}</p>}
-      </div>
 
       <Choices
         label="What is it?"
@@ -2181,6 +2146,62 @@ function StartFromLink({ onCancel, onClaim, busy }: {
         <CommunityQuestions value={community} onChange={setCommunity} />
       )}
 
+
+      {/* ── WHAT TWIN CAN READ, LAST AND OPTIONAL ────────────────────────────
+          ⚖️ BOTH OF THESE GIVE TWIN SOMETHING TO READ RATHER THAN ASKING THE
+          CREATOR TO BE THE EXTRACTOR, so they sit together at the end: by here
+          the product exists as far as the form is concerned, and anything
+          supplied only makes it better known. */}
+
+      {/* ⚖️ PHOTOGRAPHS ESTABLISH WHAT A THING IS AND WHAT IT LOOKS LIKE, and
+          nothing else — not its price, not what it does for anyone. The wording
+          says so plainly, because a creator who uploads a pricing screenshot
+          expecting Twin to learn the price should find that out here rather than
+          from a script that never mentions it. */}
+      <div>
+        <span className="text-xs font-medium uppercase tracking-wide text-stone">
+          Photos of it (optional)
+        </span>
+        <p className="mt-1 text-xs text-stone">
+          Up to four. Twin uses these to know what it looks like, so a scene can show it.
+          It will not take prices or promises from a picture.
+        </p>
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          multiple
+          disabled={uploading || imagePaths.length >= 4}
+          onChange={(e) => { void addPhotos(e.target.files); e.target.value = '' }}
+          className="mt-2 block w-full text-xs text-stone file:mr-3 file:rounded-lg file:border file:border-white/15 file:bg-white/5 file:px-3 file:py-1.5 file:text-xs file:text-cream"
+        />
+        {uploading && <p className="mt-1 text-xs text-stone">Uploading…</p>}
+        {imagePaths.length > 0 && (
+          <p className="mt-1 text-xs text-teal">{imagePaths.length} photo{imagePaths.length === 1 ? '' : 's'} ready</p>
+        )}
+        {imgErr && <p className="mt-1 text-xs text-coral">{imgErr}</p>}
+      </div>
+
+      <div>
+        <label className="text-xs font-medium uppercase tracking-wide text-stone" htmlFor="product-link">
+          Paste a link to it
+        </label>
+        <p className="mt-1 text-xs text-stone">
+          Its website, store page, or app listing. Twin will read it and tell you what it
+          found — you only correct what is wrong.
+        </p>
+        <input
+          id="product-link"
+          type="url"
+          inputMode="url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://…"
+          className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+        />
+        {!linkLooksReal && (
+          <p className="mt-1 text-xs text-coral">That does not look like a full link. It should start with https://</p>
+        )}
+      </div>
       {/* ⚖️ THE BUTTON SAYS WHY IT IS DISABLED. The old gate demanded a field
           that was never rendered, leaving a dead button and nothing on screen
           saying what was missing — the worst kind of dead end. */}
