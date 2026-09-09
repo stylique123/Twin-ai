@@ -19,6 +19,12 @@ export * from './recordingScriptApi'
 export * from './scriptEdit'
 export * from './scriptEditRecord'
 export * from './creatorQuestions'
+
+// ⚠️ "What number do you track the most?" ASKED OF A CREATOR WITH NO DASHBOARD.
+// The raw `niche` field cannot key a table — 47 voices, free-text prose, at most
+// three sharing a value — so this buckets it and swaps WORDING only, keeping
+// every question id so anyone already answered stays answered.
+export * from './nicheQuestions'
 export * from './storySuggestions'
 export * from './scriptAttempt'
 export * from './editClassification'

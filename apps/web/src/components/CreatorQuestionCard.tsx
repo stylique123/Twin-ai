@@ -15,7 +15,8 @@
 // one because a select failed would re-ask something the creator already
 // declined, which is precisely how an optional prompt earns being ignored.
 import { useEffect, useState } from 'react'
-import { nextQuestionByDeficit, ANSWER_MAX, type CreatorQuestion } from '@twinai/shared'
+import { nextQuestionByDeficit, creatorQuestionsFor, ANSWER_MAX, type CreatorQuestion } from '@twinai/shared'
+import { loadVoiceNiche } from '../lib/voiceNicheLoad'
 import { loadQuestionsPut, answerQuestion, skipQuestion, markQuestionShown, loadKnowledgeCounts } from '../lib/creatorAnswers'
 import { cn } from '../lib/cn'
 
@@ -46,7 +47,17 @@ export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | nul
       // to the old fixed order rather than claiming every kind is scarce.
       const counts = await loadKnowledgeCounts()
       if (!live) return
-      const q = nextQuestionByDeficit(put, counts)
+      // ⚠️ HER LANGUAGE, NOT OURS. "What number do you track that most people in
+      // your niche ignore?" was reported by a creator whose work has no
+      // dashboard — a question from another industry. `creatorQuestionsFor` swaps the
+      // WORDING for a measured niche bucket and keeps every id, so anyone who
+      // has already answered stays answered.
+      //
+      // ⚖️ A FAILED OR UNBUCKETED NICHE IS NOT A DEGRADED STATE. 17 of 47 voices
+      // land there and get the bank that has always been there.
+      const niche = await loadVoiceNiche(voiceId)
+      if (!live) return
+      const q = nextQuestionByDeficit(put, counts, creatorQuestionsFor(niche))
       setQuestion(q)
       // ⚠️ RECORDED HERE BECAUSE HERE IS WHERE IT IS TRUE. The impression is
       // written only once a question actually exists to render -- not on mount,
@@ -57,7 +68,11 @@ export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | nul
       if (q) void markQuestionShown(q.id)
     })()
     return () => { live = false }
-  }, [])
+    // ⚠️ `voiceId` IS A DEPENDENCY NOW BECAUSE THE EFFECT READS IT. It was an
+    // empty array while the prop was only used by the submit handler; leaving it
+    // empty once the effect loads the niche would show the previous voice's
+    // wording after a switch.
+  }, [voiceId])
 
   if (thanks) {
     return (
