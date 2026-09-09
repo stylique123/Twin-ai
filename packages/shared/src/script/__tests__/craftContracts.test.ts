@@ -189,9 +189,15 @@ describe('5. rhythm break', () => {
 })
 
 describe('craftContractNotes', () => {
-  it('returns nothing for a script that holds all five contracts', () => {
+  it('returns nothing for a script that holds all six contracts', () => {
+    // ⚠️ THE HOOK GAINED "Last March" WHEN THE MOMENT CONTRACT LANDED, and the
+    // test was incomplete rather than wrong. "I lost a 400 pound client" is a
+    // first-person episode, and this fixture never said when it happened — so
+    // it did not, in fact, hold every contract. The fixture is meant to be an
+    // exemplary script, and an exemplary story says when: the anchor is added
+    // rather than the assertion weakened.
     expect(craftContractNotes([
-      beat('Hook', 'I lost a 400 pound client over one spreadsheet.'),
+      beat('Hook', 'Last March I lost a 400 pound client over one spreadsheet.'),
       beat('Body 1', 'The spreadsheet had eleven prices on it, so nobody could choose.'),
       beat('Body 2', 'Cut it down to three.'),
       beat('Body 3', 'Now there are three prices and my client Priya picked one in a minute.'),

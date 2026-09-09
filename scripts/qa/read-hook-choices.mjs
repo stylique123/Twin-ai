@@ -31,6 +31,12 @@ const { data, error } = await db
   .from('generations')
   .select('id, selected_hook, hook_choice, blueprint, created_at')
   .not('selected_hook', 'is', null)
+  // ⚠️ THE HEARTBEAT IS NOT A CREATOR AND MUST NOT TEACH TWIN ANYTHING.
+  // Two synthetic generations an hour is 48 rows a day against this 2000-row
+  // sample — left in, the corpus would slowly become a third one voice that
+  // does not exist. `check_heartbeat_excluded_from_corpus` fails the build if
+  // this line is ever removed.
+  .eq('is_heartbeat', false)
   .order('created_at', { ascending: false })
   .limit(2000)
 if (error) { console.error('read failed:', error.message); process.exit(1) }

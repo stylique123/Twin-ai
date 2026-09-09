@@ -34,6 +34,7 @@ export * from './videoIntent'
 export * from './writerEntities'
 export * from './productSelection'
 export * from './scriptOrigin'
+export * from './filmedAsk'
 // One derivation of "which platform is this link", shared by the client's
 // supported-host check and the ingest function's stored value.
 export * from './referencePlatform'
@@ -85,6 +86,12 @@ export * from './authority'
 export * from './profileAssembler'
 export * from './creativeDecisionPlan'
 export * from './cta'
+
+// ⚠️ THE CARD THAT OPENED NOTHING. "Your voice — what Twin has learned" mapped
+// to `setTab('twin')` from a card already on the twin tab, so it re-selected the
+// tab you were on. This is what it opens instead — and it renders `vocabulary`,
+// because `signature_phrases` does not exist on any of the 51 stored profiles.
+export * from './whatTwinLearned'
 export * from './profileCompletion'
 export * from './setupAreas'
 export * from './referenceAssessment'
@@ -289,6 +296,7 @@ export * from './script/beatProof'
 // would be a phrase store. This is a WHITELIST projection: enum tokens and
 // counts only, and `evidence` is unreachable from it.
 export * from './shapeLibrary'
+export * from './shapeSummary'
 
 // ⚖️ A TOPIC IS NOT A SENTENCE, AND MOST OF THE CORPUS HAS NEITHER. 458 of 530
 // stored topic values appear exactly once, and `subtopic` is a per-video
