@@ -1738,7 +1738,7 @@ function readStoredFact(raw: unknown): ExtractedFact | null {
  *  YouTube DNA was just moved off. The page polls the entity for `knowledge`
  *  rather than the job, so a reload picks the result up wherever it got to. */
 export async function requestProductExtraction(
-  ownerId: string, entityId: string, url: string,
+  entityId: string, url: string,
   /** ⚖️ IMAGES ARE A SECOND SOURCE, NOT A SUBSTITUTE FOR THE URL. A creator may
    *  have both — a store page and their own photos — and they establish
    *  different things: the page states the offer, the photos show the object.
@@ -1746,8 +1746,8 @@ export async function requestProductExtraction(
   imagePaths: readonly string[] = [],
 ): Promise<void> {
   const clean = url.trim()
-  // ⚠️ REFUSED HERE AS WELL AS IN THE WORKER. The worker's check is the one that
-  // protects the credentialed process; this one exists so the creator is told
+  // ⚠️ REFUSED HERE AS WELL AS IN THE EDGE FUNCTION AND THE WORKER. Those two
+  // protect the credentialed processes; this one exists so the creator is told
   // immediately rather than watching a job fail silently.
   // ⚠️ IMAGES ALONE ARE A COMPLETE SOURCE. Plenty of products have no page worth
   // reading — a service, a community, something unlaunched — and demanding a URL
@@ -1759,19 +1759,39 @@ export async function requestProductExtraction(
     throw new Error('Add a link or at least one photo so Twin has something to read.')
   }
   if (clean !== '' && !/^https:\/\//i.test(clean)) throw new Error('Please paste a full https:// link.')
-  const { error } = await supabase.from('jobs').insert({
-    owner_id: ownerId,
-    type: 'extract_product',
-    status: 'queued',
-    max_attempts: 3,
-    // ⚠️ ONLY REAL PATHS, AND NEVER AN EMPTY ARRAY. An empty list and an absent
-    // key mean the same thing to the worker, and storing the first would create
-    // a fourth state that reads as "images were supplied" to anyone counting.
-    payload: imagePaths.length > 0
-      ? { entity_id: entityId, url: clean, image_paths: imagePaths.filter((p) => typeof p === 'string' && p.trim() !== '') }
+  // ⚠️⚠️ THIS USED TO `supabase.from('jobs').insert(...)` FROM THE BROWSER, AND
+  // RLS HAD BEEN REFUSING IT SINCE MIGRATION 0030 — four weeks in which every
+  // "Read the page" tap enqueued nothing and 12 production products accumulated
+  // zero knowledge rows between them. `jobs` carries SELECT policies only, on
+  // purpose: a page that can insert a job can spend credits.
+  // ⚖️ SO THE ENQUEUE MOVED BEHIND A CREDENTIALED FUNCTION rather than the
+  // policy moving back. `enqueue-extraction` verifies the caller owns the
+  // entity and inserts with the service role — which is also why `ownerId` is
+  // no longer a parameter: under the service role a caller-supplied owner is an
+  // instruction, not a fact, so the token decides it instead.
+  const { error } = await supabase.functions.invoke('enqueue-extraction', {
+    body: imagePaths.length > 0
+      ? {
+          entity_id: entityId,
+          url: clean,
+          image_paths: imagePaths.filter((p) => typeof p === 'string' && p.trim() !== ''),
+        }
       : { entity_id: entityId, url: clean },
   })
-  if (error) throw error
+  if (error) {
+    // ⚠️ THE FUNCTION'S OWN SENTENCE, NOT "Edge Function returned a non-2xx
+    // status code". The refusals above are worded for a creator, and losing them
+    // at the boundary is how a specific, actionable message becomes noise.
+    let msg = (error as { message?: string }).message ?? 'Could not start reading that product.'
+    const ctx = (error as { context?: Response }).context
+    if (ctx?.json) {
+      try {
+        const b = await ctx.json()
+        if (b?.error) msg = b.error
+      } catch { /* keep msg */ }
+    }
+    throw new Error(msg)
+  }
 }
 
 /** Promote the facts a creator has checked.

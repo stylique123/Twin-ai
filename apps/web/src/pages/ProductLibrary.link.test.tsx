@@ -121,7 +121,7 @@ describe('the product card has one link field, and it can be read from', () => {
     expect((button as HTMLButtonElement).disabled).toBe(false)
     fireEvent.click(button)
     await waitFor(() => expect(requestProductExtraction).toHaveBeenCalledWith(
-      'owner-1', 'e1', 'https://peakdesign.example/tripod'))
+      'e1', 'https://peakdesign.example/tripod'))
   })
 
   it('refuses a malformed link at the field, and does not save it', async () => {

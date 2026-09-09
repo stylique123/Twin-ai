@@ -69,16 +69,57 @@ const TONE = [
 // ⚠️ AND NOTHING HERE PROMISES A SHORTER SCRIPT FOR LESS INPUT. The copy is
 // always "give Twin more and it uses it", never "skip this and get less" —
 // which frames the creator's own effort as the thing being taken away.
+// ⚠️⚠️ FOUR DOORS INTO ONE ROOM, REPORTED BY THE OWNER. A creator with a
+// product AND a thought AND a saved video is looking at four cards that are all
+// true at once, and nothing on screen tells her which to click. The old labels
+// were noun phrases -- "A video I love", "An idea", "Something I sell",
+// "Nothing yet" -- and a noun phrase does not exclude the other three.
+//
+// ⚖️ SO A MODE IS WHAT SHE BROUGHT, NOT WHAT THE VIDEO IS ABOUT. Written as
+// "I ..." sentences, exactly one can be true of her right now, which is what
+// makes the choice a choice. A product can appear in ANY door; what Product
+// Mode means is that the product is the SUBJECT, and that is what switches on
+// claim entitlement and disclosure.
+//
+// ⚖️ AND EACH CARD SHOWS WHAT COMES OUT, because nobody reads a definition and
+// everybody understands an example. `outcome` is one line of the actual result,
+// not a second description of the mode.
 const DOORS: ReadonlyArray<{
   id: EntryDoor
   label: string
   blurb: string
+  /** One line of what this door actually produces. Concrete, never a restatement. */
+  outcome: string
   icon: React.ComponentType<{ className?: string }>
 }> = [
-  { id: 'reference', label: 'A video I love', blurb: 'Paste it and Twin rebuilds it in your voice.', icon: Link2 },
-  { id: 'idea', label: 'An idea', blurb: 'Say it in a line. Add a detail and Twin uses it.', icon: Lightbulb },
-  { id: 'product', label: 'Something I sell', blurb: 'Pick it from your products so the claims stay yours.', icon: Package },
-  { id: 'browse', label: 'Nothing yet', blurb: "Look through what's working and bring one back.", icon: Compass },
+  {
+    id: 'reference',
+    label: 'I saw a video I liked',
+    blurb: 'Paste the link. Twin keeps its shape and fills it with your story.',
+    outcome: 'Same build, your story inside it',
+    icon: Link2,
+  },
+  {
+    id: 'idea',
+    label: "I've got something to say",
+    blurb: 'Say it however it comes out. Twin finds the video inside it.',
+    outcome: 'Three videos in that paragraph — pick one',
+    icon: Lightbulb,
+  },
+  {
+    id: 'product',
+    label: 'I need to talk about something I sell',
+    blurb: 'Pick the thing. Twin finds an honest angle and stays inside what you may say.',
+    outcome: 'An angle, and the claims you are allowed',
+    icon: Package,
+  },
+  {
+    id: 'browse',
+    label: "I don't know what to post",
+    blurb: "Twin shows what's moving in your niche and asks what you think.",
+    outcome: 'A subject, and your take on it',
+    icon: Compass,
+  },
 ]
 
 // What the box asks for, per door. The reference door is the only one that
@@ -329,6 +370,12 @@ export default function V2Create() {
                   <d.icon className={cn('h-4 w-4', active ? 'text-coral' : 'text-stone')} />
                   <div className={cn('mt-2 text-sm font-semibold', active ? 'text-cream' : 'text-sand')}>{d.label}</div>
                   <div className="mt-0.5 text-[11px] leading-snug text-stone">{d.blurb}</div>
+                  {/* ⚖️ THE RESULT, NOT A SECOND DESCRIPTION OF THE MODE. An
+                      arrow and one concrete line is what lets a creator pick the
+                      picture she wants instead of reading four definitions. */}
+                  <div className="mt-1.5 text-[11px] leading-snug text-teal">
+                    <span aria-hidden="true">→ </span>{d.outcome}
+                  </div>
                 </button>
               )
             })}
