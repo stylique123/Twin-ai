@@ -256,6 +256,14 @@ export default function V2Create() {
       // forward or a refresh reuses this one and costs nothing extra.
       state: {
         ...buildFieldsForDoor(door, t),
+        // ⚠️ THE DOOR TRAVELS NOW, AND IT DID NOT BEFORE. The build screen had
+        // to infer the mode from whether a link was pasted, which cannot
+        // distinguish the product door from the idea door at all — both arrive
+        // with no reference. `readEntryDoor` refuses to infer `product` from
+        // text for a stated reason (claim entitlement is a legal exposure, not
+        // a guess), so the only honest way for the next screen to know is for
+        // this one to say.
+        door,
         tone,
         // HER EXPLICIT PICK. Rides the request so the server never has to guess
         // which of the three she chose — and `asTarget` refuses anything else.

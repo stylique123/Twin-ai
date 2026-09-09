@@ -4728,6 +4728,22 @@ Deno.serve(async (req: Request) => {
     .maybeSingle()
   const ownerId = mem?.owner_id ?? user.id
 
+  // ⚠️⚠️ `is_heartbeat` HAD READERS AND NO WRITER. 0190 added the column, every
+  // corpus reader filters on it, and `check_heartbeat_excluded_from_corpus`
+  // fails the build if one stops — and NOTHING EVER SET IT TO TRUE. The flag
+  // was the easy half; the guard protects a value nobody was writing, so the
+  // corpus poisoning it exists to prevent would have happened anyway. Found by
+  // grepping this file for `is_heartbeat` and getting no match at all.
+  //
+  // ⚖️ DERIVED FROM IDENTITY, NEVER FROM THE REQUEST BODY. A `heartbeat: true`
+  // flag any caller could send would let anyone hide their generations from
+  // every corpus sample — a quiet way to bias the product's own measurements.
+  // The heartbeat is an ACCOUNT, and only that account's generations carry the
+  // flag. Unset env means nothing is ever flagged, which is the safe direction:
+  // an unflagged heartbeat is visible noise, a flagged creator is invisible loss.
+  const heartbeatUserId = Deno.env.get('HEARTBEAT_USER_ID') ?? ''
+  const isHeartbeat = heartbeatUserId !== '' && user.id === heartbeatUserId
+
   // Abuse / runaway-cost defense: cap blueprint generations per user per minute
   // BEFORE we ever call the model. Bounded by credits anyway, but this stops
   // scripted bursts that would hammer the model API.
@@ -9590,6 +9606,8 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       .from('generations')
       .insert({
         user_id: user.id,
+        // The flag every corpus reader filters on. See `isHeartbeat` above.
+        is_heartbeat: isHeartbeat,
         reference_url,
         reference_note,
         fidelity,
