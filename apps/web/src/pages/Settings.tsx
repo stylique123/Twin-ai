@@ -12,6 +12,7 @@ import {
 import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
 import { readProfileAnswers } from '../lib/profileAnswersRead'
 import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
+import { TwinStrengthCard } from '../components/TwinStrengthCard'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
@@ -431,6 +432,15 @@ export default function Settings() {
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p className="eyebrow !text-sand">Your Twin setup</p>
               <p className="font-heading text-cream">{summary.headline}</p>
+            </div>
+            {/* ⚠️ WHAT TWIN HAS LEARNED, WHICH GROWS, BESIDE WHAT IS STILL
+                MISSING, WHICH SHRINKS. `TwinStrengthCard` has existed and been
+                rendered on the Dashboard all along — it was never on the screen
+                that showed the fraction, so the one number a creator saw here
+                had a ceiling and no evidence behind it. Same component, on the
+                screen that needed it. */}
+            <div className="mt-2">
+              <TwinStrengthCard voiceId={defaultVoiceId} />
             </div>
             {summary.total > 0 && summary.ready < summary.total && (
               <div className="mt-3 flex gap-1.5" aria-hidden>
