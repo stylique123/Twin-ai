@@ -36,6 +36,34 @@
 //   sales           13 vs 10   gap  3   0.63 SE   tie
 //   growth          62 vs 58   gap  4   0.37 SE   tie
 //
+// ⚠️ RE-MEASURED 2026-09-09, AND ONE ROW CHANGED ITS STORY. The corpus has grown
+// from 601 assessed profiles to 1,099. Same rule, same query:
+//
+//   entertainment   89 vs 22   gap 67   6.36 SE   SEPARATED
+//   leads           35 vs 25   gap 10   1.29 SE   tie
+//   authority       61 vs 51   gap 10   0.94 SE   tie      (was 1.96)
+//   conversation    29 vs 22   gap  7   0.98 SE   tie
+//   sales           16 vs 12   gap  4   0.76 SE   tie
+//   education      106 vs 98   gap  8   0.56 SE   tie
+//   growth          88 vs 82   gap  6   0.46 SE   tie
+//
+// ⚖️ `entertainment` HELD AND STRENGTHENED; `authority` MOVED AWAY. Every other
+// goal stayed a tie. More data did not resolve the near-miss — it dissolved it.
+//
+// ⚠️ AND SEGMENTING BY NICHE DOES NOT RESCUE IT. The obvious hypothesis is that
+// business creators separate on `authority` even when the whole corpus does not.
+// Measured: business framework 38 vs numbered_list 26 is 1.50 SE — still a tie,
+// and no closer than the corpus. What segmenting DID surface is the mirror
+// image: `education` (2.30 SE) and `leads` (2.59 SE) separate among NON-business
+// references while reading as ties corpus-wide.
+//
+// ⚖️ WHICH IS NOT ENOUGH TO SHIP, AND HERE IS WHY, STATED SO IT IS NOT
+// RE-LITIGATED. `reference_content_profiles.niche` is NULL on all 1,099 rows and
+// the table carries no creator or voice link at all, so the bucket is INFERRED
+// from `topic` text, not observed. Three segments times seven goals is 21
+// comparisons at a 2-SE bar; two marginal hits is roughly what noise alone
+// produces. Both findings are `built, awaiting sample`, not findings.
+//
 // So the corpus can name the shape for `entertainment` and for nothing else
 // yet. `education`'s 94-to-77 looks like a result and is 1.3 standard errors —
 // seventeen references apart out of 171. Shipping it as "tutorials are the
@@ -108,9 +136,19 @@ export const MIN_SHAPE_SUPPORT = 5
 /** How many standard errors of separation before a lead is called a lead.
  *
  *  ⚠️ TWO IS THE CONVENTIONAL BAR AND IT IS SET HERE RATHER THAN DISCOVERED,
- *  so it cannot be nudged until a favoured shape wins. On today's corpus it
- *  admits `entertainment` alone; `authority` misses at 1.96, and that near-miss
- *  stays a miss. */
+ *  so it cannot be nudged until a favoured shape wins. It admits `entertainment`
+ *  alone.
+ *
+ *  ⚠️ `authority` WAS RECORDED HERE AS A 1.96 NEAR-MISS. It is not one, and the
+ *  stale number mattered: a near-miss invites "one more batch and it lands",
+ *  which is the argument for shipping it. Re-measured 2026-09-09 on 1,099
+ *  assessed profiles — the corpus has grown from 601 — `authority` reads
+ *  framework 61 vs numbered_list 51, a gap of 10 at 0.94 SE.
+ *
+ *  ⚖️ SO IT MOVED AWAY FROM DECISIVE AS THE DATA GREW, which is the opposite of
+ *  a near-miss and the thing worth knowing. The gap did not shrink — 18 became
+ *  10 — but the noise floor rose with n, and the lead never kept pace. A second
+ *  reading that contradicts the first is the measurement, not a blip. */
 const DECISIVE_SIGMAS = 2
 
 export interface ShapeForGoal {
