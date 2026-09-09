@@ -106,9 +106,20 @@ create table if not exists public.generation_outcomes (
   -- ⚖️ SO: NULLABLE, NO DEFAULT, AND SILENCE IS NEITHER ANSWER. The same rule
   -- the capability questions already follow.
   was_filmed boolean,
-  filmed_answered_at timestamptz,
   was_published boolean,
-  published_at timestamptz,
+
+  -- ⚠️ NO `filmed_answered_at` OR `published_at`, AND CI IS WHY. The first
+  -- version of this migration carried both, and `check_column_readers` failed
+  -- the build: "written and read by nothing — say why it exists, or drop it."
+  -- It was right. This PR argues at length that a column nobody writes is the
+  -- same defect as a field nobody reads, and then added two timestamps for a
+  -- capture flow that does not exist yet.
+  --
+  -- ⚖️ SO THEY ARE DROPPED RATHER THAN REGISTERED. "When did she answer" is a
+  -- real question, and the change that starts asking her is the change that
+  -- should add the column — with a writer, a reader and a reason on the same
+  -- day. `updated_at` below already dates the last change to the row, which is
+  -- all this PR can honestly claim to know.
 
   -- ⚠️ NULL IS NOT ZERO, AND HERE IT IS THE WHOLE DIFFERENCE BETWEEN "posted
   -- and nobody watched" and "we have not looked yet". A video with 0 views at
