@@ -5,19 +5,20 @@ import { Loader2, Check, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { pollDna, saveCapabilityDefaults, savePreScriptBrief, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
 import type { Platform, Profile, VoiceProfile } from '../lib/types'
-import { asksForbiddenClaims, BRIEF_GOALS, type BriefWorkKind, type BriefGoal } from '../lib/api'
+import { asksForbiddenClaims, type BriefWorkKind, type BriefGoal } from '../lib/api'
 import {
   profileQuestionsFor, asksScreenCapability, asksProductCapability,
-  MAX_CONTENT_GOALS, ONBOARDING_SELLS_ANSWERS, sellsAnswerOf, SELLS_ANSWER_TO_TIES,
+  ONBOARDING_SELLS_ANSWERS, sellsAnswerOf, SELLS_ANSWER_TO_TIES,
   type OnboardingSellsAnswer,
-  AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE,
+  AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE, goalFromCtas, goalConfirmationLine,
+  scannedAudienceFacts, audienceFactConfirmed,
   CAPABILITY_ANSWERS,
   type ProfileQuestionId, type AudienceSegment,
   type AudienceKnowledge,
   type CapabilityAnswer,
 } from '../lib/api'
 import {
-  Q4_ANSWERS, mintFromWorkKind, mintsOwnedEntity, q4AsksOwnership,
+  mintFromWorkKind, mintsOwnedEntity,
   saveMintedEntity, type EntityType, type Q4Answer,
 } from '../lib/api'
 import {
@@ -130,12 +131,8 @@ const ONBOARDING_WORK_KINDS: readonly BriefWorkKind[] = [
 // What is left is the only part still genuinely unknown: whose ELSE'S things
 // appear in these videos. Four answers, and each one changes what a script may
 // say (`claimRulesFor`), not merely how it is phrased.
-const Q4_LABEL: Record<Q4Answer, string> = {
-  affiliate: 'Affiliate products',
-  sponsor: 'Sponsored products',
-  review_only: 'Products I review',
-  none: 'Nothing of anyone else’s',
-}
+// ⚠️ Q4_LABEL's chips left with the block above; those labels live in the
+// Product Library now, beside the product they describe.
 
 /** The words for the minted entity, so the creator reads a sentence rather than
  *  an enum. The ids are the contract; how they are said to a person is not. */
@@ -1043,7 +1040,10 @@ function ConfirmStep({
   // disappears the moment they touch the field.
   const [claimsAreGuessed, setClaimsAreGuessed] = useState(
     (draft.forbiddenClaims ?? '') === '' && claimsGuess !== '')
-  const [q4, setQ4] = useState<Q4Answer | null>(draft.q4 ?? null)
+  // ⚠️ STILL READ, NO LONGER SET HERE. The question that wrote it left this
+  // screen; the value survives for accounts that answered before, and stays
+  // null for everyone else — the "unanswered" state preScriptBrief documents.
+  const [q4] = useState<Q4Answer | null>(draft.q4 ?? null)
   // WHETHER THE CREATOR KEPT THE ENTITY Q3 MINTED. Defaults to keeping it when
   // Q3 was informative — that is what "pre-filled" means — and the screen gives
   // a one-tap way out, which is what "correctable" means. A pre-fill with no
@@ -1109,8 +1109,11 @@ function ConfirmStep({
   // one tap away. Nothing is hidden; it just stops being homework.
   const [showVoice, setShowVoice] = useState(voiceIsEmpty)
 
-  const [canRecordScreen, setCanRecordScreen] = useState<boolean | null>(draft.canRecordScreen)
-  const [canFilmObjects, setCanFilmObjects] = useState<boolean | null>(draft.canFilmObjects)
+  // ⚖️ READ, NEVER SET, ON THIS SCREEN. The value still travels — a creator who
+  // answered before this change keeps their answer, and the Product Library
+  // writes it per product — but nothing here asks for it any more.
+  const [canRecordScreen] = useState<boolean | null>(draft.canRecordScreen)
+  const [canFilmObjects] = useState<boolean | null>(draft.canFilmObjects)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   // A refinement that did not land. Distinct from `err`, which blocks: this one
@@ -1522,131 +1525,36 @@ function ConfirmStep({
             "Nothing of anyone else's" additionally means ideas-only and no
             Product DNA at all — which is why the helper line changes with
             `q4AsksOwnership`. */}
-        <Section
-          title="What can appear in your videos?"
-          hint="What a script may promise, and which shots Twin is allowed to ask you for."
-          badge={q4 === null || canRecordScreen === null || canFilmObjects === null ? 'Not answered' : null}
-        >
-        <Labeled label={q4AsksOwnership(workKind)
-          ? 'Do your videos feature any products?'
-          : 'Anything else in your videos that isn’t yours?'}>
-          <div className="flex flex-wrap gap-2">
-            {Q4_ANSWERS.map((k) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setQ4(q4 === k ? null : k)}
-                className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                  q4 === k
-                    ? 'border-coral bg-coral/15 text-cream'
-                    : 'border-white/15 text-sand hover:bg-white/5'
-                }`}
-              >
-                {Q4_LABEL[k]}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1 text-[11px] text-stone">
-            {q4AsksOwnership(workKind)
-              ? 'It changes what a script may promise — you can only speak for something you own.'
-              : 'Someone else’s product means no ownership language, and a disclosure where one is owed.'}
-          </p>
-        </Labeled>
-        {/* HOW THEY CAN SHOOT IT — IN THE SAME PLACE AS WHAT THEY SHOOT.
-            These two sat in their own collapsed section further down the page,
-            with unrelated fields between them and the products question, so one
-            subject was asked in two places that never met. They are one thought:
-            somebody deciding whether they show products has already decided
-            whether they can hold one up.
+        {/* ⚠️ THE BADGE COUNTED A QUESTION THIS SCREEN NO LONGER ASKS. Left as
+            it was, `canRecordScreen` is permanently null here, so the block
+            would read `Not answered` for ever — which is exactly the report
+            that started this: five consecutive accounts, unanswerable by
+            construction, because two of the three stacked questions can only be
+            answered by a product. */}
+        {/* ── "WHAT CAN APPEAR IN YOUR VIDEOS" IS DELETED, ON THE SIXTH REPORT ──
+            ⚠️ IT READ `Not answered` ON EVERY ACCOUNT, and by construction: it
+            stacked three questions, two of which only a PRODUCT can answer.
+            "Can you point a camera at a screen showing it" has no `it` on a
+            screen where no product exists yet. An earlier pass removed one of
+            the three and fixed the badge; the block stayed, which is why this
+            was reported still present after being reported fixed.
 
-            They still come AFTER the products question, and that ordering is the
-            point. They used to be the ONLY questions asked while the scan ran,
-            so the first thing Twin wanted to know was someone's camera setup,
-            before it had established what they do or whether they sell anything.
+            ⚖️ EACH QUESTION GOES WHERE IT CAN BE ANSWERED:
+             · relationship (own / affiliate / sponsored / review) → Product
+               Library, per product, where it writes the `relationship` enum
+               every claim rule and disclosure check actually reads;
+             · "can you show it on a screen" → Product Library, per product,
+               via `capabilityQuestion`, which asks it with the referent in hand;
+             · "can you put an object in front of the camera" → an inference
+               confirmed once, not a question asked cold.
 
-            SKIPPING IS A REAL ANSWER AND IT IS NOT "NO". Tapping the chosen
-            chip again clears it back to unanswered, and nothing is written for
-            an unanswered question — `can_record_screen = false` permanently
-            hides a surface, so "they never said" must never become "they said
-            no".
-
-            THE TWO GATES RUN IN OPPOSITE DIRECTIONS, which is why the copy is
-            written twice rather than templated. `can_record_screen = false`
-            HIDES a capture surface; `can_film_objects = false` withholds
-            footage SUGGESTIONS. Saying no to the second removes advice, not
-            ability, so the sentence has to promise the right thing.
-
-            ⚠️ THE FIRST QUESTION PROMISED A CAPABILITY THE PIPELINE DOES NOT
-            PLAN. It read "Can you have it open on a screen while you film?"
-            with a helper offering to "capture your screen". Traced end to end
-            before rewording: `clip_medium: 'screen'` can only originate from a
-            `[SHOW SCREEN: …]` marker in the model's script, and NOTHING in the
-            writer's prompt ever teaches that marker — `generate-blueprint`
-            contains no occurrence of it. So a Yes licensed a shot no script can
-            ask for. Meanwhile `productScenes.ts`, which DOES plan the screen
-            moments, already directs the camera-at-screen version in its own
-            words: "have that screen already open on the phone before the take",
-            "hold the phone up and stop moving. Talk to the camera, not to the
-            screen."
-
-            ⚖️ SO THE QUESTION NOW ASKS FOR WHAT IS ACTUALLY PLANNED, and the
-            column is unchanged. `can_record_screen` keeps its name in this
-            change — renaming a column while changing what writes it is the one
-            move that makes a half-finished migration unreadable — but its
-            MEANING is now "can point a camera at a screen", and the one reader
-            that interpreted it as "offer a share-your-screen recorder"
-            (`DeclaredClips.tsx`) was changed in the same commit. A corrected
-            promise with an uncorrected reader is the failure this was meant to
-            fix, not a smaller version of it. */}
-          <p className="mt-5 text-xs text-sand">Can you point your camera at a screen showing it — phone held up, or a laptop in frame?</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {([true, false] as const).map((v) => (
-              <button
-                key={String(v)}
-                type="button"
-                aria-pressed={canRecordScreen === v}
-                onClick={() => setCanRecordScreen(canRecordScreen === v ? null : v)}
-                className={cn(
-                  'rounded-full border px-3 py-1.5 text-xs transition',
-                  canRecordScreen === v
-                    ? 'border-coral bg-coral/15 text-cream'
-                    : 'border-white/15 text-sand hover:bg-white/5',
-                )}
-              >
-                {v ? 'Yes' : 'No'}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-[11px] leading-relaxed text-stone">
-            Say yes and Twin can plan a shot where you hold your phone up to the camera, or point
-            at your laptop. Skip it and nothing changes, we just will not offer it yet.
-          </p>
-
-          <p className="mt-4 text-xs text-sand">Can you put a product or object in front of the camera?</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {([true, false] as const).map((v) => (
-              <button
-                key={String(v)}
-                type="button"
-                aria-pressed={canFilmObjects === v}
-                onClick={() => setCanFilmObjects(canFilmObjects === v ? null : v)}
-                className={cn(
-                  'rounded-full border px-3 py-1.5 text-xs transition',
-                  canFilmObjects === v
-                    ? 'border-coral bg-coral/15 text-cream'
-                    : 'border-white/15 text-sand hover:bg-white/5',
-                )}
-              >
-                {v ? 'Yes' : 'No'}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-[11px] leading-relaxed text-stone">
-            Say no and we stop suggesting shots you cannot film. Skip it and we keep showing the
-            full checklist, because a suggestion you ignore costs nothing and a missing one costs
-            a video.
-          </p>
-        </Section>
+            ⚠️ AND THE CONSEQUENCE IS STATED RATHER THAN HIDDEN: `promotes` (the
+            brief's copy of q4) is null — "unanswered" — until the creator
+            registers a product. `preScriptBrief` already documents null as
+            unanswered and `asksProductEvidence` already handles it, so this is a
+            state the system has rather than a new one, and the per-product
+            relationship is strictly better information than the account-level
+            guess it replaces. */}
         {/* THE CONDITIONAL. Unguessable, and unforgivable to get wrong for a
             doctor, lawyer, financial adviser or supplement brand — there is no
             model that can infer what a regulator will not let someone say. */}
@@ -1760,75 +1668,9 @@ function ConfirmStep({
   )
 }
 
-/**
- * A COLLAPSIBLE GROUP, because this screen is five phone-screens of one scroll.
- *
- * The confirm step carries every answer that changes what a script says AND
- * every field the scan drafted, flat, at identical weight. The first real
- * production run found the consequence: EVERY question below the fold came back
- * unanswered. That is not a wording problem — a form nobody can see the shape of
- * is a form people abandon partway and believe they finished.
- *
- * ⚠️ AND IT IS USED ONCE, ON PURPOSE — THIS COMMENT USED TO CLAIM OTHERWISE.
- * It said "each group states what it is and how many answers are still open,
- * and only the group being worked on is expanded", describing an accordion over
- * the whole screen that was never built: there is exactly one `<Section>`, and
- * ten of the eleven fields sit outside it. A comment describing a system that
- * does not exist is worse than no comment, because the next reader concludes
- * the screen is already chunked and moves on.
- *
- * What the screen actually does, and why each part is right:
- *   · The four answers no scan can read are ALWAYS OPEN under their own heading.
- *     Collapsing those would hide the only fields that change what a script
- *     says — the precise questions the production run found unanswered.
- *   · The ownership question is the one `<Section>`, because it is the one
- *     field whose absence is a decision (see Q4's three-state rule) and so the
- *     one that earns a "Not answered" badge.
- *   · The ten scan-drafted voice fields are behind a Show/Hide toggle, because
- *     a draft the creator need not touch should not occupy the screen.
- *
- * `<details>` rather than a `useState` accordion on purpose: it is
- * keyboard-accessible, it survives without JavaScript, and the browser gives
- * the open/closed animation for free.
- *
- * ⚖️ COLLAPSED IS NOT HIDDEN. The fields render in the DOM whether open or
- * shut, so nothing here can silently drop an answer the creator gave before
- * collapsing it — and the summary line tells them what is left rather than
- * making them open it to find out.
- */
-function Section({
-  title, hint, open, badge, children,
-}: {
-  title: string
-  hint?: string
-  open?: boolean
-  /** What is still unanswered in here. Absent when there is nothing outstanding. */
-  badge?: string | null
-  children: React.ReactNode
-}) {
-  return (
-    <details
-      open={open}
-      className="group rounded-card border border-white/10 bg-white/[0.02] transition-colors open:border-white/15 open:bg-white/[0.035]"
-    >
-      <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
-        <div className="min-w-0 flex-1">
-          <p className="eyebrow text-cream">{title}</p>
-          {hint && <p className="mt-1 text-xs leading-relaxed text-stone">{hint}</p>}
-        </div>
-        {badge && (
-          <span className="shrink-0 rounded-full border border-amber/30 bg-amber/10 px-2 py-0.5 text-[11px] text-amber">
-            {badge}
-          </span>
-        )}
-        {/* Rotates with the group's own open state — no JS, no second source of
-            truth about whether this is expanded. */}
-        <ArrowRight className="h-4 w-4 shrink-0 text-stone transition-transform group-open:rotate-90" />
-      </summary>
-      <div className="space-y-4 border-t border-white/8 p-4 pt-4">{children}</div>
-    </details>
-  )
-}
+// ⚠️ `Section` (the collapsible block) WAS DELETED WITH ITS LAST USER,
+// "What can appear in your videos". An unused component is a shape the next
+// screen gets built around because it is there, not because it is right.
 
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -1971,6 +1813,11 @@ export function AnswerSummary({ draft }: { draft: OnboardingDraft }) {
     draft.audienceSeg ? AUDIENCE_LABEL[draft.audienceSeg] : '',
     draft.audienceKnowledge ? KNOWLEDGE_LABEL[draft.audienceKnowledge] : '',
     ...draft.contentGoals.map((g) => CONTENT_GOAL_LABEL[g]),
+    // ⚠️ A CONFIRMATION THAT NOTHING READS IS THE DEFECT IT WAS BUILT TO FIX.
+    // The chip says the difference out loud: what Twin believed is now what the
+    // creator has agreed to, and the summary is where they can see it stuck.
+    draft.confirmedAudiencePain ? 'Their problem — confirmed' : '',
+    draft.confirmedDreamOutcome ? 'What they want — confirmed' : '',
     sells ? SELLS_LABEL[sells] : '',
   ].filter((x) => x !== '')
 
@@ -2079,8 +1926,6 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
 }) {
   if (!id) return null
   const set = (patch: Partial<OnboardingDraft>) => onDraftChange({ ...draft, ...patch })
-  const toggle = <T extends string>(list: readonly T[], v: T): T[] =>
-    list.includes(v) ? list.filter((x) => x !== v) : [...list, v]
   const note = (text: string) => <p className="mt-2 text-[11px] text-stone">{text}</p>
 
   if (id === 'whoYouAre') {
@@ -2100,6 +1945,45 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
             onPick={(k) => set({ workKind: draft.workKind === k ? null : k })}
           />
         </Field>
+
+        {/* ── WHAT THE SCAN ALREADY KNOWS, PUT TO THEM ONCE ────────────────
+            ⚠️ 45 OF 47 VOICES CARRY THESE, MEASURED IN PRODUCTION, and the only
+            reader was the writer's prompt. "0 stated, 34 guessed" was never a
+            failure to infer — it was the creator never being shown the
+            inference. Four generated chips would throw away a better answer to
+            ask a worse question.
+            ⚖️ CONFIRMED, NEVER ASSUMED, and the sentence is quoted verbatim: a
+            paraphrase would ask them to agree to something the writer never
+            reads. Declining records nothing. */}
+        {scannedAudienceFacts(draft.profile).map((fact) => {
+          const confirmed = fact.field === 'audience_pain'
+            ? draft.confirmedAudiencePain
+            : draft.confirmedDreamOutcome
+          if (audienceFactConfirmed(confirmed, fact)) return null
+          return (
+            <div key={fact.field} className="mt-5 rounded-card border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-stone">{fact.question}</p>
+              <p className="mt-2 text-sm leading-relaxed text-cream">{fact.text}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn-gradient rounded-lg px-4 py-2 text-sm font-semibold"
+                  onClick={() => set(fact.field === 'audience_pain'
+                    ? { confirmedAudiencePain: fact.text }
+                    : { confirmedDreamOutcome: fact.text })}
+                >Yes, that's them</button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-white/15 px-4 py-2 text-sm text-sand hover:text-cream"
+                  onClick={() => set(fact.field === 'audience_pain'
+                    ? { confirmedAudiencePain: null }
+                    : { confirmedDreamOutcome: null })}
+                >Not quite</button>
+              </div>
+              {note('Read from your own posts. Nothing is saved until you answer.')}
+            </div>
+          )
+        })}
 
         {/* ⚖️ AUDIENCE AND DEPTH SIT SIDE BY SIDE BECAUSE THEY ARE ONE QUESTION
             IN TWO HALVES, and neither is answerable without the other in view.
@@ -2155,26 +2039,45 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
   }
 
   if (id === 'contentGoals') {
-    const full = draft.contentGoals.length >= MAX_CONTENT_GOALS
+    // ── THE THIRD ASKING IS DELETED, NOT SOFTENED ───────────────────────────
+    //
+    // ⚠️ REPORTED FOUR TIMES. "What do you want your content to help you do?"
+    // is asked here, in the remix pop-up, and again in the intent questions. My
+    // first attempt showed a confirmation of the creator's own CTA when one
+    // could be inferred and FELL BACK to the seven chips otherwise — and
+    // measured over all 47 stored `recurring_ctas` sets, that inference fired
+    // on 12 of 42 accounts. So on 71% of accounts the screen was unchanged,
+    // which is exactly why it was reported still there after being reported
+    // fixed. Widening the patterns took it to 23 of 42; the rest are sign-offs
+    // that genuinely ask for nothing ("Do the work", "Take a deep breath").
+    //
+    // ⚖️ SO WHEN TWIN CANNOT INFER IT, NOBODY IS ASKED. The question survives
+    // where it changes something — the per-video intent question, which is
+    // about THIS video rather than the creator in general — and
+    // `compileVideoIntent` already reads an absent goal as "no directive"
+    // rather than as a default, so silence costs nothing downstream.
+    const inferred = draft.contentGoals.length === 0
+      ? goalFromCtas(draft.profile?.recurring_ctas)
+      : null
+    if (!inferred) return null
     return (
-      <Field
-        label="What do you want your content to help you do?"
-        // ⚖️ THE LIMIT IS STATED BEFORE THE OPTIONS IT LIMITS. Printed
-        // underneath, "Pick up to two" is a correction somebody reads after
-        // tapping a third chip and wondering why nothing lit up.
-        hint={full ? 'Two is the limit — tap one to swap it.' : 'Pick up to two.'}
-      >
-        <Chips
-          values={BRIEF_GOALS} label={CONTENT_GOAL_LABEL} chosen={draft.contentGoals}
-          onPick={(g) => {
-            // ⚠️ THE CAP IS ENFORCED BY REFUSING THE THIRD TAP, NOT BY SILENTLY
-            // DROPPING ONE. A chip that appears to select and then vanishes
-            // reads as a bug; a chip that does not light up reads as a limit.
-            const chosen = draft.contentGoals.includes(g)
-            if (!chosen && full) return
-            set({ contentGoals: toggle(draft.contentGoals, g) })
-          }}
-        />
+      <Field label="Is this what your videos are for?">
+        <p className="text-sm leading-relaxed text-cream">{goalConfirmationLine(inferred)}</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn-gradient rounded-lg px-4 py-2 text-sm font-semibold"
+            onClick={() => set({ contentGoals: [inferred.goal] })}
+          >Yes, that's right</button>
+          {/* ⚖️ DECLINING RECORDS NOTHING AND ASKS NOTHING MORE. Offering the
+              seven chips here would be the third asking wearing a "no" button. */}
+          <button
+            type="button"
+            className="rounded-lg border border-white/15 px-4 py-2 text-sm text-sand hover:text-cream"
+            onClick={() => set({ contentGoals: [] })}
+          >Not quite</button>
+        </div>
+        {note('Read from how your own videos end. Nothing is saved until you answer.')}
       </Field>
     )
   }

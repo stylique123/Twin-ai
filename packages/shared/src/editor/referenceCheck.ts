@@ -162,8 +162,22 @@ export const REFERENCE_REASON_TEXT: Record<ReferenceReason, string> = {
   ok: 'We read this one.',
   too_long: 'This one is long — its structure is a different shape from a short video, so we would be adapting the wrong thing.',
   too_short: 'This one is too brief for us to see any structure in it.',
-  no_speech: 'Nobody speaks in this one, so there is no script for us to learn from.',
-  sparse_speech: 'There is very little speech here — we would be guessing at the structure.',
+  // ⚠️ "NOBODY SPEAKS IN THIS ONE" WAS A CLAIM ABOUT THEIR VIDEO, MADE FROM
+  // OUR FAILED READ — and this file's own header forbids exactly that two
+  // paragraphs above. `wordCount === 0` cannot tell a silent video apart from a
+  // transcript that came back empty, and MEASURED, it is almost always the
+  // second: across 1,188 `assess_reference` jobs, 154 finished with an error
+  // set, and only SIX were genuine no-speech. The other 148 were fetch, auth or
+  // extractor failures — 119 of them TikTok.
+  //
+  // ⚖️ SO IT SAYS WHAT WE DID, NOT WHAT THEY MADE. A creator told "nobody
+  // speaks in this one" about a video of themselves talking learns that Twin is
+  // wrong about things it can see; the same creator told "we did not find any
+  // speech" learns that a read failed, which is true and which a retry can fix.
+  // That is the difference between a refusal a retry disproves and one it does
+  // not.
+  no_speech: 'We did not find any speech in this one, so there is no script for us to follow.',
+  sparse_speech: 'We found very little speech in this one — we would be guessing at the structure.',
   duration_unknown: 'We could not measure how long this one is.',
   word_count_unknown: 'We could not read the speech in this one.',
 }

@@ -4,6 +4,7 @@ import {
   type CreatorQuestion, type StorySuggestion,
 } from '@twinai/shared'
 import { answerQuestion, skipQuestion, markQuestionShown, loadExtractedKnowledge } from '../lib/creatorAnswers'
+import { readStoryDraft, writeStoryDraft, clearStoryDraft } from '../lib/storyDraft'
 
 /**
  * THE THREE STORY QUESTIONS, ASKED IN THE WAIT THAT ALREADY EXISTS.
@@ -72,11 +73,26 @@ export function StoryInterview({
     .map((id) => CREATOR_QUESTIONS.find((x) => x.id === id))
     .filter((q): q is CreatorQuestion => !!q)
 
-  const [text, setText] = useState<Record<string, string>>({})
+  // ⚠️⚠️ SEEDED FROM THE DRAFT, BECAUSE THERE WAS NO SAVE UNTIL "Continue".
+  // Measured 2026-09-09: of eleven creators who reached these three questions,
+  // FOUR carry `shown` rows and nothing else — `submit()` never completed, so
+  // whatever they typed died with the tab. One is the baker whose store holds
+  // eight caption-derived rows and none of her three stories.
+  //
+  // ⚖️ A LAZY INITIALISER, NOT AN EFFECT. Restoring in a `useEffect` would
+  // render empty boxes first and fill them a frame later, which reads as the
+  // screen losing her work and then changing its mind.
+  const [text, setText] = useState<Record<string, string>>(() => readStoryDraft())
   const [problem, setProblem] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [suggestions, setSuggestions] = useState<Record<string, StorySuggestion>>({})
   const [slot, setSlot] = useState<Record<string, SlotState>>({})
+
+  // ⚖️ WRITTEN ON EVERY CHANGE RATHER THAN ON A TIMER. These are three short
+  // boxes, the payload is a few hundred bytes, and a debounce would reintroduce
+  // a window in which the last sentence typed is the one that is lost — which
+  // is the sentence she was in the middle of when she walked away.
+  useEffect(() => { writeStoryDraft(text) }, [text])
 
   // ⚖️ THE BLANK BOXES RENDER IMMEDIATELY AND THE SUGGESTION ARRIVES LATE, NOT
   // THE OTHER WAY ROUND. This sits inside a wait; blocking the questions on
@@ -96,7 +112,13 @@ export function StoryInterview({
         // ⚠️ NEVER CLOBBER A SLOT THE CREATOR HAS ALREADY TOUCHED. The read is
         // async and they may have started typing into the blank box before it
         // landed; replacing that with a suggestion would delete their words.
-        for (const id of Object.keys(found)) if (!next[id]) next[id] = 'offered'
+        // ⚠️ A RESTORED DRAFT COUNTS AS TOUCHED. The existing rule protects a
+        // box she is typing into right now; a sentence restored from a previous
+        // visit is the same words, older, and offering a suggestion over it
+        // would delete exactly what this restore exists to save.
+        for (const id of Object.keys(found)) {
+          if (!next[id] && (text[id] ?? '').trim() === '') next[id] = 'offered'
+        }
         return next
       })
     })()
@@ -162,6 +184,11 @@ export function StoryInterview({
       setProblem(nextProblems)
       return
     }
+    // ⚠️ CLEARED ONLY HERE, PAST EVERY REFUSAL. A draft dropped before the
+    // writes would recreate the loss it exists to close, one step earlier — and
+    // an answer rejected as too long is still on screen and still hers, so the
+    // early `return` above must keep it.
+    clearStoryDraft()
     onDone()
   }
 
@@ -171,6 +198,10 @@ export function StoryInterview({
     // and an unconfirmed suggestion is not an answer no matter how good it was.
     for (const q of questions) await skipQuestion(q.id)
     setSaving(false)
+    // ⚖️ "Skip all" MEANS THE DRAFT TOO. Keeping it would restore, on her next
+    // visit, sentences she has just declined to give — and every question is
+    // now marked skipped, so nothing would ever ask for them again.
+    clearStoryDraft()
     onDone()
   }
 

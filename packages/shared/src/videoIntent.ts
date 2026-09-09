@@ -943,6 +943,49 @@ export const INTENT_QUESTIONS: readonly IntentQuestion[] = [
   },
 ]
 
+// ── WHICH QUESTIONS THIS BUILD ACTUALLY HAS ───────────────────────────────
+//
+// ⚠️ IDEA MODE WAS ASKED "HOW MUCH OF THE ORIGINAL SHOULD TWIN KEEP?" — with
+// options "Their topic, my take" and "Stay close" — about a video that does
+// not exist. Somebody who chose to build from their own idea, and pasted no
+// link, had to answer a question about somebody else's original before the
+// build would proceed, because the gate required EVERY intent question and
+// three of the four are genuinely universal.
+//
+// ⚖️ ONE NAME FOR THE RULE, BECAUSE THE CALLERS ARE TWO. The screen filters
+// the questions it asks AND the completeness gate decides what "answered"
+// means; an inline predicate in both places is a pair that drifts, which is
+// how the fidelity slider and `reference_use` came to disagree in the first
+// place (see FIX 10 in V2Create.tsx). The three creator questions are about
+// the person and are identical either way; only `reference_use` is about the
+// reference, so only it depends on there being one.
+//
+// A build with no reference leaves `reference_use` null, and `resolveFidelity`
+// already answers null with 'balanced' — the null check precedes the coercion
+// there, so nothing downstream needs a second one.
+export function intentQuestionsFor(opts: { hasReference: boolean }): readonly IntentQuestion[] {
+  if (opts.hasReference) return INTENT_QUESTIONS
+  // ── IN IDEA MODE, THE IDEA IS THE SUBJECT ────────────────────────────────
+  //
+  // ⚠️ "WHAT SHOULD THIS VIDEO BE ABOUT?" IS ASKED OF SOMEBODY WHO HAS JUST
+  // TYPED WHAT IT IS ABOUT. They arrive at this card having written the idea in
+  // their own words; being handed four chips naming wells inside them —
+  // my advice, my story, my opinion, my product — asks them to re-file an
+  // answer they already gave, in a vocabulary that is ours.
+  //
+  // ⚖️ A REFERENCE BUILD STILL ASKS IT, and that is the whole distinction. A
+  // reference says what SHAPE the video takes and nothing about which of the
+  // creator's wells it draws from, so there the question adds a fact the input
+  // does not carry. Deleting it everywhere would take a real input away from a
+  // real reader; deleting it where the input already exists is the fix.
+  //
+  // ⚖️ AND SILENCE IS ALREADY A LEGITIMATE VALUE HERE. `compileVideoIntent`
+  // treats an absent `content_focus` as "no directive" rather than a default —
+  // the same reading it gives an absent goal — so an unasked question leaves no
+  // hole to be filled with a guess.
+  return INTENT_QUESTIONS.filter((q) => q.field !== 'reference_use' && q.field !== 'content_focus')
+}
+
 /** Every value a creator can reach on screen, including sub-options. */
 export function reachableIntentValues(field: IntentQuestion['field']): string[] {
   const q = INTENT_QUESTIONS.find((x) => x.field === field)
