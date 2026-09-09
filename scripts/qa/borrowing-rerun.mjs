@@ -145,6 +145,33 @@ async function generate(prompt) {
   return parsed.script
 }
 
+// ⚠️ A HARNESS THAT RUNS FOR MINUTES WITHOUT SAYING SO READS AS HUNG, AND IT
+// WAS READ AS HUNG. On 2026-09-08 `--samples 3` was 24 sequential model calls
+// with no output until the final JSON; the operator reasonably concluded it had
+// frozen, and the only evidence it was alive was that the missing-key error had
+// NOT appeared. That is a terrible thing to have to infer.
+//
+// ⚖️ IT GOES TO STDERR, NEVER STDOUT. The JSON on stdout is the artefact — it
+// gets piped, redirected and pasted — and a progress line inside it would break
+// every consumer. `2>/dev/null` silences the chatter and keeps the result.
+const TOTAL = DRY ? RUNS.length : RUNS.length * 2 * SAMPLES
+let done = 0
+const progress = (label) => {
+  done += 1
+  const pct = String(Math.round((done / TOTAL) * 100)).padStart(3)
+  // ⚠️ ONE LINE, ALWAYS. A model error's `message` carries the whole JSON body
+  // — the 400 for a bad key is nine lines — and pasting that mid-progress
+  // destroys the one thing this output is for, which is seeing at a glance that
+  // calls are still landing. The full error still goes out in full below.
+  const oneLine = String(label).replace(/\s+/g, ' ').trim().slice(0, 110)
+  process.stderr.write(`[${pct}%] ${String(done).padStart(2)}/${TOTAL}  ${oneLine}\n`)
+}
+if (!DRY) {
+  process.stderr.write(
+    `${TOTAL} model calls to make (${RUNS.length} runs x 2 arms x ${SAMPLES} samples).\n`
+    + 'Nothing prints on stdout until they are all done.\n')
+}
+
 const rows = []
 for (const id of RUNS) {
   const run = loadRun(id)
@@ -169,9 +196,13 @@ for (const id of RUNS) {
       try {
         m = measureVerbatimOverlap(await generate(buildPrompt(run, arm === 'with')), ref)
       } catch (e) {
+        // ⚠️ A FAILED CALL STILL COUNTS AS ATTEMPTED. Skipping the tick here
+        // would make the percentage drift below 100% and read as a stall.
+        progress(`run-${id} ${arm} sample ${i + 1}  FAILED: ${e.message}`)
         console.error(`run-${id} ${arm} sample ${i + 1}: ${e.message}`)
         continue
       }
+      progress(`run-${id} ${arm} sample ${i + 1}  ${m.sentences} sentences, longest run ${m.longestRun}`)
       rows.push({
         run: id, arm, sample: i + 1,
         sentences: m.sentences, high: m.highOverlapSentences, longestRun: m.longestRun,
