@@ -7,7 +7,7 @@ import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import {
   contentProfile, brandKitStatus, productDnaStatus, loadProductEntities,
   setupAreas, setupSummary, type SetupArea, type SetupState,
-  readStoredBrief, savePreScriptBrief, suggestedCta,
+  readStoredBrief, savePreScriptBrief, suggestedCta, whatTwinLearned, heardCount, BASIS_LABEL,
 } from '@twinai/shared'
 import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
 import { readProfileAnswers } from '../lib/profileAnswersRead'
@@ -80,6 +80,7 @@ export default function Settings() {
   // has a CTA, and a save from that box would erase it.
   const [defaultCta, setDefaultCta] = useState<string | null>(null)
   const [ctaSaved, setCtaSaved] = useState(false)
+  const [learnedOpen, setLearnedOpen] = useState(false)
   // ⚠️ A REASON, NOT A BOOLEAN. "Could not save" was shown for a failed write and
   // for a save that never attempted one, and those need different sentences: one
   // is worth retrying and the other never will be.
@@ -336,7 +337,10 @@ export default function Settings() {
       case 'add_product': return nav('/products?add=1')
       case 'manage_products': return nav('/products')
       case 'setup_brand_kit': return setTab('brand')
-      case 'view_dna': return setTab('twin')
+      // ⚠️ THIS USED TO BE `setTab('twin')` FROM A CARD ALREADY ON THE TWIN TAB.
+      // Not a broken handler — a no-op, which reads to a creator as "Twin has
+      // nothing to show me". It opens what Twin actually learned now.
+      case 'view_dna': return setLearnedOpen(true)
       // ⚠️ IT USED TO LEAVE SETTINGS ENTIRELY. Sending somebody to onboarding to
       // change one answer means re-walking a flow they finished weeks ago, and
       // the thing they wanted to change was two chips.
@@ -599,6 +603,60 @@ export default function Settings() {
             <CreatorQuestionCard voiceId={defaultVoiceId} />
           </section>
         </Reveal>
+        )}
+
+        {learnedOpen && (
+          <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-5" role="dialog" aria-modal>
+            <div className="glass max-h-[80vh] w-full max-w-lg overflow-y-auto p-5">
+              <p className="font-heading text-cream">What Twin learned about you</p>
+              {(() => {
+                const facts = whatTwinLearned(voiceProfile)
+                if (facts.length === 0) {
+                  // ⚖️ THE HONEST EMPTY STATE. A scan that produced nothing must
+                  // say so rather than render seven empty rows, which is the
+                  // dead card rebuilt with more pixels.
+                  return (
+                    <p className="mt-2 text-sm leading-relaxed text-sand" data-testid="learned-empty">
+                      Nothing yet. Scan your account and Twin will read your videos.
+                    </p>
+                  )
+                }
+                const heard = heardCount(facts)
+                return (
+                  <>
+                    {/* ⚠️ THE EVIDENCE BEFORE THE CLAIMS. 0191's rule — anything
+                        read out of a thin table states its n — applies to a
+                        panel about somebody's own voice more than anywhere. */}
+                    <p className="mt-1 text-xs text-stone" data-testid="learned-evidence">
+                      {heard > 0
+                        ? `${heard} of these ${heard === 1 ? 'was' : 'were'} heard in your own videos.`
+                        : 'Read from your captions.'}
+                    </p>
+                    <dl className="mt-4 space-y-3.5">
+                      {facts.map((f) => (
+                        <div key={f.field} data-testid={`learned-${f.field}`}>
+                          <dt className="text-xs uppercase tracking-wide text-stone">
+                            {f.label}
+                            {BASIS_LABEL[f.basis] !== '' && (
+                              <span className="ml-2 normal-case tracking-normal text-sand/70">
+                                · {BASIS_LABEL[f.basis]}
+                              </span>
+                            )}
+                          </dt>
+                          <dd className="mt-1 text-sm leading-relaxed text-cream">{f.values.join(' · ')}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </>
+                )
+              })()}
+              <button
+                type="button"
+                onClick={() => setLearnedOpen(false)}
+                className="btn-ghost mt-5 w-full rounded-lg px-3.5 py-2 text-sm"
+              >Close</button>
+            </div>
+          </div>
         )}
 
         {tab === 'twin' && (
