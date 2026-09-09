@@ -33,6 +33,7 @@ export * from './generationReadiness'
 export * from './videoIntent'
 export * from './writerEntities'
 export * from './productSelection'
+export * from './scriptOrigin'
 // One derivation of "which platform is this link", shared by the client's
 // supported-host check and the ingest function's stored value.
 export * from './referencePlatform'

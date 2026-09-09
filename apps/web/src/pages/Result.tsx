@@ -22,6 +22,7 @@ import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
 import { TwinKnowledgeLink } from '../components/TwinKnowledgeLink'
 import { ProductCaptureCard, readProductCapturePrompt } from '../components/ProductCaptureCard'
+import { ScriptOriginPanel } from '../components/ScriptOriginPanel'
 import { CreativeTransfer } from '../components/CreativeTransfer'
 import { isWhollyPlaceholder } from '../lib/api'
 import { UnfilledContainers } from '../components/UnfilledContainers'
@@ -1159,7 +1160,11 @@ export default function Result() {
               <p className="text-xs text-stone/80">{lengthLine}</p>
               {referenceCompareLine && <p className="text-xs text-stone/80">{referenceCompareLine}</p>}
               {ceilingWarningLine && <p className="text-xs text-amber">{ceilingWarningLine}</p>}
-              
+              {/* WHAT A PERSON FORWARDING THIS SCRIPT NEEDS TO KNOW ABOUT IT.
+                  The agency's report: "I need to know which product each script
+                  used, or I'll send a client the wrong one." */}
+              <ScriptOriginPanel generationId={gen.id} referenceUrl={gen.reference_url ?? null} />
+
               <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />
               <ScriptEditor
