@@ -38,19 +38,24 @@ describe('the screen question has one home, and it is the one with a referent', 
       .toMatch(/screen/i)
   })
 
-  it('the badge stops counting a question the screen does not ask', () => {
-    // ⚠️ WITHOUT THIS THE BLOCK READS `Not answered` FOR EVER — the removed
-    // question's value is now permanently null on this screen, so leaving it in
-    // the badge would make the reported defect permanent instead of fixing it.
-    expect(ONBOARDING).toMatch(/badge=\{q4 === null \|\| canFilmObjects === null \? 'Not answered' : null\}/)
-    expect(ONBOARDING).not.toMatch(/badge=\{q4 === null \|\| canRecordScreen === null/)
+  it('the badge is gone, because the block it reported on is gone', () => {
+    // ⚠️⚠️ THIS USED TO REQUIRE THE BADGE, NARROWED TO THE TWO REMAINING
+    // QUESTIONS. Narrowing was the right fix for the badge and the wrong fix
+    // for the report: the block itself was what read `Not answered` on every
+    // account, and it was reported six times. It is deleted.
+    expect(ONBOARDING).not.toMatch(/badge=\{q4 === null/)
+    expect(ONBOARDING).not.toMatch(/badge=\{[^}]*canRecordScreen/)
   })
 
-  it('the object question stays — it is about the creator, not a product', () => {
-    // ⚖️ THE ONE OF THE THREE THAT BELONGS HERE. Whether they can put something
-    // in front of a camera is a fact about how they film, true before any
-    // product exists.
-    expect(ONBOARDING).toMatch(/Can you put a product or object in front of the camera\?/)
+  it('the object question left too, and its replacement is NOT built yet', () => {
+    // ⚠️ SAID PLAINLY RATHER THAN QUIETLY DROPPED. The owner's instruction was
+    // that this one becomes an inference confirmed once — "you film to camera
+    // in a bedroom setting and often hold products, right?" — and the scan
+    // supplies no setting to build that sentence from. So the question is gone
+    // and the confirmation is owed; `canFilmObjects` is null for new accounts
+    // until it exists, which is the honest unanswered state rather than a
+    // guessed `false`.
+    expect(ONBOARDING).not.toMatch(/Can you put a product or object in front of the camera\?/)
   })
 
   it('the answer still travels, so no reader loses its input', () => {

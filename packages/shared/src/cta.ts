@@ -119,12 +119,24 @@ export const MECHANISM_FROM_GOAL: Record<VideoGoal, CtaMechanism> = {
 // the link" is two mechanisms in one line, and reading it as a comment prompt
 // loses the fact that it is a sale — which is the reading that carries a
 // disclosure obligation.
+// ⚠️ WIDENED AGAINST THE REAL CORPUS, AND THE FIRST VERSION MISSED 71% OF IT.
+// Measured over all 47 stored `recurring_ctas` sets: the original patterns
+// recognised an ask on 12 of 42 non-empty accounts. The candle maker's own
+// ending — "I'll put the link for it right down here" — was a miss, so was
+// "link in the description", "Book a demo", "Join our newsletter" and
+// "smash that subscribe button". A rule that fires on a third of accounts is
+// not a rule, it is a coincidence, and I shipped it as one.
+//
+// ⚖️ THE MISSES THAT REMAIN ARE CORRECT MISSES. "Do the work", "Take a deep
+// breath", "Lock it in", "Let's get into them" are sign-offs, not asks. Widening
+// until everything matches would make the detector meaningless — the point is to
+// tell an ask from an ending, and some endings ask for nothing.
 const MECHANISM_PATTERNS: ReadonlyArray<{ mechanism: CtaMechanism; test: RegExp }> = [
-  { mechanism: 'buy', test: /\b(use (my|the) code|discount code|promo code|shop (now|here|the)|order (now|yours|here)|buy (it|now|yours|here)|grab (yours|one))\b/i },
-  { mechanism: 'link', test: /\b(link in (my |the )?bio|in bio|linkinbio|link below|link is in|swipe up|check the link)\b/i },
-  { mechanism: 'book', test: /\b(book (a|your|the) (call|slot|appointment|consult)|dm me|message me|get in touch|work with me|apply (now|here)|enquire)\b/i },
-  { mechanism: 'save', test: /\b(save (this|it|for later)|bookmark|keep this|come back to this)\b/i },
-  { mechanism: 'share', test: /\b(send this to|share this with|tag (someone|a friend)|show this to)\b/i },
+  { mechanism: 'buy', test: /\b(use (my|the) code|discount code|promo code|shop (now|here|the|smarter)|order (now|yours|here)|buy (it|now|yours|here|your first)|grab (yours|one|this)|pre-?order|try it (now|free|for free|before you buy)|sign up now)\b/i },
+  { mechanism: 'link', test: /\b(link ?s? (in|down|below|is in)|in bio|linkinbio|swipe up|check the link|the link i (left|dropped)|put the link|tap the (product )?link|link in the description)\b/i },
+  { mechanism: 'book', test: /\b(book (a|your|the) (call|slot|appointment|consult|demo)|dm me|message me|message the number|get in touch|work with me|apply (now|here|to)|to apply|enquire|contact us|connect with us|schedule a (live )?demo|join our newsletter)\b/i },
+  { mechanism: 'save', test: /\b(save (this|it|for later|karlo)|bookmark|keep this|come back to this)\b/i },
+  { mechanism: 'share', test: /\b(send this to|share (this|it) with|share to your story|tag (someone|a friend|that friend|a woman)|show this to|share this)\b/i },
   { mechanism: 'comment', test: /\b(comment|drop (a|an|your)|tell me|let me know|what do you think)\b/i },
   // ⚠️ A DIRECT QUESTION TO THE VIEWER IS AN ASK, and it took a real creator's
   // CTA to show it. The bakery's own recurring ending is "have you ever thought
@@ -136,7 +148,7 @@ const MECHANISM_PATTERNS: ReadonlyArray<{ mechanism: CtaMechanism; test: RegExp 
   // question about a third party ("why does bread collapse?") asks the audience
   // for nothing, and treating it as an ending is the defect one row up.
   { mechanism: 'comment', test: /\byou(r|rs)?\b[^?]*\?\s*$/i },
-  { mechanism: 'follow', test: /\b(follow (for|me)|hit follow|subscribe|see you in the next|part \d)\b/i },
+  { mechanism: 'follow', test: /\b(follow (for|me|my|him|her|the)|give me a follow|hit follow|subscribe|see you in the next|part \d)\b/i },
 ]
 
 /**

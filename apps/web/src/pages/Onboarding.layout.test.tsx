@@ -80,24 +80,17 @@ describe('the chip grid is fixed, and cells do not grow', () => {
   })
 })
 
-describe('a limit is an instruction, not a correction', () => {
-  // ⚠️ "Pick up to two" was printed UNDER the options it constrains, where it
-  // is read only after a third tap did nothing.
-  it('states the cap ABOVE the chips it caps', () => {
-    const { container } = show('contentGoals')
-    const text = container.textContent ?? ''
-    const hint = text.indexOf('Pick up to two.')
-    const firstChip = text.indexOf('Reach more people')
-    expect(hint).toBeGreaterThanOrEqual(0)
-    expect(firstChip).toBeGreaterThanOrEqual(0)
-    expect(hint).toBeLessThan(firstChip)
-  })
-
-  it('and says something different once the cap is reached', () => {
-    show('contentGoals', { contentGoals: ['followers', 'sell'] })
-    expect(screen.getByText('Two is the limit — tap one to swap it.')).toBeTruthy()
-  })
-})
+// ⚠️⚠️ "A LIMIT IS AN INSTRUCTION, NOT A CORRECTION" LIVED HERE AND ITS SUBJECT
+// IS GONE. It guarded the "Pick up to two" hint above the seven content-goal
+// chips, and it was right about hint placement. The question itself is deleted:
+// it was the THIRD asking of the same thing in one flow, and the creator's own
+// CTAs answer it (see the-cta-already-said-what-the-videos-are-for).
+//
+// ⚖️ THE TESTS GO WITH THE FEATURE RATHER THAN BEING RE-POINTED AT SOMETHING
+// ELSE. `contentGoals` was the only capped multi-select in onboarding, so there
+// is nothing left for the rule to be true ABOUT. Re-aiming it at an unrelated
+// question would be a guard that looks alive and measures nothing — and if a
+// capped chooser is ever added, this comment is the record of what to restore.
 
 describe('the answers so far stay in view', () => {
   // ⚖️ NOTHING TO SAY, NOTHING RENDERED. A summary bar that appears empty is a

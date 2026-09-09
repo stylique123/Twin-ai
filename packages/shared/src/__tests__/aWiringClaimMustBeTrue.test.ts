@@ -117,18 +117,21 @@ describe('affiliateUrl: the claim in productEntity.ts, asserted', () => {
   })
 })
 
-describe('the Section component: the count its comment rests on', () => {
-  it('is used exactly once, which is what the comment now says', () => {
-    // #616 rewrote a comment claiming a whole-screen accordion after measuring
-    // ONE usage against eleven fields. That count is the comment; pin it.
+describe('the Section component: deleted with its last user', () => {
+  it('is gone, and so is the block it wrapped', () => {
+    // ⚠️⚠️ THIS PINNED `<Section>` AT EXACTLY ONE USAGE. Its one usage was
+    // "What can appear in your videos?", the block that read `Not answered` on
+    // every account because two of its three questions can only be answered by
+    // a product that does not exist on that screen. The block is deleted and
+    // the component with it.
     //
-    // ⚠️ JSX LINES ONLY, AND THE FIRST VERSION OF THIS GUARD GOT IT WRONG. A
-    // plain `split('<Section')` counted THREE: the one real usage plus two
-    // mentions inside the very comment this test exists to protect. A guard
-    // that counts its own documentation is measuring the wrong thing, and it
-    // would have gone green again the moment somebody edited the prose.
+    // ⚖️ THE RULE THIS TEST SERVED — a comment must not claim a shape the code
+    // does not have — is kept by asserting ZERO rather than by deleting the
+    // test: a component reintroduced without its comment being rewritten
+    // fails here, which is the original point.
     const src = readFileSync(join(REPO, 'apps/web/src/pages/Onboarding.tsx'), 'utf8')
     const uses = src.split('\n').filter((l) => l.trim().startsWith('<Section')).length
-    expect(uses, 'the number of <Section> usages moved — the comment above `function Section` describes the old shape').toBe(1)
+    expect(uses, 'a <Section> came back — rewrite the comment that describes it, or use a different wrapper').toBe(0)
+    expect(src).not.toContain('function Section(')
   })
 })
