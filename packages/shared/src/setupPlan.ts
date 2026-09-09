@@ -73,7 +73,25 @@ export function planSetups(scenes: ReadonlyArray<SetupScene>): SetupPlan {
   const byKey = new Map<string, Setup>()
   const setupIdOf: Record<number, string | null> = {}
 
-  for (const scene of scenes) {
+  // ── LETTERS FOLLOW THE SCRIPT, NOT THE ARRAY ─────────────────────────────
+  //
+  // ⚠️ REPRODUCED, NOT SUPPOSED. Given scenes in the order [3, 1, 2] this
+  // function assigned `A` to scene 3's room, so `setups[0]` was `A` while
+  // scene 1 belonged to `B` — and the sticky strip, which states `setups[0]`
+  // before the creator has scrolled anywhere, therefore named a setup the first
+  // scene is not filmed in. That is the shape reported on run I3: a header
+  // reading `Setup D` above a first scene reading `Setup A`.
+  //
+  // ⚖️ THE LETTER IS A PROMISE ABOUT ORDER — "A is where you start" — so it has
+  // to be derived from the order a person films in, which is `scene_number`,
+  // never from however the array reached this function. Callers today pass
+  // script order; this stops that being a thing every caller must know.
+  //
+  // ⚖️ SORTED ON A COPY. Mutating a caller's array to fix a display bug would
+  // reorder the script itself, which is a far worse defect than the one being
+  // fixed.
+  const inScriptOrder = [...scenes].sort((a, b) => a.scene_number - b.scene_number)
+  for (const scene of inScriptOrder) {
     const spoken = clean(scene.dialogue) !== ''
     const background = clean(scene.background)
     const framing = clean(scene.camera_framing)
@@ -96,6 +114,27 @@ export function planSetups(scenes: ReadonlyArray<SetupScene>): SetupPlan {
   }
 
   return { setups, setupIdOf }
+}
+
+/**
+ * The setup the strip states before the creator has scrolled anywhere.
+ *
+ * ⚠️ THE STRIP USED TO READ `setups[0]` DIRECTLY, and that is only the first
+ * scene's setup if the letters were assigned in script order — which is exactly
+ * what failed. Asking for the setup of the FIRST SPOKEN SCENE makes the strip
+ * and the first card agree by construction, rather than by both happening to
+ * derive the same answer two different ways.
+ *
+ * ⚖️ NULL WHEN NOTHING IS SPOKEN. A script of silent inserts is filmed in no
+ * room, and naming one would be an instruction nobody can follow.
+ */
+export function openingSetupId(plan: SetupPlan): string | null {
+  const numbers = Object.keys(plan.setupIdOf).map(Number).sort((a, b) => a - b)
+  for (const n of numbers) {
+    const id = plan.setupIdOf[n]
+    if (id != null) return id
+  }
+  return null
 }
 
 /**

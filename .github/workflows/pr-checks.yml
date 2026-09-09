@@ -316,6 +316,19 @@ jobs:
             exit 1
           fi
           echo "clean: no legacy editor references"
+      # ⚠️ THE DISCOVERY SCRAPER HAD NO TESTS AND NO CI JOB, and it filled the
+      # gallery with 92 junk cards a week for at least a week before anyone
+      # looked: every Instagram card was a HASHTAG PAGE, not a post, with an
+      # empty title and creator '@'. The rule that stops it is decidable, so it
+      # is checked on every PR.
+      #
+      # ⚖️ IN THIS JOB BECAUSE IT NEEDS NOTHING. The selftest imports only the
+      # Python standard library — `discover` and the Supabase credentials are
+      # both deferred past import for exactly this reason — so a checkout-only
+      # runner is the right home. A guard whose tooling is absent answers about
+      # the runner rather than the code, and this repo has paid for that twice.
+      - name: Discovery scraper rules
+        run: python3 discovery/run.py --selftest
       - name: Worker registry must not register autoedit
         run: |
           if grep -n "autoedit" worker/src/jobs/index.ts | grep -v "removed"; then

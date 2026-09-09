@@ -93,9 +93,14 @@ jobs:
           # reached production AND four merged writer changes sat undeployed
           # behind it. Working as designed: the closed list refused to guess,
           # and refusing loudly is why this was findable at all.
+          # enqueue-extraction — the ONLY writer of `extract_product` jobs.
+          # PRODUCTION because a creator calls it: the Product Library invokes
+          # requestProductExtraction() on every added link and photo. The
+          # browser insert it replaced had been refused by RLS since 0030.
           PROD="admin admin-metrics answer-beat-ask billing billing-webhook brand-logo \
-                brand-truth clip-asset dna-poll editor-output generate-blueprint \
-                generate-thumbnail ingest-reference owner-console pilot-review pilot-start \
+                brand-truth clip-asset dna-poll editor-output enqueue-extraction \
+                generate-blueprint generate-thumbnail ingest-reference owner-console \
+                pilot-review pilot-start \
                 product-image referral review social source-asset start-dna start-editor-v2 \
                 watched-session"
 
