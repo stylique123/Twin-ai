@@ -44,6 +44,9 @@
 // did the model mean" to "does this text carry the number it owes", which is a
 // question with an answer.
 
+// ⚖️ THE ONE CLASSIFIER. See the note above `deliveredItemCount`.
+import { statesCountOfItems, itemCounts } from './script/numberRole'
+
 /** Small integers a short-form list can plausibly enumerate. Above twelve, a
  *  "list" is a montage and the count stops being a promise anyone tracks; below
  *  two it is not a list at all. */
@@ -171,43 +174,24 @@ function coerceCount(v: unknown): number | null {
 // READING COUNTS OUT OF TEXT
 // ---------------------------------------------------------------------------
 
-/**
- * Does this text carry the number `n`, as a digit or as a word?
- *
- * Word-boundary anchored, so `5` does not match inside `2025` and `one` does not
- * match inside `money`. That second case is not hypothetical — "money", "gone"
- * and "someone" all contain `one`, and a naive `includes` would report that
- * every hook already carries the count.
- */
-export function containsCount(textValue: string | null | undefined, n: number): boolean {
-  if (!textValue || n < MIN_COUNT || n > MAX_COUNT) return false
-  const word = Object.keys(NUMBER_WORDS).find((k) => NUMBER_WORDS[k] === n)
-  const digit = new RegExp(`(?<![\\d.,])${n}(?![\\d.,])`)
-  if (digit.test(textValue)) return true
-  return word ? new RegExp(`\\b${word}\\b`, 'i').test(textValue) : false
-}
-
-/**
- * Every small integer this text states, as digits or words.
- *
- * Used ONLY to detect DISAGREEMENT between artifacts that should all carry the
- * same promise — never to decide what the count is. A number appearing in a
- * script line is not evidence of an enumeration; a DIFFERENT number appearing
- * where the promised one should be is evidence of a broken one.
- */
-export function countsIn(textValue: string | null | undefined): number[] {
-  if (!textValue) return []
-  const found = new Set<number>()
-  for (const m of textValue.matchAll(/(?<![\d.,])(\d{1,2})(?![\d.,])/g)) {
-    const n = Number(m[1])
-    if (n >= MIN_COUNT && n <= MAX_COUNT) found.add(n)
-  }
-  for (const [word, n] of Object.entries(NUMBER_WORDS)) {
-    if (n < MIN_COUNT) continue
-    if (new RegExp(`\\b${word}\\b`, 'i').test(textValue)) found.add(n)
-  }
-  return [...found].sort((a, b) => a - b)
-}
+// ── THE TWO READERS THAT LIVED HERE ARE GONE, NOT WRAPPED ────────────────
+//
+// ⚠️ `containsCount` AND `countsIn` COULD NOT TELL A DURATION FROM A PROMISE.
+// Measured on the shipped code: `containsCount('six month deal', 6)` returned
+// TRUE, so a hook naming a six-month deal was recorded as honouring an
+// enumeration of six items — and worse, `readMechanismFromBlueprint` below
+// MANUFACTURED that contract from the same reading, then failed the script for
+// not delivering six things it never promised. Meanwhile a separate panel
+// praised the very same line for naming a number.
+//
+// ⚖️ SO THE ROLE IS DECIDED ONCE, IN `script/numberRole.ts`, and this module
+// asks it. Keeping thin wrappers here would leave two names for one rule and
+// invite the next reader to pick the wrong one — which is how there came to be
+// four readings of one script in the first place.
+//
+// ⚖️ THE WORD-BOUNDARY LESSONS SURVIVED THE MOVE, because they were real:
+// "money", "gone" and "someone" all contain `one`, and `5` sits inside `2025`.
+// Both are pinned by tests against the new functions.
 
 /** A script beat, reduced to what the count contract needs. */
 export interface MechanismScriptBeat {
@@ -318,7 +302,7 @@ export function countContractIssues(input: CountContractInput): MechanismIssue[]
   // `normalizeHookLine` writes into the opening beat. A count sitting in option
   // four is a count nobody says.
   const recommended = hooks[0]
-  if (hooks.length > 0 && !containsCount(recommended, promised)) {
+  if (hooks.length > 0 && !statesCountOfItems(recommended, promised)) {
     issues.push({
       code: 'hook_drops_count',
       field: 'hook_options',
@@ -335,7 +319,7 @@ export function countContractIssues(input: CountContractInput): MechanismIssue[]
   // is checked rather than the whole script because that is where the run's
   // wrong number appeared, and because a script line may legitimately contain a
   // small number that is not the enumeration.
-  for (const other of countsIn(input.idea)) {
+  for (const other of itemCounts(input.idea)) {
     if (other !== promised) {
       issues.push({
         code: 'count_disagreement',
@@ -495,7 +479,7 @@ export function blueprintCountIssues(bp: BlueprintCountView | null | undefined):
   // the script owes it. Two numbers in a hook is not a promise anyone tracked,
   // and inventing a contract out of an ambiguous line would fail good scripts.
   if (!mechanism.enumeration.isEnumerated && hookList.length > 0) {
-    const promised = countsIn(hookList[0])
+    const promised = itemCounts(hookList[0])
     if (promised.length === 1) {
       mechanism = {
         ...mechanism,

@@ -20,8 +20,9 @@ import { explainFailure } from '../lib/api'
 import { creatorPick, defaultCapture, freeformEntry } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
-import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
+import { TwinKnowledgeLink } from '../components/TwinKnowledgeLink'
 import { ProductCaptureCard, readProductCapturePrompt } from '../components/ProductCaptureCard'
+import { ScriptOriginPanel } from '../components/ScriptOriginPanel'
 import { CreativeTransfer } from '../components/CreativeTransfer'
 import { isWhollyPlaceholder } from '../lib/api'
 import { UnfilledContainers } from '../components/UnfilledContainers'
@@ -1159,7 +1160,11 @@ export default function Result() {
               <p className="text-xs text-stone/80">{lengthLine}</p>
               {referenceCompareLine && <p className="text-xs text-stone/80">{referenceCompareLine}</p>}
               {ceilingWarningLine && <p className="text-xs text-amber">{ceilingWarningLine}</p>}
-              
+              {/* WHAT A PERSON FORWARDING THIS SCRIPT NEEDS TO KNOW ABOUT IT.
+                  The agency's report: "I need to know which product each script
+                  used, or I'll send a client the wrong one." */}
+              <ScriptOriginPanel generationId={gen.id} referenceUrl={gen.reference_url ?? null} />
+
               <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />
               <ScriptEditor
@@ -1174,12 +1179,11 @@ export default function Result() {
               {/* See the other call site: the script owns the list, so the
                   editor that changes it stays above this. */}
               <DeclaredClips generationId={gen.id} />
-              {/* ⚠️ ASKED HERE BECAUSE HERE IS WHERE THE CREATOR ALREADY IS. The
-                  one source better than a transcript is the creator answering a
-                  question, and the measured lesson about questions in this
-                  product is that placement decides whether they get answered at
-                  all. One question, under a script they were just handed. */}
-              <CreatorQuestionCard />
+              {/* ⚠️ A LINE, NOT A TEXTAREA. The question itself moved to
+                  Settings ("My Twin") — see TwinKnowledgeLink for why, and for
+                  the measured decision this overrules. What stays under the
+                  script is what Twin knows and one door to teach it. */}
+              <TwinKnowledgeLink voiceId={gen.brand_voice_id ?? null} />
               {/* ⚠️ ONLY WHEN THIS EXACT SCRIPT WAS WRITTEN BLIND. `product_capture_prompt`
                   is this generation's own `unrecordedProduct` decision, carried from
                   the writer -- so the card appears exactly when the creator can feel
@@ -1550,9 +1554,9 @@ export default function Result() {
                 <DeclaredClips generationId={gen.id} />
                 {/* ⚠️ SAME SPOT AS THE DESKTOP COLUMN: after the last beat,
                     before the shot list — never mid-scene. Mirrors the
-                    desktop CreatorQuestionCard/ProductCaptureCard placement
+                    desktop TwinKnowledgeLink/ProductCaptureCard placement
                     below; this tab was silently missing both. */}
-                <CreatorQuestionCard />
+                <TwinKnowledgeLink voiceId={gen.brand_voice_id ?? null} />
                 <ProductCaptureCard shown={readProductCapturePrompt(b)} voiceId={gen.brand_voice_id ?? null} />
               </div>
 

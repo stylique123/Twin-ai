@@ -50,8 +50,35 @@ describe('readBeatLength — the blank was the bug', () => {
       .toEqual({ kind: 'unplanned', liveSec: 5 })
   })
 
-  it('non-finite numbers are treated as absent rather than rendered', () => {
-    expect(readBeatLength({ duration_sec: Number.NaN, target_sec: 8 })?.kind).toBe('on_plan')
+  // ⚠️⚠️ THIS TEST WAS WRONG AND IT FROZE THE BUG. It read:
+  //
+  //     it('non-finite numbers are treated as absent rather than rendered', ...)
+  //       expect(readBeatLength({ duration_sec: NaN, target_sec: 8 })?.kind)
+  //         .toBe('on_plan')
+  //
+  // `on_plan` IS a rendering, and it is a claim: the words were checked against
+  // the plan and they fit. With no usable duration nobody checked anything. The
+  // module's own header forbids precisely this — "`unplanned` MUST NOT be
+  // rendered in the same voice as `on_plan`" — and the code was doing it in the
+  // other direction, so both were wrong together.
+  //
+  // ⚖️ AND IT IS NOT AN EDGE CASE. An ask-beat carries a plan and no words BY
+  // DESIGN, so every one of them was telling a creator it was on schedule.
+  it('a plan with nothing to measure is not on_plan', () => {
+    expect(readBeatLength({ duration_sec: Number.NaN, target_sec: 8 }))
+      .toEqual({ kind: 'planned_unmeasured', targetSec: 8 })
+    expect(readBeatLength({ duration_sec: 0, target_sec: 8 }))
+      .toEqual({ kind: 'planned_unmeasured', targetSec: 8 })
+    expect(readBeatLength({ target_sec: 8 }))
+      .toEqual({ kind: 'planned_unmeasured', targetSec: 8 })
+  })
+
+  it('a measured fit is still on_plan', () => {
+    expect(readBeatLength({ duration_sec: 8, target_sec: 8 }))
+      .toEqual({ kind: 'on_plan', targetSec: 8 })
+  })
+
+  it('an unusable target is still unplanned', () => {
     expect(readBeatLength({ duration_sec: 12, target_sec: Number.POSITIVE_INFINITY }))
       .toEqual({ kind: 'unplanned', liveSec: 12 })
   })

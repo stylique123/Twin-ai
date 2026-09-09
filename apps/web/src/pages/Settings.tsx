@@ -7,10 +7,11 @@ import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import {
   contentProfile, brandKitStatus, productDnaStatus, loadProductEntities,
   setupAreas, setupSummary, type SetupArea, type SetupState,
-  resolveProfileAnswers, readStoredBrief, savePreScriptBrief,
+  readStoredBrief, savePreScriptBrief,
 } from '@twinai/shared'
 import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
-import { readOnboardingDraft, profileAnswersOf } from '../lib/onboardingDraft'
+import { readProfileAnswers } from '../lib/profileAnswersRead'
+import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
@@ -83,8 +84,15 @@ export default function Settings() {
   // for a save that never attempted one, and those need different sentences: one
   // is worth retrying and the other never will be.
   const [ctaErr, setCtaErr] = useState<string | null>(null)
+  // ⚠️ `defaultCta === null` MEANT TWO OPPOSITE THINGS AND THE ROW PICKED THE
+  // WRONG ONE. It is null while the voice list is in flight AND after that read
+  // fails, because the catch below never touched it — so a failed load rendered
+  // "Loading your usual ending…" forever, beside a button disabled forever.
+  // Reported as "the CTA field doesn't accept input": the input was fine, the
+  // door never unlocked. Unknown is not a default in either direction.
+  const [ctaLoadFailed, setCtaLoadFailed] = useState(false)
   const loadVoice = useCallback(() => {
-    setVoiceErr(false); setVoiceLoading(true)
+    setVoiceErr(false); setVoiceLoading(true); setCtaLoadFailed(false)
     listBrandVoices()
       .then((vs) => {
         const def = vs.find((v) => v.is_default && v.status === 'ready') ?? vs.find((v) => v.status === 'ready') ?? vs[0] ?? null
@@ -107,7 +115,10 @@ export default function Settings() {
           }))
         }
       })
-      .catch(() => setVoiceErr(true)) // surface + offer retry — never a silent empty DNA
+      // ⚖️ THE CTA IS MARKED UNREAD, NOT EMPTY. Defaulting it to '' here would
+      // be worse than the dead button: the creator could then "save" over an
+      // answer we never managed to read.
+      .catch(() => { setVoiceErr(true); setCtaLoadFailed(true) }) // surface + offer retry — never a silent empty DNA
       .finally(() => setVoiceLoading(false))
   }, [])
   useEffect(() => { loadVoice() }, [loadVoice])
@@ -245,22 +256,10 @@ export default function Settings() {
   // so this reports a lower number than the truth — which is the safe direction
   // (it under-claims what Twin knows rather than over-claiming), but it is a real
   // gap and the fix is to persist the answers, not to assume them here.
-  const profileAnswers = (() => {
-    const id = profile?.id
-    let draft = null
-    try {
-      const d = id ? readOnboardingDraft(localStorage, id) : null
-      draft = d ? profileAnswersOf(d) : null
-    } catch { draft = null }
-    // ⚖️ THE CONFIRMED ANSWER BEATS THE HALF-FINISHED FORM, per field. A stored
-    // brief written before a question existed has no key for it, so preferring
-    // the whole stored object would discard a draft answer to a question the
-    // brief predates — reporting a gap the creator just filled in front of us.
-    return resolveProfileAnswers({
-      stored: readStoredBrief(activeVoice?.pre_script_brief) as never,
-      draft,
-    })
-  })()
+  // ⚖️ ONE READER, TWO SCREENS. This was an inline IIFE here until the build
+  // screen needed the same answers to say them back (Wave 5.2); see
+  // `readProfileAnswers` for why a copy would have been the wrong shape.
+  const profileAnswers = readProfileAnswers(profile?.id, activeVoice?.pre_script_brief)
   // ⚠️ THE PAGE RAN FROM PROFILE INTELLIGENCE INTO CREDIT PACKS INTO BRANDING
   // INTO THE WHOLE DNA RECORD, in one column, so the next useful action was
   // something you had to find rather than something you were told. Tabs are the
@@ -268,6 +267,18 @@ export default function Settings() {
   // what it costs, and who you are.
   const [tab, setTab] = useState<'twin' | 'brand' | 'plan' | 'account'>('twin')
   const nav = useNavigate()
+  // ⚖️ THE LINK UNDER EVERY SCRIPT POINTS AT `#my-twin`, AND A TABBED PAGE DOES
+  // NOT HONOUR A HASH BY ITSELF. Without this the creator lands on Settings and
+  // has to go looking for the thing the link named — which is exactly the
+  // "complete feature, zero rows" failure the move is betting against.
+  useEffect(() => {
+    if (window.location.hash !== '#my-twin') return
+    setTab('twin')
+    const t = setTimeout(() => {
+      document.getElementById('my-twin')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    }, 60)
+    return () => clearTimeout(t)
+  }, [])
   /** ⚖️ COLLAPSED BY DEFAULT, AND IT IS THE SAME RECORD EITHER WAY. Folding is
    *  not hiding: the summary answers "does this sound like me", which is the
    *  question people actually open this page with. */
@@ -569,6 +580,27 @@ export default function Settings() {
           </div>
         )}
 
+        {/* ── MY TWIN: THE QUESTION THAT USED TO SIT UNDER THE SCRIPT ────────
+            ⚠️ IT MOVED HERE, IT WAS NOT DELETED. The script screen now carries a
+            line and a link (`TwinKnowledgeLink`) instead of a textarea, so the
+            surface that just delivered a script no longer asks for homework. The
+            asking still has to happen somewhere, and this is the place a creator
+            arrives at having chosen to teach it.
+            ⚖️ THE ANCHOR IS PART OF THE FEATURE, not decoration: the link points
+            at `#my-twin`, and a link that lands on a page without finding what it
+            named is the same broken promise as no link at all. */}
+        {tab === 'twin' && (
+        <Reveal delay={0.03}>
+          <section id="my-twin" className="glass mt-5 p-5 sm:p-6 scroll-mt-24">
+            <p className="eyebrow !text-sand">My Twin</p>
+            <p className="mt-1.5 mb-4 text-xs text-stone">
+              One question at a time. Only you can answer these — your videos cannot.
+            </p>
+            <CreatorQuestionCard voiceId={defaultVoiceId} />
+          </section>
+        </Reveal>
+        )}
+
         {tab === 'twin' && (
         <Reveal delay={0.04}>
           <ProfileStatus
@@ -576,6 +608,8 @@ export default function Settings() {
             productDna={productDna}
             brandKit={kitStatus}
             cta={defaultCta}
+            ctaLoadFailed={ctaLoadFailed}
+            onCtaRetry={loadVoice}
             onCtaChange={setDefaultCta}
             onCtaCommit={(v) => void saveCta(v)}
             ctaSaved={ctaSaved}
@@ -1152,12 +1186,14 @@ function TeamSeats() {
  *  costs the creator nothing.
  */
 function ProfileStatus({
-  content, productDna, brandKit, cta, onCtaChange, onCtaCommit, ctaSaved, ctaErr,
+  content, productDna, brandKit, cta, ctaLoadFailed, onCtaRetry, onCtaChange, onCtaCommit, ctaSaved, ctaErr,
 }: {
   content: ContentProfile
   productDna: ProductDnaStatus
   brandKit: BrandKitStatus
   cta: string | null
+  ctaLoadFailed: boolean
+  onCtaRetry: () => void
   onCtaChange: (v: string) => void
   onCtaCommit: (v: string) => void
   ctaSaved: boolean
@@ -1211,7 +1247,12 @@ function ProfileStatus({
           <div className="min-w-0">
             <p className="text-sm text-cream">What viewers should do after your videos</p>
             <p className="mt-1 truncate text-sm text-sand">
-              {!ctaLoaded
+              {ctaLoadFailed
+                // ⚠️ NEVER "LOADING" AFTER A FAILED READ. That sentence is a
+                // claim about the future, and it was false — nothing was still
+                // coming. Plain English, and it names what to do next.
+                ? 'We could not load your usual ending.'
+                : !ctaLoaded
                 ? 'Loading your usual ending…'
                 : ctaText
                 ? `“${ctaText}”`
@@ -1221,12 +1262,24 @@ function ProfileStatus({
                 : 'No usual ending — Twin writes one to fit each video.'}
             </p>
           </div>
+          {/* ⚖️ RETRY, NOT A DEAD BUTTON. Editing stays closed while the stored
+              answer is unread — saving from here would overwrite something we
+              never saw — but a creator is given the one action that can fix it
+              instead of a greyed rectangle with no explanation. */}
+          {ctaLoadFailed ? (
+            <button
+              type="button"
+              onClick={onCtaRetry}
+              className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream"
+            >Try again</button>
+          ) : (
           <button
             type="button"
             disabled={cta === null}
             onClick={() => { setCtaDraft(ctaText); setCtaOpen(true) }}
             className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream disabled:opacity-40"
           >{ctaText ? 'Edit' : 'Add one'}</button>
+          )}
         </div>
         {ctaSaved && <p className="mt-2 text-xs text-teal">Saved</p>}
         {ctaErr !== null && <p className="mt-2 text-xs text-coral">{ctaErr}</p>}

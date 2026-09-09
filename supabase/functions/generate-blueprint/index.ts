@@ -1383,6 +1383,48 @@ function resolveSubjectSourceInline(
 //
 // ⚠️ PARITY: mirrors platformCtaFailures in
 // packages/shared/src/script/ctaFitsThePlatform.ts, held by its own test.
+// ── SUBSTANCE BUDGET (inlined from packages/shared/src/script/substanceBudget.ts)
+//
+// ⚠️ THE COPIES MUST NOT DRIFT, and `a-substance-budget-and-its-twin.test.ts`
+// rebuilds these numbers from THIS source rather than restating them, so a
+// change here that is not made there fails rather than diverges quietly.
+//
+// ⚖️ THIS PASS MEASURES AND LOGS; IT DOES NOT YET CLAMP. The clamp is one
+// `Math.min` away and is already written, unit-tested and mutation-tested in
+// the shared module. It is not switched on here because the budget's calibration
+// is unmeasured on real generations, and a rule that shortens every script on a
+// live product must be turned on against numbers rather than against a belief
+// that the counting is right. `beat_audit.substance_budget` and `length_target`
+// are those numbers. Turn the clamp on when they say the budget tracks reality.
+const POINT_ROLES_INLINE: readonly string[] = ['setup', 'item', 'turn', 'evidence', 'payoff']
+const FREE_BEATS_INLINE = 2
+
+// ⚠️ NULL WHEN NOBODY COUNTED, NEVER ZERO. `structure.beats` is an
+// `Assessed<Beat[]>`: its `not_checked` and `indeterminate` states are findings
+// nobody made, and reading either as "this reference makes no points" would cap
+// every script at two beats on a reference we simply never read.
+function referencePointsFromInline(structure: unknown): number | null {
+  const b = (structure as { beats?: { value?: unknown } } | null | undefined)?.beats
+  const v = (b as { value?: unknown } | null | undefined)?.value
+  if (!Array.isArray(v)) return null
+  return v.filter((x) => POINT_ROLES_INLINE.includes(String(
+    (x as { role?: unknown } | null)?.role ?? ''))).length
+}
+
+interface SubstanceBudgetInline { beats: number | null; enforceable: boolean }
+
+function substanceBudgetInline(
+  referencePoints: number | null,
+  storeItems: number | null,
+  productFacts: number | null,
+): SubstanceBudgetInline {
+  const c = (n: number | null): number | null =>
+    n === null || !Number.isFinite(n) || n < 0 ? null : Math.floor(n)
+  const r = c(referencePoints), st = c(storeItems), p = c(productFacts)
+  if (r === null && st === null && p === null) return { beats: null, enforceable: false }
+  return { beats: (r ?? 0) + (st ?? 0) + (p ?? 0) + FREE_BEATS_INLINE, enforceable: true }
+}
+
 const PLATFORM_WRONG_CTA_INLINE: Record<string, RegExp[]> = {
   tiktok: [/\bsubscribe\b/i, /\bmy channel\b|\bour channel\b|\bthe channel\b/i, /\bring the bell\b|\bnotification bell\b/i],
   instagram: [/\bsubscribe\b/i, /\bmy channel\b|\bour channel\b|\bthe channel\b/i, /\bring the bell\b|\bnotification bell\b/i],
@@ -2911,37 +2953,67 @@ function findEntailmentGaps(
 }
 
 /**
- * FIGURES SPOKEN ABOUT THE PRODUCT THAT NO STORED PRODUCT FACT CARRIES.
+ * FIGURES SPOKEN ABOUT THE PRODUCT, SPLIT BY WHY THEY ARE UNGROUNDED.
  *
- * ⚠️ MIRRORS `findProductClaimGaps` IN packages/shared/src/productClaimCheck.ts,
- * and exists for the defect that guard names: a script can state a price the
- * product record contradicts while every existing counter reads clean, because
- * the beat cites the product and the product exists. Nothing asked where the
- * NUMBER came from.
+ * ⚠️ MIRRORS `productClaimFindings` IN packages/shared/src/productClaimCheck.ts,
+ * which carries the full reasoning. The short version: the previous lens read
+ * ZERO on all 44 generations because it demanded `substance === 'product_dna'`,
+ * a label the seven measured skincare runs never once carried, and because an
+ * empty fact set suppressed it entirely. Those readings are void, not clean.
  *
- * ⚖️ IT REUSES `claimedValues` ABOVE — the same normalisation both this and the
- * creator-knowledge check depend on, so 50k and 50,000 stay one figure in both.
+ * ⚖️ CONTRADICTED vs UNSUPPORTED ARE TWO FINDINGS, NOT ONE. A stored $39 and a
+ * spoken $29 is a row somebody can point at; a spoken $29 with nothing on
+ * record is invention. Different rates, different fixes — one counter hides
+ * both, and the split is what makes it safe to stop suppressing the second.
  *
- * ⚖️ AND AN EMPTY FACT SET SUPPRESSES IT. A product Twin has never read has no
- * figures to contradict, and a counter that fires loudest where it knows least
- * teaches an operator to ignore it.
+ * ⚖️ IT REUSES `claimedValues` ABOVE — the same normalisation the
+ * creator-knowledge check depends on, so 50k and 50,000 stay one figure.
  */
-function findProductClaimGaps(
+function unitOfClaimInline(canonical: string): string {
+  return canonical.replace(/^[\d.]+/, '')
+}
+
+/** ⚠️ EITHER DOOR: labelled as sourcing the product record, OR naming the
+ *  product. Names under three characters are ignored — a two-letter brand
+ *  matches inside ordinary words. */
+function beatSourcesProductInline(
+  beat: { line?: unknown; substance?: unknown },
+  productNames: readonly string[],
+): boolean {
+  if (beat?.substance !== 'product_dna') {
+    const line = (typeof beat?.line === 'string' ? beat.line : '').toLowerCase()
+    if (line === '') return false
+    return productNames.some((n) => {
+      const name = String(n ?? '').trim().toLowerCase()
+      return name.length >= 3 && line.includes(name)
+    })
+  }
+  return true
+}
+
+function findProductClaimFindings(
   script: readonly { line?: unknown; substance?: unknown }[],
   factValues: readonly string[],
-): Array<{ beat: number; value: string }> {
+  productNames: readonly string[],
+): { contradicted: Array<{ beat: number; value: string }>; unsupported: Array<{ beat: number; value: string }> } {
   const supported = new Set<string>()
   for (const raw of factValues) for (const v of claimedValues(raw)) supported.add(v)
-  if (supported.size === 0) return []
-  const out: Array<{ beat: number; value: string }> = []
+  const supportedUnits = new Set<string>()
+  for (const v of supported) {
+    const u = unitOfClaimInline(v)
+    if (u !== '') supportedUnits.add(u)
+  }
+  const contradicted: Array<{ beat: number; value: string }> = []
+  const unsupported: Array<{ beat: number; value: string }> = []
   script.forEach((b, i) => {
-    // ⚠️ `product_dna` is the substance vocabulary's word — see SUBSTANCE_ENUM.
-    if (b?.substance !== 'product_dna') return
+    if (!beatSourcesProductInline(b, productNames)) return
     for (const v of claimedValues(typeof b?.line === 'string' ? b.line : '')) {
-      if (!supported.has(v)) out.push({ beat: i + 1, value: v })
+      if (supported.has(v)) continue
+      if (supportedUnits.has(unitOfClaimInline(v))) contradicted.push({ beat: i + 1, value: v })
+      else unsupported.push({ beat: i + 1, value: v })
     }
   })
-  return out
+  return { contradicted, unsupported }
 }
 
 // ⚠️ FIX 11 — SERMON WITHOUT WITNESS, DETECTED. Two separate counts, not one
@@ -3238,6 +3310,85 @@ function estimateDurationSecInline(dialogue: string | null): number {
 // ⚖️ MIRRORS `parseTargetSec` IN beatPlan.ts, NOT timingMath.ts's OWN copy --
 // timingMath.ts has none of its own; it imports beatPlan's, so the bounds
 // (1.5-90s) that reject an absurd "0.2" or "600" apply here too.
+// ── HOW LONG THIS VIDEO IS, DECIDED BEFORE A WORD IS WRITTEN ──────────────
+//
+// ⚠️ MEASURED: a 15-second reference produced a 48-second script and a
+// 226-second reference produced a 60-second one. Both land near a minute
+// because a minute is what gets written when nothing decides. The reference's
+// own measured `duration_sec` was on the row the whole time, reaching the audit
+// and never the instruction.
+//
+// ⚖️ MIRRORS `durationContract.ts` in packages/shared — the edge cannot import
+// the workspace, so the rule lives twice and the shared copy is the tested one.
+// A parity test holds the constants together.
+const MIN_TARGET_SEC_INLINE = 15
+const MAX_TARGET_SEC_INLINE = 90
+const DURATION_TOLERANCE_INLINE = 0.2
+const GOAL_TARGET_SEC_INLINE: Record<string, number> = {
+  followers: 30, entertain: 30, authority: 45, educate: 60,
+  conversations: 45, leads: 45, sell: 60, personal_brand: 40,
+}
+function targetSecondsInline(referenceSeconds: number | null, goal: string | null): number | null {
+  if (typeof referenceSeconds === 'number' && Number.isFinite(referenceSeconds) && referenceSeconds > 0) {
+    return Math.min(MAX_TARGET_SEC_INLINE,
+      Math.max(MIN_TARGET_SEC_INLINE, Math.round(referenceSeconds / 5) * 5))
+  }
+  if (goal && goal in GOAL_TARGET_SEC_INLINE) return GOAL_TARGET_SEC_INLINE[goal]
+  return null
+}
+/** ⚖️ THE WORD COUNT COMES FROM THE RECORDER'S OWN RATE — `NATURAL_WPM_INLINE`
+ *  above, the same 150 wpm `estimateDurationSecInline` measures with. A second
+ *  rate here would let the brief ask for a length the teleprompter then reports
+ *  as a different one. */
+/** What the finished script actually did with the budget.
+ *
+ *  ⚖️ COUNTED BEFORE IT IS ENFORCED, in that order and for the reason this
+ *  codebase has now written down three times: a refusal built on a guess about
+ *  frequency is how a safety check becomes the thing people route around. How
+ *  often a briefed writer misses the band is not known, because until this
+ *  change there was no band. */
+function durationAuditInline(
+  script: unknown,
+  referenceSeconds: number | null,
+  goal: string | null,
+): { target_sec: number | null; words: number; over_words: number; under_words: number } {
+  const rows = Array.isArray(script) ? script : []
+  let words = 0
+  for (const b of rows) {
+    const line = typeof (b as { line?: unknown })?.line === 'string' ? (b as { line: string }).line : ''
+    words += line.trim() === '' ? 0 : line.trim().split(/\s+/).length
+  }
+  const target = targetSecondsInline(referenceSeconds, goal)
+  if (target === null) return { target_sec: null, words, over_words: 0, under_words: 0 }
+  const budget = Math.round((target / 60) * NATURAL_WPM_INLINE)
+  const min = Math.round(budget * (1 - DURATION_TOLERANCE_INLINE))
+  const max = Math.round(budget * (1 + DURATION_TOLERANCE_INLINE))
+  return {
+    target_sec: target,
+    words,
+    over_words: Math.max(0, words - max),
+    under_words: Math.max(0, min - words),
+  }
+}
+
+function durationBriefInline(referenceSeconds: number | null, goal: string | null): string {
+  const target = targetSecondsInline(referenceSeconds, goal)
+  if (target === null) return ''
+  const words = Math.round((target / 60) * NATURAL_WPM_INLINE)
+  const minWords = Math.round(words * (1 - DURATION_TOLERANCE_INLINE))
+  const maxWords = Math.round(words * (1 + DURATION_TOLERANCE_INLINE))
+  const minBeats = Math.max(3, Math.floor(target / 12))
+  const maxBeats = Math.max(4, Math.ceil(target / 5))
+  const because = typeof referenceSeconds === 'number' && referenceSeconds > 0
+    ? `the reference they chose runs ${Math.round(referenceSeconds)} seconds`
+    : `what this video is for`
+  return `- LENGTH IS DECIDED, NOT DISCOVERED. This video runs ${target} seconds, because ${because}.`
+    + ` That is ${words} spoken words at a natural pace — write between ${minWords} and ${maxWords}, and count them.`
+    + ` Use between ${minBeats} and ${maxBeats} beats and make the target_sec of every beat add up to ${target}.`
+    + ` If the substance does not fill ${target} seconds, cut the video shorter rather than padding it —`
+    + ` and if it does not fit, cut a point rather than speeding up.`
+}
+
 const MIN_BEAT_SEC_INLINE = 1.5
 const MAX_BEAT_SEC_INLINE = 90
 function parseTargetSecInline(raw: unknown): number | null {
@@ -3591,7 +3742,13 @@ function statesARegulatoryRuleInline(text: unknown): boolean {
 // ⚠️ PARITY: mirrors firstPersonFailures in
 // packages/shared/src/script/firstPersonFloor.ts, held by
 // aFirstPersonFloorMustBeWired.test.ts.
-const FIRST_PERSON_MARKER_INLINE = /\b(?:i|i'm|i've|i'd|i'll|me|my|mine|we|we're|we've|our|ours)\b/i
+// ⚠️ `FIRST_PERSON_MARKER_INLINE` IS DECLARED ONCE, ABOVE, AND THIS IS WHERE THE
+// SECOND COPY WAS. #714 added it without noticing #584 had already declared the
+// same name at module scope. In Deno a duplicate top-level `const` is a BOOT
+// SyntaxError, not a runtime one, so `generate-blueprint` stopped booting
+// entirely: every generation died at the first model call with "we hit a snag",
+// and production wrote NO script from 2026-09-06 20:01 until this was found.
+// The two regexes were byte-identical, so the one above serves both readers.
 
 function firstPersonFailuresInline(
   script: readonly { section?: unknown; line?: unknown; substance?: unknown }[] | null | undefined,
@@ -4495,7 +4652,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string> }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string }
   try {
     body = await req.json()
   } catch {
@@ -4767,7 +4924,44 @@ Deno.serve(async (req: Request) => {
   // than a date comparison: live is the ABSENCE of a withdrawal, not a date
   // range, and a comparison would need a clock this function has no reason to
   // trust.
-  const { data: ownedEntity, error: ownedEntityErr } = await admin
+  // ⚠️ THE CREATOR'S ANSWER, WHEN THE CARD ASKED FOR ONE. Until this existed
+  // the choice had nowhere to travel: `selected_product_id` was WRITTEN to the
+  // generation row and never accepted as INPUT, so a creator who owns three
+  // things could not tell the writer which this video is about, and the writer
+  // read the oldest. Three of five real accounts own two things.
+  //
+  // ⚖️ VALIDATED AGAINST THEIR OWN LIBRARY, NEVER TRUSTED. The id arrives from
+  // a client, so the same owner / voice / relationship / archived filters
+  // apply — an id that is not theirs matches nothing and falls through to the
+  // stopgap rather than reaching another creator's product. `selectProduct` in
+  // packages/shared states this rule; a parity test pins the two together.
+  const requestedProductId = typeof body.selected_product_id === 'string'
+    ? body.selected_product_id.trim() : ''
+  // ⚠️ "NONE OF THESE" IS AN ANSWER, AND WITHOUT THIS LINE IT WAS WORSE THAN
+  // SILENCE. The picker's `None of these` sends the sentinel; an unrecognised
+  // id finds no row, `chosenEntity` stays null, and the stopgap below then
+  // hands the writer the OLDEST product — so a creator who said "this video is
+  // about none of my products" would get a script about one of them. Declining
+  // has to reach the writer as a decision, not as an absence.
+  //
+  // ⚖️ MIRRORS `NO_PRODUCT_CHOICE` in packages/shared/src/productSelection.ts.
+  const NO_PRODUCT_CHOICE_INLINE = 'none'
+  const declinedAProduct = requestedProductId === NO_PRODUCT_CHOICE_INLINE
+  let chosenEntity: unknown = null
+  if (requestedProductId !== '' && !declinedAProduct) {
+    const { data: picked } = await admin
+      .from('product_entities')
+      .select('id, name, creator_summary, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
+      .eq('owner_id', ownerId)
+      .eq('voice_id', voice?.id ?? null)
+      .eq('id', requestedProductId)
+      .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
+      .is('archived_at', null)
+      .maybeSingle()
+    chosenEntity = picked ?? null
+  }
+
+  const { data: stopgapEntity, error: ownedEntityErr } = await admin
     .from('product_entities')
     // ⚠️ `id` IS SELECTED BECAUSE IT IS READ. `selected_product_id` is written
     // from `ownedEntity?.id` further down, and this select omitted the column —
@@ -4807,6 +5001,21 @@ Deno.serve(async (req: Request) => {
     console.error('product_entities lookup failed', ownedEntityErr)
     return json({ error: 'We could not read your product details. Please try again.' }, 503)
   }
+
+  // ⚖️ THE CREATOR'S ANSWER OUTRANKS THE STOPGAP, and only ever narrows. When
+  // they picked one it is used; when they did not, behaviour is exactly what it
+  // was, so an older client is unaffected. Nothing here lets the WRITER pick
+  // among several — that entitlement is what `entryDoor.ts` clamps against.
+  //
+  // ⚠️ REBOUND ONTO THE ORIGINAL NAME ON PURPOSE. `ownedEntity` is read at
+  // dozens of sites — grounding, claims, disclosure, the audit row. Introducing
+  // a second name and updating "the ones that matter" is how one reader keeps
+  // the old value and a script cites a product the creator did not pick. One
+  // definition, no site missed.
+  // ⚖️ A DECLINE BEATS THE STOPGAP. `??` alone would fall through to it,
+  // which is the whole reason the sentinel has to be read here rather than
+  // just filtered out on the client.
+  const ownedEntity = declinedAProduct ? null : (chosenEntity ?? stopgapEntity)
 
   // ⚠️ THE LIBRARY IS PLURAL AND THE GROUNDING CHECK NEVER SAW IT. The query
   // above answers ONE question — "what does this voice sell" — and it is scoped
@@ -4849,6 +5058,32 @@ Deno.serve(async (req: Request) => {
     // empty string anyway — dropping them here keeps the logged count honest.
     .filter((e) => e.name.trim() !== '')
 
+  // ⚠️ THE WRITER MAY ONLY NAME WHAT IT WAS GIVEN, AND THIS IS WHERE IT WAS NOT.
+  //
+  // MEASURED 2026-09-08: a creator asked for a non-commercial video about her
+  // own opinion, and three of four idea-mode runs named a sponsor she never
+  // mentioned. One opened "Stop buying the viral Medicube pads before you hear
+  // this", asserted "aggressive physical pads will make redness worse" about a
+  // product her library records she has NEVER USED, invented a price, and
+  // carried no disclosure — on a paid relationship.
+  //
+  // The path was this loop. `libraryRows` is EVERY entity the owner has — the
+  // owned-entity query above filters `relationship in (OWN_PRODUCT,
+  // OWN_SERVICE)`, this one filters nothing — and `entitySay` hands the writer
+  // each one's NAME and FACTS. `claimRulesFor` already says a product with
+  // `personalUse !== 'CONFIRMED'` supports no experience claim; nothing applied
+  // it here.
+  //
+  // ⚖️ GIVEN, NOT OWNED, AND NULL MEANS NAME NOTHING. Most videos sell nothing.
+  // A writer that reaches into the library and picks is inferring commercial
+  // intent from nothing the creator said — the entitlement `entryDoor.ts`
+  // clamps against, defeated from the inside. See `entitiesTheWriterMayName` in
+  // packages/shared; a parity test pins this copy to it.
+  const givenEntityId = (ownedEntity as { id?: unknown } | null)?.id
+  const nameableEntityIds = new Set<string>(
+    typeof givenEntityId === 'string' && givenEntityId.trim() !== ''
+      ? [givenEntityId.trim()] : [])
+
   // THE SAME ROWS, IN THE TWO SHAPES THE RESOLVER STACK ASKS FOR.
   //
   // ⚖️ `archivedAt: null` IS A FACT ABOUT THIS READ, NOT AN ASSUMPTION. The
@@ -4864,7 +5099,13 @@ Deno.serve(async (req: Request) => {
       relationship: String(e.relationship ?? 'NONE'),
       archivedAt: null,
     }
-  }).filter((e) => e.id !== '')
+  })
+    // ⚖️ THE SAME GATE ON THE RESOLVER'S INPUT. `resolveTemplate` assigns an
+    // entity to a beat by TYPE — a deterministic pick, but still a pick among
+    // the creator's products that nobody asked for. Filtering here is what
+    // makes "the writer never selects a product" true of the resolver too,
+    // rather than only of the model.
+    .filter((e) => e.id !== '' && nameableEntityIds.has(e.id))
 
   // ⚠️ ONLY WHAT THE CREATOR ALREADY CONFIRMED. `trust === 'usable'` is the same
   // gate the product-facts block above applies, and it is the whole difference
@@ -4878,6 +5119,8 @@ Deno.serve(async (req: Request) => {
     const id = String(e.id ?? '')
     const name = String(e.name ?? '').trim()
     if (id === '' || name === '') continue
+    // The gate. An entity nobody chose contributes nothing the writer can say.
+    if (!nameableEntityIds.has(id)) continue
     const facts = (Array.isArray(e.knowledge) ? e.knowledge : [])
       .filter((f) => (f as { trust?: unknown })?.trust === 'usable')
       .map((f) => {
@@ -6032,7 +6275,24 @@ Deno.serve(async (req: Request) => {
         ? '\n- BUT THEY HAVE NOT CONFIRMED THEY USE IT AS A CUSTOMER DOES. Write no claim about being its USER — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Making it is not the same as living with it.'
         // Sharpens the same rule the substance check enforces per beat: nothing
         // licenses a personal history except the creator being on record for it.
-        : '\n- THE CREATOR HAS NOT CONFIRMED THEY PERSONALLY USE THIS. Write NO first-person usage claim about it — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Talk about what it does, never about what it did for them.')
+        : '\n- THE CREATOR HAS NOT CONFIRMED THEY PERSONALLY USE THIS. Write NO first-person usage claim about it — no "I\'ve been using this for months", "I switched to it", "it changed my workflow".')
+      // ⚠️⚠️ THE SENTENCE THAT USED TO END THE LINE ABOVE READ "Talk about what
+      // it does, never about what it did for them." IT LICENSED THE FAILURE.
+      //
+      // MEASURED 2026-09-08: a creator with a sponsored pad she has never used
+      // got "aggressive physical pads will make redness worse" — an outcome
+      // asserted about a product nobody in the chain has touched. The model was
+      // not disobeying. It was told to talk about what the product does, and
+      // the only rule beside it forbade first-person history.
+      //
+      // ⚖️ "WHAT IT IS" AND "WHAT IT DOES TO A PERSON" ARE DIFFERENT CLAIMS.
+      // Composition, format, price, who it is for — those are FACTS, already
+      // governed by `productFacts` and `marketingClaims`. An OUTCOME on a body
+      // or a life needs evidence, and for an unused product there is none: not
+      // the creator's experience (they have none) and not the vendor's word
+      // (that is `marketingClaims`, and it is attributed or forbidden, never
+      // the creator's own voice).
+      claimLines.push('\n- AND WRITE NO OUTCOME CLAIM ABOUT IT AT ALL. Nobody in this script has used it, so the script may not say what it does TO or FOR a person — no results, no effects, no "it will", "it won\'t", "it makes", "it fixes", "it causes", no better-or-worse than anything else. State what it IS — what it contains, what it costs, who it is for, what the maker says it is for, attributed — and stop there. An outcome nobody has observed is invented no matter how ordinary it sounds.')
     }
     if (disclosureRequired) {
       // A property of the entity, not a pacing decision the writer may weigh.
@@ -6505,6 +6765,13 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         // `observedVisualCountInline` documents, kept because `beat_audit` has
         // no separate slot for "ran" vs "ran and learned nothing" today.
         let visualDimensionsObserved = 0
+        // ⚠️ NULL IS THE HONEST INITIALISER HERE, AND IT IS NOT THE SAME CHOICE
+        // `visualDimensionsObserved` MADE ABOVE. That one collapses "never
+        // assessed" into 0 and says so; this one must not, because a budget of
+        // zero is a claim that there is nothing to say, and the whole point of
+        // the third state is that nobody may make that claim without counting.
+        let substanceBudgetBeats: number | null = null
+        let substanceReferencePoints: number | null = null
         try {
           const { data: assessed } = await admin
             .from('reference_content_profiles')
@@ -6553,6 +6820,12 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
               measured?.tier_zero_profile as TierZeroInline | null)
             if (measuredBlock) containerBlock += `\n\n${measuredBlock}`
           } catch { /* a missing column or a failed read costs the block, nothing else */ }
+          // ⚖️ THE SUBSTANCE BUDGET, COUNTED FROM THE SAME READ. The reference's
+          // points come from the structure this block already loaded, so this
+          // costs no extra query — the shape that made the container decision
+          // is the shape that says how much there is to say.
+          substanceReferencePoints = referencePointsFromInline(
+            (assessed?.profile as { structure?: unknown } | null)?.structure)
           const container = (assessed?.profile as
             { structure?: { containerType?: { value?: string; basis?: string } } } | null)
             ?.structure?.containerType
@@ -6797,6 +7070,11 @@ ${fenced('claims this creator may NOT make', forbidden)}
         `Tone: ${tone}`,
       ].join('\n'))
       : null
+    // ⚠️ THE ONE INSTRUCTION THAT WAS MISSING. Empty when nothing decides a
+    // length — a brief that says nothing beats one stating an invented figure
+    // as a requirement.
+    const durationBrief_ = durationBriefInline(ref?.duration_sec ?? null, typeof goal === 'string' ? goal : null)
+    const durationBriefLine = durationBrief_ === '' ? '' : `${durationBrief_}\n`
     const positionBlock = position
       ? `${fenced('what THIS video is (composed from the creator\'s own answers)', position)}
 This is the video's position. Every field below must serve it. If the reference's mechanism pulls away from it, adapt the mechanism and keep the position.
@@ -6811,7 +7089,7 @@ ${positionBlock}${referenceBlock}${historyBlock ? `
 ${fenced("this creator's existing catalogue", historyBlock)}` : ''}
 ${claimsBlock}
 Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
-- beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each one should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds, not a guess after the fact, and beats should differ in length when their jobs differ. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
+${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each one should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds, not a guess after the fact, and beats should differ in length when their jobs differ. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
 - beat_plan[].proof is WHAT THE CAMERA SEES, and it was measured returning the wrong thing on 186 of 192 real beats. It is NOT where the substance came from and NOT what the beat achieves — those are the substance and beat fields, and repeating either here wastes the only field that tells the creator what to physically put in frame. NEVER write "creator_knowledge", "creator_experience", "general", "Creator's experience with X", "Establishes the problem" or "Sets up the framework": the first three are another field's enum, the fourth names a SOURCE, the fifth restates the PURPOSE. Write the thing a person holds, points at, or shows: "The phone in hand, showing the wonky line", "The receipt on the desk", "The dashboard on your laptop, camera over your shoulder, pointing at the graph", "The scar on your left hand". If a beat is you talking straight to camera with nothing to show, write exactly "Straight to camera" — that is a real answer and it is short. NEVER ask for a screen recording, a screen capture, or footage the creator would have to record separately and edit in: everything you name must be something they can do ON CAMERA, in the take, with the thing in their hands. A screen belongs INSIDE the shot — a phone held up beside the face, a laptop turned around — never as a separate recording.
 - visual_hook: what the viewer SEES in the first second, and why it interrupts a scroll. Something that changes on screen, not a description of the spoken line. Achievable with a phone and whatever is already in the creator's room.
 - concept: FIRST nail the actual video premise by adapting ONE of the creator's real video FORMATS (listed in CREATOR DNA) to the reference's winning mechanism, then translate the reference's production down to what one person with a phone can shoot (never assume a team, budget or gear they lack).
@@ -7475,6 +7753,21 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         .map((f) => (typeof f?.value === 'string' ? f.value : ''))
         .filter((v) => v !== '')
       : []
+    // ⚠️ THE NAME IS THE FILTER NOW. A beat that says the product's name is a
+    // beat speaking about the product, whatever `substance` claims — and only
+    // the OWNED entity's name is used, because only its facts are loaded here.
+    // Judging a beat about another library product against these facts would
+    // report a gap that is an artefact of the lookup, not of the script.
+    const productNames: string[] = [
+      typeof (ownedEntity as { name?: unknown } | null)?.name === 'string'
+        ? String((ownedEntity as { name: string }).name)
+        : '',
+    ].filter((n) => n.trim() !== '')
+    const productClaimFindings_ = findProductClaimFindings(
+      (Array.isArray(declared) ? declared : []) as Array<Record<string, unknown>>,
+      productFactValues,
+      productNames,
+    )
     let progressChecks = 0
     if (Array.isArray(declared)) {
       for (const b of declared) {
@@ -7491,6 +7784,20 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // ⚖️ COMPUTED ONCE, LOGGED AND STORED — the same discipline 0130 uses, for
     // the same reason: recomputing at insert time risks the stored audit
     // describing a different script from the logged one.
+    // ⚖️ COUNTED HERE, WHERE ALL THREE SOURCES ARE IN SCOPE, and computed once
+    // like everything else in this literal.
+    //
+    // ⚠️ `knowledgeRows` COLLAPSES A FAILED READ INTO AN EMPTY ARRAY, so its
+    // length is a floor rather than a count. That is the conservative direction
+    // — it can only UNDERSTATE the budget, never overstate it — and understating
+    // is the direction that cannot cause padding, which is the defect this
+    // exists to remove. It is still a collapse and it is written down here so
+    // the number is read for what it is.
+    substanceBudgetBeats = substanceBudgetInline(
+      substanceReferencePoints,
+      Array.isArray(knowledgeRows) ? knowledgeRows.length : null,
+      productFactCountOf(ownedEntity),
+    ).beats
     beatAudit = {
       beats: Array.isArray(declared) ? declared.length : 0,
       // ⚠️ THE HOOK RULE THE PROMPT STATES, MEASURED. `raw` counts hooks that
@@ -7596,9 +7903,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // ⚠️ TRUE MEANS THIS SCRIPT WAS WRITTEN FROM AN INCOMPLETE VOICE. Read it
       // before blaming the writer for a thin result.
       voice_build_in_flight: voiceBuildInFlight,
-      product_claim_gaps: findProductClaimGaps(
-        (Array.isArray(declared) ? declared : []) as Array<Record<string, unknown>>,
-        productFactValues).length,
+      // ⚠️ AND THE OLD SINGLE COUNTER IS GONE, NOT RENAMED. It read 0 on all 44
+      // generations through a lens that could not see the defect: seven of seven
+      // measured skincare runs name the product, four state an invented price,
+      // and not one beat in any of them carries `substance: 'product_dna'`.
+      // Every prior reading is void. These two start from nothing.
+      product_claim_contradictions: productClaimFindings_.contradicted.length,
+      product_claim_unsupported: productClaimFindings_.unsupported.length,
       // ⚠️ THE N1 COUNTER. Comparative or magnitude claims about a product on a
       // commercial creator with NOTHING on record. Zero is the expected reading
       // and an absent counter would look identical to it — which is why it is
@@ -7678,6 +7989,30 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // counter would look identical to it, which is why this is written
       // even when nothing was found.
       visual_dimensions_observed: visualDimensionsObserved,
+      // ⚠️⚠️ THE TWO NUMBERS THE EXPANSION BAN WILL BE TURNED ON AGAINST.
+      // `length_target` is what was asked for; `substance_budget` is what the
+      // sources could support. Twelve measured runs produced ratios from 6.5x
+      // compression to 1.6x expansion with no rule, and the 1.6x case invented
+      // fifteen seconds of content — which is where "a five thousand dollar
+      // oven" came from. Logging both is what makes the clamp a calibrated
+      // change rather than a hopeful one.
+      //
+      // ⚠️ NULL MEANS NOBODY COULD COUNT, WHICH IS NOT A BUDGET OF ZERO. A
+      // reader that coerces this with `?? 0` will conclude every unread
+      // reference is empty.
+      substance_budget: substanceBudgetBeats,
+      // ⚠️ `length_target` IS DELIBERATELY ABSENT UNTIL THE PICKER EXISTS. A
+      // column that can only ever be null is the same defect in a new place,
+      // and writing 60 here would record a choice the creator was never
+      // offered — exactly what `asTarget` refuses to do in the shared module.
+      substance_reference_points: substanceReferencePoints,
+      // ⚠️ THE LENGTH CONTRACT, MEASURED — COUNTED, NOT ENFORCED. `target_sec`
+      // is null when nothing decided a length, which is NOT a miss and must not
+      // read as zero. `over_words`/`under_words` are separate because one
+      // number that could mean either direction is unreadable, and because the
+      // two have different causes: padding and running out of substance.
+      duration_contract: durationAuditInline(
+        declared, ref?.duration_sec ?? null, typeof goal === 'string' ? goal : null),
       // ⚠️ FIX 7. Beats whose words don't fit the beat_plan's own target_sec,
       // matched by position (one beat plan entry per script entry). Detection
       // only -- target_sec reaches nothing downstream today, so there is
@@ -9156,6 +9491,51 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
           selected_product_id: ownedEntity?.id ?? null,
         })
         .then(({ error }) => { if (error) console.warn('choices not recorded:', error.message) })
+
+      // ── THE OUTCOME ROW, OPENED NOW BECAUSE IT CANNOT BE OPENED LATER (0191) ─
+      //
+      // ⚠️ 85 GENERATIONS AND `post_outcome_observations` HOLDS ZERO ROWS.
+      // Nothing anywhere records whether a script Twin wrote was ever filmed, so
+      // every ranking in the product rests on what creators CLICK -- a measure of
+      // what looks appealing in a gallery, not of what became a video.
+      //
+      // ⚖️ THE CONTEXT IS FROZEN HERE, NOT JOINED LATER. A creator's niche
+      // changes; reading it at analysis time would relabel old videos with
+      // today's answer, and "segment before aggregating" is the rule this row
+      // exists to serve.
+      //
+      // ⚖️ AND IT CANNOT FAIL THE BUILD, for `generation_choices`' reason: this
+      // is an observation about a script that already succeeded and was already
+      // charged for. Losing the observation is a gap in analytics; throwing here
+      // would lose the creator their paid script.
+      //
+      // ⚠️ THE OUTCOME COLUMNS ARE LEFT NULL ON PURPOSE AND `was_filmed` IS
+      // THREE-STATE. NULL is "not asked yet"; `false` is "she looked at it and
+      // did not film it", which is the only negative signal this product has.
+      // Defaulting either would drown the real answers in assumed ones.
+      await admin.from('generation_outcomes')
+        .insert({
+          generation_id: gen.id,
+          owner_id: user.id,
+          // ⚖️ COPIED FROM THE VOICE PROFILE, and null where the scan never
+          // produced one -- never 'unknown', which would aggregate as an answer.
+          niche: ((voice?.profile as { niche?: unknown } | null)?.niche ?? null) as string | null,
+          sub_niche: ((voice?.profile as { sub_niche?: unknown } | null)?.sub_niche ?? null) as string | null,
+          // ⚠️ READ OFF `beatAudit` RATHER THAN RECOMPUTED. A second derivation
+          // is a second thing that can disagree with the first, and the audit is
+          // the copy the rest of the system already reads.
+          substance_budget_beats:
+            ((beatAudit as { substance_budget?: unknown } | null)?.substance_budget ?? null) as number | null,
+          // Absent is not zero: an older transcript with no measured duration is
+          // "we never measured", not "a zero-length video".
+          reference_duration_sec: ref?.duration_sec ?? null,
+          // ⚖️ THE ONE FACT THAT SEGMENTS EVERY QUESTION THIS TABLE WILL BE
+          // ASKED. "Did referenced videos get filmed more often than idea ones"
+          // is the first thing worth knowing, and it needs no taxonomy nobody
+          // has written yet.
+          had_reference: Boolean(transcript_id) || String(reference_url ?? '').trim() !== '',
+        })
+        .then(({ error }) => { if (error) console.warn('outcome row not opened:', error.message) })
     }
     // THE RACE THE REPLAY CHECK CANNOT CATCH. Two requests carrying the same key
     // can both pass the lookup above before either has inserted — a double-click

@@ -50,7 +50,10 @@ describe('Advanced Settings keeps execution and loses intent', () => {
     expect(CREATE).not.toMatch(/label="How close to the reference"/)
     expect(CREATE).not.toMatch(/const \[fidelity, setFidelity\]/)
     expect(CREATE).toMatch(/How it should sound/)
-    expect(CREATE).toMatch(/tone, idempotency_key/)
+    // ⚠️ ANCHORED ON ONE LINE'S FORMATTING. The nav state became a multi-line
+    // object when the Library gained "Make a video about this"; `tone` still
+    // rides in it, which is the fact this asserts.
+    expect(CREATE).toMatch(/state: \{[\s\S]{0,400}?\btone,/)
   })
 
   it('stops promising an effect the panel no longer has', () => {
@@ -158,7 +161,13 @@ describe('the three questions open with the remix', () => {
   it('asks the intent questions for EVERY video, not only on a refusal', () => {
     // ⚖️ They are not a repair for an incomplete profile. They are about a video
     // that does not exist yet, so there is nothing to be complete about.
-    expect(BUILD).toMatch(/const unanswered = INTENT_QUESTIONS\.filter\(/)
+    // ⚠️ ANCHORED ON `applicableQuestions`, NOT ON `INTENT_QUESTIONS`, AND THE
+    // DIFFERENCE IS A REAL RULE. Idea mode has no original, so the reference
+    // question is not asked there — see `intentQuestionsFor`. The claim this
+    // test makes is unchanged: every question that APPLIES is asked for every
+    // video, never only as a repair.
+    expect(BUILD).toMatch(/const applicableQuestions = intentQuestionsFor\(\{/)
+    expect(BUILD).toMatch(/const unanswered = applicableQuestions\.filter\(/)
     // ⚖️ THE CLAIM IS NARROWED, AND DELIBERATELY. `unanswered` still leads the
     // list, so the intent chips are asked for every video — EXCEPT the goal,
     // which the creator already answered during onboarding and which the card
@@ -176,21 +185,30 @@ describe('the three questions open with the remix', () => {
   })
 
   it('asks them BEFORE the two-minute ingest, like the readiness ones', () => {
-    expect(BUILD.indexOf('const unanswered = INTENT_QUESTIONS.filter('))
-      .toBeLessThan(BUILD.indexOf('await ingestReference('))
+    // ⚠️ THIS TEST PASSED VACUOUSLY WHEN ITS ANCHOR MOVED. `indexOf` returns
+    // -1 for a string that is not there, and -1 is less than every real index
+    // — so a rename silently turned an ordering assertion into a tautology.
+    // Both positions are now required to EXIST before they are compared.
+    const asked = BUILD.indexOf('const unanswered = applicableQuestions.filter(')
+    const ingest = BUILD.indexOf('await ingestReference(')
+    expect(asked).toBeGreaterThan(-1)
+    expect(ingest).toBeGreaterThan(-1)
+    expect(asked).toBeLessThan(ingest)
   })
 
   it('does NOT re-ask one already answered for this build', () => {
     // ⚠️ A tab reclaimed mid-answer restores what was picked; re-asking it
     // would throw the creator's own answer away in front of them.
-    const filt = BUILD.slice(BUILD.indexOf('const unanswered = INTENT_QUESTIONS.filter('))
+    const at = BUILD.indexOf('const unanswered = applicableQuestions.filter(')
+    expect(at).toBeGreaterThan(-1)
+    const filt = BUILD.slice(at)
     expect(filt.slice(0, 200)).toMatch(/!\(answersRef\.current\[q\.field\] \?\? ''\)\.trim\(\)/)
   })
 
   it('the gate asks what is UNANSWERED, not whether anything was answered', () => {
     // The old form skipped the whole pre-check the moment one answer existed —
     // correct when every question was a repair, wrong now.
-    expect(BUILD).toMatch(/const intentAnswered = INTENT_QUESTIONS\.every\(/)
+    expect(BUILD).toMatch(/const intentAnswered = applicableQuestions\.every\(/)
     expect(BUILD).not.toMatch(/if \(!askQuestions && !Object\.keys\(answersRef\.current\)\.length\)/)
   })
 

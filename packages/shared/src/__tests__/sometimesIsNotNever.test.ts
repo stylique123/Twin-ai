@@ -150,7 +150,15 @@ describe('the Product Library sends the answer', () => {
 
   it('the panel asks the question in the words the type deserves', () => {
     expect(LIBRARY).toMatch(/CAPABILITY_PROMPT\[/)
-    expect(LIBRARY).toMatch(/capabilityAnswerIsUsed\(/)
+    // ⚠️ THE ANCHOR MOVED, THE INTENT DID NOT. This asserted
+    // `capabilityAnswerIsUsed(` — the gate — while the card chose its BRANCH
+    // with a local `type === 'PHYSICAL_PRODUCT' ? 'physical' : 'screen'`, a
+    // second derivation this test could not see. `capabilityQuestion` decides
+    // both, so it subsumes the old gate rather than relaxing it.
+    expect(LIBRARY).toMatch(/capabilityQuestion\(/)
+    // ⚖️ AND THE RETIRED LOCAL RULE MUST NOT COME BACK. Without this the check
+    // would pass on a card that called the authority and then ignored it.
+    expect(LIBRARY).not.toMatch(/'PHYSICAL_PRODUCT' \? 'physical' : 'screen'/)
   })
 
   it('a type whose answer is discarded is told the fact instead of asked', () => {

@@ -318,6 +318,14 @@ export function overrunWorthShowing(overrunSec: number | null): boolean {
 export type BeatLengthReading =
   | { kind: 'unplanned'; liveSec: number }
   | { kind: 'on_plan'; targetSec: number }
+  /** ⚠️ THERE IS A PLAN AND NOTHING TO CHECK IT AGAINST. Added because the
+   *  header above forbids exactly what this file was doing in the other
+   *  direction: a beat with a target but no measurable words returned
+   *  `on_plan`, which is a claim that the words were checked against the plan
+   *  and found to fit. Nobody checked. An ask-beat is the common case — it has
+   *  a plan and no words yet by design — so every one of them was telling a
+   *  creator it was on schedule. */
+  | { kind: 'planned_unmeasured'; targetSec: number }
   | { kind: 'over'; targetSec: number; liveSec: number; overSec: number }
 
 const usableSec = (v: unknown): number | null =>
@@ -336,6 +344,10 @@ export function readBeatLength(
   const live = usableSec(scene.duration_sec)
   if (target === null) return live === null ? null : { kind: 'unplanned', liveSec: live }
   const over = sceneOverrunSec({ duration_sec: live, target_sec: target })
-  if (!overrunWorthShowing(over) || live === null) return { kind: 'on_plan', targetSec: target }
+  // ⚠️ THE NULL CHECK PRECEDES THE VERDICT. `live === null` used to fall into
+  // `on_plan` alongside a genuinely-measured fit, which is the same collapse
+  // this module's own header calls out for `unplanned`.
+  if (live === null) return { kind: 'planned_unmeasured', targetSec: target }
+  if (!overrunWorthShowing(over)) return { kind: 'on_plan', targetSec: target }
   return { kind: 'over', targetSec: target, liveSec: live, overSec: over as number }
 }

@@ -36,7 +36,7 @@
 // still costs an explicit assertion. What the suggestion saves is typing, which
 // is the difference between a page nobody fills in and one they finish.
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation,
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
@@ -46,12 +46,13 @@ import {
   isStale, factAgeDays, SOURCE_LABEL, sourceWarrantsAttention,
   signEditUrls,
   bestSuggestion,
-  asksPersonalUse, capabilityQuestion, CAPABILITY_PROMPT, capabilityAnswerIsUsed,
+  asksPersonalUse, capabilityQuestion, CAPABILITY_PROMPT,
   capabilityFlag,
   productLifecycle, LIFECYCLE_MESSAGE,
   CAPTURE_COPY, PLATFORM_CHOICES, PRIVACY_CHOICES, RATHER_NOT_SAY, FIGURE_HINT,
   surfaceChoices, buildCommunityMap, whatIsMissing,
   type ProductSuggestion,
+  relationshipLabel,
 } from '@twinai/shared'
 import { readOnboardingDraft } from '../lib/onboardingDraft'
 import type {
@@ -141,6 +142,39 @@ const SHOW_OPTIONS: Array<{ value: Showability; label: string; askLabel: string;
  */
 const CAPABILITY_CHOICES = SHOW_OPTIONS.map((o) => ({ value: o.value, label: o.askLabel }))
 
+/** What to call this card when the creator has not named the product yet.
+ *
+ *  ⚠️ TWO NAMELESS PRODUCTS RENDERED TWO IDENTICAL CARDS. The card has no
+ *  heading of its own — the first thing on it is an empty `Name` box with a
+ *  placeholder — so a creator who added two things from links, before either
+ *  page was read, was looking at two blank forms and had to open the Link field
+ *  of each to tell them apart.
+ *
+ *  ⚖️ IT IS A FALLBACK LABEL, NOT A WRITE. Nothing is stored: guessing a name
+ *  into `product_entities.name` would hand the writer a title the creator never
+ *  said, which is the whole failure mode this library exists to end. */
+function cardTitle(e: ProductEntityRecord): string {
+  const name = (e.name ?? '').trim()
+  if (name !== '') return name
+  const summary = (e.creatorSummary ?? '').trim()
+  if (summary !== '') return summary.length > 60 ? `${summary.slice(0, 57)}…` : summary
+  const url = (e.productUrl ?? '').trim()
+  if (url !== '') {
+    try { return new URL(url).hostname.replace(/^www\./, '') } catch { /* not a URL yet */ }
+  }
+  return 'Not named yet'
+}
+
+/** Which capability question this stored product warrants — the SAME function
+ *  the add form asks, given the entity's own type and relationship.
+ *
+ *  ⚖️ IT ALSO SUBSUMES THE OLD `capabilityAnswerIsUsed` GATE: `capabilityQuestion`
+ *  returns null exactly where the answer would be discarded, so "should we ask"
+ *  and "which question" stop being two decisions that can disagree. */
+function capabilityQuestionFor(e: ProductEntityRecord): 'screen' | 'physical' | null {
+  return capabilityQuestion({ type: e.type as EntityType, relationship: e.relationship })
+}
+
 /** What a creator is told about a type whose answer would change nothing.
  *  ⚠️ NEVER MAKE THE CREATOR THINK ABOUT TWIN'S ARCHITECTURE: these say what
  *  will happen to their scripts, not which function decided it. */
@@ -149,17 +183,9 @@ const FIXED_SHOW_NOTE: Record<string, string> = {
   COMMUNITY: 'Scripts can show this one — you hold your own phone up beside your face and show the feed.',
 }
 
-/** Plain-language names for the fields a creator cannot change here. Showing the
- *  value with no explanation reads as a bug; showing it with one reads as a
- *  decision, which is what it is. */
-const RELATIONSHIP_LABEL: Record<string, string> = {
-  OWN_PRODUCT: 'You own this product',
-  OWN_SERVICE: 'You own this service',
-  AFFILIATE: 'You earn a commission on it',
-  SPONSOR: 'A sponsor pays you to feature it',
-  REVIEW_ONLY: 'You review it, with no commercial tie',
-  NONE: 'No commercial relationship',
-}
+/* ⚖️ THE RELATIONSHIP WORDING MOVED TO packages/shared/productRelationshipLabel
+ *  when the studio's product door began showing it too — see that file for why
+ *  this particular label is worth exactly one copy. */
 
 
 /** The attestation. Two questions, both required, neither derivable.
@@ -380,6 +406,13 @@ export default function ProductLibrary() {
   const [err, setErr] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
+  // ⚠️ THE CONFIRMATION WAS AT THE FOOT OF A CARD HUNDREDS OF PIXELS TALL.
+  // "Saved." existed and was reported as missing, which is the same defect as
+  // not having built it: a creator who edits the Name field looks AT the Name
+  // field, not at the bottom of the card. The key is `${id}:${field}` so the
+  // note appears beside the box that was actually edited.
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [savedKey, setSavedKey] = useState<string | null>(null)
   const [claimingId, setClaimingId] = useState<string | null>(null)
   // `addingNew` is the same attestation with no suggestion behind it.
   /** ⚠️ SETTINGS PROMISES "Add a product →" AND MUST NOT LAND SOMEBODY ON A LIST
@@ -387,6 +420,7 @@ export default function ProductLibrary() {
    *  affordance the Settings rebuild exists to remove — it just fails one screen
    *  later, where it is harder to notice. */
   const [params] = useSearchParams()
+  const nav = useNavigate()
   const [addingNew, setAddingNew] = useState(params.get('add') === '1')
   // Removal is confirmed in place rather than with a window.confirm, so the
   // consequence can be SPELLED OUT — a browser dialog cannot say what is lost.
@@ -408,6 +442,25 @@ export default function ProductLibrary() {
   // ⚖️ TABS IN PLAIN ENGLISH, NOT "Active"/"Archived". "In use" and "Not in use"
   // say what Twin will do with them, which is the only thing the distinction
   // means; the internal word is `archived_at` and the creator never needs it.
+  // ── THE LIBRARY IS A LIST, NOT EVERY FORM AT ONCE ────────────────────────
+  //
+  // ⚠️ REPORTED FROM PRODUCTION, TWICE: "two stupid big boxes in which I cannot
+  // actually select anything", and before that "no proper confirmation of ui of
+  // added products remove or edit". Every product rendered its ENTIRE editor
+  // inline — name, summary, link, capability, photos, facts, relationship — so
+  // two products made a page several screens long with no overview anywhere on
+  // it. The controls existed; the shape of the screen hid them, and a control a
+  // creator cannot find is a control nobody built.
+  //
+  // ⚖️ SO THE LIST ANSWERS "WHAT DO I HAVE" AND THE PANEL ANSWERS "WHAT ABOUT
+  // THIS ONE". Exactly one product is open at a time, by id: two open editors is
+  // the defect being fixed, and a set would let it back in.
+  const [openId, setOpenId] = useState<string | null>(null)
+  /** ⚠️ "I don't even know... it does not confirm me if they have been added."
+   *  The dialog closed and the new row appeared several screens down, below
+   *  whatever was already expanded — so on the one screen that matters, adding a
+   *  product looked exactly like nothing happening. */
+  const [justAdded, setJustAdded] = useState<string | null>(null)
   const [tab, setTab] = useState<'live' | 'retired'>('live')
   /** Storage path → signed URL, for photos already attached to a product. */
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
@@ -480,7 +533,7 @@ export default function ProductLibrary() {
       // recording an import failure for that would invent a state rather than
       // report one, which is the defect this change exists to remove.
       try {
-        await requestProductExtraction(ownerId, entity.id, entity.productUrl ?? '', [...existing, ...added])
+        await requestProductExtraction(entity.id, entity.productUrl ?? '', [...existing, ...added])
       } catch (e) {
         try {
           await recordExtractionNeverStarted(entity.id, e)
@@ -522,6 +575,25 @@ export default function ProductLibrary() {
     }
   }, [addingNew])
 
+  // ⚖️ THE SAME TWO RULES FOR THE PRODUCT PANEL, and for the same reasons. It is
+  // a dialog, so Escape must close it; the library behind it must not scroll
+  // under a panel that stands still. Closing discards nothing — every field here
+  // saves on blur — so unlike the add form, this one is safe to leave by
+  // keyboard without a confirmation.
+  useEffect(() => {
+    if (openId === null) return
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') { setOpenId(null); setRemovingId(null) }
+    }
+    window.addEventListener('keydown', onKey)
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = previous
+    }
+  }, [openId])
+
   useEffect(() => {
     let alive = true
     ;(async () => {
@@ -559,6 +631,10 @@ export default function ProductLibrary() {
   }, [])
 
   async function save(id: string, edit: Parameters<typeof updateEntityPresentation>[1]) {
+    // ⚖️ THE FIELD COMES FROM THE EDIT ITSELF, so no call site has to be told
+    // its own name and none can be forgotten as fields are added.
+    const key = `${id}:${Object.keys(edit)[0] ?? ''}`
+    setSavingKey(key)
     setSavingId(id); setErr(null)
     try {
       const updated = await updateEntityPresentation(id, edit)
@@ -567,12 +643,35 @@ export default function ProductLibrary() {
       // saved a product it had not.
       if (updated) setEntities((prev) => (prev ?? []).map((e) => (e.id === id ? updated : e)))
       setSaved(id)
+      setSavedKey(key)
+      window.setTimeout(() => setSavedKey((k) => (k === key ? null : k)), 2000)
       window.setTimeout(() => setSaved((s) => (s === id ? null : s)), 2000)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not save that change.')
     } finally {
       setSavingId(null)
+      // ⚠️ IN `finally`, NOT AFTER THE AWAIT. A failed save that leaves the box
+      // saying "Saving…" for ever is a worse lie than no note at all.
+      setSavingKey((k) => (k === key ? null : k))
     }
+  }
+
+  /** The save state of ONE field, rendered beside that field.
+   *
+   *  ⚠️ THE CARD ALREADY HAD "Saving… / Saved.", at its foot. It was reported
+   *  as a missing save confirmation anyway, and that report is correct: a note
+   *  the creator cannot see while looking at the box they edited is not a
+   *  confirmation. Same state, put where the eye already is.
+   *
+   *  ⚖️ IT RENDERS AN EMPTY, FIXED-HEIGHT LINE WHEN THERE IS NOTHING TO SAY, so
+   *  the fields below do not jump when a save lands. */
+  function fieldNote(id: string, field: string) {
+    const key = `${id}:${field}`
+    return (
+      <p className="mt-1 h-4 text-xs text-stone" data-testid={`save-note-${field}`}>
+        {savingKey === key ? 'Saving…' : savedKey === key ? 'Saved.' : ''}
+      </p>
+    )
   }
 
   async function claim(s: ProductSuggestion | null, a: {
@@ -620,7 +719,7 @@ export default function ProductLibrary() {
         const url = (a.productUrl ?? '').trim()
         const imgs = a.imagePaths ?? []
         if (url || imgs.length > 0) {
-          try { await requestProductExtraction(ownerId, created.id, url, imgs) }
+          try { await requestProductExtraction(created.id, url, imgs) }
           catch (e) {
             // ⚠️ THE BANNER USED TO BE THE ONLY THING THAT KNEW. It said "we
             // could not start reading that page" and wrote nothing, so
@@ -649,6 +748,9 @@ export default function ProductLibrary() {
       }
       setClaimingId(null)
       setAddingNew(false)
+      // ⚖️ NAMED, NOT "SAVED". "Added" alone does not tell a creator WHICH thing
+      // landed, which is the actual question after a form closes.
+      if (created) setJustAdded(cardTitle(created))
     } catch (e) {
       // ⚖️ THE ONE-PRODUCT-PER-VOICE REFUSAL GETS ITS OWN MESSAGE. Falling back
       // to a generic failure would leave a creator retrying a thing that will
@@ -726,7 +828,7 @@ export default function ProductLibrary() {
       // watched it fail silently would be returned to a card that says READING —
       // the state they pressed the button to escape.
       try {
-        await requestProductExtraction(ownerId, id, url)
+        await requestProductExtraction(id, url)
       } catch (e) {
         try {
           await recordExtractionNeverStarted(id, e)
@@ -791,7 +893,17 @@ export default function ProductLibrary() {
             show about each one.
           </p>
         </div>
-        {!addingNew && (
+        {/* ⚠️ ONE ADD CONTROL ON SCREEN AT A TIME, AND THERE WERE THREE.
+            Header, empty state, and a mid-page "Add another product" all opened
+            the same dialog: an empty library showed two identical primary
+            buttons, and a stocked one showed two more. Two buttons doing one
+            thing is not twice the affordance — it is a creator wondering what
+            the difference is.
+
+            ⚖️ THE EMPTY STATE KEEPS ITS OWN, because there the button belongs
+            beside the paragraph explaining why the library is empty. So the
+            header's appears only once there is a list for it to sit above. */}
+        {!addingNew && entities.length > 0 && (
           <button
             type="button"
             className="btn-gradient shrink-0 rounded-lg px-3 py-1.5 text-sm"
@@ -799,6 +911,21 @@ export default function ProductLibrary() {
           >Add a product</button>
         )}
       </header>
+
+      {/* ⚠️ ARRIVED FROM THE STUDIO, AND THE PAGE USED TO SAY NOTHING ABOUT IT.
+          Choosing "something I sell" in the studio navigates here; before this
+          the creator landed on an unchanged list with no statement of why, and
+          no way back into the build. Reported exactly that way. */}
+      {params.get('from') === 'studio' && entities.length > 0 && (
+        <p className="rounded-lg border border-coral/30 bg-coral/[0.06] px-3 py-2 text-sm text-cream">
+          Pick which product this video is about — press <strong>Make a video about this</strong> on
+          one of them. Or <button
+            type="button"
+            className="underline"
+            onClick={() => nav('/v2')}
+          >go back and start without one</button>.
+        </p>
+      )}
 
       {err && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
 
@@ -897,16 +1024,81 @@ export default function ProductLibrary() {
         </div>
       )}
 
-      {tab === 'live' && entities.length > 0 && !addingNew && (
-        <button
-          type="button"
-          className="rounded-lg border border-white/15 px-3 py-1.5 text-sm"
-          onClick={() => setAddingNew(true)}
-        >Add another product</button>
+      {/* ⚖️ THE THIRD ADD BUTTON LIVED HERE, between the tabs and the list,
+          duplicating the header's. Removed rather than relabelled: renaming one
+          of two identical actions only makes the creator look for the
+          difference harder. */}
+
+      {/* ⚠️ ONE NOTE, RENDERED WHERE THE EDIT HAPPENED. Declared here rather
+          than inside the map so every field gets the identical wording — the
+          card already carries two near-duplicate sentences that drifted. */}
+      {/* ⚠️ THE CONFIRMATION THE ADD FLOW NEVER GAVE. See `justAdded`. */}
+      {justAdded !== null && (
+        <div className="mb-3 flex items-start justify-between gap-3 rounded-xl border border-teal/30 bg-teal/[0.06] px-4 py-3">
+          <p className="text-sm text-cream">
+            <span className="font-semibold">{justAdded}</span> is in your library.
+            Open it to add a link, photos, or answer what you can film.
+          </p>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            className="shrink-0 text-lg leading-none text-stone hover:text-cream"
+            onClick={() => setJustAdded(null)}
+          >×</button>
+        </div>
       )}
 
-      {(tab === 'live' ? entities : []).map((e) => (
-        <section key={e.id} className="rounded-xl border border-white/10 p-4">
+      {/* ── ONE ROW PER PRODUCT; ONE PANEL FOR THE ONE BEING WORKED ON ──────
+          ⚖️ THE ROW IS A BUTTON, not a card with a link in it. The whole thing
+          is the target, because "click the product" is what a creator does. */}
+      {(tab === 'live' ? entities : []).map((e) => openId !== e.id ? (
+        <button
+          key={e.id}
+          type="button"
+          onClick={() => { setOpenId(e.id); setRemovingId(null) }}
+          // ⚖️ THE ROW NAMES ITSELF: without this the accessible name is every
+          // line inside it run together, which is unreadable aloud.
+          aria-label={`Open ${cardTitle(e)}`}
+          className="mb-2 flex w-full items-center justify-between gap-3 rounded-xl border border-white/10 px-4 py-3 text-left transition-colors hover:border-white/25 hover:bg-white/[0.03]"
+        >
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-cream">{cardTitle(e)}</span>
+            {/* ⚖️ THE SAME SENTENCE THE PANEL SHOWS, from the same shared map —
+                the row must not invent a second account of one product's state. */}
+            <span className="mt-0.5 block truncate text-xs text-stone">
+              {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-sand/70">
+              {relationshipLabel(e.relationship)}
+            </span>
+          </span>
+          {/* ⚠️ THE WORD, NOT ONLY A CHEVRON. "no option to edit or remove it"
+              was reported against a screen where both existed; naming the action
+              on the row is the whole point of the row. */}
+          <span className="shrink-0 text-xs font-medium text-teal">Open</span>
+        </button>
+      ) : (
+        <div
+          key={e.id}
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/60 p-3 backdrop-blur-sm sm:p-6"
+        >
+        <section className="mx-auto max-w-2xl rounded-xl border border-white/10 bg-ink2 p-4 shadow-2xl">
+          {/* ⚖️ CLOSING IS ALWAYS AVAILABLE AND NEVER DESTRUCTIVE. Every field
+              here saves on blur, so there is nothing to discard and no
+              "are you sure" to earn. */}
+          <div className="mb-3 flex items-center justify-end">
+            {/* ⚖️ NO aria-label HERE ON PURPOSE. "Done" is already a real name;
+                an aria-label saying "Close" would mean the button a sighted
+                creator reads as Done is a button voice control only answers to
+                as Close. */}
+            <button
+              type="button"
+              className="rounded-lg border border-white/15 px-2.5 py-1 text-xs text-stone hover:text-cream"
+              onClick={() => { setOpenId(null); setRemovingId(null) }}
+            >Done</button>
+          </div>
           {/* ── WHERE THIS ONE IS, IN ONE LINE ───────────────────────────
               ⚠️ MOST STATES SAID NOTHING AT ALL. A product that was READY, or
               carrying unchecked guesses, or had no source yet, all opened with
@@ -917,8 +1109,78 @@ export default function ProductLibrary() {
               ⚖️ ONE SENTENCE FROM THE SHARED MAP, never a second copy. The
               state and the words it renders cannot drift apart because there
               is only one of each. */}
+          {/* ⚠️ REPORTED AS "no option to remove a product or edit it", AND BOTH
+              EXIST. Removal has shipped since #355 — as `text-xs text-stone
+              underline` at the foot of a card that runs the height of several
+              screens — and every field is editable with nothing on the card
+              saying so. A control a creator cannot find is, to them, a control
+              nobody built, so the fix is discoverability, not a second button.
+
+              ⚖️ ONE TRIGGER, MOVED — NOT ADDED. The card already carries two
+              add buttons and two capability questions; answering this report
+              with a second remove control would make the same mistake again. */}
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">{cardTitle(e)}</h2>
+              <p className="mt-0.5 text-xs text-stone">
+                {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {/* ⚠️ THE LIBRARY WAS A LIST, NOT A SELECTOR. It showed a creator
+                  every product they own and offered no way to make a video
+                  about one — so the way to start a video about a specific
+                  product was to start a video and hope the picker asked.
+                  ⚖️ IT CARRIES THE CHOICE, IT DOES NOT DECIDE. The build screen
+                  puts it through `selectProduct`, which refuses it on a video
+                  that may not carry a product at all. */}
+              <button
+                type="button"
+                className="btn-gradient rounded-lg px-2.5 py-1 text-xs"
+                onClick={() => nav(`/v2?product=${encodeURIComponent(e.id)}`)}
+              >Make a video about this</button>
+              {removingId !== e.id && (
+                <button
+                  type="button"
+                  className="rounded-lg border border-white/15 px-2.5 py-1 text-xs"
+                  onClick={() => setRemovingId(e.id)}
+                >Archive or remove</button>
+              )}
+            </div>
+          </div>
+          {/* ⚖️ THE CONFIRMATION SITS UNDER THE BUTTON THAT OPENED IT. It used
+              to live in the footer while its trigger moved to the header, which
+              would put the question a screen away from the click that asked it. */}
+          {removingId === e.id && (
+            <div className="mb-3 rounded-lg border border-white/10 p-3">
+              <span className="text-xs">
+                <span className="text-sand">
+                  Archiving stops Twin using it in new videos; your existing scripts keep
+                  their record of it. Removing deletes it entirely.
+                </span>
+                <button
+                  type="button"
+                  className="ml-2 font-medium"
+                  onClick={() => void archive(e.id)}
+                >Archive</button>
+                <button
+                  type="button"
+                  className="ml-2 text-coral"
+                  onClick={() => void remove(e.id)}
+                >Delete for good</button>
+                <button
+                  type="button"
+                  className="ml-2 text-stone"
+                  onClick={() => setRemovingId(null)}
+                >Keep</button>
+              </span>
+            </div>
+          )}
+          {/* ⚠️ THE EDIT AFFORDANCE, SAID IN WORDS. These are plain boxes that
+              save on blur; nothing on the card told a creator either half of
+              that, so "there is no way to edit it" is what the screen taught. */}
           <p className="mb-3 text-xs text-stone">
-            {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
+            Everything below can be changed — type in a box and it saves when you click away.
           </p>
 
           <label className="block text-xs font-medium uppercase tracking-wide text-stone">
@@ -933,6 +1195,7 @@ export default function ProductLibrary() {
               if (v !== (e.name ?? '')) void save(e.id, { name: v || null })
             }}
           />
+          {fieldNote(e.id, 'name')}
 
           {/* ⚠️ COLLECTED ONCE AND THEN UNREACHABLE. The add form asks "In one
               line, what is it and who is it for?" and stores it; this card never
@@ -963,6 +1226,7 @@ export default function ProductLibrary() {
               if (v !== (e.creatorSummary ?? '')) void save(e.id, { creatorSummary: v || null })
             }}
           />
+          {fieldNote(e.id, 'creatorSummary')}
           <p className="mt-1 text-xs text-stone">
             Used if the page cannot be read — Twin will not leave this product with nothing.
           </p>
@@ -1032,6 +1296,7 @@ export default function ProductLibrary() {
               That does not look like a full link. It should start with https://
             </p>
           )}
+          {fieldNote(e.id, 'productUrl')}
 
           {/* ⚠️ ONLY FOR AN AFFILIATE, AND THE FIELD EXISTED BEFORE THE BOX DID.
               `affiliate_url` has been on every entity since the entity contract
@@ -1088,12 +1353,21 @@ export default function ProductLibrary() {
               anyway spends a creator's attention on an answer we throw away,
               which is the founding defect of this rebuild in miniature. They are
               told the fact instead. */}
-          {capabilityAnswerIsUsed(e.type as EntityType) ? (
+          {/* ⚠️ TWO DERIVATIONS OF ONE RULE, HELD TOGETHER BY NOTHING. The add
+              form asked `capabilityQuestion(...)` which branch to show; this
+              card decided for itself with `type === 'PHYSICAL_PRODUCT' ?
+              'physical' : 'screen'`. Enumerated 2026-09-08 over every
+              EntityType × EntityRelationship, the two agree TODAY — so this is
+              not a live wrong answer, it is the shape that produces one later,
+              because nothing makes the copy follow when the authority changes.
+
+              ⚖️ SO THE CARD ASKS THE AUTHORITY, and a parity test walks the
+              whole product to keep it that way. `relationship` is passed
+              because `capabilityQuestion` reads it. */}
+          {capabilityQuestionFor(e) !== null ? (
             <fieldset className="mt-4">
               <legend className="text-xs font-medium uppercase tracking-wide text-stone">
-                {CAPABILITY_PROMPT[
-                  e.type === 'PHYSICAL_PRODUCT' ? 'physical' : 'screen'
-                ]}
+                {CAPABILITY_PROMPT[capabilityQuestionFor(e)!]}
               </legend>
               <div className="mt-2 space-y-1">
                 {SHOW_OPTIONS.map((o) => (
@@ -1193,10 +1467,23 @@ export default function ProductLibrary() {
                     reuses it rather than inventing a second mechanism, and the
                     link box is pre-filled with the URL already on file so a retry
                     is one tap, not a re-paste. */}
+                {/* ⚠️ IT TOLD A CREATOR THEIR SCRIPTS WERE GUESSING WHILE THEIR
+                    OWN SENTENCE SAT IN THE BOX ABOVE. `creator_summary` is not
+                    decoration: `generate-blueprint` reads it at index.ts:6204
+                    and writes it into the prompt when the page has not been
+                    read. So "we know nothing about this" was false for exactly
+                    the creator who had already answered — the baker with no
+                    website, told twice to paste a URL.
+
+                    ⚖️ THE LINK IS STILL OFFERED, because a read page carries
+                    more than one line can. What changes is the claim about what
+                    Twin currently knows, which was simply untrue. */}
                 <p className="mt-1 text-sm text-sand">
                   {productLifecycle(e, photoPathsOf(e).length) === 'IMPORT_FAILED'
                     ? 'That read did not finish. Press Read the page above to try the same link again, or change it first.'
-                    : 'Add a link above and press Read the page, so your scripts can say what it actually does instead of guessing.'}
+                    : (e.creatorSummary ?? '').trim() !== ''
+                      ? 'Twin will use the line you wrote above. Add a link and press Read the page if you want it to learn more than that line.'
+                      : 'Add a link above and press Read the page, so your scripts can say what it actually does instead of guessing.'}
                 </p>
                 {/* ⚖️ THE SECOND LINK BOX LIVED HERE AND IS GONE. It is the
                     Link field above, which now carries the button — so this
@@ -1266,7 +1553,7 @@ export default function ProductLibrary() {
               Your relationship to it
             </p>
             <p className="mt-1 text-sm">
-              {RELATIONSHIP_LABEL[e.relationship] ?? e.relationship}
+              {relationshipLabel(e.relationship)}
               {e.personalUse === 'CONFIRMED' && ' — and you use it yourself'}
             </p>
             <p className="mt-1 text-xs text-stone">
@@ -1275,48 +1562,17 @@ export default function ProductLibrary() {
             </p>
           </div>
 
-          <div className="mt-3 flex items-center justify-between">
+          {/* ⚖️ THE CARD-LEVEL NOTE STAYS FOR THE SAVES THAT ARE NOT A FIELD —
+              the photo and capability writes below, which have no box to sit
+              beside. Field edits now report next to the field they changed. */}
+          <div className="mt-3">
             <p className="h-4 text-xs text-stone">
-              {savingId === e.id ? 'Saving…' : saved === e.id ? 'Saved.' : ''}
+              {savingKey === null && savingId === e.id ? 'Saving…'
+                : savedKey === null && saved === e.id ? 'Saved.' : ''}
             </p>
-            {removingId === e.id ? (
-              // ⚖️ TWO WAYS OUT, AND THEY ARE NOT THE SAME ACT. Archiving
-              // withdraws the product from FUTURE videos and keeps the record,
-              // so scripts already written about it still resolve what they
-              // referred to. Removing destroys it. The spec prefers archive
-              // wherever scripts may already reference the entity, which is
-              // every entity that has been used even once — so archive leads and
-              // delete is the smaller, explicitly destructive choice.
-              <span className="text-xs">
-                <span className="text-sand">
-                  Archiving stops Twin using it in new videos; your existing scripts keep
-                  their record of it. Removing deletes it entirely.
-                </span>
-                <button
-                  type="button"
-                  className="ml-2 font-medium"
-                  onClick={() => void archive(e.id)}
-                >Archive</button>
-                <button
-                  type="button"
-                  className="ml-2 text-coral"
-                  onClick={() => void remove(e.id)}
-                >Delete for good</button>
-                <button
-                  type="button"
-                  className="ml-2 text-stone"
-                  onClick={() => setRemovingId(null)}
-                >Keep</button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="text-xs text-stone underline"
-                onClick={() => setRemovingId(e.id)}
-              >Archive or remove</button>
-            )}
           </div>
         </section>
+        </div>
       ))}
 
       {tab === 'retired' && (
@@ -1331,7 +1587,7 @@ export default function ProductLibrary() {
                 <span>
                   {a.name ?? 'Unnamed product'}
                   <span className="block text-xs text-stone">
-                    {RELATIONSHIP_LABEL[a.relationship] ?? a.relationship}
+                    {relationshipLabel(a.relationship)}
                   </span>
                 </span>
                 <button
@@ -1801,27 +2057,19 @@ function StartFromLink({ onCancel, onClaim, busy }: {
 
   return (
     <div className="mt-3 space-y-3 rounded-lg bg-white/[0.03] p-3">
-      <div>
-        <label className="text-xs font-medium uppercase tracking-wide text-stone" htmlFor="product-link">
-          Paste a link to it
-        </label>
-        <p className="mt-1 text-xs text-stone">
-          Its website, store page, or app listing. Twin will read it and tell you what it
-          found — you only correct what is wrong.
-        </p>
-        <input
-          id="product-link"
-          type="url"
-          inputMode="url"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://…"
-          className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
-        />
-        {!linkLooksReal && (
-          <p className="mt-1 text-xs text-coral">That does not look like a full link. It should start with https://</p>
-        )}
-      </div>
+      {/* ── THE ORDER IS THE INSTRUCTION, AND IT WAS BACKWARDS ─────────────
+          ⚠️ REPORTED: the link came first and is OPTIONAL; the name came
+          second and is what the card is titled by. So the first thing asked
+          was the thing a creator is least likely to have to hand, and the
+          required answer looked like an afterthought.
+
+          ⚖️ THE OLD ORDER HAD A REAL ARGUMENT AND IT IS NARROWED, NOT
+          DISCARDED. "Link first" existed because a creator asked to summarise
+          their own product from memory writes something different every time,
+          and that becomes the only thing the writer knows. True — which is why
+          the link is still here and still reads the page. It just is not the
+          FIRST question, because a form opens with what the person already
+          knows, and everyone knows what they call their own product. */}
 
       {/* ⚖️ THE NAME IS OFFERED, NOT REQUIRED, ONLY WHEN A LINK CAN SUPPLY ONE.
           Some products have no page — a service, a community, something not
@@ -1862,33 +2110,6 @@ function StartFromLink({ onCancel, onClaim, busy }: {
         </p>
       </div>
 
-      {/* ⚖️ PHOTOGRAPHS ESTABLISH WHAT A THING IS AND WHAT IT LOOKS LIKE, and
-          nothing else — not its price, not what it does for anyone. The wording
-          says so plainly, because a creator who uploads a pricing screenshot
-          expecting Twin to learn the price should find that out here rather than
-          from a script that never mentions it. */}
-      <div>
-        <span className="text-xs font-medium uppercase tracking-wide text-stone">
-          Photos of it (optional)
-        </span>
-        <p className="mt-1 text-xs text-stone">
-          Up to four. Twin uses these to know what it looks like, so a scene can show it.
-          It will not take prices or promises from a picture.
-        </p>
-        <input
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          multiple
-          disabled={uploading || imagePaths.length >= 4}
-          onChange={(e) => { void addPhotos(e.target.files); e.target.value = '' }}
-          className="mt-2 block w-full text-xs text-stone file:mr-3 file:rounded-lg file:border file:border-white/15 file:bg-white/5 file:px-3 file:py-1.5 file:text-xs file:text-cream"
-        />
-        {uploading && <p className="mt-1 text-xs text-stone">Uploading…</p>}
-        {imagePaths.length > 0 && (
-          <p className="mt-1 text-xs text-teal">{imagePaths.length} photo{imagePaths.length === 1 ? '' : 's'} ready</p>
-        )}
-        {imgErr && <p className="mt-1 text-xs text-coral">{imgErr}</p>}
-      </div>
 
       <Choices
         label="What is it?"
@@ -1955,6 +2176,62 @@ function StartFromLink({ onCancel, onClaim, busy }: {
         <CommunityQuestions value={community} onChange={setCommunity} />
       )}
 
+
+      {/* ── WHAT TWIN CAN READ, LAST AND OPTIONAL ────────────────────────────
+          ⚖️ BOTH OF THESE GIVE TWIN SOMETHING TO READ RATHER THAN ASKING THE
+          CREATOR TO BE THE EXTRACTOR, so they sit together at the end: by here
+          the product exists as far as the form is concerned, and anything
+          supplied only makes it better known. */}
+
+      {/* ⚖️ PHOTOGRAPHS ESTABLISH WHAT A THING IS AND WHAT IT LOOKS LIKE, and
+          nothing else — not its price, not what it does for anyone. The wording
+          says so plainly, because a creator who uploads a pricing screenshot
+          expecting Twin to learn the price should find that out here rather than
+          from a script that never mentions it. */}
+      <div>
+        <span className="text-xs font-medium uppercase tracking-wide text-stone">
+          Photos of it (optional)
+        </span>
+        <p className="mt-1 text-xs text-stone">
+          Up to four. Twin uses these to know what it looks like, so a scene can show it.
+          It will not take prices or promises from a picture.
+        </p>
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          multiple
+          disabled={uploading || imagePaths.length >= 4}
+          onChange={(e) => { void addPhotos(e.target.files); e.target.value = '' }}
+          className="mt-2 block w-full text-xs text-stone file:mr-3 file:rounded-lg file:border file:border-white/15 file:bg-white/5 file:px-3 file:py-1.5 file:text-xs file:text-cream"
+        />
+        {uploading && <p className="mt-1 text-xs text-stone">Uploading…</p>}
+        {imagePaths.length > 0 && (
+          <p className="mt-1 text-xs text-teal">{imagePaths.length} photo{imagePaths.length === 1 ? '' : 's'} ready</p>
+        )}
+        {imgErr && <p className="mt-1 text-xs text-coral">{imgErr}</p>}
+      </div>
+
+      <div>
+        <label className="text-xs font-medium uppercase tracking-wide text-stone" htmlFor="product-link">
+          Paste a link to it
+        </label>
+        <p className="mt-1 text-xs text-stone">
+          Its website, store page, or app listing. Twin will read it and tell you what it
+          found — you only correct what is wrong.
+        </p>
+        <input
+          id="product-link"
+          type="url"
+          inputMode="url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://…"
+          className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+        />
+        {!linkLooksReal && (
+          <p className="mt-1 text-xs text-coral">That does not look like a full link. It should start with https://</p>
+        )}
+      </div>
       {/* ⚖️ THE BUTTON SAYS WHY IT IS DISABLED. The old gate demanded a field
           that was never rendered, leaving a dead button and nothing on screen
           saying what was missing — the worst kind of dead end. */}
