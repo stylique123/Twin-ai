@@ -114,6 +114,9 @@ interface BuildState {
    *  through `selectProduct` before it is sent, because arriving by either
    *  path skips the picker where the commercial gate would otherwise apply. */
   selected_product_id?: string
+  /** Which door she came through. Absent on an older client — treated as "not
+   *  stated", never as a default door. */
+  door?: 'reference' | 'idea' | 'product' | 'browse'
 }
 
 // ONE CLICK-INTENT, ONE REMIX.
@@ -653,6 +656,12 @@ export default function V2Building() {
         // one held the build behind a question with no true answer.
         const applicableQuestions = intentQuestionsFor({
           hasReference: !!(state.reference_url || '').trim(),
+          // ⚠️ THE DOOR SHE CHOSE, OR A PRODUCT SHE TAPPED — BOTH ARE STATED
+          // FACTS, NEITHER IS INFERRED. `readEntryDoor` will not return
+          // 'product' from text, so an absent door here means "she did not say"
+          // and the generic goal sheet is the honest fallback rather than a
+          // guess at what she is holding.
+          isProductSubject: state.door === 'product' || !!state.selected_product_id,
         })
         const intentAnswered = applicableQuestions.every(
           (q) => (answersRef.current[q.field] ?? '').trim())
