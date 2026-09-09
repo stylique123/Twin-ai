@@ -385,7 +385,11 @@ export default function V2Create() {
           <div className="absolute right-0 bottom-0 h-[20rem] w-[20rem] rounded-full bg-teal/10 blur-[140px]" />
         </div>
 
-        <div className="relative mx-auto w-full max-w-2xl text-center">
+        {/* ⚠️ THIS COLUMN WAS 672px ON EVERY SCREEN, which on a 1440px monitor is a
+            phone layout centred in a field of empty space. `lg:max-w-4xl` (896px)
+            gives the doors room to be a real 2×2 without stretching edge to edge —
+            a cap, not a fill, because a line of text 1400px wide is unreadable. */}
+        <div className="relative mx-auto w-full max-w-2xl text-center lg:max-w-4xl">
           <p className="eyebrow">Studio</p>
           <h1 className="mt-3 font-display text-4xl tracking-tight sm:text-5xl">Make a video</h1>
           <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed text-stone">
@@ -398,7 +402,7 @@ export default function V2Create() {
           <div
             role="radiogroup"
             aria-label="What are you starting from?"
-            className="mx-auto mt-7 grid max-w-md grid-cols-2 gap-2.5 text-left"
+            className="mx-auto mt-7 grid max-w-md grid-cols-1 gap-2.5 text-left sm:max-w-xl sm:grid-cols-2 sm:gap-3 lg:max-w-2xl"
           >
             {DOORS.map((d) => {
               const active = door === d.id
@@ -432,9 +436,15 @@ export default function V2Create() {
 
           {/* The input box — a compact, refined hero input on the canvas, with a
               soft coral bloom on focus. Hidden for the two handoff doors, where
-              a text field could not answer what the creator just told us. */}
+              a text field could not answer what the creator just told us.
+
+              ⚖️ OPPOSITE SIZING RULES, AND THEY USED TO BE THE SAME NUMBER. The
+              doors are a chooser — four short labels, sized to their content.
+              This is where she WRITES, so it is the one element that gets wider
+              on a bigger screen. Both were `max-w-md`, which made the page read
+              as four big boxes and then one more big box. */}
           {!isHandoff && (
-            <div className="glass gradient-border mx-auto mt-5 max-w-md rounded-2xl p-4 text-left transition-shadow focus-within:shadow-[0_0_48px_-16px_rgba(255,91,123,.5)]">
+            <div className="glass gradient-border mx-auto mt-5 max-w-md rounded-2xl p-4 text-left transition-shadow lg:max-w-2xl focus-within:shadow-[0_0_48px_-16px_rgba(255,91,123,.5)]">
               <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-sand/80">
                 <span className="grid h-6 w-6 place-items-center rounded-md bg-signature-soft">
                   {door === 'reference' ? <Link2 className="h-3 w-3 text-cream" /> : <Lightbulb className="h-3 w-3 text-cream" />}
