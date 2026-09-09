@@ -9491,6 +9491,51 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
           selected_product_id: ownedEntity?.id ?? null,
         })
         .then(({ error }) => { if (error) console.warn('choices not recorded:', error.message) })
+
+      // ── THE OUTCOME ROW, OPENED NOW BECAUSE IT CANNOT BE OPENED LATER (0191) ─
+      //
+      // ⚠️ 85 GENERATIONS AND `post_outcome_observations` HOLDS ZERO ROWS.
+      // Nothing anywhere records whether a script Twin wrote was ever filmed, so
+      // every ranking in the product rests on what creators CLICK -- a measure of
+      // what looks appealing in a gallery, not of what became a video.
+      //
+      // ⚖️ THE CONTEXT IS FROZEN HERE, NOT JOINED LATER. A creator's niche
+      // changes; reading it at analysis time would relabel old videos with
+      // today's answer, and "segment before aggregating" is the rule this row
+      // exists to serve.
+      //
+      // ⚖️ AND IT CANNOT FAIL THE BUILD, for `generation_choices`' reason: this
+      // is an observation about a script that already succeeded and was already
+      // charged for. Losing the observation is a gap in analytics; throwing here
+      // would lose the creator their paid script.
+      //
+      // ⚠️ THE OUTCOME COLUMNS ARE LEFT NULL ON PURPOSE AND `was_filmed` IS
+      // THREE-STATE. NULL is "not asked yet"; `false` is "she looked at it and
+      // did not film it", which is the only negative signal this product has.
+      // Defaulting either would drown the real answers in assumed ones.
+      await admin.from('generation_outcomes')
+        .insert({
+          generation_id: gen.id,
+          owner_id: user.id,
+          // ⚖️ COPIED FROM THE VOICE PROFILE, and null where the scan never
+          // produced one -- never 'unknown', which would aggregate as an answer.
+          niche: ((voice?.profile as { niche?: unknown } | null)?.niche ?? null) as string | null,
+          sub_niche: ((voice?.profile as { sub_niche?: unknown } | null)?.sub_niche ?? null) as string | null,
+          // ⚠️ READ OFF `beatAudit` RATHER THAN RECOMPUTED. A second derivation
+          // is a second thing that can disagree with the first, and the audit is
+          // the copy the rest of the system already reads.
+          substance_budget_beats:
+            ((beatAudit as { substance_budget?: unknown } | null)?.substance_budget ?? null) as number | null,
+          // Absent is not zero: an older transcript with no measured duration is
+          // "we never measured", not "a zero-length video".
+          reference_duration_sec: ref?.duration_sec ?? null,
+          // ⚖️ THE ONE FACT THAT SEGMENTS EVERY QUESTION THIS TABLE WILL BE
+          // ASKED. "Did referenced videos get filmed more often than idea ones"
+          // is the first thing worth knowing, and it needs no taxonomy nobody
+          // has written yet.
+          had_reference: Boolean(transcript_id) || String(reference_url ?? '').trim() !== '',
+        })
+        .then(({ error }) => { if (error) console.warn('outcome row not opened:', error.message) })
     }
     // THE RACE THE REPLAY CHECK CANNOT CATCH. Two requests carrying the same key
     // can both pass the lookup above before either has inserted — a double-click
