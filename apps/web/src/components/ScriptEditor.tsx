@@ -39,6 +39,7 @@ import {
 } from '@twinai/shared'
 import { recordScriptEdit } from '../lib/scriptEdits'
 import type { Blueprint } from '../lib/types'
+import { readCreatorCtas } from '../lib/creatorCtasRead'
 import { cn } from '../lib/cn'
 
 interface Props {
@@ -104,7 +105,13 @@ export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, f
         return
       }
       if (!alive) return
-      const next = loaded ?? safeBuild(generationId, blueprint, selectedHook)
+      // ⚖️ THE CREATOR'S OWN ENDINGS, so an in-memory rebuild ends the script
+      // the same way the persisted one does. Read only on the synthesis path —
+      // a loaded timeline already carries whatever ending it was built with,
+      // and re-deciding it here would let two screens disagree about one script.
+      const ownCtas = loaded ? [] : await readCreatorCtas()
+      if (!alive) return
+      const next = loaded ?? safeBuild(generationId, blueprint, selectedHook, ownCtas)
       original.current = next
       setScript(next)
       setLoading(false)
@@ -272,6 +279,18 @@ function Editor({ script, setupPlan, hasTake, edited, commit, repair }: {
           </div>
         )
       })}
+      {/* ⚠️ THE SCRIPT ENDS WITHOUT ASKING FOR ANYTHING, AND THAT IS SAID HERE.
+          The recorder used to append a default line to fill this gap, and a
+          sentence nobody wrote is what produced the report that ended that
+          behaviour. Silence would leave the creator to discover it on camera;
+          this is the one place they can still do something about it. */}
+      {script.ends_without_ask && (
+        <p className="rounded-card border border-amber/20 bg-amber/[0.06] px-4 py-3 text-xs leading-relaxed text-sand">
+          <span className="font-semibold text-amber">This script ends without asking for anything.</span>{' '}
+          That can be exactly right. If it is not, add a last line — Twin will not
+          put words in your mouth to fill it.
+        </p>
+      )}
     </div>
   )
 }
@@ -356,9 +375,10 @@ const sameWords = (a: string | null, b: string): boolean =>
  *  caller render the read-only fallback instead of taking the plan screen down. */
 function safeBuild(
   generationId: string, blueprint: Blueprint, selectedHook: string | null,
+  creatorCtas: readonly string[] = [],
 ): RecordingScript | null {
   try {
-    return buildRecordingScript({ generationId, blueprint, selectedHook })
+    return buildRecordingScript({ generationId, blueprint, selectedHook, creatorCtas })
   } catch {
     return null
   }

@@ -39,7 +39,18 @@ describe('typed answers survive the tab being reclaimed', () => {
   it('restores them into the REF the build actually sends', () => {
     // ⚠️ RESTORING ONLY THE VISIBLE FORM would show the creator their answers
     // and then generate without them — the worst of both.
-    expect(BUILD).toMatch(/useRef<Record<string, string>>\(\s*\n?\s*recallAnswers\(/)
+    // ⚠️ THE ANCHOR WAS THE FORMATTING, NOT THE RULE. It required
+    // `recallAnswers` to be the ref's FIRST character; the ref now opens with
+    // an object literal that seeds a product choice carried from the Library
+    // and then spreads the remembered answers over it. The restore is intact —
+    // so the assertion follows it rather than being dropped.
+    expect(BUILD).toMatch(/useRef<Record<string, string>>\(\{/)
+    expect(BUILD).toMatch(/\.\.\.recallAnswers\(buildKey\(/)
+    // ⚖️ AND THE REMEMBERED ANSWER MUST WIN. If a seed spread AFTER the recall,
+    // a reclaimed tab would reinstate a choice the creator had already changed
+    // — which is this test file's whole subject, arriving by a new route.
+    const seed = BUILD.indexOf('[PRODUCT_CHOICE_FIELD]: String(')
+    if (seed > -1) expect(BUILD.indexOf('...recallAnswers(buildKey(')).toBeGreaterThan(seed)
   })
 
   it('restores the OPEN QUESTIONS too, so it does not silently rebuild', () => {

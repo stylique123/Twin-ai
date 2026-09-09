@@ -87,6 +87,21 @@ export const REGISTRY = {
       + 'check_column_readers\'s own registry — deliberately not repeated here. '
       + 'DECIDE as one unit — wire the lineage or drop it — not one symbol at a time.',
   },
+  'script/durationContract.ts': {
+    symbols: ['durationMiss'],
+    // ⚠️ VERIFIED BY HAND, NOT ASSUMED. `targetSeconds`, `durationBudget` and
+    // `durationBrief` in this same file DO have production readers and are
+    // deliberately not listed here — only the audit half is unread.
+    why: 'The workspace half of a rule that exists twice on purpose. The edge '
+      + 'function cannot import @twinai/shared, so generate-blueprint carries '
+      + '`durationAuditInline`, and THAT is what runs in production; this is the '
+      + 'tested reference the parity assertions in '
+      + 'nothing-decided-how-long-the-video-should-be.test.ts hold the inline '
+      + 'copy against. Deleting it would delete the authority the copy is '
+      + 'checked against. WIRE when the Result screen tells a creator how far '
+      + 'their script landed from the length it was written to — the numbers '
+      + 'are already computed and stored in beat_audit, nothing renders them.',
+  },
   'communityChecks.ts': {
     symbols: ['unsupportedFigures', 'offMapLinks', 'checkCommunityScene', 'surfacesNotInCatalog'],
     why: 'Five repair checks for a community scene. The community BLOCK is live '

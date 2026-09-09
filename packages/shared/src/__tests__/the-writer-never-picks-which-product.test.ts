@@ -125,7 +125,13 @@ describe('the edge honours the choice, and this pins it there', () => {
   })
 
   it('the choice outranks the stopgap, and every reader sees it', () => {
-    expect(EDGE).toMatch(/const ownedEntity = chosenEntity \?\? stopgapEntity/)
+    // ⚠️ THE ANCHOR GREW, THE RULE DID NOT WEAKEN. This pinned the exact
+    // expression `chosenEntity ?? stopgapEntity`; a third outcome now sits in
+    // front of it — the creator answering "None of these", which must also beat
+    // the stopgap or a decline would silently produce a script about the oldest
+    // product. The precedence being asserted is the same one, with one more
+    // case, so the assertion follows the expression rather than being dropped.
+    expect(EDGE).toMatch(/const ownedEntity = declinedAProduct \? null : \(chosenEntity \?\? stopgapEntity\)/)
     expect(EDGE).toMatch(/data: stopgapEntity/)
   })
 

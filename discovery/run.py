@@ -14,10 +14,19 @@ Env:
   DISCOVERY_YT_LIMIT / _TT_LIMIT / _IG_LIMIT(per-niche caps; IG small = ~$5/mo)
 """
 import os, sys, json, re, urllib.request, urllib.parse
-import discover
 
-SUPABASE_URL = os.environ['SUPABASE_URL'].rstrip('/')
-SERVICE_KEY = os.environ['SUPABASE_SERVICE_ROLE_KEY']
+# A MODULE THAT CANNOT BE IMPORTED WITHOUT PRODUCTION CREDENTIALS CANNOT BE
+# TESTED, and that is why this file had no tests and why a defect that filled
+# the gallery with 92 junk cards a week ran for a week unseen. `discover` needs
+# `scrapling`, which exists only on the VPS image, and the two `os.environ[...]`
+# reads below threw at import time on any other machine.
+#
+# BOTH ARE DEFERRED TO THE MOMENT THEY ARE ACTUALLY NEEDED, and the run still
+# fails loudly without them -- see `_require_env`, called from the entrypoint.
+# Nothing about the VPS run changes; what changes is that the rules in this file
+# can now be exercised anywhere.
+SUPABASE_URL = os.environ.get('SUPABASE_URL', '').rstrip('/')
+SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
 APIFY_TOKEN = os.environ.get('APIFY_TOKEN', '').strip()
 IG_ACTOR = os.environ.get('APIFY_INSTAGRAM_DISCOVER_ACTOR', 'shu8hvrXbJbY3Eb9W').strip()
 
@@ -92,6 +101,21 @@ def _fmt(n):
     return str(n)
 
 
+def is_instagram_post(u):
+    """Is this a link to a POST, or to a page that merely lists posts?
+
+    Kept as a function rather than an inline test because the same question is
+    asked by the selftest below, and a second copy of the rule is a second thing
+    that can drift. Accepts the canonical post shapes and nothing else --
+    /explore/tags/, /explore/, a bare profile and the site root are all pages
+    about posts rather than posts.
+    """
+    low = (u or '').lower()
+    if '/explore/' in low or '/tags/' in low:
+        return False
+    return '/p/' in low or '/reel/' in low or '/reels/' in low or '/tv/' in low
+
+
 def why_for(it):
     """A free, engagement-derived 'why it works' line (no LLM cost). Deep analysis
     happens lazily when a creator hits Remix and the worker reads the transcript."""
@@ -140,6 +164,26 @@ def instagram(query, limit):
         u = p.get('url') or ''
         if not u:
             continue
+        # MEASURED IN PRODUCTION 2026-09-09: EVERY INSTAGRAM CARD OF THE LAST
+        # SEVEN DAYS WAS A HASHTAG PAGE, NOT A POST. 92 of 92 carried
+        # reach '0', likes '0', an EMPTY title and creator '@' -- and a sample
+        # url of https://www.instagram.com/explore/tags/... . The actor returns
+        # the search page objects alongside (or instead of) posts, and nothing
+        # here told them apart, so the gallery filled with links that open a tag
+        # page. A creator clicking one gets no video; it can never be remixed;
+        # and `why_for` correctly produced None because there was nothing to say.
+        #
+        # A POST URL IS DECIDABLE, so decide it rather than hoping the payload
+        # is well-formed. Instagram posts live at /p/<id> or /reel(s)/<id>;
+        # /explore/tags/... is definitionally not one.
+        if not is_instagram_post(u):
+            continue
+        # AND AN ITEM WITH NO CAPTION AND NO ENGAGEMENT IS NOT A REFERENCE.
+        # It cannot be ranked, cannot be explained, and renders as a blank row.
+        # Skipping it is not data loss: there was no datum.
+        if not (p.get('caption') or '').strip() and not (
+                p.get('videoViewCount') or p.get('videoPlayCount') or p.get('likesCount')):
+            continue
         out.append({'platform': 'instagram', 'url': u, 'title': p.get('caption', ''),
                     'views': p.get('videoViewCount') or p.get('videoPlayCount') or p.get('likesCount') or 0,
                     'likes': p.get('likesCount') or 0,
@@ -174,6 +218,10 @@ def main():
     total = 0
     for niche in niches:
         q = search_query(niche)  # clean query for search; full `niche` stays the label
+        # Imported here rather than at module scope: `scrapling` lives on the
+        # VPS image only, and an import that fails on a laptop makes every rule
+        # in this file untestable.
+        import discover
         srcs = [('youtube', lambda: discover.youtube(q + ' tips', YT_LIMIT)),
                 ('tiktok', lambda: discover.tiktok(q, TT_LIMIT))]
         # Instagram uses paid Apify. If APIFY_TOKEN is set, enable it for all niches
@@ -198,5 +246,69 @@ def main():
     print('TOTAL inserted: %d' % total)
 
 
+def _require_env():
+    """The credentials the run genuinely cannot proceed without.
+
+    Checked HERE rather than at import, so the file can be imported and its
+    rules exercised without them -- while a real run still stops immediately,
+    with the name of what is missing, instead of failing somewhere later.
+    """
+    missing = [k for k in ('SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY')
+               if not os.environ.get(k, '').strip()]
+    if missing:
+        print('discovery: missing required env: %s' % ', '.join(missing), file=sys.stderr)
+        sys.exit(2)
+
+
+def _selftest():
+    """A HASHTAG PAGE IS NOT A POST — asserted on the real production URL.
+
+    `discovery/` has no test harness and no CI job, so the rule that stops 92
+    junk cards a week is checked here, by the same file that applies it. Run it
+    with `python3 discovery/run.py --selftest`.
+    """
+    cases = [
+        # The exact shape production stored, 92 times in seven days.
+        ('https://www.instagram.com/explore/tags/%CF%83%CE%BF%CE%B6', False),
+        ('https://www.instagram.com/explore/tags/skincare/', False),
+        # THE CASE THAT MAKES THE /explore/ CHECK REACHABLE, and the reason it
+        # is not redundant. Mutation testing removed that check and the suite
+        # stayed green, because no tag name in it collided with a post shape.
+        # `reels`, `p` and `tv` are all real hashtags, and without the check the
+        # substring test would accept their tag pages as posts.
+        ('https://www.instagram.com/explore/tags/reels/', False),
+        ('https://www.instagram.com/explore/tags/p/', False),
+        ('https://www.instagram.com/explore/tags/tv/', False),
+        ('https://www.instagram.com/explore/', False),
+        ('https://www.instagram.com/', False),
+        ('https://www.instagram.com/someone/', False),
+        # Real posts, in every shape Instagram serves them.
+        ('https://www.instagram.com/p/Cxyz123/', True),
+        ('https://www.instagram.com/reel/Cxyz123/', True),
+        ('https://www.instagram.com/reels/Cxyz123/', True),
+        ('https://www.instagram.com/tv/Cxyz123/', True),
+        ('https://www.instagram.com/P/CXYZ123/', True),
+        ('', False),
+        (None, False),
+    ]
+    bad = 0
+    for u, want in cases:
+        got = is_instagram_post(u)
+        if got != want:
+            print('selftest: %r -> %s, want %s' % (u, got, want), file=sys.stderr); bad += 1
+    # A caption-less, engagement-less item is not a reference even at a post URL.
+    if why_for({'views': 0, 'likes': 0, 'title': ''}) is not None:
+        print('selftest: an empty item produced a why line', file=sys.stderr); bad += 1
+    # And a real one still does.
+    if why_for({'views': 4300, 'likes': 250, 'title': 'How I did it?'}) is None:
+        print('selftest: a real item produced no why line', file=sys.stderr); bad += 1
+    if bad:
+        print('discovery selftest: %d FAILED' % bad, file=sys.stderr); sys.exit(1)
+    print('discovery selftest: OK (%d url cases + 2 why cases)' % len(cases))
+
+
 if __name__ == '__main__':
+    if '--selftest' in sys.argv:
+        _selftest(); sys.exit(0)
+    _require_env()
     main()

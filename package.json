@@ -15,6 +15,7 @@
     "assess-references": "node --experimental-strip-types scripts/assess-references.mjs"
   },
   "devDependencies": {
-    "esbuild": "0.21.5"
+    "esbuild": "0.21.5",
+    "typescript": "5.9.3"
   }
 }

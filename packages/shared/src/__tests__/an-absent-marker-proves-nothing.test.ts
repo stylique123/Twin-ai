@@ -6,6 +6,9 @@
 // cannot film objects a montage as a perfect fit — a video they cannot shoot.
 // The states are not symmetric, so the classifier must not be either.
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 import {
   assessFromText, isConclusive, NON_MARKERS, type AssessableCard,
 } from '../referenceAssessment'
@@ -102,13 +105,32 @@ describe('an inconclusive assessment is not a completed one', () => {
   })
 })
 
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
+
 describe('every answer carries the words that produced it', () => {
   it('so a wrong assessment can be argued with', () => {
     // ⚖️ THE SAME RULE THE PRODUCT EXTRACTOR RUNS ON: a claim arrives with its
     // evidence or it does not arrive.
     const a = assessFromText(card({ title: 'haul', why: 'screenshare of the checkout' }))
     expect(a.evidence).toEqual(expect.arrayContaining(['haul', 'screenshare']))
-    expect(a.source).toBe('text_markers')
+    // ⚠️⚠️ THIS ASSERTED `'text_markers'` AND WAS WRONG WITH THE CODE. Migration
+    // 0106 constrains `gallery_items.requirements_source` to ('human', 'model'),
+    // so every backfill write would have been rejected — and the unit test could
+    // not catch it, because it pinned the same invented word the writer emitted.
+    // A test that agrees with the code is not evidence the code is right.
+    expect(a.source).toBe('model')
+  })
+
+  it('and the source is one the database will actually accept', () => {
+    // ⚖️ ASSERTED AGAINST THE MIGRATION ITSELF, so the vocabulary cannot drift
+    // apart again. This is the check that was missing: the writer and its test
+    // agreed with each other for days while the schema refused both.
+    const mig = readFileSync(
+      join(REPO, 'supabase/migrations/0106_clips_and_reference_requirements.sql'), 'utf8')
+    const at = mig.indexOf('gallery_items_requirements_source_check')
+    expect(at).toBeGreaterThan(-1)
+    const allowed = [...mig.slice(at, at + 400).matchAll(/'([a-z_]+)'/g)].map((m) => m[1])
+    expect(allowed).toContain(assessFromText(card({ title: 'unboxing' })).source)
   })
 
   it('and an inconclusive card carries no evidence', () => {
