@@ -23,20 +23,45 @@ const BUILDING = readFileSync(join(HERE, 'V2Building.tsx'), 'utf8')
 
 describe('the product door picks a product', () => {
   it('opens a chooser instead of navigating away', () => {
-    expect(CREATE).toContain("if (door === 'product') {")
+    // ⚠️ ASSERTED ON THE PROPERTY, NOT THE LINE. This read
+    // `toContain("if (door === 'product') {")` and broke when the branch gained
+    // `&& chosenProduct === null` — a condition that makes the rule MORE true,
+    // because the door now opens the chooser only while nothing is chosen.
+    // Pinning a line of implementation cannot notice that the line improved.
+    expect(CREATE).toMatch(/if \(door === 'product'/)
     expect(CREATE).toContain('setPicking(true)')
     // ⚠️ THE DEFECT ITSELF. A redirect to the library on this door is the bug.
     expect(CREATE).not.toContain("nav(door === 'product' ? '/products' : '/gallery')")
   })
 
+  it('and the chooser itself navigates nowhere', () => {
+    // ⚠️⚠️ THE SECOND DEFECT, REPORTED LATER: picking a product produced a black
+    // flash and dumped her back at "What have you got?". The chooser called
+    // `nav('/v2/building', …)` with `buildFieldsForDoor('idea', input.trim())`,
+    // and a creator on the PRODUCT door has typed no idea — so `reference_note`
+    // was empty and V2Building's own entry guard `replace`d straight back.
+    // The flash was that round trip; the pick died in it.
+    // ⚖️ THE SLICE ENDS AT `</ul>`, NOT AT "Add another product". My first
+    // draft ran to that label and caught the Add button's own
+    // `nav('/products?add=1')` — a legitimate navigation, and the test was
+    // wrong rather than the code. The rule is about CHOOSING a product, not
+    // about adding one.
+    const chooser = CREATE.slice(CREATE.indexOf('{myProducts.map('), CREATE.indexOf('</ul>', CREATE.indexOf('{myProducts.map(')))
+    expect(chooser).not.toMatch(/nav\(/)
+    expect(chooser).toMatch(/setChosenProduct\(p\)/)
+  })
+
   it('still records the door where it is taken', () => {
     // The choice changed; what we learn from it did not.
-    const branch = CREATE.slice(CREATE.indexOf("if (door === 'product') {"))
+    const branch = CREATE.slice(CREATE.indexOf("if (door === 'product'"))
     expect(branch.slice(0, 400)).toContain('recordEntryDoor({ door, source, offered: ALL_DOORS')
   })
 
   it('the chosen product travels into the build, and is not asked again', () => {
-    expect(CREATE).toContain('selected_product_id: p.id')
+    // ⚖️ IT TRAVELS FROM HELD STATE NOW, not from the loop variable, because the
+    // pick is made in the chooser and SENT from `go` — which is what keeps her
+    // on the screen in between.
+    expect(CREATE).toContain('selected_product_id: chosenProduct.id')
     expect(BUILDING).toContain('selected_product_id?: string')
     // ⚖️ BOTH READERS. The send must carry it, AND the "which one?" question
     // must count it as answered — otherwise the creator picks a product and is
