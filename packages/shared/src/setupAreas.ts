@@ -214,10 +214,32 @@ export function setupSummary(areas: readonly SetupArea[]): SetupSummary {
     ready,
     total,
     next: chosen,
+    // ⚠️⚠️ THIS USED TO READ `${ready} of ${total} ready` AND IT WAS REPORTED AS
+    // THE MOST DAMAGING LINE ON THE SCREEN — "2 of 4 ready" on a profile the
+    // creator had filled in completely.
+    //
+    // ⚖️ THE COUNT WAS ACCURATE. Every state here is derived from the values at
+    // render time; there is no stale flag. It said `needs_setup` because
+    // `hasConfirmedCta` requires a sentence a PERSON typed and, measured
+    // 2026-09-09, 0 of 51 voices had one — nothing had ever offered her a CTA to
+    // confirm. #787 fixed that half.
+    //
+    // ⚠️ BUT A FRACTION IS THE WRONG SHAPE REGARDLESS, and that is the owner's
+    // point: "a creator profile is never done. It grows." A denominator promises
+    // an end, and the day a fifth area is added everyone who reached 4 of 4 is
+    // silently demoted. So the headline names the NEXT THING instead — the same
+    // `next` this function already computes for the button beneath it — and what
+    // Twin has LEARNED is counted separately by `strengthSentence`, which grows
+    // without a ceiling because knowledge does.
     headline: ready === total
       // ⚠️ THE PAGE GETS OUT OF THE WAY WHEN THE WORK IS DONE. A permanent
       // "100%!" is a demand that has stopped meaning anything.
       ? 'Twin has what it needs to write as you.'
-      : `${ready} of ${total} ready`,
+      : chosen
+        ? `Next: ${chosen.title.toLowerCase()}`
+        // ⚖️ NOTHING ACTIONABLE AND NOT FINISHED EITHER. Everything left is
+        // optional or waiting on us, and inventing a number for that state is
+        // what the fraction did.
+        : 'Twin is still learning your voice.',
   }
 }
