@@ -4768,7 +4768,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string; mentioned_product_id?: string }
   try {
     body = await req.json()
   } catch {
@@ -6576,6 +6576,54 @@ Deno.serve(async (req: Request) => {
     const showability = (ownedEntity?.showability ?? 'UNKNOWN') as Showability
     const productType = (ownedEntity?.type ?? 'OTHER') as EntityType
     const sceneGuidance = ownedEntity ? productSceneGuidance(productType, showability) : null
+    // ── A PRODUCT SHE MAY NAME, ON A VIDEO THAT IS NOT ABOUT IT ───────────
+    //
+    // ⚠️ THIS WAS IMPOSSIBLE UNTIL NOW, AND THE GAP WAS INVISIBLE. A creator
+    // teaching her skincare routine, using her own serum, had no way to name
+    // it: the goal is `educate` and the focus is `advice`, so
+    // `showsCommercialBlock` is false, and `selectProduct` refused the product
+    // outright with `not_a_commercial_video`. The four-doors note already
+    // claimed "mentioning a product in an idea video is a different thing and
+    // stays available everywhere" — it was available nowhere.
+    //
+    // ⚠️⚠️ IT ARRIVES UNDER ITS OWN FIELD AND IS NEVER `ownedEntity`. Every
+    // rule above reads `ownedEntity` as the product the video is ABOUT — claim
+    // entitlement, substance, the CTA target. A mention must be invisible to
+    // all of them, so it is looked up separately, never assigned there, and
+    // carries only a name.
+    //
+    // ⚖️ OWNERSHIP IS RE-VERIFIED HERE, NOT TRUSTED FROM THE BODY. The client
+    // sends an id; a request can send any id. Filtering on `owner_id` means the
+    // worst a forged id achieves is silence.
+    let mentionLine = ''
+    const mentionedId = typeof body.mentioned_product_id === 'string'
+      ? body.mentioned_product_id.trim() : ''
+    if (mentionedId !== '' && !ownedEntity) {
+      const { data: mentionRow } = await admin
+        .from('product_entities')
+        .select('name, relationship')
+        .eq('id', mentionedId)
+        .eq('owner_id', ownerId)
+        .is('archived_at', null)
+        .maybeSingle()
+      const mentionName = typeof mentionRow?.name === 'string' ? mentionRow.name.trim() : ''
+      if (mentionName !== '') {
+        const mentionRel = String(mentionRow?.relationship ?? '')
+        // ⚠️ DISCLOSURE KEYS ON THE RELATIONSHIP, NOT ON WHETHER THE VIDEO
+        // SELLS — and this case matters MORE than the selling one. An ad that
+        // does not look like an ad is the one a viewer cannot discount for
+        // themselves, so a sponsored or affiliate product named in an
+        // educational video discloses exactly as it would in a sales video.
+        const mentionDiscloses = mentionRel === 'AFFILIATE' || mentionRel === 'SPONSOR'
+        mentionLine = `\n- YOU MAY NAME "${mentionName}" AND THAT IS ALL YOU MAY DO WITH IT.`
+          + ` This video is not about it: say its name where it honestly comes up and move on.`
+          + ` Do NOT make claims about what it does, do NOT build a point on its features,`
+          + ` and do NOT ask anyone to buy, try or click it — this video was not made to sell it.`
+          + (mentionDiscloses
+            ? ` AND IT IS A PAID RELATIONSHIP, so the script must say so plainly and early, in its own words, before the halfway point.`
+            : '')
+      }
+    }
     const showLine = !ownedEntity || !sceneGuidance
       ? ''
       : productSceneDirection(String(ownedEntity.name ?? 'the product'), sceneGuidance)
@@ -6822,7 +6870,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}${prov('audience')}${audienceLevelLine}
 - Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}
+- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
