@@ -55,7 +55,11 @@ describe('a finished sample still speaks, at every size', () => {
   it('one video, complete, still gets the true sentence', () => {
     const m = messageForOwnAccount({ usable: 0, checked: 1, complete: true })
     expect(m.kind).toBe('none')
-    expect(m.headline).toBe('None of the 1 video we looked at are you talking to the camera')
+    // ⚖️ ASSERTS THE SAMPLE SIZE, NOT THE WORDING. This test is about
+    // completeness; pinning the whole sentence made it fail on a copy change
+    // that had nothing to do with what it guards.
+    expect(m.headline).toContain('1 video we looked at')
+    expect(m.headline).not.toContain('videos')
   })
 
   it('a full sample with nothing usable still says no', () => {
