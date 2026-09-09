@@ -1257,6 +1257,18 @@ function ConfirmStep({
         // they had confirmed it — which is the inference this question exists to
         // replace.
         offer: offerTouched ? product : null,
+        // ⚠️⚠️ THE ANSWER THAT USED TO DIE WITH THE TAB. The card above has
+        // asked "Is this what your people are stuck on?" since #766 and written
+        // the reply to `sessionStorage` only — this call named every other draft
+        // field and not these two, so every confirmation was discarded on close.
+        //
+        // ⚖️ SAME RULE AS `offer` ONE LINE UP, and for the same reason: a value
+        // the creator did not affirm must never be stored as though she had.
+        // "Not quite" sets the draft field to null, `sanitizeBriefForWrite`
+        // drops nulls, and a refusal therefore stays ABSENT rather than becoming
+        // a stored empty answer.
+        confirmedAudiencePain: draft.confirmedAudiencePain ?? null,
+        confirmedDreamOutcome: draft.confirmedDreamOutcome ?? null,
       })
       // THE ENTITY Q3 MINTED — written here, not asked anywhere.
       //

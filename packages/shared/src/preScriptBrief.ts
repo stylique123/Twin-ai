@@ -317,6 +317,13 @@ export interface BriefAnswers {
    *  `'declined'` is a real answer ("there is nothing to show"). Absent is not —
    *  see `productEvidenceState`. */
   productEvidence?: ProductEvidence | 'declined' | null
+  /** The scan's inferred `audience_pain`, as the creator confirmed it — her
+   *  agreement to a specific sentence, not a flag. Absent means she declined or
+   *  was never asked, and those stay indistinguishable on purpose: neither is an
+   *  answer, and only a confirmation is. */
+  confirmedAudiencePain?: string | null
+  /** The same for `dream_outcome`. */
+  confirmedDreamOutcome?: string | null
 }
 
 export interface BriefQuestion {
@@ -485,6 +492,13 @@ export const BRIEF_STORED_KEYS = [
   // ⚖️ WHETHER THE CREATOR IS IN FRAME. Read by generate-blueprint, which uses
   // it to decide whether physical staging direction may be written at all.
   'onCamera',
+  // ⚠️ WHAT THE CREATOR CONFIRMED ABOUT HER OWN AUDIENCE. The onboarding card
+  // has shown these two inferred sentences since #766 and written the answer to
+  // `sessionStorage` and nowhere else — a confirmation that lived as long as the
+  // tab. Stored as the SENTENCE, never a boolean: `audienceFactConfirmed`
+  // compares on the text, because a re-scan that changes the sentence means she
+  // agreed to something else and the new one has been confirmed by nobody.
+  'confirmedAudiencePain', 'confirmedDreamOutcome',
 ] as const
 
 /** ⚠️ THE MULTI-SELECTS, NAMED ONCE. The CHECK admits arrays for exactly these
@@ -538,7 +552,14 @@ export function sanitizeBriefForWrite(answers: BriefAnswers): Record<string, unk
   // the answer still never reached the database — every layer agreed the field
   // existed and the one that writes it had never heard of it. Caught by the test
   // that asserts a real answer survives `sanitizeBriefForWrite`, not by review.
-  for (const k of ['audienceKnowledge', 'formatExploration', 'ownProductKind', 'ownServiceKind', 'defaultCta', 'onCamera'] as const) {
+  // ⚠️ THE TWO CONFIRMATIONS ARE IN THIS LIST FOR THE REASON `onCamera` IS.
+  // The comment above records the shape of that failure exactly — question,
+  // stored key, migration and reader all present, and the one function that
+  // writes had never heard of the field. That is precisely what happened to
+  // these two: #766 added the card, the draft field and the reader, and
+  // `savePreScriptBrief` never named them, so every "Yes, that's them" since
+  // has been discarded when the tab closed.
+  for (const k of ['audienceKnowledge', 'formatExploration', 'ownProductKind', 'ownServiceKind', 'defaultCta', 'onCamera', 'confirmedAudiencePain', 'confirmedDreamOutcome'] as const) {
     const v = (answers as Record<string, unknown>)[k]
     if (typeof v === 'string' && v.trim() !== '') out[k] = v.trim()
   }
