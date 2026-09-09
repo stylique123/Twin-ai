@@ -2,6 +2,7 @@ import { splitDisclaimersFromCtas } from './claimDisclaimers.js'
 import { geminiJson, obj, arr, str, type InlineImage } from './gemini.js'
 import { byReachDesc, reachOf } from './reach.js'
 import type { ScrapedPost } from './media.js'
+import { buildCaptionCorpus } from './captionCorpus.js'
 import { buildVoiceCorpus } from './voiceCorpus.js'
 import { ctaEvidenceFor, type CtaEvidence } from './ctaEvidence.js'
 
@@ -368,11 +369,34 @@ export async function extractKnowledgeFromCaptions(
   platform: string,
   captions: string[],
 ): Promise<RawKnowledgeItem[]> {
-  const usable = captions.map((c) => String(c ?? '').trim()).filter((c) => c.length > 8)
-  if (!usable.length) return []
-  const corpus = usable.slice(0, 120)
-    .map((c, i) => `--- CAPTION ${i + 1} ---\n${c}`).join('\n')
-    .slice(0, 12000)
+  // ⚠️⚠️ THIS USED TO BE `.slice(0, 120)` THEN `.slice(0, 12000)`, AND
+  // `buildCaptionCorpus` HAS EXISTED TO REPLACE IT FOR DAYS WITH NOTHING
+  // CALLING IT. A module written, measured and tested, read only by its own
+  // test, while the surface it was built for kept running the code it replaced
+  // — the fourth instance of that defect class found this week.
+  //
+  // ⚠️ WHAT THE OLD LINE COST, MEASURED ON REAL ROWS: `lukefitphysio` has 50
+  // posts and 16,659 characters of caption, and 28% of it never reached the
+  // model. `ishmaelmechanic` has 50 posts and 3,604 characters, and lost
+  // nothing. The cap was a penalty proportional to how much a creator writes.
+  // What it discarded was decided by SCRAPE ORDER, and `.slice(0, 12000)` cut
+  // mid-string — one caption arrived severed and was read as though whole.
+  //
+  // ⚖️ WATERFILL, NOT SUBSTANCE-SORT. Sorting by length was measured too and is
+  // worse: it kept 14 of the physio's 50 captions and deleted 36 SUBJECTS, and
+  // subjects are this extractor's output. Waterfill lands 11,041 of a possible
+  // 11,050 characters while every caption survives.
+  const built = buildCaptionCorpus(captions.map((c) => ({ caption: String(c ?? '') })))
+  if (built.included === 0) return []
+  const corpus = built.corpus
+  // ⚖️ REPORTED, BECAUSE A CALLER CANNOT TELL A CENSUS FROM A SAMPLE BY LOOKING
+  // AT THE CORPUS — which is exactly why the 28% was invisible for as long as
+  // it was.
+  console.log(JSON.stringify({
+    event: 'caption_corpus_built',
+    considered: built.considered, included: built.included,
+    discarded: built.discarded, truncated: built.truncated, chars: built.chars,
+  }))
   const prompt = `CREATOR: @${handle} on ${platform}
 CAPTIONS AND TITLES:
 ${corpus}

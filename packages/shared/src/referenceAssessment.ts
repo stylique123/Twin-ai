@@ -89,10 +89,18 @@ export interface ProductionAssessment {
   requiresScreenRecording: boolean | null
   /** The exact markers matched, so a wrong answer can be argued with. */
   evidence: readonly string[]
-  /** ⚠️ `text_markers` IS A WEAK SOURCE AND SAYS SO. A later vision pass over
-   *  the poster or the video itself would be `observed` and could legitimately
-   *  answer `false`, which this can never do. */
-  source: 'text_markers'
+  /** ⚠️⚠️ `'model'` BECAUSE THE DATABASE ACCEPTS NOTHING ELSE, AND THIS WAS
+   *  `'text_markers'` UNTIL 2026-09-09. Migration 0106 constrains the column to
+   *  `('human', 'model')`, so every one of the 480 candidate writes would have
+   *  been rejected by `gallery_items_requirements_source_check` — the script was
+   *  unit-tested in isolation, never run against the schema, and could not have
+   *  written a single row.
+   *
+   *  ⚖️ AND `model` IS THE RIGHT WORD, NOT A CONCESSION. 0106 defines it as "a
+   *  reading of the card's own text", which is exactly what this is, as against
+   *  `human`, "somebody who watched it". The weakness the old name advertised is
+   *  real and is carried by that distinction. */
+  source: 'model'
 }
 
 /**
@@ -127,6 +135,32 @@ export const NON_MARKERS: readonly string[] = [
   'day in my life', 'story time', 'tips', 'guide',
 ]
 
+/**
+ * ⚠️⚠️ PHRASES THAT MAKE AN OBJECT MARKER MEAN ITS OPPOSITE. Measured against
+ * the real corpus on 2026-09-09, before a single row had been written: of 476
+ * cards the object markers select, 182 -- THIRTY-EIGHT PERCENT -- are the AI
+ * virtual-try-on cluster. "The best haul is the one you didn't have to return,
+ * try it on before it ships" matches `haul` and `try-on`, and the video is a
+ * phone-screen demonstration of an app. There is no object in the room.
+ *
+ * ⚠️ AND WRITING THEM WRONG WOULD HAVE BEEN PERMANENT. The backfill's candidate
+ * filter is `where requirements_source is null`, so a card stamped by a false
+ * positive is excluded from every future pass -- including the vision pass that
+ * would have seen there was nothing in shot. A wrong answer here is not a wrong
+ * answer that gets corrected later; it is a wrong answer that closes the file.
+ *
+ * ⚖️ SO THIS DISQUALIFIES, IT DOES NOT ASSERT. A card matching one of these is
+ * returned as `null` -- unassessed, exactly as it was -- and NEVER as
+ * `requiresFilmingObjects: false`. The asymmetry the whole module is built on
+ * holds: text can establish that something IS in frame, and can never establish
+ * that nothing is.
+ */
+export const OBJECT_DISQUALIFIERS: readonly string[] = [
+  'virtualtryon', 'virtual try-on', 'virtual try on', 'aitryon', 'ai try-on',
+  'ai try on', 'try it on before it ships', 'aiinfluencer', 'ai influencer',
+  'aitwin', 'ai twin', 'aifashion', 'ai fashion', 'aistyling', 'ai styling',
+]
+
 const haystack = (c: AssessableCard): string =>
   [c.title, c.why].map((x) => (x ?? '').toLowerCase()).join(' \n ')
 
@@ -143,13 +177,17 @@ const hits = (text: string, markers: readonly string[]): string[] =>
  */
 export function assessFromText(card: AssessableCard): ProductionAssessment {
   const text = haystack(card)
-  const objects = hits(text, OBJECT_MARKERS)
+  // ⚠️ THE DISQUALIFIER IS CHECKED BEFORE THE MARKERS ARE BELIEVED, not after
+  // the answer is formed. A virtual try-on video genuinely contains the word
+  // `haul`; what it does not contain is a product.
+  const disqualified = hits(text, OBJECT_DISQUALIFIERS)
+  const objects = disqualified.length > 0 ? [] : hits(text, OBJECT_MARKERS)
   const screen = hits(text, SCREEN_MARKERS)
   return {
     requiresFilmingObjects: objects.length > 0 ? true : null,
     requiresScreenRecording: screen.length > 0 ? true : null,
     evidence: [...objects, ...screen],
-    source: 'text_markers',
+    source: 'model',
   }
 }
 

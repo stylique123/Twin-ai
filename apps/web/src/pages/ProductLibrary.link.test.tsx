@@ -75,9 +75,16 @@ afterEach(() => {
   current = KNOWN_ENTITY
 })
 
+// ⚠️ THE LIBRARY IS A LIST NOW, AND THE FIELDS LIVE ONE CLICK IN. The RULES
+// below are unchanged -- one link box, the refusal at the field, re-reading a
+// read page. What changed is that a product's editor is a panel opened from a
+// row, because two products used to render two full forms and the page had no
+// overview on it at all. So the helper opens the product first; a test that
+// found these fields without opening anything would be pinning the old shape.
 async function openCard() {
   const { default: ProductLibrary } = await import('./ProductLibrary')
   render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+  fireEvent.click((await screen.findAllByRole('button', { name: /^Open / }))[0])
   return await screen.findByLabelText('Link') as HTMLInputElement
 }
 
@@ -114,7 +121,7 @@ describe('the product card has one link field, and it can be read from', () => {
     expect((button as HTMLButtonElement).disabled).toBe(false)
     fireEvent.click(button)
     await waitFor(() => expect(requestProductExtraction).toHaveBeenCalledWith(
-      'owner-1', 'e1', 'https://peakdesign.example/tripod'))
+      'e1', 'https://peakdesign.example/tripod'))
   })
 
   it('refuses a malformed link at the field, and does not save it', async () => {
@@ -152,7 +159,7 @@ describe('the capability question offers the answer a creator may honestly have'
     const { default: ProductLibrary } = await import('./ProductLibrary')
     render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Add another product' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a product' }))
     // The question appears once a type and relationship make one apply.
     fireEvent.click(await screen.findByRole('button', {
       name: 'A physical product (food, handmade, apparel — anything you ship or hand over)' }))

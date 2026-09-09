@@ -55,7 +55,7 @@ afterEach(() => { cleanup(); document.body.style.overflow = '' })
 async function open() {
   const { default: ProductLibrary } = await import('./ProductLibrary')
   render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
-  fireEvent.click(await screen.findByRole('button', { name: 'Add another product' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Add a product' }))
   return await screen.findByRole('dialog')
 }
 
@@ -76,7 +76,10 @@ describe('adding a product happens on top of the library, not inside it', () => 
     // ⚠️ THE CLAIM THE DEFECT DISPROVED. The list must still be there — not
     // pushed off, not unmounted — so cancelling returns the creator to exactly
     // what they were looking at.
-    expect(screen.getByDisplayValue('Peak Tripod')).toBeTruthy()
+    // ⚠️ THE ANCHOR FOLLOWED THE SHAPE, THE CLAIM DID NOT MOVE. The library is
+    // a list of rows now rather than every editor at once, so "still there" is
+    // the row, not a field inside an expanded form.
+    expect(screen.getByRole('button', { name: 'Open Peak Tripod' })).toBeTruthy()
   })
 
   it('closes on Escape', async () => {

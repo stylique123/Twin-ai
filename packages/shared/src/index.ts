@@ -8,6 +8,10 @@ export * from './recordingScript'
 export * from './regenerateReason'
 export * from './acceptedFinal'
 export * from './questionDeficit'
+export * from './recognition'
+export * from './productRelationshipLabel'
+export * from './goalFromCta'
+export * from './audienceRecognition'
 export * from './entryDoor'
 export * from './sceneConsistency'
 export * from './recordingScriptAdapter'
@@ -27,6 +31,9 @@ export * from './generationReadiness'
 // because the create screen, the building screen and the readiness gate all need
 // the same enums, and a second copy is what this module exists to end.
 export * from './videoIntent'
+export * from './writerEntities'
+export * from './productSelection'
+export * from './scriptOrigin'
 // One derivation of "which platform is this link", shared by the client's
 // supported-host check and the ingest function's stored value.
 export * from './referencePlatform'
@@ -162,6 +169,10 @@ export * from './script/shotLabel'
 // — and no screen said so. Disclosure, never enforcement.
 export * from './script/scriptLength'
 export * from './script/runtimeCompare'
+// ⚖️ ONE ANSWER TO "what kind of number is this", so four checkers stop each
+// inventing their own from the raw string.
+export * from './script/numberRole'
+export * from './script/durationContract'
 
 // ⚖️ FIX 7. "Write to target_sec" was prose; nothing computed it. Per-beat
 // detection only -- the spec's own repair step assumes a target_sec reader

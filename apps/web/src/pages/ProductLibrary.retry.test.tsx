@@ -55,6 +55,11 @@ describe('a failed read offers a real retry, on the product itself', () => {
     await screen.findByText('Twin could not read that page. Try again, or add the details yourself.')
     expect(screen.queryByText('Twin is reading the page. This keeps going if you leave.')).toBeNull()
 
+    // The fields live one click in — the library lists products and opens one
+    // at a time. The lifecycle sentence above is on the ROW, so it is read
+    // before opening; everything below is inside the panel.
+    fireEvent.click(screen.getByRole('button', { name: /^Open / }))
+
     // ⚠️ ONE BOX, ASSERTED IN THE OTHER STATE THAT USED TO CARRY TWO.
     //    IMPORT_FAILED and NEEDS_SOURCE are the only lifecycles that rendered
     //    the second link box; the sibling suite covers NEEDS_SOURCE, this
@@ -81,6 +86,6 @@ describe('a failed read offers a real retry, on the product itself', () => {
     // The SAME mechanism the first attempt used, retargeted at the SAME entity
     // and the SAME link -- not a second, invented retry path.
     expect(requestProductExtraction).toHaveBeenCalledWith(
-      'owner-1', 'e1', 'https://peakdesign.example/tripod')
+      'e1', 'https://peakdesign.example/tripod')
   })
 })
