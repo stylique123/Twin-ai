@@ -7,9 +7,10 @@
 // ⚖️ The guard rails matter as much as the catches. A check that fires on an
 // unenumerated reference, or that finds a count inside the word "money", trains
 // whoever reads its output to ignore all of it.
+import { statesCountOfItems, itemCounts } from '../script/numberRole'
 import { describe, expect, it } from 'vitest'
 import {
-  emptyMechanism, readMechanism, containsCount, countsIn, deliveredItemCount,
+  emptyMechanism, readMechanism, deliveredItemCount,
   countContractIssues, mechanismPromptLine, blueprintCountIssues, breaksOnCamera, isContentlessUnit, promisesNothingInParticular,
   type ReferenceMechanism, type MechanismScriptBeat,
 } from '../referenceMechanism'
@@ -96,32 +97,64 @@ describe('reading the mechanism back', () => {
 })
 
 describe('finding a count in text without hallucinating one', () => {
+  // ⚠️ THESE CASES OUTLIVED THE FUNCTIONS THEY WERE WRITTEN FOR. `containsCount`
+  // and `countsIn` are gone — they could not tell a duration from a promise —
+  // and every lesson they had earned is re-pinned here against the one
+  // classifier that replaced them. A deleted function is not a reason to stop
+  // asserting what it got right.
   it('matches a digit or its word', () => {
-    expect(containsCount('here are the 5 ways', 5)).toBe(true)
-    expect(containsCount('here are the five ways', 5)).toBe(true)
-    expect(containsCount('Here Are The FIVE Ways', 5)).toBe(true)
+    expect(statesCountOfItems('here are the 5 ways', 5)).toBe(true)
+    expect(statesCountOfItems('here are the five ways', 5)).toBe(true)
+    expect(statesCountOfItems('Here Are The FIVE Ways', 5)).toBe(true)
   })
 
   it('does NOT match a number word inside another word', () => {
     // "money", "gone", "someone" all contain "one". A naive `includes` would
     // report that every hook already carries the count.
-    expect(containsCount('this is about money', 1)).toBe(false)
-    expect(containsCount('someone told me', 1)).toBe(false)
-    expect(containsCount('it is gone', 1)).toBe(false)
+    expect(statesCountOfItems('this is about money', 1)).toBe(false)
+    expect(statesCountOfItems('someone told me', 1)).toBe(false)
+    expect(statesCountOfItems('it is gone', 1)).toBe(false)
   })
 
   it('does NOT match a digit inside a larger number', () => {
-    expect(containsCount('back in 2025', 5)).toBe(false)
-    expect(containsCount('a $46 million business', 4)).toBe(false)
-    expect(containsCount('1,500 subscribers', 5)).toBe(false)
+    expect(statesCountOfItems('back in 2025', 5)).toBe(false)
+    expect(statesCountOfItems('a $46 million business', 4)).toBe(false)
+    expect(statesCountOfItems('1,500 subscribers', 5)).toBe(false)
   })
 
-  it('countsIn reports only plausible list sizes', () => {
-    expect(countsIn('the top three pieces of advice')).toEqual([3])
-    expect(countsIn('5 ways and 3 mistakes')).toEqual([3, 5])
+  it('reports only plausible list sizes', () => {
+    expect(itemCounts('the top three pieces of advice')).toEqual([3])
+    expect(itemCounts('5 ways and 3 mistakes')).toEqual([3, 5])
     // Revenue and years are not list sizes.
-    expect(countsIn('a $46 million business in 2025')).toEqual([])
-    expect(countsIn(null)).toEqual([])
+    expect(itemCounts('a $46 million business in 2025')).toEqual([])
+    expect(itemCounts(null)).toEqual([])
+  })
+
+  it('THE DEFECT: a duration is not a promise of items', () => {
+    // ⚠️ MEASURED ON THE SHIPPED CODE. `containsCount('six month deal', 6)`
+    // returned true, so the hook was recorded as honouring an enumeration of
+    // six — and `readMechanismFromBlueprint` MANUFACTURED that contract from
+    // the same reading, then failed the script for not delivering six things it
+    // never promised.
+    expect(statesCountOfItems('a six month deal', 6)).toBe(false)
+    expect(itemCounts('a six month deal')).toEqual([])
+    expect(itemCounts('it is $29 a month')).toEqual([])
+    // ⚠️ MONEY IS READ ON BOTH SIDES. "$5" carries its marker IN FRONT; a
+    // classifier looking only behind the number calls this a promise of five
+    // items. The first version of this test missed it because every price it
+    // used was too large to be a plausible list size anyway — the bound was
+    // doing the work, not the rule.
+    expect(itemCounts('it is $5 a month')).toEqual([])
+    expect(itemCounts('it costs 5 dollars')).toEqual([])
+    expect(itemCounts('it cuts it by 40%')).toEqual([])
+    expect(itemCounts('3x the reach')).toEqual([])
+  })
+
+  it('and a real enumeration in the same line still lands', () => {
+    // ⚖️ POSITION IS KEPT, so "6 tips in 6 weeks" is two mentions with two
+    // roles. Collapsing them to a set would lose the whole distinction.
+    expect(itemCounts('6 tips in 6 weeks')).toEqual([6])
+    expect(statesCountOfItems('6 tips in 6 weeks', 6)).toBe(true)
   })
 })
 

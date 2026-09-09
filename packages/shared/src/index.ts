@@ -168,6 +168,9 @@ export * from './script/shotLabel'
 // — and no screen said so. Disclosure, never enforcement.
 export * from './script/scriptLength'
 export * from './script/runtimeCompare'
+// ⚖️ ONE ANSWER TO "what kind of number is this", so four checkers stop each
+// inventing their own from the raw string.
+export * from './script/numberRole'
 export * from './script/durationContract'
 
 // ⚖️ FIX 7. "Write to target_sec" was prose; nothing computed it. Per-beat

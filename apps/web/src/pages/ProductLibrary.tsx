@@ -36,7 +36,7 @@
 // still costs an explicit assertion. What the suggestion saves is typing, which
 // is the difference between a page nobody fills in and one they finish.
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation,
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
@@ -420,6 +420,7 @@ export default function ProductLibrary() {
    *  affordance the Settings rebuild exists to remove — it just fails one screen
    *  later, where it is harder to notice. */
   const [params] = useSearchParams()
+  const nav = useNavigate()
   const [addingNew, setAddingNew] = useState(params.get('add') === '1')
   // Removal is confirmed in place rather than with a window.confirm, so the
   // consequence can be SPELLED OUT — a browser dialog cannot say what is lost.
@@ -911,6 +912,21 @@ export default function ProductLibrary() {
         )}
       </header>
 
+      {/* ⚠️ ARRIVED FROM THE STUDIO, AND THE PAGE USED TO SAY NOTHING ABOUT IT.
+          Choosing "something I sell" in the studio navigates here; before this
+          the creator landed on an unchanged list with no statement of why, and
+          no way back into the build. Reported exactly that way. */}
+      {params.get('from') === 'studio' && entities.length > 0 && (
+        <p className="rounded-lg border border-coral/30 bg-coral/[0.06] px-3 py-2 text-sm text-cream">
+          Pick which product this video is about — press <strong>Make a video about this</strong> on
+          one of them. Or <button
+            type="button"
+            className="underline"
+            onClick={() => nav('/v2')}
+          >go back and start without one</button>.
+        </p>
+      )}
+
       {err && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
 
       {/* ⚖️ THE SECOND TAB APPEARS ONLY WHEN THERE IS SOMETHING IN IT. A creator
@@ -1110,13 +1126,27 @@ export default function ProductLibrary() {
                 {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
               </p>
             </div>
-            {removingId !== e.id && (
+            <div className="flex shrink-0 items-center gap-2">
+              {/* ⚠️ THE LIBRARY WAS A LIST, NOT A SELECTOR. It showed a creator
+                  every product they own and offered no way to make a video
+                  about one — so the way to start a video about a specific
+                  product was to start a video and hope the picker asked.
+                  ⚖️ IT CARRIES THE CHOICE, IT DOES NOT DECIDE. The build screen
+                  puts it through `selectProduct`, which refuses it on a video
+                  that may not carry a product at all. */}
               <button
                 type="button"
-                className="shrink-0 rounded-lg border border-white/15 px-2.5 py-1 text-xs"
-                onClick={() => setRemovingId(e.id)}
-              >Archive or remove</button>
-            )}
+                className="btn-gradient rounded-lg px-2.5 py-1 text-xs"
+                onClick={() => nav(`/v2?product=${encodeURIComponent(e.id)}`)}
+              >Make a video about this</button>
+              {removingId !== e.id && (
+                <button
+                  type="button"
+                  className="rounded-lg border border-white/15 px-2.5 py-1 text-xs"
+                  onClick={() => setRemovingId(e.id)}
+                >Archive or remove</button>
+              )}
+            </div>
           </div>
           {/* ⚖️ THE CONFIRMATION SITS UNDER THE BUTTON THAT OPENED IT. It used
               to live in the footer while its trigger moved to the header, which
