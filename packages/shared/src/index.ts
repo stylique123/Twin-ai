@@ -290,6 +290,7 @@ export * from './script/beatProof'
 // would be a phrase store. This is a WHITELIST projection: enum tokens and
 // counts only, and `evidence` is unreachable from it.
 export * from './shapeLibrary'
+export * from './shapeSummary'
 
 // ⚖️ A TOPIC IS NOT A SENTENCE, AND MOST OF THE CORPUS HAS NEITHER. 458 of 530
 // stored topic values appear exactly once, and `subtopic` is a per-video
