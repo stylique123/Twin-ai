@@ -7219,11 +7219,35 @@ ${fenced('claims this creator may NOT make', forbidden)}
     lengthTarget = lengthResolved.targetSec
     lengthTargetSource = lengthResolved.source
     lengthBeatsAllowed = planLengthInline(lengthTarget, substanceBudgetComputed)
-    // ⚠️ NULL WHEN NOBODY COUNTED, NEVER ZERO. An unenforceable budget must not
-    // reach the brief as "there is enough substance for 0 beats" — that is the
-    // three-state collapse `substanceBudgetInline` exists to prevent, and it
-    // would tell the writer to write nothing.
-    const availableBeats = substanceBudgetComputed.enforceable ? substanceBudgetComputed.beats : null
+    // ⚠️⚠️ I GUARDED THE WRONG CASE AND SHIPPED IT. This read
+    // `enforceable ? beats : null`, on the reasoning that an unenforceable
+    // budget must not reach the brief as zero. That is true and it is not the
+    // dangerous case.
+    //
+    // `substanceBudgetInline` returns `enforceable: true` when ANY of its three
+    // inputs is non-null — and `storeItems` is `knowledgeRows.length`, which is
+    // 0 rather than null for a creator with an empty store. So a creator with no
+    // knowledge rows, no product and (always, see below) no reference points
+    // produced `beats = 0 + 0 + 0 + FREE_BEATS = 2`, `enforceable: true`, and
+    // the brief told the writer: "THERE IS ONLY ENOUGH SUBSTANCE FOR 2 BEATS.
+    // Write 2 and STOP."
+    //
+    // ⚠️ MEASURED, AND THIS IS WHY IT WAS NOT HYPOTHETICAL. Of 85 generations
+    // carrying a reference, ZERO had an assessed structure profile —
+    // `reference_content_profiles` holds the SCRAPED GALLERY (1,772 rows, all
+    // gallery items) while `transcripts` holds what CREATORS PASTE (395 rows,
+    // 35 owners, 1 of which is a gallery item). The two corpora are disjoint by
+    // design, so `substanceReferencePoints` has been null on every real
+    // generation ever made. And 24 of 52 creators have no `creator_knowledge`
+    // rows at all. For them the budget was always exactly FREE_BEATS.
+    //
+    // ⚖️ SO A BUDGET OF ONLY THE FREE BEATS IS NOT "TWO BEATS OF SUBSTANCE".
+    // It is the arithmetic of having counted nothing. Null is the honest
+    // reading, and it is what "nobody counted" already means to the brief.
+    const countedSomething = substanceBudgetComputed.enforceable
+      && typeof substanceBudgetComputed.beats === 'number'
+      && substanceBudgetComputed.beats > FREE_BEATS_INLINE
+    const availableBeats = countedSomething ? substanceBudgetComputed.beats : null
     const durationBrief_ = durationBriefInline(body.target_seconds, null, availableBeats)
     const durationBriefLine = durationBrief_ === '' ? '' : `${durationBrief_}\n`
     const positionBlock = position
