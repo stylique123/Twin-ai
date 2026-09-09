@@ -202,3 +202,91 @@ describe('six spellings of one bucket, and nothing else', () => {
     expect(TOPIC_ALIAS_VERSION).toMatch(/^topic-alias-\d+$/)
   })
 })
+
+// ── THE MODULE COULD NOT READ A SINGLE STORED TOPIC ───────────────────────
+//
+// ⚠️⚠️ EVERY TEST ABOVE PASSED WHILE THIS WAS TRUE. They all hand `normalizeTopic`
+// a bare string, and production has never stored one: `topic` is an
+// `Assessed<string>` — the evidence-bearing wrapper `readField` produces — so a
+// caller passing `profile.topic` got `null` on all 955 valued rows and a library
+// that reported an empty corpus without erroring.
+//
+// ⚖️ SO THESE FIXTURES ARE COPIED OUT OF PRODUCTION, not written to fit. Read
+// 2026-09-09 from `reference_content_profiles`; the evidence lines are the real
+// transcribed sentences, which is exactly why the exclusion below matters.
+import {
+  topicValueOf, canonicalTopic as canon2, supportedTopics as supported2,
+  topicCoverage as coverage2, MIN_TOPIC_SUPPORT as FLOOR2,
+} from '../topicLibrary'
+
+const stored = (value: string, evidence: string) => ({
+  basis: 'observed' as const, value, evidence, assessedAt: '2026-09-09T07:05:16.525Z',
+})
+
+// Verbatim rows. `basis: 'indeterminate'` carries evidence and NO value — 125
+// rows in production are in exactly this state.
+const REAL = [
+  stored('brand marketing and advertising', 'five explosive, effective strategies to make your brand go viral'),
+  stored('Cooking tips and kitchen techniques', "first up how to keep your knife sharp it's far harder working in the kitchen with a blunt knife"),
+  stored('Teen romance skits', 'You’re still crushing on Jake. I think you need to just get in there.'),
+]
+const READ_AND_SILENT = {
+  basis: 'indeterminate' as const,
+  evidence: 'the transcript never says what this is about',
+  assessedAt: '2026-09-09T07:05:16.525Z',
+}
+const NOT_LOOKED_AT = { basis: 'not_checked' as const, needs: 'a transcript for this video' }
+
+describe('the stored shape is the one it reads', () => {
+  it('reads the wrapper every production row actually uses', () => {
+    // ⚠️⚠️ THE LOAD-BEARING ASSERTION. Before `topicValueOf` this returned null
+    // for all three, and nothing anywhere would have said so.
+    expect(topicValueOf(REAL[0])).toBe('brand marketing and advertising')
+    expect(normalizeTopic(REAL[2])).toBe('teen romance skit')
+    expect(canon2(stored('entrepreneurship', 'so I started my first business at 19'))).toBe('business')
+  })
+
+  it('a bare string still works, so no caller has to box one', () => {
+    expect(normalizeTopic('Skincare')).toBe('skincare')
+  })
+
+  it('counts stored fields, which is what a caller hands over', () => {
+    const rows = [...REAL, ...Array.from({ length: FLOOR2 }, () => REAL[0]), READ_AND_SILENT]
+    const top = supported2(rows)
+    expect(top[0].topic).toBe('brand marketing and advertising')
+    expect(top[0].count).toBe(FLOOR2 + 1)
+  })
+})
+
+describe('evidence is a creator sentence and it never becomes a topic', () => {
+  it('`indeterminate` has evidence and no value, and is not counted', () => {
+    // ⚠️ 125 PRODUCTION ROWS ARE THIS. Reading the field naively — anything that
+    // reached for text rather than for `value` — would enter a transcript line
+    // into a cross-creator library. `isKnown` is what stops it.
+    expect(topicValueOf(READ_AND_SILENT)).toBeNull()
+    expect(normalizeTopic(READ_AND_SILENT)).toBeNull()
+    expect(supported2(Array.from({ length: 50 }, () => READ_AND_SILENT))).toEqual([])
+  })
+
+  it('`not_checked` is not a topic either', () => {
+    expect(topicValueOf(NOT_LOOKED_AT)).toBeNull()
+  })
+
+  it('no evidence text survives into any count', () => {
+    // ⚖️ ASSERTED OVER THE OUTPUT rather than trusted from the implementation:
+    // the sentences are distinctive enough that a leak would be visible.
+    const counts = supported2([...REAL, ...REAL, ...REAL, READ_AND_SILENT])
+    const emitted = counts.map((c) => c.topic).join(' | ')
+    for (const r of REAL) expect(emitted).not.toContain(r.evidence.slice(0, 20))
+    expect(emitted).not.toContain('crushing on Jake')
+    expect(emitted).not.toContain('never says what this is about')
+  })
+
+  it('coverage counts only what carried a value', () => {
+    // ⚠️ A SILENT ROW IN THE DENOMINATOR WOULD UNDERSTATE COVERAGE and make the
+    // library look thinner than it is; in the numerator it would overstate it.
+    // It belongs in neither — it is not a topic observation at all.
+    const rows = [...Array.from({ length: 6 }, () => REAL[0]), READ_AND_SILENT, NOT_LOOKED_AT]
+    expect(coverage2(rows)).toMatchObject({ total: 6, covered: 6, supported: 1, ratio: 1 })
+  })
+})
