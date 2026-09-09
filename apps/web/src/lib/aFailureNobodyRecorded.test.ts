@@ -43,7 +43,7 @@ describe('a failed enqueue is recorded, not just announced', () => {
   // one — the same class of defect, pointed the other way.
   it('does not record a failure the upload caused', () => {
     const at = codeOnly.indexOf('await uploadProductImage(')
-    const enqueue = codeOnly.indexOf('await requestProductExtraction(ownerId, entity.id')
+    const enqueue = codeOnly.indexOf('await requestProductExtraction(entity.id')
     expect(at).toBeGreaterThan(-1)
     expect(enqueue).toBeGreaterThan(at)
     // The recorder sits after the enqueue, inside its own try — not around the upload.

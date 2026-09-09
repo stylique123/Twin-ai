@@ -22,6 +22,12 @@ vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ session: { user: { id: 'owner-1' } } }),
 }))
 
+const navigated: string[] = []
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return { ...actual, useNavigate: () => (to: string) => { navigated.push(to) } }
+})
+
 const ENTITY: ProductEntityRecord = {
   id: 'e1', name: 'Peak Tripod', creatorSummary: null, type: 'PHYSICAL_PRODUCT',
   relationship: 'OWN_PRODUCT', personalUse: 'NOT_CONFIRMED', showability: 'UNKNOWN',
@@ -55,11 +61,14 @@ vi.mock('@twinai/shared', async () => {
   }
 })
 
-afterEach(() => { cleanup(); updateEntityPresentation.mockClear() })
+afterEach(() => { cleanup(); updateEntityPresentation.mockClear(); navigated.length = 0 })
 
 async function page() {
   const { default: ProductLibrary } = await import('./ProductLibrary')
   render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+  // ⚖️ ONE CLICK IN. See the note in ProductLibrary.link.test.tsx: the editor is
+  // a panel opened from a row, so every field assertion below opens it first.
+  fireEvent.click((await screen.findAllByRole('button', { name: /^Open / }))[0])
   return await screen.findByDisplayValue('Peak Tripod')
 }
 
@@ -157,6 +166,7 @@ describe('the card does not tell a creator it knows nothing they have already to
     try {
       const { default: ProductLibrary } = await import('./ProductLibrary')
       render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+      fireEvent.click((await screen.findAllByRole('button', { name: /^Open / }))[0])
       expect(await screen.findByText(/Twin will use the line you wrote above/i)).toBeTruthy()
       expect(screen.queryByText(/instead of guessing/i)).toBeNull()
     } finally { load.mockImplementation(original!) }
@@ -174,6 +184,7 @@ describe('the card does not tell a creator it knows nothing they have already to
     try {
       const { default: ProductLibrary } = await import('./ProductLibrary')
       render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+      fireEvent.click((await screen.findAllByRole('button', { name: /^Open / }))[0])
       expect(await screen.findByText(/instead of guessing/i)).toBeTruthy()
     } finally { load.mockImplementation(original!) }
   })
@@ -201,8 +212,11 @@ describe('two unnamed products are not two identical blank cards', () => {
       render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
       // ⚖️ `www.` DROPPED, because the point is telling two cards apart, not
       // reproducing a URL the creator can already see in the Link box.
-      expect(await screen.findByRole('heading', { name: 'medicube.example' })).toBeTruthy()
-      expect(screen.getByRole('heading', { name: 'Sourdough loaves, baked to order' })).toBeTruthy()
+      // ⚠️ THE TITLE MOVED FROM A HEADING TO THE ROW'S OWN ACCESSIBLE NAME, and
+      // the rule it serves is unchanged and now stronger: two products must be
+      // tellable apart, and the name a screen reader announces IS the fallback.
+      expect(await screen.findByRole('button', { name: 'Open medicube.example' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Open Sourdough loaves, baked to order' })).toBeTruthy()
     })
   })
 
@@ -216,7 +230,7 @@ describe('two unnamed products are not two identical blank cards', () => {
     try {
       const { default: ProductLibrary } = await import('./ProductLibrary')
       render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
-      expect(await screen.findByRole('heading', { name: 'Not named yet' })).toBeTruthy()
+      expect(await screen.findByRole('button', { name: 'Open Not named yet' })).toBeTruthy()
     } finally { load.mockImplementation(original!) }
   })
 
@@ -226,7 +240,7 @@ describe('two unnamed products are not two identical blank cards', () => {
     await twoUnnamed(async () => {
       const { default: ProductLibrary } = await import('./ProductLibrary')
       render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
-      await screen.findByRole('heading', { name: 'medicube.example' })
+      fireEvent.click(await screen.findByRole('button', { name: 'Open medicube.example' }))
       expect(updateEntityPresentation).not.toHaveBeenCalled()
       // The Name box stays empty, so the placeholder still invites a real name.
       expect(screen.getAllByPlaceholderText('What you call it on camera')[0])
@@ -234,6 +248,36 @@ describe('two unnamed products are not two identical blank cards', () => {
     })
   })
 })
+
+describe('the Library is a selector, not just a list', () => {
+  it('every product card can start a video about that product', async () => {
+    // ⚠️ IT SHOWED A CREATOR EVERY PRODUCT THEY OWN AND OFFERED NO WAY TO MAKE
+    // A VIDEO ABOUT ONE. The route in was to start a video and hope the picker
+    // asked — which it only does when they own two or more.
+    const nameBox = await page()
+    const card = nameBox.closest('section') as HTMLElement
+    const go = within(card).getByRole('button', { name: /make a video about this/i })
+    fireEvent.click(go)
+    // ⚖️ THE ID TRAVELS AS AN ANSWER, on the studio's own route. The build
+    // screen still puts it through `selectProduct`, so it cannot force a
+    // product onto a video that may not carry one.
+    expect(navigated).toContain('/v2?product=e1')
+  })
+})
+
+// ⚠️⚠️ "ARRIVING FROM THE STUDIO IS NOT A DEAD END" LIVED HERE, AND ITS
+// MECHANISM IS SUPERSEDED. It asserted a `?from=studio` banner explaining why
+// the studio had sent the creator to their Library, with a way back. That was a
+// better dead end, not an exit — the build was still lost — and the owner
+// reported the same thing again: "why does it still take me to the product
+// library".
+//
+// ⚖️ THE DOOR NOW ANSWERS IN PLACE and never navigates, so there is no arrival
+// to explain and no banner to assert. The rule moved to
+// `neither-is-an-answer.test.ts`, which pins BOTH halves: the navigation is
+// gone AND the chooser exists. Deleted here rather than re-pointed at the
+// Library, which is no longer part of that story.
+
 
 describe('a save is confirmed beside the field that was edited', () => {
   it('reports on the NAME field, not at the foot of the card', async () => {

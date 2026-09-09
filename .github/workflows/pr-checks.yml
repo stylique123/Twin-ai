@@ -49,6 +49,19 @@ jobs:
       # Both are things the compiler names; nothing was asking the compiler.
       - name: Edge functions compile (a syntax error here cannot deploy)
         run: node scripts/ci/check_edge_functions_parse.mjs
+      # ⚠️ THE SHAPE THE CHECK ABOVE CANNOT SEE, MEASURED ON CODE THAT ALMOST
+      # SHIPPED (#746): a `const` declared AFTER an `.forEach` callback that
+      # reads it. `tsc` exits 0 — TS2448 is never raised, because a callback
+      # COULD run later — so the edge-parse guard, which treats TS2448 as fatal,
+      # passes it too. Both checks whose job is "this function can boot" waved
+      # through a function that could not.
+      #
+      # ⚖️ IN THIS JOB BECAUSE IT NEEDS THE TypeScript COMPILER API to parse.
+      # `no-legacy-editor` runs checkout and nothing else; putting a guard with a
+      # dependency there answers ERR_MODULE_NOT_FOUND, which is a verdict about
+      # the runner rather than about the code — the same mistake, twice already.
+      - name: No dead-zone read inside an immediately-run callback
+        run: node scripts/ci/check_immediate_callback_dead_zone.mjs
       # ⚠️ HERE, NOT IN `no-legacy-editor` — THE SECOND TIME THIS EXACT MOVE WAS
       # NEEDED. It lived in that job while it was dependency-free; adding the
       # esbuild bundle pass gave it a real dependency, and a job that runs
@@ -303,6 +316,19 @@ jobs:
             exit 1
           fi
           echo "clean: no legacy editor references"
+      # ⚠️ THE DISCOVERY SCRAPER HAD NO TESTS AND NO CI JOB, and it filled the
+      # gallery with 92 junk cards a week for at least a week before anyone
+      # looked: every Instagram card was a HASHTAG PAGE, not a post, with an
+      # empty title and creator '@'. The rule that stops it is decidable, so it
+      # is checked on every PR.
+      #
+      # ⚖️ IN THIS JOB BECAUSE IT NEEDS NOTHING. The selftest imports only the
+      # Python standard library — `discover` and the Supabase credentials are
+      # both deferred past import for exactly this reason — so a checkout-only
+      # runner is the right home. A guard whose tooling is absent answers about
+      # the runner rather than the code, and this repo has paid for that twice.
+      - name: Discovery scraper rules
+        run: python3 discovery/run.py --selftest
       - name: Worker registry must not register autoedit
         run: |
           if grep -n "autoedit" worker/src/jobs/index.ts | grep -v "removed"; then

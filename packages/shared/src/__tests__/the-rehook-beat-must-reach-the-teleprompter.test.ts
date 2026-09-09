@@ -106,23 +106,29 @@ describe('a re-hook beat survives to the teleprompter', () => {
     }).scenes
     const rehook = scenes.find((s) => (s.dialogue ?? '').includes('Rehook Point C'))
     expect(rehook?.scene_type).toBe('talking_head')
-    expect(scenes[scenes.length - 1].scene_type).toBe('cta')
+    // ⚠️⚠️ THIS USED TO REQUIRE A `cta` SCENE AT THE END. On the owner's ruling
+    // the adapter no longer invents one: "Resolution" asks for nothing and no
+    // creator CTA is supplied here, so the script ends where the writer ended
+    // it. The RULE this test exists for is untouched and is asserted above —
+    // the re-hook is not promoted to the ending — and it is now checked against
+    // a timeline with no appended ending to hide behind.
+    expect(scenes[scenes.length - 1].scene_type).toBe('talking_head')
+    expect(scenes[scenes.length - 1].dialogue).toContain('Resolution')
   })
 
   it('gives every kept beat its own scene, in script order', () => {
     const lines = spoken(blueprint(['Opening', 'Point A', 'Point B', 'Rehook Point C', 'Resolution']))
-    // hook + A + B + re-hook + Resolution + the appended ending.
+    // hook + A + B + re-hook + Resolution. FIVE, and the fifth is the point.
     //
-    // ⚖️ SIX, NOT FIVE — AND THE SIXTH IS THE POINT. "Resolution" is not a
-    // CTA-labelled section, so the adapter finds no spoken ending to hold aside
-    // and appends its plain "Follow for more" fallback. That is documented
-    // behaviour, and it is the second half of what the screenshot showed: an
-    // ending the blueprint never wrote. Pinned here so the fallback stays a
-    // decision rather than a surprise.
-    expect(lines.length).toBe(6)
+    // ⚠️⚠️ THIS EXPECTED SIX, AND THE SIXTH WAS THE DEFECT. The old comment
+    // named it exactly — "the second half of what the screenshot showed: an
+    // ending the blueprint never wrote" — and pinned it as documented
+    // behaviour. It is no longer behaviour: an ending nobody wrote is not
+    // appended at all. Every line here is now a line the writer produced.
+    expect(lines.length).toBe(5)
     expect(lines[1]).toContain('Point A')
     expect(lines[2]).toContain('Point B')
     expect(lines[3]).toContain('Rehook Point C')
-    expect(lines[5]).toBe('Follow for more')
+    expect(lines[4]).toContain('Resolution')
   })
 })

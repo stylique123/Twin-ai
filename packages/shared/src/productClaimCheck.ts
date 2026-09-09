@@ -93,39 +93,104 @@ export function supportedValues(facts: readonly ProductFactLike[]): Set<string> 
   return out
 }
 
+// ── THE LENS WAS BROKEN, AND THAT IS WHY EVERY READING WAS ZERO ───────────
+//
+// ⚠️ MEASURED 2026-09-08 ACROSS THE 7 SKINCARE GENERATIONS: seven of seven name
+// the product, four of seven state a price nothing on record carries, and NOT
+// ONE BEAT in any of the seven is labelled `substance: 'product_dna'`. So
+// `product_claim_gaps: 0` on all 44 generations to date is not a low number.
+// It is an unmeasured field, and every prior reading of it is void rather than
+// evidence of safety.
+//
+// ⚖️ TWO INDEPENDENT BLINDNESSES, EITHER OF THEM SUFFICIENT ON ITS OWN:
+//   1. the beat filter demanded a label the writer does not reliably emit;
+//   2. an empty fact set suppressed the check entirely — and a product with no
+//      stored facts is exactly the case where an invented price is likeliest.
+//
+// ⚠️ SO THE FILTER NOW ASKS WHAT THE BEAT IS ABOUT, NOT HOW IT WAS LABELLED.
+// A beat naming the product is a beat speaking about the product, whatever
+// `substance` says. The label still counts — it is kept as a second door, not
+// replaced — because a beat may source the record without repeating its name.
+
+/** Whether a beat speaks about the product: it is LABELLED as sourcing the
+ *  product record, OR it names the product. Either door, never both required.
+ *
+ *  ⚠️ NAMES UNDER THREE CHARACTERS ARE IGNORED. A two-letter brand matches
+ *  inside ordinary words, and a filter that fires on every beat is the same
+ *  kind of useless as one that fires on none. */
+export function beatSourcesProduct(
+  beat: { line?: unknown; substance?: unknown },
+  productNames: readonly string[] = [],
+): boolean {
+  if (beat?.substance === PRODUCT_SUBSTANCE) return true
+  const line = (typeof beat?.line === 'string' ? beat.line : '').toLowerCase()
+  if (line === '') return false
+  return productNames.some((n) => {
+    const name = String(n ?? '').trim().toLowerCase()
+    return name.length >= 3 && line.includes(name)
+  })
+}
+
+/** The unit half of a canonical figure — `29$` → `$`, `3x` → `x`, `12000` → ''.
+ *  It is what makes "a different price" distinguishable from "a figure the
+ *  record says nothing about at all". */
+function unitOf(canonical: string): string {
+  return canonical.replace(/^[\d.]+/, '')
+}
+
+export interface ProductClaimFindings {
+  /** The record carries a figure in this unit, and the script states a
+   *  DIFFERENT one. A stored price of $39 and a spoken $29 is this. */
+  contradicted: ProductClaimGap[]
+  /** Nothing on record speaks to this figure at all — including the case where
+   *  the record holds no facts whatsoever. */
+  unsupported: ProductClaimGap[]
+}
+
 /**
- * Figures a script states about the product that no stored fact carries.
+ * Figures spoken about the product, split by WHY they are ungrounded.
  *
- * ⚠️ ONLY BEATS THAT SOURCE THE PRODUCT ARE CHECKED. A beat drawing on creator
- * knowledge is `claimEntailment`'s business, and a beat citing nothing is the
- * leak check's — three counters that each own one question, rather than one that
- * owns three and reports all of them as the same failure.
+ * ⚠️ THESE ARE TWO DIFFERENT FINDINGS AND MUST NOT SHARE A COUNTER.
+ * "The record says $39 and the script says $29" is a contradiction — someone
+ * can point at the row that disagrees. "The record says nothing about price and
+ * the script says $29" is invention. They have different rates, different
+ * causes and different fixes, and one number hides both.
  *
- * ⚖️ AN EMPTY FACT SET SUPPRESSES THE CHECK ENTIRELY. A product Twin has never
- * read has no figures to contradict, and reporting every number as unsupported
- * would make the counter fire loudest exactly where it knows least — training
- * the reader to ignore it.
+ * ⚖️ A CONTRADICTION REQUIRES A SHARED, NAMED UNIT. Two bare numbers with no
+ * unit between them are not evidence of disagreement — "3 steps" and "5 steps"
+ * are not the same claim — so an unlabelled figure can only ever be reported as
+ * unsupported. That is a deliberately narrow reading of "contradicts".
+ *
+ * ⚠️ AN EMPTY FACT SET NO LONGER SUPPRESSES ANYTHING. The old copy returned []
+ * so the counter would not "fire loudest where it knows least"; what it
+ * actually did was go silent on the riskiest population in the product. The
+ * split is what makes that safe to fix: those rows land in `unsupported`, where
+ * they can be read separately and never inflate the contradiction rate.
  */
-export function findProductClaimGaps(
+export function productClaimFindings(
   script: readonly { line?: unknown; substance?: unknown }[],
   facts: readonly ProductFactLike[],
-): ProductClaimGap[] {
+  productNames: readonly string[] = [],
+): ProductClaimFindings {
   const supported = supportedValues(facts)
-  if (supported.size === 0) return []
-  const out: ProductClaimGap[] = []
+  const supportedUnits = new Set<string>()
+  for (const v of supported) {
+    const u = unitOf(v)
+    if (u !== '') supportedUnits.add(u)
+  }
+  const contradicted: ProductClaimGap[] = []
+  const unsupported: ProductClaimGap[] = []
   script.forEach((b, i) => {
-    // ⚠️ `product_dna`, NOT `product`. The first draft tested the wrong string
-    // and would have been dead code — a guard that never fires reads exactly
-    // like a guard that finds nothing. `SUBSTANCE_ENUM` is the vocabulary:
-    // creator_knowledge | creator_experience | creator_opinion | product_dna |
-    // general | needs_user.
-    if (b?.substance !== PRODUCT_SUBSTANCE) return
+    if (!beatSourcesProduct(b, productNames)) return
     const line = typeof b?.line === 'string' ? b.line : ''
     for (const v of claimedValues(line)) {
-      if (!supported.has(v)) out.push({ beat: i + 1, value: v, line })
+      if (supported.has(v)) continue
+      const gap = { beat: i + 1, value: v, line }
+      if (supportedUnits.has(unitOf(v))) contradicted.push(gap)
+      else unsupported.push(gap)
     }
   })
-  return out
+  return { contradicted, unsupported }
 }
 
 /** What to tell the writer: the figure, and the only three honest ways out. */
@@ -133,6 +198,15 @@ export function describeProductClaimGap(g: ProductClaimGap): string {
   return `Beat ${g.beat} states ${g.value} about the product, and no stored product fact carries that figure.`
     + ` Use a figure the product record holds, drop the number, or have the creator confirm it.`
 }
+
+// ⚠️ A `describeProductClaimContradiction` SENTENCE LIVED HERE AND NOTHING
+// RENDERED IT. The two findings are COUNTED, not enforced — that is this
+// change's whole discipline — so there is no surface yet that shows a creator
+// why a figure was flagged, and a message written for a screen that does not
+// exist is the "written and never read" defect this file exists to end. It goes
+// when there is somewhere to put it; `check_symbol_readers` caught it on the
+// merge with main, and the honest answer to that guard is to delete, not to
+// register.
 
 /** ⚖️ EXPORTED SO A CALLER CAN NORMALISE BEFORE COMPARING — the same function
  *  both sides of this check use, so nobody re-implements "50k is 50,000". */

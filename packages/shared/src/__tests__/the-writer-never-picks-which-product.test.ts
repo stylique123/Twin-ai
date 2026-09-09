@@ -119,13 +119,42 @@ describe('the edge honours the choice, and this pins it there', () => {
     const at = EDGE.indexOf('requestedProductId')
     expect(at).toBeGreaterThan(-1)
     const block = EDGE.slice(at, at + 1800)
+    // ⚠️⚠️ THIS ASSERTED `['OWN_PRODUCT', 'OWN_SERVICE']` AND THE LIST HAS
+    // DELIBERATELY WIDENED. The owner's decision: sponsored and affiliate
+    // products become SELECTABLE, with disclosure enforced. So the old
+    // assertion pinned behaviour that was decided against, and the test was the
+    // thing that had to change — not the rule.
+    //
+    // ⚖️ WHAT IS PINNED INSTEAD IS THE ASYMMETRY, WHICH IS THE ACTUAL POLICY.
+    // The CHOSEN lookup accepts a paid tie because the creator asked for that
+    // product by name. The STOPGAP below must not, because auto-selecting a
+    // sponsored product nobody mentioned would infer a paid promotion from
+    // nothing. Asserting the two lists separately is what stops the widening
+    // from leaking into the branch it must never reach.
     expect(block).toMatch(/\.eq\('owner_id', ownerId\)/)
-    expect(block).toMatch(/\.in\('relationship', \['OWN_PRODUCT', 'OWN_SERVICE'\]\)/)
+    expect(block).toMatch(/\.in\('relationship', \['OWN_PRODUCT', 'OWN_SERVICE', 'AFFILIATE', 'SPONSOR'\]\)/)
     expect(block).toMatch(/\.is\('archived_at', null\)/)
   })
 
+  it('and the STOPGAP still refuses a paid tie', () => {
+    // ⚠️ THE HALF THAT MUST NOT WIDEN. If this ever matches the chosen lookup's
+    // list, Twin can hand a creator a script about a sponsor they never named.
+    const at = EDGE.indexOf('stopgapEntity')
+    expect(at).toBeGreaterThan(-1)
+    const block = EDGE.slice(at, at + 1200)
+    expect(block).toMatch(/\.in\('relationship', \['OWN_PRODUCT', 'OWN_SERVICE'\]\)/)
+    expect(block).not.toMatch(/SPONSOR/)
+    expect(block).not.toMatch(/AFFILIATE/)
+  })
+
   it('the choice outranks the stopgap, and every reader sees it', () => {
-    expect(EDGE).toMatch(/const ownedEntity = chosenEntity \?\? stopgapEntity/)
+    // ⚠️ THE ANCHOR GREW, THE RULE DID NOT WEAKEN. This pinned the exact
+    // expression `chosenEntity ?? stopgapEntity`; a third outcome now sits in
+    // front of it — the creator answering "None of these", which must also beat
+    // the stopgap or a decline would silently produce a script about the oldest
+    // product. The precedence being asserted is the same one, with one more
+    // case, so the assertion follows the expression rather than being dropped.
+    expect(EDGE).toMatch(/const ownedEntity = declinedAProduct \? null : \(chosenEntity \?\? stopgapEntity\)/)
     expect(EDGE).toMatch(/data: stopgapEntity/)
   })
 

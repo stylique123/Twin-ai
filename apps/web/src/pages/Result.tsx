@@ -20,8 +20,9 @@ import { explainFailure } from '../lib/api'
 import { creatorPick, defaultCapture, freeformEntry } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
-import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
+import { TwinKnowledgeLink } from '../components/TwinKnowledgeLink'
 import { ProductCaptureCard, readProductCapturePrompt } from '../components/ProductCaptureCard'
+import { ScriptOriginPanel } from '../components/ScriptOriginPanel'
 import { CreativeTransfer } from '../components/CreativeTransfer'
 import { isWhollyPlaceholder } from '../lib/api'
 import { UnfilledContainers } from '../components/UnfilledContainers'
@@ -37,7 +38,6 @@ import { cameFromAReference, spokenLineIsAnAsk, notBilledNotice, shootingNoteAt,
   // tests match the FIRST `@twinai/shared` import in this file to prove a card
   // reads a shared helper; a new import above them answered for all six at
   // once. The guards were right — this file has one shared-import block.
-  loadGenerationProduct, loadProductEntities,
 } from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
@@ -254,28 +254,6 @@ const MOCK_GENERATION = {
  * the sentence states the product and stops — a reason we cannot support is
  * worse than no reason.
  */
-function useProductLine(generationId: string): string | null {
-  const [line, setLine] = useState<string | null>(null)
-  useEffect(() => {
-    let alive = true
-    ;(async () => {
-      const productId = await loadGenerationProduct(generationId).catch(() => null)
-      if (!alive || productId === null) return
-      const rows = await loadProductEntities().catch(() => null)
-      if (!alive) return
-      const hit = (rows ?? []).find((p) => p.id === productId) ?? null
-      const name = typeof hit?.name === 'string' && hit.name.trim() !== '' ? hit.name.trim() : null
-      if (name === null) return
-      const owned = (rows ?? []).filter((p) => p.archivedAt === null).length
-      setLine(rows === null || owned <= 1
-        ? `This script is about ${name}.`
-        : `This script is about ${name}, because you picked it for this video.`)
-    })()
-    return () => { alive = false }
-  }, [generationId])
-  return line
-}
-
 export default function Result() {
   const { id } = useParams()
   const { profile } = useAuth()
@@ -711,12 +689,6 @@ export default function Result() {
   // generations and neither distinguishes the 74 that have a reference from the
   // 4 that do not. Every surface below that claims something about "the
   // reference" reads THIS, so a fifth cannot drift from the other four.
-  // ⚠️ THE SCRIPT NEVER SAID WHICH PRODUCT IT WAS ABOUT. `generate-blueprint`
-  // has written `selected_product_id` onto `generation_choices` since 0137 and
-  // nothing read it back, so a creator holding a script about one of their
-  // three products had to work out which by reading it. A record kept and never
-  // shown answers a question nobody can ask.
-  const productLine = useProductLine(gen.id)
   const hasReference = cameFromAReference(gen.reference_url)
   const lengthLine = lengthSentence(measureScriptLength(updatedScript))
   // ⚠️ FIX 8 (Wave 3). The SAME computed runtime `lengthLine` is built from,
@@ -1207,12 +1179,33 @@ export default function Result() {
               <p className="text-xs text-stone/80">{lengthLine}</p>
               {referenceCompareLine && <p className="text-xs text-stone/80">{referenceCompareLine}</p>}
               {ceilingWarningLine && <p className="text-xs text-amber">{ceilingWarningLine}</p>}
-              {/* ⚖️ BESIDE THE OTHER FACTS ABOUT THIS SCRIPT, not in a badge of
-                  its own. Which product it is about is the same kind of thing as
-                  how long it runs — something true of the script the creator is
-                  holding, said once, where they are already reading. */}
-              {productLine && <p className="text-xs text-stone/80">{productLine}</p>}
-              
+              {/* WHAT A PERSON FORWARDING THIS SCRIPT NEEDS TO KNOW ABOUT IT.
+                  The agency's report: "I need to know which product each script
+                  used, or I'll send a client the wrong one."
+
+                  ⚠️⚠️ TWO SOLUTIONS TO ONE PROBLEM MET HERE. This branch built
+                  `useProductLine` ("This script is about <name>") while #774
+                  built `ScriptOriginPanel`, and both answer "which product is
+                  this script about". Rendering both would have put two product
+                  sentences on one screen — the two-derivations defect this repo
+                  keeps paying for, this time visible to the creator.
+
+                  ⚖️ `ScriptOriginPanel` WINS ON THE AXIS THAT MATTERS TO THIS PR.
+                  This branch exists to make a paid tie undeniable, and the panel
+                  states the claim RULES through `productChoiceConstraint` — the
+                  picker's own words — where `useProductLine` named the product
+                  and said nothing about what may be claimed about it. It also
+                  keeps those rules when the product has no name, where
+                  `useProductLine` returned null and took the disclosure notice
+                  away with the label.
+
+                  ⚠️ ONE THING IS LOST, RECORDED RATHER THAN DROPPED SILENTLY:
+                  "because you picked it for this video", shown when the creator
+                  has more than one product. That is a fact about the CHOICE, not
+                  about the script, and the picker already says it at the moment
+                  of choosing. */}
+              <ScriptOriginPanel generationId={gen.id} referenceUrl={gen.reference_url ?? null} />
+
               <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />
               <ScriptEditor
@@ -1227,12 +1220,11 @@ export default function Result() {
               {/* See the other call site: the script owns the list, so the
                   editor that changes it stays above this. */}
               <DeclaredClips generationId={gen.id} />
-              {/* ⚠️ ASKED HERE BECAUSE HERE IS WHERE THE CREATOR ALREADY IS. The
-                  one source better than a transcript is the creator answering a
-                  question, and the measured lesson about questions in this
-                  product is that placement decides whether they get answered at
-                  all. One question, under a script they were just handed. */}
-              <CreatorQuestionCard />
+              {/* ⚠️ A LINE, NOT A TEXTAREA. The question itself moved to
+                  Settings ("My Twin") — see TwinKnowledgeLink for why, and for
+                  the measured decision this overrules. What stays under the
+                  script is what Twin knows and one door to teach it. */}
+              <TwinKnowledgeLink voiceId={gen.brand_voice_id ?? null} />
               {/* ⚠️ ONLY WHEN THIS EXACT SCRIPT WAS WRITTEN BLIND. `product_capture_prompt`
                   is this generation's own `unrecordedProduct` decision, carried from
                   the writer -- so the card appears exactly when the creator can feel
@@ -1603,9 +1595,9 @@ export default function Result() {
                 <DeclaredClips generationId={gen.id} />
                 {/* ⚠️ SAME SPOT AS THE DESKTOP COLUMN: after the last beat,
                     before the shot list — never mid-scene. Mirrors the
-                    desktop CreatorQuestionCard/ProductCaptureCard placement
+                    desktop TwinKnowledgeLink/ProductCaptureCard placement
                     below; this tab was silently missing both. */}
-                <CreatorQuestionCard />
+                <TwinKnowledgeLink voiceId={gen.brand_voice_id ?? null} />
                 <ProductCaptureCard shown={readProductCapturePrompt(b)} voiceId={gen.brand_voice_id ?? null} />
               </div>
 

@@ -26,11 +26,16 @@ export type NoProductReason =
   | 'not_a_commercial_video'
   /** An id that is not theirs. Never silently swapped for one that is. */
   | 'choice_not_theirs'
+  /** They were asked and said none of them. An ANSWER — the card is finished
+   *  and must not ask again. */
+  | 'creator_chose_none'
 
 export type ProductChoice =
   | { kind: 'auto'; productId: string }
   | { kind: 'chosen'; productId: string }
   | { kind: 'none'; reason: NoProductReason }
+
+import { claimRulesFor, type EntityRelationship, type PersonalUse } from './productEntity'
 
 export interface ProductSelectionInput {
   /** Ids this creator owns, in whatever order the store returned them. */
@@ -63,6 +68,11 @@ export function selectProduct(input: ProductSelectionInput): ProductChoice {
   // THE NULL CHECK PRECEDES THE TRIM. null, undefined and '' all mean "not
   // asked or not answered", and none of them is an id.
   const chosen = typeof input.chosenId === 'string' ? input.chosenId.trim() : ''
+  // ⚠️ "NEITHER" IS AN ANSWER AND MUST BE READ BEFORE MEMBERSHIP. Falling to
+  // the id check would report `choice_not_theirs` — "that product is not in
+  // your library" — for a creator who said they meant none of them, which
+  // blames them for answering.
+  if (chosen === NO_PRODUCT_CHOICE) return { kind: 'none', reason: 'creator_chose_none' }
   if (chosen !== '') {
     return input.ownedProductIds.includes(chosen)
       ? { kind: 'chosen', productId: chosen }
@@ -92,6 +102,44 @@ export const PRODUCT_CHOICE_FIELD = 'selected_product'
 export const NO_PRODUCT_EXPLANATION: Record<NoProductReason, string> = {
   no_products: 'No product is in your library yet, so this script will not point at one.',
   creator_has_not_chosen: 'Pick which one this video is about.',
+  creator_chose_none: 'You said this video is not about any of your products, so it will not name one.',
   not_a_commercial_video: 'This video is not selling anything, so it will not mention a product.',
   choice_not_theirs: 'That product is not in your library. Pick one that is.',
+}
+
+// ── "NEITHER" IS AN ANSWER, NOT AN UNANSWERED QUESTION ────────────────────
+//
+// ⚠️ WITHOUT IT THE CARD CANNOT BE FINISHED. `mustAskWhichProduct` asks while
+// `chosenId` is empty, so a creator whose commercial video is about none of
+// their three products had two ways out: pick one that is wrong, or abandon the
+// build. A question with no honest answer is worse than no question.
+//
+// ⚖️ AND IT IS A DIFFERENT FACT FROM "NOT A SELLING VIDEO". That one is a
+// creative determination made upstream; this is the creator saying "this one is
+// commercial and it is about none of these". Collapsing them would report a
+// decision they did not make.
+export const NO_PRODUCT_CHOICE = 'none'
+
+/** The plain sentence a creator reads beside each option, so the choice is not
+ *  made blind.
+ *
+ *  ⚖️ DERIVED FROM `claimRulesFor`, NEVER RESTATED. This is a READER for the
+ *  entitlement rule that already exists — if the rule changes, this sentence
+ *  changes with it. A second copy of "what may this product claim" is exactly
+ *  the two-derivations defect that the capability question just had. */
+export function productChoiceConstraint(
+  relationship: EntityRelationship,
+  personalUse: PersonalUse = 'NOT_CONFIRMED',
+): string {
+  const rules = claimRulesFor(relationship, personalUse)
+  const parts: string[] = []
+  if (rules.disclosureRequired) parts.push('this one has to be disclosed as paid')
+  if (!rules.creatorExperience) parts.push('you have not told us you use it, so the script cannot say what it did for you')
+  if (rules.marketingClaims === 'forbidden') parts.push('no marketing claims about it')
+  // ⚠️ `attributed`, NOT `attributed_only` — the compiler caught my fourth
+  // invented enum value in this project (TS2367). The union is the authority
+  // and typing this field loosely is what makes the mistake possible.
+  else if (rules.marketingClaims === 'attributed') parts.push('claims about it must be attributed to the maker')
+  if (parts.length === 0) return 'Yours, and you use it — the script can speak from experience.'
+  return `${parts.join('; ')}.`.replace(/^./, (c) => c.toUpperCase())
 }

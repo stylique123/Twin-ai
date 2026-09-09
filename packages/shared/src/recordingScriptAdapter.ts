@@ -61,6 +61,7 @@ function framingFor(
 }
 
 import { readBeatPlan, beatDurationSec, purposeAt, type PlannedBeat } from './beatPlan'
+import { ctaMechanismIn } from './cta'
 import { blueprintCountIssues, type MechanismIssue } from './referenceMechanism'
 import { placeToStand, readShotDirection, stripPalette } from './shotDirection'
 
@@ -70,6 +71,14 @@ export interface BuildRecordingScriptInput {
   selectedHook?: string | null
   platform?: string
   wpm?: WpmPreset
+  /** The creator's OWN recurring CTAs, from `voice_profile.recurring_ctas`.
+   *
+   *  ⚠️ USED ONLY WHEN THE SCRIPT ITSELF ASKS FOR NOTHING, and never in
+   *  preference to a line the writer produced. These are sentences this person
+   *  has actually said — "in bio!!", "have you ever thought about starting a
+   *  small business?" — so a script that needs an ending gets THEIR ending
+   *  rather than a default one nobody wrote. */
+  creatorCtas?: readonly string[] | null
 }
 
 /**
@@ -281,9 +290,30 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   }
   // The LAST CTA-labelled beat, not the first: if the model labels more than
   // one, the ending is the one at the end.
+  //
+  // ⚠️ AND A LABEL IS NOT THE ONLY WAY A SCRIPT ENDS. Measured on two runs from
+  // @theofferingmicrobakery: both scripts ended on a beat named `Payoff` that
+  // already asked ("Tell me in the comments, what is the one scent note…" /
+  // "…I will see you in the next video"), each with a planned target of 9 and
+  // 12 seconds. Matching on the section name alone found no CTA, so a generic
+  // "Follow for more" was appended as a SIXTH scene — unplanned, therefore no
+  // beat length, and 1.5 seconds long by estimate. The creator reported exactly
+  // that card. The words were never in their script.
+  //
+  // ⚖️ SO THE LAST BEAT COUNTS AS THE ENDING WHEN IT ASKS FOR SOMETHING, read
+  // through `ctaMechanismIn` — the same `CTA_MECHANISMS` vocabulary the rest of
+  // the CTA code reasons in, never a second private list of ending phrases.
+  //
+  // ⚖️ THE LAST BEAT ONLY, NOT ANY BEAT. A mid-script "comment below" is an
+  // aside, and promoting it would move the middle of the video to the end —
+  // the same failure the `\bhook\b` exclusion above exists to prevent.
   let ctaIdx = -1
   for (let i = usable.length - 1; i >= 0; i--) {
     if (isCtaSection(usable[i].seg.section || '')) { ctaIdx = i; break }
+  }
+  if (ctaIdx < 0 && usable.length > 0) {
+    const last = usable.length - 1
+    if (ctaMechanismIn(usable[last].seg.line || '') !== null) ctaIdx = last
   }
   const ctaBeat = ctaIdx >= 0 ? usable[ctaIdx] : null
   const body = ctaIdx >= 0 ? usable.filter((_, i) => i !== ctaIdx) : usable
@@ -479,11 +509,46 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   // CTA is the CTA beat of the script, which is why it is held out of the body
   // above.
   //
-  // The fallback stays deliberately plain. "Follow for more" is weak, and a
-  // weak line the creator can see and rewrite is better than a confident one
-  // that misstates their offer — nothing here knows what they actually sell.
+  // ⚠️ THE "DELIBERATELY PLAIN FALLBACK" ARGUMENT IS OVERRULED, AND BY THE
+  // REPORT ITSELF. It read: "a weak line the creator can see and rewrite is
+  // better than a confident one that misstates their offer." Two production
+  // runs disproved the premise. A creator reading a teleprompter says what is
+  // in front of them — the same reasoning that produced an invented price —
+  // and "Follow for more" appended to a script that had already asked a
+  // question made the video end twice. A line nobody wrote is what generated
+  // the complaint.
+  //
+  // ⚖️ SO THE ENDING IS THEIRS OR THERE ISN'T ONE:
+  //   1. the script's own ask, when it has one (handled above);
+  //   2. failing that, a CTA THIS CREATOR ACTUALLY SAYS, from their scan;
+  //   3. failing that, no appended scene at all — the script ends where the
+  //      writer ended it, and `ends_without_ask` says so on the card.
+  // Never a default sentence.
   const ctaLine = (ctaBeat?.seg.line || '').trim()
-  const cta = ctaLine || 'Follow for more'
+  // ⚠️ THE CREATOR'S OWN, ONLY IF IT IS ONE. `recurring_ctas` is model-extracted
+  // and can hold a fragment; a line that asks for nothing is not an ending, and
+  // appending it would be the same defect with a friendlier source.
+  const ownCta = ctaLine === ''
+    ? (input.creatorCtas ?? [])
+        .map((c) => (typeof c === 'string' ? c.trim() : ''))
+        .find((c) => c !== '' && ctaMechanismIn(c) !== null) ?? ''
+    : ''
+  const cta = ctaLine || ownCta
+  if (cta === '') {
+    // ⚖️ NOTHING IS APPENDED, AND THE ABSENCE IS DECLARED. Returning here rather
+    // than pushing an empty scene: a scene with no dialogue is a card the
+    // creator stands in front of with nothing to say.
+    return {
+      version: 1,
+      generation_id: generationId,
+      platform,
+      hook,
+      wpm,
+      scenes,
+      total_duration_sec: totalDurationSec(scenes),
+      ends_without_ask: true,
+    }
+  }
   const ctaN = scenes.length + 1
   // The CTA is held out of the body, so it missed the plan the same way the hook
   // did, and takes its own beat's target when there is one.
