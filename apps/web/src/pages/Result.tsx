@@ -33,7 +33,12 @@ import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { cameFromAReference, spokenLineIsAnAsk, notBilledNotice, shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime } from '@twinai/shared'
+import { cameFromAReference, spokenLineIsAnAsk, notBilledNotice, shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime,
+  // ⚠️ MERGED INTO THE EXISTING BLOCK, NOT ADDED AS A SECOND ONE. Six wiring
+  // tests match the FIRST `@twinai/shared` import in this file to prove a card
+  // reads a shared helper; a new import above them answered for all six at
+  // once. The guards were right — this file has one shared-import block.
+} from '@twinai/shared'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -235,6 +240,20 @@ const MOCK_GENERATION = {
   approved: false
 }
 
+/**
+ * The sentence naming the product this script was written about, or null.
+ *
+ * ⚠️ NULL IS THE COMMON CASE AND MUST RENDER AS SILENCE. Most videos sell
+ * nothing; asserting "no product" on every one of them would be noise, and
+ * asserting it after a FAILED read would be a lie.
+ *
+ * ⚖️ THE "WHY" IS DERIVED FROM WHAT IS KNOWN, NOT INVENTED. Whether the choice
+ * was the creator's tap or the only product they own is not stored, so it is
+ * read off the library they still have: one product means there was nothing to
+ * choose between, more than one means they picked. If the library read fails,
+ * the sentence states the product and stops — a reason we cannot support is
+ * worse than no reason.
+ */
 export default function Result() {
   const { id } = useParams()
   const { profile } = useAuth()
@@ -1162,7 +1181,29 @@ export default function Result() {
               {ceilingWarningLine && <p className="text-xs text-amber">{ceilingWarningLine}</p>}
               {/* WHAT A PERSON FORWARDING THIS SCRIPT NEEDS TO KNOW ABOUT IT.
                   The agency's report: "I need to know which product each script
-                  used, or I'll send a client the wrong one." */}
+                  used, or I'll send a client the wrong one."
+
+                  ⚠️⚠️ TWO SOLUTIONS TO ONE PROBLEM MET HERE. This branch built
+                  `useProductLine` ("This script is about <name>") while #774
+                  built `ScriptOriginPanel`, and both answer "which product is
+                  this script about". Rendering both would have put two product
+                  sentences on one screen — the two-derivations defect this repo
+                  keeps paying for, this time visible to the creator.
+
+                  ⚖️ `ScriptOriginPanel` WINS ON THE AXIS THAT MATTERS TO THIS PR.
+                  This branch exists to make a paid tie undeniable, and the panel
+                  states the claim RULES through `productChoiceConstraint` — the
+                  picker's own words — where `useProductLine` named the product
+                  and said nothing about what may be claimed about it. It also
+                  keeps those rules when the product has no name, where
+                  `useProductLine` returned null and took the disclosure notice
+                  away with the label.
+
+                  ⚠️ ONE THING IS LOST, RECORDED RATHER THAN DROPPED SILENTLY:
+                  "because you picked it for this video", shown when the creator
+                  has more than one product. That is a fact about the CHOICE, not
+                  about the script, and the picker already says it at the moment
+                  of choosing. */}
               <ScriptOriginPanel generationId={gen.id} referenceUrl={gen.reference_url ?? null} />
 
               <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />

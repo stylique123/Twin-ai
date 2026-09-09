@@ -1397,6 +1397,17 @@ function resolveSubjectSourceInline(
 // that the counting is right. `beat_audit.substance_budget` and `length_target`
 // are those numbers. Turn the clamp on when they say the budget tracks reality.
 const POINT_ROLES_INLINE: readonly string[] = ['setup', 'item', 'turn', 'evidence', 'payoff']
+const TARGET_SECONDS_INLINE: readonly number[] = [30, 60, 90]
+const BEATS_FOR_TARGET_INLINE: Readonly<Record<number, number>> = { 30: 4, 60: 6, 90: 8 }
+
+// ⚠️ NULL WHEN THEY WERE NOT ASKED, AND ALSO WHEN THEY SENT SOMETHING ELSE. A
+// stale client posting 45 has not chosen 45 and has not chosen 60 either;
+// rounding it would record a decision nobody made, which is the same defect as
+// defaulting an absent value.
+function asTargetInline(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : Number(v)
+  return TARGET_SECONDS_INLINE.includes(n) ? n : null
+}
 const FREE_BEATS_INLINE = 2
 
 // ⚠️ NULL WHEN NOBODY COUNTED, NEVER ZERO. `structure.beats` is an
@@ -1412,6 +1423,21 @@ function referencePointsFromInline(structure: unknown): number | null {
 }
 
 interface SubstanceBudgetInline { beats: number | null; enforceable: boolean }
+
+/**
+ * THE EXPANSION BAN. The whole rule is the `Math.min`.
+ *
+ * ⚠️ RETURNS NULL WHEN IT CANNOT BE EVALUATED — no target, or an uncounted
+ * budget — which is NOT "it would have changed nothing". Coercing either to a
+ * number here would put a fabricated decision in the audit column that the
+ * decision to switch the ban on will be made from.
+ */
+function planLengthInline(target: number | null, budget: SubstanceBudgetInline): number | null {
+  if (target === null || !budget.enforceable || budget.beats === null) return null
+  const targetBeats = BEATS_FOR_TARGET_INLINE[target]
+  if (typeof targetBeats !== 'number') return null
+  return Math.min(targetBeats, budget.beats)
+}
 
 function substanceBudgetInline(
   referencePoints: number | null,
@@ -3310,6 +3336,48 @@ function estimateDurationSecInline(dialogue: string | null): number {
 // ⚖️ MIRRORS `parseTargetSec` IN beatPlan.ts, NOT timingMath.ts's OWN copy --
 // timingMath.ts has none of its own; it imports beatPlan's, so the bounds
 // (1.5-90s) that reject an absurd "0.2" or "600" apply here too.
+// ⚠️ TWO INDEPENDENT ADDITIONS LANDED AT THE SAME INSERTION POINT, and git
+// could not know they do not overlap. The disclosure rule below and the
+// duration contract after it share nothing but a line number: one decides
+// whether a paid tie was declared, the other how long the video runs. BOTH
+// ARE KEPT, in that order. Resolving this by choosing a side would have
+// silently deleted a shipped feature.
+// ── A PAID BRAND WITH NO DISCLOSURE IS NOT RETURNED ───────────────────────
+//
+// ⚖️ MIRRORS `disclosureCheck.ts` in packages/shared, which carries the full
+// reasoning. The edge cannot import the workspace, so the rule lives twice and
+// the shared copy is the tested one; a parity test holds the phrase list and
+// the position rule together.
+const DISCLOSURE_PHRASES_INLINE: readonly string[] = [
+  'paid partnership', 'sponsored', 'sponsor', 'they sent me', 'they sent this',
+  'gifted', 'i earn a commission', 'commission', 'affiliate', 'this is an ad',
+  'paid to talk about', 'paid me to', 'working with them', 'partnered with',
+]
+function textDisclosesInline(textValue: unknown): boolean {
+  const t = typeof textValue === 'string' ? textValue.toLowerCase() : ''
+  if (t.trim() === '') return false
+  return DISCLOSURE_PHRASES_INLINE.some((p) => t.includes(p))
+}
+/** ⚠️ "EARLY AND OUT LOUD" IS PART OF THE OBLIGATION. A disclosure in the last
+ *  beat is one most viewers never reach. Scripts of one or two beats are exempt
+ *  from the position rule — "not last" is no constraint with nowhere else to
+ *  put it. */
+function scriptDisclosesInline(script: unknown): boolean {
+  const rows = Array.isArray(script) ? script : []
+  const lines = rows.map((b) => (typeof (b as { line?: unknown })?.line === 'string'
+    ? (b as { line: string }).line : ''))
+  if (lines.length === 0) return false
+  const at = lines.findIndex((l) => textDisclosesInline(l))
+  if (at === -1) return false
+  if (lines.length <= 2) return true
+  return at < lines.length - 1
+// ⚠️ THIS CLOSING BRACE IS THE ONE THE CONFLICT ATE. The `}` that followed the
+// `>>>>>>>` marker closed whichever side won, so keeping BOTH blocks left
+// `scriptDisclosesInline` unterminated — and the only symptom was esbuild
+// saying "Unexpected end of file" 6,400 lines later. `check_edge_functions_parse`
+// caught it; tsc alone would not have been enough to trust here.
+}
+
 // ── HOW LONG THIS VIDEO IS, DECIDED BEFORE A WORD IS WRITTEN ──────────────
 //
 // ⚠️ MEASURED: a 15-second reference produced a 48-second script and a
@@ -3324,17 +3392,29 @@ function estimateDurationSecInline(dialogue: string | null): number {
 const MIN_TARGET_SEC_INLINE = 15
 const MAX_TARGET_SEC_INLINE = 90
 const DURATION_TOLERANCE_INLINE = 0.2
-const GOAL_TARGET_SEC_INLINE: Record<string, number> = {
-  followers: 30, entertain: 30, authority: 45, educate: 60,
-  conversations: 45, leads: 45, sell: 60, personal_brand: 40,
+const FALLBACK_TARGET_SEC_INLINE = 60
+const PICKABLE_SECONDS_INLINE: readonly number[] = [30, 60, 90]
+
+// ⚠️ THE REFERENCE IS NOT ON THIS LADDER. Owner's ruling, 2026-09-09: the
+// explicit pick wins, because the reference cannot know how long her video
+// should be. `ref.duration_sec` now only prefills the picker, client-side.
+function asPickedInline(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : Number(v)
+  return PICKABLE_SECONDS_INLINE.includes(n) ? n : null
 }
-function targetSecondsInline(referenceSeconds: number | null, goal: string | null): number | null {
-  if (typeof referenceSeconds === 'number' && Number.isFinite(referenceSeconds) && referenceSeconds > 0) {
-    return Math.min(MAX_TARGET_SEC_INLINE,
-      Math.max(MIN_TARGET_SEC_INLINE, Math.round(referenceSeconds / 5) * 5))
+function clampToWindowInline(sec: number): number {
+  return Math.min(MAX_TARGET_SEC_INLINE,
+    Math.max(MIN_TARGET_SEC_INLINE, Math.round(sec / 5) * 5))
+}
+function resolveTargetInline(
+  picked: unknown, storedDefault: number | null,
+): { targetSec: number; source: 'picked' | 'stored_default' | 'fallback' } {
+  const p = asPickedInline(picked)
+  if (p !== null) return { targetSec: p, source: 'picked' }
+  if (typeof storedDefault === 'number' && Number.isFinite(storedDefault) && storedDefault > 0) {
+    return { targetSec: clampToWindowInline(storedDefault), source: 'stored_default' }
   }
-  if (goal && goal in GOAL_TARGET_SEC_INLINE) return GOAL_TARGET_SEC_INLINE[goal]
-  return null
+  return { targetSec: FALLBACK_TARGET_SEC_INLINE, source: 'fallback' }
 }
 /** ⚖️ THE WORD COUNT COMES FROM THE RECORDER'S OWN RATE — `NATURAL_WPM_INLINE`
  *  above, the same 150 wpm `estimateDurationSecInline` measures with. A second
@@ -3344,49 +3424,69 @@ function targetSecondsInline(referenceSeconds: number | null, goal: string | nul
  *
  *  ⚖️ COUNTED BEFORE IT IS ENFORCED, in that order and for the reason this
  *  codebase has now written down three times: a refusal built on a guess about
- *  frequency is how a safety check becomes the thing people route around. How
- *  often a briefed writer misses the band is not known, because until this
- *  change there was no band. */
+ *  frequency is how a safety check becomes the thing people route around. */
 function durationAuditInline(
   script: unknown,
-  referenceSeconds: number | null,
-  goal: string | null,
-): { target_sec: number | null; words: number; over_words: number; under_words: number } {
+  picked: unknown,
+  storedDefault: number | null,
+): { target_sec: number; target_source: string; words: number; over_words: number; under_words: number } {
   const rows = Array.isArray(script) ? script : []
   let words = 0
   for (const b of rows) {
     const line = typeof (b as { line?: unknown })?.line === 'string' ? (b as { line: string }).line : ''
     words += line.trim() === '' ? 0 : line.trim().split(/\s+/).length
   }
-  const target = targetSecondsInline(referenceSeconds, goal)
-  if (target === null) return { target_sec: null, words, over_words: 0, under_words: 0 }
-  const budget = Math.round((target / 60) * NATURAL_WPM_INLINE)
+  const { targetSec, source } = resolveTargetInline(picked, storedDefault)
+  const budget = Math.round((targetSec / 60) * NATURAL_WPM_INLINE)
   const min = Math.round(budget * (1 - DURATION_TOLERANCE_INLINE))
   const max = Math.round(budget * (1 + DURATION_TOLERANCE_INLINE))
   return {
-    target_sec: target,
+    target_sec: targetSec,
+    // ⚠️ WHICH RUNG ANSWERED, RECORDED. "60 because she picked 60" and "60
+    // because nobody has picked yet" are different facts, and an audit that
+    // cannot tell them apart can never measure whether the default is right.
+    target_source: source,
     words,
     over_words: Math.max(0, words - max),
     under_words: Math.max(0, min - words),
   }
 }
 
-function durationBriefInline(referenceSeconds: number | null, goal: string | null): string {
-  const target = targetSecondsInline(referenceSeconds, goal)
-  if (target === null) return ''
-  const words = Math.round((target / 60) * NATURAL_WPM_INLINE)
+function becauseOfInline(source: string): string {
+  if (source === 'picked') return `they asked for it`
+  if (source === 'stored_default') return `it is the length they usually make`
+  return `nobody has picked one yet and this is the starting point`
+}
+
+/** ⚠️ NEVER ASKS FOR PADDING, AND NAMES WHAT IT DROPPED. Owner's ruling: when
+ *  the substance cannot fill the target the script comes out SHORTER and says
+ *  why; when there is more substance than the target holds, the writer names
+ *  what it left out rather than speeding up. */
+function durationBriefInline(
+  picked: unknown, storedDefault: number | null, availableBeats: number | null,
+): string {
+  const { targetSec, source } = resolveTargetInline(picked, storedDefault)
+  const words = Math.round((targetSec / 60) * NATURAL_WPM_INLINE)
   const minWords = Math.round(words * (1 - DURATION_TOLERANCE_INLINE))
   const maxWords = Math.round(words * (1 + DURATION_TOLERANCE_INLINE))
-  const minBeats = Math.max(3, Math.floor(target / 12))
-  const maxBeats = Math.max(4, Math.ceil(target / 5))
-  const because = typeof referenceSeconds === 'number' && referenceSeconds > 0
-    ? `the reference they chose runs ${Math.round(referenceSeconds)} seconds`
-    : `what this video is for`
-  return `- LENGTH IS DECIDED, NOT DISCOVERED. This video runs ${target} seconds, because ${because}.`
+  const minBeats = Math.max(3, Math.floor(targetSec / 12))
+  const maxBeats = Math.max(4, Math.ceil(targetSec / 5))
+  let line = `- LENGTH IS DECIDED, NOT DISCOVERED. This video runs ${targetSec} seconds, because ${becauseOfInline(source)}.`
     + ` That is ${words} spoken words at a natural pace — write between ${minWords} and ${maxWords}, and count them.`
-    + ` Use between ${minBeats} and ${maxBeats} beats and make the target_sec of every beat add up to ${target}.`
-    + ` If the substance does not fill ${target} seconds, cut the video shorter rather than padding it —`
-    + ` and if it does not fit, cut a point rather than speeding up.`
+    + ` Use between ${minBeats} and ${maxBeats} beats and make the target_sec of every beat add up to ${targetSec}.`
+  if (typeof availableBeats === 'number' && Number.isFinite(availableBeats)) {
+    if (availableBeats < minBeats) {
+      line += ` THERE IS ONLY ENOUGH SUBSTANCE FOR ${availableBeats} BEATS. Write ${availableBeats} and STOP.`
+        + ` The video comes out shorter than ${targetSec} seconds and that is the correct outcome —`
+        + ` say in the final beat that this is everything there is to say on it.`
+        + ` Do NOT repeat a point, restate the hook, or add a beat that carries no new information to reach the target.`
+    } else if (availableBeats > maxBeats) {
+      line += ` THERE IS MORE SUBSTANCE THAN ${targetSec} SECONDS HOLDS — ${availableBeats} beats' worth against room for ${maxBeats}.`
+        + ` Cut whole points rather than speeding up, and name what you left out in one clause so the creator can decide`
+        + ` whether it belonged in this video or the next one.`
+    }
+  }
+  return line
 }
 
 const MIN_BEAT_SEC_INLINE = 1.5
@@ -4668,7 +4768,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string }
   try {
     body = await req.json()
   } catch {
@@ -4971,7 +5071,12 @@ Deno.serve(async (req: Request) => {
       .eq('owner_id', ownerId)
       .eq('voice_id', voice?.id ?? null)
       .eq('id', requestedProductId)
-      .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
+      // ⚠️ THE CHOSEN LOOKUP ACCEPTS A PAID TIE; THE STOPGAP BELOW DOES NOT, AND
+      // THE ASYMMETRY IS THE POLICY. A creator asking for a video about their
+      // sponsored product has said so. Auto-selecting one they never mentioned
+      // would infer a paid promotion from nothing — the entitlement clamp, at
+      // its most expensive.
+      .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE', 'AFFILIATE', 'SPONSOR'])
       .is('archived_at', null)
       .maybeSingle()
     chosenEntity = picked ?? null
@@ -6207,11 +6312,14 @@ Deno.serve(async (req: Request) => {
     // disclosure is `promotesLine` above, which states the affiliate and
     // sponsor cases and calls the sponsorship one non-optional.
     //
-    // ⚖️ MAKING THIS LINE LIVE WOULD BE A SECOND DISCLOSURE CHANNEL, NOT A FIX.
-    // Two independent paths emitting the same obligation is how they drift into
-    // disagreeing. Removing it is also not this PR's business: it is dead, not
-    // wrong, and deleting a branch is a change to reason about on its own.
-    // Filed rather than done.
+    // ⚠️ THIS BRANCH IS NO LONGER DEAD, AND THE NOTE ABOVE IS NOW HISTORY.
+    // It was unreachable because `rel` came from a query filtered to
+    // OWN_PRODUCT/OWN_SERVICE; the chosen-product lookup now accepts a paid
+    // tie, so `rel` can be AFFILIATE or SPONSOR and this line reaches the
+    // writer. It is the INSTRUCTION half of Wave 1.3 — the check that refuses a
+    // script which ignores it lives after the writer returns, because an
+    // instruction nobody verifies is the shape this whole session has been
+    // closing.
     const disclosureRequired = rel === 'AFFILIATE' || rel === 'SPONSOR'
     const marketingClaims = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
       ? 'allowed'
@@ -6788,6 +6896,9 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         // the third state is that nobody may make that claim without counting.
         let substanceBudgetBeats: number | null = null
         let substanceReferencePoints: number | null = null
+        let lengthTarget: number | null = null
+        let lengthTargetSource: string | null = null
+        let lengthBeatsAllowed: number | null = null
         try {
           const { data: assessed } = await admin
             .from('reference_content_profiles')
@@ -7089,7 +7200,31 @@ ${fenced('claims this creator may NOT make', forbidden)}
     // ⚠️ THE ONE INSTRUCTION THAT WAS MISSING. Empty when nothing decides a
     // length — a brief that says nothing beats one stating an invented figure
     // as a requirement.
-    const durationBrief_ = durationBriefInline(ref?.duration_sec ?? null, typeof goal === 'string' ? goal : null)
+    // ⚠️ COMPUTED HERE, BEFORE THE PROMPT, AND NOT IN THE AUDIT WHERE IT USED
+    // TO LIVE. The owner's ruling requires the brief to say "there is only
+    // enough substance for N beats, write N and stop" — a fact the writer needs
+    // BEFORE writing. Counting it afterwards could only ever describe padding
+    // that already happened.
+    const substanceBudgetComputed = substanceBudgetInline(
+      substanceReferencePoints,
+      Array.isArray(knowledgeRows) ? knowledgeRows.length : null,
+      productFactCountOf(ownedEntity),
+    )
+    substanceBudgetBeats = substanceBudgetComputed.beats
+    // ⚖️ THE CREATOR'S ASK, AS ASKED — and `resolveTargetInline` is the ONLY
+    // place the three-rung ladder exists on this side. `ref.duration_sec` is
+    // deliberately not passed: it prefills the picker on the client and decides
+    // nothing here.
+    const lengthResolved = resolveTargetInline(body.target_seconds, null)
+    lengthTarget = lengthResolved.targetSec
+    lengthTargetSource = lengthResolved.source
+    lengthBeatsAllowed = planLengthInline(lengthTarget, substanceBudgetComputed)
+    // ⚠️ NULL WHEN NOBODY COUNTED, NEVER ZERO. An unenforceable budget must not
+    // reach the brief as "there is enough substance for 0 beats" — that is the
+    // three-state collapse `substanceBudgetInline` exists to prevent, and it
+    // would tell the writer to write nothing.
+    const availableBeats = substanceBudgetComputed.enforceable ? substanceBudgetComputed.beats : null
+    const durationBrief_ = durationBriefInline(body.target_seconds, null, availableBeats)
     const durationBriefLine = durationBrief_ === '' ? '' : `${durationBrief_}\n`
     const positionBlock = position
       ? `${fenced('what THIS video is (composed from the creator\'s own answers)', position)}
@@ -7256,6 +7391,44 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // against the fuller store would excuse exactly the fabrication this exists
     // to catch, because a beat could cite something the writer never saw.
     const declared = (templated.bp as { script?: unknown })?.script
+
+    // ── DISCLOSURE, OR THE SCRIPT IS NOT RETURNED ────────────────────────
+    //
+    // ⚠️ WAVE 1.3, AND UNTIL THIS RELEASE IT COULD NOT FIRE. `disclosureRequired`
+    // below is derived from a relationship read out of a query that filtered to
+    // OWN_PRODUCT/OWN_SERVICE, so it was structurally always false — a
+    // live-looking branch guarding a state the system could not enter. The
+    // chosen-product lookup now accepts a paid tie, which is what turns it into
+    // a real obligation, and a real obligation needs a check rather than an
+    // instruction the model may ignore.
+    //
+    // ⚠️ MEASURED: three of four idea-mode runs named a sponsor the creator
+    // never mentioned; one carried an efficacy claim about a product she has
+    // never used, an invented price, and NO DISCLOSURE, on a paid relationship.
+    //
+    // ⚖️ REFUSED AND REFUNDED, NOT PATCHED. Stripping a brand out of finished
+    // prose leaves sentences that no longer parse, and a disclosure Twin
+    // inserted on its own is a legal statement nobody chose to make. And the
+    // creator has already been charged by this point, so the refusal refunds —
+    // charging for a script we will not hand over is the one outcome worse than
+    // either.
+    const paidRelationship = typeof (ownedEntity as { relationship?: unknown } | null)?.relationship === 'string'
+      ? String((ownedEntity as { relationship: string }).relationship)
+      : null
+    if ((paidRelationship === 'AFFILIATE' || paidRelationship === 'SPONSOR')
+      && !scriptDisclosesInline(declared)) {
+      await refundOnce('disclosure_missing')
+      const productName = typeof (ownedEntity as { name?: unknown } | null)?.name === 'string'
+        ? String((ownedEntity as { name: string }).name).trim() : ''
+      console.warn('disclosure_missing', { ownerId, product: productName })
+      return json({
+        error: `This script talks about ${productName === '' ? 'a product you are paid to feature' : productName}`
+          + ' and never says that you are paid to feature it. That has to be said out loud in the'
+          + ' video, early — not only in the caption — so Twin will not hand you a script that'
+          + ' leaves it out. Your remix has been put back. Try again and it will include it.',
+        code: 'DISCLOSURE_MISSING',
+      }, 409)
+    }
     // ⚖️ THE KNOWLEDGE THE PROMPT ACTUALLY CARRIED, shared by both checks.
     // Checking either against the fuller store would license claims the writer
     // could not have known.
@@ -7809,11 +7982,6 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // is the direction that cannot cause padding, which is the defect this
     // exists to remove. It is still a collapse and it is written down here so
     // the number is read for what it is.
-    substanceBudgetBeats = substanceBudgetInline(
-      substanceReferencePoints,
-      Array.isArray(knowledgeRows) ? knowledgeRows.length : null,
-      productFactCountOf(ownedEntity),
-    ).beats
     beatAudit = {
       beats: Array.isArray(declared) ? declared.length : 0,
       // ⚠️ THE HOOK RULE THE PROMPT STATES, MEASURED. `raw` counts hooks that
@@ -8017,18 +8185,34 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       // reader that coerces this with `?? 0` will conclude every unread
       // reference is empty.
       substance_budget: substanceBudgetBeats,
-      // ⚠️ `length_target` IS DELIBERATELY ABSENT UNTIL THE PICKER EXISTS. A
-      // column that can only ever be null is the same defect in a new place,
-      // and writing 60 here would record a choice the creator was never
-      // offered — exactly what `asTarget` refuses to do in the shared module.
       substance_reference_points: substanceReferencePoints,
-      // ⚠️ THE LENGTH CONTRACT, MEASURED — COUNTED, NOT ENFORCED. `target_sec`
-      // is null when nothing decided a length, which is NOT a miss and must not
-      // read as zero. `over_words`/`under_words` are separate because one
-      // number that could mean either direction is unreadable, and because the
-      // two have different causes: padding and running out of substance.
-      duration_contract: durationAuditInline(
-        declared, ref?.duration_sec ?? null, typeof goal === 'string' ? goal : null),
+      // ⚠️ THE LADDER'S ANSWER AND WHICH RUNG GAVE IT. `length_target` used to
+      // be absent because there was no picker; there is one now, so this is a
+      // real number on every row. `length_target_source` is what stops it being
+      // uninterpretable: 60 from a creator who chose 60 and 60 from a creator
+      // who was never asked are the same integer and opposite facts, and the
+      // question this column exists to answer — "is the default right?" — can
+      // only be asked of rows where nobody picked.
+      length_target: lengthTarget,
+      length_target_source: lengthTargetSource,
+      // ⚠️⚠️ WHAT THE EXPANSION BAN *WOULD* HAVE DONE, LOGGED BEFORE IT DOES IT.
+      // `planLengthInline` is the ban: beats = min(target, budget). It is
+      // computed and RECORDED here, and deliberately not yet applied as a hard
+      // clamp, because a rule that shortens every script on a live product
+      // should be switched on against observed numbers rather than against a
+      // belief that the counting is right. This column is those numbers.
+      //
+      // ⚖️ NULL MEANS THE BAN COULD NOT BE EVALUATED — no countable budget —
+      // which is not the same as "it would have changed nothing".
+      length_beats_allowed: lengthBeatsAllowed,
+      // ⚠️ THE LENGTH CONTRACT, MEASURED — COUNTED, NOT ENFORCED.
+      // `over_words`/`under_words` are separate because one number that could
+      // mean either direction is unreadable, and because the two have different
+      // causes: padding and running out of substance. Under the owner's ruling
+      // `under_words` is no longer automatically a fault — a script that ran out
+      // of substance is SUPPOSED to come in short — so it is read together with
+      // `length_beats_allowed`, never alone.
+      duration_contract: durationAuditInline(declared, body.target_seconds, null),
       // ⚠️ FIX 7. Beats whose words don't fit the beat_plan's own target_sec,
       // matched by position (one beat plan entry per script entry). Detection
       // only -- target_sec reaches nothing downstream today, so there is

@@ -17,7 +17,7 @@
 // switches on claim entitlement and disclosure. Mentioning a product in an idea
 // video is a different thing and stays available everywhere.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -99,8 +99,24 @@ describe('each card shows what comes out, not a second description of the mode',
 describe('the picker on screen', () => {
   it('offers exactly four, and each is selectable', async () => {
     render(<MemoryRouter><ScreenUnderTest /></MemoryRouter>)
-    const radios = await screen.findAllByRole('radio')
-    expect(radios).toHaveLength(4)
+    // ⚠️ SCOPED TO THE DOORS' OWN GROUP. This read `findAllByRole('radio')`
+    // across the whole screen and counted 4 only because the doors were the
+    // only radiogroup on it; the length picker is a second one, and an
+    // unscoped count reports 7 doors. The same over-broad-selector defect as
+    // the bare `label:` regex that reported seven doors earlier — and the fix
+    // is to scope it, NOT to loosen the count, so both groups stay pinned.
+    const doors = await screen.findByRole('radiogroup', { name: 'What are you starting from?' })
+    expect(within(doors).getAllByRole('radio')).toHaveLength(4)
+  })
+
+  it('the length picker is its own group of three', async () => {
+    render(<MemoryRouter><ScreenUnderTest /></MemoryRouter>)
+    const lengths = await screen.findByRole('radiogroup', { name: 'How long should the video be?' })
+    expect(within(lengths).getAllByRole('radio')).toHaveLength(3)
+    // ⚖️ AND IT OPENS ON 60, NOT 30. The twelve measured runs fail by being
+    // THIN, so opening on the shortest option pushes the common case further in
+    // the direction it is already wrong.
+    expect(within(lengths).getByRole('radio', { checked: true }).textContent).toMatch(/60 seconds/)
   })
 
   it('shows the sentence and its outcome together', async () => {

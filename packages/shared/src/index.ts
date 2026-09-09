@@ -71,6 +71,8 @@ export * from './setupPlan'
 // Figures spoken about a product must trace to a stored product fact.
 export * from './productClaimCheck'
 export * from './comparativeClaim'
+// ⚠️ A PAID BRAND WITH NO DISCLOSURE IS NOT RETURNED. Wave 1.3.
+export * from './disclosureCheck'
 // ⚠️ A SCRIPT MAY NOT TELL A CREATOR WHAT THE LAW ALLOWS. Idea-Mode run I2 wrote
 // two invented cottage-food licence limits into a Florida baker's script.
 export * from './regulatoryClaim'

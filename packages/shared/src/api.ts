@@ -280,6 +280,14 @@ export interface GenerateInput {
   // How the script should SOUND (delivery energy), independent of fidelity (how
   // close to the reference structure). Optional; defaults to 'balanced' server-side.
   tone?: 'understated' | 'balanced' | 'punchy'
+  // HOW LONG THE CREATOR WANTS IT, in seconds — 30, 60 or 90.
+  //
+  // ⚠️ OPTIONAL AND NULLABLE ON PURPOSE. Absent means they were never asked,
+  // which is NOT the same as choosing 60, and the server must not record a
+  // choice nobody made. `asTarget` refuses anything that is not one of the
+  // three, so a stale client sending 45 is treated as not-asked rather than
+  // rounded to something they did not pick.
+  target_seconds?: 30 | 60 | 90
   // What THIS video is for. Per-video rather than per-voice, because one creator
   // makes awareness videos and sell videos from the same voice.
   //
@@ -536,6 +544,18 @@ export async function getGeneration(id: string): Promise<Generation | null> {
   if (error) return null
   return data as Generation
 }
+
+/**
+ * ⚠️ `loadGenerationProduct` WAS HERE AND IS DELETED, NOT MOVED BY ACCIDENT.
+ * It returned the chosen product's ID; `loadScriptProduct` in
+ * apps/web/src/lib/scriptOriginLoad.ts supersedes it by fetching the
+ * relationship and personal-use as well, which is what the claim rules need to
+ * say anything about the product beyond its name.
+ *
+ * ⚖️ DELETED RATHER THAN LEFT FOR LATER. With its only caller gone it had a
+ * test for a reader and nothing else — the defect this repository has found
+ * five times this week, and the one `check_symbol_readers` exists to catch.
+ */
 
 // Persist the creator's hook choice on their generation. Column grants restrict
 // the update to `selected_hook` (recording), so this is safe from the client.
