@@ -258,3 +258,77 @@ export function resolveCta(input: CtaInput): ResolvedCta {
 export function hasConfirmedCta(defaultCta: string | null | undefined): boolean {
   return typeof defaultCta === 'string' && defaultCta.trim() !== ''
 }
+
+// ── THE ENDING SHE ALREADY HAS, AND WAS NEVER ONCE OFFERED ────────────────
+//
+// ⚠️⚠️ MEASURED IN PRODUCTION 2026-09-09: 0 of 51 voices carry a `defaultCta`.
+// 47 of 51 carry extracted `recurring_ctas`. The pipe between them does not
+// exist, and it never has.
+//
+// ⚖️ SO "2 of 4 ready" IS NOT A STALE FLAG — IT IS ACCURATE, AND THAT IS THE
+// BUG. `setupAreas` derives every state from the values at render time; the CTA
+// area reads `hasConfirmedCta`, which requires a stored string a PERSON typed.
+// Nothing has ever offered her one to confirm, so that area has read
+// `needs_setup` for every creator who has ever used Twin. The fix is not to
+// loosen the check — it is to ask the question.
+//
+// ⚠️ AND THE CHECK MUST NOT LOOSEN. `hasConfirmedCta`'s own comment records why:
+// the meter must not tick off a sentence Twin wrote for itself, "which is
+// precisely how the old palette meter came to report brand colours nobody
+// chose." A SUGGESTION IS NOT A CONFIRMATION. Nothing here writes `defaultCta`;
+// it returns a candidate for a person to accept, edit or reject, and readiness
+// stays false until they do.
+//
+// ── WHAT THE CORPUS ACTUALLY SUPPORTS ────────────────────────────────────
+//
+// ⚖️ REPLAYED OVER ALL 47 STORED SETS WITH `ctaMechanismIn`: 29 carry a line
+// that asks the viewer for something (61.7%); 18 do not. The 18 are correct
+// refusals, and reading them is what makes the number believable:
+//
+//   "Do the work" · "Take a deep breath" · "Lock it in"   — sign-offs, not asks
+//   "None"                                                 — the literal string
+//   "Ends videos by highlighting the ongoing success…"      — the model
+//                                                            DESCRIBING rather
+//                                                            than quoting her
+//
+// ⚠️ THAT THIRD KIND IS WHY THE FIRST ENTRY IS NEVER TAKEN BLINDLY. A naive
+// `recurring_ctas[0]` would offer a creator a sentence ABOUT her endings as
+// though it were one of them, and she would tap "yes, that's mine" on a
+// description of herself.
+
+/** A CTA we found in her own posts, offered for confirmation. */
+export interface SuggestedCta {
+  /** Her sentence, verbatim. Never paraphrased — see `resolveCta`. */
+  text: string
+  /** What it asks for, by the same reading the writer uses. */
+  mechanism: CtaMechanism
+}
+
+/**
+ * The best extracted ending to put in front of her, or null.
+ *
+ * ⚖️ NULL FOR 18 OF 47 AND THAT IS THE HONEST ANSWER. An account whose endings
+ * ask for nothing has no CTA to confirm, and offering "Do the work" as a call
+ * to action would teach her the suggestion is not worth reading.
+ *
+ * ⚠️ THE FIRST LINE THAT ASKS SOMETHING, IN HER OWN ORDER. `recurring_ctas` is
+ * stored most-characteristic-first by the extractor, so the earliest asking line
+ * is the one she uses most — not the most commercial one, which would bias every
+ * creator toward a sale they may not make.
+ */
+export function suggestedCta(recurringCtas: readonly unknown[] | null | undefined): SuggestedCta | null {
+  if (!Array.isArray(recurringCtas)) return null
+  for (const raw of recurringCtas) {
+    if (typeof raw !== 'string') continue
+    const text = raw.trim()
+    // ⚖️ THE EMPTY CASE HAS ONE OWNER, AND IT IS `ctaMechanismIn`, which returns
+    // null for a blank line. A second guard here survived mutation — removing it
+    // changed no behaviour and no test could tell, which is the definition of a
+    // line nothing justifies. Two names for one rule invite the next reader to
+    // pick the wrong one.
+    const mechanism = ctaMechanismIn(text)
+    if (mechanism === null) continue
+    return { text, mechanism }
+  }
+  return null
+}

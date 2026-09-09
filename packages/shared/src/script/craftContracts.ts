@@ -308,9 +308,73 @@ export function rhythmBreakNote(script: readonly CraftBeat[]): string | null {
   return `Every beat is about the same length (${Math.min(...counts)}–${Math.max(...counts)} words). Cut one of them to a few words — a short beat after long ones is where emphasis comes from.`
 }
 
-/** ⚠️ ALL FIVE, IN ONE CALL, IN A FIXED ORDER. The order is the order a writer
+// ── 6. A STORY WITH NO WHEN ───────────────────────────────────────────────
+//
+// ⚠️ MEASURED IN PRODUCTION 2026-09-09, over 276 spoken beats in 62 scripts:
+// ONE beat carries a time anchor. One, in two hundred and seventy-six. Every
+// script this system has written is untethered in time.
+//
+// ⚖️ AND THAT NUMBER IS EXACTLY WHY THIS NOTE IS NARROW. A contract saying
+// "every script must land in time" would fire on 98% of them, and a note that
+// fires on 98% of scripts is not a floor — it is a nag, and it trains whoever
+// reads these to ignore all of them. `countContractIssues` states the same rule
+// for enumerations: "inventing a complaint for them would train whoever reads
+// these to ignore all of them."
+//
+// ⚠️⚠️ SO IT FIRES ONLY WHERE A MOMENT IS OWED: a FIRST-PERSON EPISODE. "I lost
+// a client" is a story, and a story with no when is a claim wearing a story's
+// clothes — the listener cannot tell last week from a decade ago, and the
+// specificity floor already counts the episode as concrete on the strength of
+// the verb alone.
+//
+// ⚖️ MEASURED FIRE RATE: 8 of 62 scripts (13%) — and ALL EIGHT first-person
+// episodes in production lack an anchor, so the rule is not hypothetical and it
+// is not universal. That is the shape a floor should have.
+//
+// ⚖️ ANY BEAT MAY CARRY THE ANCHOR, not the episode beat itself. A script that
+// opens "Last March" and tells the episode three beats later has landed it;
+// demanding the anchor sit in the same sentence would fail correct writing.
+const MOMENT_ANCHOR = new RegExp(
+  '\\b(?:'
+  // Relative, the commonest form in real speech.
+  + 'yesterday|today|tonight|this (?:morning|afternoon|evening|week|month|year)'
+  + '|last (?:night|week|month|year|summer|winter|spring|autumn|fall|monday|tuesday'
+  + '|wednesday|thursday|friday|saturday|sunday)'
+  + '|(?:a|two|three|four|five|six|seven|eight|nine|ten|\\d{1,2})\\s+'
+  + '(?:days?|weeks?|months?|years?)\\s+ago'
+  // Absolute.
+  + '|in\\s+(?:19|20)\\d{2}|back\\s+in\\s+(?:19|20)\\d{2}'
+  + '|(?:january|february|march|april|may|june|july|august|september|october'
+  + '|november|december)'
+  // Narrative openers that fix a point in time without naming one.
+  + '|the\\s+other\\s+(?:day|week|night)|back\\s+when|at\\s+the\\s+time'
+  + '|when\\s+i\\s+(?:was|first|started)|the\\s+day\\s+(?:i|we)'
+  + ')\\b',
+  'i',
+)
+
+/** Does this line fix a point in time? */
+export function hasMomentAnchor(line: unknown): boolean {
+  return MOMENT_ANCHOR.test(String(line ?? ''))
+}
+
+/**
+ * A first-person episode that never says when it happened.
+ *
+ * ⚖️ RETURNS NULL WHEN THERE IS NO EPISODE, and that is the common case — 54 of
+ * 62 production scripts. This contract has an opinion about stories and no
+ * opinion about anything else.
+ */
+export function momentAnchorNote(script: readonly CraftBeat[]): string | null {
+  const spoken = script.filter(isSpoken)
+  if (!spoken.some((b) => isFirstPersonEpisode(b.line))) return null
+  if (spoken.some((b) => hasMomentAnchor(b.line))) return null
+  return 'The script tells a story about something that happened to you and never says when. Anchor it — "last March", "two years ago", "the day I opened" — so it lands as an episode rather than a claim.'
+}
+
+/** ⚠️ ALL SIX, IN ONE CALL, IN A FIXED ORDER. The order is the order a writer
  *  would fix them in: what the script is about, then its shape, then its sound.
- *  Nulls are dropped, so an empty array means all five contracts held. */
+ *  Nulls are dropped, so an empty array means all six contracts held. */
 export function craftContractNotes(script: readonly CraftBeat[]): string[] {
   if (!Array.isArray(script)) return []
   return [
@@ -318,6 +382,7 @@ export function craftContractNotes(script: readonly CraftBeat[]): string[] {
     callbackTokenNote(script),
     payoffMustAddNote(script),
     escalationDependencyNote(script),
+    momentAnchorNote(script),
     rhythmBreakNote(script),
   ].filter((n): n is string => n !== null)
 }

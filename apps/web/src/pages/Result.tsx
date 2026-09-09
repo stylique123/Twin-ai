@@ -32,6 +32,7 @@ import { CoverButton } from '../components/CoverDialog'
 import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import WouldYouPostThis from '../components/WouldYouPostThis'
+import { DidYouFilmIt } from '../components/DidYouFilmIt'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
 import { cameFromAReference, spokenLineIsAnAsk, notBilledNotice, shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime,
   // ⚠️ MERGED INTO THE EXISTING BLOCK, NOT ADDED AS A SECOND ONE. Six wiring
@@ -770,6 +771,18 @@ export default function Result() {
               Post button reads, so the question appears exactly when posting
               becomes a real choice. */}
           {finished && <WouldYouPostThis generationId={gen.id} />}
+
+          {/* ⚠️ A DIFFERENT QUESTION AT A DIFFERENT MOMENT, AND THE PAIR IS THE
+              POINT. `WouldYouPostThis` asks what she INTENDS the moment the
+              script is finished; this asks what she DID, and only once enough
+              time has passed that an answer is possible. Asking "did you film
+              it" at the end of the build would record "not yet" as "declined"
+              and manufacture the negative signal it exists to measure.
+
+              ⚖️ IT GATES ITSELF. `filmedAsk` renders nothing when there is no
+              outcome row (every generation older than 0191) or when it is too
+              soon, so no condition is duplicated here where it could drift. */}
+          <DidYouFilmIt generationId={gen.id} generatedAt={gen.created_at ?? null} />
 
           <motion.div
             initial={{ opacity: 0, y: 12 }}

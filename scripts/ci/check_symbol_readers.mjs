@@ -198,13 +198,6 @@ export const REGISTRY = {
       + 'separate, or the read drops under 100ms. The trigger is armed in the '
       + 'file header.',
   },
-  'shapeLibrary.ts': {
-    symbols: ['projectShape', 'shapeStats'],
-    why: 'Merged (#675) deliberately BEFORE its consumers, because a whitelist '
-      + 'projection with no readers is free to change and one with readers is a '
-      + 'taxonomy under live traffic. Unreached by design and by decision. WIRE '
-      + 'with the gallery and angle engine, which are the named consumers.',
-  },
   'uploadForensics.ts': {
     symbols: ['classifyUpload', 'tallyUploads', 'oursCount'],
     why: 'Tells an upload the creator abandoned from one WE broke — the '

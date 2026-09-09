@@ -13,6 +13,12 @@ function rows(
       out.push({
         container, hookMechanism: null, payoffType: null, ctaMechanism: null,
         beatRoles: [], beatCount: 0, transferability,
+        // ⚠️ NULL, AND NOT A CONVENIENT BAND. These fixtures carry no duration,
+        // so "nobody measured" is the honest value — the same state every
+        // reference assessed before 0193 will hold forever. Filling it here
+        // would make the tie-breaking tests below reason about a pacing signal
+        // no fixture actually establishes.
+        pacing: null,
         goals: [goal as never],
       })
     }

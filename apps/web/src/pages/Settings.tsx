@@ -7,11 +7,12 @@ import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import {
   contentProfile, brandKitStatus, productDnaStatus, loadProductEntities,
   setupAreas, setupSummary, type SetupArea, type SetupState,
-  readStoredBrief, savePreScriptBrief,
+  readStoredBrief, savePreScriptBrief, suggestedCta, whatTwinLearned, heardCount, BASIS_LABEL,
 } from '@twinai/shared'
 import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
 import { readProfileAnswers } from '../lib/profileAnswersRead'
 import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
+import { TwinStrengthCard } from '../components/TwinStrengthCard'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
@@ -80,6 +81,7 @@ export default function Settings() {
   // has a CTA, and a save from that box would erase it.
   const [defaultCta, setDefaultCta] = useState<string | null>(null)
   const [ctaSaved, setCtaSaved] = useState(false)
+  const [learnedOpen, setLearnedOpen] = useState(false)
   // ⚠️ A REASON, NOT A BOOLEAN. "Could not save" was shown for a failed write and
   // for a save that never attempted one, and those need different sentences: one
   // is worth retrying and the other never will be.
@@ -336,7 +338,10 @@ export default function Settings() {
       case 'add_product': return nav('/products?add=1')
       case 'manage_products': return nav('/products')
       case 'setup_brand_kit': return setTab('brand')
-      case 'view_dna': return setTab('twin')
+      // ⚠️ THIS USED TO BE `setTab('twin')` FROM A CARD ALREADY ON THE TWIN TAB.
+      // Not a broken handler — a no-op, which reads to a creator as "Twin has
+      // nothing to show me". It opens what Twin actually learned now.
+      case 'view_dna': return setLearnedOpen(true)
       // ⚠️ IT USED TO LEAVE SETTINGS ENTIRELY. Sending somebody to onboarding to
       // change one answer means re-walking a flow they finished weeks ago, and
       // the thing they wanted to change was two chips.
@@ -427,6 +432,15 @@ export default function Settings() {
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p className="eyebrow !text-sand">Your Twin setup</p>
               <p className="font-heading text-cream">{summary.headline}</p>
+            </div>
+            {/* ⚠️ WHAT TWIN HAS LEARNED, WHICH GROWS, BESIDE WHAT IS STILL
+                MISSING, WHICH SHRINKS. `TwinStrengthCard` has existed and been
+                rendered on the Dashboard all along — it was never on the screen
+                that showed the fraction, so the one number a creator saw here
+                had a ceiling and no evidence behind it. Same component, on the
+                screen that needed it. */}
+            <div className="mt-2">
+              <TwinStrengthCard voiceId={defaultVoiceId} />
             </div>
             {summary.total > 0 && summary.ready < summary.total && (
               <div className="mt-3 flex gap-1.5" aria-hidden>
@@ -601,9 +615,65 @@ export default function Settings() {
         </Reveal>
         )}
 
+        {learnedOpen && (
+          <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-5" role="dialog" aria-modal>
+            <div className="glass max-h-[80vh] w-full max-w-lg overflow-y-auto p-5">
+              <p className="font-heading text-cream">What Twin learned about you</p>
+              {(() => {
+                const facts = whatTwinLearned(voiceProfile)
+                if (facts.length === 0) {
+                  // ⚖️ THE HONEST EMPTY STATE. A scan that produced nothing must
+                  // say so rather than render seven empty rows, which is the
+                  // dead card rebuilt with more pixels.
+                  return (
+                    <p className="mt-2 text-sm leading-relaxed text-sand" data-testid="learned-empty">
+                      Nothing yet. Scan your account and Twin will read your videos.
+                    </p>
+                  )
+                }
+                const heard = heardCount(facts)
+                return (
+                  <>
+                    {/* ⚠️ THE EVIDENCE BEFORE THE CLAIMS. 0191's rule — anything
+                        read out of a thin table states its n — applies to a
+                        panel about somebody's own voice more than anywhere. */}
+                    <p className="mt-1 text-xs text-stone" data-testid="learned-evidence">
+                      {heard > 0
+                        ? `${heard} of these ${heard === 1 ? 'was' : 'were'} heard in your own videos.`
+                        : 'Read from your captions.'}
+                    </p>
+                    <dl className="mt-4 space-y-3.5">
+                      {facts.map((f) => (
+                        <div key={f.field} data-testid={`learned-${f.field}`}>
+                          <dt className="text-xs uppercase tracking-wide text-stone">
+                            {f.label}
+                            {BASIS_LABEL[f.basis] !== '' && (
+                              <span className="ml-2 normal-case tracking-normal text-sand/70">
+                                · {BASIS_LABEL[f.basis]}
+                              </span>
+                            )}
+                          </dt>
+                          <dd className="mt-1 text-sm leading-relaxed text-cream">{f.values.join(' · ')}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </>
+                )
+              })()}
+              <button
+                type="button"
+                onClick={() => setLearnedOpen(false)}
+                className="btn-ghost mt-5 w-full rounded-lg px-3.5 py-2 text-sm"
+              >Close</button>
+            </div>
+          </div>
+        )}
+
         {tab === 'twin' && (
         <Reveal delay={0.04}>
           <ProfileStatus
+            ctaSuggestion={suggestedCta(
+              (voiceProfile as { recurring_ctas?: unknown[] } | null)?.recurring_ctas)}
             content={content}
             productDna={productDna}
             brandKit={kitStatus}
@@ -1187,7 +1257,11 @@ function TeamSeats() {
  */
 function ProfileStatus({
   content, productDna, brandKit, cta, ctaLoadFailed, onCtaRetry, onCtaChange, onCtaCommit, ctaSaved, ctaErr,
+  ctaSuggestion,
 }: {
+  /** Her own ending, read from her posts. Null for 18 of 47 accounts, whose
+   *  extracted lines ask for nothing — see `suggestedCta`. */
+  ctaSuggestion: ReturnType<typeof suggestedCta>
   content: ContentProfile
   productDna: ProductDnaStatus
   brandKit: BrandKitStatus
@@ -1207,7 +1281,10 @@ function ProfileStatus({
   const ctaLoaded = cta !== null
   const ctaText = (cta ?? '').trim()
   const [ctaOpen, setCtaOpen] = useState(false)
-  const [ctaDraft, setCtaDraft] = useState(ctaText)
+  // ⚠️ THE DRAFT IS SEEDED, THE STORED VALUE IS NOT. She still has to press Save,
+  // so `hasConfirmedCta` stays false until a person acts — the rule the palette
+  // meter broke and this field must not.
+  const [ctaDraft, setCtaDraft] = useState(ctaText || (ctaSuggestion?.text ?? ''))
   return (
     <section className="glass mt-8 p-5 sm:p-6">
       <div className="flex items-baseline justify-between gap-3">
@@ -1293,12 +1370,22 @@ function ProfileStatus({
               What should Twin usually ask viewers to do? You can change it for any
               single video.
             </p>
+            {/* ⚠️ HER SENTENCE, MARKED AS A GUESS. 0 of 51 voices had a stored
+                ending and 47 had one extracted, so this box has been empty for
+                every creator Twin has ever had while her real ending sat one
+                field away. Saying where it came from is what makes it safe to
+                show — the same rule as "we guessed this from your posts". */}
+            {ctaSuggestion && ctaText === '' && (
+              <p className="mt-3 text-xs leading-relaxed text-sand/80" data-testid="cta-suggestion-note">
+                We took this from your own posts. Change it if it&rsquo;s wrong.
+              </p>
+            )}
             <input
               autoFocus
               type="text"
               value={ctaDraft}
               onChange={(e) => setCtaDraft(e.target.value)}
-              placeholder="Try Twin free"
+              placeholder={ctaSuggestion?.text ?? 'What do you usually ask viewers to do?'}
               className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
             />
             <div className="mt-4 flex flex-wrap gap-2">
