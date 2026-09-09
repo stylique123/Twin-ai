@@ -49,6 +49,19 @@ jobs:
       # Both are things the compiler names; nothing was asking the compiler.
       - name: Edge functions compile (a syntax error here cannot deploy)
         run: node scripts/ci/check_edge_functions_parse.mjs
+      # ⚠️ THE SHAPE THE CHECK ABOVE CANNOT SEE, MEASURED ON CODE THAT ALMOST
+      # SHIPPED (#746): a `const` declared AFTER an `.forEach` callback that
+      # reads it. `tsc` exits 0 — TS2448 is never raised, because a callback
+      # COULD run later — so the edge-parse guard, which treats TS2448 as fatal,
+      # passes it too. Both checks whose job is "this function can boot" waved
+      # through a function that could not.
+      #
+      # ⚖️ IN THIS JOB BECAUSE IT NEEDS THE TypeScript COMPILER API to parse.
+      # `no-legacy-editor` runs checkout and nothing else; putting a guard with a
+      # dependency there answers ERR_MODULE_NOT_FOUND, which is a verdict about
+      # the runner rather than about the code — the same mistake, twice already.
+      - name: No dead-zone read inside an immediately-run callback
+        run: node scripts/ci/check_immediate_callback_dead_zone.mjs
       # ⚠️ HERE, NOT IN `no-legacy-editor` — THE SECOND TIME THIS EXACT MOVE WAS
       # NEEDED. It lived in that job while it was dependency-free; adding the
       # esbuild bundle pass gave it a real dependency, and a job that runs
