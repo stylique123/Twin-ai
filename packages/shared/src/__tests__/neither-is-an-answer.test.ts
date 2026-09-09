@@ -179,7 +179,10 @@ describe('the studio product door is not a dead end', () => {
     // assert. Both halves are pinned: the navigation is gone AND the chooser
     // exists, because deleting the nav alone would be a door that does nothing.
     expect(CREATE).not.toMatch(/\/products\?from=studio/)
-    expect(CREATE).toMatch(/if \(door === 'product'\) \{/)
+    // ⚖️ WIDENED WHEN THE BRANCH GAINED `&& chosenProduct === null`. The rule is
+    // "the product door opens a chooser in place"; the condition that the
+    // chooser opens only while nothing is chosen strengthens it.
+    expect(CREATE).toMatch(/if \(door === 'product'/)
     expect(CREATE).toMatch(/setPicking\(true\)/)
   })
 })

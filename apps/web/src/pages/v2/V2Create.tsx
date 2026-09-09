@@ -202,6 +202,14 @@ export default function V2Create() {
   // The library is still one tap away for the creator who has nothing in it —
   // but as an EMPTY-STATE, which is the only case where it was ever the answer.
   const [picking, setPicking] = useState(false)
+  // ⚠️⚠️ THE PICK IS HELD HERE, NOT NAVIGATED ON. Choosing a product used to call
+  // `nav('/v2/building', …)` with `buildFieldsForDoor('idea', input.trim())` —
+  // and a creator who came through the PRODUCT door has typed no idea, so
+  // `reference_note` was empty and V2Building's own guard ("No input (e.g.
+  // refresh) → go back to Create", line 555) bounced her straight back. That
+  // round trip is the black flash people reported: a real navigation, then an
+  // immediate `replace` home, with the choice discarded on the way.
+  const [chosenProduct, setChosenProduct] = useState<ProductEntityRecord | null>(null)
   const [myProducts, setMyProducts] = useState<ProductEntityRecord[] | null>(null)
   useEffect(() => {
     let alive = true
@@ -287,11 +295,27 @@ export default function V2Create() {
     // The handoff doors do not build; they take the creator to the place that
     // holds what they said they have. Both record the door first, because
     // leaving for the Product Library IS taking the product door.
-    if (door === 'product') {
+    if (door === 'product' && chosenProduct === null) {
       // ⚖️ THE DOOR IS RECORDED WHERE IT IS TAKEN, exactly as before — what
       // changed is what happens next, not what we learn from it.
       void recordEntryDoor({ door, source, offered: ALL_DOORS, text: input })
       setPicking(true)
+      return
+    }
+    // ⚠️ A CHOSEN PRODUCT IS ENOUGH TO BUILD ON, AND THE TEXT BOX MAY BE EMPTY.
+    // This is the whole product door: she has told us what she has in her hand,
+    // and the objective question on the build screen asks what it is for. The
+    // idea-mode guard below would refuse this for having no text.
+    if (door === 'product' && chosenProduct !== null) {
+      nav('/v2/building', {
+        state: {
+          ...buildFieldsForDoor('product', input.trim() || chosenProduct.name || ''),
+          door,
+          tone,
+          selected_product_id: chosenProduct.id,
+          idempotency_key: crypto.randomUUID(),
+        },
+      })
       return
     }
     if (isHandoff) {
@@ -599,15 +623,12 @@ export default function V2Create() {
                             onClick={() => {
                               // ⚖️ THE CHOICE TRAVELS WITH THE BUILD, so the
                               // building screen does not ask it again.
+                              // ⚖️ CLOSE AND STAY. The choice is state on this
+                              // screen now; `go` carries it into the build once
+                              // she has said what the video is for. Navigating
+                              // from inside the modal was the bug.
+                              setChosenProduct(p)
                               setPicking(false)
-                              nav('/v2/building', {
-                                state: {
-                                  ...buildFieldsForDoor('idea', input.trim()),
-                                  tone,
-                                  selected_product_id: p.id,
-                                  idempotency_key: crypto.randomUUID(),
-                                },
-                              })
                             }}
                           >
                             <span className="block truncate text-sm font-semibold text-cream">
@@ -631,6 +652,26 @@ export default function V2Create() {
             </div>
           )}
 
+          {/* ⚠️ THE CHOICE, SHOWN WHERE SHE MADE IT. She picked a product and the
+              screen used to look exactly as it had before — the pick lived only
+              in a navigation that bounced. Rendering it here is what makes
+              "nothing was lost" visible rather than merely true. */}
+          {door === 'product' && chosenProduct && (
+            <div className="mx-auto mt-5 max-w-md" data-testid="chosen-product">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                <span className="min-w-0 text-sm text-cream">
+                  <span className="text-stone">Making content for: </span>
+                  <span className="font-semibold">{(chosenProduct.name ?? '').trim() || 'Not named yet'}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPicking(true)}
+                  className="shrink-0 text-xs text-stone underline underline-offset-2 transition-colors hover:text-cream"
+                >Change</button>
+              </div>
+            </div>
+          )}
+
           {/* The one CTA — centered, matched to the input width so the column reads
               as one tight, intentional stack. Its wording follows the door, so the
               button always says what is about to happen. */}
@@ -642,7 +683,7 @@ export default function V2Create() {
             >
               <Wand2 className="h-4 w-4" />
               {checking ? 'Checking…'
-                : door === 'product' ? 'Pick a product'
+                : door === 'product' ? (chosenProduct ? 'Make this video' : 'Pick a product')
                 : door === 'browse' ? "See what's working"
                 : 'Remix'}
             </button>
