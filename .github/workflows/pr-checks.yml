@@ -793,6 +793,30 @@ jobs:
       # defect lives BETWEEN them, which is the kind nobody is assigned to
       # notice. Unwired keys are declared rather than tolerated, and the
       # declaration self-expires: excusing a key that HAS a reader fails too.
+      # ⚠️ EDGE-PARSE IS NOT HERE, AND THAT IS THE FIX RATHER THAN AN OMISSION.
+      # It needs `esbuild`, and this job runs checkout ONLY — no `npm ci` — so
+      # the step failed with ERR_MODULE_NOT_FOUND rather than with a verdict
+      # about the code. It runs in `web-and-shared`, which installs its tooling.
+      #
+      # ⚖️ IT ARRIVED HERE BY A BAD MERGE, NOT BY A BAD DECISION. This branch
+      # was cut while the step lived in this job; main has since moved it. The
+      # conflict's main side was EMPTY, which meant "these steps are gone from
+      # here" — and I read it as "main added nothing here" and kept both sides.
+      # An empty side in a conflict is a deletion, not an absence.
+      # ⚠️ A FLAG NOBODY FILTERS ON IS WORSE THAN NO FLAG — it looks like the
+      # problem is handled. Two synthetic generations an hour is 48 rows a day
+      # against samples 2000 rows deep, and the bias would surface months later
+      # in the outputs, where nobody is looking for a monitor.
+      - name: The heartbeat teaches Twin nothing (every corpus reader excludes it)
+        run: |
+          node scripts/ci/check_heartbeat_excluded_from_corpus.mjs --selftest
+          node scripts/ci/check_heartbeat_excluded_from_corpus.mjs
+      # ⚖️ THE POLICY, EXERCISED THROUGH ITS RUNNER RATHER THAN BESIDE IT. The
+      # unit tests prove the arithmetic; this proves the scheduled job actually
+      # reaches it. A policy unit-tested in isolation and called by nobody is
+      # the defect this repository keeps paying for.
+      - name: Heartbeat policy is wired to its runner
+        run: node --experimental-strip-types scripts/ops/heartbeat.mjs --selftest
       # ⚠️ THE UNWIRED-MODULE DETECTOR WAS ITSELF UNWIRED. Built, tested,
       # correct, and nothing called it in CI — exactly the defect class its
       # own header names four instances of. Reports only, never fails: a

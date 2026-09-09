@@ -4728,6 +4728,22 @@ Deno.serve(async (req: Request) => {
     .maybeSingle()
   const ownerId = mem?.owner_id ?? user.id
 
+  // ⚠️⚠️ `is_heartbeat` HAD READERS AND NO WRITER. 0190 added the column, every
+  // corpus reader filters on it, and `check_heartbeat_excluded_from_corpus`
+  // fails the build if one stops — and NOTHING EVER SET IT TO TRUE. The flag
+  // was the easy half; the guard protects a value nobody was writing, so the
+  // corpus poisoning it exists to prevent would have happened anyway. Found by
+  // grepping this file for `is_heartbeat` and getting no match at all.
+  //
+  // ⚖️ DERIVED FROM IDENTITY, NEVER FROM THE REQUEST BODY. A `heartbeat: true`
+  // flag any caller could send would let anyone hide their generations from
+  // every corpus sample — a quiet way to bias the product's own measurements.
+  // The heartbeat is an ACCOUNT, and only that account's generations carry the
+  // flag. Unset env means nothing is ever flagged, which is the safe direction:
+  // an unflagged heartbeat is visible noise, a flagged creator is invisible loss.
+  const heartbeatUserId = Deno.env.get('HEARTBEAT_USER_ID') ?? ''
+  const isHeartbeat = heartbeatUserId !== '' && user.id === heartbeatUserId
+
   // Abuse / runaway-cost defense: cap blueprint generations per user per minute
   // BEFORE we ever call the model. Bounded by credits anyway, but this stops
   // scripted bursts that would hammer the model API.
@@ -7251,11 +7267,35 @@ ${fenced('claims this creator may NOT make', forbidden)}
     lengthTarget = lengthResolved.targetSec
     lengthTargetSource = lengthResolved.source
     lengthBeatsAllowed = planLengthInline(lengthTarget, substanceBudgetComputed)
-    // ⚠️ NULL WHEN NOBODY COUNTED, NEVER ZERO. An unenforceable budget must not
-    // reach the brief as "there is enough substance for 0 beats" — that is the
-    // three-state collapse `substanceBudgetInline` exists to prevent, and it
-    // would tell the writer to write nothing.
-    const availableBeats = substanceBudgetComputed.enforceable ? substanceBudgetComputed.beats : null
+    // ⚠️⚠️ I GUARDED THE WRONG CASE AND SHIPPED IT. This read
+    // `enforceable ? beats : null`, on the reasoning that an unenforceable
+    // budget must not reach the brief as zero. That is true and it is not the
+    // dangerous case.
+    //
+    // `substanceBudgetInline` returns `enforceable: true` when ANY of its three
+    // inputs is non-null — and `storeItems` is `knowledgeRows.length`, which is
+    // 0 rather than null for a creator with an empty store. So a creator with no
+    // knowledge rows, no product and (always, see below) no reference points
+    // produced `beats = 0 + 0 + 0 + FREE_BEATS = 2`, `enforceable: true`, and
+    // the brief told the writer: "THERE IS ONLY ENOUGH SUBSTANCE FOR 2 BEATS.
+    // Write 2 and STOP."
+    //
+    // ⚠️ MEASURED, AND THIS IS WHY IT WAS NOT HYPOTHETICAL. Of 85 generations
+    // carrying a reference, ZERO had an assessed structure profile —
+    // `reference_content_profiles` holds the SCRAPED GALLERY (1,772 rows, all
+    // gallery items) while `transcripts` holds what CREATORS PASTE (395 rows,
+    // 35 owners, 1 of which is a gallery item). The two corpora are disjoint by
+    // design, so `substanceReferencePoints` has been null on every real
+    // generation ever made. And 24 of 52 creators have no `creator_knowledge`
+    // rows at all. For them the budget was always exactly FREE_BEATS.
+    //
+    // ⚖️ SO A BUDGET OF ONLY THE FREE BEATS IS NOT "TWO BEATS OF SUBSTANCE".
+    // It is the arithmetic of having counted nothing. Null is the honest
+    // reading, and it is what "nobody counted" already means to the brief.
+    const countedSomething = substanceBudgetComputed.enforceable
+      && typeof substanceBudgetComputed.beats === 'number'
+      && substanceBudgetComputed.beats > FREE_BEATS_INLINE
+    const availableBeats = countedSomething ? substanceBudgetComputed.beats : null
     const durationBrief_ = durationBriefInline(body.target_seconds, null, availableBeats)
     const durationBriefLine = durationBrief_ === '' ? '' : `${durationBrief_}\n`
     const positionBlock = position
@@ -9638,6 +9678,8 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       .from('generations')
       .insert({
         user_id: user.id,
+        // The flag every corpus reader filters on. See `isHeartbeat` above.
+        is_heartbeat: isHeartbeat,
         reference_url,
         reference_note,
         fidelity,

@@ -545,6 +545,48 @@ export async function findGenerationByKey(key: string): Promise<Generation | nul
   return (data?.[0] as Generation | undefined) ?? null
 }
 
+/** The outcome row for one generation, or null when there is none.
+ *
+ *  ⚠️ NULL IS A REAL AND COMMON ANSWER, NOT AN ERROR. Every generation written
+ *  before 0191 reached production has no row, and none can honestly be created
+ *  for it — the frozen context is unrecoverable, which is 0191's whole
+ *  argument. The caller shows no question in that case; see `filmedAsk`.
+ *
+ *  ⚖️ RLS DOES THE OWNERSHIP WORK. `generation_outcomes_select_own` restricts
+ *  this to the caller's own rows, so a wrong id returns null rather than
+ *  somebody else's outcome. */
+export async function loadGenerationOutcome(
+  generationId: string,
+): Promise<{ was_filmed: boolean | null; filmed_answered_at: string | null } | null> {
+  const { data, error } = await supabase
+    .from('generation_outcomes')
+    .select('was_filmed, filmed_answered_at')
+    .eq('generation_id', generationId)
+    .maybeSingle()
+  if (error || !data) return null
+  return data as { was_filmed: boolean | null; filmed_answered_at: string | null }
+}
+
+/**
+ * Her answer to "did you film it".
+ *
+ * ⚠️ THROUGH THE RPC, NEVER THROUGH A TABLE WRITE. `authenticated` holds SELECT
+ * on `generation_outcomes` and nothing else; `set_generation_filmed` is the
+ * entire write surface and its UPDATE names two columns, so answering the
+ * question cannot become rewriting the frozen context it is about.
+ *
+ * ⚖️ RETURNS FALSE RATHER THAN THROWING, and the caller shows the toggle
+ * unchanged. A failed write that silently presented itself as saved would put a
+ * number in the corpus that nobody gave.
+ */
+export async function setGenerationFilmed(generationId: string, filmed: boolean): Promise<boolean> {
+  const { data, error } = await supabase.rpc('set_generation_filmed', {
+    p_generation: generationId,
+    p_filmed: filmed,
+  })
+  return !error && data === true
+}
+
 export async function getGeneration(id: string): Promise<Generation | null> {
   const { data, error } = await supabase.from('generations').select('*').eq('id', id).single()
   if (error) return null

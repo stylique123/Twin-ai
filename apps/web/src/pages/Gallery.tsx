@@ -8,6 +8,7 @@ import { Tilt } from '../components/Tilt'
 import { useAuth } from '../context/AuthContext'
 import {
   listGalleryItems, listBrandVoices, logEvent, loadReferenceProfiles,
+  projectShape, shapeSummary, shapeSummaryLine, shapeLabel,
   loadProductEntities, galleryCreatorView, emptyReferenceProfile,
   loadPreScriptBrief, assembleCreatorProfile, briefToProfileAnswers,
   DESIRED_FORMATS, type CreatorProfile, type DesiredFormat,
@@ -421,7 +422,14 @@ export default function Gallery() {
         // ⚖️ ONE QUERY FOR THE WHOLE PAGE, AFTER the cards are on screen. The
         // assessment colours the ordering; it must never delay the gallery
         // appearing, and a page that waited for it would be slower than the one
-        // it replaces for the 97% of cards that have no assessment yet.
+        // it replaces for every card with no assessment yet.
+        //
+        // ⚠️ THAT USED TO SAY "the 97% of cards that have no assessment" AND
+        // THAT NUMBER IS NOW WRONG. Measured 2026-09-09: 5,579 distinct public
+        // gallery URLs, 1,772 with a profile (32%), 1,035 carrying a container
+        // (18.6%). The unassessed share is 68%, not 97% — the corpus grew and
+        // the comment did not. Left as a share rather than a figure, because a
+        // number in a comment is a number that goes stale between releases.
         void loadReferenceProfiles(cards.map((c) => c.url))
           .then(setProfiles)
           .catch(() => { /* unassessed is the normal case; keep today's order */ })
@@ -579,6 +587,35 @@ export default function Gallery() {
     capabilities: voiceFlags === null ? null : resolveCapabilities(null, voiceFlags),
     entities: entities ?? [],
   }), [myProfile, voiceFlags, entities])
+
+  // ── THE SHAPE LIBRARY'S FIRST READER ──────────────────────────────────
+  //
+  // ⚠️ NO SECOND QUERY. `profiles` is already loaded for every card on this
+  // page — one request, after the cards are on screen — so the shapes cost a
+  // projection over data in memory. A separate fetch for the same rows would be
+  // the kind of enrichment that makes the page slower than the one it replaced.
+  //
+  // ⚖️ AND `projectShape` IS A WHITELIST, WHICH IS THE WHOLE SAFETY ARGUMENT.
+  // Every stored field carries `evidence` — the creator's own sentence, verbatim
+  // — and there is no code path from evidence into a `ShapeRow`. Structures
+  // and topics cross; text does not, by construction rather than by care.
+  const shapesByCardId = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof projectShape>>()
+    for (const c of all) {
+      const p = profiles.get(c.url)
+      m.set(c.id, p ? projectShape(p) : null)
+    }
+    return m
+  }, [all, profiles])
+
+  // ⚠️ COMPUTED OVER WHAT IS ON SCREEN, AND IT REFUSES BELOW ITS THRESHOLD.
+  // At 18.6% container coverage a page of fifty cards carries about nine
+  // shapes, and nine rows across sixteen container types is noise with a
+  // confident sentence around it. `shapeSummary` returns null under
+  // `MIN_SHAPES_FOR_A_CLAIM` and states its own n when it speaks.
+  const shapeLine = useMemo(() => shapeSummaryLine(
+    shapeSummary([...shapesByCardId.values()].filter((r) => r !== null)),
+  ), [shapesByCardId])
 
   const decisions = useMemo(() => decideGallery({
     cards: all.map((c) => ({ id: c.id, url: c.url })),
@@ -782,6 +819,15 @@ export default function Gallery() {
             above to narrow it, or paste a video you love in the Studio.
           </div>
         )}
+        {/* ⚠️ THE AGGREGATE, AND IT IS USUALLY ABSENT. `shapeSummaryLine`
+            returns null below MIN_SHAPES_FOR_A_CLAIM, so on most pages this
+            renders nothing at all — which is the correct behaviour at 18.6%
+            container coverage and not a bug to chase. When it does speak it
+            states its own sample in the sentence, because a number somebody has
+            to hover to find does not qualify the claim it is attached to. */}
+        {shapeLine && (
+          <p className="mt-4 text-[12px] text-sand/70" data-testid="gallery-shape-summary">{shapeLine}</p>
+        )}
         {shown.length === 0 ? (
           <div className="glass mt-10 grid place-items-center p-12 text-center text-sand">
             {formatFilter
@@ -825,6 +871,22 @@ export default function Gallery() {
                           <span className="inline-flex items-center gap-1 rounded-full bg-ink/65 px-1.5 py-0.5 text-[10px] font-medium text-cream/90 backdrop-blur-sm"><Eye className="h-2.5 w-2.5 opacity-70" /> {c.reach}</span>
                           <span className="inline-flex items-center gap-1 rounded-full bg-ink/65 px-1.5 py-0.5 text-[10px] font-medium text-cream/90 backdrop-blur-sm"><Heart className="h-2.5 w-2.5 opacity-70" /> {c.loves}</span>
                         </div>
+                        {/* ⚖️ A FACT ABOUT THIS VIDEO, NOT ADVICE ABOUT IT.
+                            "Tutorial · 7 beats" is what the assessor read; it
+                            makes no claim about whether it will work for her.
+                            A card with no assessment shows nothing — absence is
+                            not a shape, and filler here would be indistinguish-
+                            able from a reading. */}
+                        {(() => {
+                          const sh = shapesByCardId.get(c.id)
+                          if (!sh?.container) return null
+                          return (
+                            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-ink/65 px-1.5 py-0.5 text-[10px] font-medium text-cream/80 backdrop-blur-sm">
+                              {shapeLabel(sh.container)}
+                              {sh.beatCount > 0 && <span className="opacity-70">· {sh.beatCount} beats</span>}
+                            </span>
+                          )
+                        })()}
                         <span className={cn('truncate text-[10px] font-bold uppercase tracking-wider', c.accent)}>{c.label}</span>
                         <p className="font-heading text-sm leading-snug text-cream line-clamp-2">{c.hook}</p>
                         <p className="text-[11px]"><span className={cn('font-semibold', c.accent)}>@{c.creator}</span></p>
