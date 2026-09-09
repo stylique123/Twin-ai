@@ -86,6 +86,12 @@ export * from './authority'
 export * from './profileAssembler'
 export * from './creativeDecisionPlan'
 export * from './cta'
+
+// ⚠️ THE CARD THAT OPENED NOTHING. "Your voice — what Twin has learned" mapped
+// to `setTab('twin')` from a card already on the twin tab, so it re-selected the
+// tab you were on. This is what it opens instead — and it renders `vocabulary`,
+// because `signature_phrases` does not exist on any of the 51 stored profiles.
+export * from './whatTwinLearned'
 export * from './profileCompletion'
 export * from './setupAreas'
 export * from './referenceAssessment'
