@@ -124,6 +124,14 @@
       "readBy": [
         "supabase/functions/generate-blueprint/index.ts"
       ]
+    },
+    "confirmedAudiencePain": {
+      "readBy": [],
+      "unwiredReason": "Stored durably as of 0195; the writer still reads the UNCONFIRMED inference. generate-blueprint:5853 resolves `vp?.audience_pain ?? dna.pain`, and adding `brief.confirmedAudiencePain` to the front of that chain is one line. What blocks it is the LABEL, not the value: `prov('audiencePain')` comes from projectBrandTruth, whose only sources are the DNA and the synthesis, so the writer would quote the creator's confirmed sentence and still mark it guessed. A wrong provenance is worse than none — §10.2 turns on exactly that distinction. Wiring it means threading the confirmation into brandTruth as a self-reported source, which needs its own evidence and its own PR."
+    },
+    "confirmedDreamOutcome": {
+      "readBy": [],
+      "unwiredReason": "The same, for generate-blueprint:5854 (`vp?.dream_outcome ?? dna.dream`). Blocked on the same provenance question and wired in the same change."
     }
   }
 }
