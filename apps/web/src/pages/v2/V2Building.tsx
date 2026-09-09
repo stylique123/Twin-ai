@@ -25,6 +25,11 @@ import {
   mustAskWhichProduct, PRODUCT_CHOICE_FIELD, NO_PRODUCT_CHOICE, NO_PRODUCT_EXPLANATION,
   selectProduct,
   productChoiceConstraint,
+  // ⚖️ THIS BRANCH'S OWN ADDITION, kept alongside main's rather than instead of
+  // them: the picker's constraint line and the refusal message answer different
+  // moments — one before the creator chooses, one when a finished script failed
+  // to disclose — and neither replaces the other.
+  disclosureRefusalMessage,
   defaultVideoGoalFromContentGoals, CANONICAL_GOAL_LABELS,
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
@@ -455,6 +460,10 @@ export default function V2Building() {
   // ⚖️ SEEDED FROM THE SAME SLOT. The ref is what the build actually sends, so
   // restoring only the visible form would show the creator their answers and
   // then generate without them.
+  // ⚖️ BOTH SIDES OF THIS CONFLICT WERE NEEDED AND NEITHER REPLACED THE OTHER.
+  // main seeds the ref from a product card's `selected_product_id`; this branch
+  // added `chosenProductName` for the refusal screen. They touch different
+  // things and are simply kept together.
   const answersRef = useRef<Record<string, string>>({
     // ⚖️ THE REMEMBERED ANSWER WINS. A creator who arrived from a product card
     // and then changed their mind in the picker must not have the card's
@@ -464,6 +473,17 @@ export default function V2Building() {
       : {}),
     ...recallAnswers(buildKey((loc.state || {}) as BuildState)),
   })
+  /** The name of the product this build was about, when we know it.
+   *
+   *  ⚖️ FROM THE LIBRARY ALREADY LOADED FOR THE PICKER, never re-fetched: a
+   *  refusal screen must not depend on a second network call that can fail. */
+  function chosenProductName(): string | null {
+    const id = (answersRef.current[PRODUCT_CHOICE_FIELD] ?? '').trim()
+    if (id === '') return null
+    const hit = (products ?? []).find((p) => p.id === id)
+    return typeof hit?.name === 'string' && hit.name.trim() !== '' ? hit.name : null
+  }
+
   /** Record one answer and persist it in the same breath.
    *
    *  ⚠️ FIVE AFFORDANCES ANSWER THESE QUESTIONS — a chip, a sub-chip, a product
@@ -771,8 +791,22 @@ export default function V2Building() {
             // ⚖️ ONLY WHEN THE VIDEO IS COMMERCIAL, on the SAME expression the
             // commercial block uses. A second notion of "is this a selling
             // video" would be two answers to one question.
+            // ⚠️ PAID TIES ARE SELECTABLE NOW, AND THAT IS THE DECISION THAT
+            // MAKES WAVE 1.3 REAL. Until this line a sponsored or affiliate
+            // product could not be picked, named or scripted at all — so
+            // `disclosureRequired` in generate-blueprint was structurally always
+            // false, a live-looking branch guarding a state the system could not
+            // enter. A creator with a sponsor in their Library simply could not
+            // make a video about it.
+            //
+            // ⚖️ AND THE OBLIGATION TRAVELS WITH THEM. `productChoiceConstraint`
+            // already states "this one has to be disclosed as paid" beside the
+            // option, and the edge refuses a script that names one without
+            // saying so. Offering the choice without the check would be the
+            // measured defect made reachable on purpose.
             const ownedProducts = libraryProducts.filter(
-              (p) => (p.relationship === 'OWN_PRODUCT' || p.relationship === 'OWN_SERVICE')
+              (p) => (p.relationship === 'OWN_PRODUCT' || p.relationship === 'OWN_SERVICE'
+                || p.relationship === 'AFFILIATE' || p.relationship === 'SPONSOR')
                 && p.archivedAt === null)
             const productQuestion: AskItem[] =
               mustAskWhichProduct({
@@ -1126,6 +1160,24 @@ export default function V2Building() {
         // refuse again.
         if ((e as { code?: string } | null)?.code === REFERENCE_UNREAD_CODE) {
           setUnusableRef(e instanceof Error ? e.message : REFERENCE_UNREAD_TEXT.read_failed)
+          setActive(0)
+          return
+        }
+        // ⚠️ A COMPLIANCE REFUSAL, AND THE REMIX WAS PUT BACK. The script named
+        // a product the creator is paid to feature and never said so; the edge
+        // refused it and refunded. It is not a snag — "try again" is exactly
+        // right here, and the next attempt carries the obligation as a hard
+        // instruction.
+        //
+        // ⚖️ THE WORDS COME FROM THE SHARED MODULE, not from the server's
+        // message. Two texts for one rule drift, and the one a creator reads
+        // should live where the rule lives — the server's sentence stays as the
+        // fallback for callers that are not this screen.
+        if ((e as { code?: string } | null)?.code === 'DISCLOSURE_MISSING') {
+          const named = chosenProductName()
+          setUnusableRef(named === null && e instanceof Error
+            ? e.message
+            : disclosureRefusalMessage(named))
           setActive(0)
           return
         }

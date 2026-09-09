@@ -545,6 +545,18 @@ export async function getGeneration(id: string): Promise<Generation | null> {
   return data as Generation
 }
 
+/**
+ * ⚠️ `loadGenerationProduct` WAS HERE AND IS DELETED, NOT MOVED BY ACCIDENT.
+ * It returned the chosen product's ID; `loadScriptProduct` in
+ * apps/web/src/lib/scriptOriginLoad.ts supersedes it by fetching the
+ * relationship and personal-use as well, which is what the claim rules need to
+ * say anything about the product beyond its name.
+ *
+ * ⚖️ DELETED RATHER THAN LEFT FOR LATER. With its only caller gone it had a
+ * test for a reader and nothing else — the defect this repository has found
+ * five times this week, and the one `check_symbol_readers` exists to catch.
+ */
+
 // Persist the creator's hook choice on their generation. Column grants restrict
 // the update to `selected_hook` (recording), so this is safe from the client.
 // `edit_style` (old manual-editor field) is no longer accepted here — its client
