@@ -1,0 +1,75 @@
+# THE ONLY CHECK THAT USES THE PRODUCT INSTEAD OF READING IT.
+#
+# ⚠️ EVERY OTHER GUARD ASKS A QUESTION ABOUT THE CODE. `generate-blueprint`
+# could not boot for two days — the deploy reported success, CI was green
+# throughout, and a person found it. Nothing was using the thing on a schedule,
+# so nothing could tell.
+#
+# ⚖️ HOURLY, AND NOT MORE OFTEN. Faster would not have found this outage sooner
+# in any way that mattered (it lasted two days), and it would cost real
+# generations against real quota. The rate that matters is the ALERT rate, and
+# that is capped in the policy, not here.
+name: heartbeat
+
+on:
+  schedule:
+    - cron: '17 * * * *'   # :17 rather than :00 — the hour boundary is crowded
+  workflow_dispatch:
+    inputs:
+      page_test:
+        description: 'Send a real page through the real transport and generate nothing'
+        type: boolean
+        default: false
+
+# ⚠️ `issues: write` IS THE PAGER. Without it the delivery path 403s and the
+# heartbeat becomes exactly what this PR argues against — a thing that runs,
+# reports success, and cannot tell anybody when it finds something.
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  # ⚠️ NEVER TWO AT ONCE. Overlapping runs would race on `heartbeat_page_state`
+  # and the quieter one would win, which is precisely the failure this whole
+  # workflow exists to prevent — silence that looks like health.
+  group: heartbeat
+  cancel-in-progress: false
+
+jobs:
+  beat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      # The policy's own wiring, before spending a generation on it. If this
+      # fails the run is not fit to interpret its own results.
+      - name: Policy selftest
+        run: node --experimental-strip-types scripts/ops/heartbeat.mjs --selftest
+      # ⚖️ THE MERGE GATE, ON DEMAND. "If it can't page you on demand, it can't
+      # page you at 3am." This spends no generation and needs no Supabase
+      # context — only the token every run already has — so the pager can be
+      # proven before the rest of the configuration exists.
+      - name: Page test (delivery only, generates nothing)
+        if: ${{ inputs.page_test }}
+        run: node --experimental-strip-types scripts/ops/heartbeat.mjs --page-test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ⚠️ THE REAL CYCLE. It signs in as the heartbeat ACCOUNT — not the
+      # service role — because `generate-blueprint` calls `auth.getUser()` and
+      # 401s without a user, so a service-key request would measure the 401 path
+      # forever and report the product healthy the whole time.
+      - name: Heartbeat
+        if: ${{ !inputs.page_test }}
+        run: node --experimental-strip-types scripts/ops/heartbeat.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          HEARTBEAT_USER_EMAIL: ${{ secrets.HEARTBEAT_USER_EMAIL }}
+          HEARTBEAT_USER_PASSWORD: ${{ secrets.HEARTBEAT_USER_PASSWORD }}
+          HEARTBEAT_VOICE_ID: ${{ secrets.HEARTBEAT_VOICE_ID }}
+          HEARTBEAT_REFERENCE_URL: ${{ secrets.HEARTBEAT_REFERENCE_URL }}

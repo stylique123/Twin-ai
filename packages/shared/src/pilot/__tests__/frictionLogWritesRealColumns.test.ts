@@ -76,9 +76,22 @@ describe('the friction log can actually be written to', () => {
 
   it('every kind the review page sends is allowed by the constraint', () => {
     const allowed = new Set<string>()
-    // The LAST kind-check wins: a later migration may replace an earlier one.
-    const checks = [...SQL.matchAll(/kind in \(([\s\S]*?)\)/g)]
-    expect(checks.length).toBeGreaterThan(0)
+    // The LAST kind-check ON THIS TABLE wins: a later migration may replace an
+    // earlier one.
+    //
+    // ⚠️ SCOPED TO `visual_pilot_events`, AND IT WAS NOT. This matched every
+    // `kind in (...)` in the whole migrations directory and took the last one,
+    // on the unstated premise that no other table would ever have a checked
+    // `kind` column. `heartbeat_findings` (0190) is a different table with a
+    // different vocabulary, and it silently became the constraint this test
+    // asserted against — reporting the friction log as broken when nothing
+    // about the friction log had changed. A test that reads the wrong object
+    // fails for the wrong reason, which is the expensive kind of red.
+    const scoped = [...SQL.matchAll(
+      /create table[^;]*?visual_pilot_events[\s\S]*?kind\s+text[^,]*?check\s*\(\s*kind in \(([\s\S]*?)\)/g)]
+    const loose = [...SQL.matchAll(/alter table[^;]*?visual_pilot_events[\s\S]*?kind in \(([\s\S]*?)\)/g)]
+    const checks = [...scoped, ...loose]
+    expect(checks.length, 'no kind constraint found for visual_pilot_events').toBeGreaterThan(0)
     for (const m of checks.at(-1)![1].matchAll(/'([a-z_]+)'/g)) allowed.add(m[1])
 
     const sent = new Set<string>()
