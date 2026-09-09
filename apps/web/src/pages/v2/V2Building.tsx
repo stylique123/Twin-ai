@@ -1074,12 +1074,22 @@ export default function V2Building() {
           // ⚖️ A DECLINE STILL TRAVELS. It is an answer the server must read —
           // an absence would let the oldest-first stopgap answer for them.
           : seeded === NO_PRODUCT_CHOICE ? NO_PRODUCT_CHOICE : ''
+        // ⚠️⚠️ A SEPARATE FIELD, NOT A FLAG ON THE SAME ONE, AND THAT IS THE
+        // SAFETY PROPERTY. Every existing reader of `selected_product_id`
+        // treats its value as the product this video is ABOUT — claim
+        // entitlement, substance, the CTA. If a mention travelled under that
+        // name, every one of those readers would have to learn a new
+        // distinction on the same day or silently promote a mention to a
+        // subject. Under its own name they cannot see it at all, which is the
+        // correct default for a permission this narrow.
+        const mentionedProductId = decided.kind === 'mention' ? decided.productId : ''
         for (const [k, v] of Object.entries(answersRef.current)) {
           if (k === PRODUCT_CHOICE_FIELD) continue
           if (INTENT_FIELDS.has(k)) intentAnswers[k] = v
           else readinessAnswers[k] = v
         }
         const gen = await generateBlueprint({
+          mentioned_product_id: mentionedProductId || undefined,
           reference_url: refUrl,
           reference_note: state.reference_note || '',
           fidelity: state.fidelity ?? 'balanced',

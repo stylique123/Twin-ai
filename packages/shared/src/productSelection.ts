@@ -33,7 +33,40 @@ export type NoProductReason =
 export type ProductChoice =
   | { kind: 'auto'; productId: string }
   | { kind: 'chosen'; productId: string }
+  /**
+   * ⚠️⚠️ NAMED, NOT SOLD, AND IT IS A THIRD THING RATHER THAN A WEAKER `chosen`.
+   *
+   * A creator teaching her skincare routine, using her own serum, had NO WAY to
+   * name it: the goal is `educate`, the focus is `advice`, so
+   * `showsCommercialBlock` is false and the product was refused entirely with
+   * `not_a_commercial_video`. The four-doors note already claims "mentioning a
+   * product in an idea video is a different thing and stays available
+   * everywhere" — it was not available anywhere, and this is what makes the
+   * sentence true.
+   *
+   * ⚖️ IT CARRIES STRICTLY FEWER PERMISSIONS THAN `chosen`, NEVER MORE. The
+   * writer may say its NAME. It may not make marketing claims, may not build
+   * the script's substance on its facts, and may not ask for a sale — those all
+   * belong to a video that decided it was about the product. `MENTION_RULES`
+   * states this in one place and the prompt reads it.
+   *
+   * ⚠️ AND DISCLOSURE IS UNAFFECTED, WHICH IS THE WHOLE SAFETY ARGUMENT.
+   * `disclosureRequiredFor` keys on the RELATIONSHIP, not on whether the video
+   * sells, so a sponsored product named in an educational video still discloses
+   * — and that case matters MORE than the selling one, because an ad that does
+   * not look like an ad is the one a viewer cannot discount for themselves.
+   */
+  | { kind: 'mention'; productId: string }
   | { kind: 'none'; reason: NoProductReason }
+
+/** What a mention may and may not do. One place, read by the client and
+ *  mirrored into the prompt. */
+export const MENTION_RULES = Object.freeze({
+  mayName: true,
+  mayMakeMarketingClaims: false,
+  mayBuildSubstanceOnIt: false,
+  mayAskForTheSale: false,
+})
 
 import { claimRulesFor, type EntityRelationship, type PersonalUse } from './productEntity'
 
@@ -63,11 +96,33 @@ export interface ProductSelectionInput {
  * script comes back about something the creator never mentioned.
  */
 export function selectProduct(input: ProductSelectionInput): ProductChoice {
-  if (!input.mayUseAProduct) return { kind: 'none', reason: 'not_a_commercial_video' }
-
   // THE NULL CHECK PRECEDES THE TRIM. null, undefined and '' all mean "not
   // asked or not answered", and none of them is an id.
   const chosen = typeof input.chosenId === 'string' ? input.chosenId.trim() : ''
+
+  // ── THE COMMERCIAL GATE STILL COMES FIRST, AND STILL REFUSES ────────────
+  //
+  // ⚠️ THE ORIGINAL RULE IS UNCHANGED AND ITS REASON STILL HOLDS: an explicit
+  // choice may not unlock a product as the SUBJECT of a video that decided it
+  // was not selling — "I picked my course" overriding that is the CTA bug in a
+  // different costume. Nothing below returns `chosen` or `auto` from here.
+  //
+  // ⚖️ WHAT CHANGES IS THAT REFUSAL IS NO LONGER THE ONLY ANSWER. An id the
+  // creator TYPED, for a product she owns, becomes a `mention` — permitted to
+  // be named and nothing else. Silence still yields nothing: `auto` is
+  // deliberately unreachable here, because auto-selecting on a video with no
+  // commercial intent would put a product in a script she never asked to
+  // mention, and "the writer never picks which product" is a rule with a
+  // mutation-tested clamp behind it.
+  if (!input.mayUseAProduct) {
+    if (chosen === '' || chosen === NO_PRODUCT_CHOICE) {
+      return { kind: 'none', reason: 'not_a_commercial_video' }
+    }
+    return input.ownedProductIds.includes(chosen)
+      ? { kind: 'mention', productId: chosen }
+      : { kind: 'none', reason: 'choice_not_theirs' }
+  }
+
   // ⚠️ "NEITHER" IS AN ANSWER AND MUST BE READ BEFORE MEMBERSHIP. Falling to
   // the id check would report `choice_not_theirs` — "that product is not in
   // your library" — for a creator who said they meant none of them, which

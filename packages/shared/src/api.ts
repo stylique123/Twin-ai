@@ -288,6 +288,12 @@ export interface GenerateInput {
   // three, so a stale client sending 45 is treated as not-asked rather than
   // rounded to something they did not pick.
   target_seconds?: 30 | 60 | 90
+  // ⚠️ A PRODUCT SHE MAY NAME, NOT ONE THIS VIDEO IS ABOUT. Distinct from
+  // `selected_product_id` on purpose: every reader of that field treats its
+  // value as the SUBJECT — claim entitlement, substance, the CTA — and a
+  // mention must be invisible to all of them. The server verifies ownership
+  // and permits the NAME only; see `MENTION_RULES`.
+  mentioned_product_id?: string
   // What THIS video is for. Per-video rather than per-voice, because one creator
   // makes awareness videos and sell videos from the same voice.
   //

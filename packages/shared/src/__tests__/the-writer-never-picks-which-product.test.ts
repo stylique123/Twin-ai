@@ -45,12 +45,36 @@ describe('the writer never picks which product', () => {
     expect(c.kind === 'none' && c.reason).toBe('choice_not_theirs')
   })
 
-  it('a non-commercial video gets none, even with an explicit choice', () => {
-    // ⚖️ BRANCH ORDER IS THE POLICY. If a choice could unlock a product here,
-    // "I picked my course" would override the decision that this is not a
-    // selling video — the CTA bug in a different costume.
+  it('a non-commercial video never gets a product as its SUBJECT', () => {
+    // ⚠️ THIS ASSERTION CHANGED, AND THE RULE IT NAMES DID NOT. It used to read
+    // `.toBe('not_a_commercial_video')` on an explicit choice, and it was a
+    // correct pin of the behaviour at the time: a product was refused outright
+    // on any video that was not selling. That refusal is what left a creator
+    // teaching her routine unable to NAME her own serum.
+    //
+    // ⚖️ THE POLICY THIS TEST EXISTS FOR IS UNCHANGED AND IS WHAT IS ASSERTED
+    // NOW. The worry recorded here was that "I picked my course" would override
+    // the decision that this is not a selling video — the CTA bug in a
+    // different costume. It cannot: `mention` is not `chosen`, carries no claim
+    // entitlement, no substance and no CTA, and every reader keyed on a chosen
+    // or auto product stays blind to it.
     const c = selectProduct({ ownedProductIds: P, chosenId: 'prod-b', mayUseAProduct: false })
-    expect(c.kind === 'none' && c.reason).toBe('not_a_commercial_video')
+    expect(c.kind).not.toBe('chosen')
+    expect(c.kind).not.toBe('auto')
+    expect(c).toEqual({ kind: 'mention', productId: 'prod-b' })
+  })
+
+  it('and it still gets NOTHING when she did not ask for one', () => {
+    // ⚠️ THE HALF OF THE OLD ASSERTION THAT MUST SURVIVE VERBATIM. Silence on a
+    // non-commercial video yields no product at all — a mention is opt-in, and
+    // auto-selecting one here would be the writer picking.
+    for (const chosenId of [null, undefined, '', '   ']) {
+      const c = selectProduct({ ownedProductIds: P, chosenId, mayUseAProduct: false })
+      expect(c.kind === 'none' && c.reason, String(chosenId)).toBe('not_a_commercial_video')
+    }
+    // Including with exactly one product, where the commercial path auto-selects.
+    expect(selectProduct({ ownedProductIds: ['only'], chosenId: '', mayUseAProduct: false }))
+      .toEqual({ kind: 'none', reason: 'not_a_commercial_video' })
   })
 
   it('an empty or missing choice is "not answered", never an id', () => {
