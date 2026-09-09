@@ -86,6 +86,6 @@ describe('a failed read offers a real retry, on the product itself', () => {
     // The SAME mechanism the first attempt used, retargeted at the SAME entity
     // and the SAME link -- not a second, invented retry path.
     expect(requestProductExtraction).toHaveBeenCalledWith(
-      'owner-1', 'e1', 'https://peakdesign.example/tripod')
+      'e1', 'https://peakdesign.example/tripod')
   })
 })

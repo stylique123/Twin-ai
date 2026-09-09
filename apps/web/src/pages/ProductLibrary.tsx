@@ -533,7 +533,7 @@ export default function ProductLibrary() {
       // recording an import failure for that would invent a state rather than
       // report one, which is the defect this change exists to remove.
       try {
-        await requestProductExtraction(ownerId, entity.id, entity.productUrl ?? '', [...existing, ...added])
+        await requestProductExtraction(entity.id, entity.productUrl ?? '', [...existing, ...added])
       } catch (e) {
         try {
           await recordExtractionNeverStarted(entity.id, e)
@@ -719,7 +719,7 @@ export default function ProductLibrary() {
         const url = (a.productUrl ?? '').trim()
         const imgs = a.imagePaths ?? []
         if (url || imgs.length > 0) {
-          try { await requestProductExtraction(ownerId, created.id, url, imgs) }
+          try { await requestProductExtraction(created.id, url, imgs) }
           catch (e) {
             // ⚠️ THE BANNER USED TO BE THE ONLY THING THAT KNEW. It said "we
             // could not start reading that page" and wrote nothing, so
@@ -828,7 +828,7 @@ export default function ProductLibrary() {
       // watched it fail silently would be returned to a card that says READING —
       // the state they pressed the button to escape.
       try {
-        await requestProductExtraction(ownerId, id, url)
+        await requestProductExtraction(id, url)
       } catch (e) {
         try {
           await recordExtractionNeverStarted(id, e)
