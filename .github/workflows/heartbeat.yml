@@ -15,6 +15,18 @@ on:
   schedule:
     - cron: '17 * * * *'   # :17 rather than :00 — the hour boundary is crowded
   workflow_dispatch:
+    inputs:
+      page_test:
+        description: 'Send a real page through the real transport and generate nothing'
+        type: boolean
+        default: false
+
+# ⚠️ `issues: write` IS THE PAGER. Without it the delivery path 403s and the
+# heartbeat becomes exactly what this PR argues against — a thing that runs,
+# reports success, and cannot tell anybody when it finds something.
+permissions:
+  contents: read
+  issues: write
 
 concurrency:
   # ⚠️ NEVER TWO AT ONCE. Overlapping runs would race on `heartbeat_page_state`
@@ -35,8 +47,29 @@ jobs:
       # fails the run is not fit to interpret its own results.
       - name: Policy selftest
         run: node --experimental-strip-types scripts/ops/heartbeat.mjs --selftest
-      - name: Configuration
-        run: node --experimental-strip-types scripts/ops/heartbeat.mjs --dry-run
+      # ⚖️ THE MERGE GATE, ON DEMAND. "If it can't page you on demand, it can't
+      # page you at 3am." This spends no generation and needs no Supabase
+      # context — only the token every run already has — so the pager can be
+      # proven before the rest of the configuration exists.
+      - name: Page test (delivery only, generates nothing)
+        if: ${{ inputs.page_test }}
+        run: node --experimental-strip-types scripts/ops/heartbeat.mjs --page-test
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ⚠️ THE REAL CYCLE. It signs in as the heartbeat ACCOUNT — not the
+      # service role — because `generate-blueprint` calls `auth.getUser()` and
+      # 401s without a user, so a service-key request would measure the 401 path
+      # forever and report the product healthy the whole time.
+      - name: Heartbeat
+        if: ${{ !inputs.page_test }}
+        run: node --experimental-strip-types scripts/ops/heartbeat.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          HEARTBEAT_USER_EMAIL: ${{ secrets.HEARTBEAT_USER_EMAIL }}
+          HEARTBEAT_USER_PASSWORD: ${{ secrets.HEARTBEAT_USER_PASSWORD }}
           HEARTBEAT_VOICE_ID: ${{ secrets.HEARTBEAT_VOICE_ID }}
           HEARTBEAT_REFERENCE_URL: ${{ secrets.HEARTBEAT_REFERENCE_URL }}
