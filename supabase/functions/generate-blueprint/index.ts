@@ -4937,8 +4937,18 @@ Deno.serve(async (req: Request) => {
   // packages/shared states this rule; a parity test pins the two together.
   const requestedProductId = typeof body.selected_product_id === 'string'
     ? body.selected_product_id.trim() : ''
+  // ⚠️ "NONE OF THESE" IS AN ANSWER, AND WITHOUT THIS LINE IT WAS WORSE THAN
+  // SILENCE. The picker's `None of these` sends the sentinel; an unrecognised
+  // id finds no row, `chosenEntity` stays null, and the stopgap below then
+  // hands the writer the OLDEST product — so a creator who said "this video is
+  // about none of my products" would get a script about one of them. Declining
+  // has to reach the writer as a decision, not as an absence.
+  //
+  // ⚖️ MIRRORS `NO_PRODUCT_CHOICE` in packages/shared/src/productSelection.ts.
+  const NO_PRODUCT_CHOICE_INLINE = 'none'
+  const declinedAProduct = requestedProductId === NO_PRODUCT_CHOICE_INLINE
   let chosenEntity: unknown = null
-  if (requestedProductId !== '') {
+  if (requestedProductId !== '' && !declinedAProduct) {
     const { data: picked } = await admin
       .from('product_entities')
       .select('id, name, creator_summary, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
@@ -5002,7 +5012,10 @@ Deno.serve(async (req: Request) => {
   // a second name and updating "the ones that matter" is how one reader keeps
   // the old value and a script cites a product the creator did not pick. One
   // definition, no site missed.
-  const ownedEntity = chosenEntity ?? stopgapEntity
+  // ⚖️ A DECLINE BEATS THE STOPGAP. `??` alone would fall through to it,
+  // which is the whole reason the sentinel has to be read here rather than
+  // just filtered out on the client.
+  const ownedEntity = declinedAProduct ? null : (chosenEntity ?? stopgapEntity)
 
   // ⚠️ THE LIBRARY IS PLURAL AND THE GROUNDING CHECK NEVER SAW IT. The query
   // above answers ONE question — "what does this voice sell" — and it is scoped

@@ -50,7 +50,10 @@ describe('Advanced Settings keeps execution and loses intent', () => {
     expect(CREATE).not.toMatch(/label="How close to the reference"/)
     expect(CREATE).not.toMatch(/const \[fidelity, setFidelity\]/)
     expect(CREATE).toMatch(/How it should sound/)
-    expect(CREATE).toMatch(/tone, idempotency_key/)
+    // ⚠️ ANCHORED ON ONE LINE'S FORMATTING. The nav state became a multi-line
+    // object when the Library gained "Make a video about this"; `tone` still
+    // rides in it, which is the fact this asserts.
+    expect(CREATE).toMatch(/state: \{[\s\S]{0,400}?\btone,/)
   })
 
   it('stops promising an effect the panel no longer has', () => {
