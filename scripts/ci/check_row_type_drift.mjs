@@ -118,6 +118,18 @@ const MODELS = [
     file: 'packages/shared/src/types.ts',
     table: 'generations',
     serverOnly: [
+      // ⚠️ THE HEARTBEAT'S OWN ROWS, AND NO CREATOR SURFACE MAY BRANCH ON THIS.
+      // Set by the monitor's runs (migration 0190) so the corpus readers can
+      // exclude 48 synthetic generations a day from what Twin learns. Its
+      // readers are two standalone QA scripts querying flat rows, not this
+      // interface — and `check_heartbeat_excluded_from_corpus` fails the build
+      // if either stops filtering, so the column is not an unread flag.
+      //
+      // ⚖️ DELIBERATELY NOT ON THE CLIENT SHAPE. A UI that could see it would
+      // eventually hide or badge those rows, and the heartbeat's whole premise
+      // is that it goes down the SAME path a creator does. A generation the
+      // product treats differently proves less about the product.
+      'is_heartbeat',
       // Billing bookkeeping for one creation. The client shows a BALANCE, read
       // from the profile; a per-row charge is an accounting detail, and a UI
       // that summed these would disagree with the ledger the moment a refund

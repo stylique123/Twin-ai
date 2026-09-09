@@ -238,8 +238,21 @@ describe('the writer is actually told the length', () => {
     expect(briefed).toBeLessThan(prompt)
   })
 
-  it('an uncounted budget never reaches the brief as zero', () => {
-    expect(EDGE).toMatch(
+  it('an uncounted budget never reaches the brief as a finding', () => {
+    // ⚠️⚠️ THIS ASSERTION PINNED THE DEFECT, AND THE INTENT IN ITS NAME IS WHAT
+    // SURVIVED. It required `enforceable ? beats : null`, which is the line I
+    // shipped in #736 — and `substanceBudgetInline` returns `enforceable: true`
+    // whenever ANY input is non-null. `storeItems` is `knowledgeRows.length`,
+    // which is 0 rather than null for an empty store, so the budget came out as
+    // exactly FREE_BEATS and the brief told the writer "write 2 beats and STOP".
+    //
+    // ⚖️ THE TEST WAS RIGHT ABOUT WHAT IT WANTED AND WRONG ABOUT HOW TO CHECK
+    // IT. Pinning a line of implementation cannot notice that the line is
+    // wrong; pinning the PROPERTY can. What must hold is that a budget carrying
+    // no counted substance reaches the brief as null.
+    expect(EDGE).toMatch(/substanceBudgetComputed\.beats > FREE_BEATS_INLINE/)
+    expect(EDGE).toMatch(/const availableBeats = countedSomething \? substanceBudgetComputed\.beats : null/)
+    expect(EDGE).not.toMatch(
       /const availableBeats = substanceBudgetComputed\.enforceable \? substanceBudgetComputed\.beats : null/)
   })
 
