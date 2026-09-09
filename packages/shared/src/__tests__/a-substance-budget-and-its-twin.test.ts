@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { substanceBudget, referencePointsFrom, POINT_ROLES } from '../script/substanceBudget'
+import { substanceBudget, referencePointsFrom, POINT_ROLES, beatsFor, TARGET_SECONDS, planLength } from '../script/substanceBudget'
 
 // ⚠️ THE EDGE FUNCTION CANNOT IMPORT FROM THE WORKSPACE, so the budget exists
 // twice. This rebuilds the edge copy's numbers FROM ITS OWN SOURCE rather than
@@ -70,7 +70,12 @@ describe('the budget is actually wired into a generation', () => {
   })
 
   it('the budget is computed before the audit reads it', () => {
-    const computed = edge.indexOf('substanceBudgetBeats = substanceBudgetInline(')
+    // ⚠️ THE ANCHOR MOVED AND THE PROPERTY DID NOT. This used to look for
+    // `substanceBudgetBeats = substanceBudgetInline(`. The ban needs the whole
+    // budget object, not just its beat count, so the call is now assigned to a
+    // local first — the ORDER being asserted is unchanged, and re-pointing the
+    // anchor is not the same as relaxing the assertion.
+    const computed = edge.indexOf('substanceBudgetBeats = substanceBudgetComputed.beats')
     const read = edge.indexOf('substance_budget: substanceBudgetBeats')
     expect(computed).toBeGreaterThan(-1)
     // ⚠️ A COUNTER READ INTO AN OBJECT LITERAL BEFORE ITS VALUE IS COMPUTED
@@ -81,5 +86,53 @@ describe('the budget is actually wired into a generation', () => {
   it('it is initialised to null, not to zero', () => {
     expect(edge).toMatch(/let substanceBudgetBeats: number \| null = null/)
     expect(edge).toMatch(/let substanceReferencePoints: number \| null = null/)
+  })
+})
+
+describe('the expansion ban and its twin', () => {
+  it('the beat-count table is identical in both copies', () => {
+    const m = edge.match(/const BEATS_FOR_TARGET_INLINE: Readonly<Record<number, number>> = \{([^}]+)\}/)
+    expect(m, 'BEATS_FOR_TARGET_INLINE not found in the edge function').toBeTruthy()
+    const pairs = [...(m as RegExpMatchArray)[1].matchAll(/(\d+):\s*(\d+)/g)]
+      .map(([, k, v]) => [Number(k), Number(v)] as const)
+    expect(pairs).toHaveLength(TARGET_SECONDS.length)
+    for (const [target, beats] of pairs) expect(beats).toBe(beatsFor(target as 30 | 60 | 90))
+  })
+
+  it('the accepted lengths are identical in both copies', () => {
+    const m = edge.match(/const TARGET_SECONDS_INLINE: readonly number\[\] = \[([^\]]+)\]/)
+    expect(m).toBeTruthy()
+    const inline = [...(m as RegExpMatchArray)[1].matchAll(/\d+/g)].map((x) => Number(x[0]))
+    expect(inline).toEqual([...TARGET_SECONDS])
+  })
+
+  // ⚠️⚠️ THE BAN IS ONE `Math.min` AND IT MUST STAY ONE. A `Math.max`, or the
+  // target returned unclamped, is the padding this exists to remove — and it
+  // would look like a working rule in every unit test that only checks the
+  // shared copy.
+  it('the edge copy clamps DOWN, never up', () => {
+    const fn = edge.slice(edge.indexOf('function planLengthInline'))
+    const body = fn.slice(0, fn.indexOf('\n}'))
+    expect(body).toContain('Math.min(targetBeats, budget.beats)')
+    expect(body).not.toContain('Math.max(')
+  })
+
+  // ⚠️ NULL IS NOT "IT WOULD HAVE CHANGED NOTHING". A coercion here would put a
+  // fabricated decision into the column the switch-on decision is made from.
+  it('the edge copy returns null when the ban cannot be evaluated', () => {
+    const fn = edge.slice(edge.indexOf('function planLengthInline'))
+    const body = fn.slice(0, fn.indexOf('\n}'))
+    expect(body).toMatch(/if \(target === null \|\| !budget\.enforceable \|\| budget\.beats === null\) return null/)
+    // and the shared copy agrees on the same three inputs
+    expect(planLength(60, substanceBudget({})).enforced).toBe(false)
+  })
+
+  it('the audit carries the target and what the ban would have allowed', () => {
+    expect(edge).toContain('length_target: lengthTarget')
+    expect(edge).toContain('length_beats_allowed: lengthBeatsAllowed')
+    const computed = edge.indexOf('lengthBeatsAllowed = planLengthInline(')
+    expect(computed).toBeGreaterThan(-1)
+    // ⚠️ A COUNTER READ INTO A LITERAL BEFORE ITS VALUE IS COMPUTED STORES NOTHING.
+    expect(computed).toBeLessThan(edge.indexOf('length_beats_allowed: lengthBeatsAllowed'))
   })
 })

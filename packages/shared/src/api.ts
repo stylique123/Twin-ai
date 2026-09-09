@@ -280,6 +280,14 @@ export interface GenerateInput {
   // How the script should SOUND (delivery energy), independent of fidelity (how
   // close to the reference structure). Optional; defaults to 'balanced' server-side.
   tone?: 'understated' | 'balanced' | 'punchy'
+  // HOW LONG THE CREATOR WANTS IT, in seconds — 30, 60 or 90.
+  //
+  // ⚠️ OPTIONAL AND NULLABLE ON PURPOSE. Absent means they were never asked,
+  // which is NOT the same as choosing 60, and the server must not record a
+  // choice nobody made. `asTarget` refuses anything that is not one of the
+  // three, so a stale client sending 45 is treated as not-asked rather than
+  // rounded to something they did not pick.
+  target_seconds?: 30 | 60 | 90
   // What THIS video is for. Per-video rather than per-voice, because one creator
   // makes awareness videos and sell videos from the same voice.
   //

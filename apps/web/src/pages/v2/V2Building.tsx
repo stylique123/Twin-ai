@@ -96,6 +96,8 @@ interface BuildState {
   reference_note?: string
   fidelity?: 'close' | 'balanced' | 'loose'
   tone?: 'understated' | 'balanced' | 'punchy'
+  // How long they asked for. Absent means they were never asked.
+  target_seconds?: 30 | 60 | 90
   // What this video is for. Absent means an engagement CTA — see GenerateInput.
   goal?: VideoGoal
   // Minted by V2Create, one per click of "build". Carried in nav state so a
@@ -133,6 +135,12 @@ function buildKey(state: BuildState): string {
     (state.reference_note || '').trim(),
     state.fidelity ?? 'balanced',
     state.tone ?? 'balanced',
+    // ⚠️ LENGTH IS PART OF THE IDENTITY OF A BUILD, for the same reason goal is.
+    // "The same reference, but sixty seconds" is a different script; without
+    // this it would collide with the thirty-second version already in
+    // sessionStorage and hand the creator the old one back with no sign that
+    // their choice was ignored.
+    state.target_seconds ?? 'unasked',
     // GOAL IS PART OF THE IDENTITY OF A BUILD. Omitting it would make "the same
     // reference, now as a sell video" collide with the awareness version
     // already in sessionStorage, and the creator would be handed the old script
@@ -1067,6 +1075,7 @@ export default function V2Building() {
           reference_note: state.reference_note || '',
           fidelity: state.fidelity ?? 'balanced',
           tone: state.tone,
+          target_seconds: state.target_seconds,
           // ⚠️ THE THREE INTENT ANSWERS RIDE THE REQUEST, NOT `readiness_answers`.
           // Readiness answers are creator-stable facts that get persisted to the
           // brief so they are never asked twice; these are per-VIDEO and must
@@ -1360,30 +1369,16 @@ export default function V2Building() {
   }
 
   const echo = state.reference_url ? 'From your reference link' : 'From your idea'
-  // ── THE LENGTH, SAID BEFORE THE SPEND ────────────────────────────────────
+  // ⚖️ HER PICK, SHOWN BACK TO HER. This used to read the goal default and go
+  // deliberately silent on any build with a reference, because the length came
+  // from the reference's measured duration and that is not known on this screen.
   //
-  // ⚠️ THE CREATOR FOUND OUT HOW LONG THEIR VIDEO WAS BY READING THE FINISHED
-  // SCRIPT. A 15-second reference produced 48 seconds and a 226-second one
-  // produced 60 — and nothing on this screen said what Twin was aiming for, so
-  // there was no moment at which a wrong target could be noticed.
-  //
-  // ⚖️ THE SAME FUNCTION THE WRITER IS BRIEFED WITH, never a second estimate.
-  // If this line and the brief could disagree, the number a creator reads would
-  // not be the number the script is written to.
-  //
-  // ⚖️ AND NULL STAYS SILENT. Where nothing decides a length the brief says
-  // nothing about it, so this must not invent a figure to fill the space.
-  //
-  // ⚠️ AND IT IS THE GOAL'S TARGET ONLY, DELIBERATELY. On a reference build the
-  // length comes from the reference's MEASURED duration, which lives in
-  // `transcripts.duration_sec` and is not known on this screen — the ingest has
-  // not finished when this renders. Showing the goal default there would state
-  // a number the script will not be written to, which is worse than saying
-  // nothing, so a reference build says nothing and the finished script reports
-  // its own runtime as it always has.
-  const targetSec = state.reference_url
-    ? null
-    : targetSeconds({ goal: asOneOf(VIDEO_GOALS, answersRef.current.video_goal ?? state.goal) })
+  // ⚠️ THAT REASON IS GONE, NOT WORKED AROUND. Owner's ruling, 2026-09-09: the
+  // reference does not decide the length, her pick does — and her pick arrived
+  // in nav state before this screen mounted. So the number is knowable on every
+  // build, including a reference build, and `resolveTarget` is the same ladder
+  // the server walks.
+  const targetSec = targetSeconds({ pickedSeconds: state.target_seconds })
   const shownPct = Math.round(pct)
   // Only a supported host is actually watched/transcribed; a described idea or an
   // unsupported link is used as a guide (pattern mode). Keep the first step honest so
@@ -1960,7 +1955,7 @@ export default function V2Building() {
                 rescue loop, where the only honest claim is that we are asking
                 the server what happened. Announcing a target for a build we are
                 not sure still exists is the same defect as the climbing bar. */}
-            {!rescuing && targetSec !== null && (
+            {!rescuing && (
               <p className="mt-1 text-center text-xs text-stone">
                 Aiming for about {spokenTime(targetSec)}.
               </p>

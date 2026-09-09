@@ -50,10 +50,33 @@ describe('Advanced Settings keeps execution and loses intent', () => {
     expect(CREATE).not.toMatch(/label="How close to the reference"/)
     expect(CREATE).not.toMatch(/const \[fidelity, setFidelity\]/)
     expect(CREATE).toMatch(/How it should sound/)
-    // ⚠️ ANCHORED ON ONE LINE'S FORMATTING. The nav state became a multi-line
-    // object when the Library gained "Make a video about this"; `tone` still
-    // rides in it, which is the fact this asserts.
-    expect(CREATE).toMatch(/state: \{[\s\S]{0,400}?\btone,/)
+    // ⚠️ THIS USED TO READ `expect(CREATE).toMatch(/tone, idempotency_key/)`
+    // and broke the moment a THIRD field joined the nav state — the length
+    // picker's `target_seconds` was inserted between them. Literal adjacency of
+    // two properties was never the thing worth holding; "tone is carried into
+    // the build" is. Same brittleness class as the fixed-byte slice in
+    // `the-two-copies-must-not-drift`, and fixed the same way: anchor on the
+    // structure, assert the property.
+    //
+    // ⚖️ AND IT ASSERTS MORE, NOT LESS — the fields must be inside the nav
+    // state object, so `tone` appearing anywhere else in the file no longer
+    // satisfies it.
+    //
+    // ⚠️⚠️ THE ANCHOR IS `buildFieldsForDoor`, NOT `state: { ...`. The nav
+    // state became a MULTI-LINE object when the Library gained "Make a video
+    // about this", so an anchor including the first spread stopped matching —
+    // silently, because `indexOf` returns -1 and `slice(-1, -1)` is the empty
+    // string, which every `not.toMatch` would have passed. Anchoring on the
+    // call that only appears in the nav state survives reformatting.
+    const navStart = CREATE.indexOf('buildFieldsForDoor(door, t)')
+    expect(navStart, 'the nav state was not found — re-point this anchor').toBeGreaterThan(-1)
+    const navState = CREATE.slice(navStart, CREATE.indexOf('})', navStart))
+    expect(navState, 'the nav state must carry tone').toMatch(/\btone\b/)
+    expect(navState, 'the nav state must mint the idempotency key').toMatch(/\bidempotency_key\b/)
+    // ⚖️ HER EXPLICIT PICK IS TIER 1 OF THE PRECEDENCE, so it has to leave the
+    // screen she made it on. A picker that renders and does not travel is the
+    // defect class this session has closed nine times.
+    expect(navState, 'the nav state must carry the length she picked').toMatch(/\btarget_seconds\b/)
   })
 
   it('stops promising an effect the panel no longer has', () => {

@@ -21,12 +21,30 @@
 // stay that way — this hands over a budget and a count RANGE, so a teardown and
 // a demo can still be different videos of the same length.
 //
-// ⚖️ AND IT NEVER INVENTS A NUMBER THE CREATOR WAS NEVER OFFERED. Where there
-// is no reference and no stated goal there is no target: `null`, and the writer
-// is told nothing rather than told a made-up figure. The same refusal
-// `asTarget` already makes elsewhere in this codebase.
+// ⚖️ AND THE CREATOR DECIDES, NOT THE REFERENCE. Owner's ruling, 2026-09-09:
+// "The explicit pick wins. The reference cannot know how long her video should
+// be. Her platform, her audience and her patience decide the length. Someone
+// else's video doesn't."
+//
+// So the ladder is exactly three rungs and `resolveTarget` is the only place it
+// exists:
+//
+//   1. `pickedSeconds`         her 30/60/90 choice, this video. ALWAYS WINS.
+//   2. `storedDefaultSeconds`  her own default, when she did not pick this time.
+//   3. `FALLBACK_TARGET_SEC`   60, when there is no history.
+//
+// ⚠️⚠️ THE REFERENCE IS NOT ON THAT LADDER. It was rung one until this change --
+// a 226-second teardown clamped the script to 90 whatever she asked for -- and
+// `suggestedTarget` is what is left of it: a PREFILL for the picker, offered
+// before she chooses and overridden the moment she does. A suggestion that
+// cannot be overridden is a constraint wearing a softer word.
+//
+// ⚠️ AND THERE IS NO LONGER A NULL TARGET. Tier 3 is a real number the owner
+// chose, so `resolveTarget` always answers and `source` says which rung
+// answered. "60 because nobody has picked yet" is a different fact from "60
+// because she picks 60", and an audit that cannot tell them apart cannot ever
+// measure whether the default is the right one.
 import { WPM_PRESETS, DEFAULT_WPM, type WpmPreset } from '../recordingScript'
-import type { VideoGoal } from '../videoIntent'
 
 /** The short-form window this contract will target, in seconds.
  *
@@ -46,53 +64,93 @@ export const MAX_TARGET_SEC = 90
  *  worse script for an exactly-correct number. */
 export const TOLERANCE = 0.2
 
-/**
- * The default length for a video with no reference to take one from.
+/** Tier 3. The owner's number, not a measured one, and labelled as such.
  *
- * ⚠️ THESE ARE JUDGEMENT, AND ARE LABELLED AS SUCH. They are not measured from
- * this product's own data — there is no corpus of "the right length for a leads
- * video" here yet. They encode one defensible idea: a video asking for a
- * DECISION (leads, sell, conversations) has to earn it and needs room, while a
- * video buying attention (followers, entertain) competes on getting to the point.
- *
- * ⚖️ WHICH IS STILL BETTER THAN NOTHING, because "nothing" is not neutral — it
- * is whatever the model felt like, measured at 48 and 60 seconds for references
- * fifteen times apart.
- */
-export const GOAL_TARGET_SEC: Record<VideoGoal, number> = {
-  followers: 30,
-  entertain: 30,
-  authority: 45,
-  educate: 60,
-  conversations: 45,
-  leads: 45,
-  sell: 60,
-  personal_brand: 40,
+ *  ⚖️ 60 AND NOT 30, for the reason the picker's default gives: the twelve
+ *  measured runs fail by being THIN, so the safe end of the guess is the longer
+ *  one. It is a starting point that `storedDefaultSeconds` is meant to replace
+ *  as soon as a creator has enough history to have a median. */
+export const FALLBACK_TARGET_SEC = 60
+
+/** The three lengths the picker offers. */
+export const PICKABLE_SECONDS = [30, 60, 90] as const
+export type PickedSeconds = (typeof PICKABLE_SECONDS)[number]
+
+/** ⚠️ REFUSES ANYTHING THAT IS NOT ONE OF THE THREE. A stale client posting 45
+ *  has not chosen 45 and has not chosen 60 either; rounding it would record a
+ *  decision nobody made. Null here falls through to the next rung, which is the
+ *  correct handling of "she was never asked". */
+export function asPicked(v: unknown): PickedSeconds | null {
+  const n = typeof v === 'number' ? v : Number(v)
+  return (PICKABLE_SECONDS as readonly number[]).includes(n) ? (n as PickedSeconds) : null
 }
+
+/** Which rung of the ladder answered. */
+export type TargetSource = 'picked' | 'stored_default' | 'fallback'
 
 export interface DurationInput {
-  /** The reference video's own MEASURED duration, when the analyzer captured
-   *  one. Never a guess, never zero-for-unknown. */
+  /** Tier 1: what she picked for THIS video. */
+  pickedSeconds?: unknown
+  /** Tier 2: her own stored default, derived from her own median.
+   *
+   *  ⚠️ NOTHING WRITES THIS YET, AND THAT IS STATED RATHER THAN HIDDEN. Traced
+   *  2026-09-09 before building: no column in any migration, nothing in
+   *  `information_schema` on production, and no reader anywhere. The rung is
+   *  here because the owner's ladder has three rungs and a two-rung
+   *  implementation would silently promote the fallback; the change that starts
+   *  computing her median is the change that fills it. Until then every caller
+   *  passes null and `source` reads `'fallback'`, which is the truth. */
+  storedDefaultSeconds?: number | null
+  /** The reference's own MEASURED duration. A PREFILL SUGGESTION ONLY -- it is
+   *  deliberately NOT read by `resolveTarget`, and the parameter stays on the
+   *  input so a caller that used to pass it gets a compile-time home for it
+   *  rather than quietly keeping the old behaviour. */
   referenceSeconds?: number | null
-  goal?: VideoGoal | null
+}
+
+function clampToWindow(sec: number): number {
+  return Math.min(MAX_TARGET_SEC, Math.max(MIN_TARGET_SEC, Math.round(sec / 5) * 5))
 }
 
 /**
- * The video's target length in seconds, or null when nothing decides it.
+ * What the picker should OPEN on when there is a reference to take a hint from.
  *
- * ⚠️ THE REFERENCE WINS WHERE THERE IS ONE, because the creator chose it — a
- * fifteen-second video is what they said they wanted to make something like.
- * It is CLAMPED, not copied: a 226-second reference becomes 90, the longest
- * short-form script this contract will ask for, and a 6-second one becomes 15.
+ * ⚠️ RETURNS ONE OF THE THREE PICKABLE LENGTHS, NOT AN ARBITRARY CLAMP. The
+ * picker has three buttons; suggesting 85 would be a suggestion it cannot
+ * render, and rendering it as "90" while auditing it as 85 is two numbers for
+ * one video. Null when there is no reference -- the picker then opens on its
+ * own default and nothing pretends a hint existed.
  */
-export function targetSeconds(input: DurationInput): number | null {
-  const ref = input.referenceSeconds
-  if (typeof ref === 'number' && Number.isFinite(ref) && ref > 0) {
-    return Math.min(MAX_TARGET_SEC, Math.max(MIN_TARGET_SEC, Math.round(ref / 5) * 5))
+export function suggestedTarget(referenceSeconds?: number | null): PickedSeconds | null {
+  if (typeof referenceSeconds !== 'number' || !Number.isFinite(referenceSeconds) || referenceSeconds <= 0) {
+    return null
   }
-  const goal = input.goal
-  if (goal && goal in GOAL_TARGET_SEC) return GOAL_TARGET_SEC[goal]
-  return null
+  const clamped = clampToWindow(referenceSeconds)
+  let best: PickedSeconds = PICKABLE_SECONDS[0]
+  for (const p of PICKABLE_SECONDS) {
+    if (Math.abs(p - clamped) < Math.abs(best - clamped)) best = p
+  }
+  return best
+}
+
+/**
+ * The video's target length, and which rung of the ladder decided it.
+ *
+ * ⚠️ NEVER NULL, AND NEVER THE REFERENCE'S LENGTH. See the header.
+ */
+export function resolveTarget(input: DurationInput): { targetSec: number; source: TargetSource } {
+  const picked = asPicked(input.pickedSeconds)
+  if (picked !== null) return { targetSec: picked, source: 'picked' }
+  const stored = input.storedDefaultSeconds
+  if (typeof stored === 'number' && Number.isFinite(stored) && stored > 0) {
+    return { targetSec: clampToWindow(stored), source: 'stored_default' }
+  }
+  return { targetSec: FALLBACK_TARGET_SEC, source: 'fallback' }
+}
+
+/** The resolved number on its own, for callers that do not need the provenance. */
+export function targetSeconds(input: DurationInput): number {
+  return resolveTarget(input).targetSec
 }
 
 export interface DurationBudget {
@@ -133,34 +191,67 @@ export function durationBudget(targetSec: number, wpm: WpmPreset = DEFAULT_WPM):
   }
 }
 
-/**
- * The sentence the writer is given. Null in, null out — a brief that says
- * nothing is better than one that states an invented number as a requirement.
- */
-export function durationBrief(input: DurationInput, wpm: WpmPreset = DEFAULT_WPM): string | null {
-  const target = targetSeconds(input)
-  if (target === null) return null
-  const b = durationBudget(target, wpm)
-  const because = typeof input.referenceSeconds === 'number' && input.referenceSeconds > 0
-    ? `the reference they chose runs ${Math.round(input.referenceSeconds)} seconds`
-    : `what this video is for`
-  return `- LENGTH IS DECIDED, NOT DISCOVERED. This video runs ${b.targetSec} seconds, because ${because}.`
-    + ` That is ${b.words} spoken words at a natural pace — write between ${b.minWords} and ${b.maxWords}, and count them.`
-    + ` Use between ${b.minBeats} and ${b.maxBeats} beats and make the target_sec of every beat add up to ${b.targetSec}.`
-    + ` If the substance does not fill ${b.targetSec} seconds, cut the video shorter rather than padding it —`
-    + ` and if it does not fit, cut a point rather than speeding up.`
+/** Why this length, in the creator's terms. */
+function becauseOf(source: TargetSource): string {
+  if (source === 'picked') return `they asked for it`
+  if (source === 'stored_default') return `it is the length they usually make`
+  return `nobody has picked one yet and this is the starting point`
 }
 
-/** How far a written script sits from its budget. Null target means nothing to
- *  compare against, which is not a miss. */
+export interface SubstanceFit {
+  /** How many beats the substance actually supports. Null means NOBODY COUNTED,
+   *  which is not "no substance" -- see `substanceBudget`. */
+  availableBeats?: number | null
+}
+
+/**
+ * The sentence the writer is given. Never null now: tier 3 always answers.
+ *
+ * ⚠️ AND IT NEVER ASKS FOR PADDING. Owner's ruling: "when substance can't fill
+ * the target, the script comes out shorter and says why -- never pads." The
+ * frozen experiment is why this is stated rather than assumed: removing the
+ * substance requirement made the model write 64% MORE. A brief that names a
+ * length and says nothing about running out of things to say is an instruction
+ * to fill the gap.
+ *
+ * ⚖️ AND THE OTHER DIRECTION IS NAMED TOO. When there is MORE substance than
+ * the target holds, the writer is told to say what it left out rather than to
+ * compress everything into a faster read -- "cut a point, do not speed up" --
+ * because a script that covers eight points in sixty seconds is unsayable, and
+ * the creator finds that out at the teleprompter.
+ */
+export function durationBrief(
+  input: DurationInput, wpm: WpmPreset = DEFAULT_WPM, fit: SubstanceFit = {},
+): string {
+  const { targetSec, source } = resolveTarget(input)
+  const b = durationBudget(targetSec, wpm)
+  let line = `- LENGTH IS DECIDED, NOT DISCOVERED. This video runs ${targetSec} seconds, because ${becauseOf(source)}.`
+    + ` That is ${b.words} spoken words at a natural pace — write between ${b.minWords} and ${b.maxWords}, and count them.`
+    + ` Use between ${b.minBeats} and ${b.maxBeats} beats and make the target_sec of every beat add up to ${targetSec}.`
+  const available = fit.availableBeats
+  if (typeof available === 'number' && Number.isFinite(available)) {
+    if (available < b.minBeats) {
+      line += ` THERE IS ONLY ENOUGH SUBSTANCE FOR ${available} BEATS. Write ${available} and STOP.`
+        + ` The video comes out shorter than ${targetSec} seconds and that is the correct outcome —`
+        + ` say in the final beat that this is everything there is to say on it.`
+        + ` Do NOT repeat a point, restate the hook, or add a beat that carries no new information to reach the target.`
+    } else if (available > b.maxBeats) {
+      line += ` THERE IS MORE SUBSTANCE THAN ${targetSec} SECONDS HOLDS — ${available} beats' worth against room for ${b.maxBeats}.`
+        + ` Cut whole points rather than speeding up, and name what you left out in one clause so the creator can decide`
+        + ` whether it belonged in this video or the next one.`
+    }
+  }
+  return line
+}
+
+/** How far a written script sits from its budget. */
 export function durationMiss(
   words: number, input: DurationInput, wpm: WpmPreset = DEFAULT_WPM,
-): { targetSec: number; words: number; overBy: number; underBy: number } | null {
-  const target = targetSeconds(input)
-  if (target === null) return null
-  const b = durationBudget(target, wpm)
+): { targetSec: number; words: number; overBy: number; underBy: number } {
+  const { targetSec } = resolveTarget(input)
+  const b = durationBudget(targetSec, wpm)
   return {
-    targetSec: target,
+    targetSec,
     words,
     overBy: Math.max(0, words - b.maxWords),
     underBy: Math.max(0, b.minWords - words),
