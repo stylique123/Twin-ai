@@ -381,6 +381,24 @@ const EVENTS = {
   // ⚖️ A COUNTER, NOT AN INCIDENT. One script failing one decidable check is not
   // worth waking anybody; the RATE across traffic is the finding, and it is the
   // first measurement this product has ever had of its founding defect.
+  // ⚖️ A COUNTER, NOT AN INCIDENT, AND EPHEMERAL ON PURPOSE. One scan whose
+  // captions were trimmed is not actionable — the physio's catalogue genuinely
+  // exceeds the budget and always will. What this exists to answer is whether
+  // the fix HELD: `discarded` was ~13 of 50 for a writing creator under the old
+  // `.slice(0, 120)` + `.slice(0, 12000)`, and must now be 0 with `truncated`
+  // carrying the pressure instead. A non-zero `discarded` in the logs means the
+  // waterfill stopped waterfilling.
+  //
+  // ⚠️ NOT PROMOTED TO A STORED COLUMN, AND THE REASON IS THE READER, NOT THE
+  // COST. Nothing decides anything from it: the corpus is rebuilt from
+  // `scraped_posts` on every scan, so a historical row would record how one
+  // model call was fed and change nothing. Give it a column the day a rule
+  // reads it — a stored counter nobody consumes is the defect this whole file
+  // exists to catch, pointed the other way.
+  caption_corpus_built: {
+    kind: 'counter_ephemeral',
+    why: 'How much of a creator\'s caption catalogue reached the model: considered, included, discarded, truncated, chars. Measured before the fix on two real creators — lukefitphysio lost 28% of 16,659 characters to positional truncation, ishmaelmechanic lost nothing — so this is the line that says whether waterfill is still keeping every caption. Diagnostic only; promote it if anything ever decides from it.',
+  },
   script_report_failed_checks: {
     kind: 'counter',
     stored: 'generations.script_report',
