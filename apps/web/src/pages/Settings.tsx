@@ -7,7 +7,7 @@ import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import {
   contentProfile, brandKitStatus, productDnaStatus, loadProductEntities,
   setupAreas, setupSummary, type SetupArea, type SetupState,
-  readStoredBrief, savePreScriptBrief,
+  readStoredBrief, savePreScriptBrief, suggestedCta,
 } from '@twinai/shared'
 import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
 import { readProfileAnswers } from '../lib/profileAnswersRead'
@@ -604,6 +604,8 @@ export default function Settings() {
         {tab === 'twin' && (
         <Reveal delay={0.04}>
           <ProfileStatus
+            ctaSuggestion={suggestedCta(
+              (voiceProfile as { recurring_ctas?: unknown[] } | null)?.recurring_ctas)}
             content={content}
             productDna={productDna}
             brandKit={kitStatus}
@@ -1187,7 +1189,11 @@ function TeamSeats() {
  */
 function ProfileStatus({
   content, productDna, brandKit, cta, ctaLoadFailed, onCtaRetry, onCtaChange, onCtaCommit, ctaSaved, ctaErr,
+  ctaSuggestion,
 }: {
+  /** Her own ending, read from her posts. Null for 18 of 47 accounts, whose
+   *  extracted lines ask for nothing — see `suggestedCta`. */
+  ctaSuggestion: ReturnType<typeof suggestedCta>
   content: ContentProfile
   productDna: ProductDnaStatus
   brandKit: BrandKitStatus
@@ -1207,7 +1213,10 @@ function ProfileStatus({
   const ctaLoaded = cta !== null
   const ctaText = (cta ?? '').trim()
   const [ctaOpen, setCtaOpen] = useState(false)
-  const [ctaDraft, setCtaDraft] = useState(ctaText)
+  // ⚠️ THE DRAFT IS SEEDED, THE STORED VALUE IS NOT. She still has to press Save,
+  // so `hasConfirmedCta` stays false until a person acts — the rule the palette
+  // meter broke and this field must not.
+  const [ctaDraft, setCtaDraft] = useState(ctaText || (ctaSuggestion?.text ?? ''))
   return (
     <section className="glass mt-8 p-5 sm:p-6">
       <div className="flex items-baseline justify-between gap-3">
@@ -1293,12 +1302,22 @@ function ProfileStatus({
               What should Twin usually ask viewers to do? You can change it for any
               single video.
             </p>
+            {/* ⚠️ HER SENTENCE, MARKED AS A GUESS. 0 of 51 voices had a stored
+                ending and 47 had one extracted, so this box has been empty for
+                every creator Twin has ever had while her real ending sat one
+                field away. Saying where it came from is what makes it safe to
+                show — the same rule as "we guessed this from your posts". */}
+            {ctaSuggestion && ctaText === '' && (
+              <p className="mt-3 text-xs leading-relaxed text-sand/80" data-testid="cta-suggestion-note">
+                We took this from your own posts. Change it if it&rsquo;s wrong.
+              </p>
+            )}
             <input
               autoFocus
               type="text"
               value={ctaDraft}
               onChange={(e) => setCtaDraft(e.target.value)}
-              placeholder="Try Twin free"
+              placeholder={ctaSuggestion?.text ?? 'What do you usually ask viewers to do?'}
               className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
             />
             <div className="mt-4 flex flex-wrap gap-2">
