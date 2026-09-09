@@ -66,6 +66,9 @@ afterEach(() => { cleanup(); updateEntityPresentation.mockClear(); navigated.len
 async function page() {
   const { default: ProductLibrary } = await import('./ProductLibrary')
   render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+  // ⚖️ ONE CLICK IN. See the note in ProductLibrary.link.test.tsx: the editor is
+  // a panel opened from a row, so every field assertion below opens it first.
+  fireEvent.click((await screen.findAllByRole('button', { name: /^Open / }))[0])
   return await screen.findByDisplayValue('Peak Tripod')
 }
 
@@ -163,6 +166,7 @@ describe('the card does not tell a creator it knows nothing they have already to
     try {
       const { default: ProductLibrary } = await import('./ProductLibrary')
       render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+      fireEvent.click((await screen.findAllByRole('button', { name: /^Open / }))[0])
       expect(await screen.findByText(/Twin will use the line you wrote above/i)).toBeTruthy()
       expect(screen.queryByText(/instead of guessing/i)).toBeNull()
     } finally { load.mockImplementation(original!) }
@@ -180,6 +184,7 @@ describe('the card does not tell a creator it knows nothing they have already to
     try {
       const { default: ProductLibrary } = await import('./ProductLibrary')
       render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
+      fireEvent.click((await screen.findAllByRole('button', { name: /^Open / }))[0])
       expect(await screen.findByText(/instead of guessing/i)).toBeTruthy()
     } finally { load.mockImplementation(original!) }
   })
@@ -207,8 +212,11 @@ describe('two unnamed products are not two identical blank cards', () => {
       render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
       // ⚖️ `www.` DROPPED, because the point is telling two cards apart, not
       // reproducing a URL the creator can already see in the Link box.
-      expect(await screen.findByRole('heading', { name: 'medicube.example' })).toBeTruthy()
-      expect(screen.getByRole('heading', { name: 'Sourdough loaves, baked to order' })).toBeTruthy()
+      // ⚠️ THE TITLE MOVED FROM A HEADING TO THE ROW'S OWN ACCESSIBLE NAME, and
+      // the rule it serves is unchanged and now stronger: two products must be
+      // tellable apart, and the name a screen reader announces IS the fallback.
+      expect(await screen.findByRole('button', { name: 'Open medicube.example' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Open Sourdough loaves, baked to order' })).toBeTruthy()
     })
   })
 
@@ -222,7 +230,7 @@ describe('two unnamed products are not two identical blank cards', () => {
     try {
       const { default: ProductLibrary } = await import('./ProductLibrary')
       render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
-      expect(await screen.findByRole('heading', { name: 'Not named yet' })).toBeTruthy()
+      expect(await screen.findByRole('button', { name: 'Open Not named yet' })).toBeTruthy()
     } finally { load.mockImplementation(original!) }
   })
 
@@ -232,7 +240,7 @@ describe('two unnamed products are not two identical blank cards', () => {
     await twoUnnamed(async () => {
       const { default: ProductLibrary } = await import('./ProductLibrary')
       render(<MemoryRouter><ProductLibrary /></MemoryRouter>)
-      await screen.findByRole('heading', { name: 'medicube.example' })
+      fireEvent.click(await screen.findByRole('button', { name: 'Open medicube.example' }))
       expect(updateEntityPresentation).not.toHaveBeenCalled()
       // The Name box stays empty, so the placeholder still invites a real name.
       expect(screen.getAllByPlaceholderText('What you call it on camera')[0])
@@ -257,34 +265,19 @@ describe('the Library is a selector, not just a list', () => {
   })
 })
 
-describe('arriving from the studio is not a dead end', () => {
-  // ⚠️ REPORTED: "I click something I sell, pick a product... why does it still
-  // take me to the product and no option to choose or anything?" The studio's
-  // product door navigated here and the page said nothing about why, with no
-  // way back into the build.
-  const atProducts = async (search: string) => {
-    const { default: ProductLibrary } = await import('./ProductLibrary')
-    render(
-      <MemoryRouter initialEntries={[`/products${search}`]}><ProductLibrary /></MemoryRouter>,
-    )
-    return await screen.findByDisplayValue('Peak Tripod')
-  }
+// ⚠️⚠️ "ARRIVING FROM THE STUDIO IS NOT A DEAD END" LIVED HERE, AND ITS
+// MECHANISM IS SUPERSEDED. It asserted a `?from=studio` banner explaining why
+// the studio had sent the creator to their Library, with a way back. That was a
+// better dead end, not an exit — the build was still lost — and the owner
+// reported the same thing again: "why does it still take me to the product
+// library".
+//
+// ⚖️ THE DOOR NOW ANSWERS IN PLACE and never navigates, so there is no arrival
+// to explain and no banner to assert. The rule moved to
+// `neither-is-an-answer.test.ts`, which pins BOTH halves: the navigation is
+// gone AND the chooser exists. Deleted here rather than re-pointed at the
+// Library, which is no longer part of that story.
 
-  it('says why they are here and how to leave', async () => {
-    await atProducts('?from=studio')
-    expect(await screen.findByText(/Pick which product this video is about/i)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /go back and start without one/i }))
-    expect(navigated).toContain('/v2')
-  })
-
-  it('says nothing when they came here on their own', async () => {
-    // ⚖️ THE BANNER IS AN ANSWER TO A QUESTION THEY ASKED BY ARRIVING. A
-    // creator who opened their Library to tidy it is not mid-build, and telling
-    // them to pick one would be instructions for a task they are not doing.
-    await atProducts('')
-    expect(screen.queryByText(/Pick which product this video is about/i)).toBeNull()
-  })
-})
 
 describe('a save is confirmed beside the field that was edited', () => {
   it('reports on the NAME field, not at the foot of the card', async () => {

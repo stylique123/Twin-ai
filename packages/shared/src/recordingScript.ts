@@ -102,6 +102,13 @@ export interface RecordingScript {
   wpm: WpmPreset // teleprompter speed preset
   scenes: RecordingScene[]
   total_duration_sec: number // sum of scene durations (derived)
+  /** ⚠️ THE SCRIPT ENDS WITHOUT ASKING FOR ANYTHING, AND THAT IS SAID RATHER
+   *  THAN PAPERED OVER. Absent means the script has an ending; `true` means the
+   *  last beat asks for nothing and the creator has no CTA of their own on file,
+   *  so nothing was appended. A surface that renders the timeline must say this
+   *  — silence would read as a script that simply stops, which is the state
+   *  it IS, but the creator should learn it here rather than on camera. */
+  ends_without_ask?: true
 }
 
 // ── Teleprompter speed presets (WPM, never pixels/sec). Natural is default. ──

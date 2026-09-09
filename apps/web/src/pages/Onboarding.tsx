@@ -10,7 +10,8 @@ import {
   profileQuestionsFor, asksScreenCapability, asksProductCapability,
   MAX_CONTENT_GOALS, ONBOARDING_SELLS_ANSWERS, sellsAnswerOf, SELLS_ANSWER_TO_TIES,
   type OnboardingSellsAnswer,
-  AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE,
+  AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE, goalFromCtas, goalConfirmationLine,
+  scannedAudienceFacts, audienceFactConfirmed,
   CAPABILITY_ANSWERS,
   type ProfileQuestionId, type AudienceSegment,
   type AudienceKnowledge,
@@ -1109,7 +1110,10 @@ function ConfirmStep({
   // one tap away. Nothing is hidden; it just stops being homework.
   const [showVoice, setShowVoice] = useState(voiceIsEmpty)
 
-  const [canRecordScreen, setCanRecordScreen] = useState<boolean | null>(draft.canRecordScreen)
+  // ⚖️ READ, NEVER SET, ON THIS SCREEN. The value still travels — a creator who
+  // answered before this change keeps their answer, and the Product Library
+  // writes it per product — but nothing here asks for it any more.
+  const [canRecordScreen] = useState<boolean | null>(draft.canRecordScreen)
   const [canFilmObjects, setCanFilmObjects] = useState<boolean | null>(draft.canFilmObjects)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -1522,10 +1526,16 @@ function ConfirmStep({
             "Nothing of anyone else's" additionally means ideas-only and no
             Product DNA at all — which is why the helper line changes with
             `q4AsksOwnership`. */}
+        {/* ⚠️ THE BADGE COUNTED A QUESTION THIS SCREEN NO LONGER ASKS. Left as
+            it was, `canRecordScreen` is permanently null here, so the block
+            would read `Not answered` for ever — which is exactly the report
+            that started this: five consecutive accounts, unanswerable by
+            construction, because two of the three stacked questions can only be
+            answered by a product. */}
         <Section
           title="What can appear in your videos?"
           hint="What a script may promise, and which shots Twin is allowed to ask you for."
-          badge={q4 === null || canRecordScreen === null || canFilmObjects === null ? 'Not answered' : null}
+          badge={q4 === null || canFilmObjects === null ? 'Not answered' : null}
         >
         <Labeled label={q4AsksOwnership(workKind)
           ? 'Do your videos feature any products?'
@@ -1598,29 +1608,24 @@ function ConfirmStep({
             (`DeclaredClips.tsx`) was changed in the same commit. A corrected
             promise with an uncorrected reader is the failure this was meant to
             fix, not a smaller version of it. */}
-          <p className="mt-5 text-xs text-sand">Can you point your camera at a screen showing it — phone held up, or a laptop in frame?</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {([true, false] as const).map((v) => (
-              <button
-                key={String(v)}
-                type="button"
-                aria-pressed={canRecordScreen === v}
-                onClick={() => setCanRecordScreen(canRecordScreen === v ? null : v)}
-                className={cn(
-                  'rounded-full border px-3 py-1.5 text-xs transition',
-                  canRecordScreen === v
-                    ? 'border-coral bg-coral/15 text-cream'
-                    : 'border-white/15 text-sand hover:bg-white/5',
-                )}
-              >
-                {v ? 'Yes' : 'No'}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-[11px] leading-relaxed text-stone">
-            Say yes and Twin can plan a shot where you hold your phone up to the camera, or point
-            at your laptop. Skip it and nothing changes, we just will not offer it yet.
-          </p>
+          {/* ── THE SCREEN QUESTION IS GONE FROM ONBOARDING ────────────────
+              ⚠️ "CAN YOU POINT YOUR CAMERA AT A SCREEN SHOWING **IT**" HAS NO
+              REFERENT HERE. On this screen there is no "it": the creator has
+              not registered a product yet, and the answer differs per product —
+              a course they can open on a laptop and a pad they hold in a hand
+              are not one answer.
+
+              ⚠️ AND THE PRODUCT LIBRARY ALREADY ASKS IT, PER PRODUCT, with the
+              referent in hand: "Can you have it open on a screen while you
+              film?" for a screen product, "Can you have it with you when you
+              film?" for a physical one — chosen by `capabilityQuestion`, which
+              is the one authority for which of those two applies.
+
+              ⚖️ SO ONE FACT KEEPS ONE HOME. Asking it in both places is how
+              this block came to read `Not answered` on five consecutive
+              accounts: three questions stacked into one, two of which only a
+              product can answer. `can_record_screen` is still WRITTEN — by the
+              Product Library, per product — so no reader loses its input. */}
 
           <p className="mt-4 text-xs text-sand">Can you put a product or object in front of the camera?</p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -1971,6 +1976,11 @@ export function AnswerSummary({ draft }: { draft: OnboardingDraft }) {
     draft.audienceSeg ? AUDIENCE_LABEL[draft.audienceSeg] : '',
     draft.audienceKnowledge ? KNOWLEDGE_LABEL[draft.audienceKnowledge] : '',
     ...draft.contentGoals.map((g) => CONTENT_GOAL_LABEL[g]),
+    // ⚠️ A CONFIRMATION THAT NOTHING READS IS THE DEFECT IT WAS BUILT TO FIX.
+    // The chip says the difference out loud: what Twin believed is now what the
+    // creator has agreed to, and the summary is where they can see it stuck.
+    draft.confirmedAudiencePain ? 'Their problem — confirmed' : '',
+    draft.confirmedDreamOutcome ? 'What they want — confirmed' : '',
     sells ? SELLS_LABEL[sells] : '',
   ].filter((x) => x !== '')
 
@@ -2077,6 +2087,14 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
   draft: OnboardingDraft
   onDraftChange: (next: OnboardingDraft) => void
 }) {
+  // ⚠️ BEFORE THE EARLY RETURN, DELIBERATELY. A hook after `if (!id) return
+  // null` changes hook order between renders the moment `id` goes undefined,
+  // which React reports as a wrong-hook error somewhere else entirely.
+  //
+  // ⚖️ "THEY SAID NO TO OUR GUESS" IS NOT AN ANSWER AND MUST NOT BE STORED.
+  // It lives for this screen only: rejecting the inference reveals the full
+  // question, and nothing about the rejection is written to the draft.
+  const [guessRejected, setGuessRejected] = useState(false)
   if (!id) return null
   const set = (patch: Partial<OnboardingDraft>) => onDraftChange({ ...draft, ...patch })
   const toggle = <T extends string>(list: readonly T[], v: T): T[] =>
@@ -2100,6 +2118,45 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
             onPick={(k) => set({ workKind: draft.workKind === k ? null : k })}
           />
         </Field>
+
+        {/* ── WHAT THE SCAN ALREADY KNOWS, PUT TO THEM ONCE ────────────────
+            ⚠️ 45 OF 47 VOICES CARRY THESE, MEASURED IN PRODUCTION, and the only
+            reader was the writer's prompt. "0 stated, 34 guessed" was never a
+            failure to infer — it was the creator never being shown the
+            inference. Four generated chips would throw away a better answer to
+            ask a worse question.
+            ⚖️ CONFIRMED, NEVER ASSUMED, and the sentence is quoted verbatim: a
+            paraphrase would ask them to agree to something the writer never
+            reads. Declining records nothing. */}
+        {scannedAudienceFacts(draft.profile).map((fact) => {
+          const confirmed = fact.field === 'audience_pain'
+            ? draft.confirmedAudiencePain
+            : draft.confirmedDreamOutcome
+          if (audienceFactConfirmed(confirmed, fact)) return null
+          return (
+            <div key={fact.field} className="mt-5 rounded-card border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-stone">{fact.question}</p>
+              <p className="mt-2 text-sm leading-relaxed text-cream">{fact.text}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn-gradient rounded-lg px-4 py-2 text-sm font-semibold"
+                  onClick={() => set(fact.field === 'audience_pain'
+                    ? { confirmedAudiencePain: fact.text }
+                    : { confirmedDreamOutcome: fact.text })}
+                >Yes, that's them</button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-white/15 px-4 py-2 text-sm text-sand hover:text-cream"
+                  onClick={() => set(fact.field === 'audience_pain'
+                    ? { confirmedAudiencePain: null }
+                    : { confirmedDreamOutcome: null })}
+                >Not quite</button>
+              </div>
+              {note('Read from your own posts. Nothing is saved until you answer.')}
+            </div>
+          )
+        })}
 
         {/* ⚖️ AUDIENCE AND DEPTH SIT SIDE BY SIDE BECAUSE THEY ARE ONE QUESTION
             IN TWO HALVES, and neither is answerable without the other in view.
@@ -2155,6 +2212,43 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
   }
 
   if (id === 'contentGoals') {
+    // ── ASKED THREE TIMES, ANSWERED ON EVERY POST THEY HAVE EVER MADE ───────
+    //
+    // ⚠️ THIRD ASKING. "What do you want your content to do?" is put here, in
+    // the remix pop-up, and again in the intent questions — while the scan has
+    // already read the creator's actual endings into `recurring_ctas`. The
+    // bakery's came back "in bio!!", the physio's "drop an injury in the
+    // comments". Those are not clues about the goal; they are the goal, in the
+    // creator's own words, already extracted.
+    //
+    // ⚖️ CONFIRMED, NEVER ASSUMED. An inference written straight into
+    // `contentGoals` would be indistinguishable to every downstream reader from
+    // something the creator said — the "0 stated, 34 guessed" defect in a
+    // better disguise. So it is a sentence that QUOTES them and takes one tap,
+    // and saying no gives back the full question with nothing recorded.
+    const inferred = draft.contentGoals.length === 0 && !guessRejected
+      ? goalFromCtas(draft.profile?.recurring_ctas)
+      : null
+    if (inferred) {
+      return (
+        <Field label="Is this what your videos are for?">
+          <p className="text-sm leading-relaxed text-cream">{goalConfirmationLine(inferred)}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-gradient rounded-lg px-4 py-2 text-sm font-semibold"
+              onClick={() => set({ contentGoals: [inferred.goal] })}
+            >Yes, that's right</button>
+            <button
+              type="button"
+              className="rounded-lg border border-white/15 px-4 py-2 text-sm text-sand hover:text-cream"
+              onClick={() => setGuessRejected(true)}
+            >Not quite — let me pick</button>
+          </div>
+          {note('Read from how your own videos end. Nothing is saved until you answer.')}
+        </Field>
+      )
+    }
     const full = draft.contentGoals.length >= MAX_CONTENT_GOALS
     return (
       <Field

@@ -965,7 +965,25 @@ export const INTENT_QUESTIONS: readonly IntentQuestion[] = [
 // there, so nothing downstream needs a second one.
 export function intentQuestionsFor(opts: { hasReference: boolean }): readonly IntentQuestion[] {
   if (opts.hasReference) return INTENT_QUESTIONS
-  return INTENT_QUESTIONS.filter((q) => q.field !== 'reference_use')
+  // ── IN IDEA MODE, THE IDEA IS THE SUBJECT ────────────────────────────────
+  //
+  // ⚠️ "WHAT SHOULD THIS VIDEO BE ABOUT?" IS ASKED OF SOMEBODY WHO HAS JUST
+  // TYPED WHAT IT IS ABOUT. They arrive at this card having written the idea in
+  // their own words; being handed four chips naming wells inside them —
+  // my advice, my story, my opinion, my product — asks them to re-file an
+  // answer they already gave, in a vocabulary that is ours.
+  //
+  // ⚖️ A REFERENCE BUILD STILL ASKS IT, and that is the whole distinction. A
+  // reference says what SHAPE the video takes and nothing about which of the
+  // creator's wells it draws from, so there the question adds a fact the input
+  // does not carry. Deleting it everywhere would take a real input away from a
+  // real reader; deleting it where the input already exists is the fix.
+  //
+  // ⚖️ AND SILENCE IS ALREADY A LEGITIMATE VALUE HERE. `compileVideoIntent`
+  // treats an absent `content_focus` as "no directive" rather than a default —
+  // the same reading it gives an absent goal — so an unasked question leaves no
+  // hole to be filled with a guess.
+  return INTENT_QUESTIONS.filter((q) => q.field !== 'reference_use' && q.field !== 'content_focus')
 }
 
 /** Every value a creator can reach on screen, including sub-options. */

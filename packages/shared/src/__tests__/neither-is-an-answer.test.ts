@@ -166,11 +166,20 @@ describe('a product card starts a video about that product', () => {
 })
 
 describe('the studio product door is not a dead end', () => {
-  it('the door says why it sent them, and the Library reads it', () => {
-    // ⚠️ IT NAVIGATED TO AN UNCHANGED LIST. The creator picked "something I
-    // sell", landed on their products, and the page neither said why nor
-    // offered a way back into the build.
-    expect(CREATE).toMatch(/'\/products\?from=studio'/)
-    expect(LIB).toMatch(/params\.get\('from'\) === 'studio'/)
+  it('does not leave the studio at all', () => {
+    // ⚠️⚠️ THIS USED TO REQUIRE `/products?from=studio` AND A BANNER TO EXPLAIN
+    // IT. That was a better dead end, not an exit: the creator still lost the
+    // build and still had to come back. The owner reported it again — "why does
+    // it still take me to the product library" — and the answer is that a flag
+    // on a redirect is still a redirect.
+    //
+    // ⚖️ THE DOOR NOW ANSWERS ITS OWN QUESTION. `door === 'product'` opens a
+    // chooser in place and carries the pick into the build, so the RULE this
+    // test exists for is satisfied more strongly than the mechanism it used to
+    // assert. Both halves are pinned: the navigation is gone AND the chooser
+    // exists, because deleting the nav alone would be a door that does nothing.
+    expect(CREATE).not.toMatch(/\/products\?from=studio/)
+    expect(CREATE).toMatch(/if \(door === 'product'\) \{/)
+    expect(CREATE).toMatch(/setPicking\(true\)/)
   })
 })

@@ -14,8 +14,13 @@ import { judgeFit, warningForPickedVideo, recordTalkingHeadChoice } from '../../
 import type { FitWarning, FitReason } from '../../lib/api'
 import { TalkingHeadWarning } from '../../components/TalkingHeadWarning'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
+import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@twinai/shared'
+import { readProfileAnswers } from '../../lib/profileAnswersRead'
+import { readCreatorCtas } from '../../lib/creatorCtasRead'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
+  // ⚖️ THE WRITER'S OWN TARGET, shown to the creator before the money moves.
+  targetSeconds, spokenTime,
   INTENT_QUESTIONS, intentQuestionsFor, type IntentQuestion, type VideoGoal, focusForGoal,
   mustAskWhichProduct, PRODUCT_CHOICE_FIELD, NO_PRODUCT_CHOICE, NO_PRODUCT_EXPLANATION,
   selectProduct,
@@ -91,10 +96,16 @@ interface BuildState {
   // Minted by V2Create, one per click of "build". Carried in nav state so a
   // remount of THIS screen reuses it — see buildKey below.
   idempotency_key?: string
-  /** ⚠️ THE PRODUCT THE CREATOR STARTED FROM. Set only when they pressed
-   *  "Make a video about this" on a Library card — their own tap on that
-   *  product, so an answer rather than a default. It is still put through
-   *  `selectProduct` before it is sent. */
+  /** ⚠️ THE PRODUCT THE CREATOR STARTED FROM. Two paths set it, and both are
+   *  the creator's own tap rather than a default:
+   *   · "Make a video about this" on a Library card;
+   *   · the studio's "Something I sell" door, which now chooses in place
+   *     instead of handing them off to the Library and abandoning the build.
+   *
+   *  ⚖️ CARRIED SO THIS SCREEN DOES NOT ASK AGAIN — re-asking for something
+   *  they just chose is the duplicate-question defect — and it is still put
+   *  through `selectProduct` before it is sent, because arriving by either
+   *  path skips the picker where the commercial gate would otherwise apply. */
   selected_product_id?: string
 }
 
@@ -330,7 +341,34 @@ function recallAsk(key: string): AskItem[] | null {
 export default function V2Building() {
   const nav = useNavigate()
   const loc = useLocation()
-  const { refreshProfile } = useAuth()
+  const { refreshProfile, profile } = useAuth()
+  // ── WAVE 5.2: RECOGNITION BEFORE THE SCRIPT ──────────────────────────────
+  //
+  // ⚠️ MEASURED 0 STATED, 34 GUESSED. Twin holds real answers from signup and
+  // the creator never sees them again, so a script arrives reading as though it
+  // were written for nobody in particular — and they cannot tell whether it
+  // missed because the writer is weak or because it never knew who they were.
+  //
+  // ⚖️ SAID WHILE IT BUILDS, WHICH IS THE ONLY MOMENT IT IS NOT AN INTERRUPTION.
+  // The creator is already waiting and already watching this screen.
+  //
+  // ⚠️ THE READ IS BEST-EFFORT AND FAILURE IS SILENCE, NEVER A GUESS. If the
+  // voice does not load, no line appears — citing something as "you told me
+  // this" when we could not read what they told us is the one failure this
+  // feature must not have.
+  const [statedLines, setStatedLines] = useState<RecognitionLine[]>([])
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      try {
+        const voices = await listBrandVoices()
+        const def = voices.find((v) => v.is_default) ?? voices[0]
+        if (!alive) return
+        setStatedLines(recognitionLines(readProfileAnswers(profile?.id, def?.pre_script_brief)))
+      } catch { /* silence, never a guess */ }
+    })()
+    return () => { alive = false }
+  }, [profile?.id])
   const state = (loc.state || {}) as BuildState
   const [active, setActive] = useState(0)
   const [pct, setPct] = useState(6)
@@ -731,7 +769,10 @@ export default function V2Building() {
             const productQuestion: AskItem[] =
               mustAskWhichProduct({
                 ownedProductIds: ownedProducts.map((p) => p.id),
-                chosenId: answersRef.current[PRODUCT_CHOICE_FIELD] ?? null,
+                // ⚖️ THE DOOR'S CHOICE COUNTS AS AN ANSWER. Without this the
+                // screen re-asks "which one is this video about?" straight
+                // after the creator picked one to get here.
+                chosenId: answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null,
                 mayUseAProduct: showsCommercialBlock(answeredIntent),
               })
                 ? [{
@@ -957,13 +998,17 @@ export default function V2Building() {
         // one video's answer to "which of yours is this about", and it rides
         // its own field so neither bucket has to grow a special case.
         // ⚠️ AND THE COMMERCIAL GATE IS APPLIED HERE, NOT ONLY WHERE THE
-        // QUESTION IS ASKED. A choice can now arrive from the Product
-        // Library's "Make a video about this" without the picker ever
-        // rendering, so a seeded id would otherwise reach the writer on a
-        // video that may not carry a product at all — the CTA bug in a
-        // different costume. `selectProduct` already orders those branches;
-        // asking it is cheaper than restating them.
-        const seeded = (answersRef.current[PRODUCT_CHOICE_FIELD] ?? '').trim()
+        // QUESTION IS ASKED. A choice can arrive from the Product Library's
+        // "Make a video about this" OR from the studio's product door without
+        // the picker ever rendering, so a seeded id would otherwise reach the
+        // writer on a video that may not carry a product at all — the CTA bug
+        // in a different costume. `selectProduct` already orders those
+        // branches; asking it is cheaper than restating them.
+        //
+        // ⚖️ BOTH SOURCES, IN PRECEDENCE ORDER. An answer given ON this screen
+        // outranks the one carried into it: if the picker did render and they
+        // chose again, the later choice is the one they made last.
+        const seeded = (answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? '').trim()
         const decided = selectProduct({
           ownedProductIds: seeded === '' ? [] : [seeded],
           chosenId: seeded,
@@ -1017,11 +1062,17 @@ export default function V2Building() {
         // A recreation was just spent — refresh so the remixes-left counter is
         // accurate everywhere (AppShell / Dashboard / Settings), not one behind.
         void refreshProfile()
+        // ⚖️ THE ENDING IS THEIRS OR THERE ISN'T ONE. Read here because this is
+        // the build that gets PERSISTED — the timeline every later screen loads.
+        // A failed read yields an empty list, which produces the honest
+        // "ends without an ask" state rather than a default sentence.
+        const ownCtas = await readCreatorCtas()
         const timeline = buildRecordingScript({
           generationId: gen.id,
           blueprint: gen.blueprint,
           selectedHook: gen.selected_hook,
           platform: gen.blueprint?.reference_read?.platform,
+          creatorCtas: ownCtas,
         })
         await saveRecordingScript(timeline)
         if (ticker) clearInterval(ticker)
@@ -1257,6 +1308,30 @@ export default function V2Building() {
   }
 
   const echo = state.reference_url ? 'From your reference link' : 'From your idea'
+  // ── THE LENGTH, SAID BEFORE THE SPEND ────────────────────────────────────
+  //
+  // ⚠️ THE CREATOR FOUND OUT HOW LONG THEIR VIDEO WAS BY READING THE FINISHED
+  // SCRIPT. A 15-second reference produced 48 seconds and a 226-second one
+  // produced 60 — and nothing on this screen said what Twin was aiming for, so
+  // there was no moment at which a wrong target could be noticed.
+  //
+  // ⚖️ THE SAME FUNCTION THE WRITER IS BRIEFED WITH, never a second estimate.
+  // If this line and the brief could disagree, the number a creator reads would
+  // not be the number the script is written to.
+  //
+  // ⚖️ AND NULL STAYS SILENT. Where nothing decides a length the brief says
+  // nothing about it, so this must not invent a figure to fill the space.
+  //
+  // ⚠️ AND IT IS THE GOAL'S TARGET ONLY, DELIBERATELY. On a reference build the
+  // length comes from the reference's MEASURED duration, which lives in
+  // `transcripts.duration_sec` and is not known on this screen — the ingest has
+  // not finished when this renders. Showing the goal default there would state
+  // a number the script will not be written to, which is worse than saying
+  // nothing, so a reference build says nothing and the finished script reports
+  // its own runtime as it always has.
+  const targetSec = state.reference_url
+    ? null
+    : targetSeconds({ goal: asOneOf(VIDEO_GOALS, answersRef.current.video_goal ?? state.goal) })
   const shownPct = Math.round(pct)
   // Only a supported host is actually watched/transcribed; a described idea or an
   // unsupported link is used as a guide (pattern mode). Keep the first step honest so
@@ -1829,6 +1904,15 @@ export default function V2Building() {
             <h1 className="mt-5 text-center font-display text-2xl tracking-tight">
               {rescuing ? 'Checking whether your script finished' : 'Building your video plan'}
             </h1>
+            {/* ⚖️ THE LENGTH IS A DECISION, SO IT IS STATED — but not during the
+                rescue loop, where the only honest claim is that we are asking
+                the server what happened. Announcing a target for a build we are
+                not sure still exists is the same defect as the climbing bar. */}
+            {!rescuing && targetSec !== null && (
+              <p className="mt-1 text-center text-xs text-stone">
+                Aiming for about {spokenTime(targetSec)}.
+              </p>
+            )}
             <p className="mt-1 text-center text-sm text-stone">
               {/* ⚠️ THE SCREEN USED TO KEEP SAYING "Building" AND KEEP THE BAR
                   MOVING for the full ninety seconds of the rescue loop, when the
@@ -1840,6 +1924,24 @@ export default function V2Building() {
                 ? 'The connection dropped. Your script may already be finished — we are asking the server before saying anything else.'
                 : echo}
             </p>
+
+            {/* ⚖️ RECOGNITION BEFORE THE SCRIPT — and only ever things they
+                actually said. `recognitionLines` returns nothing for an answer
+                that was never given, which is what makes the citation below
+                safe to print. Hidden during the rescue loop: that screen is
+                about whether their script survived, and nothing else. */}
+            {!rescuing && statedLines.length > 0 && (
+              <div className="mt-6 rounded-card border border-white/8 bg-white/[0.02] px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
+                  {RECOGNITION_CITATION}
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {statedLines.map((l) => (
+                    <li key={l.text} className="text-sm leading-relaxed text-cream">{l.text}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* Live progress — hidden once there is no request left to make
                 progress. A frozen bar reads as a stall; an absent one matches
