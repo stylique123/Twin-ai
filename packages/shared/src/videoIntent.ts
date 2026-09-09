@@ -963,8 +963,56 @@ export const INTENT_QUESTIONS: readonly IntentQuestion[] = [
 // A build with no reference leaves `reference_use` null, and `resolveFidelity`
 // already answers null with 'balanced' — the null check precedes the coercion
 // there, so nothing downstream needs a second one.
-export function intentQuestionsFor(opts: { hasReference: boolean }): readonly IntentQuestion[] {
-  if (opts.hasReference) return INTENT_QUESTIONS
+// ── PRODUCT MODE ASKS WHAT THE VIDEO MUST DO FOR THE PRODUCT ─────────────
+//
+// ⚠️ THE GENERIC GOAL SHEET IS THE WRONG QUESTION IN THIS DOOR. "Reach more
+// people" and "Build trust and reputation" are true of every video a creator
+// will ever make, so in Product Mode they ask her to translate a thing she
+// already knows — what this product needs right now — into our vocabulary. The
+// owner's reframe for the four doors is exactly this: the mode is not "what is
+// my video about", it is "what have I got in my hand right now."
+//
+// ⚖️⚖️ AND EACH OBJECTIVE MAPS TO A DISTINCT CANONICAL GOAL, WHICH IS THE
+// HONESTY CONSTRAINT. The writer's whole contract is keyed on `VideoGoal` --
+// the goal directive, the implied outcome, the payoff directive, the substance
+// floor and `outcomeEvidenceNeed` all read it, and the comment on `sell` versus
+// `leads` above counts five places they diverge. If two objectives collapsed to
+// one goal, the creator would be shown a distinction that changes nothing about
+// what gets written: a choice with no consequence, which is worse than not
+// offering it. A test pins the distinctness so a sixth objective cannot quietly
+// reuse a goal.
+//
+// ⚠️ SO THIS IS A PRESENTATION OF THE SAME QUESTION, NOT A SECOND VOCABULARY.
+// Nothing downstream learns a new word: the client resolves an objective to its
+// goal before the request is built, and `generate-blueprint` is untouched. A
+// parallel field would fork a vocabulary that three surfaces already share and
+// that this file exists to keep singular.
+export const PRODUCT_OBJECTIVES: readonly IntentOption[] = Object.freeze([
+  { value: 'sell', label: 'Launch it', hint: "It's new, or newly back in stock" },
+  { value: 'educate', label: 'Explain what it actually does', hint: 'The part people get wrong' },
+  { value: 'leads', label: 'Get people to try it', hint: 'Interest now, buying later' },
+  { value: 'conversations', label: 'Answer what people keep asking', hint: 'Turn the same DM into a video' },
+  { value: 'personal_brand', label: 'Say why I made it', hint: 'The story behind it' },
+])
+
+/** The product-mode form of the goal question. */
+export const PRODUCT_OBJECTIVE_QUESTION = 'What does this video need to do for it?'
+
+export function intentQuestionsFor(
+  opts: { hasReference: boolean; isProductSubject?: boolean },
+): readonly IntentQuestion[] {
+  // ⚠️ THE PRODUCT SUBSTITUTION HAPPENS FIRST AND APPLIES IN BOTH MODES. A
+  // product build with a reference is still a product build — the reference
+  // says what SHAPE the video takes, and says nothing about what the product
+  // needs — so gating this on `hasReference` would leave the generic sheet in
+  // place for exactly the creators who came through the product door carrying
+  // a video they liked.
+  const base = opts.isProductSubject
+    ? INTENT_QUESTIONS.map((q) => (q.field === 'video_goal'
+      ? { ...q, question: PRODUCT_OBJECTIVE_QUESTION, options: PRODUCT_OBJECTIVES }
+      : q))
+    : INTENT_QUESTIONS
+  if (opts.hasReference) return base
   // ── IN IDEA MODE, THE IDEA IS THE SUBJECT ────────────────────────────────
   //
   // ⚠️ "WHAT SHOULD THIS VIDEO BE ABOUT?" IS ASKED OF SOMEBODY WHO HAS JUST
@@ -983,7 +1031,12 @@ export function intentQuestionsFor(opts: { hasReference: boolean }): readonly In
   // treats an absent `content_focus` as "no directive" rather than a default —
   // the same reading it gives an absent goal — so an unasked question leaves no
   // hole to be filled with a guess.
-  return INTENT_QUESTIONS.filter((q) => q.field !== 'reference_use' && q.field !== 'content_focus')
+  // ⚠️ `base`, NOT `INTENT_QUESTIONS`. A product build with no reference lands
+  // here, and reading the original list back would silently drop the product
+  // substitution for exactly the creator who came through the product door and
+  // pasted nothing — the commonest product build there is. Caught by reading
+  // this branch after editing the one above it, not by a test that existed.
+  return base.filter((q) => q.field !== 'reference_use' && q.field !== 'content_focus')
 }
 
 /** Every value a creator can reach on screen, including sub-options. */
