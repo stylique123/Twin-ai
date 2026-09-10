@@ -24,6 +24,7 @@ import { join } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
 import { authHeader } from './authSession.mjs'
 import { makeEditorFixtures, fullDecisionV2 } from './editorFixtures.mjs'
+import { describeAssetFailure } from './assetFailure.mjs'
 
 const execFile = promisify(_execFile)
 const REPO_ROOT = join(import.meta.dirname, '..', '..')
@@ -213,7 +214,7 @@ async function mintReady(client, ownerId, buf) {
   const gen = await newGen(ownerId, SCENE_TIMELINE, HOOK_LINE)
   const { assetId } = await sourceFlow(client, gen, buf)
   const asset = await waitAsset(assetId)
-  if (asset.status !== 'ready') throw new Error(`fixture asset rejected: ${JSON.stringify(asset.metadata)}`)
+  if (asset.status !== 'ready') throw new Error(describeAssetFailure(asset))
   return { gen, assetId, asset }
 }
 
