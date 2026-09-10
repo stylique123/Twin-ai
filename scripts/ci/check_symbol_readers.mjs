@@ -71,6 +71,46 @@ const REPO = join(fileURLToPath(import.meta.url), '..', '..', '..')
 // WOULD CHANGE IT. An unregistered unreached symbol fails the build; a
 // registered one is a debt that was named. "Later" is not a reason.
 export const REGISTRY = {
+  'corpus/captionShape.ts': {
+    symbols: ['captionBody', 'isLikelyEnglish', 'classifyCaption', 'assessedCaptionShape'],
+    // ⚠️⚠️ THIS GUARD CAUGHT THE AUTHOR OF THIS ENTRY, IN THE COMMIT THAT ADDED
+    // THE MODULE. Stage 1a of the classification engine was written, tested
+    // against 4,000 real rows, and had NO PRODUCTION READER — the dominant
+    // defect class in this codebase, committed by the person cataloguing it.
+    // Registered rather than the ceiling raised: the ceiling IS the check.
+    why: 'Stage 1a of the corpus classification engine, deliberately landed one '
+      + 'PR AHEAD of its consumer. The reader is the gallery_items backfill, '
+      + 'which needs a migration adding caption_shape + its basis and an '
+      + 'ingestion job — FULL tier, and it cannot share a lane with a STATIC '
+      + 'change. Landing the classifier first is what let it be MEASURED before '
+      + 'anything depended on it: 403 of 4,000 real rows classified (10.1%), and '
+      + 'four false positives found by eye and fixed (a numbered list labelled '
+      + 'negative_command, an exclamation labelled myth_bust). '
+      + 'WHAT WOULD CHANGE THIS: the backfill calling the classifier over '
+      + 'gallery_items. When that lands, DELETE this entry — do not extend it. '
+      + 'If the backfill has not landed and nothing else reads it, the honest '
+      + 'answer is to delete the module rather than keep excusing it.',
+  },
+  'corpus/facets.ts': {
+    symbols: ['knownFacets', 'customerOf', 'stageBandOf', 'facetsOf', 'facetMatch',
+      'describeCohort', 'cohortMayRecommend'],
+    // ⚠️ SECOND MODULE TONIGHT LANDED AHEAD OF ITS CONSUMER, and that is a
+    // deliberate strategy rather than a habit: the classification engine is
+    // built bottom-up, and each layer is MEASURED against real rows before the
+    // layer above it exists. It is only legitimate while every entry names its
+    // consumer and its deletion trigger, which is why both do.
+    why: 'Stage 2 of the classification engine: the facet vector that replaces '
+      + 'niche-word matching. Measured over all 51 voices before it was written '
+      + '— niche 47, sub_niche 46, audience 45, followers 39, and only 10 owners '
+      + 'with any product row, which is why `sells`/`delivery`/`price_band` are '
+      + 'NOT in the vector at all: they would be unknown for ~80% of creators. '
+      + 'The consumer is stage 3, the cohort scorer, which selects gallery_items '
+      + 'by facet match — it needs the caption_shape backfill (PR #796) landed '
+      + 'first, since a cohort of unclassified cards proves nothing. '
+      + 'WHAT WOULD CHANGE THIS: the cohort selector calling facetMatch over '
+      + 'brand_voices and gallery_items. DELETE this entry then. If stage 3 has '
+      + 'not landed and nothing reads these, delete the module.',
+  },
   'corpus/relativePerformance.ts': {
     symbols: ['parseReach', 'medianOf', 'relativePerformance', 'cappedLift', 'medianLift'],
     why: 'The ranking unit for the whole corpus: a multiple of that creator\'s '

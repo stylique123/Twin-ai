@@ -103,7 +103,14 @@ describe('editing is deliberate, and the record is folded', () => {
     // past niche, audience, vocabulary, POV, hooks and pacing to reach anything
     // else — most of why the page read as a document.
     expect(PAGE).toMatch(/const \[dnaOpen, setDnaOpen\] = useState\(false\)/)
-    expect(PAGE).toMatch(/View everything/)
+    // ⚖️ ASSERTS THE FOLD, NOT THE BUTTON'S WORDING. The label was "View
+    // everything" while the block held a read view of its own; it now reads
+    // "What Twin learned" because the read view moved to the learned panel and
+    // the block became the edit form. The record is still folded behind one
+    // deliberate control, which is what this test is for — pinning the label
+    // made it fail on a change that strengthened the thing it guards.
+    expect(PAGE).toMatch(/data-testid="voice-open-learned"/)
+    expect(PAGE).toMatch(/setDnaOpen\(true\)/)
   })
 
   it('folding is not hiding — the same record is one tap away', () => {

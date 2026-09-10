@@ -835,6 +835,18 @@ jobs:
         run: |
           node scripts/ci/check_brief_consumers.mjs --selftest
           node scripts/ci/check_brief_consumers.mjs
+      # ⚠️⚠️ THE CORPUS STORES SHAPES, NEVER WORDS — and this is the guard that
+      # makes that a property of the code rather than a promise in a comment.
+      # Every competitor in this market stores hook TEXT ("a library of 1,000+
+      # proven viral hooks", "remix, mimic"), so their customers in one niche
+      # draw on one pool of sentences and their outputs converge. That is the
+      # "everything sounds like AI TikTok" complaint, shipped as an architecture.
+      # ⚖️ AND THE FAILURE MODE HERE IS GRAVITY, NOT INTENT. Zero borrowing
+      # across four cross-domain adaptations is this project's best measured
+      # result; if a source creator's sentences sit in the store, the writer
+      # reaches for them because that is what a model does with text in context.
+      - name: The corpus stores shapes, never a source's sentences
+        run: node scripts/ci/check_corpus_stores_no_sentences.mjs
       # Registering ONE analysis component used to mean editing twelve places
       # that each privately encoded the component namespace, none referencing
       # any other. Nothing compared them, so every disagreement surfaced ~40
