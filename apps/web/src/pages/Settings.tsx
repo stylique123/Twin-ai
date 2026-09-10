@@ -1347,6 +1347,26 @@ function ProfileStatus({
   // Same "adjust state when a prop changes" pattern the onboarding confirm step
   // uses for the voice profile, and for the same reason: an effect would paint
   // the empty box first and correct it on a second pass.
+  // ⚠️⚠️ NOTHING EVER STORED A CTA, AND THAT IS WHY THE WRITER NEVER USED ONE.
+  // Measured on the audited account: `pre_script_brief.defaultCta` is null — the
+  // KEY IS NOT EVEN PRESENT — across ten consecutive Product Mode runs, while
+  // two CTAs sit extracted on her profile. `generate-blueprint` builds its
+  // `THE CREATOR'S OWN CALL TO ACTION` line from `brief.defaultCta`, so with that
+  // empty the line NEVER FIRED ONCE in ten runs.
+  //
+  // ⚖️ SO THIS IS NOT A COSMETIC SHORTCUT. It is the only thing on any screen
+  // that turns an extracted ending into a stored one, and the writer's wording
+  // rule is downstream of it. Measured across all voices: 0 of 51 have a stored
+  // ending and 47 have one extracted.
+  //
+  // ⚖️ GATED ON THE STORE HAVING BEEN READ. Offering a suggestion before we know
+  // whether something is saved is how a reading overwrites an answer; `ctaLoaded`
+  // is that distinction, and a failed read keeps its retry instead.
+  //
+  // ⚖️ AND IT IS STILL NOT STORED WITHOUT A TAP. "That's mine" is the tap. The
+  // row stays "needs setup" until she takes it, because a reading is not a
+  // decision — the rule `palette_source: 'manual'` states for colours.
+  const canOfferHerEnding = ctaLoaded && !ctaLoadFailed && ctaText === '' && !!ctaSuggestion
   const [wasCtaOpen, setWasCtaOpen] = useState(ctaOpen)
   if (ctaOpen !== wasCtaOpen) {
     setWasCtaOpen(ctaOpen)
@@ -1392,6 +1412,11 @@ function ProfileStatus({
                 // ⚠️ NOT AN ERROR STATE. Plenty of creators do not want every
                 // video to end with an ask, and saying so plainly is the
                 // difference between a choice and an omission.
+                : canOfferHerEnding
+                // ⚠️ MARKED AS A GUESS, IN HER OWN WORDS. Saying where it came
+                // from is what makes it safe to show; unattributed it reads as
+                // something she already agreed to.
+                ? `“${ctaSuggestion!.text}” — from your own posts`
                 : 'No usual ending — Twin writes one to fit each video.'}
             </p>
           </div>
@@ -1399,6 +1424,22 @@ function ProfileStatus({
               answer is unread — saving from here would overwrite something we
               never saw — but a creator is given the one action that can fix it
               instead of a greyed rectangle with no explanation. */}
+          {/* ⚖️ ONE TAP TO ACCEPT WHAT SHE ALREADY SAYS, AND IT COMES FIRST
+              because it is the answer in nine cases out of ten. It commits the
+              SUGGESTION'S own text, never `ctaDraft` — the draft is the editor's
+              state and reading it here would save whatever was last typed and
+              abandoned. */}
+          {canOfferHerEnding && !ctaLoadFailed && (
+            <button
+              type="button"
+              data-testid="cta-accept-suggestion"
+              onClick={() => {
+                onCtaChange(ctaSuggestion!.text)
+                onCtaCommit(ctaSuggestion!.text)
+              }}
+              className="btn-gradient shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold"
+            >That&rsquo;s mine</button>
+          )}
           {ctaLoadFailed ? (
             <button
               type="button"
@@ -1426,7 +1467,7 @@ function ProfileStatus({
             // colours.
             onClick={() => setCtaOpen(true)}
             className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream disabled:opacity-40"
-          >{ctaText ? 'Edit' : 'Add one'}</button>
+          >{canOfferHerEnding ? 'Change it' : ctaText ? 'Edit' : 'Add one'}</button>
           )}
         </div>
         {ctaSaved && <p className="mt-2 text-xs text-teal">Saved</p>}

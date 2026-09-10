@@ -4292,6 +4292,9 @@ CONCEPT & ADAPTATION (decide the actual VIDEO first, then translate it to what t
 - premise: the core shootable idea for THIS video in 1 to 2 sentences, set in the creator's real world and niche, echoing the reference's WINNING mechanism (its stakes, its transformation, its payoff), not merely its format. Make it a concrete video someone would actually click, never a vague topic. ⚠️ IF WHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID CONTAINS NO FIRST-PERSON EXPERIENCE, do NOT write a testimony-shaped premise ("I tried this and…", "this happened to me…") — you would be inventing an event that never happened. Adapt the reference's mechanism to an observer or teaching frame instead ("the pattern I keep seeing in founders", "here is what actually works, and why"), and say so plainly in your_scale. An empty knowledge store cannot manufacture a story; the honest response is a premise that does not pretend to be one.
 - your_scale: the reference may be a huge production. State plainly and honestly how ONE person with a phone achieves the SAME effect at their scale. Never assume a team, a budget, locations, cast, or gear the creator does not have. The goal is to reproduce the reference's psychology simply. ⚠️ AND IF THE REFERENCE IS SUBSTANTIALLY A SCREEN-CAPTURE VIDEO, SAY SO IN THIS FIELD IN PLAIN WORDS — for example "The reference is a screen-capture walkthrough. Your version films the screen with your phone: one feature, zoomed, with the key number in the caption." NEVER silently present the two formats as the same thing. A creator who notices the difference themselves stops trusting everything else in the plan, and the difference is one they WILL notice.
 - translations: 2 to 4 pairs mapping a big element of the reference (theirs) to the achievable version (yours) that keeps the same effect, e.g. theirs "flies ten strangers to an island", yours "one visible personal challenge with a countdown timer on screen". Be specific and honest, never aspirational filler. ⚠️ THE SCREEN MAPPING IS FIXED AND YOU DO NOT GET TO RESTATE IT: theirs "screen recording / screen capture walkthrough" maps to yours "your phone filming the screen — one feature, zoomed, with the key number in the caption". Twin does not plan screen recordings, so a reference that is one MUST be translated here rather than copied.
+  ⚠️⚠️ AND "theirs" MAY NOT DESCRIBE HOW THE REFERENCE LOOKED OR SOUNDED, because nobody looked. Twin has never analysed the reference's video or audio: its lighting, camera work, shot choices, framing, zooms, transitions, captions, music and the pacing of its dead space are ALL unmeasured, on every reference, today. A real creator was shown theirs "Music video aesthetic with heavy mood lighting" and theirs "Multi track layered vocal delivery with rhythmic switch" on a script whose own evidence panel said camera work NOT OBSERVED and music NOT OBSERVED, one screen below. That is the honesty panel being contradicted by the writer on the same page, and it costs Twin the one thing no competitor has.
+  ⚖️ SO "theirs" DESCRIBES ONLY WHAT WAS ACTUALLY READ: what is SAID (the transcript, the spoken structure, the hook, the stated call to action), the FORMAT, the LENGTH, and the stakes or mechanism those reveal. Write theirs "a three-part escalation ending on a direct ask" — not theirs "fast cuts with neon lighting". If the only thing you can think of to contrast is visual, the honest translation is about the MECHANISM instead, and there is always one.
+  ⚖️ THIS IS A STATEMENT ABOUT EVIDENCE, NOT A STYLE RULE. If a visual analysis is ever built and those dimensions start carrying real values, this restriction becomes conditional on them. Until then every visual claim about a reference is invented, and an invented observation in a paid script is worse than no observation.
 
 PACKAGING (title + thumbnail, decide this FIRST): most short-form videos are won or lost on the title and the first-frame thumbnail BEFORE a single word is heard, so package the video before you write it. Build the packaging from the creator's real angle, vocabulary and the reference's proven title SHAPE.
 - titles: 5 scroll-stopping video titles, best first, each a SPECIFIC promise (not a topic). Use the creator's signature vocabulary and a different angle each. A title a random creator in this niche could reuse is a failure. No clickbait lies, no "you won't believe".
@@ -6725,7 +6728,41 @@ Deno.serve(async (req: Request) => {
     let mentionedProductName = ''
     const mentionedId = typeof body.mentioned_product_id === 'string'
       ? body.mentioned_product_id.trim() : ''
-    if (mentionedId !== '' && !ownedEntity) {
+    // ⚠️⚠️ `&& !ownedEntity` WAS HERE AND IT SILENTLY THREW THE MENTION AWAY.
+    // A creator who owns anything at all never got her mention read: the stopgap
+    // below resolves the oldest OWN_PRODUCT/OWN_SERVICE whenever no id was sent,
+    // `ownedEntity` is then truthy, and this branch never ran. Three of five real
+    // accounts own two things, so this was the common case, not an edge.
+    //
+    // ⚠️ AUDITED ON TEN LIVE RUNS BY ONE CREATOR WITH AN OWNED SERVICE AND AN
+    // AFFILIATE BAND. On every non-commercial objective she picked the band, the
+    // mention was discarded here, the writer was handed the COACHING SERVICE as
+    // the subject and never heard the band existed — so it invented a stance on
+    // it, and the stance was AGAINST the product she earns commission on:
+    // "a postpartum belly band will not heal your deep core", "wearing a belly
+    // band all day actually weakens your core". No disclosure, because the
+    // affiliate product was not in the script it was arguing against.
+    //
+    // ⚖️ THE TWO ARE NOT EXCLUSIVE AND NEVER WERE. A mention says "this video is
+    // not about it, name it and move on"; `ownedEntity` is what the video IS
+    // about. A creator can be explaining her coaching and still mention the band
+    // she uses — that is the ordinary case, not a conflict. Reading both is the
+    // fix; the guard was protecting against a collision that cannot happen.
+    //
+    // ⚖️ AND THE MENTION IS STILL THE NARROWER PERMISSION. It names and nothing
+    // else, with disclosure when the relationship is paid — asserted below. What
+    // changes is only that it is no longer dropped.
+    //
+    // ⚠️ ONE THING THE OLD GUARD DID COVER BY ACCIDENT, AND IT IS KEPT ON
+    // PURPOSE: the mention may not name the video's own subject. The client sends
+    // these on mutually exclusive branches, but this comment block already warns
+    // that "a request can send any id" — and a forged pair would hand the writer
+    // "YOU MAY NAME X AND THAT IS ALL YOU MAY DO WITH IT" about the very product
+    // the video is about. Contradicting itself in one prompt is worse than either
+    // instruction alone, so the subject wins and the mention is dropped.
+    const mentionIsTheSubject = mentionedId !== ''
+      && mentionedId === String((ownedEntity as { id?: unknown } | null)?.id ?? '')
+    if (mentionedId !== '' && !mentionIsTheSubject) {
       const { data: mentionRow } = await admin
         .from('product_entities')
         .select('name, relationship')
