@@ -124,6 +124,19 @@ export const EXCLUDED = {
     + 'matrix never touches, so applying it here could only ever pass vacuously — the '
     + 'state 0146 above was rewritten to avoid. The column IS applied to production and '
     + 'carries 264 rows, which is where it is actually exercised.',
+  '0196_the_shapes_had_nowhere_to_land':
+    'Adds the caption-shape columns to `gallery_items`. Requires `gallery_items`, '
+    + 'which staging does not have — the SAME reason as 0106 and 0194 above, and '
+    + '0008_gallery (which creates the table) is not in the applied set either. '
+    + '⚠️ DECLARED UP FRONT THIS TIME, from 0194\'s measurement rather than by '
+    + 'repeating it: 0194 was put in the APPLIED list first on the standing rule that '
+    + 'a new migration always goes there, and the matrix failed in four minutes with '
+    + '`ERROR: relation "public.gallery_items" does not exist` (run 34413095455). '
+    + 'Spending another lane hour to re-learn the same fact would be the waste, not '
+    + 'the shortcut. '
+    + 'Nothing is lost: the gallery is a production surface the editor matrix never '
+    + 'touches, so applying this here could only ever pass vacuously. The columns are '
+    + 'exercised on production, where the table holds 16,343 rows.',
   '0107_clip_capture':
     'Clip capture RPCs. Staging exercises the source path only; no clip is ever captured.',
   '0108_clip_scene_number':
