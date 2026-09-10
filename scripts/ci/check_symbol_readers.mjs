@@ -132,6 +132,21 @@ export const REGISTRY = {
       + 'WHAT WOULD CHANGE THIS: the assembler building a vector from '
       + 'brand_voices. DELETE this entry then.',
   },
+  'corpus/nicheVocabulary.ts': {
+    symbols: ['MIN_CREATORS_FOR_TERM', 'MAX_NICHES_FOR_TERM', 'termsIn',
+      'nicheVocabulary', 'nicheVocabularies'],
+    why: 'Build item 2, the niche term list — "every physio says load tolerance". '
+      + 'Two gates, BOTH measured on the real corpus before being written: '
+      + 'creator spread >= 10 (frequency cannot tell a term from a name — vogue '
+      + '91 cards vs garlic 97, madaan 52 vs tbsp 60, while creator counts are '
+      + '4 and 1 against 23 and 13), and distinctiveness to one niche (spread '
+      + 'alone returned `und/das/mit/ich` as Business vocabulary). '
+      + 'The consumer is the prompt assembler, which puts a niche term list in '
+      + 'HER MATERIAL alongside her own vocabulary — it needs the facet vector '
+      + '(#798) to know which niche she is in. '
+      + 'WHAT WOULD CHANGE THIS: the prompt assembler calling nicheVocabularies. '
+      + 'DELETE this entry then; if it never lands, delete the module.',
+  },
   'creativeTransferPlan.ts': {
     symbols: ['TransferPlanError', 'computePlanSha256', 'finalizeTransferPlan',
       'validateCreativeTransferPlan', 'canonicalTransferPlan'],
