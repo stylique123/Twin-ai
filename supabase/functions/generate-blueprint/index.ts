@@ -6445,6 +6445,39 @@ Deno.serve(async (req: Request) => {
     if (ownershipLanguage) {
       claimLines.push('\n- THIS IS THE CREATOR\'S OWN PRODUCT AND THEY MAY SAY SO IN THE FIRST PERSON. "I make these", "I bake them fresh every morning", "we built this" — claims about MAKING or SELLING it are theirs to make, and a script that refuses them leaves a maker unable to describe their own work.')
     }
+    // ⚠️⚠️ THE PERMISSION HALF WAS MISSING HERE TOO, AND THIS IS THE FIRST
+    // EVIDENCE TWIN BLOCKS A CLAIM THE CREATOR MAY MAKE. `creatorExperience`
+    // gated a PROHIBITION and nothing else: confirmed use merely skipped the
+    // refusal below, so the writer was never TOLD the claim was available. The
+    // defect class is identical to `ownershipLanguage` twenty lines up, which
+    // this file already records — a canonical rule whose permission reached no
+    // prompt while its refusal reached every one of them.
+    //
+    // ⚠️ MEASURED ON A LIVE RUN. An affiliate creator supplied "I have used it
+    // myself after both babies" in the offer field, with personal use CONFIRMED
+    // on the product, and the sentence did not survive into the script. Every
+    // earlier test of this system asked whether Twin refuses a claim it should.
+    // A blanket strip is as wrong as no strip: it removes the most persuasive
+    // TRUE thing an affiliate creator can say, and it is the one claim a
+    // disclosure cannot substitute for.
+    //
+    // ⚖️ THE EXPERIENCE, NOT A RESULT FROM IT. "I have used this for months" is
+    // the creator's own history and theirs to state. "It healed my core" is an
+    // outcome claim about what the product DID, which `marketingClaims` and the
+    // substance rules govern and which confirmed use does not license — that
+    // distinction is the same one recorded below, where "talk about what it
+    // does" licensed an asserted outcome about a product nobody had touched.
+    //
+    // ⚖️ AND IT IS NOT A DISCLOSURE EXEMPTION. A paid tie still discloses; this
+    // says the first-person history may be told, not that it may be told
+    // instead of saying the relationship exists.
+    if (creatorExperience && rel !== 'NONE') {
+      claimLines.push('\n- THE CREATOR HAS CONFIRMED THEY PERSONALLY USE THIS, AND THEY MAY SAY SO IN THE FIRST PERSON. "I have used this myself", "I have been using it for months", "I used it after both of my babies" — their own history with it is theirs to state, and it is usually the most credible line available. Do NOT strip it, and do NOT soften it into the third person.'
+        + ' BUT USING IT IS NOT A RESULT FROM IT: do NOT turn this into an outcome claim about what it did to their body, their business or their numbers unless the creator themselves said that in their own words. Their experience of USING it is established; what it ACHIEVED is not.'
+        + (disclosureRequired
+          ? ' AND THIS DOES NOT REPLACE THE DISCLOSURE: the paid relationship is still stated plainly and early, in their own words.'
+          : ''))
+    }
     if (!creatorExperience && rel !== 'NONE') {
       // ⚖️ NARROWED FOR AN OWNER, NOT LIFTED. Making a thing is not being its
       // customer: a founder who has never opened their own dashboard saying "it
