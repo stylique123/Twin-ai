@@ -36,9 +36,24 @@ describe('every card actually goes somewhere', () => {
   it('the whole card is the control, not a decorative panel', () => {
     // ⚠️ THE ORIGINAL COMPLAINT. Panels that looked clickable and did nothing
     // are worse than a plain list: they cost somebody an attempt to find out.
-    const grid = PAGE.slice(PAGE.indexOf('{areas.map((a) => ('))
-    expect(grid.slice(0, 1200)).toMatch(/onClick=\{\(\) => goTo\(a\)\}/)
-    expect(grid.slice(0, 1200)).toMatch(/hover:/)
+    // ⚠️ THE LOCATOR IS ASSERTED FOUND BEFORE IT IS USED, because it silently
+    // wasn't. This test pinned the grid with `indexOf('{areas.map((a) => (')`;
+    // when the grid gained a `.filter` — so the hero's next step is not drawn
+    // twice — `indexOf` returned -1, `slice(-1)` returned "\n", and the
+    // assertion compared a newline against the pattern. It failed for the right
+    // reason with a message that named neither the cause nor the file. A
+    // locator that can miss must say it missed.
+    // ⚖️ AND IT IS LOCATED BY WHAT MAKES IT THE CARD GRID, not by its current
+    // spelling. There are several `{areas … .map(` blocks on this page — the
+    // progress segments are one — so the right one is the block whose card
+    // actually navigates. Pinning a literal is what broke; pinning the intent
+    // survives the next refactor.
+    const blocks = [...PAGE.matchAll(/\{areas[\s\S]{0,200}?\.map\(\(a\) => \(/g)]
+    const grid = blocks.map((m) => PAGE.slice(m.index ?? 0, (m.index ?? 0) + 1200))
+      .find((b) => /goTo\(a\)/.test(b)) ?? ''
+    expect(grid, 'the card grid could not be located in Settings.tsx').not.toBe('')
+    expect(grid).toMatch(/onClick=\{\(\) => goTo\(a\)\}/)
+    expect(grid).toMatch(/hover:/)
   })
 
   it('the destination map is total, so a new action cannot be forgotten', () => {

@@ -482,8 +482,18 @@ export default function Settings() {
             {/* ⚠️ EVERY CARD IS GENUINELY INTERACTIVE. The old page had panels
                 that looked tappable and went nowhere, which is worse than a plain
                 list: it costs somebody an attempt to find out. */}
+            {/* ⚠️⚠️ THE NEXT STEP AND THE CARD GRID BOTH DREW THE SAME AREA, so
+                "Content profile · Edit profile →" appeared at the top and
+                "Content profile · Needs setup · Edit profile" appeared again
+                below it. Reported live: the same fact twice on one screen, and
+                the second copy carried a status the first did not — so the two
+                did not even agree. One home per fact.
+                ⚖️ THE HERO KEEPS IT AND THE GRID DROPS IT, not the other way
+                round: the whole point of a next step is that it is the one thing
+                to do next, and a duplicate directly beneath it is what made it
+                stop reading as singular. */}
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {areas.map((a) => (
+              {areas.filter((a) => a.id !== summary.next?.id).map((a) => (
                 <button
                   key={a.id}
                   type="button"

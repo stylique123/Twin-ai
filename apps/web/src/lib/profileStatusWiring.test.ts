@@ -91,6 +91,19 @@ describe('the CTA is the creator’s to type, and only theirs', () => {
     expect(SETTINGS).toMatch(/onCtaCommit\(''\)/)
   })
 
+  // ⚠️ ONE HOME PER FACT. The hero's "Next step" block and the card grid below
+  // it both rendered the same area, so "Content profile · Edit profile →"
+  // appeared at the top and "Content profile · Needs setup · Edit profile"
+  // again beneath it — the same fact twice, and the second copy carried a
+  // status the first did not, so the two did not even agree.
+  //
+  // ⚖️ ASSERTED AS THE EXACT FILTER WITH THE UNFILTERED MAP ASSERTED ABSENT,
+  // because the difference between them is one call and a reader cannot see it.
+  it('the card grid does not redraw the area the next step already points at', () => {
+    expect(SETTINGS).toMatch(/areas\.filter\(\(a\) => a\.id !== summary\.next\?\.id\)\.map/)
+    expect(SETTINGS).not.toMatch(/\{areas\.map\(\(a\) => \(/)
+  })
+
   // ⚠️⚠️ THE PREFILL EXISTED AND THE CLICK THAT OPENED THE BOX THREW IT AWAY.
   // `ctaDraft` is initialised to `ctaText || ctaSuggestion?.text` — correct —
   // and the Add one / Edit handler then overwrote it with `ctaText`, which is ''
