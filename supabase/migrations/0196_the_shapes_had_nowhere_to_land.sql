@@ -12,10 +12,11 @@
 --     classified                  511   17.0%
 --     no pattern matched        2,061   68.7%
 --     empty after stripping       172    5.7%   urls/hashtags/mentions only
---     not English (non-Latin)     145    4.8%
+--     not English (non-Latin)     130    4.3%
 --     no title at all             111    3.7%
+--     too short to judge           15    0.5%   under 12 chars after stripping
 --
--- ⚖️ SO "NO SHAPE" IS THREE DIFFERENT FACTS, AND STORING ONE NULL FOR ALL OF
+-- ⚖️ SO "NO SHAPE" IS FIVE DIFFERENT FACTS, AND STORING ONE NULL FOR ALL OF
 -- THEM WOULD DESTROY THE DIFFERENCE. A row with no caption, a row in German and
 -- a row whose caption is a real English hook the pattern set does not recognise
 -- are not the same observation, and a single NULL makes them identical to every
@@ -47,12 +48,20 @@
 -- check_staging_migration_coverage.mjs for exactly that reason. This migration
 -- touches the same table and needs the same treatment.
 
-alter table public.gallery_items
-  add column if not exists caption_shape text,
-  add column if not exists caption_shape_basis text,
-  add column if not exists caption_shape_reason text,
-  add column if not exists caption_shape_version integer,
-  add column if not exists caption_shape_at timestamptz;
+-- ⚠️ ONE `alter table` PER COLUMN, AND NOT FOR STYLE. `check_counter_durability`
+-- discovers a counter's declared home by scanning migrations for
+-- `alter table … add column if not exists <col>`, and its regex takes only the
+-- FIRST column of a multi-column add. Written as one statement with five
+-- columns, `caption_shape_reason` — the home this table gives the classification
+-- counter — is invisible to that scan and the guard refuses the claim. The guard
+-- is imprecise there and it fails in the SAFE direction (it disbelieves a real
+-- home rather than accepting a missing one), so the migration is written to be
+-- seen rather than the guard widened inside a change about captions.
+alter table public.gallery_items add column if not exists caption_shape text;
+alter table public.gallery_items add column if not exists caption_shape_basis text;
+alter table public.gallery_items add column if not exists caption_shape_reason text;
+alter table public.gallery_items add column if not exists caption_shape_version integer;
+alter table public.gallery_items add column if not exists caption_shape_at timestamptz;
 
 -- ⚠️ THE VOCABULARY IS PINNED IN THE DATABASE, not only in TypeScript. A shape
 -- the code stops producing must not be storable, and a typo in a job must fail
@@ -83,8 +92,15 @@ alter table public.gallery_items
 alter table public.gallery_items
   add constraint gallery_items_caption_shape_reason_known
   check (caption_shape_reason is null or caption_shape_reason in (
-    'no_title', 'empty_after_strip', 'not_english', 'no_pattern_match'
+    'no_title', 'empty_after_strip', 'too_short', 'not_english', 'no_pattern_match'
   ));
+-- ⚠️ `too_short` IS SEPARATE FROM `not_english` BECAUSE THE FIRST DRAFT CONFLATED
+-- THEM AND THAT PUT A FALSE FACT IN THIS COLUMN. `isLikelyEnglish` returns false
+-- below 12 characters, which is right for a gate and wrong as an explanation: a
+-- 10-character English caption was being recorded as `not_english`. A wrong
+-- reason is worse than no reason, because a reader acts on it. Caught by the
+-- backfill's own selftest on "How to win" — the defect class this migration
+-- exists to prevent, committed inside it.
 
 -- ⚠️ A SHAPE AND A REASON ARE MUTUALLY EXCLUSIVE, and this is a constraint
 -- rather than a convention because the alternative is a row that carries both
