@@ -112,6 +112,18 @@ export const EXCLUDED = {
   '0106_clips_and_reference_requirements':
     'Requires `gallery_items`, which staging does not have. The clip columns it adds '
     + 'are covered by 0107/0108 being unnecessary here — staging never captures a clip.',
+  '0194_the_backfill_wrote_a_column_that_did_not_exist':
+    'Adds `gallery_items.evidence`. Requires `gallery_items`, which staging does not '
+    + 'have — the SAME reason as 0106 above, and 0008_gallery (which creates the table) '
+    + 'is not in the applied set either. ⚠️ THIS WAS NOT A JUDGEMENT CALL: it was put in '
+    + 'the APPLIED list first, on the standing rule that a new migration always goes '
+    + 'there, and the matrix failed in four minutes with `ERROR: relation '
+    + '"public.gallery_items" does not exist` (run 34413095455). The exclusion is the '
+    + 'measured answer, not the convenient one. '
+    + 'Nothing is lost by excluding it: the gallery is a production surface the editor '
+    + 'matrix never touches, so applying it here could only ever pass vacuously — the '
+    + 'state 0146 above was rewritten to avoid. The column IS applied to production and '
+    + 'carries 264 rows, which is where it is actually exercised.',
   '0107_clip_capture':
     'Clip capture RPCs. Staging exercises the source path only; no clip is ever captured.',
   '0108_clip_scene_number':

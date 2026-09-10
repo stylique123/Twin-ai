@@ -1,3 +1,38 @@
+<!-- NOT-A-TO-DO-LIST -->
+> ## ⚠️ THIS IS A SNAPSHOT, NOT A TO-DO LIST
+>
+> **Last substantive change: 2026-08-28. Since then, 202 pull requests have merged to
+> `main`** (measured 2026-09-09).
+>
+> Items here may be **built**, **built and superseded**, **disproven on real
+> data**, or **built and awaiting a big enough sample** — and this document says
+> none of those things, because it was written before they happened. Several
+> specs in documents like this one have been verified *untrue* against
+> production: fields that do not exist, shapes that never existed, screens the
+> feature was never on.
+>
+> ### The live status is `docs/twinai-open-items-ledger.md`
+>
+> It is the only document in this repository that is kept current, and the only
+> one where "done" means *something enforces it* — a test, a migration, or a CI
+> check. It also carries **§A′ Built, awaiting sample** for the mechanisms that
+> are complete but whose data cannot yet justify acting on them.
+>
+> ### Before acting on anything below
+>
+> **Grep for a reader first.** The dominant defect class in this codebase is a
+> field written and never read; a spec naming that field will look like work and
+> be a no-op, or worse, be built a second time.
+>
+> ### To re-measure this banner
+>
+> ```sh
+> sha=$(git log -1 --format=%H -- <this-file>)
+> git log --oneline $sha..origin/main | wc -l
+> ```
+
+---
+
 # TwinAI — Unconnected Systems Audit
 
 _Source: uploaded PDF, committed verbatim (text-extracted). Covers subsystems built but not wired to a live caller._

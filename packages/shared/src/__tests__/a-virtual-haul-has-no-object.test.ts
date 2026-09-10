@@ -80,12 +80,39 @@ describe('and a real haul still is one', () => {
 })
 
 describe('what this does not catch, stated', () => {
-  it('still concludes for a virtual haul that never says "virtual try-on"', () => {
-    // ⚠️ THIS TEST ASSERTS A WRONG ANSWER ON PURPOSE. It is here so the residual
-    // is visible in the suite rather than discovered later as a surprise: 35 of
-    // 480 candidates look like this. If a future change catches it, this test
-    // fails and the number in the header above is what needs updating.
-    expect(assessFromText(card(KNOWN_MISS)).requiresFilmingObjects).toBe(true)
+  it('NO LONGER concludes for a virtual haul that never says "virtual try-on"', () => {
+    // ⚠️ THIS TEST USED TO ASSERT A WRONG ANSWER ON PURPOSE, so the residual was
+    // visible in the suite rather than discovered later. Its own instruction was
+    // "if a future change catches it, this test fails and the number in the
+    // header is what needs updating." That change arrived, and this is that
+    // update.
+    //
+    // ⚖️ WHAT CAUGHT IT WAS `virtually`, ADDED AFTER READING THE CARDS THE
+    // BACKFILL WOULD ACTUALLY HAVE WRITTEN — not a wider keyword guessed at a
+    // desk. `KNOWN_MISS` is one of three identical copies that were queued for a
+    // PERMANENT write, alongside three "How to Survive Long Haul Flights" cards
+    // that matched `haul` as a whole word in the wrong sense.
+    expect(assessFromText(card(KNOWN_MISS)).requiresFilmingObjects).toBeNull()
+    expect(isConclusive(assessFromText(card(KNOWN_MISS)))).toBe(false)
+  })
+
+  it('and the residual it leaves is now measured, not estimated', () => {
+    // ⚠️ RE-MEASURED 2026-09-09 over all 485 candidate cards: 264 conclusive,
+    // 221 refused. Of the 264, FIVE still contain an ai/virtual/app token and
+    // all five are genuine — a Meta Glasses unboxing and four recipe cards. The
+    // 38% wrong-write rate this file was written for is closed.
+    //
+    // ⚖️ THE VISION PASS IS STILL THE REAL ANSWER, and that argument is
+    // unchanged: this converts the cards that ANNOUNCE what they are. What it
+    // no longer does is announce a wrong answer permanently.
+    for (const virtual of [
+      'Virtual Makeup Try-On Software',
+      'Try-On Clothes Before Buying Using Kling AI 1.6',
+      'AI Outfit Try-On App',
+      'How to Survive Long Haul Flights',
+    ]) {
+      expect(isConclusive(assessFromText(card(virtual))), virtual).toBe(false)
+    }
   })
 })
 
