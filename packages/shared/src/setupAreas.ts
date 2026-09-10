@@ -26,7 +26,7 @@
 // the denominator, exactly as `applies()` already does for the percentage.
 
 import type { CreatorProfileAnswers, CommercialTie } from './creatorProfileQuestions'
-import { contentProfile, brandKitStatus, type BrandKitLike, type ProfileInput, type ProfileItemId } from './profileCompletion'
+import { contentProfile, brandKitStatus, type BrandKitLike, type ProfileInput } from './profileCompletion'
 import { hasConfirmedCta } from './cta'
 
 /**
@@ -169,52 +169,6 @@ export function setupAreas(input: SetupInput): SetupArea[] {
       counts: false,
     },
   ]
-}
-
-/**
- * Where a completion gap sends the creator.
- *
- * ⚠️⚠️ THE PANEL LISTED FOUR THINGS AND NONE OF THEM COULD BE ADDED. Each gap
- * rendered as an `<li>` with its label and what answering it would change — and
- * no button, no handler, nothing. Reported live: "Each explains what adding it
- * would change. None is clickable." Measured before building: `PROFILE_ITEMS`
- * carries `label`, `unlocks`, `reader` and `weight`, and ZERO occurrences of an
- * action. There was no destination to click to.
- *
- * ⚖️ SO THE DESTINATION IS DECLARED HERE, TOTALLY, AND THE COMPILER ENFORCES IT.
- * A `switch` over the union with no `default`: a tenth profile item becomes a
- * compile error rather than another list row that does nothing. That is the rule
- * `goTo` already states for areas — "an action with no destination is the defect
- * this file was written about" — applied to the other list on the same screen.
- *
- * ⚖️ AND IT REUSES THE SIX ACTIONS THAT ALREADY EXIST rather than inventing a
- * seventh. Every gap is answered by a surface the page can already open, which
- * is why this is a mapping and not a feature.
- */
-export function gapAction(id: ProfileItemId): SetupAction {
-  switch (id) {
-    // The six questions the profile editor holds. `promotes` and `formats` are
-    // answered there too — they are brief fields, not product records.
-    case 'goal':
-    case 'audience':
-    case 'work':
-    case 'promotes':
-    case 'formats':
-      return 'edit_profile'
-    // ⚖️ THE PRODUCT LIBRARY, NOT THE PROFILE. This gap is about which records
-    // exist, and no amount of editing answers it.
-    case 'productContext':
-      return 'manage_products'
-    case 'cta':
-      return 'edit_cta'
-    case 'dnaReady':
-      return 'view_dna'
-    // ⚠️ A CONFLICT IS NOT A MISSING ANSWER, and its own comment says so: the
-    // creator is told what to RESOLVE rather than what to add. Both sides of a
-    // conflict are profile answers, so the profile editor is where it is settled.
-    case 'conflicts':
-      return 'edit_profile'
-  }
 }
 
 /**

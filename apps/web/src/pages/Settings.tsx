@@ -5,11 +5,11 @@ import { useAuth } from '../context/AuthContext'
 import { saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit, uploadBrandLogo, getWorkspace, createWorkspaceInvite, removeWorkspaceMember, type WorkspaceState } from '../lib/api'
 import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import {
-  contentProfile, brandKitStatus, productDnaStatus, loadProductEntities,
-  setupAreas, setupSummary, panelAreas, gapAction, type SetupArea, type SetupState, type SetupAction, type ProfileItemId,
+  brandKitStatus, productDnaStatus, loadProductEntities,
+  setupAreas, setupSummary, panelAreas, type SetupArea, type SetupState, type SetupAction,
   readStoredBrief, savePreScriptBrief, suggestedCta, whatTwinLearned, heardCount, BASIS_LABEL, editTargetOf,
 } from '@twinai/shared'
-import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
+import type { BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
 import { readProfileAnswers } from '../lib/profileAnswersRead'
 import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
 import { TwinStrengthCard } from '../components/TwinStrengthCard'
@@ -309,16 +309,12 @@ export default function Settings() {
   const [ctaOpen, setCtaOpen] = useState(false)
   const [savingProfile, setSavingProfile] = useState(false)
 
-  const content = contentProfile({
-    answers: profileAnswers,
-    dnaReady: activeVoice?.status === 'ready',
-    // ⚠️ NOT `dna.goal`. The goal is what the creator wants the video to achieve;
-    // the CTA is the sentence they want said at the end. Mapping one onto the
-    // other would mark this satisfied by an answer to a different question — and
-    // there is currently no field that asks it, so the gap is honest and points
-    // at work that is genuinely missing.
-    cta: defaultCta,
-  })
+  // ⚠️ `contentProfile` IS NO LONGER CALLED HERE, AND THAT IS THE POINT OF THE
+  // DELETION RATHER THAN A LOOSE END. The page called it only to render a
+  // percentage and four gap rows that duplicated the cards above them.
+  // `setupAreas` still calls it internally to decide the voice card's state, so
+  // the measurement survives exactly where a creator can act on it — one fact,
+  // one home. If this import comes back, so has the second telling.
   const productDna = productDnaStatus(profileAnswers?.commercialTies ?? null, entityCount ?? 0)
   // ⚖️ `palette_source: 'manual'` IS THE ONLY THING THAT MAKES COLOURS A BRAND.
   // An auto-extracted palette is a reading, and this card must not report a
@@ -742,8 +738,6 @@ export default function Settings() {
               (voiceProfile as { recurring_ctas?: unknown[] } | null)?.recurring_ctas)}
             ctaOpen={ctaOpen}
             setCtaOpen={setCtaOpen}
-            onGapAction={(id) => goToAction(gapAction(id))}
-            content={content}
             productDna={productDna}
             brandKit={kitStatus}
             cta={defaultCta}
@@ -1332,12 +1326,9 @@ function TeamSeats() {
  *  costs the creator nothing.
  */
 function ProfileStatus({
-  content, productDna, brandKit, cta, ctaLoadFailed, onCtaRetry, onCtaChange, onCtaCommit, ctaSaved, ctaErr,
-  ctaSuggestion, ctaOpen, setCtaOpen, onGapAction,
+  productDna, brandKit, cta, ctaLoadFailed, onCtaRetry, onCtaChange, onCtaCommit, ctaSaved, ctaErr,
+  ctaSuggestion, ctaOpen, setCtaOpen,
 }: {
-  /** ⚖️ WHERE EACH COMPLETION GAP SENDS THEM. Resolved by `gapAction` in shared
-   *  and dispatched by the page's one destination switch. */
-  onGapAction: (id: ProfileItemId) => void
   /** ⚖️ OWNED BY THE PAGE, NOT BY THIS COMPONENT. Every route to the CTA editor
    *  except this panel's own button was a no-op while the state lived here. */
   ctaOpen: boolean
@@ -1345,7 +1336,6 @@ function ProfileStatus({
   /** Her own ending, read from her posts. Null for 18 of 47 accounts, whose
    *  extracted lines ask for nothing — see `suggestedCta`. */
   ctaSuggestion: ReturnType<typeof suggestedCta>
-  content: ContentProfile
   productDna: ProductDnaStatus
   brandKit: BrandKitStatus
   cta: string | null
@@ -1386,44 +1376,20 @@ function ProfileStatus({
   }
   return (
     <section className="glass mt-8 p-5 sm:p-6">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="eyebrow !text-sand">What Twin knows about you</p>
-        <span className="font-display text-2xl leading-none">{content.percent}%</span>
-      </div>
-      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/8">
-        <div className="h-full rounded-full bg-signature" style={{ width: `${content.percent}%` }} />
-      </div>
-      <p className="mt-2 text-xs text-stone">
-        This is what your scripts are written from. Colours and logos are separate — they
-        never change what a script says.
-      </p>
-
-      {content.gaps.length > 0 && (
-        <ul className="mt-4 space-y-2">
-          {content.gaps.map((g) => (
-            <li key={g.id}>
-              {/* ⚠️⚠️ THESE WERE PLAIN LIST ROWS. Four things a creator was told
-                  to add, each explaining what adding it would change, and NOT
-                  ONE OF THEM CLICKABLE — there was no destination declared for
-                  them anywhere. A panel that names work and offers no way to do
-                  it is worse than one that says nothing.
-                  ⚖️ THE WHOLE ROW IS THE CONTROL, matching the setup cards
-                  above, so the target is the size of the thing you read. */}
-              <button
-                type="button"
-                onClick={() => onGapAction(g.id)}
-                className="w-full rounded-lg border border-white/10 px-3 py-2 text-left transition-colors hover:border-white/20 hover:bg-white/[0.04]"
-              >
-                <p className="text-sm text-cream">{g.label}</p>
-                {/* ⚖️ WHAT IT UNLOCKS, NOT WHAT IS MISSING. A creator can decide
-                    whether to spend thirty seconds on this; "incomplete" only
-                    tells them they are behind. */}
-                <p className="mt-0.5 text-xs text-stone">Adding this changes {g.unlocks}.</p>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* ⚠️⚠️ THE 50% METER AND ITS FOUR ROWS ARE DELETED, NOT REWIRED. An hour
+          before this commit I gave those rows working destinations, and the
+          owner's ruling is better: the panel listed four things that were
+          ALREADY on the cards above it, under a percentage nobody set. "What
+          Twin knows about you" and "Your Twin setup" were trying to be
+          different things and were not — a status list and a meter over the
+          same items. Twelve cards for six facts, counted off the live screen.
+          ⚖️ SO THE DESTINATIONS WENT WITH IT. `gapAction` had exactly one
+          consumer and this was it; keeping a mapping whose caller has been
+          deleted is the defect this repo keeps closing, so it is reverted in
+          the same commit rather than left as a tidy-looking orphan.
+          ⚖️ AND THE MEASUREMENT IS NOT LOST. `contentProfile`'s gaps still
+          decide the voice card's state in `setupAreas`, which is where a
+          creator can act on them. What is gone is the second telling. */}
 
       {/* ⚠️ A PERMANENTLY EDITABLE NAKED INPUT ON A SETTINGS PAGE IS NOT A
           SETTING, it is a form field somebody has to notice, decide about, and

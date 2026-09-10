@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { setupAreas } from '@twinai/shared'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '')
@@ -16,13 +17,25 @@ const SETTINGS = strip(readFileSync(join(here, '..', 'pages', 'Settings.tsx'), '
 const REMINDER = strip(readFileSync(join(here, '..', 'components', 'BrandReminder.tsx'), 'utf8'))
 
 describe('the meter is fed only creative answers', () => {
-  it('computes the number from the profile input alone', () => {
-    expect(SETTINGS).toMatch(/const content = contentProfile\(\{/)
-    // ⚠️ THE REGRESSION THIS EXISTS FOR: a kit, a logo or a palette threaded into
-    // the meter's input. The shared module has no such parameter, so this would
-    // have to be added deliberately — and it must not be.
-    const call = SETTINGS.slice(SETTINGS.indexOf('contentProfile({'), SETTINGS.indexOf('const productDna'))
-    expect(call).not.toMatch(/brandKit|logo|palette|Hex/i)
+  // ⚠️⚠️ THIS ASSERTION IS INVERTED, AND IT IS STRONGER THAT WAY. It used to
+  // require `const content = contentProfile({` in Settings and then check that
+  // no brand field was threaded into it. The meter it guarded is DELETED — it
+  // showed a percentage nobody set over four rows that duplicated the cards
+  // above them, twelve cards for six facts on one screen.
+  //
+  // ⚖️ SO WHAT IS GUARDED NOW IS THE DELETION. If this page computes a content
+  // profile again, the second telling is back, and that is the regression worth
+  // catching. The old concern — a kit or palette threaded into the meter's
+  // input — cannot occur when there is no call; and `ProfileInput` has no such
+  // field, which tsc enforces on excess properties (demonstrated on this branch
+  // when a stray `productCount` was caught by the typecheck ratchet).
+  //
+  // ⚖️ `setupAreas` STILL CALLS IT INTERNALLY, which is where the measurement
+  // belongs: it decides the voice card's state, on a card a creator can act on.
+  it('the page does not compute a second content profile of its own', () => {
+    expect(SETTINGS).not.toContain('contentProfile(')
+    expect(SETTINGS).not.toContain('content.percent')
+    expect(SETTINGS).not.toContain('content.gaps')
   })
 
   it('reports brand kit and product DNA as states, beside the number', () => {
@@ -37,8 +50,17 @@ describe('the meter is fed only creative answers', () => {
     expect(SETTINGS).toMatch(/paletteSource: brandKit\.palette_source/)
   })
 
+  // ⚖️ THE CLAIM MOVED WITH THE CARD IT JUSTIFIED. That sentence lived in the
+  // deleted panel, and it was the panel's own argument for why logo and colours
+  // did not belong on this screen — so the line went when the card did. The
+  // claim itself still has to be made somewhere a reader meets it, and it is
+  // made in the area's own detail text in shared, which is the one place that
+  // survives whichever surface renders it.
   it('says out loud that visuals do not change a script', () => {
-    expect(SETTINGS).toMatch(/never change what a script says/)
+    const areas = setupAreas({ answers: null, dnaReady: true, cta: null, productCount: 0, brandKit: null })
+    const kit = areas.find((a) => a.id === 'brand_kit')
+    expect(kit, 'the brand kit area disappeared entirely').toBeTruthy()
+    expect(kit!.detail).toMatch(/does not change what your scripts say/i)
   })
 })
 
