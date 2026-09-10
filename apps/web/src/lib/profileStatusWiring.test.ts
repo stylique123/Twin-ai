@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { setupAreas } from '@twinai/shared'
+import { setupAreas, SETUP_STATES } from '@twinai/shared'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '')
@@ -38,10 +38,34 @@ describe('the meter is fed only creative answers', () => {
     expect(SETTINGS).not.toContain('content.gaps')
   })
 
-  it('reports brand kit and product DNA as states, beside the number', () => {
-    expect(SETTINGS).toMatch(/const kitStatus = brandKitStatus\(/)
-    expect(SETTINGS).toMatch(/const productDna = productDnaStatus\(/)
-    expect(SETTINGS).toMatch(/Not set up/)
+  // ⚠️⚠️ THE SUBJECT MOVED AND THE PROPERTY SURVIVED. This asserted that the
+  // page computed `kitStatus` and `productDna` and printed "Not set up" — all
+  // three belonged to two read-only status lines that duplicated the setup
+  // cards beside them, and those lines are deleted. The page no longer computes
+  // either status: `setupAreas` derives both itself from the raw answers,
+  // product count and kit it is already given.
+  //
+  // ⚖️ THE PROPERTY IS WHAT MATTERED — these two are reported as STATES, never
+  // folded into a score — and it is asserted behaviourally now, which also makes
+  // it immune to the next rename.
+  it('reports brand kit and product DNA as states, not as score', () => {
+    const areas = setupAreas({
+      answers: { commercialTies: ['own_product'] }, dnaReady: true, cta: null,
+      productCount: 0, brandKit: null,
+    })
+    const kit = areas.find((a) => a.id === 'brand_kit')
+    const products = areas.find((a) => a.id === 'products')
+    expect(kit, 'the brand kit stopped being an area').toBeTruthy()
+    expect(products, 'products stopped being an area').toBeTruthy()
+    // ⚖️ A STATE A CREATOR CAN READ, AND AN ACTION THEY CAN TAKE — which is the
+    // whole difference between this and the status lines that were removed.
+    expect(SETUP_STATES as readonly string[]).toContain(kit!.state)
+    expect(SETUP_STATES as readonly string[]).toContain(products!.state)
+    expect(kit!.action).toBeTruthy()
+    expect(products!.action).toBeTruthy()
+    // ⚠️ AND THE KIT IS NEVER COUNTED. Nothing it holds changes a script, so a
+    // score that included it would nag for work that cannot help.
+    expect(kit!.counts).toBe(false)
   })
 
   it('only a manual palette makes the kit ready, on the page as in the module', () => {

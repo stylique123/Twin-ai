@@ -67,12 +67,25 @@ describe('one fact, one place', () => {
   // ⚖️ THE COLLAPSED TEASER IS NOT A THIRD COPY EITHER. It used to print the
   // voice summary and then "niche · audience" — the same facts, with no
   // evidence attached, on the way to the panel that has it.
-  it('the collapsed voice line points at the facts instead of restating them', () => {
-    const teaser = CODE.slice(CODE.indexOf('data-testid="voice-teaser"'),
-      CODE.indexOf('voice-open-learned'))
-    expect(teaser).not.toContain('dna.niche')
-    expect(teaser).not.toContain('dna.audience')
-    expect(teaser).toContain('learnedTotal')
+  // ⚠️⚠️ THIS TEST'S SUBJECT IS DELETED, AND ITS PROPERTY IS NOW SATISFIED
+  // ABSOLUTELY. It asserted that the collapsed "Your voice" line POINTED at the
+  // facts rather than restating them — it had already been stripped from
+  // printing niche and audience down to printing a count, which was the right
+  // direction and one step short. The card above it carried the same label and
+  // the same destination, so a count of what another card already offers is
+  // still a second telling. The line is gone.
+  //
+  // ⚖️ SO THE ASSERTION IS THE STRONGER FORM: there is no teaser at all, and
+  // nothing on this page restates the facts outside the learned panel.
+  it('there is no second voice summary on the page', () => {
+    expect(CODE).not.toContain('data-testid="voice-teaser"')
+    expect(CODE).not.toContain('data-testid="voice-open-learned"')
+    // ⚠️ AND THE FACTS MUST NOT COME BACK BY ANOTHER ROUTE. The learned panel
+    // is the one place they are shown with their provenance.
+    const beforePanel = CODE.slice(0, CODE.indexOf('learnedOpen &&'))
+    expect(beforePanel, 'the page could not be split at the learned panel').not.toBe('')
+    expect(beforePanel).not.toContain('dna.niche')
+    expect(beforePanel).not.toContain('dna.audience')
   })
 
   // ⚖️ ONE FACT, ONE PATH. A row in the read view must land on the input that

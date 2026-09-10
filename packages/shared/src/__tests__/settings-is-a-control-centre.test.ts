@@ -130,8 +130,17 @@ describe('editing is deliberate, and the record is folded', () => {
     // the block became the edit form. The record is still folded behind one
     // deliberate control, which is what this test is for — pinning the label
     // made it fail on a change that strengthened the thing it guards.
-    expect(PAGE).toMatch(/data-testid="voice-open-learned"/)
+    // ⚠️ THE CONTROL CHANGED AGAIN, AND THIS TEST HAD ALREADY LEARNED THAT
+    // LESSON ONCE — see the note above about pinning the label. It pinned the
+    // teaser's testid next, and the teaser is now deleted: it duplicated the
+    // "Your voice" setup card, same label and same destination. The record is
+    // still folded behind one deliberate control; that control is now the card,
+    // routed through `view_dna` in the destination switch.
+    expect(PAGE).toMatch(/case 'view_dna':/)
     expect(PAGE).toMatch(/setDnaOpen\(true\)/)
+    // ⚖️ AND IT IS STILL FOLDED, WHICH IS THE WHOLE POINT: the form starts
+    // closed, so nobody scrolls the record to reach anything else.
+    expect(PAGE).toMatch(/const \[dnaOpen, setDnaOpen\] = useState\(false\)/)
   })
 
   it('folding is not hiding — the same record is one tap away', () => {

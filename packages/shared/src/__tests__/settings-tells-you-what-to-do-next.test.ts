@@ -15,7 +15,8 @@ import {
   SETUP_STATES, SETUP_AREA_IDS,
   type SetupInput,
 } from '../setupAreas'
-import type { CreatorProfileAnswers } from '../creatorProfileQuestions'
+import type { CreatorProfileAnswers, CommercialTie } from '../creatorProfileQuestions'
+import { productDnaStatus } from '../profileCompletion'
 
 // ⚠️ `as never` IS NOT A TYPE, IT IS THE ABSENCE OF ONE. Spreading it is not
 //  even legal ("Spread types may only be created from object types"), and every
@@ -272,6 +273,51 @@ describe('one next step, and it moves', () => {
   // those gaps has been deleted — twelve cards for six facts, and those four
   // rows duplicated the cards above them. A totality test over a mapping nobody
   // calls is a test that cannot fail for a reason anyone cares about.
+  // ⚠️⚠️ ONE RULE, ONE AUTHORITY — AND THE SCAN IS WHAT FOUND THE SECOND ONE.
+  // The products area used to re-derive its state inline: `!productsApply ?
+  // 'not_needed' : hasProducts ? 'ready' : 'needs_setup'`. That is the same
+  // three-way rule `productDnaStatus` already owned. Nobody noticed until the
+  // status line that called that function was deleted and `check_symbol_readers`
+  // reported it as a rule nothing runs — a second authority hiding behind a
+  // first caller.
+  //
+  // ⚖️ SO THE AGREEMENT IS ASSERTED OVER EVERY COMBINATION, not just the happy
+  // one. If the inline version ever comes back, one of these rows disagrees.
+  describe('the products area asks the shared rule instead of re-deriving it', () => {
+    const TIES: Array<readonly CommercialTie[] | null> = [
+      null, [], ['none'], ['own_product'], ['own_service'], ['affiliate'],
+      ['none', 'own_product'],
+    ]
+    it('agrees with productDnaStatus for every tie and count', () => {
+      for (const ties of TIES) {
+        for (const count of [0, 1, 5]) {
+          const areas = setupAreas({
+            answers: ties === null ? null : { commercialTies: ties },
+            dnaReady: true, cta: null, productCount: count, brandKit: null,
+          })
+          const products = areas.find((a) => a.id === 'products')!
+          const shared = productDnaStatus(ties, count)
+          const expected = shared === 'missing' ? 'needs_setup' : shared
+          expect(products.state, `ties=${JSON.stringify(ties)} count=${count}`).toBe(expected)
+        }
+      }
+    })
+
+    // ⚖️ AND THE THREE-STATE DISTINCTION IS REAL, not collapsed by the mapping.
+    // All three outcomes must be reachable, or an agreement test could pass on a
+    // function that always returns the same thing.
+    it('all three outcomes are reachable', () => {
+      const stateFor = (ties: readonly CommercialTie[] | null, count: number) =>
+        setupAreas({
+          answers: ties === null ? null : { commercialTies: ties },
+          dnaReady: true, cta: null, productCount: count, brandKit: null,
+        }).find((a) => a.id === 'products')!.state
+      expect(stateFor(['none'], 0)).toBe('not_needed')
+      expect(stateFor(['own_product'], 2)).toBe('ready')
+      expect(stateFor(['own_product'], 0)).toBe('needs_setup')
+    })
+  })
+
   it('never sends anybody to the brand kit as the next thing', () => {
     // ⚠️ IT IS OPTIONAL, SO IT CAN NEVER BE THE ONE THING WE ASK FOR. Offering
     // it as the next step is how "optional" quietly becomes required.
