@@ -58,6 +58,23 @@ import type { Assessed } from '../assessed'
  * that the video opened that way, and the whole point of this module is not to
  * assert what it cannot see. They belong to stage 1b, which reads the transcript.
  */
+/**
+ * Which version of the pattern set produced a stored shape.
+ *
+ * ⚠️ BUMP THIS WHENEVER `PATTERNS` OR `CAPTION_SHAPES` CHANGES. Stored rows
+ * carry it, so a re-run can find the rows that predate a change instead of
+ * trusting that the corpus holds one vocabulary. Without it, widening a pattern
+ * silently mixes two vocabularies in one table and there is no query that can
+ * separate them again.
+ *
+ * ⚖️ MEASURED AT VERSION 1, over the newest 3,000 of 16,343 production rows:
+ * 511 classified (17.0%), 2,061 matched no pattern (68.7%), 172 empty after
+ * stripping, 130 not English, 111 with no title, 15 too short to judge. `curiosity_gap` and
+ * `direct_address` fired ZERO times. Recorded here so a future bump can be
+ * compared against something rather than asserted to be an improvement.
+ */
+export const CAPTION_SHAPE_VERSION = 1
+
 export const CAPTION_SHAPES = [
   'negative_command',
   'number_promise',
@@ -98,8 +115,21 @@ export function captionBody(raw: unknown): string {
  * so that "we classified 3% of the corpus" is read as "our patterns are English"
  * rather than "97% of cards have no shape".
  */
+/**
+ * Below this many characters a body carries too little to judge — not its
+ * language, not its shape.
+ *
+ * ⚠️ EXPORTED BECAUSE A CALLER MUST BE ABLE TO TELL THE TWO REFUSALS APART.
+ * `isLikelyEnglish` folds "too short to judge" into its false, which is correct
+ * for a gate and WRONG as an explanation: the backfill attributed a 10-character
+ * English caption to `not_english`, putting a false fact in the column whose
+ * whole purpose is to be trustworthy. Caught by its own selftest on
+ * "How to win".
+ */
+export const MIN_CLASSIFIABLE_CHARS = 12
+
 export function isLikelyEnglish(body: string): boolean {
-  if (body.length < 12) return false
+  if (body.length < MIN_CLASSIFIABLE_CHARS) return false
   const latin = (body.match(/[a-z]/gi) ?? []).length
   const letters = (body.match(/\p{L}/gu) ?? []).length
   if (letters === 0) return false
