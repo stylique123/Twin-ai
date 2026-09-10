@@ -6609,6 +6609,40 @@ Deno.serve(async (req: Request) => {
         + '\n  Use these rather than inventing capabilities. Anything about this product NOT listed here is unverified — describe it in general terms or leave it out.')
     }
 
+    // ── THE FACTS SHE TYPED, WHICH NO PROMPT HAS EVER CARRIED ─────────────
+    //
+    // ⚠️⚠️ `brief.productFacts` HAD NO READER ANYWHERE. It is written twice in
+    // this file — `stable.productFacts` for the next video and `brief.productFacts`
+    // for this one — from the readiness question whose own label is "Specific
+    // features, numbers or outcomes THIS VIDEO IS ALLOWED TO STATE". Nothing read
+    // either. The only product facts reaching this prompt came from
+    // `usableProductFacts` above, which is scraped from the product's own pages,
+    // so a creator whose product has no page — a coaching service, a community,
+    // a physical thing she sells in DMs — had no way to tell the writer what it
+    // IS. Audited over ten runs: of six specifics she typed, five did not survive.
+    //
+    // ⚖️ MARKED AS HERS, NOT AS VERIFIED, WHICH IS THE WHOLE DIFFERENCE FROM THE
+    // BLOCK ABOVE. `usableProductFacts` earned its grade from a classifier
+    // reading an authoritative page. These are a sentence a person typed, so they
+    // are offered as the creator's own statement of what the thing is — usable
+    // for identity, format, price and who it is for, and never promoted into a
+    // verified capability.
+    //
+    // ⚖️ AND IT DOES NOT BECOME AN OUTCOME LICENCE. "About 45 dollars" and "three
+    // sizes" are facts about the object. "Fixes your core in six weeks" typed
+    // into the same box is an outcome, and `unionApproved` above is the only
+    // thing that may licence one — so this line says so rather than letting a
+    // free-text box become the back door around the approval it spent seventy
+    // lines building.
+    const typedProductFacts = readyPresent(brief.productFacts)
+      ? String(brief.productFacts).slice(0, 2000) : ''
+    if (typedProductFacts !== '') {
+      claimLines.push('\n- WHAT THE CREATOR TYPED ABOUT THIS PRODUCT, in their own words: '
+        + typedProductFacts
+        + '\n  These are the creator\'s own statement of what the thing IS — use them for its identity, format, price, sizes and who it is for, and prefer them to describing it vaguely. They have NOT been verified by anyone, so do not restate them as proven or independently checked.'
+        + ' And a sentence here that promises a RESULT is still not an approved outcome claim: state what the product is and costs, never what it will achieve, unless that outcome appears in the approved list above.')
+    }
+
     // ── THE ONE LINE THE CREATOR TYPED THEMSELVES ────────────────────────
     //
     // ⚠️ `creator_summary` WAS WRITTEN AND NEVER READ. The add form asks "in one

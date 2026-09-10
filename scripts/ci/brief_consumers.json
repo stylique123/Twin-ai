@@ -125,6 +125,12 @@
         "supabase/functions/generate-blueprint/index.ts"
       ]
     },
+    "productFacts": {
+      "readBy": [
+        "supabase/functions/generate-blueprint/index.ts"
+      ],
+      "readerNote": "⚠️ THIS KEY ESCAPED THIS REGISTRY ENTIRELY UNTIL 0198, AND THAT IS THE HOLE THE GUARD NOW CLOSES. generate-blueprint wrote `stable.productFacts` from the readiness question labelled \"Specific features, numbers or outcomes this video is allowed to state\", but the key was absent from BRIEF_STORED_KEYS — so this guard, which exists precisely to stop an answer nothing reads, could not see it and demanded nothing. It was also absent from 0109's shape CHECK, so the database rejected the persist; the write is ONE update of the whole brief, so the rejection took `offer`, `promotes` and `defaultCta` with it. Measured 2026-09-10: 0 of 52 voices carry productFacts and 0 of 51 carry a stored defaultCta, from that one cause. The reader is a claim line marked as the CREATOR'S OWN STATEMENT, deliberately NOT as a verified fact — `usableProductFacts` earns its grade from a classifier reading an authoritative page; this is a sentence a person typed. It also refuses to licence an outcome: `unionApproved` stays the only thing that may, or a free-text box becomes the back door around the approval."
+    },
     "confirmedAudiencePain": {
       "readBy": [],
       "unwiredReason": "Stored durably as of 0195; the writer still reads the UNCONFIRMED inference. generate-blueprint:5853 resolves `vp?.audience_pain ?? dna.pain`, and adding `brief.confirmedAudiencePain` to the front of that chain is one line. What blocks it is the LABEL, not the value: `prov('audiencePain')` comes from projectBrandTruth, whose only sources are the DNA and the synthesis, so the writer would quote the creator's confirmed sentence and still mark it guessed. A wrong provenance is worse than none — §10.2 turns on exactly that distinction. Wiring it means threading the confirmation into brandTruth as a self-reported source, which needs its own evidence and its own PR."

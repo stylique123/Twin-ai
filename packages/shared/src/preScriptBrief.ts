@@ -284,6 +284,21 @@ export interface BriefAnswers {
   ownServiceKind?: string | null
   /** ⚠️ USER-TYPED ONLY. `cta.ts` refuses to write a generated sentence here. */
   defaultCta?: string | null
+  /** ⚠️ THE FACTS THE CREATOR TYPED ABOUT THEIR OWN PRODUCT, and the field whose
+   *  absence from this interface is why it was never stored. `generate-blueprint`
+   *  has written `stable.productFacts` from the readiness question "Specific
+   *  features, numbers or outcomes this video is allowed to state" since that
+   *  question existed, and the key was in neither BRIEF_STORED_KEYS nor 0109's
+   *  shape CHECK — so `sanitizeBriefForWrite` dropped it and the database
+   *  rejected it. The persist is ONE update of the whole brief, so the rejection
+   *  discarded `offer`, `promotes` and `defaultCta` alongside it: measured
+   *  2026-09-10, 0 of 52 voices carry productFacts and 0 of 51 carry a stored
+   *  defaultCta, from that single cause.
+   *
+   *  ⚖️ A PLAIN STRING, NOT A LIST, matching what the writer sends and what 0198
+   *  accepts. It is the creator's own sentence about what the thing IS — read by
+   *  the script prompt as HER statement, never promoted to a verified fact. */
+  productFacts?: string | null
   /** Whether the creator is in frame. `string` rather than `BriefOnCamera` for
    *  the reason given above: this is the STORED shape, and a value read back
    *  from an older row is untrusted input. */
@@ -492,6 +507,16 @@ export const BRIEF_STORED_KEYS = [
   // ⚖️ WHETHER THE CREATOR IS IN FRAME. Read by generate-blueprint, which uses
   // it to decide whether physical staging direction may be written at all.
   'onCamera',
+  // ⚠️ THE FACTS SHE TYPED ABOUT HER OWN PRODUCT, WHICH THE DATABASE REFUSED.
+  // `generate-blueprint` has written `stable.productFacts` from the readiness
+  // question "Specific features, numbers or outcomes this video is allowed to
+  // state" since that question existed — and this list never carried the key, so
+  // `check_brief_consumers` never demanded a reader for it, AND 0109's shape
+  // CHECK rejected it. The persist is ONE update of the whole brief, so the
+  // rejection took `offer`, `promotes` and `defaultCta` down with it: 0 of 52
+  // voices have productFacts and 0 of 51 have a stored defaultCta, from one
+  // cause. 0198 widens the CHECK; this line is what makes the guard watch it.
+  'productFacts',
   // ⚠️ WHAT THE CREATOR CONFIRMED ABOUT HER OWN AUDIENCE. The onboarding card
   // has shown these two inferred sentences since #766 and written the answer to
   // `sessionStorage` and nowhere else — a confirmation that lived as long as the
