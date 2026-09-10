@@ -312,6 +312,15 @@ export default function V2Create() {
           ...buildFieldsForDoor('product', input.trim() || chosenProduct.name || ''),
           door,
           tone,
+          // ⚠️⚠️ THIS BRANCH OMITTED THE LENGTH, AND THAT IS HALF OF WHY PRODUCT
+          // MODE HAD NO DURATION CONTROL ON TEN AUDITED RUNS. The main `proceed`
+          // path sends `target_seconds: target`; this one — added when the
+          // product door started building in place rather than dead-ending in the
+          // Library — never did, so `state.target_seconds` arrived undefined and
+          // `targetSeconds` fell back to its default on every product build. The
+          // other half was the picker being hidden; both are fixed here, because
+          // sending a value the creator was never shown is not a control either.
+          target_seconds: target,
           selected_product_id: chosenProduct.id,
           idempotency_key: crypto.randomUUID(),
         },
@@ -501,11 +510,26 @@ export default function V2Create() {
               of question — the creator's intent, not an execution preference —
               and burying it would reproduce that failure exactly.
 
-              ⚖️ AND IT IS ASKED FOR EVERY DOOR. Reference and Product could
-              derive a default from what they were given; Idea and Suggest have
-              nothing to derive from, and today Idea Mode produces whatever
-              length it happens to produce. ── */}
-          {!isHandoff && (
+              ⚠️⚠️ AND THIS COMMENT USED TO SAY "IT IS ASKED FOR EVERY DOOR"
+              WHILE THE CODE BENEATH IT ASKED FOR NEITHER PRODUCT NOR BROWSE. It
+              was gated on `!isHandoff`, so ten audited Product Mode runs had no
+              duration control at all — the audit's "absent entirely". A note
+              describing behaviour nothing implements is the defect class this
+              repository keeps finding, and here it sat directly above the gate
+              that contradicted it.
+
+              ⚖️ SO THE GATE IS NOW "DOES THIS DOOR BUILD FROM THIS SCREEN",
+              WHICH IS THE REAL DISTINCTION AND NOT A WIDENING. `browse` does not
+              build here — it navigates to the Gallery, as the comment in `go`
+              says — so a length picked here would be picked for a video this
+              screen never starts. `product` DOES build here, from the branch
+              above, so it needs the question exactly as Idea and Reference do.
+
+              ⚖️ AND ONLY THIS BLOCK CHANGES. The other `!isHandoff` gates on
+              this screen cover the text box and its guards, where the product
+              door's empty-input case is deliberate — widening those would be a
+              different change with a different argument. ── */}
+          {door !== 'browse' && (
             <div className="mx-auto mt-7 max-w-md text-left">
               <div className="eyebrow mb-2.5">How long?</div>
               <div role="radiogroup" aria-label="How long should the video be?" className="grid grid-cols-3 gap-2.5">
