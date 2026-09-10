@@ -505,6 +505,34 @@ instruction.
 - **Pull real failing inputs before changing anything.** The caption bug was
   found by reading staging project `90eeb742`'s actual data, not by reasoning
   from the error string.
+- **`create table if not exists` SILENTLY SKIPS ITS FOREIGN KEYS.** On
+  2026-09-10 a rolled-back probe found that deleting a fixture user on staging
+  was refused — and not by an append-only trigger, which is what the previous
+  purge investigation had blamed. `generations.user_id` had **no foreign key at
+  all** on staging, though `0001_init.sql:56` declares `references auth.users
+  (id) on delete cascade` and production carries
+  `generations_user_id_fkey`. Four constraints across five columns were missing
+  the same way (`generations.user_id`, `brand_voices.owner_id`,
+  `jobs.owner_id`, `workspace_members.owner_id` / `.member_id`), all declared
+  in early migrations, all present on production. The repo was right and
+  production was right; **staging had drifted, on exactly the constraint the
+  matrix's own cleanup depends on.** The mechanism is inferred rather than
+  measured — where the table already existed, `if not exists` makes the whole
+  create a no-op *including its keys*, and the migration still records as
+  applied — but it fits every observation: only tables from early migrations
+  are affected, later ones all carry their keys. **The cost was never disk. It
+  was that the matrix had been asserting production behaviour against a schema
+  production does not have.**
+- **THE PARTIAL-SEARCH RULE CAUGHT ME THREE TIMES IN ONE HOUR, INCLUDING ON
+  ITSELF.** Investigating the above: (1) I sized the undeletable backlog against
+  seven append-only tables when `pg_trigger` reports **twelve** — and the real
+  set includes `media_assets`, which I never checked, while excluding two I did.
+  A 94.1%-deletable figure was withdrawn. (2) I reported `0196` as missing from
+  the matrix's migration list after grepping the *workflow*; the exclusion list
+  lives in the guard. (3) I grepped `docs/` for "partial search" and found
+  nothing, because this very entry is written in capitals. **The rule is not
+  "search more places". It is that a search which found nothing has established
+  nothing until you can say what set it covered.**
 - **A PARTIAL SEARCH REPORTS ABSENCE.** On 2026-09-10 a grep over
   `apps/web/src` and `supabase/functions` produced a confident *"no production
   caller"* for `uploadAbandonBeacon` — whose caller is in
