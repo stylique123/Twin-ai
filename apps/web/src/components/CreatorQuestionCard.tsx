@@ -34,44 +34,46 @@ export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | nul
   const [problem, setProblem] = useState<string | null>(null)
   const [thanks, setThanks] = useState(false)
 
+  // ⚠️⚠️ EXTRACTED SO A SKIP CAN SERVE THE NEXT ONE. This was inline in the
+  // effect below, and the effect depends on `voiceId` alone — so "Not this one"
+  // set `question` to null, the card returned null, and THE WHOLE SECTION
+  // EMPTIED UNTIL THE PAGE WAS RELOADED. Reported live: dismissing one question
+  // ended the queue. One question at a time is right; one question EVER is not.
+  //
+  // ⚖️ THE SERVER DECIDES WHAT IS NEXT, NOT A LOCAL CURSOR. `loadQuestionsPut`
+  // is re-read after the skip has been recorded, so the skipped id is already
+  // excluded and `nextQuestionByDeficit` picks by what the store actually lacks.
+  // A client-side index would drift from the record the moment anything else
+  // wrote to it.
+  const loadNext = async (alive: () => boolean) => {
+    const put = await loadQuestionsPut()
+    if (!alive() || put === null) return // not-knowing: ask nothing
+    const counts = await loadKnowledgeCounts()
+    if (!alive()) return
+    const niche = await loadVoiceNiche(voiceId)
+    if (!alive()) return
+    const q = nextQuestionByDeficit(put, counts, creatorQuestionsFor(niche))
+    setQuestion(q)
+    // ⚠️ RECORDED HERE BECAUSE HERE IS WHERE IT IS TRUE. The impression is
+    // written only once a question actually exists to render -- not on mount,
+    // which happens on every Result page including the ones that show nothing.
+    // Without it "nobody answers" and "nobody was asked" are the same zero, and
+    // every fix for the first would be a guess. Best-effort: a failed
+    // impression must never cost the creator the question.
+    if (q) void markQuestionShown(q.id)
+  }
+
   useEffect(() => {
     let live = true
-    void (async () => {
-      const put = await loadQuestionsPut()
-      if (!live || put === null) return // not-knowing: ask nothing
-      // ⚠️ ASK ABOUT WHAT THE STORE LACKS. Three complete scripts on the physio
-      // account contained ZERO first-person episodes — not because the writer
-      // refused them, but because there were none to use. A store full of
-      // opinions reads as full, and the fixed question order kept asking for
-      // more opinions. Counts are read separately and MAY FAIL: null falls back
-      // to the old fixed order rather than claiming every kind is scarce.
-      const counts = await loadKnowledgeCounts()
-      if (!live) return
-      // ⚠️ HER LANGUAGE, NOT OURS. "What number do you track that most people in
-      // your niche ignore?" was reported by a creator whose work has no
-      // dashboard — a question from another industry. `creatorQuestionsFor` swaps the
-      // WORDING for a measured niche bucket and keeps every id, so anyone who
-      // has already answered stays answered.
-      //
-      // ⚖️ A FAILED OR UNBUCKETED NICHE IS NOT A DEGRADED STATE. 17 of 47 voices
-      // land there and get the bank that has always been there.
-      const niche = await loadVoiceNiche(voiceId)
-      if (!live) return
-      const q = nextQuestionByDeficit(put, counts, creatorQuestionsFor(niche))
-      setQuestion(q)
-      // ⚠️ RECORDED HERE BECAUSE HERE IS WHERE IT IS TRUE. The impression is
-      // written only once a question actually exists to render -- not on mount,
-      // which happens on every Result page including the ones that show nothing.
-      // Without it "nobody answers" and "nobody was asked" are the same zero,
-      // and every fix for the first would be a guess. Best-effort: a failed
-      // impression must never cost the creator the question.
-      if (q) void markQuestionShown(q.id)
-    })()
+    // ⚖️ ONE LOADER, CALLED FROM BOTH PLACES. This effect used to carry its own
+    // copy of the sequence above; a skip needing the same sequence is exactly
+    // how a second authority for one rule gets written.
+    void loadNext(() => live)
     return () => { live = false }
-    // ⚠️ `voiceId` IS A DEPENDENCY NOW BECAUSE THE EFFECT READS IT. It was an
-    // empty array while the prop was only used by the submit handler; leaving it
-    // empty once the effect loads the niche would show the previous voice's
-    // wording after a switch.
+    // ⚠️ `voiceId` IS A DEPENDENCY BECAUSE THE LOADER READS IT. It was an empty
+    // array while the prop was only used by the submit handler; leaving it empty
+    // once the niche is loaded would show the previous voice's wording after a
+    // switch.
   }, [voiceId])
 
   if (thanks) {
@@ -104,8 +106,19 @@ export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | nul
     // ⚠️ RECORDED, NOT JUST HIDDEN. A skip that only unmounts the component comes
     // straight back on the next script, and the creator experiences a product
     // that cannot take no for an answer.
+    //
+    // ⚠️⚠️ AND THE SKIP IS AWAITED BEFORE THE NEXT QUESTION IS ASKED FOR,
+    // deliberately. `nextQuestionByDeficit` reads the stored record; asking for
+    // the next one before the skip has landed would hand back THE SAME
+    // QUESTION, which reads as a button that does nothing.
+    setBusy(true)
     setQuestion(null)
     await skipQuestion(question.id)
+    // ⚖️ AND THEN THE SECTION REFILLS. Dismissing one question is not
+    // dismissing the queue; when the bank is genuinely exhausted `loadNext`
+    // sets null and the card retires on its own, which is the correct end.
+    await loadNext(() => true)
+    setBusy(false)
   }
 
   return (

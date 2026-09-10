@@ -48,7 +48,7 @@ describe('every card actually goes somewhere', () => {
     // progress segments are one — so the right one is the block whose card
     // actually navigates. Pinning a literal is what broke; pinning the intent
     // survives the next refactor.
-    const blocks = [...PAGE.matchAll(/\{areas[\s\S]{0,200}?\.map\(\(a\) => \(/g)]
+    const blocks = [...PAGE.matchAll(/\{(?:areas|panelAreas\()[\s\S]{0,400}?\.map\(\(a\) => \(/g)]
     const grid = blocks.map((m) => PAGE.slice(m.index ?? 0, (m.index ?? 0) + 1200))
       .find((b) => /goTo\(a\)/.test(b)) ?? ''
     expect(grid, 'the card grid could not be located in Settings.tsx').not.toBe('')
@@ -59,7 +59,13 @@ describe('every card actually goes somewhere', () => {
   it('the destination map is total, so a new action cannot be forgotten', () => {
     // ⚖️ A `switch` OVER THE UNION WITH NO DEFAULT. Adding an action without a
     // destination becomes a compile error rather than a dead button.
-    const go = PAGE.slice(PAGE.indexOf('const goTo = (a: SetupArea)'))
+    // ⚠️ POINTED AT `goToAction`, WHERE THE SWITCH ACTUALLY LIVES NOW. `goTo`
+    // became a one-line delegate when the completion gaps started dispatching
+    // actions too, and this slice still passed — but only because it ran PAST
+    // the delegate into the switch below it. A test that passes by accident of
+    // adjacency is one edit away from passing by accident of nothing.
+    const go = PAGE.slice(PAGE.indexOf('const goToAction = (action: SetupAction)'))
+    expect(go, 'the destination switch could not be located').not.toBe('')
     const body = go.slice(0, go.indexOf('\n  }'))
     for (const a of ['add_product', 'manage_products', 'setup_brand_kit', 'view_dna', 'edit_profile', 'edit_cta']) {
       expect(body, a).toContain(`case '${a}'`)
@@ -124,8 +130,17 @@ describe('editing is deliberate, and the record is folded', () => {
     // the block became the edit form. The record is still folded behind one
     // deliberate control, which is what this test is for — pinning the label
     // made it fail on a change that strengthened the thing it guards.
-    expect(PAGE).toMatch(/data-testid="voice-open-learned"/)
+    // ⚠️ THE CONTROL CHANGED AGAIN, AND THIS TEST HAD ALREADY LEARNED THAT
+    // LESSON ONCE — see the note above about pinning the label. It pinned the
+    // teaser's testid next, and the teaser is now deleted: it duplicated the
+    // "Your voice" setup card, same label and same destination. The record is
+    // still folded behind one deliberate control; that control is now the card,
+    // routed through `view_dna` in the destination switch.
+    expect(PAGE).toMatch(/case 'view_dna':/)
     expect(PAGE).toMatch(/setDnaOpen\(true\)/)
+    // ⚖️ AND IT IS STILL FOLDED, WHICH IS THE WHOLE POINT: the form starts
+    // closed, so nobody scrolls the record to reach anything else.
+    expect(PAGE).toMatch(/const \[dnaOpen, setDnaOpen\] = useState\(false\)/)
   })
 
   it('folding is not hiding — the same record is one tap away', () => {

@@ -144,10 +144,29 @@ export function heardCount(facts: readonly LearnedFact[]): number {
 export const EDITS_INTO: Readonly<Record<string, string | null>> = Object.freeze({
   niche: 'niche',
   audience: 'audience',
+  // ⚠️⚠️ THREE OF THESE WERE `null` WHILE THEIR FORM FIELD ALREADY EXISTED.
+  // Reported as "its Edit jumps to a lower block instead of editing in place" —
+  // and the jump is not the defect: for `niche` and `audience` it closes the
+  // panel, opens the form and puts the cursor IN THAT INPUT, which is what the
+  // comment beside the button describes as the fix for a worse version. What was
+  // actually wrong is that FIVE OF SEVEN FACTS OFFERED NO EDIT AT ALL, so the
+  // rows a creator most wants to correct — how she opens, how she sounds — were
+  // read-only with no route anywhere.
+  //
+  // ⚖️ AND THESE THREE ARE ADDED BECAUSE THE DESTINATION ALREADY EXISTS, not
+  // because a gap looked untidy. `voice` and `editing_style` are live keys on the
+  // same form `niche` and `audience` land in; verified against the field list
+  // rather than assumed. A target that does not exist would focus nothing and
+  // leave her at the top of a form — the exact defect this map was built to end.
+  tone: 'voice',
+  pacing: 'voice',
+  hook_style: 'editing_style',
+  // ⚖️ THESE TWO STAY NULL, AND THAT IS HONEST RATHER THAN UNFINISHED. Both are
+  // lists, not sentences; the DNA form has no field for either, so any target
+  // here would be a button that lands nowhere. `null` means "offers none", and
+  // the row renders without an Edit — which is correct until a list editor
+  // exists on this screen.
   vocabulary: null,
-  tone: null,
-  pacing: null,
-  hook_style: null,
   recurring_ctas: null,
 })
 

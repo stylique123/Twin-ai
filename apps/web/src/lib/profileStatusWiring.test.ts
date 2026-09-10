@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { setupAreas, SETUP_STATES } from '@twinai/shared'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '')
@@ -16,19 +17,55 @@ const SETTINGS = strip(readFileSync(join(here, '..', 'pages', 'Settings.tsx'), '
 const REMINDER = strip(readFileSync(join(here, '..', 'components', 'BrandReminder.tsx'), 'utf8'))
 
 describe('the meter is fed only creative answers', () => {
-  it('computes the number from the profile input alone', () => {
-    expect(SETTINGS).toMatch(/const content = contentProfile\(\{/)
-    // ⚠️ THE REGRESSION THIS EXISTS FOR: a kit, a logo or a palette threaded into
-    // the meter's input. The shared module has no such parameter, so this would
-    // have to be added deliberately — and it must not be.
-    const call = SETTINGS.slice(SETTINGS.indexOf('contentProfile({'), SETTINGS.indexOf('const productDna'))
-    expect(call).not.toMatch(/brandKit|logo|palette|Hex/i)
+  // ⚠️⚠️ THIS ASSERTION IS INVERTED, AND IT IS STRONGER THAT WAY. It used to
+  // require `const content = contentProfile({` in Settings and then check that
+  // no brand field was threaded into it. The meter it guarded is DELETED — it
+  // showed a percentage nobody set over four rows that duplicated the cards
+  // above them, twelve cards for six facts on one screen.
+  //
+  // ⚖️ SO WHAT IS GUARDED NOW IS THE DELETION. If this page computes a content
+  // profile again, the second telling is back, and that is the regression worth
+  // catching. The old concern — a kit or palette threaded into the meter's
+  // input — cannot occur when there is no call; and `ProfileInput` has no such
+  // field, which tsc enforces on excess properties (demonstrated on this branch
+  // when a stray `productCount` was caught by the typecheck ratchet).
+  //
+  // ⚖️ `setupAreas` STILL CALLS IT INTERNALLY, which is where the measurement
+  // belongs: it decides the voice card's state, on a card a creator can act on.
+  it('the page does not compute a second content profile of its own', () => {
+    expect(SETTINGS).not.toContain('contentProfile(')
+    expect(SETTINGS).not.toContain('content.percent')
+    expect(SETTINGS).not.toContain('content.gaps')
   })
 
-  it('reports brand kit and product DNA as states, beside the number', () => {
-    expect(SETTINGS).toMatch(/const kitStatus = brandKitStatus\(/)
-    expect(SETTINGS).toMatch(/const productDna = productDnaStatus\(/)
-    expect(SETTINGS).toMatch(/Not set up/)
+  // ⚠️⚠️ THE SUBJECT MOVED AND THE PROPERTY SURVIVED. This asserted that the
+  // page computed `kitStatus` and `productDna` and printed "Not set up" — all
+  // three belonged to two read-only status lines that duplicated the setup
+  // cards beside them, and those lines are deleted. The page no longer computes
+  // either status: `setupAreas` derives both itself from the raw answers,
+  // product count and kit it is already given.
+  //
+  // ⚖️ THE PROPERTY IS WHAT MATTERED — these two are reported as STATES, never
+  // folded into a score — and it is asserted behaviourally now, which also makes
+  // it immune to the next rename.
+  it('reports brand kit and product DNA as states, not as score', () => {
+    const areas = setupAreas({
+      answers: { commercialTies: ['own_product'] }, dnaReady: true, cta: null,
+      productCount: 0, brandKit: null,
+    })
+    const kit = areas.find((a) => a.id === 'brand_kit')
+    const products = areas.find((a) => a.id === 'products')
+    expect(kit, 'the brand kit stopped being an area').toBeTruthy()
+    expect(products, 'products stopped being an area').toBeTruthy()
+    // ⚖️ A STATE A CREATOR CAN READ, AND AN ACTION THEY CAN TAKE — which is the
+    // whole difference between this and the status lines that were removed.
+    expect(SETUP_STATES as readonly string[]).toContain(kit!.state)
+    expect(SETUP_STATES as readonly string[]).toContain(products!.state)
+    expect(kit!.action).toBeTruthy()
+    expect(products!.action).toBeTruthy()
+    // ⚠️ AND THE KIT IS NEVER COUNTED. Nothing it holds changes a script, so a
+    // score that included it would nag for work that cannot help.
+    expect(kit!.counts).toBe(false)
   })
 
   it('only a manual palette makes the kit ready, on the page as in the module', () => {
@@ -37,8 +74,17 @@ describe('the meter is fed only creative answers', () => {
     expect(SETTINGS).toMatch(/paletteSource: brandKit\.palette_source/)
   })
 
+  // ⚖️ THE CLAIM MOVED WITH THE CARD IT JUSTIFIED. That sentence lived in the
+  // deleted panel, and it was the panel's own argument for why logo and colours
+  // did not belong on this screen — so the line went when the card did. The
+  // claim itself still has to be made somewhere a reader meets it, and it is
+  // made in the area's own detail text in shared, which is the one place that
+  // survives whichever surface renders it.
   it('says out loud that visuals do not change a script', () => {
-    expect(SETTINGS).toMatch(/never change what a script says/)
+    const areas = setupAreas({ answers: null, dnaReady: true, cta: null, productCount: 0, brandKit: null })
+    const kit = areas.find((a) => a.id === 'brand_kit')
+    expect(kit, 'the brand kit area disappeared entirely').toBeTruthy()
+    expect(kit!.detail).toMatch(/does not change what your scripts say/i)
   })
 })
 
@@ -99,9 +145,20 @@ describe('the CTA is the creator’s to type, and only theirs', () => {
   //
   // ⚖️ ASSERTED AS THE EXACT FILTER WITH THE UNFILTERED MAP ASSERTED ABSENT,
   // because the difference between them is one call and a reader cannot see it.
-  it('the card grid does not redraw the area the next step already points at', () => {
-    expect(SETTINGS).toMatch(/areas\.filter\(\(a\) => a\.id !== summary\.next\?\.id\)\.map/)
-    expect(SETTINGS).not.toMatch(/\{areas\.map\(\(a\) => \(/)
+  // ⚠️⚠️ THIS ASSERTION USED TO PIN THE FILTER'S SOURCE TEXT AND BROKE TWICE IN
+  // ONE AFTERNOON — once when a second exclusion was added, once when the chain
+  // spanned lines — each time failing without naming the cause. The rule now
+  // lives in `panelAreas` in shared and is tested BEHAVIOURALLY there. What is
+  // left here is the only part that is genuinely a property of this file: the
+  // grid must go through that function rather than filtering inline again.
+  it('the card grid delegates its exclusions to panelAreas', () => {
+    expect(SETTINGS).toContain('panelAreas(areas, summary.next).map')
+    // ⚠️ AND NO INLINE RE-IMPLEMENTATION MAY CREEP BACK. Named precisely: the
+    // first version of this assertion banned any `areas.filter(` and caught the
+    // PROGRESS-SEGMENT bar, which is a different concern and correctly inline.
+    // What must not return is an exclusion decided here instead of in shared.
+    expect(SETTINGS).not.toContain('a.id !== summary.next?.id')
+    expect(SETTINGS).not.toContain("a.id !== 'brand_kit'")
   })
 
   // ⚠️⚠️ THE PREFILL EXISTED AND THE CLICK THAT OPENED THE BOX THREW IT AWAY.
@@ -114,14 +171,38 @@ describe('the CTA is the creator’s to type, and only theirs', () => {
   //
   // ⚖️ ASSERTED AS THE EXACT HANDLER, AND THE OLD ONE ASSERTED ABSENT, because
   // the difference between the two is one token and a reader cannot see it.
-  it('opening the box keeps the suggestion instead of clearing it', () => {
-    expect(SETTINGS).toMatch(
-      /setCtaDraft\(ctaText \|\| ctaSuggestion\?\.text \|\| ''\); setCtaOpen\(true\)/)
-    // The exact line that emptied it. It must not come back.
+  it('opening the box seeds it with her own ending, by whatever route', () => {
+    // ⚠️ THIS ASSERTION MOVED WITH THE BEHAVIOUR AND GOT STRONGER FOR IT. It
+    // used to pin the seeding to the panel's own button — which meant every
+    // OTHER route into the editor (the setup card, the hero's Next step) opened
+    // an empty box, because `ctaSuggestion` is null at mount and arrives with
+    // `loadVoice`. The seeding is now on the OPEN TRANSITION, so it holds for
+    // all of them.
+    expect(SETTINGS).toContain("if (ctaOpen) setCtaDraft(ctaText || ctaSuggestion?.text || '')")
+    // ⚖️ ON THE OPENING EDGE ONLY, so it cannot overwrite what somebody types.
+    expect(SETTINGS).toContain('if (ctaOpen !== wasCtaOpen)')
+    // ⚠️ THE ORIGINAL DEFECT: the handler that emptied the box on open. It must
+    // not come back, in either spelling.
     expect(SETTINGS).not.toMatch(/setCtaDraft\(ctaText\); setCtaOpen\(true\)/)
-    // ⚖️ AND THE SUGGESTION IS STILL NOT STORED WITHOUT A TAP. Nothing may
-    // commit it on mount or on open — a reading is not a decision.
+    // ⚖️ AND ONE HOME PER FACT: the button opens, it does not also seed.
+    expect(SETTINGS).toContain('onClick={() => setCtaOpen(true)}')
+    // ⚖️ THE SUGGESTION IS STILL NOT STORED WITHOUT A TAP. Nothing may commit it
+    // on mount or on open — a reading is not a decision.
     expect(SETTINGS).not.toMatch(/onCtaCommit\(ctaSuggestion/)
+  })
+
+  // ⚠️⚠️ AND EVERY ROUTE TO THE EDITOR MUST ACTUALLY REACH IT. `edit_cta` was
+  // `setTab('twin')` — dispatched from a card that only ever renders ON the twin
+  // tab, and from the hero's Next step button, so both did nothing at all.
+  // `view_dna` had this exact bug and its comment still describes it: "Not a
+  // broken handler — a no-op, which reads to a creator as 'Twin has nothing to
+  // show me'." It was fixed there by lifting the state to the page. This is the
+  // same fix.
+  it('the edit_cta action opens the editor rather than switching to the tab it is on', () => {
+    expect(SETTINGS).toContain("case 'edit_cta': { setTab('twin'); return setCtaOpen(true) }")
+    expect(SETTINGS).not.toContain("case 'edit_cta': return setTab('twin')")
+    // The state is owned by the page, so the action can reach it.
+    expect(SETTINGS).toMatch(/const \[ctaOpen, setCtaOpen\] = useState\(false\)/)
   })
 
   it('distinguishes not-loaded from set-to-nothing', () => {

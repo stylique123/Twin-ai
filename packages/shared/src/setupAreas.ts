@@ -26,7 +26,10 @@
 // the denominator, exactly as `applies()` already does for the percentage.
 
 import type { CreatorProfileAnswers, CommercialTie } from './creatorProfileQuestions'
-import { contentProfile, brandKitStatus, type BrandKitLike, type ProfileInput } from './profileCompletion'
+import {
+  contentProfile, brandKitStatus, productDnaStatus,
+  type BrandKitLike, type ProfileInput, type ProductDnaStatus,
+} from './profileCompletion'
 import { hasConfirmedCta } from './cta'
 
 /**
@@ -84,6 +87,16 @@ export interface SetupInput extends ProfileInput {
   brandKit?: BrandKitLike | null
 }
 
+/** ⚖️ THE ONLY DIFFERENCE BETWEEN THE TWO UNIONS, WRITTEN DOWN ONCE.
+ *  `ProductDnaStatus` says `missing`; a setup area says `needs_setup`. Same
+ *  condition, two vocabularies — so the translation is a table rather than a
+ *  conditional that could drift from the rule it is translating. */
+const PRODUCT_STATE: Record<ProductDnaStatus, SetupState> = {
+  not_needed: 'not_needed',
+  ready: 'ready',
+  missing: 'needs_setup',
+}
+
 const commercial = (answers?: CreatorProfileAnswers | null): boolean => {
   const ties: readonly CommercialTie[] = answers?.commercialTies ?? []
   // ⚠️ SILENCE IS NOT "no". An unreached question leaves products applicable —
@@ -132,7 +145,20 @@ export function setupAreas(input: SetupInput): SetupArea[] {
     {
       id: 'products',
       title: 'What you sell',
-      state: !productsApply ? 'not_needed' : hasProducts ? 'ready' : 'needs_setup',
+      // ⚠️⚠️ ASKED OF `productDnaStatus` RATHER THAN RE-DERIVED HERE. This line
+      // read `!productsApply ? 'not_needed' : hasProducts ? 'ready' :
+      // 'needs_setup'` — the same three-way rule that function already owned,
+      // spelled a second time. The duplication only became visible when the
+      // status line that called it was deleted and the symbol scan reported it
+      // as a rule nothing runs: a second authority for one rule, which is the
+      // defect this codebase keeps closing.
+      //
+      // ⚖️ VERIFIED IDENTICAL BEFORE WIRING, not after: ['none'] is
+      // `not_needed` on both sides, a product present is `ready` on both, and
+      // the remaining case is the same condition under two names — `missing`
+      // there, `needs_setup` here, because they are different unions. The
+      // mapping is the only thing this line now decides.
+      state: PRODUCT_STATE[productDnaStatus(input.answers?.commercialTies ?? null, input.productCount ?? 0)],
       detail: !productsApply
         // ⚠️ SAYS WHY IT IS ABSENT. A blank card reads as broken; this reads as
         // answered, and it is — they told us.
@@ -169,6 +195,40 @@ export function setupAreas(input: SetupInput): SetupArea[] {
       counts: false,
     },
   ]
+}
+
+/**
+ * The areas the setup panel should draw as cards.
+ *
+ * ⚠️⚠️ THIS IS A FUNCTION BECAUSE IT WAS TWO INLINE `.filter` CALLS IN JSX AND
+ * THE ONLY THING ASSERTING THEM WAS A REGEX OVER `Settings.tsx`. That regex
+ * broke twice in one afternoon — once when the first filter was added, once
+ * when the second one made the chain span lines — and each time it failed
+ * without naming the cause. A rule worth keeping is worth testing behaviourally;
+ * source text is not behaviour.
+ *
+ * ⚖️ TWO EXCLUSIONS, EACH FOR A STATED REASON:
+ *
+ *  · THE NEXT STEP, because the hero above the grid already draws it. It
+ *    appeared in both, so "Content profile" was on the screen twice with two
+ *    different statuses — and the whole point of a next step is that it is the
+ *    one thing to do next.
+ *  · THE BRAND KIT, because it is not a setup area on this panel. It appeared
+ *    THREE times on one page: this card ("Logo and colours"), the nav tab
+ *    ("Logo & colours"), and the "Brand Kit" section that tab opens. Its own
+ *    detail says why it does not belong — "It does not change what your scripts
+ *    say" — and 0 of 51 creators have ever uploaded a logo. Nothing is lost:
+ *    `counts: false` keeps it out of the fraction either way, `NEXT_ORDER` never
+ *    offers it as the next step, and `setup_brand_kit` still routes to the tab.
+ *
+ * ⚖️ AND IT NEVER RETURNS EMPTY for a real area list, which is asserted rather
+ * than assumed — trading a duplicate for a blank panel is not a fix.
+ */
+export function panelAreas(
+  areas: readonly SetupArea[],
+  next: SetupArea | null,
+): SetupArea[] {
+  return areas.filter((a) => a.id !== next?.id && a.id !== 'brand_kit')
 }
 
 export interface SetupSummary {

@@ -83,8 +83,6 @@ export const TYPE_LABEL: Partial<Record<EvidenceType, string>> = {
   shot_semantics: 'Shot choices',
   camera_distance_movement: 'Camera work',
   subject_framing: 'Framing',
-  caption_layout_cadence: 'Caption design',
-  transition_types: 'Transitions',
   zoom_frequency_intensity: 'Zooms',
   music_energy_beat_alignment: 'Music',
   silence_and_visual_waste: 'Pacing of dead space',
@@ -93,8 +91,13 @@ export const TYPE_LABEL: Partial<Record<EvidenceType, string>> = {
 /**
  * The sentence a NOT-OBSERVED row carries.
  *
- * One sentence for all nine, because the reason is the same for all nine and
- * writing nine variations would imply nine different investigations. §1.1's own
+ * One sentence for all of them, because the reason is the same for all of them
+ * and writing a variation each would imply that many separate investigations.
+ *
+ * ⚠️ IT WAS "ALL NINE" AND IS NOW SEVEN. `caption_layout_cadence` and
+ * `transition_types` were deleted: both need real frame OCR, neither has ever
+ * had a writer anywhere in this repo, and a row that cannot change a scene
+ * field, a direction note or an edit decision is furniture. §1.1's own
  * wording: "we did not analyse the video" / "using your brand default".
  */
 export const NOT_OBSERVED_SOURCE = 'We did not analyse the video — your brand default is used instead.'
