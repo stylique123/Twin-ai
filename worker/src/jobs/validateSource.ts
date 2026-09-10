@@ -413,6 +413,29 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
       // Policy: a no-audio take is READY (playable, recoverable) but NOT
       // eligible for AI editing — the editor requires speech to analyze.
       editor_eligible: verdict.hasAudio,
+      // ⚠️⚠️ A RE-VALIDATION CLEARS THE FACTS OF THE JUDGEMENT IT SUPERSEDES.
+      // `reject()` merges `rejection_code`/`rejection_detail` into this same
+      // metadata, and the merge here is a PATCH — so without these two lines a
+      // rescued take keeps the reason it was refused. Measured on production:
+      // asset 4d2c7f36-5974-4367-901c-b6ca6bbffaf9 is `ready` with
+      // duration_ms 4736, and still reads `rejection_code: duration_unknown`
+      // from 2026-08-09, because nothing cleared it when the re-validation
+      // succeeded on 2026-09-10.
+      //
+      // ⚖️ THIS IS THE STALE-ARTIFACT CLASS, NOT A COSMETIC ONE. The field was
+      // TRUE when it was written and became false when the code moved, and a
+      // field like that is read later as if it were current — it is the same
+      // shape as the 292-video backlog and the 9,504 count, both of which
+      // became planning inputs after they stopped being true. STALE FIELDS DO
+      // NOT ANNOUNCE THEMSELVES.
+      //
+      // ⚠️ NULL RATHER THAN DELETED, DELIBERATELY. The RPCs merge this object
+      // with `||`, which sets a key to JSON null; removing a key would need
+      // `- 'rejection_code'` inside the RPC and therefore a migration. Null is
+      // falsy to every reader, and it also leaves visible evidence that this
+      // row was judged twice, which deleting the key would not.
+      rejection_code: null,
+      rejection_detail: null,
     }
 
     const { data: capRow, error: capReadErr } = await db
