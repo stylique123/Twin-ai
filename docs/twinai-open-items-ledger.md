@@ -505,6 +505,31 @@ instruction.
 - **Pull real failing inputs before changing anything.** The caption bug was
   found by reading staging project `90eeb742`'s actual data, not by reasoning
   from the error string.
+- **A PARTIAL SEARCH REPORTS ABSENCE.** On 2026-09-10 a grep over
+  `apps/web/src` and `supabase/functions` produced a confident *"no production
+  caller"* for `uploadAbandonBeacon` — whose caller is in
+  `packages/shared/src/editor/api.ts:18`, and has been since #418 on 2026-08-20.
+  The chain was complete the whole time: the web app supplies `beaconTarget`,
+  shared arms the beacon, `source-asset` accepts the outcome. **Searching three
+  of four roots and reporting "nowhere" is the same family as *absence of an
+  error is not evidence a check ran*.** Name the roots searched, or search them
+  all.
+- **MEASURE THE OPERATION, NOT THE INTENTION.** Two wrong numbers in one day,
+  the same shape. Which rows a cascade would SELECT is not whether the DELETE is
+  PERMITTED — nine tables refuse it, so a claimed 90% staging reclaim was really
+  11%. And a caption being unclassifiable is not the same as it being
+  not-English — `isLikelyEnglish` returns false below 12 characters, so a
+  10-character English caption was recorded with a false reason. **Before
+  reporting a number you would act on, ask what would have to be true for it to
+  be wrong.**
+- **SUSPICIOUSLY TIDY IS THE MOST RELIABLE DEFECT SIGNAL IN THIS REPOSITORY.**
+  Five instances now: `84` PRs (it was the shallow-clone depth) ·
+  `product_claim_gaps: 0` across 44 generations (the check never ran) · a 90%
+  reclaim (selection, not permission) · `medianLift` of exactly `1.0000` at
+  n=297 (a constant divided by its own median) · and `no_title` 994 = 994.
+  **The last one was RIGHT** — JS `trim()` strips a superset of `btrim`, so
+  equal counts force equal sets — and it is the useful contrast: tidy is not
+  automatically wrong, it is automatically **owed an explanation**.
 
 ---
 
