@@ -553,21 +553,26 @@ jobs:
                 where table_schema='public' and table_name='brand_voices'
                   and column_name in ('own_sample_usable','own_sample_checked','own_sample_complete','own_sample_no_answer');
               if n <> 4 then raise exception '0171 did not land: % of 4 own_sample_* columns on brand_voices', n; end if;
-              -- ⚠️⚠️ A REAL OWNER, BECAUSE `gen_random_uuid()` ONLY EVER WORKED
-              -- HERE WHILE STAGING WAS MISSING A FOREIGN KEY. 0197 restored
-              -- `brand_voices_owner_id_fkey`, which `0002_brand_voices.sql:23`
-              -- has always declared and production has always had — and this
-              -- probe went red on the FIRST run after it, on the positive
-              -- insert, with "Key (owner_id)=(...) is not present in table
-              -- users". THE ABSENT CONSTRAINT WAS LOAD-BEARING FOR THIS CHECK.
+              -- NOTE: no backticks and no double quotes below this line. This
+              -- whole block is one psql -c argument, so a backtick would be
+              -- command substitution and a double quote would end the argument
+              -- mid-sentence and drop every check after it. The shell-quoting
+              -- guard caught exactly that in the first version of this comment.
               --
-              -- ⚖️ AND THE FIX IS AN OWNER, NOT A LOOSER SCHEMA. Dropping the
-              -- key to keep the probe green would trade a real production
-              -- constraint for a green tick, and the drift it came from is the
-              -- reason this matrix has been asserting a schema production does
-              -- not have.
+              -- A REAL OWNER, BECAUSE gen_random_uuid ONLY EVER WORKED HERE
+              -- WHILE STAGING WAS MISSING A FOREIGN KEY. 0197 restored
+              -- brand_voices_owner_id_fkey, which 0002_brand_voices.sql line 23
+              -- has always declared and production has always had. This probe
+              -- went red on the FIRST run after it, on the positive insert:
+              -- owner_id was not present in table users. THE ABSENT CONSTRAINT
+              -- WAS LOAD-BEARING FOR THIS CHECK.
               --
-              -- ⚖️ IT ALSO MAKES THE NEGATIVE PROBE BELOW EXACT. With a random
+              -- AND THE FIX IS AN OWNER, NOT A LOOSER SCHEMA. Dropping the key
+              -- to keep the probe green would trade a real production
+              -- constraint for a green tick, and that drift is the reason this
+              -- matrix has been asserting a schema production does not have.
+              --
+              -- IT ALSO MAKES THE NEGATIVE PROBE BELOW EXACT. With a random
               -- owner that insert violated the CHECK *and* the key at once; it
               -- passed only because Postgres evaluates a CHECK on the tuple
               -- before firing an FK trigger. Now the only thing wrong with it
