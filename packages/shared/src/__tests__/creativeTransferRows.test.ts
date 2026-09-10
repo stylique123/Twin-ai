@@ -6,7 +6,7 @@
 // thing §1.1 calls "worse than no trust screen".
 import { describe, expect, it } from 'vitest'
 import {
-  KIND_LABEL, NOT_OBSERVED_SOURCE, notObservedRows, transferRows, transferSummary,
+  KIND_LABEL, NOT_OBSERVED_SOURCE, notObservedRows, transferRows, transferSummary, TYPE_LABEL,
 } from '../creativeTransferRows'
 import { MISSING_EVIDENCE_TYPES, type NormalizedReferenceEvidenceV1 } from '../referenceEvidence'
 
@@ -18,6 +18,54 @@ const item = (over: Record<string, unknown>) => ({
 
 const set = (items: unknown[]): NormalizedReferenceEvidenceV1 =>
   ({ items, conflicts: [] } as unknown as NormalizedReferenceEvidenceV1)
+
+// ⚠️⚠️ THE COUNT ASSERTIONS BELOW DERIVE FROM `MISSING_EVIDENCE_TYPES.length`,
+// WHICH IS RIGHT AND ALSO MEANS THEY CANNOT SEE A DELETION. Two dimensions were
+// removed from that list — `caption_layout_cadence` and `transition_types` — and
+// the whole suite stayed green, because every assertion tracks the list rather
+// than a number. Tidy, and it proved nothing. So the decision gets pinned here.
+describe('two dimensions were deleted, and stay deleted', () => {
+  // ⚠️ THE REASON, MEASURED BEFORE REMOVING THEM: each appeared in exactly two
+  // files, both in this package — the type union and the row-label map — and
+  // NOTHING in `worker/` or `supabase/functions/` has ever written either. Both
+  // need real frame OCR, which nobody is building. A row that cannot change a
+  // scene field, a direction note or an edit decision is furniture, and eight
+  // rows reading "we did not look" on every reference for forty runs teaches a
+  // creator to ignore the product's honesty layer.
+  it('caption design and transitions are not offered as unmeasured rows', () => {
+    expect(MISSING_EVIDENCE_TYPES as readonly string[]).not.toContain('caption_layout_cadence')
+    expect(MISSING_EVIDENCE_TYPES as readonly string[]).not.toContain('transition_types')
+    const labels = transferRows(null).map((r) => r.label)
+    expect(labels).not.toContain('Caption design')
+    expect(labels).not.toContain('Transitions')
+  })
+
+  // ⚖️ AND THE SIX THAT REMAIN ARE STILL THERE. They have no writer either —
+  // the same grep returns zero for all of them — but their inputs (VAD, face
+  // detection, ffmpeg scene-detect, audio band analysis) are already in this
+  // codebase, so a writer is buildable. "Obtainable" is not "written". Deleting
+  // them would hide work that is worth doing; deleting the other two removed
+  // work nobody can do.
+  it('the six buildable dimensions are still shown', () => {
+    const labels = transferRows(null).map((r) => r.label)
+    for (const l of ['Shot choices', 'Camera work', 'Framing', 'Zooms', 'Music',
+      'Pacing of dead space']) {
+      expect(labels, `${l} disappeared with the deletion`).toContain(l)
+    }
+    expect(MISSING_EVIDENCE_TYPES).toHaveLength(6)
+  })
+
+  // ⚠️ AND EVERY UNMEASURED DIMENSION MUST HAVE A HUMAN LABEL. Removing a type
+  // from the union but leaving it in the gap list — or the reverse — would
+  // render a row named by its snake_case identifier, which is the failure this
+  // screen exists to avoid.
+  it('every unmeasured dimension has a label a creator can read', () => {
+    for (const t of MISSING_EVIDENCE_TYPES) {
+      expect(TYPE_LABEL[t], `${t} has no human label`).toBeTruthy()
+      expect(TYPE_LABEL[t]).not.toMatch(/_/)
+    }
+  })
+})
 
 describe('the gaps are always shown', () => {
   it('with NO evidence at all, every unlooked-at thing still appears', () => {

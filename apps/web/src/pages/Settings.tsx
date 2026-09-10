@@ -5,11 +5,10 @@ import { useAuth } from '../context/AuthContext'
 import { saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit, uploadBrandLogo, getWorkspace, createWorkspaceInvite, removeWorkspaceMember, type WorkspaceState } from '../lib/api'
 import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import {
-  contentProfile, brandKitStatus, productDnaStatus, loadProductEntities,
-  setupAreas, setupSummary, type SetupArea, type SetupState,
+  loadProductEntities,
+  setupAreas, setupSummary, panelAreas, type SetupArea, type SetupState, type SetupAction,
   readStoredBrief, savePreScriptBrief, suggestedCta, whatTwinLearned, heardCount, BASIS_LABEL, editTargetOf,
 } from '@twinai/shared'
-import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
 import { readProfileAnswers } from '../lib/profileAnswersRead'
 import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
 import { TwinStrengthCard } from '../components/TwinStrengthCard'
@@ -293,28 +292,28 @@ export default function Settings() {
   // did not ask for.
   const [focusField, setFocusField] = useState<string | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
+  // ⚠️⚠️ LIFTED, BECAUSE `edit_cta` WAS A NO-OP AND THE FIX ALREADY EXISTED TWO
+  // LINES BELOW IT FOR ITS SIBLING. `ctaOpen` lived inside `ProfileStatus`, so
+  // the panel's own Add one / Edit button worked and EVERY OTHER ROUTE TO IT DID
+  // NOTHING: `case 'edit_cta': return setTab('twin')`, dispatched from a card
+  // that only ever renders ON the twin tab, and from the hero's Next step
+  // button. Reported as "Add one does nothing" — and it was two different
+  // defects wearing one sentence, of which this is the second.
+  //
+  // ⚖️ `view_dna` HAD THIS EXACT BUG AND ITS COMMENT STILL DESCRIBES IT: "THIS
+  // USED TO BE `setTab('twin')` FROM A CARD ALREADY ON THE TWIN TAB. Not a
+  // broken handler — a no-op, which reads to a creator as 'Twin has nothing to
+  // show me'." It was fixed there by owning the state here. This is the same
+  // fix, arriving late, and it is why the two sit together now.
+  const [ctaOpen, setCtaOpen] = useState(false)
   const [savingProfile, setSavingProfile] = useState(false)
 
-  const content = contentProfile({
-    answers: profileAnswers,
-    dnaReady: activeVoice?.status === 'ready',
-    // ⚠️ NOT `dna.goal`. The goal is what the creator wants the video to achieve;
-    // the CTA is the sentence they want said at the end. Mapping one onto the
-    // other would mark this satisfied by an answer to a different question — and
-    // there is currently no field that asks it, so the gap is honest and points
-    // at work that is genuinely missing.
-    cta: defaultCta,
-  })
-  const productDna = productDnaStatus(profileAnswers?.commercialTies ?? null, entityCount ?? 0)
-  // ⚖️ `palette_source: 'manual'` IS THE ONLY THING THAT MAKES COLOURS A BRAND.
-  // An auto-extracted palette is a reading, and this card must not report a
-  // reading as a decision — the same line `brandSnapshot` draws for the editor.
-  const kitStatus = brandKitStatus({
-    primaryHex: brandKit.palette?.primary ?? null,
-    secondaryHex: brandKit.palette?.secondary ?? null,
-    logoPath: brandKit.logo_path ?? null,
-    paletteSource: brandKit.palette_source ?? null,
-  })
+  // ⚠️ `contentProfile` IS NO LONGER CALLED HERE, AND THAT IS THE POINT OF THE
+  // DELETION RATHER THAN A LOOSE END. The page called it only to render a
+  // percentage and four gap rows that duplicated the cards above them.
+  // `setupAreas` still calls it internally to decide the voice card's state, so
+  // the measurement survives exactly where a creator can act on it — one fact,
+  // one home. If this import comes back, so has the second telling.
 
   // ⚖️ THE STATUS IS READ, NOT DECIDED HERE. `setupAreas` is in shared with its
   // own tests; a status computed in this component is one no test can reach and
@@ -340,20 +339,40 @@ export default function Settings() {
   /** ⚖️ ONE PLACE THAT KNOWS WHERE EACH ACTION GOES. A card whose button has no
    *  destination is the defect this rebuild is for, so the mapping is total and
    *  the compiler enforces it. */
-  const goTo = (a: SetupArea) => {
-    switch (a.action) {
+  const goTo = (a: SetupArea) => goToAction(a.action)
+  /** ⚖️ AND THE SAME MAPPING SERVES THE COMPLETION GAPS. They used to render as
+   *  plain list rows with no handler at all — four things a creator was told to
+   *  add, with no way to add any. `gapAction` names each one's destination in
+   *  shared, totally, so they arrive here as actions this switch already
+   *  handles. Nothing new is invented; an action with no destination is the
+   *  defect this mapping was written about. */
+  const goToAction = (action: SetupAction) => {
+    switch (action) {
       case 'add_product': return nav('/products?add=1')
       case 'manage_products': return nav('/products')
       case 'setup_brand_kit': return setTab('brand')
       // ⚠️ THIS USED TO BE `setTab('twin')` FROM A CARD ALREADY ON THE TWIN TAB.
       // Not a broken handler — a no-op, which reads to a creator as "Twin has
       // nothing to show me". It opens what Twin actually learned now.
-      case 'view_dna': return setLearnedOpen(true)
+      // ⚠️⚠️ THE CONDITIONAL MOVED HERE FROM THE DELETED VOICE TEASER, AND IT
+      // HAD TO. That teaser's button was the ONLY route to the manual DNA form
+      // for a creator with nothing learned yet — `setLearnedOpen(true)` would
+      // open a panel with nothing in it. Deleting the teaser without this would
+      // have traded a duplicate card for a dead end, which is a worse screen
+      // than the one reported.
+      //
+      // ⚖️ AND IT BELONGS HERE RATHER THAN IN A CARD. "One place that knows
+      // where each action goes" is this switch's stated rule; a destination that
+      // depends on what Twin holds is still a destination.
+      case 'view_dna': return learnedTotal > 0 ? setLearnedOpen(true) : setDnaOpen(true)
       // ⚠️ IT USED TO LEAVE SETTINGS ENTIRELY. Sending somebody to onboarding to
       // change one answer means re-walking a flow they finished weeks ago, and
       // the thing they wanted to change was two chips.
       case 'edit_profile': return setProfileOpen(true)
-      case 'edit_cta': return setTab('twin')
+      // ⚖️ OPENS THE EDITOR, AND ALSO ENSURES THE TAB — the action can be
+      // dispatched from anywhere, so the tab is set for the cases where it is
+      // not already right, and the editor is opened for the cases where it is.
+      case 'edit_cta': { setTab('twin'); return setCtaOpen(true) }
     }
   }
 
@@ -493,7 +512,12 @@ export default function Settings() {
                 to do next, and a duplicate directly beneath it is what made it
                 stop reading as singular. */}
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {areas.filter((a) => a.id !== summary.next?.id).map((a) => (
+              {/* ⚖️ THE TWO EXCLUSIONS LIVE IN `panelAreas`, IN SHARED, WITH
+                  THEIR REASONS AND THEIR TESTS. They were two inline filters
+                  here, asserted only by a regex over this file — and that regex
+                  broke twice in one afternoon, each time without naming the
+                  cause. A rule worth keeping is worth testing behaviourally. */}
+              {panelAreas(areas, summary.next).map((a) => (
                 <button
                   key={a.id}
                   type="button"
@@ -711,9 +735,8 @@ export default function Settings() {
           <ProfileStatus
             ctaSuggestion={suggestedCta(
               (voiceProfile as { recurring_ctas?: unknown[] } | null)?.recurring_ctas)}
-            content={content}
-            productDna={productDna}
-            brandKit={kitStatus}
+            ctaOpen={ctaOpen}
+            setCtaOpen={setCtaOpen}
             cta={defaultCta}
             ctaLoadFailed={ctaLoadFailed}
             onCtaRetry={loadVoice}
@@ -955,39 +978,22 @@ export default function Settings() {
         {tab === 'twin' && (
         <Reveal delay={0.15}>
           <section className="glass mt-5 p-5 sm:p-6">
-            {!dnaOpen && (
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="eyebrow !text-sand">Your voice</p>
-                  {/* ⚠️ NOT A THIRD COPY OF THE FACTS. This line used to print
-                      the voice summary and then niche · audience — the same
-                      three facts the learned panel shows with provenance, a
-                      screen apart and with no evidence attached. A teaser that
-                      restates what it links to IS the second summary. It says
-                      how much Twin holds and where to read it; the panel says
-                      what, and how it came to know each part. */}
-                  <p className="mt-1.5 text-sm leading-relaxed text-cream" data-testid="voice-teaser">
-                    {learnedTotal > 0
-                      ? `Twin has learned ${learnedTotal} ${learnedTotal === 1 ? 'thing' : 'things'} about how you make videos.`
-                      : 'Twin has not learned how you sound yet.'}
-                  </p>
-                  <p className="mt-1 text-xs text-stone">
-                    {learnedTotal > 0
-                      ? 'Read what it learned, and where each part came from.'
-                      : 'Scan your account and Twin will fill this in.'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  data-testid="voice-open-learned"
-                  onClick={() => {
-                    if (learnedTotal > 0) { setLearnedOpen(true); return }
-                    setDnaOpen(true)
-                  }}
-                  className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream"
-                >{learnedTotal > 0 ? 'What Twin learned' : 'Fill it in'}</button>
-              </div>
-            )}
+            {/* ⚠️⚠️ THE "YOUR VOICE" TEASER IS DELETED. It carried the same
+                label, the same count and the SAME DESTINATION as the "Your
+                voice" setup card above it — "What Twin learned" on both, both
+                opening the learned panel. Counted off the live screen, her voice
+                appeared twice, her products twice, her CTA three times and brand
+                three times: twelve cards for six facts.
+                ⚖️ ITS COMMENT ALREADY RECORDED ONE ROUND OF THIS. "A teaser that
+                restates what it links to IS the second summary" — it had been
+                stripped back from printing the facts to printing a count, which
+                was the right direction and one step short. A count of what
+                another card already offers is still a second telling.
+                ⚖️ NOTHING IS ORPHANED: its empty-state route — the only way to
+                the manual form when Twin has learned nothing — moved into
+                `view_dna` in the destination switch above, where it is one
+                decision instead of two places agreeing by coincidence.
+                ⚖️ THE SECTION STAYS because it hosts the DNA edit form below. */}
             {dnaOpen && (
             <>
             <button
@@ -1300,15 +1306,16 @@ function TeamSeats() {
  *  costs the creator nothing.
  */
 function ProfileStatus({
-  content, productDna, brandKit, cta, ctaLoadFailed, onCtaRetry, onCtaChange, onCtaCommit, ctaSaved, ctaErr,
-  ctaSuggestion,
+  cta, ctaLoadFailed, onCtaRetry, onCtaChange, onCtaCommit, ctaSaved, ctaErr,
+  ctaSuggestion, ctaOpen, setCtaOpen,
 }: {
+  /** ⚖️ OWNED BY THE PAGE, NOT BY THIS COMPONENT. Every route to the CTA editor
+   *  except this panel's own button was a no-op while the state lived here. */
+  ctaOpen: boolean
+  setCtaOpen: (open: boolean) => void
   /** Her own ending, read from her posts. Null for 18 of 47 accounts, whose
    *  extracted lines ask for nothing — see `suggestedCta`. */
   ctaSuggestion: ReturnType<typeof suggestedCta>
-  content: ContentProfile
-  productDna: ProductDnaStatus
-  brandKit: BrandKitStatus
   cta: string | null
   ctaLoadFailed: boolean
   onCtaRetry: () => void
@@ -1324,38 +1331,43 @@ function ProfileStatus({
   // state would have overwritten the answer they already gave.
   const ctaLoaded = cta !== null
   const ctaText = (cta ?? '').trim()
-  const [ctaOpen, setCtaOpen] = useState(false)
   // ⚠️ THE DRAFT IS SEEDED, THE STORED VALUE IS NOT. She still has to press Save,
   // so `hasConfirmedCta` stays false until a person acts — the rule the palette
   // meter broke and this field must not.
   const [ctaDraft, setCtaDraft] = useState(ctaText || (ctaSuggestion?.text ?? ''))
+  // ⚠️⚠️ SEEDED WHEN THE BOX OPENS, IN ONE PLACE, FOR EVERY ROUTE INTO IT.
+  // `useState` above runs at MOUNT, and `ctaSuggestion` is null then —
+  // `voiceProfile` is fetched by `loadVoice`, so her own ending arrives after
+  // this component exists. The panel's own button used to paper over that by
+  // re-seeding on click, which left every OTHER route (the setup card, the
+  // hero's Next step) opening an empty box. Now the transition seeds it and the
+  // button does not have to know.
+  //
+  // ⚖️ ON THE OPENING EDGE ONLY, so it never overwrites what somebody is typing.
+  // Same "adjust state when a prop changes" pattern the onboarding confirm step
+  // uses for the voice profile, and for the same reason: an effect would paint
+  // the empty box first and correct it on a second pass.
+  const [wasCtaOpen, setWasCtaOpen] = useState(ctaOpen)
+  if (ctaOpen !== wasCtaOpen) {
+    setWasCtaOpen(ctaOpen)
+    if (ctaOpen) setCtaDraft(ctaText || ctaSuggestion?.text || '')
+  }
   return (
     <section className="glass mt-8 p-5 sm:p-6">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="eyebrow !text-sand">What Twin knows about you</p>
-        <span className="font-display text-2xl leading-none">{content.percent}%</span>
-      </div>
-      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/8">
-        <div className="h-full rounded-full bg-signature" style={{ width: `${content.percent}%` }} />
-      </div>
-      <p className="mt-2 text-xs text-stone">
-        This is what your scripts are written from. Colours and logos are separate — they
-        never change what a script says.
-      </p>
-
-      {content.gaps.length > 0 && (
-        <ul className="mt-4 space-y-2">
-          {content.gaps.map((g) => (
-            <li key={g.id} className="rounded-lg border border-white/10 px-3 py-2">
-              <p className="text-sm text-cream">{g.label}</p>
-              {/* ⚖️ WHAT IT UNLOCKS, NOT WHAT IS MISSING. A creator can decide
-                  whether to spend thirty seconds on this; "incomplete" only tells
-                  them they are behind. */}
-              <p className="mt-0.5 text-xs text-stone">Adding this changes {g.unlocks}.</p>
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* ⚠️⚠️ THE 50% METER AND ITS FOUR ROWS ARE DELETED, NOT REWIRED. An hour
+          before this commit I gave those rows working destinations, and the
+          owner's ruling is better: the panel listed four things that were
+          ALREADY on the cards above it, under a percentage nobody set. "What
+          Twin knows about you" and "Your Twin setup" were trying to be
+          different things and were not — a status list and a meter over the
+          same items. Twelve cards for six facts, counted off the live screen.
+          ⚖️ SO THE DESTINATIONS WENT WITH IT. `gapAction` had exactly one
+          consumer and this was it; keeping a mapping whose caller has been
+          deleted is the defect this repo keeps closing, so it is reverted in
+          the same commit rather than left as a tidy-looking orphan.
+          ⚖️ AND THE MEASUREMENT IS NOT LOST. `contentProfile`'s gaps still
+          decide the voice card's state in `setupAreas`, which is where a
+          creator can act on them. What is gone is the second telling. */}
 
       {/* ⚠️ A PERMANENTLY EDITABLE NAKED INPUT ON A SETTINGS PAGE IS NOT A
           SETTING, it is a form field somebody has to notice, decide about, and
@@ -1412,7 +1424,7 @@ function ProfileStatus({
             // take it. A reading must never be stored as though they had agreed
             // to it; the same rule `palette_source: 'manual'` states for
             // colours.
-            onClick={() => { setCtaDraft(ctaText || ctaSuggestion?.text || ''); setCtaOpen(true) }}
+            onClick={() => setCtaOpen(true)}
             className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream disabled:opacity-40"
           >{ctaText ? 'Edit' : 'Add one'}</button>
           )}
@@ -1470,33 +1482,25 @@ function ProfileStatus({
         </div>
       )}
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <StatusLine
-          title="Products you sell"
-          state={productDna === 'ready' ? 'Ready' : productDna === 'not_needed' ? 'Not needed' : 'Not added'}
-          tone={productDna === 'missing' ? 'open' : 'done'}
-          note={productDna === 'not_needed'
-            // ⚠️ NOT "you have not added a product". They told us there is none;
-            // repeating the ask is the product arguing with them.
-            ? 'You told us you do not sell anything, so there is nothing to add.'
-            : productDna === 'ready'
-              ? 'Your scripts can talk about it, using only what you confirmed.'
-              : 'Add one if you want your scripts to talk about what you sell.'}
-        />
-        <StatusLine
-          title="Brand Kit"
-          state={brandKit === 'ready' ? 'Ready' : 'Not set up'}
-          tone={brandKit === 'ready' ? 'done' : 'open'}
-          note="Add colours and a logo if you want Twin to use your branding in supported visuals."
-        />
-      </div>
+      {/* ⚠️⚠️ TWO READ-ONLY STATUS LINES DELETED, BOTH PURE DUPLICATES. "Products
+          you sell" restated the "What you sell" setup card — same fact, and the
+          card is the one with a Manage action. "Brand Kit" was the THIRD place
+          brand appeared on this page, after the setup card (removed earlier on
+          this branch) and the nav tab of the same name.
+          ⚖️ A STATUS LINE THAT RESTATES A CARD IS STRICTLY WORSE THAN THE CARD:
+          it carries the same words with no way to act on them, so a creator
+          reads the state twice and can only do something about it once.
+          ⚖️ AND THE STATE IS STILL COMPUTED — JUST NOT TWICE. An earlier draft of
+          this comment claimed the page's `productDnaStatus` and `brandKitStatus`
+          calls "still feed setupAreas", and that was false: `setupAreas` derives
+          both ITSELF from the raw answers, product count and kit it is already
+          given, so the page's copies existed only for these two lines and go with
+          them. The measurement survives where a creator can act on it; what is
+          gone is the second telling. */}
     </section>
   )
 }
 
-/** ⚖️ `open` IS NOT A WARNING COLOUR. Nothing here is wrong — these are things
- *  that exist or do not, and painting an unset kit amber would reintroduce the
- *  guilt the percentage used to carry. */
 /** ⚖️ FIVE STATES, FIVE WORDS A CREATOR ALREADY KNOWS. `optional` and
  *  `not_needed` read differently on purpose — one is something they could do,
  *  the other is something that does not apply to them, and collapsing either
@@ -1513,19 +1517,12 @@ function StateChip({ state }: { state: SetupState }) {
   return <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${cls}`}>{label}</span>
 }
 
-function StatusLine({ title, state, note, tone }: {
-  title: string; state: string; note: string; tone: 'done' | 'open'
-}) {
-  return (
-    <div className="rounded-lg border border-white/10 px-3 py-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-cream">{title}</p>
-        <span className={cn(
-          'rounded-full px-2 py-0.5 text-[11px]',
-          tone === 'done' ? 'bg-teal/15 text-teal' : 'bg-white/8 text-stone',
-        )}>{state}</span>
-      </div>
-      <p className="mt-1 text-xs leading-snug text-stone">{note}</p>
-    </div>
-  )
-}
+/** ⚠️ `StatusLine` IS DELETED WITH ITS LAST TWO USES. It rendered "Products you
+ *  sell" and "Brand Kit" as read-only state beside cards that already carried
+ *  the same fact WITH an action — so a creator read the state twice and could
+ *  act on it once. A component whose whole job was the second telling goes when
+ *  the second telling does; leaving it would be an unused export for the symbol
+ *  scan to flag.
+ *  ⚖️ Its five-state vocabulary is not lost: `SetupState` in shared carries the
+ *  same distinctions (`optional` vs `not_needed` — something you could do versus
+ *  something that does not apply to you) and the cards render them. */

@@ -11,10 +11,12 @@
 // area ready.
 import { describe, expect, it } from 'vitest'
 import {
-  setupAreas, setupSummary, SETUP_STATES, SETUP_AREA_IDS,
+  setupAreas, setupSummary, panelAreas,
+  SETUP_STATES, SETUP_AREA_IDS,
   type SetupInput,
 } from '../setupAreas'
-import type { CreatorProfileAnswers } from '../creatorProfileQuestions'
+import type { CreatorProfileAnswers, CommercialTie } from '../creatorProfileQuestions'
+import { productDnaStatus } from '../profileCompletion'
 
 // ⚠️ `as never` IS NOT A TYPE, IT IS THE ABSENCE OF ONE. Spreading it is not
 //  even legal ("Spread types may only be created from object types"), and every
@@ -212,6 +214,108 @@ describe('one next step, and it moves', () => {
     const s = setupSummary(areas)
     expect(s.next).not.toBeNull()
     expect(areas.filter((a) => a.id !== s.next!.id).length).toBeGreaterThan(0)
+  })
+
+  // ⚠️⚠️ THE PANEL'S EXCLUSIONS, TESTED BEHAVIOURALLY. They were two inline
+  // `.filter` calls in Settings.tsx asserted only by a regex over that file, and
+  // that regex broke twice in one afternoon — once when the second exclusion
+  // arrived, once when the chain spanned lines — each time failing without
+  // naming the cause. Source text is not behaviour.
+  describe('what the setup panel draws as cards', () => {
+    it('excludes the next step, because the hero above already draws it', () => {
+      const areas = of(nothing)
+      const s = setupSummary(areas)
+      expect(s.next).not.toBeNull()
+      expect(panelAreas(areas, s.next).map((a) => a.id)).not.toContain(s.next!.id)
+    })
+
+    it('excludes the brand kit, which is not a setup area on this panel', () => {
+      // It appeared three times on one page: this card, the nav tab of the same
+      // name, and the section that tab opens. Its own detail says it does not
+      // change what a script says, and 0 of 51 creators have uploaded a logo.
+      const areas = of(nothing)
+      expect(areas.map((a) => a.id)).toContain('brand_kit')
+      expect(panelAreas(areas, setupSummary(areas).next).map((a) => a.id))
+        .not.toContain('brand_kit')
+    })
+
+    it('and nothing else is dropped', () => {
+      const areas = of(nothing)
+      const s = setupSummary(areas)
+      const shown = panelAreas(areas, s.next).map((a) => a.id)
+      for (const a of areas) {
+        if (a.id === 'brand_kit' || a.id === s.next?.id) continue
+        expect(shown, `${a.id} disappeared from the panel`).toContain(a.id)
+      }
+    })
+
+    // ⚖️ TRADING A DUPLICATE FOR A BLANK PANEL IS NOT A FIX.
+    it('never returns an empty panel', () => {
+      for (const input of [nothing, { ...nothing, dnaReady: true }, {}]) {
+        const areas = of(input)
+        expect(panelAreas(areas, setupSummary(areas).next).length).toBeGreaterThan(0)
+      }
+    })
+
+    // ⚖️ AND A NULL NEXT STEP EXCLUDES NOTHING BUT THE KIT. When the core is
+    // done there is no next step, and the panel must not lose a card to it.
+    it('a null next step drops only the brand kit', () => {
+      const areas = of()
+      expect(setupSummary(areas).next).toBeNull()
+      const shown = panelAreas(areas, null).map((a) => a.id)
+      expect(shown).not.toContain('brand_kit')
+      expect(shown.length).toBe(areas.length - 1)
+    })
+  })
+
+  // ⚠️ THE `gapAction` TESTS THAT SAT HERE ARE GONE WITH THEIR SUBJECT. They
+  // asserted a destination for each completion gap, and the panel that rendered
+  // those gaps has been deleted — twelve cards for six facts, and those four
+  // rows duplicated the cards above them. A totality test over a mapping nobody
+  // calls is a test that cannot fail for a reason anyone cares about.
+  // ⚠️⚠️ ONE RULE, ONE AUTHORITY — AND THE SCAN IS WHAT FOUND THE SECOND ONE.
+  // The products area used to re-derive its state inline: `!productsApply ?
+  // 'not_needed' : hasProducts ? 'ready' : 'needs_setup'`. That is the same
+  // three-way rule `productDnaStatus` already owned. Nobody noticed until the
+  // status line that called that function was deleted and `check_symbol_readers`
+  // reported it as a rule nothing runs — a second authority hiding behind a
+  // first caller.
+  //
+  // ⚖️ SO THE AGREEMENT IS ASSERTED OVER EVERY COMBINATION, not just the happy
+  // one. If the inline version ever comes back, one of these rows disagrees.
+  describe('the products area asks the shared rule instead of re-deriving it', () => {
+    const TIES: Array<readonly CommercialTie[] | null> = [
+      null, [], ['none'], ['own_product'], ['own_service'], ['affiliate'],
+      ['none', 'own_product'],
+    ]
+    it('agrees with productDnaStatus for every tie and count', () => {
+      for (const ties of TIES) {
+        for (const count of [0, 1, 5]) {
+          const areas = setupAreas({
+            answers: ties === null ? null : { commercialTies: ties },
+            dnaReady: true, cta: null, productCount: count, brandKit: null,
+          })
+          const products = areas.find((a) => a.id === 'products')!
+          const shared = productDnaStatus(ties, count)
+          const expected = shared === 'missing' ? 'needs_setup' : shared
+          expect(products.state, `ties=${JSON.stringify(ties)} count=${count}`).toBe(expected)
+        }
+      }
+    })
+
+    // ⚖️ AND THE THREE-STATE DISTINCTION IS REAL, not collapsed by the mapping.
+    // All three outcomes must be reachable, or an agreement test could pass on a
+    // function that always returns the same thing.
+    it('all three outcomes are reachable', () => {
+      const stateFor = (ties: readonly CommercialTie[] | null, count: number) =>
+        setupAreas({
+          answers: ties === null ? null : { commercialTies: ties },
+          dnaReady: true, cta: null, productCount: count, brandKit: null,
+        }).find((a) => a.id === 'products')!.state
+      expect(stateFor(['none'], 0)).toBe('not_needed')
+      expect(stateFor(['own_product'], 2)).toBe('ready')
+      expect(stateFor(['own_product'], 0)).toBe('needs_setup')
+    })
   })
 
   it('never sends anybody to the brand kit as the next thing', () => {

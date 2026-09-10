@@ -42,8 +42,24 @@ describe('not-knowing is not nothing', () => {
     expect(fn).not.toMatch(/return \[\]/)
   })
 
+  // ⚠️ THIS PINNED THE LITERAL `!live` AND BROKE WHEN THE LOADER WAS EXTRACTED
+  // SO A SKIP COULD SERVE THE NEXT QUESTION — the liveness check became
+  // `!alive()`, the property was untouched, and the test failed anyway. That is
+  // the fifth source-text coupling to break in this repo in one afternoon.
+  //
+  // ⚖️ SO IT ASSERTS THE PROPERTY, NOT THE SPELLING: a store that could not be
+  // read means ASK NOTHING. `null` is the unreadable case and is different from
+  // an empty list, which means "read fine, nothing put yet" — that distinction
+  // is the whole subject of this describe block, and it is checkable without
+  // naming a variable.
   it('asks nothing at all when it could not read', () => {
-    expect(CARD).toMatch(/if \(!live \|\| put === null\) return/)
+    // The null guard sits on the store read and returns before any question is
+    // chosen. Both halves matter: it must test for null, and it must bail.
+    expect(CARD).toMatch(/put === null\) return/)
+    // ⚠️ AND IT MUST NOT TREAT UNREADABLE AS EMPTY. `put === null` and
+    // `put.length === 0` need opposite behaviour, so a length check standing in
+    // for the null check is the defect this guards.
+    expect(CARD).not.toMatch(/put\.length === 0\) return/)
   })
 })
 

@@ -110,7 +110,20 @@ describe('the dead card now opens something', () => {
   it('view_dna no longer re-selects the tab it is already on', () => {
     // ⚠️⚠️ THE DEFECT, PINNED. `setTab('twin')` from a card on the twin tab.
     expect(SETTINGS).not.toMatch(/case 'view_dna': return setTab\('twin'\)/)
-    expect(SETTINGS).toMatch(/case 'view_dna': return setLearnedOpen\(true\)/)
+    // ⚠️ THE POSITIVE HALF PINNED THE EXACT LINE AND BROKE WHEN THE DESTINATION
+    // GAINED A CONDITION. `view_dna` now opens the learned panel when Twin has
+    // learned something and the manual form when it has not — a route that used
+    // to live on the deleted voice teaser, and the only way in for a creator
+    // with nothing learned yet. The behaviour improved and the assertion failed,
+    // which is the sixth source-text coupling to do that in this repo today.
+    //
+    // ⚖️ SO IT ASSERTS WHAT THE CARD MUST REACH, not how the line is spelled:
+    // somewhere to read, and somewhere to write, and never the tab it is on.
+    const arm = SETTINGS.slice(SETTINGS.indexOf("case 'view_dna':"))
+    expect(arm, "the view_dna arm could not be located").not.toBe('')
+    const head = arm.slice(0, arm.indexOf('\n      case '))
+    expect(head).toMatch(/setLearnedOpen\(true\)/)
+    expect(head).toMatch(/setDnaOpen\(true\)/)
   })
 
   it('the panel reads the shared rule rather than reaching into the profile', () => {
