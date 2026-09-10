@@ -11,7 +11,7 @@
 // area ready.
 import { describe, expect, it } from 'vitest'
 import {
-  setupAreas, setupSummary, SETUP_STATES, SETUP_AREA_IDS,
+  setupAreas, setupSummary, panelAreas, SETUP_STATES, SETUP_AREA_IDS,
   type SetupInput,
 } from '../setupAreas'
 import type { CreatorProfileAnswers } from '../creatorProfileQuestions'
@@ -212,6 +212,58 @@ describe('one next step, and it moves', () => {
     const s = setupSummary(areas)
     expect(s.next).not.toBeNull()
     expect(areas.filter((a) => a.id !== s.next!.id).length).toBeGreaterThan(0)
+  })
+
+  // ⚠️⚠️ THE PANEL'S EXCLUSIONS, TESTED BEHAVIOURALLY. They were two inline
+  // `.filter` calls in Settings.tsx asserted only by a regex over that file, and
+  // that regex broke twice in one afternoon — once when the second exclusion
+  // arrived, once when the chain spanned lines — each time failing without
+  // naming the cause. Source text is not behaviour.
+  describe('what the setup panel draws as cards', () => {
+    it('excludes the next step, because the hero above already draws it', () => {
+      const areas = of(nothing)
+      const s = setupSummary(areas)
+      expect(s.next).not.toBeNull()
+      expect(panelAreas(areas, s.next).map((a) => a.id)).not.toContain(s.next!.id)
+    })
+
+    it('excludes the brand kit, which is not a setup area on this panel', () => {
+      // It appeared three times on one page: this card, the nav tab of the same
+      // name, and the section that tab opens. Its own detail says it does not
+      // change what a script says, and 0 of 51 creators have uploaded a logo.
+      const areas = of(nothing)
+      expect(areas.map((a) => a.id)).toContain('brand_kit')
+      expect(panelAreas(areas, setupSummary(areas).next).map((a) => a.id))
+        .not.toContain('brand_kit')
+    })
+
+    it('and nothing else is dropped', () => {
+      const areas = of(nothing)
+      const s = setupSummary(areas)
+      const shown = panelAreas(areas, s.next).map((a) => a.id)
+      for (const a of areas) {
+        if (a.id === 'brand_kit' || a.id === s.next?.id) continue
+        expect(shown, `${a.id} disappeared from the panel`).toContain(a.id)
+      }
+    })
+
+    // ⚖️ TRADING A DUPLICATE FOR A BLANK PANEL IS NOT A FIX.
+    it('never returns an empty panel', () => {
+      for (const input of [nothing, { ...nothing, dnaReady: true }, {}]) {
+        const areas = of(input)
+        expect(panelAreas(areas, setupSummary(areas).next).length).toBeGreaterThan(0)
+      }
+    })
+
+    // ⚖️ AND A NULL NEXT STEP EXCLUDES NOTHING BUT THE KIT. When the core is
+    // done there is no next step, and the panel must not lose a card to it.
+    it('a null next step drops only the brand kit', () => {
+      const areas = of()
+      expect(setupSummary(areas).next).toBeNull()
+      const shown = panelAreas(areas, null).map((a) => a.id)
+      expect(shown).not.toContain('brand_kit')
+      expect(shown.length).toBe(areas.length - 1)
+    })
   })
 
   it('never sends anybody to the brand kit as the next thing', () => {

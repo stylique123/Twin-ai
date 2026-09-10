@@ -99,9 +99,20 @@ describe('the CTA is the creator’s to type, and only theirs', () => {
   //
   // ⚖️ ASSERTED AS THE EXACT FILTER WITH THE UNFILTERED MAP ASSERTED ABSENT,
   // because the difference between them is one call and a reader cannot see it.
-  it('the card grid does not redraw the area the next step already points at', () => {
-    expect(SETTINGS).toMatch(/areas\.filter\(\(a\) => a\.id !== summary\.next\?\.id\)\.map/)
-    expect(SETTINGS).not.toMatch(/\{areas\.map\(\(a\) => \(/)
+  // ⚠️⚠️ THIS ASSERTION USED TO PIN THE FILTER'S SOURCE TEXT AND BROKE TWICE IN
+  // ONE AFTERNOON — once when a second exclusion was added, once when the chain
+  // spanned lines — each time failing without naming the cause. The rule now
+  // lives in `panelAreas` in shared and is tested BEHAVIOURALLY there. What is
+  // left here is the only part that is genuinely a property of this file: the
+  // grid must go through that function rather than filtering inline again.
+  it('the card grid delegates its exclusions to panelAreas', () => {
+    expect(SETTINGS).toContain('panelAreas(areas, summary.next).map')
+    // ⚠️ AND NO INLINE RE-IMPLEMENTATION MAY CREEP BACK. Named precisely: the
+    // first version of this assertion banned any `areas.filter(` and caught the
+    // PROGRESS-SEGMENT bar, which is a different concern and correctly inline.
+    // What must not return is an exclusion decided here instead of in shared.
+    expect(SETTINGS).not.toContain('a.id !== summary.next?.id')
+    expect(SETTINGS).not.toContain("a.id !== 'brand_kit'")
   })
 
   // ⚠️⚠️ THE PREFILL EXISTED AND THE CLICK THAT OPENED THE BOX THREW IT AWAY.

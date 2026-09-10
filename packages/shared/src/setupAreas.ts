@@ -171,6 +171,40 @@ export function setupAreas(input: SetupInput): SetupArea[] {
   ]
 }
 
+/**
+ * The areas the setup panel should draw as cards.
+ *
+ * ⚠️⚠️ THIS IS A FUNCTION BECAUSE IT WAS TWO INLINE `.filter` CALLS IN JSX AND
+ * THE ONLY THING ASSERTING THEM WAS A REGEX OVER `Settings.tsx`. That regex
+ * broke twice in one afternoon — once when the first filter was added, once
+ * when the second one made the chain span lines — and each time it failed
+ * without naming the cause. A rule worth keeping is worth testing behaviourally;
+ * source text is not behaviour.
+ *
+ * ⚖️ TWO EXCLUSIONS, EACH FOR A STATED REASON:
+ *
+ *  · THE NEXT STEP, because the hero above the grid already draws it. It
+ *    appeared in both, so "Content profile" was on the screen twice with two
+ *    different statuses — and the whole point of a next step is that it is the
+ *    one thing to do next.
+ *  · THE BRAND KIT, because it is not a setup area on this panel. It appeared
+ *    THREE times on one page: this card ("Logo and colours"), the nav tab
+ *    ("Logo & colours"), and the "Brand Kit" section that tab opens. Its own
+ *    detail says why it does not belong — "It does not change what your scripts
+ *    say" — and 0 of 51 creators have ever uploaded a logo. Nothing is lost:
+ *    `counts: false` keeps it out of the fraction either way, `NEXT_ORDER` never
+ *    offers it as the next step, and `setup_brand_kit` still routes to the tab.
+ *
+ * ⚖️ AND IT NEVER RETURNS EMPTY for a real area list, which is asserted rather
+ * than assumed — trading a duplicate for a blank panel is not a fix.
+ */
+export function panelAreas(
+  areas: readonly SetupArea[],
+  next: SetupArea | null,
+): SetupArea[] {
+  return areas.filter((a) => a.id !== next?.id && a.id !== 'brand_kit')
+}
+
 export interface SetupSummary {
   ready: number
   total: number

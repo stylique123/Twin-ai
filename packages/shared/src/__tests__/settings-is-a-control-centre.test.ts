@@ -48,7 +48,7 @@ describe('every card actually goes somewhere', () => {
     // progress segments are one — so the right one is the block whose card
     // actually navigates. Pinning a literal is what broke; pinning the intent
     // survives the next refactor.
-    const blocks = [...PAGE.matchAll(/\{areas[\s\S]{0,200}?\.map\(\(a\) => \(/g)]
+    const blocks = [...PAGE.matchAll(/\{(?:areas|panelAreas\()[\s\S]{0,400}?\.map\(\(a\) => \(/g)]
     const grid = blocks.map((m) => PAGE.slice(m.index ?? 0, (m.index ?? 0) + 1200))
       .find((b) => /goTo\(a\)/.test(b)) ?? ''
     expect(grid, 'the card grid could not be located in Settings.tsx').not.toBe('')

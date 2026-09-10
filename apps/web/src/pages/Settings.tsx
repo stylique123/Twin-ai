@@ -6,7 +6,7 @@ import { saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKi
 import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import {
   contentProfile, brandKitStatus, productDnaStatus, loadProductEntities,
-  setupAreas, setupSummary, type SetupArea, type SetupState,
+  setupAreas, setupSummary, panelAreas, type SetupArea, type SetupState,
   readStoredBrief, savePreScriptBrief, suggestedCta, whatTwinLearned, heardCount, BASIS_LABEL, editTargetOf,
 } from '@twinai/shared'
 import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
@@ -493,7 +493,12 @@ export default function Settings() {
                 to do next, and a duplicate directly beneath it is what made it
                 stop reading as singular. */}
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {areas.filter((a) => a.id !== summary.next?.id).map((a) => (
+              {/* ⚖️ THE TWO EXCLUSIONS LIVE IN `panelAreas`, IN SHARED, WITH
+                  THEIR REASONS AND THEIR TESTS. They were two inline filters
+                  here, asserted only by a regex over this file — and that regex
+                  broke twice in one afternoon, each time without naming the
+                  cause. A rule worth keeping is worth testing behaviourally. */}
+              {panelAreas(areas, summary.next).map((a) => (
                 <button
                   key={a.id}
                   type="button"
