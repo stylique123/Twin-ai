@@ -6601,7 +6601,41 @@ Deno.serve(async (req: Request) => {
     let mentionLine = ''
     const mentionedId = typeof body.mentioned_product_id === 'string'
       ? body.mentioned_product_id.trim() : ''
-    if (mentionedId !== '' && !ownedEntity) {
+    // ⚠️⚠️ `&& !ownedEntity` WAS HERE AND IT SILENTLY THREW THE MENTION AWAY.
+    // A creator who owns anything at all never got her mention read: the stopgap
+    // below resolves the oldest OWN_PRODUCT/OWN_SERVICE whenever no id was sent,
+    // `ownedEntity` is then truthy, and this branch never ran. Three of five real
+    // accounts own two things, so this was the common case, not an edge.
+    //
+    // ⚠️ AUDITED ON TEN LIVE RUNS BY ONE CREATOR WITH AN OWNED SERVICE AND AN
+    // AFFILIATE BAND. On every non-commercial objective she picked the band, the
+    // mention was discarded here, the writer was handed the COACHING SERVICE as
+    // the subject and never heard the band existed — so it invented a stance on
+    // it, and the stance was AGAINST the product she earns commission on:
+    // "a postpartum belly band will not heal your deep core", "wearing a belly
+    // band all day actually weakens your core". No disclosure, because the
+    // affiliate product was not in the script it was arguing against.
+    //
+    // ⚖️ THE TWO ARE NOT EXCLUSIVE AND NEVER WERE. A mention says "this video is
+    // not about it, name it and move on"; `ownedEntity` is what the video IS
+    // about. A creator can be explaining her coaching and still mention the band
+    // she uses — that is the ordinary case, not a conflict. Reading both is the
+    // fix; the guard was protecting against a collision that cannot happen.
+    //
+    // ⚖️ AND THE MENTION IS STILL THE NARROWER PERMISSION. It names and nothing
+    // else, with disclosure when the relationship is paid — asserted below. What
+    // changes is only that it is no longer dropped.
+    //
+    // ⚠️ ONE THING THE OLD GUARD DID COVER BY ACCIDENT, AND IT IS KEPT ON
+    // PURPOSE: the mention may not name the video's own subject. The client sends
+    // these on mutually exclusive branches, but this comment block already warns
+    // that "a request can send any id" — and a forged pair would hand the writer
+    // "YOU MAY NAME X AND THAT IS ALL YOU MAY DO WITH IT" about the very product
+    // the video is about. Contradicting itself in one prompt is worse than either
+    // instruction alone, so the subject wins and the mention is dropped.
+    const mentionIsTheSubject = mentionedId !== ''
+      && mentionedId === String((ownedEntity as { id?: unknown } | null)?.id ?? '')
+    if (mentionedId !== '' && !mentionIsTheSubject) {
       const { data: mentionRow } = await admin
         .from('product_entities')
         .select('name, relationship')
