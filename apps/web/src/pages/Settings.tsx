@@ -1387,7 +1387,22 @@ function ProfileStatus({
           <button
             type="button"
             disabled={cta === null}
-            onClick={() => { setCtaDraft(ctaText); setCtaOpen(true) }}
+            // ⚠️⚠️ THIS LINE THREW AWAY THE PREFILL THAT #787 BUILT. `ctaDraft`
+            // is initialised to `ctaText || ctaSuggestion?.text` — correctly —
+            // and then this handler overwrote it with `ctaText`, which is ''
+            // for every creator who has never saved an ending. 0 of 51 voices
+            // had a stored ending and 47 had one extracted, so OPENING THE BOX
+            // EMPTIED IT, every time, for everybody. Her real ending survived
+            // only as grey placeholder text, which is not an answer and cannot
+            // be saved.
+            //
+            // ⚖️ THE SUGGESTION IS STILL NOT A CONFIRMATION. It is offered
+            // pre-typed so that Save is one tap, and Save is the creator's
+            // decision — which is why the status stays "needs setup" until they
+            // take it. A reading must never be stored as though they had agreed
+            // to it; the same rule `palette_source: 'manual'` states for
+            // colours.
+            onClick={() => { setCtaDraft(ctaText || ctaSuggestion?.text || ''); setCtaOpen(true) }}
             className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream disabled:opacity-40"
           >{ctaText ? 'Edit' : 'Add one'}</button>
           )}

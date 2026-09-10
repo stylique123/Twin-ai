@@ -91,6 +91,26 @@ describe('the CTA is the creator’s to type, and only theirs', () => {
     expect(SETTINGS).toMatch(/onCtaCommit\(''\)/)
   })
 
+  // ⚠️⚠️ THE PREFILL EXISTED AND THE CLICK THAT OPENED THE BOX THREW IT AWAY.
+  // `ctaDraft` is initialised to `ctaText || ctaSuggestion?.text` — correct —
+  // and the Add one / Edit handler then overwrote it with `ctaText`, which is ''
+  // for every creator who has never saved an ending. Measured: 0 of 51 voices
+  // had a stored ending and 47 had one extracted, so OPENING THE BOX EMPTIED IT
+  // for everybody who had something to offer. Her own ending survived only as
+  // grey placeholder text, which cannot be saved and is not an answer.
+  //
+  // ⚖️ ASSERTED AS THE EXACT HANDLER, AND THE OLD ONE ASSERTED ABSENT, because
+  // the difference between the two is one token and a reader cannot see it.
+  it('opening the box keeps the suggestion instead of clearing it', () => {
+    expect(SETTINGS).toMatch(
+      /setCtaDraft\(ctaText \|\| ctaSuggestion\?\.text \|\| ''\); setCtaOpen\(true\)/)
+    // The exact line that emptied it. It must not come back.
+    expect(SETTINGS).not.toMatch(/setCtaDraft\(ctaText\); setCtaOpen\(true\)/)
+    // ⚖️ AND THE SUGGESTION IS STILL NOT STORED WITHOUT A TAP. Nothing may
+    // commit it on mount or on open — a reading is not a decision.
+    expect(SETTINGS).not.toMatch(/onCtaCommit\(ctaSuggestion/)
+  })
+
   it('distinguishes not-loaded from set-to-nothing', () => {
     // ⚠️ RENDERING "not loaded" AS "no usual ending" TELLS A CREATOR WHO HAS ONE
     // THAT THEY DO NOT, and offers to "Add one" over the top of their answer.
