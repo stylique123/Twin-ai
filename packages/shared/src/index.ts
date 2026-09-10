@@ -339,3 +339,4 @@ export * from './script/anAskIsNotALine'
 
 export * from './script/ctaFitsThePlatform'
 export * from './script/substanceBudget'
+export * from './corpus/facets'
