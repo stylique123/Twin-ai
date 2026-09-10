@@ -141,8 +141,25 @@ describe('a rescue is a success for the creator and a defect for us', () => {
   })
 
   it('records the ORIGINAL error, so the defect stays diagnosable', () => {
+    // ⚠️⚠️ THIS ASSERTION USED TO PIN THE EXPRESSION THAT MADE IT
+    // UNDIAGNOSABLE. It required `err instanceof Error ? err.message :
+    // String(err)` verbatim — and on 2026-09-10 all thirteen production
+    // generations took this path and all thirteen rows recorded the error as
+    // `[object Object]`, because the thrown value was not an `Error` and
+    // `String({})` is that string. The SENTENCE above was always right; the
+    // assertion contradicted it, and pinning it is what kept a four-hour total
+    // degradation of the analysis region invisible in the table built to show it.
+    //
+    // ⚖️ THE PROPERTY IS "THE ROW CAN NAME WHAT THREW", not "this expression
+    // appears". `describeThrown` is proved by execution in
+    // the-rescue-recorded-object-object-thirteen-times.test.ts; here the only
+    // claim is that the rescue row goes through it and is still capped, because
+    // this is untrusted text going into a durable row.
     const block = EDGE.slice(CATCH, REFUND)
-    expect(block).toMatch(/error: \(err instanceof Error \? err\.message : String\(err\)\)\.slice\(0, 600\)/)
+    expect(block).toMatch(/error: describeThrown\(err\)\.slice\(0, 600\)/)
+    // ⚠️ AND THE OLD IDIOM IS ASSERTED ABSENT, because it is the one-token
+    // mutant of the fix and it is what produced thirteen empty rows.
+    expect(block).not.toMatch(/instanceof Error \? err\.message : String\(err\)/)
   })
 
   it('joins the run to its attempt rows, like the success path does', () => {

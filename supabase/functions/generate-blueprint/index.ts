@@ -63,6 +63,63 @@ function json(body: unknown, status = 200) {
   })
 }
 
+// ── WHAT ACTUALLY THREW, AND NOT `[object Object]` ─────────────────────────
+//
+// ⚠️⚠️ MEASURED, NOT SUPPOSED: ALL 13 PRODUCTION GENERATIONS ON 2026-09-10 TOOK
+// THE RESCUE PATH, AND ALL 13 `ops_events` ROWS RECORD THE ERROR AS THE LITERAL
+// STRING `[object Object]`. The rescue's own comment calls itself "loud and
+// durable" so the defect it covers cannot hide; the one field that names the
+// defect held no information on every single occurrence, so a four-hour total
+// degradation of the analysis region was invisible in the table built to show
+// it. The throw is still unidentified because the record cannot say.
+//
+// ⚠️ THE CAUSE IS `String(err)` ON A NON-`Error`. Supabase client errors, Deno
+// AggregateErrors and bare object literals are all thrown in this file's
+// dependencies and none of them is an `Error`, so `err instanceof Error` is
+// false and `String({})` is `[object Object]` — information-free, by the
+// language, silently.
+//
+// ⚖️ EVERY BRANCH PRODUCES SOMETHING A HUMAN CAN ACT ON. An `Error` keeps its
+// name, message and the first stack frames; anything else is serialised, and a
+// value that refuses serialisation still yields its type and constructor rather
+// than a fixed string. Capped at the call site, not here.
+function describeThrown(err: unknown): string {
+  if (err instanceof Error) {
+    const frames = String(err.stack ?? '').split('\n').slice(1, 4).map((l) => l.trim()).join(' | ')
+    return `${err.name}: ${err.message}${frames ? ` @ ${frames}` : ''}`
+  }
+  if (typeof err === 'string') return err
+  if (err === null) return 'threw null'
+  if (err === undefined) return 'threw undefined'
+  // ⚠️ `message` AND `code` FIRST, BECAUSE THE SUPABASE CLIENT USES THEM AND
+  // JSON.stringify DOES NOT REACH NON-ENUMERABLE PROPERTIES. A PostgrestError
+  // is the likeliest thrower here, and its message is the whole diagnosis.
+  const o = err as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown }
+  const named = [
+    typeof o.code === 'string' || typeof o.code === 'number' ? `code=${o.code}` : '',
+    typeof o.message === 'string' && o.message !== '' ? `message=${o.message}` : '',
+    typeof o.details === 'string' && o.details !== '' ? `details=${o.details}` : '',
+    typeof o.hint === 'string' && o.hint !== '' ? `hint=${o.hint}` : '',
+  ].filter((x) => x !== '').join(' ')
+  if (named !== '') return named
+  try {
+    const dumped = JSON.stringify(err)
+    // ⚖️ `{}` IS NOT AN ANSWER EITHER. An object whose own properties are all
+    // non-enumerable serialises to `{}`, which is `[object Object]` wearing
+    // braces — so fall through to the type rather than record it.
+    if (typeof dumped === 'string' && dumped !== '' && dumped !== '{}') return dumped
+  } catch { /* circular or a throwing getter — the fallback below still names it */ }
+  // ⚖️ THE SHAPE SURVIVES EVEN WHEN THE VALUE DOES NOT. A circular object and
+  // one with a throwing getter both defeat `JSON.stringify`, but their own
+  // enumerable key names are readable without invoking anything — and "it threw
+  // something with a `stage` and a `beat` on it" is a starting point, where
+  // "unserialisable object" is a dead end.
+  const ctor = (err as { constructor?: { name?: unknown } })?.constructor?.name
+  let keys = ''
+  try { keys = Object.keys(err as object).slice(0, 12).join(',') } catch { keys = '' }
+  return `unserialisable ${typeof err}${typeof ctor === 'string' ? ` (${ctor})` : ''}${keys !== '' ? ` keys=${keys}` : ''}`
+}
+
 // Keep the opening AND closing of long source text. A hard head-only cut loses
 // the ending (the payoff/CTA), which the retention read depends on.
 function clip(s: string, max: number): string {
@@ -8334,7 +8391,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       // it mattered. `ops_events` is the table an operator already watches.
       selectionSnapshot = null
       beatAudit = null
-      const detail = err instanceof Error ? err.message : String(err)
+      const detail = describeThrown(err)
       console.error('generation_instrumentation_failed', detail)
       await admin.from('ops_events').insert({
         kind: 'generation_instrumentation_failed',
@@ -9933,7 +9990,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
                 run_id: rescue.runId,
                 generation_id: saved.id,
                 links_stripped: removals.length,
-                error: (err instanceof Error ? err.message : String(err)).slice(0, 600),
+                error: describeThrown(err).slice(0, 600),
               },
             })
             .then(() => {}, () => {})
@@ -9941,7 +9998,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
             event: 'generation_rescued',
             run_id: rescue.runId,
             generation_id: saved.id,
-            error: err instanceof Error ? err.message : String(err),
+            error: describeThrown(err),
           }))
           if (saved.id) {
             await admin.from('script_attempts')
