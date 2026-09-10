@@ -24,7 +24,11 @@ describe('the prompt sees usable facts and nothing else', () => {
     // that is gone, and `slice(-1)` is the last character — so a rename turns
     // this into a test that fails for the wrong reason, or passes for one.
     // Both reads of the table must carry `knowledge`, so both are checked.
-    for (const anchor of ['const { data: stopgapEntity', 'const requestedProductId']) {
+    // ⚠️ `const { data: stopgapEntity` WAS ONE OF THESE ANCHORS. The oldest-first
+    // fallback is deleted — it was the shared cause of three audited compliance
+    // failures — so the chosen lookup is now the only query that resolves the
+    // product, and it is the one that must select `knowledge`.
+    for (const anchor of ['const { data: picked } = await admin', 'const requestedProductId']) {
       const at = EDGE.indexOf(anchor)
       expect(at, `${anchor} not found — did it get renamed?`).toBeGreaterThan(-1)
       const read = EDGE.slice(at)

@@ -5085,61 +5085,54 @@ Deno.serve(async (req: Request) => {
     chosenEntity = picked ?? null
   }
 
-  const { data: stopgapEntity, error: ownedEntityErr } = await admin
-    .from('product_entities')
-    // ⚠️ `id` IS SELECTED BECAUSE IT IS READ. `selected_product_id` is written
-    // from `ownedEntity?.id` further down, and this select omitted the column —
-    // so every generation recorded "no product was chosen" no matter which
-    // product it was written about. A column that is read must be selected; the
-    // optional chain made the absence look like a legitimate null.
-    .select('id, name, creator_summary, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
-    .eq('owner_id', ownerId)
-    .eq('voice_id', voice?.id ?? null)
-    .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
-    .is('archived_at', null)
-    // ⚠️ THIS WAS `.maybeSingle()`, WHICH THROWS ON A SECOND ROW. Under the old
-    // one-owned-per-voice index a second row was impossible, so the throw was
-    // unreachable. 0186 makes it possible — three of five real accounts own two
-    // things — and an unchanged `.maybeSingle()` would mean NO SCRIPT GENERATES
-    // AT ALL for them: a clean, honest refusal turned into an outage by a
-    // migration in another file.
-    //
-    // ⚠️ AND THE ROW IT PICKS IS A STOPGAP, NOT THE ANSWER. Oldest-first is
-    // deterministic and stable — the same creator gets the same product every
-    // time rather than whatever the planner happened to return — but "the one
-    // they registered first" is not "the one this video is about". The real
-    // answer is the picker: one product auto-selects, several are chosen by the
-    // creator inside the step that already asks what they are making content
-    // for, and Reference and Idea Mode get none unless the goal is commercial
-    // and they say which. Until that lands this reads ONE product where the
-    // creator may have two, and a script may talk about the wrong one.
-    //
-    // ⚖️ WHY THE WRITER MUST NOT SIMPLY CHOOSE. Picking among three products
-    // would have Twin infer commercial intent from nothing a creator said, which
-    // is the entitlement `entryDoor.ts` has a mutation-tested clamp against. A
-    // stable wrong-sometimes beats an inferred entitlement.
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
-  if (ownedEntityErr) {
-    console.error('product_entities lookup failed', ownedEntityErr)
-    return json({ error: 'We could not read your product details. Please try again.' }, 503)
-  }
-
-  // ⚖️ THE CREATOR'S ANSWER OUTRANKS THE STOPGAP, and only ever narrows. When
-  // they picked one it is used; when they did not, behaviour is exactly what it
-  // was, so an older client is unaffected. Nothing here lets the WRITER pick
-  // among several — that entitlement is what `entryDoor.ts` clamps against.
+  // ── THE STOPGAP IS GONE: NOTHING IS NAMED THAT WAS NOT SELECTED ─────────
   //
+  // ⚠️⚠️ THIS QUERY RESOLVED THE OLDEST OWN_PRODUCT/OWN_SERVICE WHENEVER NO id
+  // ARRIVED, AND IT IS THE SHARED CAUSE OF THREE AUDITED COMPLIANCE FAILURES on
+  // one creator with an owned coaching service and an affiliate band:
+  //
+  //   run 8  — the band was selected; the script PITCHED THE COACHING, with an
+  //            invented launch date ("opens for new mums this week") and a "link
+  //            in bio" she does not have. The stopgap substituted the product.
+  //   runs 7 — the band was selected; `ownedEntity` was truthy because of this
+  //   and 10   query, so the mention branch never ran, the writer never heard the
+  //            band existed, and it invented a stance AGAINST the product she
+  //            earns commission on. No disclosure, because the affiliate product
+  //            was not in the script arguing against it.
+  //
+  // All three are the writer improvising because it received nothing. The rule is
+  // narrower than "fix the picker": when no product was selected, the correct
+  // output is a script with NO PRODUCT IN IT — not a script that reaches into the
+  // library and picks one.
+  //
+  // ⚖️ AND IT COSTS THE `auto` CONVENIENCE NOTHING, which is the opposite of what
+  // I previously reported. `selectProduct` auto-selects on the CLIENT for a
+  // commercial video with exactly one product, and V2Building.tsx:1072 sends that
+  // id as `selected_product_id` for BOTH `chosen` and `auto` — so an auto-select
+  // arrives here as an explicit selection and flows through `chosenEntity`
+  // untouched. The only thing this deletes is the server picking with no id at
+  // all, which was never a convenience; it was a guess wearing one.
+  //
+  // ⚖️ THE 503 GOES WITH IT, AND THAT IS A STRICT IMPROVEMENT. A failed read of a
+  // row nobody asked for used to fail the whole generation. The chosen lookup
+  // above still guards the product the creator DID name.
+
   // ⚠️ REBOUND ONTO THE ORIGINAL NAME ON PURPOSE. `ownedEntity` is read at
   // dozens of sites — grounding, claims, disclosure, the audit row. Introducing
   // a second name and updating "the ones that matter" is how one reader keeps
   // the old value and a script cites a product the creator did not pick. One
   // definition, no site missed.
-  // ⚖️ A DECLINE BEATS THE STOPGAP. `??` alone would fall through to it,
-  // which is the whole reason the sentinel has to be read here rather than
-  // just filtered out on the client.
-  const ownedEntity = declinedAProduct ? null : (chosenEntity ?? stopgapEntity)
+  //
+  // ⚖️ THE SUBJECT IS NOW EXACTLY WHAT SHE SELECTED, AND NOTHING ELSE. No
+  // fallback, so there is no path by which a product she did not choose becomes
+  // the thing the video is about.
+  //
+  // ⚖️ THE DECLINE CHECK IS KEPT THOUGH IT IS NOW REDUNDANT HERE, and that is
+  // deliberate rather than overlooked: `chosenEntity` is already null on a
+  // decline because the lookup above is skipped, so this reads as belt and
+  // braces. It states at the point of use that a decline yields no subject, and
+  // the next person to add a fallback has to delete an explicit `null` to do it.
+  const ownedEntity = declinedAProduct ? null : chosenEntity
 
   // ⚠️ THE LIBRARY IS PLURAL AND THE GROUNDING CHECK NEVER SAW IT. The query
   // above answers ONE question — "what does this voice sell" — and it is scoped

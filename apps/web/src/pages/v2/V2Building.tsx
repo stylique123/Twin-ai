@@ -1071,8 +1071,13 @@ export default function V2Building() {
         })
         const chosenProductId = decided.kind === 'chosen' || decided.kind === 'auto'
           ? decided.productId
-          // ⚖️ A DECLINE STILL TRAVELS. It is an answer the server must read —
-          // an absence would let the oldest-first stopgap answer for them.
+          // ⚖️ A DECLINE STILL TRAVELS, AND ITS REASON HAS CHANGED. This used
+          // to read "an absence would let the oldest-first stopgap answer for
+          // them"; that stopgap is deleted, so an absence and a decline now
+          // reach the same place. It is still sent because the two are different
+          // ANSWERS — "I considered it and this video is about none of them" is
+          // a decision worth recording, and the day anything downstream wants to
+          // tell them apart, the sentinel is already there.
           : seeded === NO_PRODUCT_CHOICE ? NO_PRODUCT_CHOICE : ''
         // ⚠️⚠️ A SEPARATE FIELD, NOT A FLAG ON THE SAME ONE, AND THAT IS THE
         // SAFETY PROPERTY. Every existing reader of `selected_product_id`

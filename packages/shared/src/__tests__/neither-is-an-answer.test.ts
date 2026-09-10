@@ -97,16 +97,28 @@ describe('the decline survives the wire', () => {
     expect(EDGE).toContain(`const NO_PRODUCT_CHOICE_INLINE = '${NO_PRODUCT_CHOICE}'`)
   })
 
-  it('a decline beats the stopgap, not merely the chosen lookup', () => {
-    // ⚠️ `chosenEntity ?? stopgapEntity` ALONE FALLS THROUGH. Skipping the
-    // lookup is not enough; the fallback is the thing that had to be stopped.
-    expect(EDGE).toMatch(/const ownedEntity = declinedAProduct \? null : \(chosenEntity \?\? stopgapEntity\)/)
+  it('a decline yields no subject, and now so does an absence', () => {
+    // ⚠️⚠️ THIS ASSERTION PINNED THE FALLBACK IT WAS WRITTEN TO DEFEND AGAINST.
+    // It required `chosenEntity ?? stopgapEntity` verbatim so that a decline
+    // could be shown to beat it. The fallback is now DELETED — it was the shared
+    // cause of three audited compliance failures — so there is nothing left to
+    // fall through to, and the decline's job is narrower than it was.
+    //
+    // ⚖️ THE PROPERTY SURVIVES AND IS STRENGTHENED: a decline produces no
+    // subject. What changed is that an ABSENCE produces none either, which is
+    // what the old comment ("the fallback is the thing that had to be stopped")
+    // was reaching for. Asserted as the whole expression so a reintroduced
+    // fallback fails here as well as in the-writer-never-picks-which-product.
+    expect(EDGE).toMatch(/const ownedEntity = declinedAProduct \? null : chosenEntity/)
+    expect(EDGE).not.toMatch(/stopgapEntity/)
   })
 
   it('the card offers it as a real option and sends it', () => {
     expect(CARD).toMatch(/value: NO_PRODUCT_CHOICE, label: 'None of these'/)
-    // ⚖️ SENT, NOT FILTERED OUT. A client that dropped it would leave the
-    // server with an absence, which is where the stopgap lives.
+    // ⚖️ SENT, NOT FILTERED OUT. It used to matter because an absence is "where
+    // the stopgap lives"; the stopgap is gone, so it now matters because a
+    // decline and an absence are different ANSWERS and only one of them was
+    // given deliberately.
     expect(CARD).toMatch(/selected_product_id: chosenProductId/)
   })
 
