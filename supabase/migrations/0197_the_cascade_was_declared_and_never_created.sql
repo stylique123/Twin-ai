@@ -63,6 +63,26 @@
 -- succeeded, so no orphan could ever have been created. The constraints will
 -- validate as written.
 --
+-- ⚠️⚠️ AND THE ABSENT KEY WAS LOAD-BEARING FOR A CI PROBE, WHICH IS THE
+-- CLEAREST EVIDENCE THAT THE DRIFT MATTERED. The first matrix run carrying this
+-- migration went red in four minutes:
+--
+--   ERROR: insert or update on table "brand_voices" violates foreign key
+--   constraint "brand_voices_owner_id_fkey"
+--   DETAIL: Key (owner_id)=(3a8d12d5-...) is not present in table "users".
+--
+-- `staging-integration.yml`'s 0171 probe inserted a `brand_voices` row with
+-- `owner_id = gen_random_uuid()`. That had worked for as long as the probe has
+-- existed, FOR NO OTHER REASON THAN THAT STAGING HAD NO SUCH KEY. The probe now
+-- takes a real owner from `auth.users`. The key is not weakened: trading a
+-- production constraint for a green tick is the trade this whole migration
+-- exists to undo.
+--
+-- ⚖️ IT ALSO MADE THE PROBE'S NEGATIVE CASE EXACT. With a random owner that
+-- insert violated the CHECK *and* the key at once, and passed only because
+-- Postgres evaluates a CHECK on the tuple before firing an FK trigger — so the
+-- thing under test was being proven by an accident of evaluation order.
+--
 -- ⚠️ ONE CONSTRAINT PER STATEMENT, DELIBERATELY. A single `alter table` naming
 -- several is one atom to a reader and to the migration-coverage guard, whose
 -- regex reads the first item only.
