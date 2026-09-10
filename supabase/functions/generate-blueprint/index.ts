@@ -6653,6 +6653,9 @@ Deno.serve(async (req: Request) => {
     // sends an id; a request can send any id. Filtering on `owner_id` means the
     // worst a forged id achieves is silence.
     let mentionLine = ''
+    // ⚖️ HOISTED BECAUSE A SECOND RULE READS IT. `productStanceLine` below has
+    // to name whichever product is in play, and a mention is a product in play.
+    let mentionedProductName = ''
     const mentionedId = typeof body.mentioned_product_id === 'string'
       ? body.mentioned_product_id.trim() : ''
     if (mentionedId !== '' && !ownedEntity) {
@@ -6665,6 +6668,7 @@ Deno.serve(async (req: Request) => {
         .maybeSingle()
       const mentionName = typeof mentionRow?.name === 'string' ? mentionRow.name.trim() : ''
       if (mentionName !== '') {
+        mentionedProductName = mentionName
         const mentionRel = String(mentionRow?.relationship ?? '')
         // ⚠️ DISCLOSURE KEYS ON THE RELATIONSHIP, NOT ON WHETHER THE VIDEO
         // SELLS — and this case matters MORE than the selling one. An ad that
@@ -6684,6 +6688,55 @@ Deno.serve(async (req: Request) => {
     const showLine = !ownedEntity || !sceneGuidance
       ? ''
       : productSceneDirection(String(ownedEntity.name ?? 'the product'), sceneGuidance)
+
+    // ── THE WRITER MAY NOT ARGUE AGAINST THE PRODUCT THAT WAS SELECTED ──────
+    //
+    // ⚠️⚠️ A COMPLIANCE FAILURE OBSERVED ON LIVE RUNS, TWICE, ON THE SAME
+    // AFFILIATE PRODUCT. Asked to explain a postpartum support band she earns
+    // commission on, and then asked why she recommends it, the writer produced
+    // five hooks attacking it: "a postpartum belly band will not heal your deep
+    // core", "wearing a belly band all day actually weakens your core", "stop
+    // wrapping your belly", "stop relying on waist wraps". One run's own
+    // adaptation note identified the subject as "a commercial product showcase
+    // featuring branded postpartum support bands" and then wrote a video telling
+    // viewers they do not need one.
+    //
+    // ⚠️ SILENCE WAS NEVER THE FAILURE MODE. Given no product the writer does
+    // not abstain — it invents a stance, and the contrarian hook is the most
+    // rewarded shape in this niche, so the stance it invents lands against
+    // whatever the video is nominally about. The product reaching the prompt
+    // (the mention fix) removes the cause in the cases it covers; this removes
+    // the OUTPUT in every case, including the ones it does not.
+    //
+    // ⚖️ IT FORBIDS ARGUING AGAINST, AND IT DOES NOT REQUIRE PRAISE. Demanding
+    // a positive case would manufacture the claims `claimRulesBlock` spends
+    // seventy lines refusing, and would be a worse failure than the one it
+    // fixed. The permitted set is unchanged: name it, say what the creator
+    // said about it, or say nothing.
+    //
+    // ⚖️ AND AN HONEST LIMIT THE CREATOR HERSELF STATED IS STILL ALLOWED. Her
+    // own framing of this very product was "support while you heal, not a fix",
+    // and the one run that worked used exactly that. A rule that banned every
+    // qualifying sentence would delete the most credible thing an affiliate
+    // creator can say. The line forbidden is the one that argues the VIEWER out
+    // of the product — that it is useless, harmful, or that they should stop
+    // using it.
+    const stanceProductName = String(
+      (ownedEntity as { name?: unknown } | null)?.name ?? '',
+    ).trim() || mentionedProductName
+    const productStanceLine = stanceProductName === ''
+      ? ''
+      : '\n- YOU MAY NOT ARGUE AGAINST "' + stanceProductName + '". '
+        + 'This creator chose it for this video. Do NOT write a hook, a line or a '
+        + 'beat saying it does not work, that it is harmful, that it is unnecessary, '
+        + 'or that the viewer should stop using it or things like it — and do not '
+        + 'position the creator against the category it belongs to.'
+        + ' You are NOT required to praise it, and you must not invent a benefit to '
+        + 'avoid this rule: naming it, repeating what the creator said about it, or '
+        + 'saying nothing about it at all are all fine.'
+        + ' A limit THE CREATOR STATED in their own words about it may still be said, '
+        + 'in their words — that is their honesty about their own product, not an '
+        + 'argument against it.'
 
     // ⚠️ A COMMUNITY IS THE ONE TYPE WHERE "SHOW THE PRODUCT" IS UNDER-SPECIFIED,
     // so it gets facts the other types do not need. `communityBlockInline`
@@ -6927,7 +6980,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}${prov('audience')}${audienceLevelLine}
 - Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}
+- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
