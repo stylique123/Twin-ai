@@ -25,6 +25,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { EDITS_INTO } from '@twinai/shared'
 
 const SRC = readFileSync(join(__dirname, '..', 'pages', 'Settings.tsx'), 'utf8')
 
@@ -83,6 +84,35 @@ describe('one fact, one place', () => {
     // and the input claims that focus
     expect(CODE).toContain('focusField === f.key')
     expect(CODE).toContain('el.focus()')
+  })
+
+  // ⚠️⚠️ EVERY TARGET MUST BE A FIELD THAT EXISTS, AND NOTHING ASSERTED THAT.
+  // `EDITS_INTO` names a form key by string; a key that is not on the form
+  // focuses nothing and leaves her at the top of it — the exact defect this
+  // whole mapping was built to end, reachable by a typo. Three targets were
+  // added at once (tone and pacing into `voice`, hook_style into
+  // `editing_style`) and the only thing that made that safe was checking the
+  // field list, so the check belongs here rather than in my head.
+  it('every edit target names a field that is actually on the form', () => {
+    const keys = [...CODE.matchAll(/key: '([a-z_]+)'/g)].map((m) => m[1])
+    expect(keys.length, 'the DNA field list could not be located').toBeGreaterThan(3)
+    const targets = Object.values(EDITS_INTO).filter((v): v is string => v !== null)
+    expect(targets.length, 'no fact offers an edit at all').toBeGreaterThan(0)
+    for (const t of targets) {
+      expect(keys, `EDITS_INTO points at '${t}', which is not a form field`).toContain(t)
+    }
+  })
+
+  // ⚖️ AND `null` MEANS "OFFERS NONE", NOT "FORGOTTEN". The two list-valued
+  // facts have no scalar field on this form, so a target for them would be a
+  // button that lands nowhere. Stated, so the next person does not fill them in
+  // to make the map look complete.
+  it('the facts with no field offer no edit', () => {
+    expect(EDITS_INTO.vocabulary).toBeNull()
+    expect(EDITS_INTO.recurring_ctas).toBeNull()
+    // ⚠️ AND THE BUTTON IS GATED ON THAT NULL, so a null target renders no
+    // control rather than a dead one.
+    expect(CODE).toContain('editTargetOf(f) !== null &&')
   })
 
   // ⚠️ AND THE PANEL IS REACHABLE FROM THE BLOCK THAT NO LONGER READS. If the
