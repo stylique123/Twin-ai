@@ -63,6 +63,63 @@ function json(body: unknown, status = 200) {
   })
 }
 
+// ── WHAT ACTUALLY THREW, AND NOT `[object Object]` ─────────────────────────
+//
+// ⚠️⚠️ MEASURED, NOT SUPPOSED: ALL 13 PRODUCTION GENERATIONS ON 2026-09-10 TOOK
+// THE RESCUE PATH, AND ALL 13 `ops_events` ROWS RECORD THE ERROR AS THE LITERAL
+// STRING `[object Object]`. The rescue's own comment calls itself "loud and
+// durable" so the defect it covers cannot hide; the one field that names the
+// defect held no information on every single occurrence, so a four-hour total
+// degradation of the analysis region was invisible in the table built to show
+// it. The throw is still unidentified because the record cannot say.
+//
+// ⚠️ THE CAUSE IS `String(err)` ON A NON-`Error`. Supabase client errors, Deno
+// AggregateErrors and bare object literals are all thrown in this file's
+// dependencies and none of them is an `Error`, so `err instanceof Error` is
+// false and `String({})` is `[object Object]` — information-free, by the
+// language, silently.
+//
+// ⚖️ EVERY BRANCH PRODUCES SOMETHING A HUMAN CAN ACT ON. An `Error` keeps its
+// name, message and the first stack frames; anything else is serialised, and a
+// value that refuses serialisation still yields its type and constructor rather
+// than a fixed string. Capped at the call site, not here.
+function describeThrown(err: unknown): string {
+  if (err instanceof Error) {
+    const frames = String(err.stack ?? '').split('\n').slice(1, 4).map((l) => l.trim()).join(' | ')
+    return `${err.name}: ${err.message}${frames ? ` @ ${frames}` : ''}`
+  }
+  if (typeof err === 'string') return err
+  if (err === null) return 'threw null'
+  if (err === undefined) return 'threw undefined'
+  // ⚠️ `message` AND `code` FIRST, BECAUSE THE SUPABASE CLIENT USES THEM AND
+  // JSON.stringify DOES NOT REACH NON-ENUMERABLE PROPERTIES. A PostgrestError
+  // is the likeliest thrower here, and its message is the whole diagnosis.
+  const o = err as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown }
+  const named = [
+    typeof o.code === 'string' || typeof o.code === 'number' ? `code=${o.code}` : '',
+    typeof o.message === 'string' && o.message !== '' ? `message=${o.message}` : '',
+    typeof o.details === 'string' && o.details !== '' ? `details=${o.details}` : '',
+    typeof o.hint === 'string' && o.hint !== '' ? `hint=${o.hint}` : '',
+  ].filter((x) => x !== '').join(' ')
+  if (named !== '') return named
+  try {
+    const dumped = JSON.stringify(err)
+    // ⚖️ `{}` IS NOT AN ANSWER EITHER. An object whose own properties are all
+    // non-enumerable serialises to `{}`, which is `[object Object]` wearing
+    // braces — so fall through to the type rather than record it.
+    if (typeof dumped === 'string' && dumped !== '' && dumped !== '{}') return dumped
+  } catch { /* circular or a throwing getter — the fallback below still names it */ }
+  // ⚖️ THE SHAPE SURVIVES EVEN WHEN THE VALUE DOES NOT. A circular object and
+  // one with a throwing getter both defeat `JSON.stringify`, but their own
+  // enumerable key names are readable without invoking anything — and "it threw
+  // something with a `stage` and a `beat` on it" is a starting point, where
+  // "unserialisable object" is a dead end.
+  const ctor = (err as { constructor?: { name?: unknown } })?.constructor?.name
+  let keys = ''
+  try { keys = Object.keys(err as object).slice(0, 12).join(',') } catch { keys = '' }
+  return `unserialisable ${typeof err}${typeof ctor === 'string' ? ` (${ctor})` : ''}${keys !== '' ? ` keys=${keys}` : ''}`
+}
+
 // Keep the opening AND closing of long source text. A hard head-only cut loses
 // the ending (the payoff/CTA), which the retention read depends on.
 function clip(s: string, max: number): string {
@@ -6391,6 +6448,39 @@ Deno.serve(async (req: Request) => {
     if (ownershipLanguage) {
       claimLines.push('\n- THIS IS THE CREATOR\'S OWN PRODUCT AND THEY MAY SAY SO IN THE FIRST PERSON. "I make these", "I bake them fresh every morning", "we built this" — claims about MAKING or SELLING it are theirs to make, and a script that refuses them leaves a maker unable to describe their own work.')
     }
+    // ⚠️⚠️ THE PERMISSION HALF WAS MISSING HERE TOO, AND THIS IS THE FIRST
+    // EVIDENCE TWIN BLOCKS A CLAIM THE CREATOR MAY MAKE. `creatorExperience`
+    // gated a PROHIBITION and nothing else: confirmed use merely skipped the
+    // refusal below, so the writer was never TOLD the claim was available. The
+    // defect class is identical to `ownershipLanguage` twenty lines up, which
+    // this file already records — a canonical rule whose permission reached no
+    // prompt while its refusal reached every one of them.
+    //
+    // ⚠️ MEASURED ON A LIVE RUN. An affiliate creator supplied "I have used it
+    // myself after both babies" in the offer field, with personal use CONFIRMED
+    // on the product, and the sentence did not survive into the script. Every
+    // earlier test of this system asked whether Twin refuses a claim it should.
+    // A blanket strip is as wrong as no strip: it removes the most persuasive
+    // TRUE thing an affiliate creator can say, and it is the one claim a
+    // disclosure cannot substitute for.
+    //
+    // ⚖️ THE EXPERIENCE, NOT A RESULT FROM IT. "I have used this for months" is
+    // the creator's own history and theirs to state. "It healed my core" is an
+    // outcome claim about what the product DID, which `marketingClaims` and the
+    // substance rules govern and which confirmed use does not license — that
+    // distinction is the same one recorded below, where "talk about what it
+    // does" licensed an asserted outcome about a product nobody had touched.
+    //
+    // ⚖️ AND IT IS NOT A DISCLOSURE EXEMPTION. A paid tie still discloses; this
+    // says the first-person history may be told, not that it may be told
+    // instead of saying the relationship exists.
+    if (creatorExperience && rel !== 'NONE') {
+      claimLines.push('\n- THE CREATOR HAS CONFIRMED THEY PERSONALLY USE THIS, AND THEY MAY SAY SO IN THE FIRST PERSON. "I have used this myself", "I have been using it for months", "I used it after both of my babies" — their own history with it is theirs to state, and it is usually the most credible line available. Do NOT strip it, and do NOT soften it into the third person.'
+        + ' BUT USING IT IS NOT A RESULT FROM IT: do NOT turn this into an outcome claim about what it did to their body, their business or their numbers unless the creator themselves said that in their own words. Their experience of USING it is established; what it ACHIEVED is not.'
+        + (disclosureRequired
+          ? ' AND THIS DOES NOT REPLACE THE DISCLOSURE: the paid relationship is still stated plainly and early, in their own words.'
+          : ''))
+    }
     if (!creatorExperience && rel !== 'NONE') {
       // ⚖️ NARROWED FOR AN OWNER, NOT LIFTED. Making a thing is not being its
       // customer: a founder who has never opened their own dashboard saying "it
@@ -6522,6 +6612,40 @@ Deno.serve(async (req: Request) => {
         + '\n  Use these rather than inventing capabilities. Anything about this product NOT listed here is unverified — describe it in general terms or leave it out.')
     }
 
+    // ── THE FACTS SHE TYPED, WHICH NO PROMPT HAS EVER CARRIED ─────────────
+    //
+    // ⚠️⚠️ `brief.productFacts` HAD NO READER ANYWHERE. It is written twice in
+    // this file — `stable.productFacts` for the next video and `brief.productFacts`
+    // for this one — from the readiness question whose own label is "Specific
+    // features, numbers or outcomes THIS VIDEO IS ALLOWED TO STATE". Nothing read
+    // either. The only product facts reaching this prompt came from
+    // `usableProductFacts` above, which is scraped from the product's own pages,
+    // so a creator whose product has no page — a coaching service, a community,
+    // a physical thing she sells in DMs — had no way to tell the writer what it
+    // IS. Audited over ten runs: of six specifics she typed, five did not survive.
+    //
+    // ⚖️ MARKED AS HERS, NOT AS VERIFIED, WHICH IS THE WHOLE DIFFERENCE FROM THE
+    // BLOCK ABOVE. `usableProductFacts` earned its grade from a classifier
+    // reading an authoritative page. These are a sentence a person typed, so they
+    // are offered as the creator's own statement of what the thing is — usable
+    // for identity, format, price and who it is for, and never promoted into a
+    // verified capability.
+    //
+    // ⚖️ AND IT DOES NOT BECOME AN OUTCOME LICENCE. "About 45 dollars" and "three
+    // sizes" are facts about the object. "Fixes your core in six weeks" typed
+    // into the same box is an outcome, and `unionApproved` above is the only
+    // thing that may licence one — so this line says so rather than letting a
+    // free-text box become the back door around the approval it spent seventy
+    // lines building.
+    const typedProductFacts = readyPresent(brief.productFacts)
+      ? String(brief.productFacts).slice(0, 2000) : ''
+    if (typedProductFacts !== '') {
+      claimLines.push('\n- WHAT THE CREATOR TYPED ABOUT THIS PRODUCT, in their own words: '
+        + typedProductFacts
+        + '\n  These are the creator\'s own statement of what the thing IS — use them for its identity, format, price, sizes and who it is for, and prefer them to describing it vaguely. They have NOT been verified by anyone, so do not restate them as proven or independently checked.'
+        + ' And a sentence here that promises a RESULT is still not an approved outcome claim: state what the product is and costs, never what it will achieve, unless that outcome appears in the approved list above.')
+    }
+
     // ── THE ONE LINE THE CREATOR TYPED THEMSELVES ────────────────────────
     //
     // ⚠️ `creator_summary` WAS WRITTEN AND NEVER READ. The add form asks "in one
@@ -6599,6 +6723,9 @@ Deno.serve(async (req: Request) => {
     // sends an id; a request can send any id. Filtering on `owner_id` means the
     // worst a forged id achieves is silence.
     let mentionLine = ''
+    // ⚖️ HOISTED BECAUSE A SECOND RULE READS IT. `productStanceLine` below has
+    // to name whichever product is in play, and a mention is a product in play.
+    let mentionedProductName = ''
     const mentionedId = typeof body.mentioned_product_id === 'string'
       ? body.mentioned_product_id.trim() : ''
     // ⚠️⚠️ `&& !ownedEntity` WAS HERE AND IT SILENTLY THREW THE MENTION AWAY.
@@ -6645,6 +6772,7 @@ Deno.serve(async (req: Request) => {
         .maybeSingle()
       const mentionName = typeof mentionRow?.name === 'string' ? mentionRow.name.trim() : ''
       if (mentionName !== '') {
+        mentionedProductName = mentionName
         const mentionRel = String(mentionRow?.relationship ?? '')
         // ⚠️ DISCLOSURE KEYS ON THE RELATIONSHIP, NOT ON WHETHER THE VIDEO
         // SELLS — and this case matters MORE than the selling one. An ad that
@@ -6664,6 +6792,55 @@ Deno.serve(async (req: Request) => {
     const showLine = !ownedEntity || !sceneGuidance
       ? ''
       : productSceneDirection(String(ownedEntity.name ?? 'the product'), sceneGuidance)
+
+    // ── THE WRITER MAY NOT ARGUE AGAINST THE PRODUCT THAT WAS SELECTED ──────
+    //
+    // ⚠️⚠️ A COMPLIANCE FAILURE OBSERVED ON LIVE RUNS, TWICE, ON THE SAME
+    // AFFILIATE PRODUCT. Asked to explain a postpartum support band she earns
+    // commission on, and then asked why she recommends it, the writer produced
+    // five hooks attacking it: "a postpartum belly band will not heal your deep
+    // core", "wearing a belly band all day actually weakens your core", "stop
+    // wrapping your belly", "stop relying on waist wraps". One run's own
+    // adaptation note identified the subject as "a commercial product showcase
+    // featuring branded postpartum support bands" and then wrote a video telling
+    // viewers they do not need one.
+    //
+    // ⚠️ SILENCE WAS NEVER THE FAILURE MODE. Given no product the writer does
+    // not abstain — it invents a stance, and the contrarian hook is the most
+    // rewarded shape in this niche, so the stance it invents lands against
+    // whatever the video is nominally about. The product reaching the prompt
+    // (the mention fix) removes the cause in the cases it covers; this removes
+    // the OUTPUT in every case, including the ones it does not.
+    //
+    // ⚖️ IT FORBIDS ARGUING AGAINST, AND IT DOES NOT REQUIRE PRAISE. Demanding
+    // a positive case would manufacture the claims `claimRulesBlock` spends
+    // seventy lines refusing, and would be a worse failure than the one it
+    // fixed. The permitted set is unchanged: name it, say what the creator
+    // said about it, or say nothing.
+    //
+    // ⚖️ AND AN HONEST LIMIT THE CREATOR HERSELF STATED IS STILL ALLOWED. Her
+    // own framing of this very product was "support while you heal, not a fix",
+    // and the one run that worked used exactly that. A rule that banned every
+    // qualifying sentence would delete the most credible thing an affiliate
+    // creator can say. The line forbidden is the one that argues the VIEWER out
+    // of the product — that it is useless, harmful, or that they should stop
+    // using it.
+    const stanceProductName = String(
+      (ownedEntity as { name?: unknown } | null)?.name ?? '',
+    ).trim() || mentionedProductName
+    const productStanceLine = stanceProductName === ''
+      ? ''
+      : '\n- YOU MAY NOT ARGUE AGAINST "' + stanceProductName + '". '
+        + 'This creator chose it for this video. Do NOT write a hook, a line or a '
+        + 'beat saying it does not work, that it is harmful, that it is unnecessary, '
+        + 'or that the viewer should stop using it or things like it — and do not '
+        + 'position the creator against the category it belongs to.'
+        + ' You are NOT required to praise it, and you must not invent a benefit to '
+        + 'avoid this rule: naming it, repeating what the creator said about it, or '
+        + 'saying nothing about it at all are all fine.'
+        + ' A limit THE CREATOR STATED in their own words about it may still be said, '
+        + 'in their words — that is their honesty about their own product, not an '
+        + 'argument against it.'
 
     // ⚠️ A COMMUNITY IS THE ONE TYPE WHERE "SHOW THE PRODUCT" IS UNDER-SPECIFIED,
     // so it gets facts the other types do not need. `communityBlockInline`
@@ -6907,7 +7084,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}${prov('audience')}${audienceLevelLine}
 - Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}
+- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
@@ -8371,7 +8548,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       // it mattered. `ops_events` is the table an operator already watches.
       selectionSnapshot = null
       beatAudit = null
-      const detail = err instanceof Error ? err.message : String(err)
+      const detail = describeThrown(err)
       console.error('generation_instrumentation_failed', detail)
       await admin.from('ops_events').insert({
         kind: 'generation_instrumentation_failed',
@@ -9970,7 +10147,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
                 run_id: rescue.runId,
                 generation_id: saved.id,
                 links_stripped: removals.length,
-                error: (err instanceof Error ? err.message : String(err)).slice(0, 600),
+                error: describeThrown(err).slice(0, 600),
               },
             })
             .then(() => {}, () => {})
@@ -9978,7 +10155,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
             event: 'generation_rescued',
             run_id: rescue.runId,
             generation_id: saved.id,
-            error: err instanceof Error ? err.message : String(err),
+            error: describeThrown(err),
           }))
           if (saved.id) {
             await admin.from('script_attempts')
