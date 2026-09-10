@@ -185,6 +185,35 @@ describe('one next step, and it moves', () => {
     expect(s.headline).not.toMatch(/\d+ of \d+/)
   })
 
+  // ⚠️⚠️ THE HERO AND THE CARD GRID BOTH DREW THE SAME AREA. Reported live:
+  // "NEXT STEP · Content profile · Edit profile →" at the top of the screen and
+  // "Content profile · Needs setup · Edit profile" again below it — the same
+  // fact twice, and the second copy carried a status the first did not, so the
+  // two did not even agree. The grid now filters the next-step area out.
+  //
+  // ⚖️ THE FILTER IS WELL-DEFINED BY CONSTRUCTION AND THAT IS ASSERTED HERE
+  // RATHER THAN ASSUMED: `setupSummary` picks `next` with `areas.find`, so its
+  // id is always one of the areas handed to it. A `next` that was NOT in the
+  // list would make the screen's filter remove nothing and the duplicate would
+  // come back silently.
+  it('the next step is always one of the areas, so the grid can exclude it', () => {
+    for (const input of [nothing, { ...nothing, dnaReady: true }, { ...nothing, brandKit: null }]) {
+      const areas = of(input)
+      const s = setupSummary(areas)
+      if (!s.next) continue
+      expect(areas.map((a) => a.id)).toContain(s.next.id)
+    }
+  })
+
+  // ⚖️ AND REMOVING IT MUST LEAVE A GRID. Trading a duplicate for an empty
+  // screen is not a fix.
+  it('excluding the next step still leaves other areas to show', () => {
+    const areas = of(nothing)
+    const s = setupSummary(areas)
+    expect(s.next).not.toBeNull()
+    expect(areas.filter((a) => a.id !== s.next!.id).length).toBeGreaterThan(0)
+  })
+
   it('never sends anybody to the brand kit as the next thing', () => {
     // ⚠️ IT IS OPTIONAL, SO IT CAN NEVER BE THE ONE THING WE ASK FOR. Offering
     // it as the next step is how "optional" quietly becomes required.

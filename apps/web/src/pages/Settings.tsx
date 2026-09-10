@@ -482,8 +482,18 @@ export default function Settings() {
             {/* ⚠️ EVERY CARD IS GENUINELY INTERACTIVE. The old page had panels
                 that looked tappable and went nowhere, which is worse than a plain
                 list: it costs somebody an attempt to find out. */}
+            {/* ⚠️⚠️ THE NEXT STEP AND THE CARD GRID BOTH DREW THE SAME AREA, so
+                "Content profile · Edit profile →" appeared at the top and
+                "Content profile · Needs setup · Edit profile" appeared again
+                below it. Reported live: the same fact twice on one screen, and
+                the second copy carried a status the first did not — so the two
+                did not even agree. One home per fact.
+                ⚖️ THE HERO KEEPS IT AND THE GRID DROPS IT, not the other way
+                round: the whole point of a next step is that it is the one thing
+                to do next, and a duplicate directly beneath it is what made it
+                stop reading as singular. */}
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {areas.map((a) => (
+              {areas.filter((a) => a.id !== summary.next?.id).map((a) => (
                 <button
                   key={a.id}
                   type="button"
@@ -1387,7 +1397,22 @@ function ProfileStatus({
           <button
             type="button"
             disabled={cta === null}
-            onClick={() => { setCtaDraft(ctaText); setCtaOpen(true) }}
+            // ⚠️⚠️ THIS LINE THREW AWAY THE PREFILL THAT #787 BUILT. `ctaDraft`
+            // is initialised to `ctaText || ctaSuggestion?.text` — correctly —
+            // and then this handler overwrote it with `ctaText`, which is ''
+            // for every creator who has never saved an ending. 0 of 51 voices
+            // had a stored ending and 47 had one extracted, so OPENING THE BOX
+            // EMPTIED IT, every time, for everybody. Her real ending survived
+            // only as grey placeholder text, which is not an answer and cannot
+            // be saved.
+            //
+            // ⚖️ THE SUGGESTION IS STILL NOT A CONFIRMATION. It is offered
+            // pre-typed so that Save is one tap, and Save is the creator's
+            // decision — which is why the status stays "needs setup" until they
+            // take it. A reading must never be stored as though they had agreed
+            // to it; the same rule `palette_source: 'manual'` states for
+            // colours.
+            onClick={() => { setCtaDraft(ctaText || ctaSuggestion?.text || ''); setCtaOpen(true) }}
             className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream disabled:opacity-40"
           >{ctaText ? 'Edit' : 'Add one'}</button>
           )}
