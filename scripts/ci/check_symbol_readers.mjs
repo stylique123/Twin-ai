@@ -71,6 +71,33 @@ const REPO = join(fileURLToPath(import.meta.url), '..', '..', '..')
 // WOULD CHANGE IT. An unregistered unreached symbol fails the build; a
 // registered one is a debt that was named. "Later" is not a reason.
 export const REGISTRY = {
+  'outcomeLog.ts': {
+    symbols: ['listPostAttributions', 'mintPostAttribution', 'listDnaClaims'],
+    // ⚠️⚠️ THIS ENTRY MUST NOT NAME THE SYMBOLS IT DISCUSSES IN ITS `why`. This
+    // guard greps source, and a `why` string is code — naming a function there
+    // makes it look READ and demands its own entry be deleted. It has happened
+    // once already, to five symbols at once.
+    //
+    // ⚖️ AND THE TWO CONDITIONS BELOW ARE DELIBERATELY DIFFERENT. One blanket
+    // reason covering both would be a wrong fact in a register whose whole
+    // purpose is to be trustworthy, and the register is read later as if it
+    // were current.
+    why: 'The post-publish learning loop. MEASURED ON PRODUCTION 2026-09-10: '
+      + 'post_attributions 0 rows, post_outcome_observations 0 rows, '
+      + 'generation_outcomes 0 rows, dna_claims 0 rows — and the root cause is '
+      + 'one fact, not four: generations carrying an approved post is also 0. '
+      + 'NOBODY HAS PUBLISHED A VIDEO YET. These are not dead; they are waiting, '
+      + 'and the owner supplied that reason — it is not one this register could '
+      + 'have derived from the code. '
+      + 'WHAT WOULD CHANGE THIS, for the two attribution readers: the first '
+      + 'published video. Delete these entries then, because a real reader will '
+      + 'exist the moment there is a row to read. '
+      + '⚠️ THE THIRD IS A DIFFERENT CASE AND IS NOT PUBLISH-GATED. dna_claims '
+      + 'is READ here and WRITTEN NOWHERE — the inverse of this repository\'s '
+      + 'usual defect, a table with a reader and no producer, across 30 scanned '
+      + 'voices. Its condition is a writer, not a publish, and conflating the '
+      + 'two would hide a gap behind a reason that does not apply to it.',
+  },
   'corpus/cohort.ts': {
     symbols: ['FACET_AGREEMENT', 'selectEvidenceCohort', 'shapeBlock'],
     // ⚠️⚠️ THIS ENTRY MUST NOT NAME THE SYMBOLS IT DISCUSSES. My first draft
@@ -555,7 +582,13 @@ const unregistered = orphans.filter((o) =>
 // newly visible as unwired. Each is a rule nothing runs. They are not triaged in
 // this commit — deliberately: doing it in the same change that alters the
 // instrument would make it impossible to tell which failures came from which.
-const MAX_UNREGISTERED = 149
+// ⚠️ RATCHETED 149 -> 146 BY REGISTERING THREE, NOT BY EXCUSING THEM. The three
+// are the post-publish learning loop and a table with a reader and no writer;
+// both conditions are stated in the `outcomeLog.ts` entry. This number goes DOWN
+// as debt is named or removed and NEVER up — raising it is only ever admissible
+// when the INSTRUMENT got stricter in the same commit, at the number that
+// improvement measured, which is what #797 did going 101 -> 149.
+const MAX_UNREGISTERED = 146
 
 console.log(`symbol-readers: unregistered ${unregistered.length} of ceiling ${MAX_UNREGISTERED}`)
 console.log(`symbol-readers: ${symbols.length} exported symbols, ${reached.size} reached, `
