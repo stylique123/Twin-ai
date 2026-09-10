@@ -913,3 +913,76 @@ jobs:
         # tolerance) rather than on the project status, which a scaffold
         # produces identically.
         run: node scripts/staging-integration/phase8.mjs
+
+      # ⚠️⚠️ THE MATRIX HAD NO TEARDOWN AT ALL. Its last act was to kill the
+      # worker and exit, and it had been doing that since 2026-07-17. Measured
+      # on 2026-09-10: staging was 842 MB against production's 137 MB, SIX
+      # TIMES the size of the thing it stands in for, and none of it was bloat
+      # — dead tuples were negligible (86 on the 174 MB table) and autovacuum
+      # was keeping up. It was live rows.
+      #
+      #     auth.users             12,482   ← every single one a fixture, zero real
+      #     edit_events           397,723
+      #     media_analyses        103,529
+      #     jobs                   85,662
+      #     media_assets           52,503   (production has 5)
+      #
+      # It accretes 200-475 users and 8,000-18,000 edit_events PER DAY.
+      #
+      # ⚖️ AND THE COST IS IO, NOT DISK, which is why this reads as a budget
+      # problem rather than a storage one. Heap cache hit is still 99.79% — the
+      # hot set is whatever the current run just wrote. What scales with the
+      # junk is VACUUM: autovacuum re-scans a 130 MB heap to collect the few
+      # dead tuples one run leaves, every run, on an instance whose entire
+      # shared_buffers is 224 MB. The garbage is not idle. It is re-read.
+      #
+      # ⚠️ A FAILED RUN KEEPS ITS ROWS. `run_pattern` is deliberately set to a
+      # pattern that matches NOTHING when any phase failed: that data is the
+      # only evidence of why it failed, and trading the diagnosis for disk is
+      # not a saving. The age sweep is what stops that becoming the same leak —
+      # it reclaims the residue of failed and crashed runs a few days later,
+      # whether or not anyone remembered to look.
+      #
+      # ⚠️ STORAGE OBJECTS ARE NOT PURGED HERE, and the step says so in its own
+      # output rather than leaving it to be discovered. Deleting a
+      # storage.objects ROW does not delete the bytes — it orphans them beyond
+      # the reach of any API. Verified in pg_constraint that storage.objects
+      # has no foreign key to auth.users, so this delete cannot cascade into it
+      # by accident. 47,900 objects remain a separate job through the storage
+      # endpoint.
+      - name: Purge this run's fixtures, and any run's residue older than the sweep
+        # `always()` so a failed matrix still sweeps the OLD residue. What it
+        # does not do on failure is delete this run's own rows.
+        if: always()
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+          FIXTURE_SWEEP_DAYS: '3'
+        run: |
+          if [ -z "$STAGING_DB_URL" ]; then
+            echo "::warning::STAGING_DB_URL is not set — fixtures from this run are left behind and the age sweep did not run."
+            exit 0
+          fi
+          # ⚠️ THE SAME REF ASSERTION THE MIGRATION STEP MAKES, and it matters
+          # strictly more here: that step applies DDL, this one deletes rows.
+          # Production is jmdecibuytznsonrasxw and is never referenced.
+          case "$STAGING_DB_URL" in
+            *otgzjsagybpgtwweuptj*) : ;;
+            *) echo "::error::STAGING_DB_URL does not point at the staging project ref — REFUSING TO DELETE."; exit 1 ;;
+          esac
+          RUN_TAG="${GITHUB_RUN_ID}a${GITHUB_RUN_ATTEMPT}"
+          if [ "${{ job.status }}" = "success" ]; then
+            RUN_PATTERN="%.r${RUN_TAG}@staging.test"
+            echo "== matrix passed: purging this run's fixtures ($RUN_PATTERN) plus residue older than ${FIXTURE_SWEEP_DAYS}d"
+          else
+            # A pattern with no wildcard and an illegal address: it matches no
+            # row, which is the point. Leaving RUN_PATTERN empty would be worse
+            # than a bug — in SQL `LIKE ''` matches nothing only by accident of
+            # these addresses being non-empty, and relying on that is how a
+            # purge ends up scoped by luck.
+            RUN_PATTERN="!no-match-this-run-failed!"
+            echo "== matrix FAILED: keeping this run's fixtures for diagnosis; sweeping only residue older than ${FIXTURE_SWEEP_DAYS}d"
+          fi
+          psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 \
+            -v run_pattern="$RUN_PATTERN" \
+            -v max_age_days="$FIXTURE_SWEEP_DAYS" \
+            -f scripts/staging-integration/purge-fixtures.sql

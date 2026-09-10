@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
+import { fixtureEmail } from './fixtureIdentity.mjs'
 
 // ⚠️ DERIVED FROM THE WORKER'S OWN CONSTANT, by reading the file rather than
 // importing it: this script runs from the repo root and worker/ is a separate
@@ -67,7 +68,7 @@ const sha256 = (s) => createHash('sha256').update(s).digest('hex')
 
 // ---- users / auth / edge helpers (same shapes as phase5) --------------------
 async function makeUser(label) {
-  const email = `${label}-${randomUUID().slice(0, 8)}@staging.test`
+  const email = fixtureEmail(label)
   const { data, error } = await admin.auth.admin.createUser({ email, password: PW, email_confirm: true })
   if (error) throw new Error(`createUser: ${error.message}`)
   return { id: data.user.id, email }
