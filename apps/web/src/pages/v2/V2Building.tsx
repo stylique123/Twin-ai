@@ -386,6 +386,17 @@ export default function V2Building() {
     return () => { alive = false }
   }, [profile?.id])
   const state = (loc.state || {}) as BuildState
+  // ⚠️ THE DOOR SHE CHOSE, OR A PRODUCT SHE TAPPED — BOTH ARE STATED FACTS,
+  // NEITHER IS INFERRED. `readEntryDoor` will not return 'product' from text, so
+  // an absent door means "she did not say" and the generic sheets are the honest
+  // fallback rather than a guess at what she is holding.
+  //
+  // ⚖️ ONE DEFINITION AT COMPONENT SCOPE, BECAUSE FOUR THINGS READ IT: which
+  // questions are asked, whether a standing content goal may answer the product
+  // objective, whether the chip renders, and whether the offer questions appear
+  // at all. It lived inside one effect, which is why the second reader could not
+  // see it — and a re-derivation is a second thing that can disagree.
+  const isProductSubject = state.door === 'product' || !!state.selected_product_id
   const [active, setActive] = useState(0)
   const [pct, setPct] = useState(6)
   // ⚠️ THE BAR KEPT CLIMBING AFTER THE REQUEST HAD ALREADY DIED. The rescue
@@ -663,7 +674,6 @@ export default function V2Building() {
         // ⚖️ HOISTED BECAUSE THE STANDING PREFILL BELOW HAS TO READ IT. It used
         // to live inline in this call, which is why that prefill could not tell
         // which question it was answering.
-        const isProductSubject = state.door === 'product' || !!state.selected_product_id
         const applicableQuestions = intentQuestionsFor({
           hasReference: !!(state.reference_url || '').trim(),
           isProductSubject,
@@ -755,7 +765,7 @@ export default function V2Building() {
             })
             const decidedCommercially = Boolean(
               (answersRef.current.video_goal ?? '').trim() && (answersRef.current.content_focus ?? '').trim())
-            const relevant = decidedCommercially && !showsCommercialBlock(answeredIntent)
+            const relevant = decidedCommercially && !showsCommercialBlock(answeredIntent, { isProductSubject })
               ? missing.filter((m) => !isCommercialField(m.field))
               : missing
             // ⚠️ THE GOAL IS DISPLAYED, NOT ASKED — AND THIS IS WHERE THAT
@@ -854,7 +864,7 @@ export default function V2Building() {
                 // screen re-asks "which one is this video about?" straight
                 // after the creator picked one to get here.
                 chosenId: answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null,
-                mayUseAProduct: showsCommercialBlock(answeredIntent),
+                mayUseAProduct: showsCommercialBlock(answeredIntent, { isProductSubject }),
               })
                 ? [{
                     field: PRODUCT_CHOICE_FIELD,
@@ -1097,7 +1107,7 @@ export default function V2Building() {
             goal: asOneOf(VIDEO_GOALS, answersRef.current.video_goal),
             focus: asOneOf(CONTENT_FOCUS, answersRef.current.content_focus),
             outcome: asOneOf(VIEWER_OUTCOMES, answersRef.current.viewer_outcome),
-          })),
+          }), { isProductSubject }),
         })
         const chosenProductId = decided.kind === 'chosen' || decided.kind === 'auto'
           ? decided.productId
