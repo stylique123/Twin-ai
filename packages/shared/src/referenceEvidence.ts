@@ -45,8 +45,26 @@ export const EVIDENCE_TYPES = [
   'narrative_beat', 'stated_cta', 'why_it_works_claim',
   // §3's explicit gap list. These are emitted as `unknown` so a downstream
   // decision that needs one is refused rather than guessing.
+  // ⚠️⚠️ `caption_layout_cadence` AND `transition_types` ARE DELETED, and the
+  // reason is that they can never be anything but NOT OBSERVED. Both need real
+  // frame OCR. Measured before removing them: each appeared in exactly TWO
+  // files, both in this package — this union and the row-label map — and
+  // NOTHING in `worker/` or `supabase/functions/` has ever written either. No
+  // producer, and none being built.
+  //
+  // ⚖️ A ROW THAT CANNOT CHANGE AN OUTPUT IS DELETED, NOT SHOWN AS UNMEASURED.
+  // Eight rows saying "we did not look" on every reference for forty runs
+  // teaches a creator to ignore the panel — and that panel is the honesty
+  // layer, which is the one thing here no competitor has. Two of the eight
+  // could never have said anything else.
+  //
+  // ⚠️ THE OTHER SIX STAY, AND NOT BECAUSE THEY WORK. They have no writer
+  // either — the same grep returns zero for all eight — but their inputs (VAD,
+  // face detection, ffmpeg scene-detect, audio band analysis) are already in
+  // this codebase, so a writer is buildable. "Obtainable" is not "written", and
+  // those six will keep reading NOT OBSERVED until one exists. That is a build,
+  // not a deletion, and it is not in this commit.
   'shot_semantics', 'camera_distance_movement', 'subject_framing',
-  'caption_layout_cadence', 'transition_types',
   'zoom_frequency_intensity', 'music_energy_beat_alignment',
   'silence_and_visual_waste',
 ] as const
@@ -55,7 +73,6 @@ export type EvidenceType = (typeof EVIDENCE_TYPES)[number]
 /** §3: extraction is extended only where a downstream decision needs evidence. */
 export const MISSING_EVIDENCE_TYPES: readonly EvidenceType[] = [
   'shot_semantics', 'camera_distance_movement', 'subject_framing',
-  'caption_layout_cadence', 'transition_types',
   'zoom_frequency_intensity', 'music_energy_beat_alignment',
   'silence_and_visual_waste',
 ]
