@@ -122,8 +122,34 @@ describe('the mention reaches the writer, under its own name', () => {
     // read it; a mention written there would inherit the lot.
     const block = EDGE.slice(EDGE.indexOf('let mentionLine'), EDGE.indexOf('const showLine'))
     expect(block).not.toMatch(/ownedEntity\s*=/)
-    // And it only runs when there is no subject, so the two can never both fire.
-    expect(block).toMatch(/mentionedId !== '' && !ownedEntity/)
+    // ⚠️⚠️ THE SECOND ASSERTION HERE WAS WRONG, AND IT PROTECTED A COMPLIANCE
+    // FAILURE FOR AS LONG AS IT STOOD. It read:
+    //
+    //   // And it only runs when there is no subject, so the two can never
+    //   // both fire.
+    //   expect(block).toMatch(/mentionedId !== '' && !ownedEntity/)
+    //
+    // "The two can never both fire" was treated as a safety property. It is not:
+    // a mention and a subject firing together is the ORDINARY case — explaining
+    // her coaching while naming the band she uses. And because the server's
+    // stopgap resolves the oldest owned product whenever no selection arrives,
+    // `ownedEntity` was almost always truthy, so the mention was almost always
+    // DISCARDED.
+    //
+    // ⚠️ MEASURED ON TEN LIVE RUNS: on every non-commercial objective the
+    // creator picked her affiliate band, the mention was dropped here, the writer
+    // was handed her COACHING SERVICE instead and never learned the band existed
+    // — so it invented a stance, and the stance attacked the product she earns a
+    // commission on, with no disclosure.
+    //
+    // ⚖️ THE REAL COLLISION IS NARROWER AND IS WHAT IS ASSERTED NOW: the mention
+    // may not name the SUBJECT ITSELF, or the prompt would say "name it and
+    // nothing else" about the very product the video is about. The client sends
+    // these on mutually exclusive branches; the server may not rely on that.
+    expect(block).toMatch(/mentionedId !== '' && !mentionIsTheSubject/)
+    expect(block).toMatch(/const mentionIsTheSubject/)
+    // ⚠️ AND THE OLD CONDITION MUST NOT RETURN. It is one token from the new one.
+    expect(block).not.toMatch(/mentionedId !== '' && !ownedEntity/)
   })
 
   it('re-verifies ownership on the server', () => {
