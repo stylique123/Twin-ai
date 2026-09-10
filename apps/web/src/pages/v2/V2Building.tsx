@@ -654,14 +654,19 @@ export default function V2Building() {
         // ⚠️ NOT `INTENT_QUESTIONS` — see `intentQuestionsFor`. A build from
         // the creator's own idea has no original, so requiring an answer about
         // one held the build behind a question with no true answer.
+        // ⚠️ THE DOOR SHE CHOSE, OR A PRODUCT SHE TAPPED — BOTH ARE STATED
+        // FACTS, NEITHER IS INFERRED. `readEntryDoor` will not return 'product'
+        // from text, so an absent door here means "she did not say" and the
+        // generic goal sheet is the honest fallback rather than a guess at what
+        // she is holding.
+        //
+        // ⚖️ HOISTED BECAUSE THE STANDING PREFILL BELOW HAS TO READ IT. It used
+        // to live inline in this call, which is why that prefill could not tell
+        // which question it was answering.
+        const isProductSubject = state.door === 'product' || !!state.selected_product_id
         const applicableQuestions = intentQuestionsFor({
           hasReference: !!(state.reference_url || '').trim(),
-          // ⚠️ THE DOOR SHE CHOSE, OR A PRODUCT SHE TAPPED — BOTH ARE STATED
-          // FACTS, NEITHER IS INFERRED. `readEntryDoor` will not return
-          // 'product' from text, so an absent door here means "she did not say"
-          // and the generic goal sheet is the honest fallback rather than a
-          // guess at what she is holding.
-          isProductSubject: state.door === 'product' || !!state.selected_product_id,
+          isProductSubject,
         })
         const intentAnswered = applicableQuestions.every(
           (q) => (answersRef.current[q.field] ?? '').trim())
@@ -776,7 +781,29 @@ export default function V2Building() {
             // going to be asked, and only when nothing was already picked or
             // restored for THIS build — a tab reclaimed mid-answer must not
             // have the creator's own choice overwritten in front of them.
+            // ⚠️⚠️ AND IT MAY NOT ANSWER THE PRODUCT OBJECTIVE, WHICH IS A
+            // DIFFERENT QUESTION WEARING THE SAME FIELD NAME.
+            // `intentQuestionsFor` substitutes `PRODUCT_OBJECTIVE_QUESTION` and
+            // `PRODUCT_OBJECTIVES` onto the SAME `video_goal` field, so this
+            // prefill — which matches on the field — could not tell "what is
+            // your content generally for" from "what does this video need to do
+            // for THIS PRODUCT". It answered both and suppressed both.
+            //
+            // ⚠️ ONE CAUSE, THREE SYMPTOMS, ALL OBSERVED ON LIVE PRODUCT RUNS:
+            // she never saw the ten commercial objectives at all; the chip then
+            // showed the GENERIC label ("Sell something") rather than the
+            // objective she would have picked ("Launch it"); and it carried
+            // "From what you told us your content is for" — true about where the
+            // value came from, false about the question it was presented as
+            // answering. "She chose neither" was exactly right.
+            //
+            // ⚖️ A STANDING CONTENT GOAL IS STILL HONOURED ON THE GENERIC
+            // QUESTION, because there it answers the question actually asked and
+            // the zero-taps affordance is worth keeping. What it may not do is
+            // cross from a standing preference into a per-video commercial
+            // decision — the distinction the product sheet exists to draw.
             if (standingGoal
+              && !isProductSubject
               && unanswered.some((q) => q.field === 'video_goal')
               && !(askAnswers.video_goal ?? '').trim()) {
               answer('video_goal', standingGoal)
@@ -787,7 +814,10 @@ export default function V2Building() {
             // immediately after writing would have seen the OLD value, silently
             // left the goal in the question list, and re-asked it anyway — the
             // exact thing this change exists to stop.
-            const goalIsDisplayed = Boolean(standingGoal)
+            // ⚖️ AND THE CHIP FOLLOWS THE PREFILL RATHER THAN RESTATING ITS
+            // CONDITION. Two copies of "did we prefill" is how one of them keeps
+            // the old answer — the defect this file already records one screen up.
+            const goalIsDisplayed = Boolean(standingGoal) && !isProductSubject
             // ── WHICH PRODUCT, WHEN THEY OWN MORE THAN ONE ────────────────
             //
             // ⚠️ THE SERVER READS THE OLDEST ONE. Deterministic, and still not
