@@ -293,6 +293,20 @@ export default function Settings() {
   // did not ask for.
   const [focusField, setFocusField] = useState<string | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
+  // ⚠️⚠️ LIFTED, BECAUSE `edit_cta` WAS A NO-OP AND THE FIX ALREADY EXISTED TWO
+  // LINES BELOW IT FOR ITS SIBLING. `ctaOpen` lived inside `ProfileStatus`, so
+  // the panel's own Add one / Edit button worked and EVERY OTHER ROUTE TO IT DID
+  // NOTHING: `case 'edit_cta': return setTab('twin')`, dispatched from a card
+  // that only ever renders ON the twin tab, and from the hero's Next step
+  // button. Reported as "Add one does nothing" — and it was two different
+  // defects wearing one sentence, of which this is the second.
+  //
+  // ⚖️ `view_dna` HAD THIS EXACT BUG AND ITS COMMENT STILL DESCRIBES IT: "THIS
+  // USED TO BE `setTab('twin')` FROM A CARD ALREADY ON THE TWIN TAB. Not a
+  // broken handler — a no-op, which reads to a creator as 'Twin has nothing to
+  // show me'." It was fixed there by owning the state here. This is the same
+  // fix, arriving late, and it is why the two sit together now.
+  const [ctaOpen, setCtaOpen] = useState(false)
   const [savingProfile, setSavingProfile] = useState(false)
 
   const content = contentProfile({
@@ -353,7 +367,10 @@ export default function Settings() {
       // change one answer means re-walking a flow they finished weeks ago, and
       // the thing they wanted to change was two chips.
       case 'edit_profile': return setProfileOpen(true)
-      case 'edit_cta': return setTab('twin')
+      // ⚖️ OPENS THE EDITOR, AND ALSO ENSURES THE TAB — the action can be
+      // dispatched from anywhere, so the tab is set for the cases where it is
+      // not already right, and the editor is opened for the cases where it is.
+      case 'edit_cta': { setTab('twin'); return setCtaOpen(true) }
     }
   }
 
@@ -716,6 +733,8 @@ export default function Settings() {
           <ProfileStatus
             ctaSuggestion={suggestedCta(
               (voiceProfile as { recurring_ctas?: unknown[] } | null)?.recurring_ctas)}
+            ctaOpen={ctaOpen}
+            setCtaOpen={setCtaOpen}
             content={content}
             productDna={productDna}
             brandKit={kitStatus}
@@ -1306,8 +1325,12 @@ function TeamSeats() {
  */
 function ProfileStatus({
   content, productDna, brandKit, cta, ctaLoadFailed, onCtaRetry, onCtaChange, onCtaCommit, ctaSaved, ctaErr,
-  ctaSuggestion,
+  ctaSuggestion, ctaOpen, setCtaOpen,
 }: {
+  /** ⚖️ OWNED BY THE PAGE, NOT BY THIS COMPONENT. Every route to the CTA editor
+   *  except this panel's own button was a no-op while the state lived here. */
+  ctaOpen: boolean
+  setCtaOpen: (open: boolean) => void
   /** Her own ending, read from her posts. Null for 18 of 47 accounts, whose
    *  extracted lines ask for nothing — see `suggestedCta`. */
   ctaSuggestion: ReturnType<typeof suggestedCta>
@@ -1329,11 +1352,27 @@ function ProfileStatus({
   // state would have overwritten the answer they already gave.
   const ctaLoaded = cta !== null
   const ctaText = (cta ?? '').trim()
-  const [ctaOpen, setCtaOpen] = useState(false)
   // ⚠️ THE DRAFT IS SEEDED, THE STORED VALUE IS NOT. She still has to press Save,
   // so `hasConfirmedCta` stays false until a person acts — the rule the palette
   // meter broke and this field must not.
   const [ctaDraft, setCtaDraft] = useState(ctaText || (ctaSuggestion?.text ?? ''))
+  // ⚠️⚠️ SEEDED WHEN THE BOX OPENS, IN ONE PLACE, FOR EVERY ROUTE INTO IT.
+  // `useState` above runs at MOUNT, and `ctaSuggestion` is null then —
+  // `voiceProfile` is fetched by `loadVoice`, so her own ending arrives after
+  // this component exists. The panel's own button used to paper over that by
+  // re-seeding on click, which left every OTHER route (the setup card, the
+  // hero's Next step) opening an empty box. Now the transition seeds it and the
+  // button does not have to know.
+  //
+  // ⚖️ ON THE OPENING EDGE ONLY, so it never overwrites what somebody is typing.
+  // Same "adjust state when a prop changes" pattern the onboarding confirm step
+  // uses for the voice profile, and for the same reason: an effect would paint
+  // the empty box first and correct it on a second pass.
+  const [wasCtaOpen, setWasCtaOpen] = useState(ctaOpen)
+  if (ctaOpen !== wasCtaOpen) {
+    setWasCtaOpen(ctaOpen)
+    if (ctaOpen) setCtaDraft(ctaText || ctaSuggestion?.text || '')
+  }
   return (
     <section className="glass mt-8 p-5 sm:p-6">
       <div className="flex items-baseline justify-between gap-3">
@@ -1417,7 +1456,7 @@ function ProfileStatus({
             // take it. A reading must never be stored as though they had agreed
             // to it; the same rule `palette_source: 'manual'` states for
             // colours.
-            onClick={() => { setCtaDraft(ctaText || ctaSuggestion?.text || ''); setCtaOpen(true) }}
+            onClick={() => setCtaOpen(true)}
             className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream disabled:opacity-40"
           >{ctaText ? 'Edit' : 'Add one'}</button>
           )}

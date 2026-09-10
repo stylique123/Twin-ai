@@ -125,14 +125,38 @@ describe('the CTA is the creator’s to type, and only theirs', () => {
   //
   // ⚖️ ASSERTED AS THE EXACT HANDLER, AND THE OLD ONE ASSERTED ABSENT, because
   // the difference between the two is one token and a reader cannot see it.
-  it('opening the box keeps the suggestion instead of clearing it', () => {
-    expect(SETTINGS).toMatch(
-      /setCtaDraft\(ctaText \|\| ctaSuggestion\?\.text \|\| ''\); setCtaOpen\(true\)/)
-    // The exact line that emptied it. It must not come back.
+  it('opening the box seeds it with her own ending, by whatever route', () => {
+    // ⚠️ THIS ASSERTION MOVED WITH THE BEHAVIOUR AND GOT STRONGER FOR IT. It
+    // used to pin the seeding to the panel's own button — which meant every
+    // OTHER route into the editor (the setup card, the hero's Next step) opened
+    // an empty box, because `ctaSuggestion` is null at mount and arrives with
+    // `loadVoice`. The seeding is now on the OPEN TRANSITION, so it holds for
+    // all of them.
+    expect(SETTINGS).toContain("if (ctaOpen) setCtaDraft(ctaText || ctaSuggestion?.text || '')")
+    // ⚖️ ON THE OPENING EDGE ONLY, so it cannot overwrite what somebody types.
+    expect(SETTINGS).toContain('if (ctaOpen !== wasCtaOpen)')
+    // ⚠️ THE ORIGINAL DEFECT: the handler that emptied the box on open. It must
+    // not come back, in either spelling.
     expect(SETTINGS).not.toMatch(/setCtaDraft\(ctaText\); setCtaOpen\(true\)/)
-    // ⚖️ AND THE SUGGESTION IS STILL NOT STORED WITHOUT A TAP. Nothing may
-    // commit it on mount or on open — a reading is not a decision.
+    // ⚖️ AND ONE HOME PER FACT: the button opens, it does not also seed.
+    expect(SETTINGS).toContain('onClick={() => setCtaOpen(true)}')
+    // ⚖️ THE SUGGESTION IS STILL NOT STORED WITHOUT A TAP. Nothing may commit it
+    // on mount or on open — a reading is not a decision.
     expect(SETTINGS).not.toMatch(/onCtaCommit\(ctaSuggestion/)
+  })
+
+  // ⚠️⚠️ AND EVERY ROUTE TO THE EDITOR MUST ACTUALLY REACH IT. `edit_cta` was
+  // `setTab('twin')` — dispatched from a card that only ever renders ON the twin
+  // tab, and from the hero's Next step button, so both did nothing at all.
+  // `view_dna` had this exact bug and its comment still describes it: "Not a
+  // broken handler — a no-op, which reads to a creator as 'Twin has nothing to
+  // show me'." It was fixed there by lifting the state to the page. This is the
+  // same fix.
+  it('the edit_cta action opens the editor rather than switching to the tab it is on', () => {
+    expect(SETTINGS).toContain("case 'edit_cta': { setTab('twin'); return setCtaOpen(true) }")
+    expect(SETTINGS).not.toContain("case 'edit_cta': return setTab('twin')")
+    // The state is owned by the page, so the action can reach it.
+    expect(SETTINGS).toMatch(/const \[ctaOpen, setCtaOpen\] = useState\(false\)/)
   })
 
   it('distinguishes not-loaded from set-to-nothing', () => {
