@@ -45,7 +45,23 @@ describe('the number measures only what changes a script', () => {
       expect(item.reader, item.id).toBeTruthy()
       expect(item.unlocks, item.id).not.toMatch(/complete|profile|percent/i)
     }
-    expect(PROFILE_ITEMS.reduce((n, i) => n + i.weight, 0)).toBe(100)
+    // ⚠️ 95, NOT 100, AND THE RULE THREE LINES ABOVE IS WHY. `cta` was removed
+    // because it could not change any output: nothing reads `percent`, and
+    // `setupAreas` — the only caller — filters that id out of the card it feeds
+    // while reading `hasConfirmedCta` directly for the fact's own area. "When a
+    // reader is retired, its item leaves the meter with it" is this test's own
+    // sentence, and it is what licensed the deletion.
+    //
+    // ⚖️ THE 5 POINTS ARE NOT REDISTRIBUTED, because redistributing them would
+    // invent a claim about relative importance that nobody made. The total is a
+    // READABILITY convention, never a denominator: `possible` already sums only
+    // the APPLICABLE weights, so a creator who sells nothing has been scored out
+    // of 90 since `productContext` became conditional. Pinned exactly so adding
+    // an item still has to be deliberate.
+    expect(PROFILE_ITEMS.reduce((n, i) => n + i.weight, 0)).toBe(95)
+    // ⚖️ AND THE RETIRED ID IS ASSERTED GONE, not merely absent from the sum — a
+    // zero-weight row would satisfy the total and still list a gap nobody renders.
+    expect(PROFILE_ITEMS.map((i) => i.id)).not.toContain('cta')
   })
 
   it('tells the creator what a gap unlocks, not that they are incomplete', () => {
@@ -60,7 +76,14 @@ describe('the number measures only what changes a script', () => {
   it('never rounds up to 100 while a gap is still listed', () => {
     // ⚖️ A meter reading "complete" beside a list of missing things is the same
     // false confidence in a smaller box.
-    const p = contentProfile({ answers: full(), dnaReady: true, cta: '' })
+    //
+    // ⚠️ THE GAP USED TO BE `cta: ''`, AND THAT IS WHY THIS TEST FAILED ON ITS
+    // REMOVAL RATHER THAN BECAUSE THE PROPERTY CHANGED. A missing CTA is no
+    // longer a gap, so the scenario had no gap left and the meter correctly read
+    // 100. The property — never round up past a listed gap — needs any real gap,
+    // so it now uses a missing format preference, whose reader
+    // (`reference_recommendation`) is live.
+    const p = contentProfile({ answers: full({ desiredFormats: [] }), dnaReady: true })
     expect(p.gaps.length).toBeGreaterThan(0)
     expect(p.percent).toBeLessThan(100)
   })

@@ -43,6 +43,8 @@ import { join } from 'node:path'
 export const REGISTRY_PATH = 'scripts/ci/brief_consumers.json'
 export const KEYS_SOURCE = 'packages/shared/src/preScriptBrief.ts'
 export const FUNCTIONS_DIR = 'supabase/functions'
+// The one file that persists the brief. Named so a move is a failure, not a skip.
+export const BRIEF_WRITER = 'supabase/functions/generate-blueprint/index.ts'
 
 /**
  * Pull BRIEF_STORED_KEYS out of its declaration.
@@ -138,7 +140,61 @@ export function filesMentioning(key, files, read) {
   })
 }
 
-export function check({ storedKeys, registry, files, read }) {
+
+/**
+ * Every key this repository PERSISTS into the brief, read off the writer itself.
+ *
+ * ⚠️⚠️ THE HOLE THAT LET `productFacts` EXIST. This guard demanded a reader for
+ * every key in BRIEF_STORED_KEYS — and `stable.productFacts` was written to the
+ * column by generate-blueprint without ever being in that list. So the one key
+ * whose answer nothing read was the one key the guard could not see. A registry
+ * of a list that is not the authority checks nothing about the keys outside it.
+ *
+ * ⚖️ `stable` IS THE PERSISTED OBJECT, and that is why it is the thing parsed.
+ * `brief` is mutated per request and legitimately carries keys that are never
+ * stored; `stable` is spread straight into the `pre_script_brief` update.
+ */
+export function parsePersistedKeys(source) {
+  const withoutProse = withoutComments(source)
+  if (!/\bpre_script_brief:\s*\{\s*\.\.\.brief,\s*\.\.\.stable\s*\}/.test(withoutProse)) {
+    // FAILS CLOSED, like the BRIEF_STORED_KEYS parse. If the persist is
+    // restructured this returns null and the caller errors, rather than
+    // reporting an empty set and passing vacuously.
+    return null
+  }
+  const keys = [...withoutProse.matchAll(/\bstable\s*\.\s*([A-Za-z0-9_]+)\s*=/g)].map((m) => m[1])
+  return keys.length > 0 ? [...new Set(keys)] : null
+}
+
+/**
+ * The key set the DATABASE actually accepts, taken from the LAST migration that
+ * redefines `is_pre_script_brief`.
+ *
+ * ⚠️⚠️ THE SECOND HALF OF THE SAME HOLE, AND THE ONE THAT COST THREE FIELDS.
+ * `productFacts` was absent from this CHECK, the persist is ONE update of the
+ * whole brief, and a rejected row takes every other answer in the batch with it:
+ * measured 2026-09-10, 0 of 52 voices carry productFacts AND 0 of 51 carry a
+ * stored defaultCta, which IS an allowed and wired key. Two lists agreeing with
+ * each other while the database disagrees with both is not a checked system.
+ *
+ * ⚖️ THE LAST DEFINITION WINS, because `create or replace` is how this function
+ * is widened and earlier migrations are history rather than current truth.
+ */
+export function parseDatabaseKeys(migrationSources) {
+  const defs = migrationSources.filter(({ sql }) =>
+    /create\s+or\s+replace\s+function\s+public\.is_pre_script_brief/i.test(sql)
+      || /create\s+function\s+public\.is_pre_script_brief/i.test(sql))
+  if (defs.length === 0) return null
+  defs.sort((a, b) => a.path.localeCompare(b.path))
+  const sql = defs[defs.length - 1].sql
+  const m = sql.match(/jsonb_object_keys\(p\)\s*k[\s\S]*?not in \(([\s\S]*?)\)\s*\)/i)
+  if (!m) return null
+  const body = m[1].replace(/--[^\n]*/g, ' ')
+  const keys = [...body.matchAll(/'([A-Za-z0-9_]+)'/g)].map((k) => k[1])
+  return keys.length > 0 ? { keys: [...new Set(keys)], path: defs[defs.length - 1].path } : null
+}
+
+export function check({ storedKeys, registry, files, read, persistedKeys, databaseKeys }) {
   const errors = []
 
   if (storedKeys === null) {
@@ -195,6 +251,44 @@ export function check({ storedKeys, registry, files, read }) {
     }
   }
 
+  // ── CHECK 5: NOTHING IS PERSISTED THAT THIS REGISTRY CANNOT SEE ───────────
+  // The hole `productFacts` came through. Undefined means the caller did not
+  // supply it, which is itself a failure: an optional check is not a check.
+  if (persistedKeys === undefined) {
+    errors.push('persistedKeys was not supplied. The guard fails closed.')
+  } else if (persistedKeys === null) {
+    errors.push('Could not parse the persisted keys from the brief writer. '
+      + 'The guard fails closed: fix the parse rather than removing the check.')
+  } else {
+    for (const key of persistedKeys) {
+      if (!storedKeys.includes(key)) {
+        errors.push(`${key}: written into pre_script_brief and absent from BRIEF_STORED_KEYS. `
+          + 'A key outside that list is invisible to this registry, so nothing ever '
+          + 'demands a reader for it — which is how an answer nothing reads survives.')
+      }
+    }
+  }
+
+  // ── CHECK 6: THE DATABASE ACCEPTS EVERY KEY WE STORE ──────────────────────
+  // Two lists agreeing with each other while the database rejects the write is
+  // not a checked system. The persist is ONE statement, so one unacceptable key
+  // discards every other answer in the same batch.
+  if (databaseKeys === undefined) {
+    errors.push('databaseKeys was not supplied. The guard fails closed.')
+  } else if (databaseKeys === null) {
+    errors.push('Could not parse the accepted key set from any migration defining '
+      + 'is_pre_script_brief. The guard fails closed.')
+  } else {
+    for (const key of storedKeys) {
+      if (!databaseKeys.keys.includes(key)) {
+        errors.push(`${key}: in BRIEF_STORED_KEYS and REJECTED by the shape CHECK in ${
+          databaseKeys.path}. The persist writes the whole brief in one update, so `
+          + 'this key does not merely fail to store — it discards every other answer '
+          + 'written with it. Widen the CHECK in a migration, in this PR.')
+      }
+    }
+  }
+
   return errors
 }
 
@@ -221,6 +315,13 @@ function selftest() {
   })[f] ?? ''
   const files = ['a.ts', 'b.ts', 'prose.ts', 'destructured.ts', 'comment.ts',
     'helper.ts', 'quoted.ts']
+  // ⚠️ THE NEW INPUTS ARE SUPPLIED TO EVERY EXISTING CASE, because checks 5 and
+  // 6 fail closed on `undefined` — an optional check is not a check, and a
+  // default of "skip" is how this guard had a hole in the first place.
+  const OK_EXTRA = {
+    persistedKeys: [],
+    databaseKeys: { keys: ['goal', 'audience', 'offer', 'workKind', 'promotes'], path: 'm.sql' },
+  }
   const fail = []
 
   // ⚠️ THE COUNT IS DERIVED, NOT TYPED. It read "14 cases" while thirteen ran,
@@ -238,58 +339,58 @@ function selftest() {
   }
 
   expect('wired key with a real reader', check({
-    storedKeys: ['goal'], files, read,
+    ...OK_EXTRA, storedKeys: ['goal'], files, read,
     registry: { keys: { goal: { readBy: ['a.ts'] } } },
   }), true)
 
   expect('unwired key with a declared reason', check({
-    storedKeys: ['offer'], files, read,
+    ...OK_EXTRA, storedKeys: ['offer'], files, read,
     registry: { keys: { offer: { readBy: [], unwiredReason: 'nothing reads it yet' } } },
   }), true)
 
   expect('unwired key with NO reason', check({
-    storedKeys: ['offer'], files, read,
+    ...OK_EXTRA, storedKeys: ['offer'], files, read,
     registry: { keys: { offer: { readBy: [] } } },
   }), false)
 
   expect('unwired key that actually HAS a reader', check({
-    storedKeys: ['workKind'], files, read,
+    ...OK_EXTRA, storedKeys: ['workKind'], files, read,
     registry: { keys: { workKind: { readBy: [], unwiredReason: 'stale excuse' } } },
   }), false)
 
   expect('readBy naming a file that does not mention the key', check({
-    storedKeys: ['goal'], files, read,
+    ...OK_EXTRA, storedKeys: ['goal'], files, read,
     registry: { keys: { goal: { readBy: ['b.ts'] } } },
   }), false)
 
   expect('readBy naming a file that does not exist', check({
-    storedKeys: ['goal'], files, read,
+    ...OK_EXTRA, storedKeys: ['goal'], files, read,
     registry: { keys: { goal: { readBy: ['gone.ts'] } } },
   }), false)
 
   expect('stored key missing from the registry', check({
-    storedKeys: ['goal', 'audience'], files, read,
+    ...OK_EXTRA, storedKeys: ['goal', 'audience'], files, read,
     registry: { keys: { goal: { readBy: ['a.ts'] } } },
   }), false)
 
   expect('registry key that is not stored', check({
-    storedKeys: ['goal'], files, read,
+    ...OK_EXTRA, storedKeys: ['goal'], files, read,
     registry: { keys: { goal: { readBy: ['a.ts'] }, ghost: { readBy: [] } } },
   }), false)
 
   expect('unparseable BRIEF_STORED_KEYS fails closed', check({
-    storedKeys: null, files, read, registry: { keys: {} },
+    ...OK_EXTRA, storedKeys: null, files, read, registry: { keys: {} },
   }), false)
 
   // THE REGRESSION. Prose, a schema field and a same-named read off another
   // authority are all present in prose.ts, and none of them is a brief read.
   expect('the word present but read off another authority is NOT a reader', check({
-    storedKeys: ['goal'], files, read,
+    ...OK_EXTRA, storedKeys: ['goal'], files, read,
     registry: { keys: { goal: { readBy: ['prose.ts'] } } },
   }), false)
 
   expect('a key excused as unwired stays excused when only prose mentions it', check({
-    storedKeys: ['goal'], files: ['prose.ts'], read,
+    ...OK_EXTRA, storedKeys: ['goal'], files: ['prose.ts'], read,
     registry: { keys: { goal: { readBy: [], unwiredReason: 'read off dna, not the brief' } } },
   }), true)
 
@@ -297,36 +398,36 @@ function selftest() {
   // production: `desiredFormats` was reported read while the only match was a
   // comment describing a cast that had already been deleted.
   expect('a key mentioned ONLY in a comment stays unwired', check({
-    storedKeys: ['offer'], files: ['comment.ts'], read,
+    ...OK_EXTRA, storedKeys: ['offer'], files: ['comment.ts'], read,
     registry: { keys: { offer: { readBy: [], unwiredReason: 'nothing reads it yet' } } },
   }), true)
 
   expect('a comment is not enough to name a file a reader', check({
-    storedKeys: ['offer'], files: ['comment.ts'], read,
+    ...OK_EXTRA, storedKeys: ['offer'], files: ['comment.ts'], read,
     registry: { keys: { offer: { readBy: ['comment.ts'] } } },
   }), false)
 
   // ⚠️ THE GAP THAT HID TWO REAL READS. A helper pulling the key out by name is
   // a read; the guard saw no property access and stayed green.
   expect('a helper read counts, and a stale excuse for it fails', check({
-    storedKeys: ['workKind'], files: ['helper.ts'], read,
+    ...OK_EXTRA, storedKeys: ['workKind'], files: ['helper.ts'], read,
     registry: { keys: { workKind: { readBy: [], unwiredReason: 'stale excuse' } } },
   }), false)
 
   expect('a helper read satisfies readBy', check({
-    storedKeys: ['workKind'], files: ['helper.ts'], read,
+    ...OK_EXTRA, storedKeys: ['workKind'], files: ['helper.ts'], read,
     registry: { keys: { workKind: { readBy: ['helper.ts'] } } },
   }), true)
 
   // ⚖️ AND THE BRIEF-SHAPED ARGUMENT IS LOAD-BEARING. The same call shape off a
   // different authority must not launder the word into a read.
   expect('a quoted key with no brief argument is NOT a reader', check({
-    storedKeys: ['workKind'], files: ['quoted.ts'], read,
+    ...OK_EXTRA, storedKeys: ['workKind'], files: ['quoted.ts'], read,
     registry: { keys: { workKind: { readBy: [], unwiredReason: 'read off config, not the brief' } } },
   }), true)
 
   expect('a destructured read counts', check({
-    storedKeys: ['promotes'], files, read,
+    ...OK_EXTRA, storedKeys: ['promotes'], files, read,
     registry: { keys: { promotes: { readBy: ['destructured.ts'] } } },
   }), true)
 
@@ -339,6 +440,91 @@ function selftest() {
   expect('parseStoredKeys returns null when the declaration is gone', (() => {
     return parseStoredKeys('export const SOMETHING_ELSE = []') === null ? [] : ['expected null']
   })(), true)
+
+  // ── CHECK 5, BOTH DIRECTIONS ────────────────────────────────────────────
+  expect('a persisted key that IS in BRIEF_STORED_KEYS', check({
+    ...OK_EXTRA, persistedKeys: ['goal'], storedKeys: ['goal'], files, read,
+    registry: { keys: { goal: { readBy: ['a.ts'] } } },
+  }), true)
+
+  expect('a persisted key that is NOT in BRIEF_STORED_KEYS', check({
+    // ⚠️⚠️ THE EXACT SHAPE `productFacts` HAD: written into the column, outside
+    // the list, therefore never asked for a reader by anything.
+    ...OK_EXTRA, persistedKeys: ['goal', 'productFacts'], storedKeys: ['goal'], files, read,
+    registry: { keys: { goal: { readBy: ['a.ts'] } } },
+  }), false)
+
+  expect('persistedKeys missing entirely fails closed', check({
+    ...OK_EXTRA, persistedKeys: undefined, storedKeys: ['goal'], files, read,
+    registry: { keys: { goal: { readBy: ['a.ts'] } } },
+  }), false)
+
+  expect('an unparseable persist fails closed', check({
+    ...OK_EXTRA, persistedKeys: null, storedKeys: ['goal'], files, read,
+    registry: { keys: { goal: { readBy: ['a.ts'] } } },
+  }), false)
+
+  // ── CHECK 6, BOTH DIRECTIONS ────────────────────────────────────────────
+  expect('a stored key the database accepts', check({
+    ...OK_EXTRA, storedKeys: ['goal'], files, read,
+    registry: { keys: { goal: { readBy: ['a.ts'] } } },
+  }), true)
+
+  expect('a stored key the database REJECTS', check({
+    // ⚠️⚠️ THE OTHER HALF OF THE SAME DEFECT, and the expensive one: the persist
+    // is one update, so this key discards `offer` and `defaultCta` alongside it.
+    ...OK_EXTRA, storedKeys: ['goal', 'productFacts'], files, read,
+    registry: { keys: {
+      goal: { readBy: ['a.ts'] },
+      productFacts: { readBy: ['a.ts'], } } },
+  }), false)
+
+  expect('databaseKeys missing entirely fails closed', check({
+    ...OK_EXTRA, databaseKeys: undefined, storedKeys: ['goal'], files, read,
+    registry: { keys: { goal: { readBy: ['a.ts'] } } },
+  }), false)
+
+  expect('an unparseable CHECK definition fails closed', check({
+    ...OK_EXTRA, databaseKeys: null, storedKeys: ['goal'], files, read,
+    registry: { keys: { goal: { readBy: ['a.ts'] } } },
+  }), false)
+
+  // ── THE TWO PARSERS, ON REAL SHAPES ─────────────────────────────────────
+  expect('the persist parser finds stable writes', [
+    JSON.stringify(parsePersistedKeys(
+      'if (x) stable.offer = a\nstable.productFacts = b\n'
+      + 'await admin.update({ pre_script_brief: { ...brief, ...stable } })',
+    )) === JSON.stringify(['offer', 'productFacts']) ? null : 'wrong keys',
+  ].filter(Boolean), true)
+
+  expect('the persist parser ignores a stable write in a COMMENT', [
+    JSON.stringify(parsePersistedKeys(
+      '// stable.ghost = 1\nstable.offer = a\n'
+      + 'update({ pre_script_brief: { ...brief, ...stable } })',
+    )) === JSON.stringify(['offer']) ? null : 'comment counted',
+  ].filter(Boolean), true)
+
+  expect('the persist parser fails closed when the persist is restructured', [
+    parsePersistedKeys('stable.offer = a') === null ? null : 'did not fail closed',
+  ].filter(Boolean), true)
+
+  expect('the database parser takes the LAST definition', [
+    (() => {
+      const got = parseDatabaseKeys([
+        { path: '0109_a.sql', sql: "create or replace function public.is_pre_script_brief(p jsonb)\n"
+          + "select 1 from jsonb_object_keys(p) k where k not in ( 'goal' ) )" },
+        { path: '0198_b.sql', sql: "create or replace function public.is_pre_script_brief(p jsonb)\n"
+          + "select 1 from jsonb_object_keys(p) k where k not in ( 'goal', -- a note\n 'productFacts' ) )" },
+      ])
+      if (got === null) return 'parsed nothing'
+      if (got.path !== '0198_b.sql') return `took ${got.path}`
+      return got.keys.join(',') === 'goal,productFacts' ? null : `keys ${got.keys.join(',')}`
+    })(),
+  ].filter(Boolean), true)
+
+  expect('the database parser fails closed with no definition anywhere', [
+    parseDatabaseKeys([{ path: 'x.sql', sql: 'select 1' }]) === null ? null : 'did not fail closed',
+  ].filter(Boolean), true)
 
   if (fail.length > 0) {
     console.error('check_brief_consumers selftest FAILED:')
@@ -360,7 +546,18 @@ function main() {
     return cache.get(f)
   }
 
-  const errors = check({ storedKeys, registry, files, read })
+  // ⚖️ THE MIGRATIONS ARE READ HERE RATHER THAN IN `check`, so `check` stays a
+  // pure function of its inputs and the selftest can exercise both directions of
+  // every branch without a filesystem.
+  const MIGRATIONS_DIR = 'supabase/migrations'
+  const migrationSources = existsSync(MIGRATIONS_DIR)
+    ? readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort()
+      .map((f) => ({ path: join(MIGRATIONS_DIR, f), sql: readFileSync(join(MIGRATIONS_DIR, f), 'utf8') }))
+    : []
+  const persistedKeys = parsePersistedKeys(readFileSync(BRIEF_WRITER, 'utf8'))
+  const databaseKeys = parseDatabaseKeys(migrationSources)
+
+  const errors = check({ storedKeys, registry, files, read, persistedKeys, databaseKeys })
   if (errors.length > 0) {
     console.error(`\n${REGISTRY_PATH} disagrees with the repository:\n`)
     for (const e of errors) console.error('  • ' + e)
@@ -368,7 +565,9 @@ function main() {
     console.error('or the registry must say plainly that it is not.\n')
     process.exit(1)
   }
-  console.log(`brief consumers: ${Object.keys(registry.keys).length} keys, registry agrees`)
+  console.log(`brief consumers: ${Object.keys(registry.keys).length} keys, registry agrees`
+    + ` · ${persistedKeys.length} persisted, all listed`
+    + ` · ${databaseKeys.keys.length} accepted by ${databaseKeys.path}`)
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) main()

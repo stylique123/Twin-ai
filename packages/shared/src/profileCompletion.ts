@@ -32,7 +32,6 @@
 // answered. When a reader is retired, its item leaves the meter with it.
 
 import type { CreatorProfileAnswers, CommercialTie } from './creatorProfileQuestions'
-import { hasConfirmedCta } from './cta'
 
 /** Where an answer is consumed. Not decoration — see the rule above. */
 export type ProfileReader =
@@ -67,7 +66,34 @@ export const PROFILE_ITEMS: readonly ProfileItem[] = [
   { id: 'promotes', label: 'What your videos are about', unlocks: 'which of your own material Twin pulls from', reader: 'retrieval', weight: 15 },
   { id: 'formats', label: 'The kinds of videos you want', unlocks: 'which references Twin suggests copying', reader: 'reference_recommendation', weight: 10 },
   { id: 'productContext', label: 'What you sell', unlocks: 'whether a script may talk about an offer at all', reader: 'creative_decision_plan', weight: 10 },
-  { id: 'cta', label: 'What you ask viewers to do', unlocks: 'the last line of every script', reader: 'cta', weight: 5 },
+  // ⚠️⚠️ `cta` WAS HERE AND IT COULD NOT CHANGE ANY OUTPUT. Measured by reading,
+  // three ways: nothing in the repository reads `ContentProfile.percent` (the
+  // rendered percentage and its gap list were deleted from Settings, because they
+  // were a second telling of the cards above them); `setupAreas` — now the only
+  // caller of `contentProfile` — filters this exact id OUT of the content-profile
+  // card's state, alongside `dnaReady` and `productContext`; and the fact has its
+  // own dedicated area in `setupAreas`, which reads `hasConfirmedCta` directly.
+  // So it carried weight 5 toward a number nobody reads and a gap nobody renders.
+  //
+  // ⚖️ DELETED RATHER THAN SUPPRESSED, which is the standing ruling: a row that
+  // cannot change an output is deleted, not shown as unmeasured. Suppressing it
+  // would keep the count looking right while the thing underneath stayed wrong —
+  // the palette-meter failure, which this module was written to end.
+  //
+  // ⚖️ AND NO CREATOR IS DEMOTED, though NOT for the arithmetic reason it is
+  // tempting to give. Removing a SATISFIED item LOWERS a percentage —
+  // (earned-5)/(possible-5) < earned/possible whenever earned < possible — so
+  // "remaining items each represent more" is only true for an item that was
+  // UNSATISFIED. Measured 2026-09-10: 0 of 52 voices have a STORED cta and 48
+  // have an extracted one, and this item read the stored value, so it was
+  // unsatisfied for every creator alive. Nobody drops. That is a fact about
+  // today's data, not a property of the change.
+  //
+  // ⚖️ AND THERE IS NO HIDDEN BUG BEHIND THAT 0, which was the thing worth
+  // checking. Reading the extracted CTAs here was never the intent — `cta.ts`
+  // owns the distinction and this module's own comment said so: the meter must
+  // not tick to 100% off a sentence Twin wrote for itself. The bridge from
+  // extracted to stored is the creator pressing "That's mine".
   { id: 'dnaReady', label: 'Your account has been read', unlocks: 'everything — without it a script has nothing of yours to draw on', reader: 'retrieval', weight: 10 },
 ]
 
@@ -85,7 +111,10 @@ export interface ProfileInput {
   answers?: CreatorProfileAnswers | null
   /** Whether the creator's account has been read into knowledge. */
   dnaReady?: boolean | null
-  /** What they ask viewers to do, when they have said. */
+  /** ⚠️ NO LONGER READ BY THE SCORE, AND KEPT BECAUSE `SetupInput extends
+   *  ProfileInput`. `setupAreas` reads it for the dedicated CTA area via
+   *  `hasConfirmedCta`; removing the field here would break that reader, and the
+   *  CTA fact's home is that area, not this list. */
   cta?: string | null
   /** Answers that cannot both hold, in plain English. Empty is the good state. */
   conflicts?: readonly string[] | null
@@ -133,10 +162,6 @@ function satisfied(item: ProfileItem, input: ProfileInput): boolean {
     case 'promotes': return filled(a?.contentGoals) && filled(a?.workKind)
     case 'formats': return filled(a?.desiredFormats)
     case 'productContext': return filled(a?.commercialTies)
-    // ⚠️ ASKED OF `cta.ts` RATHER THAN CHECKED HERE, so the meter cannot tick to
-    // 100% off a sentence Twin wrote for itself. That is exactly how the old
-    // palette meter came to report brand colours nobody chose.
-    case 'cta': return hasConfirmedCta(input.cta)
     case 'dnaReady': return input.dnaReady === true
     default: return false
   }

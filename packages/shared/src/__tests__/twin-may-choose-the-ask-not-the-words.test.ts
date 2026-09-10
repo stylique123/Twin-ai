@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest'
 import { resolveCta, hasConfirmedCta, MECHANISM_FROM_GOAL, CTA_MECHANISMS } from '../cta'
 import { VIDEO_GOALS } from '../videoIntent'
 import { contentProfile } from '../profileCompletion'
+import { setupAreas } from '../setupAreas'
 import { BRIEF_STORED_KEYS, sanitizeBriefForWrite } from '../preScriptBrief'
 
 describe('the creator owns the wording', () => {
@@ -84,18 +85,36 @@ describe('the meter cannot be satisfied by Twin’s own sentence', () => {
     desiredFormats: ['talking_head'], commercialTies: ['none'],
   } as never
 
-  it('counts a typed CTA and refuses a generated one', () => {
+  it('marks the CTA area ready on a typed one and not on a generated one', () => {
     // ⚠️ THE MEASURABLE CONSEQUENCE OF THE PROVENANCE SPLIT. Only text a person
     // typed reaches `input.cta`, because a generated line is produced per video
     // and never written back to the profile.
-    const withTyped = contentProfile({ answers, dnaReady: true, cta: 'Try Twin free' })
-    expect(withTyped.percent).toBe(100)
+    //
+    // ⚠️⚠️ MOVED FROM `contentProfile` TO `setupAreas`, AND THE PROPERTY IS
+    // UNCHANGED. This asserted the percentage and the gap list, and `cta` has
+    // been removed from PROFILE_ITEMS because it could not change any output —
+    // nothing reads `percent`, and `setupAreas` filtered that id out of the card
+    // it fed. The CTA fact's real home is its OWN area, which reads
+    // `hasConfirmedCta` directly, so the assertion now runs against the thing a
+    // creator actually sees. Asserting it where the value is no longer read would
+    // have been a test passing on a dead path.
+    const typed = setupAreas({ answers, dnaReady: true, cta: 'Try Twin free' })
+      .find((a) => a.id === 'default_cta')
+    expect(typed?.state).toBe('ready')
+    expect(typed?.actionLabel).toBe('Edit')
 
     const generated = resolveCta({ goal: 'followers' })
-    const withGenerated = contentProfile({ answers, dnaReady: true, cta: null })
     expect(generated.text).toBeTruthy()
-    expect(withGenerated.percent).toBeLessThan(100)
-    expect(withGenerated.gaps.map((g) => g.id)).toContain('cta')
+    const ungenerated = setupAreas({ answers, dnaReady: true, cta: null })
+      .find((a) => a.id === 'default_cta')
+    expect(ungenerated?.state).toBe('needs_setup')
+    expect(ungenerated?.actionLabel).toBe('Add one')
+  })
+
+  it('and a missing CTA no longer costs a point anywhere', () => {
+    // ⚖️ THE DELETION ITSELF, asserted so a reintroduced scored row fails here.
+    const p = contentProfile({ answers, dnaReady: true, cta: null })
+    expect(p.gaps.map((g) => g.id)).not.toContain('cta')
   })
 
   it('treats whitespace as unanswered', () => {
