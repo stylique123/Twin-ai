@@ -24,6 +24,7 @@ import { mkdtemp, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
+import { fixtureEmail } from './fixtureIdentity.mjs'
 import { authHeader, callEdgeAuthRetried } from './authSession.mjs'
 import { describeAssetFailure } from './assetFailure.mjs'
 
@@ -64,7 +65,7 @@ const OFFSCRIPT_WORDS = ['bananas', 'wonderful', 'morning']
 const normWords = (s) => s.toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter(Boolean)
 
 async function makeUser(label) {
-  const email = `${label}-${randomUUID().slice(0, 8)}@staging.test`
+  const email = fixtureEmail(label)
   const { data, error } = await admin.auth.admin.createUser({ email, password: PW, email_confirm: true })
   if (error) throw new Error(`createUser: ${error.message}`)
   return { id: data.user.id, email }

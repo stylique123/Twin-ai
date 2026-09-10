@@ -20,6 +20,7 @@ import { mkdtemp, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { fixtureEmail } from './fixtureIdentity.mjs'
 import { authHeader } from './authSession.mjs'
 import { describeAssetFailure } from './assetFailure.mjs'
 
@@ -40,7 +41,7 @@ function check(name, cond, detail = '') {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 async function makeUser(label) {
-  const email = `${label}-${randomUUID().slice(0, 8)}@staging.test`
+  const email = fixtureEmail(label)
   const { data, error } = await admin.auth.admin.createUser({ email, password: PW, email_confirm: true })
   if (error) throw new Error(`createUser: ${error.message}`)
   return { id: data.user.id, email }

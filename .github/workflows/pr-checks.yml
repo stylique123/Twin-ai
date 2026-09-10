@@ -847,6 +847,22 @@ jobs:
       # reaches for them because that is what a model does with text in context.
       - name: The corpus stores shapes, never a source's sentences
         run: node scripts/ci/check_corpus_stores_no_sentences.mjs
+      # ⚠️⚠️ STAGING WAS 842 MB AGAINST PRODUCTION'S 137 MB — six times bigger
+      # than the thing it stands in for — and not one byte of it was bloat.
+      # Dead tuples were negligible and autovacuum was keeping up. It was LIVE
+      # ROWS: 12,482 auth users of which ZERO are real, 397,723 edit_events,
+      # 103,529 media_analyses, 52,503 media_assets where production has 5. The
+      # oldest fixture user is dated the day the project was created. The
+      # harness's last act was to kill the worker and exit.
+      # ⚖️ THE PURGE FINDS ITS ROWS BY A RUN TAG INSIDE THE EMAIL ADDRESS, so a
+      # phase that builds its own `@staging.test` literal creates a user no
+      # purge can ever match — immortal, and invisible until staging is six
+      # times too big again. This guard is what makes the stamp unskippable.
+      - name: Every staging fixture user is stamped with its run
+        run: |
+          node scripts/ci/check_fixture_identity.mjs --selftest
+          node scripts/ci/check_fixture_identity.mjs
+          node scripts/staging-integration/fixtureIdentity.mjs --selftest
       # ⚠️⚠️ A 504 IS NOT A BAD FIXTURE. Five matrix phases reported every
       # non-ready asset as `fixture asset rejected`, naming the FIXTURE whatever
       # actually happened. Measured on run 34424908327: Phase 6 died on

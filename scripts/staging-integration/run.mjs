@@ -29,6 +29,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { fixtureEmail } from './fixtureIdentity.mjs'
 import { authHeader } from './authSession.mjs'
 
 const execFile = promisify(_execFile)
@@ -56,7 +57,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 // ---------- identities ----------
 async function makeUser(label) {
-  const email = `${label}-${randomUUID().slice(0, 8)}@staging.test`
+  const email = fixtureEmail(label)
   const { data, error } = await admin.auth.admin.createUser({ email, password: PW, email_confirm: true })
   if (error) throw new Error(`createUser ${label}: ${error.message}`)
   return { id: data.user.id, email }

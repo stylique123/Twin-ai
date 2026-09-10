@@ -8,6 +8,7 @@
 // operates normally.
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
+import { fixtureEmail } from './fixtureIdentity.mjs'
 import { authHeader } from './authSession.mjs'
 import { failAt, describeFailure } from './failure.mjs'
 
@@ -29,7 +30,7 @@ function check(name, cond, detail = '') {
 }
 
 async function main() {
-  const email = `gate-${randomUUID().slice(0, 8)}@staging.test`
+  const email = fixtureEmail('gate')
   const pw = `It-${randomUUID()}`
   const { data: u, error: uErr } = await admin.auth.admin.createUser({ email, password: pw, email_confirm: true })
   // ⚠️ THIS EXACT LINE PRINTED "PROBE ERROR: Error: Gateway Timeout" AND NOTHING
