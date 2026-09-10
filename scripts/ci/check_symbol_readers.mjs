@@ -71,6 +71,26 @@ const REPO = join(fileURLToPath(import.meta.url), '..', '..', '..')
 // WOULD CHANGE IT. An unregistered unreached symbol fails the build; a
 // registered one is a debt that was named. "Later" is not a reason.
 export const REGISTRY = {
+  'corpus/facets.ts': {
+    symbols: ['knownFacets', 'customerOf', 'stageBandOf', 'facetsOf', 'facetMatch',
+      'describeCohort', 'cohortMayRecommend'],
+    // ⚠️ SECOND MODULE TONIGHT LANDED AHEAD OF ITS CONSUMER, and that is a
+    // deliberate strategy rather than a habit: the classification engine is
+    // built bottom-up, and each layer is MEASURED against real rows before the
+    // layer above it exists. It is only legitimate while every entry names its
+    // consumer and its deletion trigger, which is why both do.
+    why: 'Stage 2 of the classification engine: the facet vector that replaces '
+      + 'niche-word matching. Measured over all 51 voices before it was written '
+      + '— niche 47, sub_niche 46, audience 45, followers 39, and only 10 owners '
+      + 'with any product row, which is why `sells`/`delivery`/`price_band` are '
+      + 'NOT in the vector at all: they would be unknown for ~80% of creators. '
+      + 'The consumer is stage 3, the cohort scorer, which selects gallery_items '
+      + 'by facet match — it needs the caption_shape backfill (PR #796) landed '
+      + 'first, since a cohort of unclassified cards proves nothing. '
+      + 'WHAT WOULD CHANGE THIS: the cohort selector calling facetMatch over '
+      + 'brand_voices and gallery_items. DELETE this entry then. If stage 3 has '
+      + 'not landed and nothing reads these, delete the module.',
+  },
   'creativeTransferPlan.ts': {
     symbols: ['TransferPlanError', 'computePlanSha256', 'finalizeTransferPlan',
       'validateCreativeTransferPlan', 'canonicalTransferPlan'],
