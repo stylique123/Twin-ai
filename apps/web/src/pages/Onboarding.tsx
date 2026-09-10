@@ -994,7 +994,11 @@ function BuildingStep({
 }
 
 // --- Step 3: confirm / edit the voice in one tap ---------------------------
-function ConfirmStep({
+// ⚖️ EXPORTED FOR ONE REASON: the eight-blank-fields defect is only visible in a
+// RENDER, because the bug was that a prop arriving after mount never reached the
+// inputs. A pure helper could not have caught it. Same reason `ProfileQuestion`
+// is exported above.
+export function ConfirmStep({
   draft,
   onDraftChange,
   onDone,
@@ -1009,13 +1013,60 @@ function ConfirmStep({
   onBack: () => void
 }) {
   const [vp, setVp] = useState<VoiceProfile | null>(draft.profile)
+  // ⚠️⚠️ EIGHT FIELDS RENDERED BLANK WHILE THEIR VALUES WERE PRINTED ONE LINE
+  // ABOVE THEM. Reported live on @carlaangelfit: `WHO YOU'RE TALKING TO`,
+  // `WHAT IS YOUR OFFER CALLED`, `NICHE`, `TONE`, `PACING`, `HOOK STYLE` and
+  // `WHAT YOU PUSH AGAINST` were all empty, while the summary directly above
+  // read "Fitness · Empathetic · 7 signature phrases · 4 recurring CTAs".
+  //
+  // ⚠️ THE CAUSE IS TWO SOURCES, ONE OF THEM FROZEN. `voiceIsEmpty` and
+  // `voiceDigest` read `draft.profile` through a `useMemo` dependency, so they
+  // update when the scan lands. The inputs read `vp`, which `useState`
+  // CAPTURED ONCE AT MOUNT. A profile that arrives — or is replaced by a
+  // fuller one — after this component mounted updates the summary and never
+  // reaches the fields under it.
+  //
+  // ⚖️ MEASURED, NOT ASSUMED, BECAUSE "MISSING EXTRACTION" AND "MISSING
+  // RENDER" NEED OPPOSITE FIXES. Across all 52 stored voices: niche 48,
+  // tone 48, pacing 48, hook_style 48, enemy 46, audience 46, offer 46,
+  // pov 46. On her row every one of the eight is populated, and `enemy` reads
+  // "The fear-mongering myth that pregnant women are too fragile to lift
+  // weights". NOTHING NEEDED EXTRACTING OR DERIVING. It was all there.
+  //
+  // ⚖️ THIS IS THE REACT "ADJUST STATE WHEN A PROP CHANGES" PATTERN, ON
+  // PURPOSE, AND NOT A `useEffect`. An effect would paint the blank fields
+  // first and correct them on a second pass, which is the flicker this screen
+  // does not need. Keyed on object IDENTITY so a creator's edits are never
+  // clobbered: `setVp` replaces the object, so `vp !== draft.profile`
+  // thereafter and this branch stops firing until a genuinely new profile
+  // arrives.
+  const [seenProfile, setSeenProfile] = useState<VoiceProfile | null>(draft.profile)
+  if (draft.profile !== seenProfile) {
+    setSeenProfile(draft.profile)
+    if (draft.profile) setVp(draft.profile)
+  }
   // Prefill "who you're talking to" and "what you sell" from what the scan ACTUALLY
   // inferred (audience / offer) — the DNA extracts these, so they shouldn't show
   // empty. "Your goal" is deliberately NOT prefilled: a creator's business goal
   // isn't something we can read from their posts, so we leave it blank and let them
   // state it rather than fill it with a guess. All stay editable.
-  const [audience, setAudience] = useState(draft.audience)
-  const [product, setProduct] = useState(draft.product)
+  //
+  // ⚠️ AND THESE TWO READ A THIRD SOURCE AGAIN — the draft's own strings, not
+  // the profile — which is why they were blank even when the profile HAD
+  // arrived. The comment above has claimed since it was written that they are
+  // "prefilled from what the scan ACTUALLY inferred"; they were not, because
+  // nothing read `profile.audience` or `profile.offer`. `types.ts:38` records
+  // the same gap from the other end: "produced by the DNA synthesis all along
+  // but weren't typed, so onboarding couldn't prefill them." The typing landed
+  // and the reader never did.
+  //
+  // ⚖️ THE DRAFT STILL WINS. A saved answer is a decision, and re-suggesting
+  // over it would replace what the creator told us with what we inferred —
+  // the same rule `claimsGuess` below already states.
+  const [audience, setAudience] = useState(draft.audience || draft.profile?.audience || '')
+  const [product, setProduct] = useState(draft.product || draft.profile?.offer || '')
+  // ⚖️ `goal` STAYS BLANK AND THAT IS STILL DELIBERATE. A business goal is not
+  // readable from someone's posts, and the screen asks rather than guesses.
   const [goal, setGoal] = useState(draft.goal)
   // §8a.1's brief. `workKind` decides whether the claims question appears at
   // all; `forbiddenClaims` is the answer no model can infer.
@@ -1171,8 +1222,16 @@ function ConfirmStep({
     ownServiceKind: draft.ownServiceKind ?? null,
   })?.type ?? 'SAAS'
 
-  const setField = (k: keyof VoiceProfile, v: string) => setVp({ ...vp, [k]: v })
-  const setList = (k: keyof VoiceProfile, v: string[]) => setVp({ ...vp, [k]: v })
+  // ⚠️ `{ ...null }` IS `{}`, AND THAT WAS A SILENT DATA-LOSS PATH. With `vp`
+  // null — which is exactly the state the blank fields above were rendering —
+  // typing into any one field produced a profile carrying THAT KEY ALONE and
+  // no others, and it was the object the confirm step then saved. Starting
+  // from a complete empty profile keeps every other field present and empty
+  // instead of absent.
+  const setField = (k: keyof VoiceProfile, v: string) =>
+    setVp({ ...(vp ?? emptyVoiceProfile()), [k]: v })
+  const setList = (k: keyof VoiceProfile, v: string[]) =>
+    setVp({ ...(vp ?? emptyVoiceProfile()), [k]: v })
 
   const confirm = async () => {
     setErr(null)
