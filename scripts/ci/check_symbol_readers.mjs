@@ -71,6 +71,82 @@ const REPO = join(fileURLToPath(import.meta.url), '..', '..', '..')
 // WOULD CHANGE IT. An unregistered unreached symbol fails the build; a
 // registered one is a debt that was named. "Later" is not a reason.
 export const REGISTRY = {
+  'corpus/cohort.ts': {
+    symbols: ['FACET_AGREEMENT', 'selectEvidenceCohort', 'shapeBlock'],
+    // ⚠️⚠️ THIS ENTRY MUST NOT NAME THE SYMBOLS IT DISCUSSES. My first draft
+    // explained the module by naming the functions it calls — and this guard
+    // greps source, so a NAME IN THIS FILE'S STRING LITERALS became a reader.
+    // It reported five symbols as newly read and demanded their entries be
+    // deleted. The `creativeTransferPlan` entry below warns of exactly this:
+    // two debt registers that can read each other are two guards that excuse
+    // each other. Comment-stripping does not help — a `why` string is code.
+    why: 'Stage 3/4 of the classification engine: the selector that decides '
+      + 'which evidence reaches the prompt, and returns nothing far more often '
+      + 'than it returns a shape. It consumes the facet match, the relative '
+      + 'performance read and the caption shapes, all now in main. '
+      + 'The consumer is generate-blueprint\'s prompt assembly, which is FULL '
+      + 'tier and touches the paid generation path — landing the selector first '
+      + 'is what lets its SILENCE be tested before any creator sees a shape. '
+      + 'MEASURED LIMITATION recorded in its tests: the spec\'s headline '
+      + 'photographer/physio cross-domain match is NOT achievable, because it '
+      + 'rests on what a creator sells and how they deliver it, and those come '
+      + 'from a products table with 12 rows across 10 of 51 owners. With four '
+      + 'facets those two creators agree on at most two, and relaxing the '
+      + 'agreement bar to two would admit "any consumer creator at the same '
+      + 'follower stage" — a demographic, not a cohort. '
+      + 'WHAT WOULD CHANGE THIS: the prompt assembler consuming this module. '
+      + 'DELETE this entry then; if it never lands, delete the module.',
+  },
+  'corpus/captionShape.ts': {
+    symbols: ['captionBody', 'isLikelyEnglish', 'classifyCaption', 'assessedCaptionShape'],
+    // ⚠️⚠️ THIS GUARD CAUGHT THE AUTHOR OF THIS ENTRY, IN THE COMMIT THAT ADDED
+    // THE MODULE. Stage 1a of the classification engine was written, tested
+    // against 4,000 real rows, and had NO PRODUCTION READER — the dominant
+    // defect class in this codebase, committed by the person cataloguing it.
+    // Registered rather than the ceiling raised: the ceiling IS the check.
+    why: 'Stage 1a of the corpus classification engine, deliberately landed one '
+      + 'PR AHEAD of its consumer. The reader is the gallery_items backfill, '
+      + 'which needs a migration adding caption_shape + its basis and an '
+      + 'ingestion job — FULL tier, and it cannot share a lane with a STATIC '
+      + 'change. Landing the classifier first is what let it be MEASURED before '
+      + 'anything depended on it: 403 of 4,000 real rows classified (10.1%), and '
+      + 'four false positives found by eye and fixed (a numbered list labelled '
+      + 'negative_command, an exclamation labelled myth_bust). '
+      + 'WHAT WOULD CHANGE THIS: the backfill calling the classifier over '
+      + 'gallery_items. When that lands, DELETE this entry — do not extend it. '
+      + 'If the backfill has not landed and nothing else reads it, the honest '
+      + 'answer is to delete the module rather than keep excusing it.',
+  },
+  'corpus/facets.ts': {
+    symbols: ['knownFacets', 'facetsOf'],
+    // ⚖️ THIS ENTRY SHRANK BECAUSE ITS OWN TRIGGER FIRED. It said "WHAT WOULD
+    // CHANGE THIS: the cohort selector calling the facet match" — the selector
+    // landed, and five of the seven symbols now have a real production reader.
+    // Removed rather than left standing: a registry entry for a symbol that IS
+    // read is how a registry stops being believed, and this guard fails the
+    // build for it, correctly.
+    why: 'The two remaining accessors have no caller yet. The vector itself is '
+      + 'now read by the cohort selector; these two are the shape it is BUILT '
+      + 'from, and nothing constructs a vector from a stored profile until the '
+      + 'prompt assembler does — that is FULL tier on the paid generation path. '
+      + 'WHAT WOULD CHANGE THIS: the assembler building a vector from '
+      + 'brand_voices. DELETE this entry then.',
+  },
+  'corpus/nicheVocabulary.ts': {
+    symbols: ['MIN_CREATORS_FOR_TERM', 'MAX_NICHES_FOR_TERM', 'termsIn',
+      'nicheVocabulary', 'nicheVocabularies'],
+    why: 'Build item 2, the niche term list — "every physio says load tolerance". '
+      + 'Two gates, BOTH measured on the real corpus before being written: '
+      + 'creator spread >= 10 (frequency cannot tell a term from a name — vogue '
+      + '91 cards vs garlic 97, madaan 52 vs tbsp 60, while creator counts are '
+      + '4 and 1 against 23 and 13), and distinctiveness to one niche (spread '
+      + 'alone returned `und/das/mit/ich` as Business vocabulary). '
+      + 'The consumer is the prompt assembler, which puts a niche term list in '
+      + 'HER MATERIAL alongside her own vocabulary — it needs the facet vector '
+      + '(#798) to know which niche she is in. '
+      + 'WHAT WOULD CHANGE THIS: the prompt assembler calling nicheVocabularies. '
+      + 'DELETE this entry then; if it never lands, delete the module.',
+  },
   'creativeTransferPlan.ts': {
     symbols: ['TransferPlanError', 'computePlanSha256', 'finalizeTransferPlan',
       'validateCreativeTransferPlan', 'canonicalTransferPlan'],

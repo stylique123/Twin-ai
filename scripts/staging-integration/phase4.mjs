@@ -21,6 +21,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { authHeader } from './authSession.mjs'
+import { describeAssetFailure } from './assetFailure.mjs'
 
 const execFile = promisify(_execFile)
 const URL = need('STAGING_URL')
@@ -195,7 +196,7 @@ async function mintReady(client, ownerId, buf, ct = 'video/webm') {
   const gen = await newGen(ownerId)
   const { assetId } = await sourceFlow(client, gen, buf, ct)
   const asset = await waitAsset(assetId)
-  if (asset.status !== 'ready') throw new Error(`fixture asset rejected: ${JSON.stringify(asset.metadata)}`)
+  if (asset.status !== 'ready') throw new Error(describeAssetFailure(asset))
   return { gen, assetId, asset }
 }
 // Simulate a pre-Phase-4 asset: validated, ready, but with neither probe

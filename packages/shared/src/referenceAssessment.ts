@@ -113,7 +113,18 @@ const OBJECT_MARKERS: readonly string[] = [
   'unboxing', 'unbox', 'haul', 'taste test', 'taste-test',
   'cooking', 'recipe', 'baking', 'swatch', 'swatches',
   'product demo', 'demo of the product', 'hands-on', 'hands on with',
-  'try-on', 'try on haul', 'assembly', 'installing the',
+  // ⚠️ BARE 'try-on' WAS HERE AND IS REMOVED, MEASURED AGAINST THE CORPUS. It
+  // matched 33 cards; a sample of six found FIVE virtual try-ons — "TINT
+  // Virtual Makeup Try-On Software", "Try-On Clothes Before Buying Using Kling
+  // AI 1.6", "AI Outfit Try-On App", "SkinGPT skincare try-on by Haut.AI". Each
+  // evaded `OBJECT_DISQUALIFIERS` by inserting a word ("virtual MAKEUP try-on")
+  // or naming the tool instead of the technique.
+  //
+  // ⚖️ AND THIS FILE'S OWN STANDARD ALREADY REJECTED IT: "a marker that can be
+  // true of a talking-head video is not a marker, it is a guess with a
+  // keyword's confidence." A virtual try-on is a SCREEN video — it films
+  // nothing. `try on haul` stays, because a haul is physical by construction.
+  'try on haul', 'assembly', 'installing the',
 ]
 
 /**
@@ -159,6 +170,24 @@ export const OBJECT_DISQUALIFIERS: readonly string[] = [
   'virtualtryon', 'virtual try-on', 'virtual try on', 'aitryon', 'ai try-on',
   'ai try on', 'try it on before it ships', 'aiinfluencer', 'ai influencer',
   'aitwin', 'ai twin', 'aifashion', 'ai fashion', 'aistyling', 'ai styling',
+  // ⚠️ ADDED AFTER READING THE CARDS THE BACKFILL WOULD ACTUALLY HAVE WRITTEN.
+  // The phrases above catch a card that names itself; these catch the two ways
+  // this corpus evaded them.
+  //
+  // ⚖️ A DISQUALIFIER FAILS SAFE, WHICH IS WHY BREADTH IS RIGHT HERE.
+  // Over-disqualifying leaves a card exactly as unassessed as it was — the
+  // state this module says it prefers. Under-disqualifying writes a PERMANENT
+  // wrong answer, because the candidate filter is `requirements_source is null`
+  // and an answered card is never offered to assessment again.
+  //
+  // "Now you can try all your outfits on virtually before ordering" matched
+  // `haul` from a hashtag; three copies of it were queued to be written.
+  'virtually',
+  // "How to Survive Long Haul Flights" matched `haul` AS A WHOLE WORD. Word
+  // boundaries would not have caught it — it is a different sense of the same
+  // word, and the third time this repository has been bitten by a substring
+  // that is a real word in the wrong meaning.
+  'long haul',
 ]
 
 const haystack = (c: AssessableCard): string =>

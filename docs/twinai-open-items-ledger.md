@@ -1,3 +1,23 @@
+<!-- THE-LIVE-LEDGER -->
+> ## ✅ THIS IS THE LIVE DOCUMENT
+>
+> Every other build plan and audit in this repository is a **snapshot** and
+> carries a banner saying so, pointing here. This is the one that is kept
+> current.
+>
+> **"Done" here means something ENFORCES it** — a test, a migration, or a CI
+> check. Where nothing does, it says so. A claim without an enforcer is not a
+> done item; it is a hope with a tick next to it.
+>
+> **§A′ Built, awaiting sample** is a real status, not a backlog: the mechanism
+> is complete and mutation-tested, and the *data* cannot yet justify acting on
+> it. Read it before re-deriving that an item is unbuilt.
+>
+> The snapshots are still worth reading for the reasoning that produced them.
+> They are not worth working from.
+
+---
+
 # TwinAI — open items ledger
 
 Rebuilt after the original was lost in a container rollback. Consolidates the
@@ -86,6 +106,62 @@ These have a writer, a reader, and something that fails if they drift.
 | A13 | A module cannot shadow a global constructor and then construct it | `check_shadowed_globals.mjs` |
 | A14 | Stage order in the worker and in SQL cannot drift | migration 0080 trigger |
 | A15 | Column-level GRANT discipline on `brand_voices` | 0109 + test asserting the grant line |
+
+---
+
+## A′. Built, awaiting sample
+
+**A status, not a backlog.** These have a writer, a reader, a test, and a
+mutation-tested guard. Nothing is missing from the code. What is missing is
+enough data to justify *acting* on what the code computes.
+
+⚠️ **This label exists because the same judgement was re-litigated three times in
+one day.** Each case reads, at a glance, like an unbuilt feature — "the stakes
+floor doesn't fire", "shapeForGoal isn't wired", "nothing reads
+`entry_impressions`" — and each time someone re-derives from scratch that the
+mechanism is fine and the sample is not. That re-derivation is the cost this
+section removes.
+
+⚖️ **And it is a genuinely different status from "not built".** An unbuilt item
+is unblocked by engineering time. These are unblocked by *creators using the
+product*, which is why they sit next to §E rather than §C. Shipping one early
+does not ship a feature — it ships a preference fitted to a handful of people
+and presents it as a finding.
+
+| | What | The mechanism | The sample, measured | Why it cannot ship yet |
+|---|---|---|---|---|
+| A′1 | **Stakes floor** | Trigger + guard, mutation-tested | Blanket trigger fires on **72.6%** of scripts; hook-warn variant on **3.2%**, n=3 | 72.6% is a nag, not a floor. 3.2% on n=3 cannot be calibrated in either direction. Needs `goal` or `door` as an input — a Layer B question, not more data alone |
+| A′2 | **`shapeForGoal`** | Complete: ranks, gates on separation, returns `null` on a tie | `entertainment` **6.36 SE** (SEPARATED). Every other goal a tie. `authority` **0.94 SE** — and it *moved away* from decisive as the corpus grew 601→1,099 (was 1.96) | One goal in seven does not justify **311ms on every generation** (EXPLAIN ANALYZE, 2026-09-05). Re-open when a second goal separates, or when the read becomes an aggregate |
+| A′3 | **`entry_impressions`** | Table, constraints, RLS, indexes, writer all live (migration 0183) | **45 rows, 4 owners** — and effectively 2: reference 26 / idea 9 / product 9 / browse 1 | A reader that reordered the doors from this would be tuning the product for two people |
+
+### A′ is not where `accepted_final_*` belongs, and the difference matters
+
+⚠️ **`accepted_final_sha` / `_at` / `_word_count` look identical to A′3 in a
+schema and are a completely different problem.** Measured 2026-09-09:
+**0 of 85 generations** carry any of them, and there is no writer anywhere in
+`supabase/functions` or `worker/src` — only a CHECK constraint
+(`generations_accepted_final_all_or_nothing`) enforcing all-or-nothing across
+four columns that have never once been populated.
+
+- **A′3 is collecting-works, reading-missing.** It needs a reader. That is
+  engineering, held only by sample size.
+- **`accepted_final_*` is neither half built.** It needs a human to take a
+  script to camera and mark it as the one they used. No amount of code produces
+  that row.
+
+⚖️ **So it is filed in §E (owner-blocked), not here.** Filing it under
+"built, awaiting sample" would imply waiting is sufficient, and waiting will
+never populate it.
+
+### The rule this section encodes
+
+> **A mechanism being correct is not an argument for using its output.**
+> State the n before proposing to act on it, and if the n cannot carry the
+> decision, say so and stop — rather than shipping the mechanism because it
+> works.
+
+Three separate cases converged on this in one day. It is now the default
+question asked of any measurement before it reaches a creator.
 
 ---
 

@@ -835,6 +835,30 @@ jobs:
         run: |
           node scripts/ci/check_brief_consumers.mjs --selftest
           node scripts/ci/check_brief_consumers.mjs
+      # ⚠️⚠️ THE CORPUS STORES SHAPES, NEVER WORDS — and this is the guard that
+      # makes that a property of the code rather than a promise in a comment.
+      # Every competitor in this market stores hook TEXT ("a library of 1,000+
+      # proven viral hooks", "remix, mimic"), so their customers in one niche
+      # draw on one pool of sentences and their outputs converge. That is the
+      # "everything sounds like AI TikTok" complaint, shipped as an architecture.
+      # ⚖️ AND THE FAILURE MODE HERE IS GRAVITY, NOT INTENT. Zero borrowing
+      # across four cross-domain adaptations is this project's best measured
+      # result; if a source creator's sentences sit in the store, the writer
+      # reaches for them because that is what a model does with text in context.
+      - name: The corpus stores shapes, never a source's sentences
+        run: node scripts/ci/check_corpus_stores_no_sentences.mjs
+      # ⚠️⚠️ A 504 IS NOT A BAD FIXTURE. Five matrix phases reported every
+      # non-ready asset as `fixture asset rejected`, naming the FIXTURE whatever
+      # actually happened. Measured on run 34424908327: Phase 6 died on
+      # `storage download 504` with the object ALREADY FINALIZED at 685,868
+      # bytes — nothing wrong with the fixture at all, and the message sent the
+      # reader to inspect one that was fine.
+      # ⚖️ The script still fails; only the sentence changed. And it does not
+      # guess: a 5xx is transport, a 404 is OURS, and anything unrecognised is
+      # reported as unclassified rather than assigned to whichever side is
+      # convenient.
+      - name: A transport failure is not reported as a bad fixture
+        run: node scripts/staging-integration/assetFailure.mjs --selftest
       # Registering ONE analysis component used to mean editing twelve places
       # that each privately encoded the component namespace, none referencing
       # any other. Nothing compared them, so every disagreement surfaced ~40
