@@ -104,6 +104,26 @@ const FIXTURES: ReadonlyArray<{ name: string; her: SharedFacets; cards: SharedCa
     cards: Array.from({ length: 30 }, (_, i) => card({ creatorReaches: ['10000'] })),
   },
   {
+    // ⚠️⚠️ THIS FIXTURE EXISTS BECAUSE THE TABLE ALMOST MISSED A REAL DRIFT.
+    // When MIN_MEDIAN_LIFT landed in shared, ONE of these 19 cases failed — the
+    // TEXTUAL check. Every behavioural case still passed, because they all use
+    // a 10x lift, so a mirror with no lift gate agreed with a shared copy that
+    // had one. Behavioural parity alone would have called a stale mirror
+    // correct. These two cases put the gate itself under the comparison.
+    name: 'a shape at exactly the creator median — the lift gate, both sides',
+    her: HER,
+    cards: Array.from({ length: 60 }, () => card({
+      reach: '10000', creatorReaches: ['10000', '10000', '10000', '10000', '10000'],
+    })),
+  },
+  {
+    name: 'a shape below the creator median is refused by both sides',
+    her: HER,
+    cards: Array.from({ length: 60 }, () => card({
+      reach: '5000', creatorReaches: ['10000', '10000', '10000', '10000', '10000'],
+    })),
+  },
+  {
     name: 'her facets entirely unknown — unknown is not agreement',
     her: { domain: null, subDomain: null, customer: null, stageBand: null },
     cards: Array.from({ length: 60 }, (_, i) => card()),
