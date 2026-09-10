@@ -71,6 +71,32 @@ const REPO = join(fileURLToPath(import.meta.url), '..', '..', '..')
 // WOULD CHANGE IT. An unregistered unreached symbol fails the build; a
 // registered one is a debt that was named. "Later" is not a reason.
 export const REGISTRY = {
+  'corpus/cohort.ts': {
+    symbols: ['FACET_AGREEMENT', 'selectEvidenceCohort', 'shapeBlock'],
+    // ⚠️⚠️ THIS ENTRY MUST NOT NAME THE SYMBOLS IT DISCUSSES. My first draft
+    // explained the module by naming the functions it calls — and this guard
+    // greps source, so a NAME IN THIS FILE'S STRING LITERALS became a reader.
+    // It reported five symbols as newly read and demanded their entries be
+    // deleted. The `creativeTransferPlan` entry below warns of exactly this:
+    // two debt registers that can read each other are two guards that excuse
+    // each other. Comment-stripping does not help — a `why` string is code.
+    why: 'Stage 3/4 of the classification engine: the selector that decides '
+      + 'which evidence reaches the prompt, and returns nothing far more often '
+      + 'than it returns a shape. It consumes the facet match, the relative '
+      + 'performance read and the caption shapes, all now in main. '
+      + 'The consumer is generate-blueprint\'s prompt assembly, which is FULL '
+      + 'tier and touches the paid generation path — landing the selector first '
+      + 'is what lets its SILENCE be tested before any creator sees a shape. '
+      + 'MEASURED LIMITATION recorded in its tests: the spec\'s headline '
+      + 'photographer/physio cross-domain match is NOT achievable, because it '
+      + 'rests on what a creator sells and how they deliver it, and those come '
+      + 'from a products table with 12 rows across 10 of 51 owners. With four '
+      + 'facets those two creators agree on at most two, and relaxing the '
+      + 'agreement bar to two would admit "any consumer creator at the same '
+      + 'follower stage" — a demographic, not a cohort. '
+      + 'WHAT WOULD CHANGE THIS: the prompt assembler consuming this module. '
+      + 'DELETE this entry then; if it never lands, delete the module.',
+  },
   'corpus/captionShape.ts': {
     symbols: ['captionBody', 'isLikelyEnglish', 'classifyCaption', 'assessedCaptionShape'],
     // ⚠️⚠️ THIS GUARD CAUGHT THE AUTHOR OF THIS ENTRY, IN THE COMMIT THAT ADDED
@@ -92,40 +118,19 @@ export const REGISTRY = {
       + 'answer is to delete the module rather than keep excusing it.',
   },
   'corpus/facets.ts': {
-    symbols: ['knownFacets', 'customerOf', 'stageBandOf', 'facetsOf', 'facetMatch',
-      'describeCohort', 'cohortMayRecommend'],
-    // ⚠️ SECOND MODULE TONIGHT LANDED AHEAD OF ITS CONSUMER, and that is a
-    // deliberate strategy rather than a habit: the classification engine is
-    // built bottom-up, and each layer is MEASURED against real rows before the
-    // layer above it exists. It is only legitimate while every entry names its
-    // consumer and its deletion trigger, which is why both do.
-    why: 'Stage 2 of the classification engine: the facet vector that replaces '
-      + 'niche-word matching. Measured over all 51 voices before it was written '
-      + '— niche 47, sub_niche 46, audience 45, followers 39, and only 10 owners '
-      + 'with any product row, which is why `sells`/`delivery`/`price_band` are '
-      + 'NOT in the vector at all: they would be unknown for ~80% of creators. '
-      + 'The consumer is stage 3, the cohort scorer, which selects gallery_items '
-      + 'by facet match — it needs the caption_shape backfill (PR #796) landed '
-      + 'first, since a cohort of unclassified cards proves nothing. '
-      + 'WHAT WOULD CHANGE THIS: the cohort selector calling facetMatch over '
-      + 'brand_voices and gallery_items. DELETE this entry then. If stage 3 has '
-      + 'not landed and nothing reads these, delete the module.',
-  },
-  'corpus/relativePerformance.ts': {
-    symbols: ['parseReach', 'medianOf', 'relativePerformance', 'cappedLift', 'medianLift'],
-    why: 'The ranking unit for the whole corpus: a multiple of that creator\'s '
-      + 'OWN median, never an absolute view count. Verified against real rows '
-      + 'before it was written — `reach` is populated on all 16,044 gallery_items '
-      + 'across 3,877 creators AND is genuinely per-video (Linus Tech Tips: 34 '
-      + 'distinct values over 154 cards). Had it been a per-creator follower '
-      + 'count, every video of a creator would share one value and a median would '
-      + 'be meaningless, so this was checked first. '
-      + 'The consumer is the cohort ranker (stage 3/4), which needs the '
-      + 'caption_shape backfill (#796) and the facet vector (#798) landed first: '
-      + 'ranking unclassified cards by lift ranks nothing. '
-      + 'WHAT WOULD CHANGE THIS: the ranker calling medianLift over a facet-scored '
-      + 'cohort. DELETE this entry then. If the ranker never lands, delete the '
-      + 'module rather than keep excusing it.',
+    symbols: ['knownFacets', 'facetsOf'],
+    // ⚖️ THIS ENTRY SHRANK BECAUSE ITS OWN TRIGGER FIRED. It said "WHAT WOULD
+    // CHANGE THIS: the cohort selector calling the facet match" — the selector
+    // landed, and five of the seven symbols now have a real production reader.
+    // Removed rather than left standing: a registry entry for a symbol that IS
+    // read is how a registry stops being believed, and this guard fails the
+    // build for it, correctly.
+    why: 'The two remaining accessors have no caller yet. The vector itself is '
+      + 'now read by the cohort selector; these two are the shape it is BUILT '
+      + 'from, and nothing constructs a vector from a stored profile until the '
+      + 'prompt assembler does — that is FULL tier on the paid generation path. '
+      + 'WHAT WOULD CHANGE THIS: the assembler building a vector from '
+      + 'brand_voices. DELETE this entry then.',
   },
   'corpus/nicheVocabulary.ts': {
     symbols: ['MIN_CREATORS_FOR_TERM', 'MAX_NICHES_FOR_TERM', 'termsIn',
