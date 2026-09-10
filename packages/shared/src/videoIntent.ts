@@ -1064,6 +1064,35 @@ export function reachableIntentValues(field: IntentQuestion['field']): string[] 
 // a creator who reaches it and picks nothing has said "no product", which is an
 // answer. Hiding it likewise forbids nothing — it only declines to ask a
 // question with no bearing on the video in front of them.
-export function showsCommercialBlock(intent: Pick<VideoIntent, 'wantsSale' | 'wantsProductSubstance'>): boolean {
-  return intent.wantsSale || intent.wantsProductSubstance
+// ⚠️⚠️ AND A PRODUCT BUILD IS A THIRD SIGNAL, MEASURED ON TEN LIVE RUNS. In
+// Product Mode the offer questions appeared on 2 of 5 objectives — "Launch it"
+// and "Get people to try it" — and not on "Explain what it actually does",
+// "Answer what people keep asking" or "Say why I made it". Which is backwards:
+// "Say why I made it" is the ORIGIN STORY OF THE PRODUCT, the most
+// product-dependent objective on the sheet, and it asked nothing about it.
+//
+// ⚠️ THE CAUSE IS THAT NEITHER EXISTING SIGNAL CAN FIRE THERE. `wantsSale` is
+// true only for SELLING_GOALS, and `wantsProductSubstance` reads `focus` — which
+// `intentQuestionsFor` deliberately does NOT ask on a build with no reference,
+// because "what should this video be about?" is a bad question for somebody who
+// has just said. So on a product build the focus signal is structurally absent,
+// and the only thing left was the goal.
+//
+// ⚖️ AND `isProductSubject` IS THE SAME FACT ARRIVING THROUGH A DIFFERENT DOOR.
+// `focus === 'product'` means "this video is about a product"; she came through
+// the product door and tapped one, which means the same thing and is a STATED
+// fact rather than an inference — `readEntryDoor` refuses to infer 'product'
+// from text for exactly that reason.
+//
+// ⚖️ IT STILL GRANTS NOTHING, which is the rule this function already carried
+// and which this must not be read as changing. `wantsSale` is UNTOUCHED, so the
+// commercial CTA gate is untouched: `sellIntent` requires a selling goal AND a
+// commercial tie on record, and a creator explaining her band still gets no
+// purchase ask. What changes is only what Twin ASKS about a product it already
+// knows the video is about.
+export function showsCommercialBlock(
+  intent: Pick<VideoIntent, 'wantsSale' | 'wantsProductSubstance'>,
+  opts?: { isProductSubject?: boolean },
+): boolean {
+  return intent.wantsSale || intent.wantsProductSubstance || opts?.isProductSubject === true
 }

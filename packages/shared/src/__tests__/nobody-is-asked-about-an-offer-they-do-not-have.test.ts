@@ -89,7 +89,13 @@ const BUILD = readFileSync(
 describe('the remix card reads the rule', () => {
   it('drops the commercial questions when this video sells nothing', () => {
     expect(BUILD).toMatch(/missing\.filter\(\(m\) => !isCommercialField\(m\.field\)\)/)
-    expect(BUILD).toMatch(/showsCommercialBlock\(answeredIntent\)/)
+    // ⚠️ THE CALL CARRIES `{ isProductSubject }` NOW. The rule it reads is
+    // unchanged for every non-product build — asserted directly in
+    // everyProductObjectiveAsksAboutTheProduct — and on a PRODUCT build the
+    // questions are deliberately no longer dropped, because "Say why I made it"
+    // is the origin story of the product and asked nothing about it on ten
+    // audited runs.
+    expect(BUILD).toMatch(/showsCommercialBlock\(answeredIntent, \{ isProductSubject \}\)/)
   })
 
   it('suppresses only once the creator has actually answered', () => {

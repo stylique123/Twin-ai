@@ -102,7 +102,20 @@ describe('the card asks, and the answer reaches the writer', () => {
     expect(BUILD).toMatch(/mustAskWhichProduct\(\{/)
     // ⚖️ THE SAME COMMERCIAL EXPRESSION the commercial block uses. A second
     // notion of "is this a selling video" would be two answers to one question.
-    expect(BUILD).toMatch(/mayUseAProduct: showsCommercialBlock\(answeredIntent\)/)
+    //
+    // ⚠️ THE CALL GAINED A SECOND ARGUMENT AND THE PROPERTY IS STRENGTHENED, NOT
+    // WEAKENED. `showsCommercialBlock` now also takes `{ isProductSubject }`,
+    // because on a product build the focus signal is structurally absent —
+    // `content_focus` is never asked — so three of the five product objectives
+    // asked nothing about the product. The flag is ONE definition at component
+    // scope that all four readers share, which is the same anti-drift rule this
+    // assertion exists for, so it is asserted here too.
+    expect(BUILD).toMatch(
+      /mayUseAProduct: showsCommercialBlock\(answeredIntent, \{ isProductSubject \}\)/)
+    expect(BUILD).toMatch(
+      /const isProductSubject = state\.door === 'product' \|\| !!state\.selected_product_id/)
+    expect(BUILD.match(/state\.door === 'product' \|\| !!state\.selected_product_id/g)!.length)
+      .toBe(1)
   })
 
   it('only OWNED, LIVE products are offered', () => {
