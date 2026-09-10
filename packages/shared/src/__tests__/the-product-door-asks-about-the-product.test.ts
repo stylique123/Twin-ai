@@ -137,7 +137,15 @@ describe('the door travels, because it cannot be inferred', () => {
   })
 
   it('V2Building reads it, and a tapped product counts too', () => {
-    expect(BUILDING).toMatch(/isProductSubject: state\.door === 'product' \|\| !!state\.selected_product_id/)
+    // ⚠️ RE-ANCHORED, AND THE HOIST IS THE POINT. This pinned the expression
+    // INLINE in the `intentQuestionsFor` call. It is now a named const, because
+    // the standing goal prefill forty lines below had to read it — while it was
+    // inline, that prefill could not tell the product objective from the generic
+    // goal question (they share the `video_goal` field) and answered both.
+    // The property is unchanged: the door is read, and a tapped product counts.
+    expect(BUILDING).toMatch(
+      /const isProductSubject = state\.door === 'product' \|\| !!state\.selected_product_id/)
+    expect(BUILDING).toMatch(/intentQuestionsFor\(\{[\s\S]{0,200}?isProductSubject,/)
   })
 
   it('the build screen never guesses the door from text', () => {
