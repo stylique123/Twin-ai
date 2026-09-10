@@ -50,6 +50,9 @@ export interface VisualPassResult {
   visual_rejections: unknown | null
   frames_sampled: number | null
   frame_schedule_basis: ScheduleBasis | null
+  /** The video's measured length. See `FrameSample.durationSec` — it was being
+   *  probed for the frame schedule and discarded. Null means nobody measured. */
+  duration_sec: number | null
   /** Why it did not run, when it did not. Normalised through the same
    *  classifier the transcript ladder uses, so a frames failure and a transcript
    *  failure on the same video are comparable rather than two vocabularies. */
@@ -95,6 +98,7 @@ const NOT_RUN = (
   visual_rejections: null,
   frames_sampled: null,
   frame_schedule_basis: null,
+  duration_sec: null,
   failure_code,
   phase,
   // ⚠️ DEFAULTS TO null, NOT TO AN EMPTY PROFILE. A download that never landed
@@ -223,6 +227,7 @@ export async function runVisualPass(
       visual_rejections: rejections,
       frames_sampled: sample.framesSampled,
       frame_schedule_basis: sample.scheduleBasis,
+      duration_sec: sample.durationSec,
       failure_code: null,
       phase: 'complete',
       tier_zero: tierZero,

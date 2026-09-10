@@ -7,11 +7,12 @@ import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import {
   contentProfile, brandKitStatus, productDnaStatus, loadProductEntities,
   setupAreas, setupSummary, type SetupArea, type SetupState,
-  readStoredBrief, savePreScriptBrief,
+  readStoredBrief, savePreScriptBrief, suggestedCta, whatTwinLearned, heardCount, BASIS_LABEL, editTargetOf,
 } from '@twinai/shared'
 import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
 import { readProfileAnswers } from '../lib/profileAnswersRead'
 import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
+import { TwinStrengthCard } from '../components/TwinStrengthCard'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
@@ -43,7 +44,6 @@ export default function Settings() {
   const [dnaSaved, setDnaSaved] = useState(false)
   // DNA is SHOWN read-only by default (it's already saved from the scan); "Edit"
   // reveals the form. Re-flagged feedback: don't dump editable fields by default.
-  const [editingDna, setEditingDna] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [coBusy, setCoBusy] = useState<string | null>(null)
   const [coMsg, setCoMsg] = useState<string | null>(null)
@@ -80,6 +80,7 @@ export default function Settings() {
   // has a CTA, and a save from that box would erase it.
   const [defaultCta, setDefaultCta] = useState<string | null>(null)
   const [ctaSaved, setCtaSaved] = useState(false)
+  const [learnedOpen, setLearnedOpen] = useState(false)
   // ⚠️ A REASON, NOT A BOOLEAN. "Could not save" was shown for a failed write and
   // for a save that never attempted one, and those need different sentences: one
   // is worth retrying and the other never will be.
@@ -283,6 +284,14 @@ export default function Settings() {
    *  not hiding: the summary answers "does this sound like me", which is the
    *  question people actually open this page with. */
   const [dnaOpen, setDnaOpen] = useState(false)
+  // ⚖️ ONE COMPUTATION OF WHAT TWIN HOLDS, read by the teaser and the panel
+  // alike, so the count on the collapsed line can never disagree with the rows
+  // behind it.
+  const learnedTotal = whatTwinLearned(voiceProfile).length
+  // ⚖️ WHICH INPUT THE EDIT FORM OPENS ON. Set by a row in the learned panel;
+  // cleared once focused so a later manual Edit does not jump somewhere she
+  // did not ask for.
+  const [focusField, setFocusField] = useState<string | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
   const [savingProfile, setSavingProfile] = useState(false)
 
@@ -336,7 +345,10 @@ export default function Settings() {
       case 'add_product': return nav('/products?add=1')
       case 'manage_products': return nav('/products')
       case 'setup_brand_kit': return setTab('brand')
-      case 'view_dna': return setTab('twin')
+      // ⚠️ THIS USED TO BE `setTab('twin')` FROM A CARD ALREADY ON THE TWIN TAB.
+      // Not a broken handler — a no-op, which reads to a creator as "Twin has
+      // nothing to show me". It opens what Twin actually learned now.
+      case 'view_dna': return setLearnedOpen(true)
       // ⚠️ IT USED TO LEAVE SETTINGS ENTIRELY. Sending somebody to onboarding to
       // change one answer means re-walking a flow they finished weeks ago, and
       // the thing they wanted to change was two chips.
@@ -427,6 +439,15 @@ export default function Settings() {
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p className="eyebrow !text-sand">Your Twin setup</p>
               <p className="font-heading text-cream">{summary.headline}</p>
+            </div>
+            {/* ⚠️ WHAT TWIN HAS LEARNED, WHICH GROWS, BESIDE WHAT IS STILL
+                MISSING, WHICH SHRINKS. `TwinStrengthCard` has existed and been
+                rendered on the Dashboard all along — it was never on the screen
+                that showed the fraction, so the one number a creator saw here
+                had a ceiling and no evidence behind it. Same component, on the
+                screen that needed it. */}
+            <div className="mt-2">
+              <TwinStrengthCard voiceId={defaultVoiceId} />
             </div>
             {summary.total > 0 && summary.ready < summary.total && (
               <div className="mt-3 flex gap-1.5" aria-hidden>
@@ -601,9 +622,85 @@ export default function Settings() {
         </Reveal>
         )}
 
+        {learnedOpen && (
+          <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-5" role="dialog" aria-modal>
+            <div className="glass max-h-[80vh] w-full max-w-lg overflow-y-auto p-5">
+              <p className="font-heading text-cream">What Twin learned about you</p>
+              {(() => {
+                const facts = whatTwinLearned(voiceProfile)
+                if (facts.length === 0) {
+                  // ⚖️ THE HONEST EMPTY STATE. A scan that produced nothing must
+                  // say so rather than render seven empty rows, which is the
+                  // dead card rebuilt with more pixels.
+                  return (
+                    <p className="mt-2 text-sm leading-relaxed text-sand" data-testid="learned-empty">
+                      Nothing yet. Scan your account and Twin will read your videos.
+                    </p>
+                  )
+                }
+                const heard = heardCount(facts)
+                return (
+                  <>
+                    {/* ⚠️ THE EVIDENCE BEFORE THE CLAIMS. 0191's rule — anything
+                        read out of a thin table states its n — applies to a
+                        panel about somebody's own voice more than anywhere. */}
+                    <p className="mt-1 text-xs text-stone" data-testid="learned-evidence">
+                      {heard > 0
+                        ? `${heard} of these ${heard === 1 ? 'was' : 'were'} heard in your own videos.`
+                        : 'Read from your captions.'}
+                    </p>
+                    <dl className="mt-4 space-y-3.5">
+                      {facts.map((f) => (
+                        <div key={f.field} data-testid={`learned-${f.field}`}>
+                          <dt className="flex items-baseline justify-between gap-3 text-xs uppercase tracking-wide text-stone">
+                            <span>
+                              {f.label}
+                              {BASIS_LABEL[f.basis] !== '' && (
+                                <span className="ml-2 normal-case tracking-normal text-sand/70">
+                                  · {BASIS_LABEL[f.basis]}
+                                </span>
+                              )}
+                            </span>
+                            {/* ⚠️ EDIT LANDS ON THE FIELD SHE WAS LOOKING AT.
+                                The read view is here; the form is one tap away
+                                and opens focused on this exact input. A row
+                                whose Edit dropped her at the top of a form to
+                                hunt for the field is the second summary this
+                                whole change removes. */}
+                            {editTargetOf(f) !== null && (
+                              <button
+                                type="button"
+                                data-testid={`learned-edit-${f.field}`}
+                                onClick={() => {
+                                  setLearnedOpen(false)
+                                  setDnaOpen(true)
+                                  setFocusField(editTargetOf(f))
+                                }}
+                                className="shrink-0 normal-case tracking-normal text-sand underline"
+                              >Edit</button>
+                            )}
+                          </dt>
+                          <dd className="mt-1 text-sm leading-relaxed text-cream">{f.values.join(' · ')}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </>
+                )
+              })()}
+              <button
+                type="button"
+                onClick={() => setLearnedOpen(false)}
+                className="btn-ghost mt-5 w-full rounded-lg px-3.5 py-2 text-sm"
+              >Close</button>
+            </div>
+          </div>
+        )}
+
         {tab === 'twin' && (
         <Reveal delay={0.04}>
           <ProfileStatus
+            ctaSuggestion={suggestedCta(
+              (voiceProfile as { recurring_ctas?: unknown[] } | null)?.recurring_ctas)}
             content={content}
             productDna={productDna}
             brandKit={kitStatus}
@@ -852,19 +949,33 @@ export default function Settings() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="eyebrow !text-sand">Your voice</p>
-                  <p className="mt-1.5 text-sm leading-relaxed text-cream">
-                    {(dna.voice ?? '').trim() || 'Twin has not learned how you sound yet.'}
+                  {/* ⚠️ NOT A THIRD COPY OF THE FACTS. This line used to print
+                      the voice summary and then niche · audience — the same
+                      three facts the learned panel shows with provenance, a
+                      screen apart and with no evidence attached. A teaser that
+                      restates what it links to IS the second summary. It says
+                      how much Twin holds and where to read it; the panel says
+                      what, and how it came to know each part. */}
+                  <p className="mt-1.5 text-sm leading-relaxed text-cream" data-testid="voice-teaser">
+                    {learnedTotal > 0
+                      ? `Twin has learned ${learnedTotal} ${learnedTotal === 1 ? 'thing' : 'things'} about how you make videos.`
+                      : 'Twin has not learned how you sound yet.'}
                   </p>
-                  <p className="mt-1 truncate text-xs text-stone">
-                    {[dna.niche, dna.audience].map((x) => (x ?? '').trim()).filter(Boolean).join(' · ')
-                      || 'Scan your account and Twin will fill this in.'}
+                  <p className="mt-1 text-xs text-stone">
+                    {learnedTotal > 0
+                      ? 'Read what it learned, and where each part came from.'
+                      : 'Scan your account and Twin will fill this in.'}
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setDnaOpen(true)}
+                  data-testid="voice-open-learned"
+                  onClick={() => {
+                    if (learnedTotal > 0) { setLearnedOpen(true); return }
+                    setDnaOpen(true)
+                  }}
                   className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-cream"
-                >View everything</button>
+                >{learnedTotal > 0 ? 'What Twin learned' : 'Fill it in'}</button>
               </div>
             )}
             {dnaOpen && (
@@ -884,64 +995,41 @@ export default function Settings() {
                   )}
                 </div>
               </div>
-              {!editingDna && (
-                <div className="flex items-center gap-2">
-                  <button onClick={refreshVoice} disabled={refreshing} className="btn-ghost text-sm disabled:opacity-60">
-                    <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} /> {refreshing ? 'Scanning…' : 'Refresh voice & stats'}
-                  </button>
-                  <button onClick={() => setEditingDna(true)} className="btn-ghost text-sm"><Pencil className="h-3.5 w-3.5" /> Edit</button>
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                <button onClick={refreshVoice} disabled={refreshing} className="btn-ghost text-sm disabled:opacity-60">
+                  <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} /> {refreshing ? 'Scanning…' : 'Refresh voice & stats'}
+                </button>
+                <button onClick={() => setLearnedOpen(true)} className="btn-ghost text-sm">
+                  <Pencil className="h-3.5 w-3.5" /> What Twin learned
+                </button>
+              </div>
             </div>
             <p className="mt-2 text-sm text-stone">This shapes every script's voice and your gallery's default niche.</p>
             {refreshMsg && <p className="mt-2 rounded-lg bg-white/[0.04] px-3 py-2 text-xs text-sand">{refreshMsg}</p>}
 
-            {!editingDna ? (
-              voiceLoading ? (
-                <div className="mt-5 flex items-center gap-2 text-sm text-sand"><Loader2 className="h-4 w-4 animate-spin" /> Loading your brand DNA…</div>
-              ) : voiceErr ? (
-                <div className="mt-5 rounded-card border border-coral/20 bg-coral/[0.05] p-4">
-                  <p className="text-sm text-cream">Couldn't load your brand DNA.</p>
-                  <p className="mt-1 text-xs text-stone">This is usually a brief connection hiccup — your DNA is safe, nothing was lost.</p>
-                  <button onClick={loadVoice} className="btn-ghost mt-3 text-sm"><RefreshCw className="h-3.5 w-3.5" /> Try again</button>
-                </div>
-              ) : (
-              /* Read-only view — what we already know about you. */
-              <div className="mt-5 space-y-3">
-                {voiceProfile?.summary && (
-                  <div className="rounded-card border border-teal/15 bg-teal/[0.04] p-4">
-                    <p className="eyebrow !text-teal">What we learned from your posts</p>
-                    <p className="mt-1.5 text-sm leading-relaxed text-sand">{voiceProfile.summary}</p>
-                    {voiceProfile.vocabulary?.length > 0 && (
-                      <div className="mt-2.5 flex flex-wrap gap-1.5">
-                        {voiceProfile.vocabulary.slice(0, 8).map((w) => <span key={w} className="chip !py-1 text-xs">{w}</span>)}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {DNA_FIELDS.map((f) => {
-                  const v = shownDna(f.key)
-                  return (
-                  <div key={f.key} className="flex flex-col gap-0.5 border-b border-white/6 pb-3 sm:flex-row sm:items-baseline sm:gap-3">
-                    <span className="eyebrow w-40 shrink-0">{f.label}</span>
-                    {v ? <span className="text-sm text-cream">{v}</span> : <button onClick={() => setEditingDna(true)} className="text-sm text-amber/80 hover:text-amber">+ Add</button>}
-                  </div>
-                  )
-                })}
-                <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
-                  <span className="eyebrow w-40 shrink-0">Platforms</span>
-                  <span className="flex flex-wrap gap-1.5">
-                    {dna.platforms.length ? dna.platforms.map((p) => <span key={p} className="chip capitalize !py-1 text-xs">{p}</span>) : <button onClick={() => setEditingDna(true)} className="text-sm text-amber/80 hover:text-amber">+ Add</button>}
-                  </span>
-                </div>
-                {dna.voice_samples && (
-                  <div className="flex flex-col gap-0.5">
-                    <span className="eyebrow">How you write</span>
-                    <span className="line-clamp-2 text-sm text-sand">{dna.voice_samples}</span>
-                  </div>
-                )}
+            {/* ── THE READ VIEW LIVES IN THE LEARNED PANEL, NOT HERE ──────
+                ⚠️⚠️ WHAT STOOD HERE WAS THE SAME FACTS A SECOND TIME. A teal
+                "What we learned from your posts" card with the summary and
+                vocabulary chips, then read-only rows for niche and audience —
+                all of it already in the learned panel, in different words, on
+                this same tab. I introduced the duplicate: the panel was a
+                correct fix to a card that opened nothing, added without
+                removing what it now doubled.
+                ⚖️ AND THE DUPLICATE BROKE THE PROVENANCE. "Heard in your
+                videos" only means something if the fact appears once; two
+                copies means one carries evidence and its twin does not, which
+                makes the honest one look arbitrary. So: the panel reads, this
+                block edits, and each row up there lands on its own input
+                below. Nothing is removed from the creator's reach — every
+                value here is visible in the field that edits it. */}
+            {voiceLoading ? (
+              <div className="mt-5 flex items-center gap-2 text-sm text-sand"><Loader2 className="h-4 w-4 animate-spin" /> Loading your brand DNA…</div>
+            ) : voiceErr ? (
+              <div className="mt-5 rounded-card border border-coral/20 bg-coral/[0.05] p-4">
+                <p className="text-sm text-cream">Couldn't load your brand DNA.</p>
+                <p className="mt-1 text-xs text-stone">This is usually a brief connection hiccup — your DNA is safe, nothing was lost.</p>
+                <button onClick={loadVoice} className="btn-ghost mt-3 text-sm"><RefreshCw className="h-3.5 w-3.5" /> Try again</button>
               </div>
-              )
             ) : (
               /* Edit form. */
               <div className="mt-5 space-y-4">
@@ -949,7 +1037,23 @@ export default function Settings() {
                 {DNA_FIELDS.map((f) => (
                   <div key={f.key}>
                     <label className="eyebrow mb-1.5 block">{f.label}</label>
-                    <input className="field" value={shownDna(f.key)} placeholder={f.placeholder} onChange={(e) => setDna((d) => ({ ...d, [f.key]: e.target.value }))} />
+                    <input
+                      className="field"
+                      data-testid={`dna-input-${f.key}`}
+                      // ⚖️ THE OTHER HALF OF "ONE FACT, ONE PATH". The panel row
+                      // named this field; the ref callback puts the cursor in it
+                      // so she never scrolls a form looking for what she tapped.
+                      ref={(el) => {
+                        if (el && focusField === f.key) {
+                          el.focus()
+                          el.scrollIntoView({ block: 'center' })
+                          setFocusField(null)
+                        }
+                      }}
+                      value={shownDna(f.key)}
+                      placeholder={f.placeholder}
+                      onChange={(e) => setDna((d) => ({ ...d, [f.key]: e.target.value }))}
+                    />
                   </div>
                 ))}
                 <div>
@@ -967,11 +1071,11 @@ export default function Settings() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={async () => { await saveDna(); setEditingDna(false) }} disabled={savingDna} className="btn-gradient text-sm">
+                  <button onClick={async () => { await saveDna(); setDnaOpen(false) }} disabled={savingDna} className="btn-gradient text-sm">
                     {savingDna ? <Loader2 className="h-4 w-4 animate-spin" /> : dnaSaved ? <Check className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
                     {dnaSaved ? 'Saved' : 'Save'}
                   </button>
-                  <button onClick={() => { setDna({ ...EMPTY_DNA, ...(profile?.dna ?? {}) }); setEditingDna(false) }} className="btn-ghost text-sm">Cancel</button>
+                  <button onClick={() => { setDna({ ...EMPTY_DNA, ...(profile?.dna ?? {}) }); setDnaOpen(false) }} className="btn-ghost text-sm">Cancel</button>
                 </div>
               </div>
             )}
@@ -1187,7 +1291,11 @@ function TeamSeats() {
  */
 function ProfileStatus({
   content, productDna, brandKit, cta, ctaLoadFailed, onCtaRetry, onCtaChange, onCtaCommit, ctaSaved, ctaErr,
+  ctaSuggestion,
 }: {
+  /** Her own ending, read from her posts. Null for 18 of 47 accounts, whose
+   *  extracted lines ask for nothing — see `suggestedCta`. */
+  ctaSuggestion: ReturnType<typeof suggestedCta>
   content: ContentProfile
   productDna: ProductDnaStatus
   brandKit: BrandKitStatus
@@ -1207,7 +1315,10 @@ function ProfileStatus({
   const ctaLoaded = cta !== null
   const ctaText = (cta ?? '').trim()
   const [ctaOpen, setCtaOpen] = useState(false)
-  const [ctaDraft, setCtaDraft] = useState(ctaText)
+  // ⚠️ THE DRAFT IS SEEDED, THE STORED VALUE IS NOT. She still has to press Save,
+  // so `hasConfirmedCta` stays false until a person acts — the rule the palette
+  // meter broke and this field must not.
+  const [ctaDraft, setCtaDraft] = useState(ctaText || (ctaSuggestion?.text ?? ''))
   return (
     <section className="glass mt-8 p-5 sm:p-6">
       <div className="flex items-baseline justify-between gap-3">
@@ -1293,12 +1404,22 @@ function ProfileStatus({
               What should Twin usually ask viewers to do? You can change it for any
               single video.
             </p>
+            {/* ⚠️ HER SENTENCE, MARKED AS A GUESS. 0 of 51 voices had a stored
+                ending and 47 had one extracted, so this box has been empty for
+                every creator Twin has ever had while her real ending sat one
+                field away. Saying where it came from is what makes it safe to
+                show — the same rule as "we guessed this from your posts". */}
+            {ctaSuggestion && ctaText === '' && (
+              <p className="mt-3 text-xs leading-relaxed text-sand/80" data-testid="cta-suggestion-note">
+                We took this from your own posts. Change it if it&rsquo;s wrong.
+              </p>
+            )}
             <input
               autoFocus
               type="text"
               value={ctaDraft}
               onChange={(e) => setCtaDraft(e.target.value)}
-              placeholder="Try Twin free"
+              placeholder={ctaSuggestion?.text ?? 'What do you usually ask viewers to do?'}
               className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
             />
             <div className="mt-4 flex flex-wrap gap-2">

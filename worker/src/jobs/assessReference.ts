@@ -554,6 +554,12 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
       ...(visual?.ran === true ? {
         visual_profile: visual.visual_profile,
         visual_rejections: visual.visual_rejections,
+        // ⚠️ THE NUMBER THAT WAS ALREADY BEING MEASURED AND DISCARDED.
+        // `probeDurationSec` runs inside `sampleFrames` to build the schedule;
+        // 701 assessed references had their length measured there and lost. It
+        // is the missing input for pacing — the one Layer C field that exists
+        // nowhere — and it costs nothing to keep.
+        duration_sec: visual.duration_sec,
         frames_sampled: visual.frames_sampled,
         frame_schedule_basis: visual.frame_schedule_basis,
         visual_assessed_at: assessedAt,

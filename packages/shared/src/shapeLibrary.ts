@@ -60,6 +60,47 @@ const OBSERVED_CTA = Object.freeze([...CTA_MECHANISMS, 'implicit', 'none'] as co
  *  would be reading absence as a value. */
 const TRANSFER_LEVELS = Object.freeze(['high', 'medium', 'low'] as const)
 
+/**
+ * How fast the video moves, as a band rather than a number.
+ *
+ * ⚠️ BANDS, NOT A RATE, BECAUSE THE RATE IS NOT PRECISE ENOUGH TO PRINT.
+ * Measured over the 134 references with complete beat timing: 1.5 beats/min at
+ * p10, 5.5 at the median, 16.5 at p90 — an elevenfold spread. A creator reading
+ * "6.2 beats per minute" would take a precision from it that the corpus cannot
+ * support; three bands are what the data honestly separates.
+ *
+ * ⚖️ THE THRESHOLDS ARE THE MEASURED QUARTILES, not round numbers chosen for
+ * looking tidy: p25 is 3.0 and p75 is 8.6, so `steady` is the middle half of
+ * the corpus and the two edges are the quarters. They are labelled as measured
+ * so a future reader can re-derive them when the corpus grows.
+ */
+export const PACING_BANDS = ['unhurried', 'steady', 'rapid'] as const
+export type PacingBand = (typeof PACING_BANDS)[number]
+const PACING_P25_BEATS_PER_MIN = 3.0
+const PACING_P75_BEATS_PER_MIN = 8.6
+
+/**
+ * The band, or null when nothing measured it.
+ *
+ * ⚠️⚠️ NULL IS THE COMMON ANSWER AND MUST STAY REACHABLE. Every reference
+ * assessed before 0193 has no duration and never will — the file it was
+ * measured from is gone. Coercing that to a band would put 1,773 invented
+ * readings into the one field this whole exercise exists to measure honestly.
+ *
+ * ⚠️ AND THE NULL CHECK PRECEDES THE ARITHMETIC. `beats / 0` is Infinity, which
+ * compares greater than every threshold and would silently report every
+ * zero-duration row as `rapid` — a reading, from a video nobody measured.
+ */
+export function pacingBand(durationSec: unknown, beatCount: unknown): PacingBand | null {
+  const d = typeof durationSec === 'number' ? durationSec : Number(durationSec)
+  const b = typeof beatCount === 'number' ? beatCount : Number(beatCount)
+  if (!Number.isFinite(d) || d <= 0) return null
+  if (!Number.isFinite(b) || b <= 0) return null
+  const perMin = (b / d) * 60
+  if (perMin < PACING_P25_BEATS_PER_MIN) return 'unhurried'
+  return perMin > PACING_P75_BEATS_PER_MIN ? 'rapid' : 'steady'
+}
+
 /** One reference reduced to shape. NO free text, by construction. */
 export interface ShapeRow {
   container: ContainerType | null
@@ -70,6 +111,9 @@ export interface ShapeRow {
   beatRoles: string[]
   beatCount: number
   transferability: 'high' | 'medium' | 'low' | null
+  /** How fast it moves, or null when its length was never measured — which is
+   *  every reference assessed before 0193. */
+  pacing: PacingBand | null
   /** Goal labels the assessor recognised, from its own closed vocabulary. */
   goals: LikelyGoal[]
 }
@@ -92,7 +136,7 @@ function enumValue<T extends string>(cell: unknown, allowed: readonly T[]): T | 
  * assessment failed — the same absent-is-not-zero rule this repo keeps
  * relearning.
  */
-export function projectShape(profile: unknown): ShapeRow | null {
+export function projectShape(profile: unknown, durationSec?: number | null): ShapeRow | null {
   if (!profile || typeof profile !== 'object') return null
   const p = profile as Record<string, unknown>
   const structure = (p.structure ?? {}) as Record<string, unknown>
@@ -130,6 +174,11 @@ export function projectShape(profile: unknown): ShapeRow | null {
     beatRoles,
     beatCount: beatRoles.length,
     transferability,
+    // ⚖️ THE DURATION COMES FROM THE ROW, NOT THE PROFILE JSON. It is a column
+    // on `reference_content_profiles` because ffprobe measured it, not because
+    // a model reported it — and keeping measured facts out of the model's
+    // envelope is what lets the two be checked against each other.
+    pacing: pacingBand(durationSec ?? null, beatRoles.length),
     goals,
   }
 }

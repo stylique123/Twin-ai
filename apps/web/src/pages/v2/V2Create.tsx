@@ -202,6 +202,14 @@ export default function V2Create() {
   // The library is still one tap away for the creator who has nothing in it —
   // but as an EMPTY-STATE, which is the only case where it was ever the answer.
   const [picking, setPicking] = useState(false)
+  // ⚠️⚠️ THE PICK IS HELD HERE, NOT NAVIGATED ON. Choosing a product used to call
+  // `nav('/v2/building', …)` with `buildFieldsForDoor('idea', input.trim())` —
+  // and a creator who came through the PRODUCT door has typed no idea, so
+  // `reference_note` was empty and V2Building's own guard ("No input (e.g.
+  // refresh) → go back to Create", line 555) bounced her straight back. That
+  // round trip is the black flash people reported: a real navigation, then an
+  // immediate `replace` home, with the choice discarded on the way.
+  const [chosenProduct, setChosenProduct] = useState<ProductEntityRecord | null>(null)
   const [myProducts, setMyProducts] = useState<ProductEntityRecord[] | null>(null)
   useEffect(() => {
     let alive = true
@@ -287,11 +295,27 @@ export default function V2Create() {
     // The handoff doors do not build; they take the creator to the place that
     // holds what they said they have. Both record the door first, because
     // leaving for the Product Library IS taking the product door.
-    if (door === 'product') {
+    if (door === 'product' && chosenProduct === null) {
       // ⚖️ THE DOOR IS RECORDED WHERE IT IS TAKEN, exactly as before — what
       // changed is what happens next, not what we learn from it.
       void recordEntryDoor({ door, source, offered: ALL_DOORS, text: input })
       setPicking(true)
+      return
+    }
+    // ⚠️ A CHOSEN PRODUCT IS ENOUGH TO BUILD ON, AND THE TEXT BOX MAY BE EMPTY.
+    // This is the whole product door: she has told us what she has in her hand,
+    // and the objective question on the build screen asks what it is for. The
+    // idea-mode guard below would refuse this for having no text.
+    if (door === 'product' && chosenProduct !== null) {
+      nav('/v2/building', {
+        state: {
+          ...buildFieldsForDoor('product', input.trim() || chosenProduct.name || ''),
+          door,
+          tone,
+          selected_product_id: chosenProduct.id,
+          idempotency_key: crypto.randomUUID(),
+        },
+      })
       return
     }
     if (isHandoff) {
@@ -361,7 +385,11 @@ export default function V2Create() {
           <div className="absolute right-0 bottom-0 h-[20rem] w-[20rem] rounded-full bg-teal/10 blur-[140px]" />
         </div>
 
-        <div className="relative mx-auto w-full max-w-2xl text-center">
+        {/* ⚠️ THIS COLUMN WAS 672px ON EVERY SCREEN, which on a 1440px monitor is a
+            phone layout centred in a field of empty space. `lg:max-w-4xl` (896px)
+            gives the doors room to be a real 2×2 without stretching edge to edge —
+            a cap, not a fill, because a line of text 1400px wide is unreadable. */}
+        <div className="relative mx-auto w-full max-w-2xl text-center lg:max-w-4xl">
           <p className="eyebrow">Studio</p>
           <h1 className="mt-3 font-display text-4xl tracking-tight sm:text-5xl">Make a video</h1>
           <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed text-stone">
@@ -374,7 +402,7 @@ export default function V2Create() {
           <div
             role="radiogroup"
             aria-label="What are you starting from?"
-            className="mx-auto mt-7 grid max-w-md grid-cols-2 gap-2.5 text-left"
+            className="mx-auto mt-7 grid max-w-md grid-cols-1 gap-2.5 text-left sm:max-w-xl sm:grid-cols-2 sm:gap-3 lg:max-w-2xl"
           >
             {DOORS.map((d) => {
               const active = door === d.id
@@ -408,9 +436,15 @@ export default function V2Create() {
 
           {/* The input box — a compact, refined hero input on the canvas, with a
               soft coral bloom on focus. Hidden for the two handoff doors, where
-              a text field could not answer what the creator just told us. */}
+              a text field could not answer what the creator just told us.
+
+              ⚖️ OPPOSITE SIZING RULES, AND THEY USED TO BE THE SAME NUMBER. The
+              doors are a chooser — four short labels, sized to their content.
+              This is where she WRITES, so it is the one element that gets wider
+              on a bigger screen. Both were `max-w-md`, which made the page read
+              as four big boxes and then one more big box. */}
           {!isHandoff && (
-            <div className="glass gradient-border mx-auto mt-5 max-w-md rounded-2xl p-4 text-left transition-shadow focus-within:shadow-[0_0_48px_-16px_rgba(255,91,123,.5)]">
+            <div className="glass gradient-border mx-auto mt-5 max-w-md rounded-2xl p-4 text-left transition-shadow lg:max-w-2xl focus-within:shadow-[0_0_48px_-16px_rgba(255,91,123,.5)]">
               <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-sand/80">
                 <span className="grid h-6 w-6 place-items-center rounded-md bg-signature-soft">
                   {door === 'reference' ? <Link2 className="h-3 w-3 text-cream" /> : <Lightbulb className="h-3 w-3 text-cream" />}
@@ -599,15 +633,12 @@ export default function V2Create() {
                             onClick={() => {
                               // ⚖️ THE CHOICE TRAVELS WITH THE BUILD, so the
                               // building screen does not ask it again.
+                              // ⚖️ CLOSE AND STAY. The choice is state on this
+                              // screen now; `go` carries it into the build once
+                              // she has said what the video is for. Navigating
+                              // from inside the modal was the bug.
+                              setChosenProduct(p)
                               setPicking(false)
-                              nav('/v2/building', {
-                                state: {
-                                  ...buildFieldsForDoor('idea', input.trim()),
-                                  tone,
-                                  selected_product_id: p.id,
-                                  idempotency_key: crypto.randomUUID(),
-                                },
-                              })
                             }}
                           >
                             <span className="block truncate text-sm font-semibold text-cream">
@@ -631,6 +662,26 @@ export default function V2Create() {
             </div>
           )}
 
+          {/* ⚠️ THE CHOICE, SHOWN WHERE SHE MADE IT. She picked a product and the
+              screen used to look exactly as it had before — the pick lived only
+              in a navigation that bounced. Rendering it here is what makes
+              "nothing was lost" visible rather than merely true. */}
+          {door === 'product' && chosenProduct && (
+            <div className="mx-auto mt-5 max-w-md" data-testid="chosen-product">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                <span className="min-w-0 text-sm text-cream">
+                  <span className="text-stone">Making content for: </span>
+                  <span className="font-semibold">{(chosenProduct.name ?? '').trim() || 'Not named yet'}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPicking(true)}
+                  className="shrink-0 text-xs text-stone underline underline-offset-2 transition-colors hover:text-cream"
+                >Change</button>
+              </div>
+            </div>
+          )}
+
           {/* The one CTA — centered, matched to the input width so the column reads
               as one tight, intentional stack. Its wording follows the door, so the
               button always says what is about to happen. */}
@@ -642,7 +693,7 @@ export default function V2Create() {
             >
               <Wand2 className="h-4 w-4" />
               {checking ? 'Checking…'
-                : door === 'product' ? 'Pick a product'
+                : door === 'product' ? (chosenProduct ? 'Make this video' : 'Pick a product')
                 : door === 'browse' ? "See what's working"
                 : 'Remix'}
             </button>
