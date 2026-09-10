@@ -39,6 +39,7 @@ import { authHeader } from './authSession.mjs'
 import { captionChecks, captionEvidenceChecks } from './captionAssertions.mjs'
 import { makeEditorFixtures } from './editorFixtures.mjs'
 import { runZoomSweep } from './zoomSweep.mjs'
+import { describeAssetFailure } from './assetFailure.mjs'
 
 const execFile = promisify(_execFile)
 // ⚠️ PHASE 8 OWNS ITS OWN DIGEST HELPER, exactly as phases 6 and 7 do.
@@ -219,7 +220,7 @@ async function mintReady(client, ownerId, buf) {
   const gen = await newGen(ownerId, SCENE_TIMELINE, HOOK_LINE)
   const { assetId } = await sourceFlow(client, gen, buf)
   const asset = await waitAsset(assetId)
-  if (asset.status !== 'ready') throw new Error(`fixture asset rejected: ${JSON.stringify(asset.metadata)}`)
+  if (asset.status !== 'ready') throw new Error(describeAssetFailure(asset))
   return { gen, assetId, asset }
 }
 

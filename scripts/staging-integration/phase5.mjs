@@ -25,6 +25,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
 import { authHeader, callEdgeAuthRetried } from './authSession.mjs'
+import { describeAssetFailure } from './assetFailure.mjs'
 
 const execFile = promisify(_execFile)
 // scripts/staging-integration/phase5.mjs → repo root is two levels up.
@@ -278,7 +279,7 @@ async function mintReady(client, ownerId, buf) {
   const gen = await newGen(ownerId)
   const { assetId } = await sourceFlow(client, gen, buf)
   const asset = await waitAsset(assetId)
-  if (asset.status !== 'ready') throw new Error(`fixture asset rejected: ${JSON.stringify(asset.metadata)}`)
+  if (asset.status !== 'ready') throw new Error(describeAssetFailure(asset))
   return { gen, assetId, asset }
 }
 
