@@ -186,9 +186,66 @@ describe('the CTA is the creator’s to type, and only theirs', () => {
     expect(SETTINGS).not.toMatch(/setCtaDraft\(ctaText\); setCtaOpen\(true\)/)
     // ⚖️ AND ONE HOME PER FACT: the button opens, it does not also seed.
     expect(SETTINGS).toContain('onClick={() => setCtaOpen(true)}')
-    // ⚖️ THE SUGGESTION IS STILL NOT STORED WITHOUT A TAP. Nothing may commit it
-    // on mount or on open — a reading is not a decision.
-    expect(SETTINGS).not.toMatch(/onCtaCommit\(ctaSuggestion/)
+    // ⚖️ THE SUGGESTION IS STILL NOT STORED WITHOUT A TAP, and this assertion had
+    // to be narrowed to say that properly. It banned `onCtaCommit(ctaSuggestion`
+    // ANYWHERE, which also banned the one place it belongs: an explicit
+    // "That's mine" button. The property was never "never commit the
+    // suggestion" — it is "never commit it without the creator pressing
+    // something". A rule stated too broadly forbids its own correct
+    // implementation.
+    //
+    // ⚠️ SO WHAT IS ASSERTED IS THE MOUNT AND OPEN PATHS. Neither the seeding
+    // transition nor the initial state may commit anything.
+    const openBlock = SETTINGS.slice(
+      SETTINGS.indexOf('if (ctaOpen !== wasCtaOpen)'),
+      SETTINGS.indexOf('return (', SETTINGS.indexOf('if (ctaOpen !== wasCtaOpen)')))
+    expect(openBlock, 'the open-transition block could not be located').not.toBe('')
+    expect(openBlock).not.toContain('onCtaCommit')
+    // ⚖️ AND THE COMMIT THAT DOES EXIST IS BEHIND A BUTTON OF ITS OWN, so it
+    // cannot fire except by a press.
+    expect(SETTINGS).toContain('data-testid="cta-accept-suggestion"')
+  })
+
+  // ⚠️⚠️ NOTHING EVER STORED A CTA, AND THE WRITER'S WORDING RULE IS DOWNSTREAM
+  // OF THAT. Measured on the audited account: `pre_script_brief.defaultCta` is
+  // null — the key is not even present — across ten consecutive Product Mode
+  // runs, while two CTAs sit extracted on her profile. `generate-blueprint`
+  // builds "THE CREATOR'S OWN CALL TO ACTION" from `brief.defaultCta`, so that
+  // line never fired once in ten runs. This offer is the only thing on any
+  // screen that turns an extracted ending into a stored one.
+  describe('her own ending is offered inline, and accepting it is one tap', () => {
+    it('the offer is gated on the store having been read', () => {
+      // ⚖️ OFFERING BEFORE THE READ IS HOW A READING OVERWRITES AN ANSWER. A
+      // failed read keeps its retry rather than offering a suggestion over
+      // something we never saw.
+      expect(SETTINGS).toContain(
+        'const canOfferHerEnding = ctaLoaded && !ctaLoadFailed && ctaText === \'\' && !!ctaSuggestion')
+    })
+
+    it('it commits the suggestion’s own text, never the editor draft', () => {
+      // ⚠️ `ctaDraft` IS THE EDITOR'S STATE. Committing it from here would save
+      // whatever was last typed and abandoned.
+      const btn = SETTINGS.slice(SETTINGS.indexOf('data-testid="cta-accept-suggestion"'))
+      const head = btn.slice(0, 500)
+      expect(head).toContain('onCtaCommit(ctaSuggestion!.text)')
+      expect(head).not.toContain('ctaDraft')
+    })
+
+    it('the accept button reads before the change button', () => {
+      // ⚖️ THE ANSWER IN NINE CASES OUT OF TEN COMES FIRST. Order is the whole
+      // affordance: "Change it" first would make accepting look like the
+      // secondary path.
+      const accept = SETTINGS.indexOf('data-testid="cta-accept-suggestion"')
+      const change = SETTINGS.indexOf("canOfferHerEnding ? 'Change it'")
+      expect(accept).toBeGreaterThan(-1)
+      expect(change).toBeGreaterThan(-1)
+      expect(accept).toBeLessThan(change)
+    })
+
+    it('the line shown says where it came from', () => {
+      // ⚠️ UNATTRIBUTED, A SUGGESTION READS AS SOMETHING SHE ALREADY AGREED TO.
+      expect(SETTINGS).toContain('— from your own posts')
+    })
   })
 
   // ⚠️⚠️ AND EVERY ROUTE TO THE EDITOR MUST ACTUALLY REACH IT. `edit_cta` was
