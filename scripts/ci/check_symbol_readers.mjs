@@ -71,6 +71,22 @@ const REPO = join(fileURLToPath(import.meta.url), '..', '..', '..')
 // WOULD CHANGE IT. An unregistered unreached symbol fails the build; a
 // registered one is a debt that was named. "Later" is not a reason.
 export const REGISTRY = {
+  'corpus/relativePerformance.ts': {
+    symbols: ['parseReach', 'medianOf', 'relativePerformance', 'cappedLift', 'medianLift'],
+    why: 'The ranking unit for the whole corpus: a multiple of that creator\'s '
+      + 'OWN median, never an absolute view count. Verified against real rows '
+      + 'before it was written — `reach` is populated on all 16,044 gallery_items '
+      + 'across 3,877 creators AND is genuinely per-video (Linus Tech Tips: 34 '
+      + 'distinct values over 154 cards). Had it been a per-creator follower '
+      + 'count, every video of a creator would share one value and a median would '
+      + 'be meaningless, so this was checked first. '
+      + 'The consumer is the cohort ranker (stage 3/4), which needs the '
+      + 'caption_shape backfill (#796) and the facet vector (#798) landed first: '
+      + 'ranking unclassified cards by lift ranks nothing. '
+      + 'WHAT WOULD CHANGE THIS: the ranker calling medianLift over a facet-scored '
+      + 'cohort. DELETE this entry then. If the ranker never lands, delete the '
+      + 'module rather than keep excusing it.',
+  },
   'creativeTransferPlan.ts': {
     symbols: ['TransferPlanError', 'computePlanSha256', 'finalizeTransferPlan',
       'validateCreativeTransferPlan', 'canonicalTransferPlan'],
