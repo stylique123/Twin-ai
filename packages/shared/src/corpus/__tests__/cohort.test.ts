@@ -25,6 +25,21 @@ const card = (over: Partial<CohortCard> = {}): CohortCard => ({
 const many = (n: number, over: Partial<CohortCard> = {}): CohortCard[] =>
   Array.from({ length: n }, () => card(over))
 
+/**
+ * ⚠️ THE DEFAULT CARD IS EXACTLY AVERAGE, AND THAT IS DELIBERATE: reach '5K'
+ * against a creator median of 5K is a lift of exactly 1.0. Since `shapeBlock`
+ * gained MIN_MEDIAN_LIFT, an average shape is correctly refused — so a test that
+ * asserts a BLOCK must give its leading shape a reach above the creator's own
+ * median. `ABOVE_MEDIAN` is that reach: 7K against a 5K median is 1.4x.
+ *
+ * ⚖️ THE THREE TESTS THAT NEEDED THIS WERE NOT WRONG. They assert basis/rung
+ * propagation and that one outlier cannot move the recommendation — none of them
+ * is about lift. They were coupled to the lift being UNGATED, which is the same
+ * fixture-coupling that has now bitten three times in this repository: the test
+ * pinned something it was not testing.
+ */
+const ABOVE_MEDIAN = '7K'
+
 describe('the cohort states which rung it came from', () => {
   it('prefers an exact sub-domain when it clears the floor', () => {
     const r = selectEvidenceCohort(HER, many(MIN_COHORT))
@@ -122,7 +137,10 @@ describe('the SHAPE block is ABSENT, not weakened', () => {
   })
 
   it('a decisive lead yields a block that names its own basis', () => {
-    const r = selectEvidenceCohort(HER, [...many(60, { shape: 'story' }), ...many(20, { shape: 'tutorial' })])
+    const r = selectEvidenceCohort(HER, [
+      ...many(60, { shape: 'story', reach: ABOVE_MEDIAN }),
+      ...many(20, { shape: 'tutorial' }),
+    ])
     expect(r.decisive).toBe(true)
     const b = shapeBlock(r)
     expect(b).not.toBeNull()
@@ -170,7 +188,10 @@ describe('one video cannot carry a shape', () => {
   // ⚠️⚠️ THE SPEC'S PASS CONDITION: insert one 18M-view outlier and the
   // recommendation must not change.
   it('an 18M outlier does not change the recommendation', () => {
-    const base = [...many(60, { shape: 'story' }), ...many(20, { shape: 'tutorial' })]
+    const base = [
+      ...many(60, { shape: 'story', reach: ABOVE_MEDIAN }),
+      ...many(20, { shape: 'tutorial' }),
+    ]
     const before = shapeBlock(selectEvidenceCohort(HER, base))
     const withOutlier = [...base, card({ shape: 'tutorial', reach: '18M' })]
     const after = shapeBlock(selectEvidenceCohort(HER, withOutlier))
@@ -180,7 +201,10 @@ describe('one video cannot carry a shape', () => {
 
   // ⚖️ AND IT CANNOT PROMOTE ITS OWN SHAPE TO THE LEAD EITHER.
   it('a single enormous card does not make its shape decisive', () => {
-    const r = selectEvidenceCohort(HER, [...many(25, { shape: 'story' }), card({ shape: 'reaction', reach: '18M' })])
+    const r = selectEvidenceCohort(HER, [
+      ...many(25, { shape: 'story', reach: ABOVE_MEDIAN }),
+      card({ shape: 'reaction', reach: '18M' }),
+    ])
     expect(shapeBlock(r)!.shape).toBe('story')
   })
 })

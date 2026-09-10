@@ -176,9 +176,59 @@ export function selectEvidenceCohort(
   return { rung: 'none', basis: describeCohort(her, 0), size: 0, shapes: [], decisive: false }
 }
 
+/**
+ * How far above a creator's own median a shape must sit before it is worth
+ * naming.
+ *
+ * ⚠️⚠️ THE GATE THIS FILE WAS MISSING, AND THE MEASUREMENT THAT FOUND IT.
+ * Simulated against the whole production corpus on 2026-09-10, with 2,116
+ * classified cards, `shapeBlock` returned a block for four of seven niche
+ * buckets — and every one of them carried `medianLift` of exactly 1.0000:
+ *
+ *     business         how_to          n=297   lift 1.0000
+ *     tech             how_to          n=169   lift 1.0000
+ *     food             number_promise  n= 50   lift 1.0000
+ *     beauty_fashion   number_promise  n= 48   lift 1.0000
+ *
+ * Every gate before this one counts cards. None of them asked whether the
+ * shape did better than the creator's ordinary video, so a shape sitting
+ * exactly at the median was about to be put in front of the model as evidence
+ * of what works. `shapeBlock`'s own header says why that is worse than
+ * silence: a hedged shape is still a shape in the model's context, and it
+ * will be used.
+ *
+ * ⚠️ EXACTLY 1.0000 AT n=297 IS ARITHMETIC, NOT MEASUREMENT. Real per-video
+ * reach does not divide to 1.000; it divides to 0.97 and 1.03. You get exactly
+ * one when you divide a constant by its own median — and that is what
+ * `gallery_items.reach` is. Measured: 40.6% of a creator's cards share one
+ * identical value, and the modal value is unique to the creator in 61.4% of
+ * cases (440 distinct modal values across 717 creators; the most-shared,
+ * `1.1M`, is held by 21). A global placeholder would be shared by hundreds.
+ * So `reach` is AUDIENCE SIZE, not views.
+ *
+ * ⚖️ WHICH MEANS THIS NUMBER IS NOT CALIBRATED, AND SAYING SO IS THE POINT.
+ * There is no real lift distribution to fit a threshold to, because the column
+ * the lift is computed from is not a per-video metric. 1.2 is chosen to
+ * exclude the measured degenerate case with margin — nothing more. It is NOT
+ * a claim that 20% is the level at which a shape becomes worth following.
+ *
+ * WHAT WOULD CALIBRATE IT: a per-video view count on `gallery_items`. With
+ * that, the threshold should be re-cut from the observed distribution of
+ * per-shape median lifts, and this comment replaced with that measurement.
+ * Until then the lift layer is `built, awaiting sample`, and this gate is what
+ * stops it asserting anything in the meantime.
+ */
+export const MIN_MEDIAN_LIFT = 1.2
+
 export interface ShapeBlock {
   shape: string
   n: number
+  /**
+   * ⚠️ THE PROMPT MUST SAY THE NUMBER, NOT JUST THE SHAPE. "how_to" is an
+   * instruction; "how_to, 4.2x this creator's median across 297 cards" is
+   * evidence a reader can weigh and disagree with. A consumer that renders the
+   * shape and drops this field turns the second back into the first.
+   */
   medianLift: number
   basis: string
   rung: CohortRung
@@ -202,6 +252,11 @@ export function shapeBlock(read: CohortRead): ShapeBlock | null {
   // ⚠️ AND THE LEADING SHAPE ITSELF MUST CLEAR THE FLOOR. A cohort of 340 can
   // still carry a shape on 4 cards; the cohort size is not the shape's n.
   if (top.n < MIN_COHORT) return null
+  // ⚠️⚠️ AND IT MUST ACTUALLY OUTPERFORM. Every gate above this line counts
+  // cards; none of them asks whether the shape did any better than the
+  // creator's own ordinary video. A shape at 1.00× is by definition average,
+  // and naming it is a recommendation with nothing behind it.
+  if (top.medianLift < MIN_MEDIAN_LIFT) return null
   return {
     shape: top.shape, n: top.n, medianLift: top.medianLift,
     basis: read.basis, rung: read.rung,
