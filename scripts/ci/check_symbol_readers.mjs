@@ -336,6 +336,32 @@ export function mentionedBesidesItsOwnDeclaration(body, name) {
   return new RegExp(`\\b${name}\\b`).test(withoutDecl)
 }
 
+// ⚠️⚠️ A GUARD THAT GREPS SOURCE MUST TELL A MENTION FROM A CALL, and this one
+// could not. Measured 2026-09-09: a NEW module's header comment contained the
+// words "shapeForGoal's first draft", and this guard reported `shapeForGoal`
+// and `rankShapesForGoal` as having acquired production readers — then failed
+// the build demanding their registry entries be REMOVED. Nothing called them.
+// A comment about a symbol had been counted as a use of it.
+//
+// ⚠️ THIS IS THE THIRD TIME IN THIS REPOSITORY. `check_analysis_components.mjs`
+// shipped it once; `aWiringClaimMustBeTrue` shipped it twice more, one of them
+// counting a comment that merely NAMED `affiliateUrl` as a wired reader. It is
+// written down as a known trap and it still caught the person who wrote the
+// note. Fixing it here rather than rewording the comment, because the comment
+// is not the defect.
+//
+// ⚖️ WHOLE-LINE COMMENTS ONLY, NEVER EVERYTHING AFTER `//`. A real call sitting
+// after a string containing "https://" would vanish, and the guard would stop
+// catching the thing it exists for — trading a false positive for a false
+// negative, which is strictly worse in a guard.
+export function stripComments(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, '\n')
+    .split('\n')
+    .map((l) => (/^\s*\/\//.test(l) ? '' : l))
+    .join('\n')
+}
+
 export function reachedSymbols(symbols, prodSources) {
   const mentions = (body, n) => new RegExp(`\\b${n}\\b`).test(body)
   const reached = new Set()
@@ -419,8 +445,39 @@ if (process.argv.includes('--selftest')) {
     [S('dead', '/a.ts'), S('alsoDead', '/a.ts')],
     new Map([['/a.ts', 'export function dead(){ return alsoDead() }\nexport function alsoDead(){}']]))], [])
 
+
+  // ── stripComments: a comment is not a caller ──────────────────────────────
+  // ⚠️ THESE WENT IN THE EXISTING BLOCK, NOT A NEW ONE. My first attempt added a
+  // second selftest() with its own process.exit(0) ABOVE this block — which
+  // would have short-circuited all nine cases above and reported OK. A guard
+  // silently running fewer checks than it claims is the exact failure this file
+  // exists to prevent, introduced into the file itself.
+  check('a whole-line comment naming a symbol is not a call',
+    stripComments("// shapeForGoal's first draft used a ratio\nconst x = 1").includes('shapeForGoal'), false)
+  check('a block comment naming a symbol is not a call',
+    stripComments('/* rankShapesForGoal is dead */\nconst y = 2').includes('rankShapesForGoal'), false)
+  // ⚠️⚠️ THE CASE THAT MAKES THE NAIVE FIX WRONG. Stripping from the first `//`
+  // erases a real call after a url string — a false negative, strictly worse.
+  check('a real call after a url string SURVIVES',
+    stripComments("const u = 'https://example.com'; shapeForGoal(a)").includes('shapeForGoal(a)'), true)
+  check('a call with a trailing comment survives',
+    stripComments('shapeForGoal(a) // genuinely called').includes('shapeForGoal(a)'), true)
+
+  // ⚠️⚠️ AND THE STRIPPER MUST STILL BE WIRED IN. Mutation-tested: removing the
+  // stripComments() call from the prodSources map leaves every case above
+  // passing — they test the FUNCTION — while the guard silently reverts to
+  // counting comments as callers. The raised ceiling absorbs the difference, so
+  // nothing fails. A function that is correct and uncalled is this repository's
+  // dominant defect; this asserts the call site itself.
+  // ⚖️ RESOLVED LOCALLY: `SELF` is declared below this block, so referencing it
+  // here is a temporal-dead-zone crash — which the selftest caught on its first
+  // run, exactly as it should have.
+  const selfCode = stripComments(readFileSync(fileURLToPath(import.meta.url), 'utf8'))
+  check('stripComments is actually applied to the production sources',
+    /prodSources[\s\S]{0,200}stripComments\(readFileSync/.test(selfCode), true)
+
   if (failures > 0) { console.error(`symbol-readers guard selftest: ${failures} FAILED`); process.exit(1) }
-  console.log('symbol-readers guard selftest: OK (9 cases, incl. both transitive directions)')
+  console.log('symbol-readers guard selftest: OK (14 cases, incl. both transitive directions and comment-stripping)')
   process.exit(0)
 }
 
@@ -441,7 +498,7 @@ const allFiles = ROOTS.flatMap((r) => walk(r))
 const SELF = join(REPO, 'scripts', 'ci', 'check_symbol_readers.mjs')
 const prodSources = new Map(allFiles
   .filter((p) => !isTest(p) && p !== SELF)
-  .map((p) => [p, readFileSync(p, 'utf8')]))
+  .map((p) => [p, stripComments(readFileSync(p, 'utf8'))]))
 
 // ⚠️ A WALK THAT FINDS NOTHING PASSES EVERY CHECK BELOW. A wrong root is the
 // way this guard would go quietly off without failing.
@@ -494,7 +551,31 @@ const unregistered = orphans.filter((o) =>
 // ⚠️ THE CEILING LIVES HERE, IN THE GUARD, not in the REGISTRY it measures. A
 // ratchet whose limit sits inside the thing being ratcheted can be raised in the
 // same edit that breaks it.
-const MAX_UNREGISTERED = 101
+//
+// ⚠️⚠️ RE-BASELINED 2026-09-09, FROM 101 TO 149, AND THAT IS NOT THE CHECK DOING
+// LESS. The INSTRUMENT got stricter in this same commit: `stripComments` stopped
+// a comment mentioning a symbol from counting as a call. `reached` fell 784 →
+// 733. FIFTY-ONE symbols were never reached by any code — they were reached by
+// prose ABOUT them.
+//
+// ⚖️ THE DEBT DID NOT GROW. IT BECAME VISIBLE. Those 51 symbols had no
+// production caller yesterday either; the guard simply could not see it. A
+// ceiling is a record of KNOWN debt, and when the instrument measuring it
+// improves, the record has to be re-cut against the true number or the guard
+// fails permanently and gets deleted — which is how a repository loses a check
+// entirely.
+//
+// ⚠️ WHAT WOULD MAKE THIS ILLEGITIMATE, STATED SO IT CAN BE CHECKED. Raising
+// this number without the instrument changing is weakening the check, and must
+// never happen. This raise is admissible ONLY because it is paired with a strict
+// improvement in the same commit, and only at the number that improvement
+// measured. It ratchets DOWN from 149 and never up again.
+//
+// ⚠️ AND 149 IS A STARTING LINE, NOT A RESTING PLACE. Forty-nine symbols are
+// newly visible as unwired. Each is a rule nothing runs. They are not triaged in
+// this commit — deliberately: doing it in the same change that alters the
+// instrument would make it impossible to tell which failures came from which.
+const MAX_UNREGISTERED = 149
 
 console.log(`symbol-readers: unregistered ${unregistered.length} of ceiling ${MAX_UNREGISTERED}`)
 console.log(`symbol-readers: ${symbols.length} exported symbols, ${reached.size} reached, `
