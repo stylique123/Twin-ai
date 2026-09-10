@@ -120,6 +120,102 @@ function describeThrown(err: unknown): string {
   return `unserialisable ${typeof err}${typeof ctor === 'string' ? ` (${ctor})` : ''}${keys !== '' ? ` keys=${keys}` : ''}`
 }
 
+
+// ── WHAT THE CREATOR CHOSE, RECORDED ON EVERY PATH THAT PRODUCED A SCRIPT ──
+//
+// ⚠️⚠️ THIS LIVED INLINE ON THE SUCCESS PATH ONLY, AND THE RESCUE PATH WROTE
+// NEITHER ROW. Measured 2026-09-10: all 13 generations that day took the rescue
+// branch, so `generation_choices` received nothing (its last row is 2026-09-08
+// 15:46) and `generation_outcomes` has never held a row at all. Both tables exist
+// to answer questions about scripts that were DELIVERED, and a rescued script is
+// delivered — the creator got it and paid for it.
+//
+// ⚠️ AND THE COST IS NOT ONLY ANALYTICS. `contentHistory.ts`'s own header records
+// an open product question — whether repeat premises justify a blocker — and names
+// the discriminator: a near-duplicate pair generated DAYS APART rather than in one
+// sitting. Tonight's 13 runs are the strongest counter-evidence yet (7 of 13 share
+// one premise across what were DIFFERENT objectives, which is not a retry), and
+// the objective per run is UNRECOVERABLE: `generation_choices` was never written
+// and the blueprint does not carry the goal. The missing row is what blocks the
+// decision, so restoring it is upstream of the feature.
+//
+// ⚖️ ONE DEFINITION, TWO CALL SITES. Copying ninety lines into the catch block
+// would be two authorities for one record, and the one that drifts is always the
+// copy nobody reads. Module scope rather than a closure so it can be unit-tested
+// against a fake client — the inline version never could be.
+//
+// ⚖️ AND IT STILL CANNOT FAIL A BUILD, on either path. Both rows are observations
+// about a script that already succeeded and was already charged for: losing an
+// observation is a gap in analytics, while throwing here would lose the creator
+// their paid script. A warning is the correct severity.
+async function recordWhatWasChosen(admin: {
+  from: (t: string) => { insert: (row: Record<string, unknown>) => PromiseLike<{ error: { message?: string } | null }> }
+}, input: {
+  generationId: string
+  ownerId: string
+  /** ⚠️ FROM THE REQUEST, NOT FROM A LOCAL `goal`. In the handler's scope `goal`
+   *  is `intent.goalDirective` — a paragraph of instructions to the model, not the
+   *  enum the creator picked — so reading that would fill this table with essays
+   *  and make every count meaningless. The edge parse check does not catch it: the
+   *  name resolves, to the wrong thing. */
+  rawGoal: unknown
+  rawFocus: unknown
+  rawReferenceUse: unknown
+  selectedProductId: string | null
+  niche: string | null
+  subNiche: string | null
+  /** Null on the rescue path, and that is correct rather than lazy: the analysis
+   *  that computes these is the region that threw, so there is genuinely nothing
+   *  to record. Writing 0 would enter "the writer cited nothing" into the record
+   *  the next selection decision reads back. */
+  substanceBudgetBeats: number | null
+  referenceDurationSec: number | null
+  hadReference: boolean
+}): Promise<void> {
+  // ⚖️ STORED AS SENT, NOT NARROWED TO THE CURRENT ENUM. A value retired between
+  // the choice and the query is exactly the history worth keeping, and dropping it
+  // would silently under-count the past. Length is capped because this is
+  // untrusted request input.
+  const text = (v: unknown): string | null =>
+    typeof v === 'string' && v.trim() !== '' ? v.trim().slice(0, 64) : null
+
+  await admin.from('generation_choices')
+    .insert({
+      generation_id: input.generationId,
+      owner_id: input.ownerId,
+      // ⚖️ WHAT WAS ACTUALLY CHOSEN, INCLUDING NOTHING. A creator who picked no
+      // goal is a real and interesting case — it is the silence the intent
+      // compiler treats as "no directive" — so it is stored as null rather than
+      // defaulted into looking like a choice.
+      selected_goal: text(input.rawGoal),
+      selected_focus: text(input.rawFocus),
+      reference_use: text(input.rawReferenceUse),
+      selected_product_id: input.selectedProductId,
+    })
+    .then(({ error }) => { if (error) console.warn('choices not recorded:', error.message) })
+
+  // ⚠️ THE OUTCOME COLUMNS ARE LEFT NULL ON PURPOSE AND `was_filmed` IS
+  // THREE-STATE. NULL is "not asked yet"; `false` is "she looked at it and did not
+  // film it", which is the only negative signal this product has. Defaulting
+  // either would drown the real answers in assumed ones.
+  await admin.from('generation_outcomes')
+    .insert({
+      generation_id: input.generationId,
+      owner_id: input.ownerId,
+      // ⚖️ COPIED FROM THE VOICE PROFILE, and null where the scan never produced
+      // one -- never 'unknown', which would aggregate as an answer.
+      niche: input.niche,
+      sub_niche: input.subNiche,
+      substance_budget_beats: input.substanceBudgetBeats,
+      // Absent is not zero: an older transcript with no measured duration is
+      // "we never measured", not "a zero-length video".
+      reference_duration_sec: input.referenceDurationSec,
+      // ⚖️ THE ONE FACT THAT SEGMENTS EVERY QUESTION THIS TABLE WILL BE ASKED.
+      had_reference: input.hadReference,
+    })
+    .then(({ error }) => { if (error) console.warn('outcome row not opened:', error.message) })
+}
+
 // Keep the opening AND closing of long source text. A hard head-only cut loses
 // the ending (the payoff/CTA), which the retention read depends on.
 function clip(s: string, max: number): string {
@@ -9936,94 +10032,24 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         .eq('run_id', scriptRunId)
         .then(({ error }) => { if (error) console.warn('attempts not linked:', error.message) })
 
-      // ── WHAT THE CREATOR CHOSE, KEPT (0137) ──────────────────────────────
-      //
-      // ⚠️ 41 GENERATIONS HAD PRODUCED ZERO RECORDS OF THIS. The goal, focus and
-      // reference preference reached the writer and were then gone — absent from
-      // `generations`, `blueprint` and `beat_audit` alike. So "does anyone ever
-      // pick `authority`?" had no answer, and neither did "how often is `sell`
-      // chosen with nothing to sell", which is the rate a pending safety fix
-      // needs before it can be built on evidence rather than a guess.
-      //
-      // ⚖️ AFTER THE GENERATION EXISTS, AND IT CANNOT FAIL THE BUILD. The row is
-      // an observation about a script that already succeeded and was already
-      // charged for; losing the observation is a gap in analytics, while
-      // throwing here would lose the creator their paid script. A warning is the
-      // correct severity, and the FK means a deleted video takes its choice with
-      // it rather than leaving an orphan to be counted.
-      await admin.from('generation_choices')
-        .insert({
-          generation_id: gen.id,
-          owner_id: user.id,
-          // ⚖️ WHAT WAS ACTUALLY CHOSEN, INCLUDING NOTHING. A creator who picked
-          // no goal is a real and interesting case — it is the silence the
-          // intent compiler treats as "no directive" — so it is stored as null
-          // rather than defaulted into looking like a choice.
-          // ⚠️ FROM THE REQUEST, NOT FROM THE LOCAL `goal`. In this scope `goal`
-          // is `intent.goalDirective` — a paragraph of instructions to the model,
-          // not the enum the creator picked — so reading it here would have
-          // filled this table with essays and made every count meaningless. The
-          // edge parse check does not catch that: the name resolves, to the
-          // wrong thing.
-          //
-          // ⚖️ STORED AS SENT, NOT NARROWED TO THE CURRENT ENUM. A value retired
-          // between the choice and the query is exactly the history worth
-          // keeping, and dropping it would silently under-count the past. Length
-          // is capped because this is untrusted request input.
-          selected_goal: typeof body.goal === 'string' && body.goal.trim() !== ''
-            ? body.goal.trim().slice(0, 64) : null,
-          selected_focus: typeof body.focus === 'string' && body.focus.trim() !== ''
-            ? body.focus.trim().slice(0, 64) : null,
-          reference_use: typeof body.reference_use === 'string' && body.reference_use.trim() !== ''
-            ? body.reference_use.trim().slice(0, 64) : null,
-          selected_product_id: ownedEntity?.id ?? null,
-        })
-        .then(({ error }) => { if (error) console.warn('choices not recorded:', error.message) })
-
-      // ── THE OUTCOME ROW, OPENED NOW BECAUSE IT CANNOT BE OPENED LATER (0191) ─
-      //
-      // ⚠️ 85 GENERATIONS AND `post_outcome_observations` HOLDS ZERO ROWS.
-      // Nothing anywhere records whether a script Twin wrote was ever filmed, so
-      // every ranking in the product rests on what creators CLICK -- a measure of
-      // what looks appealing in a gallery, not of what became a video.
-      //
-      // ⚖️ THE CONTEXT IS FROZEN HERE, NOT JOINED LATER. A creator's niche
-      // changes; reading it at analysis time would relabel old videos with
-      // today's answer, and "segment before aggregating" is the rule this row
-      // exists to serve.
-      //
-      // ⚖️ AND IT CANNOT FAIL THE BUILD, for `generation_choices`' reason: this
-      // is an observation about a script that already succeeded and was already
-      // charged for. Losing the observation is a gap in analytics; throwing here
-      // would lose the creator their paid script.
-      //
-      // ⚠️ THE OUTCOME COLUMNS ARE LEFT NULL ON PURPOSE AND `was_filmed` IS
-      // THREE-STATE. NULL is "not asked yet"; `false` is "she looked at it and
-      // did not film it", which is the only negative signal this product has.
-      // Defaulting either would drown the real answers in assumed ones.
-      await admin.from('generation_outcomes')
-        .insert({
-          generation_id: gen.id,
-          owner_id: user.id,
-          // ⚖️ COPIED FROM THE VOICE PROFILE, and null where the scan never
-          // produced one -- never 'unknown', which would aggregate as an answer.
-          niche: ((voice?.profile as { niche?: unknown } | null)?.niche ?? null) as string | null,
-          sub_niche: ((voice?.profile as { sub_niche?: unknown } | null)?.sub_niche ?? null) as string | null,
-          // ⚠️ READ OFF `beatAudit` RATHER THAN RECOMPUTED. A second derivation
-          // is a second thing that can disagree with the first, and the audit is
-          // the copy the rest of the system already reads.
-          substance_budget_beats:
-            ((beatAudit as { substance_budget?: unknown } | null)?.substance_budget ?? null) as number | null,
-          // Absent is not zero: an older transcript with no measured duration is
-          // "we never measured", not "a zero-length video".
-          reference_duration_sec: ref?.duration_sec ?? null,
-          // ⚖️ THE ONE FACT THAT SEGMENTS EVERY QUESTION THIS TABLE WILL BE
-          // ASKED. "Did referenced videos get filmed more often than idea ones"
-          // is the first thing worth knowing, and it needs no taxonomy nobody
-          // has written yet.
-          had_reference: Boolean(transcript_id) || String(reference_url ?? '').trim() !== '',
-        })
-        .then(({ error }) => { if (error) console.warn('outcome row not opened:', error.message) })
+      // ⚖️ ONE DEFINITION, SHARED WITH THE RESCUE PATH. See
+      // `recordWhatWasChosen`: this used to live inline here and the rescue branch
+      // wrote neither row, which is why 13 of 13 generations on 2026-09-10 left no
+      // record of what the creator chose.
+      await recordWhatWasChosen(admin, {
+        generationId: gen.id,
+        ownerId: user.id,
+        rawGoal: body.goal,
+        rawFocus: body.focus,
+        rawReferenceUse: body.reference_use,
+        selectedProductId: ownedEntity?.id ?? null,
+        niche: ((voice?.profile as { niche?: unknown } | null)?.niche ?? null) as string | null,
+        subNiche: ((voice?.profile as { sub_niche?: unknown } | null)?.sub_niche ?? null) as string | null,
+        substanceBudgetBeats:
+          ((beatAudit as { substance_budget?: unknown } | null)?.substance_budget ?? null) as number | null,
+        referenceDurationSec: ref?.duration_sec ?? null,
+        hadReference: Boolean(transcript_id) || String(reference_url ?? '').trim() !== '',
+      })
     }
     // THE RACE THE REPLAY CHECK CANNOT CATCH. Two requests carrying the same key
     // can both pass the lookup above before either has inserted — a double-click
@@ -10162,6 +10188,32 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
               .update({ generation_id: saved.id })
               .eq('run_id', rescue.runId)
               .then(({ error }) => { if (error) console.warn('attempts not linked:', error.message) })
+
+            // ⚠️⚠️ THIS BRANCH RECORDED NEITHER ROW, AND 13 OF 13 GENERATIONS ON
+            // 2026-09-10 CAME THROUGH IT. A rescued script IS delivered — the
+            // creator got it and was charged for it — so the two tables that
+            // describe delivered scripts must describe this one too. Without it
+            // `generation_choices` went silent for two days and
+            // `generation_outcomes` had never held a row.
+            //
+            // ⚖️ THE ANALYSIS-DERIVED FIELDS ARE NULL, WHICH IS HONEST RATHER THAN
+            // LAZY: the region that computes them is the region that threw. The
+            // CHOICES are not derived from it — they come off the request — so
+            // they are fully recorded here, and they are what the open question in
+            // `contentHistory.ts` needs.
+            await recordWhatWasChosen(admin, {
+              generationId: saved.id,
+              ownerId: user.id,
+              rawGoal: body.goal,
+              rawFocus: body.focus,
+              rawReferenceUse: body.reference_use,
+              selectedProductId: ownedEntity?.id ?? null,
+              niche: ((voice?.profile as { niche?: unknown } | null)?.niche ?? null) as string | null,
+              subNiche: ((voice?.profile as { sub_niche?: unknown } | null)?.sub_niche ?? null) as string | null,
+              substanceBudgetBeats: null,
+              referenceDurationSec: null,
+              hadReference: Boolean(transcript_id) || String(reference_url ?? '').trim() !== '',
+            })
           }
           return json(saved)
         }
