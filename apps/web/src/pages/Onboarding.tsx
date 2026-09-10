@@ -2068,25 +2068,51 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
     // about THIS video rather than the creator in general — and
     // `compileVideoIntent` already reads an absent goal as "no directive"
     // rather than as a default, so silence costs nothing downstream.
-    const inferred = draft.contentGoals.length === 0
-      ? goalFromCtas(draft.profile?.recurring_ctas)
-      : null
+    // ⚠️⚠️ THIS USED TO GO BLANK IN TWO DIFFERENT WAYS, AND A CREATOR SAW BOTH.
+    //
+    // The condition was `draft.contentGoals.length === 0 ? goalFromCtas(...) :
+    // null`, followed by `if (!inferred) return null`. So the step drew nothing
+    // when no goal could be inferred — 19 of 42 accounts by this file's own
+    // measurement — AND, worse, it drew nothing the instant somebody ANSWERED,
+    // because answering set `contentGoals` and sent `inferred` to null. The
+    // header still said "2 of 2" and Done and Skip all were still there. An
+    // empty step is worse than a wrong one.
+    //
+    // ⚖️ WHETHER TO ASK IS NOW THE SELECTOR'S DECISION, NOT THIS RENDERER'S.
+    // `asksContentGoal` keeps the question out of the set entirely when there
+    // is nothing to read off the creator's sign-offs, so a step that renders
+    // ALWAYS has a question in it. The null below is unreachable through
+    // `profileQuestionsFor` and stays as a belt-and-braces guard for direct
+    // callers, never as the mechanism.
+    //
+    // ⚖️ AND IT NO LONGER STOPS DRAWING ONCE ANSWERED. The answer is shown as
+    // chosen instead, so the step stays put and the set does not shrink under
+    // whoever is standing in it.
+    const inferred = goalFromCtas(draft.profile?.recurring_ctas)
     if (!inferred) return null
+    const goalChosen = draft.contentGoals.includes(inferred.goal)
+    const declined = draft.contentGoals.length === 0 && draft.contentGoalsTouched === true
     return (
       <Field label="Is this what your videos are for?">
         <p className="text-sm leading-relaxed text-cream">{goalConfirmationLine(inferred)}</p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            className="btn-gradient rounded-lg px-4 py-2 text-sm font-semibold"
-            onClick={() => set({ contentGoals: [inferred.goal] })}
+            aria-pressed={goalChosen}
+            className={goalChosen
+              ? 'btn-gradient rounded-lg px-4 py-2 text-sm font-semibold ring-2 ring-amber'
+              : 'btn-gradient rounded-lg px-4 py-2 text-sm font-semibold'}
+            onClick={() => set({ contentGoals: [inferred.goal], contentGoalsTouched: true })}
           >Yes, that's right</button>
           {/* ⚖️ DECLINING RECORDS NOTHING AND ASKS NOTHING MORE. Offering the
               seven chips here would be the third asking wearing a "no" button. */}
           <button
             type="button"
-            className="rounded-lg border border-white/15 px-4 py-2 text-sm text-sand hover:text-cream"
-            onClick={() => set({ contentGoals: [] })}
+            aria-pressed={declined}
+            className={declined
+              ? 'rounded-lg border border-amber/60 px-4 py-2 text-sm text-cream'
+              : 'rounded-lg border border-white/15 px-4 py-2 text-sm text-sand hover:text-cream'}
+            onClick={() => set({ contentGoals: [], contentGoalsTouched: true })}
           >Not quite</button>
         </div>
         {note('Read from how your own videos end. Nothing is saved until you answer.')}

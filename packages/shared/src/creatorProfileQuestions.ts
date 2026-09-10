@@ -34,6 +34,7 @@
 // that mattered gets clicked past too.
 
 import type { BriefWorkKind, BriefGoal } from './preScriptBrief'
+import { goalFromCtas } from './goalFromCta'
 
 // ── Q2. WHO THEY WANT TO REACH ────────────────────────────────────────────
 //
@@ -187,6 +188,16 @@ export interface CreatorProfileAnswers {
   ownServiceKind?: OwnServiceKind | null
   canRecordScreen?: CapabilityAnswer | null
   canShowProduct?: CapabilityAnswer | null
+  /**
+   * The creator's own sign-offs, as extracted by the scan.
+   *
+   * ⚠️ NOT AN ANSWER, AND IT IS HERE ANYWAY. Every other field on this
+   * interface is something the creator said; this is something the scan read.
+   * It is here because `contentGoals` IS ONLY ASKED WHEN A GOAL CAN BE READ
+   * OFF THESE, and that decision has to be made by the selector rather than
+   * the renderer — see `asksContentGoal`.
+   */
+  recurringCtas?: readonly unknown[] | null
 }
 
 /** The most goals one person may choose. */
@@ -296,8 +307,40 @@ export const PROFILE_QUESTION_IDS = [
 ] as const
 export type ProfileQuestionId = (typeof PROFILE_QUESTION_IDS)[number]
 
+/**
+ * Is there a goal question to ask at all?
+ *
+ * ⚠️⚠️ THIS EXISTS BECAUSE THE QUESTION WAS DELETED FROM THE SCREEN AND LEFT IN
+ * THE QUEUE, AND A CREATOR SAW THE RESULT. `contentGoals` is only worth asking
+ * when a goal can be read off the creator's own sign-offs — the renderer
+ * already knew that and returned null, but this list still counted the
+ * question. So the step rendered its header ("2 of 2"), the summary of the
+ * previous answers, and then Done and Skip all WITH NO QUESTION BETWEEN THEM.
+ * Reported live on a real account.
+ *
+ * Measured in the renderer's own comment: the inference fires on 23 of 42
+ * stored `recurring_ctas` sets, so THE BLANK STEP WAS THE MAJORITY CASE — 19 of
+ * 42 accounts, not an edge.
+ *
+ * ⚖️ AND IT IS DELIBERATELY NOT CONDITIONED ON WHETHER THEY HAVE ANSWERED.
+ * That was the other half of the same defect: answering set `contentGoals`,
+ * which made the renderer's inference null, which blanked the step the creator
+ * was standing on — universally, not on 45% of accounts. A list that shrinks
+ * under someone is a hazard this file already records ("five questions
+ * announced, three seen"), so the question stays in the set for the whole step
+ * and the renderer shows which answer is chosen instead.
+ *
+ * ⚖️ THE RULE THIS FOLLOWS: a question is asked or it is not, and ONE place
+ * decides. `capabilities` has always been conditional here rather than in its
+ * renderer; this is the same shape, arriving late.
+ */
+export function asksContentGoal(a: CreatorProfileAnswers): boolean {
+  return goalFromCtas(a.recurringCtas) !== null
+}
+
 export function profileQuestionsFor(a: CreatorProfileAnswers): ProfileQuestionId[] {
   return PROFILE_QUESTION_IDS.filter((id) => {
+    if (id === 'contentGoals') return asksContentGoal(a)
     if (id !== 'capabilities') return true
     return asksScreenCapability(a) || asksProductCapability(a)
   })

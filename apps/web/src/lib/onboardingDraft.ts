@@ -60,6 +60,16 @@ export interface OnboardingDraft {
   confirmedDreamOutcome: string | null
   /** Up to two, and `[]` is a real answer meaning "asked, chose nothing". */
   contentGoals: BriefGoal[]
+  /**
+   * Did the creator answer the goal confirmation, either way?
+   *
+   * ⚠️ AN EMPTY `contentGoals` MEANS TWO DIFFERENT THINGS AND THE SCREEN COULD
+   * NOT TELL THEM APART: nobody has answered yet, or somebody tapped "Not
+   * quite". Without this, declining looked exactly like not having been asked,
+   * so the step gave no sign it had registered the answer. Same rule the rest
+   * of this file states: silence is not "no", and `unset` is not `false`.
+   */
+  contentGoalsTouched: boolean
   desiredFormats: DesiredFormat[]
   formatExploration: FormatExploration | null
   commercialTies: CommercialTie[]
@@ -141,7 +151,7 @@ export function onboardingDraftKey(userId: string): string {
  * from an explicit empty answer.
  */
 export function emptyProfileAnswers(): Pick<OnboardingDraft,
-  'audienceSeg' | 'audienceKnowledge' | 'contentGoals' | 'desiredFormats' |
+  'audienceSeg' | 'audienceKnowledge' | 'contentGoals' | 'contentGoalsTouched' | 'desiredFormats' |
   'formatExploration' | 'commercialTies' | 'ownProductKind' | 'ownServiceKind' |
   'screenCapability' | 'productCapability' |
   'confirmedAudiencePain' | 'confirmedDreamOutcome'> {
@@ -151,6 +161,7 @@ export function emptyProfileAnswers(): Pick<OnboardingDraft,
     confirmedDreamOutcome: null,
     audienceKnowledge: null,
     contentGoals: [],
+    contentGoalsTouched: false,
     desiredFormats: [],
     formatExploration: null,
     commercialTies: [],
@@ -214,6 +225,7 @@ function parseDraft(raw: string | null, userId: string): OnboardingDraft | null 
         ? value.confirmedDreamOutcome.slice(0, 400) : null,
       audienceKnowledge: oneOf(value.audienceKnowledge, AUDIENCE_KNOWLEDGE),
       contentGoals: manyOf(value.contentGoals, BRIEF_GOALS),
+      contentGoalsTouched: value.contentGoalsTouched === true,
       desiredFormats: manyOf(value.desiredFormats, DESIRED_FORMATS),
       formatExploration: oneOf(value.formatExploration, FORMAT_EXPLORATION),
       commercialTies: manyOf(value.commercialTies, COMMERCIAL_TIES),
@@ -332,5 +344,10 @@ export function profileAnswersOf(draft: OnboardingDraft): CreatorProfileAnswers 
     ownServiceKind: draft.ownServiceKind,
     canRecordScreen: draft.screenCapability,
     canShowProduct: draft.productCapability,
+    // ⚠️ THE SCAN'S SIGN-OFFS, CARRIED SO THE SELECTOR CAN SEE THEM. Without
+    // this, `profileQuestionsFor` cannot tell whether the goal question has
+    // anything to ask, and it counted a question its renderer then declined to
+    // draw — a blank step with a Done button, seen on a real account.
+    recurringCtas: draft.profile?.recurring_ctas ?? null,
   }
 }

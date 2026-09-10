@@ -86,12 +86,31 @@ describe('the CTA already said what the videos are for', () => {
     // unchanged question and my claim to have removed it was false for most of
     // them. Widening took it to 23 of 42; the rest genuinely ask for nothing.
     //
-    // ⚖️ SO THE QUESTION IS DELETED RATHER THAN CONDITIONAL. `null` from this
-    // branch means the screen shows nothing at all.
+    // ⚠️⚠️ AND THIS IS WHERE THIS TEST WAS WRONG, IN THE SENTENCE IT WAS MOST
+    // CONFIDENT ABOUT. It used to read: "SO THE QUESTION IS DELETED RATHER THAN
+    // CONDITIONAL. `null` from this branch means the screen shows nothing at
+    // all." The INTENT was right and the MECHANISM was the defect — because the
+    // step around the question kept rendering. A creator saw the header ("2 of
+    // 2"), the summary of her previous answers, and then Done and Skip all with
+    // nothing between them. Reported live on a real account.
+    //
+    // ⚖️ THE QUESTION IS STILL DELETED RATHER THAN SOFTENED. What changed is WHO
+    // DELETES IT: `asksContentGoal` keeps it out of `profileQuestionsFor`, so
+    // the step never counts a question it will not draw. "Shows nothing at all"
+    // is correct of the SET, never of a step that rendered.
+    //
+    // ⚖️ AND THE RENDERER NO LONGER STOPS DRAWING ONCE ANSWERED. The old
+    // condition was `contentGoals.length === 0 ? goalFromCtas(...) : null`,
+    // which blanked the step the instant somebody answered — universally, not
+    // on the 45% of accounts with no inferable sign-off.
     expect(ONBOARDING).toContain('goalFromCtas(draft.profile?.recurring_ctas)')
     expect(ONBOARDING).toContain('goalConfirmationLine(inferred)')
+    // The belt-and-braces guard stays; it is no longer the mechanism.
     expect(ONBOARDING).toContain('if (!inferred) return null')
-    expect(ONBOARDING).toContain('onClick={() => set({ contentGoals: [inferred.goal] })}')
+    // ⚠️ AND THE CONDITION MUST NOT COME BACK. This is the exact text that
+    // produced the blank step, asserted absent so it cannot return quietly.
+    expect(ONBOARDING).not.toContain('draft.contentGoals.length === 0\n      ? goalFromCtas')
+    expect(ONBOARDING).toContain("onClick={() => set({ contentGoals: [inferred.goal], contentGoalsTouched: true })}")
     // The seven chips are gone from this screen entirely.
     expect(ONBOARDING).not.toContain('values={BRIEF_GOALS}')
     expect(ONBOARDING).not.toContain('Pick up to two.')
@@ -100,7 +119,12 @@ describe('the CTA already said what the videos are for', () => {
   it('declining records nothing and asks nothing more', () => {
     // ⚖️ Offering the chips on "Not quite" would be the third asking wearing a
     // no button.
-    expect(ONBOARDING).toContain('onClick={() => set({ contentGoals: [] })}')
+    // ⚖️ DECLINING NOW RECORDS *THAT* IT WAS DECLINED, AND STILL RECORDS NO
+    // GOAL. An empty `contentGoals` meant two different things — nobody asked
+    // yet, or somebody said "not quite" — and the screen could not tell them
+    // apart, so declining looked exactly like an untouched step. The goal
+    // itself is still empty: silence is not "no", and "no" is not a goal.
+    expect(ONBOARDING).toContain("onClick={() => set({ contentGoals: [], contentGoalsTouched: true })}")
     expect(ONBOARDING).not.toContain('Not quite — let me pick')
   })
 })

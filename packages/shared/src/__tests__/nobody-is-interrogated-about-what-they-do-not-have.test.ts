@@ -76,7 +76,19 @@ describe('the fitness creator with nothing to sell is asked five questions and l
     // creator with nothing to sell now answers TWO screens and is left alone —
     // which is exactly what "nobody is interrogated about what they do not
     // have" was always asking for.
-    expect(profileQuestionsFor(FITNESS_CREATOR)).toHaveLength(2)
+    // ⚠️ AND THE COUNT NOW DEPENDS ON HER SIGN-OFFS, WHICH IS THE POINT RATHER
+    // THAN AN INCONVENIENCE. The goal question is asked only when a goal can be
+    // read off her own CTAs, so BOTH creators are stated here instead of one
+    // number standing in for both. This test used to assert TWO against a
+    // fixture carrying no CTAs at all — and the second of those two screens
+    // RENDERED BLANK, which is the defect that made this explicit.
+    const withSignOff = { ...FITNESS_CREATOR, recurringCtas: ['comment CORE and I will send it over'] }
+    expect(profileQuestionsFor(withSignOff)).toHaveLength(2)
+    expect(profileQuestionsFor(withSignOff)).toContain('contentGoals')
+    // ⚖️ NOTHING TO READ MEANS ONE SCREEN, NOT TWO WITH ONE EMPTY. Being asked
+    // less is the whole subject of this file.
+    expect(profileQuestionsFor(FITNESS_CREATOR)).toHaveLength(1)
+    expect(profileQuestionsFor(FITNESS_CREATOR)).not.toContain('contentGoals')
     expect(profileQuestionsFor(FITNESS_CREATOR)).not.toContain('capabilities')
     expect(profileQuestionsFor(FITNESS_CREATOR)).not.toContain('desiredFormats')
   })

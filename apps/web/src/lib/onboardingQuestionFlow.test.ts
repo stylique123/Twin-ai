@@ -25,10 +25,22 @@ describe('the list really does shrink under the creator', () => {
     // `whoYouAre` screen. What this test actually protects is unchanged and is
     // the whole reason it exists: the list SHRINKS as answers arrive, so an
     // index into it can outrun it.
-    const before = profileQuestionsFor({ workKind: 'saas' } as never)
-    const after = profileQuestionsFor({ workKind: 'creator', commercialTies: ['none'] } as never)
-    expect(before.length).toBe(3)
-    expect(after.length).toBe(2)
+    // ⚠️ THE PROPERTY IS ASSERTED AS A PROPERTY NOW, NOT AS TWO NUMBERS. These
+    // counts have already been revised twice by unrelated changes — once when
+    // `desiredFormats` left, once when three questions merged — and a third
+    // time when the goal question became conditional on the creator's own
+    // sign-offs. Each revision made this test look broken while the thing it
+    // protects was never in doubt: THE LIST SHRINKS AS ANSWERS ARRIVE, so an
+    // index into it can outrun it. That is what is asserted.
+    const cta = ['comment CORE and I will send it over']
+    const before = profileQuestionsFor({ workKind: 'saas', recurringCtas: cta } as never)
+    const after = profileQuestionsFor({
+      workKind: 'creator', commercialTies: ['none'], recurringCtas: cta,
+    } as never)
+    expect(before.length).toBeGreaterThan(after.length)
+    // And concretely, so a shrink to zero cannot pass as a shrink.
+    expect(before).toEqual(['whoYouAre', 'contentGoals', 'capabilities'])
+    expect(after).toEqual(['whoYouAre', 'contentGoals'])
   })
 })
 

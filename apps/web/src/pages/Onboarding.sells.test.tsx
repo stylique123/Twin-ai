@@ -112,18 +112,31 @@ describe('the step count is what the change claims', () => {
   // asserted-in-a-commit-message. A creator with nothing to sell answers TWO
   // profile screens; the story screen is the third and is gated separately.
   it('a creator with nothing to sell sees two profile screens, not four', () => {
-    const ids = profileQuestionsFor({
-      workKind: 'creator', audience: 'consumers', audienceKnowledge: 'basics',
-      commercialTies: ['none'],
-    })
-    expect(ids).toEqual(['whoYouAre', 'contentGoals'])
+    // ⚠️ TWO SCREENS REQUIRES A SIGN-OFF TO READ A GOAL OFF, AND THAT IS STATED
+    // HERE NOW. The goal question is asked only when `goalFromCtas` finds
+    // something; this fixture used to carry no CTAs, so the second screen it
+    // asserted was the BLANK ONE a creator reported.
+    const base = {
+      workKind: 'creator' as const, audience: 'consumers' as const,
+      audienceKnowledge: 'basics' as const, commercialTies: ['none' as const],
+    }
+    expect(profileQuestionsFor({
+      ...base, recurringCtas: ['comment CORE and I will send it over'],
+    })).toEqual(['whoYouAre', 'contentGoals'])
+    // ⚖️ AND WITH NOTHING TO READ, ONE SCREEN — never two with one empty.
+    expect(profileQuestionsFor(base)).toEqual(['whoYouAre'])
   })
 
   // ⚖️ AND THE CONDITIONAL ONE IS STILL CONDITIONAL. `capabilities` earns its
   // place only for somebody with a screen to record or a thing to hold up.
   it('a saas creator still gets the capabilities screen', () => {
-    const ids = profileQuestionsFor({ workKind: 'saas' })
-    expect(ids).toEqual(['whoYouAre', 'contentGoals', 'capabilities'])
+    expect(profileQuestionsFor({
+      workKind: 'saas', recurringCtas: ['comment CORE and I will send it over'],
+    })).toEqual(['whoYouAre', 'contentGoals', 'capabilities'])
+    // ⚖️ `capabilities` IS UNAFFECTED BY THE GOAL GATE. It was conditional in
+    // the selector long before `contentGoals` was, and dropping the goal
+    // question must not drop it too.
+    expect(profileQuestionsFor({ workKind: 'saas' })).toEqual(['whoYouAre', 'capabilities'])
   })
 
   // ⚠️ THE THREE MERGED QUESTIONS ARE ALL ON ONE SCREEN, which is the whole
