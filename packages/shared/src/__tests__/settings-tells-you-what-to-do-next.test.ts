@@ -11,9 +11,11 @@
 // area ready.
 import { describe, expect, it } from 'vitest'
 import {
-  setupAreas, setupSummary, panelAreas, SETUP_STATES, SETUP_AREA_IDS,
+  setupAreas, setupSummary, panelAreas, gapAction,
+  SETUP_ACTIONS, SETUP_STATES, SETUP_AREA_IDS,
   type SetupInput,
 } from '../setupAreas'
+import { contentProfile, PROFILE_ITEMS, CONFLICT_ITEM } from '../profileCompletion'
 import type { CreatorProfileAnswers } from '../creatorProfileQuestions'
 
 // ⚠️ `as never` IS NOT A TYPE, IT IS THE ABSENCE OF ONE. Spreading it is not
@@ -263,6 +265,57 @@ describe('one next step, and it moves', () => {
       const shown = panelAreas(areas, null).map((a) => a.id)
       expect(shown).not.toContain('brand_kit')
       expect(shown.length).toBe(areas.length - 1)
+    })
+  })
+
+  // ⚠️⚠️ THE PANEL LISTED FOUR THINGS AND NONE OF THEM COULD BE ADDED. Each gap
+  // rendered as a list row with its label and what answering it would change,
+  // and no handler at all — because no destination was declared for them
+  // anywhere. `PROFILE_ITEMS` carries label, unlocks, reader and weight, and
+  // zero occurrences of an action.
+  describe('every completion gap has somewhere to go', () => {
+    // ⚖️ TOTALITY IS THE WHOLE POINT. A tenth profile item must be a compile
+    // error, not another row that does nothing — so this asserts the mapping
+    // covers the union exactly, from the union itself rather than from a list
+    // written out here by hand.
+    // ⚠️ THE IDS COME FROM THE REAL LIST, NOT FROM A COPY WRITTEN OUT HERE. A
+    // hand-kept list in a totality test is the one thing that cannot detect a
+    // new item being added.
+    const EVERY_ID = [...PROFILE_ITEMS.map((i) => i.id), CONFLICT_ITEM.id]
+
+    it('every profile item id maps to a real action', () => {
+      expect(EVERY_ID.length).toBeGreaterThan(8)
+      for (const id of EVERY_ID) {
+        expect(SETUP_ACTIONS as readonly string[], `${id} has no destination`)
+          .toContain(gapAction(id))
+      }
+    })
+
+    it('the gaps a real creator sees are all actionable', () => {
+      // Straight off the panel a brand-new creator actually sees.
+      // ⚠️ `productCount` IS NOT A `ProfileInput` FIELD, and my first version of
+      // this call passed it. Vitest ran the test green — it does not typecheck
+      // — and `check_test_typecheck_ratchet` caught it. The product gap is
+      // driven by `answers`, not by a count, which is the distinction the extra
+      // field was quietly papering over.
+      const gaps = contentProfile({
+        answers: nothing.answers, dnaReady: false, cta: null,
+      }).gaps
+      expect(gaps.length).toBeGreaterThan(0)
+      for (const g of gaps) {
+        expect(SETUP_ACTIONS as readonly string[], `${g.id} has no destination`)
+          .toContain(gapAction(g.id))
+      }
+    })
+
+    // ⚖️ AND EACH GOES SOMEWHERE THAT CAN ACTUALLY ANSWER IT. The product gap is
+    // about which records exist and no amount of profile editing settles it; the
+    // CTA has its own editor; the scan has its own surface.
+    it('the destinations are the ones that can answer the question', () => {
+      expect(gapAction('productContext')).toBe('manage_products')
+      expect(gapAction('cta')).toBe('edit_cta')
+      expect(gapAction('dnaReady')).toBe('view_dna')
+      expect(gapAction('goal')).toBe('edit_profile')
     })
   })
 

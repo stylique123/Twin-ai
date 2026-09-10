@@ -6,7 +6,7 @@ import { saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKi
 import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import {
   contentProfile, brandKitStatus, productDnaStatus, loadProductEntities,
-  setupAreas, setupSummary, panelAreas, type SetupArea, type SetupState,
+  setupAreas, setupSummary, panelAreas, gapAction, type SetupArea, type SetupState, type SetupAction, type ProfileItemId,
   readStoredBrief, savePreScriptBrief, suggestedCta, whatTwinLearned, heardCount, BASIS_LABEL, editTargetOf,
 } from '@twinai/shared'
 import type { ContentProfile, BrandKitStatus, ProductDnaStatus } from '@twinai/shared'
@@ -354,8 +354,15 @@ export default function Settings() {
   /** ⚖️ ONE PLACE THAT KNOWS WHERE EACH ACTION GOES. A card whose button has no
    *  destination is the defect this rebuild is for, so the mapping is total and
    *  the compiler enforces it. */
-  const goTo = (a: SetupArea) => {
-    switch (a.action) {
+  const goTo = (a: SetupArea) => goToAction(a.action)
+  /** ⚖️ AND THE SAME MAPPING SERVES THE COMPLETION GAPS. They used to render as
+   *  plain list rows with no handler at all — four things a creator was told to
+   *  add, with no way to add any. `gapAction` names each one's destination in
+   *  shared, totally, so they arrive here as actions this switch already
+   *  handles. Nothing new is invented; an action with no destination is the
+   *  defect this mapping was written about. */
+  const goToAction = (action: SetupAction) => {
+    switch (action) {
       case 'add_product': return nav('/products?add=1')
       case 'manage_products': return nav('/products')
       case 'setup_brand_kit': return setTab('brand')
@@ -735,6 +742,7 @@ export default function Settings() {
               (voiceProfile as { recurring_ctas?: unknown[] } | null)?.recurring_ctas)}
             ctaOpen={ctaOpen}
             setCtaOpen={setCtaOpen}
+            onGapAction={(id) => goToAction(gapAction(id))}
             content={content}
             productDna={productDna}
             brandKit={kitStatus}
@@ -1325,8 +1333,11 @@ function TeamSeats() {
  */
 function ProfileStatus({
   content, productDna, brandKit, cta, ctaLoadFailed, onCtaRetry, onCtaChange, onCtaCommit, ctaSaved, ctaErr,
-  ctaSuggestion, ctaOpen, setCtaOpen,
+  ctaSuggestion, ctaOpen, setCtaOpen, onGapAction,
 }: {
+  /** ⚖️ WHERE EACH COMPLETION GAP SENDS THEM. Resolved by `gapAction` in shared
+   *  and dispatched by the page's one destination switch. */
+  onGapAction: (id: ProfileItemId) => void
   /** ⚖️ OWNED BY THE PAGE, NOT BY THIS COMPONENT. Every route to the CTA editor
    *  except this panel's own button was a no-op while the state lived here. */
   ctaOpen: boolean
@@ -1390,12 +1401,25 @@ function ProfileStatus({
       {content.gaps.length > 0 && (
         <ul className="mt-4 space-y-2">
           {content.gaps.map((g) => (
-            <li key={g.id} className="rounded-lg border border-white/10 px-3 py-2">
-              <p className="text-sm text-cream">{g.label}</p>
-              {/* ⚖️ WHAT IT UNLOCKS, NOT WHAT IS MISSING. A creator can decide
-                  whether to spend thirty seconds on this; "incomplete" only tells
-                  them they are behind. */}
-              <p className="mt-0.5 text-xs text-stone">Adding this changes {g.unlocks}.</p>
+            <li key={g.id}>
+              {/* ⚠️⚠️ THESE WERE PLAIN LIST ROWS. Four things a creator was told
+                  to add, each explaining what adding it would change, and NOT
+                  ONE OF THEM CLICKABLE — there was no destination declared for
+                  them anywhere. A panel that names work and offers no way to do
+                  it is worse than one that says nothing.
+                  ⚖️ THE WHOLE ROW IS THE CONTROL, matching the setup cards
+                  above, so the target is the size of the thing you read. */}
+              <button
+                type="button"
+                onClick={() => onGapAction(g.id)}
+                className="w-full rounded-lg border border-white/10 px-3 py-2 text-left transition-colors hover:border-white/20 hover:bg-white/[0.04]"
+              >
+                <p className="text-sm text-cream">{g.label}</p>
+                {/* ⚖️ WHAT IT UNLOCKS, NOT WHAT IS MISSING. A creator can decide
+                    whether to spend thirty seconds on this; "incomplete" only
+                    tells them they are behind. */}
+                <p className="mt-0.5 text-xs text-stone">Adding this changes {g.unlocks}.</p>
+              </button>
             </li>
           ))}
         </ul>

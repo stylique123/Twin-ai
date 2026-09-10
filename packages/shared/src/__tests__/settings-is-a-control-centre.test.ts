@@ -59,7 +59,13 @@ describe('every card actually goes somewhere', () => {
   it('the destination map is total, so a new action cannot be forgotten', () => {
     // ⚖️ A `switch` OVER THE UNION WITH NO DEFAULT. Adding an action without a
     // destination becomes a compile error rather than a dead button.
-    const go = PAGE.slice(PAGE.indexOf('const goTo = (a: SetupArea)'))
+    // ⚠️ POINTED AT `goToAction`, WHERE THE SWITCH ACTUALLY LIVES NOW. `goTo`
+    // became a one-line delegate when the completion gaps started dispatching
+    // actions too, and this slice still passed — but only because it ran PAST
+    // the delegate into the switch below it. A test that passes by accident of
+    // adjacency is one edit away from passing by accident of nothing.
+    const go = PAGE.slice(PAGE.indexOf('const goToAction = (action: SetupAction)'))
+    expect(go, 'the destination switch could not be located').not.toBe('')
     const body = go.slice(0, go.indexOf('\n  }'))
     for (const a of ['add_product', 'manage_products', 'setup_brand_kit', 'view_dna', 'edit_profile', 'edit_cta']) {
       expect(body, a).toContain(`case '${a}'`)
