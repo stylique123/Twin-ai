@@ -180,8 +180,8 @@ describe('the creator’s own account — option 3', () => {
   it('a thin account is told the count, not that Twin is not for them', () => {
     const m = messageForOwnAccount({ usable: 3, checked: 6 })
     expect(m.kind).toBe('thin')
-    expect(m.headline).toBe('3 of the 6 videos we looked at are you talking to the camera')
-    expect(m.detail).toContain('enough to get started')
+    expect(m.headline).toBe('We could only read 3 of the 6 videos we looked at clearly enough to learn from')
+    expect(m.detail).toBe('Twin will keep learning as you post.')
     expect(`${m.headline} ${m.detail}`.toLowerCase()).not.toContain('not for you')
   })
 
@@ -194,23 +194,45 @@ describe('the creator’s own account — option 3', () => {
     expect(m.headline).not.toMatch(/^We found/)
   })
 
-  it('one usable video reads as "is", not "are"', () => {
-    expect(messageForOwnAccount({ usable: 1, checked: 6 }).headline)
-      .toBe('1 of the 6 videos we looked at is you talking to the camera')
-  })
-
   it('one video looked at reads as "video", not "videos"', () => {
     expect(messageForOwnAccount({ usable: 0, checked: 1 }).headline)
-      .toBe('None of the 1 video we looked at are you talking to the camera')
+      .toBe('We could not read any of the 1 video we looked at clearly enough to learn from')
   })
 
-  // ⚖️ THE ZERO CASE STILL SAYS NO — but as a measurement of what we sampled,
-  // not a verdict on the person, and it names the one thing that changes it.
-  it('zero usable says no, names the sample, and says what would change it', () => {
+  // ⚠️ THE DETECTOR IS WHAT FAILS, SO THE SENTENCE MUST NOT INSTRUCT HER.
+  // "Post one video where you talk straight to the camera" was measured wrong
+  // on 10 of 10 accounts, Hormozi included at 1 usable of 6 — an account that
+  // is nothing BUT talking to camera. Telling a creator to fix Twin's false
+  // negative reads as a permanent statement about her account, not a retryable
+  // refusal. Every branch that speaks must locate the limit in OUR reading.
+  it('never tells the creator to post, film, or scan again — on any branch', () => {
+    for (const [usable, checked] of [[0, 1], [0, 6], [1, 6], [3, 6]] as const) {
+      const m = messageForOwnAccount({ usable, checked })
+      const said = `${m.headline} ${m.detail}`.toLowerCase()
+      for (const blame of ['post one', 'scan again', 'straight to the camera', 'come back']) {
+        expect(said).not.toContain(blame)
+      }
+      expect(said).toContain('we could')
+    }
+  })
+
+  // ⚖️ AND IT STAYS TRUE AFTER THE DETECTOR IS FIXED. A better detector does
+  // not make this sentence a lie; it makes it report a bigger number. That is
+  // the test that the wording is a measurement and not a promise.
+  it('the same sentence survives a better detector, reporting a better number', () => {
+    expect(messageForOwnAccount({ usable: 1, checked: 6 }).headline)
+      .toBe('We could only read 1 of the 6 videos we looked at clearly enough to learn from')
+    expect(messageForOwnAccount({ usable: 4, checked: 6 }).headline)
+      .toBe('We could only read 4 of the 6 videos we looked at clearly enough to learn from')
+  })
+
+  // ⚖️ THE ZERO CASE STILL SAYS NO — but as a measurement of what WE could
+  // read, not a verdict on the person, and it names the sample it read.
+  it('zero usable says no and names the sample, without naming a culprit', () => {
     const m = messageForOwnAccount({ usable: 0, checked: 6 })
     expect(m.kind).toBe('none')
-    expect(m.headline).toBe('None of the 6 videos we looked at are you talking to the camera')
-    expect(m.detail).toContain('come back and scan again')
+    expect(m.headline).toBe('We could not read any of the 6 videos we looked at clearly enough to learn from')
+    expect(m.detail).toBe('Twin will keep learning as you post.')
   })
 
   it('a healthy account is shown nothing at all', () => {

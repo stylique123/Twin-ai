@@ -114,3 +114,44 @@ export function whatTwinLearned(profile: unknown): LearnedFact[] {
 export function heardCount(facts: readonly LearnedFact[]): number {
   return facts.filter((f) => f.basis === 'observed_audio').length
 }
+
+// ── ONE FACT, ONE PATH ──────────────────────────────────────────────────────
+//
+// ⚠️⚠️ THIS PANEL AND THE CREATOR DNA BLOCK SHOWED THE SAME THREE FACTS TWICE.
+// Niche, vocabulary and audience appeared in both, in different words, on the
+// same tab — and I INTRODUCED HALF OF IT: the panel above was a correct fix to
+// a card that opened nothing, added without removing what it duplicated. That
+// is the two-authorities defect on a screen. A creator reads her niche twice
+// and cannot tell which one Twin writes from.
+//
+// ⚖️ AND IT DEFEATED THE PROVENANCE, which is the reason the panel exists. A
+// per-fact "heard in your videos" is only meaningful if each fact appears ONCE.
+// Two blocks means one copy carries provenance and its twin does not, which
+// makes the honest one look arbitrary rather than earned.
+//
+// ⚖️ SO THE PANEL IS THE READ VIEW AND THE DNA BLOCK IS THE EDIT FORM. The one
+// requirement that makes that safe is that Edit lands on the field she was
+// looking at — never a second summary to scroll for it. This map is that path.
+
+/**
+ * The Creator DNA field a learned fact edits into, or `null` when Twin's
+ * reading is the only source and there is nothing for her to type.
+ *
+ * ⚠️ ONLY THE FIELDS THE EDIT FORM ACTUALLY HAS. `vocabulary`, `tone`,
+ * `pacing`, `hook_style` and `recurring_ctas` are read out of her videos and
+ * have no input — offering an Edit that lands nowhere is the dead card again.
+ */
+export const EDITS_INTO: Readonly<Record<string, string | null>> = Object.freeze({
+  niche: 'niche',
+  audience: 'audience',
+  vocabulary: null,
+  tone: null,
+  pacing: null,
+  hook_style: null,
+  recurring_ctas: null,
+})
+
+/** Where tapping this fact's Edit should land, or `null` if it offers none. */
+export function editTargetOf(fact: Pick<LearnedFact, 'field'>): string | null {
+  return EDITS_INTO[fact.field] ?? null
+}

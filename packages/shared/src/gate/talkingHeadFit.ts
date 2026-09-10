@@ -312,19 +312,32 @@ export function messageForOwnAccount(counts: AccountCounts): AccountMessage {
   // 3. "None of the six we looked at" is a measurement; "Twin isn't for you" is
   // a verdict on the person, and the difference is whether they come back.
   const looked = `${checked} ${checked === 1 ? 'video' : 'videos'}`
+  // ⚠️ THE SENTENCE REPORTS TWIN'S READING, NOT THE CREATOR'S POSTING. The
+  // previous wording — "Post one video where you talk straight to the camera,
+  // then come back and scan again" — told the creator to fix a problem Twin
+  // has. It was WRONG ON 10 OF 10 MEASURED ACCOUNTS, Hormozi among them at 1
+  // usable of 6, on an account that is nothing but talking to camera. The
+  // detector, not the account, is what fails: ~13.7% of ~51 videos read as
+  // usable. An instruction built on a false negative is worse than a refusal,
+  // because a refusal gets retried and this reads as a permanent statement
+  // about her account.
+  //
+  // ⚖️ SO IT SAYS WHAT HAPPENED AND PROMISES NOTHING. "We could only read N"
+  // locates the limit in Twin's reading, which is where it actually is, and
+  // stays true after the detector is fixed — it just reports a better number.
+  // No instruction, because Twin has no instruction to give that would help.
   if (usable < 1) {
     return {
       kind: 'none',
-      headline: `None of the ${looked} we looked at are you talking to the camera`,
-      detail:
-        'Twin writes scripts that sound like you, and it learns that from watching you speak. Post one video where you talk straight to the camera, then come back and scan again.',
+      headline: `We could not read any of the ${looked} we looked at clearly enough to learn from`,
+      detail: 'Twin will keep learning as you post.',
     }
   }
   if (usable < ENOUGH_TO_SOUND_LIKE_YOU) {
     return {
       kind: 'thin',
-      headline: `${usable} of the ${looked} we looked at ${usable === 1 ? 'is' : 'are'} you talking to the camera`,
-      detail: 'That is enough to get started. The more you post talking straight to the camera, the more your scripts will sound like you.',
+      headline: `We could only read ${usable} of the ${looked} we looked at clearly enough to learn from`,
+      detail: 'Twin will keep learning as you post.',
     }
   }
   return { kind: 'fine', headline: '', detail: '' }
