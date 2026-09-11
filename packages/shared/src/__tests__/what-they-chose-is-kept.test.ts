@@ -52,18 +52,28 @@ describe('the choice is written where it can be counted', () => {
     // `selected_goal: goal` would have filled the table with essays and made
     // every count meaningless. The name RESOLVES, so the parse check is silent;
     // only reading the surrounding scope catches it.
-    const region = EDGE.slice(EDGE.indexOf("from('generation_choices')"))
-      .slice(0, 1400)
-    expect(region).toMatch(/selected_goal: typeof body\.goal === 'string'/)
-    expect(region).not.toMatch(/selected_goal: goal\b/)
-    expect(region).not.toMatch(/selected_focus: focus\b/)
+    // ⚠️⚠️ THE ANCHOR MOVED AND SO DID THE RIGHT PLACE FOR THIS ASSERTION. The
+    // insert now lives in `recordWhatWasChosen`, which takes `rawGoal` — so the
+    // trap is no longer inside the insert, it is at the CALL SITES, where a
+    // careless `rawGoal: goal` would pass the directive paragraph instead of the
+    // enum. That is where this now asserts, and there are two of them because the
+    // rescue path records its choices too.
+    expect(EDGE.match(/rawGoal: body\.goal,/g)!.length).toBe(2)
+    expect(EDGE.match(/rawFocus: body\.focus,/g)!.length).toBe(2)
+    expect(EDGE).not.toMatch(/rawGoal: goal\b/)
+    expect(EDGE).not.toMatch(/rawFocus: focus\b/)
+    // And the normaliser inside the recorder still refuses a non-string, which
+    // theRescueKeptNoRecordOfWhatSheChose proves by EXECUTING it.
+    expect(EDGE).toMatch(/typeof v === 'string' && v\.trim\(\) !== '' \? v\.trim\(\)\.slice\(0, 64\) : null/)
   })
 
   it('uses the field name the wire actually sends', () => {
     // ⚖️ The request carries `reference_use`; the compiler takes `referenceUse`.
     // Reading the camelCase name off the body yields undefined forever — a column
     // that is always null and looks like "nobody sets a preference".
-    expect(EDGE).toMatch(/reference_use: typeof body\.reference_use === 'string'/)
+    // ⚠️ RE-ANCHORED ONTO THE CALL SITES, where the snake_case name is now read.
+    expect(EDGE.match(/rawReferenceUse: body\.reference_use,/g)!.length).toBe(2)
+    expect(EDGE).not.toMatch(/rawReferenceUse: body\.referenceUse/)
   })
 
   it('cannot fail the paid generation it runs inside', () => {

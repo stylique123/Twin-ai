@@ -105,6 +105,10 @@ describe('the product a script was written about is recorded', () => {
 
   it('and selected_product_id is still read from it', () => {
     const bp = read('supabase', 'functions', 'generate-blueprint', 'index.ts')
-    expect(bp).toMatch(/selected_product_id[^\n]*ownedEntity\?\.id/)
+    // ⚠️ RE-ANCHORED: the insert moved into `recordWhatWasChosen`, a shared
+    // recorder, because the RESCUE path wrote neither row and 13 of 13
+    // generations on 2026-09-10 came through it. The product now reaches the row
+    // as a named argument at BOTH call sites, so both are asserted.
+    expect(bp.match(/selectedProductId: ownedEntity\?\.id \?\? null/g)!.length).toBe(2)
   })
 })

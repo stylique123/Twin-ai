@@ -42,8 +42,13 @@ describe('the row that was written and never read', () => {
     // project's watch list have proved stale, each one nearly causing a rebuild
     // of working code; a reader for a column nothing fills is the same waste in
     // the other direction.
-    expect(EDGE).toMatch(/selected_product_id: ownedEntity\?\.id \?\? null/)
+    // ⚠️ THE WRITER MOVED INTO A SHARED RECORDER, IT DID NOT DISAPPEAR — and the
+    // reason is the same grep-for-the-writer discipline this test was written
+    // for: the RESCUE path wrote neither row, and 13 of 13 generations on
+    // 2026-09-10 took it. Both call sites now supply the product.
+    expect(EDGE.match(/selectedProductId: ownedEntity\?\.id \?\? null/g)!.length).toBe(2)
     expect(EDGE).toMatch(/from\('generation_choices'\)/)
+    expect(EDGE.match(/await recordWhatWasChosen\(admin, \{/g)!.length).toBe(2)
   })
 
   it('the client reads it back, keyed on the generation', () => {
