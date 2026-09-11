@@ -31,13 +31,28 @@ describe('the map reaches the writer at all', () => {
   // worse than no guard, so the anchor is now the one clause only the
   // owned-entity read carries.
   it('selects community_map, or the block could only ever be empty', () => {
-    const marker = bp.indexOf(".in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])")
-    expect(marker, 'the owned-entity query was not found by its relationship filter').toBeGreaterThan(-1)
-    const selStart = bp.lastIndexOf('.select(', marker)
-    expect(selStart, 'no .select() precedes the owned-entity relationship filter').toBeGreaterThan(-1)
-    const sel = bp.slice(selStart, marker)
-    // The slice must be the select and its immediate chain, not a swallowed
-    // half of the file — a runaway anchor would match `community_map` anywhere.
+    // ⚠️ RE-ANCHORED ONTO THE CHOSEN LOOKUP, WHICH IS NOW THE ONLY LOOKUP. This
+    // pointed at the oldest-first stopgap's narrow relationship list; the stopgap
+    // is deleted, because it was the shared cause of three audited compliance
+    // failures. The PROPERTY is unchanged — the query that resolves the product
+    // must select `community_map` or the block can only ever be empty — so the
+    // anchor moves and the assertion stays.
+    const marker = bp.indexOf('const { data: picked } = await admin')
+    expect(marker, 'the chosen-product query was not found').toBeGreaterThan(-1)
+    // ⚠️ AND THE DIRECTION CHANGED WITH THE ANCHOR, WHICH IS WHY THIS IS NOT A
+    // ONE-WORD EDIT. The old marker was the relationship filter, which sits
+    // AFTER the select, so `lastIndexOf` looked backwards correctly. The new
+    // marker is the query's own declaration, which sits BEFORE it — the same
+    // `lastIndexOf` then walked back into an unrelated query and swallowed 5,340
+    // characters, which the length bound below caught. Searching FORWARD is the
+    // correct pairing for this anchor.
+    const selStart = bp.indexOf('.select(', marker)
+    expect(selStart, 'no .select() follows the chosen-product query').toBeGreaterThan(-1)
+    // To the end of that line: the select argument is one line, and stopping
+    // there excludes the long comment that follows it inside the chain.
+    const sel = bp.slice(selStart, bp.indexOf('\n', selStart))
+    // The slice must be the select call itself, not a swallowed half of the file
+    // — a runaway anchor would match `community_map` anywhere.
     expect(sel.length).toBeLessThan(600)
     expect(sel).toMatch(/community_map/)
   })
