@@ -7155,6 +7155,49 @@ Deno.serve(async (req: Request) => {
       return `${FENCE_OPEN} ${label}\n${clean}\n${FENCE_CLOSE}`
     }
 
+    // ── THE HOOK FORMULA IS A TEMPLATE, AND THE PROMPT USED TO FORBID ITS
+    //    OWN INPUT ──────────────────────────────────────────────────────────
+    //
+    // ⚠️⚠️ TWO INSTRUCTIONS CONTRADICTED EACH OTHER, ONE SCREEN APART. The scan
+    // is told to produce `hook_style` as a REUSABLE FILL-IN TEMPLATE — dna.ts and
+    // worker/src/voice.ts both give the example "[surprising number] + [who it is
+    // for] + comment [KEYWORD]" — and that string was handed to the writer raw,
+    // labelled only "Hook formula". Meanwhile this same prompt says: "A
+    // PLACEHOLDER IS A FAILED BEAT, NOT A DRAFT. Never write [Phone Model],
+    // [product name] ... or any other stand-in for a specific you do not have."
+    //
+    // So the writer was given a bracketed template to emulate and told never to
+    // write a bracket. Nothing said which of the two applied to this input, and a
+    // model handed a contradiction picks one.
+    //
+    // ⚠️ THE ORIGINAL REPORT FOR THIS DID NOT REPRODUCE, AND THE FIX IS STILL
+    // WORTH MAKING. An audit filed "[KEYWORD] unfilled, 3 runs". Measured on
+    // production: of 98 stored blueprints ONE contains '[KEYWORD]' and six contain
+    // any bracketed token, and of the 13 runs that audit covered, ZERO contain
+    // either — the six are June/July artifacts predating `normalizeHookLine`. The
+    // brackets the creator saw were most plausibly her DNA CARD, which renders
+    // `hook_style` verbatim as an editable field. That is a different surface and
+    // it is not fixed here. What IS real is this contradiction, and six blueprints
+    // carrying brackets is six too many.
+    //
+    // ⚖️ IT NAMES WHERE THE FILLS COME FROM, because "fill it in" with no source
+    // is an invitation to invent one. Every slot must be filled from a fact
+    // already in this prompt — her own numbers, her audience, her vocabulary, her
+    // recurring CTAs — and a slot with no such fact is a slot the formula drops,
+    // not a bracket to ship.
+    //
+    // ⚖️ AND IT IS SILENT WHEN THERE IS NO FORMULA. An empty `hook_style` gets no
+    // line at all rather than a rule about a template that does not exist.
+    const hookFormulaRule = String(vp.hook_style ?? '').trim() === ''
+      ? ''
+      : '\n  ⚠️ THE LINE ABOVE IS A TEMPLATE, NOT A SENTENCE TO REPRODUCE. Anything'
+        + ' in [square brackets] is a SLOT. Replace every slot with a specific drawn'
+        + ' from THIS prompt — her own numbers, her audience, her vocabulary, her own'
+        + ' call to action — and if no fact here can fill a slot, rewrite the opener'
+        + ' without it. NEVER write a bracket into a hook, a script line or a shot:'
+        + ' the placeholder rule above applies to this input too, and a creator'
+        + ' cannot read "[KEYWORD]" aloud.'
+
     const hookPatternsLine = hookPatterns.length
       ? hookPatterns.join(' | ')
       : 'NONE STORED. Build 5 DISTINCT opener moves that fit this niche and voice (contrarian claim, number drop, confession, direct callout, curiosity gap) and write one hook from each.'
@@ -7178,7 +7221,7 @@ Deno.serve(async (req: Request) => {
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
 - Pacing: ${vp.pacing ?? 'fast'}
-- Hook formula: ${vp.hook_style ?? ''}
+- Hook formula (A FILL-IN TEMPLATE, NOT A LINE TO COPY): ${vp.hook_style ?? ''}${hookFormulaRule}
 - Hook patterns (distinct opener moves — use a DIFFERENT one per hook): ${hookPatternsLine}
 - Their video FORMATS (their real playbook — adapt ONE of these to the reference for the concept.premise): ${formatsLine}
 - Their TITLE style (follow this shape for the packaging.titles): ${titleStyleLine}
