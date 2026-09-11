@@ -145,13 +145,18 @@ describe('the obligation is reachable, and it is checked', () => {
     expect(CARD).toMatch(/p\.relationship === 'AFFILIATE' \|\| p\.relationship === 'SPONSOR'/)
   })
 
-  it('but the STOPGAP still cannot auto-select one', () => {
-    // ⚠️ THE ASYMMETRY IS THE POLICY. A creator asking for a video about their
-    // sponsored product has said so; auto-selecting one they never mentioned
-    // would infer a paid promotion from nothing.
-    const stopgap = EDGE.slice(EDGE.indexOf('data: stopgapEntity'))
-    expect(stopgap.slice(0, 900)).toMatch(/\.in\('relationship', \['OWN_PRODUCT', 'OWN_SERVICE'\]\)/)
-    expect(stopgap.slice(0, 900)).not.toMatch(/'SPONSOR'/)
+  it('and NOTHING auto-selects one, because nothing auto-selects at all', () => {
+    // ⚠️ THE ASYMMETRY THIS ASSERTED IS NOW MOOT, AND IN THE SAFE DIRECTION. It
+    // checked that the oldest-first stopgap refused AFFILIATE and SPONSOR, so a
+    // paid promotion could never be inferred from silence. The stopgap is
+    // deleted entirely — it was the shared cause of three audited compliance
+    // failures — so there is no server-side selection of any relationship.
+    //
+    // ⚖️ ASSERTED AS AN ABSENCE RATHER THAN DELETED, because "no path picks a
+    // sponsor the creator never named" is the property, and the strongest form
+    // of it is that no path picks anything. A reintroduced fallback fails here.
+    expect(EDGE).not.toMatch(/stopgapEntity/)
+    expect(EDGE).toMatch(/const ownedEntity = declinedAProduct \? null : chosenEntity/)
   })
 
   it('refuses the script, and refunds, rather than patching it', () => {

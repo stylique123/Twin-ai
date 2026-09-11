@@ -171,31 +171,60 @@ describe('the edge honours the choice, and this pins it there', () => {
     expect(block).toMatch(/\.eq\('owner_id', ownerId\)/)
     expect(block).toMatch(/\.in\('relationship', \['OWN_PRODUCT', 'OWN_SERVICE', 'AFFILIATE', 'SPONSOR'\]\)/)
     expect(block).toMatch(/\.is\('archived_at', null\)/)
+    // ⚠️⚠️ THE FILTER THAT MAKES IT A CHOICE, AND IT WAS NOT ASSERTED ANYWHERE. A
+    // MUTANT FOUND THIS: deleting `.eq('id', requestedProductId)` left every
+    // other assertion in this file — whose title is "the writer never picks which
+    // product" — passing, while the query returned an arbitrary owned row. That
+    // is the writer picking, which is the one thing this file exists to forbid,
+    // and it mattered more once the oldest-first fallback was deleted, because
+    // this is now the ONLY query that resolves the subject.
+    expect(block).toMatch(/\.eq\('id', requestedProductId\)/)
   })
 
-  it('and the STOPGAP still refuses a paid tie', () => {
-    // ⚠️ THE HALF THAT MUST NOT WIDEN. If this ever matches the chosen lookup's
-    // list, Twin can hand a creator a script about a sponsor they never named.
-    const at = EDGE.indexOf('stopgapEntity')
-    expect(at).toBeGreaterThan(-1)
-    const block = EDGE.slice(at, at + 1200)
-    expect(block).toMatch(/\.in\('relationship', \['OWN_PRODUCT', 'OWN_SERVICE'\]\)/)
-    expect(block).not.toMatch(/SPONSOR/)
-    expect(block).not.toMatch(/AFFILIATE/)
+  // ⚠️⚠️ THREE ASSERTIONS HERE USED TO PIN THE STOPGAP AS A PROPERTY, AND ONE OF
+  // THEM WAS TITLED "the stopgap survives". It does not survive, and keeping the
+  // assertions would have made the three compliance failures below unfixable
+  // without deleting a green test — which is exactly how a defect acquires
+  // tenure. Asking which was wrong: the CODE was wrong and the tests faithfully
+  // described it. What they described was never a property; it was a placeholder
+  // their own comments called a stopgap, named as such, and then froze.
+  //
+  // The assertions they carried that ARE properties are kept above and below:
+  // the chosen lookup's relationship list, the refusal to auto-select among
+  // several, and the decline. Only the fallback itself is gone.
+  it('NOTHING is the subject unless it was selected', () => {
+    // ⚠️⚠️ THE SHARED CAUSE OF THREE AUDITED COMPLIANCE FAILURES, all on one
+    // creator with an owned coaching service and an affiliate band:
+    //
+    //   run 8      the band was selected and the script PITCHED THE COACHING,
+    //              with an invented launch date and a "link in bio" she has not.
+    //   runs 7, 10 the band was selected, the stopgap made `ownedEntity` truthy,
+    //              so the mention branch never ran, the writer never heard the
+    //              band existed, and it invented a stance AGAINST the product she
+    //              earns commission on — with no disclosure, because the
+    //              affiliate product was not in the script arguing against it.
+    //
+    // All three are the writer improvising on receiving nothing. When no product
+    // was selected the correct output is a script with NO PRODUCT IN IT.
+    expect(EDGE).toMatch(/const ownedEntity = declinedAProduct \? null : chosenEntity/)
   })
 
-  it('the choice outranks the stopgap, and every reader sees it', () => {
-    // ⚠️ THE ANCHOR GREW, THE RULE DID NOT WEAKEN. This pinned the exact
-    // expression `chosenEntity ?? stopgapEntity`; a third outcome now sits in
-    // front of it — the creator answering "None of these", which must also beat
-    // the stopgap or a decline would silently produce a script about the oldest
-    // product. The precedence being asserted is the same one, with one more
-    // case, so the assertion follows the expression rather than being dropped.
-    expect(EDGE).toMatch(/const ownedEntity = declinedAProduct \? null : \(chosenEntity \?\? stopgapEntity\)/)
-    expect(EDGE).toMatch(/data: stopgapEntity/)
+  it('and the fallback is GONE, not merely unreferenced', () => {
+    // ⚖️ THE QUERY GOES WITH THE EXPRESSION. A dead lookup left in place is the
+    // next person's "this already reads the library, I just need to use it".
+    expect(EDGE).not.toMatch(/stopgapEntity/)
+    expect(EDGE).not.toMatch(/\.order\('created_at', \{ ascending: true \}\)[\s\S]{0,200}maybeSingle/)
   })
 
-  it('the stopgap survives for a client that sends no choice', () => {
-    expect(EDGE).toMatch(/\.order\('created_at', \{ ascending: true \}\)/)
+  it('an auto-select is untouched, because it was never the server\'s to make', () => {
+    // ⚠️ THE COST I REPORTED FOR THIS CHANGE WAS WRONG, AND THIS IS THE
+    // ASSERTION THAT SAYS SO. I told the owner removing the stopgap would cost
+    // single-product creators the `auto` convenience. It does not:
+    // `selectProduct` auto-selects on the CLIENT, and V2Building sends that id as
+    // `selected_product_id` for BOTH `chosen` and `auto`, so an auto-select
+    // arrives as an explicit selection and flows through `chosenEntity`. What was
+    // deleted is only the server picking with no id at all.
+    expect(BUILD).toMatch(
+      /decided\.kind === 'chosen' \|\| decided\.kind === 'auto'\s*\n?\s*\? decided\.productId/)
   })
 })
