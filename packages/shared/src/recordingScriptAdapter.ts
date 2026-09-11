@@ -30,6 +30,43 @@ function captionFromLine(line: string): string {
   return head.replace(/[.,;:!?]+$/, '')
 }
 
+/**
+ * The shots that correspond to a SPOKEN BEAT, in beat order.
+ *
+ * ⚠️⚠️ `shot_list` IS NOT PARALLEL TO `script`, AND INDEXING IT AS IF IT WERE
+ * SHIFTED EVERY FRAMING ON MOST RUNS. Measured on all 13 production generations
+ * of 2026-09-10:
+ *
+ *   shot_list length = script length + 1 .................. 13 of 13
+ *   shots with shot_type 'cover_frame' .................... exactly 1 per run
+ *   that cover frame sits at INDEX 0 ...................... 9 of 13
+ *   ...and at the LAST index ............................. 4 of 13
+ *
+ * A cover frame is the thumbnail still. It is not a beat anybody performs, and
+ * its position is not stable. So on the 9 runs where it came first, every
+ * `framingFor(i)` read the shot BEFORE the beat it was describing: the hook got
+ * the thumbnail's framing, beat two got the hook's, and so on to the end.
+ *
+ * ⚖️ THIS IS THE EVIDENCE THE PREVIOUS CHANGE SAID IT DID NOT HAVE. The comment
+ * at the `framingFor(i + 1, ...)` call site reads "this indexes `shot_list`, a
+ * DIFFERENT array from `script`, whose alignment with the script is its own
+ * question and not one this change has evidence about". It was right to stop
+ * there. The numbers above are that question answered.
+ *
+ * ⚖️ STRUCTURAL, NOT A NAME HEURISTIC. `shot_type` is a declared field and it
+ * separates the two populations exactly — 74 'talking_head' against 13
+ * 'cover_frame', and no 'cover_frame' whose name lacks the word. A rule keyed on
+ * the shot's TEXT would be a guess written down; this is the model's own label.
+ *
+ * ⚖️ AND ONLY `cover_frame` IS EXCLUDED. `b_roll` is left in place on purpose:
+ * production carries ZERO shots with that type, and the b-roll extraction below
+ * keys on a NAME heuristic rather than the type, so moving it would be a second
+ * change with no evidence — exactly what the comment above declined to do.
+ */
+export function performedShots(blueprint: Blueprint): NonNullable<Blueprint['shot_list']> {
+  return (blueprint.shot_list ?? []).filter((s) => s?.shot_type !== 'cover_frame')
+}
+
 function framingFor(
   i: number,
   blueprint: Blueprint,
@@ -38,7 +75,7 @@ function framingFor(
     location?: string; broll_request?: string; editor_intent?: string; wardrobe?: string
   },
 ): { camera_framing: string; background: string; movement: string } {
-  const shot = blueprint.shot_list?.[i]
+  const shot = performedShots(blueprint)[i]
   // WHAT THE CREATOR READS WHILE STANDING IN THE ROOM (§5c + §5d).
   //
   // `placeToStand` returns `location` when the beat has one and the pre-split
@@ -426,11 +463,13 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
       // Kept beside it, so an edit that stretches the line cannot erase what the
       // beat was planned to be.
       ...(beatPlan?.[idx]?.targetSec != null ? { target_sec: beatPlan[idx].targetSec } : {}),
-      // ⚖️ STILL THE BODY POSITION, DELIBERATELY. This indexes `shot_list`, a
-      // DIFFERENT array from `script`, whose alignment with the script is its
-      // own question and not one this change has evidence about. Only the beat
-      // plan is documented as one-to-one with `script`, so only the beat plan
-      // moves to the source index.
+      // ⚖️ STILL THE BODY POSITION, AND THE ALIGNMENT QUESTION IS NOW ANSWERED.
+      // This comment used to end "whose alignment with the script is its own
+      // question and not one this change has evidence about" — correctly, at the
+      // time. The evidence arrived: on 13 of 13 production runs `shot_list` is
+      // exactly one longer than `script`, that one is a `cover_frame` thumbnail,
+      // and it sits FIRST on 9 of them — so this index was off by one on most
+      // runs. `framingFor` now indexes `performedShots`, which drops it.
       ...framingFor(i + 1, blueprint, seg),
       caption_text: pushCaption(captionFromLine(line), n),
       pause_after: true,
