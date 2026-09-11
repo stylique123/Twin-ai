@@ -57,6 +57,8 @@ import type { BriefGoal } from './preScriptBrief'
 export const CTA_MECHANISMS = [
   'follow', 'comment', 'share', 'save', 'link', 'book', 'buy',
 ] as const
+import { blockingSlots } from './containerResolution.js'
+
 export type CtaMechanism = (typeof CTA_MECHANISMS)[number]
 
 /**
@@ -162,6 +164,34 @@ export function ctaMechanismIn(text: string | null | undefined): CtaMechanism | 
   const t = String(text ?? '').trim()
   if (t === '') return null
   return MECHANISM_PATTERNS.find((m) => m.test.test(t))?.mechanism ?? null
+}
+
+/**
+ * Is this stored ending a TEMPLATE rather than a sentence she can read aloud?
+ *
+ * ⚖️ MEASURED: 2 of the 47 stored `recurring_ctas` sets carry one, and both are
+ * the same shape — "Comment [KEYWORD] and I will send you a short, simple
+ * routine to get started." The extraction is CORRECT: she really does end that
+ * way, with a different word in the slot each time. What is wrong is handing the
+ * template to her as the line itself, which is how "[KEYWORD]" reached a
+ * teleprompter as a filmable line with an Edit button beside it.
+ *
+ * ⚖️ SO THIS IS NOT A REASON TO DROP THE STORED VALUE. `goalFromCtas` reads the
+ * same field to infer what she is mostly doing, and a template answers that
+ * question perfectly well — the mechanism is right there in "Comment". Only the
+ * two surfaces that put the WORDS in front of her are wrong, and only those two
+ * call this.
+ *
+ * ⚠️ ONE AUTHORITY FOR WHAT A SLOT IS, AND IT IS `containerResolution`. A second
+ * bracket regex living here would be the same rule with two owners, and the next
+ * person to widen one would not know to widen the other. A declared clip
+ * (`[SHOW: …]`) is deliberately NOT a slot there, and that is right here too: it
+ * is a shooting instruction, not an unfilled blank.
+ */
+export function isTemplateCta(text: string | null | undefined): boolean {
+  const t = String(text ?? '').trim()
+  if (t === '') return false
+  return blockingSlots(t, null).length > 0
 }
 
 /** What a creator whose endings use this mechanism is mostly doing.
@@ -328,6 +358,11 @@ export function suggestedCta(recurringCtas: readonly unknown[] | null | undefine
     // pick the wrong one.
     const mechanism = ctaMechanismIn(text)
     if (mechanism === null) continue
+    // ⚠️ A TEMPLATE IS NOT A SENTENCE TO CONFIRM. "Comment [KEYWORD] and I will
+    // send you ..." asks for something, so `ctaMechanismIn` rightly finds a
+    // mechanism — but putting it in front of her invites "yes, that's mine" on a
+    // line she cannot say, and the confirmation would then be stored as hers.
+    if (isTemplateCta(text)) continue
     return { text, mechanism }
   }
   return null
