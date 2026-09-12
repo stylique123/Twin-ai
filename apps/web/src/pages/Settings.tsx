@@ -8,6 +8,7 @@ import {
   loadProductEntities,
   setupAreas, setupSummary, panelAreas, type SetupArea, type SetupState, type SetupAction,
   readStoredBrief, savePreScriptBrief, suggestedCta, whatTwinLearned, heardCount, BASIS_LABEL, editTargetOf,
+  SELLS_ANSWER_TO_TIES, sellsAnswerOf,
 } from '@twinai/shared'
 import { readProfileAnswers } from '../lib/profileAnswersRead'
 import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
@@ -579,38 +580,58 @@ export default function Settings() {
                 })}
               </div>
 
+              {/* ⚠️ THE SIX COMMERCIAL-TIE CHIPS ARE GONE, AND THIS IS A REMOVAL
+                  THAT ALREADY HAPPENED EVERYWHERE ELSE. Onboarding collapsed
+                  them to ONE yes/no on the recorded grounds that "the kind of
+                  thing, the relationship and the offer facts belong to the
+                  Product Library, which asks all of it properly and behind an
+                  attestation". Settings kept its copy of the old question.
+
+                  ⚠️ AND IT WAS WORSE THAN REDUNDANT, MEASURED ON A REAL ACCOUNT.
+                  A creator with TWO products, both reading Ready in the library,
+                  saw this question entirely UNSELECTED — her relationships live
+                  on `product_entities.relationship`, which those chips could not
+                  see and never wrote. The screen asked her to re-answer, in a
+                  weaker vocabulary, a thing she had already answered properly,
+                  then displayed her as having said nothing.
+
+                  ⚖️ COLLAPSED, NOT DELETED, AND THAT DISTINCTION IS THE WHOLE
+                  BUILD. `commercialTies` still carries "nothing commercial" —
+                  the value that SUPPRESSES product suggestions — and this panel
+                  is the only place it can be changed after onboarding. Deleting
+                  it outright would leave a creator who said "not right now" and
+                  later started selling with no way to say so except re-walking a
+                  flow she finished weeks ago, which is the exact defect the
+                  comment above `edit_profile` records this page being rescued
+                  from. So the FACT stays editable and only its GRANULARITY moves
+                  to the authority that owns it. */}
               <p className="mt-5 text-sm text-cream">Do you sell or promote anything?</p>
               <p className="mt-0.5 text-xs text-stone">
-                This decides what your scripts are allowed to claim. Pick everything that is true.
+                Just so Twin knows whether to offer it. What it is, and what scripts may say
+                about it, lives in your Product Library.
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {([
-                  ['own_product', 'I sell my own product'],
-                  ['own_service', 'I sell my own service'],
-                  ['affiliate', 'I earn a commission'],
-                  ['sponsor', 'I get paid to feature things'],
-                  ['review', 'I just cover things'],
-                  ['none', 'Nothing commercial'],
+                  ['yes', 'Yes'],
+                  ['not_right_now', 'Not right now'],
                 ] as const).map(([v, label]) => {
-                  const ties = profileAnswers?.commercialTies ?? []
-                  const on = ties.includes(v)
+                  // ⚖️ READ BACK THROUGH `sellsAnswerOf`, so an account still
+                  // holding one of the thirteen old answers reads as "yes"
+                  // rather than as unanswered. Stop writing, keep reading.
+                  const on = sellsAnswerOf(profileAnswers?.commercialTies ?? null) === v
                   return (
                     <button
                       key={v}
                       type="button"
                       aria-pressed={on}
                       disabled={savingProfile}
-                      onClick={() => {
-                        // ⚖️ "NOTHING COMMERCIAL" IS EXCLUSIVE. Holding it beside a
-                        // real tie is a contradiction, and the pipeline would have
-                        // to pick one — which is the class of decision this whole
-                        // batch moved out of the model and into code.
-                        const next = v === 'none'
-                          ? (on ? [] : ['none'])
-                          : on ? ties.filter((t) => t !== v)
-                            : [...ties.filter((t) => t !== 'none'), v]
-                        void saveProfileAnswers({ commercialTies: next })
-                      }}
+                      // ⚠️ TAPPING THE CHOSEN ANSWER AGAIN CLEARS IT. An empty
+                      // list is UNANSWERED and is not "nothing to sell";
+                      // turning silence into a commercial statement is the
+                      // error this question exists to avoid.
+                      onClick={() => void saveProfileAnswers({
+                        commercialTies: on ? [] : [...SELLS_ANSWER_TO_TIES[v]],
+                      })}
                       className={`rounded-full border px-3.5 py-2 text-[13px] ${
                         on ? 'border-coral/50 bg-coral/[0.08] text-cream'
                           : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20'}`}
@@ -618,7 +639,14 @@ export default function Settings() {
                   )
                 })}
               </div>
-
+              {/* ⚖️ AND THE DOOR TO THE AUTHORITY, because the sentence above
+                  names it. A question that points at another screen without a
+                  way to reach it is a dead end wearing a signpost. */}
+              <button
+                type="button"
+                onClick={() => nav('/products')}
+                className="mt-2 text-xs text-sand underline underline-offset-2 hover:text-cream"
+              >Open your Product Library →</button>
               <div className="mt-6 flex items-center justify-between gap-3">
                 <button
                   type="button"
