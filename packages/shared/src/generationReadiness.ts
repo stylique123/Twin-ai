@@ -58,6 +58,17 @@ export interface ReadinessInputs {
   angle?: string | null
   /** The thing being promoted, if anything is. */
   offer?: string | null
+  /** ⚠️ A NAME TO SAY, NEVER AN ANSWER. Used by `claimsQuestionFor` and by
+   *  nothing else — deliberately NOT by `promoting`, and never enough to mark
+   *  `offer` RESOLVED.
+   *
+   *  ⚖️ THE DISTINCTION IS THE WHOLE POINT, AND THE COMMENT BESIDE `promoting`
+   *  is the record of what happens without it: a caller passed the SCAN's
+   *  guessed offer as `offer`, and the card then demanded a commercial
+   *  relationship for a product that did not exist. Knowing what a creator's
+   *  product is CALLED is not evidence that this video promotes it. So the name
+   *  may improve a sentence and may never settle a field. */
+  offerNameForWording?: string | null
   /** The creator's commercial tie to `offer`. The enum, never prose. */
   relationship?: string | null
   /** What the viewer is asked to do. */
@@ -147,7 +158,12 @@ const ASK: Record<ReadinessField, string> = {
   // extracted facts — asked, then silently discarded server-side once
   // `readyFacts.length > 0`. See `libraryFacts` in V2Building.tsx for the
   // client-side mirror that closes that gap.
-  claims: 'What does the OFFER do? Specific features, numbers or outcomes this video is allowed to state.',
+  // ⚠️ "ALLOWED TO STATE" READ AS A PERMISSION FORM, AND SHE IS NOT APPLYING FOR
+  // ONE. The old wording was written from the guard's point of view — it is the
+  // claim-entitlement rule's own vocabulary, leaking onto a screen a creator
+  // reads. What she is being asked for is material, so the question asks for
+  // material. The rule it feeds is unchanged.
+  claims: 'What does the OFFER do? Anything you want in this one — a price, a number, what is included.',
   referenceTransfer: '',
 }
 
@@ -158,7 +174,7 @@ const ASK: Record<ReadinessField, string> = {
 export function claimsQuestionFor(offer?: string | null): string {
   const name = typeof offer === 'string' ? offer.trim() : ''
   if (!name || name.toLowerCase() === 'unspecified' || name.length > 60) return ASK.claims
-  return `What does ${name} actually do? Specific features, numbers or outcomes this video is allowed to state.`
+  return `What does ${name} actually do? Anything you want in this one — a price, a number, what is included.`
 }
 
 /**
@@ -199,8 +215,21 @@ export function assessReadiness(input: ReadinessInputs): ReadinessVerdict {
   // ⚖️ AND IT IS PER-FIELD, NOT A NEW BRANCH PER QUESTION. Only `claims` has a
   // subject worth naming; the rest are about the video, not about a thing the
   // creator owns, so a generic table entry is the right answer for them.
+  // ⚠️ MEASURED 2026-09-12: `claimsQuestionFor` HAS NEVER ONCE NAMED A PRODUCT
+  // IN PRODUCTION. It reads `input.offer`, whose only caller sources it from
+  // `pre_script_brief.offer` — and 0 of 53 brand_voices carry that key. Nothing
+  // writes it. So every creator who reached this question read the literal word
+  // OFFER, which is exactly the screenshot this file's own note describes, and
+  // the naming machinery below it was correct and unreachable.
+  //
+  // ⚖️ THE NAME COMES FROM PRODUCT LIBRARY NOW, DOWN ITS OWN INPUT. It falls
+  // back to `input.offer` so a caller that really does know what is being
+  // promoted still wins, and to the generic wording when neither is known —
+  // a question naming the wrong product is worse than one naming none.
   const questionFor = (field: ReadinessField): string | null =>
-    field === 'claims' ? claimsQuestionFor(input.offer) : (ASK[field] || null)
+    field === 'claims'
+      ? claimsQuestionFor(input.offer ?? input.offerNameForWording)
+      : (ASK[field] || null)
   const put = (field: ReadinessField, state: ReadinessState) =>
     v.push({ field, state, question: state === 'MISSING_REQUIRED' ? questionFor(field) : null })
 

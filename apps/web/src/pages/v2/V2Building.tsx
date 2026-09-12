@@ -266,6 +266,41 @@ function libraryRelationship(
   return answered.length === 1 ? answered[0].relationship : null
 }
 
+/** The product's NAME, resolved the same way its relationship is, for the one
+ *  purpose of putting it in a sentence.
+ *
+ *  ⚠️ MEASURED 2026-09-12, AND IT IS WHY THIS EXISTS: 0 of 53 brand_voices
+ *  carry `pre_script_brief.offer`. Nothing writes that key. So the offer name
+ *  this file passed to `assessReadiness` was ALWAYS undefined, and every
+ *  creator who reached the claims question read the literal word OFFER while
+ *  `claimsQuestionFor` — written to say "What does the Candle Kit actually
+ *  do?" — sat correct and unreachable behind it.
+ *
+ *  ⚖️ IT NAMES, IT DOES NOT ANSWER. The return value goes to
+ *  `offerNameForWording`, never to `offer`: knowing what her product is called
+ *  is not evidence that THIS video promotes it, and passing a name as the offer
+ *  is the exact mistake recorded beside `promoting` — a scan's guess became a
+ *  demand for a commercial relationship to a product that did not exist. */
+function libraryOfferName(
+  products: readonly ProductEntityRecord[] | null,
+  offer: string | null | undefined,
+): string | null {
+  if (!products?.length) return null
+  const answered = products.filter((p) => p.relationship && p.relationship !== 'NONE')
+  if (!answered.length) return null
+  const offerNorm = (offer ?? '').trim().toLowerCase()
+  if (offerNorm) {
+    const hit = answered.find((p) => (p.name ?? '').trim().toLowerCase() === offerNorm)
+    if (hit) return (hit.name ?? '').trim() || null
+  }
+  // ⚖️ SOLE ANSWERED PRODUCT ONLY — the same bar `libraryRelationship` uses one
+  // field over. With two on file there is a real ambiguity, and naming the
+  // wrong one is worse than naming none: she would answer the question about a
+  // product this video is not about.
+  if (answered.length !== 1) return null
+  return (answered[0].name ?? '').trim() || null
+}
+
 // ⚖️ D3: THE SAME FALLBACK SHAPE AS D2, ONE FIELD OVER. The server
 // (`generate-blueprint/index.ts`, `readyFacts`) already treats the
 // Quick-things "What does the OFFER do?" answer as a fallback — it is
@@ -719,6 +754,10 @@ export default function V2Building() {
               // the relationship keeps `assessReadiness` from treating it as a
               // gap.
               relationship: libraryRelationship(libraryProducts, str(vBrief.offer)) ?? str(vBrief.promotes) ?? null,
+              // ⚖️ THE NAME ONLY. Deliberately a separate input from `offer`
+              // above, which stays the creator's own words — see
+              // `libraryOfferName` for why a name must never settle the field.
+              offerNameForWording: libraryOfferName(libraryProducts, str(vBrief.offer)),
               cta: str(vBrief.cta) ?? null,
               audience: str(vBrief.audience) ?? str(v?.profile?.audience) ?? null,
               referenceRead: Boolean(refUrl),

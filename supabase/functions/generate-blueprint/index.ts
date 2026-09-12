@@ -5701,8 +5701,8 @@ Deno.serve(async (req: Request) => {
   const readyClaimsQuestion = (offerName: unknown): string => {
     const n = typeof offerName === 'string' ? offerName.trim() : ''
     return (!n || n.toLowerCase() === 'unspecified' || n.length > 60)
-      ? 'What does the OFFER do? Specific features, numbers or outcomes this video is allowed to state.'
-      : `What does ${n} actually do? Specific features, numbers or outcomes this video is allowed to state.`
+      ? 'What does the OFFER do? Anything you want in this one — a price, a number, what is included.'
+      : `What does ${n} actually do? Anything you want in this one — a price, a number, what is included.`
   }
   const readyMissing: Array<{ field: string; question: string }> = []
   // ⚠️ THE GOAL IS NOT ASKED HERE ANY MORE — the remix card's three intent chips

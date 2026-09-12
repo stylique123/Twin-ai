@@ -53,7 +53,7 @@ describe('the escalated claims question names the offer', () => {
 
   it('uses the offer name when we have one', () => {
     expect(claimsQuestion('Acme Coaching')).toBe(
-      'What does Acme Coaching actually do? Specific features, numbers or outcomes this video is allowed to state.')
+      'What does Acme Coaching actually do? Anything you want in this one — a price, a number, what is included.')
   })
 
   // ⚖️ NAMING THE WRONG PRODUCT IS WORSE THAN NAMING NONE, so the generic
@@ -82,6 +82,12 @@ describe('the escalated claims question names the offer', () => {
 describe('the client and the server ask the same question', () => {
   // ⚖️ THE EDGE CANNOT IMPORT THIS — Deno, no @twinai/shared — so the copy
   // stays. What must not stay is the copies disagreeing.
+  //
+  // ⚠️ AND ON 2026-09-12 THIS CAUGHT EXACTLY THAT, WHICH IS THE ONLY REASON THE
+  // WORDING CHANGE IS SAFE. Rewriting the client's copy alone left the server
+  // asking the old sentence for the same field; the literal fixtures below went
+  // red immediately. They are pinned copy and they go stale on purpose — that
+  // staleness IS the alarm. Update both halves together, never one.
   it('the edge still carries its inlined twin', () => {
     expect(edge).toContain('const readyClaimsQuestion =')
   })
@@ -93,9 +99,9 @@ describe('the client and the server ask the same question', () => {
   it('both wordings are identical, named branch', () => {
     // The edge builds the named form by template, so the two literal halves
     // around the interpolation are what can be compared.
-    expect(edge).toContain('`What does ${n} actually do? Specific features, numbers or outcomes this video is allowed to state.`')
+    expect(edge).toContain('`What does ${n} actually do? Anything you want in this one — a price, a number, what is included.`')
     expect(claimsQuestionFor('N')).toBe(
-      'What does N actually do? Specific features, numbers or outcomes this video is allowed to state.')
+      'What does N actually do? Anything you want in this one — a price, a number, what is included.')
   })
 
   it('both reject the same offers as unusable names', () => {
