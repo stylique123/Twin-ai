@@ -266,6 +266,48 @@ function libraryRelationship(
   return answered.length === 1 ? answered[0].relationship : null
 }
 
+/** THE PRODUCT SHE ACTUALLY PICKED.
+ *
+ *  ⚠️ SHE ANSWERS "WHICH ONE IS THIS VIDEO ABOUT?" AND NOTHING ASKED HER. The
+ *  picker has existed for months — `mustAskWhichProduct`, `PRODUCT_CHOICE_FIELD`
+ *  and a real "None of these" — and her answer was resolved ~160 lines BELOW the
+ *  readiness check that needed it, used only to decide whether to show the
+ *  picker again. `assessReadiness` went on looking the product up by
+ *  `pre_script_brief.offer`, which 0 of 53 production voices carry.
+ *
+ *  ⚖️ SO THE FOUR SYMPTOMS WERE ONE NULL. The claims question said "the OFFER"
+ *  rather than her product's name; the relationship resolved only for creators
+ *  with exactly one product, and sent the rest out of Create to a screen that
+ *  already had the answer; and `libraryFacts` asked a creator with two products
+ *  to retype facts Twin had already extracted. Every one of them is the same
+ *  lookup missing the same input.
+ *
+ *  ⚠️ AND A PICK IS AN ANSWER, NOT A HEURISTIC — which is the distinction that
+ *  makes this safe where `libraryOfferName` below has to be cautious. That one
+ *  INFERS from a library of one and must therefore never settle a field. This is
+ *  the creator's own explicit choice about this video, so it settles all of them.
+ *
+ *  ⚖️ "NONE OF THESE" RESOLVES TO NOTHING, DELIBERATELY. It is an answer meaning
+ *  no product, not an unanswered question, and treating it as a miss would put
+ *  the picker straight back on screen under her finger. */
+function pickedProduct(
+  products: readonly ProductEntityRecord[] | null,
+  chosenId: string | null | undefined,
+): ProductEntityRecord | null {
+  const id = (chosenId ?? '').trim()
+  if (!id || id === NO_PRODUCT_CHOICE) return null
+  return products?.find((p) => p.id === id) ?? null
+}
+
+/** The facts already extracted for one specific product, in the shape
+ *  `assessReadiness` expects — the same derivation `libraryFacts` does, minus
+ *  the name-matching it only needs because it has no id to work from. */
+function factsOfProduct(p: ProductEntityRecord | null): readonly string[] | null {
+  const ev = p?.evidence
+  if (!ev || ev === 'declined' || typeof ev !== 'object' || !Array.isArray(ev.sections)) return null
+  return ev.sections.map((s) => String(s?.label ?? '')).filter((x) => x.trim() !== '')
+}
+
 /** The product's NAME, resolved the same way its relationship is, for the one
  *  purpose of putting it in a sentence.
  *
@@ -736,6 +778,14 @@ export default function V2Building() {
             const vBrief = ((v as { pre_script_brief?: Record<string, unknown> } | null)
               ?.pre_script_brief ?? {}) as Record<string, unknown>
             const str = (x: unknown) => (typeof x === 'string' ? x : undefined)
+            // ⚠️ RESOLVED BEFORE THE VERDICT, WHICH IS THE WHOLE FIX. The same
+            // expression already existed ~160 lines below, feeding only the
+            // decision of whether to ask the picker AGAIN. The answer was in
+            // hand the entire time; nothing that needed it could see it.
+            const chosen = pickedProduct(
+              libraryProducts,
+              answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null)
+            const chosenName = (chosen?.name ?? '').trim()
             const verdict = assessReadiness({
               goal: state.goal ?? str(vBrief.goal) ?? null,
               angle: state.reference_note || refUrl || str(vBrief.idea) || null,
@@ -744,7 +794,15 @@ export default function V2Building() {
               // made every creator "promoting" and put two mandatory product
               // questions on the card — including for one whose stored answer
               // was `nothing_to_sell`.
-              offer: str(vBrief.offer) ?? null,
+              // ⚖️ HER PICK IS HER OWN WORDS, AND OUTRANKS THE BRIEF. The long
+              // note below this line forbids passing a GUESS as the offer — the
+              // scan's invented one set `promoting` and demanded a commercial
+              // relationship for a product that did not exist. A product she
+              // selected for this video is the opposite of a guess: it is the
+              // answer to the very question `offer` asks, given explicitly, and
+              // the picker only appears for a video that may use a product at
+              // all (`mayUseAProduct`).
+              offer: (chosenName || undefined) ?? str(vBrief.offer) ?? null,
               // ⚖️ ONE FACT, ONE OWNER (D2). Product Library's entity is the
               // real answer to this question — read it first, matched against
               // the same offer name just above. `vBrief.promotes` is what a
@@ -753,11 +811,12 @@ export default function V2Building() {
               // "Nothing to sell" is an ANSWER too, and passing it through as
               // the relationship keeps `assessReadiness` from treating it as a
               // gap.
-              relationship: libraryRelationship(libraryProducts, str(vBrief.offer)) ?? str(vBrief.promotes) ?? null,
+              relationship: chosen?.relationship
+                ?? libraryRelationship(libraryProducts, str(vBrief.offer)) ?? str(vBrief.promotes) ?? null,
               // ⚖️ THE NAME ONLY. Deliberately a separate input from `offer`
               // above, which stays the creator's own words — see
               // `libraryOfferName` for why a name must never settle the field.
-              offerNameForWording: libraryOfferName(libraryProducts, str(vBrief.offer)),
+              offerNameForWording: (chosenName || null) ?? libraryOfferName(libraryProducts, str(vBrief.offer)),
               // ⚖️ THE OBJECTIVE SHE PICKED, AND ONLY IN THE PRODUCT DOOR.
               // `intentQuestionsFor` substitutes PRODUCT_OBJECTIVES onto the
               // SAME `video_goal` field, so this is her objective when the
@@ -772,7 +831,11 @@ export default function V2Building() {
               // D3: same source the server falls back to (`readyFacts`) — a
               // product entity with usable evidence means the free-text
               // claims question is not needed, here or on the server.
-              productFacts: libraryFacts(libraryProducts, str(vBrief.offer)),
+              // ⚖️ THE PICKED PRODUCT'S OWN FACTS, BY ID. `libraryFacts` matches
+              // on a name it never has, then falls back to "only if she owns
+              // exactly one" — so a creator with two products was asked to
+              // retype what Twin had already extracted from her page.
+              productFacts: factsOfProduct(chosen) ?? libraryFacts(libraryProducts, str(vBrief.offer)),
             })
             const missing: AskItem[] = verdict.fields
               .filter((f) => f.state === 'MISSING_REQUIRED' && f.question)

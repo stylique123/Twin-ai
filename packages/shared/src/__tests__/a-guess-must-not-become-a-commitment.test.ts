@@ -34,10 +34,38 @@ describe('what is stored', () => {
 })
 
 describe('what the readiness gate is given', () => {
+  // ⚠️ THE POSITIVE HALF PINNED THE WHOLE EXPRESSION AND WENT STALE ON
+  // 2026-09-12; THE PROTECTIVE HALF NEVER MOVED. The claim is that the readiness
+  // gate is given what the CREATOR said and never what the SCAN guessed. A
+  // product she explicitly PICKED for this video was added ahead of the brief,
+  // which is more of her own words, not less — so the literal failed against
+  // code that satisfies the rule better than the code it was written for.
+  //
+  // ⚖️ SO IT ASSERTS THE PROPERTY, IN BOTH DIRECTIONS, AND IS NOW STRICTLY
+  // STRONGER. Every source in the chain must be something the creator stated or
+  // chose; none of the scan's guesses may appear. `vp.offer` and `dna.product`
+  // are named alongside `profile?.offer` because they are the SAME guess under
+  // the server's names — the edge's own `readyOffer` chain falls through to both,
+  // and a copy-paste from there is exactly how this defect would return.
   it('is the brief, never the scan\'s guess', () => {
-    // ⚠️ `profile.offer` IS FORBIDDEN A BLANK BY THE SCAN PROMPT, so the model
-    // must produce something. Passing it here made every creator "promoting".
-    expect(BUILDING).toMatch(/offer: str\(vBrief\.offer\) \?\? null/)
+    const line = BUILDING.slice(
+      BUILDING.indexOf('offer:', BUILDING.indexOf('const verdict = assessReadiness({')),
+      BUILDING.indexOf('\n', BUILDING.indexOf('offer:', BUILDING.indexOf('const verdict = assessReadiness({'))))
+
+    // ⚠️ THE FIXTURE MUST BE THE RIGHT LINE, or every assertion below is
+    // vacuous — the file says `offer:` in several unrelated places.
+    expect(line, 'did not find the readiness call\u2019s offer').toContain('offer:')
+
+    // What she said, or what she chose. Both are hers.
+    expect(line).toContain('vBrief.offer')
+    expect(line).toContain('chosenName')
+
+    // ⚠️ AND NONE OF THE SCAN'S GUESSES. `profile.offer` is FORBIDDEN A BLANK by
+    // the scan prompt, so the model must produce something for everyone —
+    // passing it here made every creator "promoting".
+    for (const guess of ['profile?.offer', 'profile.offer', 'vp.offer', 'dna.product']) {
+      expect(line, `the scan's guess ${guess} reached the readiness gate`).not.toContain(guess)
+    }
     expect(BUILDING).not.toMatch(/offer:[^\n]*profile\?\.offer/)
   })
 
