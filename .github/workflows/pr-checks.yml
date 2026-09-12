@@ -950,6 +950,8 @@ jobs:
         run: bash scripts/db-tests/gate-e/run.sh
       - name: Gate-N (gallery curation trigger — the failed state, plus cooldown controls)
         run: bash scripts/db-tests/gate-n/run.sh
+      - name: Gate-O (gallery de-duplication — earliest survives, shape inherited, index holds)
+        run: bash scripts/db-tests/gate-o/run.sh
       # Gate-F was NOT in required CI until an audit pointed it out. It has been
       # green all along — because I ran it by hand on every Phase 8 head. That
       # is not a control: a future change can break 0094/0096 while every
