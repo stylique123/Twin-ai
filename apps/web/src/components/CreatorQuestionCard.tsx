@@ -17,6 +17,7 @@
 import { useEffect, useState } from 'react'
 import { nextQuestionByDeficit, creatorQuestionsFor, ANSWER_MAX, type CreatorQuestion } from '@twinai/shared'
 import { loadVoiceNiche } from '../lib/voiceNicheLoad'
+import { loadOwnSells } from '../lib/ownSellsLoad'
 import { loadQuestionsPut, answerQuestion, skipQuestion, markQuestionShown, loadKnowledgeCounts } from '../lib/creatorAnswers'
 import { cn } from '../lib/cn'
 
@@ -52,7 +53,18 @@ export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | nul
     if (!alive()) return
     const niche = await loadVoiceNiche(voiceId)
     if (!alive()) return
-    const q = nextQuestionByDeficit(put, counts, creatorQuestionsFor(niche))
+    // ⚠️ WHAT SHE SELLS, NOT ONLY WHAT SHE TALKS ABOUT. Her niche buckets as
+    // `business`, which is right, and the business wording asks "when a founder
+    // comes to you stuck" — a question a template seller can only decline. Her
+    // products say she has BUYERS, NOT CLIENTS, and that is a closed enum rather
+    // than prose we have to guess at.
+    //
+    // ⚖️ A FAILED READ FALLS BACK TO THE BUCKET WORDING, never blocks the card.
+    // Not knowing what she sells is the state every creator was in before this
+    // existed, and it is served by a real question.
+    const sells = await loadOwnSells()
+    if (!alive()) return
+    const q = nextQuestionByDeficit(put, counts, creatorQuestionsFor(niche, undefined, sells))
     setQuestion(q)
     // ⚠️ RECORDED HERE BECAUSE HERE IS WHERE IT IS TRUE. The impression is
     // written only once a question actually exists to render -- not on mount,

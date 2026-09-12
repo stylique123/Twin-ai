@@ -126,6 +126,109 @@ const OVERRIDES: Readonly<Record<NicheBucket, Readonly<Record<string, { ask: str
   creator: Object.freeze({}),
 })
 
+// ── AND INSIDE A BUCKET, WHAT SHE SELLS CHANGES THE QUESTION AGAIN ────────
+//
+// ⚠️ REPORTED LIVE, AND THE BUCKET WAS RIGHT WHILE THE QUESTION WAS WRONG. A
+// creator selling Canva templates on Etsy buckets as `business` — her niche is
+// "Social Media Marketing" — and was asked "When a founder comes to you stuck,
+// what do you ask them first?". She has BUYERS, NOT CLIENTS. Nobody comes to her
+// stuck. The question cannot be answered honestly, so "Not this one" is the only
+// true response, and a question a creator can only decline is a question that
+// taught us nothing.
+//
+// ⚠️ IT IS THE SAME LIMIT AS THE BEAUTY REPORT, ONE LEVEL DOWN. Buckets fixed
+// "health vs business"; inside `business` a coach, an agency and a product
+// seller are different jobs. A coach has clients who arrive stuck. A product
+// seller has buyers who click a link.
+//
+// ⚖️ AND THIS KEY IS BETTER THAN `niche`, WHICH IS THE REASON IT IS WORTH
+// BUILDING. `niche` is free-text prose that needed a regex table to bucket at
+// all — 47 voices, at most three sharing a value. `product_entities.type` is a
+// CLOSED ENUM the creator picked herself behind an attestation. No guessing, no
+// keyword rule, nothing to drift.
+//
+// ⚖️ AND IT CLEARS THIS FILE'S OWN BAR, MEASURED 2026-09-12 over owned products:
+//
+//   service 5 owners · physical 4 · digital 1 · saas 1 · other 1
+//
+// Every variant written below serves at least one real creator, and two serve
+// four or five — better than `beauty_fashion`, which is kept while matching
+// nobody. Only `first_thing_asked` varies, because it is the only one whose
+// generic wording ASSUMES A RELATIONSHIP rather than merely being abstract.
+export const SELLS_KINDS = ['service', 'physical', 'digital'] as const
+export type SellsKind = (typeof SELLS_KINDS)[number]
+
+/** What a product's type means for how its buyers reach her.
+ *
+ *  ⚠️ UNMAPPED IS `null`, NEVER A GUESS. `MARKETPLACE`, `COMMUNITY` and `OTHER`
+ *  are deliberately absent: a marketplace's "buyer" may be either side of it, a
+ *  community is ongoing access that resembles a service without being one, and
+ *  `OTHER` is by definition unclassified. `productQuestions` already refuses to
+ *  invent a taxonomy for exactly these; guessing here would contradict it and
+ *  hand somebody a question about a relationship they do not have — which is
+ *  the defect this whole block exists to fix. They fall back and that is right. */
+const TYPE_SELLS: Readonly<Record<string, SellsKind>> = Object.freeze({
+  SERVICE: 'service',
+  PHYSICAL_PRODUCT: 'physical',
+  DIGITAL_PRODUCT: 'digital',
+  COURSE: 'digital',
+  // ⚖️ SOFTWARE IS SOMETHING YOU OPEN AND FIND THINGS INSIDE, so it takes the
+  // digital wording: "what do buyers expect to find inside that isn't there"
+  // reads correctly for a SaaS whose feature list is misread, which is the same
+  // shape as a template pack whose contents are.
+  SAAS: 'digital',
+  APP: 'digital',
+})
+
+/** What this creator sells, from the products she has registered.
+ *
+ *  ⚠️ OWNED ONLY. An affiliate or sponsored row says what she TALKS ABOUT, not
+ *  what her own buyers come to her for, and keying her own-expertise question on
+ *  somebody else's product is how she gets asked about a relationship she does
+ *  not have.
+ *
+ *  ⚖️ AND A MIXED LIBRARY ANSWERS `null` RATHER THAN PICKING. A creator who
+ *  sells both a service and a physical product genuinely has both kinds of
+ *  buyer; choosing one would be a coin-flip printed as a question about her
+ *  work. The generic bucket wording already serves her, and it is honest. */
+export function sellsKindOf(
+  products: ReadonlyArray<{ type?: unknown; relationship?: unknown }> | null | undefined,
+): SellsKind | null {
+  if (!Array.isArray(products) || products.length === 0) return null
+  const kinds = new Set<SellsKind>()
+  for (const p of products) {
+    const rel = typeof p?.relationship === 'string' ? p.relationship : ''
+    if (rel !== 'OWN_PRODUCT' && rel !== 'OWN_SERVICE') continue
+    // ⚖️ THE RELATIONSHIP WINS FOR A SERVICE. `OWN_SERVICE` is a service
+    // whatever the type column happens to hold.
+    if (rel === 'OWN_SERVICE') { kinds.add('service'); continue }
+    const k = TYPE_SELLS[typeof p?.type === 'string' ? p.type : '']
+    if (k) kinds.add(k)
+  }
+  return kinds.size === 1 ? [...kinds][0]! : null
+}
+
+/** The one question whose generic wording assumes a relationship she may not
+ *  have. Same id, same intent — surfacing her real expertise — worded for what
+ *  she actually does. */
+const SELLS_OVERRIDES: Readonly<Record<SellsKind, { ask: string; hint: string }>> = Object.freeze({
+  // ⚖️ UNCHANGED FOR A SERVICE, DELIBERATELY. The reported question was correct
+  // for coaches and consultants; it was only ever wrong for the people it was
+  // never written for.
+  service: {
+    ask: 'When someone comes to you stuck, what do you ask them first?',
+    hint: 'The question that tells you what is really wrong.',
+  },
+  physical: {
+    ask: 'What do people assume about it before they open it?',
+    hint: 'What they expect, and what they actually find.',
+  },
+  digital: {
+    ask: 'What do buyers expect to find inside that is not there — or the reverse?',
+    hint: 'The thing people think they are getting, and the thing they miss.',
+  },
+})
+
 /**
  * The question bank in this creator's language, or the generic one.
  *
@@ -142,12 +245,19 @@ const OVERRIDES: Readonly<Record<NicheBucket, Readonly<Record<string, { ask: str
 export function creatorQuestionsFor(
   niche: unknown,
   bank: readonly CreatorQuestion[] = CREATOR_QUESTIONS,
+  sells: SellsKind | null = null,
 ): readonly CreatorQuestion[] {
   const bucket = nicheBucket(niche)
-  if (bucket === null) return bank
-  const overrides = OVERRIDES[bucket]
-  if (Object.keys(overrides).length === 0) return bank
+  const overrides = bucket === null ? {} : OVERRIDES[bucket]
+  const sold = sells === null ? null : SELLS_OVERRIDES[sells]
+  if (Object.keys(overrides).length === 0 && sold === null) return bank
   return bank.map((q) => {
+    // ⚠️ `sells` OUTRANKS THE BUCKET, AND ONLY FOR THIS ONE QUESTION. The bucket
+    // says what her WORLD is; `sells` says what her RELATIONSHIP to her audience
+    // is, and that is the half `first_thing_asked` gets wrong. A business-bucket
+    // template seller must not be asked the coach's question just because
+    // "marketing" matched first.
+    if (q.id === 'first_thing_asked' && sold) return { ...q, ask: sold.ask, hint: sold.hint }
     const o = overrides[q.id]
     return o ? { ...q, ask: o.ask, hint: o.hint } : q
   })
