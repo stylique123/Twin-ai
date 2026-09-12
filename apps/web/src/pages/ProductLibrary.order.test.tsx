@@ -24,6 +24,20 @@ const SRC = readFileSync(
 /** Where each question appears in the add form, by an anchor that is the
  *  question itself rather than a variable name — a reorder that moved the state
  *  and not the fields would otherwise pass. */
+//
+// ⚠️ THE PERSONAL-USE ANCHOR CHANGED SPELLING ON 2026-09-12, AND THIS TEST WAS
+// STALE RATHER THAN WRONG. Its claim — the question sits between the
+// relationship and the link — is unchanged and still asserted. What changed is
+// that the label is no longer one fixed string: an owner is now asked "Do you
+// use this yourself?" and everyone else "Have you actually used it yourself?",
+// so `label="..."` became `label={ownsIt(...) ? ... : '...'}`. The anchor is
+// the single-quoted spelling inside that expression — still the QUESTION
+// ITSELF rather than a variable name, and still absent if the field is deleted.
+//
+// ⚖️ AND NOT THE OWNER WORDING, DELIBERATELY. "Do you use this yourself?" is
+// also ClaimForm's legend, EARLIER in the file, so anchoring on it would
+// measure the wrong component — the exact mistake the photos case below
+// records having already made once.
 const at = (needle: string): number => {
   const i = SRC.indexOf(needle)
   expect(i, `anchor not found: ${needle}`).toBeGreaterThan(-1)
@@ -37,7 +51,7 @@ describe('the add form asks what they already know first', () => {
       "htmlFor=\"product-summary\"",
       'label="What is it?"',
       'label="What is your relationship to it?"',
-      'label="Have you actually used it yourself?"',
+      "'Have you actually used it yourself?'",
       "htmlFor=\"product-link\"",
     ].map(at)
 
@@ -50,7 +64,7 @@ describe('the add form asks what they already know first', () => {
     // ⚠️ THE ONE THAT WAS REPORTED. Asserted against the last question rather
     // than a count, so inserting a new question between them cannot silently
     // put the link back in the middle.
-    expect(at('htmlFor="product-link"')).toBeGreaterThan(at('label="Have you actually used it yourself?"'))
+    expect(at('htmlFor="product-link"')).toBeGreaterThan(at("'Have you actually used it yourself?'"))
   })
 
   it('and the photos sit with the link, not before the questions', () => {
