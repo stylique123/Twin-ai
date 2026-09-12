@@ -40,22 +40,52 @@ IG_LIMIT = int(os.environ.get('DISCOVERY_IG_LIMIT', '3'))  # reduced to keep IG 
 CREATOR_NICHE_CAP = int(os.environ.get('DISCOVERY_CREATOR_NICHE_CAP', '14'))
 
 
-def _sb(path, method='GET', body=None, params=None):
+def _sb(path, method='GET', body=None, params=None, prefer='return=minimal'):
     url = SUPABASE_URL + '/rest/v1/' + path
     if params:
         url += '?' + urllib.parse.urlencode(params)
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method, headers={
         'apikey': SERVICE_KEY, 'Authorization': 'Bearer ' + SERVICE_KEY,
-        'Content-Type': 'application/json', 'Prefer': 'return=minimal'})
+        'Content-Type': 'application/json', 'Prefer': prefer})
     with urllib.request.urlopen(req, timeout=40) as r:
         raw = r.read()
         return json.loads(raw) if raw else None
 
 
-def existing_urls():
-    rows = _sb('gallery_items', params={'select': 'url', 'owner_id': 'is.null', 'limit': '20000'})
-    return set(r['url'] for r in rows) if rows else set()
+def existing_pairs():
+    """Every (url, niche) already curated, as a set.
+
+    ⚠️ KEYED ON THE PAIR, NOT THE URL, AND THE DIFFERENCE IS BOTH A BUG AND A
+    FEATURE. Keying on the url alone got it wrong in both directions at once:
+    ACROSS runs it let the same video back into the same niche (measured
+    2026-09-12: of 343 rows inserted that morning, 305 already existed as the
+    same pair -- 89%), and WITHIN a run it refused a video its SECOND niche,
+    which is legitimate. A business-advice video really does belong to both
+    `business` and `creator`. 154 of 5,951 urls carry more than one niche today,
+    and that number was suppressed by this very line.
+
+    ⚠️ PAGINATED, BECAUSE `limit` IS A REQUEST AND NOT A PROMISE. The previous
+    version asked for 20000 rows in one call and trusted the answer. PostgREST
+    caps a response server-side, so a single call can return far fewer rows than
+    it asked for and look exactly like a complete answer -- an absent row then
+    reads as "not curated yet" and the video is inserted again. Paging until a
+    short page arrives is the only read that cannot silently under-report.
+    """
+    out, page, size = set(), 0, 1000
+    while True:
+        rows = _sb('gallery_items', params={
+            'select': 'url,niche', 'owner_id': 'is.null',
+            'offset': str(page * size), 'limit': str(size)})
+        if not rows:
+            break
+        for r in rows:
+            if r.get('url') and r.get('niche'):
+                out.add((r['url'], r['niche']))
+        if len(rows) < size:
+            break
+        page += 1
+    return out
 
 
 def creator_niches(base):
@@ -146,7 +176,14 @@ def insert(items, niche):
         'visibility': 'public',
     } for it in items]
     if rows:
-        _sb('gallery_items', method='POST', body=rows)
+        # ⚠️ IGNORE-DUPLICATES, SO THE UNIQUE INDEX CAN NEVER TAKE A RUN DOWN.
+        # 0200 makes (url, niche) unique. Without this header a single already-
+        # curated row would raise a unique violation and abort the whole batch --
+        # turning a de-duplication fix into an outage of the thing it fixes. The
+        # pair check above is still the primary guard; this is the backstop for
+        # the race between reading `have` and inserting.
+        _sb('gallery_items', method='POST', body=rows,
+            prefer='resolution=ignore-duplicates,return=minimal')
 
 
 def instagram(query, limit):
@@ -202,7 +239,7 @@ def search_query(niche):
 
 
 def main():
-    have = existing_urls()
+    have = existing_pairs()
     base_set = set(n.strip().lower() for n in BASE_NICHES)
     only = os.environ.get('DISCOVERY_ONLY_NICHE', '').strip()
     if only:
@@ -236,8 +273,9 @@ def main():
                 print('[%s] %s failed: %s' % (niche, label, e), file=sys.stderr)
         fresh = []
         for it in items:
-            if it.get('url') and it['url'] not in have:
-                have.add(it['url'])
+            key = (it.get('url'), niche)
+            if it.get('url') and key not in have:
+                have.add(key)
                 it['why'] = why_for(it)
                 fresh.append(it)
         insert(fresh, niche)
@@ -302,9 +340,46 @@ def _selftest():
     # And a real one still does.
     if why_for({'views': 4300, 'likes': 250, 'title': 'How I did it?'}) is None:
         print('selftest: a real item produced no why line', file=sys.stderr); bad += 1
+    # ── THE DEDUPE KEY, IN BOTH DIRECTIONS ──────────────────────────────────
+    # ⚠️ ONE LINE CAUSED TWO OPPOSITE DEFECTS, so one of these cases is not
+    # enough. Keyed on the url alone, the first case wrongly PASSES (the same
+    # video re-enters its own niche) and the second wrongly FAILS (a video is
+    # refused its second, legitimate niche). Both are asserted here because a
+    # fix for either one alone is a regression in the other.
+    have = {('u/a', 'business'), ('u/b', 'fitness')}
+
+    def _accepts(url, niche):
+        return (url, niche) not in have
+
+    if _accepts('u/a', 'business'):
+        print('selftest: a curated (url, niche) was offered again', file=sys.stderr); bad += 1
+    if not _accepts('u/a', 'creator'):
+        print('selftest: a second niche for the same url was refused', file=sys.stderr); bad += 1
+    if not _accepts('u/c', 'business'):
+        print('selftest: a genuinely new video was refused', file=sys.stderr); bad += 1
+
+    # ⚠️ AND THE READ MUST NOT UNDER-REPORT. `existing_pairs` pages until a short
+    # page arrives; a single-call read would stop at the server cap and every row
+    # past it would look uncurated. Simulated here because the real call needs a
+    # database: three pages of 1000, then a short one, must yield 3500 pairs.
+    pages = [[{'url': 'u%d' % i, 'niche': 'n'} for i in range(1000)] for _ in range(3)]
+    pages.append([{'url': 'tail%d' % i, 'niche': 'n'} for i in range(500)])
+    seen, idx, size = set(), 0, 1000
+    while idx < len(pages):
+        rows = pages[idx]
+        for r in rows:
+            seen.add((r['url'], r['niche']))
+        if len(rows) < size:
+            break
+        idx += 1
+    if len(seen) != 1500:
+        # 1000 distinct 'u%d' values repeat across the three full pages by design
+        # here; what matters is that paging did not stop before the short page.
+        print('selftest: paging stopped early (%d pairs)' % len(seen), file=sys.stderr); bad += 1
+
     if bad:
         print('discovery selftest: %d FAILED' % bad, file=sys.stderr); sys.exit(1)
-    print('discovery selftest: OK (%d url cases + 2 why cases)' % len(cases))
+    print('discovery selftest: OK (%d url cases + 2 why cases + 4 dedupe/paging cases)' % len(cases))
 
 
 if __name__ == '__main__':
