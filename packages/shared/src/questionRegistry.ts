@@ -100,7 +100,28 @@ const SHOWS_SCREENS: ProductType[] = ['digital_product', 'course', 'community']
 /** ⚠️ OWNERSHIP ALREADY AUTHORISES "we built this". Asking an owner whether they
  *  have personally used their own product is not a permission question, it is
  *  noise -- and it appeared on every product regardless of type. */
-const NEEDS_PERSONAL_USE: Relationship[] = ['affiliate', 'sponsored', 'independent_review']
+// ⚠️ `owned` IS ON THIS LIST, AND IT IS A DELIBERATE REVERSAL.
+//
+// It was excluded on the reasoning that owning a thing already authorises "we
+// built this", so asking an owner whether they use it is noise. That reasoning
+// confuses two different facts: OWNERSHIP IS COMMERCIAL, USE IS EXPERIENTIAL,
+// and one does not imply the other. A bakery owner may be coeliac. A supplement
+// founder may not take them. An agency owner may sell a service into a market
+// she is not in. None of them can honestly say "I use this every day" merely
+// because they own it.
+//
+// ⚖️ AND THE COST OF GUESSING IS ASYMMETRIC, which is what settles it. Wrongly
+// RESTRICTING costs a slightly weaker script. Wrongly PERMITTING puts a
+// first-person testimonial she never earned in her own mouth, about her own
+// product, with her face on it. Only one of those is recoverable.
+//
+// ⚠️ MEASURED, NOT HYPOTHETICAL. Both products on the account scanned
+// 2026-09-11 carry `personal_use: NOT_CONFIRMED` while their creator reports
+// answering "Used: Yes" — because the link-paste path hardcodes the restrictive
+// answer for anyone this list excludes (ProductLibrary.tsx), and the claim rule
+// then tells her "you have not told us you use it". She could not tell it. The
+// question that would let her was never asked.
+const NEEDS_PERSONAL_USE: Relationship[] = ['owned', 'affiliate', 'sponsored', 'independent_review']
 
 export const QUESTIONS: readonly Question[] = Object.freeze([
   {

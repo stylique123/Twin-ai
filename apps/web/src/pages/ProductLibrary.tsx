@@ -46,7 +46,7 @@ import {
   isStale, factAgeDays, SOURCE_LABEL, sourceWarrantsAttention,
   signEditUrls,
   bestSuggestion,
-  asksPersonalUse, capabilityQuestion, CAPABILITY_PROMPT,
+  asksPersonalUse, ownsIt, capabilityQuestion, CAPABILITY_PROMPT,
   capabilityFlag,
   productLifecycle, LIFECYCLE_MESSAGE,
   CAPTURE_COPY, PLATFORM_CHOICES, PRIVACY_CHOICES, RATHER_NOT_SAY, FIGURE_HINT,
@@ -296,10 +296,12 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
             answer that licenses "I use this every day"; the one above licenses
             commercial language. They are different permissions. */}
         <legend className="text-xs font-medium uppercase tracking-wide text-stone">
-          Do you actually use it yourself?
+          Do you use this yourself?
         </legend>
         <div className="mt-1 flex gap-2">
-          {([['CONFIRMED', 'Yes, I use it'], ['NOT_CONFIRMED', 'No, or not regularly']] as const)
+          {/* Same two states as the link-paste path, same reason: the negative
+              covers "no" and "I'd rather not say" together. */}
+          {([['CONFIRMED', 'Yes, I use it'], ['NOT_CONFIRMED', 'No, or I\u2019d rather not say']] as const)
             .map(([v, label]) => (
               <button
                 key={v}
@@ -2126,14 +2128,19 @@ function StartFromLink({ onCancel, onClaim, busy }: {
         chosen={relationship}
         onPick={(v) => setRelationship(v)}
       />
-      {/* ⚠️ CONDITIONAL NOW, AND IT USED TO BE ASKED OF EVERY PRODUCT. Owning a
-          thing already authorises "we built this"; asking an owner whether they
-          have personally used their own product is not a permission question,
-          it is noise. The registry has said so since it was written — this is
-          the first code to consult it. */}
+      {/* ⚠️ ASKED OF AN OWNER TOO, AND THAT IS A REVERSAL. This used to read
+          "owning a thing already authorises 'we built this', so asking an owner
+          is not a permission question, it is noise." That conflated two facts:
+          OWNERSHIP IS COMMERCIAL, USE IS EXPERIENTIAL. A bakery owner may be
+          coeliac; a supplement founder may not take them. `NEEDS_PERSONAL_USE`
+          in questionRegistry carries the full reasoning and the production
+          measurement that forced it.
+
+          ⚖️ AND AN OWNER'S "NO" IS A REAL ANSWER, NOT A FAILURE STATE, so the
+          wording asks the natural question rather than an entitlement one. */}
       {asksPersonalUse(ctx) && (
       <Choices
-        label="Have you actually used it yourself?"
+        label={ownsIt(ctx.relationship) ? 'Do you use this yourself?' : 'Have you actually used it yourself?'}
         options={[
           // ⚠️ THIS SAID `'DENIED' as PersonalUse`, AND THE CAST IS WHAT HID IT.
           // `PersonalUse` is CONFIRMED | NOT_CONFIRMED, and the database agrees:
@@ -2146,8 +2153,14 @@ function StartFromLink({ onCancel, onClaim, busy }: {
           // ⚖️ NO CAST HERE, ON PURPOSE. Typed as PersonalUse, a third value is a
           // compile error rather than a runtime refusal nobody sees until a
           // creator hits it.
-          { value: 'CONFIRMED', label: 'Yes, I have used it' },
-          { value: 'NOT_CONFIRMED', label: 'No, I have not' },
+          { value: 'CONFIRMED', label: ownsIt(ctx.relationship) ? 'Yes, I use it' : 'Yes, I have used it' },
+          // ⚠️ ONE NEGATIVE OPTION, COVERING BOTH "no" AND "I'd rather not say".
+          // Different sentences, the SAME permission — neither licenses a
+          // first-person claim — and the column stores exactly two states
+          // (`product_entities_personal_use_known`). Two buttons writing one
+          // value would BOTH render as chosen, which is worse than one button
+          // that is honest about what it covers.
+          { value: 'NOT_CONFIRMED', label: ownsIt(ctx.relationship) ? 'No, or I\u2019d rather not say' : 'No, I have not' },
         ]}
         chosen={personalUse}
         onPick={(v) => setPersonalUse(v)}

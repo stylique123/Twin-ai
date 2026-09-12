@@ -52,12 +52,30 @@ describe('the question that named the whole problem', () => {
 })
 
 describe('owning a thing is not using it', () => {
-  // ⚠️ ASKED OF EVERY PRODUCT BEFORE THIS. Ownership already authorises "we built
-  // this"; asking an owner whether they have used their own product is noise.
-  it('an owner is not asked about personal use', () => {
+  // ⚠️ THIS CASE WAS REVERSED ON 2026-09-12, AND IT WAS STALE RATHER THAN WRONG.
+  // It read "ownership already authorises 'we built this'; asking an owner
+  // whether they have used their own product is noise", and that faithfully
+  // described the decision in force. The DECISION changed. Ownership is a
+  // COMMERCIAL fact and use is an EXPERIENTIAL one: a baker may be coeliac, a
+  // supplement founder may not take them, an agency owner may sell into a
+  // market she is not in. The describe block's own title said it all along.
+  //
+  // ⚖️ AND THE COST IS ASYMMETRIC. Wrongly restricting is a weaker script;
+  // wrongly permitting is a first-person testimonial she never earned, on her
+  // own product, with her face on it.
+  it('an owner IS asked about personal use, for every product type', () => {
     for (const t of TYPES) {
-      expect(asksPersonalUse({ type: t, relationship: 'OWN_PRODUCT' }), t).toBe(false)
-      expect(asksPersonalUse({ type: t, relationship: 'OWN_SERVICE' }), t).toBe(false)
+      expect(asksPersonalUse({ type: t, relationship: 'OWN_PRODUCT' }), t).toBe(true)
+      expect(asksPersonalUse({ type: t, relationship: 'OWN_SERVICE' }), t).toBe(true)
+    }
+  })
+
+  // ⚠️ THE NEGATIVE CONTROL THE REVERSAL MAKES NECESSARY. With owners now asked,
+  // "asks everyone" would satisfy every other case in this file. Someone with
+  // NO tie to the thing is making no claim a personal-use answer could license.
+  it('someone with no relationship to the thing is still not asked', () => {
+    for (const t of TYPES) {
+      expect(asksPersonalUse({ type: t, relationship: 'NONE' }), t).toBe(false)
     }
   })
 

@@ -43,17 +43,35 @@ describe('B — a consultant who sells a physical book', () => {
   it('is never asked to screen-record a book', () => {
     expect(isAsked('product_screen_show', ctx)).toBe(false)
   })
-  it('is not asked whether they have personally used their own book', () => {
-    expect(isAsked('product_personal_use', ctx)).toBe(false)
+  // ⚠️ THIS ASSERTION WAS REVERSED ON 2026-09-12, AND THE OLD ONE WAS NOT WRONG
+  // WHEN IT WAS WRITTEN — it faithfully described the decision that owning a
+  // thing made the question noise. The DECISION changed, not the test's honesty.
+  // OWNERSHIP IS COMMERCIAL, USE IS EXPERIENTIAL: an author who ghost-wrote a
+  // book, a baker who is coeliac, a supplement founder who does not take them.
+  // The cost is asymmetric — wrongly restricting is a weaker script, wrongly
+  // permitting is a first-person testimonial she never earned.
+  it('IS asked whether they use their own book, because owning is not using', () => {
+    expect(isAsked('product_personal_use', ctx)).toBe(true)
   })
 })
 
 describe('C — owns a SaaS and affiliates another', () => {
   const owned = { addingProduct: true, productType: 'software' as const, relationship: 'owned' as const }
   const aff = { addingProduct: true, productType: 'software' as const, relationship: 'affiliate' as const }
-  it('keeps the two relationships apart', () => {
-    expect(isAsked('product_personal_use', owned)).toBe(false)
+  // ⚖️ BOTH ARE ASKED NOW, AND THE PAIR IS STILL THE POINT: the question exists
+  // so a claim can be REFUSED, and an owner can be owed that refusal too. What
+  // separates the relationships is disclosure, not whether the creator is asked
+  // what she has actually done.
+  it('asks both, because neither ownership nor a commission establishes use', () => {
+    expect(isAsked('product_personal_use', owned)).toBe(true)
     expect(isAsked('product_personal_use', aff)).toBe(true)
+  })
+  // ⚠️ AND `NONE` IS STILL NOT ASKED — the negative control that keeps this from
+  // becoming "ask everybody everything". A creator with no tie to a thing is
+  // making no claim that a personal-use answer could license or refuse.
+  it('does not ask someone with no relationship to the thing', () => {
+    expect(isAsked('product_personal_use',
+      { addingProduct: true, productType: 'software' as const, relationship: null })).toBe(false)
   })
   it('asks both about showing the screen', () => {
     expect(isAsked('product_screen_show', owned)).toBe(true)
