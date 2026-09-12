@@ -1872,7 +1872,26 @@ export default function V2Building() {
                 // ⚖️ THE CARD IS NO LONGER ONLY A REFUSAL. Three of these are
                 // asked for every video, so leading with "no remix has been
                 // used" would read as an accusation on the happy path.
-                ? 'No remix has been used yet. Three taps — Twin decides how to make it, you decide what it is for.'
+                //
+                // ⚠️ AND IT STILL SAID THE COUNT. "No remix has been used yet"
+                // is our accounting, in our noun, looking backwards — a creator
+                // who has never thought about her balance is being told
+                // something about it. "Three taps" is the same mistake one
+                // clause over: it measures the form instead of saying what the
+                // form is for, and it goes stale the moment a question is added
+                // or dropped.
+                //
+                // ⚖️ SAY THE THING. What she actually needs to know is that
+                // answering costs her nothing, which is forward-looking and
+                // stays true however many chips there are. The sentence after it
+                // is unchanged on purpose — it explains WHY in terms of her own
+                // risk, which is the one line here that was already right.
+                ? 'Nothing is charged until you make it.'
+                // ⚖️ THE REFUSAL BRANCH KEEPS ITS WORDING, DELIBERATELY. Here
+                // nothing was charged for a build that did not happen, and
+                // saying so is the reassurance — the same job `No remix was
+                // used` does on the three failure paths below, which
+                // `the-refund-is-never-silent` and `cdpEdgeParity` both pin.
                 : 'No remix has been used. Twin would rather ask than guess — a guess here ends up as a claim in your voice.'}
             </p>
             {/* ⚖️ TWO COLUMNS ONLY WHERE THERE IS ROOM, AND ONLY WHEN THERE ARE

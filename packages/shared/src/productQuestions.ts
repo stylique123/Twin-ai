@@ -92,6 +92,16 @@ const has = (c: ProductFormContext, id: string) => productQuestionIds(c).include
 export const asksPersonalUse = (c: ProductFormContext): boolean =>
   has(c, 'product_personal_use')
 
+/** Is this one of the two relationships that mean the creator OWNS the thing?
+ *
+ *  ⚠️ NAMED ONCE, BECAUSE TWO VALUES MEAN IT. `OWN_PRODUCT` and `OWN_SERVICE`
+ *  both map to the registry's single `owned`, and a screen that checked only
+ *  the first would quietly give a service-seller the affiliate's wording. The
+ *  `TIE` map above is the same fact in the other direction and is the reason
+ *  this is derived from it rather than written out a second time. */
+export const ownsIt = (r: EntityRelationship | null): boolean =>
+  r !== null && TIE[r] === 'owned'
+
 /** ⚠️ THE BOOK-AND-SCREEN-RECORDER QUESTION. */
 export const asksScreenShow = (c: ProductFormContext): boolean =>
   has(c, 'product_screen_show')
