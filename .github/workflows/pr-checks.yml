@@ -39,6 +39,14 @@ jobs:
       # not on the code.
       - name: Test typecheck ratchet (a test that does not typecheck may not mean what it reads)
         run: node scripts/ci/check_test_typecheck_ratchet.mjs
+      # ⚠️ HERE, BECAUSE IT NEEDS A YAML PARSER. `js-yaml` is a declared
+      # devDependency and this job runs `npm ci`; `no-legacy-editor` runs
+      # checkout only and could not load it. A guard placed where its tooling
+      # does not exist reports on the runner, not on the code.
+      - name: Workflows parse, and no migration is applied and excluded at once
+        run: |
+          node scripts/ci/check_workflows_parse.mjs --selftest
+          node scripts/ci/check_workflows_parse.mjs
       # The edge functions were the one body of code CI never compiled. A prompt
       # edit put a backtick in prose inside a template literal, which closed the
       # literal and made generate-blueprint invalid TypeScript — it could not
