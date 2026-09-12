@@ -150,13 +150,28 @@ export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | nul
         )}
       </div>
       <div className="mt-3 flex items-center gap-3">
+        {/* ⚠️ "Add to my voice" NAMED THE ACTION AND NOT THE CONSEQUENCE, on the
+            one surface whose entire purpose is stated consequences. Every other
+            line on this card says what a thing is FOR — "Only you can answer
+            this — your videos cannot", and the strength sentence next door tells
+            her what two or three more answers buy. The button that actually
+            spends her effort said the least.
+
+            ⚖️ AND THE CONSEQUENCE IS TRUE, WHICH IS THE ONLY REASON IT MAY BE
+            PRINTED. Verified against production on 2026-09-12: the answer lands
+            in `creator_knowledge` with `source: 'asked'`, and
+            `generate-blueprint` runs a SECOND query specifically for those rows
+            — because the top-40-by-`times_seen` ranking cannot see a row stated
+            once — then places them FIRST in `knowledgeRows` so they survive
+            truncation. A test holds this copy to that mechanism, so removing the
+            read fails the promise rather than quietly making it a lie. */}
         <button
           type="button"
           disabled={busy || over || !text.trim()}
           onClick={() => void submit()}
           className="btn-gradient flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold disabled:opacity-40"
         >
-          {busy ? 'Saving…' : 'Add to my voice'}
+          {busy ? 'Saving…' : 'Add to my voice — scripts can use this'}
         </button>
         <button
           type="button"
