@@ -68,6 +68,23 @@ export const env = {
   // caption but NOT the follower count — that is a separate charged run, so
   // ScrapedProfileFacts reports audience as null rather than guessing.
   apifyInstagramProfileActor: (process.env.APIFY_INSTAGRAM_PROFILE_ACTOR ?? 'shu8hvrXbJbY3Eb9W').trim(),
+  // ⚠️⚠️ THE SIBLING SCRAPE IS THE ONLY PART OF A REFERENCE READ THAT COSTS
+  // MONEY, SO IT IS A SWITCH AND IT IS OFF. A pasted video's own view count,
+  // follower count and uploader come free from the metadata call the ingest path
+  // already makes. Its RELATIVE performance — the multiple that makes a 50k
+  // video from a 2k account beat a 500k one from a 5M account — needs the
+  // uploader's OTHER videos, and on YouTube and Instagram that is a billed Apify
+  // run per pasted link, on a corpus of strangers' accounts we will never reuse.
+  //
+  // ⚖️ SO THE FREE HALF SHIPS ON AND THE PAID HALF SHIPS OFF, rather than the
+  // whole thing waiting for a spend decision. Turning this on is one env var,
+  // and the rows written while it was off stay honestly null instead of
+  // carrying a lift computed from nothing.
+  referenceSiblingScrape: (process.env.REFERENCE_SIBLING_SCRAPE ?? '').trim() === 'true',
+  // How many of the uploader's other videos to read when it IS on. 12 is the
+  // same page size every other profile read here uses, and comfortably above
+  // MIN_VIDEOS_FOR_BASELINE (5) — a median needs a habit, not a handful.
+  referenceSiblingLimit: Number(process.env.REFERENCE_SIBLING_LIMIT ?? '12'),
   // Which job types this worker process handles.
   // 'transcribe' removed — it was registered + claimed but nothing ever enqueues it
   // (ingest-reference enqueues type 'ingest'). 'autoedit' removed with the old AI
