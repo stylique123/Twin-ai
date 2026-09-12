@@ -578,6 +578,8 @@ const EVENTS = {
   profile_scrape_free_empty: { kind: 'incident', why: 'The free profile path returned nothing.' },
   profile_facts_missing: { kind: 'incident', why: 'A scrape with no resolvable account facts.' },
   profile_facts_enrich_failed: { kind: 'incident', why: 'Enrichment failed; the scan continues.' },
+  reference_facts_unread: { kind: 'incident', why: 'The free metadata read on a pasted reference failed, so that row keeps a NULL view count forever -- there is no second pass, and a stranger\'s view count is not worth re-fetching later under a different date. Per occurrence, because a run of these means the metadata call itself has broken and every reference ingested meanwhile is unmeasured.' },
+  reference_siblings_unread: { kind: 'incident', why: 'The uploader\'s other videos could not be read, so the reference keeps its own view count and no lift. Per occurrence: this path is a BILLED Actor run on YouTube and Instagram, and a failure that repeats is money spent for nulls.' },
   ci_bootstrap_granted: { kind: 'incident', why: 'A staging credential issued. Every decision is logged by design.' },
   ci_bootstrap_refused: { kind: 'incident', why: 'A staging credential refused, with the reason.' },
   ci_bootstrap_no_credential: { kind: 'incident', why: 'No credential available to issue.' },

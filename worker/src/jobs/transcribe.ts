@@ -6,7 +6,12 @@ import { downloadReference } from '../media.js'
 import { parseRoute } from '../downloadRoute.js'
 import { earlyLook } from '../earlyLook.js'
 import { earlyLookStep } from '../earlyLookStep.js'
-import { transcribeFromUrl } from '../media.js'
+import { transcribeFromUrl, readReferenceVideoFacts, scrapeProfile } from '../media.js'
+import { env } from '../env.js'
+import {
+  workerReferenceMetrics, EMPTY_WORKER_REFERENCE_METRICS,
+  type WorkerReferenceMetrics,
+} from '../referenceMetrics.js'
 import { deriveStructure } from '../structure.js'
 
 // Normalized cache key for a reference URL: host (minus www) + path, plus the
@@ -64,6 +69,20 @@ export async function handleTranscribe(job: Job): Promise<Record<string, unknown
 
   const t = await transcribeFromUrl(url)
 
+  // ⚠️⚠️ WHAT THE VIDEO DID, CAPTURED WHERE IT IS STILL KNOWABLE. Measured in
+  // production 2026-09-12: 125 references in `transcripts`, every one carrying
+  // the words and not one carrying a view count. Creators paste the videos they
+  // wish they had made — a taste-filtered sample no scraper can produce — and
+  // Layer D forgot every one of them the moment it was used.
+  //
+  // ⚖️ AFTER THE TRANSCRIPT, NEVER BEFORE IT. The transcript is what the creator
+  // is waiting on; a metadata call in front of it would add seconds to every
+  // paste to buy a number shown later. And `readReferenceVideoFacts` cannot
+  // throw, so the reference survives its own measurement failing.
+  const metrics: WorkerReferenceMetrics = job.type === 'ingest'
+    ? await measureReference(url, platform)
+    : EMPTY_WORKER_REFERENCE_METRICS
+
   // For reference ingestion, derive the real structure now (best-effort: a
   // structure failure must not lose the transcript we already paid to produce).
   // We also surface the failure reason into the job result so it's diagnosable
@@ -99,6 +118,15 @@ export async function handleTranscribe(job: Job): Promise<Record<string, unknown
       // reading the wrong ones would teach the writer a stranger's cadence under
       // a label that says to weight it above every other signal.
       subject: job.type === 'ingest' ? 'reference' : 'own',
+      // ⚠️ NULL, NOT 0, ALL THE WAY DOWN — and the database refuses a 0 anyway
+      // (0201). 0 is how the scraped corpus spells "captured nothing", and 945
+      // gallery rows already prove what reading it as a quantity does to a
+      // median.
+      views: metrics.views,
+      creator_audience: metrics.creatorAudience,
+      creator_handle: metrics.creatorHandle,
+      relative_lift: metrics.relativeLift,
+      relative_basis: metrics.relativeBasis,
     })
     .select('id')
     .single()
@@ -121,4 +149,40 @@ export async function handleTranscribe(job: Job): Promise<Record<string, unknown
     structured: structure !== null,
     structure_error: structureError,
   }
+}
+
+/**
+ * The two reads behind one reference's numbers.
+ *
+ * ⚠️ THE FREE READ ALWAYS RUNS; THE PAID ONE IS A SWITCH. The video's own views,
+ * the uploader's follower count and the uploader's name come from a metadata
+ * call that costs nothing. The uploader's OTHER videos — the only way to know
+ * whether this one beat their normal — is a billed Actor run per pasted link on
+ * YouTube and Instagram, so it waits behind `REFERENCE_SIBLING_SCRAPE`.
+ *
+ * ⚖️ AND A FAILED SIBLING READ KEEPS THE FREE FACTS. `workerReferenceMetrics`
+ * already refuses a lift it cannot attribute or cannot base on enough videos, so
+ * there is no branch here deciding when a median is safe — one floor, in one
+ * place, is why it cannot be quietly opted out of.
+ */
+async function measureReference(
+  url: string, platform: string | undefined,
+): Promise<WorkerReferenceMetrics> {
+  const facts = await readReferenceVideoFacts(url)
+  let siblingReaches: number[] = []
+  if (env.referenceSiblingScrape && facts.creatorHandle !== null && platform) {
+    try {
+      const { posts } = await scrapeProfile(facts.creatorHandle, platform, env.referenceSiblingLimit)
+      // ⚠️ `plays` IS ALREADY THREE-STATE IN ScrapedPost, and that is why the
+      // nulls are dropped rather than defaulted. A post whose play count the
+      // source omitted is not a post nobody watched.
+      siblingReaches = posts.map((p) => p.plays).filter((v): v is number => v !== null)
+    } catch (err) {
+      console.warn(JSON.stringify({
+        event: 'reference_siblings_unread',
+        reason: err instanceof Error ? err.message : String(err),
+      }))
+    }
+  }
+  return workerReferenceMetrics({ ...facts, siblingReaches })
 }

@@ -894,6 +894,58 @@ export async function downloadReference(
   }
 }
 
+/** WHAT ONE VIDEO DID, READ FROM THE PAGE WE ARE ALREADY FETCHING.
+ *
+ *  ⚠️ THIS COSTS NOTHING AND WAS NEVER ASKED FOR. `yt-dlp -J --no-playlist`
+ *  returns `view_count`, `channel_follower_count` and the uploader id in one
+ *  metadata call — no download, no transcription, no Actor. The ingest path has
+ *  been fetching these pages since it was written and reading only the media.
+ *
+ *  ⚠️ IT NEVER THROWS AND NEVER BLOCKS. A reference whose view count we could
+ *  not read is still a reference: the transcript is the product, and losing it
+ *  because a metadata field was missing would trade the thing the creator waited
+ *  for against a number nobody asked to see. Every failure is an all-null
+ *  answer, which the reader is built to treat as "not read". */
+export interface ReferenceVideoFacts {
+  views: number | null
+  creatorAudience: number | null
+  creatorHandle: string | null
+}
+
+export async function readReferenceVideoFacts(
+  rawUrl: string,
+  timeoutMs = 45_000,
+): Promise<ReferenceVideoFacts> {
+  const none: ReferenceVideoFacts = { views: null, creatorAudience: null, creatorHandle: null }
+  try {
+    assertAllowedUrl(rawUrl)
+    const { stdout } = await run(
+      'yt-dlp',
+      ['-J', '--no-playlist', '--skip-download', '--impersonate', IMPERSONATE_TARGET, rawUrl],
+      timeoutMs,
+    )
+    const d = JSON.parse(stdout) as Record<string, unknown>
+    // ⚖️ ZERO IS DROPPED HERE TOO, at the boundary where the source's spelling
+    // of "unknown" is still visible. Some extractors omit the key; some answer
+    // 0. Both mean the same thing and neither means nobody watched it.
+    const int = (v: unknown) =>
+      typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : null
+    const str = (v: unknown) =>
+      typeof v === 'string' && v.trim() !== '' ? v.trim().replace(/^@+/, '') : null
+    return {
+      views: int(d.view_count),
+      creatorAudience: int(d.channel_follower_count),
+      creatorHandle: str(d.uploader_id) ?? str(d.channel_id) ?? str(d.uploader),
+    }
+  } catch (err) {
+    console.warn(JSON.stringify({
+      event: 'reference_facts_unread',
+      reason: err instanceof Error ? err.message : String(err),
+    }))
+    return none
+  }
+}
+
 export async function transcribeFromUrl(
   rawUrl: string,
   route: DownloadRoute = { kind: 'local_impersonated' },

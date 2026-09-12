@@ -137,6 +137,22 @@ export const EXCLUDED = {
     + 'Nothing is lost: the gallery is a production surface the editor matrix never '
     + 'touches, so applying this here could only ever pass vacuously. The columns are '
     + 'exercised on production, where the table holds 16,343 rows.',
+  '0201_a_view_count_without_its_creator_is_not_a_signal':
+    'Adds the reference-performance columns to `transcripts`. Requires `transcripts`, '
+    + 'which staging does not have — 0004_job_claim (which creates the table) is not in '
+    + 'the applied set, the same shape as 0106, 0194 and 0196 above. ⚠️ THIS WAS NOT A '
+    + 'JUDGEMENT CALL EITHER: it went in the APPLIED list first, on the standing rule '
+    + 'that a new migration always goes there, and the matrix failed with `ERROR: '
+    + 'relation "public.transcripts" does not exist` (run 34723026018). The exclusion is '
+    + 'the measured answer. '
+    + '⚠️ AND THE ABSENCE IS ITSELF THE PROOF THAT APPLYING IT HERE IS VACUOUS: the '
+    + 'editor matrix has never transcribed a reference, so a table it does not have is a '
+    + 'table it does not exercise. '
+    + '⚠️ THIS IS A DEBT: 0201 must be applied to production by hand, and the columns are '
+    + 'only exercised there — the worker is the sole writer and production is the only '
+    + 'place it runs. The columns are nullable and no existing row can violate either '
+    + 'CHECK, so applying it ahead of the code is safe and is the correct order: the '
+    + 'schema must exist before the first ingest that writes to it.',
   '0107_clip_capture':
     'Clip capture RPCs. Staging exercises the source path only; no clip is ever captured.',
   '0108_clip_scene_number':
