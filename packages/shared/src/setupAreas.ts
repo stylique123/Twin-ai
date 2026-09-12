@@ -221,6 +221,26 @@ export function setupAreas(input: SetupInput): SetupArea[] {
  *    `counts: false` keeps it out of the fraction either way, `NEXT_ORDER` never
  *    offers it as the next step, and `setup_brand_kit` still routes to the tab.
  *
+ *  · THE CTA, because `ProfileStatus` draws it BELOW this grid with the
+ *    creator's actual sentence in an inline editor — and this card cannot.
+ *    Counted off a live screen: her CTA appeared TWICE on one tab. The grid
+ *    card says "What viewers should do · Your usual ending"; the block beneath
+ *    it says "Download the free 3-day sample before you buy the full kit." and
+ *    lets her change it in place.
+ *
+ *    ⚠️ AND IT WAS INVISIBLE UNTIL SHE FINISHED. While the CTA is missing it is
+ *    `needs_setup`, so it becomes `next` and the first exclusion already hides
+ *    it — the duplicate appears only ONCE SHE HAS ANSWERED, which is the worst
+ *    possible time and why this survived a round of duplicate-hunting that
+ *    removed the voice teaser, the second products card and the DNA teaser.
+ *
+ *    ⚖️ THE ONE THAT SURVIVES IS THE ONE THAT SHOWS THE SENTENCE. Between a
+ *    status tile and an editor holding her own words, the tile is the copy: a
+ *    card that restates what the thing below it already does IS the second
+ *    telling, which is the rule this file's own brand-kit note already applies.
+ *    `setupAreas` still reports `default_cta` with its state, so the fraction,
+ *    the headline and the hero are all untouched.
+ *
  * ⚖️ AND IT NEVER RETURNS EMPTY for a real area list, which is asserted rather
  * than assumed — trading a duplicate for a blank panel is not a fix.
  */
@@ -228,7 +248,8 @@ export function panelAreas(
   areas: readonly SetupArea[],
   next: SetupArea | null,
 ): SetupArea[] {
-  return areas.filter((a) => a.id !== next?.id && a.id !== 'brand_kit')
+  return areas.filter((a) =>
+    a.id !== next?.id && a.id !== 'brand_kit' && a.id !== 'default_cta')
 }
 
 export interface SetupSummary {
