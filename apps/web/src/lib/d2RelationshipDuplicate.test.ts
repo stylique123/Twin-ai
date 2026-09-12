@@ -60,8 +60,25 @@ describe('D2: the courtesy pre-check resolves relationship from Product Library'
     expect(WEB).toMatch(/Promise\.all\(\[\s*\n\s*listBrandVoices\(\)/)
   })
 
+  // ⚠️ THIS PINNED THE WHOLE EXPRESSION AND WENT STALE ON 2026-09-12, WHILE ITS
+  // CLAIM BECAME MORE TRUE, NOT LESS. The claim is that an ENTITY answer
+  // outranks the legacy `pre_script_brief` field. A product the creator PICKED
+  // for this video now sits ahead of both, so the chain grew a term and the
+  // literal regex stopped matching correct code.
+  //
+  // ⚖️ SO IT ASSERTS THE ORDER, WHICH IS THE CLAIM. Every entity-derived source
+  // must precede the brief-derived ones; adding another entity source cannot
+  // fail this, and demoting one below `vBrief` still does.
   it('feeds the entity relationship into assessReadiness ahead of the legacy brief field', () => {
-    expect(WEB).toMatch(/relationship: libraryRelationship\(libraryProducts, str\(vBrief\.offer\)\) \?\? str\(vBrief\.promotes\) \?\? null/)
+    const line = WEB.slice(WEB.indexOf('relationship: '), WEB.indexOf('cta:', WEB.indexOf('relationship: ')))
+    const picked = line.indexOf('chosen?.relationship')
+    const library = line.indexOf('libraryRelationship(')
+    const brief = line.indexOf('vBrief.promotes')
+    expect(picked, 'the picked entity is not consulted').toBeGreaterThan(-1)
+    expect(library, 'libraryRelationship is not consulted').toBeGreaterThan(-1)
+    expect(brief, 'the legacy brief field is no longer the fallback').toBeGreaterThan(-1)
+    expect(picked).toBeLessThan(library)
+    expect(library).toBeLessThan(brief)
   })
 
   it('libraryRelationship prefers a name match, then the sole answered entity', () => {

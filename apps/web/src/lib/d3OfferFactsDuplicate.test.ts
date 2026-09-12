@@ -36,8 +36,18 @@ const WEB = readFileSync(join(REPO, 'apps/web/src/pages/v2/V2Building.tsx'), 'ut
 const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
 
 describe('D3: the courtesy pre-check resolves offer facts from Product Library', () => {
+  // ⚠️ STALE ANCHOR, 2026-09-12 — THE CLAIM HOLDS AND GREW. `libraryFacts` is
+  // still fed into `assessReadiness`; it is now the FALLBACK behind the facts of
+  // the product the creator actually picked, which is resolved by id rather than
+  // by a name the brief never carries. Pinning the whole expression failed
+  // against strictly better code.
   it('feeds libraryFacts into assessReadiness alongside libraryRelationship', () => {
-    expect(WEB).toMatch(/productFacts: libraryFacts\(libraryProducts, str\(vBrief\.offer\)\)/)
+    const line = WEB.slice(WEB.indexOf('productFacts:'), WEB.indexOf('})', WEB.indexOf('productFacts:')))
+    const byId = line.indexOf('factsOfProduct(chosen)')
+    const byName = line.indexOf('libraryFacts(libraryProducts, str(vBrief.offer))')
+    expect(byId, 'the picked product\u2019s own facts are not consulted').toBeGreaterThan(-1)
+    expect(byName, 'libraryFacts is no longer the fallback').toBeGreaterThan(-1)
+    expect(byId).toBeLessThan(byName)
   })
 
   it('libraryFacts mirrors the server\'s evidence.sections derivation, not `knowledge`', () => {
