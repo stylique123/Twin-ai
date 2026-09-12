@@ -36,7 +36,7 @@ import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../l
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE, isReadCapacityExhausted } from '../../lib/api'
 import { READINESS_INCOMPLETE_CODE, SELL_WITHOUT_TARGET_CODE } from '../../lib/api'
 import type { ReadinessQuestion } from '../../lib/api'
-import { isSupportedReference, platformFromUrl } from '@twinai/shared'
+import { isSupportedReference, platformFromUrl, platformIsUnreadable } from '@twinai/shared'
 import { useAuth } from '../../context/AuthContext'
 import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
@@ -1050,6 +1050,26 @@ export default function V2Building() {
         // An unreadable host never even reaches the worker. This used to sail
         // straight past into a paid build whose reference was decoration.
         if (refUrl && !willIngest) { halt('unsupported_host'); return }
+
+        // ⚠️ A PLATFORM WE HAVE NEVER READ IS REFUSED BEFORE THE WAIT, NOT AFTER
+        // IT. Measured on production 2026-09-12: Instagram is 60 of 60 attempts
+        // failed, 0 transcripts ever, every one carrying the identical
+        // `no audio url found` from the Apify actor. The outcome is certain from
+        // the first second.
+        //
+        // ⚠️ WHAT SHE USED TO GET WAS `read_timed_out`, AFTER 72 SECONDS OF
+        // POLLING — a sentence describing OUR session limit, for a read that was
+        // never going to return. Wrong about the cause and expensive about the
+        // manner: knowing the answer and making her wait for it anyway is the
+        // part that cannot be defended.
+        //
+        // ⚖️ AND IT LIFTS ITSELF. `platformIsUnreadable` reads
+        // `UNREADABLE_PLATFORMS`, which is a confession meant to shrink — the
+        // moment the actor works, deleting that one entry restores Instagram
+        // here and on the account card together.
+        if (refUrl && platformIsUnreadable(platformFromUrl(refUrl))) {
+          halt('platform_unreadable'); return
+        }
 
         // A read this key already completed. Skipping it skips only the WAIT —
         // the transcript it returns was measured and accepted the first time.

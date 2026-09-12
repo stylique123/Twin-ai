@@ -115,6 +115,23 @@ export type ReferenceUnreadCause =
    * re-picking videos is worse than no cause.
    */
   | 'read_unavailable'
+  /**
+   * ⚠️ A PLATFORM TWIN HAS NEVER SUCCESSFULLY READ, KNOWN BEFORE WE START.
+   * This is not a timeout and not a property of her link: measured on
+   * production 2026-09-12, Instagram is 60 of 60 attempts failed, 0 transcripts
+   * ever, every one carrying the identical `no audio url found` from the Apify
+   * actor. A 100% rate behind one message is a contract that moved.
+   *
+   * ⚠️ IT EXISTS BECAUSE `read_timed_out` WAS THE ANSWER SHE GOT, AND IT WAS
+   * FALSE TWICE OVER. It described OUR session limit rather than what happened,
+   * and it arrived after she had waited the full 72-second poll for an outcome
+   * that was certain from the first second. The same shape as the quota case
+   * beside it: a wrong cause that costs someone their afternoon.
+   *
+   * ⚖️ SO THE BUILD STOPS BEFORE THE WAIT. Knowing the answer and making her
+   * wait for it anyway is the part that cannot be defended.
+   */
+  | 'platform_unreadable'
 
 /**
  * What to tell the creator, per cause. One sentence of fact, then nothing —
@@ -127,11 +144,20 @@ export type ReferenceUnreadCause =
  * drift into two different promises about the same event.
  */
 export const REFERENCE_UNREAD_TEXT: Record<ReferenceUnreadCause, string> = {
-  unsupported_host: 'We can only watch TikTok, Instagram and YouTube links, so we could not read this one.',
+  // ⚠️ THIS NAMED INSTAGRAM AS A PLATFORM WE CAN WATCH, WHILE INSTAGRAM HAS
+  // NEVER ONCE BEEN READ — 60 of 60 failed, 0 transcripts ever. A creator who
+  // read this sentence and went to fetch an Instagram link was sent by us to
+  // spend her time on the one platform guaranteed to fail. The list now says
+  // what is true, and `platform_unreadable` covers Instagram honestly.
+  unsupported_host: 'We can only watch TikTok and YouTube links, so we could not read this one.',
   read_failed: 'We could not read this video — it may be private, deleted, or from an account that blocks us.',
   read_timed_out: 'This video is taking longer to read than we can hold you here for.',
   read_empty: 'We reached this video but the read came back empty, so there is nothing for us to follow.',
   read_unavailable: 'Twin has used up how much video it can read today, so this is not about your link — no reference can be read until that resets.',
+  // ⚖️ NAMES THE PLATFORM AND WHOSE LIMIT IT IS, AND PROMISES NOTHING ELSE. No
+  // "try again later", because nothing she can do changes it; no claim that her
+  // video is the problem, because we never read it.
+  platform_unreadable: 'Twin cannot read Instagram videos yet — that is a limit on our side, not your link. A TikTok or YouTube link will work.',
 }
 
 /**
