@@ -84,7 +84,7 @@ describe('the two questions are not the same question', () => {
 
   it('uses the offer\'s real name when we know it', () => {
     expect(claimsQuestionFor('the $100M roadmap'))
-      .toBe('What does the $100M roadmap actually do? Specific features, numbers or outcomes this video is allowed to state.')
+      .toBe('What does the $100M roadmap actually do? Anything you want in this one — a price, a number, what is included.')
   })
 
   it('falls back rather than naming a wrong or absurd product', () => {
@@ -94,8 +94,22 @@ describe('the two questions are not the same question', () => {
     expect(claimsQuestionFor('   ')).toMatch(/OFFER/)
   })
 
+  // ⚠️ THE COPY CHANGED ON 2026-09-12 AND THIS CASE WAS STALE IN ITS ANCHOR,
+  // NOT WRONG IN ITS CLAIM. It asserted the question asks for SPECIFICS, which
+  // is still exactly right and still exactly what the new wording does — it
+  // just named the old sentence's nouns. "Specific features, numbers or
+  // outcomes this video is ALLOWED TO STATE" was the claim-entitlement rule's
+  // own vocabulary leaking onto a screen a creator reads; it parsed as a
+  // permission form. The property is asserted now, so correct copy cannot fail
+  // it and vague copy still can.
   it('asks for SPECIFICS, which is what a script can actually state', () => {
-    expect(claimsQuestionFor('Twin')).toMatch(/features, numbers or outcomes/)
+    const q = claimsQuestionFor('Twin')
+    // Concrete nouns a creator can answer with, not an abstraction.
+    expect(q).toMatch(/a price/i)
+    expect(q).toMatch(/a number/i)
+    // ⚖️ AND NOT IN THE LANGUAGE OF PERMISSION. She is supplying material, not
+    // applying to be allowed to say it.
+    expect(q).not.toMatch(/allowed to/i)
   })
 
   it('the edge copy asks the same two questions', () => {
