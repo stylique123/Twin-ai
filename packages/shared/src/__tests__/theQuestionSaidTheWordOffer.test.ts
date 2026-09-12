@@ -94,8 +94,20 @@ describe('the caller actually supplies the name', () => {
     join(import.meta.dirname, '..', '..', '..', '..',
       'apps', 'web', 'src', 'pages', 'v2', 'V2Building.tsx'), 'utf8')
 
+  // ⚠️ STALE ANCHOR ONE COMMIT LATER, AND MINE. This pinned the whole
+  // expression; the product the creator PICKED was then added ahead of the
+  // library heuristic, so the chain grew a term and my own literal failed
+  // against better code. The claim — the caller supplies a name from something
+  // that actually knows one — is unchanged.
   it('passes offerNameForWording into assessReadiness', () => {
-    expect(src).toMatch(/offerNameForWording:\s*libraryOfferName\(/)
+    const line = src.slice(
+      src.indexOf('offerNameForWording:'),
+      src.indexOf('\n', src.indexOf('offerNameForWording:')))
+    expect(line, 'did not find offerNameForWording').toContain('offerNameForWording:')
+    expect(line).toContain('libraryOfferName(')
+    // ⚖️ AND IT IS STILL A NAME, NEVER AN ANSWER — the negative controls above
+    // assert the verdict side; this asserts the wiring side.
+    expect(src).not.toMatch(/\boffer:\s*libraryOfferName\(/)
   })
 
   it('resolves it from Product Library, not from pre_script_brief alone', () => {
