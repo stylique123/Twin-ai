@@ -98,7 +98,7 @@ function framingFor(
 }
 
 import { readBeatPlan, beatDurationSec, purposeAt, type PlannedBeat } from './beatPlan'
-import { ctaMechanismIn } from './cta'
+import { ctaMechanismIn, isTemplateCta } from './cta'
 import { blueprintCountIssues, type MechanismIssue } from './referenceMechanism'
 import { placeToStand, readShotDirection, stripPalette } from './shotDirection'
 
@@ -567,10 +567,24 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   // ⚠️ THE CREATOR'S OWN, ONLY IF IT IS ONE. `recurring_ctas` is model-extracted
   // and can hold a fragment; a line that asks for nothing is not an ending, and
   // appending it would be the same defect with a friendlier source.
+  //
+  // ⚠️ AND ONLY IF SHE CAN SAY IT. `ctaMechanismIn` asks whether the line ASKS
+  // for something; it cannot see whether the line is SPEAKABLE. "Comment
+  // [KEYWORD] and I will send you a short, simple routine to get started." is
+  // stored verbatim for two of the 47 scanned accounts, passes the mechanism
+  // test on "Comment", and reached a teleprompter as a filmable line with an
+  // Edit button beside it. The hazard has two halves and this checks both.
+  //
+  // ⚖️ THE WHOLLY-PLACEHOLDER DROP ABOVE CANNOT CATCH IT, and that is why this
+  // guard lives here rather than being folded into that one. `isWhollyPlaceholder`
+  // is true only when the entire line is one slot; this line is prose WITH a slot
+  // in it. Measured over 98 production generations: every bracketed SCRIPT line
+  // is wholly a placeholder (6 of 6), so the appended stored CTA is the only
+  // live path by which an embedded slot reaches filming.
   const ownCta = ctaLine === ''
     ? (input.creatorCtas ?? [])
         .map((c) => (typeof c === 'string' ? c.trim() : ''))
-        .find((c) => c !== '' && ctaMechanismIn(c) !== null) ?? ''
+        .find((c) => c !== '' && ctaMechanismIn(c) !== null && !isTemplateCta(c)) ?? ''
     : ''
   const cta = ctaLine || ownCta
   if (cta === '') {
