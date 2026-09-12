@@ -5704,6 +5704,26 @@ Deno.serve(async (req: Request) => {
       ? 'What does the OFFER do? Anything you want in this one — a price, a number, what is included.'
       : `What does ${n} actually do? Anything you want in this one — a price, a number, what is included.`
   }
+  // ⚠️ ONE QUESTION PER OBJECTIVE, AND THE EDGE HAS TO KNOW THEM TOO. Four
+  // objectives asking the same claims question is what produced nine of ten
+  // runs on a single premise. The client picks the sentence from
+  // `packages/shared/src/productObjectiveQuestion.ts`; this is its inlined twin,
+  // held identical by a parity test, for the same reason `readyClaimsQuestion`
+  // above is inlined — Deno cannot import @twinai/shared.
+  //
+  // ⚖️ AND IT APPLIES ONLY TO A PRODUCT BUILD. `readyObjective` is set from the
+  // request's goal only when this build has a product subject; a generic goal
+  // that happens to spell `educate` must not select a product question.
+  const READY_OBJECTIVE_QUESTIONS: Record<string, string> = {
+    sell: 'What is new about it, or why now?',
+    educate: 'What do people misunderstand about how it works?',
+    leads: 'What is the smallest first step someone can take?',
+    conversations: 'What is the question you keep getting?',
+    personal_brand: 'What was missing that made you build it?',
+  }
+  const readyObjective = (body.mentioned_product_id ?? '').trim() !== '' || (body.selected_product_id ?? '').trim() !== ''
+    ? String(body.goal ?? '').trim()
+    : ''
   const readyMissing: Array<{ field: string; question: string }> = []
   // ⚠️ THE GOAL IS NOT ASKED HERE ANY MORE — the remix card's three intent chips
   // ask it in plain English before the build starts, and asking it again put one
@@ -5732,7 +5752,10 @@ Deno.serve(async (req: Request) => {
     readyMissing.push({ field: 'cta', question: 'What should viewers do after watching?' })
   }
   if (readyPromoting && readyFacts.length === 0 && !readyPresent(answers.claims)) {
-    readyMissing.push({ field: 'claims', question: readyClaimsQuestion(readyOffer) })
+    readyMissing.push({
+      field: 'claims',
+      question: READY_OBJECTIVE_QUESTIONS[readyObjective] ?? readyClaimsQuestion(readyOffer),
+    })
   }
   // ── AUDIENCE: INFERRED WHEN THERE IS A BACK CATALOGUE, ASKED WHEN THERE IS NOT
   //

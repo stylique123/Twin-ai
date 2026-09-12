@@ -69,6 +69,15 @@ export interface ReadinessInputs {
    *  product is CALLED is not evidence that this video promotes it. So the name
    *  may improve a sentence and may never settle a field. */
   offerNameForWording?: string | null
+  /** The product objective she picked — a `VideoGoal`, the same value
+   *  `PRODUCT_OBJECTIVES` carries.
+   *
+   *  ⚠️ IT CHANGES THE QUESTION, NOT THE VERDICT. Which sentence is put in
+   *  front of her for `claims`; never whether `claims` is required, never
+   *  whether the video is promoting. A creator who picks an objective has told
+   *  us what the video must do — she has not thereby answered what it may say
+   *  about the product, which is the whole point of still asking. */
+  objective?: string | null
   /** The creator's commercial tie to `offer`. The enum, never prose. */
   relationship?: string | null
   /** What the viewer is asked to do. */
@@ -82,6 +91,11 @@ export interface ReadinessInputs {
   /** Anything at all on record about this creator, for inference. */
   hasCreatorKnowledge?: boolean
 }
+
+// ⚠️ THE OBJECTIVE SELECTS THE CLAIMS QUESTION. See `productObjectiveQuestion.ts`
+// for why this is a question change rather than a new field: the answer has to
+// reach a reader, and `answers.claims` is the one that already exists.
+import { objectiveQuestion } from './productObjectiveQuestion.js'
 
 const present = (v: unknown): boolean =>
   typeof v === 'string' ? v.trim() !== '' && v.trim().toLowerCase() !== 'unspecified' : v != null
@@ -226,10 +240,21 @@ export function assessReadiness(input: ReadinessInputs): ReadinessVerdict {
   // back to `input.offer` so a caller that really does know what is being
   // promoted still wins, and to the generic wording when neither is known —
   // a question naming the wrong product is worse than one naming none.
-  const questionFor = (field: ReadinessField): string | null =>
-    field === 'claims'
-      ? claimsQuestionFor(input.offer ?? input.offerNameForWording)
-      : (ASK[field] || null)
+  //
+  // ⚠️ AND THE OBJECTIVE OUTRANKS THE NAME, because they answer different
+  // halves. Naming the product makes a generic question answerable; the
+  // objective makes it a DIFFERENT question. Four objectives sharing one
+  // sentence is what produced nine of ten runs on a single premise, and a
+  // better-named version of the same sentence would not have moved any of them.
+  //
+  // ⚖️ FALLING BACK IS A REAL ANSWER, NOT A HOLE. An objective with no question
+  // of its own — including every non-product build, which has no objective at
+  // all — gets the named-or-generic claims wording exactly as before.
+  const questionFor = (field: ReadinessField): string | null => {
+    if (field !== 'claims') return ASK[field] || null
+    return objectiveQuestion(input.objective)
+      ?? claimsQuestionFor(input.offer ?? input.offerNameForWording)
+  }
   const put = (field: ReadinessField, state: ReadinessState) =>
     v.push({ field, state, question: state === 'MISSING_REQUIRED' ? questionFor(field) : null })
 
