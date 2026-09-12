@@ -9,6 +9,11 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { CreatorQuestionCard } from './CreatorQuestionCard'
 
+// ⚠️ THE FOURTH READ THE CARD MAKES. Left unmocked it leaves a promise pending
+// in jsdom, `loadNext` never finishes and the card renders NOTHING — which is
+// how this dependency announced itself when it was first added. `null` is the
+// honest default: we do not know what she sells, so the bucket wording stands.
+vi.mock('../lib/ownSellsLoad', () => ({ loadOwnSells: vi.fn(async () => null) }))
 vi.mock('../lib/creatorAnswers', () => ({
   loadQuestionsPut: vi.fn(async () => ['q1', 'q2', 'q3']),
   markQuestionShown: vi.fn(async () => {}),

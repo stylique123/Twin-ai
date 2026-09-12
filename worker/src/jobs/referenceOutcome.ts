@@ -40,6 +40,15 @@ export type ReferenceFailureClass =
   /** The extractor could not parse the page. A yt-dlp upgrade may fix it; the
    *  same binary on the same URL will not. */
   | 'extractor_stale'
+  /** A THIRD-PARTY ACTOR ANSWERED, AND ITS ANSWER NO LONGER FITS OUR READER.
+   *  Instagram does not go through yt-dlp at all: `instagramTranscriptViaApify`
+   *  POSTs to an Apify actor and reads `text`/`segments` off its dataset item.
+   *  When that actor starts returning `errMsg` for every single reel, nothing
+   *  about our binary, our IP or the video is wrong — the actor's contract
+   *  moved. The remedy is to fix or replace the ACTOR, which is why this is not
+   *  `extractor_stale`: that class's own instruction is "upgrade yt-dlp", and
+   *  following it here would be a day spent on a component not in the path. */
+  | 'actor_contract'
   /** The host wants a session we do not have. */
   | 'auth_required'
   /** Deleted, private, or otherwise no longer there. Never retry. */
@@ -69,7 +78,17 @@ export function classifyReferenceFailure(message: string | null | undefined): Re
   if (m.includes('unavailable: no mo') || m.includes('python3 exited')) return 'our_config'
   if (m.includes('login') || m.includes('cookies') || m.includes('sign in')) return 'auth_required'
   if (m.includes('removed') || m.includes('private') || m.includes('not available')) return 'source_gone'
-  if (m.includes('unable to extract') || m.includes('unexpected') || m.includes('no audio url found')) return 'extractor_stale'
+  // ⚠️ BEFORE THE yt-dlp RULE, AND MEASURED. `no audio url found` is the Apify
+  // actor's own `errMsg`, wrapped by media.ts. On 2026-09-12 it was returned
+  // for 60 of 60 Instagram profile fetches — 0 ok, 0 transcripts — every one
+  // carrying that identical string. A 100% rate with a single message is a
+  // CONTRACT signature, not a property of sixty different videos.
+  if (m.includes('no audio url found')) return 'actor_contract'
+  // ⚖️ AND A MISSING TOKEN IS OURS, NOT THE VIDEO'S. media.ts throws this
+  // before it ever calls out, so classifying it as `unknown` sent someone to
+  // look at a reel that was never fetched.
+  if (m.includes('analysis is not configured yet')) return 'our_config'
+  if (m.includes('unable to extract') || m.includes('unexpected')) return 'extractor_stale'
   if (m.includes('yt-dlp')) return 'extractor_stale'
   return 'unknown'
 }
@@ -81,4 +100,8 @@ export function classifyReferenceFailure(message: string | null | undefined): Re
 export function isFetchDefect(cls: ReferenceFailureClass): boolean {
   return cls === 'blocked_by_host' || cls === 'extractor_stale'
     || cls === 'auth_required' || cls === 'our_config'
+    // ⚖️ OURS TOO. The reel is fine; the thing we ask about it is broken. Left
+    // out, the one failure mode that currently accounts for 100% of Instagram
+    // would be invisible in the figure this function exists to report.
+    || cls === 'actor_contract'
 }

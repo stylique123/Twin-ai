@@ -128,6 +128,36 @@ export type WhatWorksMessage =
  *  and a median drawn from five is not a creator's normal. */
 export const MIN_MEASURED_FOR_A_CLAIM = 10
 
+/** Below this median, "N times your usual" is arithmetic on noise.
+ *
+ *  ⚠️ THE REPORTED CASE: "Your best post did 127 views — about 85× your usual
+ *  1.5." A MEDIAN OF 1.5 VIEWS. The multiple is real arithmetic and completely
+ *  meaningless: at a median of 1.5 a single extra viewer moves it by two thirds,
+ *  so the card reports the difference between one person and two as an 85-fold
+ *  finding. A creator with 1.5 median views already knows her account is small.
+ *  She does not need Twin to do arithmetic at her about it.
+ *
+ *  ⚠️ AND `MIN_MEASURED_FOR_A_CLAIM` DOES NOT CATCH IT, which is why this
+ *  exists. That floor asks whether we measured ENOUGH POSTS; this asks whether
+ *  what we measured is a SIGNAL. Ten posts of 1, 2 and 0 views pass the first
+ *  test easily — the sample is complete, and it is a complete sample of nothing.
+ *
+ *  ⚖️ THE VALUE IS A JUDGEMENT INSIDE A WIDE SAFE RANGE, AND THAT IS STATED
+ *  RATHER THAN DRESSED UP. Measured on production 2026-09-12: of 5 owners with
+ *  10+ measured posts, ONE has a median under 10 (1.5) and FOUR have medians
+ *  above 200 — max 37,000. NOTHING lies between. The distribution is bimodal
+ *  with an empty gap, so every threshold from 2 to 200 produces identical
+ *  behaviour on today's population and no number in that range can be
+ *  falsified by it. 50 is chosen for the reason a person would choose it — at a
+ *  median of 50 one extra view shifts the multiple by 2%, so the ratio is about
+ *  the video and not about rounding — and it must be re-examined the moment a
+ *  creator actually lands in the gap.
+ *
+ *  ⚖️ AND SILENCE IS THE RIGHT ANSWER HERE, NOT A SOFTER SENTENCE. There is no
+ *  honest version of this card for an account nobody is watching yet; a hedged
+ *  one would still be a performance claim built on four viewers. */
+export const MIN_MEDIAN_FOR_A_CLAIM = 50
+
 /**
  * What, if anything, to tell this creator about their own numbers.
  *
@@ -140,6 +170,10 @@ export const MIN_MEASURED_FOR_A_CLAIM = 10
 export function messageForWhatWorks(w: WhatWorks): WhatWorksMessage {
   if (w.median === null) return { kind: 'silent' }
   if (w.counted < MIN_MEASURED_FOR_A_CLAIM) return { kind: 'silent' }
+  // ⚖️ ENOUGH POSTS IS NOT THE SAME QUESTION AS ENOUGH SIGNAL. The floor above
+  // asks whether we measured enough; this asks whether what we measured means
+  // anything. Both are required and neither implies the other.
+  if (w.median < MIN_MEDIAN_FOR_A_CLAIM) return { kind: 'silent' }
   const best = w.breakouts[0]
   if (!best) return { kind: 'silent' }
   return {

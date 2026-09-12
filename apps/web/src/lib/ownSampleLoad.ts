@@ -29,7 +29,12 @@ export async function loadOwnSample(voiceId?: string | null): Promise<AccountCou
     // must never reach a creator-facing denominator.
     let q = supabase
       .from('brand_voices')
-      .select('own_sample_usable, own_sample_checked, own_sample_complete')
+      // ⚖️ AND `platform`, WHICH IS NOT A COUNT BUT DECIDES WHICH SENTENCE IS
+      // TRUE. A zero on Instagram means Twin read nothing because it CANNOT read
+      // Instagram — 60 of 60 attempts, one identical error — and saying "we
+      // could not read any of the 6 videos we looked at" reports our outage as
+      // her sample.
+      .select('own_sample_usable, own_sample_checked, own_sample_complete, platform')
       .eq('owner_id', ownerId)
     // ⚖️ THE DEFAULT VOICE WHEN NO ID IS GIVEN, matching how the rest of the app
     // resolves "this creator's twin" — not simply the first row the database

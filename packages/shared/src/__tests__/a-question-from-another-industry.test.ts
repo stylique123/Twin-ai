@@ -123,7 +123,14 @@ const CARD = readFileSync(join(
 
 describe('the bank reaches the one screen that asks', () => {
   it('the selector is handed the niche bank', () => {
-    expect(CARD).toMatch(/nextQuestionByDeficit\(put, counts, creatorQuestionsFor\(niche\)\)/)
+    // ⚠️ THIS PINNED THE WHOLE CALL AND WENT STALE ON 2026-09-12 WHILE ITS CLAIM
+    // GREW. The claim is that the SELECTOR IS HANDED THE NICHE BANK rather than
+    // the raw one. It now also receives what she sells, so the argument list
+    // grew and the literal stopped matching correct code. Asserted as "the bank
+    // the selector gets comes from `creatorQuestionsFor(niche...)`", which a
+    // regression to `CREATOR_QUESTIONS` still fails.
+    expect(CARD).toMatch(/nextQuestionByDeficit\(put, counts, creatorQuestionsFor\(niche[,)]/)
+    expect(CARD).not.toMatch(/nextQuestionByDeficit\([^)]*CREATOR_QUESTIONS/)
     expect(CARD).toMatch(/loadVoiceNiche\(voiceId\)/)
   })
 

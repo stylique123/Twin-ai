@@ -23,6 +23,11 @@ const put: string[] = []
 const skipped: string[] = []
 const shown: string[] = []
 
+// ⚠️ THE FOURTH READ THE CARD MAKES. Left unmocked it leaves a promise pending
+// in jsdom, `loadNext` never finishes and the card renders NOTHING — which is
+// how this dependency announced itself when it was first added. `null` is the
+// honest default: we do not know what she sells, so the bucket wording stands.
+vi.mock('../lib/ownSellsLoad', () => ({ loadOwnSells: vi.fn(async () => null) }))
 vi.mock('../lib/creatorAnswers', () => ({
   loadQuestionsPut: vi.fn(async () => [...put]),
   markQuestionShown: vi.fn(async (id: string) => { shown.push(id) }),

@@ -264,6 +264,39 @@ export interface AccountCounts {
   checked: number
   /** False only while the sample is still being collected. */
   complete?: boolean
+  /** Where the videos came from, lowercased, when the caller knows.
+   *
+   *  ⚠️ IT EXISTS FOR ONE REASON: a platform we cannot read AT ALL produces the
+   *  same zero as a platform we read badly, and the two deserve opposite
+   *  sentences. Absent means "not told", and an untold platform is treated as
+   *  readable — silence must never manufacture an excuse for us. */
+  platform?: string | null
+}
+
+/** Platforms whose videos Twin currently cannot read at all.
+ *
+ *  ⚠️ MEASURED ON PRODUCTION 2026-09-12, NOT ASSUMED: 60 Instagram profile
+ *  fetches, 0 ok, 60 errored, 0 transcripts. Every one carried the IDENTICAL
+ *  message `no audio url found` — the Apify actor's own `errMsg`, wrapped by
+ *  the worker. Sixty different videos do not independently lose their audio on
+ *  the same day; a 100% rate behind a single string is a contract that moved.
+ *  Instagram references have therefore NEVER reached a transcript.
+ *
+ *  ⚖️ THIS LIST IS A CONFESSION, NOT A POLICY, AND IT IS MEANT TO SHRINK. It
+ *  exists so the screen stops implying the creator's videos were unclear when
+ *  the truth is we never read one. The moment the actor works, delete the entry
+ *  and the honest sentence disappears with it — nothing else needs touching.
+ *
+ *  ⚠️ AND TIKTOK IS DELIBERATELY NOT HERE. TikTok fails OFTEN (IP blocks, 119 of
+ *  154 invisible failures) but not ALWAYS, and 807 assess jobs finished clean
+ *  overall. "Often" is a different sentence from "never", and putting it here
+ *  would excuse Twin from a limit it does not actually have. */
+export const UNREADABLE_PLATFORMS: readonly string[] = Object.freeze(['instagram'])
+
+/** Whether Twin can read this platform's videos at all. */
+export function platformIsUnreadable(platform: string | null | undefined): boolean {
+  const p = typeof platform === 'string' ? platform.trim().toLowerCase() : ''
+  return p !== '' && UNREADABLE_PLATFORMS.includes(p)
 }
 
 /** What Twin says about the creator's OWN account after a scan.
@@ -327,6 +360,26 @@ export function messageForOwnAccount(counts: AccountCounts): AccountMessage {
   // stays true after the detector is fixed — it just reports a better number.
   // No instruction, because Twin has no instruction to give that would help.
   if (usable < 1) {
+    // ⚠️ "WE COULD NOT READ ANY OF THE 6 VIDEOS" READS AS HER FAULT WHEN THE
+    // PLATFORM IS ONE WE HAVE NEVER READ. It implies we looked at six videos and
+    // they were not clear enough — six specific videos of hers, judged. The
+    // truth on Instagram is that we never read ONE: 60 of 60 attempts failed
+    // with one identical error, because the actor's contract moved. Reporting
+    // our outage as her sample is the sharpest version of a defect this file
+    // already fixed once, when the wording told creators to post differently to
+    // fix a detector that was failing on 10 of 10 accounts.
+    //
+    // ⚖️ SO IT NAMES THE LIMIT AND WHOSE IT IS, AND PROMISES NOTHING ELSE. No
+    // instruction, because there is nothing she can do; no claim about what Twin
+    // learned instead, because this function cannot see that and a comforting
+    // guess would be a second false statement on the same card.
+    if (platformIsUnreadable(counts.platform)) {
+      return {
+        kind: 'none',
+        headline: 'Twin cannot read Instagram videos yet',
+        detail: 'That is a limit on our side, not something about your account.',
+      }
+    }
     return {
       kind: 'none',
       headline: `We could not read any of the ${looked} we looked at clearly enough to learn from`,

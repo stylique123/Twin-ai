@@ -17,6 +17,7 @@
 import { useEffect, useState } from 'react'
 import { nextQuestionByDeficit, creatorQuestionsFor, ANSWER_MAX, type CreatorQuestion } from '@twinai/shared'
 import { loadVoiceNiche } from '../lib/voiceNicheLoad'
+import { loadOwnSells } from '../lib/ownSellsLoad'
 import { loadQuestionsPut, answerQuestion, skipQuestion, markQuestionShown, loadKnowledgeCounts } from '../lib/creatorAnswers'
 import { cn } from '../lib/cn'
 
@@ -52,7 +53,18 @@ export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | nul
     if (!alive()) return
     const niche = await loadVoiceNiche(voiceId)
     if (!alive()) return
-    const q = nextQuestionByDeficit(put, counts, creatorQuestionsFor(niche))
+    // ⚠️ WHAT SHE SELLS, NOT ONLY WHAT SHE TALKS ABOUT. Her niche buckets as
+    // `business`, which is right, and the business wording asks "when a founder
+    // comes to you stuck" — a question a template seller can only decline. Her
+    // products say she has BUYERS, NOT CLIENTS, and that is a closed enum rather
+    // than prose we have to guess at.
+    //
+    // ⚖️ A FAILED READ FALLS BACK TO THE BUCKET WORDING, never blocks the card.
+    // Not knowing what she sells is the state every creator was in before this
+    // existed, and it is served by a real question.
+    const sells = await loadOwnSells()
+    if (!alive()) return
+    const q = nextQuestionByDeficit(put, counts, creatorQuestionsFor(niche, undefined, sells))
     setQuestion(q)
     // ⚠️ RECORDED HERE BECAUSE HERE IS WHERE IT IS TRUE. The impression is
     // written only once a question actually exists to render -- not on mount,
@@ -150,13 +162,28 @@ export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | nul
         )}
       </div>
       <div className="mt-3 flex items-center gap-3">
+        {/* ⚠️ "Add to my voice" NAMED THE ACTION AND NOT THE CONSEQUENCE, on the
+            one surface whose entire purpose is stated consequences. Every other
+            line on this card says what a thing is FOR — "Only you can answer
+            this — your videos cannot", and the strength sentence next door tells
+            her what two or three more answers buy. The button that actually
+            spends her effort said the least.
+
+            ⚖️ AND THE CONSEQUENCE IS TRUE, WHICH IS THE ONLY REASON IT MAY BE
+            PRINTED. Verified against production on 2026-09-12: the answer lands
+            in `creator_knowledge` with `source: 'asked'`, and
+            `generate-blueprint` runs a SECOND query specifically for those rows
+            — because the top-40-by-`times_seen` ranking cannot see a row stated
+            once — then places them FIRST in `knowledgeRows` so they survive
+            truncation. A test holds this copy to that mechanism, so removing the
+            read fails the promise rather than quietly making it a lie. */}
         <button
           type="button"
           disabled={busy || over || !text.trim()}
           onClick={() => void submit()}
           className="btn-gradient flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold disabled:opacity-40"
         >
-          {busy ? 'Saving…' : 'Add to my voice'}
+          {busy ? 'Saving…' : 'Add to my voice — scripts can use this'}
         </button>
         <button
           type="button"

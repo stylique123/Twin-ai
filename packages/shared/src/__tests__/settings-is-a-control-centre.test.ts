@@ -179,20 +179,59 @@ describe('editing the profile happens here, not somewhere else', () => {
     expect(PAGE).not.toMatch(/case 'edit_profile': return nav\('\/onboarding'\)/)
   })
 
+  // ⚠️ THE 4000-CHARACTER WINDOW WAS A PROXY FOR "IN THE DRAWER" AND IT BROKE ON
+  // 2026-09-12 — not because either answer left the drawer, but because the
+  // block gained a comment. A byte offset is not a structure, and a guard that
+  // fails when prose grows is measuring the wrong thing. Bounded by the drawer's
+  // actual end instead, which is what the claim was always about.
   it('offers the two answers the pipeline actually branches on', () => {
     // ⚖️ NOT THE WHOLE QUESTIONNAIRE. What they know decides how much a script
     // explains; the commercial tie decides what it may claim. Reprinting the
     // rest would rebuild the wall of forms this page was rescued from.
-    const d = PAGE.slice(PAGE.indexOf('{profileOpen && ('))
-    expect(d.slice(0, 4000)).toMatch(/audienceKnowledge:/)
-    expect(d.slice(0, 4000)).toMatch(/commercialTies:/)
+    const start = PAGE.indexOf('{profileOpen && (')
+    expect(start, 'the profile drawer was renamed').toBeGreaterThan(-1)
+    const d = PAGE.slice(start, PAGE.indexOf('Go through all the questions again', start))
+    expect(d.length, 'the drawer bound was not found').toBeGreaterThan(500)
+    expect(d).toMatch(/audienceKnowledge:/)
+    expect(d).toMatch(/commercialTies:/)
   })
 
-  it('treats "nothing commercial" as exclusive', () => {
-    // ⚠️ HOLDING IT BESIDE A REAL TIE IS A CONTRADICTION, and the pipeline would
-    // have to pick one — the class of decision this batch moved into code.
-    expect(PAGE).toMatch(/v === 'none'/)
-    expect(PAGE).toMatch(/ties\.filter\(\(t\) => t !== 'none'\)/)
+  // ⚠️ THIS CASE WAS STALE ON 2026-09-12, AND ITS CLAIM IS NOW STRUCTURAL RATHER
+  // THAN CONDITIONAL. It asserted the hand-written exclusivity logic that kept
+  // "nothing commercial" from being held beside a real tie — six chips, any
+  // number selectable, so the contradiction had to be prevented in code.
+  //
+  // ⚖️ THE SIX CHIPS COLLAPSED TO TWO MUTUALLY EXCLUSIVE ANSWERS, so the
+  // contradiction is now unrepresentable rather than prevented: each write
+  // REPLACES the list via `SELLS_ANSWER_TO_TIES`, it never appends. Asserting
+  // the old `filter` would demand code whose reason for existing is gone.
+  //
+  // ⚠️ SO IT ASSERTS THE PROPERTY THAT SURVIVED: a write can never accumulate.
+  // A mutant that appends instead of replacing brings the contradiction back and
+  // fails here.
+  // ⚠️ AND THE FIRST VERSION OF THIS CONTROL DID NOT WORK — A MUTANT THAT
+  // ACCUMULATED PASSED IT. It forbade `...ties` and `ties.filter`, which are the
+  // OLD code's variable names; the collapsed write reads the current value as
+  // `profileAnswers?.commercialTies`, so an appending mutant matched neither
+  // pattern. A negative control written against the shape of the code it
+  // replaced tests nothing.
+  //
+  // ⚖️ SO IT ASSERTS THE STRUCTURE INSTEAD OF NAMING FORBIDDEN SPELLINGS: the
+  // write takes EXACTLY ONE spread, and that spread is the shared map. Any way
+  // of folding the existing list back in — under any variable name, present or
+  // future — adds a second one and fails.
+  it('a commercial answer replaces the previous one, never accumulates', () => {
+    const drawer = PAGE.slice(PAGE.indexOf('{profileOpen && ('))
+    const at = drawer.indexOf('commercialTies:')
+    expect(at, 'the commercial write was renamed').toBeGreaterThan(-1)
+    // The write expression is one line — `commercialTies: <expr>,` — so the line
+    // IS the bound. No brace matching, nothing to get subtly wrong.
+    const write = drawer.slice(at, drawer.indexOf('\n', at))
+    expect(write.length, 'the write expression was not bounded').toBeGreaterThan(10)
+
+    expect(write).toMatch(/SELLS_ANSWER_TO_TIES\[/)
+    const spreads = write.match(/\.\.\./g) ?? []
+    expect(spreads.length, `expected one spread, found ${spreads.length} in: ${write}`).toBe(1)
   })
 
   it('and the full questionnaire is still reachable for anyone who wants it', () => {

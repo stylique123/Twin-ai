@@ -24,6 +24,10 @@ export interface OwnSampleRow {
   own_sample_checked?: unknown
   own_sample_complete?: unknown
   own_sample_no_answer?: unknown
+  /** The voice's platform, so a zero on a platform Twin cannot read at all can
+   *  be told apart from a zero on videos it genuinely read and could not use.
+   *  Absent is fine and means "not told" — never an excuse. */
+  platform?: unknown
 }
 
 /**
@@ -75,5 +79,12 @@ export function ownSampleCounts(row: OwnSampleRow | null | undefined): AccountCo
   // rather than clamped. Clamping would print a confident sentence from data
   // that is known to be wrong.
   if (usable > checked) return null
-  return { usable, checked, complete: row.own_sample_complete }
+  // ⚖️ CARRIED ONLY WHEN IT IS A REAL STRING. `undefined` reaches
+  // `messageForOwnAccount` as "not told", which is treated as READABLE — the
+  // safe direction, because an unknown platform must never silence a true
+  // statement about the creator's videos or manufacture an excuse for us.
+  const platform = typeof row.platform === 'string' && row.platform.trim() !== ''
+    ? row.platform.trim().toLowerCase()
+    : undefined
+  return { usable, checked, complete: row.own_sample_complete, platform }
 }

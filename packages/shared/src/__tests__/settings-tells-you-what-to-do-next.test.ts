@@ -239,12 +239,42 @@ describe('one next step, and it moves', () => {
         .not.toContain('brand_kit')
     })
 
+    // ⚠️ THE DUPLICATE THAT ONLY APPEARED ONCE SHE HAD ANSWERED. While the CTA
+    // is missing it is `needs_setup`, so it becomes `next` and the first
+    // exclusion already hides it. The moment she writes one it is `ready`, stops
+    // being `next`, and the grid card appears ABOVE the block that shows her
+    // actual sentence in an inline editor. That timing is why it survived a
+    // round of duplicate-hunting that removed the voice teaser, the second
+    // products card and the DNA teaser — every one of which was visible from
+    // the start.
+    it('excludes the CTA, which ProfileStatus draws below with her real sentence', () => {
+      // ⚖️ THE STATE THAT EXPOSED IT: a creator who has answered. A fixture
+      // with no CTA would hide the bug behind the `next` exclusion and pass
+      // against the old code.
+      const areas = of({ ...nothing, cta: 'Download the free 3-day sample before you buy.' })
+      const s = setupSummary(areas)
+      expect(areas.find((a) => a.id === 'default_cta')?.state,
+        'the fixture does not actually have a confirmed CTA').toBe('ready')
+      expect(s.next?.id, 'the CTA is still next, so this proves nothing')
+        .not.toBe('default_cta')
+      expect(panelAreas(areas, s.next).map((a) => a.id)).not.toContain('default_cta')
+    })
+
+    // ⚖️ AND THE AREA ITSELF IS UNTOUCHED. Hiding a CARD must not remove the
+    // FACT: the fraction, the headline and the hero all still read it.
+    it('still reports the CTA area, so the count and headline are unchanged', () => {
+      const areas = of({ ...nothing, cta: 'Download the free 3-day sample before you buy.' })
+      expect(areas.map((a) => a.id)).toContain('default_cta')
+      expect(setupSummary(areas).total).toBe(
+        areas.filter((a) => a.counts && a.state !== 'not_needed').length)
+    })
+
     it('and nothing else is dropped', () => {
       const areas = of(nothing)
       const s = setupSummary(areas)
       const shown = panelAreas(areas, s.next).map((a) => a.id)
       for (const a of areas) {
-        if (a.id === 'brand_kit' || a.id === s.next?.id) continue
+        if (a.id === 'brand_kit' || a.id === 'default_cta' || a.id === s.next?.id) continue
         expect(shown, `${a.id} disappeared from the panel`).toContain(a.id)
       }
     })
@@ -259,12 +289,19 @@ describe('one next step, and it moves', () => {
 
     // ⚖️ AND A NULL NEXT STEP EXCLUDES NOTHING BUT THE KIT. When the core is
     // done there is no next step, and the panel must not lose a card to it.
-    it('a null next step drops only the brand kit', () => {
+    // ⚠️ THIS SAID "ONLY THE BRAND KIT" AND COUNTED `areas.length - 1`. It went
+    // stale on 2026-09-12 when the CTA became a second STRUCTURAL exclusion —
+    // one that applies whatever `next` is, unlike the `next` exclusion itself.
+    // Its real claim was never the number: it was that NOTHING UNEXPECTED is
+    // dropped when there is no next step to account for a missing card. A
+    // hard-coded arity restates the implementation; naming the exclusions
+    // states the rule, and a third one added silently still fails this.
+    it('a null next step drops exactly the structural exclusions, and nothing else', () => {
       const areas = of()
       expect(setupSummary(areas).next).toBeNull()
       const shown = panelAreas(areas, null).map((a) => a.id)
-      expect(shown).not.toContain('brand_kit')
-      expect(shown.length).toBe(areas.length - 1)
+      const dropped = areas.map((a) => a.id).filter((id) => !shown.includes(id))
+      expect(dropped.slice().sort()).toEqual(['brand_kit', 'default_cta'])
     })
   })
 

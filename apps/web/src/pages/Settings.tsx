@@ -8,6 +8,8 @@ import {
   loadProductEntities,
   setupAreas, setupSummary, panelAreas, type SetupArea, type SetupState, type SetupAction,
   readStoredBrief, savePreScriptBrief, suggestedCta, whatTwinLearned, heardCount, BASIS_LABEL, editTargetOf,
+  SELLS_ANSWER_TO_TIES, sellsAnswerOf,
+  scannedAudienceFacts, audienceFactConfirmed,
 } from '@twinai/shared'
 import { readProfileAnswers } from '../lib/profileAnswersRead'
 import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
@@ -260,6 +262,12 @@ export default function Settings() {
   // screen needed the same answers to say them back (Wave 5.2); see
   // `readProfileAnswers` for why a copy would have been the wrong shape.
   const profileAnswers = readProfileAnswers(profile?.id, activeVoice?.pre_script_brief)
+  // ⚖️ READ OFF THE BRIEF DIRECTLY, NOT THROUGH `readProfileAnswers`. That
+  // helper carries the four fields the profile assembler needs and these are not
+  // among them — routing through it would read `undefined` for every creator and
+  // show a confirmed fact as unconfirmed forever, which is the same mistake
+  // `AddYourProductCard` records making with `commercialTies`.
+  const storedBrief = readStoredBrief(activeVoice?.pre_script_brief)
   // ⚠️ THE PAGE RAN FROM PROFILE INTELLIGENCE INTO CREDIT PACKS INTO BRANDING
   // INTO THE WHOLE DNA RECORD, in one column, so the next useful action was
   // something you had to find rather than something you were told. Tabs are the
@@ -579,38 +587,135 @@ export default function Settings() {
                 })}
               </div>
 
+              {/* ⚠️ THE SIX COMMERCIAL-TIE CHIPS ARE GONE, AND THIS IS A REMOVAL
+                  THAT ALREADY HAPPENED EVERYWHERE ELSE. Onboarding collapsed
+                  them to ONE yes/no on the recorded grounds that "the kind of
+                  thing, the relationship and the offer facts belong to the
+                  Product Library, which asks all of it properly and behind an
+                  attestation". Settings kept its copy of the old question.
+
+                  ⚠️ AND IT WAS WORSE THAN REDUNDANT, MEASURED ON A REAL ACCOUNT.
+                  A creator with TWO products, both reading Ready in the library,
+                  saw this question entirely UNSELECTED — her relationships live
+                  on `product_entities.relationship`, which those chips could not
+                  see and never wrote. The screen asked her to re-answer, in a
+                  weaker vocabulary, a thing she had already answered properly,
+                  then displayed her as having said nothing.
+
+                  ⚖️ COLLAPSED, NOT DELETED, AND THAT DISTINCTION IS THE WHOLE
+                  BUILD. `commercialTies` still carries "nothing commercial" —
+                  the value that SUPPRESSES product suggestions — and this panel
+                  is the only place it can be changed after onboarding. Deleting
+                  it outright would leave a creator who said "not right now" and
+                  later started selling with no way to say so except re-walking a
+                  flow she finished weeks ago, which is the exact defect the
+                  comment above `edit_profile` records this page being rescued
+                  from. So the FACT stays editable and only its GRANULARITY moves
+                  to the authority that owns it. */}
+              {/* ── WHAT THE SCAN ALREADY KNOWS, PUT TO HER HERE TOO ─────────
+                  ⚠️ THE RECOGNITION SHIPPED INTO ONBOARDING AND NEVER REACHED
+                  SETTINGS — the same shape as the commercial question above it,
+                  pointed the other way. Onboarding's own note records the
+                  measurement: 45 of 47 voices carry these facts and "the only
+                  reader was the writer's prompt... it was the creator never
+                  being shown the inference." A creator who finished onboarding
+                  before that shipped, or who skipped it, has never seen them and
+                  had nowhere to go.
+
+                  ⚠️ AND THEY ARE NOT BLANK, WHICH IS THE POINT. Measured
+                  2026-09-12: 47 of 53 voices carry an `enemy`, 47 a `pov`, 49
+                  `donts`. The reported account's own stored enemy reads "Blank
+                  screen paralysis and burning 5 hours trying to create social
+                  posts from scratch every week." Rich, specific, read by the
+                  prompt — and shown on no screen she can reach.
+
+                  ⚖️ CONFIRMED, NEVER ASSUMED, AND QUOTED VERBATIM. A paraphrase
+                  would ask her to agree to something the writer never reads.
+                  Declining records nothing, because silence and refusal are
+                  different and only a confirmation is an answer.
+
+                  ⚖️ THE SAME HELPERS AND THE SAME WRITER AS ONBOARDING, not a
+                  second copy of the rule. One authority, two doors. */}
+              {scannedAudienceFacts(voiceProfile).map((fact) => {
+                const confirmed = fact.field === 'audience_pain'
+                  ? storedBrief.confirmedAudiencePain
+                  : storedBrief.confirmedDreamOutcome
+                const already = audienceFactConfirmed(confirmed, fact)
+                return (
+                  <div key={fact.field} className="mt-5 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-stone">{fact.question}</p>
+                    <p className="mt-2 text-sm leading-relaxed text-cream">{fact.text}</p>
+                    {already ? (
+                      /* ⚖️ CONFIRMED IS A STATE SHE CAN SEE AND UNDO, not a card
+                         that vanishes. Onboarding hides a confirmed fact because
+                         it is a queue moving forward; this screen is where she
+                         comes to CHECK things, and a fact that disappears once
+                         agreed cannot be corrected later. */
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-coral/40 bg-coral/[0.06] px-3 py-1.5 text-[12px] text-cream">
+                          You confirmed this
+                        </span>
+                        <button
+                          type="button"
+                          disabled={savingProfile}
+                          onClick={() => void saveProfileAnswers(fact.field === 'audience_pain'
+                            ? { confirmedAudiencePain: null }
+                            : { confirmedDreamOutcome: null })}
+                          className="rounded-full px-2 py-1 text-[12px] text-stone underline underline-offset-2 hover:text-cream"
+                        >Not quite</button>
+                      </div>
+                    ) : (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={savingProfile}
+                          onClick={() => void saveProfileAnswers(fact.field === 'audience_pain'
+                            ? { confirmedAudiencePain: fact.text }
+                            : { confirmedDreamOutcome: fact.text })}
+                          className="rounded-full border border-white/10 bg-white/[0.02] px-3.5 py-2 text-[13px] text-sand hover:border-white/20"
+                        >That is right</button>
+                        <button
+                          type="button"
+                          disabled={savingProfile}
+                          onClick={() => void saveProfileAnswers(fact.field === 'audience_pain'
+                            ? { confirmedAudiencePain: null }
+                            : { confirmedDreamOutcome: null })}
+                          className="rounded-full border border-white/10 bg-white/[0.02] px-3.5 py-2 text-[13px] text-sand hover:border-white/20"
+                        >Not quite</button>
+                      </div>
+                    )}
+                    <p className="mt-2 text-[11px] text-stone/70">Read from your own posts.</p>
+                  </div>
+                )
+              })}
+
               <p className="mt-5 text-sm text-cream">Do you sell or promote anything?</p>
               <p className="mt-0.5 text-xs text-stone">
-                This decides what your scripts are allowed to claim. Pick everything that is true.
+                Just so Twin knows whether to offer it. What it is, and what scripts may say
+                about it, lives in your Product Library.
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {([
-                  ['own_product', 'I sell my own product'],
-                  ['own_service', 'I sell my own service'],
-                  ['affiliate', 'I earn a commission'],
-                  ['sponsor', 'I get paid to feature things'],
-                  ['review', 'I just cover things'],
-                  ['none', 'Nothing commercial'],
+                  ['yes', 'Yes'],
+                  ['not_right_now', 'Not right now'],
                 ] as const).map(([v, label]) => {
-                  const ties = profileAnswers?.commercialTies ?? []
-                  const on = ties.includes(v)
+                  // ⚖️ READ BACK THROUGH `sellsAnswerOf`, so an account still
+                  // holding one of the thirteen old answers reads as "yes"
+                  // rather than as unanswered. Stop writing, keep reading.
+                  const on = sellsAnswerOf(profileAnswers?.commercialTies ?? null) === v
                   return (
                     <button
                       key={v}
                       type="button"
                       aria-pressed={on}
                       disabled={savingProfile}
-                      onClick={() => {
-                        // ⚖️ "NOTHING COMMERCIAL" IS EXCLUSIVE. Holding it beside a
-                        // real tie is a contradiction, and the pipeline would have
-                        // to pick one — which is the class of decision this whole
-                        // batch moved out of the model and into code.
-                        const next = v === 'none'
-                          ? (on ? [] : ['none'])
-                          : on ? ties.filter((t) => t !== v)
-                            : [...ties.filter((t) => t !== 'none'), v]
-                        void saveProfileAnswers({ commercialTies: next })
-                      }}
+                      // ⚠️ TAPPING THE CHOSEN ANSWER AGAIN CLEARS IT. An empty
+                      // list is UNANSWERED and is not "nothing to sell";
+                      // turning silence into a commercial statement is the
+                      // error this question exists to avoid.
+                      onClick={() => void saveProfileAnswers({
+                        commercialTies: on ? [] : [...SELLS_ANSWER_TO_TIES[v]],
+                      })}
                       className={`rounded-full border px-3.5 py-2 text-[13px] ${
                         on ? 'border-coral/50 bg-coral/[0.08] text-cream'
                           : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20'}`}
@@ -618,7 +723,14 @@ export default function Settings() {
                   )
                 })}
               </div>
-
+              {/* ⚖️ AND THE DOOR TO THE AUTHORITY, because the sentence above
+                  names it. A question that points at another screen without a
+                  way to reach it is a dead end wearing a signpost. */}
+              <button
+                type="button"
+                onClick={() => nav('/products')}
+                className="mt-2 text-xs text-sand underline underline-offset-2 hover:text-cream"
+              >Open your Product Library →</button>
               <div className="mt-6 flex items-center justify-between gap-3">
                 <button
                   type="button"
