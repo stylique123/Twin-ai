@@ -15,6 +15,12 @@ const REAL = {
   instagramNoAudio: 'This Instagram video could not be read: no audio url found',
   noCaptions: 'This video has no captions we can read. Try a different reference.',
   missingModule: 'python3 exited 2: transcribe_forced_align unavailable: No module named torch',
+  // ⚠️ THE OTHER THREE THINGS THE INSTAGRAM PATH THROWS, copied verbatim from
+  // `media.ts` rather than paraphrased — a fixture that is only ALMOST the real
+  // string tests a classifier against a message no system sends.
+  instagramPrivate: "Couldn't read that Instagram video — it may be private or removed. Try another.",
+  instagramNoSpeech: 'This Instagram video has no speech we can read. Try a different reference.',
+  instagramUnconfigured: 'Instagram analysis is not configured yet. Try a TikTok link, or contact support.',
 } as const
 
 describe('classifyReferenceFailure, on strings production actually produced', () => {
@@ -63,11 +69,66 @@ describe('classifyReferenceFailure, on strings production actually produced', ()
     expect(classifyReferenceFailure(REAL.tiktokIpBlocked.toUpperCase())).toBe('blocked_by_host')
   })
 
-  it('classifies an Instagram missing-audio as the extractor, not the video', () => {
-    // The video exists and plays in a browser; our extractor could not find the
-    // audio URL. That is ours to fix, so it counts as a fetch defect.
-    expect(classifyReferenceFailure(REAL.instagramNoAudio)).toBe('extractor_stale')
-    expect(isFetchDefect('extractor_stale')).toBe(true)
+  // ⚠️ THIS CASE WAS REVERSED ON 2026-09-12, AND ITS RATIONALE WAS WRONG RATHER
+  // THAN STALE. It read "our extractor could not find the audio URL", and there
+  // IS no extractor of ours on this path: Instagram never touches yt-dlp.
+  // `instagramTranscriptViaApify` POSTs to an Apify actor and reads `text` and
+  // `segments` off its dataset item; `no audio url found` is that ACTOR's own
+  // `errMsg`, wrapped by media.ts. The conclusion the old case reached — ours
+  // to fix, counts as a fetch defect — was right, and both halves still hold.
+  // What was wrong was WHICH thing to fix, which is the entire job of a class
+  // whose siblings' instructions are "upgrade yt-dlp" and "change egress IP".
+  //
+  // ⚖️ AND THE MEASUREMENT IS WHAT SETTLES IT. 2026-09-12: 60 Instagram profile
+  // fetches, 0 ok, 60 errored, 0 transcripts, every one carrying this identical
+  // string. Sixty different videos do not independently lose their audio on the
+  // same day. A 100% rate behind a single message is a contract that moved.
+  it('names the Instagram failure the ACTOR, because there is no yt-dlp on that path', () => {
+    expect(classifyReferenceFailure(REAL.instagramNoAudio)).toBe('actor_contract')
+    expect(isFetchDefect('actor_contract')).toBe(true)
+  })
+
+  // ⚠️ THE NEGATIVE CONTROL THE NEW CLASS MAKES NECESSARY, AND THE FIRST VERSION
+  // OF IT DID NOT WORK. It asserted the other two Instagram throws stay in their
+  // own classes and called that a specificity check — but media.ts gives each of
+  // them a DIFFERENT sentence ("Couldn't read that Instagram video...", "...has
+  // no speech we can read"), so they never reach the errMsg branch at all. A
+  // mutant that matched the wrapper `this instagram video could not be read`
+  // instead of the reason PASSED it. Keeping them is still worth it — they pin
+  // that the new rule's placement did not reorder anything — but they are not
+  // the control.
+  it('leaves the other two Instagram throws in their own classes', () => {
+    expect(classifyReferenceFailure(REAL.instagramPrivate)).toBe('source_gone')
+    expect(classifyReferenceFailure(REAL.instagramNoSpeech)).toBe('no_speech')
+    expect(isFetchDefect('no_speech')).toBe(false)
+  })
+
+  // ⚖️ THE REAL CONTROL: the rule must key on the REASON, not on the wrapper
+  // that carries it. `errMsg` is whatever the actor decided to say, and media.ts
+  // passes it through — so the wrapper is the one part guaranteed to be present
+  // no matter what went wrong. Matching there would rename every future actor
+  // error a contract break and send someone to replace an actor that was in fact
+  // reporting a deleted reel.
+  //
+  // ⚠️ CONSTRUCTED, NOT PRODUCTION — the one string in this file that is. Every
+  // other fixture is a real `result.error`; this one is the wrapper from
+  // media.ts with a reason we have not seen, and it is labelled because a
+  // constructed string quietly filed among measured ones is how a fixture stops
+  // meaning anything.
+  const WRAPPER_WITH_AN_UNSEEN_REASON =
+    'This Instagram video could not be read: something the actor has not said before'
+
+  it('keys on the reason, not on the sentence that wraps every reason', () => {
+    expect(classifyReferenceFailure(WRAPPER_WITH_AN_UNSEEN_REASON)).toBe('unknown')
+  })
+
+  // ⚖️ AND A MISSING TOKEN IS OURS. media.ts throws this BEFORE it calls out at
+  // all, so the reel was never fetched and nothing about it is known. It landed
+  // in `unknown`, which reads as "we have not seen this before" — wrong twice:
+  // we know exactly what it is, and it is a config line, not a video.
+  it('calls an unconfigured Instagram token our config, not an unknown', () => {
+    expect(classifyReferenceFailure(REAL.instagramUnconfigured)).toBe('our_config')
+    expect(isFetchDefect('our_config')).toBe(true)
   })
 })
 
@@ -133,7 +194,11 @@ describe('escalating to the paid rung', () => {
     // silent one. Escalating these spends money to fail identically.
     expect(wouldEscalate(REAL.tiktokUnexpected)).toBe(false)
     expect(wouldEscalate(REAL.tiktokWarning)).toBe(false)
+    // ⚠️ AND STILL FALSE UNDER ITS NEW CLASS. A residential exit address cannot
+    // change what a third-party actor returns; escalating would be a bill for
+    // an identical failure.
     expect(wouldEscalate(REAL.instagramNoAudio)).toBe(false)
+    expect(wouldEscalate(REAL.instagramUnconfigured)).toBe(false)
     expect(wouldEscalate(REAL.noCaptions)).toBe(false)
     expect(wouldEscalate(REAL.missingModule)).toBe(false)
   })
