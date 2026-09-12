@@ -1,11 +1,17 @@
 // WHAT A PASTED REFERENCE WAS WORTH — THE WORKER'S HALF.
 //
-// ⚠️ MIRRORS @twinai/shared's `referenceMetricsFrom` BY BEHAVIOUR, NOT BY
-// IMPORT. The worker has no runtime dependency on @twinai/shared and this file
-// does not introduce one — the same reason `earlyLookRules.ts` and
-// `visualExtractionRules.ts` exist as mirrors. `referenceMetricsParity.test.ts`
-// in packages/shared EXECUTES BOTH over the same case table, so a rule that
-// drifts by one character fails there rather than in production.
+// ⚠️ IT LIVES IN THE WORKER, NOT IN @twinai/shared, BECAUSE THE WORKER IS THE
+// ONLY THING THAT HAS THESE NUMBERS. A first draft put the rule in shared and
+// mirrored it here; `check_symbol_readers` then correctly reported two exported
+// symbols nothing reads, because the only caller was this file's twin. A rule
+// with one caller does not need two copies and a parity test to keep them
+// honest — it needs to live where its caller is. The RANKING that reads these
+// values back belongs with the surface that ranks (Fix 3), and ships with it.
+//
+// ⚖️ THE ARITHMETIC MIRRORS `relativePerformance` IN @twinai/shared, which the
+// worker cannot import and deliberately does not depend on — the same reason
+// `earlyLookRules.ts` and `visualExtractionRules.ts` exist. The floor and the
+// median rule are restated below with the reasoning that set them.
 //
 // ⚠️ EVERY VALUE IS THREE-STATE AND ZERO IS "UNREAD". yt-dlp omits `view_count`
 // on some extractors and answers 0 on others; 945 rows of the scraped corpus
@@ -30,10 +36,14 @@ export const EMPTY_WORKER_REFERENCE_METRICS: WorkerReferenceMetrics = Object.fre
  *  and every card is measured against a number it helped set. */
 export const MIN_VIDEOS_FOR_BASELINE = 5
 
+/** ⚠️ ONE NOTION OF "A REACH VALUE", NOT TWO. A first draft parsed the video's
+ *  own views with `Number()` and its siblings with `parseReach`, so "1.2M" was a
+ *  real 1,200,000 as a sibling and `null` as the subject — the same string
+ *  meaning two different things three lines apart. Every count here goes through
+ *  the same reader, and it is the one that knows the corpus writes "965.6K". */
 function positiveInt(v: unknown): number | null {
-  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v.trim()) : NaN
-  if (!Number.isFinite(n) || n <= 0) return null
-  return Math.round(n)
+  const n = parseReach(v)
+  return n === null ? null : Math.round(n)
 }
 
 function positiveNumber(v: unknown): number | null {

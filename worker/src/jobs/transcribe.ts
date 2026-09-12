@@ -80,7 +80,7 @@ export async function handleTranscribe(job: Job): Promise<Record<string, unknown
   // paste to buy a number shown later. And `readReferenceVideoFacts` cannot
   // throw, so the reference survives its own measurement failing.
   const metrics: WorkerReferenceMetrics = job.type === 'ingest'
-    ? await readReferenceMetrics(url, platform)
+    ? await measureReference(url, platform)
     : EMPTY_WORKER_REFERENCE_METRICS
 
   // For reference ingestion, derive the real structure now (best-effort: a
@@ -165,7 +165,7 @@ export async function handleTranscribe(job: Job): Promise<Record<string, unknown
  * there is no branch here deciding when a median is safe — one floor, in one
  * place, is why it cannot be quietly opted out of.
  */
-async function readReferenceMetrics(
+async function measureReference(
   url: string, platform: string | undefined,
 ): Promise<WorkerReferenceMetrics> {
   const facts = await readReferenceVideoFacts(url)
