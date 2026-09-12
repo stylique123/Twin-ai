@@ -758,6 +758,13 @@ export default function V2Building() {
               // above, which stays the creator's own words — see
               // `libraryOfferName` for why a name must never settle the field.
               offerNameForWording: libraryOfferName(libraryProducts, str(vBrief.offer)),
+              // ⚖️ THE OBJECTIVE SHE PICKED, AND ONLY IN THE PRODUCT DOOR.
+              // `intentQuestionsFor` substitutes PRODUCT_OBJECTIVES onto the
+              // SAME `video_goal` field, so this is her objective when the
+              // build is a product build and her generic goal otherwise —
+              // which is why it is gated rather than read raw. A generic goal
+              // must not select a product question.
+              objective: isProductSubject ? (answersRef.current.video_goal ?? null) : null,
               cta: str(vBrief.cta) ?? null,
               audience: str(vBrief.audience) ?? str(v?.profile?.audience) ?? null,
               referenceRead: Boolean(refUrl),
