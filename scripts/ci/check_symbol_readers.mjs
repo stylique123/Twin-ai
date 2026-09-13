@@ -135,6 +135,29 @@ export const REGISTRY = {
       + 'WHAT WOULD CHANGE THIS: the edge boundary going away, or the mirror '
       + 'being replaced by a real import. Not the assembler, which is here.',
   },
+  'subjectRecurrence.ts': {
+    symbols: ['classifyRecurrence', 'recurrenceNotice', 'recurrenceDirective'],
+    // ⚖️ THE SAME MIRROR SHAPE AS cohort.ts ABOVE, AND FOR THE SAME REASON. The
+    // prompt side cannot import this package, so what production calls is a
+    // mirror inlined in generate-blueprint, held to this copy by a parity test
+    // that executes BOTH on the fourteen real near-duplicate pairs.
+    why: 'The edge mirror (recWords/recOverlap/recKind/recDirective) is the '
+      + 'production path; this is the reference implementation the parity test '
+      + 'pins it to, so it has no production reader BY DESIGN. '
+      + '⚠️ THE NAMES OF THE MIRROR WERE CHOSEN SO THAT NONE CONTAINS ONE OF '
+      + 'THESE SYMBOLS AS A SUBSTRING, because that trap has now fired three '
+      + 'times in this repository and would have reported a reader that does '
+      + 'not exist. '
+      + 'MEASURED, and the reason this rule blocks nothing today: of 513 '
+      + 'same-creator premise pairs, 14 exceed 0.6 content-word overlap and '
+      + 'ZERO are more than 224 minutes apart. Every near-duplicate on record '
+      + 'is a creator pressing generate again in one sitting, which '
+      + 'contentHistory.ts already argued must not be refused. `repeat` — the '
+      + 'only verdict that speaks to the writer — has never once occurred. '
+      + 'WHAT WOULD CHANGE THIS: apps/web rendering recurrenceNotice on the '
+      + 'panel, which is a real import and would give three of these four a '
+      + 'production reader. Not the edge wiring, which is here and is a mirror.',
+  },
   'corpus/facets.ts': {
     symbols: ['knownFacets', 'facetsOf'],
     // ⚖️ THIS ENTRY SHRANK BECAUSE ITS OWN TRIGGER FIRED. It said "WHAT WOULD
