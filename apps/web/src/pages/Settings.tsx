@@ -326,8 +326,20 @@ export default function Settings() {
   // ⚖️ THE STATUS IS READ, NOT DECIDED HERE. `setupAreas` is in shared with its
   // own tests; a status computed in this component is one no test can reach and
   // one the next screen would compute differently.
+  // ⚠⚠ THE SAME COUNT THE CARDS BELOW RENDER, COMPUTED FROM THE SAME HELPERS.
+  // A second rule here would let the badge and the section disagree about how
+  // many are waiting -- which is how a creator taps "2 to confirm" and finds one.
+  const pendingAudienceFacts = scannedAudienceFacts(voiceProfile).filter((fact) =>
+    !audienceFactConfirmed(
+      fact.field === 'audience_pain'
+        ? storedBrief.confirmedAudiencePain
+        : storedBrief.confirmedDreamOutcome,
+      fact,
+    )).length
+
   const areas = setupAreas({
     answers: profileAnswers,
+    audienceFactsPending: pendingAudienceFacts,
     dnaReady: activeVoice?.status === 'ready',
     // ⚖️ CONFIRMED MEANS THE CREATOR HAS TOUCHED IT. `voice` is the field this page
     // lets them edit, so a non-empty one is the closest thing to an approval we
@@ -534,7 +546,7 @@ export default function Settings() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="font-heading text-sm text-cream">{a.title}</span>
-                    <StateChip state={a.state} />
+                    <StateChip state={a.state} pending={a.pending} />
                   </div>
                   <span className="mt-1.5 block text-xs leading-relaxed text-stone">{a.detail}</span>
                   <span className="mt-2.5 block text-xs text-sand underline">{a.actionLabel}</span>
@@ -1658,7 +1670,22 @@ function ProfileStatus({
  *  `not_needed` read differently on purpose — one is something they could do,
  *  the other is something that does not apply to them, and collapsing either
  *  into "missing" is how a page starts nagging for work that cannot help. */
-function StateChip({ state }: { state: SetupState }) {
+function StateChip({ state, pending }: { state: SetupState; pending?: number }) {
+  // ⚠⚠ A COUNT BEATS A MOOD. "Worth a look" is true and gives her nothing to
+  // decide on; "2 to confirm" says what is waiting and how much of it. This is
+  // the difference between a card a creator opens and one she never does -- and
+  // if she never opens it, the two sentences Twin wrote from her posts stay
+  // unconfirmed forever and the writer keeps treating them as guesses.
+  //
+  // ⚖️ ONLY WHERE A COUNT EXISTS. `creator_dna` uses the same state with nothing
+  // pending and keeps its own words, because there is no number to give her.
+  if (state === 'needs_review' && typeof pending === 'number' && pending > 0) {
+    return (
+      <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+        {pending} to confirm
+      </span>
+    )
+  }
   const map: Record<SetupState, { label: string; cls: string }> = {
     ready: { label: 'Ready', cls: 'bg-teal/15 text-teal' },
     needs_setup: { label: 'Needs setup', cls: 'bg-amber-500/15 text-amber-400' },
