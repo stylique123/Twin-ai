@@ -34,7 +34,7 @@ import {
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE, isReadCapacityExhausted } from '../../lib/api'
-import { READINESS_INCOMPLETE_CODE, SELL_WITHOUT_TARGET_CODE } from '../../lib/api'
+import { READINESS_INCOMPLETE_CODE, SELL_WITHOUT_TARGET_CODE, OUT_OF_REMIXES_CODE } from '../../lib/api'
 import type { ReadinessQuestion } from '../../lib/api'
 import { isSupportedReference, platformFromUrl, platformIsUnreadable } from '@twinai/shared'
 import { useAuth } from '../../context/AuthContext'
@@ -483,6 +483,8 @@ export default function V2Building() {
   // longer happening. Progress is a claim about what is being done; once the
   // request is gone the only honest claim is that we are checking.
   const [rescuing, setRescuing] = useState(false)
+  // The server's sentence when she has none left. Null while she has some.
+  const [outOfRemixes, setOutOfRemixes] = useState<string | null>(null)
   // True while the reference is being scraped/transcribed (step 0 is held the whole
   // time). Drives a slow crawl so the bar never freezes at 12% and reads as stuck.
   const [ingesting, setIngesting] = useState(false)
@@ -1397,6 +1399,25 @@ export default function V2Building() {
           // A code with no questions is a server we do not understand. Falling
           // through to the generic error beats rendering an empty form.
         }
+        // ⚠⚠ OUT OF REMIXES IS A DECISION, NOT A LOST ANSWER, AND IT MUST NOT
+        // REACH THE RESCUE. Reported live 2026-09-13: a creator with none left
+        // saw "Checking whether your script finished — the connection dropped",
+        // waited out the poll, and was told neither the true thing nor the one
+        // thing she could do about it. Nothing was charged and no generation is
+        // coming, so waiting only stalls somebody who needs to act — exactly the
+        // reason the three refusals above sit here rather than below.
+        //
+        // ⚖️ THE SERVER'S OWN SENTENCE IS SHOWN, NOT A SECOND ONE WRITTEN HERE.
+        // It is the only copy that knows what earning routes are actually live,
+        // and a screen that invents its own would drift from it silently.
+        if ((e as { code?: string } | null)?.code === OUT_OF_REMIXES_CODE) {
+          setOutOfRemixes(e instanceof Error && e.message
+            ? e.message
+            : "You're out of remixes.")
+          setActive(0)
+          return
+        }
+
         // ── ASKING ONCE, AT THE WORST POSSIBLE MOMENT ────────────────────
         //
         // ⚠️ MEASURED 2026-09-02, AND THIS IS THE RACE. The single lookup above
@@ -2142,6 +2163,35 @@ export default function V2Building() {
                 <button onClick={() => nav('/v2', { replace: true })} className="btn-gradient mt-6 w-full">Try a different reference</button>
               </>
             )}
+          </div>
+        ) : outOfRemixes ? (
+          /* ⚠️⚠️ THE TRUE SENTENCE, AND THE ONE THING SHE CAN DO. This case used
+             to fall through to the rescue poll and tell her the connection had
+             dropped — a false statement that also hid the only actionable fact
+             on the screen. Nothing was charged and no script is coming.
+             ⚖️ THE SERVER'S WORDS, NOT OURS. `generate-blueprint` owns the copy
+             because it is the only place that knows which earning routes are
+             live; a second sentence written here would drift from it silently.
+             ⚠️ AND THE BUTTON GOES TO THE PLAN, WHICH IS WHERE `startCheckout`
+             LIVES. It does not promise a purchase completes: measured
+             2026-09-13, zero profiles are on a paid plan and no billing webhook
+             has ever fired, so "buy now" would be a claim this screen cannot
+             support. It takes her to the page that can. */
+          <div className="glass gradient-border p-7 text-center">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-coral/15"><LogoMark size={22} /></span>
+            <h2 className="mt-4 font-display text-2xl">You are out of remixes</h2>
+            <p className="mt-2 text-sm leading-relaxed text-stone">{outOfRemixes}</p>
+            <p className="mt-3 text-xs leading-relaxed text-stone/80">
+              No remix was used for this one, and nothing is still building.
+            </p>
+            <button
+              onClick={() => nav('/settings?tab=plan')}
+              className="btn-gradient mt-6 w-full"
+            >See your plan</button>
+            <button
+              onClick={() => nav('/dashboard')}
+              className="btn-ghost mt-2 w-full text-sm"
+            >Back to dashboard</button>
           </div>
         ) : error ? (
           <div className="glass gradient-border p-7 text-center">
