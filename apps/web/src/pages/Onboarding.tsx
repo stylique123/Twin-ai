@@ -823,6 +823,13 @@ function BuildingStep({
         <StoryInterview
           voiceId={draft.voiceId ?? null}
           onDone={() => setStoriesDone(true)}
+          // ⚠⚠ THE PARKED SCAN IS WHAT MAKES THESE SPECIFIC. `readyProfile` holds
+          // the finished profile from line ~678 and is deliberately NOT acted on
+          // until the stories are done -- so for any creator still answering when
+          // the scan lands, the niche is already here and the remaining questions
+          // can be worded in her world. Null before that, which renders the plain
+          // bank rather than a guess.
+          niche={(readyProfile as { niche?: string | null } | null)?.niche ?? null}
         />
       )}
 

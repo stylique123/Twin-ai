@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   CREATOR_QUESTIONS, OPENING_THREE, ANSWER_MAX, suggestStoryAnswers,
+  creatorQuestionsFor, type SellsKind,
   type CreatorQuestion, type StorySuggestion,
 } from '@twinai/shared'
 import { answerQuestion, skipQuestion, markQuestionShown, loadExtractedKnowledge } from '../lib/creatorAnswers'
@@ -60,7 +61,7 @@ import { readStoryDraft, writeStoryDraft, clearStoryDraft } from '../lib/storyDr
 type SlotState = 'offered' | 'editing' | 'confirmed' | 'discarded'
 
 export function StoryInterview({
-  voiceId, onDone,
+  voiceId, onDone, niche = null, sells = null,
 }: {
   voiceId: string | null
   /** ⚠️ CALLED ONLY WHEN ALL THREE ARE RESOLVED (answered or skipped). The
@@ -68,10 +69,35 @@ export function StoryInterview({
    *  that a scan finishing early took the screen away with an answer
    *  half-typed. */
   onDone: () => void
+  /** ⚠⚠ THE NICHE ARRIVES LATE, AND THAT IS WHY THESE READ AS GENERIC. These
+   *  three are asked WHILE THE SCAN RUNS, so at first render there is no niche
+   *  to word them with and `creatorQuestionsFor` correctly returns the plain
+   *  bank. But the parent already parks the finished scan until these are done,
+   *  so for most creators the profile LANDS while they are still answering — and
+   *  from that moment the wording can be theirs. Null until then, never a guess. */
+  niche?: string | null
+  /** ⚖️ WHAT SHE SELLS OUTRANKS HER NICHE FOR ONE QUESTION, and
+   *  `creatorQuestionsFor` states why: the bucket says what her WORLD is, `sells`
+   *  says what her RELATIONSHIP to her audience is. A template seller has buyers,
+   *  not clients, and must not be asked the coach's "when a founder comes to you
+   *  stuck". Null during onboarding, where no product exists yet. */
+  sells?: SellsKind | null
 }) {
-  const questions = OPENING_THREE
-    .map((id) => CREATOR_QUESTIONS.find((x) => x.id === id))
-    .filter((q): q is CreatorQuestion => !!q)
+  // ⚠️ THE BANK WAS READ RAW HERE AND THE NICHE-AWARE BUILDER WAS NEVER CALLED.
+  // `creatorQuestionsFor` has existed and been correct; `CreatorQuestionCard`
+  // calls it, this file did not. That is the defect this codebase keeps finding,
+  // in its two-caller form: built, right, and one of the callers reads around it.
+  //
+  // ⚖️ RECOMPUTED AS THE NICHE ARRIVES, and the QUESTION IDS NEVER CHANGE —
+  // only the words do. `CreatorQuestion.id` is what "already answered" and
+  // "already skipped" are keyed on, so a creator who answered `first_thing_asked`
+  // must never meet it again wearing different wording.
+  const questions = useMemo(() => {
+    const worded = creatorQuestionsFor(niche, CREATOR_QUESTIONS, sells)
+    return OPENING_THREE
+      .map((id) => worded.find((x) => x.id === id))
+      .filter((q): q is CreatorQuestion => !!q)
+  }, [niche, sells])
 
   // ⚠️⚠️ SEEDED FROM THE DRAFT, BECAUSE THERE WAS NO SAVE UNTIL "Continue".
   // Measured 2026-09-09: of eleven creators who reached these three questions,
