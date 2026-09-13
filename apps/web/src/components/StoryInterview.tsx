@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CREATOR_QUESTIONS, OPENING_THREE, ANSWER_MAX, suggestStoryAnswers,
-  creatorQuestionsFor, type SellsKind,
+  creatorQuestionsFor, openingQuestionsFor, type SellsKind,
   type CreatorQuestion, type StorySuggestion,
 } from '@twinai/shared'
 import { answerQuestion, skipQuestion, markQuestionShown, loadExtractedKnowledge } from '../lib/creatorAnswers'
@@ -61,7 +61,7 @@ import { readStoryDraft, writeStoryDraft, clearStoryDraft } from '../lib/storyDr
 type SlotState = 'offered' | 'editing' | 'confirmed' | 'discarded'
 
 export function StoryInterview({
-  voiceId, onDone, niche = null, sells = null,
+  voiceId, onDone, niche = null, sells = null, stageBand = null,
 }: {
   voiceId: string | null
   /** ⚠️ CALLED ONLY WHEN ALL THREE ARE RESOLVED (answered or skipped). The
@@ -81,7 +81,11 @@ export function StoryInterview({
    *  says what her RELATIONSHIP to her audience is. A template seller has buyers,
    *  not clients, and must not be asked the coach's "when a founder comes to you
    *  stuck". Null during onboarding, where no product exists yet. */
-  sells?: SellsKind | null
+  sells?: SellsKind | 'none' | null
+  /** ⚠️ UNDER 1,000 FOLLOWERS THE RESULT QUESTION HAS NO ANSWER, and asking for
+   *  a number she does not have reads as an accusation. Replaces `best_result`
+   *  only, and only at that band. */
+  stageBand?: string | null
 }) {
   // ⚠️ THE BANK WAS READ RAW HERE AND THE NICHE-AWARE BUILDER WAS NEVER CALLED.
   // `creatorQuestionsFor` has existed and been correct; `CreatorQuestionCard`
@@ -93,11 +97,17 @@ export function StoryInterview({
   // "already skipped" are keyed on, so a creator who answered `first_thing_asked`
   // must never meet it again wearing different wording.
   const questions = useMemo(() => {
-    const worded = creatorQuestionsFor(niche, CREATOR_QUESTIONS, sells)
+    // ⚖️ TWO PASSES, AND THE ORDER IS THE POINT. `creatorQuestionsFor` words
+    // by NICHE BUCKET and covers a different three ids; `openingQuestionsFor`
+    // words THESE three by what she SELLS, which is the axis that actually
+    // decides whether a question can be answered honestly. Sells runs second so
+    // it wins on the ids it owns.
+    const byNiche = creatorQuestionsFor(niche, CREATOR_QUESTIONS, sells === 'none' ? null : sells)
+    const worded = openingQuestionsFor(byNiche, sells, stageBand)
     return OPENING_THREE
       .map((id) => worded.find((x) => x.id === id))
       .filter((q): q is CreatorQuestion => !!q)
-  }, [niche, sells])
+  }, [niche, sells, stageBand])
 
   // ⚠️⚠️ SEEDED FROM THE DRAFT, BECAUSE THERE WAS NO SAVE UNTIL "Continue".
   // Measured 2026-09-09: of eleven creators who reached these three questions,

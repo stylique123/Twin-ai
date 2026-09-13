@@ -65,7 +65,8 @@ describe('the wording follows the niche once it arrives', () => {
     // module that owns them.
     const code = readFileSync(
       resolve(process.cwd(), 'apps/web/src/components/StoryInterview.tsx'), 'utf8')
-    expect(code).toMatch(/creatorQuestionsFor\(niche, CREATOR_QUESTIONS, sells\)/)
+    expect(code).toMatch(/creatorQuestionsFor\(niche, CREATOR_QUESTIONS,/)
+    expect(code).toMatch(/openingQuestionsFor\(byNiche, sells, stageBand\)/)
   })
 })
 
