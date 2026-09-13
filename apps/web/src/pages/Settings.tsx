@@ -13,7 +13,6 @@ import {
 } from '@twinai/shared'
 import { readProfileAnswers } from '../lib/profileAnswersRead'
 import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
-import { TwinStrengthCard } from '../components/TwinStrengthCard'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
@@ -479,15 +478,21 @@ export default function Settings() {
               <p className="eyebrow !text-sand">Your Twin setup</p>
               <p className="font-heading text-cream">{summary.headline}</p>
             </div>
-            {/* ⚠️ WHAT TWIN HAS LEARNED, WHICH GROWS, BESIDE WHAT IS STILL
-                MISSING, WHICH SHRINKS. `TwinStrengthCard` has existed and been
-                rendered on the Dashboard all along — it was never on the screen
-                that showed the fraction, so the one number a creator saw here
-                had a ceiling and no evidence behind it. Same component, on the
-                screen that needed it. */}
-            <div className="mt-2">
-              <TwinStrengthCard voiceId={defaultVoiceId} />
-            </div>
+            {/* ⚠️⚠️ THE STRENGTH CARD IS NOT RENDERED HERE, AND THAT IS A REVERSAL
+                WITH A REASON. It was added beside this fraction so the number
+                would have evidence behind it, which was a real gap. But the same
+                count then appeared TWICE — here and on the Dashboard — and one
+                fact with two homes is a fact a creator reads twice and can act on
+                once.
+                ⚖️ THE DASHBOARD KEEPS IT BECAUSE OF WHEN SHE IS THERE. The
+                Dashboard is where she is BEFORE she starts, which is the moment
+                "two or three more stories and it stops sounding generic" can
+                change what she does next. By Settings she has already come
+                looking, so the same sentence changes nothing.
+                ⚠️ AND THE COST IS REAL, NOT WAVED AWAY: this fraction loses the
+                evidence that was put beside it. What replaces it is the per-area
+                state on the cards below — including "N to confirm", which names
+                what is waiting rather than implying a ceiling. */}
             {summary.total > 0 && summary.ready < summary.total && (
               <div className="mt-3 flex gap-1.5" aria-hidden>
                 {/* ⚖️ SEGMENTS, NOT A PERCENTAGE. "3 of 4" is inspectable; a bar
