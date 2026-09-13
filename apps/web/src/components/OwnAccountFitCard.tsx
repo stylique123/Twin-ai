@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Video } from 'lucide-react'
-import { messageForOwnAccount, type AccountCounts } from '@twinai/shared'
+import { Link } from 'react-router-dom'
+import { messageForOwnAccount, platformIsUnreadable, type AccountCounts } from '@twinai/shared'
 import { loadTwinStrength } from '../lib/twinStrengthLoad'
 import { loadOwnSample } from '../lib/ownSampleLoad'
 
@@ -45,6 +46,10 @@ export function OwnAccountFitCard({ voiceId }: { voiceId?: string | null }) {
 
   if (!counts) return null
   const m = messageForOwnAccount({ ...counts, learnedFrom: learned })
+  // ⚠️ READ FROM THE SAME LIST THE MESSAGE USES, not a second copy of it. A
+  // string compare on 'instagram' here would drift from `platformIsUnreadable`
+  // the day the list shrinks -- and that list is a confession meant to shrink.
+  const unreadablePlatform = platformIsUnreadable(counts.platform)
   if (m.kind === 'fine') return null
 
   // ⚖️ ONE TREATMENT FOR "none" AND "thin", DELIBERATELY. Both are facts about
@@ -57,7 +62,29 @@ export function OwnAccountFitCard({ voiceId }: { voiceId?: string | null }) {
         <Video className="h-4 w-4 text-teal shrink-0 mt-0.5" />
         <div className="min-w-0">
           <p className="text-sm leading-relaxed text-cream">{m.headline}</p>
-          <p className="mt-1 text-xs text-stone">{m.detail}</p>
+          <p className="mt-1 text-xs text-stone">
+            {m.detail}
+            {/* ⚠⚠ THE ONE ROUTE LEFT, OFFERED WHERE THE PROBLEM IS NAMED. If Twin
+                cannot read her videos at all, pasting her writing is the only way
+                left to give it her voice -- and `voice_samples` is read verbatim
+                by the writer as "the single strongest voice signal".
+                ⚠️ MEASURED 2026-09-13: that field is empty on 0 of 56 profiles and
+                0 of 55 voices. The path works end to end; the box sits inside a
+                collapsed editor on a tab nobody opens. Complete feature, zero
+                rows -- so the offer goes where the creator already is, and the
+                anchor opens the editor rather than landing beside it.
+                ⚖️ ONLY ON THE UNREADABLE-PLATFORM CASE. A creator whose videos we
+                CAN read does not need to retype her posts, and offering it to
+                her would be busywork dressed as help. */}
+            {m.kind === 'none' && unreadablePlatform && (
+              <>
+                {' '}
+                <Link to="/settings#how-you-write" className="text-teal hover:text-cream underline underline-offset-2">
+                  Paste a few posts instead
+                </Link>
+              </>
+            )}
+          </p>
         </div>
       </div>
     </div>
