@@ -267,7 +267,7 @@ async function recordWhatWasChosen(admin: {
         // AND NOT ONE BAD ROW. It means the code and the database disagree about
         // what columns exist, so EVERY subsequent generation loses the same row
         // until someone applies the migration. Anything else is one row.
-        severity: code === 'PGRST204' ? 'error' : 'warning',
+        severity: code === 'PGRST204' ? 'error' : 'warn',
         user_id: input.ownerId,
         detail: {
           fn: 'generate-blueprint',
@@ -5434,7 +5434,7 @@ Deno.serve(async (req: Request) => {
         }))
         await admin.from('ops_events').insert({
           kind: 'empty_voice_scan_enqueued',
-          severity: 'warning',
+          severity: 'warn',
           user_id: user.id,
           detail: { brand_voice_id: voice.id, handle: voice.handle },
         }).then(() => {}, () => {})
@@ -9014,7 +9014,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       console.error('generation_instrumentation_failed', detail)
       await admin.from('ops_events').insert({
         kind: 'generation_instrumentation_failed',
-        severity: 'warning',
+        severity: 'warn',
         user_id: user.id,
         detail: { fn: 'generate-blueprint', error: detail.slice(0, 500) },
       }).then(() => {}, () => {})
@@ -10537,7 +10537,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
             .from('ops_events')
             .insert({
               kind: 'generation_rescued',
-              severity: 'warning',
+              severity: 'warn',
               user_id: user.id,
               detail: {
                 fn: 'generate-blueprint',

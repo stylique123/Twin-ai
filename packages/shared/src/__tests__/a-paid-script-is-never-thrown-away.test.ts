@@ -137,7 +137,7 @@ describe('a rescue is a success for the creator and a defect for us', () => {
     // count while the analysis region is throwing on real traffic.
     const block = EDGE.slice(CATCH, REFUND)
     expect(block).toMatch(/kind: 'generation_rescued'/)
-    expect(block).toMatch(/severity: 'warning'/)
+    expect(block).toMatch(/severity: 'warn'/)
   })
 
   it('records the ORIGINAL error, so the defect stays diagnosable', () => {

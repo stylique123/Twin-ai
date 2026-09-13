@@ -125,13 +125,13 @@ describe('schema drift is louder than one bad row, because it is not one bad row
       generation_outcomes: { message: 'conflict', code: '23505' },
     })
     await record(admin, INPUT)
-    expect(wrote.find((w) => w.table === 'ops_events')!.row.severity).toBe('warning')
+    expect(wrote.find((w) => w.table === 'ops_events')!.row.severity).toBe('warn')
   })
 
   it('a missing code is a warning, never an error by accident', async () => {
     const { admin, wrote } = fakeAdmin({ generation_outcomes: { message: 'who knows' } })
     await record(admin, INPUT)
-    expect(wrote.find((w) => w.table === 'ops_events')!.row.severity).toBe('warning')
+    expect(wrote.find((w) => w.table === 'ops_events')!.row.severity).toBe('warn')
   })
 })
 
