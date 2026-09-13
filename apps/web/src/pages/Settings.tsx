@@ -278,11 +278,17 @@ export default function Settings() {
   // NOT HONOUR A HASH BY ITSELF. Without this the creator lands on Settings and
   // has to go looking for the thing the link named — which is exactly the
   // "complete feature, zero rows" failure the move is betting against.
+  // ⚖️ TWO ANCHORS, ONE MECHANISM. `#my-twin` is the question; `#how-you-write`
+  // is the paste box, which lives inside a COLLAPSED editor -- so honouring that
+  // hash has to open it, or the link lands on a closed section and the promise
+  // breaks exactly as it would with no anchor at all.
   useEffect(() => {
-    if (window.location.hash !== '#my-twin') return
+    const hash = window.location.hash
+    if (hash !== '#my-twin' && hash !== '#how-you-write') return
     setTab('twin')
+    if (hash === '#how-you-write') setDnaOpen(true)
     const t = setTimeout(() => {
-      document.getElementById('my-twin')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+      document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start', behavior: 'smooth' })
     }, 60)
     return () => clearTimeout(t)
   }, [])
@@ -1201,7 +1207,18 @@ export default function Settings() {
                     />
                   </div>
                 ))}
-                <div>
+                {/* ⚠⚠ THE STRONGEST SIGNAL IN THE PROMPT, AND NOBODY HAS EVER
+                    FILLED IT. `generate-blueprint` reads `voice_samples` verbatim
+                    and calls it "the single strongest voice signal"; measured
+                    2026-09-13, it is empty on 0 of 56 profiles and 0 of 55
+                    voices. The path works end to end and the box is buried
+                    inside a collapsed editor on a tab — complete feature, zero
+                    rows, the same shape as the Product Library.
+                    ⚖️ THE ANCHOR IS PART OF THE FIX, not decoration: a creator
+                    whose videos cannot be read is told so on the Dashboard, and
+                    that sentence can now point AT this box rather than at the
+                    page containing it. */}
+                <div id="how-you-write" className="scroll-mt-24">
                   <label className="eyebrow mb-1.5 block">How you write <span className="font-normal normal-case text-stone">— paste a few posts (optional)</span></label>
                   <textarea className="field min-h-[96px] resize-y" value={dna.voice_samples ?? ''} placeholder="Paste 2–3 of your real posts (LinkedIn, captions, a blog excerpt). We match your exact cadence." onChange={(e) => setDna((d) => ({ ...d, voice_samples: e.target.value }))} />
                 </div>

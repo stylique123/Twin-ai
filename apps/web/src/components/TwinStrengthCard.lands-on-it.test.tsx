@@ -30,7 +30,11 @@ describe('the link lands on the teaching', () => {
 
   it('and the target exists, or the link is a broken promise', () => {
     expect(SETTINGS).toMatch(/id="my-twin"/)
-    expect(SETTINGS).toMatch(/window\.location\.hash !== '#my-twin'/)
+    // ⚠️ RE-ANCHORED for the same reason as `myTwinLeftTheScript`: a second
+    // anchor now shares this handler. The property is that the hash is READ and
+    // `#my-twin` is one of the values acted on.
+    expect(SETTINGS).toMatch(/window\.location\.hash/)
+    expect(SETTINGS).toMatch(/'#my-twin'/)
     // A tabbed page does not honour a hash by itself.
     expect(SETTINGS).toMatch(/setTab\('twin'\)/)
   })
