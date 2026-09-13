@@ -48,10 +48,26 @@ export interface CohortCard {
 
 export interface ShapeEvidence {
   shape: string
-  /** Cards in this cohort carrying this shape. */
+  /**
+   * ⚠️ CARDS IN THIS COHORT CARRYING THIS SHAPE — ALL OF THEM, AND THAT IS A
+   * CHANGE. This used to be the count of cards whose LIFT resolved, which is a
+   * different number and a smaller one: a card whose creator had too few
+   * reaches to form a baseline carried the shape but was not counted as
+   * carrying it. Since the block now says "n=340" and nothing else, `n` has to
+   * mean what a reader will take it to mean — how many videos in this cohort
+   * had this shape.
+   */
   n: number
-  /** Median of capped lifts — the ranking unit. */
-  medianLift: number
+  /**
+   * Median of capped lifts, or null where no card in this shape had a
+   * measurable one.
+   *
+   * ⚠️⚠️ INTERNAL EVIDENCE ONLY. It is NOT emitted, NOT gated on, and NOT used
+   * to order — see `shapeBlock`. It is computed and carried so the layer stays
+   * wired for the recalibration, and so a shape with no measurable lift is
+   * visibly `null` rather than quietly absent from the tally.
+   */
+  medianLift: number | null
 }
 
 export interface CohortRead {
@@ -67,20 +83,26 @@ export interface CohortRead {
 }
 
 /**
- * ⚠️ A CARD WITH NO MEASURABLE LIFT IS NOT EVIDENCE ABOUT PERFORMANCE. It stays
- * out of the shape tally entirely rather than entering with a default — a
- * default of "average" floods the ranking with cards nobody measured, and they
- * would outrank genuinely below-average cards that WERE measured.
+ * Tally the cohort by shape: every card counted, its lift kept where it exists.
+ *
+ * ⚠️ THIS USED TO DROP A CARD WHOSE LIFT DID NOT RESOLVE, and that was right
+ * while the block asserted a performance relationship — a card nobody measured
+ * is not evidence ABOUT PERFORMANCE. It is the wrong rule for a block that now
+ * asserts only frequency: a video's shape is observable whether or not its
+ * creator had a usable baseline, and dropping it understates the count the
+ * prompt is about to state.
  */
-function liftsByShape(cards: readonly CohortCard[]): Map<string, number[]> {
-  const out = new Map<string, number[]>()
+function tallyByShape(
+  cards: readonly CohortCard[],
+): Map<string, { n: number; lifts: number[] }> {
+  const out = new Map<string, { n: number; lifts: number[] }>()
   for (const c of cards) {
     if (c.shape === null || c.shape === '') continue
+    let bucket = out.get(c.shape)
+    if (bucket === undefined) { bucket = { n: 0, lifts: [] }; out.set(c.shape, bucket) }
+    bucket.n++
     const rel: RelativeRead | null = relativePerformance(c.reach, c.creatorReaches)
-    if (rel === null) continue
-    const arr = out.get(c.shape)
-    if (arr === undefined) out.set(c.shape, [rel.lift])
-    else arr.push(rel.lift)
+    if (rel !== null) bucket.lifts.push(rel.lift)
   }
   return out
 }
@@ -146,18 +168,17 @@ export function selectEvidenceCohort(
 
   for (const [rung, selected] of rungs) {
     if (!cohortMayRecommend(selected.length)) continue
-    const lifts = liftsByShape(selected)
+    const tally = tallyByShape(selected)
     const shapes: ShapeEvidence[] = []
-    for (const [shape, xs] of lifts) {
-      const ml = medianLift(xs)
-      if (ml === null) continue
-      shapes.push({ shape, n: xs.length, medianLift: ml })
+    for (const [shape, t] of tally) {
+      shapes.push({ shape, n: t.n, medianLift: medianLift(t.lifts) })
     }
-    // ⚖️ ORDERED BY n, NOT BY LIFT. A shape with the highest median lift on
-    // three cards is an anecdote; the separation test below is about COUNTS,
-    // and ordering by lift would put the anecdote first and invite reading it
-    // as the answer.
-    shapes.sort((a, b) => b.n - a.n || b.medianLift - a.medianLift || a.shape.localeCompare(b.shape))
+    // ⚖️ ORDERED BY n, AND THE TIE-BREAK IS THE NAME, NOT THE LIFT. Ordering
+    // by lift would put an anecdote first and invite reading it as the answer;
+    // it would also make the order depend on `reach`, a column this file
+    // records as audience size rather than per-video views. A deterministic
+    // alphabetical tie-break decides nothing and cannot be read as a claim.
+    shapes.sort((a, b) => b.n - a.n || a.shape.localeCompare(b.shape))
     const decisive = shapes.length > 0
       && separates(shapes[0].n, shapes[1]?.n ?? 0)
     return {
@@ -177,25 +198,21 @@ export function selectEvidenceCohort(
 }
 
 /**
- * How far above a creator's own median a shape must sit before it is worth
- * naming.
+ * ⚠️⚠️ THERE IS NO LIFT IN THE BLOCK, AND ITS ABSENCE IS THE DESIGN.
  *
- * ⚠️⚠️ THE GATE THIS FILE WAS MISSING, AND THE MEASUREMENT THAT FOUND IT.
+ * This file used to gate on `MIN_MEDIAN_LIFT = 1.2` and emit `medianLift`
+ * alongside the shape. Both are gone. The measurement that removed them is
+ * kept here because it is the reason, and because it is what the recalibration
+ * has to overturn:
+ *
  * Simulated against the whole production corpus on 2026-09-10, with 2,116
- * classified cards, `shapeBlock` returned a block for four of seven niche
- * buckets — and every one of them carried `medianLift` of exactly 1.0000:
+ * classified cards, this function returned a block for four of seven niche
+ * buckets — and every one carried `medianLift` of EXACTLY 1.0000:
  *
  *     business         how_to          n=297   lift 1.0000
  *     tech             how_to          n=169   lift 1.0000
  *     food             number_promise  n= 50   lift 1.0000
  *     beauty_fashion   number_promise  n= 48   lift 1.0000
- *
- * Every gate before this one counts cards. None of them asked whether the
- * shape did better than the creator's ordinary video, so a shape sitting
- * exactly at the median was about to be put in front of the model as evidence
- * of what works. `shapeBlock`'s own header says why that is worse than
- * silence: a hedged shape is still a shape in the model's context, and it
- * will be used.
  *
  * ⚠️ EXACTLY 1.0000 AT n=297 IS ARITHMETIC, NOT MEASUREMENT. Real per-video
  * reach does not divide to 1.000; it divides to 0.97 and 1.03. You get exactly
@@ -206,30 +223,34 @@ export function selectEvidenceCohort(
  * `1.1M`, is held by 21). A global placeholder would be shared by hundreds.
  * So `reach` is AUDIENCE SIZE, not views.
  *
- * ⚖️ WHICH MEANS THIS NUMBER IS NOT CALIBRATED, AND SAYING SO IS THE POINT.
- * There is no real lift distribution to fit a threshold to, because the column
- * the lift is computed from is not a per-video metric. 1.2 is chosen to
- * exclude the measured degenerate case with margin — nothing more. It is NOT
- * a claim that 20% is the level at which a shape becomes worth following.
+ * ⚖️ SO A LIFT GATE BUILT ON IT GATES ON NOISE, AND A LIFT FIELD BUILT ON IT
+ * ASSERTS A PERFORMANCE RELATIONSHIP WE CANNOT SUPPORT. Emitting `lift 1.0000`
+ * as evidence is worse than emitting nothing: it is a meaningless number that
+ * reads as a measured one, and the model will use it. `lift: unknown` and
+ * `lift: 1.0` are the same failure — a hedged field in the model's context is
+ * still a field. So the field is ABSENT, exactly as the whole block is absent
+ * when nothing separates.
  *
- * WHAT WOULD CALIBRATE IT: a per-video view count on `gallery_items`. With
- * that, the threshold should be re-cut from the observed distribution of
- * per-shape median lifts, and this comment replaced with that measurement.
- * Until then the lift layer is `built, awaiting sample`, and this gate is what
- * stops it asserting anything in the meantime.
+ * ⚠️ THIS IS NOT A LOWERED BAR. The gates that remain are the COUNT gates —
+ * cohort size, the leading shape's own n, and the two-sigma separation — and
+ * they are unchanged. What was removed is a threshold on a quantity the column
+ * cannot express, which was refusing all four cohorts above for a reason that
+ * had nothing to do with them.
+ *
+ * WHAT WOULD BRING A LIFT BACK: a per-video view count on `gallery_items`.
+ * With that, `ShapeEvidence.medianLift` is already computed and carried; the
+ * threshold should be cut from the observed distribution rather than chosen,
+ * and this comment replaced with that measurement.
  */
-export const MIN_MEDIAN_LIFT = 1.2
-
 export interface ShapeBlock {
   shape: string
-  n: number
   /**
    * ⚠️ THE PROMPT MUST SAY THE NUMBER, NOT JUST THE SHAPE. "how_to" is an
-   * instruction; "how_to, 4.2x this creator's median across 297 cards" is
-   * evidence a reader can weigh and disagree with. A consumer that renders the
-   * shape and drops this field turns the second back into the first.
+   * instruction; "how_to, across 297 videos in this cohort" is an observation
+   * a reader can weigh and disagree with. A consumer that renders the shape and
+   * drops this field turns the second back into the first.
    */
-  medianLift: number
+  n: number
   basis: string
   rung: CohortRung
 }
@@ -252,13 +273,9 @@ export function shapeBlock(read: CohortRead): ShapeBlock | null {
   // ⚠️ AND THE LEADING SHAPE ITSELF MUST CLEAR THE FLOOR. A cohort of 340 can
   // still carry a shape on 4 cards; the cohort size is not the shape's n.
   if (top.n < MIN_COHORT) return null
-  // ⚠️⚠️ AND IT MUST ACTUALLY OUTPERFORM. Every gate above this line counts
-  // cards; none of them asks whether the shape did any better than the
-  // creator's own ordinary video. A shape at 1.00× is by definition average,
-  // and naming it is a recommendation with nothing behind it.
-  if (top.medianLift < MIN_MEDIAN_LIFT) return null
-  return {
-    shape: top.shape, n: top.n, medianLift: top.medianLift,
-    basis: read.basis, rung: read.rung,
-  }
+  // ⚖️ AND NOTHING HERE ASKS HOW THE SHAPE PERFORMED, deliberately. See the
+  // block above: the only performance column available is audience size, so a
+  // performance gate here would be a threshold on noise. What this block
+  // claims is frequency, and every gate it passes is a count.
+  return { shape: top.shape, n: top.n, basis: read.basis, rung: read.rung }
 }

@@ -121,8 +121,19 @@ export const REGISTRY = {
       + 'facets those two creators agree on at most two, and relaxing the '
       + 'agreement bar to two would admit "any consumer creator at the same '
       + 'follower stage" — a demographic, not a cohort. '
-      + 'WHAT WOULD CHANGE THIS: the prompt assembler consuming this module. '
-      + 'DELETE this entry then; if it never lands, delete the module.',
+      + '⚠️ THE ASSEMBLER HAS NOW LANDED AND THIS ENTRY STAYS, which reverses '
+      + 'what it used to say. The prompt side CANNOT import this package, so '
+      + 'what consumes the rule is a MIRROR of it inlined in the edge, held to '
+      + 'this copy by a parity test that executes both. So the shared copy is '
+      + 'now the reference implementation and the test subject rather than the '
+      + 'thing production calls, and it has no production reader BY DESIGN. '
+      + 'Deleting the entry when the assembler landed would have recorded a '
+      + 'consumer that does not exist. '
+      + '⚠️ AND THE GUARD ALMOST RECORDED ONE ANYWAY: the mirror was first named '
+      + 'so that it CONTAINED this entry\'s symbol as a substring, and the grep '
+      + 'reported the shared copy as read. The mirror was renamed. '
+      + 'WHAT WOULD CHANGE THIS: the edge boundary going away, or the mirror '
+      + 'being replaced by a real import. Not the assembler, which is here.',
   },
   'corpus/facets.ts': {
     symbols: ['knownFacets', 'facetsOf'],
