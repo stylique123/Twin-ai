@@ -84,11 +84,15 @@ describe('the row is opened at generation time, because it cannot be opened late
     // below, which throws legitimately — so the first version of this test was
     // reading unrelated code and failing on it.
     const at = EDGE_CODE.indexOf("from('generation_outcomes')")
-    const end = EDGE_CODE.indexOf("outcome row not opened:", at)
+    const end = EDGE_CODE.indexOf("lost('generation_outcomes'", at)
     expect(end).toBeGreaterThan(at)
     const block = EDGE_CODE.slice(at, end)
-    // A warning, never a throw — same severity as `generation_choices`.
-    expect(EDGE_CODE.slice(at)).toMatch(/console\.warn\('outcome row not opened:/)
+    // ⚠️ RE-ANCHORED, NOT RE-LITIGATED. This pinned the literal string
+    // `console.warn('outcome row not opened:`. The CLAIM — a loss is reported and
+    // never thrown — is unchanged and is now stronger: the report is durable
+    // (`ops_events`) instead of an edge log that expires within days. Only the
+    // anchor moved.
+    expect(EDGE_CODE.slice(at)).toMatch(/lost\('generation_outcomes', error\)/)
     expect(block).not.toMatch(/\bthrow\b/)
   })
 
