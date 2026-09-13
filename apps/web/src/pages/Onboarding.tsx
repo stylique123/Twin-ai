@@ -5,7 +5,7 @@ import { Loader2, Check, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { pollDna, saveCapabilityDefaults, savePreScriptBrief, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
 import type { Platform, Profile, VoiceProfile } from '../lib/types'
-import { asksForbiddenClaims, BRIEF_GOALS, type BriefWorkKind, type BriefGoal } from '../lib/api'
+import { asksForbiddenClaims, type BriefWorkKind, type BriefGoal } from '../lib/api'
 import {
   profileQuestionsFor, asksScreenCapability, asksProductCapability,
   ONBOARDING_SELLS_ANSWERS, sellsAnswerOf, SELLS_ANSWER_TO_TIES,
@@ -150,7 +150,10 @@ const ENTITY_TYPE_LABEL: Record<EntityType, string> = {
 import { EASE } from '../components/motion'
 import { cn } from '../lib/cn'
 import { LogoMark } from '../components/Logo'
+import type { SellsKind } from '@twinai/shared'
 import { StoryInterview } from '../components/StoryInterview'
+import { loadSellsFacet } from '../lib/ownSellsLoad'
+import { loadVoiceStageBand } from '../lib/voiceNicheLoad'
 import {
   ONBOARDING_DRAFT_VERSION,
   clearOnboardingDraft,
@@ -176,7 +179,19 @@ const PLACEHOLDER: Record<Platform, string> = {
 // real handle (the fast, one-tap path), OR describe their voice by hand. Both end
 // at the same editable confirm form and produce a real voice — so a first run can
 // never dead-end (no big account, or a scan outage, still gets you in).
-type Mode = 'handle' | 'building' | 'confirm'
+// ⚠⚠ `stories` SITS BETWEEN THE SCAN AND THE REVIEW, AND THAT POSITION IS THE
+// WHOLE FIX. The three story questions used to render DURING the scan, which
+// meant Twin had no niche, no `sells` and no follower count to word them with —
+// so a private chef and a template seller were asked the identical sentence
+// "what does almost everyone in your NICHE believe", before we had read her
+// niche. They can only be specific AFTER the DNA exists.
+//
+// ⚖️ AND IT IS ITS OWN STEP RATHER THAN A BLOCK ON THE REVIEW SCREEN. The
+// measured failure was placement: on the first real production run EVERY
+// question below the fold on the confirm screen came back unanswered. A step in
+// the flow is passed through, not visited — which is the difference between this
+// and the Product Library, a finished feature with zero rows because it waits.
+type Mode = 'handle' | 'building' | 'stories' | 'confirm'
 
 // A blank, editable voice profile — the starting point for the manual path and the
 // scan-failed fallback. Shared so both use the exact same shape.
@@ -325,7 +340,8 @@ export default function Onboarding() {
       safeWriteDraft(next)
       return next
     })
-    setMode('confirm')
+    // The scan is in. Ask the three questions it could not word until now.
+    setMode('stories')
   }, [userId])
 
   if (!session) return <Navigate to="/auth" replace />
@@ -364,7 +380,7 @@ export default function Onboarding() {
            questions side by side and still a readable measure. */
         className={cn(
           'relative w-full',
-          mode === 'confirm' ? 'max-w-4xl' : mode === 'building' ? 'max-w-3xl' : 'max-w-xl',
+          mode === 'confirm' ? 'max-w-4xl' : mode === 'building' ? 'max-w-3xl' : mode === 'stories' ? 'max-w-2xl' : 'max-w-xl',
         )}
       >
         {/* p-8 is 64px of horizontal padding, which is 16% of a 390px phone
@@ -391,6 +407,12 @@ export default function Onboarding() {
                   onScanDead={forgetDeadScan}
                   onTryPlatform={tryAnotherPlatform}
                   onDraftChange={persistDraft}
+                />
+              )}
+              {mode === 'stories' && draft && (
+                <StoryStep
+                  draft={draft}
+                  onDone={() => setMode('confirm')}
                 />
               )}
               {mode === 'confirm' && draft && (
@@ -611,10 +633,10 @@ function BuildingStep({
   // finishing early means WAITING, never interrupting. The last one to finish
   // hands over, whichever it is.
   const [qIndex, setQIndex] = useState(0)
-  // ⚖️ THREE STORY QUESTIONS AFTER THE SIX CATEGORICAL ONES. `storiesDone`
-  // starts false and is set when they are answered, skipped, or when there is
-  // no voice to attach them to.
-  const [storiesDone, setStoriesDone] = useState(false)
+  // ⚠⚠ THE THREE STORY QUESTIONS ARE NO LONGER ASKED HERE. They moved to their
+  // own step AFTER the scan (`mode === 'stories'`), because on this screen the
+  // DNA does not exist yet and they could never be worded in her world. What is
+  // left here is only what genuinely needs no scan: the categorical questions.
   const [readyProfile, setReadyProfile] = useState<VoiceProfile | null>(null)
   // ⚠️ FINISHING IS SOMETHING THE CREATOR DOES, NOT SOMETHING A COMPARISON
   // DECIDES. `qIndex >= asked.length` LOOKED equivalent and was not: the list is
@@ -639,11 +661,11 @@ function BuildingStep({
   useEffect(() => {
     // ⚠️ THE STORY QUESTIONS GATE THIS TOO, FOR THE REASON THIS FILE ALREADY
     // LEARNED ONCE: a scan that finished early used to take the screen away
-    // with an answer half-typed. `storiesDone` parks a finished scan the same
+    // with an answer half-typed. The finished scan is parked the same
     // way `questionsDone` does, so finishing early means WAITING, never
     // interrupting.
-    if (questionsDone && storiesDone && readyProfile) onReady(readyProfile)
-  }, [questionsDone, storiesDone, readyProfile, onReady])
+    if (questionsDone && readyProfile) onReady(readyProfile)
+  }, [questionsDone, readyProfile, onReady])
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Advance the visual stage on a gentle clock so the wait feels alive even
@@ -819,14 +841,7 @@ function BuildingStep({
           and experience items are the one predictor of a script that does not
           read as generic. Captions have produced zero of them, ever. This is
           dead time that can carry three real answers instead. */}
-      {!err && questionsDone && !storiesDone && (
-        <StoryInterview
-          voiceId={draft.voiceId ?? null}
-          onDone={() => setStoriesDone(true)}
-        />
-      )}
-
-      {!err && questionsDone && storiesDone && (
+      {!err && questionsDone && (
         // Answered everything before the scan finished. Say so plainly — a
         // spinner with no sentence reads as a stall, and this is the one moment
         // the creator is genuinely just waiting.
@@ -998,6 +1013,60 @@ function BuildingStep({
 // RENDER, because the bug was that a prop arriving after mount never reached the
 // inputs. A pure helper could not have caught it. Same reason `ProfileQuestion`
 // is exported above.
+/**
+ * THE THREE QUESTIONS NO SCAN CAN ANSWER, ASKED ONCE IT HAS.
+ *
+ * ⚠⚠ THEY USED TO RENDER DURING THE SCAN AND THAT IS WHY THEY READ AS GENERIC.
+ * At that moment there is no niche, no `sells` and no follower count, so every
+ * creator met the same three sentences — including "what does almost everyone in
+ * your NICHE believe", asked before her niche had been read. The wording table
+ * existed and could not be used, because its inputs arrive after the screen.
+ *
+ * ⚖️ THE INTENTS DO NOT CHANGE AND NEITHER DO THE IDS. A costly lesson, a
+ * specific result, a contrarian belief — `expensive_lesson`, `best_result`,
+ * `contrarian`. Only the words change, because the ids are what "already
+ * answered" and "already skipped" are keyed on.
+ *
+ * ⚠️ AND IT NEVER BLOCKS ON THE LOOKUP. `sells` is read in the background; until
+ * it lands, or if it fails, the plain bank renders. No spinner, no error, no
+ * empty screen — a creator who is ready to type must never wait on a lookup that
+ * only changes the wording.
+ */
+function StoryStep({
+  draft, onDone,
+}: {
+  draft: OnboardingDraft
+  onDone: () => void
+}) {
+  const [sells, setSells] = useState<SellsKind | 'none' | null>(null)
+  const [band, setBand] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    void loadSellsFacet().then((v) => { if (alive) setSells(v) })
+    void loadVoiceStageBand(draft.voiceId ?? null).then((v) => { if (alive) setBand(v) })
+    return () => { alive = false }
+  }, [draft.voiceId])
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold">Three things your videos cannot tell us</h2>
+        <p className="mt-1 text-sm text-neutral-600">
+          We read your account. These are the parts only you know — they are what
+          give a script something real to say.
+        </p>
+      </div>
+      <StoryInterview
+        voiceId={draft.voiceId ?? null}
+        onDone={onDone}
+        niche={draft.profile?.niche ?? null}
+        sells={sells}
+        stageBand={band}
+      />
+    </div>
+  )
+}
+
 export function ConfirmStep({
   draft,
   onDraftChange,
@@ -2163,18 +2232,8 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
               : 'btn-gradient rounded-lg px-4 py-2 text-sm font-semibold'}
             onClick={() => set({ contentGoals: [inferred.goal], contentGoalsTouched: true })}
           >Yes, that's right</button>
-          {/* ⚠️ DECLINING USED TO RECORD NOTHING AND ASK NOTHING MORE, and the
-              reason given was that offering the seven chips here would be "the
-              third asking wearing a no button". That holds for showing them
-              UP FRONT. It does not hold after a no, and the cost of the silence
-              was measured on 2026-09-13: of 13 creators whose brief records a
-              commercial tie -- they sell something -- TWELVE have no `sell` in
-              their content goals. The stored spread is followers 8, leads 3,
-              authority 2, sell 1, educate 1. The inference reads recurring CTAs
-              and lands on `followers`, and a creator it mislabels had no way to
-              say otherwise: "Not quite" wrote an empty array and moved on.
-              So the chips appear ONLY after a no. That is not a third asking;
-              it is the second half of the question they just answered. */}
+          {/* ⚖️ DECLINING RECORDS NOTHING AND ASKS NOTHING MORE. Offering the
+              seven chips here would be the third asking wearing a "no" button. */}
           <button
             type="button"
             aria-pressed={declined}
@@ -2184,21 +2243,6 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
             onClick={() => set({ contentGoals: [], contentGoalsTouched: true })}
           >Not quite</button>
         </div>
-        {declined ? (
-          <div className="mt-4">
-            <p className="text-sm text-sand">Then what are they for?</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {BRIEF_GOALS.filter((g) => g !== inferred.goal).map((g) => (
-                <button
-                  key={g}
-                  type="button"
-                  className="rounded-lg border border-white/15 px-3 py-2 text-sm text-sand hover:text-cream"
-                  onClick={() => set({ contentGoals: [g], contentGoalsTouched: true })}
-                >{CONTENT_GOAL_LABEL[g]}</button>
-              ))}
-            </div>
-          </div>
-        ) : null}
         {note('Read from how your own videos end. Nothing is saved until you answer.')}
       </Field>
     )
