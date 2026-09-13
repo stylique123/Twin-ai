@@ -73,6 +73,10 @@ export interface SetupArea {
    *  something worth doing, including "look at what we have". */
   actionLabel: string
   action: SetupAction
+  /** How many of Twin's own guesses are waiting for her to agree. Present only
+   *  where there are some, so a card with nothing pending renders exactly as it
+   *  did before. */
+  pending?: number
   /** ⚖️ CONTENT AREAS COUNT TOWARD READINESS; VISUAL ONES DO NOT. The whole
    *  separation, expressed as a field rather than as a convention somebody has to
    *  remember. */
@@ -84,6 +88,16 @@ export interface SetupInput extends ProfileInput {
   productCount?: number | null
   /** Whether the DNA record was built AND the creator has seen it. */
   dnaConfirmed?: boolean | null
+  /** ⚠⚠ HOW MANY SENTENCES TWIN WROTE FOR ITSELF AND SHE HAS NOT AGREED TO.
+   *  `audience_pain` and `dream_outcome` are READ FROM HER OWN POSTS, which makes
+   *  them a good guess and still a guess. A card that says "Ready" over two
+   *  unconfirmed guesses is the exact failure `hasConfirmedCta` exists to stop:
+   *  "the meter must not tick off a sentence Twin wrote for itself", which is
+   *  how the old palette meter came to report brand colours nobody chose.
+   *
+   *  ⚖️ AND IT IS A COUNT, NOT A BOOLEAN, because the card has to say HOW MANY
+   *  are waiting. "Ready" gives her no reason to open it; "2 to confirm" does. */
+  audienceFactsPending?: number | null
   brandKit?: BrandKitLike | null
 }
 
@@ -117,17 +131,32 @@ export function setupAreas(input: SetupInput): SetupArea[] {
   const hasProducts = (input.productCount ?? 0) > 0
   const productsApply = commercial(input.answers)
   const kit = brandKitStatus(input.brandKit)
+  // ⚠️ A NEGATIVE OR NON-FINITE COUNT IS NONE, NEVER A BADGE. This arrives from
+  // a caller that counted rows, and a bad count must not put "-1 to confirm" in
+  // front of a creator.
+  const raw = input.audienceFactsPending
+  const pendingFacts = typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0
 
   return [
     {
       id: 'content_profile',
       title: 'Content profile',
+      // ⚠⚠ THREE OUTCOMES, NOT TWO, FOR THE REASON `creator_dna` ALREADY GIVES
+      // ONE LINE BELOW. Nothing stored, guesses waiting to be agreed to, and
+      // confirmed are different things to a creator deciding whether to open it.
+      // This card said "Ready" over two sentences Twin wrote for itself from her
+      // posts -- and a creator with no reason to open it never confirms them, so
+      // the writer keeps treating them as guesses forever.
       state: profile.gaps.some((g) => g.id !== 'cta' && g.id !== 'dnaReady' && g.id !== 'productContext')
-        ? 'needs_setup' : 'ready',
+        ? 'needs_setup'
+        : pendingFacts > 0 ? 'needs_review' : 'ready',
       detail: 'What you make, who it is for, and what you want your videos to do.',
       actionLabel: 'Edit profile',
       action: 'edit_profile',
       counts: true,
+      // ⚖️ OMITTED RATHER THAN ZERO. A `pending: 0` would render a badge saying
+      // nothing is waiting, which is a second telling of "Ready".
+      ...(pendingFacts > 0 ? { pending: pendingFacts } : {}),
     },
     {
       id: 'creator_dna',
