@@ -1,4 +1,4 @@
-import { loadProductEntities, sellsKindOf, type SellsKind } from '@twinai/shared'
+import { loadProductEntities, sellsKindOf, sellsFacetOf, type SellsKind } from '@twinai/shared'
 
 /**
  * WHAT THIS CREATOR SELLS, FOR THE ONE QUESTION THAT ASSUMES A RELATIONSHIP.
@@ -21,6 +21,28 @@ import { loadProductEntities, sellsKindOf, type SellsKind } from '@twinai/shared
 export async function loadOwnSells(): Promise<SellsKind | null> {
   try {
     return sellsKindOf(await loadProductEntities())
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The same read, but able to say "she sells nothing" out loud.
+ *
+ * ⚠⚠ `loadOwnSells` COLLAPSES TWO OPPOSITE FACTS INTO null AND IS RIGHT TO, for
+ * the one question it serves: a failed read, an empty library and a mixed one all
+ * mean "we do not know what kind of buyer she has". But the opening three need
+ * the distinction — a creator with no products of her own is a commentator and
+ * can be asked what she got wrong publicly, while a creator with a service AND a
+ * candle line has two kinds of buyer and must be asked neither one’s question.
+ *
+ * ⚖️ A FAILED READ IS STILL null, NEVER 'none'. "The query threw" is not
+ * evidence that she sells nothing, and treating it as such would ask a chef the
+ * commentator’s question because the network blinked.
+ */
+export async function loadSellsFacet(): Promise<SellsKind | 'none' | null> {
+  try {
+    return sellsFacetOf(await loadProductEntities())
   } catch {
     return null
   }
