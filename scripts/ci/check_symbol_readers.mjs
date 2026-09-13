@@ -136,7 +136,8 @@ export const REGISTRY = {
       + 'being replaced by a real import. Not the assembler, which is here.',
   },
   'subjectRecurrence.ts': {
-    symbols: ['classifyRecurrence', 'recurrenceNotice', 'recurrenceDirective'],
+    symbols: ['classifyRecurrence', 'recurrenceNotice', 'recurrenceDirective',
+      'draftedSubjects', 'renderAlreadyDrafted'],
     // ⚖️ THE SAME MIRROR SHAPE AS cohort.ts ABOVE, AND FOR THE SAME REASON. The
     // prompt side cannot import this package, so what production calls is a
     // mirror inlined in generate-blueprint, held to this copy by a parity test
@@ -154,6 +155,8 @@ export const REGISTRY = {
       + 'is a creator pressing generate again in one sitting, which '
       + 'contentHistory.ts already argued must not be refused. `repeat` — the '
       + 'only verdict that speaks to the writer — has never once occurred. '
+      + 'draftedSubjects/renderAlreadyDrafted are the same shape: the edge calls recDrafted/recDraftedBlock, which the parity test executes against these. '
+      + 'They exist because the ALREADY COVERED block is fed ONLY from creator_knowledge kind=covered -- measured 431 caption rows and 8 transcript rows, every one from a video the creator PUBLISHED, and none from a script Twin wrote. Unlike `repeat`, this one HAS a population: 7 of 35 creators have generated on two or more separate days. '
       + 'WHAT WOULD CHANGE THIS: apps/web rendering recurrenceNotice on the '
       + 'panel, which is a real import and would give three of these four a '
       + 'production reader. Not the edge wiring, which is here and is a mirror.',

@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { transformSync } from 'esbuild'
 import { fileURLToPath } from 'node:url'
-import { classifyOne, type PriorPremise } from '../subjectRecurrence.js'
+import { classifyOne, draftedSubjects, type PriorPremise } from '../subjectRecurrence.js'
 
 const EDGE = readFileSync(fileURLToPath(new URL(
   '../../../../supabase/functions/generate-blueprint/index.ts', import.meta.url)), 'utf8')
@@ -36,6 +36,19 @@ function loadMirror(): (priorAt: number, now: number, a: string, b: string) => s
   const js = transformSync(src, { loader: 'ts', format: 'cjs' }).code
   // eslint-disable-next-line no-new-func
   return new Function(`${js}; return (priorAt, now, a, b) => recKind(priorAt, now, recOverlap(a, b))`)() as never
+}
+
+/** The drafted-subject selector from the same mirror block. */
+function loadMirrorDrafted(): (priors: Array<{ premise: string; at: number }>, now: number) => string[] {
+  const start = EDGE.indexOf('const REC_RETRY_MINUTES')
+  const end = EDGE.indexOf('const MIN_PRIOR_VIDEOS')
+  expect(start).toBeGreaterThan(-1)
+  expect(end).toBeGreaterThan(start)
+  const src = EDGE.slice(start, end)
+  expect(src).toContain('function recDrafted')
+  const js = transformSync(src, { loader: 'ts', format: 'cjs' }).code
+  // eslint-disable-next-line no-new-func
+  return new Function(`${js}; return (priors, now) => recDrafted(priors, now)`)() as never
 }
 
 const A = 'waiting for commercial gear holds back beginner microbakers'
@@ -76,5 +89,43 @@ describe('the shared rule and its edge mirror agree', () => {
     const seen = new Set(CASES.map(([g, a, b]) =>
       classifyOne({ premise: a, at: new Date(ago(g)) }, b, new Date(NOW))))
     expect(seen).toEqual(new Set(['retry', 'repeat', 'fresh']))
+  })
+})
+
+
+describe('the drafted-subject selector agrees across both implementations', () => {
+  const mirror = loadMirrorDrafted()
+  const OLD = 241
+  // ⚠️ EACH CASE CARRIES ITS OWN PREMISE TEXTS, NOT `premise ${i}` FOR ALL. The
+  // first version numbered every fixture distinctly, so the table contained no
+  // duplicate and removing the mirror's dedupe survived — a mutant that is
+  // genuinely broken (it lists one subject as several prior videos). The test
+  // was wrong, so the case was added rather than the assertion loosened.
+  const CASES: ReadonlyArray<[string, Array<[number, string]>]> = [
+    ['inside the sitting', [[10, 'a'], [30, 'b']]],
+    ['older than the sitting', [[OLD, 'a'], [OLD + 10, 'b']]],
+    ['mixed', [[10, 'a'], [OLD, 'b'], [60 * 24 * 31, 'c']]],
+    ['past the repeat window', [[60 * 24 * 31, 'a']]],
+    ['the same subject drafted twice is listed once', [[OLD, 'a'], [OLD + 10, 'a'], [OLD + 20, 'b']]],
+    ['and case does not defeat that', [[OLD, 'Sourdough Pricing'], [OLD + 10, 'sourdough pricing']]],
+  ]
+
+  it.each(CASES)('%s', (_label, rows) => {
+    const priors: PriorPremise[] = rows.map(([g, t]) => ({ premise: t, at: new Date(ago(g)) }))
+    const mirrored = mirror(rows.map(([g, t]) => ({ premise: t, at: ago(g) })), NOW)
+    expect(mirrored).toEqual([...draftedSubjects(priors, new Date(NOW))])
+  })
+
+  it('the table actually contains a duplicate, or the dedupe is untested', () => {
+    const dupes = CASES.filter(([, rows]) =>
+      new Set(rows.map(([, t]) => t.toLowerCase())).size < rows.length)
+    expect(dupes.length).toBeGreaterThan(0)
+  })
+
+  it('and the table produces both an empty and a non-empty selection', () => {
+    const sizes = CASES.map(([, rows]) => draftedSubjects(
+      rows.map(([g, t]) => ({ premise: t, at: new Date(ago(g)) })), new Date(NOW)).length)
+    expect(sizes.some((n) => n === 0)).toBe(true)
+    expect(sizes.some((n) => n > 0)).toBe(true)
   })
 })

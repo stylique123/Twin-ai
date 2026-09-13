@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   classifyRecurrence, classifyOne, premiseOverlap, recurrenceNotice,
-  recurrenceDirective, RETRY_WINDOW_MINUTES, REPEAT_WINDOW_DAYS,
+  recurrenceDirective, RETRY_WINDOW_MINUTES, REPEAT_WINDOW_DAYS, draftedSubjects, renderAlreadyDrafted,
   NEAR_DUPLICATE_OVERLAP, type PriorPremise,
 } from '../subjectRecurrence.js'
 
@@ -93,5 +93,46 @@ describe('what reaches the creator and the writer', () => {
     const v = classifyRecurrence([prior(UNRELATED, 10)], B, NOW)
     expect(v).toEqual({ kind: 'fresh', matched: null, scriptsAgo: null })
     expect(recurrenceDirective(v)).toBe('')
+  })
+})
+
+describe('what Twin has already written, which is not what they published', () => {
+  const OTHER = 'pricing a sourdough loaf for local pickup orders'
+
+  it('excludes the sitting the creator is in', () => {
+    // Every near-duplicate pair on record is inside this window.
+    expect(draftedSubjects([prior(A, 10), prior(OTHER, 30)], NOW)).toEqual([])
+  })
+
+  it('includes drafts older than the sitting', () => {
+    const s = draftedSubjects([prior(A, RETRY_WINDOW_MINUTES + 60)], NOW)
+    expect(s).toEqual([A])
+  })
+
+  it('drops anything past the repeat window rather than steering forever', () => {
+    const tooOld = (REPEAT_WINDOW_DAYS + 1) * 24 * 60
+    expect(draftedSubjects([prior(A, tooOld)], NOW)).toEqual([])
+  })
+
+  it('lists one subject once, however many times it was drafted', () => {
+    const old = RETRY_WINDOW_MINUTES + 60
+    expect(draftedSubjects([prior(A, old), prior(A, old + 10), prior(OTHER, old)], NOW))
+      .toEqual([A, OTHER])
+  })
+
+  it('says DRAFTED and never claims they filmed it', () => {
+    const block = renderAlreadyDrafted([A])
+    expect(block).toContain('drafted')
+    expect(block).toContain('do NOT say or imply that they did')
+    // ⚠️ THE COVERED BLOCK'S OWN WORDING, WHICH IS FALSE OF A DRAFT.
+    expect(block).not.toContain('they have made a video')
+  })
+
+  it('forbids the block ever being spoken, which the covered list learned the hard way', () => {
+    expect(renderAlreadyDrafted([A])).toContain('NEVER SPOKEN')
+  })
+
+  it('is empty when there is nothing to say', () => {
+    expect(renderAlreadyDrafted([])).toBe('')
   })
 })

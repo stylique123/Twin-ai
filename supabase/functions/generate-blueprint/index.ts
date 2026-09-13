@@ -1303,6 +1303,40 @@ function recDirective(
   return ''
 }
 
+/** Prior premises old enough to be catalogue rather than this sitting.
+ *  ⚠️ SEPARATE FROM THE `covered` LIST ON PURPOSE: that block says "they have
+ *  made a video about each of these", which is FALSE of a draft Twin wrote. */
+function recDrafted(
+  priors: ReadonlyArray<{ premise: string; at: number }>, now: number, limit = 8,
+): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const p of priors) {
+    const minutes = Math.abs(now - p.at) / 60000
+    if (minutes <= REC_RETRY_MINUTES) continue
+    if (minutes > REC_REPEAT_DAYS * 24 * 60) continue
+    const text = String(p.premise ?? '').trim()
+    if (text === '') continue
+    const key = text.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(text)
+    if (out.length >= limit) break
+  }
+  return out
+}
+/** ⚠️ NEVER SPOKEN, AND NEVER CLAIMS THEY FILMED IT. The covered block shipped
+ *  saying only "do not repeat" and produced a spoken line narrating our notes. */
+function recDraftedBlock(subjects: readonly string[]): string {
+  if (subjects.length === 0) return ''
+  return '\nALREADY WRITTEN FOR THIS CREATOR -- Twin has drafted a script on each of these '
+    + 'subjects for them before today. They may or may not have filmed them, so do NOT say '
+    + 'or imply that they did. THIS LIST IS NEVER SPOKEN: it steers what you choose and must '
+    + 'not appear in any line. Take a subject here only from an angle it has not already been '
+    + 'written from, and do not reuse its opening move.\n'
+    + subjects.map((x) => `  * ${x.slice(0, 200)}`).join('\n')
+}
+
 const MIN_PRIOR_VIDEOS = 2
 const MAX_PRIOR_SHOWN = 8
 
@@ -6454,6 +6488,7 @@ Deno.serve(async (req: Request) => {
     // reaching here, so it never re-enters this path either.
     let historyBlock = ''
     let recurrenceInstruction = ''
+    let draftedBlock = ''
     try {
       const { data: priorRows } = await admin
         .from('generations')
@@ -6465,15 +6500,15 @@ Deno.serve(async (req: Request) => {
       // OUTPUT of this call and does not exist yet, so it cannot gate the prompt
       // that produces it. What the creator asked for does exist, and is what a
       // repeat would be a repeat OF.
+      const recPriors = (priorRows ?? []).flatMap((r) => {
+        const pm = ((r?.blueprint ?? {}) as Record<string, any>)?.concept?.premise
+        const ts = Date.parse(String((r as { created_at?: unknown })?.created_at ?? ''))
+        return typeof pm === 'string' && pm.trim() !== '' && Number.isFinite(ts)
+          ? [{ premise: pm, at: ts }] : []
+      })
+      draftedBlock = recDraftedBlock(recDrafted(recPriors, Date.now()))
       recurrenceInstruction = recDirective(
-        (priorRows ?? []).flatMap((r) => {
-          const pm = ((r?.blueprint ?? {}) as Record<string, any>)?.concept?.premise
-          const ts = Date.parse(String((r as { created_at?: unknown })?.created_at ?? ''))
-          return typeof pm === 'string' && pm.trim() !== '' && Number.isFinite(ts)
-            ? [{ premise: pm, at: ts }] : []
-        }),
-        `${reference_note} ${brief.idea ?? ''}`.trim(),
-        Date.now(),
+        recPriors, `${reference_note} ${brief.idea ?? ''}`.trim(), Date.now(),
       )
       historyBlock = renderContentHistoryInline((priorRows ?? []).map((r) => {
         const bp = (r?.blueprint ?? {}) as Record<string, any>
@@ -7561,7 +7596,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}${prov('audience')}${audienceLevelLine}
 - Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${shapeSection}
+- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${draftedBlock}${shapeSection}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `

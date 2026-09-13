@@ -180,3 +180,71 @@ export function recurrenceDirective(v: RecurrenceVerdict): string {
     + `different opening move, a different example, a different beat order. Do NOT `
     + `reuse the opener of the earlier video, and do NOT refuse the subject.`
 }
+
+// ── WHAT TWIN HAS ALREADY WRITTEN FOR THEM, WHICH IS NOT WHAT THEY PUBLISHED ──
+//
+// ⚠️ THE `ALREADY COVERED` BLOCK EXISTS, CARRIES THE RIGHT INSTRUCTION, AND IS
+// FED FROM ONE SOURCE ONLY. `generate-blueprint` builds it from
+// `creator_knowledge` rows of kind `covered`, and measured on 2026-09-13 those
+// are 431 rows from `caption` plus 8 from `transcript` — every one derived from
+// a video the creator PUBLISHED. Not one comes from a script Twin wrote for
+// them. So the writer is steered away from repeating the creator's own back
+// catalogue and is told nothing about its own.
+//
+// ⚖️ AND IT MUST BE A SEPARATE BLOCK, NOT AN EXTRA ROW IN THAT ONE. The covered
+// block's own words are "they have made a video about each of these", which is
+// FALSE of a draft: Twin writing a script is not the creator filming it.
+// Appending drafts to that list would put a claim about someone's catalogue in
+// the prompt that nothing supports — the same defect class as the covered list's
+// recorded leak, where our notes reached a spoken line.
+//
+// ⚖️ GATED BY THE RETRY WINDOW, FOR THE REASON THE REST OF THIS FILE EXISTS. A
+// draft from ten minutes ago is the sitting the creator is in; steering away
+// from it is steering away from the retry they just asked for. Only drafts older
+// than the window are catalogue.
+//
+// ⚖️ THIS ONE HAS A POPULATION, WHICH `repeat` DOES NOT. 7 of 35 creators have
+// generated on two or more separate days, so this fires today where the
+// near-duplicate rule still cannot.
+
+/** Prior premises old enough to count as catalogue rather than as this sitting. */
+export function draftedSubjects(
+  priors: readonly PriorPremise[], now: Date, limit = 8,
+): readonly string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const p of priors) {
+    const minutes = Math.abs(now.getTime() - p.at.getTime()) / 60000
+    if (minutes <= RETRY_WINDOW_MINUTES) continue
+    if (minutes > REPEAT_WINDOW_DAYS * 24 * 60) continue
+    const text = p.premise.trim()
+    if (text === '') continue
+    // ⚠️ DEDUPED ON THE TEXT, because a creator who generated the same premise
+    // twice a week ago would otherwise have it listed twice and read as two
+    // separate prior videos.
+    const key = text.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(text)
+    if (out.length >= limit) break
+  }
+  return out
+}
+
+/**
+ * The block, or ''.
+ *
+ * ⚠️ IT SAYS DRAFTED, NEVER PUBLISHED, AND IT IS NEVER SPOKEN. Both are defects
+ * this repository has already paid for once: the covered block shipped saying
+ * only "do not repeat" and produced the spoken line "we've had a video on this",
+ * narrating our own notes to an audience.
+ */
+export function renderAlreadyDrafted(subjects: readonly string[]): string {
+  if (subjects.length === 0) return ''
+  return '\nALREADY WRITTEN FOR THIS CREATOR — Twin has drafted a script on each of these '
+    + 'subjects for them before today. They may or may not have filmed them, so do NOT say '
+    + 'or imply that they did. THIS LIST IS NEVER SPOKEN: it steers what you choose and must '
+    + 'not appear in any line. Take a subject here only from an angle it has not already been '
+    + 'written from, and do not reuse its opening move.\n'
+    + subjects.map((s) => `  * ${s.slice(0, 200)}`).join('\n')
+}
