@@ -5,6 +5,14 @@
 // corpus sorted on it surfaces the biggest accounts and teaches a creator with
 // 1,500 followers nothing about her own next video.
 //
+// ⚠️ THIS FILE AND `cohort.ts` DISAGREED FOR THREE DAYS, AND THIS ONE WAS RIGHT.
+// cohort.ts concluded `reach` is audience size from "40.6% of a creator's cards
+// share one value" — a figure that pools 3,309 single-card creators, for whom
+// one card IS the modal value by definition. Re-measured 2026-09-13 stratified
+// by catalogue size, the distinct-value ratio is 0.94-1.00 in every band. Two
+// modules in one directory stating opposite things about one column is the
+// hazard a parity test exists for; here it was caught by re-measuring instead.
+//
 // ⚖️ AND THE CORPUS CAN ANSWER THIS TODAY. Measured 2026-09-09: `reach` is
 // populated on ALL 16,044 gallery_items across 3,877 creators, and it is
 // genuinely PER-VIDEO — Linus Tech Tips carries 34 distinct values across 154

@@ -175,9 +175,10 @@ export function selectEvidenceCohort(
     }
     // ⚖️ ORDERED BY n, AND THE TIE-BREAK IS THE NAME, NOT THE LIFT. Ordering
     // by lift would put an anecdote first and invite reading it as the answer;
-    // it would also make the order depend on `reach`, a column this file
-    // records as audience size rather than per-video views. A deterministic
-    // alphabetical tie-break decides nothing and cannot be read as a claim.
+    // it would also make the order depend on a lift that is degenerate on this
+    // corpus — 48.8% of classified cards come from a creator with ONE card,
+    // whose own median is that card. A deterministic alphabetical tie-break
+    // decides nothing and cannot be read as a claim.
     shapes.sort((a, b) => b.n - a.n || a.shape.localeCompare(b.shape))
     const decisive = shapes.length > 0
       && separates(shapes[0].n, shapes[1]?.n ?? 0)
@@ -214,17 +215,40 @@ export function selectEvidenceCohort(
  *     food             number_promise  n= 50   lift 1.0000
  *     beauty_fashion   number_promise  n= 48   lift 1.0000
  *
- * ⚠️ EXACTLY 1.0000 AT n=297 IS ARITHMETIC, NOT MEASUREMENT. Real per-video
- * reach does not divide to 1.000; it divides to 0.97 and 1.03. You get exactly
- * one when you divide a constant by its own median — and that is what
- * `gallery_items.reach` is. Measured: 40.6% of a creator's cards share one
- * identical value, and the modal value is unique to the creator in 61.4% of
- * cases (440 distinct modal values across 717 creators; the most-shared,
- * `1.1M`, is held by 21). A global placeholder would be shared by hundreds.
- * So `reach` is AUDIENCE SIZE, not views.
+ * ⚠️ EXACTLY 1.0000 AT n=297 IS ARITHMETIC, NOT MEASUREMENT. You get exactly
+ * one when you divide a value by a median it alone determines.
  *
- * ⚖️ SO A LIFT GATE BUILT ON IT GATES ON NOISE, AND A LIFT FIELD BUILT ON IT
- * ASSERTS A PERFORMANCE RELATIONSHIP WE CANNOT SUPPORT. Emitting `lift 1.0000`
+ * ⚠️⚠️ AND THE FIRST EXPLANATION WRITTEN HERE WAS WRONG. It said `reach` is
+ * AUDIENCE SIZE rather than per-video views, citing "40.6% of a creator's cards
+ * share one identical value". That statistic is real and the inference from it
+ * was not: it POOLS 3,309 single-card creators, and one card is trivially its
+ * own modal value. Re-measured 2026-09-13, stratified by how many cards a
+ * creator actually has:
+ *
+ *     cards per creator   creators   % of cards at the modal value
+ *     1                      3,309      100.0   (true by definition)
+ *     2-4                      532       44.7
+ *     5-9                      100       19.0
+ *     10-29                     35       10.8
+ *     30+                        2        7.8
+ *
+ * The distinct-value ratio is 0.94-1.00 in EVERY band. If `reach` were audience
+ * size, one creator's cards would carry ONE value and that ratio would be ~1/n.
+ * So `reach` IS per-video views, and the sentence this replaces was a
+ * conclusion drawn from a pooled average over a population dominated by
+ * singletons.
+ *
+ * ⚖️ THE REAL CAUSE OF THE 1.0000 IS THE SHAPE OF THE CORPUS, NOT THE COLUMN.
+ * Of 596 classified cards: 291 (48.8%) belong to a creator with exactly ONE
+ * card, whose own median IS that card; another 171 (28.7%) sit below
+ * `MIN_VIDEOS_FOR_BASELINE`. Only 134 (22.5%) can produce a real lift at all —
+ * far too few to reach `MIN_COHORT` per shape per cohort.
+ *
+ * ⚖️ SO THE DECISION IS UNCHANGED AND ITS REASON IS NOT. A lift computed from
+ * this corpus is degenerate because the scraper collects one card each from
+ * thousands of creators rather than a catalogue from a few — a DEPTH problem,
+ * fixable by scraping differently, not a wrong-column problem. Emitting
+ * `lift 1.0000`
  * as evidence is worse than emitting nothing: it is a meaningless number that
  * reads as a measured one, and the model will use it. `lift: unknown` and
  * `lift: 1.0` are the same failure — a hedged field in the model's context is
@@ -274,8 +298,9 @@ export function shapeBlock(read: CohortRead): ShapeBlock | null {
   // still carry a shape on 4 cards; the cohort size is not the shape's n.
   if (top.n < MIN_COHORT) return null
   // ⚖️ AND NOTHING HERE ASKS HOW THE SHAPE PERFORMED, deliberately. See the
-  // block above: the only performance column available is audience size, so a
-  // performance gate here would be a threshold on noise. What this block
-  // claims is frequency, and every gate it passes is a count.
+  // block above: the lift this corpus can compute is degenerate, because half
+  // the classified cards come from creators with a single card. A performance
+  // gate here would be a threshold on that. What this block claims is
+  // frequency, and every gate it passes is a count.
   return { shape: top.shape, n: top.n, basis: read.basis, rung: read.rung }
 }
