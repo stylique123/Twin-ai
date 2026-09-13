@@ -5,7 +5,7 @@ import { Loader2, Check, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { pollDna, saveCapabilityDefaults, savePreScriptBrief, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
 import type { Platform, Profile, VoiceProfile } from '../lib/types'
-import { asksForbiddenClaims, type BriefWorkKind, type BriefGoal } from '../lib/api'
+import { asksForbiddenClaims, BRIEF_GOALS, type BriefWorkKind, type BriefGoal } from '../lib/api'
 import {
   profileQuestionsFor, asksScreenCapability, asksProductCapability,
   ONBOARDING_SELLS_ANSWERS, sellsAnswerOf, SELLS_ANSWER_TO_TIES,
@@ -2232,8 +2232,18 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
               : 'btn-gradient rounded-lg px-4 py-2 text-sm font-semibold'}
             onClick={() => set({ contentGoals: [inferred.goal], contentGoalsTouched: true })}
           >Yes, that's right</button>
-          {/* ⚖️ DECLINING RECORDS NOTHING AND ASKS NOTHING MORE. Offering the
-              seven chips here would be the third asking wearing a "no" button. */}
+          {/* ⚠️ DECLINING USED TO RECORD NOTHING AND ASK NOTHING MORE, and the
+              reason given was that offering the seven chips here would be "the
+              third asking wearing a no button". That holds for showing them
+              UP FRONT. It does not hold after a no, and the cost of the silence
+              was measured on 2026-09-13: of 13 creators whose brief records a
+              commercial tie -- they sell something -- TWELVE have no `sell` in
+              their content goals. The stored spread is followers 8, leads 3,
+              authority 2, sell 1, educate 1. The inference reads recurring CTAs
+              and lands on `followers`, and a creator it mislabels had no way to
+              say otherwise: "Not quite" wrote an empty array and moved on.
+              So the chips appear ONLY after a no. That is not a third asking;
+              it is the second half of the question they just answered. */}
           <button
             type="button"
             aria-pressed={declined}
@@ -2243,6 +2253,21 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
             onClick={() => set({ contentGoals: [], contentGoalsTouched: true })}
           >Not quite</button>
         </div>
+        {declined ? (
+          <div className="mt-4">
+            <p className="text-sm text-sand">Then what are they for?</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {BRIEF_GOALS.filter((g) => g !== inferred.goal).map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  className="rounded-lg border border-white/15 px-3 py-2 text-sm text-sand hover:text-cream"
+                  onClick={() => set({ contentGoals: [g], contentGoalsTouched: true })}
+                >{CONTENT_GOAL_LABEL[g]}</button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {note('Read from how your own videos end. Nothing is saved until you answer.')}
       </Field>
     )
