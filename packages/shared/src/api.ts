@@ -255,6 +255,7 @@ export async function saveDNA(dna: CreatorDNA): Promise<Profile> {
 // how "Start conversations" and "Get leads" came to share one key that granted
 // commercial-CTA intent. One definition, one place, re-exported from the index.
 import type { VideoGoal, ContentFocus, ViewerOutcome, ReferenceUse } from './videoIntent'
+import type { EntryDoor } from './entryDoor'
 
 export interface GenerateInput {
   /** Answers to a prior READINESS_INCOMPLETE refusal, keyed by field. Sending
@@ -313,6 +314,20 @@ export interface GenerateInput {
   // Snake-cased to match the wire, like every other field here: the three above
   // are single words, and this is the first that would have to choose.
   reference_use?: ReferenceUse
+  /**
+   * Which of the four doors she came through.
+   *
+   * ⚖️ STATED, NEVER DERIVED, AND THAT IS THE WHOLE VALUE OF IT. The server
+   * can see `reference_url` and `selected_product_id` and could guess a door
+   * from them — but a guess cannot tell "she chose the idea door" from "she
+   * pasted something that did not look like a URL", which is the one
+   * distinction `entryDoor.ts` exists to draw. It is carried so the outcome row
+   * can be grouped by it.
+   *
+   * ⚠️ ABSENT MEANS SHE DID NOT SAY, which an older client always does. The
+   * server stores null for it rather than the commonest door.
+   */
+  door?: EntryDoor
   // Optional: when the reference was analyzed by the worker (real transcript),
   // pass its transcript_id so the blueprint is built from the actual video.
   transcript_id?: string

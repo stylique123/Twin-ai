@@ -163,6 +163,24 @@ function describeThrown(err: unknown): string {
 // `stageBandOf` as having acquired a production reader it does not have.
 //
 // ⚠️ PARITY: `the-band-and-its-twin.test.ts` executes BOTH over one case table.
+/**
+ * The four doors, validated rather than trusted.
+ *
+ * ⚠️ AN UNKNOWN VALUE IS NULL, NOT ITSELF. This arrives from a request body, so
+ * storing it as sent would let any string become a fifth door in a column whose
+ * whole use is `group by`. The CHECK constraint would reject the insert and the
+ * warning would lose the rest of the row with it.
+ *
+ * ⚠️ AND THE LIST IS DUPLICATED FROM `entryDoor.ts` ON PURPOSE. This function
+ * cannot import `@twinai/shared`, and the duplication is held by a parity test
+ * that executes both rather than by hope.
+ */
+function entryDoorInline(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const t = raw.trim()
+  return t === 'reference' || t === 'idea' || t === 'product' || t === 'browse' ? t : null
+}
+
 function followerBandInline(followers: unknown): string | null {
   if (followers === null || followers === undefined || followers === '') return null
   const n = typeof followers === 'number' ? followers : Number(followers)
@@ -200,6 +218,11 @@ async function recordWhatWasChosen(admin: {
    *  different fact from a small account and must not aggregate as one.
    *  Measured 2026-09-13: 20 of 53 voices carry a usable count. */
   creatorStageBand: string | null
+  /** ⚠️ WHICH WAY IN SHE CAME, AND NULL WHEN SHE DID NOT SAY. An older client
+   *  sends no door at all; recording 'reference' for it would invent the most
+   *  common answer for every request that predates the field, which is the one
+   *  direction this table must never fail in. */
+  entryDoor: string | null
 }): Promise<void> {
   // ⚖️ STORED AS SENT, NOT NARROWED TO THE CURRENT ENUM. A value retired between
   // the choice and the query is exactly the history worth keeping, and dropping it
@@ -244,6 +267,11 @@ async function recordWhatWasChosen(admin: {
       // ⚖️ THE FIRST OF 0191'S FOUR NAMED-BUT-ABSENT DIMENSIONS TO BECOME A
       // VALUE. The other three still need work this handler cannot do alone.
       creator_stage_band: input.creatorStageBand,
+      // ⚖️ THE SECOND OF 0191'S FOUR. The door was already recorded, in
+      // `entry_impressions` — but that table knows only that a door was taken,
+      // never what the build it opened turned into. Joining the two on time and
+      // owner would be a guess; carrying the door onto the outcome row is not.
+      entry_door: input.entryDoor,
     })
     .then(({ error }) => { if (error) console.warn('outcome row not opened:', error.message) })
 }
@@ -5067,7 +5095,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string; mentioned_product_id?: string }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string; mentioned_product_id?: string; door?: string }
   try {
     body = await req.json()
   } catch {
@@ -10284,6 +10312,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         hadReference: Boolean(transcript_id) || String(reference_url ?? '').trim() !== '',
         creatorStageBand: followerBandInline(
           (voice?.stats as { followers?: unknown } | null)?.followers),
+        entryDoor: entryDoorInline(body.door),
       })
     }
     // THE RACE THE REPLAY CHECK CANNOT CATCH. Two requests carrying the same key
@@ -10450,6 +10479,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
               hadReference: Boolean(transcript_id) || String(reference_url ?? '').trim() !== '',
               creatorStageBand: followerBandInline(
                 (voice?.stats as { followers?: unknown } | null)?.followers),
+              entryDoor: entryDoorInline(body.door),
             })
           }
           return json(saved)
