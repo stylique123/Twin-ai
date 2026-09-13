@@ -11,7 +11,7 @@ import {
   projectShape, shapeSummary, shapeSummaryLine, shapeLabel,
   loadProductEntities, galleryCreatorView, emptyReferenceProfile,
   loadPreScriptBrief, assembleCreatorProfile, briefToProfileAnswers,
-  DESIRED_FORMATS, type CreatorProfile, type DesiredFormat,
+  DESIRED_FORMATS, remixOffer, mayPromiseRemix, type CreatorProfile, type DesiredFormat,
   type GalleryItem, type ReferenceProfile, type FillableEntity,
 } from '../lib/api'
 import { decideGallery } from '../lib/galleryDecisions'
@@ -219,7 +219,12 @@ function fromDb(it: GalleryItem): Card {
   const skin = skinForNiche(it.niche)
   // A real "why it works" even when the community item shipped without one — so the
   // detail card always teaches the creator something, not just a view count.
-  const fallbackWhy = `A proven ${it.niche || 'niche'} format that earned real reach. Tap Remix and TwinAI rebuilds its hook, pacing and structure as an original in your voice — you keep the idea, not the footage.`
+  // ⚠️ THE BLURB PROMISES THE BUTTON, so where the button goes the promise goes.
+  // On a card whose platform we have never been able to read, "Tap Remix and
+  // TwinAI rebuilds its hook" describes something that will not happen.
+  const fallbackWhy = mayPromiseRemix(it.platform)
+    ? `A proven ${it.niche || 'niche'} format that earned real reach. Tap Remix and TwinAI rebuilds its hook, pacing and structure as an original in your voice — you keep the idea, not the footage.`
+    : `A proven ${it.niche || 'niche'} format that earned real reach. Worth watching for the idea — Twin cannot rebuild this one yet.`
   return { id: it.id, niche: it.niche, platform: it.platform, label: it.title || 'Community pick', creator: it.creator || 'creator', hook: it.title || it.url, why: it.why || fallbackWhy, reach: it.reach || '·', loves: it.likes || '·', accent: skin.accent, poster: skin.poster, url: it.url,
     // Carried through as-is, INCLUDING the nulls. `?? null` rather than a
     // default: undefined and null both mean nobody has assessed this card, and
@@ -915,9 +920,28 @@ export default function Gallery() {
                             {decisions.byId.get(c.id)!.readiness}
                           </p>
                         )}
-                        <button onClick={(e) => { e.stopPropagation(); remix(c) }} className="btn-gradient mt-0.5 flex w-full items-center justify-center gap-1.5 !py-2 text-xs">
-                          <Wand2 className="h-3.5 w-3.5 shrink-0" /> Remix in my voice
-                        </button>
+                        {/* ⚠️ THE BUTTON IS THE PROMISE, AND ON 365 CARDS WE
+                            COULD NOT KEEP IT. Remix navigates to the studio,
+                            which ingests the link; since #841 an Instagram link
+                            is REFUSED there immediately, because 60 of 60
+                            Instagram fetches have failed and none has ever
+                            reached a transcript. Offering the click anyway
+                            spends a creator's attention on a refusal we can
+                            predict.
+                            ⚖️ THE CARD STAYS — Play still opens the original,
+                            and the idea is still worth seeing. Only the thing
+                            we cannot do is withdrawn, with the reason said in
+                            the studio's own words. */}
+                        {(() => {
+                          const canRemix = remixOffer(c.platform)
+                          return canRemix.kind === 'offer' ? (
+                            <button onClick={(e) => { e.stopPropagation(); remix(c) }} className="btn-gradient mt-0.5 flex w-full items-center justify-center gap-1.5 !py-2 text-xs">
+                              <Wand2 className="h-3.5 w-3.5 shrink-0" /> Remix in my voice
+                            </button>
+                          ) : (
+                            <p className="mt-0.5 text-[10px] font-semibold leading-snug text-stone">{canRemix.because}</p>
+                          )
+                        })()}
                       </div>
                     </div>
                   </Tilt>
@@ -961,7 +985,16 @@ export default function Gallery() {
                 <p className="mt-1.5 text-sm leading-relaxed text-sand">{detail.why}</p>
               </div>
               <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-                <button onClick={() => { remix(detail); setDetail(null) }} className="btn-gradient flex-1"><Wand2 className="h-4 w-4" /> Remix in my voice</button>
+                {(() => {
+                  const canRemix = remixOffer(detail.platform)
+                  return canRemix.kind === 'offer' ? (
+                    <button onClick={() => { remix(detail); setDetail(null) }} className="btn-gradient flex-1"><Wand2 className="h-4 w-4" /> Remix in my voice</button>
+                  ) : (
+                    /* ⚖️ Same sentence as the card and as the studio. One limit
+                       explained three ways reads as three different problems. */
+                    <p className="flex-1 self-center text-xs leading-snug text-stone">{canRemix.because}</p>
+                  )
+                })()}
                 <button onClick={() => window.open(detail.url, '_blank', 'noopener,noreferrer')} className="btn-ghost flex-1"><ExternalLink className="h-4 w-4" /> Open original</button>
               </div>
             </div>
