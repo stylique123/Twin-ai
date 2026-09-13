@@ -148,6 +148,31 @@ function describeThrown(err: unknown): string {
 // about a script that already succeeded and was already charged for: losing an
 // observation is a gap in analytics, while throwing here would lose the creator
 // their paid script. A warning is the correct severity.
+// ── THE CREATOR'S STAGE BAND (inlined from packages/shared/src/corpus/facets.ts)
+//
+// ⚠️ 0191 SAID THIS ONE "NEEDS A FOLLOWER COUNT AT GENERATION TIME. THE SCAN HAS
+// ONE; IT IS NOT CARRIED INTO THE REQUEST." That was true and it framed the fix
+// as a request-shape change. It is not one: this handler already loads the
+// creator's `brand_voices` row to build the prompt, and the follower count is on
+// it. The fact was in the handler's hands the whole time — asking the client for
+// something the server already holds is how a derivable fact becomes a parameter
+// some caller will omit, which `ingest-reference` learned on 44 of 51 rows.
+//
+// ⚠️ NAMED SO IT DOES NOT CONTAIN THE SHARED SYMBOL'S NAME. check_symbol_readers
+// greps by NAME, and an inline called `stageBandOfInline` would report the shared
+// `stageBandOf` as having acquired a production reader it does not have.
+//
+// ⚠️ PARITY: `the-band-and-its-twin.test.ts` executes BOTH over one case table.
+function followerBandInline(followers: unknown): string | null {
+  if (followers === null || followers === undefined || followers === '') return null
+  const n = typeof followers === 'number' ? followers : Number(followers)
+  if (!Number.isFinite(n) || n < 0) return null
+  if (n < 1_000) return 'under_1k'
+  if (n < 10_000) return '1k_10k'
+  if (n < 100_000) return '10k_100k'
+  return 'over_100k'
+}
+
 async function recordWhatWasChosen(admin: {
   from: (t: string) => { insert: (row: Record<string, unknown>) => PromiseLike<{ error: { message?: string } | null }> }
 }, input: {
@@ -171,6 +196,10 @@ async function recordWhatWasChosen(admin: {
   substanceBudgetBeats: number | null
   referenceDurationSec: number | null
   hadReference: boolean
+  /** ⚠️ NULL MEANS THE SCAN NEVER PRODUCED A FOLLOWER COUNT, which is a
+   *  different fact from a small account and must not aggregate as one.
+   *  Measured 2026-09-13: 20 of 53 voices carry a usable count. */
+  creatorStageBand: string | null
 }): Promise<void> {
   // ⚖️ STORED AS SENT, NOT NARROWED TO THE CURRENT ENUM. A value retired between
   // the choice and the query is exactly the history worth keeping, and dropping it
@@ -212,6 +241,9 @@ async function recordWhatWasChosen(admin: {
       reference_duration_sec: input.referenceDurationSec,
       // ⚖️ THE ONE FACT THAT SEGMENTS EVERY QUESTION THIS TABLE WILL BE ASKED.
       had_reference: input.hadReference,
+      // ⚖️ THE FIRST OF 0191'S FOUR NAMED-BUT-ABSENT DIMENSIONS TO BECOME A
+      // VALUE. The other three still need work this handler cannot do alone.
+      creator_stage_band: input.creatorStageBand,
     })
     .then(({ error }) => { if (error) console.warn('outcome row not opened:', error.message) })
 }
@@ -10250,6 +10282,8 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
           ((beatAudit as { substance_budget?: unknown } | null)?.substance_budget ?? null) as number | null,
         referenceDurationSec: ref?.duration_sec ?? null,
         hadReference: Boolean(transcript_id) || String(reference_url ?? '').trim() !== '',
+        creatorStageBand: followerBandInline(
+          (voice?.stats as { followers?: unknown } | null)?.followers),
       })
     }
     // THE RACE THE REPLAY CHECK CANNOT CATCH. Two requests carrying the same key
@@ -10414,6 +10448,8 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
               substanceBudgetBeats: null,
               referenceDurationSec: null,
               hadReference: Boolean(transcript_id) || String(reference_url ?? '').trim() !== '',
+              creatorStageBand: followerBandInline(
+                (voice?.stats as { followers?: unknown } | null)?.followers),
             })
           }
           return json(saved)
