@@ -411,6 +411,31 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
       const escalated: DownloadRoute = { kind: 'residential_proxy', sessionId: stickySessionId(url) }
       console.log(JSON.stringify({ event: 'download_route_escalated', url,
         from: 'local_impersonated', to: 'residential_proxy', because: firstClass }))
+      // ⚠⚠ DURABLE, BECAUSE THE QUESTION THIS RUNG EXISTS TO ANSWER CANNOT BE
+      // ANSWERED FROM A LOG. Both halves of the escalation were `console.log`
+      // only, classified `counter_ephemeral` — and the registry's own reason for
+      // the first says it "is counted because it is the only evidence the paid
+      // rung ran at all". Counted where? Worker logs expire, so the evidence
+      // expired with them.
+      //
+      // ⚠️ MEASURED 2026-09-13, AND THIS IS WHY IT MATTERS NOW: 53 assess_reference
+      // failures carry a block-shaped error (the `blocked_by_host` precondition),
+      // the most recent on 2026-09-03 — so the rung has had 53 opportunities. The
+      // database cannot say whether it fired on ONE of them. Zero rows across
+      // 4,004 jobs mention `residential_proxy`, and that is NOT evidence it never
+      // ran: no job row ever carried the route name either way. Absent is not
+      // zero.
+      //
+      // ⚖️ A ROW EACH, NOT A COUNTER COLUMN, and the rate is computed by counting
+      // rows — the same shape as `job_dead_letter`. An escalation is rare enough
+      // (53 chances in a month) that a row is cheap, and the ratio of these two
+      // kinds IS the answer: if successes stay at zero while escalations climb,
+      // the proxy is not the fix and the spend should stop.
+      await db.from('ops_events').insert({
+        kind: 'download_route_escalated',
+        severity: 'warn',
+        detail: { url, platform, from: 'local_impersonated', to: 'residential_proxy', because: firstClass },
+      }).then(() => {}, () => {})
       try {
         transcript = await transcribeFromUrl(url, escalated)
       } catch (second) {
@@ -422,6 +447,13 @@ export async function handleAssessReference(job: Job): Promise<Record<string, un
     // for a video we just successfully read.
     if (transcript) {
       console.log(JSON.stringify({ event: 'download_route_escalation_succeeded', url }))
+      // ⚖️ THE NUMERATOR. Read against `download_route_escalated`, this is the
+      // whole measurement: was IP reputation the wall, or something behind it?
+      await db.from('ops_events').insert({
+        kind: 'download_route_escalation_succeeded',
+        severity: 'info',
+        detail: { url, platform },
+      }).then(() => {}, () => {})
     }
     if (!transcript) {
     // ⚠️ RECORDED, NOT THROWN. A host the allowlist refuses, a deleted video, a
