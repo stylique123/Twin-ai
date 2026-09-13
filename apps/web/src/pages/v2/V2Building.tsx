@@ -1285,6 +1285,13 @@ export default function V2Building() {
           // from an older build cannot reach the request as a setting that no
           // longer exists.
           reference_use: asOneOf(REFERENCE_USE, intentAnswers.reference_use),
+          // ⚠️ THE DOOR TRAVELLED THIS FAR AND STOPPED. It has ridden the nav
+          // state since the studio named the four doors, and this screen already
+          // reads it (`isProductSubject`) — but it was never sent, so the outcome
+          // row could not be grouped by the one thing that decides what kind of
+          // build it was. Sent only when she said; an absent door reaches the
+          // server as absent and is stored as null, never as a default.
+          ...(state.door ? { door: state.door } : {}),
           ...(Object.keys(readinessAnswers).length ? { readiness_answers: readinessAnswers } : {}),
           // Same intent → same key → the server returns the build it already
           // made instead of charging for it twice (0119).

@@ -583,6 +583,29 @@ const EVENTS = {
   ci_bootstrap_granted: { kind: 'incident', why: 'A staging credential issued. Every decision is logged by design.' },
   ci_bootstrap_refused: { kind: 'incident', why: 'A staging credential refused, with the reason.' },
   ci_bootstrap_no_credential: { kind: 'incident', why: 'No credential available to issue.' },
+
+  // ── THE `ops_events` KINDS, VISIBLE TO THIS GUARD SINCE THE SCANNER WAS
+  // WIDENED ──
+  //
+  // ⚠️ ALL OF THESE ALREADY LANDED IN A DURABLE TABLE, AND NONE OF THEM HAD
+  // BEEN ASKED THE QUESTION. That is the point worth stating: landing somewhere
+  // is not the same as someone deciding it should. Two of eleven were listed;
+  // the other nine were invisible to the guard because it matched only
+  // `event: '...'`.
+  //
+  // ⚠️ AND `ops_events` IS AN INCIDENT TABLE, NOT A COUNTER STORE. Every kind
+  // below is classified `incident` for one shared reason: each is a single
+  // occurrence an operator must look at, and `ops_events` has no aggregation and
+  // no retention policy that makes it a rate store. A kind here that becomes a
+  // RATE worth trending needs a column, not another row in this table.
+  billing_plan_unverified: { kind: 'incident', why: 'A paid webhook whose variant matched no configured plan, so the grant was REFUSED (severity critical), or a deployment with no variant map at all granting from seeded intent (warn). Per occurrence in both cases: the first is somebody who paid and did not get what they paid for, and the second is the window in which a user could seed `agency` and pay anything.' },
+  generation_failed: { kind: 'incident', why: 'The generation threw. One creator, one build they paid for, one stack excerpt to read.' },
+  generation_instrumentation_failed: { kind: 'incident', why: 'The selection/beat-audit instrumentation threw and was swallowed so the build could still succeed. Per occurrence, because it is the measurement going dark rather than the product.' },
+  generation_record_not_written: { kind: 'incident', why: 'The `generation_choices` or `generation_outcomes` insert was rejected, so what the creator chose and how the build turned out left no record. Per occurrence, and a PGRST204 among them is marked `error` rather than `warning` because that code means the handler and the database disagree about what columns exist -- which loses the SAME row for every generation until a migration is applied, not one row. Nearly happened 2026-09-13 with 0203 believed-applied and absent; cost two days once already with 0190 and `is_heartbeat`.' },
+  script_regenerated: { kind: 'incident', why: 'A rebuild off the same reference, with a verdict on what actually changed between the two. Per occurrence: the interesting case is a regeneration where nothing the creator changed should have changed the script.' },
+  refund_failed: { kind: 'incident', why: 'Credits were spent and could not be returned -- severity critical, and the one alert in this file that needs a human the same day. It went nowhere silently for a while: the insert named `ops_alerts`, a table that has never existed, and the write is deliberately fire-and-forget so nothing caught it.' },
+  job_dead_letter: { kind: 'incident', why: 'A worker job exhausted its attempts. Per occurrence so a spike is visible in the reliability panel; the RATE it feeds is computed from these rows rather than counted into a column.' },
+  tier_zero_silent_row: { kind: 'incident', why: 'A visual pass that ran and wrote neither `tier_zero_profile` nor `tier_zero_failure_code`, naming WHICH of the two identical-looking shapes occurred. Measured 2026-09-03: 2 of 5 passes that ran. It ends a question the database could not answer about itself.' },
 }
 
 /** Every structured event emitted from code that ships. Tests are excluded —
@@ -599,6 +622,25 @@ function emittedEvents(root) {
       const src = readFileSync(p, 'utf8')
       for (const m of src.matchAll(/event: '([a-z0-9_]+)'/g)) {
         if (!out.has(m[1])) out.set(m[1], p.slice(REPO.length + 1))
+      }
+      // ⚠⚠ THE GUARD COULD NOT SEE THE ONE TABLE THAT IS ALREADY DURABLE.
+      // It matched `event: '...'` only, so every `ops_events` row — the table an
+      // operator actually watches — was invisible to it. MEASURED: 11 kinds are
+      // written across the edge and the worker and only 2 were registered.
+      //
+      // That is this guard's own defect class turned on the guard: the question
+      // "where does this land, and how long does it live?" went unasked for nine
+      // events BECAUSE they already land somewhere. Landing somewhere is not the
+      // same as someone having decided it should.
+      //
+      // ⚠️ MATCHED INSIDE AN `ops_events` INSERT, NEVER ON `kind:` ALONE. A bare
+      // `kind: '...'` grep finds 49 names in this tree, and most are ordinary
+      // discriminated unions — `card`, `clip`, `crossfade`, `phone`. A guard that
+      // accused forty of those on its first run is a guard people learn to
+      // ignore, which is the failure mode its own header warns about.
+      for (const ins of src.matchAll(/from\('ops_events'\)\s*\n?\s*\.insert\(/g)) {
+        const k = /kind:\s*'([a-z0-9_]+)'/.exec(src.slice(ins.index, ins.index + 400))
+        if (k && !out.has(k[1])) out.set(k[1], p.slice(REPO.length + 1))
       }
     }
   }

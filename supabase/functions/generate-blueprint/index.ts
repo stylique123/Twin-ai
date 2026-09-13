@@ -163,6 +163,24 @@ function describeThrown(err: unknown): string {
 // `stageBandOf` as having acquired a production reader it does not have.
 //
 // ⚠️ PARITY: `the-band-and-its-twin.test.ts` executes BOTH over one case table.
+/**
+ * The four doors, validated rather than trusted.
+ *
+ * ⚠️ AN UNKNOWN VALUE IS NULL, NOT ITSELF. This arrives from a request body, so
+ * storing it as sent would let any string become a fifth door in a column whose
+ * whole use is `group by`. The CHECK constraint would reject the insert and the
+ * warning would lose the rest of the row with it.
+ *
+ * ⚠️ AND THE LIST IS DUPLICATED FROM `entryDoor.ts` ON PURPOSE. This function
+ * cannot import `@twinai/shared`, and the duplication is held by a parity test
+ * that executes both rather than by hope.
+ */
+function entryDoorInline(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const t = raw.trim()
+  return t === 'reference' || t === 'idea' || t === 'product' || t === 'browse' ? t : null
+}
+
 function followerBandInline(followers: unknown): string | null {
   if (followers === null || followers === undefined || followers === '') return null
   const n = typeof followers === 'number' ? followers : Number(followers)
@@ -174,7 +192,7 @@ function followerBandInline(followers: unknown): string | null {
 }
 
 async function recordWhatWasChosen(admin: {
-  from: (t: string) => { insert: (row: Record<string, unknown>) => PromiseLike<{ error: { message?: string } | null }> }
+  from: (t: string) => { insert: (row: Record<string, unknown>) => PromiseLike<{ error: { message?: string; code?: string } | null }> }
 }, input: {
   generationId: string
   ownerId: string
@@ -200,7 +218,59 @@ async function recordWhatWasChosen(admin: {
    *  different fact from a small account and must not aggregate as one.
    *  Measured 2026-09-13: 20 of 53 voices carry a usable count. */
   creatorStageBand: string | null
+  /** ⚠️ WHICH WAY IN SHE CAME, AND NULL WHEN SHE DID NOT SAY. An older client
+   *  sends no door at all; recording 'reference' for it would invent the most
+   *  common answer for every request that predates the field, which is the one
+   *  direction this table must never fail in. */
+  entryDoor: string | null
 }): Promise<void> {
+  // ⚠⚠ A ROW THAT DID NOT LAND USED TO SAY SO ONLY IN AN EDGE LOG, AND EDGE
+  // LOGS EXPIRE WITHIN DAYS. This is the exact shape of the C8 defect the
+  // counter-durability guard was built for: "we durably recorded the failure of
+  // the failure handler and not the failure."
+  //
+  // ⚠⚠ AND THE FAILURE THIS CATCHES IS NOT HYPOTHETICAL — IT NEARLY HAPPENED
+  // ON 2026-09-13. Migration 0203 was believed applied and was not, so
+  // `generation_outcomes` had no `creator_stage_band` column while the handler
+  // had already started writing one. PostgREST rejects the WHOLE insert for one
+  // unknown column (PGRST204), so the outcome row for every generation would
+  // have been lost — not the one field — and the only trace would have been a
+  // `console.warn` nobody reads. The same mechanism cost two days once already
+  // (0190 unapplied while the handler wrote `is_heartbeat`).
+  //
+  // ⚖️ STILL NON-FATAL, AND DELIBERATELY SO. The creator has paid for a build
+  // and it succeeded; failing her request because a bookkeeping row did not land
+  // would turn a reporting gap into an outage. Loud and durable, never fatal.
+  const lost = (table: string, error: { message?: string; code?: string } | null): void => {
+    const code = error?.code ?? ''
+    console.error('generation_record_not_written', table, code, error?.message ?? '')
+    // ⚠⚠ try/catch AND a rejection handler, BECAUSE THEY CATCH DIFFERENT
+    // THINGS. `.then(ok, err)` handles a REJECTED promise; it does nothing for a
+    // client that throws SYNCHRONOUSLY from `.insert(...)`. The first draft had
+    // only the rejection handler, and the test that throws synchronously failed
+    // — the failure handler would have become the outage it exists to prevent.
+    try {
+      void admin.from('ops_events').insert({
+        kind: 'generation_record_not_written',
+        // ⚠️ PGRST204 IS SCHEMA DRIFT, WHICH IS AN OUTAGE OF THE RECORD ITSELF
+        // AND NOT ONE BAD ROW. It means the code and the database disagree about
+        // what columns exist, so EVERY subsequent generation loses the same row
+        // until someone applies the migration. Anything else is one row.
+        severity: code === 'PGRST204' ? 'error' : 'warning',
+        user_id: input.ownerId,
+        detail: {
+          fn: 'generate-blueprint',
+          table,
+          code,
+          generation_id: input.generationId,
+          error: (error?.message ?? '').slice(0, 500),
+        },
+      }).then(() => {}, () => {})
+    } catch {
+      // Nothing left to report it TO. The build still succeeded.
+    }
+  }
+
   // ⚖️ STORED AS SENT, NOT NARROWED TO THE CURRENT ENUM. A value retired between
   // the choice and the query is exactly the history worth keeping, and dropping it
   // would silently under-count the past. Length is capped because this is
@@ -221,7 +291,7 @@ async function recordWhatWasChosen(admin: {
       reference_use: text(input.rawReferenceUse),
       selected_product_id: input.selectedProductId,
     })
-    .then(({ error }) => { if (error) console.warn('choices not recorded:', error.message) })
+    .then(({ error }) => { if (error) lost('generation_choices', error) })
 
   // ⚠️ THE OUTCOME COLUMNS ARE LEFT NULL ON PURPOSE AND `was_filmed` IS
   // THREE-STATE. NULL is "not asked yet"; `false` is "she looked at it and did not
@@ -244,8 +314,13 @@ async function recordWhatWasChosen(admin: {
       // ⚖️ THE FIRST OF 0191'S FOUR NAMED-BUT-ABSENT DIMENSIONS TO BECOME A
       // VALUE. The other three still need work this handler cannot do alone.
       creator_stage_band: input.creatorStageBand,
+      // ⚖️ THE SECOND OF 0191'S FOUR. The door was already recorded, in
+      // `entry_impressions` — but that table knows only that a door was taken,
+      // never what the build it opened turned into. Joining the two on time and
+      // owner would be a guess; carrying the door onto the outcome row is not.
+      entry_door: input.entryDoor,
     })
-    .then(({ error }) => { if (error) console.warn('outcome row not opened:', error.message) })
+    .then(({ error }) => { if (error) lost('generation_outcomes', error) })
 }
 
 // Keep the opening AND closing of long source text. A hard head-only cut loses
@@ -5067,7 +5142,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string; mentioned_product_id?: string }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string; mentioned_product_id?: string; door?: string }
   try {
     body = await req.json()
   } catch {
@@ -10284,6 +10359,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         hadReference: Boolean(transcript_id) || String(reference_url ?? '').trim() !== '',
         creatorStageBand: followerBandInline(
           (voice?.stats as { followers?: unknown } | null)?.followers),
+        entryDoor: entryDoorInline(body.door),
       })
     }
     // THE RACE THE REPLAY CHECK CANNOT CATCH. Two requests carrying the same key
@@ -10450,6 +10526,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
               hadReference: Boolean(transcript_id) || String(reference_url ?? '').trim() !== '',
               creatorStageBand: followerBandInline(
                 (voice?.stats as { followers?: unknown } | null)?.followers),
+              entryDoor: entryDoorInline(body.door),
             })
           }
           return json(saved)
