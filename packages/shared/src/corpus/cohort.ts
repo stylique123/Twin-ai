@@ -26,8 +26,25 @@ import {
 } from './facets'
 import { relativePerformance, medianLift, type RelativeRead } from './relativePerformance'
 
-/** How the cohort was assembled. Strongest first. */
-export type CohortRung = 'sub_domain' | 'facets' | 'domain' | 'none'
+/** How the cohort was assembled. Strongest first.
+ *
+ *  ⚠⚠ `all` IS THE WEAKEST RUNG AND IT IS DELIBERATELY LAST. It answers a
+ *  different question from the three above it: not "what do creators like her
+ *  do" but "what does this corpus do", which is a fact about the scrape as much
+ *  as about the craft. It exists because the ladder without it reached ONE
+ *  creator in seven.
+ *
+ *  ⚠️ MEASURED 2026-09-13, AND BOTH HALVES MATTER. By niche bucket, 1 of 7
+ *  buckets clears MIN_COHORT with 2-sigma separation (entertainment 46v6,
+ *  sigma 5.55; business 91v66 is 2.00 and the bar is a strict >). Across all
+ *  niches: 596 cards, direct_question 279 vs how_to 151, sigma 6.17. So the
+ *  global cohort is decisive where six of seven niche cohorts are not.
+ *
+ *  ⚖️ IT IS ONLY HONEST BECAUSE THE BASIS SAYS SO. `describeCohort` renders
+ *  this rung as "videos across all niches", never as her niche, so a global
+ *  shape can never reach the writer disguised as niche-specific advice. A rung
+ *  that lied about its breadth would be worse than no rung. */
+export type CohortRung = 'sub_domain' | 'facets' | 'domain' | 'all' | 'none'
 
 /** ⚠️ HOW MANY FACETS MUST AGREE FOR THE `facets` RUNG. Three of four, and the
  *  fourth may be unknown rather than wrong — a photographer and a physio agree
@@ -164,6 +181,10 @@ export function selectEvidenceCohort(
     ['sub_domain', bySubDomain],
     ['facets', byFacets],
     ['domain', byDomain],
+    // ⚠️ LAST, ALWAYS. Descending by specificity, so a niche cohort of 20+ is
+    // never passed over for this one -- the loop returns at the first rung that
+    // clears the floor, and this is only reached when the three above it did not.
+    ['all', cards],
   ]
 
   for (const [rung, selected] of rungs) {
@@ -184,7 +205,15 @@ export function selectEvidenceCohort(
       && separates(shapes[0].n, shapes[1]?.n ?? 0)
     return {
       rung,
-      basis: describeCohort(her, selected.length),
+      // ⚠⚠ THE GLOBAL RUNG MUST NOT BORROW HER FACETS FOR ITS BASIS.
+      // `describeCohort` renders the cohort as HER description -- "From 596
+      // videos by fitness, consumer" -- which for the `all` rung would claim a
+      // match nobody made, and would reach the writer as niche-specific advice
+      // built from every niche. That lie is the only thing that could make this
+      // rung worse than having no rung, so it is stated separately.
+      basis: rung === 'all'
+        ? `From ${selected.length} ${selected.length === 1 ? 'video' : 'videos'} across all niches.`
+        : describeCohort(her, selected.length),
       size: selected.length,
       // ⚠️ SHAPES ARE RETURNED EVEN WHEN NOT DECISIVE, so a caller can say "we
       // looked and it was a tie" — but `decisive` is the ONLY thing that
