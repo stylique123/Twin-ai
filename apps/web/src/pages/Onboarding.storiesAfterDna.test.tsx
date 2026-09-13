@@ -11,10 +11,10 @@
 // the confirm screen came back unanswered. A step is passed through; the Product
 // Library is a finished feature with zero rows because it waits to be visited.
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-const SRC = readFileSync(resolve(process.cwd(), 'apps/web/src/pages/Onboarding.tsx'), 'utf8')
+const SRC = readFileSync(fileURLToPath(new URL('./Onboarding.tsx', import.meta.url)), 'utf8')
 /** Code only — a comment naming a symbol is not a render. */
 const CODE = SRC.split('\n').filter((l) => {
   const t = l.trim()
