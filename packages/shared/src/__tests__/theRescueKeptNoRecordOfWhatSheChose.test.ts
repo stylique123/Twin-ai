@@ -120,18 +120,31 @@ describe('it cannot fail the build, on either path', () => {
     // ⚖️ LOSING AN OBSERVATION IS A GAP IN ANALYTICS; THROWING HERE WOULD LOSE THE
     // CREATOR THEIR PAID SCRIPT. And the second row must not be skipped because
     // the first failed — they answer different questions.
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // ⚠️ RE-ANCHORED. This asserted the exact table list and a `console.warn`
+    // string. Both claims survive — both data rows are still attempted, and a
+    // loss is still reported without throwing — but the report is now a durable
+    // `ops_events` row rather than an edge log that expires within days, so a
+    // third insert appears BETWEEN them. Asserting the data tables by filter
+    // keeps the original claim and adds the one it could not make.
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     const ins = await record(RESCUE_INPUT, 'generation_choices')
-    expect(ins.map((i) => i.table)).toEqual(['generation_choices', 'generation_outcomes'])
-    expect(warn).toHaveBeenCalledWith('choices not recorded:', 'boom')
-    warn.mockRestore()
+    expect(ins.map((i) => i.table).filter((t) => t !== 'ops_events'))
+      .toEqual(['generation_choices', 'generation_outcomes'])
+    const ops = ins.filter((i) => i.table === 'ops_events')
+    expect(ops).toHaveLength(1)
+    expect(ops[0].row.kind).toBe('generation_record_not_written')
+    expect((ops[0].row.detail as Record<string, unknown>).table).toBe('generation_choices')
+    err.mockRestore()
   })
 
-  it('a failed outcome insert is warned too', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    await record(RESCUE_INPUT, 'generation_outcomes')
-    expect(warn).toHaveBeenCalledWith('outcome row not opened:', 'boom')
-    warn.mockRestore()
+  it('a failed outcome insert is recorded durably too', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const ins = await record(RESCUE_INPUT, 'generation_outcomes')
+    const ops = ins.filter((i) => i.table === 'ops_events')
+    expect(ops).toHaveLength(1)
+    expect((ops[0].row.detail as Record<string, unknown>).table).toBe('generation_outcomes')
+    expect((ops[0].row.detail as Record<string, unknown>).error).toBe('boom')
+    err.mockRestore()
   })
 })
 
