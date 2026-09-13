@@ -1536,6 +1536,117 @@ function resolveSubjectSourceInline(
 //
 // ⚠️ PARITY: mirrors platformCtaFailures in
 // packages/shared/src/script/ctaFitsThePlatform.ts, held by its own test.
+// ── THE SHAPE BLOCK (inlined from packages/shared/src/corpus/cohort.ts)
+//
+// ⚠️⚠️ THIS IS THE CONSUMER THAT DID NOT EXIST. Five corpus modules —
+// captionShape, facets, relativePerformance, nicheVocabulary and cohort — were
+// built, tested and read by NOTHING, because the edge cannot import
+// @twinai/shared and nobody had cut the door. Every one of them reached zero
+// scripts for as long as that was true.
+//
+// ⚠️ IT EMITS A SHAPE AND A COUNT, AND NO LIFT. `reach` is audience size rather
+// than per-video views (40.6% of a creator's cards share one value), so every
+// lift computed from it came out at exactly 1.0000. A frequency claim is true
+// on the same data: "this is the dominant shape in this cohort, across n
+// videos." A hedged `lift: unknown` would be worse than either — a hedged field
+// in the model's context is still a field.
+//
+// ⚖️ DOMAIN RUNG ONLY, AND THAT IS STATED RATHER THAN HIDDEN. The shared ladder
+// has three rungs (sub_domain, facets, domain); this side has only her niche,
+// so it assembles the weakest one. That loses nothing measurable TODAY — the
+// four cohorts that clear the gates on the live corpus are niche buckets — and
+// the emitted `basis` says which rung it came from, so the prompt cannot
+// overstate it.
+//
+// ⚠️ NAMED SO IT DOES NOT CONTAIN THE SHARED SYMBOL'S NAME. The first draft
+// called this `shapeBlockInline`, and check_symbol_readers — which greps by
+// NAME across production sources — reported the SHARED function as having
+// acquired a reader. It had not; a different function merely contained its
+// name. The same collision cost a rename twice already in this corpus
+// (`selectCohort`, `questionsFor`), and deleting the registry entry instead
+// would have recorded a consumer that does not exist.
+//
+// ⚠️ PARITY: `a-shape-block-and-its-twin.test.ts` executes BOTH this and the
+// shared original over one table of cases.
+const NICHE_BUCKET_PATTERNS_INLINE: ReadonlyArray<{ bucket: string; test: RegExp }> = [
+  { bucket: 'business', test: /\b(entrepreneur\w*|business\w*|startups?|founders?|scal\w+|hustles?|wealth|sales|b2b|saas|marketing|real estate|investing|property|resale|e-?commerce)\b/i },
+  { bucket: 'tech', test: /\b(ai|artificial intelligence|tech\w*|coding|software|develop\w*|android|ios|apps?)\b/i },
+  { bucket: 'beauty_fashion', test: /\b(beauty|skincare|fashion|makeup|style|grooming)\b/i },
+  { bucket: 'food', test: /\b(food|bak\w+|cook\w*|recipes?|kitchen|micro-?bakery)\b/i },
+  { bucket: 'health', test: /\b(fitness|health\w*|physio\w*|training|wellness|rehab)\b/i },
+  { bucket: 'creator', test: /\b(content creation|creators?|youtube|tiktok|short-?form)\b/i },
+  { bucket: 'entertainment', test: /\b(entertainment|humou?r|comedy|challenges?|dubbing|music|skits?)\b/i },
+]
+
+function nicheBucketInline(niche: unknown): string | null {
+  const t = typeof niche === 'string' ? niche.trim() : ''
+  if (t === '') return null
+  return NICHE_BUCKET_PATTERNS_INLINE.find((b) => b.test.test(t))?.bucket ?? null
+}
+
+/** Mirrors MIN_COHORT. Twenty cards before a cohort may recommend anything. */
+const MIN_COHORT_INLINE = 20
+
+/** Mirrors `separates`: a lead counts only when the gap exceeds twice the
+ *  sampling noise on a count. */
+function separatesInline(a: number, b: number): boolean {
+  if (a <= 0) return false
+  return (a - b) / Math.sqrt(a + b) > 2
+}
+
+interface DominantShapeInline { shape: string; n: number; basis: string; rung: string }
+
+/**
+ * The dominant caption shape among cards in her niche bucket, or null.
+ *
+ * ⚠️⚠️ null MEANS THE BLOCK IS ABSENT FROM THE PROMPT ENTIRELY — not weakened,
+ * not "we could not determine a shape". Absent. On the live corpus this is the
+ * common answer, and it is the correct one.
+ */
+function dominantShapeInline(
+  cards: ReadonlyArray<{ niche: unknown; caption_shape: unknown }>,
+  herNiche: unknown,
+): DominantShapeInline | null {
+  const bucket = nicheBucketInline(herNiche)
+  if (bucket === null) return null
+  const mine = cards.filter((c) => nicheBucketInline(c.niche) === bucket)
+  if (mine.length < MIN_COHORT_INLINE) return null
+  const counts = new Map<string, number>()
+  for (const c of mine) {
+    const shape = typeof c.caption_shape === 'string' ? c.caption_shape.trim() : ''
+    if (shape === '') continue
+    counts.set(shape, (counts.get(shape) ?? 0) + 1)
+  }
+  const ranked = [...counts.entries()]
+    .map(([shape, n]) => ({ shape, n }))
+    // Ordered by count; the tie-break is the name, which decides nothing.
+    .sort((a, b) => b.n - a.n || a.shape.localeCompare(b.shape))
+  const top = ranked[0]
+  if (top === undefined) return null
+  if (!separatesInline(top.n, ranked[1]?.n ?? 0)) return null
+  if (top.n < MIN_COHORT_INLINE) return null
+  return {
+    shape: top.shape, n: top.n, rung: 'domain',
+    basis: `${mine.length} videos from creators in ${bucket}`,
+  }
+}
+
+/**
+ * ⚠️ STRUCTURE ONLY, AND THE PROMPT HAS TO SAY SO. The block names a shape the
+ * writer may follow; it must contribute NO WORDS. Without that sentence the
+ * model treats a corpus observation as licence to borrow from it, which is the
+ * failure `referenceBorrowingBaseline` exists to measure.
+ */
+function renderDominantShapeInline(b: DominantShapeInline | null): string {
+  if (b === null) return ''
+  return `\n\nSHAPE (evidence about STRUCTURE ONLY - contributes NO WORDS to the script)
+- Most common opening shape in this creator's niche: ${b.shape}
+- Seen in ${b.n} of ${b.basis}
+- This is how often that shape appears, NOT how well it performed. It is a
+  starting point for structure, never a sentence to reuse and never a claim
+  that it works better.`
+}
+
 // ── SUBSTANCE BUDGET (inlined from packages/shared/src/script/substanceBudget.ts)
 //
 // ⚠️ THE COPIES MUST NOT DRIFT, and `a-substance-budget-and-its-twin.test.ts`
@@ -5060,6 +5171,28 @@ Deno.serve(async (req: Request) => {
   // what the pov and enemy fallbacks below do and is the exact move that
   // manufactures opinions. A failed read is treated the same as none: it may
   // make a script thinner, never wronger.
+  // ⚠️⚠️ THE CORPUS READ THAT CLOSES FIVE UNREAD MODULES. Only the two columns
+  // the shape rule needs: the niche (to bucket it) and the classified shape.
+  // Nothing here reads `reach`, because nothing here claims performance.
+  //
+  // ⚠️ A SHORT PAGE AND A COMPLETE ANSWER LOOK IDENTICAL, so the cap is read as
+  // a fact rather than trusted. PostgREST bounds responses SERVER-SIDE, so a
+  // `limit` is a request and not a promise — and a cohort assembled from a
+  // truncated corpus would state a confident "most common shape" over a slice
+  // nobody chose. If the page comes back full, the block is ABSENT.
+  //
+  // ⚖️ MEASURED BEFORE CHOOSING THE NUMBER: 596 of 6,144 gallery cards carry a
+  // classified shape on 2026-09-13, so 4,000 is comfortable headroom and still
+  // a number that will one day be hit — which is what the fullness check is for.
+  const CLASSIFIED_CARD_CAP = 4000
+  const { data: corpusCards } = await admin
+    .from('gallery_items')
+    .select('niche, caption_shape')
+    .not('caption_shape', 'is', null)
+    .limit(CLASSIFIED_CARD_CAP)
+  const corpusCardsComplete = Array.isArray(corpusCards)
+    && corpusCards.length < CLASSIFIED_CARD_CAP
+
   const { data: rankedRows } = await admin
     .from('creator_knowledge')
     .select('kind, text, basis, times_seen, confidence, source')
@@ -6401,6 +6534,15 @@ Deno.serve(async (req: Request) => {
         + coveredRows.map((k) => `  * ${k.text}`).join('\n'))
     }
     const knowledgeBlock = knowledgeParts.join('\n')
+    // ⚠️ THE SHAPE BLOCK, COMPUTED HERE AND ABSENT BY DEFAULT. Two independent
+    // reasons to emit nothing, and both are silence rather than a hedge: the
+    // corpus read may have been truncated (so we cannot know the most common
+    // shape), or nothing in her bucket separates (the usual answer).
+    const shapeEvidence = corpusCardsComplete
+      ? dominantShapeInline(
+          corpusCards as ReadonlyArray<{ niche: unknown; caption_shape: unknown }>, niche)
+      : null
+    const shapeSection = renderDominantShapeInline(shapeEvidence)
 
     // Written by `scrapeDna` into `profile.packaging`. Absent for voices scanned
     // before that shipped — which emits nothing rather than guessing a habit.
@@ -7239,7 +7381,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}${prov('audience')}${audienceLevelLine}
 - Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}
+- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${shapeSection}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `

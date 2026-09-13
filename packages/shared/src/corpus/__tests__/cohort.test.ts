@@ -209,24 +209,46 @@ describe('one video cannot carry a shape', () => {
   })
 })
 
-describe('an unmeasurable card is not evidence about performance', () => {
-  // ⚠️ NOT ENTERED WITH A DEFAULT. A default of "average" floods the ranking
-  // with cards nobody measured, outranking measured below-average ones.
-  it('cards with unknown reach stay out of the shape tally', () => {
+describe('a card with no measurable lift still HAS a shape', () => {
+  // ⚠️ THIS REVERSES WHAT THIS BLOCK USED TO ASSERT, and the reversal is the
+  // point. While the block claimed a performance relationship, a card nobody
+  // could measure was correctly kept out of the tally. The block now claims
+  // FREQUENCY — "this shape, across n videos" — and a video's shape is
+  // observable whether or not its creator had a usable baseline. Dropping it
+  // understates the very number the prompt is about to state.
+  it('cards with unknown reach are counted, and their lift reads null', () => {
     const r = selectEvidenceCohort(HER, [
       ...many(25, { shape: 'story' }),
       ...many(40, { shape: 'tutorial', reach: '0' }), // "0" is UNKNOWN in this corpus
     ])
     expect(r.size).toBe(65)
-    expect(r.shapes.map((s) => s.shape)).toEqual(['story'])
+    // Ordered by count, so the 40 lead the 25.
+    expect(r.shapes.map((s) => s.shape)).toEqual(['tutorial', 'story'])
+    const tutorial = r.shapes.find((s) => s.shape === 'tutorial')!
+    expect(tutorial.n).toBe(40)
+    // ⚖️ NULL, NOT ZERO AND NOT ONE. Nobody measured these; the field says so.
+    expect(tutorial.medianLift).toBeNull()
   })
 
-  it('cards with too small a creator baseline stay out too', () => {
+  it('cards with too small a creator baseline are counted too', () => {
     const r = selectEvidenceCohort(HER, [
       ...many(25, { shape: 'story' }),
       ...many(40, { shape: 'tutorial', creatorReaches: ['5K', '4K'] }), // below the 5-video floor
     ])
-    expect(r.shapes.map((s) => s.shape)).toEqual(['story'])
+    expect(r.shapes.find((s) => s.shape === 'tutorial')!.n).toBe(40)
+    expect(r.shapes.find((s) => s.shape === 'tutorial')!.medianLift).toBeNull()
+  })
+
+  it('`n` is the count of cards carrying the shape, not of cards we could measure', () => {
+    // The falsifiable version: 30 cards carry the shape and only 10 have a
+    // usable baseline. `n` must be 30 — the number a reader of "n=30" expects.
+    const r = selectEvidenceCohort(HER, [
+      ...many(10, { shape: 'story' }),
+      ...many(20, { shape: 'story', reach: '0' }),
+    ])
+    const story = r.shapes.find((s) => s.shape === 'story')!
+    expect(story.n).toBe(30)
+    expect(story.medianLift).not.toBeNull() // the 10 that were measurable
   })
 
   it('unclassified cards are counted in the cohort but never as a shape', () => {
