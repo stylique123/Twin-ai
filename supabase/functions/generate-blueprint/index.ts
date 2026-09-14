@@ -223,6 +223,17 @@ async function recordWhatWasChosen(admin: {
    *  common answer for every request that predates the field, which is the one
    *  direction this table must never fail in. */
   entryDoor: string | null
+  /** ⚠⚠ WHICH OF FOUR THINGS HAPPENED TO THE SHAPE BLOCK, BECAUSE "ABSENT"
+   *  AND "NEVER COMPUTED" LOOK IDENTICAL FROM OUTSIDE AND MEAN OPPOSITE THINGS.
+   *  Measured 2026-09-13: one of seven niche buckets clears n>=20 with 2-sigma
+   *  separation, so `no_block` is the EXPECTED answer roughly six times in
+   *  seven. Without this field a reader seeing unchanged scripts cannot tell the
+   *  gate working from the call never happening, and would go looking for a bug
+   *  that is not there. */
+  shapeEmission: string | null
+  /** The cohort count when a block was emitted; null otherwise. Never 0 — a
+   *  block that was not emitted has no n, and 0 would aggregate as one. */
+  shapeEmissionN: number | null
 }): Promise<void> {
   // ⚠⚠ A ROW THAT DID NOT LAND USED TO SAY SO ONLY IN AN EDGE LOG, AND EDGE
   // LOGS EXPIRE WITHIN DAYS. This is the exact shape of the C8 defect the
@@ -319,6 +330,10 @@ async function recordWhatWasChosen(admin: {
       // never what the build it opened turned into. Joining the two on time and
       // owner would be a guess; carrying the door onto the outcome row is not.
       entry_door: input.entryDoor,
+      // ⚖️ THE ONLY RECORD THAT THE CORPUS WAS CONSULTED AT ALL. Everything
+      // else about the shape block is invisible once the prompt is sent.
+      shape_block: input.shapeEmission,
+      shape_block_n: input.shapeEmissionN,
     })
     .then(({ error }) => { if (error) lost('generation_outcomes', error) })
 }
@@ -1806,9 +1821,22 @@ function dominantShapeInline(
   cards: ReadonlyArray<{ niche: unknown; caption_shape: unknown }>,
   herNiche: unknown,
 ): DominantShapeInline | null {
+  // ⚠⚠ TWO RUNGS, TRIED IN ORDER OF SPECIFICITY, AND THE SECOND EXISTS BECAUSE
+  // THE FIRST REACHED ONE CREATOR IN SEVEN. Measured 2026-09-13: of 7 niche
+  // buckets only entertainment (46 v 6, sigma 5.55) clears MIN_COHORT with 2-sigma
+  // separation; business is 91 v 66 at sigma 2.00 and the bar is a strict >.
+  // Across all niches: 596 cards, direct_question 279 v how_to 151, sigma 6.17.
+  //
+  // ⚖️ HER BUCKET ALWAYS WINS WHEN IT QUALIFIES. The global rung is strictly
+  // weaker evidence -- it describes this corpus rather than creators like her --
+  // so it is only reached when her own bucket did not clear the floor.
   const bucket = nicheBucketInline(herNiche)
-  if (bucket === null) return null
-  const mine = cards.filter((c) => nicheBucketInline(c.niche) === bucket)
+  const inBucket = bucket === null
+    ? []
+    : cards.filter((c) => nicheBucketInline(c.niche) === bucket)
+  const useBucket = inBucket.length >= MIN_COHORT_INLINE && decisiveInline(inBucket)
+  const mine = useBucket ? inBucket : cards
+  const rung: 'domain' | 'all' = useBucket ? 'domain' : 'all'
   if (mine.length < MIN_COHORT_INLINE) return null
   const counts = new Map<string, number>()
   for (const c of mine) {
@@ -1825,9 +1853,30 @@ function dominantShapeInline(
   if (!separatesInline(top.n, ranked[1]?.n ?? 0)) return null
   if (top.n < MIN_COHORT_INLINE) return null
   return {
-    shape: top.shape, n: top.n, rung: 'domain',
-    basis: `${mine.length} videos from creators in ${bucket}`,
+    shape: top.shape, n: top.n, rung,
+    // ⚠⚠ THE GLOBAL RUNG SAYS SO, IN THE SENTENCE THE MODEL READS. Describing
+    // it as her niche would hand the writer evidence from every niche disguised
+    // as advice about hers. That lie is the only thing that could make this rung
+    // worse than having none.
+    basis: rung === 'domain'
+      ? `${mine.length} videos from creators in ${bucket}`
+      : `${mine.length} videos across all niches`,
   }
+}
+
+/** Whether a set of cards has a top shape that separates. Used to decide whether
+ *  her own bucket answers, before falling back to the whole corpus. */
+function decisiveInline(cards: ReadonlyArray<{ caption_shape: unknown }>): boolean {
+  const counts = new Map<string, number>()
+  for (const c of cards) {
+    const shape = typeof c.caption_shape === 'string' ? c.caption_shape.trim() : ''
+    if (shape === '') continue
+    counts.set(shape, (counts.get(shape) ?? 0) + 1)
+  }
+  const ranked = [...counts.values()].sort((a, b) => b - a)
+  if (ranked.length === 0) return false
+  if (ranked[0] < MIN_COHORT_INLINE) return false
+  return separatesInline(ranked[0], ranked[1] ?? 0)
 }
 
 /**
@@ -6758,6 +6807,15 @@ Deno.serve(async (req: Request) => {
           corpusCards as ReadonlyArray<{ niche: unknown; caption_shape: unknown }>, niche)
       : null
     const shapeSection = renderDominantShapeInline(shapeEvidence)
+    // ⚠⚠ THREE OUTCOMES, KEPT APART, BECAUSE TWO OF THEM PRODUCE AN IDENTICAL
+    // PROMPT AND MEAN OPPOSITE THINGS. `no_block` is the gate doing its job;
+    // `corpus_unread` is the corpus read failing or being truncated, which is a
+    // defect. Both emit nothing. Collapsing them would hide the second inside
+    // the first forever — and the first is expected roughly six times in seven.
+    const shapeEmission = !corpusCardsComplete
+      ? 'corpus_unread'
+      : shapeEvidence === null ? 'no_block' : 'emitted'
+    const shapeEmissionN = shapeEvidence === null ? null : shapeEvidence.n
 
     // Written by `scrapeDna` into `profile.packaging`. Absent for voices scanned
     // before that shipped — which emits nothing rather than guessing a habit.
@@ -10468,6 +10526,8 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         creatorStageBand: followerBandInline(
           (voice?.stats as { followers?: unknown } | null)?.followers),
         entryDoor: entryDoorInline(body.door),
+        shapeEmission: shapeEmission,
+        shapeEmissionN: shapeEmissionN,
       })
     }
     // THE RACE THE REPLAY CHECK CANNOT CATCH. Two requests carrying the same key
@@ -10635,6 +10695,11 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
               creatorStageBand: followerBandInline(
                 (voice?.stats as { followers?: unknown } | null)?.followers),
               entryDoor: entryDoorInline(body.door),
+              // ⚠️ THE RESCUE PATH NEVER REACHED THE PROMPT BUILDER, so the shape block
+              // was not merely absent — it was never asked for. Recording `no_block`
+              // here would enter a decision that was never made.
+              shapeEmission: 'not_reached',
+              shapeEmissionN: null,
             })
           }
           return json(saved)
