@@ -21,6 +21,14 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
 import { setupAreas, setupSummary, type SetupInput } from '../setupAreas'
 
+// ⚖️ ANCHORED TO THIS FILE, NOT TO process.cwd(). CI runs each workspace with
+// cwd = that workspace, so a repo-root-relative path built from cwd doubles
+// into apps/web/apps/web/... and the file fails to COLLECT -- every test in it
+// still reports as passing, which is how it hides. This is the pattern the
+// long-standing tests in this repo already use.
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
+
+
 // ⚠️ THE FIXTURE IS TYPED, NOT CAST, AND MY FIRST DRAFT WAS WRONG IN THE WAY
 // THIS WHOLE SESSION KEEPS FINDING. It set `goal: 'sell'` and `promotes:
 // 'own_product'`; `satisfied()` reads `contentGoals` for the goal item and
@@ -119,7 +127,7 @@ describe('what Twin has learned has exactly ONE home', () => {
 
   it('and the Dashboard does', () => {
     const dashboard = readFileSync(
-      resolve(process.cwd(), 'apps/web/src/pages/Dashboard.tsx'), 'utf8')
+      resolve(REPO, 'apps/web/src/pages/Dashboard.tsx'), 'utf8')
     expect(dashboard).toMatch(/<TwinStrengthCard/)
   })
 })

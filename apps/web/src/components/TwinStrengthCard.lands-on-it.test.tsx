@@ -10,10 +10,19 @@
 // hash by selecting the tab AND scrolling. One of two callers read around it —
 // the same two-caller shape as the questions bank.
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { dirname, join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const read = (p: string) => readFileSync(resolve(process.cwd(), p), 'utf8')
+// ⚖️ ANCHORED TO THIS FILE, NOT TO process.cwd(). CI runs each workspace with
+// cwd = that workspace, so a repo-root-relative path built from cwd doubles
+// into apps/web/apps/web/... and the file fails to COLLECT -- every test in it
+// still reports as passing, which is how it hides. This is the pattern the
+// long-standing tests in this repo already use.
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
+
+
+const read = (p: string) => readFileSync(resolve(REPO, p), 'utf8')
 const CARD = read('apps/web/src/components/TwinStrengthCard.tsx')
 const LINK = read('apps/web/src/components/TwinKnowledgeLink.tsx')
 const SETTINGS = read('apps/web/src/pages/Settings.tsx')

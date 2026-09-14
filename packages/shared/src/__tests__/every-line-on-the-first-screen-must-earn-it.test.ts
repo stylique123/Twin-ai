@@ -14,8 +14,17 @@
 // a reel, which is the absence of evidence rather than evidence of absence.
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { dirname, join, resolve } from 'node:path'
 import { messageForOwnAccount, type AccountCounts } from '../index'
+
+// ⚖️ ANCHORED TO THIS FILE, NOT TO process.cwd(). CI runs each workspace with
+// cwd = that workspace, so a repo-root-relative path built from cwd doubles
+// into apps/web/apps/web/... and the file fails to COLLECT -- every test in it
+// still reports as passing, which is how it hides. This is the pattern the
+// long-standing tests in this repo already use.
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
+
 
 const ZERO_ON_IG: AccountCounts = { usable: 0, checked: 6, complete: true, platform: 'instagram' }
 
@@ -57,7 +66,7 @@ describe('the unreadable-platform line says what Twin DID use', () => {
 
 describe('the corrected diagnosis is written down, not quietly dropped', () => {
   const SRC = readFileSync(
-    resolve(process.cwd(), 'packages/shared/src/gate/talkingHeadFit.ts'), 'utf8')
+    resolve(REPO, 'packages/shared/src/gate/talkingHeadFit.ts'), 'utf8')
 
   it('the "contract that moved" claim is gone', () => {
     expect(SRC).not.toMatch(/a 100% rate behind a single string is a contract that moved/)

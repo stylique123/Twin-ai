@@ -16,10 +16,19 @@
 // be read is told so on the Dashboard; pasting her writing is the only route she
 // has left, and that sentence now points AT the box rather than at the page.
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { dirname, join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const read = (p: string) => readFileSync(resolve(process.cwd(), p), 'utf8')
+// ⚖️ ANCHORED TO THIS FILE, NOT TO process.cwd(). CI runs each workspace with
+// cwd = that workspace, so a repo-root-relative path built from cwd doubles
+// into apps/web/apps/web/... and the file fails to COLLECT -- every test in it
+// still reports as passing, which is how it hides. This is the pattern the
+// long-standing tests in this repo already use.
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
+
+
+const read = (p: string) => readFileSync(resolve(REPO, p), 'utf8')
 const CARD = read('apps/web/src/components/OwnAccountFitCard.tsx')
 const SETTINGS = read('apps/web/src/pages/Settings.tsx')
 const EDGE = read('supabase/functions/generate-blueprint/index.ts')
