@@ -69,6 +69,15 @@ export interface ReadinessInputs {
    *  product is CALLED is not evidence that this video promotes it. So the name
    *  may improve a sentence and may never settle a field. */
   offerNameForWording?: string | null
+  /**
+   * The chosen entity's own `type`, verbatim — 'SERVICE', 'PHYSICAL_PRODUCT'…
+   *
+   * ⚠️ THE RAW TYPE, NOT A PRE-DIGESTED FORM. The caller passes what the row
+   * says and `offerFormOf` decides what it means, so there is one definition of
+   * "is this a thing or work" rather than one per caller. Absent or unknown
+   * falls to the owner's default wording.
+   */
+  offerEntityType?: string | null
   /** The product objective she picked — a `VideoGoal`, the same value
    *  `PRODUCT_OBJECTIVES` carries.
    *
@@ -95,7 +104,7 @@ export interface ReadinessInputs {
 // ⚠️ THE OBJECTIVE SELECTS THE CLAIMS QUESTION. See `productObjectiveQuestion.ts`
 // for why this is a question change rather than a new field: the answer has to
 // reach a reader, and `answers.claims` is the one that already exists.
-import { objectiveQuestion } from './productObjectiveQuestion.js'
+import { objectiveQuestion, offerFormOf } from './productObjectiveQuestion.js'
 
 const present = (v: unknown): boolean =>
   typeof v === 'string' ? v.trim() !== '' && v.trim().toLowerCase() !== 'unspecified' : v != null
@@ -252,7 +261,7 @@ export function assessReadiness(input: ReadinessInputs): ReadinessVerdict {
   // all — gets the named-or-generic claims wording exactly as before.
   const questionFor = (field: ReadinessField): string | null => {
     if (field !== 'claims') return ASK[field] || null
-    return objectiveQuestion(input.objective)
+    return objectiveQuestion(input.objective, offerFormOf(input.offerEntityType))
       ?? claimsQuestionFor(input.offer ?? input.offerNameForWording)
   }
   const put = (field: ReadinessField, state: ReadinessState) =>

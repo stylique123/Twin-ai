@@ -3817,6 +3817,108 @@ function observedVisualCountInline(profile: ReferenceVisualProfileInline | null 
   return profile?.visualPassRan ? profile.fieldsObserved : 0
 }
 
+// ── OWN VISUAL SHAPE, INLINED ─────────────────────────────────────────────
+// ── WHAT SHE ACTUALLY FILMS ────────────────────────────────────────────────
+//
+// ⚖️ PARITY: mirrors packages/shared/src/ownVisualShape.ts. The edge cannot
+// import @twinai/shared, so the rule lives twice and the shared copy is the
+// tested one — the same arrangement `estimateDurationSecInline` uses, with the
+// same source-text parity test guarding the drift.
+//
+// ⚖️ AND IT IS THE OPPOSITE BLOCK FROM `observedVisualBlockInline`, which is
+// why it is a separate block rather than more lines in that one. That block
+// says of its own evidence: "not a description of this creator … never as
+// instruction for what this creator's own video should show." Correct there,
+// and INVERTED here. A reference is a vote — one video she admired. Her own
+// posts are a record: what she has proven she will set up, stand in front of,
+// and publish. Appending this there would inherit a warning that reverses it.
+interface OwnPostVisualInline {
+  url: string
+  plays: number | null
+  visualPassRan: boolean
+  observations: Record<string, string>
+}
+const MIN_POSTS_PER_GROUP_INLINE = 3
+const MIN_POSTS_POOLED_INLINE = 3
+interface OwnVisualShapeInline {
+  postsRead: number
+  split: { strong: number; typical: number } | null
+  lines: string[]
+}
+function medianInline(values: number[]): number | null {
+  const xs = values.filter((v) => Number.isFinite(v)).slice().sort((a, b) => a - b)
+  if (xs.length === 0) return null
+  const mid = Math.floor(xs.length / 2)
+  return xs.length % 2 === 1 ? xs[mid]! : (xs[mid - 1]! + xs[mid]!) / 2
+}
+function ownVisualShapeInline(posts: OwnPostVisualInline[]): OwnVisualShapeInline | null {
+  const read = posts.filter((p) => p.visualPassRan)
+  if (read.length < MIN_POSTS_POOLED_INLINE) return null
+  const withPlays = read.filter((p): p is OwnPostVisualInline & { plays: number } => p.plays !== null)
+  const med = medianInline(withPlays.map((p) => p.plays))
+  const strong = med === null ? [] : withPlays.filter((p) => p.plays > med)
+  const typical = med === null ? [] : withPlays.filter((p) => p.plays <= med)
+  const splitUsable = strong.length >= MIN_POSTS_PER_GROUP_INLINE
+    && typical.length >= MIN_POSTS_PER_GROUP_INLINE
+  const dimensions = [...new Set(read.flatMap((p) => Object.keys(p.observations)))].sort()
+  const lines: string[] = []
+  for (const dim of dimensions) {
+    if (splitUsable) {
+      const sg = strong.filter((p) => p.observations[dim] !== undefined)
+      const tg = typical.filter((p) => p.observations[dim] !== undefined)
+      if (sg.length === 0 && tg.length === 0) continue
+      const byLine = new Map<string, { s: number; t: number }>()
+      for (const p of sg) {
+        const k = p.observations[dim]!
+        byLine.set(k, { s: (byLine.get(k)?.s ?? 0) + 1, t: byLine.get(k)?.t ?? 0 })
+      }
+      for (const p of tg) {
+        const k = p.observations[dim]!
+        byLine.set(k, { s: byLine.get(k)?.s ?? 0, t: (byLine.get(k)?.t ?? 0) + 1 })
+      }
+      for (const [line, n] of [...byLine.entries()]
+        .sort((a, b) => (b[1].s + b[1].t) - (a[1].s + a[1].t))) {
+        lines.push(`${line} — in ${n.s} of your ${sg.length} best-performing videos, `
+          + `and ${n.t} of your ${tg.length} typical ones.`)
+      }
+    } else {
+      const all = read.filter((p) => p.observations[dim] !== undefined)
+      if (all.length === 0) continue
+      const byLine = new Map<string, number>()
+      for (const p of all) {
+        const k = p.observations[dim]!
+        byLine.set(k, (byLine.get(k) ?? 0) + 1)
+      }
+      for (const [line, n] of [...byLine.entries()].sort((a, b) => b[1] - a[1])) {
+        lines.push(`${line} — in ${n} of the ${all.length} of your videos we looked at.`)
+      }
+    }
+  }
+  if (lines.length === 0) return null
+  return {
+    postsRead: read.length,
+    split: splitUsable ? { strong: strong.length, typical: typical.length } : null,
+    lines,
+  }
+}
+function ownVisualShapeBlockInline(shape: OwnVisualShapeInline | null): string | null {
+  if (shape === null) return null
+  const header = shape.split !== null
+    ? 'OBSERVED FROM THIS CREATOR’S OWN PUBLISHED VIDEOS (own_visual — a model’s '
+      + 'reading of frames from videos SHE made and published, split by whether each '
+      + 'beat her own median reach). Unlike the reference block, this IS a '
+      + 'description of this creator, and it is the strongest evidence available for '
+      + 'what she will actually set up and film. It is not an instruction to repeat '
+      + 'herself:'
+    : 'OBSERVED FROM THIS CREATOR’S OWN PUBLISHED VIDEOS (own_visual — a model’s '
+      + 'reading of frames from videos SHE made and published). ⚠️ NOT SPLIT BY '
+      + 'PERFORMANCE: too few of her posts have both a reach figure and a frame '
+      + 'pass, so this says what she DOES film, and says nothing about what works '
+      + 'for her. Do not read it as the latter:'
+  return `${header}\n${shape.lines.map((l) => `  - ${l}`).join('\n')}`
+}
+// ── END OWN VISUAL SHAPE ──────────────────────────────────────────────────
+
 // FIX 7 — "WRITE TO target_sec" WAS PROSE. NOTHING COMPUTED IT.
 //
 // ⚖️ PARITY: mirrors packages/shared/src/script/timingMath.ts -- the edge
@@ -5578,7 +5680,7 @@ Deno.serve(async (req: Request) => {
         }))
         await admin.from('ops_events').insert({
           kind: 'empty_voice_scan_enqueued',
-          severity: 'warning',
+          severity: 'warn',
           user_id: user.id,
           detail: { brand_voice_id: voice.id, handle: voice.handle },
         }).then(() => {}, () => {})
@@ -7764,6 +7866,12 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         // is ADDITIVE: an unassessed reference — which is still almost all of
         // them — emits nothing and the writer behaves exactly as it does today.
         let containerBlock = ''
+        // ⚠️ ITS OWN VARIABLE AND ITS OWN PROMPT SLOT, NOT `containerBlock`.
+        // Appending here would inherit a variable that gets REASSIGNED when a
+        // container template matches — the defect measured at 620 of 666
+        // visual blocks discarded. A new block must not be handed that risk
+        // just because the older one happened to live there.
+        let ownVisualBlock = ''
         // ⚖️ DECLARED OUT HERE BECAUSE THE VALIDATOR IS OUT HERE. The two checks
         // that have been reporting `not_run` need the slots this block resolves,
         // and they run long after it — after the model has answered. `null`
@@ -7786,6 +7894,66 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         let lengthTarget: number | null = null
         let lengthTargetSource: string | null = null
         let lengthBeatsAllowed: number | null = null
+        // ── WHAT SHE ACTUALLY FILMS, WHICH NOBODY HAD EVER LOOKED AT ────────
+        //
+        // ⚠️ MEASURED ON PRODUCTION 2026-09-14: 891 `visual_profile` rows exist
+        // and every one is a `gallery_items` row we scraped. 0 are her own
+        // posts. Migration 0209 started writing them; this is the reader that
+        // makes them reach a writer, because her own post URLs are NEVER a
+        // `reference_url` and the only existing reader keys on exactly that.
+        //
+        // ⚖️ TWO READS, NOT A JOIN, BECAUSE THERE IS NO KEY FOR ONE.
+        // `reference_content_profiles` has no owner column — it is a global,
+        // url-keyed cache, and that is CORRECT: a visual profile is a property
+        // of the video, not of who chose it, so a reference another creator
+        // later pastes reuses it for free. The provenance lives in
+        // `scraped_posts`, which carries `owner_id`, `url` and `plays`.
+        //
+        // ⚖️ A SEPARATE READ THAT FAILS ALONE, the same shape as the tier-zero
+        // read below it and for the same reason: this must never be able to
+        // take a generation down with it.
+        try {
+          const { data: mine } = await admin
+            .from('scraped_posts')
+            .select('url, plays')
+            .eq('owner_id', ownerId)
+            .limit(200)
+          const rows = (mine ?? []).filter((r): r is { url: string; plays: number | null } =>
+            typeof r?.url === 'string' && r.url !== '')
+          if (rows.length > 0) {
+            const { data: profiles } = await admin
+              .from('reference_content_profiles')
+              .select('url, visual_profile')
+              .in('url', rows.map((r) => r.url))
+              .is('error', null)
+            const byUrl = new Map<string, ReferenceVisualProfileInline | null>()
+            for (const p of profiles ?? []) {
+              byUrl.set(String((p as { url: unknown }).url),
+                (p as { visual_profile: unknown }).visual_profile as ReferenceVisualProfileInline | null)
+            }
+            const posts: OwnPostVisualInline[] = rows.map((r) => {
+              const vp = byUrl.get(r.url) ?? null
+              const observations: Record<string, string> = {}
+              // ⚠️ THE POST'S OWN REDUCED SENTENCES, produced by the SAME
+              // function the reference block renders from. Re-deriving the
+              // wording here would let the two blocks describe an identical
+              // observation in two different phrasings, which reads to a model
+              // as two different findings.
+              for (const l of observedVisualLinesInline(vp)) observations[l.dimension] = l.line
+              return {
+                url: r.url,
+                // ⚠️ NULL STAYS NULL. A post whose reach the source omitted is
+                // not a post nobody watched, and 945 gallery rows already
+                // proved what reading that as 0 does to a median.
+                plays: typeof r.plays === 'number' && Number.isFinite(r.plays) ? r.plays : null,
+                visualPassRan: vp?.visualPassRan === true,
+                observations,
+              }
+            })
+            ownVisualBlock = ownVisualShapeBlockInline(ownVisualShapeInline(posts)) ?? ''
+            if (ownVisualBlock) ownVisualBlock = `\n\n${ownVisualBlock}`
+          }
+        } catch { /* her own videos are evidence, never a precondition */ }
         try {
           const { data: assessed } = await admin
             .from('reference_content_profiles')
@@ -8050,11 +8218,11 @@ ${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
 - Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
 ${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}`
 
     // The DNA is fenced too. It reads like our own text, but every field in it
     // was synthesized from captions we scraped — so it is exactly as
@@ -9228,7 +9396,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       console.error('generation_instrumentation_failed', detail)
       await admin.from('ops_events').insert({
         kind: 'generation_instrumentation_failed',
-        severity: 'warning',
+        severity: 'warn',
         user_id: user.id,
         detail: { fn: 'generate-blueprint', error: detail.slice(0, 500) },
       }).then(() => {}, () => {})
@@ -10751,7 +10919,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
             .from('ops_events')
             .insert({
               kind: 'generation_rescued',
-              severity: 'warning',
+              severity: 'warn',
               user_id: user.id,
               detail: {
                 fn: 'generate-blueprint',
