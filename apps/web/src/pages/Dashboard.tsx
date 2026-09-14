@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { claimQualifier, getDashboardStats, getReferralCode, getBrandStats, listBrandVoices, listGenerations, listPosts, recordPostStats, validateClaim, resolveFinishedOutputsResult, type BrandStats, type DashboardStats, type FinishedOutput, type OutcomeClaim, type Post } from '../lib/api'
 import type { BrandVoice, Generation } from '../lib/types'
+import { draftTitle } from '@twinai/shared'
 import { Aurora } from '../components/Aurora'
 import { TwinStrengthCard } from '../components/TwinStrengthCard'
 import { OwnAccountFitCard } from '../components/OwnAccountFitCard'
@@ -298,7 +299,7 @@ export default function Dashboard() {
                       <Link to={`/result/${g.id}`} className="group flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3.5 transition-all duration-200 hover:border-white/[0.14] hover:bg-white/[0.05]">
                         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-amber/20 to-coral/10"><Clapperboard className="h-4 w-4 text-amber" /></span>
                         <div className="min-w-0 flex-1">
-                          <div className="truncate font-heading text-sm text-cream">{g.blueprint?.reference_read?.format_label ?? 'Blueprint'}</div>
+                          <div className="truncate font-heading text-sm text-cream">{draftTitle(g.blueprint)}</div>
                           <div className="mt-0.5 truncate text-xs text-stone">{g.reference_url}</div>
                         </div>
                         <span className="shrink-0 text-xs text-stone/70">{new Date(g.created_at).toLocaleDateString()}</span>
