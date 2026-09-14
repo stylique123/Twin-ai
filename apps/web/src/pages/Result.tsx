@@ -15,6 +15,8 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
+import { ScriptIntentAsk } from '../components/ScriptIntentAsk'
+import { recordScriptIntent } from '../lib/api'
 import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo, getOutputBundle, resolveFinishedOutputsResult, loadCapabilities, approvalState, approvalBlockReason } from '../lib/api'
 import { explainFailure } from '../lib/api'
 import { creatorPick, defaultCapture, freeformEntry } from '../lib/api'
@@ -1180,6 +1182,22 @@ export default function Result() {
                 })}
               </div>
             </div>
+
+            {/* ⚠️ THE ONE QUESTION NOBODY WAS ASKED, placed where she has the
+                script in front of her and has not yet decided to film it.
+                Measured 2026-09-14: 134 scripts, 6 camera opens — 128 scripts
+                whose fate nothing recorded. `recordingFunnel.ts` calls this the
+                single most valuable event this product does not collect.
+
+                ⚖️ ABOVE THE TELEPROMPTER AND NOT AFTER IT. Asked after
+                recording it would only ever reach the 4% who recorded, which is
+                the population whose answer we least need. */}
+            {id && (
+              <ScriptIntentAsk
+                answered={gen?.script_intent != null}
+                onAnswer={(intent, reason) => recordScriptIntent(id, intent, reason)}
+              />
+            )}
 
             {/* Script Teleprompter */}
             <div className="space-y-4">

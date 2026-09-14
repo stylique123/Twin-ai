@@ -1,5 +1,6 @@
 // Shared domain types for TwinAI
 import type { HookChoice } from './hookChoice'
+import type { ScriptIntent, NoRecordReason } from './recordingFunnel'
 
 export type Platform = 'tiktok' | 'instagram' | 'youtube' | 'linkedin' | 'other'
 
@@ -246,6 +247,13 @@ export interface Generation {
   credits_spent?: number | null
   // Creator's choices that drive the back half of the loop.
   selected_hook?: string | null // which of the 5 hooks to shoot (teleprompter + cover)
+  // ⚠️ WHETHER SHE SAID SHE WOULD RECORD IT (0211). NULL means she was never
+  // asked — our omission, not her abandonment — and never a default. Typed here
+  // rather than cast at the read site, because a cast defeats the compiler.
+  script_intent?: ScriptIntent | null
+  script_intent_at?: string | null
+  /** Nullable even on a refusal: declining to say why is itself an answer. */
+  no_record_reason?: NoRecordReason | null
   /** 0134. HOW `selected_hook` got its value. `selected_hook` alone cannot say:
    *  the recommended hook is captured on load so the teleprompter has something
    *  to shoot, and 14 of 23 production rows equal option[0] and are therefore
