@@ -23,13 +23,22 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   allowedFromMigrations, isFixture, severityLiteralsIn, type SeverityLiteral,
 } from '../../../../scripts/ci/check_ops_event_severity.mjs'
 
-const MIG = 'supabase/migrations'
-const EDGE = readFileSync('supabase/functions/generate-blueprint/index.ts', 'utf8')
+// ⚠️ PATHS RESOLVE FROM THIS FILE, NOT FROM cwd. The first version read
+// 'supabase/migrations' relative to the working directory. That passes when
+// vitest is invoked from the repo root and FAILS in CI, where the workspace
+// script runs `vitest run` inside packages/shared -- ENOENT on
+// generate-blueprint, 462 files green and this one unable even to load. It
+// passed locally for the wrong reason. Every other file-reading test in this
+// directory resolves from import.meta.url; so does this one now.
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
+const MIG = join(REPO, 'supabase/migrations')
+const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
 
 describe('the repo carries the constraint production is running', () => {
   it('a migration defines ops_events_severity_known', () => {
@@ -48,13 +57,13 @@ describe('the repo carries the constraint production is running', () => {
     // ⚠️ NOT NULL would turn `heartbeat_digest`'s insert into a REJECTED write,
     // and a telemetry write that fails is the defect this all exists to stop.
     // NULL means "the writer did not say", which is not a level.
-    const sql = readFileSync(`${MIG}/0208_four_spellings_two_of_them_the_same_word.sql`, 'utf8')
+    const sql = readFileSync(join(MIG, '0208_four_spellings_two_of_them_the_same_word.sql'), 'utf8')
     expect(sql).toMatch(/severity is null/i)
     expect(sql).not.toMatch(/set not null/i)
   })
 
   it('is re-runnable, so applying it twice is not an error', () => {
-    const sql = readFileSync(`${MIG}/0208_four_spellings_two_of_them_the_same_word.sql`, 'utf8')
+    const sql = readFileSync(join(MIG, '0208_four_spellings_two_of_them_the_same_word.sql'), 'utf8')
     expect(sql).toMatch(/drop constraint if exists ops_events_severity_known/i)
   })
 })
@@ -89,7 +98,7 @@ describe('no writer sends a severity the database rejects', () => {
     // billing-webhook writes both of its inserts on one line each. A scanner
     // that only understood the multi-line shape would report those as absent
     // and pass while they drifted.
-    const bw = readFileSync('supabase/functions/billing-webhook/index.ts', 'utf8')
+    const bw = readFileSync(join(REPO, 'supabase/functions/billing-webhook/index.ts'), 'utf8')
     expect(severityLiteralsIn(bw).map((l: SeverityLiteral) => l.value).sort()).toEqual(['critical', 'warn'])
   })
 })
