@@ -165,6 +165,28 @@ const EVENTS = {
   // counter lands on, per the `reference_phrase_overlap`/`cta_entity_unmatched`
   // pattern above — DEMOTED here, never dropped, so a flagged hook is still a
   // preference datapoint the creator can pick.
+  // ⚠️ FIX 8a, ENFORCED AT LAST. `hook_body_collisions` (registered below as a
+  // plain count) has reported this since it shipped and NOTHING ACTED ON IT —
+  // the code's own comment deferred enforcement to "when this is worth acting
+  // on". MEASURED ON PRODUCTION 2026-09-14 over the 85 generations carrying
+  // that key: 22 (26%) had at least one collision, 24 colliding beats in total,
+  // worst run 3. A quarter of runs offered the creator a hook the script had
+  // already spent, which is the population the deferral was waiting for.
+  //
+  // ⚖️ REGISTERED SEPARATELY FROM THE COUNT, BECAUSE IT ANSWERS THE OTHER HALF.
+  // `hook_body_collisions` says how many beats collided; this says what was
+  // DONE about it. Recording only the count is precisely what let the rule sit
+  // unenforced without the gap showing in a single row.
+  hook_body_collision_demoted: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'Hook options a body beat already restates, and how many of them actually moved '
+      + 'behind the clean options rather than being deleted or rewritten. `found` is what '
+      + 'the rule detected; `demoted` is what the order on screen actually changed, which '
+      + 'is zero when a collided option was already last. Lands as '
+      + 'hook_body_collision_demotion; null when the pass never ran, because a demotion '
+      + 'that threw must not read as checked-and-clean.',
+  },
   hook_unsupported_claim: {
     kind: 'counter',
     stored: 'generations.beat_audit',

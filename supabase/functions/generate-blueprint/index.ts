@@ -1532,6 +1532,53 @@ function hookBodyCollisionBeatCountInline(hookOptions: unknown, beats: unknown):
   return collidingBeats.size
 }
 
+// ⚠️ FIX 8a NOW REORDERS. The counter above has reported this since it shipped
+// and nothing acted on it; the deferral said "when this is worth acting on".
+// MEASURED ON PRODUCTION 2026-09-14 over the 85 generations carrying
+// `beat_audit.hook_body_collisions`: 22 (26%) had at least one, 24 colliding
+// beats in total, worst run 3. A quarter of runs offered the creator a hook the
+// script had already spent.
+//
+// ⚖️ PARITY: mirrors `demoteCollidedHooks` in
+// packages/shared/src/script/hookBodyCollision.ts. The edge cannot import
+// @twinai/shared, so the rule lives twice and the shared copy is the tested
+// one — `aHookTheBodyHadAlreadySpent` and the parity test execute BOTH.
+//
+// ⚖️ NO "ALL FLAGGED" FALLBACK, BECAUSE THAT STATE CANNOT ARISE. The collision
+// loop starts at index 1, so hook_options[0] is never flagged and a stable
+// partition always leaves the recommended pick leading. `demoteUnsupportedHooks`
+// needs that guard because its own check CAN flag index 0; copying it here would
+// add a branch nothing can reach.
+function demoteCollidedHooksInline(
+  hookOptions: unknown, beats: unknown,
+): { hooks: string[]; found: number; demoted: number } {
+  const hooks = Array.isArray(hookOptions)
+    ? (hookOptions as unknown[]).filter((h): h is string => typeof h === 'string')
+    : []
+  if (hooks.length === 0) return { hooks: [], found: 0, demoted: 0 }
+  const collided = new Set<number>()
+  for (let h = 1; h < hooks.length; h++) {
+    const hook = hooks[h]
+    if (typeof hook !== 'string' || hook.trim() === '') continue
+    if (!Array.isArray(beats)) continue
+    for (const b of beats) {
+      const line = (b as { line?: unknown } | null)?.line
+      const score = hookBodyContainmentInline(hook, line)
+      if (score !== null && score >= HOOK_BODY_CONTAINMENT_THRESHOLD_INLINE) { collided.add(h); break }
+    }
+  }
+  if (collided.size === 0) return { hooks: [...hooks], found: 0, demoted: 0 }
+  const next = [
+    ...hooks.filter((_, i) => !collided.has(i)),
+    ...hooks.filter((_, i) => collided.has(i)),
+  ]
+  // Counted by what MOVED, not by what was found: a collided option already
+  // sitting last is a real finding and a no-op reorder.
+  let demoted = 0
+  for (let i = 0; i < hooks.length; i++) if (hooks[i] !== next[i]) demoted += 1
+  return { hooks: next, found: collided.size, demoted }
+}
+
 // ⚠️ FOUR SCENES, ONE LOCATION STRING, AND NOTHING CHECKED IT (FIX 4). The
 // retention doctrine requires scene-to-scene visual change; flags a run of
 // ≥3 consecutive speaking beats whose (location, direction) pair is
@@ -8489,6 +8536,11 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // was stagnant"; Run D's said "we do over a million in revenue" and "stop
     // blaming your churn" — no product_entities backed either.
     let hookUnsupportedClaim: { found: number; demoted: number } | null = null
+    // ⚖️ NULL UNTIL THE PASS RUNS, AND THAT DISTINCTION IS LOAD-BEARING. A run
+    // where the demotion threw (the try/catch below never fails a generation on
+    // a hook filter) must read as "not checked", not as "checked and clean" —
+    // absent is not zero.
+    let hookBodyCollisionDemotion: { found: number; demoted: number } | null = null
     // WHERE THE CONTENT CAME FROM, COUNTED — and the declaration checked against
     // what the prompt actually carried. ⚖️ `speakable` and not `kRows`: checking
     // against the fuller store would excuse exactly the fabrication this exists
@@ -8657,9 +8709,34 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         ? (bpB.hook_options as unknown[]).filter((h): h is string => typeof h === 'string')
         : []
       if (rawHooks.length > 0) {
-        const demotion = demoteUnsupportedHooks(rawHooks, csEntities)
+        // ── REDUNDANCY FIRST, THEN TRUTH ────────────────────────────────
+        //
+        // ⚠️ THE ORDER OF THE TWO DEMOTIONS IS THE DECISION, not an accident
+        // of which line was written first. Both are stable partitions, so
+        // WHICHEVER RUNS LAST HAS THE STRONGER CLAIM on the back of the list.
+        //
+        // ⚖️ A FABRICATED BUSINESS FIGURE OUTRANKS A REDUNDANT ONE. Collision
+        // is "the script already said this"; unsupported claim is "this is not
+        // true of you". So the collision pass runs FIRST and the ownership pass
+        // runs LAST, which means an unsupported hook sits behind a merely
+        // redundant one rather than being lifted above it. Reversing these two
+        // lines would quietly rank a fabrication ahead of a repetition.
+        const collision = demoteCollidedHooksInline(rawHooks, declared)
+        hookBodyCollisionDemotion = { found: collision.found, demoted: collision.demoted }
+        if (collision.found > 0) {
+          console.warn(JSON.stringify({
+            event: 'hook_body_collision_demoted',
+            found: collision.found, demoted: collision.demoted, of: rawHooks.length,
+          }))
+        }
+        const demotion = demoteUnsupportedHooks(collision.hooks, csEntities)
         hookUnsupportedClaim = { found: demotion.found, demoted: demotion.demoted }
-        if (demotion.found > 0) {
+        // ⚠️ WRITTEN WHENEVER *EITHER* PASS MOVED SOMETHING. This used to be
+        // gated on `demotion.found > 0` alone, which was right while the
+        // ownership pass was the only one — but a collision-only reorder would
+        // now be computed and thrown away, leaving the creator the original
+        // order and the audit a `demoted` count that never reached a screen.
+        if (demotion.found > 0 || collision.demoted > 0) {
           bpB.hook_options = [...demotion.hooks]
           console.warn(JSON.stringify({
             event: 'hook_unsupported_claim', found: demotion.found, demoted: demotion.demoted, of: rawHooks.length,
@@ -8667,6 +8744,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         }
       } else {
         hookUnsupportedClaim = { found: 0, demoted: 0 }
+        hookBodyCollisionDemotion = { found: 0, demoted: 0 }
       }
     } catch { /* never fail a generation on a hook business-claim filter */ }
 
@@ -9190,6 +9268,11 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       // `product_entities`; `demoted` is how many were pushed behind the clean
       // hooks rather than deleted.
       hook_unsupported_claim: hookUnsupportedClaim,
+      // ⚠️ THE ACTION, BESIDE THE COUNT. `hook_body_collisions` below says how
+      // many beats collided; this says what was done about it. Recording only
+      // the count is what let this rule sit unenforced without the gap showing
+      // in a single row.
+      hook_body_collision_demotion: hookBodyCollisionDemotion,
       by_source: bySource,
       creator_knowledge_depth: byDepth,
       knowledge_supplied: speakable.length,
