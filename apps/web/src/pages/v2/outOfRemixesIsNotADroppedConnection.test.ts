@@ -11,12 +11,27 @@
 // coming for them and waiting would only stall a creator who needs to act".
 // `INSUFFICIENT_CREDITS` returned a sentence and a 402 and nothing else, so it
 // could not be told apart from a dead request and was treated as one.
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { OUT_OF_REMIXES_CODE } from '@twinai/shared'
 
-const read = (p: string) => readFileSync(resolve(process.cwd(), p), 'utf8')
+/**
+ * ⚠️ THE PATH MUST NOT ASSUME WHICH DIRECTORY VITEST WAS STARTED FROM. CI runs
+ * this workspace with cwd = apps/web; a repo-root run has cwd = the repo root.
+ * `process.cwd()` alone doubled the prefix into apps/web/apps/web/... and the
+ * file failed to collect while every test inside it "passed" -- 84 of 85 files
+ * green is how that hides. Same defect as #859, third instance tonight.
+ *
+ * ⚖️ EXACTLY ONE CANDIDATE MUST EXIST, so a file that genuinely moved still
+ * fails loudly instead of resolving to nothing.
+ */
+const read = (p: string) => {
+  const candidates = [resolve(process.cwd(), p), resolve(process.cwd(), '../..', p)]
+  const found = candidates.filter((c) => existsSync(c))
+  expect(found.length, `expected exactly one of ${candidates.join(' | ')}`).toBe(1)
+  return readFileSync(found[0], 'utf8')
+}
 const SCREEN = read('apps/web/src/pages/v2/V2Building.tsx')
 const API = read('packages/shared/src/api.ts')
 const EDGE = read('supabase/functions/generate-blueprint/index.ts')
