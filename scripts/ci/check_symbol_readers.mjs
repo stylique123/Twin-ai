@@ -98,6 +98,39 @@ export const REGISTRY = {
       + 'voices. Its condition is a writer, not a publish, and conflating the '
       + 'two would hide a gap behind a reason that does not apply to it.',
   },
+  'script/nominalisation.ts': {
+    symbols: ['candidateStems', 'nominalisationsIn'],
+    // ⚠️ THIS `why` DELIBERATELY DOES NOT NAME THE TWO SYMBOLS ABOVE. This
+    // guard greps source text, so a name in a string literal here becomes a
+    // reader and the entry excuses itself — the trap the cohort entry below
+    // records paying for.
+    why: 'The owner ordered this rule built and gave its validation set in the '
+      + 'same breath: the eight scripts that worked, which "contain zero '
+      + 'nominalised abstractions where a verb existed", and the standing '
+      + 'condition "run it against the eight good scripts first -- if it flags '
+      + 'anything in them, the rule is wrong". THOSE EIGHT DO NOT EXIST IN THE '
+      + 'REPO. eval/fixtures/live-runs holds FOUR runs and they are the '
+      + 'expected-RED baseline, so validating against them would invert the '
+      + 'test. Wiring a rule that shapes creator-facing output BEFORE the '
+      + 'owner\'s own acceptance check is exactly backwards, so it lands '
+      + 'measured and uncalled. '
+      + 'MEASURED AGAINST 60 REAL SHIPPED SCRIPTS instead, which is a superset '
+      + 'and not a substitute: the first version flagged 65% of them on '
+      + 'failures that would fire on ANY script (a noun read as a form of an '
+      + 'unrelated verb, an adjective read as a nominalisation). Seven suffixes '
+      + 'were removed on that evidence and the rate fell to 47% with no false '
+      + 'positive left in the top eighteen. '
+      + 'HALF THE RULING IS ALSO NOT BUILDABLE THIS WAY AND IS NOT BUILT: the '
+      + 'owner gave two examples and they are different mechanisms. One is '
+      + 'morphological and is here. The other rests on a synonym the noun does '
+      + 'not contain, which needs the curated map the same ruling rejects, or a '
+      + 'model call. '
+      + 'RE-OPEN WHEN the owner names the eight runs. Then: run it over them, '
+      + 'and if it flags any, the rule is wrong and this file is deleted rather '
+      + 'than tuned until it agrees. If it flags none, wire it as a COUNTER on '
+      + 'the audit row first -- never as a refusal -- because the writer path is '
+      + 'paid and a rule that rejects a good sentence costs a generation.',
+  },
   'corpus/cohort.ts': {
     symbols: ['FACET_AGREEMENT', 'selectEvidenceCohort', 'shapeBlock'],
     // ⚠️⚠️ THIS ENTRY MUST NOT NAME THE SYMBOLS IT DISCUSSES. My first draft
