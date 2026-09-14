@@ -42,13 +42,32 @@ describe('a beat with a question and no words still reaches the camera', () => {
     expect(built.scenes.some((s) => s.dialogue === 'And that is why it matters.')).toBe(true)
   })
 
-  // ⚖️ A SPOKEN SCENE WITH NOTHING WRITTEN, NOT A SILENT ONE. Nobody speaks on
-  // a silent beat; here the creator speaks their OWN words, which is the entire
-  // point of asking.
-  it('shows in the teleprompter with no dialogue to read', () => {
+  // ⚠️ THIS ASSERTION WAS REVERSED, DELIBERATELY, AND THE OLD ONE WAS NOT STALE
+  // -- IT PINNED A PRODUCT DECISION THAT HAS SINCE BEEN OVERRULED BY EVIDENCE.
+  // It read `show_in_teleprompter).toBe(true)`, on the reasoning that "a spoken
+  // scene with nothing written is not a silent one -- the creator speaks their
+  // OWN words, which is the entire point of asking."
+  //
+  // ⚖️ THAT IS RIGHT ABOUT THE SCENE AND WRONG ABOUT THE PROMPTER. Audited on a
+  // real session: the creator was recording when "What was the situation right
+  // before this started?" appeared where her next line should have been. The
+  // rule now is the owner's: the teleprompter contains only words to say.
+  //
+  // The beat is NOT deleted -- that was the older defect and the test above
+  // still guards it. It keeps its question in the plan, where a keyboard is.
+  it('keeps its question and its place, but never reaches the prompter', () => {
     const s = built.scenes.find((x) => x.ask === ASK)!
     expect(s.dialogue).toBeNull()
-    expect(s.show_in_teleprompter).toBe(true)
+    expect(s.ask).toBe(ASK)
+    expect(s.show_in_teleprompter).toBe(false)
+  })
+
+  it('so what a creator reads while recording is only words to say', () => {
+    // The teleprompter's own selector, not a re-implementation of it.
+    const onPrompter = built.scenes.filter((x) => x.show_in_teleprompter)
+    expect(onPrompter.length).toBeGreaterThan(0)
+    expect(onPrompter.every((x) => typeof x.dialogue === 'string' && x.dialogue.trim() !== '')).toBe(true)
+    expect(onPrompter.some((x) => x.ask === ASK)).toBe(false)
   })
 
   it('is given a recording allowance rather than a timing of nothing', () => {

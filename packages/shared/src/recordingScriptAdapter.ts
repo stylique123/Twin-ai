@@ -397,10 +397,24 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
     // the creator never saw the question, and the beat itself vanished between
     // the plan and the teleprompter.
     //
-    // ⚖️ IT IS A SPOKEN SCENE WITH NOTHING WRITTEN, not a silent one. Nobody
-    // speaks on a silent beat; here the creator speaks their OWN words, which
-    // is the entire point of asking. So it shows in the teleprompter with
-    // `dialogue: null` and the question in its place.
+    // ⚠️ IT USED TO SHOW IN THE TELEPROMPTER AND A CREATOR READ IT MID-TAKE.
+    // The reasoning below was "it is a spoken scene with nothing written, not a
+    // silent one -- the creator speaks their OWN words, which is the entire
+    // point of asking", so the question went on the prompter with `dialogue:
+    // null`. That argument is right about the SCENE and wrong about the
+    // PROMPTER: audited on a real session, the creator was recording when
+    // "What was the situation right before this started?" appeared where her
+    // next line should have been.
+    //
+    // ⚖️ SO THE SCENE STAYS AND THE PROMPTER LOSES IT. Deleting the beat was the
+    // older defect and is not undone here -- it remains in the plan and the shot
+    // list, carrying its question, where she can answer it with a keyboard. What
+    // changes is that the thing she reads with a camera running contains only
+    // words to say.
+    //
+    // ⚠️ AND THE CONSEQUENCE, STATED: she can no longer improvise this beat
+    // during a take. Answering it in the editor first is the flow this assumes,
+    // and it is the better one -- an unanswered beat is a question, not a cue.
     const ask = typeof seg.ask === 'string' && seg.ask.trim() !== '' ? seg.ask.trim() : null
     if (line === '') {
       if (ask) {
@@ -417,7 +431,7 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
           ...framingFor(i + 1, blueprint, seg),
           caption_text: pushCaption(captionFromLine(ask), an),
           pause_after: true,
-          show_in_teleprompter: true,
+          show_in_teleprompter: false,
         })
       }
       pending.push(...clips)
