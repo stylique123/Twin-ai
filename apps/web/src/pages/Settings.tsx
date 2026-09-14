@@ -13,7 +13,6 @@ import {
 } from '@twinai/shared'
 import { readProfileAnswers } from '../lib/profileAnswersRead'
 import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
-import { TwinStrengthCard } from '../components/TwinStrengthCard'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
@@ -279,11 +278,17 @@ export default function Settings() {
   // NOT HONOUR A HASH BY ITSELF. Without this the creator lands on Settings and
   // has to go looking for the thing the link named — which is exactly the
   // "complete feature, zero rows" failure the move is betting against.
+  // ⚖️ TWO ANCHORS, ONE MECHANISM. `#my-twin` is the question; `#how-you-write`
+  // is the paste box, which lives inside a COLLAPSED editor -- so honouring that
+  // hash has to open it, or the link lands on a closed section and the promise
+  // breaks exactly as it would with no anchor at all.
   useEffect(() => {
-    if (window.location.hash !== '#my-twin') return
+    const hash = window.location.hash
+    if (hash !== '#my-twin' && hash !== '#how-you-write') return
     setTab('twin')
+    if (hash === '#how-you-write') setDnaOpen(true)
     const t = setTimeout(() => {
-      document.getElementById('my-twin')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+      document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start', behavior: 'smooth' })
     }, 60)
     return () => clearTimeout(t)
   }, [])
@@ -326,8 +331,20 @@ export default function Settings() {
   // ⚖️ THE STATUS IS READ, NOT DECIDED HERE. `setupAreas` is in shared with its
   // own tests; a status computed in this component is one no test can reach and
   // one the next screen would compute differently.
+  // ⚠⚠ THE SAME COUNT THE CARDS BELOW RENDER, COMPUTED FROM THE SAME HELPERS.
+  // A second rule here would let the badge and the section disagree about how
+  // many are waiting -- which is how a creator taps "2 to confirm" and finds one.
+  const pendingAudienceFacts = scannedAudienceFacts(voiceProfile).filter((fact) =>
+    !audienceFactConfirmed(
+      fact.field === 'audience_pain'
+        ? storedBrief.confirmedAudiencePain
+        : storedBrief.confirmedDreamOutcome,
+      fact,
+    )).length
+
   const areas = setupAreas({
     answers: profileAnswers,
+    audienceFactsPending: pendingAudienceFacts,
     dnaReady: activeVoice?.status === 'ready',
     // ⚖️ CONFIRMED MEANS THE CREATOR HAS TOUCHED IT. `voice` is the field this page
     // lets them edit, so a non-empty one is the closest thing to an approval we
@@ -467,15 +484,21 @@ export default function Settings() {
               <p className="eyebrow !text-sand">Your Twin setup</p>
               <p className="font-heading text-cream">{summary.headline}</p>
             </div>
-            {/* ⚠️ WHAT TWIN HAS LEARNED, WHICH GROWS, BESIDE WHAT IS STILL
-                MISSING, WHICH SHRINKS. `TwinStrengthCard` has existed and been
-                rendered on the Dashboard all along — it was never on the screen
-                that showed the fraction, so the one number a creator saw here
-                had a ceiling and no evidence behind it. Same component, on the
-                screen that needed it. */}
-            <div className="mt-2">
-              <TwinStrengthCard voiceId={defaultVoiceId} />
-            </div>
+            {/* ⚠️⚠️ THE STRENGTH CARD IS NOT RENDERED HERE, AND THAT IS A REVERSAL
+                WITH A REASON. It was added beside this fraction so the number
+                would have evidence behind it, which was a real gap. But the same
+                count then appeared TWICE — here and on the Dashboard — and one
+                fact with two homes is a fact a creator reads twice and can act on
+                once.
+                ⚖️ THE DASHBOARD KEEPS IT BECAUSE OF WHEN SHE IS THERE. The
+                Dashboard is where she is BEFORE she starts, which is the moment
+                "two or three more stories and it stops sounding generic" can
+                change what she does next. By Settings she has already come
+                looking, so the same sentence changes nothing.
+                ⚠️ AND THE COST IS REAL, NOT WAVED AWAY: this fraction loses the
+                evidence that was put beside it. What replaces it is the per-area
+                state on the cards below — including "N to confirm", which names
+                what is waiting rather than implying a ceiling. */}
             {summary.total > 0 && summary.ready < summary.total && (
               <div className="mt-3 flex gap-1.5" aria-hidden>
                 {/* ⚖️ SEGMENTS, NOT A PERCENTAGE. "3 of 4" is inspectable; a bar
@@ -534,7 +557,7 @@ export default function Settings() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="font-heading text-sm text-cream">{a.title}</span>
-                    <StateChip state={a.state} />
+                    <StateChip state={a.state} pending={a.pending} />
                   </div>
                   <span className="mt-1.5 block text-xs leading-relaxed text-stone">{a.detail}</span>
                   <span className="mt-2.5 block text-xs text-sand underline">{a.actionLabel}</span>
@@ -1184,7 +1207,18 @@ export default function Settings() {
                     />
                   </div>
                 ))}
-                <div>
+                {/* ⚠⚠ THE STRONGEST SIGNAL IN THE PROMPT, AND NOBODY HAS EVER
+                    FILLED IT. `generate-blueprint` reads `voice_samples` verbatim
+                    and calls it "the single strongest voice signal"; measured
+                    2026-09-13, it is empty on 0 of 56 profiles and 0 of 55
+                    voices. The path works end to end and the box is buried
+                    inside a collapsed editor on a tab — complete feature, zero
+                    rows, the same shape as the Product Library.
+                    ⚖️ THE ANCHOR IS PART OF THE FIX, not decoration: a creator
+                    whose videos cannot be read is told so on the Dashboard, and
+                    that sentence can now point AT this box rather than at the
+                    page containing it. */}
+                <div id="how-you-write" className="scroll-mt-24">
                   <label className="eyebrow mb-1.5 block">How you write <span className="font-normal normal-case text-stone">— paste a few posts (optional)</span></label>
                   <textarea className="field min-h-[96px] resize-y" value={dna.voice_samples ?? ''} placeholder="Paste 2–3 of your real posts (LinkedIn, captions, a blog excerpt). We match your exact cadence." onChange={(e) => setDna((d) => ({ ...d, voice_samples: e.target.value }))} />
                 </div>
@@ -1658,7 +1692,22 @@ function ProfileStatus({
  *  `not_needed` read differently on purpose — one is something they could do,
  *  the other is something that does not apply to them, and collapsing either
  *  into "missing" is how a page starts nagging for work that cannot help. */
-function StateChip({ state }: { state: SetupState }) {
+function StateChip({ state, pending }: { state: SetupState; pending?: number }) {
+  // ⚠⚠ A COUNT BEATS A MOOD. "Worth a look" is true and gives her nothing to
+  // decide on; "2 to confirm" says what is waiting and how much of it. This is
+  // the difference between a card a creator opens and one she never does -- and
+  // if she never opens it, the two sentences Twin wrote from her posts stay
+  // unconfirmed forever and the writer keeps treating them as guesses.
+  //
+  // ⚖️ ONLY WHERE A COUNT EXISTS. `creator_dna` uses the same state with nothing
+  // pending and keeps its own words, because there is no number to give her.
+  if (state === 'needs_review' && typeof pending === 'number' && pending > 0) {
+    return (
+      <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+        {pending} to confirm
+      </span>
+    )
+  }
   const map: Record<SetupState, { label: string; cls: string }> = {
     ready: { label: 'Ready', cls: 'bg-teal/15 text-teal' },
     needs_setup: { label: 'Needs setup', cls: 'bg-amber-500/15 text-amber-400' },

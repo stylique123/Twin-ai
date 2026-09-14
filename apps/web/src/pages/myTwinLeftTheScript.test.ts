@@ -52,7 +52,14 @@ describe('my twin left the script', () => {
     expect(LINK).toContain("to=\"/settings#my-twin\"")
     expect(SETTINGS).toContain('id="my-twin"')
     // A tabbed page does not honour a hash by itself.
-    expect(SETTINGS).toContain("window.location.hash !== '#my-twin'")
+    //
+    // ⚠️ RE-ANCHORED: this pinned the literal `window.location.hash !== '#my-twin'`,
+    // which changed when a SECOND anchor (`#how-you-write`, the paste box) began
+    // to be honoured by the same handler. The claim -- the page reads the hash and
+    // treats `#my-twin` as one it acts on -- is untouched, and asserting it this
+    // way survives a third anchor too.
+    expect(SETTINGS).toMatch(/window\.location\.hash/)
+    expect(SETTINGS).toMatch(/'#my-twin'/)
     expect(SETTINGS).toContain("setTab('twin')")
   })
 
