@@ -3865,10 +3865,62 @@ const DISCLOSURE_PHRASES_INLINE: readonly string[] = [
   'gifted', 'i earn a commission', 'commission', 'affiliate', 'this is an ad',
   'paid to talk about', 'paid me to', 'working with them', 'partnered with',
 ]
+// ⚠️⚠️ A DENIAL MATCHED THE PHRASE IT DENIED. This body was a bare
+// `t.includes(p)`, and the list holds 'sponsored', 'affiliate' and
+// 'commission' — so "This is not a sponsored recommendation", written onto a
+// product the creator earns commission on, SATISFIED the disclosure check.
+// Not slipped past it: satisfied it, so `disclosure_missing` never fired and
+// the script shipped. Measured on four denials, all four counted as
+// disclosures. The shared authority carries the full reasoning.
+const NEGATORS_INLINE: readonly string[] = [
+  'not', 'no', 'never', 'without', "isn't", 'isnt', "aren't", 'arent',
+  "wasn't", 'wasnt', "don't", 'dont', "doesn't", 'doesnt', 'neither', 'nor',
+]
+const NEGATION_LOOKBACK_WORDS_INLINE = 3
+function occurrenceIsNegatedInline(haystack: string, index: number): boolean {
+  const words = haystack.slice(0, index).split(/[^a-z']+/).filter((w) => w !== '')
+  return words.slice(-NEGATION_LOOKBACK_WORDS_INLINE).some((w) => NEGATORS_INLINE.includes(w))
+}
 function textDisclosesInline(textValue: unknown): boolean {
   const t = typeof textValue === 'string' ? textValue.toLowerCase() : ''
   if (t.trim() === '') return false
-  return DISCLOSURE_PHRASES_INLINE.some((p) => t.includes(p))
+  return DISCLOSURE_PHRASES_INLINE.some((p) => {
+    let from = 0
+    for (;;) {
+      const at = t.indexOf(p, from)
+      if (at === -1) return false
+      if (!occurrenceIsNegatedInline(t, at)) return true
+      from = at + p.length
+    }
+  })
+}
+/** Does this text DENY the tie — an affirmative false statement, which is a
+ *  different and worse fact than saying nothing. Two rules: a negated match,
+ *  and a match that only appears once the negators are stripped (the case
+ *  'this is an ad' needs, since the negator lands inside the phrase). */
+function textDeniesTieInline(textValue: unknown): boolean {
+  const t = typeof textValue === 'string' ? textValue.toLowerCase() : ''
+  if (t.trim() === '') return false
+  const negated = DISCLOSURE_PHRASES_INLINE.some((p) => {
+    let from = 0
+    for (;;) {
+      const at = t.indexOf(p, from)
+      if (at === -1) return false
+      if (occurrenceIsNegatedInline(t, at)) return true
+      from = at + p.length
+    }
+  })
+  if (negated) return true
+  const deNegated = t.split(/[^a-z']+/)
+    .filter((w) => w !== '' && !NEGATORS_INLINE.includes(w))
+    .join(' ')
+  return DISCLOSURE_PHRASES_INLINE.some((p) => deNegated.includes(p) && !t.includes(p))
+}
+/** A denial anywhere is a false statement — position is irrelevant, unlike a
+ *  disclosure, which must be early enough for viewers to reach it. */
+function scriptDeniesTieInline(script: unknown): boolean {
+  const rows = Array.isArray(script) ? script : []
+  return rows.some((b) => textDeniesTieInline((b as { line?: unknown })?.line))
 }
 /** ⚠️ "EARLY AND OUT LOUD" IS PART OF THE OBLIGATION. A disclosure in the last
  *  beat is one most viewers never reach. Scripts of one or two beats are exempt
@@ -8274,6 +8326,33 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     const paidRelationship = typeof (ownedEntity as { relationship?: unknown } | null)?.relationship === 'string'
       ? String((ownedEntity as { relationship: string }).relationship)
       : null
+    // ⚠️⚠️ A DENIAL IS REFUSED BEFORE A MISSING ONE, AND UNDER ITS OWN NAME.
+    // With the negation fix above, a script that only DENIES the tie no longer
+    // discloses, so it would fall into `disclosure_missing` and be refused
+    // either way. That would be the right outcome under the wrong name.
+    //
+    // ⚖️ THEY ARE DIFFERENT FACTS AND THE CREATOR NEEDS THE DIFFERENCE. Missing
+    // is an omission — she forgot, and "try again" fixes it. DENIED is a
+    // sentence the video says on her behalf that is not true: a creator running
+    // brand deals said plainly it would end the relationship, and called it an
+    // FTC problem rather than a tone problem. Folding the sharper failure into
+    // the softer one would report the wrong cause in the logs and tell her to
+    // do the wrong thing about it.
+    if ((paidRelationship === 'AFFILIATE' || paidRelationship === 'SPONSOR')
+      && scriptDeniesTieInline(declared)) {
+      await refundOnce('disclosure_denied')
+      const deniedProduct = typeof (ownedEntity as { name?: unknown } | null)?.name === 'string'
+        ? String((ownedEntity as { name: string }).name).trim() : ''
+      console.warn('disclosure_denied', { ownerId, product: deniedProduct })
+      return json({
+        error: `This script says you are NOT paid to feature ${deniedProduct === '' ? 'this product' : deniedProduct}`
+          + ' — and you are. Twin will not hand you a script that denies a paid relationship,'
+          + ' because that is a statement the video makes on your behalf and it is not true.'
+          + ' Your remix has been put back. Try again and it will say the relationship plainly'
+          + ' instead.',
+        code: 'DISCLOSURE_DENIED',
+      }, 409)
+    }
     if ((paidRelationship === 'AFFILIATE' || paidRelationship === 'SPONSOR')
       && !scriptDisclosesInline(declared)) {
       await refundOnce('disclosure_missing')
