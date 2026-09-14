@@ -263,7 +263,32 @@ function libraryRelationship(
     const hit = answered.find((p) => (p.name ?? '').trim().toLowerCase() === offerNorm)
     if (hit) return hit.relationship
   }
-  return answered.length === 1 ? answered[0].relationship : null
+  // ⚠️⚠️ THIS WAS `answered.length === 1 ? ... : null`, AND TWO PRODUCTS THAT
+  // AGREED ANSWERED NOTHING. With one product it resolved; with two it returned
+  // null even when BOTH said the same thing — and null means readiness reports
+  // `relationship` as MISSING_REQUIRED, which renders the ask whose only action
+  // is "Open Product Library to set it →", a page where it is already set. The
+  // creator goes, sees it set, comes back, and is asked again.
+  //
+  // MEASURED ON PRODUCTION 2026-09-14, per voice, over unarchived products with
+  // an answered relationship:
+  //
+  //   exactly one ................................ 11  (resolved today)
+  //   MORE THAN ONE, ALL AGREEING ................  3  (returned null: BROKEN)
+  //   more than one, genuinely disagreeing .......  2
+  //
+  // Three plus two is the five accounts the owner measured as unable to complete
+  // `Sell something` or `Get leads`. The account that reported it holds two
+  // products per voice, both OWN_PRODUCT — which is why "a complete, named
+  // product with a set relationship" still dead-ended.
+  //
+  // ⚖️ UNANIMITY IS AN ANSWER; DISAGREEMENT IS NOT. If every answered product
+  // says the same thing, that is what this creator's relationship to their work
+  // IS, and the count was never the question. When they genuinely differ the
+  // null stands, because picking one for them would guess at which product this
+  // video is about — and that is a different question, with its own picker.
+  const distinct = new Set(answered.map((p) => p.relationship))
+  return distinct.size === 1 ? answered[0].relationship : null
 }
 
 /** THE PRODUCT SHE ACTUALLY PICKED.

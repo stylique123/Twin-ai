@@ -81,9 +81,37 @@ describe('D2: the courtesy pre-check resolves relationship from Product Library'
     expect(library).toBeLessThan(brief)
   })
 
-  it('libraryRelationship prefers a name match, then the sole answered entity', () => {
+  // ⚠️ RE-PINNED 2026-09-14. "Prefers a name match" was always right; "then the
+  // sole answered entity" was the wrong MECHANISM for it. Counting answered
+  // products made two products that AGREED resolve to null, and null means
+  // readiness reports `relationship` as MISSING_REQUIRED — the ask whose only
+  // action is "Open Product Library to set it →", a page where it is already
+  // set. Measured on production per voice: 11 voices had exactly one answered
+  // product (fine), 3 had several that were UNANIMOUS (dead-ended by the count),
+  // 2 genuinely disagreed (null is correct there). The 3 + 2 are the owner's
+  // five accounts on which the commercial path was dead.
+  //
+  // ⚖️ SO IT PINS UNANIMITY, NOT COUNT, and still pins the name match first.
+  it('libraryRelationship prefers a name match, then a unanimous answer', () => {
     expect(WEB).toMatch(/function libraryRelationship\(/)
-    expect(WEB).toMatch(/answered\.length === 1 \? answered\[0\]\.relationship : null/)
+    const body = WEB.slice(WEB.indexOf('function libraryRelationship('))
+    const fn = body.slice(0, body.indexOf('\n}\n'))
+    // The name match must come first and must return before the fallback.
+    const nameHit = fn.indexOf('answered.find(')
+    const unanimous = fn.indexOf('distinct.size === 1')
+    expect(nameHit, 'the offer-name match is gone').toBeGreaterThan(-1)
+    expect(unanimous, 'the fallback no longer tests unanimity').toBeGreaterThan(-1)
+    expect(nameHit).toBeLessThan(unanimous)
+    expect(fn).toMatch(/new Set\(answered\.map\(\(p\) => p\.relationship\)\)/)
+    // The count check is the defect. It must not come back.
+    //
+    // ⚠️ STRIP WHOLE-LINE COMMENTS FIRST. The fix's own comment QUOTES the
+    // defect it replaced, so a raw grep finds the count check in the prose
+    // explaining why the count check is wrong — a guard reporting success on
+    // the very thing it exists to catch, inverted.
+    const code = fn.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')
+    expect(code).not.toMatch(/answered\.length === 1/)
+    expect(code).toMatch(/distinct\.size === 1/)
   })
 })
 
