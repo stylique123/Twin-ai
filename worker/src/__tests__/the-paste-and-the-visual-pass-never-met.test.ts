@@ -26,10 +26,18 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
-const RAW = readFileSync(join(REPO, 'worker/src/jobs/transcribe.ts'), 'utf8')
-const CODE = RAW.split('\n')
+const strip = (src: string): string => src.split('\n')
   .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
   .join('\n')
+
+const RAW = readFileSync(join(REPO, 'worker/src/jobs/transcribe.ts'), 'utf8')
+const CODE = strip(RAW)
+// ⚠️ THE SECOND PATH, AND IT CARRIES 30% OF THE TRAFFIC. Measured on production
+// 2026-09-14: of 134 `ingest` jobs, 40 were inserted `done` by the edge function
+// on a transcript-cache hit and NEVER claimed by the worker. A frames enqueue
+// that lives only in `handleTranscribe` covers 85 of 125 completed pastes and
+// misses the rest — with every test green, because the worker copy is correct.
+const EDGE = strip(readFileSync(join(REPO, 'supabase/functions/ingest-reference/index.ts'), 'utf8'))
 
 describe('a pasted reference reaches the visual pass', () => {
   it('enqueues an assess_reference job from the ingest path', () => {
@@ -96,5 +104,46 @@ describe('a pasted reference reaches the visual pass', () => {
     // as a success by the first version of this assertion.
     const handler = block.slice(block.indexOf('catch (err)'), block.indexOf('return {'))
     expect(handler).not.toMatch(/\bthrow\b/)
+  })
+
+  describe('the cache-hit path, which never reaches the worker', () => {
+    it('enqueues the frames pass from the edge function too', () => {
+      // ⚠️ READER-REMOVAL FOR THE SECOND PATH. Delete this enqueue and 30% of
+      // pastes get no visual pass while every worker-side test still passes.
+      expect(EDGE).toContain("type: 'assess_reference'")
+    })
+
+    it('asks with EXACTLY true on both flags, like the worker copy', () => {
+      expect(EDGE).toMatch(/frames:\s*true/)
+      expect(EDGE).toMatch(/framesOnly:\s*true/)
+    })
+
+    it('enqueues inside the cache-hit branch, not on every request', () => {
+      // Outside the `if (cachedId)` branch this would fire on the queued path
+      // as well, double-queueing every ordinary paste.
+      const branch = EDGE.indexOf('if (cachedId)')
+      const enqueue = EDGE.indexOf("type: 'assess_reference'")
+      const ret = EDGE.indexOf('cached: true })', enqueue)
+      expect(branch).toBeGreaterThan(-1)
+      expect(enqueue).toBeGreaterThan(branch)
+      expect(ret).toBeGreaterThan(enqueue)
+    })
+
+    it('never retries, and never fails a served cache hit', () => {
+      expect(EDGE).toMatch(/max_attempts:\s*1/)
+      const block = EDGE.slice(EDGE.indexOf("type: 'assess_reference'"))
+      const handler = block.slice(block.indexOf('catch (err)'), block.indexOf('return json'))
+      // A catch that rethrows would turn a transcript we already cloned and
+      // could have served into an error the creator sees.
+      expect(handler).not.toMatch(/\bthrow\b/)
+    })
+
+    it('both copies spell the payload the same way', () => {
+      // Two enqueues of the same job type in two languages is exactly where a
+      // flag drifts. The parity is asserted, not assumed.
+      const shape = /frames:\s*true,\s*framesOnly:\s*true/
+      expect(CODE).toMatch(shape)
+      expect(EDGE).toMatch(shape)
+    })
   })
 })
