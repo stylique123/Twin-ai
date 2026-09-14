@@ -70,6 +70,26 @@ export const OBJECTIVE_QUESTIONS: Readonly<Partial<Record<VideoGoal, ObjectiveQu
     because: 'Otherwise Twin invents the question — and on the DM run it '
       + 'guessed wrong. Her real one becomes the hook.',
   }),
+  followers: Object.freeze({
+    question: 'What do people outside your world get wrong about what you do?',
+    because: 'Reach is a stranger problem. Everything else here assumes the '
+      + 'viewer already cares; this is the only objective whose audience does '
+      + 'not, and the misunderstanding an outsider holds is the one thing that '
+      + 'travels past people who already follow her.',
+  }),
+  authority: Object.freeze({
+    question: 'What can you do now that took you years to get right?',
+    because: 'Trust is earned by demonstrated competence, not by claiming it. '
+      + 'Product DNA holds what a thing IS, never what she had to learn to make '
+      + 'it — and without that a trust video becomes an adjective list.',
+  }),
+  entertain: Object.freeze({
+    question: 'What is the worst or funniest thing that has happened doing this?',
+    because: 'A video meant to be enjoyed needs a MOMENT, and a moment has a '
+      + 'time and a place. Nothing else in the system stores one: the knowledge '
+      + 'store holds positions and lessons, which is why this objective '
+      + 'otherwise produces a list with jokes attached.',
+  }),
   personal_brand: Object.freeze({
     question: 'What was missing that made you build it?',
     because: 'An origin needs the absence. The gap is the stakes, and today '
