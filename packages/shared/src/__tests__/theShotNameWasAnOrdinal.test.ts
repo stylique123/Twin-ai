@@ -69,16 +69,25 @@ describe('brollCaption — an ordinal is not a caption', () => {
   })
 })
 
-function bp(shot_list: NonNullable<Blueprint['shot_list']>): Blueprint {
+// ⚠️ NO `as Blueprint`. A cast here would have hidden the very field this
+// file is about — `shot_list[].shot_type` — behind an assertion the compiler
+// is told not to check. Every required member is present, so the type is
+// proved rather than promised.
+function bp(shot_list: Blueprint['shot_list']): Blueprint {
   return {
-    reference_read: { platform: 'reels', format_label: 'X', why_it_works: [], retention_map: [] },
+    reference_read: { platform: 'instagram', format_label: 'X', why_it_works: [], retention_map: [] },
     hook_options: ['A hook that stops the scroll'],
     script: [
       { section: 'Hook', line: 'A hook that stops the scroll', direction: 'to camera' },
       { section: 'CTA', line: 'Grab the checklist in my bio', direction: 'warm' },
     ],
     shot_list,
-  } as Blueprint
+    captions: [],
+    edit_checklist: [],
+    caption_packet: { caption_style: 'bold', pacing: 'fast', emphasis: 'keywords', export: '1080x1920' },
+    publish_plan: [{ platform: 'instagram', caption: 'A caption', hashtags: [], best_time: '18:00' }],
+    production_sprint: [{ minute: '0-5', task: 'Set up' }],
+  }
 }
 
 describe('the built script', () => {
