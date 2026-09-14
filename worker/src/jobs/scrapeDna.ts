@@ -429,7 +429,29 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
       const { error } = await db.from('scraped_posts')
         .upsert(rows, { onConflict: 'owner_id,url' })
       if (error) stage('posts_stored', 'failed', error.message)
-      else stage('posts_stored', 'ok', `${rows.length} of ${posts.length} posts`)
+      else {
+        stage('posts_stored', 'ok', `${rows.length} of ${posts.length} posts`)
+        // ⚠️ NOBODY HAD EVER MEASURED A VIDEO THIS CREATOR MADE. 891 finished
+        // visual profiles exist and every one is a `gallery_items` row we
+        // scraped; pasted references and her own posts are both ZERO. The pass
+        // works, it was only ever aimed at the gallery.
+        //
+        // ⚖️ CALLED HERE BECAUSE THE MEDIAN NEEDS THE WHOLE SET. The upsert
+        // above is one statement, so by this line her catalogue is present and
+        // a median is answerable; a row trigger could never know it.
+        //
+        // ⚖️ AND IT IS ENRICHMENT, NEVER A GATE, like every other write on this
+        // path. A creator whose visual pass fails to enqueue still gets her
+        // voice, so this cannot throw upward.
+        try {
+          const { data: queued, error: vErr } = await db
+            .rpc('enqueue_own_post_visual_analysis', { p_voice_id: voiceId })
+          if (vErr) stage('own_posts_visual', 'failed', vErr.message)
+          else stage('own_posts_visual', 'ok', `${Number(queued ?? 0)} frames passes queued`)
+        } catch (err) {
+          stage('own_posts_visual', 'failed', err instanceof Error ? err.message : String(err))
+        }
+      }
     } else {
       stage('posts_stored', 'skipped', 'no post carried both a url and a caption')
     }

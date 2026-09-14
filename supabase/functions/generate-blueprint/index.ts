@@ -7851,7 +7851,31 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
             && typeof container.value === 'string'
           const tpl = known ? templateFor(container.value as never) : null
           if (tpl) {
-            containerBlock = `\n\nTHE SHAPE THIS REFERENCE USES — ${tpl.container}: ${tpl.summary}
+            // ⚠️ `+=`, AND THE `=` THAT WAS HERE DISCARDED TWO BLOCKS THAT HAD
+            // ALREADY BEEN READ. The observed-visual block is appended ~50 lines
+            // above and the tier-zero block ~20 above; a plain assignment here
+            // threw both away whenever the reference had a known container type.
+            //
+            // ⚠️ MEASURED ON PRODUCTION 2026-09-14, NOT REASONED. Of 1,363
+            // error-free reference profiles, 1,277 (93.7%) carry a known
+            // `containerType`, and 620 of the 666 that have a `visual_profile`
+            // — 93.1% — had that block built, appended, and then overwritten.
+            // 358 tier-zero blocks went the same way. The frames pass ran, the
+            // download was paid for, the reader existed, and the prompt never
+            // saw the answer.
+            //
+            // ⚖️ AND THE COMMENT ABOVE ALREADY CLAIMED THIS WAS SAFE: "appended
+            // to `containerBlock` so it reaches the SAME prompt slot as every
+            // other reference-derived field, REGARDLESS of whether a container
+            // template also matched." The intent was written down and the code
+            // defeated it, which is why the parity test below asserts the
+            // operator rather than trusting the sentence.
+            //
+            // ⚖️ ORDER IS NOT THE CLAIM HERE. Every one of these blocks carries
+            // its own header naming what it is and what it may be used for, so
+            // they are legible in any order; what matters is that none of them
+            // is silently dropped.
+            containerBlock += `\n\nTHE SHAPE THIS REFERENCE USES — ${tpl.container}: ${tpl.summary}
 Its beats, in order, and what each one is FOR. Follow this ORDER: it is the part
 of the reference worth borrowing, and it is what keeps somebody watching to the
 end. Fill each beat with THIS creator's own substance from the knowledge above —
