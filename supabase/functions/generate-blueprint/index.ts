@@ -5435,7 +5435,26 @@ Deno.serve(async (req: Request) => {
   // and let the profile-content check below decide if it's usable.
   const { data: voice } = await admin
     .from('brand_voices')
-    .select('id, handle, platform, profile, brand_kit, pre_script_brief')
+    // ⚠️ `stats` IS IN THIS LIST BECAUSE ITS ABSENCE MADE A WHOLE DIMENSION
+    // NULL. `recordWhatWasChosen` writes `creator_stage_band` from
+    // `voice.stats.followers`, and `stats` was not selected — so
+    // `followerBandInline(undefined)` correctly returned null and the column
+    // was null in EVERY row.
+    //
+    // ⚠️ MEASURED ON PRODUCTION 2026-09-14, and the proof is that one insert
+    // wrote one field and not its neighbour: of 36 `generation_outcomes` rows,
+    // 32 were written on 09-13 with `entry_door` filled 32 of 32 and
+    // `creator_stage_band` filled 0 of 32 — set two lines apart in the SAME
+    // object literal. Meanwhile 43 of 55 `brand_voices` carry
+    // `stats.followers` as a number. The column existed, the writer ran, the
+    // band function was correct, the data was there, and one word was missing
+    // from one select list.
+    //
+    // ⚖️ SELECTED, NOT DEFAULTED. A missing follower count must still produce
+    // NULL rather than a guessed band: `under_1k` asserted for a creator
+    // nobody counted would put a fabricated cohort into the outcome table that
+    // Loop B then reads as a fact.
+    .select('id, handle, platform, profile, brand_kit, pre_script_brief, stats')
     .eq('owner_id', ownerId)
     .eq('is_default', true)
     .maybeSingle()
