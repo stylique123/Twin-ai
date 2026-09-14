@@ -1260,6 +1260,98 @@ const NON_PROOF = /^(?:n\/?a|none|nil|null|no(?:ne)? needed|not applicable|proof
 // instruction — a "do not repeat" line would be inert (every prompt rule
 // measured here was) and premature (it would push a creator's second video away
 // from a format that worked, on one data point).
+// ── A RETRY IS NOT A REPEAT — MIRROR OF packages/shared/src/subjectRecurrence.ts
+//
+// ⚠️ THIS FILE CANNOT IMPORT @twinai/shared (see index.ts:1853), so the rule
+// exists twice and a parity test pins the copies together. Names here are
+// deliberately NOT the shared names: `check_symbol_readers` greps by NAME, and a
+// local containing a shared symbol's name registers a false reader for it. That
+// trap has fired three times in this session alone.
+//
+// ⚖️ THE MEASUREMENT THAT SHAPES IT: of 513 same-creator premise pairs, 14 sit
+// above 0.6 content-word overlap and ZERO of those are more than 224 minutes
+// apart. So a near-duplicate inside four hours is a creator pressing generate
+// again, and refusing it would be the worse product. Only the population that
+// has never occurred gets a word to the writer.
+const REC_RETRY_MINUTES = 240
+const REC_REPEAT_DAYS = 30
+const REC_OVERLAP = 0.6
+const REC_STOP = new Set(['the','a','an','and','or','but','of','to','in','on','for','with',
+  'is','are','was','were','be','been','it','its','this','that','they','you','your','their',
+  'as','at','by','from','not','no','do','does'])
+function recWords(v: unknown): string[] {
+  return String(v ?? '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+    .filter((w) => w !== '' && !REC_STOP.has(w))
+}
+/** Share of the LONGER premise, so a fragment cannot score 1.0 against a paragraph. */
+function recOverlap(a: unknown, b: unknown): number {
+  const wa = new Set(recWords(a)); const wb = new Set(recWords(b))
+  const longer = Math.max(wa.size, wb.size)
+  if (longer === 0) return 0
+  let shared = 0
+  for (const w of wa) if (wb.has(w)) shared++
+  return shared / longer
+}
+/** ⚠️ RETRY IS TESTED BEFORE REPEAT. The measured population is the one we leave alone. */
+function recKind(priorAt: number, now: number, overlap: number): 'retry' | 'repeat' | 'fresh' {
+  if (overlap < REC_OVERLAP) return 'fresh'
+  const minutes = Math.abs(now - priorAt) / 60000
+  if (minutes <= REC_RETRY_MINUTES) return 'retry'
+  if (minutes <= REC_REPEAT_DAYS * 24 * 60) return 'repeat'
+  return 'fresh'
+}
+/** The writer's line, or ''. A repeat outranks a nearer retry, or the only real
+ *  case hides behind the case we ignore. */
+function recDirective(
+  priors: ReadonlyArray<{ premise: string; at: number }>, subject: string, now: number,
+): string {
+  if (recWords(subject).length === 0) return ''
+  for (const p of priors) {
+    if (recKind(p.at, now, recOverlap(p.premise, subject)) === 'repeat') {
+      return `\nALREADY COVERED: this creator has a video on this same premise from `
+        + `within the last ${REC_REPEAT_DAYS} days -- "${p.premise.slice(0, 160)}". Write this `
+        + `one on the SAME SUBJECT but from a genuinely different angle: a different opening `
+        + `move, a different example, a different beat order. Do NOT reuse the opener of the `
+        + `earlier video, and do NOT refuse the subject.`
+    }
+  }
+  return ''
+}
+
+/** Prior premises old enough to be catalogue rather than this sitting.
+ *  ⚠️ SEPARATE FROM THE `covered` LIST ON PURPOSE: that block says "they have
+ *  made a video about each of these", which is FALSE of a draft Twin wrote. */
+function recDrafted(
+  priors: ReadonlyArray<{ premise: string; at: number }>, now: number, limit = 8,
+): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const p of priors) {
+    const minutes = Math.abs(now - p.at) / 60000
+    if (minutes <= REC_RETRY_MINUTES) continue
+    if (minutes > REC_REPEAT_DAYS * 24 * 60) continue
+    const text = String(p.premise ?? '').trim()
+    if (text === '') continue
+    const key = text.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(text)
+    if (out.length >= limit) break
+  }
+  return out
+}
+/** ⚠️ NEVER SPOKEN, AND NEVER CLAIMS THEY FILMED IT. The covered block shipped
+ *  saying only "do not repeat" and produced a spoken line narrating our notes. */
+function recDraftedBlock(subjects: readonly string[]): string {
+  if (subjects.length === 0) return ''
+  return '\nALREADY WRITTEN FOR THIS CREATOR -- Twin has drafted a script on each of these '
+    + 'subjects for them before today. They may or may not have filmed them, so do NOT say '
+    + 'or imply that they did. THIS LIST IS NEVER SPOKEN: it steers what you choose and must '
+    + 'not appear in any line. Take a subject here only from an angle it has not already been '
+    + 'written from, and do not reuse its opening move.\n'
+    + subjects.map((x) => `  * ${x.slice(0, 200)}`).join('\n')
+}
+
 const MIN_PRIOR_VIDEOS = 2
 const MAX_PRIOR_SHOWN = 8
 
@@ -6444,6 +6536,8 @@ Deno.serve(async (req: Request) => {
     // prior work. An idempotent replay returns the stored blueprint before
     // reaching here, so it never re-enters this path either.
     let historyBlock = ''
+    let recurrenceInstruction = ''
+    let draftedBlock = ''
     try {
       const { data: priorRows } = await admin
         .from('generations')
@@ -6451,6 +6545,20 @@ Deno.serve(async (req: Request) => {
         .eq('user_id', ownerId)
         .order('created_at', { ascending: false })
         .limit(MAX_PRIOR_SHOWN)
+      // ⚠️ THE CREATOR'S STATED SUBJECT, NOT THE PREMISE. The premise is an
+      // OUTPUT of this call and does not exist yet, so it cannot gate the prompt
+      // that produces it. What the creator asked for does exist, and is what a
+      // repeat would be a repeat OF.
+      const recPriors = (priorRows ?? []).flatMap((r) => {
+        const pm = ((r?.blueprint ?? {}) as Record<string, any>)?.concept?.premise
+        const ts = Date.parse(String((r as { created_at?: unknown })?.created_at ?? ''))
+        return typeof pm === 'string' && pm.trim() !== '' && Number.isFinite(ts)
+          ? [{ premise: pm, at: ts }] : []
+      })
+      draftedBlock = recDraftedBlock(recDrafted(recPriors, Date.now()))
+      recurrenceInstruction = recDirective(
+        recPriors, `${reference_note} ${brief.idea ?? ''}`.trim(), Date.now(),
+      )
       historyBlock = renderContentHistoryInline((priorRows ?? []).map((r) => {
         const bp = (r?.blueprint ?? {}) as Record<string, any>
         return {
@@ -7546,7 +7654,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}${prov('audience')}${audienceLevelLine}
 - Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${shapeSection}
+- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${draftedBlock}${shapeSection}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
@@ -7863,11 +7971,11 @@ ${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
 - Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
 ${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}`
 
     // The DNA is fenced too. It reads like our own text, but every field in it
     // was synthesized from captions we scraped — so it is exactly as

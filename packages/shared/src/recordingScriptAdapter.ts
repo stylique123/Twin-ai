@@ -23,6 +23,72 @@ import {
 
 const BROLL_HINT = /(b-?roll|insert|cutaway|show|overlay|screen|demo|product)/i
 
+/**
+ * Is this shot a SILENT CUTAWAY? Its own declared type answers first.
+ *
+ * ⚠️ THIS USED TO BE A REGEX ON THE SHOT'S NAME, AND THE NAME IS AN ORDINAL.
+ * Measured over all 821 production shots that carry a `shot_list`:
+ *
+ *   shots declared `shot_type: 'b_roll'` ................... 37
+ *   ...whose `shot` field is nothing but digits ............ 30 of 37
+ *   shots with NO declared type ............................ 101
+ *   every shot, of every type, with a non-empty `notes` .... 821 of 821
+ *
+ * The writer numbers its shots — `shot: "1"`, `"2"`, `"3"` — and puts the
+ * description in `notes`. So `BROLL_HINT.test(s.shot)` was matching a word
+ * pattern against an integer, and the only signal left was `framing`. What
+ * that regex actually selected:
+ *
+ *   declared `b_roll` it MISSED ............................ 13 of 37
+ *   `talking_head` it pulled in as a silent insert ......... 43
+ *   `cover_frame` — the thumbnail — it pulled in ........... 4
+ *
+ * 47 of the 71 shots it chose were wrong by the model's own label, and it
+ * dropped a third of the real ones. A missed cutaway is a shot the creator is
+ * never told to film; an admitted talking_head is a beat turned silent.
+ *
+ * ⚖️ THE SAME ARGUMENT `performedShots` ALREADY MAKES. `shot_type` is a
+ * declared field, not a guess read off a name. That function's comment
+ * declined to key b-roll on the type because "production carries ZERO shots
+ * with that type" — true when it was measured, and no longer true: 37.
+ *
+ * ⚖️ THE REGEX IS KEPT, AND ONLY WHERE IT IS THE ONLY THING THERE IS. 101
+ * shots declare no type at all. For those nothing has changed. A declared type
+ * is believed in BOTH directions — `talking_head` and `cover_frame` are
+ * refused even when their framing says "overlay", which is the 47.
+ */
+export function isBrollShot(
+  shot: { shot?: string; framing?: string; shot_type?: string } | null | undefined,
+): boolean {
+  if (!shot) return false
+  if (shot.shot_type === 'b_roll') return true
+  if (shot.shot_type === 'talking_head' || shot.shot_type === 'cover_frame') return false
+  return BROLL_HINT.test(shot.shot || '') || BROLL_HINT.test(shot.framing || '')
+}
+
+/**
+ * The on-screen caption for a silent cutaway — or nothing, which is honest.
+ *
+ * ⚠️ EIGHT PRODUCTION CARDS WERE TITLED WITH A NUMBER. `caption_text` is the
+ * heading `SilentCard` renders, and it was built from `shot.shot`, the
+ * ordinal: creators opened the script and read a card whose title was "2",
+ * "4", "6". `captionFromLine` cannot help — seven words of "6" is "6".
+ *
+ * ⚖️ AND THE FALLBACK IS EMPTY, NOT `notes`. `notes` is already rendered, as
+ * the "Where to film" row. Promoting it to the title too would print the same
+ * sentence twice on one card — the repetition `Guidance` exists to avoid.
+ * `SilentCard` renders `caption_text || 'Cutaway'`, so an empty string gives a
+ * card that says "Cutaway" above a real instruction, and every piece of
+ * information appears exactly once. The call site keeps it out of
+ * `pushCaption`, whose empty-fallback is the scene number the chip already
+ * shows.
+ */
+export function brollCaption(shot: { shot?: string } | null | undefined): string {
+  const named = (shot?.shot ?? '').trim()
+  if (named === '' || /^\d+$/.test(named)) return ''
+  return captionFromLine(named)
+}
+
 // Short on-screen caption from a spoken line: first ~7 words, no trailing punct.
 function captionFromLine(line: string): string {
   const words = line.trim().replace(/\s+/g, ' ').split(' ')
@@ -59,9 +125,15 @@ function captionFromLine(line: string): string {
  * the shot's TEXT would be a guess written down; this is the model's own label.
  *
  * ⚖️ AND ONLY `cover_frame` IS EXCLUDED. `b_roll` is left in place on purpose:
- * production carries ZERO shots with that type, and the b-roll extraction below
- * keys on a NAME heuristic rather than the type, so moving it would be a second
- * change with no evidence — exactly what the comment above declined to do.
+ * a cutaway is still a shot somebody performs, so it belongs in this list.
+ *
+ * ⚠️ THIS PARAGRAPH USED TO READ "production carries ZERO shots with that type,
+ * and the b-roll extraction below keys on a NAME heuristic rather than the
+ * type, so moving it would be a second change with no evidence". Both halves
+ * have since expired. Production now carries 37 shots declared `b_roll`, and
+ * `isBrollShot` keys on the declared type rather than the name — the second
+ * change, with the evidence, written down there. A measurement is only true on
+ * the day it is taken; this one is left here because it was load-bearing.
  */
 export function performedShots(blueprint: Blueprint): NonNullable<Blueprint['shot_list']> {
   return (blueprint.shot_list ?? []).filter((s) => s?.shot_type !== 'cover_frame')
@@ -397,10 +469,24 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
     // the creator never saw the question, and the beat itself vanished between
     // the plan and the teleprompter.
     //
-    // ⚖️ IT IS A SPOKEN SCENE WITH NOTHING WRITTEN, not a silent one. Nobody
-    // speaks on a silent beat; here the creator speaks their OWN words, which
-    // is the entire point of asking. So it shows in the teleprompter with
-    // `dialogue: null` and the question in its place.
+    // ⚠️ IT USED TO SHOW IN THE TELEPROMPTER AND A CREATOR READ IT MID-TAKE.
+    // The reasoning below was "it is a spoken scene with nothing written, not a
+    // silent one -- the creator speaks their OWN words, which is the entire
+    // point of asking", so the question went on the prompter with `dialogue:
+    // null`. That argument is right about the SCENE and wrong about the
+    // PROMPTER: audited on a real session, the creator was recording when
+    // "What was the situation right before this started?" appeared where her
+    // next line should have been.
+    //
+    // ⚖️ SO THE SCENE STAYS AND THE PROMPTER LOSES IT. Deleting the beat was the
+    // older defect and is not undone here -- it remains in the plan and the shot
+    // list, carrying its question, where she can answer it with a keyboard. What
+    // changes is that the thing she reads with a camera running contains only
+    // words to say.
+    //
+    // ⚠️ AND THE CONSEQUENCE, STATED: she can no longer improvise this beat
+    // during a take. Answering it in the editor first is the flow this assumes,
+    // and it is the better one -- an unanswered beat is a question, not a cue.
     const ask = typeof seg.ask === 'string' && seg.ask.trim() !== '' ? seg.ask.trim() : null
     if (line === '') {
       if (ask) {
@@ -417,7 +503,7 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
           ...framingFor(i + 1, blueprint, seg),
           caption_text: pushCaption(captionFromLine(ask), an),
           pause_after: true,
-          show_in_teleprompter: true,
+          show_in_teleprompter: false,
         })
       }
       pending.push(...clips)
@@ -506,11 +592,14 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   }
 
   // Pure b-roll inserts from shot_list entries flagged as cutaways (silent).
-  const brollShots = (blueprint.shot_list ?? []).filter(
-    (s) => BROLL_HINT.test(s.shot || '') || BROLL_HINT.test(s.framing || ''),
-  )
-  brollShots.slice(0, 3).forEach((shot, i) => {
+  const brollShots = (blueprint.shot_list ?? []).filter((s) => isBrollShot(s))
+  brollShots.slice(0, 3).forEach((shot) => {
     const n = scenes.length + 1
+    // ⚠️ NOT THROUGH `pushCaption` WHEN IT IS EMPTY. That helper's fallback is
+    // `Scene ${n}` — and `SilentCard` already prints "Scene N" in its chip, so
+    // routing an empty caption through it puts the same words on the card
+    // twice. An empty string reaches `caption_text || 'Cutaway'` instead.
+    const cap = brollCaption(shot)
     scenes.push({
       scene_number: n,
       scene_type: 'b_roll',
@@ -520,7 +609,7 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
       camera_framing: shot.framing?.trim() || 'Cutaway',
       background: shot.notes?.trim() || '',
       movement: '',
-      caption_text: pushCaption(captionFromLine(shot.shot || `B-roll ${i + 1}`), n),
+      caption_text: cap === '' ? '' : pushCaption(cap, n),
       pause_after: false,
       show_in_teleprompter: false,
     })
