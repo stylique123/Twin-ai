@@ -31,6 +31,9 @@ import {
   // to disclose — and neither replaces the other.
   disclosureRefusalMessage,
   defaultVideoGoalFromContentGoals, CANONICAL_GOAL_LABELS,
+  // ⚖️ THE SAME TWO FUNCTIONS `assessReadiness` USES FOR THIS WORDING, not a
+  // second copy of the wording. The card re-derives; it does not redefine.
+  objectiveQuestion, offerFormOf,
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE, isReadCapacityExhausted } from '../../lib/api'
@@ -1690,6 +1693,45 @@ export default function V2Building() {
       ? askAnswers.video_goal as VideoGoal : null)
     : null
 
+  // ── THE QUESTION RENDERED BEFORE THE OBJECTIVE ──────────────────────────
+  //
+  // ⚠️⚠️ THE TEN OBJECTIVE-KEYED CLAIMS WORDINGS COULD NOT RENDER, AND THE GATE
+  // THAT RUNS THE ASSESSMENT IS WHY. `assessReadiness` picks the `claims`
+  // wording from `input.objective`, which the effect above sources from
+  // `answersRef.current.video_goal`. That effect only runs when the intent
+  // chips are NOT yet all answered:
+  //
+  //     if (!askQuestions && !(intentAnswered && Object.keys(...).length))
+  //
+  // So the objective is empty BY THE VERY CONDITION that lets the wording be
+  // chosen, and when it is answered the block is skipped entirely and no
+  // readiness question is computed at all. Both arms of that gate yield a
+  // generic claims question. Not "usually null" — structurally null, on every
+  // first build in the product door.
+  //
+  // ⚖️ SO THE CARD RE-DERIVES IT AT RENDER, from the chip the creator just
+  // tapped. `decisions` (the chips) render above `commercial` (this question)
+  // on the same card, and React re-renders on `askAnswers` — so the wording
+  // becomes the objective's own the moment she picks one, in front of her.
+  //
+  // ⚖️ SAME EXPRESSION FOR THE PRODUCT, TOO. `pickedProduct` over the live
+  // `products` and the live choice field is exactly what the effect computed
+  // from `answersRef`; reading it here also means a product chosen ON THIS CARD
+  // reaches the wording, which the frozen verdict could never do.
+  //
+  // ⚖️ AND NULL FALLS BACK TO WHAT THE SERVER ALREADY CHOSE. An objective with
+  // no question of its own, or a non-product build, keeps `q.question`
+  // untouched — this only ever replaces a generic sentence with a specific one.
+  const liveClaimsQuestion = isProductSubject
+    ? objectiveQuestion(
+      askAnswers.video_goal ?? null,
+      offerFormOf(pickedProduct(
+        products,
+        askAnswers[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null,
+      )?.type ?? null),
+    )
+    : null
+
   const decisions = (askQuestions ?? []).filter(isChip)
   const commercial = (askQuestions ?? []).filter((q) => !isChip(q))
   const hasTwoBlocks = decisions.length > 0 && commercial.length > 0
@@ -1700,7 +1742,9 @@ export default function V2Building() {
    *  per column is how two lists drift into two behaviours. */
   const renderAsk = (q: AskItem) => (
             <div key={q.field} className="block">
-              <span className="text-sm leading-relaxed text-cream">{q.question}</span>
+              <span className="text-sm leading-relaxed text-cream">
+                {q.field === 'claims' ? (liveClaimsQuestion ?? q.question) : q.question}
+              </span>
               {q.field === PRODUCT_CHOICE_FIELD && isChip(q) ? (
                 // ── PART 2: THE PICKER SURFACE ───────────────────────────
                 //
