@@ -3813,6 +3813,65 @@ function measuredFromFileBlockInline(t: TierZeroInline | null | undefined): stri
     + lines.map((l) => `  - ${l}`).join('\n')
 }
 
+// ── PARAGRAPH DECOMPOSITION, INLINED ──────────────────────────────────────
+//
+// ⚖️ PARITY: mirrors packages/shared/src/paragraphDecomposition.ts. The edge
+// cannot import @twinai/shared, so the rule lives twice and the shared copy is
+// the tested one — held to this one by a parity test that EXECUTES both.
+const MAX_LABEL_CHARS_INLINE = 200
+const MAX_DROPPED_INLINE = 12
+interface ParagraphUsedInline {
+  candidatesFound: number
+  candidateChosen: string
+  candidatesDropped: string[]
+  countDisagreesWithList: boolean
+  droppedTruncated: boolean
+}
+function readCountInline(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isInteger(v) && v >= 1 ? v : null
+  if (typeof v !== 'string') return null
+  const t = v.trim()
+  if (t === '') return null
+  // ⚠️ A WHOLE NUMBER OR NOTHING. "unknown", "a few" and "3-4" all mean the
+  // writer declined to count; reading "3-4" as 3 would invent precision.
+  if (!/^\d{1,3}$/.test(t)) return null
+  const n = Number(t)
+  return n >= 1 ? n : null
+}
+function readLabelInline(v: unknown): string {
+  return typeof v === 'string' ? v.trim().slice(0, MAX_LABEL_CHARS_INLINE) : ''
+}
+function paragraphUsedInline(raw: unknown): ParagraphUsedInline | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const r = raw as Record<string, unknown>
+  const found = readCountInline(r.candidates_found)
+  if (found === null) return null
+  const chosen = readLabelInline(r.candidate_chosen)
+  if (chosen === '') return null
+  const all = Array.isArray(r.candidates_dropped) ? r.candidates_dropped : []
+  const labels = all.map(readLabelInline).filter((x) => x !== '')
+  const dropped = labels.slice(0, MAX_DROPPED_INLINE)
+  return {
+    candidatesFound: found,
+    candidateChosen: chosen,
+    candidatesDropped: dropped,
+    // ⚠️ AGAINST THE FULL LIST, NOT THE CUT ONE. The cap is ours; comparing
+    // against `dropped` would blame the writer for our column limit.
+    countDisagreesWithList: found !== 1 + labels.length,
+    droppedTruncated: labels.length > MAX_DROPPED_INLINE,
+  }
+}
+function paragraphUsedRowInline(used: ParagraphUsedInline | null): Record<string, unknown> | null {
+  if (used === null) return null
+  return {
+    candidates_found: used.candidatesFound,
+    candidate_chosen: used.candidateChosen,
+    candidates_dropped: used.candidatesDropped,
+    count_disagrees_with_list: used.countDisagreesWithList,
+    dropped_truncated: used.droppedTruncated,
+  }
+}
+// ── END PARAGRAPH DECOMPOSITION ───────────────────────────────────────────
 function observedVisualCountInline(profile: ReferenceVisualProfileInline | null | undefined): number {
   return profile?.visualPassRan ? profile.fieldsObserved : 0
 }
@@ -4640,6 +4699,32 @@ const blueprintSchema = obj(
         ),
       },
       ['platform', 'format_label', 'why_it_works', 'retention_map', 'mechanism'],
+    ),
+    // ── WHICH IDEA SHE GOT, OUT OF THE ONES SHE GAVE US ──────────────────
+    //
+    // ⚠️ A CREATOR PASTES A PARAGRAPH AND WE RETURN ONE SCRIPT. Nothing has
+    // ever recorded whether that paragraph held one idea or five, or which one
+    // survived. Measured 2026-09-14: zero of 134 generations carry any
+    // decomposition, so "the writer used her input" has never been a
+    // measurable claim.
+    //
+    // ⚖️ THE WRITER'S OWN ANSWER, NOT A SECOND MODEL CALL. A separate call
+    // would be a DIFFERENT reader's opinion of the paragraph; comparing it to
+    // what the writer wrote would measure two models disagreeing rather than
+    // what the writer did with the input — and would cost a call per
+    // generation to answer a question the writer already answered implicitly.
+    //
+    // ⚠️ AND `candidates_found` IS ALLOWED TO BE EMPTY. An empty string means
+    // "I did not decompose this", which is stored as NULL and is NOT the same
+    // as finding one idea. A confident 1 is indistinguishable from a writer
+    // that never read past the first sentence.
+    input_decomposition: obj(
+      {
+        candidates_found: str,
+        candidate_chosen: str,
+        candidates_dropped: arr(str),
+      },
+      ['candidates_found', 'candidate_chosen', 'candidates_dropped'],
     ),
     concept: obj(
       {
@@ -8003,6 +8088,29 @@ ${beatLines.join('\n')}`
         const referenceExposureLevel: ReferenceUseLevel =
           (normalizedReferenceUseForFidelity ?? 'idea_structure') as ReferenceUseLevel
         const referenceVerbatimChars = verbatimBudget(referenceExposureLevel, (ref?.text ?? '').length)
+
+    // ⚠️ WITHOUT THIS LINE THE COLUMN IS NULL FOREVER. A response-schema field
+    // the prompt never asks for is a field the writer has no reason to fill —
+    // and `required` on Gemini's responseSchema is ADVISORY, as this file
+    // already records a few hundred lines down. So the ask is explicit, and it
+    // explicitly licenses the empty answer.
+    //
+    // ⚖️ AND IT MUST LICENSE "I DID NOT LOOK", not just permit it. A model told
+    // to count will always produce a number; the honest failure has to be an
+    // option it is told to use, or `candidates_found` becomes a confident 1 on
+    // every row and measures nothing.
+    const decompositionInstruction = `WHICH IDEA YOU TOOK, FROM WHAT SHE GAVE YOU (input_decomposition).
+The creator's note above may hold one idea or several. Before writing, say what
+you found in it:
+  - candidates_found: how many DISTINCT video ideas her note contains, as a
+    plain whole number. If you did not separate it into distinct ideas, leave
+    this EMPTY. An empty answer is correct and expected; a made-up number is
+    not. Do not write "a few", "3-4" or "unknown" — leave it empty instead.
+  - candidate_chosen: the one you wrote this script about, in a few of your own
+    words (not a quote of her sentence).
+  - candidates_dropped: the others you did not write, one short line each.
+These are notes about HER INPUT, not about the reference, and nothing here
+changes what you write — you are recording a decision you already made.`
         console.log(JSON.stringify({
           event: 'reference_exposure',
           reference_use: normalizedReferenceUseForFidelity ?? null,
@@ -8026,11 +8134,15 @@ ${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
 - Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
 ${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}
+
+${decompositionInstruction}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}
+
+${decompositionInstruction}`
 
     // The DNA is fenced too. It reads like our own text, but every field in it
     // was synthesized from captions we scraped — so it is exactly as
@@ -8302,6 +8414,15 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // against the fuller store would excuse exactly the fabrication this exists
     // to catch, because a beat could cite something the writer never saw.
     const declared = (templated.bp as { script?: unknown })?.script
+
+    // ⚠️ COMPUTED HERE, ABOVE THE `beatAudit` LITERAL, AND THAT PLACEMENT IS
+    // THE POINT. `check_counter_written_before_read.mjs` exists because a
+    // counter read into that literal before its value is computed stores
+    // nothing — measured null in 30 of 30 rows for four separate counters.
+    // This reads the parsed response, which is bound on the line above, so the
+    // literal reads a computed value rather than an initialiser.
+    const paragraphUsedAudit = paragraphUsedRowInline(paragraphUsedInline(
+      (templated.bp as { input_decomposition?: unknown })?.input_decomposition))
 
     // ── DISCLOSURE, OR THE SCRIPT IS NOT RETURNED ────────────────────────
     //
@@ -8922,6 +9043,14 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // the number is read for what it is.
     beatAudit = {
       beats: Array.isArray(declared) ? declared.length : 0,
+      // ⚠️ WHICH IDEA SHE GOT, OUT OF THE ONES SHE GAVE US. NULL means the
+      // writer did not decompose her paragraph — which is NOT the same as
+      // finding one idea in it. "One" means there was one; null means nobody
+      // looked for more, and a retention rate built on confident 1s measures
+      // nothing. Safe in this literal because it is computed ~600 lines above,
+      // from the parsed response — the same exemption `cta_evidence_counted`
+      // has, and for the same reason.
+      paragraph_used: paragraphUsedAudit,
       // ⚠️ THE HOOK RULE THE PROMPT STATES, MEASURED. `raw` counts hooks that
       // broke the length/opener contract as written; `repaired` how many the
       // deterministic ladder rescued; `shipped_over` how many were demoted and
