@@ -686,6 +686,17 @@ jobs:
         run: |
           node scripts/ci/check_counter_written_before_read.mjs --selftest
           node scripts/ci/check_counter_written_before_read.mjs
+      # ⚠️ A CONSTRAINT WAS APPLIED TO PRODUCTION AND ITS SQL NEVER REACHED main,
+      # so main described a database that does not exist and three live inserts
+      # in generate-blueprint went on writing a value the CHECK rejects. Each of
+      # those inserts swallows its error, so the telemetry simply stopped landing
+      # and nothing said so. The two guards above ask where a counter lands and
+      # whether its value existed yet; neither asks whether the DATABASE WILL
+      # ACCEPT IT. Validated by packages/shared/src/__tests__ rather than a
+      # --selftest flag, because its assertions need vitest and this guard needs
+      # no tooling of its own.
+      - name: Ops event severity (will the database accept what this writer sends?)
+        run: node scripts/ci/check_ops_event_severity.mjs
       # ⚠️ SHAPE, NOT OUTCOME. This cannot verify that a credential was rotated —
       # proving the old one no longer authenticates would mean holding it. It
       # checks that the record is well-formed and, crucially, that a known entry
