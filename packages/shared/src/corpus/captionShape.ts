@@ -73,7 +73,16 @@ import type { Assessed } from '../assessed'
  * `direct_address` fired ZERO times. Recorded here so a future bump can be
  * compared against something rather than asserted to be an improvement.
  */
-export const CAPTION_SHAPE_VERSION = 1
+/**
+ * ⚠️ BUMPED TO 2 BECAUSE THE PATTERNS CHANGED, AND THE BUMP IS THE RE-RUN.
+ * `scripts/backfill-caption-shapes.ts` guards its UPDATE on
+ * `caption_shape_version is null or < v.version`, so raising this is what
+ * makes a re-run reclassify rows already carrying a verdict. Leaving it at 1
+ * would ship a wider classifier that never re-reads the 4,112 rows recorded as
+ * `no_pattern_match` under the narrower one — the corpus would keep the old
+ * answer and the fix would be invisible.
+ */
+export const CAPTION_SHAPE_VERSION = 2
 
 export const CAPTION_SHAPES = [
   'negative_command',
@@ -146,7 +155,52 @@ const PATTERNS: ReadonlyArray<{ shape: CaptionShape; test: RegExp }> = [
   // "7 Beauty Products That Women Should Stop Using Immediately" was labelled
   // `negative_command` because "Stop Using" matched mid-string. It is a list of
   // seven things; the imperative is a clause inside it, not the caption's shape.
-  { shape: 'number_promise', test: /(^|\s)(\d{1,3})\s+\p{L}+(\s+\p{L}+)?\s+(ideas|ways|tips|things|reasons|mistakes|steps|habits|rules|secrets|hacks|lessons|tools|functions|questions|products|exercises|foods|books|apps)\b/iu },
+  // ⚠️⚠️ THIS PATTERN REQUIRED A WORD BETWEEN THE NUMBER AND THE NOUN, SO IT
+  // COULD NOT MATCH "3 reasons" — the most canonical number promise there is.
+  // `(\d{1,3})\s+\p{L}+(\s+\p{L}+)?\s+(noun)` reads: a number, then ONE or
+  // TWO words, THEN the noun. The bare form was structurally excluded.
+  //
+  // MEASURED on the 70 distinct hooks production has actually shipped:
+  //
+  //   hooks the OLD pattern matched ....... 0 of 70
+  //   hooks the NEW pattern matches ....... 15 of 70
+  //
+  // Zero. On captions it fires (124 gallery cards carry this shape), but no
+  // generated hook has ever been called a counted list, including
+  // "3 reasons you are going to stay poor." and six separate "Here are 3 ..."
+  // openings. The shape was unreachable for the population that matters most.
+  //
+  // ⚖️ THE STRUCTURE IS LOOSENED AND THE VOCABULARY IS NOT. Three changes:
+  // the intervening words become OPTIONAL and may number up to three (an
+  // adjective run — "3 critical ACL recovery rules"); hyphens and digits are
+  // allowed inside them ("3 business-killing mistakes" was excluded by
+  // `\p{L}+` alone); and the count may be a WORD, since "three mistakes" is
+  // the same promise as "3 mistakes".
+  //
+  // ⚠️ THE CLOSED NOUN LIST IS THE PRECISION GUARD AND IT STAYS CLOSED. Number
+  // words without it would label money and headcounts as counted lists. The
+  // three measured traps all stay unmatched, and each is asserted in the tests:
+  //   "priced my first kit at nine dollars"  — a price
+  //   "turned down three clients"            — a headcount
+  //   "you have three dollars"               — a price
+  // Widening the nouns instead of the structure is what would break this.
+  //
+  // ⚖️ AND IT STILL RUNS FIRST, so a counted list still wins over anything
+  // inside it. On the 70 shipped hooks that RECLASSIFIES FOUR — three from
+  // `myth_bust` and one from `how_to`. "Here are 3 postpartum fitness myths
+  // you need to stop believing" is a list of three things whose members are
+  // myths, and "... Here are the 3 ways" is a counted list that opens with
+  // "How to". Both are what the doctrine above already says to prefer, so the
+  // reclassification is intended — but it IS a change to rows that already had
+  // an answer, which is the second reason the version below is bumped.
+  //
+  // Net on those hooks: 15 of 70 shaped before, 26 after — 21.4% to 37.1%.
+  // ⚠️ AND 37% IS NOT A FIX FOR THE YIELD PROBLEM, only for this pattern. The
+  // remaining 44 misses are dominated by forms no pattern here covers at all —
+  // first-person confession, a flat verdict, "most people ..." — and no
+  // reasonable regex set reaches them. That is a model-read decision, recorded
+  // here so this change is not mistaken for closing it.
+  { shape: 'number_promise', test: /(^|\s)(\d{1,3}|two|three|four|five|six|seven|eight|nine|ten)\b(?:\s+[\p{L}\p{N}'’-]+){0,3}\s+(ideas|ways|tips|things|reasons|mistakes|steps|habits|rules|secrets|hacks|lessons|tools|functions|questions|products|exercises|foods|books|apps|cues|truths|pitfalls|myths|signs|traits)\b/iu },
 
   // A question mark is the least ambiguous signal a caption offers.
   { shape: 'direct_question', test: /\?\s*$|\?\s+\p{Lu}/u },
