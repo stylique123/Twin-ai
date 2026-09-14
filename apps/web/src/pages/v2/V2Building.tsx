@@ -819,6 +819,20 @@ export default function V2Building() {
               // above, which stays the creator's own words — see
               // `libraryOfferName` for why a name must never settle the field.
               offerNameForWording: (chosenName || null) ?? libraryOfferName(libraryProducts, str(vBrief.offer)),
+              // ⚠️ HER ENTITY'S OWN TYPE, SO THE QUESTION FITS WHAT SHE SELLS.
+              // Three of the eight objective questions are ungrammatical for a
+              // service -- "what is new about IT", "how IT WORKS", "made you
+              // BUILD IT" -- and a creator reading a question that does not fit
+              // her business answers the wrong thing or nothing.
+              //
+              // ⚖️ KEYED HERE RATHER THAN ON `pre_script_brief.workKind`
+              // BECAUSE OF COVERAGE. Measured 2026-09-14: every one of the 22
+              // live product_entities rows carries a type, while workKind is
+              // filled on 19 of 56 voices. The owner's ruling is that a
+              // hand-written table capping at 30 of 47 creators is why four
+              // previous fixes stalled; this cannot cap, because having an
+              // entity is what makes this a product build at all.
+              offerEntityType: chosen?.type ?? null,
               // ⚖️ THE OBJECTIVE SHE PICKED, AND ONLY IN THE PRODUCT DOOR.
               // `intentQuestionsFor` substitutes PRODUCT_OBJECTIVES onto the
               // SAME `video_goal` field, so this is her objective when the
