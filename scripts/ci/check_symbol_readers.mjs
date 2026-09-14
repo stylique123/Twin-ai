@@ -625,7 +625,18 @@ const unregistered = orphans.filter((o) =>
 // as debt is named or removed and NEVER up — raising it is only ever admissible
 // when the INSTRUMENT got stricter in the same commit, at the number that
 // improvement measured, which is what #797 did going 101 -> 149.
-const MAX_UNREGISTERED = 146
+// ⚠️ RATCHETED 146 -> 145 BY WIRING ONE, NOT BY REGISTERING IT. `saveStageLabel`
+// and its `SaveStage` vocabulary were built after a creator watched a take reach
+// 100% and then be refused — "the honest state between 'bytes left the phone'
+// and 'Twin has it'" — and NOTHING in apps, worker, supabase or packages read
+// either of them. #888 pointed the teleprompter's save panel at them, so this
+// debt is GONE rather than named.
+//
+// ⚖️ MEASURED ON MAIN AT ffcadfc6, NOT PREDICTED: reached went 776 -> 777 and
+// unregistered 146 -> 145. The ceiling follows a measurement that already
+// happened; lowering it on an expectation is how a ratchet starts failing
+// honest branches.
+const MAX_UNREGISTERED = 145
 
 console.log(`symbol-readers: unregistered ${unregistered.length} of ceiling ${MAX_UNREGISTERED}`)
 console.log(`symbol-readers: ${symbols.length} exported symbols, ${reached.size} reached, `
