@@ -41,6 +41,11 @@ import {
   keepBeforeScene,
   projectAcceptedSegments,
 } from '../../lib/timeline'
+// ⚖️ THE VOCABULARY FOR "BYTES SENT IS NOT BYTES KEPT", from the module that
+// records why it exists. `SaveStage` and its labels were built after a creator
+// watched a take reach 100% and then be refused — and until this change nothing
+// in the app read either of them.
+import { saveStageLabel, type SaveStage } from '@twinai/shared'
 
 // The single scene-by-scene recorder — served at BOTH the live `/record/:id`
 // route and the V2 `/v2/capture/:id` route, so there is one capture flow for the
@@ -253,6 +258,31 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   // is why 'saving' could outlive the upload entirely. Silence needs its own
   // deadline or it is indistinguishable from progress.
   const progressAtRef = useRef(0)
+  // ── 100%, AND THEN IT FAILED ──────────────────────────────────────────────
+  //
+  // ⚠️⚠️ THE SENTENCE BESIDE THE BAR USED TO READ "Saving to your library… 100%"
+  // AND THEN FLIP TO A FAILURE. `savePct` comes from `xhr.upload.onprogress`,
+  // which reaches 1.0 when the BROWSER FINISHES WRITING THE REQUEST BODY — the
+  // server has not answered, and a refusal arrives after that moment. So the
+  // screen asserted the save had all but happened at the exact instant it was
+  // least entitled to. `uploadCeiling.ts` says this in its own words ("bytes
+  // sent is not bytes kept") and shipped `SaveStage` to fix it; NOTHING READ IT.
+  //
+  // ⚖️ DERIVED, NEVER A SECOND PIECE OF STATE. Two notions of how far the save
+  // got is how one of them goes stale — and the honest stage is a pure function
+  // of the two facts already here.
+  //
+  // ⚖️ 'idle' IS NOT A SaveStage AND MUST NOT BECOME ONE. Nothing is being
+  // saved before the creator asks, so there is no stage to name.
+  // ⚖️ THE TWO IN-FLIGHT STAGES ONLY, AND DELIBERATELY NOT THE TERMINAL ONES.
+  // `saveStageLabel('saved')` is the word "Saved"; this screen says "Saved to
+  // your library — safe even if you close this tab", and the failure arm says
+  // WHICH of five causes it was. Both carry more than a label can, so mapping
+  // them through one would be a downgrade dressed as consistency — and a
+  // `saveStage` computed for arms nothing reads is a value discarded at the
+  // point of use, which is the defect this whole change is an instance of.
+  const saveStage: Extract<SaveStage, 'uploading' | 'finishing'> | null =
+    saveState !== 'saving' ? null : savePct >= 1 ? 'finishing' : 'uploading'
   // WHY THE REASON IS STATE AND NOT A CONSOLE LINE.
   //
   // `saveSourceOnce` can fail in five distinct places — no recorded scenes, the
@@ -861,7 +891,23 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
                   <p className="text-sm font-semibold text-cream">Your recording looks good.</p>
                   <p className="text-xs text-stone">
                     {saveState === 'saved' && 'Saved to your library — safe even if you close this tab.'}
-                    {saveState === 'saving' && (savePct > 0 ? `Saving to your library… ${Math.round(savePct * 100)}%` : 'Saving to your library…')}
+                    {/* ⚖️ THE PERCENTAGE RIDES THE 'uploading' LABEL AND STOPS
+                        AT 'finishing'. A number is the only thing that tells a
+                        slow upload from a dead one, which is why it stays —
+                        but it may never be the thing that reads 100%, because
+                        that is the one value the browser knows and the server
+                        has not confirmed.
+
+                        ⚠️ FLOOR, NOT ROUND — CAUGHT BY THIS CHANGE'S OWN TEST.
+                        `Math.round(0.995 * 100)` is 100, so rounding reproduced
+                        the very lie one decimal lower: a still-uploading take
+                        claiming 100%. A creator is only owed the percentage
+                        already past, never the one being rounded up to. */}
+                    {saveStage === 'uploading'
+                      && (savePct > 0
+                        ? `${saveStageLabel('uploading')} ${Math.floor(savePct * 100)}%`
+                        : saveStageLabel('uploading'))}
+                    {saveStage === 'finishing' && saveStageLabel('finishing')}
                     {/* The CAUSE, not just the outcome. Some of these are
                         retryable (the upload dropped) and some are not (the
                         recorded windows do not match the script), and a
