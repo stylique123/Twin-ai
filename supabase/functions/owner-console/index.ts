@@ -165,8 +165,23 @@ Deno.serve(async (req: Request) => {
     const { count, error } = await admin.from(table).select('id', { count: 'exact', head: true })
     return error || typeof count !== 'number' ? null : count
   }
+  // ⚠️ A COUNT OF THE TABLE, FILTERED. `countOf` counts every row, which is
+  // wrong for a funnel stage whose rows are attempts rather than outcomes.
+  const countWhere = async (table: string, col: string, val: string): Promise<number | null> => {
+    const { count, error } = await admin.from(table)
+      .select('id', { count: 'exact', head: true }).eq(col, val)
+    return error || typeof count !== 'number' ? null : count
+  }
   const scriptsCount = await countOf('generations')
-  const recordingsCount = await countOf('media_assets')
+  // ⚠️⚠️ FINISHED TAKES, NOT ROWS. Measured 2026-09-14: `media_assets` holds 7
+  // rows and SIX are `uploading`. `countOf('media_assets')` reported 7
+  // recordings, so the card read "147 scripts, 7 recorded, 0 exported" -- a
+  // behaviour problem, when the truth is six failed uploads.
+  const recordingsCount = await countWhere('media_assets', 'status', 'ready')
+  const stalledUploadsCount = await countWhere('media_assets', 'status', 'uploading')
+  // ⚖️ THE STAGE recordingFunnel.ts SPLIT OUT ON PURPOSE, so "no exports" can
+  // be told apart from "a finished take that was refused before editing".
+  const editProjectsCount = await countOf('edit_projects')
   const exportsCount = await countOf('edit_outputs')
   // ⚠️ THE DISCRIMINATOR, AND IT IS EXPECTED TO BE ABSENT TODAY. The column
   // does not exist yet, so this resolves to null and the card says the drop
@@ -177,6 +192,8 @@ Deno.serve(async (req: Request) => {
   const funnelCounts = {
     scripts: scriptsCount,
     recordings: recordingsCount,
+    stalledUploads: stalledUploadsCount,
+    editProjects: editProjectsCount,
     exports: exportsCount,
     scriptIntents: typeof scriptIntentCount === 'number' ? scriptIntentCount : null,
   }
