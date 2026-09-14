@@ -96,12 +96,33 @@ describe('the migration is applied by staging, never excluded', () => {
 })
 
 describe('no later migration silently re-replaces this function', () => {
-  it('0205 is the last word on enqueue_gallery_visual_analysis', () => {
+  // ⚠⚠ RE-ANCHORED, AND IT CAUGHT SOMETHING FIRST. This asserted "0205 is the
+  // last word on enqueue_gallery_visual_analysis", and it FAILED the moment 0206
+  // replaced the same function — which is the guard doing its job, not a false
+  // alarm. But "0205 must be last forever" is not the property worth holding: a
+  // later migration replacing this function is legitimate, and the real risk is
+  // that it restates the body WITHOUT the corrected predicate and silently
+  // reverts this fix. A `create or replace` makes exactly that loss easy and
+  // invisible.
+  //
+  // ⚖️ SO THE CLAIM IS NOW THE DURABLE ONE: whichever migration replaces this
+  // function LAST must carry the corrected cooldown. That stays true for 0207 and
+  // everything after it, and it fails for the revert it exists to catch.
+  it('whichever migration replaces it LAST still carries the corrected cooldown', () => {
     const owners = readdirSync(MIG).filter((f) => f.endsWith('.sql')).filter((f) =>
       readFileSync(join(MIG, f), 'utf8').includes(
         'function public.enqueue_gallery_visual_analysis()')).sort()
     expect(owners.length).toBeGreaterThan(1)
-    expect(owners[owners.length - 1])
-      .toBe('0205_the_cooldown_looked_for_a_status_the_job_never_takes.sql')
+    const last = readFileSync(join(MIG, owners[owners.length - 1]), 'utf8')
+    expect(last).toMatch(/result ->> 'error' is not null/)
+    expect(last).toMatch(/status = 'failed' or j\.result/)
+    expect(last).toMatch(/interval '7 days'/)
+  })
+
+  it('and 0205 is still in that set — it is not the one that got dropped', () => {
+    const owners = readdirSync(MIG).filter((f) => f.endsWith('.sql')).filter((f) =>
+      readFileSync(join(MIG, f), 'utf8').includes(
+        'function public.enqueue_gallery_visual_analysis()'))
+    expect(owners).toContain('0205_the_cooldown_looked_for_a_status_the_job_never_takes.sql')
   })
 })

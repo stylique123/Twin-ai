@@ -76,7 +76,17 @@ describe('the cohort states which rung it came from', () => {
       facets: { domain: 'health', subDomain: 'physiotherapy', customer: 'consumer', stageBand: '1k_10k' },
     })
     const r = selectEvidenceCohort(HER, physios)
-    expect(r.rung).toBe('none')
+    // ⚠⚠ RE-ANCHORED, AND THE CLAIM IS UNCHANGED. This asserted `rung === 'none'`
+    // because before the `all` rung existed, falling off the end of the ladder
+    // meant nothing at all. It now means the GLOBAL rung, so `'none'` was an
+    // anchor on the ladder's shape rather than on this test's actual claim --
+    // which is that a physio is not a MATCH for a photographer. That is still
+    // true and is now asserted directly, which is strictly stronger: it fails if
+    // any matching rung is returned, not merely if something is.
+    expect(['sub_domain', 'facets', 'domain']).not.toContain(r.rung)
+    // ⚠️ AND THE BASIS MUST NOT DESCRIBE HER. A global cohort rendered with her
+    // facets would be exactly the cross-domain match this test denies.
+    if (r.rung === 'all') expect(r.basis).toMatch(/across all niches/)
     expect(FACET_AGREEMENT).toBe(3)
   })
 
