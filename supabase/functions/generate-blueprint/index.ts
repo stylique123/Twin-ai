@@ -5959,6 +5959,9 @@ Deno.serve(async (req: Request) => {
     educate: 'What do people misunderstand about how it works?',
     leads: 'What is the smallest first step someone can take?',
     conversations: 'What is the question you keep getting?',
+    followers: 'What do people outside your world get wrong about what you do?',
+    authority: 'What can you do now that took you years to get right?',
+    entertain: 'What is the worst or funniest thing that has happened doing this?',
     personal_brand: 'What was missing that made you build it?',
   }
   const readyObjective = (body.mentioned_product_id ?? '').trim() !== '' || (body.selected_product_id ?? '').trim() !== ''
