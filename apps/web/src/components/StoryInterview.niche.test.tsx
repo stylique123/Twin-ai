@@ -14,12 +14,34 @@
 // profile until the stories are done, so for a creator still answering when the
 // scan lands the niche is already in hand — and from that moment the wording can
 // be hers. Null before, never a guess.
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { StoryInterview } from './StoryInterview'
 import { CREATOR_QUESTIONS, OPENING_THREE, creatorQuestionsFor } from '@twinai/shared'
+
+/**
+ * ⚠️ THE PATH MUST NOT ASSUME WHICH DIRECTORY VITEST WAS STARTED FROM. CI runs
+ * this workspace's tests with cwd = apps/web, and the repo-root run has cwd =
+ * the repo root. `process.cwd()` alone doubled the prefix into
+ * apps/web/apps/web/... and the suite went green locally and red in CI.
+ *
+ * ⚖️ AND `import.meta.url` IS NOT THE FIX HERE, because this file runs under
+ * jsdom, where it is an http: URL and `fileURLToPath` refuses it. So the
+ * candidates are tried explicitly and EXACTLY ONE must exist -- a file that has
+ * genuinely moved still fails, loudly, instead of resolving to nothing.
+ */
+function sourcePath(fromRepoRoot: string): string {
+  const candidates = [
+    resolve(process.cwd(), fromRepoRoot),
+    resolve(process.cwd(), '../..', fromRepoRoot),
+  ]
+  const found = candidates.filter((p) => existsSync(p))
+  expect(found.length, `expected exactly one of ${candidates.join(' | ')}`).toBe(1)
+  return found[0]
+}
+
 
 vi.mock('../lib/creatorAnswers', () => ({
   answerQuestion: vi.fn(async () => ({ ok: true as const })),
@@ -64,7 +86,7 @@ describe('the wording follows the niche once it arrives', () => {
     // The component must not restate the wording rules; it must call the one
     // module that owns them.
     const code = readFileSync(
-      resolve(process.cwd(), 'apps/web/src/components/StoryInterview.tsx'), 'utf8')
+      sourcePath('apps/web/src/components/StoryInterview.tsx'), 'utf8')
     expect(code).toMatch(/creatorQuestionsFor\(niche, CREATOR_QUESTIONS,/)
     expect(code).toMatch(/openingQuestionsFor\(byNiche, sells, stageBand\)/)
   })

@@ -259,11 +259,26 @@ export interface AccountMessage {
  *  Every call site that exists today asks only after its sample is finished, so
  *  `undefined` describes them correctly. The asynchronous caller is the one that
  *  must SAY it is partial, because it is the only one that ever is. */
+/** ⚠️ A COUNT THAT IS NOT A POSITIVE NUMBER IS "NOT TOLD", NEVER ZERO. This
+ *  arrives from a caller that counted rows; a NaN or a -1 must not turn into a
+ *  sentence about what Twin learned. */
+function positiveCount(n: number | null | undefined): number | null {
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : null
+}
+
 export interface AccountCounts {
   usable: number
   checked: number
   /** False only while the sample is still being collected. */
   complete?: boolean
+  /** ⚠⚠ HOW MANY THINGS TWIN DID LEARN FROM, when the caller knows. Absent
+   *  means "not told", and an untold count says NOTHING rather than "none" — the
+   *  card must never imply an empty twin it cannot see.
+   *
+   *  ⚖️ IT EXISTS BECAUSE "WE CANNOT READ YOUR VIDEOS" ALONE READS AS "WE GOT
+   *  NOTHING". Her captions are what Twin actually learned from, and a creator
+   *  told only what failed has no way to know the scan worked at all. */
+  learnedFrom?: number | null
   /** Where the videos came from, lowercased, when the caller knows.
    *
    *  ⚠️ IT EXISTS FOR ONE REASON: a platform we cannot read AT ALL produces the
@@ -275,12 +290,27 @@ export interface AccountCounts {
 
 /** Platforms whose videos Twin currently cannot read at all.
  *
- *  ⚠️ MEASURED ON PRODUCTION 2026-09-12, NOT ASSUMED: 60 Instagram profile
- *  fetches, 0 ok, 60 errored, 0 transcripts. Every one carried the IDENTICAL
- *  message `no audio url found` — the Apify actor's own `errMsg`, wrapped by
- *  the worker. Sixty different videos do not independently lose their audio on
- *  the same day; a 100% rate behind a single string is a contract that moved.
- *  Instagram references have therefore NEVER reached a transcript.
+ *  ⚠️ MEASURED ON PRODUCTION 2026-09-12: 60 Instagram profile fetches, 0 ok,
+ *  60 errored, 0 transcripts, every one carrying the IDENTICAL message
+ *  `no audio url found`. Instagram references have NEVER reached a transcript,
+ *  and that part stands.
+ *
+ *  ⚠⚠ BUT THE DIAGNOSIS BESIDE IT WAS WRONG, AND IT IS CORRECTED HERE RATHER
+ *  THAN QUIETLY DROPPED. This comment read "a 100% rate behind a single string
+ *  is a contract that moved" — i.e. the actor stopped returning a field we read.
+ *  RE-MEASURED 2026-09-13 over the same 60 rows: 57 are
+ *  `instagram.com/explore/tags/...` HASHTAG BROWSE PAGES and 3 are `/p/` posts.
+ *  ZERO are reels. A hashtag page has no video, so `no audio url found` is the
+ *  actor answering CORRECTLY, and our code reads that message out of exactly the
+ *  field it expects. Nothing about the integration is broken.
+ *
+ *  ⚖️ INSTAGRAM STAYS ON THE LIST ANYWAY, AND THE REASON IS NOW THE HONEST ONE.
+ *  The outcome is unchanged — no Instagram reference has ever produced a
+ *  transcript — but the cause is that we have never once ASKED for a reel. That
+ *  is not evidence Instagram is unreadable; it is the absence of evidence either
+ *  way, and absent is not zero. The entry earns its place because a creator must
+ *  not be told her videos were unclear when we never read one, not because a
+ *  contract moved. WHAT WOULD CHANGE THIS: one real `/reel/` url assessed.
  *
  *  ⚖️ THIS LIST IS A CONFESSION, NOT A POLICY, AND IT IS MEANT TO SHRINK. It
  *  exists so the screen stops implying the creator's videos were unclear when
@@ -374,10 +404,20 @@ export function messageForOwnAccount(counts: AccountCounts): AccountMessage {
     // learned instead, because this function cannot see that and a comforting
     // guess would be a second false statement on the same card.
     if (platformIsUnreadable(counts.platform)) {
+      // ⚖️ AND IT SAYS WHAT TWIN DID USE, WHEN THE CALLER KNOWS. "We cannot read
+      // your videos" on its own reads as "we got nothing", which leaves a
+      // creator unable to tell whether the scan worked at all. Her captions are
+      // what it learned from, and that is a fact we hold rather than a comfort
+      // we invented — so it is said ONLY when a real count arrives, never as a
+      // reassuring default.
+      const learned = positiveCount(counts.learnedFrom)
       return {
         kind: 'none',
         headline: 'Twin cannot read Instagram videos yet',
-        detail: 'That is a limit on our side, not something about your account.',
+        detail: learned === null
+          ? 'That is a limit on our side, not something about your account.'
+          : 'That is a limit on our side, not something about your account. '
+            + 'Your captions are what it learned from.',
       }
     }
     return {

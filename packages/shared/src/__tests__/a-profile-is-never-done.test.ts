@@ -18,8 +18,16 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { setupAreas, setupSummary, type SetupInput } from '../setupAreas'
+
+// ⚖️ ANCHORED TO THIS FILE, NOT TO process.cwd(). CI runs each workspace with
+// cwd = that workspace, so a repo-root-relative path built from cwd doubles
+// into apps/web/apps/web/... and the file fails to COLLECT -- every test in it
+// still reports as passing, which is how it hides. This is the pattern the
+// long-standing tests in this repo already use.
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
+
 
 // ⚠️ THE FIXTURE IS TYPED, NOT CAST, AND MY FIRST DRAFT WAS WRONG IN THE WAY
 // THIS WHOLE SESSION KEEPS FINDING. It set `goal: 'sell'` and `promotes:
@@ -96,12 +104,30 @@ const SETTINGS = readFileSync(join(
   dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..',
   'apps', 'web', 'src', 'pages', 'Settings.tsx'), 'utf8')
 
-describe('what Twin has learned appears beside what is missing', () => {
-  it('Settings renders the strength card', () => {
-    // ⚠️ IT ALWAYS EXISTED — on the Dashboard. It was never on the screen that
-    // showed the fraction, so the one number a creator saw here had a ceiling
-    // and no evidence behind it.
-    expect(SETTINGS).toContain("import { TwinStrengthCard }")
-    expect(SETTINGS).toMatch(/<TwinStrengthCard voiceId=\{defaultVoiceId\} \/>/)
+describe('what Twin has learned has exactly ONE home', () => {
+  // ⚠⚠ THIS ASSERTED THE OPPOSITE, AND IT WAS RIGHT AT THE TIME. The card was
+  // put beside the fraction because that number "had a ceiling and no evidence
+  // behind it" — a real gap. But it then appeared TWICE, here and on the
+  // Dashboard, and one fact with two homes is a fact a creator reads twice and
+  // can act on once.
+  //
+  // ⚖️ THE DASHBOARD KEEPS IT BECAUSE OF WHEN SHE IS THERE: before she starts,
+  // which is the moment "two or three more stories and it stops sounding
+  // generic" can change what she does next. By Settings she has already come
+  // looking. The reversal is deliberate, and the cost — the fraction losing its
+  // evidence — is carried by the per-area states below it, including
+  // "N to confirm".
+  //
+  // ⚠️ AND "ONE HOME" IS THE STRONGER CLAIM. The old test passed while the
+  // count was on two screens; this one fails in both directions.
+  it('Settings does not render it', () => {
+    expect(SETTINGS).not.toContain('import { TwinStrengthCard }')
+    expect(SETTINGS).not.toMatch(/<TwinStrengthCard/)
+  })
+
+  it('and the Dashboard does', () => {
+    const dashboard = readFileSync(
+      resolve(REPO, 'apps/web/src/pages/Dashboard.tsx'), 'utf8')
+    expect(dashboard).toMatch(/<TwinStrengthCard/)
   })
 })

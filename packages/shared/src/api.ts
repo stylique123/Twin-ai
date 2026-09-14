@@ -471,6 +471,26 @@ export const READINESS_INCOMPLETE_CODE = 'READINESS_INCOMPLETE'
  *  creator has to change one of them. So it carries remedies rather than
  *  questions: things to go and do, not boxes to fill in here. */
 export const SELL_WITHOUT_TARGET_CODE = 'SELL_WITHOUT_COMMERCIAL_TARGET'
+/**
+ * ⚠⚠ NOTHING WAS CHARGED, AND NO ANSWER UNBLOCKS IT EITHER — SHE IS SIMPLY OUT.
+ * Reported live 2026-09-13: a creator with no remixes left saw "Checking whether
+ * your script finished — the connection dropped", sat through the rescue poll,
+ * and was never told the one thing that was true or the one thing she could do.
+ *
+ * ⚠️ THE REFUSAL HAD NO CODE, WHICH IS WHY IT FELL THROUGH. The building screen
+ * matches refusals on `code` and handles them ABOVE the rescue, precisely because
+ * they are decisions rather than lost answers. `INSUFFICIENT_CREDITS` returned a
+ * sentence and a 402 and nothing else, so it could not be told apart from a dead
+ * request and got treated as one.
+ *
+ * ⚖️ DERIVED FROM THE HTTP STATUS, NOT FROM THE SENTENCE. This file already
+ * records why the sentence is the wrong key: matching it "breaks the moment the
+ * copy is reworded". 402 Payment Required is a protocol fact that means exactly
+ * this and nothing else, and the function already returns it — so the client
+ * needs no server change to stop lying to her. An explicit `body.code` still
+ * wins if one is ever added.
+ */
+export const OUT_OF_REMIXES_CODE = 'OUT_OF_REMIXES'
 
 export async function generateBlueprint(input: GenerateInput): Promise<Generation> {
   // Calls the Supabase Edge Function `generate-blueprint`, which runs the
@@ -512,6 +532,13 @@ export async function generateBlueprint(input: GenerateInput): Promise<Generatio
       } catch {
         /* fall back to msg */
       }
+    }
+    // ⚠⚠ 402 IS THE CODE, AND IT IS ALREADY BEING SENT. Only applied when the
+    // body carried none of its own, so a server that starts sending an explicit
+    // code keeps control of the meaning. Read from the Response rather than the
+    // message, because the message is copy and copy gets reworded.
+    if (!code && (error as { context?: Response }).context?.status === 402) {
+      code = OUT_OF_REMIXES_CODE
     }
     const err = new Error(msg) as Error & {
       code?: string; questions?: ReadinessQuestion[]; remedies?: string[]
