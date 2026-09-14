@@ -292,3 +292,80 @@ export function funnelCard(counts) {
       + `${intents} said whether they would record it.`,
   }
 }
+
+// ── TWIN REFUSED A FIFTH OF ITS OWN WORK AND NOBODY READ THE NUMBER ────────
+//
+// ⚠️ MEASURED ON PRODUCTION 2026-09-14, from `credit_events.reason`:
+//
+//   blueprint (charges)                141
+//   blueprint_refund_quality            25
+//   blueprint_refund (older path)        7
+//   disclosure_missing                   0
+//   disclosure_denied                    0
+//
+// 25 of 141 paid generations — 18% — were refunded because Twin judged its own
+// output not good enough to charge for. That is the most direct quality signal
+// the product has, it has been accruing since before this was written, and no
+// loop reads it.
+//
+// ⚠️⚠️ AND THE WIRING STANDARD SAYS REFUSALS ARE "never collected". THEY ARE
+// COLLECTED. They have been in the credits ledger all along — `refundOnce`
+// passes its reason straight through to `refund_credits`. The gap was never
+// gate 5; it was gate 1, a reader. Grepping first is what found that, and
+// building a collector would have duplicated a working one.
+//
+// ⚖️ A RATE, NOT A COUNT, AND ITS DENOMINATOR IS CHARGES. "25 refunds" means
+// nothing without "of 141". A refund count alone rises with traffic and would
+// read as a regression on a good week.
+//
+// ⚖️ AND THE TWO REFUND REASONS ARE KEPT APART. `blueprint_refund_quality` is
+// Twin refusing its own script; `disclosure_missing` and `disclosure_denied`
+// are Twin refusing to publish a claim the creator cannot support. Pooling them
+// would average a writer problem with a compliance one, and they need opposite
+// fixes. Both disclosure reasons read ZERO today, which is consistent rather
+// than surprising: until the negation fix landed, `disclosure_missing` could
+// not fire at all, because a denial matched the phrase it denied.
+
+/** Below this many charges a percentage moves too far on one refund to quote. */
+export const REFUSAL_MIN_CHARGES = 20
+
+export function refusalCard(counts) {
+  const n = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.round(v) : null)
+  const charges = n(counts?.charges)
+  const quality = n(counts?.qualityRefunds)
+  const disclosure = n(counts?.disclosureRefusals)
+
+  // ⚠️ NULL IS NOT ZERO. A count that could not be read is not a product that
+  // never refunded anything, and reporting it as one would put a false all-clear
+  // on the owner's page.
+  if (charges === null || quality === null) {
+    return {
+      card: 'refusals', state: 'blocked', ownerAction: null,
+      detail: 'The refund counts could not be read, which is not the same as no refunds.',
+    }
+  }
+
+  if (charges < REFUSAL_MIN_CHARGES) {
+    return {
+      card: 'refusals', state: 'ok', ownerAction: null,
+      detail: `${charges} paid generation${charges === 1 ? '' : 's'} so far — too few to quote a rate from. `
+        + `${quality} refunded on quality.`,
+    }
+  }
+
+  const rate = Math.round((quality / charges) * 1000) / 10
+  const disclosureLine = disclosure === null || disclosure === 0
+    ? ''
+    : ` ${disclosure} refused on disclosure, which is a different failure and needs a different fix.`
+
+  // ⚠️ THE CARD DOES NOT SAY WHICH SCRIPTS OR WHY. It reports that Twin declined
+  // to charge, at what rate, against what denominator. Naming a cause would be
+  // the same overreach the funnel card refuses: a refund rate is consistent with
+  // a weak writer, a thin brief, an unusable reference, or a strict gate.
+  return {
+    card: 'refusals', state: 'ok', ownerAction: null,
+    detail: `${quality} of ${charges} paid generations (${rate}%) were refunded because Twin `
+      + `judged its own script not worth charging for.${disclosureLine} `
+      + `This says Twin declined, never why.`,
+  }
+}

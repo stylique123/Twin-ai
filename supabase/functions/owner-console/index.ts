@@ -26,7 +26,8 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import {
-  schemaCard, pilotCard, recordingsCard, watchedSessionCard, rotationCard, funnelCard, nextAction,
+  schemaCard, pilotCard, recordingsCard, watchedSessionCard, rotationCard, funnelCard,
+  refusalCard, nextAction,
 } from '../_shared/ownerConsole.ts'
 
 const cors = {
@@ -174,6 +175,31 @@ Deno.serve(async (req: Request) => {
   const { count: scriptIntentCount } = await admin.from('generations')
     .select('id', { count: 'exact', head: true })
     .not('script_intent', 'is', null)
+  // ── WHAT TWIN REFUSED TO CHARGE FOR ─────────────────────────────────────
+  //
+  // ⚠️ MEASURED 2026-09-14: 25 of 141 paid generations were refunded as
+  // `blueprint_refund_quality` — 18% — and no loop reads it. The Wiring
+  // Standard calls refusals "never collected"; they have been in the credits
+  // ledger all along, because `refundOnce` passes its reason straight to
+  // `refund_credits`. The gap was gate 1, not gate 5.
+  //
+  // ⚖️ COUNTED BY REASON, so a writer problem and a compliance refusal are
+  // never averaged together. They need opposite fixes.
+  const countByReason = async (reasons: string[]): Promise<number | null> => {
+    const { count, error } = await admin.from('credit_events')
+      .select('id', { count: 'exact', head: true }).in('reason', reasons)
+    return error || typeof count !== 'number' ? null : count
+  }
+  const refusalCounts = {
+    charges: await countByReason(['blueprint']),
+    // ⚠️ BOTH REFUND SPELLINGS. `blueprint_refund` is the older path (7 rows,
+    // newest 2026-09-02) and `blueprint_refund_quality` the current one (25).
+    // Reading only the new name would report a rate that silently excludes
+    // every refund issued before it was renamed.
+    qualityRefunds: await countByReason(['blueprint_refund_quality', 'blueprint_refund']),
+    disclosureRefusals: await countByReason(['disclosure_missing', 'disclosure_denied']),
+  }
+
   const funnelCounts = {
     scripts: scriptsCount,
     recordings: recordingsCount,
@@ -191,6 +217,7 @@ Deno.serve(async (req: Request) => {
     // "due" and never "done" — SECURITY.md remains the record.
     rotationCard({ anyPilotLocked: (lockedRuns?.length ?? 0) > 0, resolved: false }),
     funnelCard(funnelCounts),
+    refusalCard(refusalCounts),
   ]
 
   return json({ ok: true, cards, next: nextAction(cards), generated_at: new Date().toISOString() })
