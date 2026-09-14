@@ -1792,6 +1792,134 @@ const NICHE_BUCKET_PATTERNS_INLINE: ReadonlyArray<{ bucket: string; test: RegExp
   { bucket: 'entertainment', test: /\b(entertainment|humou?r|comedy|challenges?|dubbing|music|skits?)\b/i },
 ]
 
+// ── NICHE VOCABULARY, INLINED ─────────────────────────────────────────────
+//
+// ⚖️ PARITY: mirrors packages/shared/src/corpus/nicheVocabulary.ts. The edge
+// cannot import @twinai/shared, so the rule lives twice and the shared copy is
+// the tested one, held to this one by a parity test that EXECUTES both.
+//
+// ⚠️ MEASURED BEFORE IT WAS WIRED, because a term list nobody can fill is a
+// prompt block that is always absent. Terms clearing BOTH gates per bucket on
+// the live corpus 2026-09-14: business 35, food 16, entertainment 13, tech 9,
+// beauty_fashion 7, creator 0, health 0. Grouped by the raw free-text `niche`
+// instead, business yields ZERO — the bucket is the prerequisite, not a nicety.
+const MIN_CREATORS_FOR_TERM_INLINE = 10
+const MAX_NICHES_FOR_TERM_INLINE = 1
+// ⚠️ A LOWER BAR FOR DISQUALIFYING THAN FOR KEEPING. A word need not be
+// prominent in another bucket to stop being distinctive — merely present.
+const PRESENT_IN_NICHE_INLINE = 3
+const VOCAB_STOPWORDS_INLINE: ReadonlySet<string> = new Set(
+  ('the a an and or of to in for on with your you my is are it this that how what why'
+    + ' i we they at be from as can will just get make made not do does new best top all'
+    + ' more than have has had was were been being if but so out up down over under about'
+    + ' when where who which their there here them his her its our very really much many')
+    .split(' '),
+)
+interface VocabularyTermInline { term: string; creators: number; cards: number }
+function termsInInline(title: unknown): Set<string> {
+  if (typeof title !== 'string') return new Set()
+  const cleaned = title
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/[#@][\p{L}\p{N}_]+/gu, ' ')
+    .toLowerCase()
+  const out = new Set<string>()
+  for (const w of cleaned.match(/[a-z][a-z'-]{2,}/g) ?? []) {
+    if (!VOCAB_STOPWORDS_INLINE.has(w)) out.add(w)
+  }
+  return out
+}
+function creatorSetsInline(
+  cards: ReadonlyArray<{ creator: string | null | undefined; title: string | null | undefined }>,
+  labelWords: ReadonlySet<string>,
+) {
+  const creatorsOf = new Map<string, Set<string>>()
+  const cardsOf = new Map<string, number>()
+  for (const c of cards) {
+    const creator = typeof c.creator === 'string' ? c.creator.trim() : ''
+    // ⚠️ "@" IS NOT A CREATOR. 940 cards carry it from a scrape that captured
+    // nothing; pooling them would let one failure manufacture spread.
+    if (creator === '' || creator === '@') continue
+    for (const t of termsInInline(c.title)) {
+      if (labelWords.has(t)) continue
+      let set = creatorsOf.get(t)
+      if (set === undefined) { set = new Set(); creatorsOf.set(t, set) }
+      set.add(creator)
+      cardsOf.set(t, (cardsOf.get(t) ?? 0) + 1)
+    }
+  }
+  return { creatorsOf, cardsOf }
+}
+function nicheVocabulariesInline(
+  cardsByNiche: ReadonlyMap<string, ReadonlyArray<{
+    creator: string | null | undefined; title: string | null | undefined
+  }>>,
+): Map<string, VocabularyTermInline[]> {
+  const per = new Map<string, ReturnType<typeof creatorSetsInline>>()
+  for (const [label, cards] of cardsByNiche) {
+    per.set(label, creatorSetsInline(cards, termsInInline(label)))
+  }
+  const nichesWith = new Map<string, number>()
+  for (const { creatorsOf } of per.values()) {
+    for (const [term, set] of creatorsOf) {
+      if (set.size < PRESENT_IN_NICHE_INLINE) continue
+      nichesWith.set(term, (nichesWith.get(term) ?? 0) + 1)
+    }
+  }
+  const out = new Map<string, VocabularyTermInline[]>()
+  for (const [label, { creatorsOf, cardsOf }] of per) {
+    const terms: VocabularyTermInline[] = []
+    for (const [term, set] of creatorsOf) {
+      if (set.size < MIN_CREATORS_FOR_TERM_INLINE) continue
+      // ⚖️ WITH A SINGLE NICHE THERE IS NOTHING TO BE DISTINCTIVE AGAINST, so
+      // the gate is skipped rather than applied vacuously to everything.
+      if (cardsByNiche.size > 1
+        && (nichesWith.get(term) ?? 0) > MAX_NICHES_FOR_TERM_INLINE) continue
+      terms.push({ term, creators: set.size, cards: cardsOf.get(term) ?? 0 })
+    }
+    terms.sort((a, b) =>
+      b.creators - a.creators || b.cards - a.cards || a.term.localeCompare(b.term))
+    out.set(label, terms)
+  }
+  return out
+}
+
+/**
+ * ⚠️ HER VOCABULARY, NOT HER CONTENT — AND THE PROMPT MUST SAY WHICH.
+ * Terminology is a WORDING aid: "load tolerance" is the phrase a physio uses,
+ * and using it invents no claim. A niche term is NOT licence to assert anything
+ * she has not said, and the block says so, because the project's hardest rule is
+ * that every CLAIM comes from her material and nothing else.
+ *
+ * ⚖️ AND EVERY TERM CARRIES ITS SPREAD. "35 terms from 969 creators" is
+ * evidence; a bare word list is an instruction. A consumer that dropped the
+ * count would turn the second back into the first.
+ *
+ * ⚖️ SILENCE WHEN THE LIST IS EMPTY, never a hedge. `creator` and `health`
+ * yield nothing today and the block is absent for them — the same rule the
+ * SHAPE block follows.
+ */
+const MAX_VOCAB_TERMS_SHOWN_INLINE = 12
+function renderNicheVocabularyInline(
+  bucket: string | null,
+  terms: readonly VocabularyTermInline[],
+  creatorsInBucket: number,
+): string {
+  if (bucket === null || terms.length === 0) return ''
+  const shown = terms.slice(0, MAX_VOCAB_TERMS_SHOWN_INLINE)
+  const list = shown.map((t) => `${t.term} (${t.creators} creators)`).join(', ')
+  return `\n\nWORDS THIS FIELD USES (vocabulary only - NOT a source of claims)
+- Terms used by at least ${MIN_CREATORS_FOR_TERM_INLINE} DIFFERENT creators in ${bucket}, and by
+  creators in no other field: ${list}
+- Drawn from ${creatorsInBucket} creators in this field. The number after each term is
+  how many different creators used it, which is what makes it terminology
+  rather than one person's habit.
+- ⚠️ These are WORDINGS she may reach for, never facts she may assert. Every
+  claim in the script still comes from HER MATERIAL and nothing else. Do not
+  use a term to introduce a product, a result or an experience she has not
+  described.`
+}
+// ── END NICHE VOCABULARY ──────────────────────────────────────────────────
+
 function nicheBucketInline(niche: unknown): string | null {
   const t = typeof niche === 'string' ? niche.trim() : ''
   if (t === '') return null
@@ -5509,6 +5637,10 @@ Deno.serve(async (req: Request) => {
   // classified shape on 2026-09-13, so 4,000 is comfortable headroom and still
   // a number that will one day be hit — which is what the fullness check is for.
   const CLASSIFIED_CARD_CAP = 4000
+  // ⚠️ HIGHER THAN THE SHAPE CAP BECAUSE IT READS EVERY CARD, not only the
+  // classified tenth. 6,276 cards on 2026-09-14, so 12,000 is headroom that
+  // will still one day be hit — which is what the fullness refusal is for.
+  const VOCAB_CARD_CAP = 12000
   const { data: corpusCards } = await admin
     .from('gallery_items')
     .select('niche, caption_shape')
@@ -6515,6 +6647,111 @@ Deno.serve(async (req: Request) => {
     // the creator typed (Onboarding.tsx stores `offer` only when they touched
     // it), so preferring it is not preferring a newer guess.
     const niche = vp?.niche ?? dna.niche ?? 'unspecified'
+
+    // ── THE NICHE'S OWN VOCABULARY, CACHED WEEKLY ─────────────────────────────
+    //
+    // ⚠️ `nicheVocabularies` WAS BUILT, TESTED, AND CALLED BY NOTHING.
+    // `check_symbol_readers` registered it with the exact unlock condition: "the
+    // prompt assembler calling nicheVocabularies". This is that call.
+    //
+    // ⚖️ WEEKLY AND LAZY, NOT PER GENERATION, BECAUSE OF WHAT THE RULE NEEDS. A
+    // term is terminology because it is DISTINCTIVE, and distinctiveness is a
+    // fact about the other buckets — so it cannot be computed from her cohort
+    // alone. Corpus-wide on every generation would be a ~6,000-row read in front
+    // of a creator waiting for a script.
+    //
+    // ⚖️ AND THE ONE REFRESH A WEEK IS AFFORDABLE WHERE SIX DOWNLOADS WOULD NOT
+    // BE. "Off the critical path or not at all" was written about video
+    // downloads costing seconds each. This is one indexed read of three text
+    // columns, inside a request that already spends tens of seconds in model
+    // calls, once every seven days.
+    //
+    // ⚠️ A STALE ROW IS USED, NEVER DISCARDED. If the refresh fails, the previous
+    // week's terms are still terminology — vocabulary does not rot in seven days.
+    // Discarding them on a failed refresh would turn a slow cache into silence.
+    const VOCAB_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+    const herBucket = nicheBucketInline(niche)
+    let vocabTerms: VocabularyTermInline[] = []
+    let vocabCreators = 0
+    if (herBucket !== null) {
+      try {
+        const { data: cached } = await admin
+          .from('niche_vocabulary')
+          .select('terms, creators_in_bucket, computed_at')
+          .eq('bucket', herBucket)
+          .maybeSingle()
+        const computedAt = cached?.computed_at ? Date.parse(String(cached.computed_at)) : NaN
+        const fresh = Number.isFinite(computedAt)
+          && Date.now() - computedAt < VOCAB_MAX_AGE_MS
+        if (cached && Array.isArray(cached.terms)) {
+          vocabTerms = cached.terms as VocabularyTermInline[]
+          vocabCreators = typeof cached.creators_in_bucket === 'number'
+            ? cached.creators_in_bucket : 0
+        }
+        if (!fresh) {
+          // ⚠️ EVERY BUCKET IS RECOMPUTED, NOT JUST HERS, and that is forced by
+          // the rule rather than chosen: the distinctiveness gate asks how many
+          // OTHER buckets a term appears in, so a single-bucket recompute would
+          // skip the gate entirely and return the common-word list — exactly
+          // what `nicheVocabulary` (singular) warns it cannot avoid.
+          const { data: vocabCards } = await admin
+            .from('gallery_items')
+            .select('niche, creator, title')
+            .limit(VOCAB_CARD_CAP)
+          const rows = Array.isArray(vocabCards) ? vocabCards : []
+          // ⚠️ A TRUNCATED READ IS NOT A CORPUS. At the cap we cannot know which
+          // terms are distinctive, so the previous row stands and nothing is
+          // written — the same refusal `corpusCardsComplete` makes for shapes.
+          if (rows.length > 0 && rows.length < VOCAB_CARD_CAP) {
+            const byBucket = new Map<string, Array<{ creator: string | null; title: string | null }>>()
+            const creatorsByBucket = new Map<string, Set<string>>()
+            for (const r of rows) {
+              const b = nicheBucketInline((r as { niche: unknown }).niche)
+              if (b === null) continue
+              const creator = typeof (r as { creator: unknown }).creator === 'string'
+                ? String((r as { creator: unknown }).creator).trim() : ''
+              let list = byBucket.get(b)
+              if (list === undefined) { list = []; byBucket.set(b, list) }
+              list.push({
+                creator: creator === '' ? null : creator,
+                title: typeof (r as { title: unknown }).title === 'string'
+                  ? String((r as { title: unknown }).title) : null,
+              })
+              if (creator !== '' && creator !== '@') {
+                let set = creatorsByBucket.get(b)
+                if (set === undefined) { set = new Set(); creatorsByBucket.set(b, set) }
+                set.add(creator)
+              }
+            }
+            const computed = nicheVocabulariesInline(byBucket)
+            const writes = [...computed.entries()].map(([bucket, terms]) => ({
+              bucket,
+              terms,
+              creators_in_bucket: creatorsByBucket.get(bucket)?.size ?? 0,
+              computed_at: new Date().toISOString(),
+            }))
+            if (writes.length > 0) {
+              // ⚠️ AN EMPTY LIST IS WRITTEN AS A ROW. "We looked and nothing
+              // cleared the gates" (creator and health today) must be
+              // distinguishable from "the refresh never ran", because those need
+              // opposite responses.
+              await admin.from('niche_vocabulary').upsert(writes, { onConflict: 'bucket' })
+              const mineNow = computed.get(herBucket)
+              if (mineNow !== undefined) {
+                vocabTerms = mineNow
+                vocabCreators = creatorsByBucket.get(herBucket)?.size ?? 0
+              }
+            }
+          }
+        }
+      } catch {
+        // ⚖️ VOCABULARY IS NEVER WORTH A GENERATION. A failed read or write
+        // leaves whatever the cache already gave us, which may be last week's
+        // terms or nothing at all.
+      }
+    }
+    const vocabBlock = renderNicheVocabularyInline(herBucket, vocabTerms, vocabCreators)
+
     const audience = brief.audience ?? vp?.audience ?? dna.audience ?? 'unspecified'
     const offer = brief.offer ?? vp?.offer ?? dna.product ?? 'unspecified'
     const pain = vp?.audience_pain ?? dna.pain ?? ''
@@ -8086,11 +8323,11 @@ ${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
 - Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
 ${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${vocabBlock}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${vocabBlock}`
 
     // The DNA is fenced too. It reads like our own text, but every field in it
     // was synthesized from captions we scraped — so it is exactly as
