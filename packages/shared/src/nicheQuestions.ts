@@ -242,6 +242,166 @@ const SELLS_OVERRIDES: Readonly<Record<SellsKind, { ask: string; hint: string }>
  * overrides and 0 land in no bucket at all — they get the bank that has always
  * been there, which is not a degraded state.
  */
+/**
+ * THE OPENING THREE, WORDED FOR WHAT SHE SELLS.
+ *
+ * ⚠⚠ THE OPENING THREE HAD NO NICHE WORDING AT ALL, AND THAT WAS THE WHOLE
+ * COMPLAINT. `OVERRIDES` covers number_that_matters / own_method /
+ * first_thing_asked; `OPENING_THREE` is expensive_lesson / best_result /
+ * contrarian. A DISJOINT SET. So every creator saw the same three sentences no
+ * matter what she does, and "what does almost everyone in your NICHE believe"
+ * was asked of people whose niche we had not read yet.
+ *
+ * ⚠️ AND THE KEY IS `sells`, NOT NICHE. A coach has clients who arrive stuck; a
+ * chef has clients who are tired at 6pm; a template seller has buyers who click
+ * a link. Inside one niche those are different jobs, and a question that assumes
+ * the wrong one cannot be answered honestly — which is how a digital-product
+ * seller came to be asked what she says when a founder comes to her stuck.
+ *
+ * ⚠️ FOUR VARIANTS, NOT SEVEN, AND THE MISSING ONES ARE MISSING FOR A REASON.
+ * `SELLS_KINDS` is service | physical | digital because that is what
+ * `sellsKindOf` can DERIVE from the products table. A local service (chef,
+ * cleaner) and a remote one (coach, agency) genuinely want different words, but
+ * nothing recorded anywhere says which a creator is — there is no in-person
+ * signal — so inventing the split would mean guessing, and a guess here asks
+ * somebody about a relationship they do not have. Membership and software
+ * already arrive as `digital` through `TYPE_SELLS`. `null` covers both "sells
+ * nothing" and a MIXED library, where choosing one kind would be a coin-flip
+ * printed as a question about her work.
+ *
+ * ⚖️ SO `service` TAKES THE WORDING THAT IS TRUE OF BOTH. "What do people
+ * assume about hiring someone like you that is wrong" reads correctly for a chef
+ * and for a consultant; "when a client comes to you stuck" does not, and it is
+ * the sentence that misfired in the first place.
+ */
+const OPENING_BY_SELLS: Readonly<Record<
+  SellsKind | 'none',
+  Readonly<Record<string, { ask: string; hint: string }>>
+>> = Object.freeze({
+  service: Object.freeze({
+    expensive_lesson: {
+      ask: 'What did a job cost you more than you charged?',
+      hint: 'The hours, the travel, the materials — and what you price differently now.',
+    },
+    best_result: {
+      ask: 'What did a client tell you that you still repeat?',
+      hint: 'Their words, not the outcome you would write on a website.',
+    },
+    contrarian: {
+      ask: 'What do people assume about hiring someone like you that is wrong?',
+      hint: 'What they think they are buying, and what they are actually buying.',
+    },
+  }),
+  physical: Object.freeze({
+    expensive_lesson: {
+      ask: 'What did you buy too much of, or price too low?',
+      hint: 'Stock, packaging, a machine — and what you do now.',
+    },
+    best_result: {
+      ask: 'What is the best thing a customer did after receiving one?',
+      hint: 'A message, a photo, a reorder — with the number if you have it.',
+    },
+    contrarian: {
+      ask: 'What do people assume about how it is made, or what it costs?',
+      hint: 'Name the assumption, then what is actually true.',
+    },
+  }),
+  digital: Object.freeze({
+    expensive_lesson: {
+      ask: 'What did you build that nobody used, and what did you learn?',
+      hint: 'The thing you were sure of, and what the buyers did instead.',
+    },
+    best_result: {
+      ask: 'What did a buyer do with it that you did not expect?',
+      hint: 'What they made, changed or kept doing — with the number if you have it.',
+    },
+    contrarian: {
+      ask: 'What do buyers expect to find inside that is not there — or the reverse?',
+      hint: 'The thing they ask for, and why you left it out.',
+    },
+  }),
+  none: Object.freeze({
+    expensive_lesson: {
+      ask: 'What did you get wrong publicly, and what changed after?',
+      hint: 'What you said, what happened, and what you do differently now.',
+    },
+    best_result: {
+      ask: 'Which video or post outperformed everything — and what was different about it?',
+      hint: 'The numbers if you have them, and what you think made it land.',
+    },
+    contrarian: {
+      ask: 'What does everyone in your corner of the internet repeat that you think is wrong?',
+      hint: 'Name what they say, then what you say instead.',
+    },
+  }),
+})
+
+/**
+ * ⚠⚠ UNDER 1,000 FOLLOWERS THE RESULT QUESTION HAS NO ANSWER, AND ASKING FOR A
+ * NUMBER SHE DOES NOT HAVE READS AS AN ACCUSATION. It replaces `best_result`
+ * only, and only at that band — the other two are answerable at any size.
+ */
+const UNDER_1K_BEST_RESULT = Object.freeze({
+  ask: 'What is the best thing that has happened because of something you posted?',
+  hint: 'A message, a reply, someone showing up — whatever actually happened.',
+})
+
+
+/**
+ * What she sells, including the case where the honest answer is "nothing".
+ *
+ * ⚠⚠ `sellsKindOf` RETURNS null FOR TWO DIFFERENT FACTS and that is right for
+ * what it does: an EMPTY library and a MIXED one both mean "no single kind".
+ * But they are opposite situations for a question. A creator with no products is
+ * a commentator and can be asked what she got wrong publicly; a creator with a
+ * service AND a candle line has two kinds of buyer and must be asked neither
+ * one's question. Only a caller holding the list can tell them apart, so this
+ * makes the distinction here rather than guessing downstream.
+ *
+ * ⚖️ AND "NO OWNED PRODUCTS" IS NOT "NO ROWS". A library of affiliate rows is
+ * somebody else's product; she still sells nothing of her own.
+ */
+export function sellsFacetOf(
+  products: ReadonlyArray<{ type?: unknown; relationship?: unknown }> | null | undefined,
+): SellsKind | 'none' | null {
+  if (!Array.isArray(products)) return null
+  const owned = products.filter((p) => {
+    const rel = typeof p?.relationship === 'string' ? p.relationship : ''
+    return rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
+  })
+  if (owned.length === 0) return 'none'
+  return sellsKindOf(owned)
+}
+
+/**
+ * The opening three, worded for this creator.
+ *
+ * ⚠️ THE ID NEVER CHANGES, ONLY THE WORDS. `CreatorQuestion.id` is what
+ * "already answered" and "already skipped" are keyed on, so a creator who
+ * answered `contrarian` must never meet it again wearing new wording.
+ *
+ * ⚖️ AND AN UNKNOWN `sells` FALLS BACK TO THE PLAIN BANK RATHER THAN TO
+ * `none`. "Sells nothing" is a FACT about a creator, not a synonym for "we could
+ * not tell" — a mixed library and a pure commentator are different people, and
+ * the commentator's wording asked of a chef is worse than the generic.
+ */
+export function openingQuestionsFor(
+  bank: readonly CreatorQuestion[],
+  sells: SellsKind | 'none' | null,
+  stageBand: string | null = null,
+): readonly CreatorQuestion[] {
+  const table = sells === null ? null : OPENING_BY_SELLS[sells]
+  if (table === null) return bank
+  return bank.map((q) => {
+    const o = table[q.id]
+    if (!o) return q
+    if (q.id === 'best_result' && stageBand === 'under_1k') {
+      return { ...q, ask: UNDER_1K_BEST_RESULT.ask, hint: UNDER_1K_BEST_RESULT.hint }
+    }
+    return { ...q, ask: o.ask, hint: o.hint }
+  })
+}
+
 export function creatorQuestionsFor(
   niche: unknown,
   bank: readonly CreatorQuestion[] = CREATOR_QUESTIONS,

@@ -82,7 +82,9 @@ describe('the choice is written where it can be counted', () => {
     // here would lose the creator their script.
     const region = EDGE.slice(EDGE.indexOf("from('generation_choices')"))
       .slice(0, 1800)
-    expect(region).toMatch(/choices not recorded/)
+    // ⚠️ RE-ANCHORED: the console string became a durable `ops_events` row.
+    // The claim — reported, never thrown — is unchanged.
+    expect(region).toMatch(/lost\('generation_choices', error\)/)
     expect(region).not.toMatch(/throw |return json\(/)
   })
 

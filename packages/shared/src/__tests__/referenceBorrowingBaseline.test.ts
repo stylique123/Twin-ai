@@ -15,6 +15,13 @@
  * either a fixture was edited or the MEASURE was changed, and both need saying
  * out loud rather than re-freezing.
  *
+ * ⚠️ THE PARAGRAPH BELOW IS NO LONGER TRUE AND IS KEPT BECAUSE IT WAS. The
+ * reduction HAS since been observed — observationally, on eleven production runs
+ * — in the last describe block of this file, which also says plainly what kind
+ * of evidence that is and what it still does not establish. The claim that
+ * observing it "requires generating new scripts" was the part that was wrong:
+ * the writer was running in production the whole time.
+ *
  * ⚖️ WHAT THIS FILE CANNOT SHOW. It cannot show the reduction. The fix removes
  * verbatim text from the WRITER'S PROMPT, and observing the effect of that
  * requires generating new scripts, which requires a model key this environment
@@ -132,5 +139,107 @@ describe('the reduction this change predicts (requires a model key)', () => {
 
   it('states plainly, in the suite output, that the reduction is unmeasured here', () => {
     expect(process.env.GEMINI_API_KEY ?? '').toBe('')
+  })
+})
+
+/**
+ * THE REDUCTION, OBSERVED — AND WHAT KIND OF EVIDENCE IT IS.
+ *
+ * ⚠️ THE HEADER OF THIS FILE SAID "NO REDUCTION HAS BEEN OBSERVED". That was
+ * true when written and is no longer true. It also said the comparison "requires
+ * generating new scripts, which requires a model key this environment does not
+ * have" — and that framing is what kept this unanswered for a fortnight. It was
+ * wrong in one specific way: the scripts did not need to be GENERATED HERE. The
+ * writer has been running in production the whole time, and every script it
+ * produced is stored next to the reference transcript it was given. The runs
+ * were already paid for; nothing was waiting on a key.
+ *
+ * ⚖️ WHAT THIS IS: eleven production generations from 2026-09-01 onward, read
+ * out of `generations` joined to `transcripts` on 2026-09-13, frozen here as
+ * fixtures. Graded by the SAME `measureVerbatimOverlap` the baseline above uses.
+ *
+ * ⚠️ WHAT IT IS NOT: a controlled re-run. It is NOT run-D regenerated at
+ * `reference_use=structure`, which is the experiment the skipped test below
+ * still names and still nobody has run. These are different creators, different
+ * references and different products from the four baseline runs, so the
+ * comparison is OBSERVATIONAL and cannot on its own establish cause.
+ *
+ * ⚖️ WHAT MAKES IT WORTH FREEZING ANYWAY is the like-for-like inside it. The
+ * baseline's borrowing was WORST at `close_to_the_reference` (8 content words)
+ * and at the loosest setting (17). SIX of these eleven runs are `close` — the
+ * setting that used to borrow most — and the longest shared run across all
+ * eleven is TWO. Run B of the baseline, the negative control, sits at 1. Every
+ * one of these eleven now looks like run B.
+ *
+ * ── THE POPULATION, AND WHY IT IS ELEVEN AND NOT MORE ─────────────────────
+ *
+ * Rules fixed BEFORE any overlap was computed, so the filter could not be tuned
+ * to the answer:
+ *   · reference transcript >= 200 chars, and not the Rickroll lyric fixture —
+ *     the June test traffic used joke references ("I love you", Never Gonna
+ *     Give You Up), and borrowing from a joke is not a measurement.
+ *   · >= 4 non-blank spoken lines. A beat with no creator fact is deliberately
+ *     left EMPTY carrying `substance: needs_user` and an `ask`. On 2026-09-01
+ *     and 02, eleven runs for three creators were mostly such beats. Those runs
+ *     charged ZERO credits and are the system refusing to invent — but a script
+ *     with no sentences cannot borrow, so including them would have MANUFACTURED
+ *     a reduction out of scripts that were never written.
+ * One further run (3b19ada0) is excluded by name: two of its beats carry the
+ * pre-#704 ask-leak, where Twin's own question reached the spoken `line`, so its
+ * lines are not purely creator speech.
+ */
+describe('reference borrowing in production after the fix — frozen observation', () => {
+  const POST: ReadonlyArray<{ id: string; f: string; lines: string[]; ref: string }> =
+    JSON.parse(readFileSync(fileURLToPath(
+      new URL('./fixtures/postFixRuns.json', import.meta.url)), 'utf8'))
+
+  it('is the population the rules above select, not a hand-picked one', () => {
+    // Pins the fixture so a later edit that drops an inconvenient run is visible
+    // in the diff rather than silently improving the headline.
+    expect(POST.length).toBe(11)
+    expect(POST.filter((r) => r.f === 'close').length).toBe(6)
+    expect(POST.every((r) => r.ref.length >= 200)).toBe(true)
+    expect(POST.every((r) => r.lines.filter((l) => l.trim() !== '').length >= 4)).toBe(true)
+  })
+
+  it('carries NOT ONE sentence at the copying threshold, where the baseline carried four', () => {
+    let sentences = 0, high = 0, worst = 0
+    for (const r of POST) {
+      const m = measureVerbatimOverlap(r.lines, r.ref)
+      sentences += m.sentences; high += m.highOverlapSentences
+      worst = Math.max(worst, m.longestRun)
+    }
+    // Baseline, for the reader: 26 sentences, 4 high, longest 17.
+    expect({ sentences, high, worst }).toEqual({ sentences: 103, high: 0, worst: 2 })
+  })
+
+  it('holds at `close`, which is the setting that used to borrow most', () => {
+    // The baseline's `close_to_the_reference` run carried an 8-word run. If the
+    // reduction were an artefact of creators simply choosing looser settings,
+    // this is where it would show.
+    for (const r of POST.filter((x) => x.f === 'close')) {
+      const m = measureVerbatimOverlap(r.lines, r.ref)
+      expect({ id: r.id, high: m.highOverlapSentences }).toEqual({ id: r.id, high: 0 })
+      expect(m.longestRun).toBeLessThan(HIGH_OVERLAP_RUN_WORDS)
+    }
+  })
+
+  it('would notice if a run started borrowing again', () => {
+    // ⚠️ THE MUTATION, IN THE TEST ITSELF. A suite that reports zero is worth
+    // nothing unless it can report non-zero on this exact fixture shape. Splice
+    // a real verbatim run of one fixture's own reference into its script and the
+    // measure must catch it — otherwise the zeros above are a broken measure,
+    // not a clean corpus.
+    // ⚠️ THE FIRST MUTANT HERE WAS TOO WEAK AND THE TEST WAS WRONG, NOT THE
+    // MEASURE. It spliced the reference's first 20 WORDS, which straddle several
+    // sentences; the measure grades PER SENTENCE, so each fragment landed under
+    // the six-content-word bar and the mutant survived for an honest reason. The
+    // genuinely broken case is a whole long sentence reproduced verbatim, which
+    // is also what the 17-word run in baseline run D actually was.
+    const r = POST[0]
+    const stolen = r.ref.split(/(?<=[.!?])\s+/).sort((a, b) => b.length - a.length)[0]
+    const m = measureVerbatimOverlap([...r.lines, stolen], r.ref)
+    expect(m.highOverlapSentences).toBeGreaterThan(0)
+    expect(m.longestRun).toBeGreaterThanOrEqual(HIGH_OVERLAP_RUN_WORDS)
   })
 })

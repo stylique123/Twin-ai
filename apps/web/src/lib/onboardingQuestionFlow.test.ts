@@ -80,7 +80,13 @@ describe('finishing is something the creator does', () => {
     expect(at, 'the handover call was not found').toBeGreaterThan(-1)
     const guard = SRC.slice(SRC.lastIndexOf('if (', at), at)
     expect(guard, 'handover must wait on the questions').toMatch(/questionsDone/)
-    expect(guard, 'handover must wait on the story interview').toMatch(/storiesDone/)
+    // ⚠⚠ THE `storiesDone` HALF IS GONE BECAUSE THE STORIES LEFT THIS SCREEN.
+    // They now have their own step AFTER the scan, so the scan cannot interrupt
+    // them at all -- it has already finished before that step renders. That is
+    // STRONGER than gating handover on them, not weaker, and asserting a flag
+    // that no longer exists would pin the old shape rather than the property.
+    // The property is asserted where it now lives, in
+    // `Onboarding.storiesAfterDna.test.tsx`.
     expect(guard).toMatch(/readyProfile/)
   })
 })
@@ -100,9 +106,13 @@ describe('the story interview is actually on the screen', () => {
   // ⚖️ IT OCCUPIES THE WAIT, NOT A NEW SCREEN. The measured lesson is that a
   // dedicated screen becomes the 0-row Product Library; a question inside an
   // existing wait gets answered.
-  it('renders only once the categorical questions are done and before the thanks', () => {
-    expect(SRC).toMatch(/\{!err && questionsDone && !storiesDone && \(/)
-    expect(SRC).toMatch(/\{!err && questionsDone && storiesDone && \(/)
+  it('⚠️ is NOT on the scan screen any more — that was the whole defect', () => {
+    // It used to render here, while the scan ran, which is why it could never be
+    // worded in her world: no niche, no `sells`, no follower count yet. It now
+    // has its own step, reached only once the scan has landed.
+    const building = SRC.slice(SRC.indexOf('function BuildingStep'), SRC.indexOf('function StoryStep'))
+    expect(building).not.toMatch(/<StoryInterview/)
+    expect(SRC).toMatch(/\{mode === 'stories' && draft && \(/)
   })
 
   // ⚠️ IT IS HANDED THE VOICE, or the answers attach to nothing.

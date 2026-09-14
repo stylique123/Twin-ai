@@ -37,7 +37,16 @@ export function TwinStrengthCard({ voiceId }: { voiceId?: string | null }) {
           {nudge !== '' && (
             <p className="mt-1 text-xs text-stone">
               {nudge}{' '}
-              <Link to="/settings" className="text-teal hover:text-cream underline underline-offset-2">
+              {/* ⚠⚠ IT POINTED AT `/settings` AND THE PROMISE IS "teach it
+                  something". A link whose whole offer is the teaching must land
+                  ON the teaching, not near it — a creator who arrives on a tabbed
+                  page and has to go looking is the "complete feature, zero rows"
+                  failure the question's own move was betting against.
+                  ⚖️ THE ANCHOR ALREADY EXISTED AND THIS LINK DID NOT USE IT.
+                  `TwinKnowledgeLink` has pointed at `/settings#my-twin` since the
+                  question moved, and Settings honours the hash by selecting the
+                  tab and scrolling. One of two callers read around it. */}
+              <Link to="/settings#my-twin" className="text-teal hover:text-cream underline underline-offset-2">
                 Teach it something
               </Link>
             </p>

@@ -192,7 +192,7 @@ function followerBandInline(followers: unknown): string | null {
 }
 
 async function recordWhatWasChosen(admin: {
-  from: (t: string) => { insert: (row: Record<string, unknown>) => PromiseLike<{ error: { message?: string } | null }> }
+  from: (t: string) => { insert: (row: Record<string, unknown>) => PromiseLike<{ error: { message?: string; code?: string } | null }> }
 }, input: {
   generationId: string
   ownerId: string
@@ -235,6 +235,53 @@ async function recordWhatWasChosen(admin: {
    *  block that was not emitted has no n, and 0 would aggregate as one. */
   shapeEmissionN: number | null
 }): Promise<void> {
+  // ⚠⚠ A ROW THAT DID NOT LAND USED TO SAY SO ONLY IN AN EDGE LOG, AND EDGE
+  // LOGS EXPIRE WITHIN DAYS. This is the exact shape of the C8 defect the
+  // counter-durability guard was built for: "we durably recorded the failure of
+  // the failure handler and not the failure."
+  //
+  // ⚠⚠ AND THE FAILURE THIS CATCHES IS NOT HYPOTHETICAL — IT NEARLY HAPPENED
+  // ON 2026-09-13. Migration 0203 was believed applied and was not, so
+  // `generation_outcomes` had no `creator_stage_band` column while the handler
+  // had already started writing one. PostgREST rejects the WHOLE insert for one
+  // unknown column (PGRST204), so the outcome row for every generation would
+  // have been lost — not the one field — and the only trace would have been a
+  // `console.warn` nobody reads. The same mechanism cost two days once already
+  // (0190 unapplied while the handler wrote `is_heartbeat`).
+  //
+  // ⚖️ STILL NON-FATAL, AND DELIBERATELY SO. The creator has paid for a build
+  // and it succeeded; failing her request because a bookkeeping row did not land
+  // would turn a reporting gap into an outage. Loud and durable, never fatal.
+  const lost = (table: string, error: { message?: string; code?: string } | null): void => {
+    const code = error?.code ?? ''
+    console.error('generation_record_not_written', table, code, error?.message ?? '')
+    // ⚠⚠ try/catch AND a rejection handler, BECAUSE THEY CATCH DIFFERENT
+    // THINGS. `.then(ok, err)` handles a REJECTED promise; it does nothing for a
+    // client that throws SYNCHRONOUSLY from `.insert(...)`. The first draft had
+    // only the rejection handler, and the test that throws synchronously failed
+    // — the failure handler would have become the outage it exists to prevent.
+    try {
+      void admin.from('ops_events').insert({
+        kind: 'generation_record_not_written',
+        // ⚠️ PGRST204 IS SCHEMA DRIFT, WHICH IS AN OUTAGE OF THE RECORD ITSELF
+        // AND NOT ONE BAD ROW. It means the code and the database disagree about
+        // what columns exist, so EVERY subsequent generation loses the same row
+        // until someone applies the migration. Anything else is one row.
+        severity: code === 'PGRST204' ? 'error' : 'warning',
+        user_id: input.ownerId,
+        detail: {
+          fn: 'generate-blueprint',
+          table,
+          code,
+          generation_id: input.generationId,
+          error: (error?.message ?? '').slice(0, 500),
+        },
+      }).then(() => {}, () => {})
+    } catch {
+      // Nothing left to report it TO. The build still succeeded.
+    }
+  }
+
   // ⚖️ STORED AS SENT, NOT NARROWED TO THE CURRENT ENUM. A value retired between
   // the choice and the query is exactly the history worth keeping, and dropping it
   // would silently under-count the past. Length is capped because this is
@@ -255,7 +302,7 @@ async function recordWhatWasChosen(admin: {
       reference_use: text(input.rawReferenceUse),
       selected_product_id: input.selectedProductId,
     })
-    .then(({ error }) => { if (error) console.warn('choices not recorded:', error.message) })
+    .then(({ error }) => { if (error) lost('generation_choices', error) })
 
   // ⚠️ THE OUTCOME COLUMNS ARE LEFT NULL ON PURPOSE AND `was_filmed` IS
   // THREE-STATE. NULL is "not asked yet"; `false` is "she looked at it and did not
@@ -288,7 +335,7 @@ async function recordWhatWasChosen(admin: {
       shape_block: input.shapeEmission,
       shape_block_n: input.shapeEmissionN,
     })
-    .then(({ error }) => { if (error) console.warn('outcome row not opened:', error.message) })
+    .then(({ error }) => { if (error) lost('generation_outcomes', error) })
 }
 
 // Keep the opening AND closing of long source text. A hard head-only cut loses
