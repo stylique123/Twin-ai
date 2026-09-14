@@ -7281,6 +7281,17 @@ Deno.serve(async (req: Request) => {
     const knowledge = Array.isArray((ownedEntity as { knowledge?: unknown } | null)?.knowledge)
       ? ((ownedEntity as { knowledge: unknown[] }).knowledge)
       : []
+    // ⚠️ BELOW THIS MANY GRADED FACTS, THE GRADED BLOCK CANNOT CARRY A SCRIPT
+    // ALONE and the creator's own description is emitted beside it.
+    //
+    // ⚖️ THREE, FROM THE BEAT COUNT RATHER THAN FROM TASTE. A 30-second script
+    // is 4-6 beats and a 90-second one is 8; a name plus one attribute cannot
+    // fill either, and the production rows above show ONE is the common case,
+    // not zero. Three is the smallest number that could plausibly carry a short
+    // script without the writer asking the creator for substance -- and when the
+    // graded block is genuinely rich, the description stays out of the way
+    // exactly as it did before.
+    const MIN_GRADED_FACTS_TO_STAND_ALONE = 3
     const usableProductFacts = knowledge
       .filter((f) => (f as { trust?: unknown })?.trust === 'usable')
       .map((f) => {
@@ -7351,7 +7362,33 @@ Deno.serve(async (req: Request) => {
     const creatorSummaryLine = typeof (ownedEntity as { creator_summary?: unknown } | null)?.creator_summary === 'string'
       ? String((ownedEntity as { creator_summary: string }).creator_summary).trim()
       : ''
-    if (usableProductFacts.length === 0 && creatorSummaryLine !== '') {
+    // ⚠️⚠️ THE GATE WAS `=== 0` AND ONE THIN FACT IS NOT A PRODUCT. Measured on
+    // production 2026-09-14 for the account that produced the ask-beats:
+    //
+    //   Pueblo Bifold ......... 1 usable fact, 70-char description
+    //   The Nook Pattern ...... 1 usable fact, 58-char description
+    //   Custom Bible Rebind ... 0 usable facts, 97-char description
+    //
+    // At exactly zero the creator's own sentence was emitted and the rebind
+    // scripts read fine. At ONE it was SUPPRESSED -- the facts block fired with
+    // a single attribute and the description was withheld -- so the writer had
+    // a name and one field to fill six beats from. That is the measured
+    // symptom: the Nook produced 1 ask-beat at 30s and 2 at 90s, because more
+    // beats against the same one fact is proportionally more holes.
+    //
+    // ⚖️ AND IT EXPLAINS THE CONTRADICTION THE CREATOR SAW ON ONE SCREEN. The
+    // panel said "Yours, and you use it" (read off the entity) two lines above a
+    // scene saying "nothing about it was supplied" (read off these facts). Both
+    // were true of what they read; neither was true of the product.
+    //
+    // ⚖️ THE ORIGINAL WORRY STILL STANDS AND IS STILL HONOURED: an ungraded
+    // sentence must not inherit the trust of reviewed ones. It does not -- it
+    // keeps its own label, below the graded block, saying nothing was verified.
+    // What changes is only WHEN a thin graded block counts as enough. The two
+    // are also answering different questions: the graded facts say what may be
+    // CLAIMED, this line says what the thing IS and who it is FOR, and no
+    // classifier ever graded the second.
+    if (usableProductFacts.length < MIN_GRADED_FACTS_TO_STAND_ALONE && creatorSummaryLine !== '') {
       claimLines.push('\n- HOW THE CREATOR DESCRIBES THIS PRODUCT, in their own words: '
         + creatorSummaryLine.slice(0, 300)
         + '\n  Nothing has been verified about this product beyond this line — it is the creator\'s own description, not a checked fact. Use it to know what the thing IS and who it is FOR. Do not turn it into a capability claim, a result or a figure.')
