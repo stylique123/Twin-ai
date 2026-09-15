@@ -37,7 +37,7 @@
 import { CREATOR_QUESTIONS, type CreatorQuestion } from './creatorQuestions'
 
 export const NICHE_BUCKETS = [
-  'business', 'tech', 'entertainment', 'health', 'beauty_fashion', 'food', 'creator',
+  'business', 'tech', 'entertainment', 'health', 'beauty_fashion', 'food', 'creator', 'making',
 ] as const
 export type NicheBucket = (typeof NICHE_BUCKETS)[number]
 
@@ -58,6 +58,19 @@ const BUCKET_PATTERNS: ReadonlyArray<{ bucket: NicheBucket; test: RegExp }> = [
   { bucket: 'health', test: /\b(fitness|health\w*|physio\w*|training|wellness|rehab)\b/i },
   { bucket: 'creator', test: /\b(content creation|creators?|youtube|tiktok|short-?form)\b/i },
   { bucket: 'entertainment', test: /\b(entertainment|humou?r|comedy|challenges?|dubbing|music|skits?)\b/i },
+  // ⚠️⚠️ THE FOUR NICHES NOTHING CLASSIFIED, AND THEY WERE ALL ONE KIND OF
+  // PERSON. Measured 2026-09-15 over the 47 distinct stored niches: exactly four
+  // returned null, and every one of them makes or repairs a physical thing by
+  // hand — "Leathercraft & Custom Bible Rebinding", "Handmade Soy Candles &
+  // Personal Lifestyle Storytelling", "Mobile Auto Repair & Mechanic Storytime",
+  // "Women's Empowerment & Trades". A bucket of four beats `beauty_fashion`'s
+  // zero and `food`'s two, so this clears the bar this file sets for itself.
+  //
+  // ⚖️ LAST, SO COMMERCE AND FOOD STILL WIN. "Luxury resale" is business and
+  // "micro-bakery" is food even though both involve making something; putting
+  // this ahead of them would re-bucket creators whose questions are already
+  // right. Every keyword below matched a real stored niche.
+  { bucket: 'making', test: /\b(leather\w*|bookbind\w*|rebind\w*|handmade|hand-made|craft\w*|maker|makers|woodwork\w*|candles?|sewing|pottery|ceramics?|jewel\w*|trades?|tradie|mechanic\w*|repair\w*|restorations?|welding|carpent\w*|plumb\w*|electrician)\b/i },
 ]
 
 /** The bucket a stored niche falls in, or null when nothing matches. */
@@ -92,6 +105,18 @@ const OVERRIDES: Readonly<Record<NicheBucket, Readonly<Record<string, { ask: str
       ask: 'When a founder comes to you stuck, what do you ask them first?',
       hint: 'The question that tells you what is really wrong.',
     },
+    expensive_lesson: {
+      ask: 'What did you spend money on that did not work?',
+      hint: 'The bet, roughly what it cost, and what you do instead now.',
+    },
+    best_result: {
+      ask: 'What is the best result a client has had with you?',
+      hint: 'The number and the timeframe if you have them.',
+    },
+    contrarian: {
+      ask: 'What advice does everyone in your industry give that you think is wrong?',
+      hint: 'Name the advice, then what you tell people instead.',
+    },
   }),
   tech: Object.freeze({
     number_that_matters: {
@@ -106,6 +131,18 @@ const OVERRIDES: Readonly<Record<NicheBucket, Readonly<Record<string, { ask: str
       ask: 'When someone brings you a broken build, what do you check first?',
       hint: 'The check that rules out the most, fastest.',
     },
+    expensive_lesson: {
+      ask: 'What did you ship that broke, and what did it teach you?',
+      hint: 'What went wrong, who it affected, and what you changed.',
+    },
+    best_result: {
+      ask: 'What is the biggest thing you have made something do faster or cheaper?',
+      hint: 'Before and after, with the figures if you have them.',
+    },
+    contrarian: {
+      ask: 'What tool or practice does everyone recommend that you avoid?',
+      hint: 'Name it, then what you use instead and why.',
+    },
   }),
   // ⚖️ WRITTEN AS EMPTY ON PURPOSE, NOT OMITTED. An empty override says
   // "measured, and too few to write for"; a gap in the type would say nobody
@@ -119,11 +156,54 @@ const OVERRIDES: Readonly<Record<NicheBucket, Readonly<Record<string, { ask: str
   // pattern is right and the corpus will grow; it is not kept because it serves
   // anybody today, and pretending otherwise would be the invented-taxonomy
   // failure `topicLibrary` refuses.
-  entertainment: Object.freeze({}),
+  // ⚖️ NINE OF 47, SO IT EARNS A TABLE NOW. This bucket was written empty when
+  // only `first_thing_asked` varied and the opening three were untouchable; the
+  // opening three are the ones a creator actually meets first.
+  entertainment: Object.freeze({
+    expensive_lesson: {
+      ask: 'What did you post that flopped when you were sure it would work?',
+      hint: 'What you expected, what happened, and what you do differently now.',
+    },
+    best_result: {
+      ask: 'Which video went further than anything else you have made?',
+      hint: 'The numbers if you have them, and what you think made it land.',
+    },
+    contrarian: {
+      ask: 'What do other creators in your corner do that you refuse to do?',
+      hint: 'Name it, then what you do instead.',
+    },
+  }),
+  // ⚖️ HEALTH STAYS EMPTY, AND THAT IS A DECISION I REVERSED ON MYSELF. I wrote
+  // a health table here and deleted it: `a-question-from-another-industry`
+  // records the measured judgement that this bucket is too small to write for,
+  // and it is 4 of 47 today. Overturning a recorded decision as a SIDE EFFECT of
+  // fixing the maker bucket is exactly the unmeasured widening this repo keeps
+  // walking back. If health earns a table it should be its own change, with its
+  // own number.
   health: Object.freeze({}),
   beauty_fashion: Object.freeze({}),
   food: Object.freeze({}),
   creator: Object.freeze({}),
+  // ⚠️ THE BUCKET THAT DID NOT EXIST, AND THE ACCOUNT THAT REPORTED IT. A
+  // leatherworker rebinding Bibles was asked "what did you get wrong publicly"
+  // — the wording reserved for a creator who sells NOTHING — because his niche
+  // matched no pattern and his Product Library was still empty. These three are
+  // about the OBJECT: what it cost to learn a craft, what the object did for
+  // somebody, and what the trade repeats that he disputes.
+  making: Object.freeze({
+    expensive_lesson: {
+      ask: 'What did you have to remake or throw away while learning this?',
+      hint: 'What went wrong with it, and what you do differently at the bench now.',
+    },
+    best_result: {
+      ask: 'What is the piece you were proudest to hand over, and what did they say?',
+      hint: 'What it was for, and what the person did or said when they got it.',
+    },
+    contrarian: {
+      ask: 'What does your trade insist on that you think is wrong?',
+      hint: 'Name what they do, then what you do instead and why it holds up.',
+    },
+  }),
 })
 
 // ── AND INSIDE A BUCKET, WHAT SHE SELLS CHANGES THE QUESTION AGAIN ────────
@@ -365,10 +445,26 @@ export function sellsFacetOf(
   products: ReadonlyArray<{ type?: unknown; relationship?: unknown }> | null | undefined,
 ): SellsKind | 'none' | null {
   if (!Array.isArray(products)) return null
+  // ⚠️⚠️ AN EMPTY LIBRARY IS "WE HAVE NOT ASKED YET", NOT "SHE SELLS NOTHING",
+  // AND CONFLATING THEM PUT THE COMMENTATOR'S WORDING IN FRONT OF EVERY NEW
+  // CREATOR. Onboarding asks the opening three at the `stories` step and mints
+  // the product entity at `confirm`, AFTER it — so at the only moment these
+  // questions are asked the library is ALWAYS empty. This returned 'none', which
+  // `openingQuestionsFor` treats as a FACT, so a leatherworker was asked "what
+  // did you get wrong publicly" and nobody ever saw a niche-worded question.
+  //
+  // ⚖️ THIS IS THE RULE `openingQuestionsFor` ALREADY STATES 20 LINES BELOW:
+  // "an unknown `sells` falls back to the plain bank rather than to `none` —
+  // 'sells nothing' is a FACT about a creator, not a synonym for 'we could not
+  // tell'." That principle was right and this function was the thing breaking it.
+  if (products.length === 0) return null
   const owned = products.filter((p) => {
     const rel = typeof p?.relationship === 'string' ? p.relationship : ''
     return rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
   })
+  // ⚖️ ROWS THAT EXIST AND ARE ALL SOMEBODY ELSE'S IS A REAL 'none'. A library
+  // of affiliate rows says she sells nothing OF HER OWN, which is a fact she
+  // supplied — unlike an empty library, which is a question nobody asked.
   if (owned.length === 0) return 'none'
   return sellsKindOf(owned)
 }
@@ -391,13 +487,23 @@ export function openingQuestionsFor(
   stageBand: string | null = null,
 ): readonly CreatorQuestion[] {
   const table = sells === null ? null : OPENING_BY_SELLS[sells]
-  if (table === null) return bank
-  return bank.map((q) => {
+  // ⚠️ THE BAND OUTRANKS EVERYTHING AND MUST NOT DEPEND ON `sells`. Asking a
+  // 995-subscriber creator which video "outperformed everything" is the
+  // accusation this override exists to prevent, and it was being skipped
+  // entirely whenever `sells` was unknown — which, at the onboarding step where
+  // these are asked, is always. The band is a fact about her account; it does
+  // not become unknowable because her Product Library is empty.
+  const banded = stageBand !== 'under_1k' ? bank : bank.map((q) => (
+    q.id === 'best_result'
+      ? { ...q, ask: UNDER_1K_BEST_RESULT.ask, hint: UNDER_1K_BEST_RESULT.hint }
+      : q
+  ))
+  if (table === null) return banded
+  return banded.map((q) => {
     const o = table[q.id]
     if (!o) return q
-    if (q.id === 'best_result' && stageBand === 'under_1k') {
-      return { ...q, ask: UNDER_1K_BEST_RESULT.ask, hint: UNDER_1K_BEST_RESULT.hint }
-    }
+    // Already replaced above, and the band wins.
+    if (q.id === 'best_result' && stageBand === 'under_1k') return q
     return { ...q, ask: o.ask, hint: o.hint }
   })
 }
