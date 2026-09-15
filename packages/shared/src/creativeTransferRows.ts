@@ -41,6 +41,7 @@ import {
   MISSING_EVIDENCE_TYPES, type EvidenceKind, type EvidenceType,
   type NormalizedReferenceEvidenceV1,
 } from './referenceEvidence.js'
+import { visualEvidenceItems, visualEvidenceRows, visualSourceSentence } from './visualEvidence.js'
 
 export interface TransferRow {
   /** The evidence type this row is about. Stable, so two videos are comparable. */
@@ -119,9 +120,33 @@ export function transferRows(
   // it was not, and 'unknown' (pre-0110 rows) is not a claim either way — so it
   // keeps the default rather than inventing a fact about history.
   transcriptRead = true,
+  /**
+   * The stored `reference_content_profiles.visual_profile`, when there is one.
+   *
+   * ⚠️⚠️ THE NINE "THINGS WE NEVER LOOK AT" IN THIS FILE'S HEADER WERE TRUE WHEN
+   * IT WAS WRITTEN AND THE VISUAL PASS SHIPPED AFTERWARDS. Measured 2026-09-15:
+   * 940 of 2,140 reference profiles carry a visual profile, each field citing
+   * the frames it was read from, while this screen told the creator "We did not
+   * analyse the video". `visualEvidenceRows` fills the THREE gaps it can answer
+   * and leaves zoom, music and visual waste alone, because nothing measures
+   * those and a citation on a guess is worse than the gap.
+   *
+   * ⚖️ DEFAULTS TO null SO EVERY EXISTING CALLER IS UNCHANGED. A surface that
+   * does not hold the profile keeps saying "not observed", which stays true for
+   * it.
+   */
+  visualProfile: unknown = null,
 ): TransferRow[] {
   const rows: TransferRow[] = []
   const seen = new Set<EvidenceType>()
+
+  // ⚖️ BEFORE THE GAP LOOP AND AFTER NOTHING, so a real evidence item for the
+  // same type still wins: the loop below only fills what `seen` has not claimed,
+  // and the evidence set is read first.
+  const visualItems = visualEvidenceItems(visualProfile, { referenceId: '', analysisId: '' })
+  const visualFrames = typeof (visualProfile as { framesSampled?: unknown } | null)?.framesSampled === 'number'
+    ? (visualProfile as { framesSampled: number }).framesSampled
+    : null
 
   for (const item of evidence?.items ?? []) {
     const label = TYPE_LABEL[item.type]
@@ -138,6 +163,26 @@ export function transferRows(
         ? NOT_OBSERVED_SOURCE
         : sourceSentence(item.kind, item.sourcePath, transcriptRead),
       value: item.kind === 'unknown' ? null : item.value,
+    })
+  }
+
+  // What the frames could answer, cited to the frames.
+  for (const item of visualItems) {
+    if (seen.has(item.type)) continue
+    const label = TYPE_LABEL[item.type]
+    if (label === undefined) continue
+    seen.add(item.type)
+    rows.push({
+      type: item.type,
+      label,
+      kind: item.kind,
+      source: visualSourceSentence(
+        // The frame list is rebuilt from the row rather than parsed out of the
+        // sentence, because a sentence is not a data structure.
+        visualEvidenceRows(visualProfile).find((r) => r.type === item.type)?.frames ?? [],
+        visualFrames,
+      ),
+      value: item.value,
     })
   }
 

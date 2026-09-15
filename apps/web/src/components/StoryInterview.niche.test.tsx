@@ -62,24 +62,29 @@ describe('the wording follows the niche once it arrives', () => {
     await waitFor(() => expect(screen.getByText(askOf(first, null))).toBeTruthy())
   })
 
-  it('⚠⚠ TODAY THE OPENING THREE HAVE NO NICHE WORDING AT ALL, AND THIS PINS IT', () => {
-    // MEASURED: OPENING_THREE is expensive_lesson / best_result / contrarian.
-    // The niche OVERRIDES cover number_that_matters / own_method /
-    // first_thing_asked -- a DISJOINT set -- and `sells` rewrites only
-    // first_thing_asked. `nicheQuestions.ts` says so on purpose: "Three of ten.
-    // 'What is something you learned the expensive way?' needs no translation
-    // for anybody."
+  it('⚠⚠ THE OPENING THREE NOW CARRY NICHE WORDING, WHICH IS WHAT THIS PINNED FOR', () => {
+    // ⚠️ THIS TEST USED TO ASSERT THE OPPOSITE, ON PURPOSE. It read "TODAY THE
+    // OPENING THREE HAVE NO NICHE WORDING AT ALL" and said the wiring was
+    // "plumbing, not a fix... this test states that plainly so nobody reads the
+    // wiring as the feature, AND it starts failing the moment wording is added."
+    // It fired. The owner had reported the same thing from the screen: three
+    // identical questions on every account, with a screenshot of the `none`
+    // bucket on a leatherworker's onboarding.
     //
-    // ⚖️ SO WIRING THE BUILDER IN IS PLUMBING, NOT A FIX. It is still right --
-    // the component must not read around the module that owns the rules -- but
-    // the wording does not change until the opening three are given entries.
-    // This test states that plainly so nobody reads the wiring as the feature,
-    // AND it starts failing the moment wording is added, which is when the
-    // rendering assertion above should be replaced by a real one.
-    const unchanged = OPENING_THREE.filter((id) =>
-      ['business', 'tech', 'food', 'fitness'].every((n) => askOf(id, n) === askOf(id, null)))
-    expect(unchanged, 'an opening question gained niche wording -- update this test')
-      .toEqual([...OPENING_THREE])
+    // ⚖️ SO THE ASSERTION IS INVERTED RATHER THAN DELETED. Every one of the
+    // opening three must now read differently for at least one bucket, or the
+    // table has gone missing again.
+    const stillGeneric = OPENING_THREE.filter((id) =>
+      ['business', 'tech', 'Leathercraft & Custom Bible Rebinding', 'Entertainment, challenges, and giveaways']
+        .every((n) => askOf(id, n) === askOf(id, null)))
+    expect(stillGeneric, 'an opening question lost its niche wording').toEqual([])
+  })
+
+  it('the leatherworker no longer meets the commentator wording', () => {
+    // The three sentences from the reported screenshot, verbatim.
+    const leather = OPENING_THREE.map((id) => askOf(id, 'Leathercraft & Custom Bible Rebinding'))
+    expect(leather).not.toContain('What did you get wrong publicly, and what changed after?')
+    expect(leather.some((a) => /your trade insist on/i.test(a))).toBe(true)
   })
 
   it('and it is the BUILDER doing it, not a copy of the bank', () => {

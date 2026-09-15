@@ -107,8 +107,18 @@ describe('an unknown kind falls back to the plain bank, never to "none"', () => 
 })
 
 describe('sellsFacetOf tells an empty library from a mixed one', () => {
-  it('no owned products at all is "none"', () => {
-    expect(sellsFacetOf([])).toBe('none')
+  // ⚠️ THIS ASSERTED `sellsFacetOf([]) === 'none'` AND THAT WAS THE DEFECT,
+  // sitting under a describe block that claims to tell an empty library from a
+  // mixed one. Onboarding asks the opening three at the `stories` step and mints
+  // the product entity at `confirm`, AFTER it — so at the only moment those
+  // questions are asked the library is ALWAYS empty, every creator was read as
+  // selling nothing, and a leatherworker got the commentator's wording. The
+  // affiliate half was always right and is unchanged.
+  it('an EMPTY library is null — nobody has been asked yet', () => {
+    expect(sellsFacetOf([])).toBeNull()
+  })
+
+  it('rows that exist and are all somebody else\'s is a real "none"', () => {
     expect(sellsFacetOf([{ type: 'SERVICE', relationship: 'AFFILIATE' }])).toBe('none')
   })
 

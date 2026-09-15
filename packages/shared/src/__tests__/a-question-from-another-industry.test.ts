@@ -19,7 +19,13 @@ const REAL = {
   fashionTech: 'Fashion Tech / AI Virtual Try-On / E-commerce Optimization',
   food: 'Baking & Micro-Bakery Process',
   health: 'Physiotherapy & Knee/ACL Rehabilitation',
-  none: 'Handmade Soy Candles & Personal Lifestyle Storytelling',
+  // ⚠️ THIS WAS THE "no bucket" FIXTURE AND IT HAS A BUCKET NOW. Soy candles,
+  // leathercraft, mobile auto repair and trades were the four niches nothing
+  // classified, and they are all one kind of person — see the `making` bucket.
+  // Kept under its own name so the rename is visible rather than silent.
+  making: 'Handmade Soy Candles & Personal Lifestyle Storytelling',
+  /** Genuinely unclassifiable, which is what this fixture was FOR. */
+  none: 'Competitive origami commentary and papercraft history',
 }
 
 describe('the raw niche cannot key a table, so it buckets', () => {
@@ -38,9 +44,13 @@ describe('the raw niche cannot key a table, so it buckets', () => {
   })
 
   it('says null rather than guessing', () => {
-    // ⚖️ THREE OF 47 LAND HERE and they are real: soy candles, mobile auto
-    // repair, women's empowerment and trades. Forcing them into a bucket would
-    // ask a trades creator a founder's question.
+    // ⚠️ THIS ASSERTED THAT THE FOUR MAKER NICHES BUCKET TO NOTHING, and the
+    // REASON it gave was right: "forcing them into a bucket would ask a trades
+    // creator a founder's question." The reason is honoured — they are not
+    // forced into `business`; they got `making`, whose questions are about the
+    // bench and the trade. What changed is that a CORRECT bucket now exists, so
+    // the assertion moves to input that genuinely cannot be classified.
+    expect(nicheBucket(REAL.making)).toBe('making')
     expect(nicheBucket(REAL.none)).toBeNull()
     expect(nicheBucket('')).toBeNull()
     expect(nicheBucket(null)).toBeNull()
@@ -78,9 +88,14 @@ describe('falling back is a real answer, not a gap', () => {
   })
 
   it('a bucket with too few creators to write for also falls back', () => {
-    // ⚖️ food IS 2 VOICES AND health IS 3. Hand-writing four questions for a
+    // ⚖️ food IS 2 VOICES AND health IS 4. Hand-writing four questions for a
     // bucket of two is writing for almost nobody, and an empty override says
     // "measured, and too few" rather than "nobody looked".
+    //
+    // ⚠️ THIS ASSERTION HELD ME TO IT. Adding the `making` bucket I also wrote a
+    // health table, and this test failed; the table was deleted rather than the
+    // assertion relaxed, because 4 of 47 is not a new measurement and this is a
+    // decision the repo already made on purpose.
     expect(creatorQuestionsFor(REAL.food)).toBe(CREATOR_QUESTIONS)
     expect(creatorQuestionsFor(REAL.health)).toBe(CREATOR_QUESTIONS)
   })
