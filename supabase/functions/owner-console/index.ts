@@ -26,7 +26,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import {
-  schemaCard, pilotCard, recordingsCard, watchedSessionCard, rotationCard, nextAction,
+  schemaCard, pilotCard, recordingsCard, watchedSessionCard, rotationCard, funnelCard, nextAction,
 } from '../_shared/ownerConsole.ts'
 
 const cors = {
@@ -149,6 +149,55 @@ Deno.serve(async (req: Request) => {
     (refProfiles ?? []).some((p: { url: string; visual_profile: unknown; visual_failure_code: unknown; frames_sampled: unknown }) =>
       p.url === r.url && (p.visual_profile != null || p.visual_failure_code != null || p.frames_sampled != null)))
 
+  // ── WHERE A CREATOR STOPS ────────────────────────────────────────────────
+  //
+  // ⚠️ HEAD-ONLY COUNTS, so the funnel costs four counts and moves no rows.
+  //
+  // ⚖️ AND THEY ARE COUNTS OF WHAT ALREADY EXISTS, never a new record of "did
+  // they record". `recordingFunnel.ts` is explicit that minting a second
+  // source of truth for that would create two answers to one question and
+  // guarantee they disagree.
+  //
+  // ⚠️ NULL SURVIVES AS NULL. A count that failed is passed through as null so
+  // `funnelCard` can report "could not be read", which is not a product with
+  // no recordings.
+  const countOf = async (table: string): Promise<number | null> => {
+    const { count, error } = await admin.from(table).select('id', { count: 'exact', head: true })
+    return error || typeof count !== 'number' ? null : count
+  }
+  // ⚠️ A COUNT OF THE TABLE, FILTERED. `countOf` counts every row, which is
+  // wrong for a funnel stage whose rows are attempts rather than outcomes.
+  const countWhere = async (table: string, col: string, val: string): Promise<number | null> => {
+    const { count, error } = await admin.from(table)
+      .select('id', { count: 'exact', head: true }).eq(col, val)
+    return error || typeof count !== 'number' ? null : count
+  }
+  const scriptsCount = await countOf('generations')
+  // ⚠️⚠️ FINISHED TAKES, NOT ROWS. Measured 2026-09-14: `media_assets` holds 7
+  // rows and SIX are `uploading`. `countOf('media_assets')` reported 7
+  // recordings, so the card read "147 scripts, 7 recorded, 0 exported" -- a
+  // behaviour problem, when the truth is six failed uploads.
+  const recordingsCount = await countWhere('media_assets', 'status', 'ready')
+  const stalledUploadsCount = await countWhere('media_assets', 'status', 'uploading')
+  // ⚖️ THE STAGE recordingFunnel.ts SPLIT OUT ON PURPOSE, so "no exports" can
+  // be told apart from "a finished take that was refused before editing".
+  const editProjectsCount = await countOf('edit_projects')
+  const exportsCount = await countOf('edit_outputs')
+  // ⚠️ THE DISCRIMINATOR, AND IT IS EXPECTED TO BE ABSENT TODAY. The column
+  // does not exist yet, so this resolves to null and the card says the drop
+  // cannot be attributed — which is the true state, not an error.
+  const { count: scriptIntentCount } = await admin.from('generations')
+    .select('id', { count: 'exact', head: true })
+    .not('script_intent', 'is', null)
+  const funnelCounts = {
+    scripts: scriptsCount,
+    recordings: recordingsCount,
+    stalledUploads: stalledUploadsCount,
+    editProjects: editProjectsCount,
+    exports: exportsCount,
+    scriptIntents: typeof scriptIntentCount === 'number' ? scriptIntentCount : null,
+  }
+
   const cards = [
     schemaCard({ hasZoomCount, hasWatchedSessions }),
     pilotCard(run, { canStart: hasPilotTables === true, claims: claimCount, collectionDone }),
@@ -158,6 +207,7 @@ Deno.serve(async (req: Request) => {
     // the OLD key being refused, which no query here can test, so this reports
     // "due" and never "done" — SECURITY.md remains the record.
     rotationCard({ anyPilotLocked: (lockedRuns?.length ?? 0) > 0, resolved: false }),
+    funnelCard(funnelCounts),
   ]
 
   return json({ ok: true, cards, next: nextAction(cards), generated_at: new Date().toISOString() })
