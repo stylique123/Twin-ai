@@ -31,6 +31,9 @@ import {
   // to disclose — and neither replaces the other.
   disclosureRefusalMessage,
   defaultVideoGoalFromContentGoals, CANONICAL_GOAL_LABELS,
+  // ⚖️ THE SAME TWO FUNCTIONS `assessReadiness` USES FOR THIS WORDING, not a
+  // second copy of the wording. The card re-derives; it does not redefine.
+  objectiveQuestion, offerFormOf,
 } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE, isReadCapacityExhausted } from '../../lib/api'
@@ -263,7 +266,32 @@ function libraryRelationship(
     const hit = answered.find((p) => (p.name ?? '').trim().toLowerCase() === offerNorm)
     if (hit) return hit.relationship
   }
-  return answered.length === 1 ? answered[0].relationship : null
+  // ⚠️⚠️ THIS WAS `answered.length === 1 ? ... : null`, AND TWO PRODUCTS THAT
+  // AGREED ANSWERED NOTHING. With one product it resolved; with two it returned
+  // null even when BOTH said the same thing — and null means readiness reports
+  // `relationship` as MISSING_REQUIRED, which renders the ask whose only action
+  // is "Open Product Library to set it →", a page where it is already set. The
+  // creator goes, sees it set, comes back, and is asked again.
+  //
+  // MEASURED ON PRODUCTION 2026-09-14, per voice, over unarchived products with
+  // an answered relationship:
+  //
+  //   exactly one ................................ 11  (resolved today)
+  //   MORE THAN ONE, ALL AGREEING ................  3  (returned null: BROKEN)
+  //   more than one, genuinely disagreeing .......  2
+  //
+  // Three plus two is the five accounts the owner measured as unable to complete
+  // `Sell something` or `Get leads`. The account that reported it holds two
+  // products per voice, both OWN_PRODUCT — which is why "a complete, named
+  // product with a set relationship" still dead-ended.
+  //
+  // ⚖️ UNANIMITY IS AN ANSWER; DISAGREEMENT IS NOT. If every answered product
+  // says the same thing, that is what this creator's relationship to their work
+  // IS, and the count was never the question. When they genuinely differ the
+  // null stands, because picking one for them would guess at which product this
+  // video is about — and that is a different question, with its own picker.
+  const distinct = new Set(answered.map((p) => p.relationship))
+  return distinct.size === 1 ? answered[0].relationship : null
 }
 
 /** THE PRODUCT SHE ACTUALLY PICKED.
@@ -304,8 +332,60 @@ function pickedProduct(
  *  the name-matching it only needs because it has no id to work from. */
 function factsOfProduct(p: ProductEntityRecord | null): readonly string[] | null {
   const ev = p?.evidence
-  if (!ev || ev === 'declined' || typeof ev !== 'object' || !Array.isArray(ev.sections)) return null
-  return ev.sections.map((s) => String(s?.label ?? '')).filter((x) => x.trim() !== '')
+  // ⚠️ DECLINED IS AN ANSWER, AND IT IS "NO". A creator who refused to hand over
+  // the product page has not got facts on file, and falling through to the
+  // extraction below would treat a refusal as a source.
+  if (ev === 'declined') return null
+  if (ev && typeof ev === 'object' && Array.isArray(ev.sections)) {
+    const labels = ev.sections.map((s) => String(s?.label ?? '')).filter((x) => x.trim() !== '')
+    if (labels.length > 0) return labels
+  }
+  // ── THE FACTS WERE IN THE OTHER COLUMN ────────────────────────────────────
+  //
+  // ⚠️⚠️ THIS FUNCTION READ ONLY `evidence.sections`, WHICH IS EMPTY ON EVERY
+  // PRODUCTION ROW. MEASURED 2026-09-14 across all 22 product_entities (all
+  // unarchived):
+  //
+  //     evidence populated .......  0 of 22
+  //     knowledge populated ......  5 of 22   (extracted, graded, array)
+  //     knowledge extraction failed  1
+  //
+  // So `factsOfProduct` returned null on 100% of runs, `productFacts` reached
+  // `assessReadiness` as "unknown", and `claims` fired as MISSING_REQUIRED for
+  // creators whose product already had facts Twin had extracted and they had
+  // reviewed. `generationReadiness`'s own note describes that exact harm —
+  // "asked, then silently discarded server-side once readyFacts.length > 0".
+  //
+  // ⚖️ TWO COLUMNS, TWO THINGS. `evidence.sections` is what the product PAGE
+  // looked like; `knowledge` is the graded facts pulled out of it, the same
+  // notion the server's `usableProductFacts` works from. For "does Twin already
+  // have something it may say about this product", the graded facts are the
+  // answer — and this file already reads them 1,600 lines below to tell the
+  // creator "N things Twin can say about it". One file, two readers, one of them
+  // pointed at the empty column.
+  //
+  // ⚖️ ADDITIVE, NEVER A REPLACEMENT, so this cannot regress anybody.
+  // `evidence.sections` still wins when it has anything, and this only speaks
+  // where the old read returned nothing. If a flow does start populating
+  // `evidence`, its answer is unchanged.
+  //
+  // ⚖️ AND ONLY `usable` GRADES COUNT. `needs_confirmation` is a fact the
+  // creator has not stood behind, and treating it as material would let the
+  // claims question be skipped on the strength of something nobody confirmed.
+  // `readStoredFact` degrades an unreadable grade to `needs_confirmation`
+  // precisely so junk in the column cannot become permission.
+  const knowledge = (p as { knowledge?: unknown } | null)?.knowledge
+  if (!Array.isArray(knowledge)) return null
+  const usable = knowledge
+    .filter((f): f is { trust?: unknown; value?: unknown } => !!f && typeof f === 'object')
+    .filter((f) => f.trust === 'usable')
+    .map((f) => String(f.value ?? '').trim())
+    .filter((v) => v !== '')
+  // ⚖️ AN EMPTY EXTRACTION IS NOT A STATED ABSENCE. `assessReadiness` treats
+  // `[]` as "nothing was supplied" and `null` as "unknown", and a product whose
+  // page yielded no usable fact is the second, not the first — it has not been
+  // asked yet. Returning `[]` here would report a hole as an answer.
+  return usable.length > 0 ? usable : null
 }
 
 /** The product's NAME, resolved the same way its relationship is, for the one
@@ -819,6 +899,20 @@ export default function V2Building() {
               // above, which stays the creator's own words — see
               // `libraryOfferName` for why a name must never settle the field.
               offerNameForWording: (chosenName || null) ?? libraryOfferName(libraryProducts, str(vBrief.offer)),
+              // ⚠️ HER ENTITY'S OWN TYPE, SO THE QUESTION FITS WHAT SHE SELLS.
+              // Three of the eight objective questions are ungrammatical for a
+              // service -- "what is new about IT", "how IT WORKS", "made you
+              // BUILD IT" -- and a creator reading a question that does not fit
+              // her business answers the wrong thing or nothing.
+              //
+              // ⚖️ KEYED HERE RATHER THAN ON `pre_script_brief.workKind`
+              // BECAUSE OF COVERAGE. Measured 2026-09-14: every one of the 22
+              // live product_entities rows carries a type, while workKind is
+              // filled on 19 of 56 voices. The owner's ruling is that a
+              // hand-written table capping at 30 of 47 creators is why four
+              // previous fixes stalled; this cannot cap, because having an
+              // entity is what makes this a product build at all.
+              offerEntityType: chosen?.type ?? null,
               // ⚖️ THE OBJECTIVE SHE PICKED, AND ONLY IN THE PRODUCT DOOR.
               // `intentQuestionsFor` substitutes PRODUCT_OBJECTIVES onto the
               // SAME `video_goal` field, so this is her objective when the
@@ -1651,6 +1745,45 @@ export default function V2Building() {
       ? askAnswers.video_goal as VideoGoal : null)
     : null
 
+  // ── THE QUESTION RENDERED BEFORE THE OBJECTIVE ──────────────────────────
+  //
+  // ⚠️⚠️ THE TEN OBJECTIVE-KEYED CLAIMS WORDINGS COULD NOT RENDER, AND THE GATE
+  // THAT RUNS THE ASSESSMENT IS WHY. `assessReadiness` picks the `claims`
+  // wording from `input.objective`, which the effect above sources from
+  // `answersRef.current.video_goal`. That effect only runs when the intent
+  // chips are NOT yet all answered:
+  //
+  //     if (!askQuestions && !(intentAnswered && Object.keys(...).length))
+  //
+  // So the objective is empty BY THE VERY CONDITION that lets the wording be
+  // chosen, and when it is answered the block is skipped entirely and no
+  // readiness question is computed at all. Both arms of that gate yield a
+  // generic claims question. Not "usually null" — structurally null, on every
+  // first build in the product door.
+  //
+  // ⚖️ SO THE CARD RE-DERIVES IT AT RENDER, from the chip the creator just
+  // tapped. `decisions` (the chips) render above `commercial` (this question)
+  // on the same card, and React re-renders on `askAnswers` — so the wording
+  // becomes the objective's own the moment she picks one, in front of her.
+  //
+  // ⚖️ SAME EXPRESSION FOR THE PRODUCT, TOO. `pickedProduct` over the live
+  // `products` and the live choice field is exactly what the effect computed
+  // from `answersRef`; reading it here also means a product chosen ON THIS CARD
+  // reaches the wording, which the frozen verdict could never do.
+  //
+  // ⚖️ AND NULL FALLS BACK TO WHAT THE SERVER ALREADY CHOSE. An objective with
+  // no question of its own, or a non-product build, keeps `q.question`
+  // untouched — this only ever replaces a generic sentence with a specific one.
+  const liveClaimsQuestion = isProductSubject
+    ? objectiveQuestion(
+      askAnswers.video_goal ?? null,
+      offerFormOf(pickedProduct(
+        products,
+        askAnswers[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null,
+      )?.type ?? null),
+    )
+    : null
+
   const decisions = (askQuestions ?? []).filter(isChip)
   const commercial = (askQuestions ?? []).filter((q) => !isChip(q))
   const hasTwoBlocks = decisions.length > 0 && commercial.length > 0
@@ -1661,7 +1794,9 @@ export default function V2Building() {
    *  per column is how two lists drift into two behaviours. */
   const renderAsk = (q: AskItem) => (
             <div key={q.field} className="block">
-              <span className="text-sm leading-relaxed text-cream">{q.question}</span>
+              <span className="text-sm leading-relaxed text-cream">
+                {q.field === 'claims' ? (liveClaimsQuestion ?? q.question) : q.question}
+              </span>
               {q.field === PRODUCT_CHOICE_FIELD && isChip(q) ? (
                 // ── PART 2: THE PICKER SURFACE ───────────────────────────
                 //

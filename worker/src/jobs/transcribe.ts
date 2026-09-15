@@ -13,6 +13,7 @@ import {
   type WorkerReferenceMetrics,
 } from '../referenceMetrics.js'
 import { deriveStructure } from '../structure.js'
+import { writeCachedTranscript } from '../transcriptCache.js'
 
 // Normalized cache key for a reference URL: host (minus www) + path, plus the
 // YouTube ?v= id (which lives in the query). Drops other query/hash noise so the
@@ -131,6 +132,60 @@ export async function handleTranscribe(job: Job): Promise<Record<string, unknown
     .select('id')
     .single()
   if (error) throw error
+
+  // ── THE PASTE AND THE VISUAL PASS HAD NEVER EXCHANGED A URL ───────────────
+  //
+  // ⚠️ MEASURED ON PRODUCTION 2026-09-14, NOT REASONED: 891 `visual_profile`
+  // rows exist and every one of them is a `gallery_items` row we scraped. Of
+  // 134 `ingest` jobs across 77 distinct pasted URLs, ZERO requested frames —
+  // because `frames` is an `assess_reference` payload key and this file
+  // enqueues nothing. A creator pasting the video she wishes she had made is
+  // the one signal no scraper can produce, and the pass that would look at it
+  // has never been aimed at a single one.
+  //
+  // ⚖️ THE CACHE WRITE IS THE PREREQUISITE, AND IT WAS THE ACTUAL BLOCKER.
+  // `readCachedTranscript` keys `reference_transcripts` on the RAW url; this
+  // file writes `transcripts` keyed on `url_key`. Different tables. So before
+  // today a `framesOnly` job on a pasted reference would find no cached
+  // transcript and refuse — correctly, by its own design. Writing the cache
+  // here is what makes the second job cheap rather than a second acquisition.
+  //
+  // ⚖️ AND IT IS BEST-EFFORT FOR THE SAME REASON IT IS THERE: a failed cache
+  // write costs one repeated download later; a cache write that threw would
+  // cost the transcript we just paid to produce.
+  //
+  // ⚖️ TWO JOBS AND NOT ONE, FROM THE PRICE AND NOT FROM PREFERENCE. Frames
+  // need pixels either way — this path pulls 360p triage and bestaudio, so
+  // neither of its downloads can be re-read as stills. Extracting frames here
+  // would not remove a download, it would ADD pixel cost to the one path a
+  // creator sits and watches. `framesOnly` already skips the audio ladder,
+  // whisper and the text call, so both designs cost exactly one video
+  // download; only this one spends it after she has her transcript.
+  if (job.type === 'ingest') {
+    await writeCachedTranscript(url, t)
+    try {
+      const { error: qErr } = await db.from('jobs').insert({
+        owner_id: job.owner_id,
+        type: 'assess_reference',
+        status: 'queued',
+        // Never retry: a retry re-spends the video download to re-derive an
+        // enrichment the creator is not blocked on. Same rule as `build_voice`
+        // and `sample_own_account` in scrapeDna.
+        max_attempts: 1,
+        // ⚠️ EXACTLY `true`, BOTH OF THEM. `frames` gates the spend and
+        // `framesOnly` gates the refusal on a cache miss; a truthy-but-not-true
+        // value enables neither, which is the rule `parseRoute` follows for the
+        // paid rungs.
+        payload: { url, platform: platform ?? null, frames: true, framesOnly: true },
+      })
+      if (qErr) console.warn(JSON.stringify({ event: 'reference_frames_unqueued', url, reason: qErr.message }))
+    } catch (err) {
+      // ⚖️ A VISUAL PASS THAT COULD NOT BE QUEUED MUST NOT COST THE PASTE. The
+      // transcript is the deliverable; the frames are an upgrade on top of it.
+      console.warn(JSON.stringify({ event: 'reference_frames_unqueued', url,
+        reason: err instanceof Error ? err.message : String(err) }))
+    }
+  }
 
   return {
     transcript_id: data.id,
