@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   preflight, classifyUploadFailure, mayRetry, saveStageLabel, isSaved,
-  SUPPORTED_MAX_BYTES, TARGET_MAX_BYTES, RESUMABLE_THRESHOLD_BYTES, MAX_RECORDING_MS,
+  SUPPORTED_MAX_BYTES, RESUMABLE_THRESHOLD_BYTES,
 } from '../uploadCeiling'
 
 const MB = 1024 * 1024
@@ -15,12 +15,40 @@ describe('the supported ceiling is the product decision, not the platform settin
   it('supports 600 MB, the same number the buckets already carry', () => {
     expect(SUPPORTED_MAX_BYTES).toBe(600 * MB)
   })
-  it('targets 300 MB for normal mobile capture, below the hard ceiling', () => {
-    expect(TARGET_MAX_BYTES).toBe(300 * MB)
-    expect(TARGET_MAX_BYTES).toBeLessThan(SUPPORTED_MAX_BYTES)
+  // ⚠️ TWO TESTS WERE DELETED HERE, AND THEY WERE THE ONLY READERS OF WHAT THEY
+  // TESTED. `expect(TARGET_MAX_BYTES).toBe(300 * MB)` restates the declaration
+  // one file away and can only fail if someone edits the declaration — which a
+  // grep for readers reads as "this constant is used". A test asserting about
+  // its own subject and nothing else is a reader that isn't one, and it is how
+  // both constants survived with no caller for as long as they did.
+  //
+  // ⚠️ MEASURED, NOT ASSUMED, AND IT CORRECTED ME. I expected deleting two
+  // reader-less constants to drop `check_symbol_readers` from 145 unregistered
+  // to 143. It stayed at 145 — because the IMPORT in this test file was
+  // counted as a reader, so neither constant was ever in the unregistered set.
+  // The tautology was not merely failing to catch the problem; it was HIDING
+  // it from the guard built to find exactly this.
+  //
+  // ⚖️ THE CEILING THAT IS READ IS TESTED THROUGH ITS READER. Every assertion
+  // below drives `preflight`, so removing the constant from `preflight` — not
+  // merely changing its value — is what turns these red.
+  it('the hard ceiling is enforced through preflight, not merely declared', () => {
+    const over = preflight(SUPPORTED_MAX_BYTES + 1)
+    expect(over.ok).toBe(false)
+    if (!over.ok) expect(over.reason).toBe('too_large')
+    const at = preflight(SUPPORTED_MAX_BYTES)
+    expect(at.ok, 'the boundary itself must be accepted, not refused').toBe(true)
   })
-  it('supports ten minutes, not an artificial four to eight', () => {
-    expect(MAX_RECORDING_MS).toBe(600_000)
+
+  it('the refusal quotes both real figures, so "too big" is never bare', () => {
+    const over = preflight(700 * MB)
+    expect(over.ok).toBe(false)
+    if (!over.ok) {
+      expect(over.message).toContain('700.0 MB')
+      expect(over.message).toContain('600.0 MB')
+      // The creator still has the file. Saying so is part of the contract.
+      expect(over.message).toMatch(/has not been deleted/)
+    }
   })
 })
 
