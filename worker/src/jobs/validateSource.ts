@@ -28,7 +28,7 @@ import { join } from 'node:path'
 import { stat } from 'node:fs/promises'
 import { db, type Job } from '../db.js'
 import { env } from '../env.js'
-import { downloadObject, headObject } from '../storage.js'
+import { downloadObject, headObject, isTransientStorageFailure } from '../storage.js'
 
 const run = promisify(execFile)
 
@@ -331,7 +331,24 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
     try {
       await downloadObject(asset.bucket, asset.storage_path, local)
     } catch (e) {
-      return await reject(assetId, 'download_failed', String(e).slice(0, 300))
+      // ⚠️⚠️ A TRANSIENT STORAGE FAILURE IS NOT A BAD RECORDING. This used to
+      // `reject` unconditionally, which is TERMINAL — so a finalize-verified
+      // object that met a momentary 5xx on the way back was reported to the
+      // creator as a failed take. SEEN 2026-09-15: 419,980 bytes, finalize
+      // verified, killed by `storage download 504: 504 Gateway Time-out`.
+      //
+      // ⚖️ RETRY WHILE THE BUDGET ALLOWS, THEN REJECT HONESTLY. The budget
+      // check is not decoration: index.ts dead-letters the JOB once
+      // `attempts >= max_attempts` and dead-lettering does NOT move the ASSET,
+      // so throwing on the last attempt would strand the take in `validating`
+      // for ever. A permanent spinner is worse than a truthful rejection.
+      //
+      // ⚖️ AND OUR OWN FAULTS STILL REJECT AT ONCE. 404, 401/403, over-cap and
+      // a deliberate cancel are excluded by `isTransientStorageFailure`, so
+      // they land here on the first attempt exactly as before.
+      const detail = String(e).slice(0, 300)
+      if (isTransientStorageFailure(detail) && job.attempts < job.max_attempts) throw e
+      return await reject(assetId, 'download_failed', detail)
     }
     const localBytes = (await stat(local)).size
     if (asset.size_bytes && localBytes !== Number(asset.size_bytes)) {
