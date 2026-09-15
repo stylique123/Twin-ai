@@ -24,12 +24,13 @@
 // live server-side — so the `measured` rows do not appear here. That is an
 // absence, not a zero: the screen shows the rows it can back, and the nine
 // never-looked-at rows appear regardless.
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Check, CircleDashed, Ruler, ScanLine } from 'lucide-react'
 import {
   KIND_LABEL, normalizeReferenceEvidence, transferRows, transferSummary,
   type EvidenceKind, type TransferRow, readReferenceAnalysis, referenceDisclosure } from '../lib/api'
 import type { Blueprint } from '../lib/types'
+import { loadReferenceVisualProfile } from '../lib/visualProfileLoad'
 
 const KIND_STYLE: Record<EvidenceKind, { icon: typeof Check; tone: string; text: string }> = {
   observed: { icon: Check, tone: 'text-teal', text: 'text-sand' },
@@ -66,6 +67,16 @@ export function CreativeTransfer({ generationId, blueprint, referenceAnalysis }:
   // because "we do not know which path ran" is not a sentence a creator can use
   // and inventing "pattern" for it would slander a generation that was read
   // properly.
+  // ⚠️ THE ROWS BELOW CLAIMED WE NEVER LOOKED AT THE VIDEO WHILE THE VISUAL PASS
+  // WAS WRITING 940 PROFILES. Fetched once per generation, never blocking: until
+  // it lands, or when there is none, every row keeps the honest "not observed".
+  const [visualProfile, setVisualProfile] = useState<unknown>(null)
+  useEffect(() => {
+    let live = true
+    void loadReferenceVisualProfile(generationId).then((vp) => { if (live) setVisualProfile(vp) })
+    return () => { live = false }
+  }, [generationId])
+
   const analysis = readReferenceAnalysis(referenceAnalysis)
   const disclosure = referenceDisclosure(analysis)
   // Did a transcript actually reach the model? The rows below used to say "a
@@ -91,8 +102,8 @@ export function CreativeTransfer({ generationId, blueprint, referenceAnalysis }:
       },
       transcript: { platform: rr?.platform ?? null },
     })
-    return transferRows(evidence, transcriptRead)
-  }, [generationId, blueprint, transcriptRead])
+    return transferRows(evidence, transcriptRead, visualProfile)
+  }, [generationId, blueprint, transcriptRead, visualProfile])
 
   return (
     <div className="rounded-card border border-white/5 bg-ink2/85 p-6 shadow-glass backdrop-blur-md">
