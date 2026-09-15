@@ -165,6 +165,7 @@ export * from './communityCapture'
 export * from './pilot/backlogRuns'
 export * from './productQuestions'
 export * from './productLifecycle'
+export * from './productQuestionAnswered'
 export * from './productAttention'
 export * from './briefToProfileAnswers'
 // ⚠️ THE SCRIPT CONTRACTS. `beatAsk` is exported because the CLIENT renders the

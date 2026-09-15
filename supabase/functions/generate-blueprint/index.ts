@@ -2690,6 +2690,35 @@ function wasSpoken(item: { source?: string | null }): boolean {
   return SPOKEN_SOURCES.has(String(item?.source ?? ''))
 }
 
+// ── PRODUCT QUESTION ANSWERED, INLINED ────────────────────────────────────
+// Mirror of packages/shared/src/productQuestionAnswered.ts. Edge functions
+// cannot import @twinai/shared, so the rule lives twice and
+// `productQuestionAnsweredParity.test.ts` EXECUTES both copies over one fixture
+// table. A second authority on "has this creator answered?" that disagrees with
+// the first would silence the capture card for a different set of people than
+// the Product Library thinks it has.
+
+/** How many rows to read before assuming the question is answered. Far above
+ *  any real Product Library, which is itself limited per plan. */
+const ANSWER_SCAN_CAP = 200
+
+function answerFieldFilledInline(v: unknown): boolean {
+  return typeof v === 'string' && v.trim() !== ''
+}
+
+function rowAnswersProductQuestionInline(row: {
+  name?: string | null
+  creatorSummary?: string | null
+  relationship?: string | null
+} | null | undefined): boolean {
+  if (!row) return false
+  // An explicit "nothing to sell" is nameless by design and is the most
+  // definite answer there is.
+  if (String(row.relationship ?? '') === 'NONE') return true
+  return answerFieldFilledInline(row.name) || answerFieldFilledInline(row.creatorSummary)
+}
+// ── END PRODUCT QUESTION ANSWERED ─────────────────────────────────────────
+
 // ── NICHE ANCHOR, INLINED ─────────────────────────────────────────────────
 //
 // ⚖️ PARITY: mirrors packages/shared/src/nicheAnchor.ts. The edge cannot import
@@ -8137,13 +8166,52 @@ Deno.serve(async (req: Request) => {
     // this run did not select still cannot be described in detail. It decides
     // only whether the QUESTION "do you have a product?" is still open, and the
     // library answers that on its own.
+    // ⚠️⚠️ AND A HEAD-ONLY COUNT ANSWERED THE QUESTION FOR ROWS NOBODY PUT
+    // ANYTHING IN. `mintFromWorkKind` writes `name: null` ON PURPOSE, so an
+    // onboarding mint can carry nothing but a DERIVED type — our inference
+    // about the creator, not their answer — and a bare count then reports the
+    // question closed and this card never renders again. That inverts the very
+    // rule the catch below states: never asking someone who has no product is
+    // the defect the card exists for.
+    //
+    // MEASURED 2026-09-15 across all 22 rows: three are nameless, and TWO of
+    // those carry a real `creator_summary` (a confirmed offer the creator
+    // EDITED, which this function already reads), so they answer honestly and
+    // only their name is missing. EXACTLY ONE row carries no name, no summary
+    // and no knowledge. One account, permanently unasked.
+    //
+    // ⚖️ NOT "REQUIRE A NAME", WHICH WOULD BREAK THE OPPOSITE CASE: a creator
+    // who answered "nothing to sell" gets a `NONE` row that is nameless BY
+    // DESIGN, and re-asking them is the same defect from the other side.
     let hasAnyProductRow = false
     try {
-      const { count } = await admin.from('product_entities')
-        .select('id', { count: 'exact', head: true })
+      // ⚠️ THE PREDICATE RUNS HERE, NOT AS A PostgREST FILTER, AND THE REASON
+      // IS THE EMPTY STRING. `.or()` can express "name is not null" but not
+      // "name is not blank", so a `''` name would answer the question while
+      // telling us nothing. Today production holds 3 NULL names and ZERO
+      // empty ones — and leaning on that is precisely the trap this repo
+      // records: a constraint that has only ever seen the population it was
+      // written for looks like a working constraint.
+      //
+      // ⚖️ BOUNDED, AND THE BOUND IS DECIDED RATHER THAN HOPED FOR. PostgREST
+      // caps responses server-side, so a short page is indistinguishable from
+      // a complete answer — but the Product Library is itself limited per
+      // plan, so ANSWER_SCAN_CAP sits far above any real library. A page that
+      // comes back AT the cap is treated as answered: a creator with that many
+      // rows has certainly answered, and re-asking them would be the wrong
+      // direction to fail in.
+      const { data: answerRows } = await admin.from('product_entities')
+        .select('name, creator_summary, relationship')
         .eq('owner_id', user.id)
         .is('archived_at', null)
-      hasAnyProductRow = typeof count === 'number' && count > 0
+        .limit(ANSWER_SCAN_CAP)
+      const rows = Array.isArray(answerRows) ? answerRows : []
+      hasAnyProductRow = rows.length >= ANSWER_SCAN_CAP
+        || rows.some((r) => rowAnswersProductQuestionInline({
+          name: (r as { name?: unknown }).name as string | null,
+          creatorSummary: (r as { creator_summary?: unknown }).creator_summary as string | null,
+          relationship: (r as { relationship?: unknown }).relationship as string | null,
+        }))
     } catch {
       // ⚠️ A FAILED COUNT LEAVES THE QUESTION OPEN RATHER THAN CLOSING IT. False
       // here means the card may still ask, which is the recoverable direction:
