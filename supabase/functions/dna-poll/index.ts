@@ -25,6 +25,7 @@ import {
   type InlineImage,
   type Platform,
 } from '../_shared/dna.ts'
+import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
 const MAX_ATTEMPTS = Number(Deno.env.get('DNA_MAX_POLLS') ?? '60')
 
@@ -98,7 +99,7 @@ Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const serviceKey = serviceKeyFrom(Deno.env)
   const authHeader = req.headers.get('Authorization') ?? ''
 
   const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
