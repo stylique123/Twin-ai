@@ -39,7 +39,15 @@ describe('the card stops asking once the library has answered', () => {
     expect(at).toBeGreaterThan(-1)
     const block = CODE.slice(at, at + 700)
     expect(block).toContain("from('product_entities')")
-    expect(block).toContain("{ count: 'exact', head: true }")
+    // ⚠️ THIS PINNED `{ count: 'exact', head: true }` AND THE ANCHOR WENT
+    // STALE WHEN THE THING IT PINNED CHANGED. A head-only count answered the
+    // question for rows nobody put anything in: an onboarding mint is nameless
+    // BY DESIGN, so a bare count reported the question closed and the card
+    // never rendered again. The claim this file makes is unchanged and the
+    // three assertions that carry it are untouched; only the implementation
+    // detail moved, so it is RE-ANCHORED on the rule that replaced it rather
+    // than re-litigated. Strictly more is asserted than before.
+    expect(block).toContain('rowAnswersProductQuestionInline')
     expect(block).toContain("eq('owner_id', user.id)")
     // ⚖️ An archived product is not a product she has.
     expect(block).toContain("is('archived_at', null)")
