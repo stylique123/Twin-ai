@@ -7638,6 +7638,41 @@ Deno.serve(async (req: Request) => {
     // "I sell nothing" answer writes `pre_script_brief.commercialTies`, which
     // this file never read — so the creator who answered most clearly fell
     // through to the weaker unrecorded wording below.
+    // ── DOES THIS CREATOR HAVE A PRODUCT AT ALL ─────────────────────────────
+    //
+    // ⚠️⚠️ THE CARD ASKED A QUESTION THE LIBRARY HAD ALREADY ANSWERED, ON 13 OF
+    // 13 RUNS. `ownedEntity` is the entity THIS RUN selected, and the lookup
+    // that produces it filters `.in('relationship', ['OWN_PRODUCT','OWN_SERVICE'])`
+    // AND keys on the chosen product — so in a run that selected none it is
+    // null, `fromEntity` is null, and with `commercialTies` holding the
+    // non-answer `["unspecified"]` (`fromTies` null too) the verdict came back
+    // `unrecorded`.
+    //
+    // MEASURED 2026-09-14 on the account that reported this: FOUR
+    // `product_entities` rows across two voices, every one `OWN_PRODUCT`, and
+    // `commercialTies` = ["unspecified"]. So the script said "written without
+    // knowing whether you have a product" to a creator with four of them, and
+    // said it on scripts that named one in every scene.
+    //
+    // ⚖️ ONE HEAD-ONLY COUNT, NOT A SECOND SOURCE OF TRUTH. It does not decide
+    // what the writer may claim — `ownedEntity` still does that, and a product
+    // this run did not select still cannot be described in detail. It decides
+    // only whether the QUESTION "do you have a product?" is still open, and the
+    // library answers that on its own.
+    let hasAnyProductRow = false
+    try {
+      const { count } = await admin.from('product_entities')
+        .select('id', { count: 'exact', head: true })
+        .eq('owner_id', user.id)
+        .is('archived_at', null)
+      hasAnyProductRow = typeof count === 'number' && count > 0
+    } catch {
+      // ⚠️ A FAILED COUNT LEAVES THE QUESTION OPEN RATHER THAN CLOSING IT. False
+      // here means the card may still ask, which is the recoverable direction:
+      // asking a creator who has a product is a small annoyance, while silently
+      // never asking one who does not is the defect this card exists for.
+      hasAnyProductRow = false
+    }
     const recordedNoProduct = saysSellsNothingInline(briefTies, ownedEntity?.relationship)
     // ⚖️ UNRECORDED NOW MEANS BOTH STORES ARE SILENT, not just this one. An
     // onboarding answer with no entity row is an ANSWER, and treating it as
@@ -10394,7 +10429,13 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // ⚖️ WRITTEN UNCONDITIONALLY, UNLIKE THE ADVISORY READ BELOW. This costs no
     // extra model call — `unrecordedProduct` is already a boolean sitting in
     // scope from the prompt-assembly pass. There is no cost gate to design.
-    ;(blueprint as Record<string, unknown>).product_capture_prompt = unrecordedProduct
+    // ⚠️ AND IT IS NOT `unrecordedProduct` ALONE. That boolean still drives the
+    // PROMPT instruction correctly — a product this run did not select cannot
+    // carry a scene, whatever else the creator owns. But the CARD asks "do you
+    // have a product or service?", and a creator with rows in the library has
+    // already answered it. Measured: 4 rows, and the card asked anyway, 13 of 13.
+    ;(blueprint as Record<string, unknown>).product_capture_prompt =
+      unrecordedProduct && !hasAnyProductRow
 
     // ── THE REFERENCE'S OWN KNOWN LENGTH, CARRIED TO THE CLIENT ──────────────
     //
