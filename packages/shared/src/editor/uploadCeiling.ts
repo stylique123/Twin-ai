@@ -13,11 +13,42 @@
 // normal mobile capture, 600 MB supported. A single request that cannot carry
 // that is a transport defect, not a reason to ask a creator to record less.
 
-/** The supported recording length. Longer is refused BEFORE anything uploads. */
-export const MAX_RECORDING_MS = 10 * 60_000
-
-/** What normal mobile capture is expected to produce at this length. */
-export const TARGET_MAX_BYTES = 300 * 1024 * 1024
+// ⚠️ TWO CONSTANTS WERE DELETED HERE, AND ONE OF THEM WAS A FALSE PROMISE.
+//
+// `MAX_RECORDING_MS = 10 * 60_000` was documented as "the supported recording
+// length. Longer is refused BEFORE anything uploads." Nothing read it. And
+// `preflight` below takes `sizeBytes` and NOTHING ELSE — it has no duration
+// parameter, so there was never a place for a length refusal to happen. The
+// sentence described a check that did not exist.
+//
+// ⚖️ LENGTH IS ENFORCED, JUST NOT HERE AND NOT WITH THAT NUMBER. The real cap
+// is `env.sourceMaxDurationMs` (worker/src/env.ts:134), default THIRTY minutes,
+// applied in `validateSource.ts:246` and `validateClip.ts:104` — in the worker,
+// AFTER the whole file has uploaded. So the documented ceiling was 10 minutes,
+// the enforced one is 30, and the enforcement lands at exactly the moment this
+// file's header comment exists to prevent: after the creator's upload finished.
+//
+// ⚠️ AND THE TWO NUMBERS WERE NEVER THE SAME KIND OF THING. A source asset is
+// ONE SCENE: `sceneTimeCapSec` (recordingScript.ts:155) clamps every take to
+// `min(max(est + 5, 12), 30)` seconds and V2Capture AUTO-STOPS on it. So a
+// 10-minute per-asset ceiling is 20x a bound the recorder already enforces and
+// is unreachable by construction, while the product's "10 minutes of normal
+// mobile capture" in the header is a WHOLE-VIDEO figure. Comparing it against
+// one asset was a unit mismatch, which is why no reader was ever written.
+//
+// `TARGET_MAX_BYTES = 300 * 1024 * 1024` was "what normal mobile capture is
+// expected to produce". Also unread, and nothing should enforce it: refusing an
+// upload for exceeding a TARGET would reject valid recordings. An expectation
+// with no reader is a comment wearing the costume of code, and the header above
+// already states the promise it was restating.
+//
+// Measured on production 2026-09-15 before deleting either: 7 source assets,
+// max 123.7 MB, ONE of the 7 carrying a duration at all (4,736 ms). Zero over
+// 30s, zero over 10 minutes, zero over 300 MB. ⚠️ n=7 IS NOT EVIDENCE THE
+// CEILINGS ARE RIGHT-SIZED — it is only evidence that nothing has approached
+// them, so no number here is being re-derived from seven rows. What is being
+// removed is the pair with no readers; SUPPORTED_MAX_BYTES and
+// RESUMABLE_THRESHOLD_BYTES below are read by `preflight` and stay untouched.
 
 /**
  * The hard supported ceiling — the same number the buckets already carry.

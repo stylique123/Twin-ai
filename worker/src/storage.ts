@@ -8,6 +8,80 @@ import { env } from './env.js'
 const base = `${env.supabaseUrl}/storage/v1`
 const auth = { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}` }
 
+// ── A 504 IS NOT A BAD RECORDING ──────────────────────────────────────────────
+//
+// ⚠️⚠️ A TRANSIENT STORAGE FAILURE USED TO END A CREATOR'S TAKE. `validateSource`
+// and `validateClip` both did this:
+//
+//     try { await downloadObject(...) }
+//     catch (e) { return await reject(assetId, 'download_failed', ...) }
+//
+// `reject` is TERMINAL. So an object that finalized correctly and then met a
+// momentary 5xx on the way back was marked `rejected`, and the creator was told
+// their recording failed. SEEN on 2026-09-15: a 419,980-byte object, finalize
+// verified, killed by `storage download 504: 504 Gateway Time-out`.
+//
+// ⚖️ THE RULE ALREADY EXISTED IN TWO PLACES AND NEITHER OF THOSE PATHS READ IT.
+// `sanitizeError` maps /storage download/ to `storage_download_failed`, and
+// inspection.test.ts asserts that code is `retry: 'retryable'`. The staging
+// harness (scripts/staging-integration/assetFailure.mjs) separates transport
+// from our-fault and writes the reason out: "A 5xx OR AN EXPLICIT TIMEOUT IS
+// TRANSPORT … `download_failed` alone is ambiguous — a 404 would also be a
+// download failure and WOULD be our fault." A parity test pins this against it.
+//
+// ⚖️ AND RETRYING IS NOT ENOUGH ON ITS OWN. Dead-lettering a job does NOT move
+// the asset, so throwing on the LAST attempt would leave the take in
+// `validating` for ever — a permanent spinner, which is worse than a truthful
+// rejection. The callers therefore retry only while the budget allows and reject
+// honestly once it is spent; this predicate answers only "whose fault".
+
+/** Statuses that say the object is fine and the pipe was not. */
+const TRANSIENT_STATUS = new Set([408, 429, 500, 502, 503, 504, 507, 509])
+
+/** Network-level faults that never reached a status line. */
+const TRANSIENT_NETWORK =
+  /ETIMEDOUT|ECONNRESET|ECONNREFUSED|EPIPE|EAI_AGAIN|ENETUNREACH|socket hang up|fetch failed|gateway time-?out|timed? ?out|timeout/i
+
+/**
+ * ⚠️ DETERMINISTIC CASES ARE NAMED FIRST AND POSITIVELY. Each of these returns
+ * the identical answer on every retry, so spending the budget on them buys the
+ * creator nothing but a longer wait before the same verdict.
+ *
+ * · `download aborted` is a CANCELLATION, not a fault. Retrying a cancel would
+ *   resurrect work somebody stopped on purpose. (Neither validate caller passes
+ *   a signal today, so this cannot fire from them — it is here because the
+ *   predicate is exported and the next caller might.)
+ * · `too large` is the cap doing its job.
+ * · 404 means the object is not there; 401/403 mean our credential is wrong.
+ *   Both are ours to fix, and the upload-token outage is the standing proof that
+ *   a dead credential retried is just a dead credential retried.
+ */
+export function isTransientStorageFailure(raw: unknown): boolean {
+  const s = (typeof raw === 'string' ? raw : raw instanceof Error ? raw.message : String(raw ?? '')).trim()
+  if (s === '') return false
+  const low = s.toLowerCase()
+
+  if (low.includes('aborted')) return false
+  if (low.includes('too large')) return false
+
+  // ⚠️ THE STATUS IS READ FROM OUR OWN THROWN PREFIX, not guessed from digits
+  // anywhere in the text — a storage PATH can contain 404, and an object id can
+  // contain anything. `downloadObject` throws `storage download <status>: …`.
+  const m = /storage download (\d{3})\b/i.exec(s)
+  if (m) return TRANSIENT_STATUS.has(Number(m[1]))
+
+  if (TRANSIENT_NETWORK.test(s)) return true
+
+  // ⚖️ UNRECOGNISED COUNTS AS TRANSIENT, AND THAT MATCHES THE ONE PRECEDENT IN
+  // THIS CODEBASE FOR THE SAME QUESTION. `uploadCeiling.mayRetry` returns true
+  // for `unknown` with the reason stated: "Refusing to retry an unrecognised
+  // failure would strand takes on transient faults we failed to name." The cost
+  // is bounded — the budget runs out and the caller rejects with this same
+  // detail — so the worst case is a slower path to the identical answer, while
+  // the worst case of the other default is a lost recording.
+  return true
+}
+
 // Download an object to a local path, STREAMING to disk with a hard byte cap.
 // The single worker is the throughput bottleneck: buffering a whole object in
 // memory (Buffer.from(await res.arrayBuffer())) let one large/corrupt take OOM

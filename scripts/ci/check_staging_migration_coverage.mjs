@@ -124,6 +124,25 @@ export const EXCLUDED = {
     + 'matrix never touches, so applying it here could only ever pass vacuously — the '
     + 'state 0146 above was rewritten to avoid. The column IS applied to production and '
     + 'carries 264 rows, which is where it is actually exercised.',
+  '0213_the_misses_named_their_own_taxonomy':
+    'Widens the `gallery_items.caption_shape` and `caption_shape_reason` CHECKs to '
+    + 'carry the four model-only shapes and the four model refusals. Requires '
+    + '`gallery_items`, which staging does not have — the SAME reason as 0106, 0194, '
+    + '0196 and 0201, and 0008_gallery (which creates the table) is not in the applied '
+    + 'set either. '
+    + '⚠️⚠️ AND I RE-LEARNED IT THE EXPENSIVE WAY, WHICH 0196\'S ENTRY DIRECTLY WARNS '
+    + 'AGAINST. That entry says, in these words, that it was "DECLARED UP FRONT THIS '
+    + 'TIME, from 0194\'s measurement rather than by repeating it" and that "spending '
+    + 'another lane hour to re-learn the same fact would be the waste, not the '
+    + 'shortcut". I put 0213 in the APPLIED list on the standing rule that a new '
+    + 'migration always goes there, WITHOUT READING THIS LIST FIRST, and the matrix '
+    + 'failed in four minutes with `ERROR: relation "public.gallery_items" does not '
+    + 'exist` at 0213 line 83 (run 34892155974) — the third time that identical error '
+    + 'has been paid for. THE RULE IS NOW: before adding a migration to the APPLIED '
+    + 'list, check whether the table it touches is created by a migration in that list. '
+    + 'Nothing is lost by excluding it: the gallery is a production surface the editor '
+    + 'matrix never touches, so applying it here could only ever pass vacuously, and '
+    + 'the constraint is exercised on production where the table holds 6,276 rows.',
   '0196_the_shapes_had_nowhere_to_land':
     'Adds the caption-shape columns to `gallery_items`. Requires `gallery_items`, '
     + 'which staging does not have — the SAME reason as 0106 and 0194 above, and '

@@ -33,6 +33,12 @@ export * from './styleCompiler'
 export * from './premiseCompatibility'
 export * from './contentHistory'
 export * from './generationReadiness'
+// ⚖️ THE OBJECTIVE-KEYED CLAIMS WORDING, EXPORTED BECAUSE THE CARD HAS TO
+// RE-DERIVE IT. `generationReadiness` chooses this wording once, at a moment
+// when the objective is guaranteed to be unanswered — the remix card asks the
+// objective on the same screen — so the card recomputes it live from the chip
+// the creator just tapped. One definition, two moments.
+export * from './productObjectiveQuestion'
 // The three per-video intent questions and their compilation. Exported here
 // because the create screen, the building screen and the readiness gate all need
 // the same enums, and a second copy is what this module exists to end.

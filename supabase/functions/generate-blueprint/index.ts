@@ -3965,9 +3965,170 @@ function measuredFromFileBlockInline(t: TierZeroInline | null | undefined): stri
     + lines.map((l) => `  - ${l}`).join('\n')
 }
 
+// ── PARAGRAPH DECOMPOSITION, INLINED ──────────────────────────────────────
+//
+// ⚖️ PARITY: mirrors packages/shared/src/paragraphDecomposition.ts. The edge
+// cannot import @twinai/shared, so the rule lives twice and the shared copy is
+// the tested one — held to this one by a parity test that EXECUTES both.
+const MAX_LABEL_CHARS_INLINE = 200
+const MAX_DROPPED_INLINE = 12
+interface ParagraphUsedInline {
+  candidatesFound: number
+  candidateChosen: string
+  candidatesDropped: string[]
+  countDisagreesWithList: boolean
+  droppedTruncated: boolean
+}
+function readCountInline(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isInteger(v) && v >= 1 ? v : null
+  if (typeof v !== 'string') return null
+  const t = v.trim()
+  if (t === '') return null
+  // ⚠️ A WHOLE NUMBER OR NOTHING. "unknown", "a few" and "3-4" all mean the
+  // writer declined to count; reading "3-4" as 3 would invent precision.
+  if (!/^\d{1,3}$/.test(t)) return null
+  const n = Number(t)
+  return n >= 1 ? n : null
+}
+function readLabelInline(v: unknown): string {
+  return typeof v === 'string' ? v.trim().slice(0, MAX_LABEL_CHARS_INLINE) : ''
+}
+function paragraphUsedInline(raw: unknown): ParagraphUsedInline | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const r = raw as Record<string, unknown>
+  const found = readCountInline(r.candidates_found)
+  if (found === null) return null
+  const chosen = readLabelInline(r.candidate_chosen)
+  if (chosen === '') return null
+  const all = Array.isArray(r.candidates_dropped) ? r.candidates_dropped : []
+  const labels = all.map(readLabelInline).filter((x) => x !== '')
+  const dropped = labels.slice(0, MAX_DROPPED_INLINE)
+  return {
+    candidatesFound: found,
+    candidateChosen: chosen,
+    candidatesDropped: dropped,
+    // ⚠️ AGAINST THE FULL LIST, NOT THE CUT ONE. The cap is ours; comparing
+    // against `dropped` would blame the writer for our column limit.
+    countDisagreesWithList: found !== 1 + labels.length,
+    droppedTruncated: labels.length > MAX_DROPPED_INLINE,
+  }
+}
+function paragraphUsedRowInline(used: ParagraphUsedInline | null): Record<string, unknown> | null {
+  if (used === null) return null
+  return {
+    candidates_found: used.candidatesFound,
+    candidate_chosen: used.candidateChosen,
+    candidates_dropped: used.candidatesDropped,
+    count_disagrees_with_list: used.countDisagreesWithList,
+    dropped_truncated: used.droppedTruncated,
+  }
+}
+// ── END PARAGRAPH DECOMPOSITION ───────────────────────────────────────────
 function observedVisualCountInline(profile: ReferenceVisualProfileInline | null | undefined): number {
   return profile?.visualPassRan ? profile.fieldsObserved : 0
 }
+
+// ── OWN VISUAL SHAPE, INLINED ─────────────────────────────────────────────
+// ── WHAT SHE ACTUALLY FILMS ────────────────────────────────────────────────
+//
+// ⚖️ PARITY: mirrors packages/shared/src/ownVisualShape.ts. The edge cannot
+// import @twinai/shared, so the rule lives twice and the shared copy is the
+// tested one — the same arrangement `estimateDurationSecInline` uses, with the
+// same source-text parity test guarding the drift.
+//
+// ⚖️ AND IT IS THE OPPOSITE BLOCK FROM `observedVisualBlockInline`, which is
+// why it is a separate block rather than more lines in that one. That block
+// says of its own evidence: "not a description of this creator … never as
+// instruction for what this creator's own video should show." Correct there,
+// and INVERTED here. A reference is a vote — one video she admired. Her own
+// posts are a record: what she has proven she will set up, stand in front of,
+// and publish. Appending this there would inherit a warning that reverses it.
+interface OwnPostVisualInline {
+  url: string
+  plays: number | null
+  visualPassRan: boolean
+  observations: Record<string, string>
+}
+const MIN_POSTS_PER_GROUP_INLINE = 3
+const MIN_POSTS_POOLED_INLINE = 3
+interface OwnVisualShapeInline {
+  postsRead: number
+  split: { strong: number; typical: number } | null
+  lines: string[]
+}
+function medianInline(values: number[]): number | null {
+  const xs = values.filter((v) => Number.isFinite(v)).slice().sort((a, b) => a - b)
+  if (xs.length === 0) return null
+  const mid = Math.floor(xs.length / 2)
+  return xs.length % 2 === 1 ? xs[mid]! : (xs[mid - 1]! + xs[mid]!) / 2
+}
+function ownVisualShapeInline(posts: OwnPostVisualInline[]): OwnVisualShapeInline | null {
+  const read = posts.filter((p) => p.visualPassRan)
+  if (read.length < MIN_POSTS_POOLED_INLINE) return null
+  const withPlays = read.filter((p): p is OwnPostVisualInline & { plays: number } => p.plays !== null)
+  const med = medianInline(withPlays.map((p) => p.plays))
+  const strong = med === null ? [] : withPlays.filter((p) => p.plays > med)
+  const typical = med === null ? [] : withPlays.filter((p) => p.plays <= med)
+  const splitUsable = strong.length >= MIN_POSTS_PER_GROUP_INLINE
+    && typical.length >= MIN_POSTS_PER_GROUP_INLINE
+  const dimensions = [...new Set(read.flatMap((p) => Object.keys(p.observations)))].sort()
+  const lines: string[] = []
+  for (const dim of dimensions) {
+    if (splitUsable) {
+      const sg = strong.filter((p) => p.observations[dim] !== undefined)
+      const tg = typical.filter((p) => p.observations[dim] !== undefined)
+      if (sg.length === 0 && tg.length === 0) continue
+      const byLine = new Map<string, { s: number; t: number }>()
+      for (const p of sg) {
+        const k = p.observations[dim]!
+        byLine.set(k, { s: (byLine.get(k)?.s ?? 0) + 1, t: byLine.get(k)?.t ?? 0 })
+      }
+      for (const p of tg) {
+        const k = p.observations[dim]!
+        byLine.set(k, { s: byLine.get(k)?.s ?? 0, t: (byLine.get(k)?.t ?? 0) + 1 })
+      }
+      for (const [line, n] of [...byLine.entries()]
+        .sort((a, b) => (b[1].s + b[1].t) - (a[1].s + a[1].t))) {
+        lines.push(`${line} — in ${n.s} of your ${sg.length} best-performing videos, `
+          + `and ${n.t} of your ${tg.length} typical ones.`)
+      }
+    } else {
+      const all = read.filter((p) => p.observations[dim] !== undefined)
+      if (all.length === 0) continue
+      const byLine = new Map<string, number>()
+      for (const p of all) {
+        const k = p.observations[dim]!
+        byLine.set(k, (byLine.get(k) ?? 0) + 1)
+      }
+      for (const [line, n] of [...byLine.entries()].sort((a, b) => b[1] - a[1])) {
+        lines.push(`${line} — in ${n} of the ${all.length} of your videos we looked at.`)
+      }
+    }
+  }
+  if (lines.length === 0) return null
+  return {
+    postsRead: read.length,
+    split: splitUsable ? { strong: strong.length, typical: typical.length } : null,
+    lines,
+  }
+}
+function ownVisualShapeBlockInline(shape: OwnVisualShapeInline | null): string | null {
+  if (shape === null) return null
+  const header = shape.split !== null
+    ? 'OBSERVED FROM THIS CREATOR’S OWN PUBLISHED VIDEOS (own_visual — a model’s '
+      + 'reading of frames from videos SHE made and published, split by whether each '
+      + 'beat her own median reach). Unlike the reference block, this IS a '
+      + 'description of this creator, and it is the strongest evidence available for '
+      + 'what she will actually set up and film. It is not an instruction to repeat '
+      + 'herself:'
+    : 'OBSERVED FROM THIS CREATOR’S OWN PUBLISHED VIDEOS (own_visual — a model’s '
+      + 'reading of frames from videos SHE made and published). ⚠️ NOT SPLIT BY '
+      + 'PERFORMANCE: too few of her posts have both a reach figure and a frame '
+      + 'pass, so this says what she DOES film, and says nothing about what works '
+      + 'for her. Do not read it as the latter:'
+  return `${header}\n${shape.lines.map((l) => `  - ${l}`).join('\n')}`
+}
+// ── END OWN VISUAL SHAPE ──────────────────────────────────────────────────
 
 // FIX 7 — "WRITE TO target_sec" WAS PROSE. NOTHING COMPUTED IT.
 //
@@ -4793,6 +4954,32 @@ const blueprintSchema = obj(
       },
       ['platform', 'format_label', 'why_it_works', 'retention_map', 'mechanism'],
     ),
+    // ── WHICH IDEA SHE GOT, OUT OF THE ONES SHE GAVE US ──────────────────
+    //
+    // ⚠️ A CREATOR PASTES A PARAGRAPH AND WE RETURN ONE SCRIPT. Nothing has
+    // ever recorded whether that paragraph held one idea or five, or which one
+    // survived. Measured 2026-09-14: zero of 134 generations carry any
+    // decomposition, so "the writer used her input" has never been a
+    // measurable claim.
+    //
+    // ⚖️ THE WRITER'S OWN ANSWER, NOT A SECOND MODEL CALL. A separate call
+    // would be a DIFFERENT reader's opinion of the paragraph; comparing it to
+    // what the writer wrote would measure two models disagreeing rather than
+    // what the writer did with the input — and would cost a call per
+    // generation to answer a question the writer already answered implicitly.
+    //
+    // ⚠️ AND `candidates_found` IS ALLOWED TO BE EMPTY. An empty string means
+    // "I did not decompose this", which is stored as NULL and is NOT the same
+    // as finding one idea. A confident 1 is indistinguishable from a writer
+    // that never read past the first sentence.
+    input_decomposition: obj(
+      {
+        candidates_found: str,
+        candidate_chosen: str,
+        candidates_dropped: arr(str),
+      },
+      ['candidates_found', 'candidate_chosen', 'candidates_dropped'],
+    ),
     concept: obj(
       {
         premise: str,
@@ -5587,7 +5774,26 @@ Deno.serve(async (req: Request) => {
   // and let the profile-content check below decide if it's usable.
   const { data: voice } = await admin
     .from('brand_voices')
-    .select('id, handle, platform, profile, brand_kit, pre_script_brief')
+    // ⚠️ `stats` IS IN THIS LIST BECAUSE ITS ABSENCE MADE A WHOLE DIMENSION
+    // NULL. `recordWhatWasChosen` writes `creator_stage_band` from
+    // `voice.stats.followers`, and `stats` was not selected — so
+    // `followerBandInline(undefined)` correctly returned null and the column
+    // was null in EVERY row.
+    //
+    // ⚠️ MEASURED ON PRODUCTION 2026-09-14, and the proof is that one insert
+    // wrote one field and not its neighbour: of 36 `generation_outcomes` rows,
+    // 32 were written on 09-13 with `entry_door` filled 32 of 32 and
+    // `creator_stage_band` filled 0 of 32 — set two lines apart in the SAME
+    // object literal. Meanwhile 43 of 55 `brand_voices` carry
+    // `stats.followers` as a number. The column existed, the writer ran, the
+    // band function was correct, the data was there, and one word was missing
+    // from one select list.
+    //
+    // ⚖️ SELECTED, NOT DEFAULTED. A missing follower count must still produce
+    // NULL rather than a guessed band: `under_1k` asserted for a creator
+    // nobody counted would put a fabricated cohort into the outcome table that
+    // Loop B then reads as a fact.
+    .select('id, handle, platform, profile, brand_kit, pre_script_brief, stats')
     .eq('owner_id', ownerId)
     .eq('is_default', true)
     .maybeSingle()
@@ -5769,7 +5975,7 @@ Deno.serve(async (req: Request) => {
         }))
         await admin.from('ops_events').insert({
           kind: 'empty_voice_scan_enqueued',
-          severity: 'warning',
+          severity: 'warn',
           user_id: user.id,
           detail: { brand_voice_id: voice.id, handle: voice.handle },
         }).then(() => {}, () => {})
@@ -7476,6 +7682,17 @@ Deno.serve(async (req: Request) => {
     const knowledge = Array.isArray((ownedEntity as { knowledge?: unknown } | null)?.knowledge)
       ? ((ownedEntity as { knowledge: unknown[] }).knowledge)
       : []
+    // ⚠️ BELOW THIS MANY GRADED FACTS, THE GRADED BLOCK CANNOT CARRY A SCRIPT
+    // ALONE and the creator's own description is emitted beside it.
+    //
+    // ⚖️ THREE, FROM THE BEAT COUNT RATHER THAN FROM TASTE. A 30-second script
+    // is 4-6 beats and a 90-second one is 8; a name plus one attribute cannot
+    // fill either, and the production rows above show ONE is the common case,
+    // not zero. Three is the smallest number that could plausibly carry a short
+    // script without the writer asking the creator for substance -- and when the
+    // graded block is genuinely rich, the description stays out of the way
+    // exactly as it did before.
+    const MIN_GRADED_FACTS_TO_STAND_ALONE = 3
     const usableProductFacts = knowledge
       .filter((f) => (f as { trust?: unknown })?.trust === 'usable')
       .map((f) => {
@@ -7546,7 +7763,33 @@ Deno.serve(async (req: Request) => {
     const creatorSummaryLine = typeof (ownedEntity as { creator_summary?: unknown } | null)?.creator_summary === 'string'
       ? String((ownedEntity as { creator_summary: string }).creator_summary).trim()
       : ''
-    if (usableProductFacts.length === 0 && creatorSummaryLine !== '') {
+    // ⚠️⚠️ THE GATE WAS `=== 0` AND ONE THIN FACT IS NOT A PRODUCT. Measured on
+    // production 2026-09-14 for the account that produced the ask-beats:
+    //
+    //   Pueblo Bifold ......... 1 usable fact, 70-char description
+    //   The Nook Pattern ...... 1 usable fact, 58-char description
+    //   Custom Bible Rebind ... 0 usable facts, 97-char description
+    //
+    // At exactly zero the creator's own sentence was emitted and the rebind
+    // scripts read fine. At ONE it was SUPPRESSED -- the facts block fired with
+    // a single attribute and the description was withheld -- so the writer had
+    // a name and one field to fill six beats from. That is the measured
+    // symptom: the Nook produced 1 ask-beat at 30s and 2 at 90s, because more
+    // beats against the same one fact is proportionally more holes.
+    //
+    // ⚖️ AND IT EXPLAINS THE CONTRADICTION THE CREATOR SAW ON ONE SCREEN. The
+    // panel said "Yours, and you use it" (read off the entity) two lines above a
+    // scene saying "nothing about it was supplied" (read off these facts). Both
+    // were true of what they read; neither was true of the product.
+    //
+    // ⚖️ THE ORIGINAL WORRY STILL STANDS AND IS STILL HONOURED: an ungraded
+    // sentence must not inherit the trust of reviewed ones. It does not -- it
+    // keeps its own label, below the graded block, saying nothing was verified.
+    // What changes is only WHEN a thin graded block counts as enough. The two
+    // are also answering different questions: the graded facts say what may be
+    // CLAIMED, this line says what the thing IS and who it is FOR, and no
+    // classifier ever graded the second.
+    if (usableProductFacts.length < MIN_GRADED_FACTS_TO_STAND_ALONE && creatorSummaryLine !== '') {
       claimLines.push('\n- HOW THE CREATOR DESCRIBES THIS PRODUCT, in their own words: '
         + creatorSummaryLine.slice(0, 300)
         + '\n  Nothing has been verified about this product beyond this line — it is the creator\'s own description, not a checked fact. Use it to know what the thing IS and who it is FOR. Do not turn it into a capability claim, a result or a figure.')
@@ -7777,6 +8020,41 @@ Deno.serve(async (req: Request) => {
     // "I sell nothing" answer writes `pre_script_brief.commercialTies`, which
     // this file never read — so the creator who answered most clearly fell
     // through to the weaker unrecorded wording below.
+    // ── DOES THIS CREATOR HAVE A PRODUCT AT ALL ─────────────────────────────
+    //
+    // ⚠️⚠️ THE CARD ASKED A QUESTION THE LIBRARY HAD ALREADY ANSWERED, ON 13 OF
+    // 13 RUNS. `ownedEntity` is the entity THIS RUN selected, and the lookup
+    // that produces it filters `.in('relationship', ['OWN_PRODUCT','OWN_SERVICE'])`
+    // AND keys on the chosen product — so in a run that selected none it is
+    // null, `fromEntity` is null, and with `commercialTies` holding the
+    // non-answer `["unspecified"]` (`fromTies` null too) the verdict came back
+    // `unrecorded`.
+    //
+    // MEASURED 2026-09-14 on the account that reported this: FOUR
+    // `product_entities` rows across two voices, every one `OWN_PRODUCT`, and
+    // `commercialTies` = ["unspecified"]. So the script said "written without
+    // knowing whether you have a product" to a creator with four of them, and
+    // said it on scripts that named one in every scene.
+    //
+    // ⚖️ ONE HEAD-ONLY COUNT, NOT A SECOND SOURCE OF TRUTH. It does not decide
+    // what the writer may claim — `ownedEntity` still does that, and a product
+    // this run did not select still cannot be described in detail. It decides
+    // only whether the QUESTION "do you have a product?" is still open, and the
+    // library answers that on its own.
+    let hasAnyProductRow = false
+    try {
+      const { count } = await admin.from('product_entities')
+        .select('id', { count: 'exact', head: true })
+        .eq('owner_id', user.id)
+        .is('archived_at', null)
+      hasAnyProductRow = typeof count === 'number' && count > 0
+    } catch {
+      // ⚠️ A FAILED COUNT LEAVES THE QUESTION OPEN RATHER THAN CLOSING IT. False
+      // here means the card may still ask, which is the recoverable direction:
+      // asking a creator who has a product is a small annoyance, while silently
+      // never asking one who does not is the defect this card exists for.
+      hasAnyProductRow = false
+    }
     const recordedNoProduct = saysSellsNothingInline(briefTies, ownedEntity?.relationship)
     // ⚖️ UNRECORDED NOW MEANS BOTH STORES ARE SILENT, not just this one. An
     // onboarding answer with no entity row is an ANSWER, and treating it as
@@ -8061,6 +8339,12 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         // is ADDITIVE: an unassessed reference — which is still almost all of
         // them — emits nothing and the writer behaves exactly as it does today.
         let containerBlock = ''
+        // ⚠️ ITS OWN VARIABLE AND ITS OWN PROMPT SLOT, NOT `containerBlock`.
+        // Appending here would inherit a variable that gets REASSIGNED when a
+        // container template matches — the defect measured at 620 of 666
+        // visual blocks discarded. A new block must not be handed that risk
+        // just because the older one happened to live there.
+        let ownVisualBlock = ''
         // ⚖️ DECLARED OUT HERE BECAUSE THE VALIDATOR IS OUT HERE. The two checks
         // that have been reporting `not_run` need the slots this block resolves,
         // and they run long after it — after the model has answered. `null`
@@ -8083,6 +8367,66 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         let lengthTarget: number | null = null
         let lengthTargetSource: string | null = null
         let lengthBeatsAllowed: number | null = null
+        // ── WHAT SHE ACTUALLY FILMS, WHICH NOBODY HAD EVER LOOKED AT ────────
+        //
+        // ⚠️ MEASURED ON PRODUCTION 2026-09-14: 891 `visual_profile` rows exist
+        // and every one is a `gallery_items` row we scraped. 0 are her own
+        // posts. Migration 0209 started writing them; this is the reader that
+        // makes them reach a writer, because her own post URLs are NEVER a
+        // `reference_url` and the only existing reader keys on exactly that.
+        //
+        // ⚖️ TWO READS, NOT A JOIN, BECAUSE THERE IS NO KEY FOR ONE.
+        // `reference_content_profiles` has no owner column — it is a global,
+        // url-keyed cache, and that is CORRECT: a visual profile is a property
+        // of the video, not of who chose it, so a reference another creator
+        // later pastes reuses it for free. The provenance lives in
+        // `scraped_posts`, which carries `owner_id`, `url` and `plays`.
+        //
+        // ⚖️ A SEPARATE READ THAT FAILS ALONE, the same shape as the tier-zero
+        // read below it and for the same reason: this must never be able to
+        // take a generation down with it.
+        try {
+          const { data: mine } = await admin
+            .from('scraped_posts')
+            .select('url, plays')
+            .eq('owner_id', ownerId)
+            .limit(200)
+          const rows = (mine ?? []).filter((r): r is { url: string; plays: number | null } =>
+            typeof r?.url === 'string' && r.url !== '')
+          if (rows.length > 0) {
+            const { data: profiles } = await admin
+              .from('reference_content_profiles')
+              .select('url, visual_profile')
+              .in('url', rows.map((r) => r.url))
+              .is('error', null)
+            const byUrl = new Map<string, ReferenceVisualProfileInline | null>()
+            for (const p of profiles ?? []) {
+              byUrl.set(String((p as { url: unknown }).url),
+                (p as { visual_profile: unknown }).visual_profile as ReferenceVisualProfileInline | null)
+            }
+            const posts: OwnPostVisualInline[] = rows.map((r) => {
+              const vp = byUrl.get(r.url) ?? null
+              const observations: Record<string, string> = {}
+              // ⚠️ THE POST'S OWN REDUCED SENTENCES, produced by the SAME
+              // function the reference block renders from. Re-deriving the
+              // wording here would let the two blocks describe an identical
+              // observation in two different phrasings, which reads to a model
+              // as two different findings.
+              for (const l of observedVisualLinesInline(vp)) observations[l.dimension] = l.line
+              return {
+                url: r.url,
+                // ⚠️ NULL STAYS NULL. A post whose reach the source omitted is
+                // not a post nobody watched, and 945 gallery rows already
+                // proved what reading that as 0 does to a median.
+                plays: typeof r.plays === 'number' && Number.isFinite(r.plays) ? r.plays : null,
+                visualPassRan: vp?.visualPassRan === true,
+                observations,
+              }
+            })
+            ownVisualBlock = ownVisualShapeBlockInline(ownVisualShapeInline(posts)) ?? ''
+            if (ownVisualBlock) ownVisualBlock = `\n\n${ownVisualBlock}`
+          }
+        } catch { /* her own videos are evidence, never a precondition */ }
         try {
           const { data: assessed } = await admin
             .from('reference_content_profiles')
@@ -8148,7 +8492,31 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
             && typeof container.value === 'string'
           const tpl = known ? templateFor(container.value as never) : null
           if (tpl) {
-            containerBlock = `\n\nTHE SHAPE THIS REFERENCE USES — ${tpl.container}: ${tpl.summary}
+            // ⚠️ `+=`, AND THE `=` THAT WAS HERE DISCARDED TWO BLOCKS THAT HAD
+            // ALREADY BEEN READ. The observed-visual block is appended ~50 lines
+            // above and the tier-zero block ~20 above; a plain assignment here
+            // threw both away whenever the reference had a known container type.
+            //
+            // ⚠️ MEASURED ON PRODUCTION 2026-09-14, NOT REASONED. Of 1,363
+            // error-free reference profiles, 1,277 (93.7%) carry a known
+            // `containerType`, and 620 of the 666 that have a `visual_profile`
+            // — 93.1% — had that block built, appended, and then overwritten.
+            // 358 tier-zero blocks went the same way. The frames pass ran, the
+            // download was paid for, the reader existed, and the prompt never
+            // saw the answer.
+            //
+            // ⚖️ AND THE COMMENT ABOVE ALREADY CLAIMED THIS WAS SAFE: "appended
+            // to `containerBlock` so it reaches the SAME prompt slot as every
+            // other reference-derived field, REGARDLESS of whether a container
+            // template also matched." The intent was written down and the code
+            // defeated it, which is why the parity test below asserts the
+            // operator rather than trusting the sentence.
+            //
+            // ⚖️ ORDER IS NOT THE CLAIM HERE. Every one of these blocks carries
+            // its own header naming what it is and what it may be used for, so
+            // they are legible in any order; what matters is that none of them
+            // is silently dropped.
+            containerBlock += `\n\nTHE SHAPE THIS REFERENCE USES — ${tpl.container}: ${tpl.summary}
 Its beats, in order, and what each one is FOR. Follow this ORDER: it is the part
 of the reference worth borrowing, and it is what keeps somebody watching to the
 end. Fill each beat with THIS creator's own substance from the knowledge above —
@@ -8300,6 +8668,29 @@ ${beatLines.join('\n')}`
         const referenceExposureLevel: ReferenceUseLevel =
           (normalizedReferenceUseForFidelity ?? 'idea_structure') as ReferenceUseLevel
         const referenceVerbatimChars = verbatimBudget(referenceExposureLevel, (ref?.text ?? '').length)
+
+    // ⚠️ WITHOUT THIS LINE THE COLUMN IS NULL FOREVER. A response-schema field
+    // the prompt never asks for is a field the writer has no reason to fill —
+    // and `required` on Gemini's responseSchema is ADVISORY, as this file
+    // already records a few hundred lines down. So the ask is explicit, and it
+    // explicitly licenses the empty answer.
+    //
+    // ⚖️ AND IT MUST LICENSE "I DID NOT LOOK", not just permit it. A model told
+    // to count will always produce a number; the honest failure has to be an
+    // option it is told to use, or `candidates_found` becomes a confident 1 on
+    // every row and measures nothing.
+    const decompositionInstruction = `WHICH IDEA YOU TOOK, FROM WHAT SHE GAVE YOU (input_decomposition).
+The creator's note above may hold one idea or several. Before writing, say what
+you found in it:
+  - candidates_found: how many DISTINCT video ideas her note contains, as a
+    plain whole number. If you did not separate it into distinct ideas, leave
+    this EMPTY. An empty answer is correct and expected; a made-up number is
+    not. Do not write "a few", "3-4" or "unknown" — leave it empty instead.
+  - candidate_chosen: the one you wrote this script about, in a few of your own
+    words (not a quote of her sentence).
+  - candidates_dropped: the others you did not write, one short line each.
+These are notes about HER INPUT, not about the reference, and nothing here
+changes what you write — you are recording a decision you already made.`
         console.log(JSON.stringify({
           event: 'reference_exposure',
           reference_use: normalizedReferenceUseForFidelity ?? null,
@@ -8323,11 +8714,15 @@ ${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
 - Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
 ${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${vocabBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}
+
+${decompositionInstruction}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${vocabBlock}`
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}
+
+${decompositionInstruction}`
 
     // The DNA is fenced too. It reads like our own text, but every field in it
     // was synthesized from captions we scraped — so it is exactly as
@@ -8599,6 +8994,15 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // against the fuller store would excuse exactly the fabrication this exists
     // to catch, because a beat could cite something the writer never saw.
     const declared = (templated.bp as { script?: unknown })?.script
+
+    // ⚠️ COMPUTED HERE, ABOVE THE `beatAudit` LITERAL, AND THAT PLACEMENT IS
+    // THE POINT. `check_counter_written_before_read.mjs` exists because a
+    // counter read into that literal before its value is computed stores
+    // nothing — measured null in 30 of 30 rows for four separate counters.
+    // This reads the parsed response, which is bound on the line above, so the
+    // literal reads a computed value rather than an initialiser.
+    const paragraphUsedAudit = paragraphUsedRowInline(paragraphUsedInline(
+      (templated.bp as { input_decomposition?: unknown })?.input_decomposition))
 
     // ── DISCLOSURE, OR THE SCRIPT IS NOT RETURNED ────────────────────────
     //
@@ -9219,6 +9623,14 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // the number is read for what it is.
     beatAudit = {
       beats: Array.isArray(declared) ? declared.length : 0,
+      // ⚠️ WHICH IDEA SHE GOT, OUT OF THE ONES SHE GAVE US. NULL means the
+      // writer did not decompose her paragraph — which is NOT the same as
+      // finding one idea in it. "One" means there was one; null means nobody
+      // looked for more, and a retention rate built on confident 1s measures
+      // nothing. Safe in this literal because it is computed ~600 lines above,
+      // from the parsed response — the same exemption `cta_evidence_counted`
+      // has, and for the same reason.
+      paragraph_used: paragraphUsedAudit,
       // ⚠️ THE HOOK RULE THE PROMPT STATES, MEASURED. `raw` counts hooks that
       // broke the length/opener contract as written; `repaired` how many the
       // deterministic ladder rescued; `shipped_over` how many were demoted and
@@ -9501,7 +9913,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       console.error('generation_instrumentation_failed', detail)
       await admin.from('ops_events').insert({
         kind: 'generation_instrumentation_failed',
-        severity: 'warning',
+        severity: 'warn',
         user_id: user.id,
         detail: { fn: 'generate-blueprint', error: detail.slice(0, 500) },
       }).then(() => {}, () => {})
@@ -10443,7 +10855,13 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // ⚖️ WRITTEN UNCONDITIONALLY, UNLIKE THE ADVISORY READ BELOW. This costs no
     // extra model call — `unrecordedProduct` is already a boolean sitting in
     // scope from the prompt-assembly pass. There is no cost gate to design.
-    ;(blueprint as Record<string, unknown>).product_capture_prompt = unrecordedProduct
+    // ⚠️ AND IT IS NOT `unrecordedProduct` ALONE. That boolean still drives the
+    // PROMPT instruction correctly — a product this run did not select cannot
+    // carry a scene, whatever else the creator owns. But the CARD asks "do you
+    // have a product or service?", and a creator with rows in the library has
+    // already answered it. Measured: 4 rows, and the card asked anyway, 13 of 13.
+    ;(blueprint as Record<string, unknown>).product_capture_prompt =
+      unrecordedProduct && !hasAnyProductRow
 
     // ── THE REFERENCE'S OWN KNOWN LENGTH, CARRIED TO THE CLIENT ──────────────
     //
@@ -11024,7 +11442,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
             .from('ops_events')
             .insert({
               kind: 'generation_rescued',
-              severity: 'warning',
+              severity: 'warn',
               user_id: user.id,
               detail: {
                 fn: 'generate-blueprint',
