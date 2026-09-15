@@ -10760,7 +10760,8 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
 
     // ── SIX COUNTERS ARE WRITTEN HERE, NOT IN THE LITERAL ───────────────────
     //
-    // ⚠️ MEASURED IN PRODUCTION, 39 rows with a stored `beat_audit`:
+    // ⚠️ THE DEFECT THIS FIXED, MEASURED 2026-09-12 over 39 rows with a stored
+    // `beat_audit` — SIX COUNTERS WERE NULL IN EVERY ROW PRODUCTION HAD:
     //   shot_list_resync        key on 30 rows · non-null 0
     //   retention_map_resync    key on 30 rows · non-null 0
     //   setup_label_resync      key on 30 rows · non-null 0
@@ -10773,9 +10774,29 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // working — but because the `beat_audit` literal is built around line 7123
     // and every one of these locals is assigned around lines 7600-8150. The
     // literal captured their initialisers. The only two counters that ever held
-    // a value are the two written by mutation. No resync, no shot-naming rate,
-    // no phrase-overlap repair and no CTA-entity replacement has ever been
-    // observable in production.
+    // a value were the two written by mutation.
+    //
+    // ⚖️ AND RE-MEASURED 2026-09-15, 93 rows, WHICH IS WHY THIS PARAGRAPH IS
+    // PAST TENSE. The mutation below is doing its job:
+    //   shot_list_resync        key on 84 rows · non-null 54
+    //   retention_map_resync    key on 84 rows · non-null 54
+    //   setup_label_resync      key on 84 rows · non-null 54
+    //   shots_named_by_number   key on 91 rows · non-null 54
+    //   reference_phrase_overlap key on 84 rows · non-null 6   ← see below
+    //   cta_entity_unmatched    key on 84 rows · non-null 54
+    //   semantic_repetition                      non-null 73
+    //   cta_fallbacks                            non-null 3
+    //
+    // ⚠️ `reference_phrase_overlap` READING 6 IS CORRECT AND IS NOT A SURVIVING
+    // INSTANCE OF THIS BUG. It can only be computed for a generation that HAD a
+    // reference, and only 6 of the recent runs did — roughly one in eight.
+    // Reading that 6 as "the fix half worked" is the mistake to avoid: the
+    // denominator is references, not generations.
+    //
+    // ⚠️ AND THE KEY COUNTS ARE BELOW THE ROW COUNT ON PURPOSE — 84 and 91 of
+    // 93. The older rows predate the keys entirely. A MISSING KEY IS NOT A NULL
+    // VALUE AND NEITHER IS A ZERO: absent means this code had not shipped when
+    // that row was written.
     //
     // ⚖️ MUTATION, NOT A LITERAL, AND UNCONDITIONAL — the pattern
     // `semantic_repetition` and `cta_fallbacks` already use. Unconditional so
