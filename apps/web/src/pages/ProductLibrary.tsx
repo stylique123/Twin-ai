@@ -1355,6 +1355,56 @@ export default function ProductLibrary() {
               anyway spends a creator's attention on an answer we throw away,
               which is the founding defect of this rebuild in miniature. They are
               told the fact instead. */}
+          {/* ── WHAT KIND OF THING IT IS ─────────────────────────────────
+              ⚠️ THE GUESS HAD NO CORRECTION, ON A CREATOR WHO NEEDED ONE. The
+              kind is DERIVED from the onboarding work-kind answer and shown as
+              "we'll treat it as your own physical product" — measured on an
+              account selling a service, a physical product AND tutorials, whose
+              only escape was to declare they own nothing at all.
+
+              ⚖️ AND THE NEAR-MISS IS WORTH NAMING, because I nearly wrote it
+              down as a lie of the codebase's. Onboarding says showability is
+              "derived, marked inferred, and correctable from the Product
+              Library" — and that was TRUE: showability had a corrector here all
+              along. The kind never did. One field kept the promise and the one
+              beside it was never asked to.
+
+              ⚠️⚠️ AND A WRONG KIND IS THE WORST CASE BY THIS CODEBASE'S OWN
+              RULE. `productEntity.ts` says it outright: "`OTHER` exists so the
+              enum never forces a misclassification: `inferShowability` reads
+              this to tell the Director what it may ask for, so a WRONG kind is
+              worse than an unspecific one." The kind reaches the Director. An
+              uncorrectable wrong one is a standing instruction built on a guess.
+
+              ⚖️ IT SITS ABOVE THE CAPABILITY QUESTION BECAUSE IT DECIDES WHICH
+              ONE IS ASKED. `capabilityQuestionFor` reads the kind, so correcting
+              the kind re-renders the question underneath it — the same
+              answer-changes-the-question-below shape the objective chips use.
+
+              ⚖️ THE ADD FORM'S OWN LABELS, not a second set. `TYPE_CHOICES` is
+              what a creator read when they first answered; showing different
+              words for one stored field is how somebody learns their answer did
+              not mean what they thought. */}
+          <fieldset className="mt-4">
+            <legend className="text-xs font-medium uppercase tracking-wide text-stone">
+              What kind of thing is it?
+            </legend>
+            <div className="mt-2 space-y-1">
+              {TYPE_CHOICES.map((t) => (
+                <label key={t.value} className="flex items-start gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name={`kind-${e.id}`}
+                    className="mt-1"
+                    checked={e.type === t.value}
+                    onChange={() => void save(e.id, { type: t.value })}
+                  />
+                  <span>{t.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
           {/* ⚠️ TWO DERIVATIONS OF ONE RULE, HELD TOGETHER BY NOTHING. The add
               form asked `capabilityQuestion(...)` which branch to show; this
               card decided for itself with `type === 'PHYSICAL_PRODUCT' ?
