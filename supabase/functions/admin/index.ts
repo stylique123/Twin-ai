@@ -11,6 +11,7 @@
 //   POST { action: "set_admin", user_id, on }            -> add/remove an admin
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
+import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -28,7 +29,7 @@ Deno.serve(async (req: Request) => {
 
   const env = (k: string) => Deno.env.get(k)
   const supabaseUrl = env('SUPABASE_URL')!
-  const admin = createClient(supabaseUrl, env('SUPABASE_SERVICE_ROLE_KEY')!)
+  const admin = createClient(supabaseUrl, serviceKeyFrom(Deno.env))
   const userClient = createClient(supabaseUrl, env('SUPABASE_ANON_KEY')!, {
     global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
   })

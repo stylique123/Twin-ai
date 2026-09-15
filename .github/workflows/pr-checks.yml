@@ -57,6 +57,19 @@ jobs:
       # Both are things the compiler names; nothing was asking the compiler.
       - name: Edge functions compile (a syntax error here cannot deploy)
         run: node scripts/ci/check_edge_functions_parse.mjs
+      # ⚠️ THE CREDENTIAL 25 FUNCTIONS ASKED FOR COULD NOT BE ROTATED. They read
+      # `SUPABASE_SERVICE_ROLE_KEY`, which the platform injects and an operator
+      # CANNOT set — the `SUPABASE_` prefix is reserved, refused with "Name must
+      # not start with the SUPABASE_ prefix" when the rotation was attempted by
+      # hand on 2026-09-15. So every direct reader was pinned to the exposed key,
+      # and no amount of rotating could move them. The reads now go through one
+      # resolver; this guard is what keeps function 26 from reintroducing the
+      # pattern by copy-paste. It also counts the call sites, because "no raw
+      # reads" passes just as well when the calls are gone as when they are right.
+      - name: Service key has one reader (a rotation must be able to reach the functions)
+        run: |
+          node scripts/ci/check_service_key_single_reader.mjs --selftest
+          node scripts/ci/check_service_key_single_reader.mjs
       # ⚠️ THE SHAPE THE CHECK ABOVE CANNOT SEE, MEASURED ON CODE THAT ALMOST
       # SHIPPED (#746): a `const` declared AFTER an `.forEach` callback that
       # reads it. `tsc` exits 0 — TS2448 is never raised, because a callback

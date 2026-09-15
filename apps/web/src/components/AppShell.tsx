@@ -9,6 +9,7 @@ import { BrandReminder } from './BrandReminder'
 import { NotificationBell } from './NotificationBell'
 import { useAuth } from '../context/AuthContext'
 import { videosFromCredits } from '../lib/brand'
+import { loadProductEntities, productsNeedingAttention, type ProductEntityRecord } from '@twinai/shared'
 import { cn } from '../lib/cn'
 import { EASE } from './motion'
 
@@ -43,6 +44,47 @@ const TAB_PATHS = new Set(TABS.map((t) => t.to))
 // V2 wizard reads as part of the dashboard on a real monitor instead of a lone
 // card floating in empty space — but skips the mobile sticky header, since V2's
 // own full-screen screens already have their own back button + title on phone.
+// ⚠️ THE SAME WALK THE PRODUCT LIBRARY DOES, AND IT MUST STAY THE SAME ONE.
+// `productLifecycle` treats image evidence as a source, so a row with photos
+// and no link is READING rather than NEEDS_SOURCE. Counting photos differently
+// here would make the badge and the page disagree about which products are
+// waiting — the exact drift `productAttention.ts` injects this function to
+// avoid.
+function photoCountOf(e: ProductEntityRecord): number {
+  const ev = e.evidence
+  if (!ev || ev === 'declined' || ev.form !== 'images') return 0
+  return ev.sections.filter((x) => x.imagePath).length
+}
+
+/**
+ * How many products are waiting on their owner, for the nav badge.
+ *
+ * ⚖️ FETCHED ONCE PER MOUNT, NOT PER ROUTE. `AppShell` wraps every app page, so
+ * keying this to `pathname` would issue a products request on every navigation
+ * to pay for a number that changes only when she edits a product. A stale count
+ * for the length of one session is the cheaper wrong thing than a request per
+ * page view.
+ *
+ * ⚠️ AND IT FAILS TO ZERO, SILENTLY. This is decoration on a nav item; a
+ * products request that 500s must not take the shell down with it, and there is
+ * nothing useful to tell her about it here — the Product Library itself reports
+ * its own load failures.
+ */
+function useProductsWaiting(): number {
+  const [waiting, setWaiting] = useState(0)
+  useEffect(() => {
+    let live = true
+    void (async () => {
+      try {
+        const rows = await loadProductEntities()
+        if (live) setWaiting(productsNeedingAttention(rows, photoCountOf))
+      } catch { /* decoration only — never break the shell over a badge */ }
+    })()
+    return () => { live = false }
+  }, [])
+  return waiting
+}
+
 export function AppShell({ children, mobileChrome = true }: { children: React.ReactNode; mobileChrome?: boolean }) {
   const { profile, signOut } = useAuth()
   const { pathname } = useLocation()
@@ -69,6 +111,7 @@ export function AppShell({ children, mobileChrome = true }: { children: React.Re
     return () => window.removeEventListener('pagehide', onHide)
   }, [pathname])
   const left = videosFromCredits(profile?.credits ?? 0)
+  const productsWaiting = useProductsWaiting()
   // Hide agency-only items (Workspaces) from solo/aspiring/pro plans.
   const navItems = NAV.filter((n) => !n.agencyOnly || profile?.plan === 'agency')
   // Studio's tab links to /app, which redirects into /v2 — both (plus an open
@@ -92,6 +135,16 @@ export function AppShell({ children, mobileChrome = true }: { children: React.Re
                 {active && <motion.span layoutId="side-active" className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-signature" transition={{ duration: 0.3, ease: EASE }} />}
                 <n.icon className={cn('h-[18px] w-[18px]', active ? 'text-amber' : 'text-stone group-hover:text-sand')} />
                 <span className="flex-1">{n.label}</span>
+                {/* ⚠️ THE COUNT, NOT A DOT. "4" gets someone to open the page;
+                    an anonymous dot only says "something, somewhere". */}
+                {n.to === '/products' && productsWaiting > 0 && (
+                  <span
+                    aria-label={`${productsWaiting} ${productsWaiting === 1 ? 'product needs' : 'products need'} your attention`}
+                    className="ml-auto min-w-[1.25rem] rounded-full bg-amber/20 px-1.5 py-0.5 text-center text-[11px] font-semibold text-amber"
+                  >
+                    {productsWaiting}
+                  </span>
+                )}
               </Link>
             )
           })}

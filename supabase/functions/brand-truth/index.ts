@@ -51,6 +51,7 @@ import {
   BrandTruthError, canonicalBrandTruth, projectBrandTruth, validateBrandTruthSnapshot,
   type BrandTruthSources,
 } from '../_shared/brandTruth.ts'
+import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -77,7 +78,7 @@ Deno.serve(async (req: Request) => {
   const userClient = createClient(url, Deno.env.get('SUPABASE_ANON_KEY')!, {
     global: { headers: { Authorization: authHeader } },
   })
-  const admin = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  const admin = createClient(url, serviceKeyFrom(Deno.env))
 
   const { data: { user } } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)
