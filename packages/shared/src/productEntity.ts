@@ -415,6 +415,28 @@ export function mintFromWorkKind(
     showability: inferShowability(type, opts.flags),
     productUrl: null,
     affiliateUrl: null,
+    // ⚠️ NULL HERE IS NOT A DECISION, AND MEASURING SAID SO: 0 OF 22 ROWS.
+    // Both mints write this null and NOTHING in the repo ever writes anything
+    // else. `saveMintedEntity` and the library update pass `entity.evidence`
+    // through, so they can only re-write the null they were handed — the two
+    // sites below are the only producers `product_entities.evidence` has, and
+    // both produce nothing. See `theColumnWithAReaderAndNoProducer.test.ts`.
+    //
+    // ⚖️ THE READER IS REAL, WHICH IS WHY THIS MATTERS. `factsOfProduct` reads
+    // `evidence.sections` first and falls back to `knowledge`. That fallback
+    // (added when the precedence bug was fixed) is the ONLY reason the product
+    // path works at all — measured the same day: `knowledge` is non-null on 5
+    // of 22, and all 5 carry `knowledge_extracted_at` AND
+    // `knowledge_source_url`, because knowledge HAS a producer. Evidence does
+    // not. That is the whole difference between the two columns.
+    //
+    // ⚠️ NOT FILLED IN HERE ON MY OWN. What counts as evidence, and where it
+    // would be collected, is a product decision and an open owner question —
+    // and 0213 set the precedent for this exact situation by refusing to invent
+    // a taxonomy and deriving it from rows once they existed. Inventing an
+    // evidence shape to make a column non-null would put our guess where a
+    // creator's statement belongs, which is the one thing this file's
+    // `source: 'inferred'` labelling exists to keep visible.
     evidence: null,
     restrictions: emptyRestrictions(),
     // INFERRED FROM AN ANSWER, not observed and not stated. The creator said
@@ -507,6 +529,9 @@ export function attestedEntity(a: EntityAttestation): DraftEntity {
     // URL on screen that nobody gave us. `promoteToAffiliate` sets it when the
     // creator provides it.
     affiliateUrl: null,
+    // The second of the two producers, and it writes nothing too. See the long
+    // note on the other `evidence: null` above — measured 0 of 22 rows, a real
+    // reader in `factsOfProduct`, and an owner decision still open.
     evidence: null,
     restrictions: emptyRestrictions(),
     source: 'user_answer',
