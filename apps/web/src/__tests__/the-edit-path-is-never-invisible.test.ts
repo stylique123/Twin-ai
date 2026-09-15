@@ -62,7 +62,29 @@ describe('Result offers the edit path before the asset is ready', () => {
     expect(codeLines(RESULT)).toMatch(/\sdisabled=\{editStarting \|\| !serverSourceAssetId\}/)
   })
 
-  it('tells the creator the upload is still arriving and may be left alone', () => {
+  // ⚠️ THIS TEST'S CLAIM WAS HALF FALSE AND IT WAS NOT STALE — the wording it
+  // pinned really was shipped. "May be left alone" is true once the bytes are
+  // in and the worker is checking them, and FALSE while the upload is running:
+  // that is an in-page XHR, and a navigation aborts it. One sentence covered
+  // both states, so a creator acting on it at the wrong moment lost the take.
+  //
+  // ⚖️ SO IT PINS THE SPLIT. The "still receiving" wording survives, for the
+  // state it is true of, and the leavability promise is asserted to appear only
+  // beside the checking state.
+  it('tells the creator the upload is still arriving, and to keep the page open', () => {
     expect(RESULT).toMatch(/still receiving this take/)
+    const uploading = RESULT.slice(RESULT.indexOf("pendingTake === 'uploading'"))
+    const block = uploading.slice(0, uploading.indexOf(')}'))
+    expect(block).toMatch(/Keep this page open/)
+    expect(block, 'the upload state must not promise the page can be left')
+      .not.toMatch(/you can leave this page/)
+  })
+
+  it('and says the opposite once the bytes are in, because then it is true', () => {
+    const validating = RESULT.slice(RESULT.indexOf("pendingTake === 'validating'"))
+    const block = validating.slice(0, validating.indexOf(')}'))
+    expect(block).toMatch(/has your take and is checking it/)
+    expect(block).toMatch(/you can leave this page/)
+    expect(block, 'checking is not receiving').not.toMatch(/still receiving/)
   })
 })

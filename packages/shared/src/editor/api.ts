@@ -305,6 +305,36 @@ export async function getReadySourceAsset(generationId: string): Promise<MediaAs
   return (data as MediaAsset) ?? null
 }
 
+/**
+ * The newest source asset that is NOT yet ready — the one the creator is
+ * waiting on.
+ *
+ * ⚠️ `getReadySourceAsset` FILTERS TO `ready`, SO A WAITING PAGE LEARNS NOTHING
+ * FROM IT. It returns null both when no take exists and when a take exists and
+ * is still being checked, and those are different things to say to a creator.
+ * Result.tsx showed "Twin is still receiving this take" for BOTH, which is true
+ * of the first and false of the second: by then the bytes are in and the worker
+ * is probing.
+ *
+ * ⚖️ SO THE STATUS COMES BACK, AND THE CALLER DECIDES THE WORDING. Only the
+ * two in-flight states, because a `rejected` asset is a finished answer that
+ * belongs to the rejection path, and a `ready` one is what the other reader is
+ * for.
+ */
+export async function getPendingSourceAsset(generationId: string): Promise<MediaAsset | null> {
+  const { data, error } = await getClient()
+    .from('media_assets')
+    .select('*')
+    .eq('generation_id', generationId)
+    .eq('kind', 'source')
+    .in('status', ['uploading', 'validating'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) return null
+  return (data as MediaAsset) ?? null
+}
+
 // Wait for worker-side validation to settle. Resolves with the terminal asset
 // ('ready' | 'rejected') or null on timeout/stop — the caller decides how to
 // present a still-validating asset.
