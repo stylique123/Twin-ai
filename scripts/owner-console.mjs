@@ -244,7 +244,24 @@ export const FUNNEL_MIN_SCRIPTS = 20
 export function funnelCard(counts) {
   const n = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.round(v) : null)
   const scripts = n(counts?.scripts)
+  // ⚠️⚠️ `recordings` IS FINISHED TAKES ONLY, AND THAT IS THE WHOLE POINT OF THIS
+  // CHANGE. Measured on production 2026-09-14: `media_assets` holds 7 rows and
+  // SIX ARE `uploading` -- only ONE is `ready`. Counting the table gave
+  // "147 scripts, 7 recorded, 0 exported", which reads as creators recording and
+  // then abandoning. The truth is that six of seven never finished uploading,
+  // which is the upload 403, a completely different fix.
   const recordings = n(counts?.recordings)
+  // ⚖️ AND THE STALL IS ITS OWN NUMBER, because a take stuck mid-upload and a
+  // creator who chose not to film need OPPOSITE fixes -- the same reason the
+  // refusal card keeps quality and disclosure apart. Pooling them is how a
+  // funnel reports a behaviour problem that is actually an infrastructure one.
+  const stalledUploads = n(counts?.stalledUploads)
+  // ⚠️ `edit_project_created` IS A STAGE ON PURPOSE. recordingFunnel.ts records
+  // why: "A take that uploads and is then REJECTED by validation never creates
+  // an edit project ... Pooling them would have reported 'nobody exports' and
+  // hidden that we refused the only take anybody finished." Omitting it here
+  // reproduced exactly that reading.
+  const editProjects = n(counts?.editProjects)
   const exports_ = n(counts?.exports)
   const intents = n(counts?.scriptIntents)
 
@@ -268,6 +285,16 @@ export function funnelCard(counts) {
 
   const rate = Math.round((recordings / scripts) * 1000) / 10
   const stalled = scripts - recordings
+  // Named only when it exists, so a healthy funnel does not carry a clause
+  // about a problem it does not have.
+  const stallLine = stalledUploads !== null && stalledUploads > 0
+    ? ` ${stalledUploads} take${stalledUploads === 1 ? '' : 's'} never finished uploading, `
+      + `which is an upload failure and not a choice.`
+    : ''
+  const projectLine = recordings > 0 && editProjects === 0
+    ? ` ${recordings} finished take${recordings === 1 ? '' : 's'} produced no edit project at all, `
+      + `so nothing was refused downstream of a take -- it stopped before that.`
+    : ''
 
   // ⚠️ THE MISSING FIELD IS NAMED, because without it the drop is
   // unattributable and any fix is a guess. `script_intent` is already defined
@@ -277,7 +304,8 @@ export function funnelCard(counts) {
       card: 'funnel', state: 'action_needed',
       ownerAction: 'Collect script_intent — the drop cannot be attributed without it',
       detail: `${scripts} scripts, ${recordings} recorded (${rate}%), ${exports_ ?? 0} exported. `
-        + `${stalled} never opened the camera, and nothing records whether they would have. `
+        + `${stalled} never opened the camera, and nothing records whether they would have.`
+        + `${stallLine}${projectLine} `
         + `A funnel says where people stopped, never why.`,
     }
   }
@@ -285,7 +313,7 @@ export function funnelCard(counts) {
   return {
     card: 'funnel', state: 'ok', ownerAction: null,
     detail: `${scripts} scripts, ${recordings} recorded (${rate}%), ${exports_ ?? 0} exported. `
-      + `${intents} said whether they would record it.`,
+      + `${intents} said whether they would record it.${stallLine}${projectLine}`,
   }
 }
 

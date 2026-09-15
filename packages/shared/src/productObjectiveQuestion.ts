@@ -36,12 +36,84 @@ import type { VideoGoal } from './videoIntent.js'
  *  distinction the owner drew on the niche-questions decision holds here too:
  *  Twin may ask what people misunderstand; it may never offer her four guesses
  *  at what her audience believes and call one of them her answer. */
+/**
+ * WHETHER WHAT SHE SELLS IS A THING OR WORK SHE PERFORMS.
+ *
+ * ⚠️ THE OWNER ASKED FOR THREE — service, physical, digital — AND THE WORDING
+ * ONLY NEEDS TWO. Tested against the three questions that actually break: "What
+ * is new about IT", "how IT WORKS", "made you BUILD IT". A physical product and
+ * a digital one take the SAME sentence in all three; there is no phrasing where
+ * they differ. Only a service has no "it" to be new, nothing that "works" the
+ * way an object does, and nothing you "build".
+ *
+ * ⚖️ SO THE THIRD BUCKET IS NOT BUILT. Adding a digital variant identical to the
+ * physical one would be a distinction the copy cannot cash, and a bucket that
+ * does not fit is what makes a model — or a creator — force-fit an answer. If a
+ * phrasing is ever found that genuinely separates them, this union is where it
+ * goes and the compiler will demand the wording.
+ */
+export const OFFER_FORMS = ['artefact', 'performed'] as const
+export type OfferForm = (typeof OFFER_FORMS)[number]
+
+/**
+ * ⚠️ KEYED ON THE ENTITY'S OWN `type`, WHICH IS 100% POPULATED, NOT ON AN
+ * ONBOARDING ANSWER. Measured 2026-09-14: all 22 live `product_entities` rows
+ * carry a type across 20 owners (PHYSICAL_PRODUCT 9, SERVICE 7,
+ * DIGITAL_PRODUCT 4, SAAS 1, OTHER 1), while `pre_script_brief.workKind` — the
+ * nearest onboarding field — is filled on 19 of 56 voices (34%).
+ *
+ * ⚖️⚖️ AND THAT 34% IS EXACTLY WHY FOUR PREVIOUS FIXES STALLED. The owner's
+ * ruling names it: a hand-written table "caps at 30 of 47 creators". Keying on
+ * workKind would cap harder. The entity type cannot cap, because having an
+ * entity is what makes a build a product build in the first place — and it is
+ * the more current fact: what she is selling in THIS video, not what she typed
+ * at signup.
+ *
+ * ⚠️ `OTHER` RETURNS null, AND null MEANS THE DEFAULT WORDING. That value exists
+ * so the enum never forces a misclassification, so it must not be coerced into
+ * one here either.
+ */
+export function offerFormOf(type: string | null | undefined): OfferForm | null {
+  switch (typeof type === 'string' ? type.trim().toUpperCase() : '') {
+    // Work performed by a person. There is no object, and nothing gets built.
+    case 'SERVICE':
+    case 'COMMUNITY':
+      return 'performed'
+    case 'PHYSICAL_PRODUCT':
+    case 'DIGITAL_PRODUCT':
+    case 'SAAS':
+    case 'APP':
+    case 'COURSE':
+    case 'MARKETPLACE':
+      return 'artefact'
+    // 'OTHER', unknown, or absent: the default wording, never a guess.
+    default:
+      return null
+  }
+}
+
 export interface ObjectiveQuestion {
   /** The sentence she reads. */
   readonly question: string
   /** Why no other objective can supply it. Recorded so a future edit has to
    *  argue with the reason rather than just overwrite the string. */
   readonly because: string
+  /**
+   * The same question for someone selling work rather than a thing.
+   *
+   * ⚠️⚠️ THIS WORDING IS MINE, NOT THE OWNER'S, AND IT IS THE ONE THING IN THIS
+   * FILE THAT IS NOT. The banner above says the questions are the owner's
+   * verbatim from the objective table, and that still holds for every
+   * `question` field. These three variants exist because the default is
+   * ungrammatical for a service, not because anyone wrote them — so they are
+   * marked for replacement rather than presented as settled copy. A creator
+   * reads this sentence; the mechanism is mine to build and the words are not.
+   *
+   * ⚖️ ABSENT MEANS THE DEFAULT ALREADY WORKS. Five of the eight objectives need
+   * no variant at all, which is a fact about the owner's wording being mostly
+   * kind-agnostic already — not an omission.
+   */
+  readonly whenPerformed?: string
 }
 
 /** ⚠️ KEYED ON THE CANONICAL GOAL, WHICH IS WHAT THE OBJECTIVE ALREADY IS.
@@ -51,11 +123,15 @@ export interface ObjectiveQuestion {
  *  singular. */
 export const OBJECTIVE_QUESTIONS: Readonly<Partial<Record<VideoGoal, ObjectiveQuestion>>> = Object.freeze({
   sell: Object.freeze({
+    // "it" is an object. A coach has no it.
+    whenPerformed: 'What is new about how you work, or why now?',
     question: 'What is new about it, or why now?',
     because: 'Nothing in Product DNA can supply urgency. Without it a launch is '
       + 'an explainer with a CTA on the end.',
   }),
   educate: Object.freeze({
+    // A service does not "work" the way an object does; it is done.
+    whenPerformed: 'What do people misunderstand about how you actually do it?',
     question: 'What do people misunderstand about how it works?',
     because: 'An explainer needs the misunderstanding, not the feature list. '
       + 'The misunderstanding becomes the hook and a spec list becomes a myth-bust.',
@@ -91,6 +167,8 @@ export const OBJECTIVE_QUESTIONS: Readonly<Partial<Record<VideoGoal, ObjectiveQu
       + 'otherwise produces a list with jokes attached.',
   }),
   personal_brand: Object.freeze({
+    // Nobody builds a service. They start one because something was missing.
+    whenPerformed: 'What was missing that made you start doing this?',
     question: 'What was missing that made you build it?',
     because: 'An origin needs the absence. The gap is the stakes, and today '
       + 'this objective asks nothing at all.',
@@ -103,9 +181,18 @@ export const OBJECTIVE_QUESTIONS: Readonly<Partial<Record<VideoGoal, ObjectiveQu
  *  own falls back to the generic claims wording, which is a real question — not
  *  a blank and not an invented sentence. `null` is what lets the caller do that
  *  without this file knowing what the fallback says. */
-export function objectiveQuestion(objective: string | null | undefined): string | null {
+export function objectiveQuestion(
+  objective: string | null | undefined,
+  offerForm?: OfferForm | null,
+): string | null {
   const key = typeof objective === 'string' ? objective.trim() : ''
   if (!key) return null
   const hit = (OBJECTIVE_QUESTIONS as Record<string, ObjectiveQuestion | undefined>)[key]
-  return hit ? hit.question : null
+  if (!hit) return null
+  // ⚠️ THE VARIANT ONLY WINS WHEN THE FORM IS KNOWN *AND* A VARIANT EXISTS.
+  // An unknown form falls to the owner's wording, which is a real question --
+  // never a blank and never a guess at what she sells. That is the same rule
+  // `offerFormOf` follows when it returns null for 'OTHER'.
+  if (offerForm === 'performed' && hit.whenPerformed) return hit.whenPerformed
+  return hit.question
 }

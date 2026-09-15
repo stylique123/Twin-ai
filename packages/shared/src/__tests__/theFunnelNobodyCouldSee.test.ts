@@ -152,8 +152,18 @@ describe('the endpoint actually asks for it', () => {
     // recordingFunnel.ts: a second record of "did they record" would create two
     // answers to one question and guarantee they disagree.
     expect(ENDPOINT).toContain("countOf('generations')")
-    expect(ENDPOINT).toContain("countOf('media_assets')")
     expect(ENDPOINT).toContain("countOf('edit_outputs')")
+    expect(ENDPOINT).toContain("countOf('edit_projects')")
+    // ⚠️⚠️ THIS ASSERTION USED TO PIN `countOf('media_assets')`, WHICH IS THE
+    // CALL THAT PRODUCED THE WRONG NUMBER. Counting that table counts ATTEMPTS:
+    // production holds 7 rows of which SIX are `uploading`, so the card
+    // reported 7 recordings and the funnel read as abandonment rather than as
+    // six failed uploads. The sentence around it — read the existing tables,
+    // never mint a second truth — was always right; the anchor contradicted it
+    // by pinning an unfiltered count. The test was wrong, not the code.
+    expect(ENDPOINT).toContain("countWhere('media_assets', 'status', 'ready')")
+    expect(ENDPOINT).toContain("countWhere('media_assets', 'status', 'uploading')")
+    expect(ENDPOINT).not.toContain("countOf('media_assets')")
   })
 
   it('stays read-only — the card may not start anything', () => {
@@ -162,5 +172,53 @@ describe('the endpoint actually asks for it', () => {
     for (const write of ['.insert(', '.update(', '.upsert(', '.delete(', '.rpc(']) {
       expect(body, `owner-console is read-only: ${write}`).not.toContain(write)
     }
+  })
+})
+
+describe('seven rows were not seven recordings', () => {
+  // ⚠️⚠️ MEASURED ON PRODUCTION 2026-09-14, AND THIS IS WHY THE CARD CHANGED.
+  // `media_assets` holds 7 rows: SIX `uploading`, ONE `ready`. Counting the
+  // table reported "147 scripts, 7 recorded, 0 exported" — which an owner reads
+  // as creators recording and then abandoning. The truth is that six of seven
+  // never finished uploading, which is the upload 403: a completely different
+  // fix from anything about the script.
+  const base = { scripts: 147, recordings: 1, exports: 0, scriptIntents: 12 }
+
+  it('names a stalled upload as an upload failure, not a choice', () => {
+    const d = funnelCard({ ...base, stalledUploads: 6, editProjects: 0 }).detail
+    expect(d).toMatch(/6 takes never finished uploading/)
+    expect(d).toMatch(/not a choice/)
+  })
+
+  it('says nothing about stalls when there are none', () => {
+    // A healthy funnel must not carry a clause about a problem it does not have.
+    const d = funnelCard({ ...base, stalledUploads: 0, editProjects: 0 }).detail
+    expect(d).not.toMatch(/uploading/)
+  })
+
+  it('counts only finished takes, so the rate is not inflated by attempts', () => {
+    const inflated = funnelCard({ ...base, recordings: 7, stalledUploads: 0, editProjects: 0 }).detail
+    const honest = funnelCard({ ...base, recordings: 1, stalledUploads: 6, editProjects: 0 }).detail
+    expect(inflated).toMatch(/7 recorded \(4\.8%\)/)
+    expect(honest).toMatch(/1 recorded \(0\.7%\)/)
+  })
+
+  it('tells "no exports" apart from "a finished take that was refused"', () => {
+    // ⚖️ recordingFunnel.ts split edit_project_created out for exactly this:
+    // "Pooling them would have reported 'nobody exports' and hidden that we
+    // refused the only take anybody finished."
+    const d = funnelCard({ ...base, recordings: 1, stalledUploads: 6, editProjects: 0 }).detail
+    expect(d).toMatch(/produced no edit project at all/)
+  })
+
+  it('stays quiet about edit projects when there are no finished takes', () => {
+    const d = funnelCard({ ...base, recordings: 0, stalledUploads: 6, editProjects: 0 }).detail
+    expect(d).not.toMatch(/edit project/)
+  })
+
+  it('null stalls and null projects are not zero', () => {
+    const d = funnelCard({ ...base, stalledUploads: null, editProjects: null }).detail
+    expect(d).not.toMatch(/uploading/)
+    expect(d).not.toMatch(/edit project/)
   })
 })
