@@ -19,7 +19,7 @@ import {
   emptyRestrictions, isEntityRelationship, isEntityType, isPersonalUse, isShowability,
   attestedEntity, isOwned,
   type DraftEntity, type EntityAttestation, type EntityRestrictions,
-  type ProductEntityRecord, type Showability,
+  type EntityType, type ProductEntityRecord, type Showability,
 } from './productEntity'
 import {
   EXTRACTED_FIELDS, EXTRACTION_SOURCES, type ExtractedFact,
@@ -2393,6 +2393,26 @@ export interface EntityPresentationEdit {
    *  a link. */
   affiliateUrl?: string | null
   showability?: Showability
+  /** ⚠️ THE GUESS HAD NO CORRECTION, AND THE CODE ALREADY SAID WHY THAT IS THE
+   *  WORST CASE. `productEntity.ts` states it outright: "`OTHER` exists so the
+   *  enum never forces a misclassification: `inferShowability` reads this to
+   *  tell the Director what it may ask for, so a WRONG kind is worse than an
+   *  unspecific one." The kind is DERIVED from the onboarding work-kind answer
+   *  and was then unchangeable — measured on a creator who sells a service, a
+   *  physical product AND tutorials, told "we'll treat it as your own physical
+   *  product", whose only escape was to declare they own nothing.
+   *
+   *  ⚖️ AND IT BELONGS HERE BY THIS INTERFACE'S OWN RULE. `name` and
+   *  `creatorSummary` are editable because "neither is an entitlement field".
+   *  Neither is the kind: it decides what can be FILMED, never what may be
+   *  CLAIMED. `relationship` stays forbidden for exactly the reason the kind is
+   *  allowed — one is an entitlement and one is a camera question.
+   *
+   *  ⚖️ `showability` IS DELIBERATELY NOT TOUCHED when the kind changes. It is
+   *  independently settable already, and the card re-derives WHICH capability
+   *  question applies from the new kind — so a stale stored value stops being
+   *  read rather than being silently rewritten on the creator's behalf. */
+  type?: EntityType
 }
 
 /** Edit the presentation of an entity the creator already declared.
@@ -2417,6 +2437,12 @@ export async function updateEntityPresentation(
   if ('productUrl' in edit) row.product_url = edit.productUrl === null ? null : String(edit.productUrl).trim() || null
   if ('affiliateUrl' in edit) row.affiliate_url = edit.affiliateUrl === null ? null : String(edit.affiliateUrl).trim() || null
   if ('showability' in edit) row.showability = edit.showability
+  // ⚠️ VALIDATED, NOT FORWARDED. Every other key here is a string or a closed
+  // union the compiler owns, but the kind is read by `inferShowability` to tell
+  // the Director what it may ask for — so an unknown value would not be a bad
+  // label, it would be a Director instruction derived from nothing. A value
+  // outside the enum is DROPPED rather than written.
+  if ('type' in edit && isEntityType(edit.type)) row.type = edit.type
   // An empty edit must not issue a no-op UPDATE that only bumps `updated_at`,
   // which would read afterwards as a change the creator never made.
   if (Object.keys(row).length === 0) return null
