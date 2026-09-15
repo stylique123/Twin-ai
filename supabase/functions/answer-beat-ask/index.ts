@@ -26,6 +26,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { resolveAskAnswer, ANSWER_MAX_CHARS } from '../_shared/beatAsk.ts'
+import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -60,7 +61,7 @@ Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const serviceKey = serviceKeyFrom(Deno.env)
   const authHeader = req.headers.get('Authorization') ?? ''
   const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
     global: { headers: { Authorization: authHeader } },

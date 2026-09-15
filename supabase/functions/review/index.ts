@@ -14,6 +14,7 @@
 // token doesn't point at.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
+import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -25,7 +26,7 @@ const json = (b: unknown, s = 200) =>
 const env = (k: string) => Deno.env.get(k)
 
 const admin = () =>
-  createClient(env('SUPABASE_URL')!, env('SUPABASE_SERVICE_ROLE_KEY')!, {
+  createClient(env('SUPABASE_URL')!, serviceKeyFrom(Deno.env), {
     auth: { persistSession: false },
   })
 

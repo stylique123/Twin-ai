@@ -13,6 +13,7 @@
 //   BILLING_ADMIN_SECRET  (lets a trusted caller confirm crypto/manual payments)
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
+import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -146,7 +147,7 @@ Deno.serve(async (req: Request) => {
   const parsed = await verifyAndParse(provider, raw, req.headers, env)
   if (!parsed.ok) return json({ error: 'Invalid signature' }, 401)
 
-  const admin = createClient(env('SUPABASE_URL')!, env('SUPABASE_SERVICE_ROLE_KEY')!)
+  const admin = createClient(env('SUPABASE_URL')!, serviceKeyFrom(Deno.env))
 
   // Idempotency gate: insert the event first. A duplicate (same provider+id) hits
   // the unique constraint and we no-op, so a replayed webhook never re-grants.

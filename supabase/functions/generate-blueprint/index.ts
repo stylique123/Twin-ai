@@ -44,6 +44,7 @@ import {
   productSceneGuidance, productSceneDirection,
   type EntityType, type Showability,
 } from '../_shared/productScenes.ts'
+import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
 // Internal credits per recreation. Adjustable via the RECREATION_COST secret so we
 // can quietly change the credit<->video rate later WITHOUT a code change and
@@ -2688,6 +2689,54 @@ const SPOKEN_SOURCES: ReadonlySet<string> = new Set(['transcript', 'asked'])
 function wasSpoken(item: { source?: string | null }): boolean {
   return SPOKEN_SOURCES.has(String(item?.source ?? ''))
 }
+
+// ── NICHE ANCHOR, INLINED ─────────────────────────────────────────────────
+//
+// ⚖️ PARITY: mirrors packages/shared/src/nicheAnchor.ts. The edge cannot import
+// @twinai/shared, so the rule lives twice and a parity test EXECUTES both over
+// one fixture table.
+//
+// ⚠️ MEASURED ON PRODUCTION 2026-09-15, 109 scripts / 531 beats: 120 beats
+// (22.6%) carry a word from the creator's own vocabulary, and 50 of 109 scripts
+// (46%) carry NONE — they would read identically on somebody else's account.
+// DETECTION ONLY: :5167 already instructs this, and 46% is what that
+// instruction achieves, so a second sentence would be two authorities on one
+// rule. The count decides whether anything stronger is earned.
+const MIN_NICHE_TERM_CHARS_INLINE = 4
+// ⚠️ A SLASH-JOINED ENTRY IS TWO TERMS. The extractor stores alternatives in one
+// entry ("perfect bind / glued binding"); matched whole it can never fire.
+function usableNicheTermsInline(vocabulary: unknown): string[] {
+  if (!Array.isArray(vocabulary)) return []
+  const out = new Set<string>()
+  for (const raw of vocabulary) {
+    if (typeof raw !== 'string') continue
+    for (const part of raw.split('/')) {
+      const t = part.trim().toLowerCase()
+      if (t.length < MIN_NICHE_TERM_CHARS_INLINE) continue
+      out.add(t)
+    }
+  }
+  return [...out]
+}
+function nicheAnchoredBeatsInline(
+  lines: readonly unknown[],
+  vocabulary: unknown,
+): { anchored: number; withLines: number; hits: Array<{ beat: number; term: string }> } {
+  const terms = usableNicheTermsInline(vocabulary)
+  const hits: Array<{ beat: number; term: string }> = []
+  let withLines = 0
+  lines.forEach((raw, beat) => {
+    const line = typeof raw === 'string' ? raw.trim() : ''
+    if (line === '') return
+    withLines++
+    if (terms.length === 0) return
+    const hay = line.toLowerCase()
+    const term = terms.find((t) => hay.includes(t))
+    if (term !== undefined) hits.push({ beat, term })
+  })
+  return { anchored: hits.length, withLines, hits }
+}
+// ── END NICHE ANCHOR ──────────────────────────────────────────────────────
 
 // ── REFERENCE MECHANISM, INLINED ───────────────────────────────────────────
 //
@@ -5732,7 +5781,7 @@ Deno.serve(async (req: Request) => {
   if (!apiKey) return json({ error: 'Server missing GEMINI_API_KEY' }, 500)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const serviceKey = serviceKeyFrom(Deno.env)
   const authHeader = req.headers.get('Authorization') ?? ''
 
   // Client bound to the caller's JWT — used to identify the user under RLS.
@@ -10923,7 +10972,8 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
 
     // ── SIX COUNTERS ARE WRITTEN HERE, NOT IN THE LITERAL ───────────────────
     //
-    // ⚠️ MEASURED IN PRODUCTION, 39 rows with a stored `beat_audit`:
+    // ⚠️ THE DEFECT THIS FIXED, MEASURED 2026-09-12 over 39 rows with a stored
+    // `beat_audit` — SIX COUNTERS WERE NULL IN EVERY ROW PRODUCTION HAD:
     //   shot_list_resync        key on 30 rows · non-null 0
     //   retention_map_resync    key on 30 rows · non-null 0
     //   setup_label_resync      key on 30 rows · non-null 0
@@ -10936,9 +10986,29 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // working — but because the `beat_audit` literal is built around line 7123
     // and every one of these locals is assigned around lines 7600-8150. The
     // literal captured their initialisers. The only two counters that ever held
-    // a value are the two written by mutation. No resync, no shot-naming rate,
-    // no phrase-overlap repair and no CTA-entity replacement has ever been
-    // observable in production.
+    // a value were the two written by mutation.
+    //
+    // ⚖️ AND RE-MEASURED 2026-09-15, 93 rows, WHICH IS WHY THIS PARAGRAPH IS
+    // PAST TENSE. The mutation below is doing its job:
+    //   shot_list_resync        key on 84 rows · non-null 54
+    //   retention_map_resync    key on 84 rows · non-null 54
+    //   setup_label_resync      key on 84 rows · non-null 54
+    //   shots_named_by_number   key on 91 rows · non-null 54
+    //   reference_phrase_overlap key on 84 rows · non-null 6   ← see below
+    //   cta_entity_unmatched    key on 84 rows · non-null 54
+    //   semantic_repetition                      non-null 73
+    //   cta_fallbacks                            non-null 3
+    //
+    // ⚠️ `reference_phrase_overlap` READING 6 IS CORRECT AND IS NOT A SURVIVING
+    // INSTANCE OF THIS BUG. It can only be computed for a generation that HAD a
+    // reference, and only 6 of the recent runs did — roughly one in eight.
+    // Reading that 6 as "the fix half worked" is the mistake to avoid: the
+    // denominator is references, not generations.
+    //
+    // ⚠️ AND THE KEY COUNTS ARE BELOW THE ROW COUNT ON PURPOSE — 84 and 91 of
+    // 93. The older rows predate the keys entirely. A MISSING KEY IS NOT A NULL
+    // VALUE AND NEITHER IS A ZERO: absent means this code had not shipped when
+    // that row was written.
     //
     // ⚖️ MUTATION, NOT A LITERAL, AND UNCONDITIONAL — the pattern
     // `semantic_repetition` and `cta_fallbacks` already use. Unconditional so
@@ -10966,6 +11036,29 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         ?.input_decomposition)?.event_in_note,
       (Array.isArray(declared) ? declared : []).map((b) => (b as { line?: unknown })?.line),
     )
+    // ── DOES THIS SCRIPT SURVIVE A NICHE SWAP ───────────────────────────────
+    //
+    // ⚠️ MEASURED 2026-09-15 over 109 scripts / 531 beats: 120 beats (22.6%)
+    // carry a word from the creator's OWN vocabulary, and 50 of 109 scripts
+    // (46%) carry NONE — they would read identically on somebody else's
+    // account. The owner's rule: "Swap the niche. If the sentence survives,
+    // delete it."
+    //
+    // ⚖️ COMPUTED HERE, NOT HOISTED, AND THAT IS THE POINT OF THE SITE. The
+    // comment above says this is "the FIRST point where the final script exists
+    // and the LAST point before shipping" — every repair has already run
+    // against `declared`. Reading a hoisted local instead is precisely the
+    // literal-capture defect the six counters above were built to escape, so
+    // there is nothing to capture: the value is derived where it is stored.
+    //
+    // ⚖️ DETECTION ONLY. :5167 already instructs the writer to spend this
+    // creator's vocabulary, and 46% is what that instruction achieves; a second
+    // sentence would be two authorities on one rule. The RATE decides whether a
+    // floor is ever earned — a floor today would refuse 46% of production.
+    const nicheAnchor = nicheAnchoredBeatsInline(
+      (Array.isArray(declared) ? declared : []).map((b) => (b as { line?: unknown })?.line),
+      (vp as { vocabulary?: unknown } | null)?.vocabulary,
+    )
 
     if (beatAudit) {
       beatAudit.shot_list_resync = shotListResync
@@ -10983,6 +11076,14 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         absent_words: eventRetained.absentWords,
         wholly_absent: eventRetained.whollyAbsent,
         truncated: eventRetained.truncated,
+      }
+      // ⚖️ BOTH NUMBERS, BECAUSE ONE IS MEANINGLESS ALONE. "2 anchored" says
+      // nothing without "of 6 beats that had a line at all" — and silent
+      // ask-beats are excluded from the denominator, because a rate invented
+      // from a beat nobody wrote is the absent-is-not-zero defect.
+      beatAudit.niche_anchored_beats = {
+        anchored: nicheAnchor.anchored,
+        of: nicheAnchor.withLines,
       }
     }
 
