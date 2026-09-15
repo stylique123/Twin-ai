@@ -55,9 +55,38 @@ describe('it is a fallback, not a peer of the graded facts', () => {
   // ⚠️ TWO AUTHORITIES FOR ONE FACT. `usableProductFacts` were graded by the
   // extraction classifier and reviewed by the creator; this line was neither.
   // Emitting both would let the unreviewed sentence inherit the trust of the
-  // reviewed ones — so it is gated on the graded set being EMPTY.
-  it('emits only when no graded product fact reached the writer', () => {
-    expect(edgeCode).toMatch(/usableProductFacts\.length === 0 && creatorSummaryLine !== ''/)
+  // reviewed ones — so it stays BELOW them and keeps its own label.
+  //
+  // ⚠️⚠️ THIS ASSERTION USED TO REQUIRE THE GRADED SET TO BE *EMPTY*, AND
+  // MEASUREMENT OVERTURNED THAT. Production, 2026-09-14, on the account that
+  // produced the ask-beat session:
+  //
+  //   Custom Bible Rebind ... 0 usable facts -> description emitted -> good scripts
+  //   The Nook Pattern ...... 1 usable fact  -> description WITHHELD -> ask-beats
+  //   Pueblo Bifold ......... 1 usable fact  -> description WITHHELD
+  //
+  // At exactly zero the rule worked. At ONE it starved the writer: the graded
+  // block emitted a single attribute and the creator's own sentence was
+  // suppressed, leaving a name and one field to fill six beats. The Nook
+  // produced 1 ask-beat at 30s and 2 at 90s for that reason.
+  //
+  // ⚖️ SO THE GATE IS A FLOOR NOW, AND THE ORIGINAL WORRY IS STILL HONOURED —
+  // by ORDER AND LABEL rather than by suppression, which the two assertions
+  // below pin. "Fallback, not a peer" was always the right sentence; "only when
+  // empty" was the wrong mechanism for it.
+  it('emits whenever the graded set is too thin to carry a script alone', () => {
+    expect(edgeCode).toMatch(
+      /usableProductFacts\.length < MIN_GRADED_FACTS_TO_STAND_ALONE && creatorSummaryLine !== ''/)
+    const floor = edgeCode.match(/const MIN_GRADED_FACTS_TO_STAND_ALONE = (\d+)/)
+    expect(floor).not.toBeNull()
+    expect(Number(floor![1])).toBeGreaterThan(1)
+  })
+
+  it('stays BELOW the graded block, so it cannot inherit its trust', () => {
+    const graded = edgeCode.indexOf('WHAT IS TRUE ABOUT THIS PRODUCT')
+    const own = edgeCode.indexOf('HOW THE CREATOR DESCRIBES THIS PRODUCT')
+    expect(graded).toBeGreaterThan(-1)
+    expect(own).toBeGreaterThan(graded)
   })
 
   it('labels it as unverified rather than as a checked fact', () => {
