@@ -192,8 +192,13 @@ export const REGISTRY = {
       + 'DELETE this entry then; if it never lands, delete the module.',
   },
   'nominalisation.ts': {
+    // ⚠️ `nominalisationsIn` IS GONE FROM THIS LIST BECAUSE ITS UNLOCK
+    // CONDITION WAS MET. The entry said "WHAT WOULD CHANGE THIS:
+    // generate-blueprint counting nominalisations into beat_audit. DELETE this
+    // entry then" — that landed, and the guard refused the build until the
+    // claim was withdrawn. Working exactly as written, on its author.
     symbols: ['NOMINALISING_SUFFIXES', 'OBSERVED_NOMINALISATIONS', 'CRAFT_EXEMPT',
-      'nominalisationsIn', 'hasNominalisation'],
+      'hasNominalisation'],
     why: 'The verb-swap check. Twin writes "repairability"; he says "it comes '
       + 'back and I fix it". Measured across thirteen runs on one craft account '
       + 'as the tell separating the good scripts from the weak ones. '
