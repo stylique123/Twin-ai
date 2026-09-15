@@ -199,10 +199,12 @@ async function makeFixtures(dir) {
 async function main() {
   console.log('== setup: identities, generations, fixtures ==')
   const dir = await mkdtemp(join(tmpdir(), 'phase1-fixtures-'))
-  const [fix, owner, ownerT3, ownerT6, matrixOwner, raceOwner, capsUser, peer, outsider] = await Promise.all([
-    makeFixtures(dir), makeUser('owner'), makeUser('t3'), makeUser('t6'),
-    makeUser('matrix'), makeUser('race'), makeUser('caps'), makeUser('peer'), makeUser('outsider'),
-  ])
+  const [fix, owner, ownerT3, ownerT6, matrixOwner, raceOwner, capsUser, burstUser, peer, outsider] =
+    await Promise.all([
+      makeFixtures(dir), makeUser('owner'), makeUser('t3'), makeUser('t6'),
+      makeUser('matrix'), makeUser('race'), makeUser('caps'), makeUser('burst'),
+      makeUser('peer'), makeUser('outsider'),
+    ])
   {
     const { error } = await admin.from('workspace_members').insert({ owner_id: owner.id, member_id: peer.id })
     if (error) throw new Error(`workspace_members: ${error.message}`)
@@ -213,6 +215,7 @@ async function main() {
   const cMatrix = await login(matrixOwner.email)
   const cRace = await login(raceOwner.email)
   const cCaps = await login(capsUser.email)
+  const cBurst = await login(burstUser.email)
   const cPeer = await login(peer.email)
   const cOutsider = await login(outsider.email)
   const cAnon = createClient(URL, ANON, { auth: { persistSession: false } })
@@ -327,6 +330,30 @@ async function main() {
     check('Caps: 6th open source asset refused (429)', statuses.slice(0, 5).every((s) => s === 200) && statuses[5] === 429, statuses.join(','))
     // Rate limit: hammer the SAME attempt (existing-asset path mints nothing new).
     //
+    // ⚠️ THIS RAN AGAINST A USER THE LINE ABOVE HAD JUST PUSHED TO THE OPEN
+    // CAP, AND THE PRECONDITION THE COMMENT DESCRIBES WAS THEREFORE FALSE.
+    // `max_open` is 5 (0091:736), and the loop above deliberately leaves
+    // `capsUser` holding exactly 5 open source assets. So the FIRST call here
+    // could not mint the shared attempt's asset: it took the
+    // `source_too_many_open` path, which answers 429 "Too many recordings are
+    // still processing — give them a moment to finish."  That string does not
+    // contain "few seconds", so `sawRateLimit` could never be set by it, and
+    // all 32 attempts went to the wrong limiter.
+    //
+    // It passed anyway, for a reason that has nothing to do with the claim:
+    // `deps.checkRateLimit` runs BEFORE the RPC, so on a fast runner the burst
+    // limiter answered first and masked the broken precondition. At ~3.9s per
+    // request it never fills its window, every attempt falls through to the
+    // cap, and the gate goes red naming the limiter it never actually reached.
+    // The 2026-09-15 phase-1 failure was exactly this: statuses 429x32, zero
+    // of them from the limiter under test.
+    //
+    // ⚖️ SO IT GETS ITS OWN USER, AND THE PASS CONDITION IS UNCHANGED. The
+    // window, the attempt count and the required "few seconds" substring all
+    // stay exactly as strict — the only thing fixed is that the burst limiter
+    // is now the first thing the request can trip, which is what this test
+    // says it measures.
+    //
     // ⚠️ THIS IS A SLIDING WINDOW OBSERVED BY A FIXED NUMBER OF ROUND TRIPS, so
     // the margin is environmental. On a slow runner the same 32 requests spread
     // across more wall-clock, fewer land inside any one window, and the limit
@@ -338,20 +365,32 @@ async function main() {
     // future failure is classifiable from one line instead of an investigation:
     // how many requests it managed, how long they took, and what came back.
     let sawRateLimit = false
+    let capRefusals = 0
     let attempts = 0
     const seen = new Map()
     const oneAttempt = randomUUID()
+    const burstGen = await newGen(burstUser.id)
     const startedAt = Date.now()
     for (let i = 0; i < 32 && !sawRateLimit; i++) {
-      const r = await createIntent(cCaps, capsGen, oneAttempt, 'video/webm', webm.byteLength)
+      const r = await createIntent(cBurst, burstGen, oneAttempt, 'video/webm', webm.byteLength)
       attempts++
       seen.set(r.status, (seen.get(r.status) ?? 0) + 1)
+      // ⚖️ THE WRONG LIMITER IS COUNTED SEPARATELY. A 429 from the open-asset
+      // cap is not a failure of this test's claim, it is a failure of this
+      // test's SETUP — and for months the two were one indistinguishable
+      // "429x32" in the evidence line. Counting them apart means the next
+      // red gate names its own cause instead of starting an investigation.
+      if (r.status === 429 && String(r.body.error ?? '').includes('still processing')) capRefusals++
       if (r.status === 429 && String(r.body.error ?? '').includes('few seconds')) sawRateLimit = true
     }
     const elapsedMs = Date.now() - startedAt
     const statusMix = [...seen.entries()].sort().map(([k, v]) => `${k}x${v}`).join(' ')
     const evidence = `${attempts} attempts in ${elapsedMs}ms `
       + `(${(elapsedMs / attempts).toFixed(0)}ms each) — statuses ${statusMix}`
+      + (capRefusals > 0
+        ? ` — ⚠️ ${capRefusals} of those 429s came from the OPEN-ASSET CAP, not the `
+          + `burst limiter: this user reached max_open, so the precondition is broken`
+        : '')
     // ⚠️ PRINTED WHETHER IT PASSES OR FAILS. A margin only visible after the
     // gate turns red is a lagging indicator; "tripped on attempt 7 of 32" and
     // "tripped on attempt 31 of 32" are the same green tick and completely
