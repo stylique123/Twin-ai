@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import {
-  initApi, classifyUploadFailure, mayRetry, preflight, RESUMABLE_THRESHOLD_BYTES,
+  initApi, classifyUploadFailure, mayRetry, mayTryAnotherTransport, preflight,
+  RESUMABLE_THRESHOLD_BYTES,
 } from '@twinai/shared'
 import * as tus from 'tus-js-client'
 
@@ -138,13 +139,23 @@ async function uploadSignedWithProgress(
       await uploadResumable(target, blob, onProgress)
       return
     } catch (e) {
-      const kind = classifyUploadFailure(
-        (e as UploadError)?.status ?? (e as { originalResponse?: { getStatus?: () => number } })?.originalResponse?.getStatus?.() ?? null,
-        (e as Error)?.message,
-      )
-      // A refusal is a refusal on every transport. Falling back to one big PUT
-      // would spend the creator's time reaching the identical wall.
-      if (!mayRetry(kind)) throw e
+      // tus buries the status one level down, so both shapes are read.
+      const status = (e as UploadError)?.status
+        ?? (e as { originalResponse?: { getStatus?: () => number } })?.originalResponse?.getStatus?.()
+        ?? null
+      // ⚠️ THIS ASKED THE WRONG QUESTION AND IT COST EVERY LARGE TAKE. The
+      // comment that stood here said "a refusal is a refusal on every
+      // transport", which is true of a SIZE refusal and false of an AUTH one.
+      // A 403 is `deterministic` — the identical request fails identically —
+      // and that verdict was used to conclude "try nothing else", which does
+      // not follow. Measured: 0 of 6 takes over 6 MB ever landed, and the
+      // working transport was one line below.
+      //
+      // ⚖️ `mayTryAnotherTransport` ANSWERS THE QUESTION ACTUALLY BEING ASKED.
+      // 413/415/422/400 are about the bytes and end here. 401/403 are about the
+      // credential, and the two transports carry credentials differently — the
+      // single PUT in the URL, tus in a header storage never read.
+      if (!mayTryAnotherTransport(status, (e as Error)?.message)) throw e
     }
   }
 
