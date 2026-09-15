@@ -118,6 +118,46 @@ Deno.serve(async (req: Request) => {
       .insert({ owner_id: user.id, type: 'ingest', status: 'done', payload: { url, platform }, result: { transcript_id: cachedId, cached: true } })
       .select('id')
       .single()
+    // ── THE CACHE HIT NEVER REACHED THE WORKER, SO IT NEVER ASKED FOR FRAMES ──
+    //
+    // ⚠️ MEASURED ON PRODUCTION 2026-09-14: of 134 `ingest` jobs, 40 took this
+    // branch — inserted `done` here and never claimed by the worker at all. The
+    // frames enqueue added to `handleTranscribe` therefore covers 85 of 125
+    // completed pastes and MISSES 30% of them, silently. A reference a second
+    // creator pastes is not a lesser reference; it is the one two people chose.
+    //
+    // ⚖️ ENQUEUED HERE RATHER THAN MADE THE WORKER'S PROBLEM, because the
+    // shortcut is the whole point of this branch: routing it through the worker
+    // to ask one question would give back the yt-dlp, whisper and Gemini spend
+    // this branch exists to skip.
+    //
+    // ⚖️ AND A LEGACY CACHE HIT WILL CORRECTLY REFUSE, not silently half-run.
+    // `framesOnly` reads `reference_transcripts` (raw url); a transcript cloned
+    // from a paste that predates that write has no such row, so the job records
+    // `no_cached_transcript` and spends nothing. Every paste from now on writes
+    // the cache first, so the refusal shrinks on its own rather than needing a
+    // backfill nobody authorised.
+    //
+    // ⚖️ A DUPLICATE ENQUEUE COSTS A ROW, NOT A DOWNLOAD.
+    // `shouldSkipAlreadyAssessed` already returns early once a `visual_profile`
+    // is on the row, which is why no dedupe mirror belongs here.
+    try {
+      await admin.from('jobs').insert({
+        owner_id: user.id,
+        type: 'assess_reference',
+        status: 'queued',
+        // Never retry: a retry re-spends the video download for an enrichment
+        // the creator is not blocked on.
+        max_attempts: 1,
+        // Exactly `true`, both: a truthy-but-not-true value enables neither the
+        // spend nor the cache-miss refusal.
+        payload: { url, platform: platform ?? null, frames: true, framesOnly: true },
+      })
+    } catch (err) {
+      // The transcript is already cloned and returned. An enrichment that could
+      // not be queued must not turn a served cache hit into an error.
+      console.warn('reference_frames_unqueued', { url, reason: err instanceof Error ? err.message : String(err) })
+    }
     return json({ job_id: doneJob?.id ?? null, status: 'done', transcript_id: cachedId, cached: true })
   }
 

@@ -41,6 +41,11 @@ import {
   keepBeforeScene,
   projectAcceptedSegments,
 } from '../../lib/timeline'
+// ⚖️ THE VOCABULARY FOR "BYTES SENT IS NOT BYTES KEPT", from the module that
+// records why it exists. `SaveStage` and its labels were built after a creator
+// watched a take reach 100% and then be refused — and until this change nothing
+// in the app read either of them.
+import { saveStageLabel, type SaveStage } from '@twinai/shared'
 
 // The single scene-by-scene recorder — served at BOTH the live `/record/:id`
 // route and the V2 `/v2/capture/:id` route, so there is one capture flow for the
@@ -253,6 +258,31 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   // is why 'saving' could outlive the upload entirely. Silence needs its own
   // deadline or it is indistinguishable from progress.
   const progressAtRef = useRef(0)
+  // ── 100%, AND THEN IT FAILED ──────────────────────────────────────────────
+  //
+  // ⚠️⚠️ THE SENTENCE BESIDE THE BAR USED TO READ "Saving to your library… 100%"
+  // AND THEN FLIP TO A FAILURE. `savePct` comes from `xhr.upload.onprogress`,
+  // which reaches 1.0 when the BROWSER FINISHES WRITING THE REQUEST BODY — the
+  // server has not answered, and a refusal arrives after that moment. So the
+  // screen asserted the save had all but happened at the exact instant it was
+  // least entitled to. `uploadCeiling.ts` says this in its own words ("bytes
+  // sent is not bytes kept") and shipped `SaveStage` to fix it; NOTHING READ IT.
+  //
+  // ⚖️ DERIVED, NEVER A SECOND PIECE OF STATE. Two notions of how far the save
+  // got is how one of them goes stale — and the honest stage is a pure function
+  // of the two facts already here.
+  //
+  // ⚖️ 'idle' IS NOT A SaveStage AND MUST NOT BECOME ONE. Nothing is being
+  // saved before the creator asks, so there is no stage to name.
+  // ⚖️ THE TWO IN-FLIGHT STAGES ONLY, AND DELIBERATELY NOT THE TERMINAL ONES.
+  // `saveStageLabel('saved')` is the word "Saved"; this screen says "Saved to
+  // your library — safe even if you close this tab", and the failure arm says
+  // WHICH of five causes it was. Both carry more than a label can, so mapping
+  // them through one would be a downgrade dressed as consistency — and a
+  // `saveStage` computed for arms nothing reads is a value discarded at the
+  // point of use, which is the defect this whole change is an instance of.
+  const saveStage: Extract<SaveStage, 'uploading' | 'finishing'> | null =
+    saveState !== 'saving' ? null : savePct >= 1 ? 'finishing' : 'uploading'
   // WHY THE REASON IS STATE AND NOT A CONSOLE LINE.
   //
   // `saveSourceOnce` can fail in five distinct places — no recorded scenes, the
@@ -861,7 +891,23 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
                   <p className="text-sm font-semibold text-cream">Your recording looks good.</p>
                   <p className="text-xs text-stone">
                     {saveState === 'saved' && 'Saved to your library — safe even if you close this tab.'}
-                    {saveState === 'saving' && (savePct > 0 ? `Saving to your library… ${Math.round(savePct * 100)}%` : 'Saving to your library…')}
+                    {/* ⚖️ THE PERCENTAGE RIDES THE 'uploading' LABEL AND STOPS
+                        AT 'finishing'. A number is the only thing that tells a
+                        slow upload from a dead one, which is why it stays —
+                        but it may never be the thing that reads 100%, because
+                        that is the one value the browser knows and the server
+                        has not confirmed.
+
+                        ⚠️ FLOOR, NOT ROUND — CAUGHT BY THIS CHANGE'S OWN TEST.
+                        `Math.round(0.995 * 100)` is 100, so rounding reproduced
+                        the very lie one decimal lower: a still-uploading take
+                        claiming 100%. A creator is only owed the percentage
+                        already past, never the one being rounded up to. */}
+                    {saveStage === 'uploading'
+                      && (savePct > 0
+                        ? `${saveStageLabel('uploading')} ${Math.floor(savePct * 100)}%`
+                        : saveStageLabel('uploading'))}
+                    {saveStage === 'finishing' && saveStageLabel('finishing')}
                     {/* The CAUSE, not just the outcome. Some of these are
                         retryable (the upload dropped) and some are not (the
                         recorded windows do not match the script), and a
@@ -1089,31 +1135,45 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
           <div className="absolute inset-0 z-10 grid place-items-center px-4">
             <div className="w-full max-w-md">{nextCard}</div>
           </div>
-        ) : scene?.ask ? (
-          /* ⚠️ NOTHING IS WRITTEN HERE, AND THAT IS THE POINT. The writer refused
-             to invent this creator's life and offered no usable scaffold, so the
-             beat has no words to scroll. Before this, the beat was DROPPED from
-             the recording script entirely and the creator never learned it
-             existed. The question stands in place of the line, and they answer
-             it out loud in their own words.
-
-             ⚖️ NOT A TELEPROMPTER LINE. It is deliberately not styled as words
-             to read — reading a question aloud is exactly the failure this whole
-             thread of work exists to end. */
-          <div className="absolute inset-0 z-10 grid place-items-center px-6 sm:px-12">
-            <div className="w-full max-w-2xl text-center space-y-3">
-              <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-300/90">
-                Only you know this one
-              </div>
-              <p className="font-bold leading-snug text-white [text-shadow:0_2px_20px_rgba(0,0,0,0.65)]"
-                 style={{ fontSize: Math.round(FONT_PX[fontIdx] * 0.62) }}>
-                {scene.ask}
-              </p>
-              <p className="text-sm text-white/70">Say it in your own words.</p>
-            </div>
-          </div>
         ) : (
-          <div className="absolute inset-0 z-10 flex items-center px-5 sm:px-10">
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center px-5 sm:px-10">
+            {/* ── THE PROMPTER CONTAINS ONLY WORDS TO SAY ──────────────────
+                ⚠️⚠️ THE ARM REMOVED FROM ABOVE THIS ONE PUT A QUESTION WHERE THE
+                LINE GOES, AND IT WAS STILL DOING IT. It branched on `scene?.ask`
+                and rendered the ask full-screen INSTEAD of the script. It was
+                written for a beat with no words at all — but the owner's rule,
+                set after a real session where "What was the situation right
+                before this started?" appeared where her next line should have
+                been, is that such a beat stays OFF the prompter entirely
+                (`show_in_teleprompter: false`, pinned in
+                theQuestionReachesTheTeleprompter.test.ts) and asks its question
+                in the editor, where a keyboard is (ScriptEditor.tsx:255,646).
+
+                So that arm could only ever match the OTHER kind of ask beat —
+                a SCAFFOLD, which has real words AND a blank — and for those it
+                hid the very line the creator was there to read. The fix had
+                been applied to the branch that could not fire, and the rule was
+                still broken on the one that could.
+
+                MEASURED ON PRODUCTION 2026-09-14 over 111 generations / 667
+                scenes: 63 scenes carry an ask across 30 generations; 62 are
+                ask-only and correctly filtered out; exactly 1 is a scaffold and
+                reached the prompter — so the full-screen surface has rendered
+                once, ever, and did the thing the rule forbids.
+
+                ⚖️ THE SCAFFOLD'S QUESTION IS A LABEL, NOT A LINE. It sits above
+                the scroll in small static text, because the adapter carries the
+                ask deliberately in this case — "showing the scaffold without the
+                question would hide what the blank is for" — while the words
+                below remain the only thing dressed as words to read. */}
+            {scene?.ask ? (
+              <div className="mb-4 w-full max-w-2xl text-center">
+                <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-300/90">
+                  Only you know this part
+                </div>
+                <p className="mt-1 text-sm text-white/70 [text-shadow:0_2px_20px_rgba(0,0,0,0.65)]">{scene.ask}</p>
+              </div>
+            ) : null}
             {/* the script glides UP past a fixed read-line, soft-faded top + bottom */}
             <div ref={promptScrollRef} className="relative mx-auto h-[54vh] w-full max-w-3xl overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,#000_14%,#000_86%,transparent)]">
               <p ref={textRef} className="absolute inset-x-0 top-0 text-center font-bold leading-[1.3] [text-shadow:0_2px_20px_rgba(0,0,0,0.65)] will-change-transform" style={{ fontSize: FONT_PX[fontIdx] }}>

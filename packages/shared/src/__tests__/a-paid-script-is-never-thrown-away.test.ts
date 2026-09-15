@@ -137,7 +137,15 @@ describe('a rescue is a success for the creator and a defect for us', () => {
     // count while the analysis region is throwing on real traffic.
     const block = EDGE.slice(CATCH, REFUND)
     expect(block).toMatch(/kind: 'generation_rescued'/)
-    expect(block).toMatch(/severity: 'warning'/)
+    // ⚠️⚠️ THIS ASSERTION PINNED A SPELLING THE DATABASE REJECTS. Migration
+    // 0208 constrained `ops_events.severity` to ('info','warn','error','critical')
+    // and was applied to production on 2026-09-13, so every insert written here
+    // with 'warning' now fails its CHECK -- and the insert is
+    // `.then(() => {}, () => {})`, so the rejection is swallowed. This test
+    // asserted the row was recorded durably while pinning the one value that
+    // guaranteed it could not be. The test was wrong, not the code.
+    expect(block).toMatch(/severity: 'warn'/)
+    expect(block).not.toMatch(/severity: 'warning'/)
   })
 
   it('records the ORIGINAL error, so the defect stays diagnosable', () => {
