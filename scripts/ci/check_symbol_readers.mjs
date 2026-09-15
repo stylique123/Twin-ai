@@ -203,6 +203,34 @@ export const REGISTRY = {
       + 'WHAT WOULD CHANGE THIS: a caller that genuinely has one niche and '
       + 'accepts a spread-only list. If none appears, delete the singular.',
   },
+  'nominalisation.ts': {
+    // ⚠️ `nominalisationsIn` IS GONE FROM THIS LIST BECAUSE ITS UNLOCK
+    // CONDITION WAS MET. The entry said "WHAT WOULD CHANGE THIS:
+    // generate-blueprint counting nominalisations into beat_audit. DELETE this
+    // entry then" — that landed, and the guard refused the build until the
+    // claim was withdrawn. Working exactly as written, on its author.
+    symbols: ['NOMINALISING_SUFFIXES', 'OBSERVED_NOMINALISATIONS', 'CRAFT_EXEMPT',
+      'hasNominalisation'],
+    why: 'The verb-swap check. Twin writes "repairability"; he says "it comes '
+      + 'back and I fix it". Measured across thirteen runs on one craft account '
+      + 'as the tell separating the good scripts from the weak ones. '
+      + 'DETECTION ONLY, DELIBERATELY: the owner has twice been asked whether a '
+      + 'replacement would come from a curated synonym map or a model call, and '
+      + 'that is unanswered, so nothing here rewrites a line. '
+      + 'THE SHAPE IS NOT A BAN, AND THAT IS THIS FILE\'S OWN EVIDENCE: the '
+      + 'progress-check rule at generate-blueprint:9272 records that naming the '
+      + 'forbidden phrases in the prompt only HALVED them across 16 regenerated '
+      + 'scripts, and that every enforcement shipped without measurement had to '
+      + 'be walked back. So the consumer is a COUNT in beat_audit plus the '
+      + 'prompt instruction, and the rate decides whether a ban is ever earned. '
+      + 'Validated against the owner\'s three named controls (Oxford hollow, '
+      + 'saddle stitch, signatures) and the twelve good lines his report quotes '
+      + 'verbatim: zero flagged. The eight good scripts themselves are NOT in '
+      + 'this repo, so that half of his condition is not yet satisfied. '
+      + 'WHAT WOULD CHANGE THIS: generate-blueprint counting nominalisations '
+      + 'into beat_audit. DELETE this entry then; if it never lands, delete the '
+      + 'module.',
+  },
   'creativeTransferPlan.ts': {
     symbols: ['TransferPlanError', 'computePlanSha256', 'finalizeTransferPlan',
       'validateCreativeTransferPlan', 'canonicalTransferPlan'],

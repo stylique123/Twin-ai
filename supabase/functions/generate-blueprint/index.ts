@@ -4024,6 +4024,65 @@ function paragraphUsedRowInline(used: ParagraphUsedInline | null): Record<string
   }
 }
 // ── END PARAGRAPH DECOMPOSITION ───────────────────────────────────────────
+
+// ── NOMINALISATION, INLINED ───────────────────────────────────────────────
+//
+// ⚖️ PARITY: mirrors packages/shared/src/nominalisation.ts. The edge cannot
+// import @twinai/shared, so the rule lives twice and the shared copy is the
+// tested one — held to this one by a parity test that EXECUTES both.
+//
+// ⚠️ THIS COUNTS. IT DOES NOT DELETE, REWRITE OR REFUSE, AND THAT IS THIS
+// FILE'S OWN RULING. The progress-check note below records that naming the
+// forbidden phrases in the prompt only HALVED them across 16 regenerated
+// scripts, that a contract check beats a prompt rule where the defect is
+// decidable, and that EVERY enforcement shipped without measurement had to be
+// walked back. A ban is that exact shape, so the rate comes first and decides
+// whether a ban is ever earned.
+const NOMINALISING_SUFFIXES_INLINE = ['ability', 'ibility'] as const
+const OBSERVED_NOMINALISATIONS_INLINE: Record<string, string> = {
+  repairability: 'it can be repaired',
+  durability: 'it lasts',
+  disposability: 'it goes in the bin',
+  consistency: 'it is the same every time',
+  reliability: 'it does not let you down',
+  density: 'how much is in it',
+  reasoning: 'why',
+}
+// ⚠️ CHECKED BEFORE ANY RULE FIRES, so a bookbinder's vocabulary can never be
+// swept up by a suffix. The owner's condition names three that must survive —
+// Oxford hollow, saddle stitch, signatures — and they survive by construction:
+// none carries a listed suffix. This set is for the terms that WOULD collide.
+const CRAFT_EXEMPT_INLINE = new Set([
+  'signature', 'signatures', 'hollow', 'stitch', 'stitching', 'binding',
+  'tapes', 'boards', 'endpapers', 'headband', 'gilding',
+  'accessibility', 'availability',
+])
+// ⚠️ `by` IS CARRIED EVEN THOUGH ONLY THE COUNT IS STORED. The parity test
+// compares the copies' FULL output, and it caught this field missing here on
+// its first run. Dropping a field because this side does not read it is how two
+// copies of one rule start answering differently — and the cheaper fix, making
+// the test compare fewer fields, would have been the check doing less.
+function nominalisationsInInline(
+  text: unknown,
+): Array<{ word: string; verb: string | null; by: 'observed' | 'suffix' }> {
+  if (typeof text !== 'string' || text.trim() === '') return []
+  const seen = new Set<string>()
+  const hits: Array<{ word: string; verb: string | null; by: 'observed' | 'suffix' }> = []
+  for (const w of text.toLowerCase().split(/[^a-z']+/).filter((x) => x.length > 2)) {
+    if (seen.has(w) || CRAFT_EXEMPT_INLINE.has(w)) continue
+    if (Object.prototype.hasOwnProperty.call(OBSERVED_NOMINALISATIONS_INLINE, w)) {
+      seen.add(w)
+      hits.push({ word: w, verb: OBSERVED_NOMINALISATIONS_INLINE[w], by: 'observed' })
+      continue
+    }
+    if (NOMINALISING_SUFFIXES_INLINE.some((suf) => w.endsWith(suf) && w.length > suf.length + 2)) {
+      seen.add(w)
+      hits.push({ word: w, verb: null, by: 'suffix' })
+    }
+  }
+  return hits
+}
+// ── END NOMINALISATION ────────────────────────────────────────────────────
 function observedVisualCountInline(profile: ReferenceVisualProfileInline | null | undefined): number {
   return profile?.visualPassRan ? profile.fieldsObserved : 0
 }
@@ -5196,6 +5255,7 @@ SCRIPT & HOOK INTEGRATION:
     - none = a transition, a CTA, or a beat that carries no factual claim.
   * "substance_evidence": for creator_knowledge and product_dna, quote or closely paraphrase the specific supplied item you used. For the others, one short phrase naming what the beat rests on. Never leave it empty when substance is creator_knowledge.
 - A PLACEHOLDER IS A FAILED BEAT, NOT A DRAFT. Never write "[Phone Model]", "[product name]", "the new XYZ phone", "Brand X", or any other stand-in for a specific you do not have. If you cannot name the thing, you have three honest options and no fourth: state the general fact in neutral terms, write the beat around a specific you DO have from the lists above, or drop the claim. Filling the gap with a bracket hands the creator a script they cannot read aloud.
+- SAY THE VERB, NOT THE ABSTRACTION. Write "it can be repaired", never "repairability". "It lasts", never "durability". "It goes in the bin", never "disposability". "It is the same every time", never "consistency". These -ability and -ity words are what a report says and a person does not: the good lines in this creator's own scripts are "It goes in the bin. That is the actual end of it." and "I stood there holding a sheet pan." The weak ones were "disposability" and "I felt overwhelmed". Her TECHNICAL vocabulary is not this — "Oxford hollow", "saddle stitch", "signatures", "sewn on tapes" are the names of real things and must be used exactly as she uses them.
 - NEVER WRITE A PERSONAL HISTORY THE CREATOR IS NOT ON RECORD FOR. Lines like "I used it as my only phone for six months", "I bought three of these", "I switched last year" are claims about this person's life. Write one only when the knowledge list contains a first-person statement saying so. No amount of general knowledge licenses it — "most people find" is honest where "I found" is a fabrication.
 - KILL THE BORING MIDDLE. Short-form retention dies in the 40-60% stretch, not at the start. Around the 40% mark, ESCALATE INTO the next real item rather than pausing to announce that you are about to. Mark that beat's section as "Re-hook".
   * THE RE-HOOK CARRIES SUBSTANCE. It is the opening clause of the next substantive beat, not a beat of its own: "and this is where it gets weird — thigh bones are stronger than concrete" is a re-hook; "and this is where it gets weird" alone is a stall. If a beat's only job is to promise that content is coming, it is not a beat.
@@ -8951,6 +9011,12 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // rows had no beat left to match at all — an extra beat the writer
     // proposed that a later repair or ask dropped — and were blanked rather
     // than left quoting a line the teleprompter no longer says.
+    // ⚠️ DECLARED OUT HERE, WITH THE OTHER MUTATION-SITE COUNTERS, AND
+    // `edge-functions-parse` IS WHY. Declared inside the counting block it was
+    // out of scope at the `beatAudit` mutation ~1200 lines below — TS2304,
+    // caught before deploy by the guard whose header records that this exact
+    // class of error "shipped once and refunded two paid generations".
+    let nominalisationsFound = 0
     let shotListResync: { resynced: number; orphaned: number } | null = null
     // ⚠️ FIX 5 (Wave 2). NULL MEANS THE GENERATION CARRIED NO RETENTION MAP TO
     // RECONCILE — never zero. `matched` is how many output rows landed on a
@@ -9596,6 +9662,12 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       productFactValues,
       productNames,
     )
+    // ⚠️ COUNTED OVER THE SAME LINES AS `progressChecks`, AND FOR THE SAME
+    // REASON — a decidable defect gets measured before it gets enforced.
+    // Distinct words, not occurrences: one line saying "durability" three times
+    // is one abstraction to fix, and counting three would make the rate depend
+    // on sentence length. (`nominalisationsFound` is declared above, in the
+    // scope its `beatAudit` mutation also lives in.)
     let progressChecks = 0
     if (Array.isArray(declared)) {
       for (const b of declared) {
@@ -9607,6 +9679,20 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         // hand — verified before the swap, because a counter that quietly starts
         // counting more is a metric that breaks its own history.
         if (isProgressCheck(line, r?.substance as string | null | undefined)) progressChecks++
+        const nom = nominalisationsInInline(line)
+        nominalisationsFound += nom.length
+        if (nom.length > 0) {
+          // ⚠️ THE WORDS AND THEIR VERBS, because "3 abstractions" is a number
+          // nobody can act on and `durability -> it lasts` is a fix. The verb is
+          // recorded, never applied: what a replacement should be is an open
+          // question (a curated map or a model call) and nothing here answers it.
+          console.warn(JSON.stringify({
+            event: 'nominalisation_found',
+            found: nom.length,
+            words: nom.map((h) => h.word),
+            verbs: nom.map((h) => h.verb),
+          }))
+        }
       }
     }
     // ⚖️ COMPUTED ONCE, LOGGED AND STORED — the same discipline 0130 uses, for
@@ -10782,6 +10868,11 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // still means the instrumentation itself failed. Absent is not zero, and
     // null is not zero either.
     if (beatAudit) {
+      // ⚠️ MUTATION, NOT THE LITERAL, for the reason the block above records:
+      // the literal is built ~600 lines before this value exists, so a literal
+      // entry would store its initialiser. Six counters were null in 30 of 30
+      // rows for exactly that reason.
+      beatAudit.nominalisations_found = nominalisationsFound
       beatAudit.shot_list_resync = shotListResync
       beatAudit.retention_map_resync = retentionMapResync
       beatAudit.setup_label_resync = setupLabelResync
