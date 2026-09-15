@@ -265,10 +265,35 @@ export function payoffMustAddNote(script: readonly CraftBeat[]): string | null {
 // the callback: the contract is that the script is a sequence, not that every
 // join is strong.
 
+// ⚠️ THE CONNECTIVE HAS TO POINT OUT OF THE BEAT, AND THIS LIST USED TO BE
+// SEARCHED ANYWHERE IN THE LINE. That is why a measured production sentence
+// passed: "Most factory covers split because cheap bonded leather falls apart,
+// but everyday crafters often use fold overs." It carries TWO of these words,
+// and neither one links it to the beat before — `because` is internal to its own
+// clause and `but` joins two unrelated statements inside the one sentence. The
+// guard read "a connective is present" as "this beat depends on its
+// predecessor", which is the same mistake as counting a mention as a call.
+//
+// ⚖️ SO POSITION IS THE TEST, NOT PRESENCE. A beat that OPENS with "So", "But",
+// "Then" is reaching back to the beat before — that is what those words do in
+// first position. One buried mid-sentence is doing work inside its own clause
+// and says nothing about the order of beats. This makes the check catch MORE,
+// not less: the sentence above now counts as no dependency, which is the truth
+// about it.
+//
+// ⚖️ AND THE SUBJECT-CARRY ESCAPE STAYS. A beat that genuinely continues the
+// previous one without a connective still passes on the shared-content-word
+// path below, so tightening this does not make the note fire on real sequences.
 const CONNECTIVES = [
   'so ', 'because ', 'which means', 'that\'s why', 'thats why', 'which is why',
   'then ', 'after that', 'now that', 'but ', 'and that', 'so that',
 ]
+
+/** True only when the beat OPENS with a connective — see the note above. */
+function opensWithConnective(line: string): boolean {
+  const t = line.trim().toLowerCase().replace(/^[^a-z]+/, '')
+  return CONNECTIVES.some((c) => t.startsWith(c) || t.startsWith(c.trim() + ','))
+}
 
 export const MIN_BODY_BEATS_FOR_ESCALATION = 3
 
@@ -276,8 +301,7 @@ export function escalationDependencyNote(script: readonly CraftBeat[]): string |
   const body = bodyBeats(script)
   if (body.length < MIN_BODY_BEATS_FOR_ESCALATION) return null
   for (let i = 1; i < body.length; i++) {
-    const text = String(body[i].line ?? '').toLowerCase()
-    if (CONNECTIVES.some((c) => text.includes(c))) return null
+    if (opensWithConnective(String(body[i].line ?? ''))) return null
     const before = new Set(contentWords(body[i - 1].line))
     if (contentWords(body[i].line).some((w) => before.has(w))) return null
   }
