@@ -2690,6 +2690,54 @@ function wasSpoken(item: { source?: string | null }): boolean {
   return SPOKEN_SOURCES.has(String(item?.source ?? ''))
 }
 
+// ── NICHE ANCHOR, INLINED ─────────────────────────────────────────────────
+//
+// ⚖️ PARITY: mirrors packages/shared/src/nicheAnchor.ts. The edge cannot import
+// @twinai/shared, so the rule lives twice and a parity test EXECUTES both over
+// one fixture table.
+//
+// ⚠️ MEASURED ON PRODUCTION 2026-09-15, 109 scripts / 531 beats: 120 beats
+// (22.6%) carry a word from the creator's own vocabulary, and 50 of 109 scripts
+// (46%) carry NONE — they would read identically on somebody else's account.
+// DETECTION ONLY: :5167 already instructs this, and 46% is what that
+// instruction achieves, so a second sentence would be two authorities on one
+// rule. The count decides whether anything stronger is earned.
+const MIN_NICHE_TERM_CHARS_INLINE = 4
+// ⚠️ A SLASH-JOINED ENTRY IS TWO TERMS. The extractor stores alternatives in one
+// entry ("perfect bind / glued binding"); matched whole it can never fire.
+function usableNicheTermsInline(vocabulary: unknown): string[] {
+  if (!Array.isArray(vocabulary)) return []
+  const out = new Set<string>()
+  for (const raw of vocabulary) {
+    if (typeof raw !== 'string') continue
+    for (const part of raw.split('/')) {
+      const t = part.trim().toLowerCase()
+      if (t.length < MIN_NICHE_TERM_CHARS_INLINE) continue
+      out.add(t)
+    }
+  }
+  return [...out]
+}
+function nicheAnchoredBeatsInline(
+  lines: readonly unknown[],
+  vocabulary: unknown,
+): { anchored: number; withLines: number; hits: Array<{ beat: number; term: string }> } {
+  const terms = usableNicheTermsInline(vocabulary)
+  const hits: Array<{ beat: number; term: string }> = []
+  let withLines = 0
+  lines.forEach((raw, beat) => {
+    const line = typeof raw === 'string' ? raw.trim() : ''
+    if (line === '') return
+    withLines++
+    if (terms.length === 0) return
+    const hay = line.toLowerCase()
+    const term = terms.find((t) => hay.includes(t))
+    if (term !== undefined) hits.push({ beat, term })
+  })
+  return { anchored: hits.length, withLines, hits }
+}
+// ── END NICHE ANCHOR ──────────────────────────────────────────────────────
+
 // ── REFERENCE MECHANISM, INLINED ───────────────────────────────────────────
 //
 // ⚠️ THIS FUNCTION WAS CALLED TWICE AND DEFINED NOWHERE, AND THAT IS THE SNAG.
@@ -10886,6 +10934,30 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // that NULL still means "there was nothing to reconcile" and a missing key
     // still means the instrumentation itself failed. Absent is not zero, and
     // null is not zero either.
+    // ── DOES THIS SCRIPT SURVIVE A NICHE SWAP ───────────────────────────────
+    //
+    // ⚠️ MEASURED 2026-09-15 over 109 scripts / 531 beats: 120 beats (22.6%)
+    // carry a word from the creator's OWN vocabulary, and 50 of 109 scripts
+    // (46%) carry NONE — they would read identically on somebody else's
+    // account. The owner's rule: "Swap the niche. If the sentence survives,
+    // delete it."
+    //
+    // ⚖️ COMPUTED HERE, NOT HOISTED, AND THAT IS THE POINT OF THE SITE. The
+    // comment above says this is "the FIRST point where the final script exists
+    // and the LAST point before shipping" — every repair has already run
+    // against `declared`. Reading a hoisted local instead is precisely the
+    // literal-capture defect the six counters above were built to escape, so
+    // there is nothing to capture: the value is derived where it is stored.
+    //
+    // ⚖️ DETECTION ONLY. :5167 already instructs the writer to spend this
+    // creator's vocabulary, and 46% is what that instruction achieves; a second
+    // sentence would be two authorities on one rule. The RATE decides whether a
+    // floor is ever earned — a floor today would refuse 46% of production.
+    const nicheAnchor = nicheAnchoredBeatsInline(
+      (Array.isArray(declared) ? declared : []).map((b) => (b as { line?: unknown })?.line),
+      (vp as { vocabulary?: unknown } | null)?.vocabulary,
+    )
+
     if (beatAudit) {
       beatAudit.shot_list_resync = shotListResync
       beatAudit.retention_map_resync = retentionMapResync
@@ -10893,6 +10965,14 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       beatAudit.shots_named_by_number = shotsNumberedNotNamed
       beatAudit.reference_phrase_overlap = referencePhraseOverlap
       beatAudit.cta_entity_unmatched = ctaEntityUnmatched
+      // ⚖️ BOTH NUMBERS, BECAUSE ONE IS MEANINGLESS ALONE. "2 anchored" says
+      // nothing without "of 6 beats that had a line at all" — and silent
+      // ask-beats are excluded from the denominator, because a rate invented
+      // from a beat nobody wrote is the absent-is-not-zero defect.
+      beatAudit.niche_anchored_beats = {
+        anchored: nicheAnchor.anchored,
+        of: nicheAnchor.withLines,
+      }
     }
 
     // ── AND THE TICKS ABOVE IT MUST DESCRIBE THE SAME SCRIPT ─────────────────
