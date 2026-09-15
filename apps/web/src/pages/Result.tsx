@@ -15,7 +15,7 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo, getOutputBundle, resolveFinishedOutputsResult, loadCapabilities, approvalState, approvalBlockReason } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getPendingSourceAsset, pollSourceAssetReady, getLatestEditProject, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo, getOutputBundle, resolveFinishedOutputsResult, loadCapabilities, approvalState, approvalBlockReason } from '../lib/api'
 import { explainFailure } from '../lib/api'
 import { creatorPick, defaultCapture, freeformEntry } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
@@ -535,16 +535,43 @@ export default function Result() {
   // can be passed is a path that can be wrong). Only a READY asset has one here,
   // which is also exactly the precondition the server enforces.
   const [serverSourceAssetId, setServerSourceAssetId] = useState<string | null>(null)
+  // Which in-flight state the take is in, so the copy below can tell a creator
+  // the truth instead of one sentence for two situations.
+  const [pendingTake, setPendingTake] = useState<'uploading' | 'validating' | null>(null)
+  // ⚠️ THIS FETCHED ONCE AND THE SENTENCE IT FED PROMISED OTHERWISE. The effect
+  // ran on `[id]` alone, so a page open while the worker validated the take
+  // NEVER learned that it finished: the button stayed disabled and the edit
+  // opened only on a manual reload — under a message reading "The edit opens as
+  // soon as the upload finishes". Observed on a real take 2026-09-15: 46.2 MB
+  // landed, the asset went to `validating`, and the page sat there.
+  //
+  // ⚖️ AND `pollSourceAssetReady` WAS ALREADY WRITTEN FOR EXACTLY THIS, WITH
+  // ZERO CALLERS. It resolves on the terminal state and stops itself. The fix
+  // is to call it, which makes the existing promise true rather than rewording
+  // the promise.
   useEffect(() => {
-    if (!id) { setServerSourcePath(null); setServerSourceAssetId(null); return }
+    if (!id) { setServerSourcePath(null); setServerSourceAssetId(null); setPendingTake(null); return }
     let live = true
-    getReadySourceAsset(id)
-      .then((a) => {
-        if (!live) return
-        setServerSourcePath(a?.storage_path ?? null)
-        setServerSourceAssetId(a?.id ?? null)
-      })
-      .catch(() => {})
+    const settle = (a: { id: string; storage_path?: string | null } | null) => {
+      if (!live) return
+      setServerSourcePath(a?.storage_path ?? null)
+      setServerSourceAssetId(a?.id ?? null)
+    }
+    void (async () => {
+      const ready = await getReadySourceAsset(id).catch(() => null)
+      if (!live) return
+      if (ready) { settle(ready); setPendingTake(null); return }
+      // No ready asset. Is one on its way, and which half of the wait is it in?
+      const pending = await getPendingSourceAsset(id).catch(() => null)
+      if (!live || !pending) { setPendingTake(null); return }
+      setPendingTake(pending.status === 'uploading' ? 'uploading' : 'validating')
+      // ⚠️ STOPS ITSELF ON UNMOUNT, and a timeout leaves the copy as it is
+      // rather than asserting a failure the page cannot see. `null` here means
+      // "still not settled", which is not the same as rejected.
+      const settled = await pollSourceAssetReady(pending.id, { shouldStop: () => !live })
+      if (!live || !settled) return
+      if (settled.status === 'ready') { settle(settled); setPendingTake(null) }
+    })()
     return () => { live = false }
   }, [id])
 
@@ -914,10 +941,29 @@ export default function Result() {
                           ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Starting…</>
                           : <><Wand2 className="h-3.5 w-3.5" /> {editProject ? 'Try the AI edit again' : 'Make my AI edit'}</>}
                       </button>
-                      {!serverSourceAssetId && !editStarting && (
+                      {/* ⚠️ ONE SENTENCE USED TO COVER TWO STATES AND WAS WRONG IN
+                          BOTH DIRECTIONS. "Twin is still receiving this take" is
+                          false once the bytes are in and the worker is checking
+                          them; and "you can leave this page, it keeps going" is
+                          false while the upload IS running, because it is an
+                          in-page XHR that a navigation aborts. A creator acting
+                          on either sentence at the wrong moment loses the take.
+                          So each state says only what is true of it. */}
+                      {!serverSourceAssetId && !editStarting && pendingTake === 'uploading' && (
                         <p className="mt-2 text-center text-[11px] leading-relaxed text-stone">
-                          Twin is still receiving this take. The edit opens as soon as the
-                          upload finishes — you can leave this page, it keeps going.
+                          Twin is still receiving this take. Keep this page open until it
+                          finishes — the edit opens straight after.
+                        </p>
+                      )}
+                      {!serverSourceAssetId && !editStarting && pendingTake === 'validating' && (
+                        <p className="mt-2 text-center text-[11px] leading-relaxed text-stone">
+                          Twin has your take and is checking it. The edit opens here on its
+                          own — you can leave this page, this part keeps going.
+                        </p>
+                      )}
+                      {!serverSourceAssetId && !editStarting && pendingTake === null && (
+                        <p className="mt-2 text-center text-[11px] leading-relaxed text-stone">
+                          The edit opens once Twin has a finished recording for this script.
                         </p>
                       )}
                       {editStartErr && <p className="mt-2 text-center text-xs text-coral">{editStartErr}</p>}
