@@ -75,6 +75,20 @@ const EVENTS = {
   // and not a counter. It fires when a creator-facing edge function could not
   // find a new-format `sb_secret_...` in the injected SUPABASE_SECRET_KEYS
   // dictionary and fell back to the platform-injected legacy service_role JWT.
+  // ⚠️ DISTINCT FROM THE FALLBACK BESIDE IT, ON PURPOSE. "Fell back to the
+  // legacy key" means the migration is unfinished; "found no credential at
+  // all" means the function cannot work. Pooling them would hide an outage
+  // inside a migration signal.
+  service_key_absent: {
+    kind: 'incident',
+    why: 'A creator-facing edge function found neither a usable sb_secret_ in the '
+      + 'injected SUPABASE_SECRET_KEYS dictionary nor a legacy service_role value. The '
+      + 'call proceeds with an empty key and the gateway refuses it -- exactly what the '
+      + 'previous `Deno.env.get(...)!` non-null assertion did when the variable was '
+      + 'unset, so this is not a new failure mode; what is new is that the absence is '
+      + 'logged instead of being indistinguishable from a working call. No durable '
+      + 'home: it is an outage signal, not a rate.',
+  },
   service_key_legacy_fallback: {
     kind: 'incident',
     why: 'An operator CANNOT set SUPABASE_SERVICE_ROLE_KEY -- the platform reserves the '

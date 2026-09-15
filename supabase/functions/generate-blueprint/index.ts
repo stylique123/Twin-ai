@@ -44,6 +44,7 @@ import {
   productSceneGuidance, productSceneDirection,
   type EntityType, type Showability,
 } from '../_shared/productScenes.ts'
+import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
 // Internal credits per recreation. Adjustable via the RECREATION_COST secret so we
 // can quietly change the credit<->video rate later WITHOUT a code change and
@@ -5609,7 +5610,7 @@ Deno.serve(async (req: Request) => {
   if (!apiKey) return json({ error: 'Server missing GEMINI_API_KEY' }, 500)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const serviceKey = serviceKeyFrom(Deno.env)
   const authHeader = req.headers.get('Authorization') ?? ''
 
   // Client bound to the caller's JWT — used to identify the user under RLS.

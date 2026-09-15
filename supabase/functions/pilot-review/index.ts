@@ -27,6 +27,7 @@ import {
   claimsDigest, evidenceDigest, CLAIM_PATHS,
 } from '../_shared/pilotCore.ts'
 import { decide332 } from '../_shared/pilotDecision.ts'
+import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
 // ⏱️ SHORT-LIVED ON PURPOSE. Long enough to label a reference without the images
 // dying mid-session, short enough that a URL copied out of devtools is stale
@@ -47,7 +48,7 @@ Deno.serve(async (req: Request) => {
 
   const env = (k: string) => Deno.env.get(k)
   const url = env('SUPABASE_URL')!
-  const admin = createClient(url, env('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } })
+  const admin = createClient(url, serviceKeyFrom(Deno.env), { auth: { persistSession: false } })
   const userClient = createClient(url, env('SUPABASE_ANON_KEY')!, {
     global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
   })

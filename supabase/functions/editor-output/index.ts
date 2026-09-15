@@ -43,6 +43,7 @@
 // unplayable — a different and much worse decision than the one the switch was
 // created to express.
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
+import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -70,7 +71,7 @@ Deno.serve(async (req: Request) => {
   const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
     global: { headers: { Authorization: authHeader } },
   })
-  const admin = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  const admin = createClient(supabaseUrl, serviceKeyFrom(Deno.env))
 
   const { data: { user } } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)

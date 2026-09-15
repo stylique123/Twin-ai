@@ -28,6 +28,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import {
   schemaCard, pilotCard, recordingsCard, watchedSessionCard, rotationCard, nextAction,
 } from '../_shared/ownerConsole.ts'
+import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -73,7 +74,7 @@ Deno.serve(async (req: Request) => {
 
   const env = (k: string) => Deno.env.get(k)
   const url = env('SUPABASE_URL')!
-  const admin = createClient(url, env('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } })
+  const admin = createClient(url, serviceKeyFrom(Deno.env), { auth: { persistSession: false } })
   const userClient = createClient(url, env('SUPABASE_ANON_KEY')!, {
     global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
   })

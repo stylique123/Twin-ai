@@ -117,3 +117,26 @@ export function resolveServiceKey(env: {
   }
   return { key: null, source: 'none' }
 }
+
+/**
+ * The credential as a string, for the `createClient(url, key)` call sites.
+ *
+ * ⚠️ THE ABSENT CASE IS HANDLED HERE, ONCE, NOT AT 25 CALL SITES. Every site
+ * used to read `Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!` — a non-null
+ * assertion, which is the cast this repo records as defeating the compiler. An
+ * empty string behaves exactly as that `!` did when the variable was unset (the
+ * gateway refuses the request), so this is not a new failure mode; what is new
+ * is that the absence is now LOGGED instead of being indistinguishable from a
+ * working call.
+ *
+ * ⚖️ AND IT IS A SEPARATE INCIDENT FROM THE FALLBACK. "Fell back to the legacy
+ * key" and "found no credential at all" need opposite responses — one means the
+ * migration is unfinished, the other means the function cannot work — so they
+ * are never pooled into one line.
+ */
+export function serviceKeyFrom(env: { get(name: string): string | undefined }): string {
+  const r = resolveServiceKey(env)
+  if (r.key) return r.key
+  console.warn(JSON.stringify({ event: 'service_key_absent' }))
+  return ''
+}

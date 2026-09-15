@@ -21,6 +21,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { encryptToken, decryptToken } from './tokenCrypto.ts'
+import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -542,7 +543,7 @@ async function signOutput(
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   const url = new URL(req.url)
-  const admin = createClient(env('SUPABASE_URL')!, env('SUPABASE_SERVICE_ROLE_KEY')!)
+  const admin = createClient(env('SUPABASE_URL')!, serviceKeyFrom(Deno.env))
 
   // ---- Cron: publish all due scheduled posts (internal, shared-secret auth) ---
   // Called on a schedule by pg_cron with the x-cron-secret header. Publishes every
