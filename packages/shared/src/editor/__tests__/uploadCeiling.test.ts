@@ -4,12 +4,17 @@
 // exceeded the maximum allowed size". These tests pin the four things that went
 // wrong so none of them can come back quietly.
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 import {
   preflight, classifyUploadFailure, mayRetry, saveStageLabel, isSaved,
-  SUPPORTED_MAX_BYTES, RESUMABLE_THRESHOLD_BYTES,
+  SUPPORTED_MAX_BYTES, RESUMABLE_THRESHOLD_BYTES, RESUMABLE_RETIRED,
+  mayTryAnotherTransport,
 } from '../uploadCeiling'
 
 const MB = 1024 * 1024
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..')
 
 describe('the supported ceiling is the product decision, not the platform setting', () => {
   it('supports 600 MB, the same number the buckets already carry', () => {
@@ -53,21 +58,72 @@ describe('the supported ceiling is the product decision, not the platform settin
 })
 
 describe('preflight refuses before a byte moves', () => {
-  it('a normal take is accepted and routed to the resumable path', () => {
+  // ⚠️ THIS ASSERTED 'resumable' AND THE ASSERTION WAS NOT STALE — IT PINNED A
+  // ROUTING DECISION THAT HAS SINCE BEEN OVERRULED BY EVIDENCE. Measured on
+  // production 2026-09-15: of 7 source assets, the 1 under 6 MB is `ready` and
+  // all 6 over 6 MB are stuck `uploading`. Zero for six, lifetime, because the
+  // tus config sent the token in an `x-signature` header storage does not read
+  // and no `Authorization` header at all — which is what produced
+  // `403 "Invalid Compact JWS"`. The owner's ruling: retire the transport
+  // rather than open a storage INSERT policy on `takes` to rescue it.
+  it('a large take is routed to the single PUT while resumable is retired', () => {
     const p = preflight(120 * MB)
     expect(p.ok).toBe(true)
-    if (p.ok) expect(p.transport).toBe('resumable')
+    if (p.ok) expect(p.transport).toBe('single')
+  })
+
+  it('nothing reaches the resumable transport at any accepted size', () => {
+    for (const size of [1, MB, 6 * MB, 6 * MB + 1, 95 * MB, 600 * MB]) {
+      const p = preflight(size)
+      expect(p.ok, `${size} bytes was refused`).toBe(true)
+      if (p.ok) expect(p.transport, `${size} bytes routed to resumable`).toBe('single')
+    }
   })
   it('a small take may still go in one request', () => {
     const p = preflight(2 * MB)
     expect(p.ok).toBe(true)
     if (p.ok) expect(p.transport).toBe('single')
   })
-  it('the threshold routes by the platform guidance, not by hope', () => {
+  // ⚖️ THE 6 MB FACT SURVIVES THE RETIREMENT, ON PURPOSE. The instruction was
+  // to stop the path being selected; raising this constant to clear 600 MB
+  // would have done that while encoding a FALSE platform claim — that
+  // single-shot is guided up to 601 MB. The number stays true and a separate
+  // flag carries the decision.
+  it('the platform threshold is still recorded as 6 MB, not overwritten', () => {
+    expect(RESUMABLE_THRESHOLD_BYTES).toBe(6 * MB)
+  })
+
+  it('the retirement is a flag, so reviving it is one line and not a rewrite', () => {
+    expect(RESUMABLE_RETIRED).toBe(true)
+    // The dormant branch must still exist and still route by the threshold, or
+    // "left in place, dormant" is a claim the file cannot keep.
+    const src = readFileSync(join(REPO, 'packages/shared/src/editor/uploadCeiling.ts'), 'utf8')
+    const code = src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')
+    expect(code).toMatch(/if \(RESUMABLE_RETIRED\) return \{ ok: true, transport: 'single' \}/)
+    expect(code).toMatch(/sizeBytes > RESUMABLE_THRESHOLD_BYTES \? 'resumable' : 'single'/)
+  })
+
+  it('and it records all three things a reviver must fix', () => {
+    const src = readFileSync(join(REPO, 'packages/shared/src/editor/uploadCeiling.ts'), 'utf8')
+    // Fixing one of the three returns the path to zero for six.
+    expect(src).toMatch(/Authorization: Bearer/)
+    expect(src).toMatch(/storage policy/)
+    expect(src).toMatch(/fingerprint fix/)
+    // And the bar for reviving at all: measured, not assumed.
+    expect(src).toMatch(/poor-connection failures on large takes,\n?\s*\*?\s*MEASURED/)
+  })
+
+  it('the routing rule itself still reads the threshold when not retired', () => {
+    // ⚠️ BOTH SIDES ARE 'single' WHILE RETIRED, so asserting a difference here
+    // would be asserting the retirement away. What must remain true is that the
+    // threshold is still the rule the dormant branch consults — proven from
+    // source in the test above — and that neither side is refused.
     const under = preflight(RESUMABLE_THRESHOLD_BYTES - 1)
     const over = preflight(RESUMABLE_THRESHOLD_BYTES + 1)
-    expect(under.ok && under.transport).toBe('single')
-    expect(over.ok && over.transport).toBe('resumable')
+    expect(under.ok).toBe(true)
+    expect(over.ok).toBe(true)
+    if (under.ok) expect(under.transport).toBe('single')
+    if (over.ok) expect(over.transport).toBe('single')
   })
   it('exactly at the ceiling is accepted — the limit is inclusive', () => {
     expect(preflight(SUPPORTED_MAX_BYTES).ok).toBe(true)
