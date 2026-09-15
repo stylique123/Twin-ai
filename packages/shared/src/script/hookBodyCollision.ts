@@ -101,3 +101,75 @@ export function hookBodyCollisions(hookOptions: unknown, beats: unknown): HookBo
 export function hookBodyCollisionBeatCount(hookOptions: unknown, beats: unknown): number {
   return new Set(hookBodyCollisions(hookOptions, beats).map((c) => c.beatIndex)).size
 }
+
+// ── AND NOW IT REORDERS, BECAUSE 26% IS A POPULATION ─────────────────────────
+//
+// ⚠️ THIS RULE WAS COUNTED AND NOT ENFORCED FOR A STATED REASON: the edge
+// function's own comment deferred acting on it to "when this is worth acting
+// on". MEASURED ON PRODUCTION 2026-09-14, over the 85 generations carrying
+// `beat_audit.hook_body_collisions`:
+//
+//     runs with at least one collision ....... 22 of 85   (26%)
+//     colliding beats in total ............... 24
+//     worst single run ....................... 3 beats
+//
+// That is the population. A quarter of runs offer the creator a hook the script
+// has already spent.
+//
+// ⚖️ WHAT A COLLISION MEANS FOR THE CREATOR, AND WHY DEMOTION IS THE FIX UNDER
+// EITHER READING OF THE SYMPTOM. A hook option whose content a body beat
+// already restates is NOT A DISTINCT CHOICE: pick it and the script says the
+// same thing twice; leave it and the body has pre-empted the opener it was
+// offered as. Sorting it behind the clean options is true in both cases. What
+// this deliberately does NOT do is rewrite the body to suit a chosen hook —
+// that is the opposite fix, it needs evidence about which beat is load-bearing,
+// and guessing between two opposite fixes is how a rule gets built from a
+// reconstruction of a symptom.
+
+/** A reorder, never a drop, and never a rewrite. */
+export interface HookDemotion {
+  hooks: string[]
+  /** How many options collided with a body beat. */
+  found: number
+  /** How many actually moved. Zero when the collided ones were already last. */
+  demoted: number
+}
+
+/**
+ * Sort every hook option the body already restates behind every one it does
+ * not, preserving the writer's own order within each group.
+ *
+ * ⚖️ STABLE, SO THE WRITER'S RANKING SURVIVES. The writer ordered these by its
+ * own judgement of strength; this rule knows one thing that judgement did not,
+ * and it may not spend that as licence to reshuffle the rest.
+ *
+ * ⚖️ DEMOTED, NOT DROPPED. A collision is a redundancy, not a fabrication — the
+ * creator may still prefer that opener and move the body line themselves, and
+ * discarding it would decide that for them. `demoteUnsupportedHooks` draws the
+ * same line for the same reason.
+ *
+ * ⚠️ AND THERE IS NO "ALL FIVE FLAGGED" FALLBACK HERE, BECAUSE THAT STATE
+ * CANNOT ARISE. `hookBodyCollisions` starts at index 1, so `hookOptions[0]` is
+ * never a collision and is always in the clean group — a stable partition
+ * therefore always returns a list whose first element is the writer's own
+ * recommended pick, and the degenerate "nothing is clean" case that
+ * `demoteUnsupportedHooks` has to guard has no way to happen. Copying that
+ * guard across would add a branch nothing can reach.
+ */
+export function demoteCollidedHooks(hookOptions: unknown, beats: unknown): HookDemotion {
+  const hooks = Array.isArray(hookOptions)
+    ? hookOptions.filter((h): h is string => typeof h === 'string')
+    : []
+  if (hooks.length === 0) return { hooks: [], found: 0, demoted: 0 }
+  const collided = new Set(hookBodyCollisions(hooks, beats).map((c) => c.hookIndex))
+  if (collided.size === 0) return { hooks: [...hooks], found: 0, demoted: 0 }
+  const clean = hooks.filter((_, i) => !collided.has(i))
+  const dirty = hooks.filter((_, i) => collided.has(i))
+  const next = [...clean, ...dirty]
+  // ⚖️ COUNTED BY WHAT MOVED, NOT BY WHAT WAS FOUND. A collided option already
+  // sitting last is a real finding and a no-op reorder, and reporting it as a
+  // demotion would overstate what the creator's screen actually changed.
+  let demoted = 0
+  for (let i = 0; i < hooks.length; i++) if (hooks[i] !== next[i]) demoted += 1
+  return { hooks: next, found: collided.size, demoted }
+}

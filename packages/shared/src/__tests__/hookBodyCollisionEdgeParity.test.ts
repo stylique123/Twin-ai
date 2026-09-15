@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { transformSync } from 'esbuild'
 import { describe, expect, it } from 'vitest'
-import { hookBodyCollisionBeatCount } from '../script/hookBodyCollision'
+import { hookBodyCollisionBeatCount, demoteCollidedHooks } from '../script/hookBodyCollision'
 
 const EDGE = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..',
@@ -83,5 +83,82 @@ describe('the edge copy agrees with the tested one', () => {
 describe('the counter is actually written into beat_audit', () => {
   it('is wired', () => {
     expect(EDGE).toMatch(/hook_body_collisions: hookBodyCollisionBeatCountInline\(/)
+  })
+})
+
+// ── AND THE DEMOTION LIVES TWICE TOO ────────────────────────────────────────
+//
+// ⚖️ THE COUNT WAS MIRRORED AND THE ACTION MUST BE. A demotion proved correct in
+// the shared copy and drifting in the edge copy would reorder a real creator's
+// hooks by a rule nobody tested.
+function loadInlineDemotion() {
+  const start = EDGE.indexOf('const HOOK_BODY_CONTAINMENT_THRESHOLD_INLINE')
+  const bodyStart = EDGE.indexOf('function demoteCollidedHooksInline')
+  expect(bodyStart, 'the inline demotion must exist in the edge').toBeGreaterThan(-1)
+  const end = EDGE.indexOf('\n}', bodyStart) + 2
+  expect(end).toBeGreaterThan(bodyStart)
+  // Both the containment helpers and the demotion, so the lifted copy is
+  // self-contained — the counter block in between comes along harmlessly.
+  const js = transformSync(EDGE.slice(start, end), { loader: 'ts', format: 'cjs' }).code
+  // eslint-disable-next-line no-new-func
+  return new Function(`${js}; return demoteCollidedHooksInline`)() as
+    (hookOptions: unknown, beats: unknown) => { hooks: string[]; found: number; demoted: number }
+}
+
+const inlineDemote = loadInlineDemotion()
+
+describe('the edge demotion agrees with the tested one', () => {
+  it.each(FIXTURES)('$name', ({ hookOptions, beats }) => {
+    expect(inlineDemote(hookOptions, beats)).toEqual(demoteCollidedHooks(hookOptions, beats))
+  })
+
+  // ⚠️ A DISCRIMINATING CASE, because every FIXTURE above either collides on one
+  // hook or not at all — and two copies that agree on "nothing moved" agree
+  // about nothing. This one moves two options and must preserve both the
+  // recommended pick and the writer's order inside each group.
+  it('agrees when two options are spent and order is at stake', () => {
+    const hooks = [
+      'Opener nobody restates anywhere in this script.',
+      'Build a system that runs without motivation.',
+      'Most people quit at step two.',
+      'Fourth option nobody restates either.',
+    ]
+    // Beat 0 restates hooks[2]; beat 2 restates hooks[1]. Both must move, and
+    // hooks[3] — clean but LAST — must end up ahead of them.
+    const beats = [
+      { line: 'Most people quit at step two, which is the whole problem.' },
+      { line: 'Here is what I actually did instead.' },
+      { line: 'Build a system that runs without motivation.' },
+    ]
+    const shared = demoteCollidedHooks(hooks, beats)
+    expect(shared.found, 'the fixture stopped discriminating').toBeGreaterThan(1)
+    expect(shared.hooks[0]).toBe(hooks[0])
+    // The clean-but-last option is LIFTED, which is the half of the reorder a
+    // single-collision fixture can never show.
+    expect(shared.hooks[1]).toBe(hooks[3])
+    expect(shared.hooks.slice(-2)).toEqual([hooks[1], hooks[2]])
+    expect(inlineDemote(hooks, beats)).toEqual(shared)
+  })
+})
+
+describe('the demotion is actually applied to hook_options', () => {
+  it('runs BEFORE the ownership pass, which must have the stronger claim', () => {
+    const collision = EDGE.indexOf('demoteCollidedHooksInline(rawHooks, declared)')
+    const ownership = EDGE.indexOf('demoteUnsupportedHooks(collision.hooks, csEntities)')
+    expect(collision, 'the collision demotion is not called').toBeGreaterThan(-1)
+    expect(ownership, 'the ownership pass no longer consumes the collision result')
+      .toBeGreaterThan(collision)
+  })
+
+  it('writes hook_options when EITHER pass moved something', () => {
+    // ⚠️ THE GATE USED TO BE `demotion.found > 0` ALONE, which was right while
+    // ownership was the only pass. A collision-only reorder would have been
+    // computed and thrown away — the exact shape of defect this rule's own
+    // history is made of.
+    expect(EDGE).toMatch(/demotion\.found > 0 \|\| collision\.demoted > 0/)
+  })
+
+  it('records what was done, not only what was found', () => {
+    expect(EDGE).toMatch(/hook_body_collision_demotion: hookBodyCollisionDemotion/)
   })
 })
