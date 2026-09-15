@@ -71,6 +71,25 @@ const EVENTS = {
   },
   // ⚠️ THE SKIP MUST BE AS VISIBLE AS THE RUN, per decision #3 — a silent
   // skip is how a cost gate becomes a quality regression nobody can explain.
+  // ⚠️ THIS ONE IS SUPPOSED TO STOP HAPPENING, which is why it is an incident
+  // and not a counter. It fires when a creator-facing edge function could not
+  // find a new-format `sb_secret_...` in the injected SUPABASE_SECRET_KEYS
+  // dictionary and fell back to the platform-injected legacy service_role JWT.
+  service_key_legacy_fallback: {
+    kind: 'incident',
+    why: 'An operator CANNOT set SUPABASE_SERVICE_ROLE_KEY -- the platform reserves the '
+      + 'SUPABASE_ prefix and refuses it ("Name must not start with the SUPABASE_ prefix", '
+      + 'hit during the 2026-09-15 rotation) -- so a rotated service credential reaches '
+      + 'these functions only through the injected SUPABASE_SECRET_KEYS dictionary. '
+      + 'Unlike ci-bootstrap, which fails closed because a wrong staging credential is '
+      + 'worse than none, these 25 functions serve live creators: failing closed would '
+      + 'take script generation, thumbnails and DNA scans down together. So the legacy '
+      + 'value is accepted WHILE IT WORKS and the fallback is logged loudly. '
+      + 'THE EXPOSED LEGACY KEY CANNOT BE DISABLED UNTIL THIS STOPS FIRING -- that is the '
+      + 'whole point of logging it, because a fallback nobody can see is a migration that '
+      + 'never finishes. No durable home: it is a transition signal, not a rate to keep, '
+      + 'and the reason names the selection outcome only, never key bytes.',
+  },
   semantic_repetition_judge_skipped_budget: {
     kind: 'incident',
     stored: 'generations.beat_audit',
