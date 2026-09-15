@@ -1808,7 +1808,17 @@ function separatesInline(a: number, b: number): boolean {
   return (a - b) / Math.sqrt(a + b) > 2
 }
 
-interface DominantShapeInline { shape: string; n: number; basis: string; rung: string }
+interface DominantShapeInline {
+  shape: string
+  n: number
+  basis: string
+  rung: string
+  /** Cards the detector could read — the real denominator of `n`. */
+  readable: number
+  /** Cards scanned in total. NULL when the count failed, which omits the
+   *  coverage sentence rather than guessing at it. */
+  scanned: number | null
+}
 
 /**
  * The dominant caption shape among cards in her niche bucket, or null.
@@ -1820,6 +1830,7 @@ interface DominantShapeInline { shape: string; n: number; basis: string; rung: s
 function dominantShapeInline(
   cards: ReadonlyArray<{ niche: unknown; caption_shape: unknown }>,
   herNiche: unknown,
+  scanned: number | null = null,
 ): DominantShapeInline | null {
   // ⚠⚠ TWO RUNGS, TRIED IN ORDER OF SPECIFICITY, AND THE SECOND EXISTS BECAUSE
   // THE FIRST REACHED ONE CREATOR IN SEVEN. Measured 2026-09-13: of 7 niche
@@ -1854,6 +1865,11 @@ function dominantShapeInline(
   if (top.n < MIN_COHORT_INLINE) return null
   return {
     shape: top.shape, n: top.n, rung,
+    // ⚠️ THE COHORT THE COUNT IS OUT OF, carried so the renderer never has to
+    // reach for a number it cannot see. `mine.length` is the classified cards
+    // in this rung, which is exactly what `top.n` was counted against.
+    readable: mine.length,
+    scanned,
     // ⚠⚠ THE GLOBAL RUNG SAYS SO, IN THE SENTENCE THE MODEL READS. Describing
     // it as her niche would hand the writer evidence from every niche disguised
     // as advice about hers. That lie is the only thing that could make this rung
@@ -1887,9 +1903,17 @@ function decisiveInline(cards: ReadonlyArray<{ caption_shape: unknown }>): boole
  */
 function renderDominantShapeInline(b: DominantShapeInline | null): string {
   if (b === null) return ''
+  // ⚠️ THE COVERAGE SENTENCE IS OMITTED WHEN THE COUNT FAILED, NOT GUESSED.
+  // "out of an unknown number scanned" is noise; a missing sentence is honest.
+  const coverage = b.scanned === null || b.scanned < b.readable
+    ? ''
+    : `\n- ⚠️ Those ${b.readable} are the cards whose opening a PATTERN could read, out of
+  ${b.scanned} scanned. The rest could not be classified at all. So this is the
+  most common shape AMONG THE READABLE ONES, and shapes a pattern detects
+  poorly are under-counted here rather than absent.`
   return `\n\nSHAPE (evidence about STRUCTURE ONLY - contributes NO WORDS to the script)
 - Most common opening shape in this creator's niche: ${b.shape}
-- Seen in ${b.n} of ${b.basis}
+- Seen in ${b.n} of ${b.basis}${coverage}
 - This is how often that shape appears, NOT how well it performed. It is a
   starting point for structure, never a sentence to reuse and never a claim
   that it works better.`
@@ -5699,6 +5723,41 @@ Deno.serve(async (req: Request) => {
   const corpusCardsComplete = Array.isArray(corpusCards)
     && corpusCards.length < CLASSIFIED_CARD_CAP
 
+  // ── HOW MUCH OF THE CORPUS THE DETECTOR COULD ACTUALLY READ ───────────────
+  //
+  // ⚠️ THE SHAPE WON AMONG THE READABLE TENTH, AND THE PROMPT NEVER SAID SO.
+  // The query above filters to cards that HAVE a `caption_shape`, so the
+  // block's own arithmetic is internally honest — "279 of 596" really is 279
+  // out of 596 classified. What the model was never told is that 596 is what
+  // eight regex patterns could read out of thousands scanned. It reads
+  // "596 videos across all niches" as the corpus.
+  //
+  // ⚠️ AND THE BIAS IS MEASURED, NOT SUSPECTED. Of 596 usable shapes,
+  // `direct_question` 279 + `how_to` 151 + `number_promise` 124 = 554 — and
+  // those three are exactly what a pattern detects well: a question mark, a
+  // leading "how to", a leading digit. The distribution is a fact about the
+  // detector before it is a fact about the corpus, and it flows into a live
+  // prompt.
+  //
+  // ⚖️ A COUNT, NOT A CONCLUSION, computed at read time on every generation —
+  // the rule in 5.1. Hard-coding "9.5%" would be a snapshot with no expiry
+  // date, and this project has had three of those become planning inputs after
+  // the world moved.
+  //
+  // ⚖️ `head: true` SO NO ROWS CROSS THE WIRE. This is a COUNT of a table the
+  // generation already queries; it adds no payload and one cheap statement.
+  //
+  // ⚠️ NULL WHEN THE COUNT FAILS, AND THE SENTENCE IS THEN OMITTED RATHER THAN
+  // GUESSED. A coverage claim built on a failed count is worse than no coverage
+  // claim: absent is not the same as complete.
+  let corpusScanned: number | null = null
+  try {
+    const { count } = await admin
+      .from('gallery_items')
+      .select('id', { count: 'exact', head: true })
+    corpusScanned = typeof count === 'number' && count > 0 ? count : null
+  } catch { /* a coverage sentence is never worth a generation */ }
+
   const { data: rankedRows } = await admin
     .from('creator_knowledge')
     .select('kind, text, basis, times_seen, confidence, source')
@@ -7065,7 +7124,8 @@ Deno.serve(async (req: Request) => {
     // shape), or nothing in her bucket separates (the usual answer).
     const shapeEvidence = corpusCardsComplete
       ? dominantShapeInline(
-          corpusCards as ReadonlyArray<{ niche: unknown; caption_shape: unknown }>, niche)
+          corpusCards as ReadonlyArray<{ niche: unknown; caption_shape: unknown }>, niche,
+          corpusScanned)
       : null
     const shapeSection = renderDominantShapeInline(shapeEvidence)
     // ⚠⚠ THREE OUTCOMES, KEPT APART, BECAUSE TWO OF THEM PRODUCE AN IDENTICAL
