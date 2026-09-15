@@ -178,6 +178,27 @@ const EVENTS = {
   // disagreeing with the teleprompter (liveRunFixtures.test.ts §4) because
   // nothing ever resynced them. `resynced`/`orphaned` on the same
   // `generations.beat_audit` row every other 0131 counter lands on.
+  nominalisation_found: {
+    kind: 'counter',
+    stored: 'generations.beat_audit',
+    why: 'Distinct nominalised abstractions per script beat -- "repairability" where '
+      + '"it can be repaired" was available. Measured across thirteen runs on one craft '
+      + 'account as the tell separating the good scripts from the weak ones: "It goes in '
+      + 'the bin. That is the actual end of it." against "disposability". '
+      + 'DELIBERATELY A COUNT AND NOT A BAN, on this repo\'s own evidence: the '
+      + 'progress-check rule at generate-blueprint:9272 records that naming the '
+      + 'forbidden phrases in the prompt only HALVED them across 16 regenerated scripts, '
+      + 'that a contract check beats a prompt rule where the defect is decidable, and '
+      + 'that every enforcement shipped without measurement had to be walked back. The '
+      + 'rate decides whether a ban is ever earned. '
+      + 'Words AND their verbs are logged, because "3 abstractions" is a number nobody '
+      + 'can act on; the verb is recorded and never applied, since what a replacement '
+      + 'should be is an open question nothing here answers. '
+      + 'Distinct words, not occurrences -- one line saying "durability" three times is '
+      + 'one abstraction to fix, and counting three would make the rate depend on '
+      + 'sentence length. Stored by MUTATION rather than in the beat_audit literal, '
+      + 'because that literal is built ~600 lines before this value exists.',
+  },
   shot_list_resync: {
     kind: 'counter',
     stored: 'generations.beat_audit',
