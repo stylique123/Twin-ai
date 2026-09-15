@@ -93,7 +93,41 @@ export type ReferenceUnreadCause =
   | 'unsupported_host'
   /** The read was attempted and errored. */
   | 'read_failed'
-  /** The read did not finish inside the wait the creator can reasonably sit through. */
+  /**
+   * The read did not finish inside the wait the creator can reasonably sit
+   * through (the client's 72s poll).
+   *
+   * ⚠️ IT IS NOT A LENGTH LIMIT, AND A REVIEW ASKED FOR ONE. A session report
+   * inferred "the ceiling is between 48 and 118 seconds, and it is
+   * reproducible" from four references — 11s, 42s and 48s read; a 118s one
+   * failed twice on the same URL — and asked for the message to become
+   * "Twin reads up to about 60 seconds — try a shorter one."
+   *
+   * ⚖️ MEASURED ON PRODUCTION 2026-09-15 AND THE CEILING DOES NOT EXIST.
+   * Across 454 reference transcripts, every one carrying a duration:
+   *
+   *   median 56s · p90 210s · p99 1329s · max 2536s (42 minutes)
+   *   196 longer than 60s · 91 longer than 118s · 22 longer than 300s
+   *   tiktok max 520s (55 over 118s) · youtube max 2536s (12 over 118s)
+   *
+   * A ceiling means nothing above it passes. NINETY-ONE references longer than
+   * the one that failed were read successfully. So shipping that sentence
+   * would tell creators to shorten videos while 196 successful reads sit above
+   * the number we quoted — a false statement to a creator, built from a
+   * reconstruction of one symptom.
+   *
+   * ⚠️ WHAT IS STILL UNMEASURED, STATED RATHER THAN ASSUMED: a failure RATE
+   * that rises with duration. `transcripts` holds only reads that SUCCEEDED,
+   * so it cannot report how often long videos fail; it can only refute a hard
+   * ceiling, which it does. The same URL failing twice points at something
+   * specific to that video, not at its length — and the causes beside this one
+   * already cover private, blocked, empty and quota-exhausted reads.
+   *
+   * ⚖️ SO THE MESSAGE BELOW IS UNCHANGED. It describes the 72s poll, which is
+   * what actually happened, and there is no true duration sentence to replace
+   * it with. Naming a limit we cannot measure would be the defect this comment
+   * exists to prevent, one revision later.
+   */
   | 'read_timed_out'
   /** The read finished and produced nothing usable. */
   | 'read_empty'
@@ -116,11 +150,29 @@ export type ReferenceUnreadCause =
    */
   | 'read_unavailable'
   /**
-   * ⚠️ A PLATFORM TWIN HAS NEVER SUCCESSFULLY READ, KNOWN BEFORE WE START.
-   * This is not a timeout and not a property of her link: measured on
-   * production 2026-09-12, Instagram is 60 of 60 attempts failed, 0 transcripts
-   * ever, every one carrying the identical `no audio url found` from the Apify
-   * actor. A 100% rate behind one message is a contract that moved.
+   * ⚠️ A PLATFORM TWIN CANNOT READ TODAY. This is not a timeout and not a
+   * property of her link: measured on production 2026-09-12, Instagram was
+   * 60 of 60 attempts failed, every one carrying the identical
+   * `no audio url found` from the Apify actor. A 100% rate behind one message
+   * is a contract that moved.
+   *
+   * ⚠️ "0 TRANSCRIPTS EVER" WAS WRONG, AND THE CORRECTION MAKES THIS
+   * RECOVERABLE RATHER THAN PERMANENT. Measured 2026-09-15: `transcripts`
+   * holds 39 Instagram rows — 31 in August, 8 in September, newest
+   * 2026-09-01 — while TikTok and YouTube kept climbing through September
+   * (198 and 27). Instagram WORKED and then stopped on a date.
+   *
+   * ⚖️ AND THE BREAK IS NOT OURS. `APIFY_INSTAGRAM_ACTOR` has not changed
+   * since 2026-06-14, months before both the August successes and the
+   * September stop. The only worker/media commit in the window (#664,
+   * 2026-09-04) lands THREE DAYS AFTER the last transcript and touches the
+   * profile listing, not the per-video media fetch. Our reader was identical
+   * across a period where it worked and then did not, which points outward.
+   *
+   * ⚠️ SO THE SENTENCE STAYS AS IT IS — "cannot read Instagram videos yet" is
+   * true today whatever the cause — but the FRAMING "never once" must not come
+   * back, because it argues for giving up on a path that was working two weeks
+   * ago and is most likely one field name away from working again.
    *
    * ⚠️ IT EXISTS BECAUSE `read_timed_out` WAS THE ANSWER SHE GOT, AND IT WAS
    * FALSE TWICE OVER. It described OUR session limit rather than what happened,
@@ -144,11 +196,17 @@ export type ReferenceUnreadCause =
  * drift into two different promises about the same event.
  */
 export const REFERENCE_UNREAD_TEXT: Record<ReferenceUnreadCause, string> = {
-  // ⚠️ THIS NAMED INSTAGRAM AS A PLATFORM WE CAN WATCH, WHILE INSTAGRAM HAS
-  // NEVER ONCE BEEN READ — 60 of 60 failed, 0 transcripts ever. A creator who
-  // read this sentence and went to fetch an Instagram link was sent by us to
-  // spend her time on the one platform guaranteed to fail. The list now says
-  // what is true, and `platform_unreadable` covers Instagram honestly.
+  // ⚠️ THIS NAMED INSTAGRAM AS A PLATFORM WE CAN WATCH, WHILE INSTAGRAM CANNOT
+  // BE READ TODAY — 60 of 60 attempts failed. A creator who read this sentence
+  // and went to fetch an Instagram link was sent by us to spend her time on
+  // the one platform guaranteed to fail right now. The list says what is true,
+  // and `platform_unreadable` covers Instagram honestly.
+  //
+  // ⚠️ THE ORIGINAL WORDING HERE SAID "0 transcripts ever" AND THAT WAS WRONG,
+  // the same claim retracted with figures at `platform_unreadable` below: 39
+  // Instagram transcripts exist, newest 2026-09-01. Corrected in both places
+  // because one un-retracted copy is all it takes for the framing to come back.
+  // Present tense only — "cannot today", never "never could".
   unsupported_host: 'We can only watch TikTok and YouTube links, so we could not read this one.',
   read_failed: 'We could not read this video — it may be private, deleted, or from an account that blocks us.',
   read_timed_out: 'This video is taking longer to read than we can hold you here for.',

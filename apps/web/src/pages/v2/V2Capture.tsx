@@ -1135,31 +1135,45 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
           <div className="absolute inset-0 z-10 grid place-items-center px-4">
             <div className="w-full max-w-md">{nextCard}</div>
           </div>
-        ) : scene?.ask ? (
-          /* ⚠️ NOTHING IS WRITTEN HERE, AND THAT IS THE POINT. The writer refused
-             to invent this creator's life and offered no usable scaffold, so the
-             beat has no words to scroll. Before this, the beat was DROPPED from
-             the recording script entirely and the creator never learned it
-             existed. The question stands in place of the line, and they answer
-             it out loud in their own words.
-
-             ⚖️ NOT A TELEPROMPTER LINE. It is deliberately not styled as words
-             to read — reading a question aloud is exactly the failure this whole
-             thread of work exists to end. */
-          <div className="absolute inset-0 z-10 grid place-items-center px-6 sm:px-12">
-            <div className="w-full max-w-2xl text-center space-y-3">
-              <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-300/90">
-                Only you know this one
-              </div>
-              <p className="font-bold leading-snug text-white [text-shadow:0_2px_20px_rgba(0,0,0,0.65)]"
-                 style={{ fontSize: Math.round(FONT_PX[fontIdx] * 0.62) }}>
-                {scene.ask}
-              </p>
-              <p className="text-sm text-white/70">Say it in your own words.</p>
-            </div>
-          </div>
         ) : (
-          <div className="absolute inset-0 z-10 flex items-center px-5 sm:px-10">
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center px-5 sm:px-10">
+            {/* ── THE PROMPTER CONTAINS ONLY WORDS TO SAY ──────────────────
+                ⚠️⚠️ THE ARM REMOVED FROM ABOVE THIS ONE PUT A QUESTION WHERE THE
+                LINE GOES, AND IT WAS STILL DOING IT. It branched on `scene?.ask`
+                and rendered the ask full-screen INSTEAD of the script. It was
+                written for a beat with no words at all — but the owner's rule,
+                set after a real session where "What was the situation right
+                before this started?" appeared where her next line should have
+                been, is that such a beat stays OFF the prompter entirely
+                (`show_in_teleprompter: false`, pinned in
+                theQuestionReachesTheTeleprompter.test.ts) and asks its question
+                in the editor, where a keyboard is (ScriptEditor.tsx:255,646).
+
+                So that arm could only ever match the OTHER kind of ask beat —
+                a SCAFFOLD, which has real words AND a blank — and for those it
+                hid the very line the creator was there to read. The fix had
+                been applied to the branch that could not fire, and the rule was
+                still broken on the one that could.
+
+                MEASURED ON PRODUCTION 2026-09-14 over 111 generations / 667
+                scenes: 63 scenes carry an ask across 30 generations; 62 are
+                ask-only and correctly filtered out; exactly 1 is a scaffold and
+                reached the prompter — so the full-screen surface has rendered
+                once, ever, and did the thing the rule forbids.
+
+                ⚖️ THE SCAFFOLD'S QUESTION IS A LABEL, NOT A LINE. It sits above
+                the scroll in small static text, because the adapter carries the
+                ask deliberately in this case — "showing the scaffold without the
+                question would hide what the blank is for" — while the words
+                below remain the only thing dressed as words to read. */}
+            {scene?.ask ? (
+              <div className="mb-4 w-full max-w-2xl text-center">
+                <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-300/90">
+                  Only you know this part
+                </div>
+                <p className="mt-1 text-sm text-white/70 [text-shadow:0_2px_20px_rgba(0,0,0,0.65)]">{scene.ask}</p>
+              </div>
+            ) : null}
             {/* the script glides UP past a fixed read-line, soft-faded top + bottom */}
             <div ref={promptScrollRef} className="relative mx-auto h-[54vh] w-full max-w-3xl overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,#000_14%,#000_86%,transparent)]">
               <p ref={textRef} className="absolute inset-x-0 top-0 text-center font-bold leading-[1.3] [text-shadow:0_2px_20px_rgba(0,0,0,0.65)] will-change-transform" style={{ fontSize: FONT_PX[fontIdx] }}>

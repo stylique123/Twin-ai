@@ -214,3 +214,109 @@ export function nextAction(cards) {
   }
   return null
 }
+
+// ── WHERE A CREATOR STOPS, WHICH NOTHING HAS EVER SHOWN THE OWNER ──────────
+//
+// ⚠️ MEASURED ON PRODUCTION 2026-09-14, AND IT REFRAMES EVERY QUALITY DEBATE:
+// 134 scripts generated · 6 camera opens · 6 recordings · 0 script edits ·
+// 0 edit projects · 0 exports. 128 of 134 scripts never had a camera opened.
+// `recordingFunnel.ts` recorded 41 -> 3 -> 0 -> 0 when it was written; the
+// ratio has held at roughly one in twenty-two.
+//
+// So resolver fill rates, substance grading, borrowing reduction, the shape
+// block and the niche vocabulary are all being tuned on evidence from almost
+// nobody who finished a video. That is not an argument against any of them. It
+// is the reason this number belongs on the owner's page rather than in a query
+// somebody has to remember to run.
+//
+// ⚠️⚠️ AND THE CARD REFUSES TO SAY WHY, WHICH IS THE WHOLE DISCIPLINE.
+// `recordingFunnel.ts` states it plainly: a funnel says where people died,
+// never what killed them. 128 creators not opening the camera is equally
+// consistent with a bad script, an irrelevant premise, an intimidating record
+// button, no time, or somebody who was only ever clicking around — and those
+// need OPPOSITE fixes. The card reports the drop and names the missing
+// discriminator instead of guessing at a cause.
+//
+// ⚖️ AND IT IS `action_needed` ON THE INSTRUMENTATION, NOT ON THE DROP. The
+// owner cannot fix a 4% record rate by being told about it; they can collect
+// the one field that makes it attributable. So that is the action.
+
+/** Below this, the funnel is describing a handful of people and should say so
+ *  rather than quoting a percentage that moves when one creator records. */
+export const FUNNEL_MIN_SCRIPTS = 20
+
+export function funnelCard(counts) {
+  const n = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.round(v) : null)
+  const scripts = n(counts?.scripts)
+  // ⚠️⚠️ `recordings` IS FINISHED TAKES ONLY, AND THAT IS THE WHOLE POINT OF THIS
+  // CHANGE. Measured on production 2026-09-14: `media_assets` holds 7 rows and
+  // SIX ARE `uploading` -- only ONE is `ready`. Counting the table gave
+  // "147 scripts, 7 recorded, 0 exported", which reads as creators recording and
+  // then abandoning. The truth is that six of seven never finished uploading,
+  // which is the upload 403, a completely different fix.
+  const recordings = n(counts?.recordings)
+  // ⚖️ AND THE STALL IS ITS OWN NUMBER, because a take stuck mid-upload and a
+  // creator who chose not to film need OPPOSITE fixes -- the same reason the
+  // refusal card keeps quality and disclosure apart. Pooling them is how a
+  // funnel reports a behaviour problem that is actually an infrastructure one.
+  const stalledUploads = n(counts?.stalledUploads)
+  // ⚠️ `edit_project_created` IS A STAGE ON PURPOSE. recordingFunnel.ts records
+  // why: "A take that uploads and is then REJECTED by validation never creates
+  // an edit project ... Pooling them would have reported 'nobody exports' and
+  // hidden that we refused the only take anybody finished." Omitting it here
+  // reproduced exactly that reading.
+  const editProjects = n(counts?.editProjects)
+  const exports_ = n(counts?.exports)
+  const intents = n(counts?.scriptIntents)
+
+  // ⚠️ NULL IS NOT ZERO HERE EITHER. A count that could not be read is not a
+  // product with no recordings, and reporting it as one would put a false
+  // crisis on the owner's page.
+  if (scripts === null || recordings === null) {
+    return {
+      card: 'funnel', state: 'blocked', ownerAction: null,
+      detail: 'The funnel counts could not be read, which is not the same as a funnel of zero.',
+    }
+  }
+
+  if (scripts < FUNNEL_MIN_SCRIPTS) {
+    return {
+      card: 'funnel', state: 'ok', ownerAction: null,
+      detail: `${scripts} script${scripts === 1 ? '' : 's'} so far — too few to read a funnel from. `
+        + `${recordings} recorded.`,
+    }
+  }
+
+  const rate = Math.round((recordings / scripts) * 1000) / 10
+  const stalled = scripts - recordings
+  // Named only when it exists, so a healthy funnel does not carry a clause
+  // about a problem it does not have.
+  const stallLine = stalledUploads !== null && stalledUploads > 0
+    ? ` ${stalledUploads} take${stalledUploads === 1 ? '' : 's'} never finished uploading, `
+      + `which is an upload failure and not a choice.`
+    : ''
+  const projectLine = recordings > 0 && editProjects === 0
+    ? ` ${recordings} finished take${recordings === 1 ? '' : 's'} produced no edit project at all, `
+      + `so nothing was refused downstream of a take -- it stopped before that.`
+    : ''
+
+  // ⚠️ THE MISSING FIELD IS NAMED, because without it the drop is
+  // unattributable and any fix is a guess. `script_intent` is already defined
+  // in recordingFunnel.ts and nothing collects it.
+  if (intents === null || intents === 0) {
+    return {
+      card: 'funnel', state: 'action_needed',
+      ownerAction: 'Collect script_intent — the drop cannot be attributed without it',
+      detail: `${scripts} scripts, ${recordings} recorded (${rate}%), ${exports_ ?? 0} exported. `
+        + `${stalled} never opened the camera, and nothing records whether they would have.`
+        + `${stallLine}${projectLine} `
+        + `A funnel says where people stopped, never why.`,
+    }
+  }
+
+  return {
+    card: 'funnel', state: 'ok', ownerAction: null,
+    detail: `${scripts} scripts, ${recordings} recorded (${rate}%), ${exports_ ?? 0} exported. `
+      + `${intents} said whether they would record it.${stallLine}${projectLine}`,
+  }
+}

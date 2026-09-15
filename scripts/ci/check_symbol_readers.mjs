@@ -177,19 +177,31 @@ export const REGISTRY = {
       + 'brand_voices. DELETE this entry then.',
   },
   'corpus/nicheVocabulary.ts': {
-    symbols: ['MIN_CREATORS_FOR_TERM', 'MAX_NICHES_FOR_TERM', 'termsIn',
-      'nicheVocabulary', 'nicheVocabularies'],
+    symbols: ['MIN_CREATORS_FOR_TERM', 'MAX_NICHES_FOR_TERM', 'nicheVocabulary'],
     why: 'Build item 2, the niche term list — "every physio says load tolerance". '
       + 'Two gates, BOTH measured on the real corpus before being written: '
       + 'creator spread >= 10 (frequency cannot tell a term from a name — vogue '
       + '91 cards vs garlic 97, madaan 52 vs tbsp 60, while creator counts are '
       + '4 and 1 against 23 and 13), and distinctiveness to one niche (spread '
       + 'alone returned `und/das/mit/ich` as Business vocabulary). '
-      + 'The consumer is the prompt assembler, which puts a niche term list in '
-      + 'HER MATERIAL alongside her own vocabulary — it needs the facet vector '
-      + '(#798) to know which niche she is in. '
-      + 'WHAT WOULD CHANGE THIS: the prompt assembler calling nicheVocabularies. '
-      + 'DELETE this entry then; if it never lands, delete the module.',
+      + '⚠️ THE CONDITION THIS ENTRY NAMED HAS BEEN MET, AND THE ENTRY SHRANK '
+      + 'RATHER THAN BEING DELETED. `nicheVocabularies` and `termsIn` now have '
+      + 'a consumer — the prompt assembler reads a weekly per-bucket cache '
+      + '(0210) and renders the terms as VOCABULARY, never as a source of '
+      + 'claims — so both were removed from this list on 2026-09-14. '
+      + 'THE YIELD WAS MEASURED FIRST, because a term list nobody can fill is '
+      + 'a prompt block that is always absent: terms clearing both gates per '
+      + 'bucket are business 35, food 16, entertainment 13, tech 9, '
+      + 'beauty_fashion 7, creator 0, health 0. Grouped by the raw free-text '
+      + 'niche instead, business yields ZERO — the bucket was the prerequisite, '
+      + 'exactly as this entry recorded. '
+      + 'WHAT REMAINS UNREAD, AND WHY IT IS NOT THE SAME DEBT: '
+      + '`nicheVocabulary` (SINGULAR) is a one-niche convenience that CANNOT '
+      + 'apply the distinctiveness gate — the module says so itself — so the '
+      + 'assembler deliberately calls the plural. The two constants are read '
+      + 'through the inlined mirror rather than imported. '
+      + 'WHAT WOULD CHANGE THIS: a caller that genuinely has one niche and '
+      + 'accepts a spread-only list. If none appears, delete the singular.',
   },
   'creativeTransferPlan.ts': {
     symbols: ['TransferPlanError', 'computePlanSha256', 'finalizeTransferPlan',

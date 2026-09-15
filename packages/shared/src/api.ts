@@ -7,6 +7,10 @@ import {
 import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
 import { sanitizeBriefForWrite, readStoredBrief, type BriefAnswers } from './preScriptBrief'
 import type { HookChoice } from './hookChoice'
+import {
+  SCRIPT_INTENTS, NO_RECORD_REASONS,
+  type ScriptIntent, type NoRecordReason,
+} from './recordingFunnel'
 import type { AcceptedFinalStamp } from './acceptedFinal'
 import { mapIsUsable, type CommunityMap } from './communityMap'
 import { readStoredReferenceProfile, type StoredProfileRow } from './storedReferenceProfile'
@@ -652,6 +656,53 @@ export async function getGeneration(id: string): Promise<Generation | null> {
 // `edit_style` (old manual-editor field) is no longer accepted here — its client
 // UPDATE grant is revoked in migration 0074. Returns false on failure (caller is
 // optimistic).
+/**
+ * WHETHER SHE WOULD RECORD IT, WHICH NOTHING HAS EVER ASKED.
+ *
+ * ⚠️ MEASURED ON PRODUCTION 2026-09-14: 134 scripts, 6 camera opens. 128 scripts
+ * never had a camera opened and no row says whether the creator would have. That
+ * makes the drop unattributable, and `recordingFunnel.ts` calls this "the single
+ * most valuable event this product does not yet collect".
+ *
+ * ⚖️ VALIDATED HERE AS WELL AS IN THE DATABASE, and neither is redundant. The
+ * CHECK constraints are the authority — a client is not a validator — but a
+ * value rejected here never becomes a failed request the creator sees as a
+ * broken button.
+ *
+ * ⚠️ A REASON WITHOUT A REFUSAL IS REFUSED. "It feels generic" attached to
+ * `would_record` is two answers that contradict each other, and a quality
+ * metric counting it would be counting a contradiction. The database refuses it
+ * too; this refuses it before the round trip.
+ *
+ * ⚖️ AND THE TIMESTAMP IS SET HERE RATHER THAN LEFT TO A DEFAULT, because
+ * `script_intent_at` and `script_intent` must arrive together — the CHECK
+ * enforces it, and a null time with an answer would put a row in the funnel's
+ * `script_intent` stage carrying nothing.
+ */
+export async function recordScriptIntent(
+  id: string,
+  intent: ScriptIntent,
+  reason?: NoRecordReason | null,
+): Promise<boolean> {
+  if (!SCRIPT_INTENTS.includes(intent)) return false
+  const why = reason ?? null
+  if (why !== null && !NO_RECORD_REASONS.includes(why)) return false
+  if (why !== null && intent !== 'would_not_record') return false
+  // ⚠️ `!error` IS NOT SUCCESS — the same lesson `updateGenerationChoice`
+  // records directly above. A PostgREST UPDATE that matches no row returns no
+  // error, so an intent the creator could not write would report as saved.
+  const { data, error } = await supabase
+    .from('generations')
+    .update({
+      script_intent: intent,
+      script_intent_at: new Date().toISOString(),
+      no_record_reason: why,
+    })
+    .eq('id', id)
+    .select('id')
+  return !error && Array.isArray(data) && data.length > 0
+}
+
 export async function updateGenerationChoice(
   id: string,
   patch: { selected_hook?: string; hook_choice?: HookChoice },
