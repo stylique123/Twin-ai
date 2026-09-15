@@ -351,6 +351,19 @@ const EVENTS = {
   // ── INCIDENTS: one occurrence matters, and a log is the right home ───────
   substance_unsupported: { kind: 'incident', why: 'A beat citing something not supplied. Reported per generation, never rewritten.' },
   reference_claim_leak: { kind: 'incident', why: "The reference's own measured claim reaching a script." },
+  // ⚠️ AN INCIDENT AND NOT A RATE, AND THE DISTINCTION IS THE COST. This fires
+  // when the visual pass for a PASTED reference could not be queued after her
+  // transcript already landed. One occurrence is the whole finding: that
+  // reference will never get a `visual_profile`, so the observed-visual block
+  // the writer reads is silently thinner for that one generation, and the only
+  // act that fixes it is re-queueing that url. A count would tell an operator
+  // nothing the first line does not.
+  //
+  // ⚖️ AND IT MUST NOT BE DURABLE ON THE ROW IT BELONGS TO, because there is no
+  // such row — the failure IS the absence of a `reference_content_profiles`
+  // row. Storing the failure on the record it failed to create is the circular
+  // home this registry exists to refuse.
+  reference_frames_unqueued: { kind: 'incident', why: 'The frames pass for a pasted reference could not be enqueued after its transcript was stored. Deliberately non-fatal: the transcript is the deliverable a creator waits on and an enrichment that could not be queued must not cost it. Logged rather than counted because one occurrence is already actionable (re-queue that url) and because the failure is the ABSENCE of the profile row, so it has no durable home that is not circular.' },
   schema_health: { kind: 'incident', why: 'A job type the production schema cannot serve, so the worker has stopped claiming it. An INCIDENT rather than a rate because it is actionable by exactly one act — apply the named migration — and because the count is not the point: one blocked job type is already the whole finding. Logged only when the blocked SET changes, so the five-minute recheck does not repeat itself; the recovery transition is logged too, because an operator who applied the migration needs to see the worker notice. Six migrations reached main unapplied on 2026-08-21 and twice a job type claimed work it could only throw on while the queue reported it pending. CI cannot detect this: migration-reconcile.yml refuses if its DB url points at production, so the worker is the only process holding legitimate production access.' },
   reference_claim_leak_repair: { kind: 'incident', why: 'What the repair pass rewrote.' },
   contentless_enumeration_unit: { kind: 'incident', why: 'A count promised with no unit behind it.' },
