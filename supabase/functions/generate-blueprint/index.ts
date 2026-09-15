@@ -4071,6 +4071,74 @@ function paragraphUsedRowInline(used: ParagraphUsedInline | null): Record<string
   }
 }
 // ── END PARAGRAPH DECOMPOSITION ───────────────────────────────────────────
+
+// ── EVENT RETENTION, INLINED ──────────────────────────────────────────────
+//
+// ⚖️ PARITY: mirrors packages/shared/src/eventRetention.ts. The edge cannot
+// import @twinai/shared, so the rule lives twice and a parity test EXECUTES
+// both over one fixture table.
+//
+// ⚠️ THE CREATOR'S OWN FINDING: he wrote "a factory one splits and it's
+// rubbish, mine comes back and I fix it". The script kept the ARGUMENT — that
+// his binding can be repaired — and dropped the EVENT. Scene 3 then asked him
+// for the story it had just discarded.
+//
+// ⚠️⚠️ IT MEASURES ABSENCE ONLY, AND THAT IS THE WHOLE DISCIPLINE. If none of
+// the event's content words appear anywhere, the event is gone — certain. The
+// converse is NOT: the argument drawn from an event reuses its nouns, so shared
+// words cannot prove the moment survived. Prefix matching at five characters
+// keeps "splits" with "splitting"; every collision makes the absence count
+// SMALLER, so the one firm verdict stays conservative.
+const MAX_EVENT_CHARS_INLINE = 300
+const MIN_EVENT_CONTENT_WORDS_INLINE = 3
+const EVENT_STEM_CHARS_INLINE = 5
+const EVENT_STOPWORDS_INLINE: ReadonlySet<string> = new Set([
+  'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'you', 'your', 'i',
+  'me', 'my', 'it', 'its', 'to', 'of', 'in', 'on', 'at', 'for', 'and', 'or',
+  'but', 'that', 'this', 'with', 'into', 'right', 'now', 'if', 'so', 'because',
+])
+function eventContentWordsInline(text: unknown): string[] {
+  if (typeof text !== 'string') return []
+  const out = new Set<string>()
+  for (const raw of text.toLowerCase().match(/[a-z][a-z'-]{2,}/g) ?? []) {
+    const w = raw.replace(/'/g, '')
+    if (w.length < 3) continue
+    if (!EVENT_STOPWORDS_INLINE.has(w)) out.add(w)
+  }
+  return [...out]
+}
+function eventRetentionInline(
+  eventFromNote: unknown,
+  scriptLines: readonly unknown[],
+): {
+  event: string; eventWords: number; absentWords: number
+  absent: string[]; whollyAbsent: boolean; truncated: boolean
+} | null {
+  if (typeof eventFromNote !== 'string') return null
+  const rawEvent = eventFromNote.trim()
+  if (rawEvent === '') return null
+  const truncated = rawEvent.length > MAX_EVENT_CHARS_INLINE
+  const event = truncated ? rawEvent.slice(0, MAX_EVENT_CHARS_INLINE) : rawEvent
+  const eventWords = eventContentWordsInline(event)
+  if (eventWords.length < MIN_EVENT_CONTENT_WORDS_INLINE) return null
+  const haystack = scriptLines
+    .map((l) => (typeof l === 'string' ? l : ''))
+    .join(' \n ')
+    .toLowerCase()
+  if (haystack.trim() === '') return null
+  const present = (w: string): boolean =>
+    haystack.includes(w.length >= EVENT_STEM_CHARS_INLINE ? w.slice(0, EVENT_STEM_CHARS_INLINE) : w)
+  const absent = eventWords.filter((w) => !present(w))
+  return {
+    event,
+    eventWords: eventWords.length,
+    absentWords: absent.length,
+    absent,
+    whollyAbsent: absent.length === eventWords.length,
+    truncated,
+  }
+}
+// ── END EVENT RETENTION ───────────────────────────────────────────────────
 function observedVisualCountInline(profile: ReferenceVisualProfileInline | null | undefined): number {
   return profile?.visualPassRan ? profile.fieldsObserved : 0
 }
@@ -5024,8 +5092,16 @@ const blueprintSchema = obj(
         candidates_found: str,
         candidate_chosen: str,
         candidates_dropped: arr(str),
+        // ⚠️ THE EVENT, NAMED BUT NOT SELF-GRADED. Asking "did you keep it?"
+        // invites a yes and makes retention self-reported; asking WHAT THE
+        // EVENT WAS is a reading question the writer already did, and whether
+        // it survived is then decidable from the script it wrote. Same division
+        // `reference_phrase_overlap` uses: the model supplies the material, we
+        // compute the overlap. Empty is licensed and expected — most notes hold
+        // no event at all.
+        event_in_note: str,
       },
-      ['candidates_found', 'candidate_chosen', 'candidates_dropped'],
+      ['candidates_found', 'candidate_chosen', 'candidates_dropped', 'event_in_note'],
     ),
     concept: obj(
       {
@@ -8736,6 +8812,11 @@ you found in it:
   - candidate_chosen: the one you wrote this script about, in a few of your own
     words (not a quote of her sentence).
   - candidates_dropped: the others you did not write, one short line each.
+  - event_in_note: if her note describes something that HAPPENED — a moment, a
+    scene, a specific occasion — quote that part of her note, in HER words. If
+    it holds only opinions, claims or advice with no moment in it, leave this
+    EMPTY. Empty is correct and expected. Do NOT summarise the point she was
+    making; the argument drawn from a moment is not the moment.
 These are notes about HER INPUT, not about the reference, and nothing here
 changes what you write — you are recording a decision you already made.`
         console.log(JSON.stringify({
@@ -10864,6 +10945,28 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // that NULL still means "there was nothing to reconcile" and a missing key
     // still means the instrumentation itself failed. Absent is not zero, and
     // null is not zero either.
+    // ── DID THE EVENT IN HER NOTE REACH THE SCRIPT ──────────────────────────
+    //
+    // ⚠️ THE CREATOR'S FINDING: his note held "a factory one splits and it's
+    // rubbish, mine comes back and I fix it", the script kept the ARGUMENT that
+    // his binding can be repaired, and scene 3 then asked him for the story it
+    // had discarded.
+    //
+    // ⚖️ COMPUTED HERE, NOT BESIDE `paragraphUsedAudit`. That one reads the
+    // parsed response and runs ~1,800 lines earlier, before `declared` is
+    // final; every repair has run by this line, so this is the first point the
+    // shipped script exists. A value derived earlier would measure a draft.
+    //
+    // ⚠️ THE WRITER NAMED THE EVENT; THIS DERIVES WHETHER IT SURVIVED, and only
+    // ever downward. `whollyAbsent` is the one certain verdict — an event whose
+    // every content word is missing is gone. "Kept" is NOT claimed, because the
+    // argument drawn from a moment reuses its nouns.
+    const eventRetained = eventRetentionInline(
+      ((templated.bp as { input_decomposition?: { event_in_note?: unknown } })
+        ?.input_decomposition)?.event_in_note,
+      (Array.isArray(declared) ? declared : []).map((b) => (b as { line?: unknown })?.line),
+    )
+
     if (beatAudit) {
       beatAudit.shot_list_resync = shotListResync
       beatAudit.retention_map_resync = retentionMapResync
@@ -10871,6 +10974,16 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       beatAudit.shots_named_by_number = shotsNumberedNotNamed
       beatAudit.reference_phrase_overlap = referencePhraseOverlap
       beatAudit.cta_entity_unmatched = ctaEntityUnmatched
+      // ⚖️ NULL WHEN THE QUESTION COULD NOT BE ASKED — no event named, a
+      // fragment too short to be a moment, or a script with no lines. A zero
+      // would read as "the event survived intact", which is the confident
+      // answer this measurement exists to avoid. Absent is not zero.
+      beatAudit.event_retention = eventRetained === null ? null : {
+        event_words: eventRetained.eventWords,
+        absent_words: eventRetained.absentWords,
+        wholly_absent: eventRetained.whollyAbsent,
+        truncated: eventRetained.truncated,
+      }
     }
 
     // ── AND THE TICKS ABOVE IT MUST DESCRIBE THE SAME SCRIPT ─────────────────
