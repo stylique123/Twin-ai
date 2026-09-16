@@ -37,15 +37,18 @@ const PRODUCTION = [
 ]
 
 describe('every recording actually lost in production comes back', () => {
-  it('sweeps all seven and neither of the two that are fine', () => {
-    const ids = stalledUploadIds(PRODUCTION, NOW)
+  it('considers all seven and neither of the two that are fine', () => {
+    // The batch argument is raised here to inspect the CANDIDATE set; the shipped
+    // rate is one per pass and is asserted separately below.
+    const ids = stalledUploadIds(PRODUCTION, NOW, STALLED_UPLOAD_AGE_MS, 99)
     expect(ids).toHaveLength(7)
     expect(ids).not.toContain('ready1')
     expect(ids).not.toContain('ready2')
   })
 
   it('returns the recording lost longest first', () => {
-    // ⚖️ MATTERS ONLY WHEN THE CAP BITES, and that is exactly when it matters.
+    // ⚖️ MATTERS BECAUSE THE RATE IS ONE: whichever it picks is the only one that
+    // moves this pass, so oldest-first is the whole ordering policy.
     expect(stalledUploadIds(PRODUCTION, NOW, STALLED_UPLOAD_AGE_MS, 2))
       .toEqual(['a37b', 'a37a'])
   })
@@ -105,11 +108,41 @@ describe('no state other than uploading is ever finalized', () => {
   }
 })
 
-describe('the batch stays bounded', () => {
-  it('never returns more than the cap, however long the backlog', () => {
+describe('recovery never competes with live work', () => {
+  // ⚠️⚠️ THE DEFECT THE STAGING MATRIX FOUND, AND IT WAS A REAL ONE. With a batch
+  // of 25 this file failed run 35094972649 — "asset 16c1f21f stuck (validating)"
+  // from phase4.mjs:109, behind a wall of validate_source jobs this sweep
+  // enqueued. `validate_source` downloads and ffprobes a file on the SAME single
+  // worker loop that serves live creators, so a batch of 25 makes somebody who
+  // just finished filming wait behind 25 recordings already lost for weeks. True
+  // in production too, just harder to see there than a red matrix.
+  it('enqueues ONE recovery job per pass, whatever the backlog', () => {
     const many = Array.from({ length: 300 }, (_, i) =>
       ({ id: `x${i}`, status: 'uploading', created_at: ago(9 * DAY + i * 1000) }))
-    expect(stalledUploadIds(many, NOW)).toHaveLength(SWEEP_BATCH)
+    expect(stalledUploadIds(many, NOW)).toHaveLength(1)
+    // ⚖️ ASSERTED AS A VALUE, not just as `SWEEP_BATCH`, because reading the
+    // constant back would pass at any size — including the 25 that broke it.
+    expect(SWEEP_BATCH).toBe(1)
+  })
+
+  it('takes the one lost longest, so the backlog drains oldest-first', () => {
+    expect(stalledUploadIds(PRODUCTION, NOW)).toEqual(['a37b'])
+  })
+
+  it('still drains the whole backlog, because each pass removes its row', () => {
+    // finalize moves the asset uploading -> validating, so it leaves this
+    // population; the next pass takes the next-oldest. Seven assets drain in
+    // about seventy minutes at a ten-minute interval, against a measured arrival
+    // rate of seven in five weeks.
+    let remaining = PRODUCTION.filter((r) => r.status === 'uploading')
+    const order: string[] = []
+    while (remaining.length) {
+      const [next] = stalledUploadIds(remaining, NOW)
+      if (!next) break
+      order.push(next)
+      remaining = remaining.filter((r) => r.id !== next)
+    }
+    expect(order).toEqual(['a37b', 'a37a', 'a24', 'a16', 'a2', 'a1b', 'a1a'])
   })
 
   it('returns nothing rather than throwing on a nonsense cap', () => {

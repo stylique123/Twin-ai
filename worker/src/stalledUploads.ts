@@ -63,10 +63,32 @@ export const STALLED_UPLOAD_AGE_MS = 2 * 60 * 60_000
  *  a query on every poll. */
 export const SWEEP_INTERVAL_MS = 10 * 60_000
 
-/** ⚖️ BOUNDED, because a backlog must not become one unbounded burst of model-free
- *  but still real download-and-ffprobe work. Nine assets exist today; the cap is
- *  for the day something upstream breaks and enqueues hundreds. */
-export const SWEEP_BATCH = 25
+/** ⚠️⚠️ ONE. NOT A CAP — A RATE, AND IT IS THE FIX FOR A REAL DEFECT THE STAGING
+ *  MATRIX FOUND IN THIS FILE.
+ *
+ *  This was 25. Matrix run 35094972649 on head 7cf9b522 FAILED with
+ *  "asset 16c1f21f-3b2f-466a-925f-66060f115dad stuck (validating)" from
+ *  `scripts/staging-integration/phase4.mjs:109`, and the twenty-five seconds
+ *  before the crash are a solid wall of `validate_source` claimed/done pairs.
+ *  Phase 4 mints ONE asset; that flood was this sweep. Staging keeps up to three
+ *  days of fixture residue, all of it past the two-hour floor, so one pass
+ *  enqueued a batch and the harness's own asset waited behind it.
+ *
+ *  ⚖️ AND THE TEST WAS RIGHT — THE DESIGN WAS WRONG. `validate_source` downloads
+ *  and ffprobes a file: real seconds, on the SAME single worker loop that serves
+ *  live creators. A batch of 25 recovery jobs means a creator who just finished
+ *  filming waits behind twenty-five recordings that have already been lost for
+ *  weeks. That is a priority inversion, and it would have been just as true in
+ *  production — where it would simply have been harder to see than a red matrix.
+ *
+ *  The `jobs` table has a `priority` column, but `editor_finalize_source` builds
+ *  the row itself, so priority is not reachable without changing that function.
+ *  What IS reachable is how many recovery jobs can exist at once. ONE per pass,
+ *  every ten minutes, cannot starve anything anywhere — and a recording lost for
+ *  37 days does not need recovering in the same minute as one lost for two hours.
+ *  Seven assets drain in about seventy minutes, against a measured arrival rate of
+ *  seven in five weeks. The headroom is enormous and the interference is nil. */
+export const SWEEP_BATCH = 1
 
 export interface StalledUploadRow {
   id?: unknown
