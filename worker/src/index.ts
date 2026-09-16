@@ -17,6 +17,7 @@ import { probeDownloader } from './downloaderProbe.js'
 import { probeAlignment, alignmentSummary } from './alignmentCapabilities.js'
 import { isLeaseLost, isPermanent } from './errors.js'
 import { redact, errorText } from './sanitizeError.js'
+import { stalledUploadIds, SWEEP_INTERVAL_MS, STALLED_UPLOAD_AGE_MS, SWEEP_BATCH } from './stalledUploads.js'
 
 let running = true
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -68,6 +69,70 @@ async function refreshSchemaHealth(reason: string): Promise<void> {
     })
   }
   schemaHealth = next
+}
+
+// ── RECOVER THE RECORDINGS NOBODY FINALIZED ──────────────────────────────
+//
+// ⚠️ 78% OF EVERY RECORDING EVER MADE NEVER BECAME USABLE, across six creators,
+// because the LAST step of the upload state machine runs on the creator's
+// device. `stalledUploads.ts` carries the measurement and, more importantly, the
+// reason this sweep asserts nothing and fabricates no etag — read it before
+// changing anything here.
+//
+// ⚖️ IN THE LOOP RATHER THAN AS A JOB TYPE, because a job type needs something to
+// enqueue it periodically and nothing in this system does that — which is the
+// very defect being fixed. A throttled sweep beside `refreshSchemaHealth` has no
+// such dependency.
+//
+// ⚖️ AND IT IS SAFE ON EVERY WORKER AT ONCE. The RPC is idempotent and the job it
+// inserts is dedup-keyed on `validate_source:{asset}:{version}`, so two workers
+// sweeping the same row cost one no-op.
+let lastUploadSweep = 0
+
+async function sweepStalledUploads(): Promise<void> {
+  const now = Date.now()
+  if (now - lastUploadSweep < SWEEP_INTERVAL_MS) return
+  // ⚠️ STAMPED BEFORE THE WORK, NOT AFTER. Stamping on success would retry a
+  // failing query on every single poll, turning one broken read into a hot loop.
+  lastUploadSweep = now
+  try {
+    const { data, error } = await db
+      .from('media_assets')
+      .select('id, status, created_at')
+      .eq('status', 'uploading')
+      .order('created_at', { ascending: true })
+      .limit(SWEEP_BATCH * 4)
+    if (error) { log('error', 'upload_sweep_read_failed', { error: redact(error.message) }); return }
+    const ids = stalledUploadIds(Array.isArray(data) ? data : [], now)
+    // ⚖️ SILENT WHEN THERE IS NOTHING TO DO. A sweep that logged every ten
+    // minutes would bury the one line that matters, the same reason
+    // `refreshSchemaHealth` speaks only on change.
+    if (ids.length === 0) return
+    let recovered = 0
+    const failures: string[] = []
+    for (const id of ids) {
+      // ⚠️ NO BYTES AND NO ETAG. See stalledUploads.ts: supplying the etag we
+      // happen to observe would convert `validateSource`'s replay protection
+      // into a rubber stamp. The validator measures reality instead.
+      const { error: rpcErr } = await db.rpc('editor_finalize_source', {
+        p_asset_id: id, p_object_bytes: null, p_object_etag: null,
+      })
+      if (rpcErr) failures.push(redact(rpcErr.message)); else recovered += 1
+    }
+    log(failures.length ? 'error' : 'info', 'upload_sweep', {
+      event: 'upload_sweep',
+      // ⚖️ THE DENOMINATOR TOO. "recovered: 3" cannot distinguish a healthy
+      // sweep from one that failed on four of seven, and the whole reason this
+      // exists is that a number was on screen without the fact beside it.
+      candidates: ids.length,
+      recovered,
+      failed: failures.length,
+      age_threshold_ms: STALLED_UPLOAD_AGE_MS,
+      reasons: failures.slice(0, 5),
+    })
+  } catch (err) {
+    log('error', 'upload_sweep_threw', { error: errorText(err) })
+  }
 }
 
 async function tick(): Promise<boolean> {
@@ -276,6 +341,9 @@ async function main() {
   while (running) {
     try {
       await beat() // record liveness before each claim attempt
+      // ⚖️ BEFORE THE CLAIM AND NEVER BLOCKING IT: the sweep only enqueues, so
+      // the jobs it creates are picked up by this same tick or the next one.
+      await sweepStalledUploads()
       const didWork = await tick()
       if (!didWork) await sleep(env.pollMs) // idle backoff when the queue is empty
     } catch (err) {
