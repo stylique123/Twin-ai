@@ -57,7 +57,31 @@ const GENERIC_ASKS: readonly RegExp[] = Object.freeze([
   // times. This validator existed and never fired, because the string it was
   // built to catch was not in its list.
   /only you can supply this/i,
-  /^\s*what would you actually say here\b/i,
+  // ⚠️⚠️ AND THE ANCHOR ON THE LINE BELOW MADE THE FIX ABOVE HALF A FIX.
+  //
+  // It used to read `/^\s*what would you actually say here\b/i` — pinned to the
+  // START of the string. `checkEntitlement` in `claimEntitlement.ts` emits:
+  //
+  //     "Nothing on record supports this beat. What would you actually say here?"
+  //
+  // which is the SAME blank question with a sentence in front of it, and the
+  // anchor slid straight past it. MEASURED: `askIsGeneric` returned false, so
+  // `askForBeat` kept it verbatim and returned it for Setup, Proof and an
+  // unrecognised section alike — the identical five-beats-one-question defect
+  // that generation 4608dc73 produced and that this list exists to stop,
+  // reintroduced through a prefix.
+  /what would you actually say here\b/i,
+  // ⚠️ THE HISTORY BRANCH OF THE SAME MODULE, WHICH IS THE COMMON CASE. A
+  // `history` claim is the most frequent entitlement failure, and
+  // `checkEntitlement` answers every one of them with the same sentence:
+  //
+  //     "This beat only works as something you have personally done.
+  //      What is your real example?"
+  //
+  // Verbatim, for every beat in the script, overriding each section's own
+  // question. It names no moment, no object and no number, which is this
+  // list's whole definition of generic.
+  /what is your real example\b/i,
 ])
 
 export function askIsGeneric(ask: unknown): boolean {
