@@ -142,10 +142,31 @@ describe('the tag actually reaches the prompt', () => {
   })
 
   it('explains the tags to the writer, and does NOT say to treat untagged as ageing', () => {
-    expect(CODE).toMatch(/\[recent\] is safe to state flatly/)
     expect(CODE).toMatch(/neither fresher nor staler/)
     // ⚠️ THE CLAUSE THAT MUST NOT COME BACK.
     expect(CODE).not.toMatch(/treat it as ageing/)
     expect(CODE).not.toMatch(/\[undated\]/)
+  })
+
+  it('⚠️ says OBSERVED, never claims the item is CURRENTLY TRUE', () => {
+    // Every dated row is stamped `new Date()` at extraction time
+    // (worker/src/jobs/voice.ts:315) — the SCRAPE date. The post's publish date is
+    // recorded NOWHERE: ScrapedPost carries only text/likes/plays/hashtags/url/
+    // cover and scraped_posts has only observed_at. galleryRank.ts:169 already
+    // warns against "a confident freshness claim on a scrape date".
+    //
+    // ⚠️ MY FIRST VERSION SAID "[recent] is safe to state flatly", which would
+    // have had the writer assert a three-year-old position as current because we
+    // read it last month. The post's age is an honest UNKNOWN and is not checkable
+    // from what is stored, so the instruction describes the OBSERVATION — which is
+    // true — and not the claim's currency, which is not knowable yet.
+    // ⚠️ MATCHED WITHIN LINES. The instruction is built by string concatenation,
+    // so a phrase that reads contiguously in the prompt is SPLIT across source
+    // lines — my first version of this assertion spanned the break between
+    // `'…the date we'` and `' read it, …'` and failed on correct code. Fifth time
+    // today that the test was wrong and the code was right.
+    expect(CODE).toMatch(/when we last OBSERVED her saying it/)
+    expect(CODE).toMatch(/not necessarily when she first said it/)
+    expect(CODE).not.toMatch(/safe to state flatly/)
   })
 })

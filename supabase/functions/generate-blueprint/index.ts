@@ -6116,6 +6116,22 @@ Deno.serve(async (req: Request) => {
 // When the dating is fixed the tags simply start appearing — strictly additive,
 // with no second decision to make.
 //
+// ⚠️⚠️ AND THE TAG SAYS *OBSERVED*, NOT *SAID*, BECAUSE THAT IS ALL THE DATA
+// SUPPORTS. Every dated row is stamped `new Date()` at extraction time
+// (`worker/src/jobs/voice.ts:315`) — the SCRAPE date, not the post's publish
+// date, which this system does not record anywhere: `ScrapedPost`
+// (`worker/src/media.ts:154`) carries only text/likes/plays/hashtags/url/cover
+// and `scraped_posts` has only `observed_at`. `galleryRank.ts:169` already warns
+// against "a confident freshness claim on a scrape date".
+//
+// So a first draft of this instruction said "[recent] is safe to state flatly",
+// and that would have had the writer assert a three-year-old position as current
+// because we happened to read it last month. The age of the underlying post is
+// an honest UNKNOWN and cannot be checked from what is stored. The wording
+// therefore describes the observation, which is true, instead of the claim's
+// currency, which is not knowable yet. When the publish date is captured the
+// instruction can be strengthened; until then it must not overclaim.
+//
 // Held identical to the shared rule by `freshnessEdgeParity.test.ts`, which
 // EXECUTES both copies over the month boundaries rather than reading them.
 const FRESHNESS_MONTH_MS = 1000 * 60 * 60 * 24 * 30.44
@@ -7596,11 +7612,12 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
     const knowledgeParts: string[] = []
     if (speakable.length) {
       knowledgeParts.push('\nWHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID — real substance, not style. Build the video out of THIS. These are their own positions and examples, so you may put them in their mouth; anything you add that is not here is yours, and they did not say it.\n'
-        + ' The tag on an item is how recently she was heard saying it:'
-        + ' [recent] is safe to state flatly, [established] and [ageing] should be'
-        + ' framed as something she has said rather than as true today. An item'
-        + ' with NO tag is one nobody recorded a date for — treat it exactly as'
-        + ' you would an untagged fact, neither fresher nor staler.\n'
+        + ' The tag on an item is when we last OBSERVED her saying it — the date we'
+        + ' read it, not necessarily when she first said it. [recent] means within'
+        + ' six months; [established] and [ageing] are older observations and should'
+        + ' be framed as something she has said rather than as true today. An item'
+        + ' with NO tag is one nobody recorded a date for — treat it exactly as you'
+        + ' would an untagged fact, neither fresher nor staler.\n'
         + speakable.map((k) => `  * (${k.kind}) ${freshnessTagInline((k as { last_observed_at?: unknown }).last_observed_at, nowMsForFreshness)}${k.text}`).join('\n'))
     }
     if (coveredRows.length) {
