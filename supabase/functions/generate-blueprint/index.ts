@@ -6091,9 +6091,56 @@ Deno.serve(async (req: Request) => {
     corpusScanned = typeof count === 'number' && count > 0 ? count : null
   } catch { /* a coverage sentence is never worth a generation */ }
 
+// ── HOW RECENTLY SHE WAS HEARD SAYING IT, INLINED ───────────────────────────
+//
+// ⚠️ MEASURED 2026-09-16: THE WRITER HAS NEVER KNOWN. `freshness()` exists in
+// `packages/shared/src/creatorKnowledge.ts:350` and is rendered by
+// `knowledgePromptLine` (:555) — which has NO production reader. Its only
+// reference outside its own module is a COMMENT in `scripts/qa/run-eval.mjs:340`
+// saying the harness renders it "exactly as" that function does. This file had
+// ZERO occurrences of `freshness`, `last_observed_at`, `ageing` or `undated`,
+// and its knowledge read did not even SELECT the column. A position she held
+// three years ago and one from last month reached the prompt identical.
+//
+// ⚠️⚠️ AND THE SHARED VERSION'S PROMPT TEXT MUST NOT BE PORTED VERBATIM. It
+// instructs: "[undated] means nobody recorded when — treat it as ageing."
+// Measured, 407 of 585 substance rows are undated — 70% — so that clause would
+// tell the writer to hedge on more than two thirds of a creator's own material,
+// framing it as "something they have said" rather than something true. That is a
+// DEPTH REGRESSION dressed as caution, and depth is the thing being fixed.
+//
+// ⚖️ THE SHARED MODULE ALSO CONTRADICTS ITSELF HERE, and the comment is the half
+// that is right: :345 states "Unknown is its own answer and never 'old'", while
+// :580's instruction says to treat undated as ageing. So an undated item carries
+// NO TAG AT ALL. An absent tag hedges nothing; a wrong tag hedges 407 items.
+// When the dating is fixed the tags simply start appearing — strictly additive,
+// with no second decision to make.
+//
+// Held identical to the shared rule by `freshnessEdgeParity.test.ts`, which
+// EXECUTES both copies over the month boundaries rather than reading them.
+const FRESHNESS_MONTH_MS = 1000 * 60 * 60 * 24 * 30.44
+
+function freshnessInline(lastObservedAt: unknown, nowMs: number): string {
+  if (typeof lastObservedAt !== 'string' || lastObservedAt.trim() === '') return 'undated'
+  const t = Date.parse(lastObservedAt)
+  if (Number.isNaN(t)) return 'undated'
+  const months = (nowMs - t) / FRESHNESS_MONTH_MS
+  if (months <= 6) return 'recent'
+  if (months <= 18) return 'established'
+  return 'ageing'
+}
+
+/** The tag as it reaches the prompt, or '' when nobody recorded a date.
+ *  ⚠️ THE EMPTY STRING IS THE POINT — see the note above. */
+function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
+  const f = freshnessInline(lastObservedAt, nowMs)
+  return f === 'undated' ? '' : `[${f}] `
+}
+// ── END FRESHNESS ───────────────────────────────────────────────────────────
+
   const { data: rankedRows } = await admin
     .from('creator_knowledge')
-    .select('kind, text, basis, times_seen, confidence, source')
+    .select('kind, text, basis, times_seen, confidence, source, last_observed_at')
     .eq('owner_id', ownerId)
     .order('times_seen', { ascending: false })
     .limit(40)
@@ -6110,7 +6157,7 @@ Deno.serve(async (req: Request) => {
   // scarce thing by name and leaves the ranking alone.
   const { data: askedRows } = await admin
     .from('creator_knowledge')
-    .select('kind, text, basis, times_seen, confidence, source')
+    .select('kind, text, basis, times_seen, confidence, source, last_observed_at')
     .eq('owner_id', ownerId)
     .eq('source', 'asked')
     .order('created_at', { ascending: false })
@@ -7541,11 +7588,20 @@ Deno.serve(async (req: Request) => {
     // more than the standing guarantee; one meant to be enjoyed does not. The
     // compiler clamps it so no answer can ever ask for LESS.
     const speakable = selectSpeakable(focusOrdered, 10, intent.substanceFloor)
+    // ⚖️ ONE CLOCK FOR THE WHOLE BLOCK. Calling Date.now() per item could put two
+    // items either side of a month boundary within one prompt, which is a
+    // difference no reader could explain.
+    const nowMsForFreshness = Date.now()
     const coveredRows = kRows.filter((k) => k.kind === 'covered')
     const knowledgeParts: string[] = []
     if (speakable.length) {
       knowledgeParts.push('\nWHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID — real substance, not style. Build the video out of THIS. These are their own positions and examples, so you may put them in their mouth; anything you add that is not here is yours, and they did not say it.\n'
-        + speakable.map((k) => `  * (${k.kind}) ${k.text}`).join('\n'))
+        + ' The tag on an item is how recently she was heard saying it:'
+        + ' [recent] is safe to state flatly, [established] and [ageing] should be'
+        + ' framed as something she has said rather than as true today. An item'
+        + ' with NO tag is one nobody recorded a date for — treat it exactly as'
+        + ' you would an untagged fact, neither fresher nor staler.\n'
+        + speakable.map((k) => `  * (${k.kind}) ${freshnessTagInline((k as { last_observed_at?: unknown }).last_observed_at, nowMsForFreshness)}${k.text}`).join('\n'))
     }
     if (coveredRows.length) {
       // ⚠️ THIS LEAKED. The first version said only "do not repeat", and a run
