@@ -2917,3 +2917,217 @@ wrong about seven items and right about two, and the seven would each have been 
 rebuild of working code. The routine's own banner already says this — *"this note
 has been wrong more often than the codebase has"* — and it now applies to a
 document written from the outside as well.
+
+## I. 2026-09-16 — the seven supply techniques, audited against the code and the data
+
+The owner proposed seven ways to grow supply from first-party material already in
+the system ("none of them import someone else's words"). The throughline is
+right. Audited the same way as section H — grep for a reader, then measure the
+supply ceiling in production — the binding constraint turns out not to be code for
+five of the seven, and the audit surfaced a defect larger than any of them.
+
+### I1. Already built and already read
+
+- **Corroboration across formats (item 5).** `creator_knowledge.times_seen` IS a
+  corroboration count and IS ranked on: `generate-blueprint:6098`
+  `.order('times_seen', {ascending:false})`, `knowledgeResolver:216`
+  `.sort((a,b) => b.hit - a.hit || b.i.timesSeen - a.i.timesSeen)`, and
+  `creatorKnowledge:534` tie-breaks on it within a kind. `surface_forms` — the
+  history of how she has said it — has its reader in `knowledgeDedupe.ts:150`,
+  written by `worker/src/knowledgeInsert.ts:72`.
+  **MEASURED:** 131 of 1,308 rows are multi-confirmed (85 at 2, 11 at 3, 10 at 4,
+  a tail to 33). ⚠️ `consensus` is NOT this signal — it holds audience-misconception
+  text on 14 rows and must not be mistaken for a corroboration count.
+- **Asking at the point of friction (item 6).** `entitlementFailures`
+  (`generate-blueprint:4771`) detects the specific gap; `askForBeat`
+  (`_shared/beatAsk.ts:259`) turns it into that section's own question and
+  discards a generic one. The generic-detector leak that made every section show
+  the same sentence was an anchored regex, fixed in #915.
+- **Product facts from her own words (item 3).** Already the dominant state, and
+  the "written and never read" defect was already found and fixed once — see the
+  comment at `generate-blueprint:7948`. `creator_summary` is selected at `:6257`
+  and emitted at `:7993`.
+  **MEASURED:** 16 of 22 live products carry `creator_summary`; only 5 carry any
+  URL-extracted knowledge at all (38 rows, 17 usable). The store is already mostly
+  her own words, not marketing copy. Residual gap: the emit is gated on
+  `usableProductFacts.length < MIN_GRADED_FACTS_TO_STAND_ALONE` (= 3, already
+  raised from 0 after measurement), so her sentence is suppressed on the ~2-3
+  products that clear three graded facts. Small, and deliberate.
+
+### I2. Built but not yet exercised — do NOT "fix" these
+
+- **The paragraph queue (item 2).** The decomposition is FULLY wired: schema field
+  `input_decomposition` at `:5168`, the prompt instruction at `:8922` concatenated
+  into BOTH branches of `referenceBlock` (`:8964` and `:8970`), the audit read at
+  `:9254`, the column write at `:9909`.
+  ⚠️ **AND I NEARLY REPORTED IT BROKEN FROM A COHORT THAT PREDATES IT.** 27
+  generations pasted 40+ characters and none carry the key, which reads exactly
+  like a dead field. The key first appears **2026-09-15 10:00**; only **3**
+  generations have run since, and **none of them pasted 40+ characters**. All 25
+  real pastes predate the code. The correct verdict is UNTESTED, not broken.
+  Item 2's resurfacing reader is genuinely absent, but its input (`candidates_dropped`)
+  cannot be non-empty until a real paragraph goes through. Prerequisite: one
+  generation with a pasted paragraph — an owner action, not a build.
+- **Repeatedly asked and never answered (item 7).** The observability landed in
+  #914 (`beat_ask_shown` / `submitted` / `failed`) one hour before this audit.
+  **MEASURED:** 0 of 857 stored beats carry an `ask_state`, by construction — there
+  is no data to adapt to yet. The adaptive half is unbuildable until there is.
+
+### I3. No material to mine — the ceiling, not the code
+
+- **Mining raw takes (item 1).** The substrate exists
+  (`media_assets.recording_attempt_id`, `seq`, `has_audio`).
+  **MEASURED CEILING: 9 source assets in all of production, across 7 generations.
+  Only 2 generations have more than one asset. Only 2 of the 9 are `ready`.** A
+  multi-take mining pipeline today would be a pipeline over two files. See I4 for
+  why there are only nine.
+- **Mining her comment replies (item 4).** Genuinely unbuilt, and unbuildable
+  first: `scraped_posts` has no comments or replies column
+  (`id, owner_id, voice_id, platform, handle, url, caption, hashtags, cover_url,
+  plays, likes, observed_at`). This needs a SCRAPER change before it needs a
+  reader, and whether the actors return replies at all is unverified — do not
+  promise it before checking.
+
+### I4. ⚠️ WHAT THE AUDIT ACTUALLY FOUND, AND IT IS BIGGER THAN THE SEVEN
+
+**78% of every recording ever made never became usable, chronically, across six
+different creators.**
+
+Seven of nine `media_assets` rows sit at `status='uploading'` with `size_bytes`
+recorded and `content_sha256` NULL — bytes arrived, validation never ran. Ages at
+audit: **37 days, 37 days, 24 days, 16 days, 2 days, 1 day, 1 day**. Owners
+`04b19303`, `04ac78f7`, `30b0b9b2`, `d69acb67`, `2f2f1d59`, `8af25ec8` (x2) —
+chronic and cross-account, not one person's bad network. The two that reached
+`ready` were validated 32 days and 13 hours after creation.
+
+**The validator is not at fault and this is the point.** Only **3**
+`validate_source` jobs have EVER been enqueued against 9 assets, and all three
+finished `done` on ONE attempt with a NULL error. The job works on every input it
+is handed. Nothing hands it the other six.
+
+The enqueue is not application code — it is `editor_finalize_source(asset, bytes,
+etag)` (`0076_media_assets.sql:170`, replaced in `0079_editor_hardening.sql:53`),
+which flips `uploading -> validating` and inserts the dedup-keyed job. The client
+calls it via `finalizeSourceUpload` (`packages/shared/src/editor/api.ts:99`).
+None of the seven ever reached `validating`, so the RPC was never called for them.
+
+⚖️ **SO THE ARCHITECTURAL BUG IS THAT A CLIENT COMPLETES A SERVER-SIDE STATE
+MACHINE.** A closed tab, a backgrounded app or a dropped connection after the
+bytes land but before the RPC returns leaves the asset stranded forever, and no
+amount of client hardening removes that class — `apps/web/src/lib/uploadNeverHangs.test.ts`
+already records one round of trying.
+
+⚠️ **AND IT IS ALREADY OBSERVED, WHICH MAKES IT A REPORTING-WITHOUT-RECOVERY
+DEFECT.** `_shared/ownerConsole.ts:253-295` counts `stalledUploads` and tells the
+owner "N takes never finished uploading". The number has been shown and nothing
+acts on it.
+
+**THE BUILD (next, needs the lane):** a sweeper that, for each asset in
+`uploading` past an age that safely exceeds a slow 124 MB mobile upload, HEADs the
+storage object and either calls `editor_finalize_source` with the real size and
+etag — idempotent per its own contract, so this is safe and retroactively recovers
+all seven — or marks it terminally failed with a reason when the object is absent.
+⚖️ The two outcomes must stay DISTINGUISHABLE: "finalize call was lost" is
+recoverable and "the upload was truly abandoned" is not, and counting them
+together is exactly what makes the console's number unactionable today.
+
+### I5. The one lever that is neither built nor blocked
+
+**42 of 52 ready voices have a handle and have never had their own posts
+scraped.** Every technique in this section is a way to extract more from material
+already held; this is the only measured way to get more material. It is not a
+build — it needs a number from the owner, because it spends Apify credits and
+model calls. Recommended: five first, measure substance gained per creator, then
+commit the rest.
+
+## J. 2026-09-16 — Instagram: the recurring note's own durable fact is wrong
+
+The recurring routine carries this, under DURABLE FACTS, MEASURED:
+
+> ⚠️ CORRECTED 2026-09-12 — [...] Measured directly on 2026-09-12 across the
+> Instagram profile media fetches: 60 profiles, 0 ok, 60 errored, 0 transcripts
+> — 100% [...] Instagram references have therefore never reached a transcript.
+> Say "60 of 60", never "6".
+
+⚠️ **THE LAST TWO SENTENCES ARE FALSE, AND THE NOTE INSTRUCTS EVERY FUTURE READER
+TO REPEAT THEM.** This is the seventh entry in that note to prove stale, and the
+first whose correction was itself a correction.
+
+### J1. What is actually in the database
+
+`transcripts` where `source_url ilike '%instagram%'`:
+
+| url shape | transcripts | first | last | avg chars |
+|---|---|---|---|---|
+| `/p/` | **42** | 2026-06-14 | **2026-09-01** | 1,454 |
+| `/reel/` | **2** | 2026-06-17 | 2026-06-24 | 880 |
+
+Plus 4 rows in `reference_transcripts` with `source = 'instagram_paid'`.
+
+So **Instagram has reached a transcript 44 times**, with real substance in them,
+and `/p/` is the shape that works — it is NOT "photo posts only", which is what
+an earlier note in this file guessed.
+
+### J2. But the note was reaching for something real, and my own first reversal
+### was also wrong
+
+**Zero Instagram transcripts since 2026-09-01.** Eight landed in September, none
+after the 12th — the date of that 60-row measurement. So:
+
+- "Instagram never worked" — FALSE, it worked 44 times.
+- "Instagram works" (my reading, for about one minute) — FALSE as a PRESENT-TENSE
+  claim; nothing has succeeded in over two weeks.
+- What is SEEN: **it worked until early September and has produced nothing since.**
+  A regression, which is what the note was pointing at with the wrong absolute
+  claim and the wrong mechanism.
+
+### J3. The mechanism in the note is wrong, and that changes the fix
+
+The note infers *"the actor's response shape no longer carries the field we
+read."* `worker/src/media.ts:777` is:
+
+```ts
+if (item.errMsg) throw new Error(`This Instagram video could not be read: ...`)
+```
+
+`no audio url found` is the **actor's own `errMsg`**, which we read correctly.
+Nothing about our field reading is broken. The actor is reporting that IT cannot
+resolve audio.
+
+⚖️ **SO THERE ARE TWO INSTAGRAM DEFECTS, NOT ONE, AND THEY HAVE DIFFERENT OWNERS.**
+
+1. **ADMISSION — ours, and genuinely unfixed.** All 24 distinct failing Instagram
+   URLs in `reference_assessment_attempts` are
+   `instagram.com/explore/tags/<hashtag>` — hashtag SEARCH PAGES, 52 of 55
+   attempts, retried up to 5x each between 2026-09-05 and 09-09. There is no
+   video on a hashtag landing page, so `no audio url found` is **correct
+   behaviour** and the defect is admitting them to a per-video transcription
+   actor at all. ⚠️ Do NOT "fix the Instagram scraper" for these.
+2. **THE REGRESSION since ~2026-09-01 on VALID `/p/` URLs.** INFERRED to be
+   actor-side, because the same code succeeded 42 times on that same URL shape
+   and our reader is unchanged. NOT established.
+   **The decisive test is one Apify call**: re-run one of the 42 `/p/` URLs that
+   previously produced a transcript. A transcript back means the cause is
+   input-shaped and ours; `no audio url found` on a URL that worked in August
+   means it is the actor, and the fix is a different actor or its new input
+   contract. Owner-blocked only because it spends a credit.
+
+⚠️ **AND DEFECT 1 DOES NOT EXPLAIN DEFECT 2.** An earlier version of this entry
+unified them — "non-video URLs reaching a per-video actor" — which is tidy and
+wrong: hashtag pages cannot explain failures on `/p/` URLs that used to work.
+
+### J4. Why this mattered before spending money
+
+Of the **42 ready voices with a handle that have never been scraped**:
+
+| platform | never scraped | state |
+|---|---|---|
+| instagram | **18** | captions only until defect 2 is resolved |
+| tiktok | **14** | working — 92% (1,535/1,676); captions AND transcripts |
+| youtube | **10** | bot-blocked, owner-blocked on cookies or a residential proxy |
+
+Captions yield **16%** substance; transcripts yield **84%**. So scraping
+Instagram today buys the low-yield half. ⚖️ **The first spend should be five of
+the FOURTEEN TikTok voices, not five at random** — which is a change from the
+recommendation made earlier the same morning, and the reason to check platform
+before recommending a number at all.

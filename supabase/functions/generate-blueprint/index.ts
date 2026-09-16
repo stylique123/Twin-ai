@@ -4741,10 +4741,10 @@ function repairFor(strength: ClaimStrength, available: string | null): string {
   }
   if (strength === 'history') {
     return available === 'opinion'
-      ? 'Rewrite WITHOUT any personal history. They are on record holding a view about this, so state the view — never an action they took, owned, bought, tried or stopped.'
-      : 'Rewrite WITHOUT any first-person claim. Only the subject is on record, not their experience of it. Say what is true of the thing, not what they did with it.'
+      ? 'Rewrite WITHOUT any personal history. The creator is on record holding a view about this, so state the view ("I still think…") — never an action they took, owned, bought, tried or stopped.'
+      : 'Rewrite WITHOUT any first-person claim. Only the subject is on record, not the creator\'s experience of it. Say what is true of the thing, not what they did with it.'
   }
-  return 'Rewrite WITHOUT stating this as the creator\'s own position. It is a subject they have covered, not a view they are on record holding.'
+  return 'Rewrite WITHOUT stating this as the creator\'s own position. It is a subject they have covered, not a view they are on record holding. Attribute it, or state it neutrally.'
 }
 
 /** The repair call returns line rewrites, NOT a blueprint — so it needs its own
