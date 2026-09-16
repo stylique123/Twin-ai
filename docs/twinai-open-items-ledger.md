@@ -2835,3 +2835,85 @@ Nothing in the existing rows. The signed-in account holds 5 drafts and 0
 published. LOOP 7 begins at that account's first Publish, followed by a view
 count entered against it. The format-insight panel needs a SECOND published
 video in the same format after that.
+
+## H. 2026-09-16 — the evidence-broker spec, audited against the code
+
+The owner supplied two documents ("The Layer Between Everything" and "The Missing
+Layer") describing an eleven-item **evidence broker** and **curator**, on the
+premise that Twin has many sources wired and nothing deciding which a given
+script needs. **Seven of its items were already built.** This section records
+which, with file and line, so the next session does not build them a second
+time — the dominant defect class here, wearing a specification.
+
+**Nothing in this section disputes the documents' value.** Two of its findings
+are real and narrow, and they are listed last.
+
+### H1. Already built, already reaching the prompt — do NOT rebuild
+
+| Spec item | Where it already is |
+|---|---|
+| `personallyUsed ≠ yes` forbids an experience claim | `productEntity.ts:669-674` — `claimRulesFor` sets `creatorExperience = personalUse === 'CONFIRMED'` as the one rule no relationship may override; edge mirror at `generate-blueprint/index.ts:7642`; creator-facing sentence at `productSelection.ts:192` |
+| Disclosure appended by rule | `index.ts:7669` `disclosureRequired`, plus `promotesLine`, which calls the sponsorship case non-optional |
+| No statement without a source | `claimEntitlement.ts` — `REQUIRED_FOR: Record<ClaimStrength, EvidenceLevel>` is literally a require table, with `bestAvailableLevel`, `checkEntitlement`, `enforceEntitlement`. Also live: `productClaimCheck`, `referenceClaimLeak`, `comparativeClaim`, `screenCaptureConversion`, `script/clichePhrases` |
+| Each objective requires a different fact | `productObjectiveQuestion.ts` — `OBJECTIVE_QUESTIONS` covers all eight goals and each entry's `because` field states why that objective fails without its material |
+| Steps 1–4 and 8 (gather, check required-and-absent, declare the gap) | `generationReadiness.ts` — `READINESS_FIELDS`, a three-state `ReadinessState` including `MISSING_REQUIRED`, `assessReadiness()` escalating **only** when a guess would produce a claim, and a refusal to generate when inputs are missing. Its header already states the per-objective asymmetry the spec asks for |
+| Step 5, the filter — for creator knowledge | `index.ts:7528-7543` — relevance-scored into `relevanceOrdered`, then `preferKindsInline(relevanceOrdered, intent.prefersKinds)` (a stable partition keyed on the video intent), then `selectSpeakable(focusOrdered, 10, intent.substanceFloor)` |
+| A subject used recently | `index.ts:1278` `REC_REPEAT_DAYS = 30` and `recDirective` — premise-overlap detection over a 30-day window, reaching the writer |
+
+**⚠️ The sixth row was the documents' headline argument.** They state that every
+fact enters every prompt, so the model "chooses, and it chooses the same thing" —
+the 6pm line in 14 of 15 runs as a *selection vacuum*. For creator knowledge the
+code already relevance-orders, intent-partitions and caps at ten. Other channels
+are capped too: product facts `.slice(0, 24)` and trust-filtered to `usable`
+(`index.ts:7897-7905`), signature phrases `SIG_MAX_PHRASES` (`:2533`), niche
+vocabulary `MAX_VOCAB_TERMS_SHOWN_INLINE` (`:1956`), prior premises
+`MAX_PRIOR_SHOWN` (`:1373`).
+
+### H2. Two design conflicts that are the owner's call, not a build
+
+**⚠️ THE REPETITION RULE IS BUILT WITH THE OPPOSITE POLICY, ON PURPOSE.** The spec
+asks that a subject used in the last 30 days be "off the table". `recDirective`
+deliberately refuses that: *"Write this one on the SAME SUBJECT but from a
+genuinely different angle … and do NOT refuse the subject."* Blocking the subject
+would refuse a creator's chosen topic. Which policy is wanted is a product
+decision and must not be flipped silently.
+
+**⚠️ TEN OBJECTIVES AGAINST EIGHT GOALS.** The spec names ten product objectives.
+`OBJECTIVE_QUESTIONS` is keyed on `VideoGoal` (`videoIntent.ts:37`, eight values)
+and its own comment forbids a second vocabulary: *"keying here on anything else
+would fork exactly the vocabulary that file exists to keep singular."* **Handle an
+objection**, **Compare it** and **Turn a DM into a video** have no goal to map
+onto. That fork has already cost two renames (`selectCohort`, `questionsFor`) and
+`videoIntent` carries a build-failing guard, `standingGoalIsCanonical`. Either map
+them explicitly or extend the canonical set deliberately.
+
+### H3. What is genuinely absent, narrowed by the audit
+
+- **Product facts are capped but not objective-keyed.** `.slice(0, 24)` is a
+  volume limit, not a selection: the same 24 facts serve every objective. This is
+  the real remnant of step 5, and the narrow form in which the documents' argument
+  survives.
+- **`angle_type`** — zero hits anywhere. `creator_stage_band` appears only in
+  `generate-blueprint`, consistent with "prose inside the prompt". ⚠️ `door` and
+  `hook_shape` DO return hits but are DIFFERENT CONCEPTS
+  (`editor/{capabilities,review,api}.ts` and `corpus/captionShape.ts`) — they are
+  not the outcome dimensions and must not be mistaken for them.
+- **Refusal capture** — the only matches are MODEL refusals
+  (`corpus/captionShapeModel.ts`) and editor review. The documents are right that
+  the one negative signal available is uncollected.
+- **The edit contract** — `pacingBand` has no reader. ⚠️ Check obtainability
+  first: the YouTube bot-block leaves `visual_profile` absent for much of the
+  reference cohort, so "ship the five obtainable rows" cannot be promised before
+  measuring what is actually there.
+- **Step 6 precedence**, **recordings → the store**, **curator collection
+  directives** — not yet audited to this standard; treat as unverified rather
+  than as absent.
+
+### H4. The method, because it is the transferable part
+
+Every row above came from grepping for a reader before writing a line. A
+specification that names a defect confidently is still a claim: this one was
+wrong about seven items and right about two, and the seven would each have been a
+rebuild of working code. The routine's own banner already says this — *"this note
+has been wrong more often than the codebase has"* — and it now applies to a
+document written from the outside as well.
