@@ -328,6 +328,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # ⚠️ PINNED BECAUSE THE GUARDS BELOW USE `--experimental-strip-types`,
+      # WHICH LANDED IN NODE 22.6. This job installed nothing and so ran on
+      # whatever Node the runner image happened to ship -- which is 22 today,
+      # so every selftest below passed for a reason no file stated. The day that
+      # default moves, thirty-odd guards stop running and nothing goes red.
+      # `heartbeat.yml` is the same mistake already realised: it pinned 20, node
+      # rejected the flag, and the workflow never completed a single cycle.
+      # No `cache: npm` on purpose -- this job installs nothing and must stay
+      # dependency-free, which is why its guards are plain node scripts.
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
       - name: No legacy editor references in live code
         run: |
           if grep -rnE 'enqueue-autoedit|handleAutoEdit|autoEditTake|autoEditFromPath|reEditWithEdl|fetchEdl|pollEditJob|EditDecisionList|ManualEditor|TimelineEditor|RefineEditor|manual-rerender|REVIDEO_URL|REVIDEO_TRUSTED|twinai-revideo' \

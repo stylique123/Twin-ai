@@ -54,6 +54,81 @@ export function parseProblems(files) {
 }
 
 /**
+ * ⚠️ A FLAG THE PINNED NODE DOES NOT HAVE KILLS THE RUN BEFORE LINE ONE.
+ *
+ * MEASURED 2026-09-16, AND IT HAD NEVER WORKED ONCE. `heartbeat.yml` pinned
+ * `node-version: 20` and every one of its steps ran
+ * `node --experimental-strip-types`, a flag that did not exist until Node 22.6.
+ * Node rejects an unknown option and exits before executing a line, so the
+ * unconditional `Policy selftest` step killed the job every hour. The evidence
+ * is that `heartbeat_page_state` held ZERO rows EVER, `auth.users.last_sign_in_at`
+ * for the heartbeat account was still its creation timestamp from 2026-09-08,
+ * and a manual `workflow_dispatch` produced no sign-in, no `ops_events` row and
+ * no generation.
+ *
+ * ⚖️ AND IT LOOKED LIKE A CREDENTIAL PROBLEM, WHICH IS WHY THIS IS A GUARD AND
+ * NOT JUST A ONE-LINE FIX. Seven of the workflow's secrets were genuinely
+ * missing at the same time, so every symptom pointed at configuration. The
+ * script signs in at module top level BEFORE any service-key read, so "no
+ * sign-in" could never have been the service key — but nothing said so out
+ * loud, and the wrong cause was reported twice before the order of operations
+ * was read.
+ *
+ * ⚠️ AN IMPLICIT RUNNER DEFAULT IS NOT A PIN. A job with no `setup-node` gets
+ * whatever the image ships today, which is exactly the thing that changes
+ * without a diff. Measured: both call sites of this flag pin explicitly today,
+ * so requiring it costs nothing and closes the silent case.
+ */
+const STRIP_TYPES_MIN_MAJOR = 22
+
+/** The major version a `setup-node` step pins, or null when it cannot be read.
+ *  `lts/*` and friends are UNREADABLE, not acceptable: a guard that treats an
+ *  unparseable pin as a pass is the vacuous kind this file exists to avoid. */
+function pinnedMajor(step) {
+  const raw = step?.with?.['node-version']
+  if (raw === undefined || raw === null) return null
+  const m = String(raw).trim().match(/^(\d+)/)
+  return m ? Number(m[1]) : null
+}
+
+const isSetupNode = (step) => typeof step?.uses === 'string' && step.uses.startsWith('actions/setup-node')
+
+/**
+ * Every step invoking `--experimental-strip-types` must run on a Node that has
+ * it, established by walking the steps in order so the version in force is the
+ * one the most recent `setup-node` actually set.
+ */
+export function stripTypesNodeProblems(files) {
+  const problems = []
+  let checked = 0
+  for (const { name, text } of files) {
+    let doc
+    try { doc = yaml.load(text) } catch { continue }
+    const jobs = doc && typeof doc === 'object' ? doc.jobs : null
+    if (!jobs || typeof jobs !== 'object') continue
+    for (const [jobName, job] of Object.entries(jobs)) {
+      const steps = Array.isArray(job?.steps) ? job.steps : []
+      let inForce = null
+      for (const step of steps) {
+        if (isSetupNode(step)) inForce = pinnedMajor(step)
+        const run = typeof step?.run === 'string' ? step.run : ''
+        if (!run.includes('--experimental-strip-types')) continue
+        checked += 1
+        const where = `${name} job ${jobName} step ${JSON.stringify(step.name ?? run.split('\n')[0].slice(0, 40))}`
+        if (inForce === null) {
+          problems.push(`${where} runs --experimental-strip-types with no readable setup-node pin; `
+            + `Node rejects an unknown option and exits before running a line, so this job would die silently`)
+        } else if (inForce < STRIP_TYPES_MIN_MAJOR) {
+          problems.push(`${where} runs --experimental-strip-types on Node ${inForce}; `
+            + `the flag landed in Node ${STRIP_TYPES_MIN_MAJOR}.6, so node exits before line one and the job never runs`)
+        }
+      }
+    }
+  }
+  return { problems, checked }
+}
+
+/**
  * ⚠️ A MIGRATION MAY NOT BE APPLIED AND EXCLUDED AT ONCE.
  *
  * The APPLIED list in `staging-integration.yml` is one very long line, and it
@@ -104,11 +179,21 @@ async function main() {
   }
   problems.push(...appliedExcludedOverlap(applied, Object.keys(EXCLUDED)))
 
+  // ⚠️ REFUSES A VACUOUS PASS. If nothing in the repo uses the flag any more,
+  // this check is silently inert and must say so rather than report OK.
+  const strip = stripTypesNodeProblems(files)
+  if (strip.checked === 0) {
+    problems.push('no step uses --experimental-strip-types, so the node-pin check verified nothing — '
+      + 'delete it or fix the detection rather than leaving a guard that cannot fail')
+  }
+  problems.push(...strip.problems)
+
   if (problems.length) {
     for (const p of problems) console.error(`::error::${p}`)
     process.exit(1)
   }
-  console.log(`workflows-parse guard: OK (${files.length} workflows parse, ${applied.length} applied migrations, none also excluded)`)
+  console.log(`workflows-parse guard: OK (${files.length} workflows parse, ${applied.length} applied migrations, none also excluded, `
+    + `${strip.checked} strip-types steps on a Node that has the flag)`)
 }
 
 async function selftest() {
@@ -140,6 +225,35 @@ async function selftest() {
   const { EXCLUDED } = await import('./check_staging_migration_coverage.mjs')
   ok('0194 is really declared excluded, so the assertion has a subject',
     Object.keys(EXCLUDED).includes('0194_the_backfill_wrote_a_column_that_did_not_exist'))
+
+  // ⚠️ THE FIXTURE IS THE SHIPPED BUG. heartbeat.yml pinned Node 20 and ran the
+  // flag, so the job died before line one -- for every scheduled run since it
+  // was written, with `heartbeat_page_state` empty the whole time.
+  const wf = (nodeLine, run) =>
+    `name: x\non: push\njobs:\n  beat:\n    steps:\n      - uses: actions/checkout@v4\n${nodeLine}      - name: go\n        run: ${run}\n`
+  const PIN20 = '      - uses: actions/setup-node@v4\n        with: { node-version: 20 }\n'
+  const PIN22 = '      - uses: actions/setup-node@v4\n        with: { node-version: 22 }\n'
+  const FLAG = 'node --experimental-strip-types scripts/ops/heartbeat.mjs'
+  ok('a strip-types step on Node 20 is caught',
+    stripTypesNodeProblems([{ name: 'a.yml', text: wf(PIN20, FLAG) }]).problems.length === 1)
+  ok('the same step on Node 22 is not flagged',
+    stripTypesNodeProblems([{ name: 'a.yml', text: wf(PIN22, FLAG) }]).problems.length === 0)
+  // An implicit runner default is not a pin: it is the thing that changes with
+  // no diff, which is how a job stops running with nothing red.
+  ok('no setup-node at all is caught',
+    stripTypesNodeProblems([{ name: 'a.yml', text: wf('', FLAG) }]).problems.length === 1)
+  ok('an unreadable pin is caught rather than passed',
+    stripTypesNodeProblems([{ name: 'a.yml',
+      text: wf('      - uses: actions/setup-node@v4\n        with: { node-version: "lts/*" }\n', FLAG) }]).problems.length === 1)
+  // A step that does not use the flag must not be counted or flagged.
+  ok('a plain node step is neither counted nor flagged', (() => {
+    const r = stripTypesNodeProblems([{ name: 'a.yml', text: wf(PIN20, 'node scripts/x.mjs') }])
+    return r.problems.length === 0 && r.checked === 0
+  })())
+  // And the real files, so the fixtures cannot drift from production.
+  const realStrip = stripTypesNodeProblems(real)
+  ok('every real strip-types step runs on a Node that has the flag', realStrip.problems.length === 0)
+  ok('the real check is not vacuous', realStrip.checked > 0)
 
   if (failed) { console.error(`workflows-parse selftest: ${failed} failed`); process.exit(1) }
   console.log('workflows-parse selftest: all cases passed')
