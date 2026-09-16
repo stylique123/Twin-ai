@@ -41,7 +41,8 @@
 //
 //   node scripts/ci/check_counter_durability.mjs            # the real tree
 //   node scripts/ci/check_counter_durability.mjs --selftest # fixtures
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 
@@ -403,6 +404,24 @@ const EVENTS = {
     why: 'A source whose length could not be measured even by decoding. Rare by construction, and the only case where refusing a take is honest.',
   },
 
+  // ⚖️ A COUNTER RATHER THAN AN INCIDENT, AND ITS DURABLE HOME IS THE TABLE IT
+  // REPAIRS. One stranded recording is not a "should not happen" — the last step
+  // of the upload state machine runs on the creator's device, so some fraction
+  // will always be lost to a closed tab. The RATE is the finding: 78% of all nine
+  // recordings ever made were stranded when this was measured (2026-09-16, six
+  // creators, ages to 37 days), and whether that falls to near zero or stays high
+  // is the only way to tell a lost finalize call from a broken upload path.
+  //
+  // ⚖️ AND IT NEEDS NO NEW COLUMN, WHICH IS WHY THIS IS NOT `counter_ephemeral`.
+  // The count is recoverable from `media_assets.status` at any moment — exactly
+  // the query `_shared/ownerConsole.ts` already runs to tell the owner "N takes
+  // never finished uploading". Declaring it ephemeral would claim there is no
+  // durable home when the durable home is the thing being fixed.
+  upload_sweep: {
+    kind: 'counter',
+    stored: 'media_assets.status',
+    why: 'Recordings that reached storage but were never finalized, recovered by handing them to the validator that already worked. The rate says whether the client finalize path is losing calls occasionally or systematically; the count itself is re-derivable from media_assets.status, which is what the owner console reads.',
+  },
   // ── INCIDENTS: one occurrence matters, and a log is the right home ───────
   substance_unsupported: { kind: 'incident', why: 'A beat citing something not supplied. Reported per generation, never rewritten.' },
   reference_claim_leak: { kind: 'incident', why: "The reference's own measured claim reaching a script." },
@@ -722,8 +741,10 @@ function emittedEvents(root) {
  *  ⚠️ THE REVERSE CHECK IS THE ONE THAT MATTERS. A registry entry claiming a
  *  home it does not have is worse than an unlisted event: it reads as a
  *  decision that was made and kept, and nobody would look again. */
-function storedDestinations() {
-  const dir = join(REPO, 'supabase', 'migrations')
+// ⚖️ THE DIRECTORY IS A PARAMETER SO THE PARSER CAN BE TESTED. It was hardcoded,
+// which is why the selftest could only ever exercise `problems()` and never the
+// function that decides whether a declared home EXISTS. Default unchanged.
+function storedDestinations(dir = join(REPO, 'supabase', 'migrations')) {
   const dests = new Set()
   for (const f of readdirSync(dir)) {
     if (!f.endsWith('.sql')) continue
@@ -731,7 +752,18 @@ function storedDestinations() {
     for (const m of sql.matchAll(/alter table (?:public\.)?(\w+)[\s\S]*?add column if not exists (\w+)/g)) {
       dests.add(`${m[1]}.${m[2]}`)
     }
-    for (const m of sql.matchAll(/create table if not exists (?:public\.)?(\w+) \(([\s\S]*?)\n\)/g)) {
+    // ⚠️ `if not exists` IS OPTIONAL IN THIS REPO AND THIS REGEX ONCE REQUIRED IT.
+    // Measured 2026-09-16: six tables are created with a plain `create table` —
+    // `media_assets`, `edit_projects`, `media_analyses`, `edit_plans`,
+    // `edit_events` and more across three migrations — so EVERY column of those
+    // tables was invisible here, and a counter truthfully declaring a home in one
+    // of them was told "no migration creates that". A guard that rejects a TRUE
+    // claim teaches the next person to reach for `counter_ephemeral`, which is
+    // how a rate stops being persisted for a reason nobody wrote down.
+    //
+    // ⚖️ THIS WIDENS WHAT THE GUARD CAN VERIFY, NOT WHAT IT PERMITS. A home that
+    // genuinely does not exist is still refused — the selftest below proves it.
+    for (const m of sql.matchAll(/create table (?:if not exists )?(?:public\.)?(\w+) \(([\s\S]*?)\n\)/g)) {
       for (const c of m[2].matchAll(/^\s{2}(\w+)\s/gm)) dests.add(`${m[1]}.${c[1]}`)
     }
   }
@@ -795,6 +827,38 @@ function selftest() {
   t('a stale registry entry FAILS', () =>
     problems(new Map(), dests, { gone: { kind: 'incident', why: 'a reason long enough to count' } })
       .some((p) => /no longer emitted/.test(p)))
+  // ⚠️ THE SQL PARSER ITSELF, WHICH NOTHING HERE USED TO TOUCH. Every case above
+  // hands `problems()` a dests set built by hand, so `storedDestinations` — the
+  // function that decides whether a declared home EXISTS — was entirely
+  // unguarded. That is how it came to require `create table if not exists` and
+  // go blind to `media_assets`, `edit_projects`, `edit_plans` and three more,
+  // rejecting counters that were telling the truth.
+  t('storedDestinations reads BOTH create-table forms, and invents nothing', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cdsql-'))
+    writeFileSync(join(dir, '0001_plain.sql'),
+      'create table public.plain_t (\n  col_a text not null,\n  col_b jsonb,\n);\n')
+    writeFileSync(join(dir, '0002_ine.sql'),
+      'create table if not exists public.ine_t (\n  col_c text,\n);\n')
+    writeFileSync(join(dir, '0003_alter.sql'),
+      'alter table public.plain_t\n  add column if not exists col_d text;\n')
+    const d = storedDestinations(dir)
+    return d.has('plain_t.col_a')      // ⚖️ THE REGRESSION: plain `create table`
+      && d.has('plain_t.col_b')
+      && d.has('ine_t.col_c')          // the form that already worked
+      && d.has('plain_t.col_d')        // `add column if not exists`
+      && !d.has('plain_t.col_zzz')     // ⚠️ AND IT STILL REFUSES WHAT DOES NOT EXIST
+      && !d.has('nope_t.col_a')
+      // ⚠️⚠️ AND THE COLUMN MUST BE A COLUMN, NOT ANY WORD IN THE BODY. A first
+      // version of this case asserted only the two absences above, and a mutant
+      // that matched EVERY word — turning `dests` into a rubber stamp that
+      // accepts `plain_t.<anything the DDL mentions>` — SURVIVED it. The type
+      // keywords are the discriminator: they appear in the body and are not
+      // columns, so a parser that admits them admits anything.
+      && !d.has('plain_t.text')
+      && !d.has('plain_t.jsonb')
+      && !d.has('plain_t.not')
+      && !d.has('plain_t.null')
+  })
   t('counter_ephemeral is accepted WITH a reason', () =>
     problems(ev('a'), dests, { a: { kind: 'counter_ephemeral', why: 'a debt, stated, and visible here' } })
       .length === 0)
