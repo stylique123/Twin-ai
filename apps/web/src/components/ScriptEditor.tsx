@@ -30,7 +30,7 @@ import { Check, HelpCircle, Loader2, Pencil, Sparkles, SlidersHorizontal, Triang
 import {
   answerBeatAsk, applyAskAnswerEdit, applyDialogueEdit, applyHookEdit, buildRecordingScript,
   changesTheRecordedScript, establishDurableRecordingScriptLive, loadRecordingScript,
-  SCRIPT_EDIT_MESSAGE, readBeatLength,
+  SCRIPT_EDIT_MESSAGE, readBeatLength, logEvent,
   type RecordingScene, type RecordingScript, type ScriptEditResult,
 } from '../lib/api'
 import {
@@ -602,8 +602,41 @@ function AskCard({ scene, script, commit }: {
   const [error, setError] = useState<string | null>(null)
   const [skipped, setSkipped] = useState(false)
 
+  // ⚠️ MEASURED 2026-09-16: 29 ASKS EMITTED, 0 EVER ANSWERED OR SKIPPED.
+  // `beat_audit.beat_asks.emitted` sums to 29 across 16 generations, and NOT ONE
+  // of 857 stored beats carries an `ask_state` — so no creator has ever
+  // completed this loop. Three causes fit that evidence and nothing here could
+  // tell them apart: she never saw the card, she saw it and moved on, or she
+  // tried and the save failed. The card renders (this component) and the
+  // endpoint is called, so an unrendered card was ruled out by reading the
+  // code — but "rendered" is not "seen", and only the SHOWN half was missing.
+  //
+  // ⚖️ AND THE ANSWER IS THE HIGHEST-YIELD SUPPLY IN THE SYSTEM, which is why
+  // this is worth a counter rather than a guess. Measured over all 1,308
+  // knowledge rows: captions yield 16% substance, transcripts 84%, and
+  // `asked` — a sentence she typed — 100%. There are 21 such rows in the whole
+  // database. One answered question is worth about as much as a whole
+  // transcribed video (323 transcripts produced 444 substance items, ~1.4
+  // each), and half of all generations run on 2.4 substance items against a
+  // floor of 6. Three answers close that gap for a creator.
+  //
+  // ⚠️ NO ANSWER TEXT LEAVES THIS COMPONENT. `answer_chars` is a LENGTH, which
+  // separates an empty submit from a real one without putting a creator's
+  // sentence in an analytics row. `logEvent` swallows its own errors by
+  // contract, so none of this can stand between somebody and their camera.
+  const beatIndex = scene.beat_index
+  useEffect(() => {
+    if (typeof beatIndex !== 'number') return
+    void logEvent('beat_ask_shown', { generation_id: script.generation_id, beat_index: beatIndex })
+  }, [script.generation_id, beatIndex])
+
   const respond = async (answer: string | null) => {
+    const base = { generation_id: script.generation_id, beat_index: scene.beat_index ?? null }
     if (typeof scene.beat_index !== 'number') {
+      // ⚠️ A REAL FAILURE MODE, NOT A GUARD NOBODY HITS. The card can render for
+      // a scene whose beat could not be resolved, and until now that dead end
+      // was indistinguishable from a creator choosing not to answer.
+      void logEvent('beat_ask_failed', { ...base, reason: 'no_beat_index' })
       setError("This question isn't tied to a beat we can save an answer against.")
       return
     }
@@ -611,21 +644,30 @@ function AskCard({ scene, script, commit }: {
     setError(null)
     try {
       const { line, ask_state } = await answerBeatAsk(script.generation_id, scene.beat_index, answer)
+      // ⚖️ THE SERVER'S VERDICT, NOT THE CLIENT'S INTENT. `ask_state` is what
+      // `answer-beat-ask` actually persisted; recording what we sent would count
+      // an answer the server rejected as an answer.
+      void logEvent('beat_ask_submitted', {
+        ...base, ask_state, produced_line: !!line, answer_chars: answer === null ? 0 : answer.length,
+      })
       if (line) {
         const err = await commit(
           applyAskAnswerEdit(script, scene.scene_number, line),
           describeEdit('dialogue', scene.scene_number, scene.dialogue, line),
         )
         setError(err)
+        if (err) void logEvent('beat_ask_failed', { ...base, reason: 'commit_failed' })
         if (!err) setSkipped(false)
       } else if (ask_state === 'skipped') {
         // Nothing survived to fill the scene with (or nothing was ever
         // written for it) — honest, not an error.
         setSkipped(true)
       } else {
+        void logEvent('beat_ask_failed', { ...base, reason: 'no_line_not_skipped' })
         setError("That answer couldn't be saved — try again.")
       }
     } catch (e) {
+      void logEvent('beat_ask_failed', { ...base, reason: 'threw' })
       setError(e instanceof Error ? e.message : "That answer couldn't be saved — try again.")
     } finally {
       setBusy(false)
