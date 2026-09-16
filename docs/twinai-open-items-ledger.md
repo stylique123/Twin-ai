@@ -3039,3 +3039,95 @@ already held; this is the only measured way to get more material. It is not a
 build — it needs a number from the owner, because it spends Apify credits and
 model calls. Recommended: five first, measure substance gained per creator, then
 commit the rest.
+
+## J. 2026-09-16 — Instagram: the recurring note's own durable fact is wrong
+
+The recurring routine carries this, under DURABLE FACTS, MEASURED:
+
+> ⚠️ CORRECTED 2026-09-12 — [...] Measured directly on 2026-09-12 across the
+> Instagram profile media fetches: 60 profiles, 0 ok, 60 errored, 0 transcripts
+> — 100% [...] Instagram references have therefore never reached a transcript.
+> Say "60 of 60", never "6".
+
+⚠️ **THE LAST TWO SENTENCES ARE FALSE, AND THE NOTE INSTRUCTS EVERY FUTURE READER
+TO REPEAT THEM.** This is the seventh entry in that note to prove stale, and the
+first whose correction was itself a correction.
+
+### J1. What is actually in the database
+
+`transcripts` where `source_url ilike '%instagram%'`:
+
+| url shape | transcripts | first | last | avg chars |
+|---|---|---|---|---|
+| `/p/` | **42** | 2026-06-14 | **2026-09-01** | 1,454 |
+| `/reel/` | **2** | 2026-06-17 | 2026-06-24 | 880 |
+
+Plus 4 rows in `reference_transcripts` with `source = 'instagram_paid'`.
+
+So **Instagram has reached a transcript 44 times**, with real substance in them,
+and `/p/` is the shape that works — it is NOT "photo posts only", which is what
+an earlier note in this file guessed.
+
+### J2. But the note was reaching for something real, and my own first reversal
+### was also wrong
+
+**Zero Instagram transcripts since 2026-09-01.** Eight landed in September, none
+after the 12th — the date of that 60-row measurement. So:
+
+- "Instagram never worked" — FALSE, it worked 44 times.
+- "Instagram works" (my reading, for about one minute) — FALSE as a PRESENT-TENSE
+  claim; nothing has succeeded in over two weeks.
+- What is SEEN: **it worked until early September and has produced nothing since.**
+  A regression, which is what the note was pointing at with the wrong absolute
+  claim and the wrong mechanism.
+
+### J3. The mechanism in the note is wrong, and that changes the fix
+
+The note infers *"the actor's response shape no longer carries the field we
+read."* `worker/src/media.ts:777` is:
+
+```ts
+if (item.errMsg) throw new Error(`This Instagram video could not be read: ...`)
+```
+
+`no audio url found` is the **actor's own `errMsg`**, which we read correctly.
+Nothing about our field reading is broken. The actor is reporting that IT cannot
+resolve audio.
+
+⚖️ **SO THERE ARE TWO INSTAGRAM DEFECTS, NOT ONE, AND THEY HAVE DIFFERENT OWNERS.**
+
+1. **ADMISSION — ours, and genuinely unfixed.** All 24 distinct failing Instagram
+   URLs in `reference_assessment_attempts` are
+   `instagram.com/explore/tags/<hashtag>` — hashtag SEARCH PAGES, 52 of 55
+   attempts, retried up to 5x each between 2026-09-05 and 09-09. There is no
+   video on a hashtag landing page, so `no audio url found` is **correct
+   behaviour** and the defect is admitting them to a per-video transcription
+   actor at all. ⚠️ Do NOT "fix the Instagram scraper" for these.
+2. **THE REGRESSION since ~2026-09-01 on VALID `/p/` URLs.** INFERRED to be
+   actor-side, because the same code succeeded 42 times on that same URL shape
+   and our reader is unchanged. NOT established.
+   **The decisive test is one Apify call**: re-run one of the 42 `/p/` URLs that
+   previously produced a transcript. A transcript back means the cause is
+   input-shaped and ours; `no audio url found` on a URL that worked in August
+   means it is the actor, and the fix is a different actor or its new input
+   contract. Owner-blocked only because it spends a credit.
+
+⚠️ **AND DEFECT 1 DOES NOT EXPLAIN DEFECT 2.** An earlier version of this entry
+unified them — "non-video URLs reaching a per-video actor" — which is tidy and
+wrong: hashtag pages cannot explain failures on `/p/` URLs that used to work.
+
+### J4. Why this mattered before spending money
+
+Of the **42 ready voices with a handle that have never been scraped**:
+
+| platform | never scraped | state |
+|---|---|---|
+| instagram | **18** | captions only until defect 2 is resolved |
+| tiktok | **14** | working — 92% (1,535/1,676); captions AND transcripts |
+| youtube | **10** | bot-blocked, owner-blocked on cookies or a residential proxy |
+
+Captions yield **16%** substance; transcripts yield **84%**. So scraping
+Instagram today buys the low-yield half. ⚖️ **The first spend should be five of
+the FOURTEEN TikTok voices, not five at random** — which is a change from the
+recommendation made earlier the same morning, and the reason to check platform
+before recommending a number at all.
