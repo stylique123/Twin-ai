@@ -138,7 +138,19 @@ describe('the edge prefers spoken material by the same rule', () => {
     // ⚠️ THE EDGE DID NOT SELECT `source` AT ALL. The column has existed since
     // 0122 and the selector could not see it, so the preference below would have
     // been inert — computed against undefined on every row.
-    expect(EDGE).toMatch(/\.select\('kind, text, basis, times_seen, confidence, source'\)/)
+    //
+    // ⚠️ RE-ANCHORED 2026-09-16, AND THE CLAIM IS UNCHANGED. This pinned the
+    // select string EXACTLY, so adding `last_observed_at` — which the freshness
+    // tag requires — failed a test whose own sentence was still true. That is
+    // the stale-anchor failure this repo already records for
+    // ProductLibrary.order.test.tsx: re-anchor, do not re-litigate.
+    //
+    // ⚖️ AND IT IS NOW STRICTLY STRONGER. The old exact match could only ever
+    // check the FIRST select; both knowledge reads are checked here, and a
+    // vacuous pass is refused. Dropping `source` from either still fails.
+    const knowledgeSelects = EDGE.match(/\.select\('kind, text, basis[^']*'\)/g) ?? []
+    expect(knowledgeSelects.length, 'the knowledge selects moved — re-anchor this').toBe(2)
+    for (const sel of knowledgeSelects) expect(sel).toContain('source')
   })
 
   it('partitions the reservation, and does not sort it', () => {
