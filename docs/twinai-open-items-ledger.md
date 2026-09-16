@@ -3131,3 +3131,72 @@ Instagram today buys the low-yield half. ⚖️ **The first spend should be five
 the FOURTEEN TikTok voices, not five at random** — which is a change from the
 recommendation made earlier the same morning, and the reason to check platform
 before recommending a number at all.
+
+## K. 2026-09-16 — freshness has no production reader, and the comments claim is comment-only
+
+Two findings from grepping for readers before building the freshness chain. The
+first inverts the build order; the second retracts something I was about to tell
+the owner as fact.
+
+### K1. ⚠️ `freshness()` HAS NEVER REACHED A SCRIPT
+
+`packages/shared/src/creatorKnowledge.ts:350` computes `recent` / `established` /
+`ageing` / `undated`, and `:590` renders it into a prompt line as
+`[${freshness(c, now)}]`. Its enclosing export is `knowledgePromptLine` (:555).
+
+**`knowledgePromptLine` has NO production reader.** Outside its own module and
+tests, the only reference in the repository is a COMMENT in
+`scripts/qa/run-eval.mjs:340` — *"rendered exactly as `knowledgePromptLine`
+renders it"* — i.e. the harness carries its own copy.
+
+And the edge function that actually writes scripts cannot see the field at all:
+
+- `generate-blueprint/index.ts` has **ZERO** occurrences of `freshness`,
+  `last_observed_at`, `lastObservedAt`, `ageing` or `undated`.
+- Its knowledge read at `:6096` selects
+  `kind, text, basis, times_seen, confidence, source` — **`last_observed_at` is
+  not selected**, so no amount of correct dating could reach the prompt.
+
+⚖️ **SO THE BUILD ORDER INVERTS, AND THIS IS THE POINT OF THE FINDING.** The plan
+recorded earlier was: capture publish timestamps → stamp the 407 undated rows →
+stamp from the post date → bump on repeat. Every one of those steps would have
+populated a column **the production writer does not read**. That is this repo's
+signature defect and I was one step from committing it.
+
+The correct first increment: make the edge **select `last_observed_at`** and
+render the label, via a marker-bounded inline mirror of `freshness()` plus an
+executing parity test (the `commercialConsistencyParity` pattern). It is
+testable immediately against the **178 substance rows that already carry a
+date**, and it needs no migration. Everything else follows and is worth doing
+only after it.
+
+⚠️ AND THE THRESHOLDS ARE NOT WHAT AN OUTSIDE READER WOULD GUESS: `recent` is
+**≤ 6 months**, not 30 days. An earlier scoreboard line in this session reported
+"0.5 fresh items per voice" using a 30-day window the system does not use.
+Measured against the code's own rule: **178 `recent`, ZERO `established`, ZERO
+`ageing`, 407 `undated`**. Nothing in the store is old; 70% is simply undated.
+
+### K2. ⚠️ RETRACTED: "comments are already in the Apify pipeline" IS A COMMENT-ONLY CLAIM
+
+Three places assert that the audience-comment corpus is already available:
+
+- `supabase/functions/generate-blueprint/index.ts:6216` — *"Comments are the real
+  source — public, already inside the Apify pipeline, and `commentsDatasetUrl` is
+  already present in the scrape output"*
+- `generate-blueprint/index.ts:8799` — the same claim again
+- `packages/shared/src/pilot/knownLimitations.ts:300` — the same claim, recorded
+  as `AUDIENCE_QUESTIONS_HAS_NO_SUPPLY`
+
+**`commentsDatasetUrl` appears NOWHERE ELSE.** No code reads it, stores it, or
+requests it. Three prose assertions, zero verification.
+
+⚖️ This is the shape that cost a day already — see the SIX FALSE CLAIMS section:
+*"nothing downstream resolves beat_plan's target_sec"* was **asserted with a
+parenthesised "confirmed" in TWO files** and was false. Repetition across files is
+not corroboration; it is usually one author copying themselves.
+
+So the owner's supply item 4 (mine her own comment replies) is **NOT de-risked**.
+Its status is unchanged from section I3: `scraped_posts` has no replies column,
+and whether the actors return comments is **UNVERIFIED**. The difference is that
+we now know exactly which claim to check and where it came from, and that it must
+not be quoted as evidence until one real actor response is inspected.
