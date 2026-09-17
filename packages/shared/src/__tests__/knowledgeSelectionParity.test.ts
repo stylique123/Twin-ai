@@ -155,9 +155,13 @@ describe('the edge prefers spoken material by the same rule', () => {
     // cooling reach past the top-40-by-`times_seen` cap. Both are additions; the
     // sentence this test is named for is as true as it was. Re-anchor, do not
     // re-litigate.
-    const knowledgeSelects = EDGE.match(/\.select\('id, kind, text, basis[^']*'\)/g) ?? []
-    expect(knowledgeSelects.length, 'the knowledge selects moved — re-anchor this').toBe(3)
-    for (const sel of knowledgeSelects) expect(sel).toContain('source')
+    //
+    // ⚠️ RE-ANCHORED ON THE SHARED CONSTANT. `source` must be in BOTH column
+    // lists — the full one and the legacy fallback — because a database missing
+    // the newer columns still has `source` (0122) and the spoken preference must
+    // keep working there.
+    expect(/const KNOWLEDGE_COLS_FULL =\s*'([^']*)'/.exec(EDGE)?.[1] ?? '').toContain('source')
+    expect(/const KNOWLEDGE_COLS_LEGACY = '([^']*)'/.exec(EDGE)?.[1] ?? '').toContain('source')
   })
 
   it('partitions the reservation, and does not sort it', () => {

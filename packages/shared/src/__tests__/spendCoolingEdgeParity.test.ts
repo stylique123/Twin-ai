@@ -96,9 +96,44 @@ describe('the cooling can actually change what a script gets', () => {
   })
 
   it('every knowledge read selects the two columns the cooling orders on', () => {
-    const selects = EDGE.match(/last_observed_at, evidence, last_spent_at, spend_count'\)/g) ?? []
-    // Three reads: times_seen-ranked, `asked`, and the unspent-supply read.
-    expect(selects).toHaveLength(3)
+    // ⚠️ ONE SHARED CONSTANT, NOT THREE LITERALS, and that is stronger: a column
+    // cannot be present in two reads and missing from the third when there is
+    // only one list. The three reads are the times_seen-ranked one, the `asked`
+    // one, and the unspent-supply one.
+    const full = /const KNOWLEDGE_COLS_FULL =\s*'([^']*)'/.exec(EDGE)?.[1] ?? ''
+    expect(full).toContain('last_spent_at')
+    expect(full).toContain('spend_count')
+    const uses = EDGE.match(/\.select\(KNOWLEDGE_COLS_FULL\)|\.select\(cols\)/g) ?? []
+    expect(uses).toHaveLength(3)
+  })
+
+  it('a database without the columns loses the ranking, never the knowledge', () => {
+    // ⚠️⚠️ THE HAZARD THESE MIGRATIONS INTRODUCED, AND IT IS WORSE THAN THE
+    // DEFECT THEY FIX. PostgREST fails a SELECT naming an unknown column, and all
+    // three reads discard their error and fall back to `?? []` — so an edge
+    // deployed a minute ahead of 0215/0216 would lose EVERY ROW OF CREATOR
+    // KNOWLEDGE, silently, and write every script from nothing. Additive change,
+    // working feature removed.
+    expect(EDGE).toMatch(/function knowledgeColumnMissing/)
+    expect(EDGE).toMatch(/rankedQuery\(KNOWLEDGE_COLS_LEGACY\)/)
+    expect(EDGE).toMatch(/askedQuery\(KNOWLEDGE_COLS_LEGACY\)/)
+    expect(EDGE).toMatch(/event: 'knowledge_columns_absent'/)
+  })
+
+  it('the fallback does not swallow a real failure', () => {
+    // A timeout or an RLS refusal must return as it always did; turning a broken
+    // database into a creator with nothing to say is the same defect again.
+    const fn = EDGE.slice(EDGE.indexOf('function knowledgeColumnMissing'))
+    const body = fn.slice(0, fn.indexOf('\n}'))
+    expect(body).toMatch(/42703/)
+    expect(body).toMatch(/PGRST204/)
+  })
+
+  it('the unspent read has NO legacy form, because an arbitrary twenty is a wrong answer', () => {
+    // It orders ON `last_spent_at`; without the column there is no such thing as
+    // unused supply, and a fallback that dropped the ORDER would return twenty
+    // arbitrary rows dressed as the least-used ones.
+    expect(EDGE).not.toMatch(/unspentQuery\(KNOWLEDGE_COLS_LEGACY\)/)
   })
 
   it('a third read reaches the supply the times_seen cap hides', () => {

@@ -6106,6 +6106,40 @@ Deno.serve(async (req: Request) => {
     corpusScanned = typeof count === 'number' && count > 0 ? count : null
   } catch { /* a coverage sentence is never worth a generation */ }
 
+// ── A COLUMN THE MIGRATION HAS NOT REACHED MUST NOT EMPTY THE CHANNEL ───────
+//
+// ⚠️⚠️ THE HAZARD THIS CLOSES WAS INTRODUCED BY THE THREE MIGRATIONS ABOVE, AND
+// IT IS WORSE THAN THE DEFECT THEY FIX. PostgREST fails a SELECT naming an
+// unknown column, and all three knowledge reads discard their error and fall
+// back to `?? []`. So an edge deployed one minute ahead of 0215/0216 would not
+// lose `evidence` and the spend columns — it would lose EVERY ROW OF CREATOR
+// KNOWLEDGE, silently, and every script would be written from nothing. That is
+// an additive change removing a working feature, which is the exact shape
+// `knowledgeInsert.ts` already carries three paragraphs about on the write side.
+//
+// ⚖️ SO THE READ DEGRADES THE SAME WAY THE WRITE DOES: ask for everything, and
+// on a missing-column error ask again for the columns that have existed since
+// 0122. The fallback logs, because a permanent silent fallback means the new
+// columns never arrive and nobody notices — which is how a freshness chain sat
+// unread for months (§K1).
+//
+// ⚖️ AND IT DOES NOT SWALLOW OTHER ERRORS. A real failure — auth, a timeout, RLS
+// — returns as it always did, so this cannot turn a broken database into a
+// creator with nothing to say.
+const KNOWLEDGE_COLS_FULL =
+  'id, kind, text, basis, times_seen, confidence, source, last_observed_at, evidence, last_spent_at, spend_count'
+const KNOWLEDGE_COLS_LEGACY = 'kind, text, basis, times_seen, confidence, source'
+
+function knowledgeColumnMissing(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null
+  if (!e) return false
+  // 42703 is Postgres "undefined column"; PGRST204 is PostgREST's own schema
+  // cache miss for the same thing.
+  return e.code === '42703' || e.code === 'PGRST204'
+    || /column .* does not exist|could not find the .* column/i.test(String(e.message ?? ''))
+}
+// ── END KNOWLEDGE COLUMN FALLBACK ───────────────────────────────────────────
+
 // ── WHAT HAS ALREADY BEEN SPENT, INLINED ────────────────────────────────────
 //
 // ⚠️ MIRRORED FROM `spendWear`/`coolBySpend` IN @twinai/shared, which is
@@ -6202,12 +6236,20 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
 }
 // ── END FRESHNESS ───────────────────────────────────────────────────────────
 
-  const { data: rankedRows } = await admin
+  const rankedQuery = (cols: string) => admin
     .from('creator_knowledge')
-    .select('id, kind, text, basis, times_seen, confidence, source, last_observed_at, evidence, last_spent_at, spend_count')
+    .select(cols)
     .eq('owner_id', ownerId)
     .order('times_seen', { ascending: false })
     .limit(40)
+  let { data: rankedRows, error: rankedErr } = await rankedQuery(KNOWLEDGE_COLS_FULL)
+  if (knowledgeColumnMissing(rankedErr)) {
+    console.warn(JSON.stringify({
+      event: 'knowledge_columns_absent',
+      detail: 'migration 0215/0216 not applied; reading knowledge WITHOUT evidence or spend, rather than reading none',
+    }))
+    ;({ data: rankedRows } = await rankedQuery(KNOWLEDGE_COLS_LEGACY))
+  }
   // ⚠️ THE TOP-40-BY-`times_seen` READ CANNOT SEE AN ANSWERED QUESTION, AND WOULD
   // HAVE MADE THAT WHOLE CHANNEL DECORATIVE. `times_seen` counts how many videos
   // carried a position, so a row the creator STATED once is a 1 — and on a
@@ -6219,13 +6261,17 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
   // caption rows, which is the material MEASURED to push substance out of the
   // selection (73% grounded transcript-only against 58% mixed). This asks for the
   // scarce thing by name and leaves the ranking alone.
-  const { data: askedRows } = await admin
+  const askedQuery = (cols: string) => admin
     .from('creator_knowledge')
-    .select('id, kind, text, basis, times_seen, confidence, source, last_observed_at, evidence, last_spent_at, spend_count')
+    .select(cols)
     .eq('owner_id', ownerId)
     .eq('source', 'asked')
     .order('created_at', { ascending: false })
     .limit(20)
+  let { data: askedRows, error: askedErr } = await askedQuery(KNOWLEDGE_COLS_FULL)
+  if (knowledgeColumnMissing(askedErr)) {
+    ;({ data: askedRows } = await askedQuery(KNOWLEDGE_COLS_LEGACY))
+  }
   // ── A READY VOICE WITH NO KNOWLEDGE REPAIRS ITSELF ──────────────────────
   //
   // ⚠️ MEASURED: a brand voice sat at `ready` with ZERO knowledge rows and no
@@ -6319,9 +6365,16 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
   // Postgres sorts NULLs LAST on an ascending order by default, so omitting it
   // would return the most-recently-spent rows instead. Exactly backwards, and it
   // would have been invisible.
+  //
+  // ⚠️ AND THIS READ HAS NO LEGACY FORM, DELIBERATELY. It orders ON
+  // `last_spent_at`; without the column there is no such thing as unused supply
+  // to ask for, and a fallback that dropped the ORDER would return an arbitrary
+  // twenty rows dressed as the least-used ones — a wrong answer where an absent
+  // one is correct. Before 0216 this contributes nothing, which is exactly what
+  // it contributed before it existed.
   const { data: unspentRows } = await admin
     .from('creator_knowledge')
-    .select('id, kind, text, basis, times_seen, confidence, source, last_observed_at, evidence, last_spent_at, spend_count')
+    .select(KNOWLEDGE_COLS_FULL)
     .eq('owner_id', ownerId)
     .neq('kind', 'covered')
     .neq('basis', 'inferred')

@@ -72,6 +72,38 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0214_nothing_recorded_which_extractor_wrote_it':
+    'Adds `extractor_version` to `creator_knowledge` and replaces '
+    + '`merge_creator_knowledge` so the primary write path carries it. '
+    + '`0121_creator_knowledge` is itself EXCLUDED, so staging has no such table and '
+    + 'both statements would fail on their first line rather than pass vacuously. THE '
+    + 'EXCLUSION IS INHERITED from 0178, not a new judgement. '
+    + '\u26a0\ufe0f MANUAL APPLY, PENDING AND DELIBERATELY SO. Unlike 0178 this was NOT '
+    + 'applied to production ahead of the PR: the change was built overnight with the '
+    + 'owner asleep, and applying DDL to a production database is not a decision to take '
+    + 'unattended. It is safe to apply and must be applied BEFORE MERGE. '
+    + 'An unmigrated database degrades gracefully in BOTH directions, which is why '
+    + 'waiting costs nothing: `knowledgeInsert` catches PGRST204 and strips the column '
+    + 'on the write side, and `knowledgeColumnMissing` in `generate-blueprint` retries '
+    + 'with the pre-0122 column list on the read side. The stamp is simply absent until '
+    + 'it is applied, and `remineCard` reports that as the stamp being new rather than '
+    + 'as a fault.',
+  '0215_a_conclusion_without_the_sentence_it_came_from':
+    'Adds `evidence` to `creator_knowledge` and replaces `merge_creator_knowledge` '
+    + 'again. Same inherited exclusion and the same pending manual apply as 0214, with '
+    + 'which it must be applied in order — 0215 replaces the function 0214 replaced, so '
+    + 'applying 0214 after 0215 would silently revert the evidence column on the primary '
+    + 'write path. '
+    + '\u26a0\ufe0f ORDER IS THE WHOLE RISK HERE, and it is the defect 0178\'s own entry '
+    + 'describes from the other side: three migrations in one PR each replacing the same '
+    + 'function means the LAST one applied wins, whatever its number.',
+  '0216_the_same_six_facts_won_every_time':
+    'Adds `last_spent_at` and `spend_count` to `creator_knowledge` and creates '
+    + '`mark_knowledge_spent`. Same inherited exclusion and the same pending manual '
+    + 'apply, and it is THIRD in the order for the reason 0215 states. '
+    + 'It does not touch `merge_creator_knowledge`, so it is the one of the three that '
+    + 'is order-independent of the others — recorded because the next reader should not '
+    + 'have to re-derive which of three migrations carries the ordering constraint.',
   '0181_a_remix_needs_something_to_be_a_remix_of':
     'Replaces `user_case_study` to add `opens` and `remix_rate`. ⚠️ EXCLUDED BECAUSE THE '
     + 'EDITOR MATRIX HAS NO `analytics_events` — that table comes from 0024, which is not in '

@@ -26,11 +26,13 @@ describe('the writer can see the sentence', () => {
     // This asserted TWO when it was written and 0216 added a third; the count is
     // kept rather than relaxed to a `>= 1`, because "every read carries it" is
     // the claim and a count is the only way to check it.
-    const selects = EDGE.match(/\.select\('id, kind, text, basis[^']*'\)/g) ?? []
-    expect(selects).toHaveLength(3)
-    for (const sel of selects) expect(sel).toContain('evidence')
-    // And no path may still be reading a column list without it.
-    expect(EDGE).not.toMatch(/\.select\('kind, text, basis, times_seen, confidence, source, last_observed_at'\)/)
+    //
+    // ⚠️ RE-ANCHORED ON THE CONSTANT THE THREE READS NOW SHARE. That is stronger
+    // than counting literals: the column cannot be present in two reads and
+    // absent from the third if there is only one list.
+    expect(/const KNOWLEDGE_COLS_FULL =\s*'([^']*)'/.exec(EDGE)?.[1] ?? '').toContain('evidence')
+    const uses = EDGE.match(/\.select\(KNOWLEDGE_COLS_FULL\)|\.select\(cols\)/g) ?? []
+    expect(uses).toHaveLength(3)
   })
 
   it('renders it on the item, not as a second list', () => {

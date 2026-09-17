@@ -128,9 +128,19 @@ describe('the tag actually reaches the prompt', () => {
     // past the top-40 cap. Every one of them must carry the date, or the tag is
     // absent on whatever that read contributed — a partial failure, which is
     // worse than a total one because it looks like the feature working.
-    const selects = CODE.match(/\.select\('id, kind, text, basis, times_seen, confidence, source[^']*'\)/g) ?? []
-    expect(selects.length).toBe(3)
-    for (const sel of selects) expect(sel).toContain('last_observed_at')
+    //
+    // ⚠️ RE-ANCHORED ON THE CONSTANT, NOT ON THREE LITERAL STRINGS. The reads now
+    // share `KNOWLEDGE_COLS_FULL` so that a missing-column error can retry with a
+    // legacy list instead of emptying the knowledge channel entirely. One
+    // constant is strictly stronger than three literals: the column cannot be
+    // present in two reads and missing from the third.
+    expect(CODE).toMatch(/const KNOWLEDGE_COLS_FULL =\s*\n?\s*'[^']*last_observed_at[^']*'/)
+    const uses = CODE.match(/\.select\(KNOWLEDGE_COLS_FULL\)|\.select\(cols\)/g) ?? []
+    expect(uses.length).toBe(3)
+    // ⚠️ AND THE LEGACY FALLBACK MUST NOT CARRY THE DATE, or a store reading it
+    // would render tags from a column it never selected.
+    const legacy = /const KNOWLEDGE_COLS_LEGACY = '([^']*)'/.exec(CODE)?.[1] ?? ''
+    expect(legacy).not.toContain('last_observed_at')
   })
 
   it('is interpolated into the line the writer reads', () => {
