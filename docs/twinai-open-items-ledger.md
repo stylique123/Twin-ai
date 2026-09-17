@@ -3345,6 +3345,20 @@ hand-edited copy is how the 500% rate bug survived its own fix."*
 staging-migration-coverage failure that was already fixed never appeared in CI
 at all, because the job never reached that step. **A red job in this repo means
 "the first thing failed", not "one thing failed"**, and reading it as the second
-is how a second defect ships behind the first. All forty were run locally and
-pass — including `check_column_readers` and `check_symbol_readers`, the two that
-exist to catch exactly the dead-column defect this branch is built around.
+is how a second defect ships behind the first.
+
+⚠️⚠️ **AND I THEN MADE THE SMALLER VERSION OF THE SAME MISTAKE, TWICE.** Having
+said "all forty were run locally", what I had actually run was a RANGE of that
+job's steps — and `check_counter_durability` sits just before where the range
+started. It failed on the next push, correctly: this branch adds four
+structured events and registered none of them, which is §G27's defect ("six
+counters were built and all six expire") arriving inside a branch whose entire
+argument is that a thing written and never read is not built. Separately, I
+verified `packages/shared` and `worker` after every increment and never ran
+`apps/web`, which has 98 files that read the edge source.
+
+⚖️ **THE RULE, FOR THE NEXT SESSION: RUN THE WHOLE JOB, NOT THE STEPS THAT LOOK
+RELEVANT.** All 92 commands in `no-legacy-editor` now run and pass, as do all
+three test suites. Among them `check_column_readers` and `check_symbol_readers`,
+the two that exist to catch exactly the dead-column defect this branch is built
+around, and `check_counter_durability`, which caught a real one.
