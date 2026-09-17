@@ -49,8 +49,19 @@ describe('the scan persists the speech it paid for', () => {
 describe('storing must never cost the thing the job exists to do', () => {
   it('is wrapped so a storage failure cannot lose the voice upgrade', () => {
     // ⚖️ By the time this runs the transcript has already done its primary work.
-    const loop = VOICE.slice(VOICE.indexOf('for (const url of urls)'), VOICE.indexOf('if (!transcripts.length)'))
-    expect(loop).toMatch(/try \{[\s\S]*?\.from\('transcripts'\)[\s\S]*?\} catch/)
+    //
+    // ⚠️ RE-ANCHORED 2026-09-17, CLAIM UNCHANGED. The serial `for (const url of
+    // urls)` became `transcribeOne` fed to `mapWithConcurrency`, so the old
+    // slice bounds matched nothing and this passed an EMPTY STRING to the regex
+    // — which is exactly the vacuous pass a source anchor fails open into. The
+    // slice is asserted non-empty first for that reason.
+    const from = VOICE.indexOf('const transcribeOne')
+    const to = VOICE.indexOf('const settled = await mapWithConcurrency')
+    expect(from, 'transcribeOne is gone — re-anchor, do not delete').toBeGreaterThan(-1)
+    expect(to).toBeGreaterThan(from)
+    const body = VOICE.slice(from, to)
+    expect(body.length).toBeGreaterThan(200)
+    expect(body).toMatch(/try \{[\s\S]*?\.from\('transcripts'\)[\s\S]*?\} catch/)
   })
 
   it('COUNTS a failed store rather than swallowing it', () => {
@@ -60,12 +71,53 @@ describe('storing must never cost the thing the job exists to do', () => {
     expect(VOICE).toMatch(/bump\('stored'\)/)
   })
 
-  it('still pushes the text for synthesis whether or not the store worked', () => {
+  it('still hands the text back for synthesis whether or not the store worked', () => {
     // The upgrade path must not become conditional on persistence.
-    const i = VOICE.indexOf('transcripts.push(text)')
-    const j = VOICE.indexOf("from('transcripts')")
-    expect(i).toBeGreaterThan(-1)
-    expect(i).toBeLessThan(j)
+    //
+    // ⚠️ RE-ANCHORED AND STRICTLY STRONGER. It used to assert that
+    // `transcripts.push(text)` appeared BEFORE the insert — a proxy for the real
+    // property. The text now leaves via `return text`, and the property is
+    // asserted directly: that return sits AFTER the store's try/catch, so it is
+    // reached whether the insert threw or not, and the catch does not short out.
+    const from = VOICE.indexOf('const transcribeOne')
+    const to = VOICE.indexOf('const settled = await mapWithConcurrency')
+    const body = VOICE.slice(from, to)
+    const store = body.indexOf("from('transcripts')")
+    const ret = body.indexOf('return text')
+    expect(store).toBeGreaterThan(-1)
+    expect(ret, 'the text must still leave this function').toBeGreaterThan(-1)
+    expect(ret, 'return text moved inside the store try — a failed insert would now lose the upgrade')
+      .toBeGreaterThan(store)
+    // ⚠️ AND THE STORE'S CATCH MUST NOT RETURN. A `return null` there would make
+    // the voice upgrade conditional on persistence while leaving the ordering
+    // above satisfied — the exact regression this file exists to prevent.
+    const catchBlock = body.slice(body.indexOf("bump('store_failed')"), ret)
+    expect(catchBlock).not.toMatch(/return\s+(null|undefined)/)
+
+    // ⚠️ EXACTLY ONE EXIT FOR THE TEXT, ADDED BECAUSE A MUTANT SURVIVED. Putting
+    // a second `return text` INSIDE the store's try satisfied every ordering
+    // assertion above — `indexOf` finds the first one, and that copy also sits
+    // after the insert — while making the happy path exit before the catch could
+    // ever run. One exit is the property; ordering alone was not enough.
+    expect((body.match(/return text\b/g) ?? []).length,
+      'the text must leave by exactly one path, outside the store try').toBe(1)
+  })
+
+  // ⚠️ THE BATCH IS NOW SHARED, SO ONE VIDEO'S THROW IS EVERYONE'S PROBLEM.
+  // `mapWithConcurrency` propagates a rejection by design, which means the
+  // per-url function carries the whole tolerance the serial loop used to get
+  // from the loop body. If this regresses, one private video loses an entire
+  // creator's scan.
+  it('a transcript failure costs one video, never the scan', () => {
+    const from = VOICE.indexOf('const transcribeOne')
+    const to = VOICE.indexOf('const settled = await mapWithConcurrency')
+    const body = VOICE.slice(from, to)
+    // The body is wrapped, and the wrapper's catch resolves to a value.
+    expect(body).toMatch(/=>\s*\{\s*try\s*\{/)
+    expect(body).toMatch(/bump\('failed'\)/)
+    const failTail = body.slice(body.indexOf("bump('failed')"))
+    expect(failTail, 'the outer catch must RETURN, not rethrow').toMatch(/return null/)
+    expect(failTail).not.toMatch(/throw\b/)
   })
 })
 
