@@ -54,6 +54,54 @@ const REPO = join(fileURLToPath(import.meta.url), '..', '..', '..')
 // mechanism: it converts "nobody noticed" into "someone wrote down why", which
 // is the only difference between an omission and a decision.
 const EVENTS = {
+  // ── THE DEPTH ROADMAP'S FOUR (2026-09-17) ───────────────────────────────
+  knowledge_columns_absent: {
+    kind: 'incident',
+    why: 'The generate-blueprint knowledge read named a column the database does not '
+      + 'have (0215/0216 unapplied) and fell back to the pre-0122 column list. An '
+      + 'incident and not a rate, because the correct value is ZERO and any occurrence '
+      + 'means a deploy is running ahead of its migration. It is logged rather than '
+      + 'thrown because the alternative is worse in exactly the way that made it '
+      + 'necessary: PostgREST fails the whole SELECT on one unknown column and all '
+      + 'three knowledge reads discard their error, so without this fallback an '
+      + 'unapplied migration would empty the creator-knowledge channel entirely and '
+      + 'every script would be written from nothing. The silence is the danger, which '
+      + 'is why it is not swallowed.',
+  },
+  knowledge_spend_unrecorded: {
+    kind: 'incident',
+    why: 'mark_knowledge_spent failed after a delivered generation, so the rows that '
+      + 'reached the writer were not retired. An incident and not a rate for a sharper '
+      + 'reason than usual: a permanently failing mark is INDISTINGUISHABLE from a '
+      + 'store where nothing has ever been used, which is precisely the state 0216 '
+      + 'exists to end. Its absence would be inferred months later from scripts slowly '
+      + 'repeating again. Best-effort by design — the script is already saved and '
+      + 'already the creator\'s, and failing their response over bookkeeping trades '
+      + 'the thing they paid for against a future ranking nicety.',
+  },
+  targeted_extract_done: {
+    kind: 'counter_ephemeral',
+    why: 'What the Track A targeted pass returned, and how much of it carried a copied '
+      + 'sentence. It exists because that pass DOUBLES the Gemini calls per scan (five '
+      + 'to ten) and the trade has to be measurable rather than assumed. Ephemeral '
+      + 'rather than stored because the durable form of the question already exists and '
+      + 'is better: creator_knowledge rows with extractor_version >= 2 and evidence '
+      + 'non-null ARE what the pass produced, queryable per voice and per scan, and a '
+      + 'column here would store a number derivable from the rows it describes — the '
+      + 'second authority this registry exists to prevent. Promote it only if the pass '
+      + 'is ever made conditional on its own yield.',
+  },
+  demand_passages_found: {
+    kind: 'counter_ephemeral',
+    why: 'How many "a lot of you asked me" and "that deserves its own video" passages '
+      + 'the deterministic miner located, against how many transcripts. It exists to '
+      + 'keep one claim checkable — that the pass costs nothing when a creator never '
+      + 'says these things, because no match means no model call. Ephemeral for the '
+      + 'same reason as targeted_extract_done: the durable answer is the rows it '
+      + 'produced. What this line adds is the DENOMINATOR, which the rows cannot carry '
+      + '— zero rows from forty transcripts and zero rows from zero matches are '
+      + 'different facts about the regex, and only this says which.',
+  },
   // ── COUNTERS WITH A HOME ────────────────────────────────────────────────
   substance_route_shadow: {
     kind: 'counter',
