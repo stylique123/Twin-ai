@@ -1,6 +1,7 @@
 import { db, type Job } from '../db.js'
 import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { transcribeFromUrl } from '../media.js'
+import { mapWithConcurrency, TRANSCRIBE_CONCURRENCY } from '../boundedMap.js'
 import { transcriptBudgetFor } from '../transcriptSelection.js'
 import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions } from '../voice.js'
 
@@ -110,16 +111,39 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
   if (!voiceId || !urls.length) throw new Error('build_voice needs brand_voice_id and urls')
 
   // Best-effort: skip any video that fails (private / blocked / no speech).
+  // ⚖️ FILLED IN INPUT ORDER from `mapWithConcurrency`'s indexed results, not in
+  // completion order. See `boundedMap.ts`.
   const transcripts: string[] = []
   // ⚠️ THE ROUTE EACH TRANSCRIPT CAME BY, COUNTED WHERE IT IS STILL KNOWN.
   // `transcribeFromUrl` is the only place both YouTube branches are visible, and
-  // it returns a transcript, not a receipt — so unless this loop tallies the
+  // it returns a transcript, not a receipt — so unless this tallies the
   // stamp, the fact that a video cost money survives exactly as long as a stderr
   // line. That is why "how often do YouTube captions exist" was unanswerable:
   // not missing data, discarded data.
   const routes: Record<string, number> = {}
   const bump = (k: string) => { routes[k] = (routes[k] ?? 0) + 1 }
-  for (const url of urls) {
+  // ⚠️⚠️ THIS WAS A SERIAL LOOP AND IT IS WHAT THE CREATOR WAITS ON. `dna-poll`
+  // reports ready from `brand_voices.status`, which this job sets, so every
+  // second here is a second on the onboarding screen. Measured on the last
+  // twelve `build_voice` jobs: 49, 91, 134, 199, 208, 266, 292, 340, 373, 380,
+  // 538, 952 seconds — p50 279, p90 522. The 952 is not a slow model, it is the
+  // full free TikTok budget of 25 videos run one after another at ~38s each.
+  //
+  // ⚖️ THE TRANSCRIPTIONS ARE INDEPENDENT — nothing in one informs the next — so
+  // the serialisation bought nothing. `mapWithConcurrency` runs them
+  // `TRANSCRIBE_CONCURRENCY` at a time and returns them IN INPUT ORDER, because
+  // `synthesizeVoiceFromAudio` below reads that order and silently changing what
+  // the model sees is not a latency fix.
+  //
+  // ⚠️ THE BOUND IS 3, NOT THE BUDGET. `SWEEP_BATCH` was 25 and starved a live
+  // creator's asset on this same single worker loop; see `boundedMap.ts`.
+  //
+  // ⚠️ AND THIS FUNCTION MUST NEVER THROW. `mapWithConcurrency` propagates a
+  // rejection, so a throw here would turn one bad video into a lost scan —
+  // strictly worse than the loop it replaces, which tolerated a throw per item.
+  // Every path returns; `a transcript failure is one video, never the scan`
+  // pins it.
+  const transcribeOne = async (url: string): Promise<string | null> => {
     try {
       const t = await transcribeFromUrl(url)
       // ⚖️ UNSTAMPED IS ITS OWN BUCKET. Folding an absent source into the free
@@ -127,10 +151,10 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
       // stamped — the three-state rule this repo keeps relearning.
       bump(t.source ?? 'unrecorded')
       if (t.paidBecause) bump(`paid_because_${t.paidBecause}`)
-      if (t.text && t.text.trim().length > 20) {
+      if (!t.text || t.text.trim().length <= 20) return null
+      {
         const text = t.text.trim()
-        transcripts.push(text)
-        // ⚠️ PERSIST WHAT WAS ALREADY PAID FOR (0135). This loop is the ONLY
+        // ⚠️ PERSIST WHAT WAS ALREADY PAID FOR (0135). This is the ONLY
         // place a creator's own speech exists, and it used to live exactly as
         // long as this function ran: the profile and the knowledge were written,
         // the transcript itself was dropped. `public.transcripts` therefore held
@@ -167,14 +191,24 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
           console.error('build_voice: could not persist own transcript', url,
             err instanceof Error ? err.message : err)
         }
+        // ⚠️ RETURNED OUTSIDE THE STORE'S `try`, WHICH IS THE WHOLE POINT OF
+        // THIS LINE'S POSITION. The voice upgrade must not become conditional
+        // on persistence: a failed insert is counted in `routes` and the text
+        // still reaches `synthesizeVoiceFromAudio`. `a storage failure cannot
+        // lose the voice upgrade` pins it behaviourally.
+        return text
       }
     } catch (err) {
       // ⚖️ A FAILED TRANSCRIPT IS NOT A FREE ONE. It may already have spent an
       // Apify call before throwing, so it is counted apart rather than ignored.
       bump('failed')
       console.error('build_voice: transcript failed', url, err instanceof Error ? err.message : err)
+      return null
     }
   }
+
+  const settled = await mapWithConcurrency(urls, TRANSCRIBE_CONCURRENCY, transcribeOne)
+  for (const t of settled) if (t !== null) transcripts.push(t)
 
   if (!transcripts.length) {
     // Nothing usable — leave the caption voice in place. Not a hard failure.
