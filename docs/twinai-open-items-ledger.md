@@ -3200,3 +3200,104 @@ Its status is unchanged from section I3: `scraped_posts` has no replies column,
 and whether the actors return comments is **UNVERIFIED**. The difference is that
 we now know exactly which claim to check and where it came from, and that it must
 not be quoted as evidence until one real actor response is inspected.
+
+## L. 2026-09-17 — the depth roadmap, five increments, and two defects I introduced
+
+The owner supplied a prioritised roadmap ("the ten questions and all 24 ideas")
+and asked for the top of it built. Audited the same way as sections H, I and K —
+**grep for a reader before writing a line** — and then built, in the owner's own
+order. Five increments, all on `claude/pensive-ptolemy-c7cka3`, PR #931.
+
+⚠️ **THIS SECTION EXISTS BECAUSE THE PREVIOUS CHAT LOST ITS CONTEXT.** The owner
+said so explicitly. Anything not written here did not happen as far as the next
+session is concerned.
+
+### L1. What the audit found before anything was built
+
+Three of the roadmap's top five were **already built**, and building them again
+would have been the dominant defect class wearing a specification:
+
+| Roadmap item | Verdict | Where |
+|---|---|---|
+| #22 wire in the enemy field | **ALREADY REACHES THE WRITER.** Not "underused" | `generate-blueprint:8614` renders `Enemy (the bad advice / villain they push against)`; `:5380` requires at least one hook to take that stance; `:5432` re-checks it in the final pass |
+| #3 repetition / thesis detection | **ALREADY BUILT AND RANKED ON** | `times_seen` is a corroboration count: `generate-blueprint:6098` orders on it, `knowledgeResolver:216` and `creatorKnowledge:534` tie-break on it. §I1 measured 131 of 1,308 rows multi-confirmed |
+| #18 freshness ranking | **BUILT IN #930**, per §K1's inverted build order | `freshnessInline` + `freshnessTagInline`, selected and rendered |
+
+**Genuinely absent, zero hits anywhere:** `extractor_version`, and every spelling
+of a spend ledger (`knowledge_usage`, `last_used_at`, `spend_ledger`,
+`used_in_generation`). Those were the two the roadmap put first and second, and
+the audit agreed with it.
+
+### L2. What was built
+
+1. **#24 — the extractor version stamp** (0214). `creator_knowledge` has been
+   written by four materially different extractors and nothing on a row said
+   which, so every prompt improvement only ever reached the NEXT creator.
+   `updated_at` cannot answer this: it moves on every merge including one
+   performed by the old extractor. Nullable, no backfill — NULL is "predates the
+   stamp", not "version 1". Ships with its reader (`remineCohort`, `remineCard`)
+   because a version stamp is the easiest possible instance of a column written
+   and never read.
+2. **#1+#2 — Track A, seven questions with evidence** (0215). A SEPARATE CALL,
+   not seven more bullets on `KNOWLEDGE_SYSTEM`: an open question is answered by
+   whatever is most salient, and prompt rules in `voice.ts` have now failed four
+   times. The general pass is unchanged and still runs. `evidence` stores one
+   sentence of real speech per row, capped at 400, precedent `surface_forms`
+   (0133). Track B (pricing, claim restrictions, method name) deliberately NOT
+   built — those have answers only when a product exists.
+   ⚖️ **COST, STATED:** this doubles Gemini calls per scan, five to ten.
+3. **#17+#18 — the spend ledger** (0216). `last_spent_at` / `spend_count`, plus
+   `mark_knowledge_spent`. A ledger TABLE was the first draft and was rejected:
+   the selector is the reader, it runs in the hot path, and PostgREST cannot
+   aggregate a child table in one query.
+4. **#20 — `asked` rows promoted** (`ASKED_FLOOR = 2`).
+5. **The read-side degradation** that increments 1–3 needed and did not have.
+
+### L3. ⚠️ TWO DEFECTS I INTRODUCED AND CAUGHT, AND THE SECOND IS THE INSTRUCTIVE ONE
+
+**One: the cooling crossed relevance levels.** The first draft cooled everything
+with `hit > 0` as a single block, which promotes an unspent ONE-word match above
+a spent FIVE-word match. That is a reordering across relevance levels — precisely
+what `selectSpeakable`'s own comment forbids for depth-first sorting, three
+paragraphs above the line I wrote. It now cools within each EQUAL hit count.
+
+**Two, and worse: an unapplied column would have emptied the knowledge channel.**
+PostgREST fails a SELECT naming an unknown column, and all three knowledge reads
+discard their error and fall back to `?? []`. An edge deployed one minute ahead
+of 0215/0216 would have lost EVERY ROW of creator knowledge, silently, and
+written every script from nothing.
+
+⚖️ **THE GENERAL RULE, BECAUSE THIS IS THE TRANSFERABLE PART.** This repository
+has three paragraphs in `knowledgeInsert.ts` about exactly this hazard on the
+WRITE side, and it did not occur to me that the READ side has it too and fails
+worse — a dropped write costs a re-scan, a dropped read costs the feature. **Any
+column added to a table an edge function SELECTs by name needs a degradation path
+in both directions, or the migration and the deploy become an ordering
+constraint nobody wrote down.**
+
+### L4. ⚠️ OWNER ACTION — three migrations, in order, before merge
+
+0214, 0215, 0216 are EXCLUDED from the staging matrix for the inherited reason
+(`0121_creator_knowledge` is excluded, so staging has no such table). Unlike
+0178 they were **NOT pre-applied to production**: this was built overnight with
+the owner asleep, and applying DDL to a production database unattended is not a
+decision to take on someone's behalf.
+
+**0214 then 0215 is an ordering constraint** — each replaces
+`merge_creator_knowledge`, and the last applied wins whatever its number. 0216
+does not touch that function and is order-independent.
+
+Nothing breaks while they are unapplied, which is why waiting costs nothing: the
+write strips unknown columns on PGRST204 and the read retries with the pre-0122
+column list.
+
+### L5. What is NOT built, and why — so it is not re-audited from scratch
+
+- **#4 / #7 — "a lot of you asked me" and "I'll do a whole video on that".**
+  Unbuilt. Cheap, and the material is in transcripts already held.
+- **#12 — her own website / product pages.** Unbuilt. §I1 measured only 5 of 22
+  live products carrying any URL-extracted knowledge.
+- **#9 — her own comment replies.** Still blocked exactly as §I3 and §K2 record:
+  `scraped_posts` has no comments column, and the `commentsDatasetUrl` claim
+  remains comment-only and unverified. **Do not quote it as evidence.**
+- **Track B of the ten questions.** Waits on product-entity work by design.
