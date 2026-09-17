@@ -69,11 +69,28 @@ describe('the id never changes, only the words', () => {
 })
 
 describe('under 1,000 followers the number question is not asked', () => {
-  it('best_result is replaced at under_1k, for every kind', () => {
-    for (const k of [...SELLS_KINDS, 'none'] as const) {
-      const soft = askOf('best_result', k, 'under_1k')
-      expect(soft).toBe('What is the best thing that has happened because of something you posted?')
-      expect(soft).not.toBe(askOf('best_result', k, null))
+  // ⚠️ RE-ANCHORED 2026-09-17, AND IT IS NOW STRICTLY STRONGER. This asserted
+  // one blanket outcome for every kind; it now asserts the two outcomes apart,
+  // which is a distinction the old single rule could not have caught getting
+  // wrong in either direction.
+  //
+  // ⚖️ THE SIBLING TEST BELOW ALREADY STATES THE PRINCIPLE: "the other two are
+  // answerable at any size." That is exactly why `best_result` was singled out —
+  // it was ASSUMED to be the unanswerable one. It is unanswerable only when it
+  // asks about her own REACH. "What did a client tell you that you still
+  // repeat?" does not, and a creator with 800 followers answers it fine.
+  it('best_result is replaced at under_1k only where it asks about her own reach', () => {
+    // She sells nothing, so the question is about a post. Replaced.
+    const soft = askOf('best_result', 'none', 'under_1k')
+    expect(soft).toBe('What is the best thing that has happened because of something you posted?')
+    expect(soft).not.toBe(askOf('best_result', 'none', null))
+  })
+
+  it('and a buyer-side result question survives the band, for every selling kind', () => {
+    for (const k of SELLS_KINDS) {
+      const under = askOf('best_result', k, 'under_1k')
+      expect(under, `${k} lost its buyer-side question`).toBe(askOf('best_result', k, null))
+      expect(under).not.toBe('What is the best thing that has happened because of something you posted?')
     }
   })
 

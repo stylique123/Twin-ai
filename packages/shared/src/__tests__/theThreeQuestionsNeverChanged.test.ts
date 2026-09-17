@@ -102,11 +102,28 @@ describe('what the leatherworker is asked at onboarding', () => {
     expect(asks[2]).toMatch(/your trade insist on/i)
   })
 
-  // ⚠️ 995 SUBSCRIBERS. Asking which video "outperformed everything" is the
-  // accusation `UNDER_1K_BEST_RESULT` exists to prevent, and it was skipped
-  // whenever `sells` was unknown — which at this step is always.
-  it('uses the under-1k result question, which sells no longer gates', () => {
-    expect(asks[1]).toMatch(/best thing that has happened/i)
+  // ⚠️ RE-ANCHORED 2026-09-17, CLAIM UNCHANGED. This asserted that the band
+  // reaches the leatherworker even though `sells` is unknown at this step — and
+  // that claim is still true and still tested, below, on a bucket whose result
+  // question actually asks about REACH.
+  //
+  // ⚖️ THE LEATHERWORKER IS THE WRONG VEHICLE FOR IT. `making`'s wording is "the
+  // piece you were proudest to hand over, and what did they say" — a question a
+  // maker with forty followers answers better than one with forty thousand,
+  // because it is about the work and the person who received it. Swapping it for
+  // a follower-growth question spent the most quotable of her three answers to
+  // prevent an accusation that wording never made. See `OverrideWording`.
+  it('keeps the bench question, because it is answerable at any audience size', () => {
+    expect(asks[1]).toMatch(/proudest to hand over/i)
+    expect(asks[1]).not.toMatch(/best thing that has happened/i)
+  })
+
+  // The original claim, on a bucket where the band genuinely belongs: reach is
+  // what `entertainment` asks about, and `sells` is unknown here exactly as it
+  // is for the leatherworker.
+  it('and the band still reaches a reach question with sells unknown', () => {
+    const reach = onScreen('Comedy sketches and reaction videos', [], 'under_1k').map((q) => q.ask)
+    expect(reach[1]).toMatch(/best thing that has happened/i)
   })
 
   it('keeps the ids, so an answered question never reappears reworded', () => {

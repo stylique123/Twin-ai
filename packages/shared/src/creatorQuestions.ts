@@ -56,6 +56,16 @@ export interface CreatorQuestion {
   /** Shown under the field. Present to make a SPECIFIC answer the obvious one:
    *  the whole value of this channel is detail a scan cannot recover. */
   hint: string
+  /** Whether this wording asks about the reach of the creator's OWN POSTS.
+   *
+   *  ⚠️ THREE-VALUED ON PURPOSE. `undefined` means no niche rewrite reached this
+   *  question, `false` means one did and it is answerable at any audience size,
+   *  `true` means it asks about reach. Only `nicheQuestions` sets it, and only
+   *  the under-1k band override reads it — a question about a client's result
+   *  must not be swapped out for a follower-growth question just because the
+   *  account is small. Collapsing `undefined` and `false` is the bug this field
+   *  exists to make impossible. */
+  postBased?: boolean
 }
 
 /** ⚠️ THE SCHEMA CAPS KNOWLEDGE TEXT AT 240 CHARS. Enforced here too, and by
