@@ -40,15 +40,32 @@ describe('the flow has a step between the scan and the review', () => {
 })
 
 describe('the scan screen no longer asks them', () => {
-  it('⚠️ StoryInterview is NOT rendered while the scan runs', () => {
-    // The whole defect in one assertion. BuildingStep is the scan screen; if it
-    // renders the interview again, the questions are back to racing the DNA.
+  // ⚠️ RE-ANCHORED. "Racing the DNA" is the hazard, and only a question whose
+  // WORDING needs the DNA can race it. The scan screen now asks two that cannot
+  // — `DEPTH_QUESTION_IDS`, proven niche-free in
+  // `theDepthQuestionsNeedNoNiche` — and the three that can still wait for their
+  // own step. Forbidding the component forbade both.
+  it('⚠️ the scan screen never asks a question that races the DNA', () => {
     const building = CODE.slice(CODE.indexOf('function BuildingStep'), CODE.indexOf('function StoryStep'))
-    expect(building).not.toMatch(/<StoryInterview/)
+    const mounts = building.match(/<StoryInterview[\s\S]*?\/>/g) ?? []
+    for (const m of mounts) {
+      expect(m).toMatch(/questionIds=\{DEPTH_QUESTION_IDS\}/)
+      expect(m).not.toMatch(/\bniche=/)
+    }
+    // The story three are asked by the `stories` step and nowhere else.
+    const story = CODE.slice(CODE.indexOf('function StoryStep'))
+    expect(story).toMatch(/<StoryInterview/)
   })
 
-  it('and the scan no longer waits on them to finish', () => {
+  // ⚠️ STILL TRUE, AND "them" MEANS THE STORY THREE. The scan does wait on the
+  // two DNA-free depth questions (`depthDone`), which is the SAME parking this
+  // file already requires for the categorical set: "the finished scan is parked
+  // ... finishing early means WAITING, never interrupting." What must never
+  // return is the scan waiting on questions that could not be worded yet.
+  it('and the scan no longer waits on the story three to finish', () => {
     expect(CODE).not.toMatch(/storiesDone/)
+    // The parking that does exist is gated on a tap, never on a comparison.
+    expect(CODE).toMatch(/questionsDone && depthDone && readyProfile/)
   })
 })
 

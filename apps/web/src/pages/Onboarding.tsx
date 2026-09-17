@@ -13,6 +13,7 @@ import {
   AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE, goalFromCtas, goalConfirmationLine,
   scannedAudienceFacts, audienceFactConfirmed,
   CAPABILITY_ANSWERS,
+  DEPTH_QUESTION_IDS,
   type ProfileQuestionId, type AudienceSegment,
   type AudienceKnowledge,
   type CapabilityAnswer,
@@ -650,6 +651,11 @@ function BuildingStep({
   // ⚖️ SO THE ONLY TWO WAYS OUT ARE `Done` AND `Skip all`, both of them taps.
   // The scan may finish whenever it likes; it waits.
   const [finished, setFinished] = useState(false)
+  // ⚠️ THE DEPTH QUESTIONS GATE THE HANDOVER TOO, for the reason this file has
+  // already learned twice: a scan that finishes early must WAIT, never take the
+  // screen away mid-answer. `StoryInterview` resolves every field before it
+  // calls `onDone`, so this flips only on a tap.
+  const [depthDone, setDepthDone] = useState(false)
   const asked = profileQuestionsFor(profileAnswersOf(draft))
   // ⚠️ AND A SHRINKING LIST CLAMPS RATHER THAN SKIPS. Standing on question five
   // when the list becomes four means seeing question four, not being thrown out
@@ -664,8 +670,8 @@ function BuildingStep({
     // with an answer half-typed. The finished scan is parked the same
     // way `questionsDone` does, so finishing early means WAITING, never
     // interrupting.
-    if (questionsDone && readyProfile) onReady(readyProfile)
-  }, [questionsDone, readyProfile, onReady])
+    if (questionsDone && depthDone && readyProfile) onReady(readyProfile)
+  }, [questionsDone, depthDone, readyProfile, onReady])
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Advance the visual stage on a gentle clock so the wait feels alive even
@@ -871,7 +877,46 @@ function BuildingStep({
           and experience items are the one predictor of a script that does not
           read as generic. Captions have produced zero of them, ever. This is
           dead time that can carry three real answers instead. */}
-      {!err && questionsDone && (
+      {/* ⚠️⚠️ AND THE COMMENT ABOVE HAS SAID THIS SINCE IT WAS WRITTEN. It ends
+          "this is dead time that can carry three real answers instead", and the
+          branch under it rendered a thank-you card — the intent recorded and the
+          implementation absent, which is the defect class this codebase keeps
+          closing. Reported by the owner from a real run, in these words: after
+          the first questions "it just says that's all we need and then it just
+          clears".
+
+          ⚖️ TWO, NOT THREE, AND THEY ARE NOT THE STORY THREE. `DEPTH_QUESTION_IDS`
+          says why: these must be answerable with NO DNA, because on this screen
+          there is none — which is the same reason the story three moved off it.
+          A method question and a number question, both minting kinds the writer
+          is measured to admit.
+
+          ⚖️ THE SAME COMPONENT AS THE STORY SCREEN, deliberately. It already
+          resolves every field as answered-or-skipped before `onDone`, records
+          `shown` apart from both, and persists a draft as she types — and it
+          writes through `answerQuestion`, which is what stops the same question
+          being asked again on the post-script card. */}
+      {!err && questionsDone && !depthDone && (
+        <div className="mt-5 rounded-card border border-amber/25 bg-amber/[0.06] p-4 sm:p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
+            While we read · the parts only you know
+          </p>
+          <p className="mt-2 text-xs text-stone">
+            Your videos can tell us what you make. They cannot tell us how you
+            work. Optional — skip anything you would rather not answer.
+          </p>
+          {/* ⚠️ NO NICHE, AND THAT IS CORRECT RATHER THAN A FALLBACK. The scan
+              has not landed here, so there is nothing to word these in; both
+              questions were chosen because the plain wording needs none. */}
+          <StoryInterview
+            voiceId={draft.voiceId ?? null}
+            onDone={() => setDepthDone(true)}
+            questionIds={DEPTH_QUESTION_IDS}
+          />
+        </div>
+      )}
+
+      {!err && questionsDone && depthDone && (
         // Answered everything before the scan finished. Say so plainly — a
         // spinner with no sentence reads as a stall, and this is the one moment
         // the creator is genuinely just waiting.

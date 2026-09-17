@@ -103,14 +103,21 @@ describe('1. occupation chips: 10 stored values, 8 offered, every one answered',
 
 describe('3. the three story questions are one screen, same three rows', () => {
   it('shows all three prompts on one screen, not one at a time', () => {
-    // ⚠️ RE-ANCHORED TWICE, CLAIM UNCHANGED BOTH TIMES: every prompt on ONE
-    // screen, never paginated. It first named `OPENING_THREE.map`, then
-    // `openingSetFor` while the set briefly grew to five, and now names the seed
-    // again because the extra questions belong on the building step. A progress
-    // counter ("2 of 5") is still the thing that must not appear, because it
-    // turns a screen into a queue.
+    // ⚠️ RE-ANCHORED THREE TIMES, CLAIM UNCHANGED EVERY TIME: every prompt on ONE
+    // screen, never paginated. It has named `OPENING_THREE.map`, then
+    // `openingSetFor` while the set briefly grew to five, and now
+    // `questionIds.map` — the set became a PROP so the scan step can ask the two
+    // DNA-free questions through the SAME renderer. What matters is that
+    // whatever set arrives is mapped as one list, and that the story three
+    // remain the default. A progress counter ("2 of 5") is still the thing that
+    // must not appear, because it turns a screen into a queue.
+    //
+    // ⚖️ THE TWO HALVES OF THIS COMMENT ARRIVED FROM OPPOSITE SIDES OF A MERGE
+    // and said different things about the same line. Collapsed into one, because
+    // two comments disagreeing about one assertion is worse than either.
     expect(STORY).not.toMatch(/\bof \{[A-Za-z_.]*\blength\}/)
-    expect(STORY).toMatch(/OPENING_THREE\s*\n?\s*\.map/)
+    expect(STORY).toMatch(/questionIds\s*\n?\s*\.map/)
+    expect(STORY).toMatch(/questionIds = OPENING_THREE/)
     expect(STORY).toMatch(/anchorAllToSubNiche\(/)
   })
 

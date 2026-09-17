@@ -106,12 +106,34 @@ describe('the story interview is actually on the screen', () => {
   // ⚖️ IT OCCUPIES THE WAIT, NOT A NEW SCREEN. The measured lesson is that a
   // dedicated screen becomes the 0-row Product Library; a question inside an
   // existing wait gets answered.
-  it('⚠️ is NOT on the scan screen any more — that was the whole defect', () => {
-    // It used to render here, while the scan ran, which is why it could never be
-    // worded in her world: no niche, no `sells`, no follower count yet. It now
-    // has its own step, reached only once the scan has landed.
+  // ⚠️ RE-ANCHORED, AND THE CLAIM IS NOW THE ACTUAL ONE. This asserted that
+  // `<StoryInterview` appears nowhere on the scan screen, which was a PROXY for
+  // the real rule the comment above states: a question whose wording needs the
+  // DNA must not be asked before the DNA lands — "no niche, no `sells`, no
+  // follower count yet". The component is not the hazard; niche-dependent
+  // wording is.
+  //
+  // ⚖️ AND THE SIBLING COMMENT ARGUES FOR ASKING SOMETHING THERE: "it occupies
+  // the wait, not a new screen... a dedicated screen becomes the 0-row Product
+  // Library; a question inside an existing wait gets answered." Forbidding the
+  // component outright forbade the thing that lesson recommends.
+  //
+  // So: the scan screen may ask ONLY the DNA-free set, and the story three keep
+  // their own step. `theDepthQuestionsNeedNoNiche` proves that set carries no
+  // niche placeholder, which is the half a source anchor cannot see.
+  it('⚠️ the scan screen asks ONLY questions that need no DNA', () => {
     const building = SRC.slice(SRC.indexOf('function BuildingStep'), SRC.indexOf('function StoryStep'))
-    expect(building).not.toMatch(/<StoryInterview/)
+    const mounts = building.match(/<StoryInterview[\s\S]*?\/>/g) ?? []
+    expect(mounts.length, 'the scan screen mounts the interview more than once').toBeLessThanOrEqual(1)
+    for (const m of mounts) {
+      expect(m, 'the scan screen must name the DNA-free set explicitly')
+        .toMatch(/questionIds=\{DEPTH_QUESTION_IDS\}/)
+      // Passing a niche here would be asserting one that has not been read.
+      expect(m).not.toMatch(/\bniche=/)
+      expect(m).not.toMatch(/\bsubNiche=/)
+      expect(m).not.toMatch(/\bstageBand=/)
+    }
+    // And the story three still have their own step, after the scan.
     expect(SRC).toMatch(/\{mode === 'stories' && draft && \(/)
   })
 
