@@ -3293,11 +3293,58 @@ column list.
 
 ### L5. What is NOT built, and why — so it is not re-audited from scratch
 
-- **#4 / #7 — "a lot of you asked me" and "I'll do a whole video on that".**
-  Unbuilt. Cheap, and the material is in transcripts already held.
-- **#12 — her own website / product pages.** Unbuilt. §I1 measured only 5 of 22
-  live products carrying any URL-extracted knowledge.
+- **#4 / #7 — BUILT, after this section was first written.** See the entry below.
+- **#12 — her own website / product pages. ⚠️ ALREADY BUILT END TO END, AND THE
+  ROADMAP'S READING OF §I1 IS THE WRONG ONE.** The whole chain exists and was
+  verified link by link before anything was written:
+  `ProductLibrary.tsx` collects `productUrl` → `api.ts:1933` invokes
+  `enqueue-extraction` → `worker/src/jobs/extractProduct.ts` fetches the page and
+  extracts → `productExtraction.ts` grades every fact for trust, deliberately in
+  a separate classifier because "a model that has just read persuasive copy is
+  the worst available judge of whether that copy is persuasive" → the usable
+  facts reach the blueprint (§I1: `creator_summary` selected at `:6257`, emitted
+  at `:7993`). 0169 even records the failure path.
+  **§I1's "only 5 of 22 live products carry any URL-extracted knowledge" is a
+  measurement of INPUTS, not of capability** — creators have not entered URLs.
+  This is §I3's shape ("no material to mine — the ceiling, not the code") and it
+  is an owner/product action, not a build. Building a website reader here would
+  be the second one.
 - **#9 — her own comment replies.** Still blocked exactly as §I3 and §K2 record:
   `scraped_posts` has no comments column, and the `commentsDatasetUrl` claim
   remains comment-only and unverified. **Do not quote it as evidence.**
 - **Track B of the ten questions.** Waits on product-entity work by design.
+
+### L6. Increment 6 — #4 and #7, and why it is a separate pass
+
+`worker/src/knowledgeMine.ts` locates two phrases deterministically and
+`extractKnowledgeFromDemand` reads only what it found.
+
+⚖️ **IT LOCATES, IT DOES NOT DISTIL.** A regex finds the sentence reliably and
+cannot say what was asked or answered. The shortcut — store the matched sentence
+as the row's `text` — is forbidden by 0121: `text` is CHECK-capped at 240 so the
+schema refuses to become a transcript store, and a 240-character truncation of
+speech is a severed quotation wearing a distillate's clothes. The sentence goes
+in `evidence`.
+
+⚖️ **NO MATCH, NO CALL.** Free for a creator who never says these things, which
+is why it is not four more lines on the Track A prompt.
+
+⚠️ **THE SUPPLY IT REACHES IS THE ONE §K2 RETRACTED A CLAIM ABOUT**, and it is
+NOT a substitute for it. The comment corpus is unavailable; this is her
+SELECTION of which audience questions to repeat on camera. A weaker signal,
+available today. Do not let it be quoted as "we have audience comments".
+
+### L7. ⚠️ A CI JOB THAT ABORTS ON FIRST FAILURE WAS HIDING FORTY GATES
+
+`no-legacy-editor` failed on "Generated Deno copies are not stale" — I had
+hand-edited `_shared/ownerConsole.ts`, which is GENERATED from
+`scripts/owner-console.mjs`. Its own error names the reason that matters: *"a
+hand-edited copy is how the 500% rate bug survived its own fix."*
+
+⚖️ **AND EVERY STEP AFTER IT WAS SKIPPED — FORTY OF THEM.** A
+staging-migration-coverage failure that was already fixed never appeared in CI
+at all, because the job never reached that step. **A red job in this repo means
+"the first thing failed", not "one thing failed"**, and reading it as the second
+is how a second defect ships behind the first. All forty were run locally and
+pass — including `check_column_readers` and `check_symbol_readers`, the two that
+exist to catch exactly the dead-column defect this branch is built around.
