@@ -21,7 +21,11 @@ const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/inde
 const START = '// ── THE ANSWERS SHE TYPED HOLD SLOTS, INLINED ─'
 const END = '// ── END ASKED RESERVATION ─'
 
-interface Row { id: string; kind: string; source: string | null }
+/** ⚠️ IT CARRIES `text` BECAUSE `SelectableItem` REQUIRES IT, and the ratchet
+ *  says so before production does. A fixture that invents a shape is how an
+ *  earlier test asserted `framing`, `setup_id` and `setup_description` against a
+ *  type whose real fields are `camera_framing`, `background` and `movement`. */
+interface Row { id: string; kind: string; text: string; source: string | null }
 
 function loadInline() {
   const a = EDGE.indexOf(START)
@@ -37,9 +41,9 @@ function loadInline() {
   }
 }
 
-const asked = (id: string, kind = 'experience'): Row => ({ id, kind, source: 'asked' })
-const caption = (id: string): Row => ({ id, kind: 'topic', source: 'caption' })
-const spoken = (id: string, kind = 'claim'): Row => ({ id, kind, source: 'transcript' })
+const asked = (id: string, kind = 'experience'): Row => ({ id, kind, text: id, source: 'asked' })
+const caption = (id: string): Row => ({ id, kind: 'topic', text: id, source: 'caption' })
+const spoken = (id: string, kind = 'claim'): Row => ({ id, kind, text: id, source: 'transcript' })
 
 describe('the edge copy of the reservation matches the shared one', () => {
   const inline = loadInline()
@@ -55,7 +59,7 @@ describe('the edge copy of the reservation matches the shared one', () => {
       [asked('a1')],
       [caption('c1'), asked('a1'), spoken('s1'), asked('a2')],
       [asked('a1'), asked('a2'), asked('a3'), asked('a4'), asked('a5'), asked('a6'), caption('c1')],
-      [{ id: 'nosource', kind: 'claim', source: null }, asked('a1')],
+      [{ id: 'nosource', kind: 'claim', text: 'n', source: null }, asked('a1')],
     ]
     let compared = 0
     for (const pool of pools) {
