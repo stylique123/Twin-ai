@@ -192,6 +192,50 @@ function followerBandInline(followers: unknown): string | null {
   return 'over_100k'
 }
 
+/** Record which knowledge items this generation's prompt was built out of.
+ *
+ *  ⚠️ ONE DEFINITION, CALLED FROM BOTH PERSISTENCE PATHS, and that is not a
+ *  stylistic preference: the rescue branch recorded NEITHER of the two choice
+ *  tables and 13 of 13 generations on 2026-09-10 came through it. A rescued
+ *  script is delivered and charged for, so the items it spent are spent.
+ *
+ *  ⚖️ BEST EFFORT, ALWAYS. The rotation is an improvement on top of a working
+ *  generation; a creator must never lose a script because a bookkeeping row
+ *  could not be written. A failure is logged — a silent one would leave the
+ *  counters looking like a store nothing has ever been supplied from, which is
+ *  indistinguishable from this feature being off. */
+async function recordKnowledgeSpend(admin: {
+  rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ error: { message?: string } | null }>
+}, input: { generationId: string; ownerId: string; voiceId: string | null; ids: readonly string[] }): Promise<void> {
+  if (!input.ids.length) return
+  try {
+    const { error } = await admin.rpc('record_knowledge_use', {
+      p_owner: input.ownerId,
+      p_generation: input.generationId,
+      p_voice: input.voiceId,
+      p_ids: input.ids,
+    })
+    if (error) {
+      console.warn(JSON.stringify({
+        event: 'knowledge_spend_not_recorded',
+        generation_id: input.generationId,
+        items: input.ids.length,
+        detail: 'migration 0215 may not be applied; the same items will lead the next script',
+        error: String(error.message ?? ''),
+      }))
+    }
+  } catch (err) {
+    console.warn(JSON.stringify({
+      event: 'knowledge_spend_not_recorded',
+      generation_id: input.generationId,
+      items: input.ids.length,
+      // ⚖️ `describeThrown`, NOT `err.message`. A thrown non-Error recorded the
+      // string "[object Object]" thirteen times before that helper existed.
+      error: describeThrown(err),
+    }))
+  }
+}
+
 async function recordWhatWasChosen(admin: {
   from: (t: string) => { insert: (row: Record<string, unknown>) => PromiseLike<{ error: { message?: string; code?: string } | null }> }
 }, input: {
@@ -6154,12 +6198,120 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
 }
 // ── END FRESHNESS ───────────────────────────────────────────────────────────
 
-  const { data: rankedRows } = await admin
+// ── WHAT THE STORE HAS ALREADY SPENT, AND A READ THAT SURVIVES ITS MIGRATION ─
+//
+// ⚠️ NAMING A COLUMN THAT DOES NOT EXIST YET FAILS THE WHOLE SELECT, and this
+// select IS the creator's knowledge. Between deploying this function and applying
+// 0215 by hand, a naive widened read returns an error and the writer sees NO
+// knowledge at all — turning a ranking improvement into the "empty knowledge"
+// defect the insert path already has a whole comment block about. So the rotation
+// columns are asked for, and their absence costs the rotation rather than the
+// knowledge.
+const KNOWLEDGE_COLS_BASE = 'id, kind, text, basis, times_seen, confidence, source, last_observed_at'
+// ⚠️ EVERY COLUMN THAT DEPENDS ON A HAND-APPLIED MIGRATION IS IN THIS LIST AND
+// NOT IN THE BASE ONE. `used_count`/`last_used_at` come from 0215 and `evidence`
+// from 0216, and both are applied by hand — so the fallback below must name
+// NEITHER. Losing the rotation and the evidence sentence costs quality; naming an
+// absent column costs the creator every knowledge row.
+const KNOWLEDGE_COLS_FULL = `${KNOWLEDGE_COLS_BASE}, used_count, last_used_at, evidence`
+
+/** Read creator knowledge with the rotation columns, or without them if 0215 has
+ *  not been applied. `narrow` is reported so the degraded state is visible rather
+ *  than looking like a store where nothing has ever been supplied. */
+async function readKnowledge(
+  build: (cols: string) => { then: unknown },
+): Promise<{ rows: Array<Record<string, unknown>>; narrow: boolean }> {
+  const wide = await (build(KNOWLEDGE_COLS_FULL) as unknown as Promise<{ data: unknown; error: { message?: string } | null }>)
+  if (!wide.error) return { rows: (wide.data as Array<Record<string, unknown>>) ?? [], narrow: false }
+  console.warn(JSON.stringify({
+    event: 'knowledge_rotation_columns_absent',
+    detail: 'migration 0215/0216 not applied; ranking without spend (every item reads as never supplied) and without the evidence sentence',
+    error: String(wide.error.message ?? ''),
+  }))
+  const narrow = await (build(KNOWLEDGE_COLS_BASE) as unknown as Promise<{ data: unknown; error: { message?: string } | null }>)
+  return { rows: (narrow.data as Array<Record<string, unknown>>) ?? [], narrow: true }
+}
+// ── END KNOWLEDGE READ ──────────────────────────────────────────────────────
+
+// ── WHICH OF THE EQUALLY RELEVANT ITEMS GOES FIRST, INLINED ─────────────────
+//
+// Mirror of `packages/shared/src/knowledgeRotation.ts` — the edge cannot import
+// @twinai/shared. Held identical by `knowledgeRotationEdgeParity.test.ts`, which
+// EXECUTES both copies rather than comparing their text: an off-by-one in a
+// stable sort is invisible to a textual diff and changes which item a creator's
+// next script is built out of.
+interface RotatableInline { used_count?: number | null; last_used_at?: string | null }
+
+function spendInline(item: RotatableInline): { count: number; at: number } {
+  const raw = item.used_count
+  const count = typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : 0
+  const parsed = item.last_used_at == null ? Number.NaN : Date.parse(String(item.last_used_at))
+  return { count, at: Number.isFinite(parsed) ? parsed : 0 }
+}
+
+function rotateWithinBucketInline<T extends RotatableInline>(bucket: readonly T[]): T[] {
+  return bucket
+    .map((item, i) => ({ item, i, s: spendInline(item) }))
+    .sort((a, b) => (a.s.count - b.s.count) || (a.s.at - b.s.at) || (a.i - b.i))
+    .map((x) => x.item)
+}
+
+function orderForSupplyInline<T extends RotatableInline>(
+  scored: ReadonlyArray<{ item: T; hit: number }>,
+): T[] {
+  const relevant = scored.filter((x) => x.hit > 0).slice().sort((a, b) => b.hit - a.hit)
+  const rest = scored.filter((x) => x.hit === 0)
+  const out: T[] = []
+  let i = 0
+  while (i < relevant.length) {
+    let j = i
+    while (j < relevant.length && relevant[j].hit === relevant[i].hit) j += 1
+    out.push(...rotateWithinBucketInline(relevant.slice(i, j).map((x) => x.item)))
+    i = j
+  }
+  out.push(...rotateWithinBucketInline(rest.map((x) => x.item)))
+  return out
+}
+// ── END ROTATION ────────────────────────────────────────────────────────────
+
+// ── THE ANSWERS SHE TYPED HOLD SLOTS, INLINED ───────────────────────────────
+//
+// Mirror of `packages/shared/src/askedReservation.ts`. She answered the question
+// and then competed with a caption for the slot: an `asked` row shares no words
+// with a video about a different subject, so it scored zero on lexical overlap
+// and lost to "she made a video about leather". Measured: 21 asked rows, 21 of
+// them substance (100% against 17% for captions), 166 characters average against
+// 59, 14 carrying a first-person episode.
+const ASKED_RESERVED_MAX_INLINE = 4
+
+function wasAskedInline(item: { source?: string | null }): boolean {
+  return String(item?.source ?? '') === 'asked'
+}
+
+function reserveAskedInline<T extends { source?: string | null }>(
+  ranked: readonly T[],
+  cap: number,
+  reservedMax: number = ASKED_RESERVED_MAX_INLINE,
+): { reserved: T[]; pool: T[] } {
+  if (cap <= 0) return { reserved: [], pool: [] }
+  const room = Math.max(0, Math.min(reservedMax, cap))
+  const reserved: T[] = []
+  const pool: T[] = []
+  for (const item of ranked) {
+    if (wasAskedInline(item) && reserved.length < room) reserved.push(item)
+    else pool.push(item)
+  }
+  return { reserved, pool }
+}
+// ── END ASKED RESERVATION ───────────────────────────────────────────────────
+
+  const rankedRead = await readKnowledge((cols) => admin
     .from('creator_knowledge')
-    .select('kind, text, basis, times_seen, confidence, source, last_observed_at')
+    .select(cols)
     .eq('owner_id', ownerId)
     .order('times_seen', { ascending: false })
-    .limit(40)
+    .limit(40))
+  const rankedRows = rankedRead.rows
   // ⚠️ THE TOP-40-BY-`times_seen` READ CANNOT SEE AN ANSWERED QUESTION, AND WOULD
   // HAVE MADE THAT WHOLE CHANNEL DECORATIVE. `times_seen` counts how many videos
   // carried a position, so a row the creator STATED once is a 1 — and on a
@@ -6171,13 +6323,14 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
   // caption rows, which is the material MEASURED to push substance out of the
   // selection (73% grounded transcript-only against 58% mixed). This asks for the
   // scarce thing by name and leaves the ranking alone.
-  const { data: askedRows } = await admin
+  const askedRead = await readKnowledge((cols) => admin
     .from('creator_knowledge')
-    .select('kind, text, basis, times_seen, confidence, source, last_observed_at')
+    .select(cols)
     .eq('owner_id', ownerId)
     .eq('source', 'asked')
     .order('created_at', { ascending: false })
-    .limit(20)
+    .limit(20))
+  const askedRows = askedRead.rows
   // ── A READY VOICE WITH NO KNOWLEDGE REPAIRS ITSELF ──────────────────────
   //
   // ⚠️ MEASURED: a brand voice sat at `ready` with ZERO knowledge rows and no
@@ -7083,6 +7236,17 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
   // through leaves the live object in a state no code intended, and shipping
   // that is worse than shipping the writer's own output. This is the blueprint
   // as the writer produced it, structurally normalised and nothing more.
+  // ⚠️ DECLARED OUT HERE WITH `rescue`, AND FOR THE SAME REASON IT IS. It is
+  // written at the knowledge selection and read at BOTH places a generation is
+  // persisted — including the rescue branch in the outer catch, which is a
+  // different block. Declaring it beside the selection typechecked on the main
+  // path and could not be seen from the rescue at all, which is precisely how
+  // that branch came to record neither choice row for two days.
+  //
+  // ⚖️ AND IT IS READ AT THE WRITE SITES, never captured into an object literal
+  // on the way. A counter read into a literal before its value is computed stores
+  // nothing; `beat_audit` paid for that lesson.
+  let suppliedKnowledgeIds: string[] = []
   let rescue: { bp: unknown; allow: LinkAllowlist; runId: string } | null = null
   let refunded = false
   const refundOnce = async (reason: string) => {
@@ -7588,10 +7752,14 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
     // chooses within each group; the only guarantee is that substance cannot
     // reach zero. `selectSpeakable` is the shared rule, inlined here because
     // the edge cannot import @twinai/shared, and held identical by a parity test.
-    const relevanceOrdered = [
-      ...scored.filter((x) => x.hit > 0).sort((a, b) => b.hit - a.hit).map((x) => x.k),
-      ...scored.filter((x) => x.hit === 0).map((x) => x.k),
-    ]
+    // ⚠️ AND THE SAME TEN ITEMS REACHED EVERY SCRIPT UNTIL THIS LINE CHANGED.
+    // Overlap is deterministic and the store is static between scans, so a
+    // creator who makes three videos about one subject was handed the SAME items
+    // all three times — with nothing recording that an item had already been
+    // supplied, so nothing could rotate and nothing could report it. 0215 records
+    // it; `orderForSupplyInline` spends the runway instead of the first tenth of
+    // it. Relevance still decides: rotation only separates items that tie.
+    const relevanceOrdered = orderForSupplyInline(scored.map((x) => ({ item: x.k, hit: x.hit })))
     // ⚠️ WHERE Q2 ACTUALLY LANDS. Until now an `experience` row and a `covered`
     // row competed on keyword overlap alone, and nothing in the system could
     // express "build this video out of what I have DONE". `preferKindsInline` is
@@ -7603,7 +7771,33 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
     // substance. A video that has to teach a method or earn a purchase needs
     // more than the standing guarantee; one meant to be enjoyed does not. The
     // compiler clamps it so no answer can ever ask for LESS.
-    const speakable = selectSpeakable(focusOrdered, 10, intent.substanceFloor)
+    // ⚠️ AND THE ANSWERS SHE TYPED CANNOT BE OUTBID FOR A SLOT. Every `asked` row
+    // is material she wrote herself, knowing it would be used — 100% substance
+    // against 17% for captions, 166 characters against 59 — and it was ranked by
+    // lexical overlap with the video's topic, which is the one axis it is worst
+    // at. `reserveAskedInline` holds up to four of the ten; the rest of her
+    // answers stay in the pool rather than being removed from the running.
+    const askedHold = reserveAskedInline(focusOrdered, 10)
+    // ⚖️ THE FLOOR COMES DOWN BY WHAT THE RESERVATION ALREADY SATISFIES. A
+    // reserved answer that IS substance already counts toward the guarantee;
+    // leaving the floor untouched would reserve substance twice and starve the
+    // slots the video's own subject needs.
+    const askedSubstance = askedHold.reserved.filter((k) => SUBSTANCE_KINDS.has(k.kind)).length
+    const speakable = [
+      ...askedHold.reserved,
+      ...selectSpeakable(
+        askedHold.pool,
+        10 - askedHold.reserved.length,
+        Math.max(0, intent.substanceFloor - askedSubstance),
+      ),
+    ]
+    // ⚖️ THE LEDGER'S UNIT IS WHAT THE WRITER WAS SHOWN. These ten are the spend;
+    // 0215 records them against this generation and rotates them to the back of
+    // the next tie. An item with no id is one read before 0215 was applied — it
+    // is still supplied, it just cannot be recorded, which is the right way round.
+    suppliedKnowledgeIds = speakable
+      .map((k) => String((k as { id?: unknown }).id ?? '').trim())
+      .filter((id) => id !== '')
     // ⚖️ ONE CLOCK FOR THE WHOLE BLOCK. Calling Date.now() per item could put two
     // items either side of a month boundary within one prompt, which is a
     // difference no reader could explain.
@@ -7618,7 +7812,25 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
         + ' be framed as something she has said rather than as true today. An item'
         + ' with NO tag is one nobody recorded a date for — treat it exactly as you'
         + ' would an untagged fact, neither fresher nor staler.\n'
-        + speakable.map((k) => `  * (${k.kind}) ${freshnessTagInline((k as { last_observed_at?: unknown }).last_observed_at, nowMsForFreshness)}${k.text}`).join('\n'))
+        // ⚠️ SAID OUT LOUD, BECAUSE AN UNEXPLAINED LABEL GETS USED WRONG. Without
+        // this sentence a model handed "HER WORDS" can read it as a line it must
+        // reproduce verbatim, which would put a transcript sentence into a script
+        // she then reads back at her own audience.
+        + ' Where an item carries HER WORDS, that is roughly what she actually said,'
+        + ' kept so you can write the specific rather than the summary. Use it as'
+        + ' evidence and as her phrasing; you do not have to reproduce it verbatim,'
+        + ' and you must never contradict it.\n'
+        // ⚠️ AND THE SENTENCE THAT EARNED IT, WHERE THERE IS ONE (0216). "She
+        // cares about pricing" and "she charges £400 for a full rebind because
+        // cheap ones fall apart within a year" are the same conclusion with and
+        // without the evidence; a writer handed the first fills the gap itself.
+        // Rendered as HER WORDS and labelled as such, so the model can quote it
+        // rather than paraphrase around it.
+        + speakable.map((k) => {
+          const tag = freshnessTagInline((k as { last_observed_at?: unknown }).last_observed_at, nowMsForFreshness)
+          const ev = String((k as { evidence?: unknown }).evidence ?? '').trim()
+          return `  * (${k.kind}) ${tag}${k.text}${ev ? `\n      HER WORDS: "${ev}"` : ''}`
+        }).join('\n'))
     }
     if (coveredRows.length) {
       // ⚠️ THIS LEAKED. The first version said only "do not repeat", and a run
@@ -7626,7 +7838,20 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
       // but it's still true" — our notes narrated to the audience, carrying an
       // unchecked claim about their back catalogue.
       knowledgeParts.push('\nALREADY COVERED — they have made a video about each of these. Do NOT hand them their own upload back; go at the topic from an angle they have not used. THIS LIST IS NEVER SPOKEN. It steers what you choose and must not appear in any line: a script that says "we\'ve had a video on this" is narrating our notes to the audience. Pick a DIFFERENT angle, then write as though the earlier video were simply not the subject.\n'
-        + coveredRows.map((k) => `  * ${k.text}`).join('\n'))
+        // ⚠️ WITH THE COUNT, BECAUSE "ONCE" AND "SIX TIMES" ARE DIFFERENT
+        // INSTRUCTIONS. A subject covered once is a topic to come at from a new
+        // angle; a subject covered six times is this creator's THESIS — the thing
+        // their audience comes for — and treating the two the same either wastes
+        // their best subject or repeats their weakest. `times_seen` is how many
+        // of their videos carried it, which is the count that already exists and
+        // which nothing has ever rendered.
+        //
+        // ⚖️ ONLY WHEN IT IS MORE THAN ONE. "(once)" on every line is noise, and
+        // a count of 1 is the default reading anyway.
+        + coveredRows.map((k) => {
+          const n = Number((k as { times_seen?: unknown }).times_seen)
+          return `  * ${k.text}${Number.isFinite(n) && n > 1 ? ` — covered in ${Math.trunc(n)} of their videos` : ''}`
+        }).join('\n'))
     }
     const knowledgeBlock = knowledgeParts.join('\n')
     // ⚠️ THE SHAPE BLOCK, COMPUTED HERE AND ABSENT BY DEFAULT. Two independent
@@ -8504,12 +8729,47 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
       ? `\n- What they already know: ${AUDIENCE_LEVEL_LINES[audienceLevelRaw]}`
       : ''
 
-    const povLine = povList.length
-      ? povList.join(' | ')
-      : 'NONE STORED. Infer 1-2 stances this creator would plausibly hold from their niche, tone and vocabulary, and carry them through the script. Stay on-brand; do not fabricate specific facts or numbers.'
-    const enemyLine = vp?.enemy
-      ? vp.enemy
-      : 'NONE STORED. Infer the conventional wisdom, bad habit or villain this creator would push against, from their niche and tone.'
+    // ⚠️⚠️ HER ACTUAL ANSWER OUTRANKS THE SYNTHESISED FIELD, AND BOTH OUTRANK THE
+    // INSTRUCTION TO INVENT ONE. Two of these three lines end in "Infer ..." when
+    // nothing is stored, which is a licence to make up a stance and hand it to a
+    // creator to say out loud. That licence was defensible while nothing better
+    // existed: `pov` and `enemy` are synthesised from scraped captions, and a
+    // blank there was common.
+    //
+    // ⚖️ IT IS NO LONGER THE ONLY OPTION. The targeted extraction pass asks her
+    // transcripts, in words, what she pushes back against
+    // (`pushes_back_against`) and what she believes that others in her space do
+    // not (`others_disagree`), and stores the answer WITH THE SENTENCE SHE SAID
+    // (0216). That is her real position rather than a plausible one, so it goes
+    // first — and the invention fallback stays where it was, last, rather than
+    // being deleted: removing it would leave a thin-scan creator with no stance
+    // at all, which is the state the write-time enrichment note above measured
+    // and rejected.
+    const answersTo = (id: string): Array<{ text: string; evidence: string }> => kRows
+      .filter((k) => String((k as { question_id?: unknown }).question_id ?? '') === id)
+      .filter((k) => k.basis !== 'inferred')
+      .map((k) => ({
+        text: String(k.text ?? '').trim(),
+        evidence: String((k as { evidence?: unknown }).evidence ?? '').trim(),
+      }))
+      .filter((a) => a.text !== '')
+    // ⚖️ HER WORDS TRAVEL WITH THE CONCLUSION, in the same shape the knowledge
+    // block uses, so the writer can take her phrasing rather than paraphrase
+    // around a summary.
+    const fromAnswers = (as: Array<{ text: string; evidence: string }>): string =>
+      as.map((a) => (a.evidence ? `${a.text} (her words: "${a.evidence}")` : a.text)).join(' | ')
+    const povAnswers = answersTo('others_disagree')
+    const enemyAnswers = answersTo('pushes_back_against')
+    const povLine = povAnswers.length
+      ? fromAnswers(povAnswers)
+      : povList.length
+        ? povList.join(' | ')
+        : 'NONE STORED. Infer 1-2 stances this creator would plausibly hold from their niche, tone and vocabulary, and carry them through the script. Stay on-brand; do not fabricate specific facts or numbers.'
+    const enemyLine = enemyAnswers.length
+      ? fromAnswers(enemyAnswers)
+      : vp?.enemy
+        ? vp.enemy
+        : 'NONE STORED. Infer the conventional wisdom, bad habit or villain this creator would push against, from their niche and tone.'
     // FENCING UNTRUSTED TEXT.
     //
     // Four sources reach this prompt and NONE is authored by us: the creator
@@ -11745,6 +12005,13 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       // `recordWhatWasChosen`: this used to live inline here and the rescue branch
       // wrote neither row, which is why 13 of 13 generations on 2026-09-10 left no
       // record of what the creator chose.
+      await recordKnowledgeSpend(admin, {
+        generationId: gen.id,
+        ownerId: user.id,
+        voiceId: voice?.id ?? null,
+        ids: suppliedKnowledgeIds,
+      })
+
       await recordWhatWasChosen(admin, {
         generationId: gen.id,
         ownerId: user.id,
@@ -11915,6 +12182,19 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
             // CHOICES are not derived from it — they come off the request — so
             // they are fully recorded here, and they are what the open question in
             // `contentHistory.ts` needs.
+            // ⚖️ AND THE SPEND, FOR THE SAME REASON THIS BLOCK EXISTS. A rescued
+            // script was still built out of whatever the selector supplied; if
+            // this branch recorded nothing, the same ten items would lead the
+            // creator's next script and the ledger would say their runway was
+            // untouched. `suppliedKnowledgeIds` is empty when the throw happened
+            // before the selection, which records the truth rather than a guess.
+            await recordKnowledgeSpend(admin, {
+              generationId: saved.id,
+              ownerId: user.id,
+              voiceId: voice?.id ?? null,
+              ids: suppliedKnowledgeIds,
+            })
+
             await recordWhatWasChosen(admin, {
               generationId: saved.id,
               ownerId: user.id,

@@ -1,6 +1,6 @@
 // THE TAXONOMY EXISTS IN THREE PLACES AND MUST AGREE IN ALL THREE.
 //
-// `KNOWLEDGE_KINDS` here, a hand-copied array in `worker/src/jobs/voice.ts`, and
+// `KNOWLEDGE_KINDS` here, a hand-copied array in `worker/src/knowledgeRows.ts`, and
 // the `creator_knowledge_kind_valid` CHECK in migration 0121. The worker copy is
 // deliberate — it has no @twinai/shared runtime dep (see directorContract.ts) —
 // but "deliberate duplicate" only stays safe while something compares them.
@@ -23,7 +23,12 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..
 import { describe, expect, it } from 'vitest'
 import { KNOWLEDGE_KINDS } from '../creatorKnowledge'
 
-const WORKER = readFileSync(join(REPO, 'worker/src/jobs/voice.ts'), 'utf8')
+// ⚠️ THE LIST MOVED, AND THE ANCHOR MOVED WITH IT. `KNOWLEDGE_KINDS_WORKER`
+// lived in `jobs/voice.ts` until the row normalisation was lifted into
+// `knowledgeRows.ts` so that `remine_knowledge` could share it. Re-pointing the
+// anchor keeps this comparison real; leaving it would have failed on a missing
+// marker, which is the correct behaviour and the reason this line is one line.
+const WORKER = readFileSync(join(REPO, 'worker/src/knowledgeRows.ts'), 'utf8')
 const MIGRATION = readFileSync(join(REPO, 'supabase/migrations/0121_creator_knowledge.sql'), 'utf8')
 
 function liftArray(src: string, name: string, where: string): string[] {

@@ -50,6 +50,27 @@ export interface SchemaCapability {
  * block jobs over tables they never touch.
  */
 export const SCHEMA_REQUIREMENTS: Readonly<Record<string, readonly SchemaCapability[]>> = {
+  remine_knowledge: [
+    // ⚠️ THE STAMP IS THE JOB'S WHOLE TRIGGER, NOT A FIELD IT HAPPENS TO WRITE.
+    // Without `extractor_version` the handler cannot tell which voices an older
+    // extractor produced, so every sweep would either re-mine everybody (paying
+    // for work already done) or nobody. A probe on the column is therefore a
+    // probe on the feature.
+    { table: 'creator_knowledge', migration: '0214',
+      columns: ['extractor_version', 'kind', 'text', 'basis', 'voice_id'] },
+    // ⚖️ AND THE TWO COLUMNS THE TARGETED PASS WRITES (0216). Declared
+    // separately from 0214 so the incident names the migration that is actually
+    // missing: without these the re-mine still stores its answers, but strips the
+    // evidence sentence that makes them usable — which is most of the value.
+    { table: 'creator_knowledge', migration: '0216',
+      columns: ['evidence', 'question_id'] },
+    // ⚖️ AND THE SPEECH IT RE-READS. 0135 made the creator's own transcripts
+    // durable; `subject` is what separates them from other people's reference
+    // videos in the same table, and a schema without it would let this job file
+    // a stranger's opinions as hers.
+    { table: 'transcripts', migration: '0135',
+      columns: ['subject', 'text', 'source_url', 'owner_id'] },
+  ],
   sample_own_account: [
     { table: 'brand_voices', migration: '0171',
       // ⚠️ ALL FOUR, BECAUSE THE CONSTRAINT DEMANDS ALL FOUR. 0171 refuses a

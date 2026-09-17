@@ -173,12 +173,23 @@ describe('the readers are wired, not merely present', () => {
   it('retrieval is reordered BEFORE the selection is taken', () => {
     // ⚖️ Reordering after the cut would change nothing at all — the ten rows
     // would already have been chosen.
+    // ⚠️ RE-ANCHORED 2026-09-17: the selection now runs on `askedHold.pool`,
+    // because the answers the creator typed hold slots instead of competing for
+    // them. The claim is unchanged — the focus reordering must happen before the
+    // cut — and the reservation sits between the two, so both orderings are
+    // pinned rather than one.
     expect(EDGE.indexOf('const focusOrdered = preferKindsInline('))
-      .toBeLessThan(EDGE.indexOf('const speakable = selectSpeakable(focusOrdered'))
+      .toBeLessThan(EDGE.indexOf('const askedHold = reserveAskedInline(focusOrdered'))
+    expect(EDGE.indexOf('const askedHold = reserveAskedInline(focusOrdered'))
+      .toBeLessThan(EDGE.indexOf('selectSpeakable(\n        askedHold.pool,'))
   })
 
   it('the substance floor is passed, not defaulted', () => {
-    expect(EDGE).toMatch(/selectSpeakable\(focusOrdered, 10, intent\.substanceFloor\)/)
+    // ⚖️ AND IT IS DEBITED BY WHAT THE RESERVATION ALREADY SATISFIES, which is
+    // still `intent.substanceFloor` doing the deciding — a default here would
+    // make the viewer-outcome answer unable to raise it, which is the thing this
+    // assertion protects.
+    expect(EDGE).toMatch(/Math\.max\(0, intent\.substanceFloor - askedSubstance\)/)
   })
 
   it('the dead brief.goal read is GONE, not shadowed by a fourth channel', () => {

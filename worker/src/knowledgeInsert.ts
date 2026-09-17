@@ -199,11 +199,11 @@ export async function insertKnowledge(
   const { error } = await db.from('creator_knowledge').insert(rows)
   if (!error) return { error: null, sourceStored: true, merged: false }
   const missingColumn = error.code === 'PGRST204'
-    || /column .*(source|cost|consensus).* does not exist/i.test(String(error.message ?? ''))
+    || /column .*(source|cost|consensus|extractor_version|evidence|question_id).* does not exist/i.test(String(error.message ?? ''))
   if (!missingColumn) return { error, sourceStored: false, merged: false }
   console.warn(JSON.stringify({
     event: 'creator_knowledge_source_column_absent',
-    detail: 'migration 0122/0178 not applied; storing rows WITHOUT provenance, cost or consensus',
+    detail: 'migration 0122/0178/0214/0216 not applied; storing rows WITHOUT provenance, cost, consensus, extractor version, evidence or question id',
   }))
   // ⚠️ `cost` AND `consensus` ARE STRIPPED ALONGSIDE `source`, AND THE REASON IS
   // THE ONE THIS BLOCK WAS ALREADY WRITTEN FOR. PostgREST rejects the WHOLE
@@ -212,7 +212,13 @@ export async function insertKnowledge(
   // creator knowledge, silently, exactly as shipping `source` naively once did.
   // Dropping the two new halves costs a re-scan; dropping the batch costs the
   // scan.
+  //
+  // ⚠️ AND `extractor_version` IS STRIPPED WITH THEM, FOR THE SAME REASON AND AT
+  // A REAL COST: rows stored down this path are indistinguishable from rows
+  // written before stamping existed, so the next sweep will re-mine them. That
+  // is the correct trade — an unnecessary re-mine costs one model call, and
+  // PGRST204 on the whole batch costs the creator everything the scan found.
   const { error: retryErr } = await db.from('creator_knowledge')
-    .insert(rows.map(({ source, cost, consensus, ...rest }) => rest))
+    .insert(rows.map(({ source, cost, consensus, extractor_version, evidence, question_id, ...rest }) => rest))
   return { error: retryErr, sourceStored: false, merged: false }
 }

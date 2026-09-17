@@ -43,6 +43,15 @@ describe('worker job registry has no old editor', () => {
       // — so investigating a timeout cannot overwrite the row that recorded it.
       // It refuses a trial with no arm-A timeout, which is what stops it
       // becoming a general "rerun anything" button later.
+      // remine_knowledge re-reads the creator's OWN STORED transcripts with the
+      // current extractor, for the voices whose knowledge an older one produced.
+      // It is here rather than folded into build_voice because build_voice runs
+      // ONCE at onboarding: every improvement to the extraction prompt so far
+      // has reached only creators who signed up after it, while 331 stored
+      // transcripts sat unread. Enqueued by `enqueue_stale_knowledge_remine`
+      // (0214) on the `extractor_version` stamp — never by a timer, because a
+      // new prompt is the only thing that makes already-read text worth paying
+      // to read again.
       'assess_reference', 'build_voice', 'editor_v2', 'extract_product',
       'extraction_parity', 'extraction_replication', 'ingest',
       // sample_own_account looks at a SAMPLE of the creator's OWN videos and
@@ -54,7 +63,8 @@ describe('worker job registry has no old editor', () => {
       // `messageForOwnAccount` were both shipped and tested with nothing
       // invoking either — the exact "registered and enqueued by nothing"
       // cautionary tale `transcribe` is cited for above, run in reverse.
-      'purge_media', 'sample_own_account', 'scrape_dna', 'validate_clip', 'validate_source',
+      'purge_media', 'remine_knowledge',
+      'sample_own_account', 'scrape_dna', 'validate_clip', 'validate_source',
     ])
     expect(handlers).not.toHaveProperty('autoedit')
     expect(handlers).not.toHaveProperty('transcribe')

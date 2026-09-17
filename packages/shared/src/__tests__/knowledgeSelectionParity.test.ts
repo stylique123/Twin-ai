@@ -80,9 +80,22 @@ describe('the edge copy matches shared', () => {
     // taken — reordering after it would change nothing, because the ten rows
     // would already have been chosen. The floor is passed rather than defaulted
     // so the viewer-outcome answer can raise it.
-    expect(EDGE).toMatch(/const speakable = selectSpeakable\(focusOrdered, 10, intent\.substanceFloor\)/)
+    //
+    // ⚠️ RE-ANCHORED 2026-09-17, CLAIM UNCHANGED AND STRICTLY STRONGER. The
+    // selection now runs on `askedHold.pool` rather than `focusOrdered` directly,
+    // because the answers the creator TYPED hold up to four of the ten slots
+    // instead of competing for them on lexical overlap. What this test asserts is
+    // the same: the cut happens HERE, after the focus reordering, and the floor is
+    // passed rather than defaulted. The order of the three steps is pinned below,
+    // so applying the reservation after the cut — which would change nothing —
+    // still fails.
+    expect(EDGE).toMatch(/const askedHold = reserveAskedInline\(focusOrdered, 10\)/)
+    expect(EDGE).toMatch(/selectSpeakable\(\s*\n\s*askedHold\.pool,/)
+    expect(EDGE).toMatch(/Math\.max\(0, intent\.substanceFloor - askedSubstance\)/)
     expect(EDGE.indexOf('const focusOrdered = preferKindsInline(relevanceOrdered'))
-      .toBeLessThan(EDGE.indexOf('const speakable = selectSpeakable(focusOrdered'))
+      .toBeLessThan(EDGE.indexOf('const askedHold = reserveAskedInline(focusOrdered'))
+    expect(EDGE.indexOf('const askedHold = reserveAskedInline(focusOrdered'))
+      .toBeLessThan(EDGE.indexOf('selectSpeakable(\n        askedHold.pool,'))
     // ⚠️ THE OLD LINE MUST BE GONE, not merely bypassed. A surviving
     // `.slice(0, 10)` on the relevance order is the defect intact.
     const code = EDGE.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')
@@ -148,9 +161,19 @@ describe('the edge prefers spoken material by the same rule', () => {
     // ⚖️ AND IT IS NOW STRICTLY STRONGER. The old exact match could only ever
     // check the FIRST select; both knowledge reads are checked here, and a
     // vacuous pass is refused. Dropping `source` from either still fails.
-    const knowledgeSelects = EDGE.match(/\.select\('kind, text, basis[^']*'\)/g) ?? []
-    expect(knowledgeSelects.length, 'the knowledge selects moved — re-anchor this').toBe(2)
-    for (const sel of knowledgeSelects) expect(sel).toContain('source')
+    //
+    // ⚠️ RE-ANCHORED AGAIN 2026-09-17, SAME CLAIM, SAME REASON. The two select
+    // strings became ONE column list behind `readKnowledge`, which asks for the
+    // rotation columns 0215 adds and falls back to the base list when they are
+    // absent. Both lists must still carry `source`, and both reads must still go
+    // through the helper — checked below — so dropping it from either still
+    // fails. One list is harder to get wrong than two copies, not easier.
+    const base = EDGE.match(/KNOWLEDGE_COLS_BASE = '([^']*)'/)
+    expect(base, 'the knowledge column list moved — re-anchor this').not.toBeNull()
+    expect(base?.[1]).toContain('source')
+    expect(EDGE).toMatch(/KNOWLEDGE_COLS_FULL = `\$\{KNOWLEDGE_COLS_BASE\}[^`]*`/)
+    const reads = EDGE.match(/readKnowledge\(\(cols\) => admin/g) ?? []
+    expect(reads.length, 'both knowledge reads must go through the helper').toBe(2)
   })
 
   it('partitions the reservation, and does not sort it', () => {

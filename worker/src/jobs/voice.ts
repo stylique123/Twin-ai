@@ -1,9 +1,14 @@
 import { db, type Job } from '../db.js'
 import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
+import { knowledgeRowsFrom } from '../knowledgeRows.js'
+import { EXTRACTOR_VERSION } from '../extractorVersion.js'
 import { transcribeFromUrl } from '../media.js'
 import { mapWithConcurrency, TRANSCRIBE_CONCURRENCY } from '../boundedMap.js'
 import { transcriptBudgetFor } from '../transcriptSelection.js'
-import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions } from '../voice.js'
+import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions, extractTargetedKnowledge } from '../voice.js'
+import { questionsFor } from '../targetedQuestions.js'
+import { mineTranscripts } from '../transcriptMining.js'
+import { ownerHasLiveProduct } from '../ownerProducts.js'
 
 // ⚖️ THE SAME NORMALISATION `transcribe.ts` USES, and it must stay the same: the
 // key is what lets one video pasted by several people hit one cached row, so two
@@ -285,6 +290,12 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
   // voice; trading a working feature for a new one is not an upgrade.
   let knowledgeStored = 0
   let cohortYield: Record<string, unknown> | null = null
+  // ⚠️ STORED, NOT LOGGED, LIKE `cohort_yield` BESIDE IT. "Which of the seven
+  // questions does this creator's speech never answer" is the number that says
+  // whether the bank is right, and it is unrecoverable once the rows are merged
+  // into a store of 1,339. A console line expires within days; the job result is
+  // a row. NULL means the pass did not run, never "it found nothing".
+  let targetedYield: Record<string, unknown> | null = null
   const ownerId = (existing as { owner_id?: string } | null)?.owner_id ?? null
   // No owner means no row can be attributed, and an unattributed claim about a
   // person is worse than none at all.
@@ -296,9 +307,25 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     // video was made, not what it concluded — and the caption prompt refuses to
     // file an opinion as `stated` for exactly that reason.
     const captions = Array.isArray(p.captions) ? p.captions : []
-    const [fromAudio, fromCaptions] = await Promise.all([
+    // ⚠️⚠️ THREE PASSES, AND THE THIRD IS AN ADDITION RATHER THAN A REPLACEMENT.
+    // The general pass asks "what does she know" and answers it well (84%
+    // substance on transcript rows); what it cannot guarantee is that the seven
+    // things a script actually needs — a number, an enemy, an episode, someone
+    // else's words, a contrarian position, a mistake, her real CTA — are among
+    // the answers. The targeted pass asks for them by name and keeps the EVIDENCE
+    // sentence beside each conclusion. Both write through the same merge, so a
+    // fact both find increments `times_seen` instead of duplicating.
+    //
+    // ⚠️ AND TRACK B DOES NOT RUN WITHOUT A PRODUCT ON RECORD. Not every creator
+    // sells anything; asking "what does she charge" of a creator with no offer
+    // produces an invented price, which is the exact failure this project has
+    // spent months removing. `hasProduct` is a STORED ENTITY, never an inference
+    // from the transcript.
+    const hasProduct = await ownerHasLiveProduct(ownerId)
+    const [fromAudio, fromCaptions, fromTargeted] = await Promise.all([
       extractKnowledgeFromAudio(handle, platform, transcripts),
       extractKnowledgeFromCaptions(handle, platform, captions),
+      extractTargetedKnowledge(handle, platform, transcripts, questionsFor(hasProduct)),
     ])
     // Audio first: where both sources produced the same claim, the one somebody
     // was HEARD saying should win the dedup below.
@@ -306,72 +333,71 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     // become indistinguishable one line later. `basis` correlates today only
     // because captions are clamped to `demonstrated`; recording the pipeline is
     // the fact, and the correlation is the coincidence.
+    // ⚠️⚠️ AND TWO THINGS THAT NEED NO MODEL CALL AT ALL. "A lot of you have been
+    // asking how I price these" is her audience's demand, in her words, already
+    // transcribed — the only audience-demand signal in the system that does not
+    // wait on comment ingestion, and the supply `audience_questions` was deleted
+    // for lacking. "I'll do a whole video on that" is a backlog she announced and
+    // forgot. Both are a cue phrase and the clause after it, so a regex either
+    // finds her sentence or finds nothing; a model asked the same question would
+    // paraphrase and occasionally invent.
+    const mined = mineTranscripts(transcripts)
+    if (mined.length) {
+      console.log(JSON.stringify({
+        event: 'transcript_lines_mined',
+        lines: mined.length,
+        asked: mined.filter((l) => l.text.startsWith('Audience keeps asking')).length,
+        promised: mined.filter((l) => l.text.startsWith('Promised to cover')).length,
+      }))
+    }
+    targetedYield = {
+      asked: questionsFor(hasProduct).length,
+      returned: fromTargeted.length,
+      track_b_asked: hasProduct,
+      mined_lines: mined.length,
+      // Per question, because the SILENCE is the measurement.
+      by_question: questionsFor(hasProduct).reduce<Record<string, number>>((acc, q) => {
+        acc[q.id] = fromTargeted.filter((r) => String(r?.question_id ?? '') === q.id).length
+        return acc
+      }, {}),
+    }
     const raw = [
+      // ⚖️ THE TARGETED ANSWERS GO FIRST, AND THE REASON IS THE WRITE CAP. A scan
+      // may store `KNOWLEDGE_ROWS_PER_SCAN` rows and the slice is taken from the
+      // front, so the seven answers a script was measured to need must not be the
+      // ones a hundred caption rows push over the edge.
+      ...fromTargeted.map((r) => ({ ...r, __source: 'transcript' as const })),
+      // ⚖️ MINED LINES ARE `stated` BY CONSTRUCTION AND CONFIDENT BY
+      // CONSTRUCTION. She said the sentence — it is in the transcript, and the
+      // evidence field carries it verbatim — so there is no model judgement to be
+      // unsure about. `times_seen` is 1 because the dedupe above keeps the first
+      // occurrence only; the merge increments it if a later scan finds it again.
+      ...mined.map((l) => ({
+        kind: l.kind,
+        text: l.text,
+        basis: 'stated',
+        times_seen: '1',
+        confidence: '0.9',
+        source_video: l.source_video,
+        evidence: l.evidence,
+        __source: 'transcript' as const,
+      })),
       ...fromAudio.map((r) => ({ ...r, __source: 'transcript' as const })),
       ...fromCaptions.map((r) => ({ ...r, __source: 'caption' as const })),
     ]
-    // A recorded optional line, or null. Blank and whitespace-only collapse to
-    // null so an extractor that emits "" for a field it had nothing for cannot
-    // be read as having recorded something.
-    const shortOrNull = (v: unknown): string | null => {
-      const t = String(v ?? '').trim().replace(/\s+/g, ' ')
-      return t === '' ? null : t.slice(0, 240)
-    }
-    let rows = raw
-      .filter((r) => typeof r?.text === 'string' && r.text.trim().length > 0)
-      .slice(0, KNOWLEDGE_ROWS_PER_SCAN)
-      .map((r) => ({
-        owner_id: ownerId,
-        voice_id: voiceId,
-        kind: r.kind,
-        text: r.text.trim().slice(0, 240),
-        // An unreadable basis becomes `inferred` here rather than at the
-        // database default, so the weakest reading is chosen where the value is
-        // actually known to be junk.
-        basis: ['stated', 'demonstrated', 'inferred'].includes(r.basis) ? r.basis : 'inferred',
-        source: r.__source,
-        times_seen: Math.max(1, Math.min(50, Number(r.times_seen) || 1)),
-        // ⚖️ AN UNREADABLE CONFIDENCE IS 0.5, NEVER 1. Silence about how sure
-        // the extractor was must not read as certainty — the same rule that
-        // makes an unstated `basis` degrade to `inferred`.
-        confidence: (() => {
-          const n = Number(r.confidence)
-          return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.5
-        })(),
-        // The video it was actually read out of, so a creator disputing an item
-        // can go and watch it. Out-of-range or unparseable yields null rather
-        // than a wrong URL, because pointing at the wrong video is worse than
-        // pointing at none.
-        source_url: (() => {
-          const i = Number(r.source_video)
-          return Number.isInteger(i) && i >= 1 && i <= urls.length ? urls[i - 1] : null
-        })(),
-        last_observed_at: new Date().toISOString(),
-        // ⚖️ THE TWO HALVES THE EXTRACTOR USED TO DROP. Both are OPTIONAL and
-        // both normalise an absent/blank/whitespace value to null: "nobody
-        // recorded a cost" and "it cost nothing" are different states, and only
-        // null says the first. Capped at 240 like `text`, for the same reason.
-        cost: shortOrNull(r.cost),
-        consensus: shortOrNull(r.consensus),
-      }))
-    // ⚠️ THE TAXONOMY IS A CLOSED SET AND THE MODEL DOES NOT KNOW THAT.
-    // `creator_knowledge_kind_valid` CHECKs this list, so an unlisted kind is a
-    // failed INSERT for the whole batch — hence the filter. Duplicated from
-    // `KNOWLEDGE_KINDS` in @twinai/shared on purpose: the worker has no runtime
-    // dep on it (see directorContract.ts), and `knowledgeKindParity.test.ts`
-    // fails if the two ever diverge.
-    const KNOWLEDGE_KINDS_WORKER = ['fact', 'opinion', 'topic', 'example', 'experience', 'framework', 'claim', 'product', 'covered']
-    // ⚖️ DROPPED, BUT NEVER SILENTLY. Measured on a real 501-caption corpus:
-    // 10 of 489 extracted items came back as `action` or `tool` — categories the
-    // model wanted and the taxonomy does not have. Filtering them is right;
-    // discarding them without a word is how a systematic gap in the taxonomy
-    // looks exactly like nothing happening.
-    const dropped = rows.filter((r) => !KNOWLEDGE_KINDS_WORKER.includes(r.kind))
-    if (dropped.length) {
-      const kinds = [...new Set(dropped.map((r) => r.kind))].slice(0, 10)
-      console.warn(JSON.stringify({ event: 'knowledge_kind_rejected', count: dropped.length, of: rows.length, kinds }))
-    }
-    rows = rows.filter((r) => KNOWLEDGE_KINDS_WORKER.includes(r.kind))
+    // ⚖️ ONE NORMALISATION, TWO JOBS. Every rule that turns a model's answer
+    // into a storable row now lives in `knowledgeRows.ts`, because
+    // `remine_knowledge` re-reads stored transcripts with a newer extractor and
+    // a second copy of these rules is how the two paths start disagreeing about
+    // what a claim is. The taxonomy filter and its loud drop went with it.
+    let rows = knowledgeRowsFrom({
+      items: raw,
+      ownerId,
+      voiceId,
+      urls,
+      cap: KNOWLEDGE_ROWS_PER_SCAN,
+      version: EXTRACTOR_VERSION,
+    })
     if (rows.length) {
       // ⚠️ NOT AN UPSERT, AND THE REASON IS A BUG ALREADY FIXED ONCE HERE.
       // `saveMintedEntity` used `onConflict` against a PARTIAL index; Postgres
@@ -434,6 +460,12 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     attempted: urls.length,
     routes,
     knowledge_items: knowledgeStored,
+    // ⚠️ THE DENOMINATOR FOR THE ONE NUMBER THIS WHOLE PROBLEM TURNS ON. Yield
+    // was reconstructed after the fact as "1.63 rows per transcript", which
+    // divides by VIDEOS and hides the cap that decides how much text the
+    // extractor actually read. Characters is the honest denominator, it is free
+    // to record here, and without it the loss is not written down anywhere.
+    transcript_chars: transcripts.reduce((n, t) => n + t.length, 0),
     // ⚠️ STORED, NOT LOGGED — the counter-durability rule. This is the number the
     // 5→10 decision is waiting on: how much NEW canonical substance positions
     // 6-10 bought, after the merge collapsed repeats. A console line would
@@ -443,6 +475,7 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     // whose measurement query failed, must not read as "the extra videos added
     // nothing" — that is the answer this instrument exists to find honestly.
     cohort_yield: cohortYield,
+    targeted_yield: targetedYield,
     fields_from_audio: audioFields.size,
     fields_from_captions: Object.values(provenance).filter((v) => v === 'caption_synthesis').length,
   }
