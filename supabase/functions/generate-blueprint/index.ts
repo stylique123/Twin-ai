@@ -6269,6 +6269,37 @@ function orderForSupplyInline<T extends RotatableInline>(
 }
 // ── END ROTATION ────────────────────────────────────────────────────────────
 
+// ── THE ANSWERS SHE TYPED HOLD SLOTS, INLINED ───────────────────────────────
+//
+// Mirror of `packages/shared/src/askedReservation.ts`. She answered the question
+// and then competed with a caption for the slot: an `asked` row shares no words
+// with a video about a different subject, so it scored zero on lexical overlap
+// and lost to "she made a video about leather". Measured: 21 asked rows, 21 of
+// them substance (100% against 17% for captions), 166 characters average against
+// 59, 14 carrying a first-person episode.
+const ASKED_RESERVED_MAX_INLINE = 4
+
+function wasAskedInline(item: { source?: string | null }): boolean {
+  return String(item?.source ?? '') === 'asked'
+}
+
+function reserveAskedInline<T extends { source?: string | null }>(
+  ranked: readonly T[],
+  cap: number,
+  reservedMax: number = ASKED_RESERVED_MAX_INLINE,
+): { reserved: T[]; pool: T[] } {
+  if (cap <= 0) return { reserved: [], pool: [] }
+  const room = Math.max(0, Math.min(reservedMax, cap))
+  const reserved: T[] = []
+  const pool: T[] = []
+  for (const item of ranked) {
+    if (wasAskedInline(item) && reserved.length < room) reserved.push(item)
+    else pool.push(item)
+  }
+  return { reserved, pool }
+}
+// ── END ASKED RESERVATION ───────────────────────────────────────────────────
+
   const rankedRead = await readKnowledge((cols) => admin
     .from('creator_knowledge')
     .select(cols)
@@ -7735,7 +7766,26 @@ function orderForSupplyInline<T extends RotatableInline>(
     // substance. A video that has to teach a method or earn a purchase needs
     // more than the standing guarantee; one meant to be enjoyed does not. The
     // compiler clamps it so no answer can ever ask for LESS.
-    const speakable = selectSpeakable(focusOrdered, 10, intent.substanceFloor)
+    // ⚠️ AND THE ANSWERS SHE TYPED CANNOT BE OUTBID FOR A SLOT. Every `asked` row
+    // is material she wrote herself, knowing it would be used — 100% substance
+    // against 17% for captions, 166 characters against 59 — and it was ranked by
+    // lexical overlap with the video's topic, which is the one axis it is worst
+    // at. `reserveAskedInline` holds up to four of the ten; the rest of her
+    // answers stay in the pool rather than being removed from the running.
+    const askedHold = reserveAskedInline(focusOrdered, 10)
+    // ⚖️ THE FLOOR COMES DOWN BY WHAT THE RESERVATION ALREADY SATISFIES. A
+    // reserved answer that IS substance already counts toward the guarantee;
+    // leaving the floor untouched would reserve substance twice and starve the
+    // slots the video's own subject needs.
+    const askedSubstance = askedHold.reserved.filter((k) => SUBSTANCE_KINDS.has(k.kind)).length
+    const speakable = [
+      ...askedHold.reserved,
+      ...selectSpeakable(
+        askedHold.pool,
+        10 - askedHold.reserved.length,
+        Math.max(0, intent.substanceFloor - askedSubstance),
+      ),
+    ]
     // ⚖️ THE LEDGER'S UNIT IS WHAT THE WRITER WAS SHOWN. These ten are the spend;
     // 0215 records them against this generation and rotates them to the back of
     // the next tie. An item with no id is one read before 0215 was applied — it

@@ -80,9 +80,22 @@ describe('the edge copy matches shared', () => {
     // taken — reordering after it would change nothing, because the ten rows
     // would already have been chosen. The floor is passed rather than defaulted
     // so the viewer-outcome answer can raise it.
-    expect(EDGE).toMatch(/const speakable = selectSpeakable\(focusOrdered, 10, intent\.substanceFloor\)/)
+    //
+    // ⚠️ RE-ANCHORED 2026-09-17, CLAIM UNCHANGED AND STRICTLY STRONGER. The
+    // selection now runs on `askedHold.pool` rather than `focusOrdered` directly,
+    // because the answers the creator TYPED hold up to four of the ten slots
+    // instead of competing for them on lexical overlap. What this test asserts is
+    // the same: the cut happens HERE, after the focus reordering, and the floor is
+    // passed rather than defaulted. The order of the three steps is pinned below,
+    // so applying the reservation after the cut — which would change nothing —
+    // still fails.
+    expect(EDGE).toMatch(/const askedHold = reserveAskedInline\(focusOrdered, 10\)/)
+    expect(EDGE).toMatch(/selectSpeakable\(\s*\n\s*askedHold\.pool,/)
+    expect(EDGE).toMatch(/Math\.max\(0, intent\.substanceFloor - askedSubstance\)/)
     expect(EDGE.indexOf('const focusOrdered = preferKindsInline(relevanceOrdered'))
-      .toBeLessThan(EDGE.indexOf('const speakable = selectSpeakable(focusOrdered'))
+      .toBeLessThan(EDGE.indexOf('const askedHold = reserveAskedInline(focusOrdered'))
+    expect(EDGE.indexOf('const askedHold = reserveAskedInline(focusOrdered'))
+      .toBeLessThan(EDGE.indexOf('selectSpeakable(\n        askedHold.pool,'))
     // ⚠️ THE OLD LINE MUST BE GONE, not merely bypassed. A surviving
     // `.slice(0, 10)` on the relevance order is the defect intact.
     const code = EDGE.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')
