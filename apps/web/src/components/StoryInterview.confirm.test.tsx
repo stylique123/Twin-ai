@@ -17,11 +17,11 @@ import { StoryInterview } from './StoryInterview'
 // 3 while the screen asked three, and the day the opening set became FIVE all
 // fourteen of them failed on a screen that was working correctly. The claims
 // were never about the number — "every question gets a blank box", "silence
-// writes nothing" — so they now count `openingSetFor()`, the same source the
+// writes nothing" — so they now count `OPENING_THREE`, the same source the
 // component renders from. A count changed by decision must not read as a
 // regression.
-import { openingSetFor } from '@twinai/shared'
-const SET = openingSetFor().length
+import { OPENING_THREE } from '@twinai/shared'
+const SET = OPENING_THREE.length
 
 
 const mocks = vi.hoisted(() => ({
@@ -93,7 +93,7 @@ describe('a confirmed suggestion travels the path a typed answer travels', () =>
     // on a screen that had resolved all four correctly. The invariant is that
     // nothing is left unresolved, at any set size.
     expect(skipQuestion.mock.calls.map((c) => c[0]).sort())
-      .toEqual(openingSetFor().map((q) => q.id).filter((id) => id !== 'best_result').sort())
+      .toEqual([...OPENING_THREE].filter((id) => id !== 'best_result').sort())
   })
 
   it('carries an edit through the same single path', async () => {
@@ -128,7 +128,7 @@ describe('silence is not confirmation', () => {
     expect(answerQuestion).not.toHaveBeenCalled()
     // Silence resolves the WHOLE set as skips, whatever its size.
     expect(skipQuestion.mock.calls.map((c) => c[0]).sort())
-      .toEqual(openingSetFor().map((q) => q.id).sort())
+      .toEqual([...OPENING_THREE].sort())
   })
 
   it('writes nothing for a shown suggestion when they skip all', async () => {

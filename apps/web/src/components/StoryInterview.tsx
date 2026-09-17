@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  CREATOR_QUESTIONS, ANSWER_MAX, suggestStoryAnswers, openingSetFor, anchorAllToSubNiche,
+  CREATOR_QUESTIONS, OPENING_THREE, ANSWER_MAX, suggestStoryAnswers, anchorAllToSubNiche,
   creatorQuestionsFor, openingQuestionsFor, type SellsKind,
-  type StorySuggestion,
+  type CreatorQuestion, type StorySuggestion,
 } from '@twinai/shared'
 import { answerQuestion, skipQuestion, markQuestionShown, loadExtractedKnowledge } from '../lib/creatorAnswers'
 import { readStoryDraft, writeStoryDraft, clearStoryDraft } from '../lib/storyDraft'
@@ -10,12 +10,9 @@ import { readStoryDraft, writeStoryDraft, clearStoryDraft } from '../lib/storyDr
 /**
  * THE STORY QUESTIONS, ASKED IN THE WAIT THAT ALREADY EXISTS.
  *
- * ⚠️ NO LONGER THREE, AND THE COUNT IS NOT WRITTEN DOWN ANYWHERE A READER HAS TO
- * KEEP IN SYNC. `openingSetFor` returns the seed plus what the store most lacks;
- * this file renders whatever it returns. The two extra questions are CHOSEN from
- * the existing bank by the same selector the post-script card uses — no new
- * wordings were written, because a second catalogue is a second thing to keep
- * honest.
+ * ⚠️ THREE, AND EXTRA QUESTIONS DO NOT BELONG HERE. This screen exists for the
+ * three the DNA can word; the depth questions that need no scan are asked on the
+ * building step, where the wait already is.
  *
  * ⚠️ THE SIX QUESTIONS ABOVE THIS ONE ARE ALL CATEGORICAL — what you do, who
  * for, what you sell. Nothing asks "tell me about a time", and `experience`
@@ -120,15 +117,20 @@ export function StoryInterview({
     // it wins on the ids it owns.
     const byNiche = creatorQuestionsFor(niche, CREATOR_QUESTIONS, sells === 'none' ? null : sells)
     const worded = openingQuestionsFor(byNiche, sells, stageBand)
-    // ⚖️ THE SET IS CHOSEN FROM THE REWORDED BANK, NOT THE RAW ONE, so the two
-    // extra questions arrive already carrying her niche wording — and `kind` is
-    // untouched by rewording, so the deficit maths is unaffected by running
-    // second.
+    // ⚠️⚠️ THREE, AND IT WENT TO FIVE ONCE BY MY MISREADING. The owner asked for
+    // extra depth questions on the SCAN screen, where the wait already is, and I
+    // appended two here instead — onto the one screen whose whole purpose is the
+    // three questions the DNA can word. `Onboarding.tsx` records why they live
+    // here and nowhere else: "on this screen the DNA does not exist yet and they
+    // could never be worded in her world." Adding to this set spends the
+    // creator's attention on the screen that is already earning it.
     //
-    // ⚠️ `counts` IS UNDEFINED HERE ON PURPOSE. At onboarding the store is empty
-    // and `openingSetFor` then weights on the seed's own kinds alone, which is
-    // the honest input: a read that returned zeros would claim we had checked.
-    const set = openingSetFor(worded)
+    // ⚖️ THE EXTRA DEPTH QUESTIONS BELONG WITH `profileQuestionsFor`, on the
+    // building step, which already asks categorical questions one at a time and
+    // already parks the finished scan until the creator taps Done.
+    const set = OPENING_THREE
+      .map((id) => worded.find((x) => x.id === id))
+      .filter((q): q is CreatorQuestion => !!q)
     // ⚠️ ANCHORED LAST. The niche rewrite decides WHICH words; this decides whose
     // work they name, and it must see the final wording to find the placeholder.
     return anchorAllToSubNiche(set, subNiche)

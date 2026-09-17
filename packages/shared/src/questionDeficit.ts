@@ -25,9 +25,7 @@
 // ⚖️ AND IT IS NOT RANDOMISED. Variety nobody asked for would trade a
 // deterministic, testable order for the appearance of intelligence.
 
-import {
-  CREATOR_QUESTIONS, OPENING_THREE, type CreatorQuestion, type AskedKind,
-} from './creatorQuestions'
+import { CREATOR_QUESTIONS, type CreatorQuestion, type AskedKind } from './creatorQuestions'
 
 /** How many rows of each kind the creator's store already holds.
  *
@@ -101,76 +99,4 @@ export function storeGap(counts: StoreCounts | null | undefined): AskedKind | nu
   // the caller distinguishes them by whether it had counts at all — which is why
   // this takes the counts rather than a precomputed boolean.
   return empty.length === 0 ? null : (empty[0] ?? null)
-}
-
-/** How many questions are added to `OPENING_THREE` at onboarding.
- *
- *  ⚠️ THE FIRST THREE ARE NOT RE-ORDERED, AND THAT IS DELIBERATE. Their order
- *  is already defended in `creatorQuestions.ts`: the first two are the ones whose
- *  answers most change a script, so a creator who answers two and walks away has
- *  still given the two that count. Deficit weighting picks what comes AFTER
- *  them; it must never reach back and reshuffle the seed. */
-export const OPENING_EXTRA = 2
-
-/**
- * The opening questions, seed plus the ones the store most lacks.
- *
- * ⚠️ THE EXTRA TWO ARE CHOSEN, NEVER WRITTEN. Adding new wordings would create a
- * second catalogue to keep honest — the exact objection `OPENING_THREE` records
- * against writing three more. These come out of the existing bank, already
- * carrying hints and already niche-rewritable, and WHICH ones is decided by the
- * same `nextQuestionByDeficit` the post-script card uses. One selector, two
- * callers.
- *
- * ⚖️ THE SEED'S OWN KINDS COUNT AS SUPPLY, WHICH IS THE WHOLE TRICK. The three
- * are two `experience` and one `opinion`. Feeding those in as rows the creator
- * effectively already has makes the scarcest remaining kinds `framework` and
- * `claim` — so the selector lands on a method question and a number question
- * without anyone hard-coding that choice. Those are precisely the two kinds
- * `questionDeficit` exists to protect: measured on caption-derived stores,
- * `figures` is 2 across 374 items.
- *
- * ⚠️ AND A REAL STORE COUNT STILL OUTRANKS THE SEED. At onboarding the store is
- * empty and `counts` is null, so the seed alone decides. A returning creator with
- * eight opinions and no frameworks gets the framework question for the real
- * reason, not the assumed one.
- */
-export function openingSetFor(
-  bank: readonly CreatorQuestion[] = CREATOR_QUESTIONS,
-  counts: StoreCounts | null | undefined = undefined,
-  extra: number = OPENING_EXTRA,
-): readonly CreatorQuestion[] {
-  const seed = OPENING_THREE
-    .map((id) => bank.find((q) => q.id === id))
-    .filter((q): q is CreatorQuestion => !!q)
-
-  // ⚠️ THE SEED IS RETURNED WHOLE EVEN IF `extra` IS 0 OR THE BANK RUNS DRY. A
-  // creator must never be shown fewer than the three that were measured.
-  const supply: StoreCounts = {}
-  for (const q of seed) supply[q.kind] = (supply[q.kind] ?? 0) + 1
-  if (counts !== null && counts !== undefined) {
-    for (const k of KINDS) {
-      const n = Math.max(0, Math.trunc(counts[k] ?? 0))
-      if (n > 0) supply[k] = (supply[k] ?? 0) + n
-    }
-  }
-
-  const put: string[] = seed.map((q) => q.id)
-  const chosen: CreatorQuestion[] = []
-  for (let i = 0; i < Math.max(0, Math.trunc(extra)); i++) {
-    const next = nextQuestionByDeficit(put, supply, bank)
-    if (next === null) break
-    chosen.push(next)
-    put.push(next.id)
-    // ⚠️ COUNTED AS SUPPLY IMMEDIATELY. `put` alone already stops the same
-    // QUESTION recurring, so on today's bank removing this line changes nothing
-    // — a mutant of it survives, and it survives honestly. What it protects is
-    // the KIND: as soon as one kind holds two adjacent unanswered questions and
-    // stays scarcest, the second call would see the first call's deficit and ask
-    // both of them while another kind sits at zero. Pinned on a synthetic bank
-    // in `theOpeningSetIsChosenAndItIsHers`, because the real bank cannot
-    // currently express the case.
-    supply[next.kind] = (supply[next.kind] ?? 0) + 1
-  }
-  return [...seed, ...chosen]
 }
