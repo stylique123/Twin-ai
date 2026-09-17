@@ -3384,6 +3384,9 @@ function carriesFigure(item: { kind?: string; text?: string }): boolean {
   return SUBSTANCE_KINDS.has(String(item?.kind)) && FIGURE.test(String(item?.text ?? ''))
 }
 
+/** Mirrors ASKED_FLOOR in packages/shared/src/knowledgeSelection.ts. */
+const ASKED_FLOOR = 2
+
 function selectSpeakable<T extends { kind: string }>(
   ranked: readonly T[], cap: number, floor: number = SUBSTANCE_FLOOR,
 ): T[] {
@@ -3393,7 +3396,19 @@ function selectSpeakable<T extends { kind: string }>(
   // so relevance still decides WHICH experience.
   const spoken = substance.filter(wasSpoken)
   const rest = substance.filter((i) => !wasSpoken(i))
-  const bySpokenFirst = [...spoken, ...rest]
+  // ⚠️ AND WITHIN SPOKEN, THE ANSWERS THE CREATOR TYPED GO FIRST. Mirrors
+  // ASKED_FLOOR in packages/shared/src/knowledgeSelection.ts, which carries the
+  // reasoning. `SPOKEN_SOURCES` already admits 'asked' to the reservation, but
+  // the order INSIDE it is relevance's — and relevance is keyword overlap with
+  // the brief, a measure that cannot tell an answer the creator typed from a
+  // caption row. So the richest material in the store was losing slots to the
+  // weakest. Bounded at ASKED_FLOOR so a creator with twenty answers does not
+  // have every slot filled by their own back catalogue; enters at the HEAD so it
+  // cannot evict the episode, which takes the last reserved slot.
+  const promotedAsked = spoken.filter((i) => String((i as { source?: unknown }).source ?? '') === 'asked')
+    .slice(0, ASKED_FLOOR)
+  const promotedSet = new Set<T>(promotedAsked)
+  const bySpokenFirst = [...promotedAsked, ...spoken.filter((i) => !promotedSet.has(i)), ...rest]
   const floorSlots = Math.min(floor, cap)
   // ⚠️ ONE SLOT HELD FOR A FIRST-PERSON EPISODE. Mirrors FIRST_PERSON_FLOOR in
   // packages/shared/src/knowledgeSelection.ts. A physio with TWO stored

@@ -167,6 +167,49 @@ export function isFirstPerson(item: { kind?: string }): boolean {
   return FIRST_PERSON_KINDS.has(String(item?.kind))
 }
 
+/** How many reserved slots are held for an answer the creator TYPED.
+ *
+ * ⚠️ THE DEFECT, AND IT IS A PRIORITY INVERSION. `source = 'asked'` is the only
+ * material in this store with no extraction step between the creator and the
+ * row: they were shown a specific gap and they typed the answer to it. Every
+ * other row is a model recovering a position from evidence. And yet an answer
+ * competes for its slot on KEYWORD OVERLAP with the brief, against caption rows
+ * that say a video was made about something. The richest material in the store
+ * loses slots to the weakest on a measure that cannot see the difference.
+ *
+ * ⚖️ TWO, NOT "ALWAYS", AND THE DIFFERENCE IS THE WHOLE DESIGN. "Always include
+ * the answers" sounds right and is the opposite failure: a creator who has
+ * answered twenty questions would have every slot consumed by their back
+ * catalogue of answers, and a video about a phone would be written out of what
+ * they once typed about pricing. Two is enough that answering is never futile —
+ * the complaint being fixed is "I answered and it was ignored" — and small
+ * enough that relevance still decides the rest of the prompt. It is the same
+ * argument as `FIRST_PERSON_FLOOR`, at the same size and for the same reason.
+ *
+ * ⚠️ IT RESERVES, IT DOES NOT INJECT. With no answers in the store this is a
+ * no-op and the selection is byte-identical to before.
+ *
+ * ⚠️⚠️ AND IT IS HONESTLY A NO-OP TODAY. §G52 records that the ask-beat answer
+ * path is wired and has never carried a row; measured, ZERO of the stored rows
+ * carry `source: 'asked'`. So this changes no script that exists. It is built
+ * now because the alternative is discovering the inversion on the day the first
+ * creator answers a question and watching their answer lose to a caption — and
+ * because a no-op floor is exactly what `FIRST_PERSON_FLOOR` was on the day it
+ * shipped, against a store that did have episodes nobody was reading.
+ */
+export const ASKED_FLOOR = 2
+
+/** Did the creator type this themselves, in answer to a question we asked? */
+export function wasAsked(item: { source?: string | null }): boolean {
+  return String(item?.source ?? '') === ASKED_SOURCE_VALUE
+}
+
+/** ⚠️ DUPLICATED FROM `creatorQuestions.ts:ASKED_SOURCE` RATHER THAN IMPORTED,
+ *  because importing it here would make this module depend on the question
+ *  machinery to answer a selection question. Pinned by
+ *  `askedFloor.test.ts`, which fails the moment the two disagree. */
+const ASKED_SOURCE_VALUE = 'asked'
+
 export function selectSpeakable<T extends SelectableItem>(
   ranked: readonly T[],
   cap: number,
@@ -189,7 +232,35 @@ export function selectSpeakable<T extends SelectableItem>(
   // 58% / 23% for the same stores with caption rows mixed in.
   const spoken = substance.filter(wasSpoken)
   const rest = substance.filter((i) => !wasSpoken(i))
-  const bySpokenFirst = [...spoken, ...rest]
+
+  // ── AND WITHIN SPOKEN, THE ANSWERS THE CREATOR TYPED GO FIRST ───────────
+  //
+  // ⚠️ THE INVERSION THIS FIXES. `SPOKEN_SOURCES` above already puts `asked`
+  // into the reservation, and its own comment says an answer earns the slot
+  // "for the same reason and more directly" as a transcript. But inside the
+  // reservation the order is relevance's, and relevance is KEYWORD OVERLAP with
+  // the brief — a measure that cannot tell an answer the creator typed from a
+  // caption row, and on which an answer about pricing scores zero against a
+  // brief about a phone. So the richest material in the store loses its slot to
+  // the weakest, on a measure blind to the difference.
+  //
+  // ⚖️ BOUNDED, AND THE BOUND IS THE POINT. Only `ASKED_FLOOR` answers are
+  // promoted; the rest stay exactly where relevance put them. Promoting all of
+  // them would let a creator with twenty answers have every slot filled by their
+  // own back catalogue, which is the same defect pointing the other way.
+  //
+  // ⚖️ A STABLE PARTITION, LIKE EVERY OTHER REORDERING IN THIS FILE. The
+  // promoted answers keep their relative relevance order, and so does everything
+  // behind them.
+  //
+  // ⚖️ AND IT COMPOSES WITH THE EPISODE FLOOR BELOW BY TAKING THE OPPOSITE END.
+  // Answers enter at the HEAD of the reservation and the episode takes its LAST
+  // slot, so neither can evict the other while `floor >= 2`. At `floor === 1`
+  // the episode still wins, deliberately: that floor was measured 17-7 and this
+  // one has no production data at all, so the unmeasured rule yields.
+  const promotedAsked = spoken.filter(wasAsked).slice(0, ASKED_FLOOR)
+  const promoted = new Set<T>(promotedAsked)
+  const bySpokenFirst = [...promotedAsked, ...spoken.filter((i) => !promoted.has(i)), ...rest]
   const floorSlots = Math.min(floor, cap)
 
   // ── ONE SLOT HELD FOR A FIRST-PERSON EPISODE ────────────────────────────

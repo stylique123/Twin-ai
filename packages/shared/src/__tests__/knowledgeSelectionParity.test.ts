@@ -165,7 +165,15 @@ describe('the edge prefers spoken material by the same rule', () => {
     // stores scored 73% grounded / 8% generic against 58% / 23% with caption
     // rows mixed in — but WHICH experience is still relevance's call.
     expect(EDGE).toMatch(/const spoken = substance\.filter\(wasSpoken\)/)
-    expect(EDGE).toMatch(/const bySpokenFirst = \[\.\.\.spoken, \.\.\.rest\]/)
+    //
+    // ⚠️ RE-ANCHORED FOR ASKED_FLOOR, AND THE CLAIM IS UNCHANGED. The
+    // reservation now leads with up to two answers the creator TYPED — still a
+    // stable partition, still no sort, still relevance deciding within each
+    // group. The assertion checks that shape rather than the old two-term
+    // literal: what must never appear here is a `.sort(`.
+    expect(EDGE).toMatch(/const bySpokenFirst = \[\.\.\.promotedAsked, \.\.\.spoken\.filter\(.*\), \.\.\.rest\]/)
+    const fn = EDGE.slice(EDGE.indexOf('function selectSpeakable'))
+    expect(fn.slice(0, fn.indexOf('const taken'))).not.toMatch(/\.sort\(/)
     expect(EDGE).toMatch(/const keepSubstance = bySpokenFirst\.slice\(0, floorSlots\)/)
     // ⚠️ AND THE FIRST-PERSON SLOT IS HELD IN THE EDGE COPY TOO. A physio with
     // two stored episodes got three scripts containing none; the floor swaps one
