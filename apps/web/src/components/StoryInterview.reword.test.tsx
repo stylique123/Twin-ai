@@ -25,9 +25,9 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { StoryInterview } from './StoryInterview'
 import { readStoryDraft } from '../lib/storyDraft'
-import { openingSetFor } from '@twinai/shared'
+import { OPENING_THREE } from '@twinai/shared'
 
-const SET = openingSetFor().length
+const SET = OPENING_THREE.length
 
 const mocks = vi.hoisted(() => ({
   answerQuestion: vi.fn(async (_q: { id: string }, _a: string, _v: string | null) => ({ ok: true as const })),
@@ -116,7 +116,7 @@ describe('a profile arriving mid-answer must not cost her the answer', () => {
     // rule here — a cast defeats the compiler.
     const [question, answer] = answerQuestion.mock.calls[0]
     expect(answer).toBe(HERS)
-    const ids = openingSetFor().map((q) => q.id)
+    const ids = [...OPENING_THREE]
     expect(ids, `stored under '${question.id}', which the bank does not own`).toContain(question.id)
   })
 })

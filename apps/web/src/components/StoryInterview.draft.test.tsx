@@ -27,11 +27,11 @@ import { readStoryDraft, STORY_DRAFT_IS_PER_DEVICE } from '../lib/storyDraft'
 // 3 while the screen asked three, and the day the opening set became FIVE all
 // fourteen of them failed on a screen that was working correctly. The claims
 // were never about the number — "every question gets a blank box", "silence
-// writes nothing" — so they now count `openingSetFor()`, the same source the
+// writes nothing" — so they now count `OPENING_THREE`, the same source the
 // component renders from. A count changed by decision must not read as a
 // regression.
-import { openingSetFor } from '@twinai/shared'
-const SET = openingSetFor().length
+import { OPENING_THREE } from '@twinai/shared'
+const SET = OPENING_THREE.length
 
 
 const mocks = vi.hoisted(() => ({

@@ -13,17 +13,17 @@
 // the script would never contain it. Nothing would fail. That is the exact shape
 // of every "built, correct, and nothing reads it" defect already closed here.
 //
-// ⚠️ AND IT MATTERS MORE SINCE THE OPENING SET GREW. `openingSetFor` picks the
-// extra questions BY KIND — deliberately the scarcest ones — so a kind the
-// writer ignores would be selected MORE often, not less: the store would never
-// accumulate it, so it would look permanently scarce and keep winning.
+// ⚠️ AND `nextQuestionByDeficit` PICKS BY KIND — deliberately the scarcest one —
+// so a kind the writer ignores would be selected MORE often, not less: the store
+// would never accumulate it, so it would look permanently scarce and keep
+// winning. The defect would actively crowd out the questions that work.
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { SUBSTANCE_KINDS } from '../knowledgeSelection'
 import { CREATOR_QUESTIONS, answerToKnowledge, type AskedKind } from '../creatorQuestions'
-import { openingSetFor } from '../questionDeficit'
+import { OPENING_THREE } from '../creatorQuestions'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
 const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
@@ -68,8 +68,10 @@ describe('every kind a question can mint is a kind the writer reads', () => {
   // ⚠️ THE OPENING SET IS THE ONE A CREATOR IS MOST LIKELY TO ANSWER, so it gets
   // its own assertion rather than relying on the bank sweep above.
   it('every question in the opening set mints a kind the writer reads', () => {
-    const set = openingSetFor()
-    expect(set.length).toBeGreaterThan(3)
+    const set = OPENING_THREE
+      .map((id) => CREATOR_QUESTIONS.find((q) => q.id === id))
+      .filter((q): q is (typeof CREATOR_QUESTIONS)[number] => !!q)
+    expect(set.length).toBe(OPENING_THREE.length)
     const edge = edgeSubstanceKinds()
     for (const q of set) {
       expect(SUBSTANCE_KINDS.has(q.kind), `opening question ${q.id} mints '${q.kind}'`).toBe(true)

@@ -103,13 +103,14 @@ describe('1. occupation chips: 10 stored values, 8 offered, every one answered',
 
 describe('3. the three story questions are one screen, same three rows', () => {
   it('shows all three prompts on one screen, not one at a time', () => {
-    // ⚠️ RE-ANCHORED, CLAIM UNCHANGED: every prompt on ONE screen, never
-    // paginated. The old anchor named `OPENING_THREE.map`; the set is now built
-    // by `openingSetFor` and the seed constant is no longer mapped here. A
-    // progress counter ("2 of 5") is still the thing that must not appear,
-    // because it turns a screen into a queue.
+    // ⚠️ RE-ANCHORED TWICE, CLAIM UNCHANGED BOTH TIMES: every prompt on ONE
+    // screen, never paginated. It first named `OPENING_THREE.map`, then
+    // `openingSetFor` while the set briefly grew to five, and now names the seed
+    // again because the extra questions belong on the building step. A progress
+    // counter ("2 of 5") is still the thing that must not appear, because it
+    // turns a screen into a queue.
     expect(STORY).not.toMatch(/\bof \{[A-Za-z_.]*\blength\}/)
-    expect(STORY).toMatch(/openingSetFor\(/)
+    expect(STORY).toMatch(/OPENING_THREE\s*\n?\s*\.map/)
     expect(STORY).toMatch(/anchorAllToSubNiche\(/)
   })
 
@@ -118,7 +119,7 @@ describe('3. the three story questions are one screen, same three rows', () => {
     expect(STORY).toMatch(/skipQuestion/)
     // The ids are untouched — data model unchanged.
     // The bank is still the single source the screen words from.
-    expect(STORY).toMatch(/CREATOR_QUESTIONS, ANSWER_MAX/)
+    expect(STORY).toMatch(/CREATOR_QUESTIONS, OPENING_THREE/)
   })
 
   it('still calls onDone exactly once, after all three are resolved', () => {
