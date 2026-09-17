@@ -393,3 +393,76 @@ export function refusalCard(counts) {
       + `This says Twin declined, never why.`,
   }
 }
+
+// ── CREATORS STUCK ON AN OLDER EXTRACTOR ────────────────────────────────────
+//
+// ⚠️ THIS CARD IS THE READER THAT MAKES 0214's COLUMN LEGAL. The dominant defect
+// class in this repository is a column written and never read, and a version
+// stamp is the easiest possible instance of it: it is metadata, it looks
+// self-evidently useful, and nothing has to consult it for the write to succeed.
+// So the stamp and its reader land together.
+//
+// ⚖️ AND THE ACTION IS A RE-MINE, WHICH COSTS MODEL CALLS. That is why the card
+// names the number of VOICES rather than the number of rows: rows say how much
+// material is stale, voices say what fixing it costs, and only the second is a
+// decision the owner can price.
+//
+// ⚖️ IT NEVER REPORTS `action_needed` ON A VERSION IT CANNOT SEE. A store with no
+// stamped rows at all is the state on the day 0214 lands — every row NULL, every
+// voice "stale" — and shouting about a cohort of everybody before a single new
+// scan has run would be reporting the migration, not a problem. The floor below
+// is what keeps that from happening.
+
+/** Below this many stale voices, a re-mine is not worth an owner interruption:
+ *  the next ordinary scan will pick them up. */
+export const REMINE_MIN_VOICES = 3
+
+/**
+ * @param cohort the shape returned by `remineCohort` in @twinai/shared.
+ * @param currentVersion the extractor running today.
+ */
+export function remineCard(cohort, currentVersion) {
+  // ⚠️ NULL IS NOT AN EMPTY COHORT. A query that failed is not a store with
+  // nothing stale in it, and reporting it as one would tell the owner that a
+  // problem they have is solved.
+  if (!cohort || !Array.isArray(cohort.voices)) {
+    return {
+      card: 'extractor_remine', state: 'blocked', ownerAction: null,
+      detail: 'The extractor cohort could not be read, which is not the same as nothing being stale.',
+    }
+  }
+  const voices = cohort.voices.length
+  const stale = typeof cohort.staleRows === 'number' ? cohort.staleRows : 0
+  const current = typeof cohort.currentRows === 'number' ? cohort.currentRows : 0
+  if (voices === 0) {
+    return {
+      card: 'extractor_remine', state: 'done', ownerAction: null,
+      detail: `Every stored row was written by extractor v${currentVersion}.`,
+    }
+  }
+  // ⚠️ NOTHING CURRENT AT ALL MEANS THE STAMP IS NEW, NOT THAT THE STORE IS OLD.
+  // On the day 0214 lands, every row is NULL and every voice is in the cohort.
+  // That is the migration's own shadow and is reported as such, once, instead of
+  // as an emergency spanning the entire product.
+  if (current === 0) {
+    return {
+      card: 'extractor_remine', state: 'ok', ownerAction: null,
+      detail: `No row carries an extractor version yet, so all ${voices} voice${voices === 1 ? '' : 's'} `
+        + `read as stale. This is the stamp being new; the next scan of each creator records it.`,
+    }
+  }
+  const neverStamped = cohort.voices.filter((v) => v && v.oldestVersion === null).length
+  const stampedOld = voices - neverStamped
+  const detail = `${stale} row${stale === 1 ? '' : 's'} across ${voices} voice${voices === 1 ? '' : 's'} `
+    + `predate extractor v${currentVersion}`
+    + (neverStamped > 0 ? ` (${neverStamped} never stamped` + (stampedOld > 0 ? `, ${stampedOld} on an older version)` : ')') : '')
+    + `. Those creators only ever get what the prompt could ask for on the day they were scanned.`
+  if (voices < REMINE_MIN_VOICES) {
+    return { card: 'extractor_remine', state: 'ok', ownerAction: null, detail }
+  }
+  return {
+    card: 'extractor_remine', state: 'action_needed',
+    ownerAction: `Re-mine ${voices} voice${voices === 1 ? '' : 's'} on extractor v${currentVersion}`,
+    detail,
+  }
+}
