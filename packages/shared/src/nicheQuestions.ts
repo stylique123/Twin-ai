@@ -597,3 +597,92 @@ export function creatorQuestionsFor(
     return o ? { ...q, ask: o.ask, hint: o.hint, postBased: o.postBased === true } : q
   })
 }
+
+// ── THE BUCKET SAYS "BUSINESS". THE SCAN SAID "custom Bible rebinding". ────
+//
+// ⚠️ THE COARSE BUCKET IS NOT THE DNA, AND A CREATOR CAN TELL. `nicheBucket`
+// maps a whole account onto one of eight words, so a Bible rebinder and a
+// management consultant can both be asked "what advice does everyone in your
+// industry give that you think is wrong?" — a question that reads as written for
+// somebody else. Meanwhile the scan already extracted a phrase that names the
+// actual work, and nothing asked with it.
+//
+// ⚖️ MEASURED ACROSS ALL 57 STORED VOICES: `sub_niche` is populated on 52 (91%),
+// alongside `enemy` 51, `offer` 51, `audience_pain` 51. The DNA is there.
+//
+// ⚠️ AND ONLY `sub_niche` HAS THE SHAPE TO GO INSIDE A SENTENCE. Real values:
+// "custom Bible rebinding", "holistic meal prep", "scaling business
+// operations", "Postpartum pregnancy fitness" — short noun phrases. `enemy` and
+// `offer` are prose: "Vague motivation, short-term toxic hustle culture, and
+// business owners acting as their own..." Splicing THAT into a question produces
+// a sentence no human wrote. So the rich fields stay out of the wording, and the
+// one field with the right shape goes in.
+
+/** The longest a phrase may be and still read as a group of practitioners. */
+const SUB_NICHE_MAX = 44
+
+/**
+ * Is this phrase safe to drop into the middle of a question?
+ *
+ * ⚠️ A SHAPE CHECK, NOT A QUALITY CHECK. It refuses prose — anything carrying a
+ * comma, a full stop, a conjunction or more than four words — because those are
+ * the `enemy`/`offer` shapes, and one of them appearing in a question would be
+ * worse than the generic wording it replaced. A rejected phrase is not an error;
+ * it just means the bucket wording stands.
+ */
+export function subNicheIsSpliceable(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const v = value.trim()
+  if (v.length < 3 || v.length > SUB_NICHE_MAX) return false
+  // Prose punctuation. A trailing period is prose too.
+  if (/[,.;:!?"'()[\]{}]|\band\b|\bor\b|\bwith\b|\bfor\b/i.test(v)) return false
+  // A run-on with no spaces at all is a slug, not a phrase a creator would say.
+  const words = v.split(/\s+/)
+  if (words.length > 4) return false
+  // ⚠️ REFUSE A PLACEHOLDER THAT WOULD READ AS A JOKE. The scan occasionally
+  // returns the generic word itself, and "everyone in general" is worse than
+  // "everyone in your industry".
+  if (/^(general|other|misc|miscellaneous|n\/?a|unknown|none|various)$/i.test(v)) return false
+  return true
+}
+
+/** The phrases that stand in for "the people who do what you do". */
+const GROUP_PLACEHOLDER = /\bin your (?:corner of the internet|corner|niche|industry|field)\b/i
+
+/**
+ * Reword one question so it names the creator's actual work.
+ *
+ * ⚠️ ONLY THE `in your X` CONSTRUCTION IS TOUCHED, because only there is the
+ * substitution grammatically safe: "in your niche" → "in custom Bible rebinding"
+ * holds in every wording that uses it. `making`'s "What does your trade insist
+ * on" is deliberately left alone — "what does custom Bible rebinding insist on"
+ * is not English, and a rule that produces one broken sentence is not worth the
+ * ones it fixes.
+ *
+ * ⚠️ THE PHRASE IS SPLICED VERBATIM, WITH NO CASE SURGERY. "custom Bible
+ * rebinding" contains a proper noun and "Postpartum pregnancy fitness" does not,
+ * and telling those apart needs a dictionary this module will never have.
+ * Lower-casing the first word would turn "Bible rebinding" into "bible
+ * rebinding" — mangling a creator's own word for their craft. Mid-sentence
+ * capitalisation reads as a proper name; a lower-cased proper noun reads as a
+ * mistake, and it is ours.
+ *
+ * ⚖️ THE ID IS UNTOUCHED, as everywhere in this file: same question, her words.
+ */
+export function anchorToSubNiche(
+  q: CreatorQuestion,
+  subNiche: unknown,
+): CreatorQuestion {
+  if (!subNicheIsSpliceable(subNiche)) return q
+  if (!GROUP_PLACEHOLDER.test(q.ask)) return q
+  return { ...q, ask: q.ask.replace(GROUP_PLACEHOLDER, `in ${subNiche.trim()}`) }
+}
+
+/** The same, across a set. */
+export function anchorAllToSubNiche(
+  qs: readonly CreatorQuestion[],
+  subNiche: unknown,
+): readonly CreatorQuestion[] {
+  if (!subNicheIsSpliceable(subNiche)) return qs
+  return qs.map((q) => anchorToSubNiche(q, subNiche))
+}
