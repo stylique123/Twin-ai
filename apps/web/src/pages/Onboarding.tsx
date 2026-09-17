@@ -1050,7 +1050,11 @@ function StoryStep({
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-semibold">Three things your videos cannot tell us</h2>
+        {/* ⚠️ NO COUNT IN THE HEADING. It said "Three things" while the screen
+            asked three, and the moment the set became five the heading was a
+            lie the creator could count. A number in copy is a second source for
+            a fact the list already states. */}
+        <h2 className="text-xl font-semibold">The things your videos cannot tell us</h2>
         <p className="mt-1 text-sm text-neutral-600">
           We read your account. These are the parts only you know — they are what
           give a script something real to say.
@@ -1062,6 +1066,13 @@ function StoryStep({
         niche={draft.profile?.niche ?? null}
         sells={sells}
         stageBand={band}
+        /* ⚠️ THE PROFILE WAS ALREADY HERE AND ONLY `niche` WAS READ OUT OF IT.
+           `sub_niche` sits in the same object — populated on 52 of 57 voices —
+           and is the difference between "everyone in your industry" and
+           "everyone in custom Bible rebinding". Extracted, available, and one
+           caller reading a single field of it: the defect class this codebase
+           keeps closing. */
+        subNiche={draft.profile?.sub_niche ?? null}
       />
     </div>
   )

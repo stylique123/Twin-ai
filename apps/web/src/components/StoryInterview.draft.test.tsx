@@ -23,6 +23,17 @@ import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/re
 import { StoryInterview } from './StoryInterview'
 import { readStoryDraft, STORY_DRAFT_IS_PER_DEVICE } from '../lib/storyDraft'
 
+// ⚠️ THE COUNTS HERE ARE DERIVED, NOT LITERAL, AND THAT IS THE POINT. They read
+// 3 while the screen asked three, and the day the opening set became FIVE all
+// fourteen of them failed on a screen that was working correctly. The claims
+// were never about the number — "every question gets a blank box", "silence
+// writes nothing" — so they now count `openingSetFor()`, the same source the
+// component renders from. A count changed by decision must not read as a
+// regression.
+import { openingSetFor } from '@twinai/shared'
+const SET = openingSetFor().length
+
+
 const mocks = vi.hoisted(() => ({
   answerQuestion: vi.fn(async (_q: { id: string }, _a: string, _v: string | null) => ({ ok: true as const })),
   skipQuestion: vi.fn(async (_id: string) => true),
@@ -53,7 +64,7 @@ const boxes = () => screen.queryAllByPlaceholderText(/A couple of sentences is p
 describe('what she typed survives the tab closing', () => {
   it('is saved as she types, before any Continue', async () => {
     render(<StoryInterview voiceId={null} onDone={() => {}} />)
-    await waitFor(() => expect(boxes()).toHaveLength(3))
+    await waitFor(() => expect(boxes()).toHaveLength(SET))
     fireEvent.change(boxes()[0], { target: { value: HERS } })
 
     // ⚠️ THE ASSERTION IS ON THE STORE, NOT ON THE BOX. A value that is only in
@@ -64,7 +75,7 @@ describe('what she typed survives the tab closing', () => {
 
   it('comes back on a remount, which is what a closed tab is', async () => {
     const first = render(<StoryInterview voiceId={null} onDone={() => {}} />)
-    await waitFor(() => expect(boxes()).toHaveLength(3))
+    await waitFor(() => expect(boxes()).toHaveLength(SET))
     fireEvent.change(boxes()[0], { target: { value: HERS } })
     await waitFor(() => expect(Object.values(readStoryDraft())).toContain(HERS))
     first.unmount()
@@ -98,7 +109,7 @@ describe('the draft is cleared only once the answer is safe', () => {
   it('is gone after Continue stores it', async () => {
     const onDone = vi.fn()
     render(<StoryInterview voiceId={null} onDone={onDone} />)
-    await waitFor(() => expect(boxes()).toHaveLength(3))
+    await waitFor(() => expect(boxes()).toHaveLength(SET))
     fireEvent.change(boxes()[0], { target: { value: HERS } })
     await waitFor(() => expect(Object.values(readStoryDraft())).toContain(HERS))
 
@@ -114,7 +125,7 @@ describe('the draft is cleared only once the answer is safe', () => {
     // mean the next visit shows an empty box for a sentence she never withdrew.
     const onDone = vi.fn()
     render(<StoryInterview voiceId={null} onDone={onDone} />)
-    await waitFor(() => expect(boxes()).toHaveLength(3))
+    await waitFor(() => expect(boxes()).toHaveLength(SET))
     const tooLong = 'x'.repeat(5000)
     fireEvent.change(boxes()[0], { target: { value: tooLong } })
     await waitFor(() => expect(Object.values(readStoryDraft())).toContain(tooLong))
@@ -130,7 +141,7 @@ describe('the draft is cleared only once the answer is safe', () => {
     // declined sentences on the next visit would strand them forever.
     const onDone = vi.fn()
     render(<StoryInterview voiceId={null} onDone={onDone} />)
-    await waitFor(() => expect(boxes()).toHaveLength(3))
+    await waitFor(() => expect(boxes()).toHaveLength(SET))
     fireEvent.change(boxes()[0], { target: { value: HERS } })
     await waitFor(() => expect(Object.values(readStoryDraft())).toContain(HERS))
 
@@ -163,7 +174,7 @@ describe('a blocked store costs the draft and never the screen', () => {
     })
     try {
       render(<StoryInterview voiceId={null} onDone={() => {}} />)
-      await waitFor(() => expect(boxes()).toHaveLength(3))
+      await waitFor(() => expect(boxes()).toHaveLength(SET))
       fireEvent.change(boxes()[0], { target: { value: HERS } })
       expect((boxes()[0] as HTMLTextAreaElement).value).toBe(HERS)
     } finally {
