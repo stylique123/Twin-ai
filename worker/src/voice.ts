@@ -474,6 +474,25 @@ export function clampCaptionBasis(items: RawKnowledgeItem[]): RawKnowledgeItem[]
   })
 }
 
+/**
+ * WHICH EXTRACTION PROMPT PRODUCED A ROW.
+ *
+ * ⚠️ MIRRORED FROM `KNOWLEDGE_EXTRACTOR_VERSION` IN @twinai/shared, WHICH IS THE
+ * CANONICAL DEFINITION AND CARRIES THE CHANGELOG. The worker has no runtime
+ * dependency on that package (Docker builds it alone), so the number is
+ * duplicated here and held identical by
+ * `packages/shared/src/__tests__/knowledgeExtractorVersion.test.ts`, which reads
+ * THIS FILE and compares. Bumping one and not the other fails the build, which
+ * is the only reason a duplicated constant is allowed to exist.
+ *
+ * ⚠️ BUMP IT WHEN THE PROMPT CHANGES WHAT CAN BE FOUND — not for a re-word that
+ * asks the same question. The stamp exists so that creators scanned under an
+ * older prompt can be found and re-mined; a version that moves for cosmetic
+ * edits would re-mine everybody for nothing, and a version that does not move
+ * for a real change leaves them stuck, which is the state this closes.
+ */
+export const KNOWLEDGE_EXTRACTOR_VERSION = 1
+
 /** How much spoken text one extraction call may carry.
  *
  *  ⚖️ UNCHANGED FROM THE ORIGINAL CAP ON PURPOSE. 12,000 characters is a window

@@ -27,9 +27,61 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import {
   schemaCard, pilotCard, recordingsCard, watchedSessionCard, rotationCard, funnelCard,
-  refusalCard, nextAction,
+  refusalCard, remineCard, nextAction,
 } from '../_shared/ownerConsole.ts'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
+
+
+// ── WHICH EXTRACTOR WROTE THE STORE, INLINED ────────────────────────────────
+//
+// ⚠️ MIRRORED FROM `remineCohort` IN @twinai/shared, which is canonical and
+// carries the reasoning. Edge functions are Deno and have no runtime access to
+// that package, so the rule is duplicated here and held identical by
+// `packages/shared/src/__tests__/remineCohortEdgeParity.test.ts`, which EXECUTES
+// both copies over the same rows rather than comparing their text — a textual
+// check would pass a mirror that sorted NULL the wrong way.
+//
+// ⚖️ THE THREE RULES A CARELESS MIRROR GETS WRONG, RESTATED SO THEY ARE VISIBLE
+// AT THE SEAM: a version at or ABOVE current is current (not "equal to"); a
+// voice is stale if ANY of its rows is; and a NULL sorts oldest and is never
+// coerced to a number, because "never stamped" is a different fact from
+// "version 0" and no extractor was ever version 0.
+function remineCohortInline(rows, current) {
+  const byVoice = new Map()
+  let staleRows = 0
+  let currentRows = 0
+  for (const r of rows ?? []) {
+    const raw = r?.extractor_version
+    const v = typeof raw === 'number' && Number.isFinite(raw) ? raw : null
+    if (v !== null && v >= current) { currentRows++; continue }
+    staleRows++
+    const voiceId = r?.voice_id
+    if (!voiceId) continue
+    const e = byVoice.get(voiceId) ?? { oldestVersion: null, rows: 0, sawNull: false }
+    e.rows++
+    if (v === null) e.sawNull = true
+    else e.oldestVersion = e.oldestVersion === null ? v : Math.min(e.oldestVersion, v)
+    byVoice.set(voiceId, e)
+  }
+  const voices = [...byVoice.entries()]
+    .map(([voiceId, e]) => ({
+      voiceId,
+      oldestVersion: e.sawNull ? null : e.oldestVersion,
+      rows: e.rows,
+    }))
+    .sort((a, b) => {
+      if (a.oldestVersion === b.oldestVersion) return b.rows - a.rows
+      if (a.oldestVersion === null) return -1
+      if (b.oldestVersion === null) return 1
+      return a.oldestVersion - b.oldestVersion
+    })
+  return { voices, staleRows, currentRows }
+}
+// ── END REMINE COHORT ───────────────────────────────────────────────────────
+
+/** The extractor running today. Mirrored from `KNOWLEDGE_EXTRACTOR_VERSION` in
+ *  @twinai/shared and pinned by the same parity test. */
+const KNOWLEDGE_EXTRACTOR_VERSION = 1
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -225,6 +277,27 @@ Deno.serve(async (req: Request) => {
     scriptIntents: typeof scriptIntentCount === 'number' ? scriptIntentCount : null,
   }
 
+  // ── WHO IS STUCK ON AN OLDER EXTRACTOR ───────────────────────────────────
+  //
+  // ⚠️ TWO COLUMNS, NOT THE ROW. The cohort question needs a voice and a version
+  // and nothing else; selecting `text` here would pull the creator-knowledge
+  // store across the wire to count it.
+  //
+  // ⚠️ NULL ON FAILURE, AND `remineCard` REPORTS THAT AS `blocked`. A failed
+  // query is not a store with nothing stale in it.
+  let remineCohort = null
+  {
+    const { data, error } = await admin.from('creator_knowledge')
+      .select('voice_id, extractor_version')
+    // ⚖️ A MISSING COLUMN IS NOT AN ERROR HERE, it is 0214 not yet applied — and
+    // the honest reading of that is "nothing is stamped", which is exactly what
+    // the inline cohort returns for rows whose version is absent. So only a real
+    // failure blocks the card.
+    if (!error && Array.isArray(data)) {
+      remineCohort = remineCohortInline(data, KNOWLEDGE_EXTRACTOR_VERSION)
+    }
+  }
+
   const cards = [
     schemaCard({ hasZoomCount, hasWatchedSessions }),
     pilotCard(run, { canStart: hasPilotTables === true, claims: claimCount, collectionDone }),
@@ -236,6 +309,7 @@ Deno.serve(async (req: Request) => {
     rotationCard({ anyPilotLocked: (lockedRuns?.length ?? 0) > 0, resolved: false }),
     funnelCard(funnelCounts),
     refusalCard(refusalCounts),
+    remineCard(remineCohort, KNOWLEDGE_EXTRACTOR_VERSION),
   ]
 
   return json({ ok: true, cards, next: nextAction(cards), generated_at: new Date().toISOString() })

@@ -199,11 +199,11 @@ export async function insertKnowledge(
   const { error } = await db.from('creator_knowledge').insert(rows)
   if (!error) return { error: null, sourceStored: true, merged: false }
   const missingColumn = error.code === 'PGRST204'
-    || /column .*(source|cost|consensus).* does not exist/i.test(String(error.message ?? ''))
+    || /column .*(source|cost|consensus|extractor_version).* does not exist/i.test(String(error.message ?? ''))
   if (!missingColumn) return { error, sourceStored: false, merged: false }
   console.warn(JSON.stringify({
     event: 'creator_knowledge_source_column_absent',
-    detail: 'migration 0122/0178 not applied; storing rows WITHOUT provenance, cost or consensus',
+    detail: 'migration 0122/0178/0214 not applied; storing rows WITHOUT provenance, cost, consensus or extractor version',
   }))
   // ⚠️ `cost` AND `consensus` ARE STRIPPED ALONGSIDE `source`, AND THE REASON IS
   // THE ONE THIS BLOCK WAS ALREADY WRITTEN FOR. PostgREST rejects the WHOLE
@@ -212,7 +212,13 @@ export async function insertKnowledge(
   // creator knowledge, silently, exactly as shipping `source` naively once did.
   // Dropping the two new halves costs a re-scan; dropping the batch costs the
   // scan.
+  // ⚠️ `extractor_version` JOINS THE STRIP LIST FOR THE REASON THE BLOCK ABOVE
+  // ALREADY STATES. PostgREST rejects the WHOLE batch on ONE unknown column, so
+  // a worker deployed a minute ahead of 0214 would lose every row of creator
+  // knowledge rather than one stamp. Losing the stamp costs a re-scan; losing
+  // the batch costs the scan. The cohort query reads such rows as NULL, which is
+  // what they are: written before anything recorded which prompt wrote them.
   const { error: retryErr } = await db.from('creator_knowledge')
-    .insert(rows.map(({ source, cost, consensus, ...rest }) => rest))
+    .insert(rows.map(({ source, cost, consensus, extractor_version, ...rest }) => rest))
   return { error: retryErr, sourceStored: false, merged: false }
 }

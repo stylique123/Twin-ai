@@ -3,7 +3,7 @@ import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { transcribeFromUrl } from '../media.js'
 import { mapWithConcurrency, TRANSCRIBE_CONCURRENCY } from '../boundedMap.js'
 import { transcriptBudgetFor } from '../transcriptSelection.js'
-import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions } from '../voice.js'
+import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions, KNOWLEDGE_EXTRACTOR_VERSION } from '../voice.js'
 
 // ⚖️ THE SAME NORMALISATION `transcribe.ts` USES, and it must stay the same: the
 // key is what lets one video pasted by several people hit one cached row, so two
@@ -353,6 +353,13 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
         // null says the first. Capped at 240 like `text`, for the same reason.
         cost: shortOrNull(r.cost),
         consensus: shortOrNull(r.consensus),
+        // ⚖️ WHICH PROMPT PRODUCED THIS, so the creators scanned under an older
+        // one can be found later instead of staying stuck at whatever that day's
+        // extractor could ask. It is stamped on BOTH pipelines deliberately: the
+        // caption pass and the audio pass move together because they are changed
+        // together, and stamping only one would make a voice's cohort depend on
+        // which half happened to run last.
+        extractor_version: KNOWLEDGE_EXTRACTOR_VERSION,
       }))
     // ⚠️ THE TAXONOMY IS A CLOSED SET AND THE MODEL DOES NOT KNOW THAT.
     // `creator_knowledge_kind_valid` CHECKs this list, so an unlisted kind is a

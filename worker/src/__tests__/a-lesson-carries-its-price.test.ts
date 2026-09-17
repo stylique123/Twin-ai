@@ -225,13 +225,19 @@ describe('the row builder carries both fields to the database', () => {
 })
 
 describe('the insert degrades instead of losing the scan when the migration is behind', () => {
-  it('strips the two new columns on PGRST204 rather than dropping every row', () => {
+  it('strips the new columns on PGRST204 rather than dropping every row', () => {
     // ⚠️ PostgREST rejects the WHOLE batch for ONE unknown column. Shipping
     // `source` naively once stopped ALL creator knowledge from being stored;
-    // two more columns is two more chances at exactly that.
+    // every column added since is another chance at exactly that.
+    //
+    // ⚠️ THE ASSERTION IS `contains`, NOT AN EXACT SET, AND THAT IS DELIBERATE
+    // AFTER 0214. It first pinned the literal three-name list, which made a
+    // FOURTH column joining the strip list — `extractor_version` — fail this
+    // test for doing the right thing. What matters is that these three are still
+    // stripped, not that nothing else ever is.
     const INSERT = readFileSync(join(SRC, 'knowledgeInsert.ts'), 'utf8')
-    expect(INSERT).toMatch(/column .\*\(source\|cost\|consensus\).\* does not exist/)
-    expect(INSERT).toMatch(/\{ source, cost, consensus, \.\.\.rest \}/)
+    expect(INSERT).toMatch(/column .\*\(source\|cost\|consensus/)
+    expect(INSERT).toMatch(/\{ source, cost, consensus,[^}]*\.\.\.rest \}/)
   })
 })
 
