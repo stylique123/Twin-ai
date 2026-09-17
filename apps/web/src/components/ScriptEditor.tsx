@@ -35,6 +35,7 @@ import {
 } from '../lib/api'
 import {
   describeEdit, planSetups, startsSetup, setupStrip, openingSetupId, readSemanticRepetitionRepair,
+  withSelectedHook,
   type ScriptEditRecord, type SetupPlan, type SemanticRepetitionRepair,
 } from '@twinai/shared'
 import { recordScriptEdit } from '../lib/scriptEdits'
@@ -111,7 +112,19 @@ export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, f
       // and re-deciding it here would let two screens disagree about one script.
       const ownCtas = loaded ? [] : await readCreatorCtas()
       if (!alive) return
-      const next = loaded ?? safeBuild(generationId, blueprint, selectedHook, ownCtas)
+      // ⚠️ `loaded ?? safeBuild(...)` DISCARDED EVERY HOOK CHOICE AFTER THE
+      // FIRST. `selectedHook` is used by nothing but `safeBuild`, so once a
+      // script was persisted the `??` short-circuited and the chooser's
+      // selection never reached scene 1 — seen live on 2026-09-17 with the
+      // fourth option selected and the teleprompter reading the first.
+      //
+      // ⚖️ PATCHED, NOT REBUILT. `safeBuild` would throw away the creator's
+      // edits to change one line; `withSelectedHook` moves the hook and leaves
+      // everything else alone, and returns the SAME object when nothing should
+      // change so this cannot loop.
+      const next = loaded
+        ? withSelectedHook(loaded, selectedHook) ?? loaded
+        : safeBuild(generationId, blueprint, selectedHook, ownCtas)
       original.current = next
       setScript(next)
       setLoading(false)
