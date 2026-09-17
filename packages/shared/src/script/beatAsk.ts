@@ -274,6 +274,29 @@ const SECTION_ASKS: ReadonlyArray<readonly [RegExp, string]> = Object.freeze([
   [/stake|war|conflict|struggle|obstacle/i, 'What was the hardest part of this for you?'],
   [/proof|evidence|result|outcome/i, 'What is the specific result or number you can point to?'],
   [/lesson|takeaway|insight/i, 'What did you learn that you would tell someone else?'],
+  // ── THE SECTIONS THAT CARRY EVERY SCRIPT, AND HAD NO QUESTION ────────────
+  //
+  // ⚠️ MEASURED ACROSS EVERY GENERATION, 2026-09-17. Section beats: hook 147,
+  // setup 131, re-hook 120, cta 91, payoff 60, body 20, "call to action" 10.
+  // `setup` and `re-hook` were covered above. `hook`, `cta`, `payoff` and `body`
+  // — the first, last and middle of every script — were NOT, so they fell
+  // through to the last resort and a creator was asked "This beat is your cta.
+  // What happened?"
+  //
+  // ⚠️ AND THAT IS MY OWN FALLBACK, NOT THE MODEL'S. It is ungrammatical on a
+  // plural section ("is your consequences") and semantically wrong on the two
+  // commonest: a hook and a CTA are not things that HAPPENED. Reported by the
+  // owner as the questions inside the script being wrong, and he was right.
+  //
+  // ⚖️ APPENDED, NEVER INSERTED, BECAUSE THE FIRST MATCH WINS. `/re-?hook/`
+  // sits above and must keep its priority — a bare `/hook/` placed before it
+  // would swallow every re-hook beat and ask the opening question in the middle
+  // of a script.
+  [/\bhook\b/i, 'What would you say first to stop someone scrolling?'],
+  [/cta|call to action|outro|sign.?off/i, 'What do you want someone to do after watching this?'],
+  [/payoff|resolution|solution|reveal/i, 'What does someone walk away with by the end?'],
+  [/body|main|middle|explain/i, 'What is the one thing this video has to get across?'],
+  [/escalat|worse|spiral/i, 'What makes this worse than people assume?'],
 ])
 
 export function askForBeat(section: unknown, writersAsk: unknown): string {
@@ -284,7 +307,24 @@ export function askForBeat(section: unknown, writersAsk: unknown): string {
   for (const [pattern, question] of SECTION_ASKS) {
     if (pattern.test(s)) return question
   }
+  // ⚠️ THE OLD LAST RESORT WAS `This beat is your ${s}. What happened?`, and it
+  // was wrong twice over: ungrammatical on a plural ("is your consequences") and
+  // asking about an EVENT on beats where nothing happens — a hook and a CTA are
+  // not things that happened. Eight of those reached real creators.
+  //
+  // ⚠️⚠️ AND MY FIRST FIX WAS TO DROP THE SECTION NAME ENTIRELY, WHICH
+  // `five-beats-five-questions` CORRECTLY REFUSED. That file exists because one
+  // real generation shipped the SAME blank question on all five of its beats, so
+  // collapsing every unrecognised section to one sentence would have rebuilt the
+  // defect it was written to stop — a creator reading the identical question
+  // five times down one script.
+  //
+  // ⚖️ SO THE NAME STAYS AND THE GRAMMAR IS FIXED INSTEAD. "the <name> beat"
+  // agrees whatever the name is — singular, plural or a phrase — because `beat`
+  // is the noun doing the work: "the consequences beat", "the cta beat", "the
+  // Bridge beat". Distinct per section, grammatical, and it no longer claims
+  // something happened.
   return s === ''
     ? 'What would you say here, in your own words?'
-    : `This beat is your ${s.toLowerCase()}. What happened?`
+    : `This is the ${s.toLowerCase()} beat — what would you say here, in your own words?`
 }
