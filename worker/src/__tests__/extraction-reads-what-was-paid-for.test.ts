@@ -99,20 +99,38 @@ import { KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 describe('the write cap is named, shared, and proportionate', () => {
   const BUILD = readFileSync(join(SRC, 'jobs', 'voice.ts'), 'utf8')
   const SCAN = readFileSync(join(SRC, 'jobs', 'scrapeDna.ts'), 'utf8')
+  // ⚠️ AND NOW A THIRD WRITER. `remine_knowledge` re-reads stored transcripts
+  // with a newer extractor, which means a third place that could decide how much
+  // material survives — so it is held to the same rule here rather than being
+  // the instance nobody added.
+  const REMINE = readFileSync(join(SRC, 'jobs', 'remineKnowledge.ts'), 'utf8')
 
-  it('neither writer carries a bare number any more', () => {
-    for (const src of [BUILD, SCAN]) {
+  it('no writer carries a bare number any more', () => {
+    for (const src of [BUILD, SCAN, REMINE]) {
       expect(stripComments(src)).not.toMatch(/\.slice\(0, 40\)/)
-      expect(src).toMatch(/\.slice\(0, KNOWLEDGE_ROWS_PER_SCAN\)/)
+      // ⚖️ THE CAP IS NAMED IN CODE, NOT NECESSARILY APPLIED WITH A `.slice`
+      // HERE. `jobs/voice.ts` and the re-mine now pass it to
+      // `knowledgeRowsFrom`, which owns the one `.slice(0, cap)` both share —
+      // the claim is that the number has a name, and that claim is unchanged.
+      expect(stripComments(src)).toMatch(/(\.slice\(0, KNOWLEDGE_ROWS_PER_SCAN\)|cap: KNOWLEDGE_ROWS_PER_SCAN)/)
     }
   })
 
-  it('BOTH import the same constant, rather than agreeing by coincidence', () => {
+  it('ALL import the same constant, rather than agreeing by coincidence', () => {
     // ⚠️ Two places deciding how much material survives, one of them silent, is
     // the exact shape of every instance this file records.
-    for (const src of [BUILD, SCAN]) {
+    for (const src of [BUILD, SCAN, REMINE]) {
       expect(src).toMatch(/import \{ insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN \}/)
     }
+  })
+
+  // ⚖️ AND THE ONE `.slice` THEY SHARE IS STILL BOUNDED BY THE ARGUMENT, not by
+  // a number the shared module chose for itself. A default here would be a
+  // fourth silent cap in a file that exists to record three.
+  it('the shared row builder slices on the cap it was given', () => {
+    const ROWS = readFileSync(join(SRC, 'knowledgeRows.ts'), 'utf8')
+    expect(stripComments(ROWS)).toMatch(/\.slice\(0, cap\)/)
+    expect(stripComments(ROWS)).not.toMatch(/cap = \d/)
   })
 
   it('clears what five batches can realistically produce', () => {

@@ -1,5 +1,7 @@
 import { db, type Job } from '../db.js'
 import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
+import { knowledgeRowsFrom } from '../knowledgeRows.js'
+import { EXTRACTOR_VERSION } from '../extractorVersion.js'
 import { transcribeFromUrl } from '../media.js'
 import { mapWithConcurrency, TRANSCRIBE_CONCURRENCY } from '../boundedMap.js'
 import { transcriptBudgetFor } from '../transcriptSelection.js'
@@ -310,68 +312,19 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
       ...fromAudio.map((r) => ({ ...r, __source: 'transcript' as const })),
       ...fromCaptions.map((r) => ({ ...r, __source: 'caption' as const })),
     ]
-    // A recorded optional line, or null. Blank and whitespace-only collapse to
-    // null so an extractor that emits "" for a field it had nothing for cannot
-    // be read as having recorded something.
-    const shortOrNull = (v: unknown): string | null => {
-      const t = String(v ?? '').trim().replace(/\s+/g, ' ')
-      return t === '' ? null : t.slice(0, 240)
-    }
-    let rows = raw
-      .filter((r) => typeof r?.text === 'string' && r.text.trim().length > 0)
-      .slice(0, KNOWLEDGE_ROWS_PER_SCAN)
-      .map((r) => ({
-        owner_id: ownerId,
-        voice_id: voiceId,
-        kind: r.kind,
-        text: r.text.trim().slice(0, 240),
-        // An unreadable basis becomes `inferred` here rather than at the
-        // database default, so the weakest reading is chosen where the value is
-        // actually known to be junk.
-        basis: ['stated', 'demonstrated', 'inferred'].includes(r.basis) ? r.basis : 'inferred',
-        source: r.__source,
-        times_seen: Math.max(1, Math.min(50, Number(r.times_seen) || 1)),
-        // ⚖️ AN UNREADABLE CONFIDENCE IS 0.5, NEVER 1. Silence about how sure
-        // the extractor was must not read as certainty — the same rule that
-        // makes an unstated `basis` degrade to `inferred`.
-        confidence: (() => {
-          const n = Number(r.confidence)
-          return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.5
-        })(),
-        // The video it was actually read out of, so a creator disputing an item
-        // can go and watch it. Out-of-range or unparseable yields null rather
-        // than a wrong URL, because pointing at the wrong video is worse than
-        // pointing at none.
-        source_url: (() => {
-          const i = Number(r.source_video)
-          return Number.isInteger(i) && i >= 1 && i <= urls.length ? urls[i - 1] : null
-        })(),
-        last_observed_at: new Date().toISOString(),
-        // ⚖️ THE TWO HALVES THE EXTRACTOR USED TO DROP. Both are OPTIONAL and
-        // both normalise an absent/blank/whitespace value to null: "nobody
-        // recorded a cost" and "it cost nothing" are different states, and only
-        // null says the first. Capped at 240 like `text`, for the same reason.
-        cost: shortOrNull(r.cost),
-        consensus: shortOrNull(r.consensus),
-      }))
-    // ⚠️ THE TAXONOMY IS A CLOSED SET AND THE MODEL DOES NOT KNOW THAT.
-    // `creator_knowledge_kind_valid` CHECKs this list, so an unlisted kind is a
-    // failed INSERT for the whole batch — hence the filter. Duplicated from
-    // `KNOWLEDGE_KINDS` in @twinai/shared on purpose: the worker has no runtime
-    // dep on it (see directorContract.ts), and `knowledgeKindParity.test.ts`
-    // fails if the two ever diverge.
-    const KNOWLEDGE_KINDS_WORKER = ['fact', 'opinion', 'topic', 'example', 'experience', 'framework', 'claim', 'product', 'covered']
-    // ⚖️ DROPPED, BUT NEVER SILENTLY. Measured on a real 501-caption corpus:
-    // 10 of 489 extracted items came back as `action` or `tool` — categories the
-    // model wanted and the taxonomy does not have. Filtering them is right;
-    // discarding them without a word is how a systematic gap in the taxonomy
-    // looks exactly like nothing happening.
-    const dropped = rows.filter((r) => !KNOWLEDGE_KINDS_WORKER.includes(r.kind))
-    if (dropped.length) {
-      const kinds = [...new Set(dropped.map((r) => r.kind))].slice(0, 10)
-      console.warn(JSON.stringify({ event: 'knowledge_kind_rejected', count: dropped.length, of: rows.length, kinds }))
-    }
-    rows = rows.filter((r) => KNOWLEDGE_KINDS_WORKER.includes(r.kind))
+    // ⚖️ ONE NORMALISATION, TWO JOBS. Every rule that turns a model's answer
+    // into a storable row now lives in `knowledgeRows.ts`, because
+    // `remine_knowledge` re-reads stored transcripts with a newer extractor and
+    // a second copy of these rules is how the two paths start disagreeing about
+    // what a claim is. The taxonomy filter and its loud drop went with it.
+    let rows = knowledgeRowsFrom({
+      items: raw,
+      ownerId,
+      voiceId,
+      urls,
+      cap: KNOWLEDGE_ROWS_PER_SCAN,
+      version: EXTRACTOR_VERSION,
+    })
     if (rows.length) {
       // ⚠️ NOT AN UPSERT, AND THE REASON IS A BUG ALREADY FIXED ONCE HERE.
       // `saveMintedEntity` used `onConflict` against a PARTIAL index; Postgres
