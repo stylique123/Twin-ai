@@ -43,7 +43,14 @@ describe('the promise is kept by the code, which is why it may be made', () => {
   // 2 and 3 sit above it. Without this second query the whole channel is
   // decorative: she answers, the row lands, and the writer never sees it.
   it('the edge reads asked rows specifically', () => {
-    expect(EDGE).toContain("const { data: askedRows }")
+    //
+    // ⚠️ RE-ANCHORED, AND THE CLAIM IS UNCHANGED. This pinned the literal
+    // `const { data: askedRows }`, which stopped matching when the read gained a
+    // missing-column fallback and became a `let` destructuring an error too —
+    // without that fallback, a database one deploy behind its migration returns
+    // an error for the whole SELECT and the knowledge channel empties. The read
+    // is still owner-scoped, still `source = 'asked'`, still its own query.
+    expect(EDGE).toMatch(/data: askedRows/)
     expect(EDGE).toMatch(/\.eq\('source', 'asked'\)/)
   })
 
