@@ -123,9 +123,13 @@ const CODE = EDGE.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' '
 
 describe('the tag actually reaches the prompt', () => {
   it('selects the column — without this nothing else can work', () => {
-    // Both knowledge reads: the ranked one and the asked one.
-    const selects = CODE.match(/\.select\('kind, text, basis, times_seen, confidence, source[^']*'\)/g) ?? []
-    expect(selects.length).toBe(2)
+    // ⚠️ THREE KNOWLEDGE READS NOW: the `times_seen`-ranked one, the `asked`
+    // one, and the unspent-supply one 0216 added so the spend cooling can reach
+    // past the top-40 cap. Every one of them must carry the date, or the tag is
+    // absent on whatever that read contributed — a partial failure, which is
+    // worse than a total one because it looks like the feature working.
+    const selects = CODE.match(/\.select\('id, kind, text, basis, times_seen, confidence, source[^']*'\)/g) ?? []
+    expect(selects.length).toBe(3)
     for (const sel of selects) expect(sel).toContain('last_observed_at')
   })
 

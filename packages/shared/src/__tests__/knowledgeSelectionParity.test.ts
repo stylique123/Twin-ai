@@ -148,8 +148,15 @@ describe('the edge prefers spoken material by the same rule', () => {
     // ⚖️ AND IT IS NOW STRICTLY STRONGER. The old exact match could only ever
     // check the FIRST select; both knowledge reads are checked here, and a
     // vacuous pass is refused. Dropping `source` from either still fails.
-    const knowledgeSelects = EDGE.match(/\.select\('kind, text, basis[^']*'\)/g) ?? []
-    expect(knowledgeSelects.length, 'the knowledge selects moved — re-anchor this').toBe(2)
+    //
+    // ⚠️ RE-ANCHORED AGAIN 2026-09-17, AND THE CLAIM IS STILL UNCHANGED. The
+    // selects now lead with `id` (the spend ledger needs a row identity to mark)
+    // and there is a THIRD read — the unspent-supply one that lets the spend
+    // cooling reach past the top-40-by-`times_seen` cap. Both are additions; the
+    // sentence this test is named for is as true as it was. Re-anchor, do not
+    // re-litigate.
+    const knowledgeSelects = EDGE.match(/\.select\('id, kind, text, basis[^']*'\)/g) ?? []
+    expect(knowledgeSelects.length, 'the knowledge selects moved — re-anchor this').toBe(3)
     for (const sel of knowledgeSelects) expect(sel).toContain('source')
   })
 

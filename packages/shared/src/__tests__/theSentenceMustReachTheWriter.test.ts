@@ -20,13 +20,16 @@ const MIGRATION = readFileSync(
   join(REPO, 'supabase/migrations/0215_a_conclusion_without_the_sentence_it_came_from.sql'), 'utf8')
 
 describe('the writer can see the sentence', () => {
-  it('every knowledge query selects it — both of them', () => {
-    // ⚠️ THERE ARE TWO. §K1's lesson was that one unselected column makes the
-    // whole chain inert, and a codebase with two read paths gets one of them
-    // updated.
-    const selects = EDGE.match(/\.select\('kind, text, basis, times_seen, confidence, source, last_observed_at, evidence'\)/g) ?? []
-    expect(selects).toHaveLength(2)
-    // And no path may still be reading the old column list.
+  it('every knowledge query selects it — all three of them', () => {
+    // ⚠️ §K1's lesson was that one unselected column makes the whole chain
+    // inert, and a codebase with several read paths gets one of them updated.
+    // This asserted TWO when it was written and 0216 added a third; the count is
+    // kept rather than relaxed to a `>= 1`, because "every read carries it" is
+    // the claim and a count is the only way to check it.
+    const selects = EDGE.match(/\.select\('id, kind, text, basis[^']*'\)/g) ?? []
+    expect(selects).toHaveLength(3)
+    for (const sel of selects) expect(sel).toContain('evidence')
+    // And no path may still be reading a column list without it.
     expect(EDGE).not.toMatch(/\.select\('kind, text, basis, times_seen, confidence, source, last_observed_at'\)/)
   })
 

@@ -125,7 +125,13 @@ describe('an answer reaches the writer at all', () => {
     // so the creator would answer, the row would land, and the writer would
     // never see it: `product_entities` again, complete and unread.
     expect(EDGE).toMatch(/\.eq\('source', 'asked'\)/)
-    expect(EDGE).toMatch(/const knowledgeRows = \[\.\.\.\(askedRows \?\? \[\]\), \.\.\.\(rankedRows \?\? \[\]\)\]/)
+    //
+    // ⚠️ A THIRD READ JOINED IN 0216 (unspent supply, so the spend cooling can
+    // reach past the top-40 cap) AND `askedRows` MUST STILL COME FIRST. The
+    // dedupe below keeps the FIRST occurrence, so this order is what guarantees
+    // an answered question keeps its own provenance rather than being replaced
+    // by a weaker copy of the same sentence from another read.
+    expect(EDGE).toMatch(/const knowledgeRows = \[\.\.\.\(askedRows \?\? \[\]\), \.\.\.\(rankedRows \?\? \[\]\), \.\.\.\(unspentRows \?\? \[\]\)\]/)
   })
 
   it('does not supply the same row twice when both reads return it', () => {

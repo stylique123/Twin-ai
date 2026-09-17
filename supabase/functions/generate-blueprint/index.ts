@@ -6091,6 +6091,39 @@ Deno.serve(async (req: Request) => {
     corpusScanned = typeof count === 'number' && count > 0 ? count : null
   } catch { /* a coverage sentence is never worth a generation */ }
 
+// ── WHAT HAS ALREADY BEEN SPENT, INLINED ────────────────────────────────────
+//
+// ⚠️ MIRRORED FROM `spendWear`/`coolBySpend` IN @twinai/shared, which is
+// canonical and carries the reasoning. Edge functions are Deno and cannot import
+// that package; the copies are held identical by
+// `packages/shared/src/__tests__/spendCoolingEdgeParity.test.ts`, which EXECUTES
+// both over the same rows at the bucket boundaries rather than comparing text.
+//
+// ⚖️ THE THREE RULES A CARELESS MIRROR GETS WRONG, RESTATED AT THE SEAM: never
+// spent beats spent-long-ago (it is supply this product paid to extract and has
+// never once delivered); a count with no date reads as WORN, not as never, so a
+// contradictory pair cannot promote the most-used rows in the store; and the
+// sort is STABLE, so equally-worn rows keep the order relevance gave them.
+const SPEND_COOLDOWN_DAYS = 30
+function spendWearInline(lastSpentAt: unknown, spendCountRaw: unknown, nowMs: number): number {
+  const count = typeof spendCountRaw === 'number' && Number.isFinite(spendCountRaw) && spendCountRaw > 0
+    ? spendCountRaw
+    : 0
+  const t = lastSpentAt ? Date.parse(String(lastSpentAt)) : NaN
+  if (Number.isNaN(t)) return count === 0 ? 0 : 1_000 + count
+  const days = (nowMs - t) / (1000 * 60 * 60 * 24)
+  const bucket = days <= SPEND_COOLDOWN_DAYS ? 2_000_000 : 1_000
+  return bucket + count
+}
+function coolBySpendInline<T extends { last_spent_at?: unknown; spend_count?: unknown }>(
+  rows: readonly T[], nowMs: number,
+): T[] {
+  return [...rows].sort((a, b) =>
+    spendWearInline(a?.last_spent_at, a?.spend_count, nowMs)
+    - spendWearInline(b?.last_spent_at, b?.spend_count, nowMs))
+}
+// ── END SPEND COOLING ───────────────────────────────────────────────────────
+
 // ── HOW RECENTLY SHE WAS HEARD SAYING IT, INLINED ───────────────────────────
 //
 // ⚠️ MEASURED 2026-09-16: THE WRITER HAS NEVER KNOWN. `freshness()` exists in
@@ -6156,7 +6189,7 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
 
   const { data: rankedRows } = await admin
     .from('creator_knowledge')
-    .select('kind, text, basis, times_seen, confidence, source, last_observed_at, evidence')
+    .select('id, kind, text, basis, times_seen, confidence, source, last_observed_at, evidence, last_spent_at, spend_count')
     .eq('owner_id', ownerId)
     .order('times_seen', { ascending: false })
     .limit(40)
@@ -6173,7 +6206,7 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
   // scarce thing by name and leaves the ranking alone.
   const { data: askedRows } = await admin
     .from('creator_knowledge')
-    .select('kind, text, basis, times_seen, confidence, source, last_observed_at, evidence')
+    .select('id, kind, text, basis, times_seen, confidence, source, last_observed_at, evidence, last_spent_at, spend_count')
     .eq('owner_id', ownerId)
     .eq('source', 'asked')
     .order('created_at', { ascending: false })
@@ -6249,11 +6282,49 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
     }
   }
 
+  // ── THE SUPPLY THE `times_seen` CAP CANNOT SEE ──────────────────────────
+  //
+  // ⚠️⚠️ WITHOUT THIS READ, THE SPEND COOLING BELOW IS DECORATIVE, AND THE
+  // REASON IS THE FIFTH INSTANCE OF A DEFECT THIS REPO HAS NAMED FOUR TIMES. The
+  // candidate pool is chosen by `order('times_seen').limit(40)` — BEFORE anything
+  // knows what has been spent. So a row nobody has ever used, sitting at 41st by
+  // `times_seen`, cannot be promoted by a cooling rule that only ever reorders
+  // the forty. The selector would go on spending the same rows, and the ranking
+  // change would look correct in the code and do nothing in production.
+  //
+  // ⚖️ A THIRD READ RATHER THAN A BIGGER LIMIT, WHICH IS EXACTLY THE ARGUMENT
+  // `askedRows` ALREADY MAKES TWENTY LINES ABOVE: raising 40 buys mostly more
+  // caption rows, and caption rows are the material MEASURED to push substance
+  // out of the selection (73% grounded transcript-only against 58% mixed). This
+  // asks for the scarce thing by name and leaves the `times_seen` ranking alone.
+  //
+  // ⚖️ AND THE SCARCE THING IS LITERALLY UNUSED SUPPLY: rows this product paid a
+  // model to extract and has never once delivered. `nullsFirst` is the whole
+  // query — NULL is "never spent", which is the state worth surfacing, and
+  // Postgres sorts NULLs LAST on an ascending order by default, so omitting it
+  // would return the most-recently-spent rows instead. Exactly backwards, and it
+  // would have been invisible.
+  const { data: unspentRows } = await admin
+    .from('creator_knowledge')
+    .select('id, kind, text, basis, times_seen, confidence, source, last_observed_at, evidence, last_spent_at, spend_count')
+    .eq('owner_id', ownerId)
+    .neq('kind', 'covered')
+    .neq('basis', 'inferred')
+    .order('last_spent_at', { ascending: true, nullsFirst: true })
+    .limit(20)
+
   // ⚖️ DEDUPED BY IDENTITY, because a stated row with a high enough `times_seen`
-  // can legitimately appear in both reads and must not be supplied twice —
+  // can legitimately appear in several reads and must not be supplied twice —
   // duplicate supply inflates every count downstream that reasons about it.
+  //
+  // ⚠️ ORDER MATTERS AND `unspentRows` GOES LAST. The dedupe keeps the FIRST
+  // occurrence, so putting the unspent read ahead of `rankedRows` would quietly
+  // replace the `times_seen` ordering with a spend ordering for every row the
+  // two share — a reordering, when the design above is explicit that spend is
+  // only ever a TIE-BREAK. Last means it contributes only what the other two
+  // reads did not already have, which is precisely the supply it exists to add.
   const seenKnowledge = new Set<string>()
-  const knowledgeRows = [...(askedRows ?? []), ...(rankedRows ?? [])].filter((r) => {
+  const knowledgeRows = [...(askedRows ?? []), ...(rankedRows ?? []), ...(unspentRows ?? [])].filter((r) => {
     const k = `${r?.kind}|${String(r?.text ?? '').trim().toLowerCase()}`
     if (seenKnowledge.has(k)) return false
     seenKnowledge.add(k)
@@ -7588,9 +7659,44 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
     // chooses within each group; the only guarantee is that substance cannot
     // reach zero. `selectSpeakable` is the shared rule, inlined here because
     // the edge cannot import @twinai/shared, and held identical by a parity test.
+    //
+    // ⚠️⚠️ AND WITHIN EACH RELEVANCE GROUP, WHAT HAS NOT BEEN SPENT GOES FIRST.
+    // Without this the selector is DETERMINISTIC on inputs that barely move, so
+    // a creator with forty good facts gets one good script and five near-repeats
+    // of it — not because there is nothing else to say, but because nothing
+    // recorded that a thing had already been said. §G17 has repetition as the
+    // top defect in finished scripts and as one that does not respond to
+    // instruction; this is a mechanical cause of it, upstream of the writer.
+    //
+    // ⚖️ A TIE-BREAK, NOT A REORDERING, AND THE GROUPING IS WHAT MAKES IT ONE.
+    // Cooling the whole list would hand a phone review a stale business claim
+    // ahead of the phone, which is the exact failure the comment above records
+    // for depth-first sorting. Relevance still chooses the candidates; spend only
+    // orders rows that are equally relevant, and among equals there is no reason
+    // to prefer the one already used.
+    //
+    // ⚠️ THE `hit === 0` GROUP IS WHERE MOST OF THE WIN IS. It is most of the
+    // store, it is where the filler comes from, and until this line it had NO
+    // ordering rule at all — whatever the database returned.
+    //
+    // ⚠️⚠️ WITHIN EACH *EQUAL* HIT COUNT, NOT WITHIN "THE MATCHED GROUP". A first
+    // draft of this cooled everything with `hit > 0` as one block, which quietly
+    // promoted an unspent one-word match above a spent five-word match — a
+    // reordering ACROSS relevance levels, i.e. precisely the thing three
+    // paragraphs above forbid. Equal relevance is the only place spend is
+    // allowed to decide anything, and "equal" means the same hit count.
+    const nowMsForSpend = Date.now()
+    const matched = scored.filter((x) => x.hit > 0)
+    const byHit = new Map<number, typeof matched>()
+    for (const x of matched) {
+      const g = byHit.get(x.hit)
+      if (g) g.push(x)
+      else byHit.set(x.hit, [x])
+    }
     const relevanceOrdered = [
-      ...scored.filter((x) => x.hit > 0).sort((a, b) => b.hit - a.hit).map((x) => x.k),
-      ...scored.filter((x) => x.hit === 0).map((x) => x.k),
+      ...[...byHit.keys()].sort((a, b) => b - a)
+        .flatMap((h) => coolBySpendInline((byHit.get(h) ?? []).map((x) => x.k), nowMsForSpend)),
+      ...coolBySpendInline(scored.filter((x) => x.hit === 0).map((x) => x.k), nowMsForSpend),
     ]
     // ⚠️ WHERE Q2 ACTUALLY LANDS. Until now an `experience` row and a `covered`
     // row competed on keyword overlap alone, and nothing in the system could
@@ -11842,6 +11948,53 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       }
     }
     if (insErr) throw insErr
+
+    // ── WHAT THIS SCRIPT SPENT ───────────────────────────────────────────────
+    //
+    // ⚠️ THE WRITE HALF OF 0216, AND WITHOUT IT THE COOLING ABOVE NEVER FIRES.
+    // The selector orders on `last_spent_at`, so a store where nothing is ever
+    // marked is a store where every row is permanently unspent and the ranking
+    // is exactly what it was before — this repo's signature defect, arriving as
+    // a feature that appears to work.
+    //
+    // ⚖️ `speakable`, NOT `ranked`. Those differ: `selectSpeakable` caps at ten
+    // and a row that lost its slot never reached a writer. Marking the wider set
+    // would retire material that was never used, which is the same defect this
+    // fixes, pointing the other way and much harder to see.
+    //
+    // ⚖️ AND ONLY WHEN THE CREATOR WAS ACTUALLY CHARGED. `unbillable` means the
+    // quality gate failed and the remix has been refunded; a script nobody paid
+    // for and nobody received did not spend anything, and retiring its facts
+    // would take the creator's best material off the table to pay for OUR
+    // failure. This is the same rule as `credits_spent` two hundred lines above.
+    //
+    // ⚖️ BEST-EFFORT, LIKE EVERY OTHER POST-INSERT WRITE HERE. The script is
+    // already saved and already the creator's; failing their response because a
+    // bookkeeping update did not land would trade the thing they paid for
+    // against a future ranking nicety.
+    if (!unbillable) {
+      const spentIds = speakable
+        .map((k) => (k as { id?: unknown }).id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      if (spentIds.length) {
+        const { error: spendErr } = await admin.rpc('mark_knowledge_spent', {
+          p_owner: ownerId,
+          p_ids: spentIds,
+        })
+        // ⚠️ LOGGED RATHER THAN SWALLOWED. A permanently failing mark is
+        // indistinguishable from a store where nothing has been used, and that
+        // is precisely the state this change exists to end — so its failure must
+        // be visible rather than inferred from scripts slowly repeating again.
+        if (spendErr) {
+          console.warn(JSON.stringify({
+            event: 'knowledge_spend_unrecorded',
+            generation_id: gen.id,
+            items: spentIds.length,
+            detail: String((spendErr as { message?: string }).message ?? spendErr),
+          }))
+        }
+      }
+    }
 
     // Data layer: record the blueprint + the time it saved (≈30 min scripting) for
     // product metrics / the data room. Best-effort — never fail the response on it.
