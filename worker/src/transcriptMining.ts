@@ -42,8 +42,19 @@ const AUDIENCE_CUES: readonly RegExp[] = Object.freeze([
   // caught by the first fixture this file was given.
   /\b(?:a lot|so many|loads|lots|plenty|a bunch|a ton)\s+of\s+(?:you|people|you guys|my followers)(?:\s+(?:have|has|had|keep|keeps|kept|been|are|were|do))*\s+(?:ask(?:ed|ing)?|want(?:ed)?\s+to\s+know|wonder(?:ed|ing)?)\b/i,
   /\b(?:you|you guys|people|everyone|everybody)\s+(?:keep|keeps|kept)\s+(?:on\s+)?ask(?:ing)?\b/i,
-  /\bI\s+(?:get|got|keep getting)\s+(?:this|that|the same)\s+question\s+(?:a lot|all the time|constantly|every day)\b/i,
-  /\bthe\s+(?:most|number one|#1)\s+(?:common\s+|frequent\s+)?question\s+I\s+(?:get|got|hear)\b/i,
+  // ⚠️⚠️ WIDENED FROM MEASURED EVIDENCE, NOT FROM IMAGINATION, AND THE FIRST
+  // VERSION MATCHED NOTHING. Run against all 331 stored own transcripts
+  // (504,180 characters) the original two patterns returned ZERO rows, while 37
+  // transcripts mention "question" and 39 mention "ask". The two sentences in the
+  // whole corpus that ARE audience demand are:
+  //   "I think the most common question that I get asked is, ..."
+  //   "I get questions a lot about tactics, and I have tons of tactics ..."
+  // The first needed "that I get ASKED" (the original required "question I get");
+  // the second needed plural "questions" and the "a lot about" order. A cue list
+  // written from how I imagine creators talk is decoration — this is what the
+  // corpus actually contains.
+  /\bI\s+(?:get|got|keep getting)\s+(?:this|that|the same|a lot of|lots of|loads of|so many)?\s*questions?\s*(?:a lot|all the time|constantly|every day)?\s*(?:about|on|regarding)?\b/i,
+  /\bthe\s+(?:most|number one|#1)\s+(?:common\s+|frequent\s+)?question\s+(?:that\s+)?I\s+(?:get|got|hear|get asked|am asked)\b/i,
   /\b(?:someone|somebody)\s+(?:in the comments|on here|asked me)\s*(?:asked|said)?\b/i,
 ])
 

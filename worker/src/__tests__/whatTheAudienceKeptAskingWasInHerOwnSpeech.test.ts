@@ -25,6 +25,23 @@ describe('what the audience keeps asking', () => {
     expect(out[0].source_video).toBe('1')
   })
 
+  // ⚠️⚠️ THESE TWO ARE THE ONLY AUDIENCE-DEMAND SENTENCES IN THE ENTIRE STORED
+  // CORPUS — 331 transcripts, 504,180 characters — and the first version of this
+  // miner matched NEITHER. They are frozen here verbatim in shape because a cue
+  // list written from how I imagine creators talk is decoration, and this file is
+  // the only thing standing between the two.
+  it('catches the two forms the real corpus actually contains', () => {
+    const real = [
+      'I think the most common question that I get asked is, why don\'t people start?',
+      'I get questions a lot about tactics, and I have tons of tactics.',
+    ]
+    for (const l of real) {
+      const out = mineTranscript(l, 1)
+      expect(out.length, `MEASURED SENTENCE MISSED: ${l}`).toBe(1)
+      expect(out[0].text.startsWith('Audience keeps asking: ')).toBe(true)
+    }
+  })
+
   it('reads the several ways a creator says it', () => {
     const lines = [
       'You guys keep asking about the thread I use for the spine.',
