@@ -148,9 +148,19 @@ describe('the edge prefers spoken material by the same rule', () => {
     // ⚖️ AND IT IS NOW STRICTLY STRONGER. The old exact match could only ever
     // check the FIRST select; both knowledge reads are checked here, and a
     // vacuous pass is refused. Dropping `source` from either still fails.
-    const knowledgeSelects = EDGE.match(/\.select\('kind, text, basis[^']*'\)/g) ?? []
-    expect(knowledgeSelects.length, 'the knowledge selects moved — re-anchor this').toBe(2)
-    for (const sel of knowledgeSelects) expect(sel).toContain('source')
+    //
+    // ⚠️ RE-ANCHORED AGAIN 2026-09-17, SAME CLAIM, SAME REASON. The two select
+    // strings became ONE column list behind `readKnowledge`, which asks for the
+    // rotation columns 0215 adds and falls back to the base list when they are
+    // absent. Both lists must still carry `source`, and both reads must still go
+    // through the helper — checked below — so dropping it from either still
+    // fails. One list is harder to get wrong than two copies, not easier.
+    const base = EDGE.match(/KNOWLEDGE_COLS_BASE = '([^']*)'/)
+    expect(base, 'the knowledge column list moved — re-anchor this').not.toBeNull()
+    expect(base?.[1]).toContain('source')
+    expect(EDGE).toMatch(/KNOWLEDGE_COLS_ROTATION = `\$\{KNOWLEDGE_COLS_BASE\}[^`]*`/)
+    const reads = EDGE.match(/readKnowledge\(\(cols\) => admin/g) ?? []
+    expect(reads.length, 'both knowledge reads must go through the helper').toBe(2)
   })
 
   it('partitions the reservation, and does not sort it', () => {

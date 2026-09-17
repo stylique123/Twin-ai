@@ -43,7 +43,13 @@ describe('the promise is kept by the code, which is why it may be made', () => {
   // 2 and 3 sit above it. Without this second query the whole channel is
   // decorative: she answers, the row lands, and the writer never sees it.
   it('the edge reads asked rows specifically', () => {
-    expect(EDGE).toContain("const { data: askedRows }")
+    // ⚠️ RE-ANCHORED, CLAIM UNCHANGED. The two knowledge reads now go through
+    // `readKnowledge`, which asks for the rotation columns 0215 adds and falls
+    // back without them — so the destructured `data` is gone and the second read
+    // is named by its own binding. The thing being asserted is the same: there
+    // IS a second read, and it filters on `source = 'asked'`.
+    expect(EDGE).toContain('const askedRead = await readKnowledge(')
+    expect(EDGE).toContain('const askedRows = askedRead.rows')
     expect(EDGE).toMatch(/\.eq\('source', 'asked'\)/)
   })
 
