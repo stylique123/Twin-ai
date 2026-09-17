@@ -1,14 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  CREATOR_QUESTIONS, OPENING_THREE, ANSWER_MAX, suggestStoryAnswers,
+  CREATOR_QUESTIONS, ANSWER_MAX, suggestStoryAnswers, openingSetFor, anchorAllToSubNiche,
   creatorQuestionsFor, openingQuestionsFor, type SellsKind,
-  type CreatorQuestion, type StorySuggestion,
+  type StorySuggestion,
 } from '@twinai/shared'
 import { answerQuestion, skipQuestion, markQuestionShown, loadExtractedKnowledge } from '../lib/creatorAnswers'
 import { readStoryDraft, writeStoryDraft, clearStoryDraft } from '../lib/storyDraft'
 
 /**
- * THE THREE STORY QUESTIONS, ASKED IN THE WAIT THAT ALREADY EXISTS.
+ * THE STORY QUESTIONS, ASKED IN THE WAIT THAT ALREADY EXISTS.
+ *
+ * ⚠️ NO LONGER THREE, AND THE COUNT IS NOT WRITTEN DOWN ANYWHERE A READER HAS TO
+ * KEEP IN SYNC. `openingSetFor` returns the seed plus what the store most lacks;
+ * this file renders whatever it returns. The two extra questions are CHOSEN from
+ * the existing bank by the same selector the post-script card uses — no new
+ * wordings were written, because a second catalogue is a second thing to keep
+ * honest.
  *
  * ⚠️ THE SIX QUESTIONS ABOVE THIS ONE ARE ALL CATEGORICAL — what you do, who
  * for, what you sell. Nothing asks "tell me about a time", and `experience`
@@ -61,7 +68,7 @@ import { readStoryDraft, writeStoryDraft, clearStoryDraft } from '../lib/storyDr
 type SlotState = 'offered' | 'editing' | 'confirmed' | 'discarded'
 
 export function StoryInterview({
-  voiceId, onDone, niche = null, sells = null, stageBand = null,
+  voiceId, onDone, niche = null, sells = null, stageBand = null, subNiche = null,
 }: {
   voiceId: string | null
   /** ⚠️ CALLED ONLY WHEN ALL THREE ARE RESOLVED (answered or skipped). The
@@ -86,6 +93,15 @@ export function StoryInterview({
    *  a number she does not have reads as an accusation. Replaces `best_result`
    *  only, and only at that band. */
   stageBand?: string | null
+  /** ⚠️ THE SCAN'S OWN PHRASE FOR THE WORK — "custom Bible rebinding", not
+   *  "business". The bucket flattens an account onto one of eight words, and a
+   *  creator can tell: "everyone in your industry" reads as written for someone
+   *  else. Measured on 57 voices, `sub_niche` is populated on 52.
+   *
+   *  ⚠️ IT ARRIVES WITH THE PROFILE, SO IT IS NULL AT FIRST RENDER, exactly like
+   *  `niche` — and `anchorAllToSubNiche` refuses anything that is not a short
+   *  noun phrase, so a null or a sentence leaves the wording alone. */
+  subNiche?: string | null
 }) {
   // ⚠️ THE BANK WAS READ RAW HERE AND THE NICHE-AWARE BUILDER WAS NEVER CALLED.
   // `creatorQuestionsFor` has existed and been correct; `CreatorQuestionCard`
@@ -104,10 +120,19 @@ export function StoryInterview({
     // it wins on the ids it owns.
     const byNiche = creatorQuestionsFor(niche, CREATOR_QUESTIONS, sells === 'none' ? null : sells)
     const worded = openingQuestionsFor(byNiche, sells, stageBand)
-    return OPENING_THREE
-      .map((id) => worded.find((x) => x.id === id))
-      .filter((q): q is CreatorQuestion => !!q)
-  }, [niche, sells, stageBand])
+    // ⚖️ THE SET IS CHOSEN FROM THE REWORDED BANK, NOT THE RAW ONE, so the two
+    // extra questions arrive already carrying her niche wording — and `kind` is
+    // untouched by rewording, so the deficit maths is unaffected by running
+    // second.
+    //
+    // ⚠️ `counts` IS UNDEFINED HERE ON PURPOSE. At onboarding the store is empty
+    // and `openingSetFor` then weights on the seed's own kinds alone, which is
+    // the honest input: a read that returned zeros would claim we had checked.
+    const set = openingSetFor(worded)
+    // ⚠️ ANCHORED LAST. The niche rewrite decides WHICH words; this decides whose
+    // work they name, and it must see the final wording to find the placeholder.
+    return anchorAllToSubNiche(set, subNiche)
+  }, [niche, sells, stageBand, subNiche])
 
   // ⚠️⚠️ SEEDED FROM THE DRAFT, BECAUSE THERE WAS NO SAVE UNTIL "Continue".
   // Measured 2026-09-09: of eleven creators who reached these three questions,

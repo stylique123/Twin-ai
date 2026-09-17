@@ -13,6 +13,17 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { StoryInterview } from './StoryInterview'
 
+// ⚠️ THE COUNTS HERE ARE DERIVED, NOT LITERAL, AND THAT IS THE POINT. They read
+// 3 while the screen asked three, and the day the opening set became FIVE all
+// fourteen of them failed on a screen that was working correctly. The claims
+// were never about the number — "every question gets a blank box", "silence
+// writes nothing" — so they now count `openingSetFor()`, the same source the
+// component renders from. A count changed by decision must not read as a
+// regression.
+import { openingSetFor } from '@twinai/shared'
+const SET = openingSetFor().length
+
+
 const mocks = vi.hoisted(() => ({
   answerQuestion: vi.fn(async (_q: { id: string }, _a: string, _v: string | null) => ({ ok: true as const })),
   skipQuestion: vi.fn(async (_id: string) => true),
@@ -44,7 +55,7 @@ describe('a slot the scan could not fill still gets its blank box', () => {
   it('shows all three boxes when nothing was extracted', async () => {
     render(<StoryInterview voiceId={null} onDone={() => {}} />)
     await waitFor(() => expect(loadExtractedKnowledge).toHaveBeenCalled())
-    expect(boxes()).toHaveLength(3)
+    expect(boxes()).toHaveLength(SET)
     expect(screen.queryByText(/We found this in your videos/)).toBeNull()
   })
 
@@ -53,7 +64,7 @@ describe('a slot the scan could not fill still gets its blank box', () => {
     render(<StoryInterview voiceId={null} onDone={() => {}} />)
     await waitFor(() => expect(screen.getByText(/We found this in your videos/)).toBeTruthy())
     // One slot became a confirmation, the other two are still questions.
-    expect(boxes()).toHaveLength(2)
+    expect(boxes()).toHaveLength(SET - 1)
   })
 })
 
@@ -76,9 +87,13 @@ describe('a confirmed suggestion travels the path a typed answer travels', () =>
     expect(question.id).toBe('best_result')
     expect(answer).toContain('£13,500')
     expect(voiceId).toBe('v1')
-    // The two slots with no suggestion were resolved as skips, as always.
+    // ⚠️ EVERY OTHER SLOT WAS RESOLVED AS A SKIP — asserted as a RELATIONSHIP to
+    // the rendered set, not as a list of two ids. The list read
+    // ['contrarian', 'expensive_lesson'] and broke the day the set became five,
+    // on a screen that had resolved all four correctly. The invariant is that
+    // nothing is left unresolved, at any set size.
     expect(skipQuestion.mock.calls.map((c) => c[0]).sort())
-      .toEqual(['contrarian', 'expensive_lesson'])
+      .toEqual(openingSetFor().map((q) => q.id).filter((id) => id !== 'best_result').sort())
   })
 
   it('carries an edit through the same single path', async () => {
@@ -106,13 +121,14 @@ describe('silence is not confirmation', () => {
     render(<StoryInterview voiceId={null} onDone={onDone} />)
     await waitFor(() => expect(screen.getByText(/We found this in your videos/)).toBeTruthy())
 
-    // They read the three prompts and pressed Continue. That is a skip.
+    // They read the prompts and pressed Continue. That is a skip.
     fireEvent.click(screen.getByText('Continue'))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
 
     expect(answerQuestion).not.toHaveBeenCalled()
+    // Silence resolves the WHOLE set as skips, whatever its size.
     expect(skipQuestion.mock.calls.map((c) => c[0]).sort())
-      .toEqual(['best_result', 'contrarian', 'expensive_lesson'])
+      .toEqual(openingSetFor().map((q) => q.id).sort())
   })
 
   it('writes nothing for a shown suggestion when they skip all', async () => {
@@ -121,7 +137,7 @@ describe('silence is not confirmation', () => {
     await waitFor(() => expect(screen.getByText(/We found this in your videos/)).toBeTruthy())
 
     fireEvent.click(screen.getByText('Skip all'))
-    await waitFor(() => expect(skipQuestion).toHaveBeenCalledTimes(3))
+    await waitFor(() => expect(skipQuestion).toHaveBeenCalledTimes(SET))
     expect(answerQuestion).not.toHaveBeenCalled()
   })
 })
@@ -131,13 +147,13 @@ describe('discard gives the creator the blank box back', () => {
     loadExtractedKnowledge.mockResolvedValue([RESULT_ROW])
     render(<StoryInterview voiceId={null} onDone={() => {}} />)
     await waitFor(() => expect(screen.getByText(/We found this in your videos/)).toBeTruthy())
-    expect(boxes()).toHaveLength(2)
+    expect(boxes()).toHaveLength(SET - 1)
 
     fireEvent.click(screen.getByText('Not this — I will write my own'))
 
     // The suggestion is gone and the third box is back.
     expect(screen.queryByText(/We found this in your videos/)).toBeNull()
-    expect(boxes()).toHaveLength(3)
+    expect(boxes()).toHaveLength(SET)
     const field = screen.getByLabelText(/most specific result/i) as HTMLTextAreaElement
     expect(field.value).toBe('')
 
@@ -147,7 +163,7 @@ describe('discard gives the creator the blank box back', () => {
 
     // Continuing from here writes nothing for that slot.
     fireEvent.click(screen.getByText('Continue'))
-    await waitFor(() => expect(skipQuestion).toHaveBeenCalledTimes(3))
+    await waitFor(() => expect(skipQuestion).toHaveBeenCalledTimes(SET))
     expect(answerQuestion).not.toHaveBeenCalled()
   })
 })
