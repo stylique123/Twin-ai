@@ -255,3 +255,55 @@ export function askedProgress(alreadyPut: readonly string[], bank: readonly Crea
   const put = new Set([...alreadyPut].filter((x) => ids.has(String(x)))).size
   return { put, of: bank.length, remaining: bank.length - put }
 }
+
+/**
+ * THE TWO ASKED WHILE THE SCAN RUNS, WHERE THE WAIT ALREADY IS.
+ *
+ * ⚠️ NOT ON THE STORY SCREEN, AND I PUT THEM THERE ONCE BY MISREADING. That
+ * screen exists for the three questions the DNA can word in her world, and
+ * `Onboarding.tsx` records why: on the scan step "the DNA does not exist yet and
+ * they could never be worded in her world". Appending to the story set spends
+ * attention on the screen already earning it; the scan step has idle time and a
+ * progress bar.
+ *
+ * ⚠️⚠️ SO THESE MUST CARRY NO NICHE PLACEHOLDER, AND THAT RULED OUT MY FIRST
+ * PICK. `Onboarding.storiesAfterDna` records exactly why the story three left
+ * this screen: "every creator met the same three sentences, including 'what does
+ * almost everyone in your NICHE believe', asked before her niche had been read."
+ * The objection is about WORDING, not about the screen — and
+ * `number_that_matters` reads "most people in YOUR NICHE ignore", so choosing it
+ * here would have reintroduced the defect that decision was made to remove.
+ * `theDepthQuestionsNeedNoNiche` now asserts the property rather than trusting
+ * the choice.
+ *
+ * ⚖️ AND THE CHOICE IS NOT FREE. `creatorProfileQuestions.ts` states the rule
+ * that governs this screen: "an answer with no reader is a stored opinion...
+ * anything that cannot be turned into a directive here should not have been
+ * asked." These two mint `framework` and `claim`, and
+ * `anAnsweredQuestionMustReachTheWriter` measures both kinds as admitted by the
+ * selector — in the shared set AND the edge mirror. The reader requirement is
+ * satisfied by evidence, not by hope.
+ *
+ * ⚖️ WHY THESE TWO AND NOT ANY OTHER PAIR: they are the kinds the store
+ * measurably lacks. `figures` is 2 across 374 caption-derived items, and the
+ * physio runs produced three complete scripts with ZERO first-person episodes
+ * because the store was all opinions — `questionDeficit` exists for exactly
+ * this. A method question and a number question are the two the deficit maths
+ * reaches for on an empty store once the story three are accounted for.
+ *
+ * ⚠️ AND THEY MUST NEVER BE ASKED TWICE. Asked here, they go through the same
+ * `answerQuestion` / `skipQuestion` / `markQuestionShown` path as every other
+ * answer, so `creator_questions_put` records them and `nextQuestion` is
+ * forbidden from returning them later. A separate write path here would have
+ * re-asked a creator her own answer on the post-script card.
+ */
+export const DEPTH_QUESTION_IDS: readonly string[] = Object.freeze([
+  // How the work is actually done — the `framework` the store has least of, and
+  // "When you do this well, what are the actual steps?" names no niche.
+  'own_method',
+  // ⚖️ THE `claim` THAT ASKS FOR A FIGURE WITHOUT NAMING A NICHE. Its hint is
+  // "the real figure, and what people guess instead", which is precisely the
+  // gap: `figures` is 2 across 374 caption-derived items. `number_that_matters`
+  // would have been the obvious pick and cannot be used here — see above.
+  'costs_more_than_people_think',
+])

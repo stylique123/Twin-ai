@@ -110,7 +110,14 @@ describe('3. the three story questions are one screen, same three rows', () => {
     // counter ("2 of 5") is still the thing that must not appear, because it
     // turns a screen into a queue.
     expect(STORY).not.toMatch(/\bof \{[A-Za-z_.]*\blength\}/)
-    expect(STORY).toMatch(/OPENING_THREE\s*\n?\s*\.map/)
+    // ⚠️ RE-ANCHORED A THIRD TIME, CLAIM UNCHANGED EVERY TIME: every prompt on
+    // ONE screen, never paginated. It has named `OPENING_THREE.map`, then
+    // `openingSetFor`, and now `questionIds.map` — the set became a prop so the
+    // scan step can ask the two DNA-free questions with the SAME renderer. What
+    // matters is that whatever set arrives is mapped as one list, and that the
+    // story three remain the default.
+    expect(STORY).toMatch(/questionIds\s*\n?\s*\.map/)
+    expect(STORY).toMatch(/questionIds = OPENING_THREE/)
     expect(STORY).toMatch(/anchorAllToSubNiche\(/)
   })
 

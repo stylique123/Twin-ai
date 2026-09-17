@@ -66,6 +66,7 @@ type SlotState = 'offered' | 'editing' | 'confirmed' | 'discarded'
 
 export function StoryInterview({
   voiceId, onDone, niche = null, sells = null, stageBand = null, subNiche = null,
+  questionIds = OPENING_THREE,
 }: {
   voiceId: string | null
   /** ⚠️ CALLED ONLY WHEN ALL THREE ARE RESOLVED (answered or skipped). The
@@ -99,6 +100,20 @@ export function StoryInterview({
    *  `niche` — and `anchorAllToSubNiche` refuses anything that is not a short
    *  noun phrase, so a null or a sentence leaves the wording alone. */
   subNiche?: string | null
+  /** WHICH questions this instance asks. Defaults to the story three.
+   *
+   *  ⚖️ ONE RENDERER, TWO PLACEMENTS, AND THAT IS THE POINT. The scan step also
+   *  needs to ask — the wait is there — and a second component would mean a
+   *  second write path. This one already resolves EVERY field as answered or
+   *  skipped before `onDone`, records `shown` separately, and persists a draft
+   *  as she types; duplicating that is how two screens come to disagree about
+   *  what was asked.
+   *
+   *  ⚠️ AND DEDUPE DEPENDS ON IT BEING THIS PATH. `answerQuestion` /
+   *  `skipQuestion` write `creator_questions_put`, which is what forbids
+   *  `nextQuestion` from ever putting the same question again. A bespoke field
+   *  on the scan screen would have re-asked a creator her own answer later. */
+  questionIds?: readonly string[]
 }) {
   // ⚠️ THE BANK WAS READ RAW HERE AND THE NICHE-AWARE BUILDER WAS NEVER CALLED.
   // `creatorQuestionsFor` has existed and been correct; `CreatorQuestionCard`
@@ -128,13 +143,13 @@ export function StoryInterview({
     // ⚖️ THE EXTRA DEPTH QUESTIONS BELONG WITH `profileQuestionsFor`, on the
     // building step, which already asks categorical questions one at a time and
     // already parks the finished scan until the creator taps Done.
-    const set = OPENING_THREE
+    const set = questionIds
       .map((id) => worded.find((x) => x.id === id))
       .filter((q): q is CreatorQuestion => !!q)
     // ⚠️ ANCHORED LAST. The niche rewrite decides WHICH words; this decides whose
     // work they name, and it must see the final wording to find the placeholder.
     return anchorAllToSubNiche(set, subNiche)
-  }, [niche, sells, stageBand, subNiche])
+  }, [niche, sells, stageBand, subNiche, questionIds])
 
   // ⚠️⚠️ SEEDED FROM THE DRAFT, BECAUSE THERE WAS NO SAVE UNTIL "Continue".
   // Measured 2026-09-09: of eleven creators who reached these three questions,
