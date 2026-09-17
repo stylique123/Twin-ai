@@ -729,3 +729,77 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
     total_duration_sec: totalDurationSec(scenes),
   }
 }
+
+// ── THE CHOSEN HOOK NEVER REACHED THE SCRIPT SHE RECORDS FROM ──────────────
+//
+// ⚠️ MEASURED ON A REAL SCREEN, 2026-09-17. A creator tapped the fourth hook
+// option; the chooser showed it selected, and the teleprompter and Setup A both
+// still read option ONE. `ScriptEditor` synthesises a script only when none is
+// persisted — `loaded ?? safeBuild(..., selectedHook, ...)` — and `selectedHook`
+// is used by NOTHING ELSE. So the first visit persists a script built with the
+// recommended hook, and from then on every later choice is discarded by the
+// `??`. The effect's dependency array correctly lists `selectedHook`; it re-runs
+// and then ignores it.
+//
+// ⚠️ A REBUILD IS NOT THE FIX. The persisted script exists so a creator's EDITS
+// survive, and `safeBuild` would throw them away to change one line. Picking a
+// hook must change the hook, not the script.
+//
+// ⚖️ AND THE HOOK LIVES IN FOUR PLACES ON ONE SCRIPT: the top-level `hook`
+// field, scene 1's `dialogue`, its `duration_sec`, and `total_duration_sec`.
+// Updating the dialogue alone would leave `script.hook` asserting the old choice
+// to every other reader — one fix, two new disagreements.
+
+/**
+ * Put the creator's chosen hook into a script that already exists.
+ *
+ * ⚠️ RETURNS THE SAME OBJECT WHEN NOTHING SHOULD CHANGE — an empty or blank
+ * choice, a script with no scenes, or a hook the script already carries. React
+ * state identity is how the caller avoids a render loop, and rewriting a script
+ * to the value it already holds would mark it edited when nobody edited it.
+ *
+ * ⚠️ AN EMPTY CHOICE IS NOT AN INSTRUCTION TO BLANK THE HOOK. `chosenHook`
+ * starts as `''` before the generation loads, and this runs on mount, so
+ * treating empty as "set the hook to nothing" would erase scene 1 on every
+ * first render.
+ *
+ * ⚖️ THE CAPTION FOLLOWS ONLY WHILE IT IS STILL DERIVED. `buildRecordingScript`
+ * sets `caption_text` from the hook, so a caption the creator never touched
+ * should track her new choice. One she has rewritten is hers, and a hook change
+ * must not silently overwrite her words — so it moves only when it still equals
+ * what the OLD dialogue would have produced.
+ */
+export function withSelectedHook(
+  script: RecordingScript | null | undefined,
+  selectedHook: string | null | undefined,
+): RecordingScript | null | undefined {
+  if (!script || !Array.isArray(script.scenes) || script.scenes.length === 0) return script
+  const hook = String(selectedHook ?? '').trim()
+  if (hook === '') return script
+
+  const idx = script.scenes.findIndex((s) => s?.scene_number === 1)
+  if (idx < 0) return script
+  const scene = script.scenes[idx]
+  if (!scene) return script
+
+  const current = String(scene.dialogue ?? '').trim()
+  // Already hers, and `script.hook` agrees — nothing to do.
+  if (current === hook && String(script.hook ?? '').trim() === hook) return script
+
+  const wpm = script.wpm
+  const captionWasDerived = scene.caption_text === captionFromLine(current)
+  const nextScene: RecordingScene = {
+    ...scene,
+    dialogue: hook,
+    duration_sec: estimateDurationSec(hook, wpm),
+    caption_text: captionWasDerived ? captionFromLine(hook) : scene.caption_text,
+  }
+
+  const scenes = [...script.scenes]
+  scenes[idx] = nextScene
+  // ⚖️ RE-DERIVED FROM THE SCENES RATHER THAN ADJUSTED BY A DELTA. A delta is
+  // right only if every other scene is unchanged, which this function cannot
+  // promise about a script it did not build.
+  const total = scenes.reduce((n, s) => n + (Number.isFinite(s?.duration_sec) ? Number(s.duration_sec) : 0), 0)
+  return { ...script, hook, scenes, total_duration_sec: total }
+}
