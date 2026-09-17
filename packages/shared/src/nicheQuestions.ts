@@ -91,7 +91,40 @@ export function nicheBucket(niche: unknown): NicheBucket | null {
  * rewritten. Three of ten. "What is something you learned the expensive way?"
  * needs no translation for anybody.
  */
-const OVERRIDES: Readonly<Record<NicheBucket, Readonly<Record<string, { ask: string; hint: string }>>>> = Object.freeze({
+/** One question, reworded for a world she recognises.
+ *
+ *  ⚠️ `postBased` EXISTS BECAUSE THE UNDER-1K BAND OVERRIDE WAS AIMED AT THE
+ *  WRONG AXIS. That override replaces `best_result` to avoid asking a creator
+ *  with no reach which video "outperformed everything" — an accusation dressed
+ *  as a question. But only TWO of the nine `best_result` wordings ask about a
+ *  POST. The rest ask about a client, a customer, a buyer, or a thing she made,
+ *  and those are answerable with two hundred followers: a consultant's best
+ *  client result does not depend on her audience size.
+ *
+ *  ⚖️ MEASURED CONSEQUENCE: a business-bucket creator under the band was asked
+ *  "what is the best thing that has happened because of something you posted"
+ *  INSTEAD OF "what is the best result a client has had with you" — trading the
+ *  one question of the three most likely to carry a figure a writer can quote
+ *  for a follower-growth question. The band override was right about the danger
+ *  and wrong about its scope.
+ *
+ *  ⚠️ IT IS SET EXPLICITLY RATHER THAN SNIFFED FROM THE WORDING. A regex over
+ *  "video|post" would silently reclassify any future rewrite, and this file's
+ *  whole purpose is that the wording changes while the meaning does not. */
+interface OverrideWording {
+  ask: string
+  hint: string
+  /** Set to `true` only when the question asks about the reach of her OWN POSTS,
+   *  which is the one thing the under-1k band makes unanswerable.
+   *
+   *  ⚠️ WIDER THAN `true` BECAUSE `Object.freeze` WIDENS THE LITERAL. Every read
+   *  is `=== true`, so an absent or false marker means the same thing here: no
+   *  exemption claimed. The three-valued distinction lives on `CreatorQuestion`,
+   *  where `creatorQuestionsFor` stamps it. */
+  postBased?: boolean
+}
+
+const OVERRIDES: Readonly<Record<NicheBucket, Readonly<Record<string, OverrideWording>>>> = Object.freeze({
   business: Object.freeze({
     number_that_matters: {
       ask: 'What number do you watch that tells you the business is working?',
@@ -167,6 +200,8 @@ const OVERRIDES: Readonly<Record<NicheBucket, Readonly<Record<string, { ask: str
     best_result: {
       ask: 'Which video went further than anything else you have made?',
       hint: 'The numbers if you have them, and what you think made it land.',
+      // Reach, on her own posts. Unanswerable below the band.
+      postBased: true,
     },
     contrarian: {
       ask: 'What do other creators in your corner do that you refuse to do?',
@@ -356,7 +391,7 @@ const SELLS_OVERRIDES: Readonly<Record<SellsKind, { ask: string; hint: string }>
  */
 const OPENING_BY_SELLS: Readonly<Record<
   SellsKind | 'none',
-  Readonly<Record<string, { ask: string; hint: string }>>
+  Readonly<Record<string, OverrideWording>>
 >> = Object.freeze({
   service: Object.freeze({
     expensive_lesson: {
@@ -408,6 +443,8 @@ const OPENING_BY_SELLS: Readonly<Record<
     best_result: {
       ask: 'Which video or post outperformed everything — and what was different about it?',
       hint: 'The numbers if you have them, and what you think made it land.',
+      // Reach, on her own posts. Unanswerable below the band.
+      postBased: true,
     },
     contrarian: {
       ask: 'What does everyone in your corner of the internet repeat that you think is wrong?',
@@ -487,14 +524,40 @@ export function openingQuestionsFor(
   stageBand: string | null = null,
 ): readonly CreatorQuestion[] {
   const table = sells === null ? null : OPENING_BY_SELLS[sells]
+
   // ⚠️ THE BAND OUTRANKS EVERYTHING AND MUST NOT DEPEND ON `sells`. Asking a
   // 995-subscriber creator which video "outperformed everything" is the
   // accusation this override exists to prevent, and it was being skipped
   // entirely whenever `sells` was unknown — which, at the onboarding step where
   // these are asked, is always. The band is a fact about her account; it does
   // not become unknowable because her Product Library is empty.
-  const banded = stageBand !== 'under_1k' ? bank : bank.map((q) => (
-    q.id === 'best_result'
+  //
+  // ⚖️ BUT IT ONLY OUTRANKS A QUESTION ABOUT HER OWN REACH. A wording that asks
+  // about a CLIENT, a CUSTOMER, a BUYER or a THING SHE MADE is answerable at any
+  // size, and replacing it spends the most quotable of the three questions to
+  // prevent an accusation that wording never made. See `OverrideWording`.
+  //
+  // ⚠️ AN ABSENT OVERRIDE STILL GETS THE BAND. The generic bank wording is the
+  // one every bucket without a rewrite falls through to, and it has never been
+  // measured on a small account — so the cautious wording stays the default and
+  // an exemption has to be claimed explicitly, by a marker, in one of the two
+  // tables. Silence keeps today's behaviour.
+  // ⚠️ THREE STATES, NOT TWO, AND THAT IS THE WHOLE CORRECTNESS ARGUMENT. "No
+  // rewrite exists" and "a rewrite exists and is not about her posts" must not
+  // collapse: the first keeps the cautious wording, the second earns the
+  // exemption. `postBased` is therefore `undefined | false | true` on a question
+  // — the middle value is what `creatorQuestionsFor` stamps when a bucket
+  // rewrote the wording without making it about reach.
+  const bandApplies = (q: CreatorQuestion): boolean => {
+    if (stageBand !== 'under_1k' || q.id !== 'best_result') return false
+    const sold = table === null ? undefined : table[q.id]
+    if (sold !== undefined) return sold.postBased === true
+    if (q.postBased === undefined) return true
+    return q.postBased === true
+  }
+
+  const banded = bank.map((q) => (
+    bandApplies(q)
       ? { ...q, ask: UNDER_1K_BEST_RESULT.ask, hint: UNDER_1K_BEST_RESULT.hint }
       : q
   ))
@@ -502,8 +565,8 @@ export function openingQuestionsFor(
   return banded.map((q) => {
     const o = table[q.id]
     if (!o) return q
-    // Already replaced above, and the band wins.
-    if (q.id === 'best_result' && stageBand === 'under_1k') return q
+    // Already replaced above, and the band wins where it still applies.
+    if (bandApplies(q)) return q
     return { ...q, ask: o.ask, hint: o.hint }
   })
 }
@@ -525,6 +588,12 @@ export function creatorQuestionsFor(
     // "marketing" matched first.
     if (q.id === 'first_thing_asked' && sold) return { ...q, ask: sold.ask, hint: sold.hint }
     const o = overrides[q.id]
-    return o ? { ...q, ask: o.ask, hint: o.hint } : q
+    // ⚠️ THE MARKER TRAVELS WITH THE WORDING. `openingQuestionsFor` runs second
+    // and never learns the niche, so if the bucket's classification did not ride
+    // along on the question it would have to re-derive it from the text — which
+    // is the sniffing `OverrideWording` exists to avoid. Stamped as `false` when
+    // a rewrite exists and is not about her posts, so "rewritten, answerable at
+    // any size" stays distinguishable from "never rewritten".
+    return o ? { ...q, ask: o.ask, hint: o.hint, postBased: o.postBased === true } : q
   })
 }
