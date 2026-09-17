@@ -34,6 +34,19 @@ const BODY = stripComments(VOICE.slice(
   VOICE.indexOf('export async function extractKnowledgeFromAudio'),
 ))
 
+/** ⚠️ THE BATCHING MOVED, AND THE CLAIM DID NOT. The loop that cuts transcripts
+ *  into windows now lives in `buildExtractBatches`, because a SECOND pass over
+ *  the same speech (Track A) has to read IDENTICAL material — two copies of this
+ *  loop that drifted by one `+ 2` would make an item found by one pass and not
+ *  the other unattributable to the PROMPT, which is the only reason to run two.
+ *  So these assertions follow it there rather than being relaxed: "every
+ *  transcript lands in exactly one call" and "the number of calls is bounded"
+ *  are the claims, and both are still checked against real code. */
+const BATCHER = stripComments(VOICE.slice(
+  VOICE.indexOf('export function buildExtractBatches'),
+  VOICE.indexOf('// ── TRACK A:'),
+))
+
 describe('the corpus cap is gone', () => {
   it('does not truncate the whole corpus to one window', () => {
     // ⚠️ THE EXACT LINE THIS TEST EXISTS FOR.
@@ -42,7 +55,8 @@ describe('the corpus cap is gone', () => {
   })
 
   it('batches instead, so every transcript lands in exactly one call', () => {
-    expect(BODY).toMatch(/const batches: string\[\] = \[\]/)
+    expect(BATCHER).toMatch(/const batches: string\[\] = \[\]/)
+    expect(BODY).toMatch(/const batches = buildExtractBatches\(transcripts\)/)
     expect(BODY).toMatch(/for \(const corpus of batches\)/)
   })
 
@@ -61,7 +75,19 @@ describe('what it still drops, it says', () => {
 
   it('bounds the number of calls, because each one is spend', () => {
     expect(VOICE).toMatch(/EXTRACT_MAX_BATCHES = 5/)
-    expect(BODY).toMatch(/batches\.length < EXTRACT_MAX_BATCHES/)
+    expect(BATCHER).toMatch(/batches\.length < EXTRACT_MAX_BATCHES/)
+  })
+
+  it('the bound still binds BOTH passes over the same speech', () => {
+    // ⚠️ THE TARGETED PASS DOUBLES THE CALLS PER SCAN, from up to five to up to
+    // ten. That is the honest price and it is stated in the code; what must not
+    // happen is a second pass that batches WITHOUT the bound and turns a
+    // doubling into an unbounded spend.
+    const TARGETED = stripComments(VOICE.slice(
+      VOICE.indexOf('export async function extractKnowledgeTargeted'),
+    ))
+    expect(TARGETED).toMatch(/const batches = buildExtractBatches\(transcripts\)/)
+    expect(TARGETED).not.toMatch(/const batches: string\[\] = \[\]/)
   })
 })
 

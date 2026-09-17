@@ -288,6 +288,13 @@ const knowledgeSchema = obj(
           // manufacture a price for every errand the creator ran.
           cost: { type: 'STRING' },
           consensus: { type: 'STRING' },
+          // ⚖️ ALSO NOT REQUIRED, AND FOR A SHARPER REASON THAN THE TWO ABOVE.
+          // A caption pass has no sentence to give — a title is not something
+          // anybody was heard saying — and an older row has none recorded.
+          // Requiring it would invite the model to manufacture a quotation, and
+          // a manufactured quotation is the worst thing this table can hold: it
+          // is `stated` with a fabricated receipt attached.
+          evidence: { type: 'STRING' },
         },
         ['kind', 'text', 'basis', 'times_seen', 'confidence', 'source_video'],
       ),
@@ -331,6 +338,10 @@ export interface RawKnowledgeItem {
   /** The belief they NAMED and argued against, when they named one. Absent is
    *  the normal case. */
   consensus?: string
+  /** ONE sentence of their own speech that supports this item's conclusion.
+   *  Supporting material for the writer, NEVER a line to reproduce verbatim.
+   *  Absent is ordinary: captions have no sentence to give. */
+  evidence?: string
 }
 
 /** Distil what a creator knows from what they said. Returns raw rows for the
@@ -491,7 +502,7 @@ export function clampCaptionBasis(items: RawKnowledgeItem[]): RawKnowledgeItem[]
  * edits would re-mine everybody for nothing, and a version that does not move
  * for a real change leaves them stuck, which is the state this closes.
  */
-export const KNOWLEDGE_EXTRACTOR_VERSION = 1
+export const KNOWLEDGE_EXTRACTOR_VERSION = 2
 
 /** How much spoken text one extraction call may carry.
  *
@@ -507,6 +518,144 @@ export const EXTRACT_WINDOW_CHARS = 12_000
  *  gets a warning line naming exactly how many were left unread, rather than the
  *  silence this replaces. */
 export const EXTRACT_MAX_BATCHES = 5
+
+/**
+ * Cut transcripts into windows the model can actually read.
+ *
+ * ⚖️ EXTRACTED SO BOTH PASSES READ IDENTICAL MATERIAL. The general pass and the
+ * Track A targeted pass run over the same transcripts, and if they batched
+ * differently — a copied loop that drifted by one `+ 2` — an item found by one
+ * and not the other would be unattributable to the PROMPT, which is the only
+ * reason to run two passes at all. One function, called twice.
+ *
+ * ⚠️ IT IS NOT A `.slice()`, AND THE COMMENT ON `extractKnowledgeFromAudio`
+ * RECORDS WHY AT LENGTH: a single 12,000-character cut read 3 of 25 transcripts
+ * and made two separate budget raises inert.
+ */
+export function buildExtractBatches(transcripts: string[]): string[] {
+  const batches: string[] = []
+  let current: string[] = []
+  let size = 0
+  for (const [i, t] of transcripts.entries()) {
+    const block = `--- VIDEO ${i + 1} (spoken) ---\n${t}`
+    if (size + block.length > EXTRACT_WINDOW_CHARS && current.length) {
+      batches.push(current.join('\n\n')); current = []; size = 0
+    }
+    current.push(block); size += block.length + 2
+    if (batches.length >= EXTRACT_MAX_BATCHES - 1 && size >= EXTRACT_WINDOW_CHARS) break
+  }
+  if (current.length && batches.length < EXTRACT_MAX_BATCHES) batches.push(current.join('\n\n'))
+  return batches
+}
+
+// ── TRACK A: SEVEN QUESTIONS, ASKED OF EVERY CREATOR, EVERY TIME ────────────
+//
+// ⚠️ WHY A SECOND CALL AND NOT SEVEN MORE BULLET POINTS ON `KNOWLEDGE_SYSTEM`.
+// The obvious cheap move is to append the questions to the general prompt. This
+// repository has measured prompt rules being quietly ignored FOUR separate times
+// — the `promotes` enum, the enumeration unit, the caption `basis` round-up
+// (`clampCaptionBasis` above records that one in detail), and the beat-ask
+// generic leak. A question appended to a prompt that already carries twenty
+// instructions is a question the model answers when it has nothing better to do.
+// The general pass is an OPEN question — "record what they know" — and an open
+// question is answered by whatever is most salient. These seven are answered
+// reliably only when they are the whole task.
+//
+// ⚖️ AND THE GENERAL PASS IS UNCHANGED, DELIBERATELY. This is ADDITION, not
+// replacement. `KNOWLEDGE_SYSTEM` still runs on every batch exactly as before
+// and its output is still stored: it catches the odd, unpredictable thing a
+// fixed list cannot anticipate, which is precisely what a fixed list is bad at.
+// Nothing that is extracted today stops being extracted.
+//
+// ⚖️ THE COST, STATED RATHER THAN BURIED: this DOUBLES the Gemini calls per
+// scan, from up to five to up to ten. It is the same transcripts and the same
+// window; it is a second read of them. That is the whole price, it is bounded by
+// the same `EXTRACT_MAX_BATCHES`, and `targeted_extract_done` logs what it
+// bought so the trade can be measured rather than assumed.
+//
+// ⚠️ TRACK B — PRICING, CLAIM RESTRICTIONS AND THE METHOD'S OWN NAME — IS NOT
+// HERE, AND ITS ABSENCE IS THE DESIGN. Those three questions only have answers
+// when a product or paid offer exists. A creator who sells nothing has nothing
+// to say to "what do you charge", and asking anyway is an invitation to fill the
+// shape with a guess — which is the exact fabrication this file's every clamp
+// exists to prevent. An empty Track B is the correct, honest result for a pure
+// commentary creator, and it must never trigger a fallback that invents a price.
+// Track A can therefore ship on every creator now, while Track B waits on the
+// product-entity work; two tracks, two rollout speeds, nobody blocked on the
+// slower one.
+const TRACK_A_SYSTEM = `You are TwinAI's Creator Knowledge engine, running a TARGETED pass. You are given VERBATIM TRANSCRIPTS of a creator speaking on camera. A separate pass already records what they generally know. Your job is narrower and you must not duplicate it: answer SEVEN specific questions about this creator, from these transcripts only.
+
+ANSWER EACH QUESTION AS MANY TIMES AS THE TRANSCRIPTS HONESTLY SUPPORT, INCLUDING ZERO. A question with no answer in this material is a correct outcome and you return nothing for it. Do NOT produce one item per question to fill the shape, and do NOT stretch a weak answer to cover a question you found nothing for — an invented specific is worse than a missing one, because a script will say it out loud in their name.
+
+THE SEVEN QUESTIONS, and the kind each answer is filed under:
+1. WHAT SPECIFIC NUMBER DID THEY CITE? Money, time, quantity, percentage, anything countable, with what it counts still attached. "£400 for a rebind", "three years before the first sale", "40% of my orders are repeats". A number with no unit and no subject is not an answer. -> kind "claim"
+2. WHO OR WHAT DO THEY PUSH BACK AGAINST? The advice, group, practice or assumption they argue with. Put THEIR position in text and the thing they are arguing against in consensus. -> kind "opinion"
+3. WHAT SPECIFIC MOMENT DO THEY DESCRIBE? One decision, one customer, one day, one outcome — a thing that happened once, with its particulars. Not a habit, not a general practice. "A customer sent back a Bible that had been rebound with PVA glue" is a moment; "customers send things back" is not. -> kind "example"
+4. WHAT HAS SOMEONE ELSE SAID TO THEM, IN THAT PERSON'S OWN WORDS? A customer, a follower, a critic, a client. Record what was said to them and who said it. -> kind "example"
+5. WHAT DO THEY BELIEVE THAT OTHERS IN THEIR SPACE DO NOT? A position that would be contested by a competent peer, not a truism everyone shares. -> kind "opinion"
+6. WHAT MISTAKE DID THEY MAKE, OR WHAT DID THEY LEARN THE HARD WAY? Fill cost with what it actually took from them when they said so, and leave cost EMPTY when they did not say. -> kind "experience"
+7. WHAT DO THEY TELL PEOPLE TO DO AT THE END OF A VIDEO? Their real closing ask, in their own construction. "Follow for part two", "comment the word GLUE", "the link is in my bio", "send me a DM" are all real answers. If they end without asking for anything, that is also an answer and you say so plainly. -> kind "framework"
+
+EVERY ITEM CARRIES THE SENTENCE IT CAME FROM, in a field called evidence, and this is the part that makes the pass worth running. Copy ONE sentence of the creator's actual speech, as they said it, at most 400 characters. Do not tidy it, do not paraphrase it, do not stitch two sentences together. A conclusion without its sentence is "she cares about pricing"; the same conclusion with its sentence is "I charge £400 because the cheap rebinds come apart inside a year", and only the second is something a writer can build a line out of. If you cannot point at ONE sentence they actually said, you do not have an item — drop it rather than writing evidence from memory of the gist.
+
+evidence IS SUPPORTING MATERIAL AND NOT A SCRIPT LINE. It exists so a writer knows what this creator actually said and in what words. It is never handed to an audience verbatim and never treated as a quotation to reproduce.
+
+EVERY OTHER RULE OF THE GENERAL PASS STILL BINDS:
+- Each item's text is ONE line, at most 240 characters, in plain words. It is a distillate, never a passage copied out of a transcript. The copied sentence goes in evidence and nowhere else.
+- basis is exactly one of: stated (they said it outright), demonstrated (they showed it or acted on it without saying it), inferred (you are reasoning past what they said). Do NOT round it up. Only stated and demonstrated are ever put in this creator's mouth. An item carrying evidence you copied is almost always "stated"; if you find yourself writing "inferred" beside a sentence you copied, you have inferred past what the sentence says and the item is wrong.
+- NAME THE THINGS. Keep the real products, models, tools, companies, prices and people inside every item. Never generalise a named thing into a category to sound tidier.
+- times_seen is how many of the supplied videos carried it, as a digit. source_video is the number of the "--- VIDEO n ---" heading it came from, as a digit; where it appears in several, give the first.
+- confidence is how sure YOU are that this is what they meant, as a decimal between 0 and 1. Do not round it up to 1 to look decisive.
+- consensus is filled ONLY when they NAMED a belief other people hold and then contradicted it, recorded in their framing. A preference or a comparison is not a consensus.
+- cost is filled ONLY when they said what a thing cost them. Do not price anything for them.
+- RETURN AN EMPTY LIST if these transcripts answer none of the seven. That is a real and useful answer about this creator, and it is far better than seven plausible sentences nobody said.`
+
+/**
+ * Ask the seven Track A questions of the same transcripts the general pass read.
+ *
+ * ⚖️ SAME BATCHING, SAME WINDOW, SAME BOUND. It reuses `buildExtractBatches` so
+ * the two passes read IDENTICAL material — if they batched differently, an item
+ * found by one and not the other would be unattributable to the prompt, and the
+ * whole point of running both is to be able to say which found what.
+ *
+ * ⚖️ ENRICHMENT, NEVER A GATE, and a failure here costs nothing that exists
+ * today: the general pass has already run and its rows are already on their way
+ * to the store. A later batch failing keeps the earlier ones, for the same
+ * reason the general extractor keeps them.
+ */
+export async function extractKnowledgeTargeted(
+  handle: string,
+  platform: string,
+  transcripts: string[],
+): Promise<RawKnowledgeItem[]> {
+  if (!transcripts.length) return []
+  const batches = buildExtractBatches(transcripts)
+  const items: RawKnowledgeItem[] = []
+  try {
+    for (const corpus of batches) {
+      const prompt = `CREATOR: @${handle} on ${platform}
+SPOKEN TRANSCRIPTS:
+${corpus}
+
+Answer the seven questions about this creator from these transcripts. Carry the sentence each answer came from.`
+      const out = (await geminiJson(TRACK_A_SYSTEM, prompt, knowledgeSchema, 40_000)) as { items?: RawKnowledgeItem[] }
+      if (Array.isArray(out?.items)) items.push(...out.items)
+    }
+  } catch {
+    return items
+  }
+  // ⚠️ REPORTED, BECAUSE THIS PASS COSTS A SECOND SET OF MODEL CALLS AND THE
+  // TRADE MUST BE MEASURABLE RATHER THAN ASSUMED. `with_evidence` is the number
+  // that decides whether it was worth it: items without a copied sentence are
+  // things the general pass could plausibly have found too.
+  console.log(JSON.stringify({
+    event: 'targeted_extract_done',
+    batches: batches.length,
+    items: items.length,
+    with_evidence: items.filter((i) => typeof i?.evidence === 'string' && i.evidence.trim().length > 0).length,
+  }))
+  return items
+}
 
 export async function extractKnowledgeFromAudio(
   handle: string,
@@ -536,18 +685,7 @@ export async function extractKnowledgeFromAudio(
   // returns fewer items per video, and nothing would say so. Each batch is a
   // window the model can actually read, and every transcript lands in exactly
   // one of them.
-  const batches: string[] = []
-  let current: string[] = []
-  let size = 0
-  for (const [i, t] of transcripts.entries()) {
-    const block = `--- VIDEO ${i + 1} (spoken) ---\n${t}`
-    if (size + block.length > EXTRACT_WINDOW_CHARS && current.length) {
-      batches.push(current.join('\n\n')); current = []; size = 0
-    }
-    current.push(block); size += block.length + 2
-    if (batches.length >= EXTRACT_MAX_BATCHES - 1 && size >= EXTRACT_WINDOW_CHARS) break
-  }
-  if (current.length && batches.length < EXTRACT_MAX_BATCHES) batches.push(current.join('\n\n'))
+  const batches = buildExtractBatches(transcripts)
 
   // ⚠️ SAID OUT LOUD WHEN MATERIAL IS STILL DROPPED. A bound that silently
   // discards is the thing this whole comment is about.

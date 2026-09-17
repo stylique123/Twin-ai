@@ -3,7 +3,7 @@ import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { transcribeFromUrl } from '../media.js'
 import { mapWithConcurrency, TRANSCRIBE_CONCURRENCY } from '../boundedMap.js'
 import { transcriptBudgetFor } from '../transcriptSelection.js'
-import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions, KNOWLEDGE_EXTRACTOR_VERSION } from '../voice.js'
+import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeTargeted, extractKnowledgeFromCaptions, KNOWLEDGE_EXTRACTOR_VERSION } from '../voice.js'
 
 // ⚖️ THE SAME NORMALISATION `transcribe.ts` USES, and it must stay the same: the
 // key is what lets one video pasted by several people hit one cached row, so two
@@ -295,9 +295,20 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     // separately because the evidence is of a different kind — a title proves a
     // video was made, not what it concluded — and the caption prompt refuses to
     // file an opinion as `stated` for exactly that reason.
+    //
+    // ⚖️ AND A THIRD PASS OVER THE SAME SPEECH, ASKING SEVEN FIXED QUESTIONS.
+    // `extractKnowledgeTargeted` is ADDITION, never replacement: the general
+    // pass above still runs unchanged and its output is still stored. The two
+    // are good at opposite things — an open question catches the odd,
+    // unpredictable thing a fixed list cannot anticipate, and a fixed list
+    // catches the known-valuable things every time instead of when they happen
+    // to be salient. Running both is the whole design, and it is why the
+    // targeted prompt is a separate CALL rather than seven more bullets on the
+    // general one: this repo has measured prompt rules being ignored four times.
     const captions = Array.isArray(p.captions) ? p.captions : []
-    const [fromAudio, fromCaptions] = await Promise.all([
+    const [fromAudio, fromTargeted, fromCaptions] = await Promise.all([
       extractKnowledgeFromAudio(handle, platform, transcripts),
+      extractKnowledgeTargeted(handle, platform, transcripts),
       extractKnowledgeFromCaptions(handle, platform, captions),
     ])
     // Audio first: where both sources produced the same claim, the one somebody
@@ -306,7 +317,18 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     // become indistinguishable one line later. `basis` correlates today only
     // because captions are clamped to `demonstrated`; recording the pipeline is
     // the fact, and the correlation is the coincidence.
+    //
+    // ⚠️ THE TARGETED ROWS GO FIRST, AHEAD OF THE GENERAL ONES. `KNOWLEDGE_ROWS_PER_SCAN`
+    // is a hard cap and the `.slice` below is where a scan's material is lost;
+    // this repo has four recorded instances of a silent downstream cap absorbing
+    // an upstream raise. If the two passes together ever exceed 120 rows, the
+    // ones that must survive are the ones carrying a copied sentence, because
+    // those are the ones a writer can build a line out of. Both are `transcript`
+    // — they are the same speech read twice, and inventing a third `source`
+    // value would fork a column whose whole job is to say how strong the
+    // evidence is.
     const raw = [
+      ...fromTargeted.map((r) => ({ ...r, __source: 'transcript' as const })),
       ...fromAudio.map((r) => ({ ...r, __source: 'transcript' as const })),
       ...fromCaptions.map((r) => ({ ...r, __source: 'caption' as const })),
     ]
@@ -316,6 +338,16 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     const shortOrNull = (v: unknown): string | null => {
       const t = String(v ?? '').trim().replace(/\s+/g, ' ')
       return t === '' ? null : t.slice(0, 240)
+    }
+    // ⚠️ THE SAME RULE AT 0215's CAP, AND A SEPARATE FUNCTION RATHER THAN A
+    // PARAMETER ON THE ONE ABOVE. `evidence` is a sentence of real speech and
+    // `text` is a 240-character distillate; truncating a sentence to 240 would
+    // silently produce a severed quotation, which is the one thing worse than no
+    // quotation at all. The number here is the CHECK constraint's number, and a
+    // value over it would fail the whole batch rather than this row.
+    const longOrNull = (v: unknown): string | null => {
+      const t = String(v ?? '').trim().replace(/\s+/g, ' ')
+      return t === '' ? null : t.slice(0, 400)
     }
     let rows = raw
       .filter((r) => typeof r?.text === 'string' && r.text.trim().length > 0)
@@ -360,6 +392,12 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
         // together, and stamping only one would make a voice's cohort depend on
         // which half happened to run last.
         extractor_version: KNOWLEDGE_EXTRACTOR_VERSION,
+        // ⚖️ THE SENTENCE IT WAS READ OUT OF, WHEN ONE WAS COPIED. Capped at
+        // 400 by 0215 and normalised to null when blank, like `cost` and
+        // `consensus`: "nobody recorded a sentence" and "there is no sentence"
+        // are different states and only null says the first. Absent is the
+        // ordinary case for the caption pass, which has no speech to quote.
+        evidence: longOrNull(r.evidence),
       }))
     // ⚠️ THE TAXONOMY IS A CLOSED SET AND THE MODEL DOES NOT KNOW THAT.
     // `creator_knowledge_kind_valid` CHECKs this list, so an unlisted kind is a

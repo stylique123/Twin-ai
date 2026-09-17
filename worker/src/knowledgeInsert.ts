@@ -199,11 +199,11 @@ export async function insertKnowledge(
   const { error } = await db.from('creator_knowledge').insert(rows)
   if (!error) return { error: null, sourceStored: true, merged: false }
   const missingColumn = error.code === 'PGRST204'
-    || /column .*(source|cost|consensus|extractor_version).* does not exist/i.test(String(error.message ?? ''))
+    || /column .*(source|cost|consensus|extractor_version|evidence).* does not exist/i.test(String(error.message ?? ''))
   if (!missingColumn) return { error, sourceStored: false, merged: false }
   console.warn(JSON.stringify({
     event: 'creator_knowledge_source_column_absent',
-    detail: 'migration 0122/0178/0214 not applied; storing rows WITHOUT provenance, cost, consensus or extractor version',
+    detail: 'migration 0122/0178/0214/0215 not applied; storing rows WITHOUT provenance, cost, consensus, extractor version or evidence',
   }))
   // ⚠️ `cost` AND `consensus` ARE STRIPPED ALONGSIDE `source`, AND THE REASON IS
   // THE ONE THIS BLOCK WAS ALREADY WRITTEN FOR. PostgREST rejects the WHOLE
@@ -219,6 +219,6 @@ export async function insertKnowledge(
   // the batch costs the scan. The cohort query reads such rows as NULL, which is
   // what they are: written before anything recorded which prompt wrote them.
   const { error: retryErr } = await db.from('creator_knowledge')
-    .insert(rows.map(({ source, cost, consensus, extractor_version, ...rest }) => rest))
+    .insert(rows.map(({ source, cost, consensus, extractor_version, evidence, ...rest }) => rest))
   return { error: retryErr, sourceStored: false, merged: false }
 }

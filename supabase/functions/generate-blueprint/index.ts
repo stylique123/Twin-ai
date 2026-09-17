@@ -6156,7 +6156,7 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
 
   const { data: rankedRows } = await admin
     .from('creator_knowledge')
-    .select('kind, text, basis, times_seen, confidence, source, last_observed_at')
+    .select('kind, text, basis, times_seen, confidence, source, last_observed_at, evidence')
     .eq('owner_id', ownerId)
     .order('times_seen', { ascending: false })
     .limit(40)
@@ -6173,7 +6173,7 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
   // scarce thing by name and leaves the ranking alone.
   const { data: askedRows } = await admin
     .from('creator_knowledge')
-    .select('kind, text, basis, times_seen, confidence, source, last_observed_at')
+    .select('kind, text, basis, times_seen, confidence, source, last_observed_at, evidence')
     .eq('owner_id', ownerId)
     .eq('source', 'asked')
     .order('created_at', { ascending: false })
@@ -7618,7 +7618,40 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
         + ' be framed as something she has said rather than as true today. An item'
         + ' with NO tag is one nobody recorded a date for — treat it exactly as you'
         + ' would an untagged fact, neither fresher nor staler.\n'
-        + speakable.map((k) => `  * (${k.kind}) ${freshnessTagInline((k as { last_observed_at?: unknown }).last_observed_at, nowMsForFreshness)}${k.text}`).join('\n'))
+        // ⚠️⚠️ THE INSTRUCTION THAT KEEPS EVIDENCE FROM BECOMING A FABRICATED
+        // QUOTATION. A sentence labelled "she said" is a licence the writer will
+        // take literally if nothing says otherwise, and a script that reproduces
+        // it verbatim has turned supporting material into an on-camera quote of
+        // a person quoting herself. Worse, the tidying a writer does on the way
+        // — trimming a clause, smoothing a filler — produces a sentence that is
+        // attributed and slightly untrue, which is §G8's defect: a real citation
+        // carrying something she did not say.
+        + ' Where an item carries a "she said" line, that is the sentence she was'
+        + ' heard saying it in. Use it to know what she actually means and in what'
+        + ' words — the real number, the real name, the way she frames it — and'
+        + ' then WRITE YOUR OWN LINE from it. Never reproduce it verbatim as'
+        + ' dialogue, never put it in quotation marks on screen, and never alter'
+        + ' it and present it as hers.\n'
+        // ⚠️ THE SENTENCE SHE ACTUALLY SAID, AND WITHOUT THIS THE COLUMN IS
+        // ANOTHER WRITE NOBODY READS. 0215 stores one sentence of real speech
+        // beside each conclusion because "she cares about pricing" and "I charge
+        // £400 because the cheap rebinds come apart inside a year" are the same
+        // fact, and only the second is something a writer can build a line out
+        // of. Rendering the conclusion alone would keep the store richer and the
+        // script identical.
+        //
+        // ⚖️ RENDERED ON THE SAME LINE AS ITS CONCLUSION, NEVER AS A SECOND
+        // LIST. The cost/consensus comment in `creatorKnowledge.ts` already
+        // settled this argument for those two fields: they are halves of one
+        // sentence, and splitting them hands the writer back the fragments the
+        // change existed to rejoin. Evidence is the same shape.
+        + speakable.map((k) => {
+          const ev = typeof (k as { evidence?: unknown }).evidence === 'string'
+            ? String((k as { evidence?: unknown }).evidence).trim()
+            : ''
+          const said = ev ? `\n      she said: "${ev}"` : ''
+          return `  * (${k.kind}) ${freshnessTagInline((k as { last_observed_at?: unknown }).last_observed_at, nowMsForFreshness)}${k.text}${said}`
+        }).join('\n'))
     }
     if (coveredRows.length) {
       // ⚠️ THIS LEAKED. The first version said only "do not repeat", and a run

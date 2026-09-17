@@ -41,7 +41,7 @@
  *   2  Track A: seven targeted questions asked of every transcript alongside the
  *      general pass, each carrying the sentence it was read out of (`evidence`).
  */
-export const KNOWLEDGE_EXTRACTOR_VERSION = 1
+export const KNOWLEDGE_EXTRACTOR_VERSION = 2
 
 /** A row as the cohort query needs to see it. Deliberately the smallest shape
  *  that answers the question, so a caller can pass a `select` of two columns. */

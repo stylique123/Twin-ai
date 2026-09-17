@@ -81,7 +81,7 @@ function remineCohortInline(rows, current) {
 
 /** The extractor running today. Mirrored from `KNOWLEDGE_EXTRACTOR_VERSION` in
  *  @twinai/shared and pinned by the same parity test. */
-const KNOWLEDGE_EXTRACTOR_VERSION = 1
+const KNOWLEDGE_EXTRACTOR_VERSION = 2
 
 const cors = {
   'Access-Control-Allow-Origin': '*',

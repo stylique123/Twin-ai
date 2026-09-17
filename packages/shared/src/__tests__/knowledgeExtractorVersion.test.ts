@@ -74,7 +74,13 @@ describe('the stamp actually reaches a row', () => {
     const INSERT = readFileSync(join(REPO, 'worker/src/knowledgeInsert.ts'), 'utf8')
     // PostgREST rejects the WHOLE batch on ONE unknown column. Dropping the
     // stamp costs a re-scan; dropping the batch costs the scan.
-    expect(INSERT).toMatch(/source, cost, consensus, extractor_version, \.\.\.rest/)
+    //
+    // ⚠️ THE ASSERTION IS `contains`, NOT AN EXACT SET, AND 0215 IS THE REASON.
+    // Written as a literal four-name list, this test failed the moment a FIFTH
+    // column — `evidence` — joined the strip list for doing exactly the right
+    // thing. A test that has to be edited whenever the correct behaviour is
+    // extended is a test that will eventually be deleted instead.
+    expect(INSERT).toMatch(/\{ source, cost, consensus, extractor_version,[^}]*\.\.\.rest \}/)
     expect(INSERT).toMatch(/source\|cost\|consensus\|extractor_version/)
   })
 })
