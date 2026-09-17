@@ -3,7 +3,7 @@ import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { transcribeFromUrl } from '../media.js'
 import { mapWithConcurrency, TRANSCRIBE_CONCURRENCY } from '../boundedMap.js'
 import { transcriptBudgetFor } from '../transcriptSelection.js'
-import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeTargeted, extractKnowledgeFromCaptions, KNOWLEDGE_EXTRACTOR_VERSION } from '../voice.js'
+import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeTargeted, extractKnowledgeFromDemand, extractKnowledgeFromCaptions, KNOWLEDGE_EXTRACTOR_VERSION } from '../voice.js'
 
 // ⚖️ THE SAME NORMALISATION `transcribe.ts` USES, and it must stay the same: the
 // key is what lets one video pasted by several people hit one cached row, so two
@@ -306,9 +306,17 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     // targeted prompt is a separate CALL rather than seven more bullets on the
     // general one: this repo has measured prompt rules being ignored four times.
     const captions = Array.isArray(p.captions) ? p.captions : []
-    const [fromAudio, fromTargeted, fromCaptions] = await Promise.all([
+    //
+    // ⚖️ AND A FOURTH PASS THAT USUALLY COSTS NOTHING. `extractKnowledgeFromDemand`
+    // finds the two phrases deterministically first — "a lot of you asked me",
+    // "that's a whole video on its own" — and makes NO model call when neither
+    // appears. It reaches the one supply §K2 retracted a claim about: the comment
+    // corpus is not available, but the creator repeats her audience's questions
+    // on camera, in transcripts we already hold.
+    const [fromAudio, fromTargeted, fromDemand, fromCaptions] = await Promise.all([
       extractKnowledgeFromAudio(handle, platform, transcripts),
       extractKnowledgeTargeted(handle, platform, transcripts),
+      extractKnowledgeFromDemand(handle, platform, transcripts),
       extractKnowledgeFromCaptions(handle, platform, captions),
     ])
     // Audio first: where both sources produced the same claim, the one somebody
@@ -329,6 +337,10 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     // evidence is.
     const raw = [
       ...fromTargeted.map((r) => ({ ...r, __source: 'transcript' as const })),
+      // ⚖️ SECOND, FOR THE SAME REASON THE TARGETED ROWS ARE FIRST. These carry a
+      // copied sentence too, and they are the scarcest kind in the store: a
+      // creator states audience demand a handful of times across a whole scan.
+      ...fromDemand.map((r) => ({ ...r, __source: 'transcript' as const })),
       ...fromAudio.map((r) => ({ ...r, __source: 'transcript' as const })),
       ...fromCaptions.map((r) => ({ ...r, __source: 'caption' as const })),
     ]

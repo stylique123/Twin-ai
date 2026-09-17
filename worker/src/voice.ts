@@ -2,6 +2,7 @@ import { splitDisclaimersFromCtas } from './claimDisclaimers.js'
 import { geminiJson, obj, arr, str, type InlineImage } from './gemini.js'
 import { byReachDesc, reachOf } from './reach.js'
 import type { ScrapedPost } from './media.js'
+import { minePassages, passageCorpus } from './knowledgeMine.js'
 import { buildCaptionCorpus } from './captionCorpus.js'
 import { buildVoiceCorpus } from './voiceCorpus.js'
 import { ctaEvidenceFor, type CtaEvidence } from './ctaEvidence.js'
@@ -546,6 +547,91 @@ export function buildExtractBatches(transcripts: string[]): string[] {
   }
   if (current.length && batches.length < EXTRACT_MAX_BATCHES) batches.push(current.join('\n\n'))
   return batches
+}
+
+// ── WHAT HER AUDIENCE ASKED FOR, AND WHAT SHE PROMISED TO MAKE ─────────────
+//
+// ⚠️ THE SUPPLY THIS REACHES IS THE ONE §K2 RETRACTED A CLAIM ABOUT. Three
+// places in this codebase assert that the audience-comment corpus is "already
+// inside the Apify pipeline"; `commentsDatasetUrl` is read by nothing, and the
+// claim is prose repeated across files, which is not corroboration — it is
+// usually one author copying themselves. So audience demand has no supply.
+//
+// ⚖️ EXCEPT THAT THE CREATOR SAYS IT OUT LOUD. "A lot of you asked me about the
+// glue" is her audience's question, in her words, followed immediately by her
+// answer — in a transcript this system already holds and already pays to fetch.
+// It is a weaker signal than the comments themselves (it is her selection of
+// which questions to repeat) and it is available TODAY, which the comments are
+// not. Recorded as the difference it is, rather than as a substitute.
+//
+// ⚖️ AND THE SECOND PATTERN IS HER OWN PIPELINE. Nothing in this product asks a
+// creator what she wants to make next; she volunteers it — "that's a whole video
+// on its own" — and it goes out with the transcript.
+//
+// ⚠️ THE CALL IS SKIPPED ENTIRELY WHEN NOTHING MATCHED, which is the reason this
+// is a separate pass rather than four more lines on `TRACK_A_SYSTEM`. Track A
+// reads every transcript because its seven questions are always worth asking;
+// this one costs nothing for a creator who never says these things, and a creator
+// who says them constantly gets ONE call over a corpus of only the matched
+// passages rather than a second read of everything.
+const DEMAND_SYSTEM = `You are TwinAI's Creator Knowledge engine, running a NARROW pass. You are given SHORT EXTRACTS from a creator's own transcripts — only the moments where she repeated a question her audience asked her, or said a subject deserved its own video. Every extract is her speaking. Your job is to turn each into one recorded item, and nothing else.
+
+FOR A MOMENT WHERE SHE REPEATS HER AUDIENCE'S QUESTION:
+- Record WHAT THEY WANTED TO KNOW and WHAT SHE ANSWERED, as one line. "Viewers keep asking which glue survives a rebind; she says PVA fails inside a year and only hide glue holds." Not "people ask about glue", which records that a question exists and nothing about the answer.
+- If the extract carries the question but her answer is not in it, record the QUESTION alone and say so plainly in the text — "viewers keep asking which glue to use; not answered here". Do NOT complete her answer for her. An invented answer attributed to a real question is the worst output this pass can produce.
+- kind is "topic".
+
+FOR A MOMENT WHERE SHE SAYS A SUBJECT DESERVES ITS OWN VIDEO:
+- Record THE SUBJECT she named, as she framed it. "She has said the hinge repair deserves its own video and has not made it."
+- ⚠️ THIS IS A SUBJECT SHE HAS NOT COVERED, NOT ONE SHE HAS. Never file it as something she has already made. If the extract is actually about a video she already published, DROP IT — that is a different record and a different kind, and getting it wrong tells the writer her back catalogue contains something it does not.
+- kind is "topic".
+
+EVERY ITEM CARRIES THE SENTENCE IT CAME FROM, in a field called evidence: ONE sentence of her actual speech, copied as she said it, at most 400 characters. Do not tidy it, do not paraphrase it. If you cannot point at one sentence she actually said, you do not have an item.
+
+- basis is "stated" for these, because every extract is her speaking. Use "inferred" only if you are reading past what the words say, and in that case prefer to drop the item.
+- text is ONE line, at most 240 characters, in plain words. It is a distillate and never a passage copied out of the extract — the copied sentence goes in evidence and nowhere else.
+- times_seen is 1 unless the same question or promise appears in several extracts, as a digit. source_video is the number of the "--- VIDEO n ---" heading it came from, as a digit.
+- confidence is how sure you are that this is what she meant, as a decimal between 0 and 1. Do not round it up to 1.
+- Leave cost and consensus EMPTY. Neither is what this pass is for, and filling them here would be guessing.
+- RETURN AN EMPTY LIST if the extracts carry nothing usable. Several of them will be false matches — someone else asking her something, a stray "that's a whole topic" about nothing in particular — and dropping those is the correct behaviour, not a failure.`
+
+/**
+ * Read only the located passages, and only when there are some.
+ *
+ * ⚖️ ONE CALL, NOT ONE PER PASSAGE. The passages are short by construction, so
+ * the whole set fits a window the model reads well, and a call per passage would
+ * turn a cheap pass into the most expensive one in the file.
+ *
+ * ⚖️ ENRICHMENT, NEVER A GATE, like every extractor here.
+ */
+export async function extractKnowledgeFromDemand(
+  handle: string,
+  platform: string,
+  transcripts: string[],
+): Promise<RawKnowledgeItem[]> {
+  if (!transcripts.length) return []
+  const passages = minePassages(transcripts)
+  const corpus = passageCorpus(passages)
+  // ⚠️ NO MATCH, NO CALL, NO COST. Said out loud because a pass that silently
+  // makes a call over an empty corpus is how a "free when unused" claim stops
+  // being true without anybody noticing.
+  if (!corpus) return []
+  console.log(JSON.stringify({
+    event: 'demand_passages_found',
+    demand: passages.filter((p) => p.kind === 'audience_demand').length,
+    promised: passages.filter((p) => p.kind === 'promised_video').length,
+    of_transcripts: transcripts.length,
+  }))
+  try {
+    const prompt = `CREATOR: @${handle} on ${platform}
+${corpus}
+
+Record what her audience asked and what she answered, and which subjects she has said deserve their own video.`
+    const out = (await geminiJson(DEMAND_SYSTEM, prompt, knowledgeSchema, 40_000)) as { items?: RawKnowledgeItem[] }
+    return Array.isArray(out?.items) ? out.items : []
+  } catch {
+    return []
+  }
 }
 
 // ── TRACK A: SEVEN QUESTIONS, ASKED OF EVERY CREATOR, EVERY TIME ────────────

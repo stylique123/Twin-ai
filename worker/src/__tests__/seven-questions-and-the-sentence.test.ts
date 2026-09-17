@@ -119,8 +119,13 @@ describe('the pass is addition, not replacement', () => {
     // recorded instances of a silent downstream cap absorbing an upstream raise.
     // If the passes together exceed it, the rows carrying a sentence are the
     // ones that must survive.
-    const raw = JOB.slice(JOB.indexOf('const raw = ['), JOB.indexOf('const raw = [') + 400)
+    //
+    // ⚠️ THE WINDOW WIDENED WHEN A FOURTH PASS LANDED. The claim is unchanged —
+    // rows carrying a copied sentence must survive the cap ahead of rows that do
+    // not — and the demand pass carries one too, so it sits between them.
+    const raw = JOB.slice(JOB.indexOf('const raw = ['), JOB.indexOf('const raw = [') + 1200)
     expect(raw.indexOf('fromTargeted')).toBeLessThan(raw.indexOf('fromAudio'))
+    expect(raw.indexOf('fromDemand')).toBeLessThan(raw.indexOf('fromAudio'))
   })
 
   it('both speech passes are tagged `transcript`, not a third source value', () => {
