@@ -119,6 +119,38 @@ describe('the evidence is required of the targeted pass and of nothing else', ()
     expect(sys).toMatch(/the correct action is to skip the question, not to file a guess/)
   })
 
+  // ⚠️ MEASURED 2026-09-17 ON PRODUCTION, THROUGH THE SUPABASE MCP. Of 331 stored
+  // own transcripts, TWO — 83,228 characters, 16.5% of the entire own-speech
+  // corpus — are multi-speaker show and interview content on the creator's own
+  // channel, and one of them opens with a GUEST introducing herself and her own
+  // business ("I'm ... and I teach crafters how to make stickers") under an owner
+  // whose every other transcript is a solo business channel. Nothing in the data
+  // says who is speaking: `>>` markers are a CAPTION convention and appear in
+  // plain monologues too, so they cannot be used to detect this.
+  //
+  // ⚖️ SO IT IS A PROMPT RULE, WHICH THIS REPO NORMALLY DISTRUSTS — and the reason
+  // it is the right tool here is that the defect is NOT decidable from metadata.
+  // Where a call site can decide (captions are captions by construction), the
+  // clamp lives in code; where only the text can tell, the instruction is all
+  // there is, and silence is strictly worse.
+  //
+  // ⚠️ AND IT IS ON BOTH PROMPTS. Only 60,000 characters of that owner's 162,668
+  // are read per run, which is very likely why no misattributed row has been
+  // stored YET — a fact that changes the moment a re-mine reads a different
+  // window.
+  it('both extraction prompts refuse to record a guest as the creator', () => {
+    const targeted = VOICE.slice(VOICE.indexOf('const TARGETED_SYSTEM ='))
+      .slice(0, VOICE.slice(VOICE.indexOf('const TARGETED_SYSTEM =')).indexOf('THE QUESTIONS:'))
+    const general = VOICE.slice(VOICE.indexOf('const KNOWLEDGE_SYSTEM ='))
+      .slice(0, VOICE.slice(VOICE.indexOf('const KNOWLEDGE_SYSTEM =')).indexOf('export interface RawKnowledgeItem'))
+    for (const [name, sys] of [['targeted', targeted], ['general', general]] as const) {
+      expect(sys, `${name} prompt does not mention the multi-speaker case`)
+        .toMatch(/NOT ONE PERSON TALKING/)
+      expect(sys, `${name} prompt does not say to record nothing from it`)
+        .toMatch(/record NOTHING from it/)
+    }
+  })
+
   it('a row carries the evidence through to the insert, trimmed and capped', () => {
     const [row] = knowledgeRowsFrom({
       items: [{
