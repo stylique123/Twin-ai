@@ -7,6 +7,7 @@ import { mapWithConcurrency, TRANSCRIBE_CONCURRENCY } from '../boundedMap.js'
 import { transcriptBudgetFor } from '../transcriptSelection.js'
 import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions, extractTargetedKnowledge } from '../voice.js'
 import { questionsFor } from '../targetedQuestions.js'
+import { mineTranscripts } from '../transcriptMining.js'
 import { ownerHasLiveProduct } from '../ownerProducts.js'
 
 // ⚖️ THE SAME NORMALISATION `transcribe.ts` USES, and it must stay the same: the
@@ -332,10 +333,28 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     // become indistinguishable one line later. `basis` correlates today only
     // because captions are clamped to `demonstrated`; recording the pipeline is
     // the fact, and the correlation is the coincidence.
+    // ⚠️⚠️ AND TWO THINGS THAT NEED NO MODEL CALL AT ALL. "A lot of you have been
+    // asking how I price these" is her audience's demand, in her words, already
+    // transcribed — the only audience-demand signal in the system that does not
+    // wait on comment ingestion, and the supply `audience_questions` was deleted
+    // for lacking. "I'll do a whole video on that" is a backlog she announced and
+    // forgot. Both are a cue phrase and the clause after it, so a regex either
+    // finds her sentence or finds nothing; a model asked the same question would
+    // paraphrase and occasionally invent.
+    const mined = mineTranscripts(transcripts)
+    if (mined.length) {
+      console.log(JSON.stringify({
+        event: 'transcript_lines_mined',
+        lines: mined.length,
+        asked: mined.filter((l) => l.text.startsWith('Audience keeps asking')).length,
+        promised: mined.filter((l) => l.text.startsWith('Promised to cover')).length,
+      }))
+    }
     targetedYield = {
       asked: questionsFor(hasProduct).length,
       returned: fromTargeted.length,
       track_b_asked: hasProduct,
+      mined_lines: mined.length,
       // Per question, because the SILENCE is the measurement.
       by_question: questionsFor(hasProduct).reduce<Record<string, number>>((acc, q) => {
         acc[q.id] = fromTargeted.filter((r) => String(r?.question_id ?? '') === q.id).length
@@ -348,6 +367,21 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
       // front, so the seven answers a script was measured to need must not be the
       // ones a hundred caption rows push over the edge.
       ...fromTargeted.map((r) => ({ ...r, __source: 'transcript' as const })),
+      // ⚖️ MINED LINES ARE `stated` BY CONSTRUCTION AND CONFIDENT BY
+      // CONSTRUCTION. She said the sentence — it is in the transcript, and the
+      // evidence field carries it verbatim — so there is no model judgement to be
+      // unsure about. `times_seen` is 1 because the dedupe above keeps the first
+      // occurrence only; the merge increments it if a later scan finds it again.
+      ...mined.map((l) => ({
+        kind: l.kind,
+        text: l.text,
+        basis: 'stated',
+        times_seen: '1',
+        confidence: '0.9',
+        source_video: l.source_video,
+        evidence: l.evidence,
+        __source: 'transcript' as const,
+      })),
       ...fromAudio.map((r) => ({ ...r, __source: 'transcript' as const })),
       ...fromCaptions.map((r) => ({ ...r, __source: 'caption' as const })),
     ]

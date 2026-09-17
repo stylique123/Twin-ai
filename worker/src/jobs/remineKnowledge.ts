@@ -33,6 +33,7 @@ import { knowledgeRowsFrom } from '../knowledgeRows.js'
 import { EXTRACTOR_VERSION, voiceNeedsRemine } from '../extractorVersion.js'
 import { extractKnowledgeFromAudio, extractTargetedKnowledge } from '../voice.js'
 import { questionsFor } from '../targetedQuestions.js'
+import { mineTranscripts } from '../transcriptMining.js'
 import { ownerHasLiveProduct } from '../ownerProducts.js'
 
 /** How many stored transcripts one re-mine may read.
@@ -161,7 +162,23 @@ export async function handleRemineKnowledge(job: Job): Promise<Record<string, un
     extractKnowledgeFromAudio(handle, platform, texts),
     extractTargetedKnowledge(handle, platform, texts, questionsFor(hasProduct)),
   ])
-  const items = [...targeted, ...general]
+  // ⚖️ AND THE REGEX PASS, WHICH IS FREE. Mining 272 stored transcripts for what
+  // her audience asked and what she promised costs no model call, so the re-mine
+  // is where it reaches every creator who predates it.
+  const mined = mineTranscripts(texts)
+  const items = [
+    ...mined.map((l) => ({
+      kind: l.kind,
+      text: l.text,
+      basis: 'stated',
+      times_seen: '1',
+      confidence: '0.9',
+      source_video: l.source_video,
+      evidence: l.evidence,
+    })),
+    ...targeted,
+    ...general,
+  ]
   const rows = knowledgeRowsFrom({
     items: items.map((r) => ({ ...r, __source: 'transcript' as const })),
     ownerId,
@@ -197,6 +214,7 @@ export async function handleRemineKnowledge(job: Job): Promise<Record<string, un
     // single total cannot answer it.
     items_targeted: targeted.length,
     items_general: general.length,
+    items_mined: mined.length,
     track_b_asked: hasProduct,
     rows_offered: rows.length,
     rows_written: storedRows,
