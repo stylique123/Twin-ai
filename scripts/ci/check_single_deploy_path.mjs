@@ -123,6 +123,19 @@ const ALLOWED_REGISTRY = [
   // never ask for the type and every scan would leave a job sitting `queued`
   // forever, while the scan itself reported success.
   'sample_own_account',
+  // remine_knowledge re-reads the creator's OWN STORED transcripts with the
+  // current extractor, for the voices whose knowledge an older one produced. It
+  // belongs on this host for the reason the three above do: it reads text already
+  // in the database, calls a model, renders nothing and encodes no media. There
+  // is no download at all — `public.transcripts` already holds the speech, which
+  // is the entire reason a re-mine costs a model call instead of a re-scrape.
+  //
+  // It is listed here for the reason the extraction_parity note gives: a MISSING
+  // entry is the SILENT failure. Its handler is registered, its schema
+  // requirements are declared, and `enqueue_stale_knowledge_remine` (0214) fills
+  // the queue — without this line every sweep would leave a job sitting `queued`
+  // forever while the enqueue reported success.
+  'remine_knowledge',
 ]
 
 // Second-deploy manifests. Vercel (web app) is intentionally NOT here.
