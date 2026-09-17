@@ -2,6 +2,7 @@ import { splitDisclaimersFromCtas } from './claimDisclaimers.js'
 import { geminiJson, obj, arr, str, type InlineImage } from './gemini.js'
 import { byReachDesc, reachOf } from './reach.js'
 import type { ScrapedPost } from './media.js'
+import { renderQuestions, type TargetedQuestion } from './targetedQuestions.js'
 import { buildCaptionCorpus } from './captionCorpus.js'
 import { buildVoiceCorpus } from './voiceCorpus.js'
 import { ctaEvidenceFor, type CtaEvidence } from './ctaEvidence.js'
@@ -488,6 +489,139 @@ export const EXTRACT_WINDOW_CHARS = 12_000
  *  gets a warning line naming exactly how many were left unread, rather than the
  *  silence this replaces. */
 export const EXTRACT_MAX_BATCHES = 5
+
+// ── THE SEVEN (OR TEN) QUESTIONS, ASKED DIRECTLY ────────────────────────────
+//
+// ⚠️ THE GENERAL PASS ANSWERS "WHAT DOES SHE KNOW", AND IT ANSWERS IT WELL — 84%
+// substance on transcript rows. What it cannot guarantee is that the specific
+// things a script needs are among the answers. This pass asks for them by name,
+// keeps the EVIDENCE beside each conclusion, and runs ALONGSIDE the general one
+// rather than instead of it.
+//
+// ⚖️ EVIDENCE IS THE POINT, NOT A NICETY. "She cares about pricing" and "she
+// charges £400 because cheap rebinds fall apart within a year" are the same
+// conclusion with and without the sentence that earns it. The second can be
+// written into a script; the first can only be gestured at, and a writer handed
+// the first will fill the gap itself. So `evidence` is REQUIRED by the schema and
+// an item that cannot carry it is not an answer.
+const targetedSchema = obj(
+  {
+    items: {
+      type: 'ARRAY',
+      items: obj(
+        {
+          question_id: { type: 'STRING' },
+          kind: { type: 'STRING' },
+          text: { type: 'STRING' },
+          basis: { type: 'STRING' },
+          times_seen: { type: 'STRING' },
+          confidence: { type: 'STRING' },
+          source_video: { type: 'STRING' },
+          // ⚠️ REQUIRED, UNLIKE `cost` AND `consensus`. Those two are optional
+          // because most items genuinely have neither. This pass asks a direct
+          // question, so an answer with nothing behind it is not a sparse answer
+          // — it is a guess, and the empty list is the honest alternative.
+          evidence: { type: 'STRING' },
+          cost: { type: 'STRING' },
+          consensus: { type: 'STRING' },
+        },
+        ['question_id', 'kind', 'text', 'basis', 'times_seen', 'confidence', 'source_video', 'evidence'],
+      ),
+    },
+  },
+  ['items'],
+)
+
+const TARGETED_SYSTEM = `You are TwinAI's Creator Knowledge engine, working through a FIXED LIST OF QUESTIONS about one creator, from VERBATIM TRANSCRIPTS of them speaking. Another system already recorded how they talk, and a general pass already recorded what they know. Your job is narrower and stricter: answer the numbered questions below, and only from what was actually said.
+- ONE ITEM PER ANSWER, and question_id is the exact bracketed id of the question it answers. Several answers to one question are allowed when the creator genuinely gave several; put each in its own item with the same question_id.
+- A QUESTION WITH NO ANSWER IN THESE TRANSCRIPTS IS SKIPPED ENTIRELY. Return nothing for it. This is the single most important rule here: an empty answer is correct, expected, unpenalised, and far more useful than a plausible one. Do NOT reason from the niche, do NOT reason from what a creator like this usually says, and do NOT soften a question until it has an answer.
+- evidence is WHAT SHE ACTUALLY SAID that supports the item, in her own words, at most 240 characters. Quote or closely paraphrase one sentence. An item whose evidence would have to be assembled from your own reasoning is not an answer — skip it. NEVER write evidence that does not appear in the transcripts.
+- text is the CONCLUSION in one plain line, at most 240 characters, keeping every real name, figure and specific inside it. "She charges £400 for a full rebind" — not "she has opinions about pricing".
+- kind is exactly one of: fact, opinion, topic, example, experience, framework, claim, product, covered. Each question says which it usually is; use a different one only when the answer genuinely is a different kind.
+- basis is exactly one of: stated (she said it outright), demonstrated (she showed it or acted on it without saying it), inferred. ⚠️ AN ANSWER TO ONE OF THESE QUESTIONS SHOULD ALMOST NEVER BE "inferred" — if you are reasoning past what she said, the correct action is to skip the question, not to file a guess with a lower basis.
+- times_seen is how many of the supplied videos carried it, as a digit. confidence is 0 to 1 as a decimal — how sure you are that this is really what she meant, never rounded up to look decisive. source_video is the number from the "--- VIDEO n ---" heading, as a digit.
+- cost — fill ONLY where she said what something COST her: money, months, a client, a launch. Otherwise leave it empty. Do not price anything for her.
+- consensus — fill ONLY where she NAMED a belief other people hold and contradicted it. Record the OTHER SIDE in her framing. Otherwise leave it empty.
+- NEVER describe delivery, tone, pacing or energy. That is another system's field and a wrong answer here.
+
+THE QUESTIONS:
+`
+
+export interface RawTargetedItem extends RawKnowledgeItem {
+  question_id: string
+  evidence: string
+}
+
+/**
+ * Ask the fixed list of the creator's own transcripts.
+ *
+ * ⚠️ IT BATCHES THE SAME WAY THE GENERAL PASS DOES, and for the same measured
+ * reason: one enormous prompt spreads attention over 25 videos and returns less
+ * of everything, while a window the model can read returns answers per window.
+ * Every transcript lands in exactly one batch and an unread remainder is said out
+ * loud rather than absorbed.
+ *
+ * ⚖️ AND IT RETURNS [] ON ANY FAILURE, like every other extractor here.
+ * Knowledge is an ENRICHMENT of the voice build, never a gate on it.
+ */
+export async function extractTargetedKnowledge(
+  handle: string,
+  platform: string,
+  transcripts: string[],
+  questions: readonly TargetedQuestion[],
+): Promise<RawTargetedItem[]> {
+  if (!transcripts.length || !questions.length) return []
+  const batches: string[] = []
+  let current: string[] = []
+  let size = 0
+  for (const [i, t] of transcripts.entries()) {
+    const block = `--- VIDEO ${i + 1} (spoken) ---\n${t}`
+    if (size + block.length > EXTRACT_WINDOW_CHARS && current.length) {
+      batches.push(current.join('\n\n')); current = []; size = 0
+    }
+    current.push(block); size += block.length + 2
+    if (batches.length >= EXTRACT_MAX_BATCHES - 1 && size >= EXTRACT_WINDOW_CHARS) break
+  }
+  if (current.length && batches.length < EXTRACT_MAX_BATCHES) batches.push(current.join('\n\n'))
+  const read = batches.join('\n\n').split('--- VIDEO ').length - 1
+  if (read < transcripts.length) {
+    console.warn(`extract_targeted: read ${read} of ${transcripts.length} transcripts (batch cap)`)
+  }
+
+  const system = `${TARGETED_SYSTEM}${renderQuestions(questions)}`
+  const items: RawTargetedItem[] = []
+  try {
+    for (const corpus of batches) {
+      const prompt = `CREATOR: @${handle} on ${platform}
+SPOKEN TRANSCRIPTS:
+${corpus}
+
+Answer the numbered questions from these transcripts. Skip any question these transcripts do not answer.`
+      const out = (await geminiJson(system, prompt, targetedSchema, 40_000)) as { items?: RawTargetedItem[] }
+      if (Array.isArray(out?.items)) items.push(...out.items)
+    }
+    // ⚠️ REPORTED PER QUESTION, BECAUSE THE SILENCE IS THE MEASUREMENT. "Which of
+    // the seven does this creator's speech never answer" is the number that says
+    // whether the bank is right, and it is unrecoverable after the rows are
+    // merged into a store of 1,339.
+    const byQuestion: Record<string, number> = {}
+    for (const q of questions) byQuestion[q.id] = 0
+    for (const i of items) {
+      const id = String(i?.question_id ?? '')
+      if (id in byQuestion) byQuestion[id] += 1
+    }
+    console.log(JSON.stringify({
+      event: 'targeted_knowledge_extracted',
+      asked: questions.length, returned: items.length,
+      answered: Object.values(byQuestion).filter((n) => n > 0).length,
+      by_question: byQuestion,
+    }))
+    return items
+  } catch {
+    return []
+  }
+}
+// ── END TARGETED QUESTIONS ──────────────────────────────────────────────────
 
 export async function extractKnowledgeFromAudio(
   handle: string,

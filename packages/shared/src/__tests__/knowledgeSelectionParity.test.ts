@@ -171,7 +171,7 @@ describe('the edge prefers spoken material by the same rule', () => {
     const base = EDGE.match(/KNOWLEDGE_COLS_BASE = '([^']*)'/)
     expect(base, 'the knowledge column list moved — re-anchor this').not.toBeNull()
     expect(base?.[1]).toContain('source')
-    expect(EDGE).toMatch(/KNOWLEDGE_COLS_ROTATION = `\$\{KNOWLEDGE_COLS_BASE\}[^`]*`/)
+    expect(EDGE).toMatch(/KNOWLEDGE_COLS_FULL = `\$\{KNOWLEDGE_COLS_BASE\}[^`]*`/)
     const reads = EDGE.match(/readKnowledge\(\(cols\) => admin/g) ?? []
     expect(reads.length, 'both knowledge reads must go through the helper').toBe(2)
   })

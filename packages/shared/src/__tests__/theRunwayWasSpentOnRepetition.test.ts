@@ -37,7 +37,16 @@ describe('the rotation reaches the selection', () => {
   })
 
   it('the columns it ranks on are actually selected', () => {
-    expect(EDGE).toMatch(/KNOWLEDGE_COLS_ROTATION = `\$\{KNOWLEDGE_COLS_BASE\}, used_count, last_used_at`/)
+    // ⚖️ THE LIST GAINED `evidence` (0216) AND WAS RENAMED FOR IT: it now carries
+    // every column that depends on a hand-applied migration, not only the two
+    // rotation ones. The claim is the same — the columns the ranking reads must be
+    // asked for, and the FALLBACK must name none of them.
+    expect(EDGE).toMatch(/KNOWLEDGE_COLS_FULL = `\$\{KNOWLEDGE_COLS_BASE\}, used_count, last_used_at/)
+    expect(EDGE).toMatch(/KNOWLEDGE_COLS_BASE = '[^']*'/)
+    const base = EDGE.match(/KNOWLEDGE_COLS_BASE = '([^']*)'/)
+    for (const col of ['used_count', 'last_used_at', 'evidence']) {
+      expect(base?.[1], `${col} must NOT be in the fallback list`).not.toContain(col)
+    }
     expect(EDGE).toMatch(/readKnowledge\(/)
   })
 

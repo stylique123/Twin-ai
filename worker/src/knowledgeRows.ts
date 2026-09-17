@@ -6,7 +6,15 @@ import type { RawKnowledgeItem } from './voice.js'
  *  merged by the caller and become indistinguishable one line later; `basis`
  *  correlates with the pipeline today only because captions are clamped to
  *  `demonstrated`, and the correlation is the coincidence. */
-export type TaggedItem = RawKnowledgeItem & { __source: 'transcript' | 'caption' }
+export type TaggedItem = RawKnowledgeItem & {
+  __source: 'transcript' | 'caption'
+  /** Which targeted question this answers, when it answers one (0216). Absent on
+   *  everything the general and caption passes return, which is the common case. */
+  question_id?: string
+  /** What she actually said that supports it, in her own words (0216). Required
+   *  by the targeted extractor's schema; absent everywhere else. */
+  evidence?: string
+}
 
 // THE ROW A CLAIM BECOMES, DECIDED IN ONE PLACE.
 //
@@ -40,6 +48,8 @@ export interface KnowledgeRow {
   cost: string | null
   consensus: string | null
   extractor_version: number
+  evidence: string | null
+  question_id: string | null
 }
 
 export interface KnowledgeRowInput {
@@ -108,6 +118,19 @@ export function knowledgeRowsFrom(
       // row came out of THIS worker's extractor, rather than defaulted in the
       // database where a row from an older worker would inherit the lie.
       extractor_version: version,
+      // ⚖️ THE SENTENCE THAT EARNED THE CONCLUSION, WHEN THERE IS ONE (0216).
+      // Normalised through the same `shortOrNull` as `cost`: a blank evidence
+      // string must read as "none recorded", never as "evidence exists and is
+      // empty". Absent on every row the general pass returns, and that is the
+      // common case rather than a gap.
+      evidence: shortOrNull(r.evidence),
+      // ⚠️ THE CLOSED SET IS ENFORCED AT THE DATABASE (0216's CHECK), NOT HERE.
+      // A `kind` outside its list fails the whole batch, which is why `kind` is
+      // filtered below; `question_id` is only ever written by the targeted
+      // extractor from its own bank, so a value the CHECK would refuse means the
+      // bank and the migration have drifted — and `theBankAndTheCheckAgree` fails
+      // on that in CI rather than letting a scan lose its batch in production.
+      question_id: shortOrNull(r.question_id),
     }))
   // ⚠️ THE TAXONOMY IS A CLOSED SET AND THE MODEL DOES NOT KNOW THAT.
   // `creator_knowledge_kind_valid` CHECKs this list, so an unlisted kind is a

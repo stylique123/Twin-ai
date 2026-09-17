@@ -58,6 +58,12 @@ export const SCHEMA_REQUIREMENTS: Readonly<Record<string, readonly SchemaCapabil
     // probe on the feature.
     { table: 'creator_knowledge', migration: '0214',
       columns: ['extractor_version', 'kind', 'text', 'basis', 'voice_id'] },
+    // ⚖️ AND THE TWO COLUMNS THE TARGETED PASS WRITES (0216). Declared
+    // separately from 0214 so the incident names the migration that is actually
+    // missing: without these the re-mine still stores its answers, but strips the
+    // evidence sentence that makes them usable — which is most of the value.
+    { table: 'creator_knowledge', migration: '0216',
+      columns: ['evidence', 'question_id'] },
     // ⚖️ AND THE SPEECH IT RE-READS. 0135 made the creator's own transcripts
     // durable; `subject` is what separates them from other people's reference
     // videos in the same table, and a schema without it would let this job file

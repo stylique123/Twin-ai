@@ -6208,7 +6208,12 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
 // columns are asked for, and their absence costs the rotation rather than the
 // knowledge.
 const KNOWLEDGE_COLS_BASE = 'id, kind, text, basis, times_seen, confidence, source, last_observed_at'
-const KNOWLEDGE_COLS_ROTATION = `${KNOWLEDGE_COLS_BASE}, used_count, last_used_at`
+// ⚠️ EVERY COLUMN THAT DEPENDS ON A HAND-APPLIED MIGRATION IS IN THIS LIST AND
+// NOT IN THE BASE ONE. `used_count`/`last_used_at` come from 0215 and `evidence`
+// from 0216, and both are applied by hand — so the fallback below must name
+// NEITHER. Losing the rotation and the evidence sentence costs quality; naming an
+// absent column costs the creator every knowledge row.
+const KNOWLEDGE_COLS_FULL = `${KNOWLEDGE_COLS_BASE}, used_count, last_used_at, evidence`
 
 /** Read creator knowledge with the rotation columns, or without them if 0215 has
  *  not been applied. `narrow` is reported so the degraded state is visible rather
@@ -6216,11 +6221,11 @@ const KNOWLEDGE_COLS_ROTATION = `${KNOWLEDGE_COLS_BASE}, used_count, last_used_a
 async function readKnowledge(
   build: (cols: string) => { then: unknown },
 ): Promise<{ rows: Array<Record<string, unknown>>; narrow: boolean }> {
-  const wide = await (build(KNOWLEDGE_COLS_ROTATION) as unknown as Promise<{ data: unknown; error: { message?: string } | null }>)
+  const wide = await (build(KNOWLEDGE_COLS_FULL) as unknown as Promise<{ data: unknown; error: { message?: string } | null }>)
   if (!wide.error) return { rows: (wide.data as Array<Record<string, unknown>>) ?? [], narrow: false }
   console.warn(JSON.stringify({
     event: 'knowledge_rotation_columns_absent',
-    detail: 'migration 0215 not applied; ranking without spend, every item reads as never supplied',
+    detail: 'migration 0215/0216 not applied; ranking without spend (every item reads as never supplied) and without the evidence sentence',
     error: String(wide.error.message ?? ''),
   }))
   const narrow = await (build(KNOWLEDGE_COLS_BASE) as unknown as Promise<{ data: unknown; error: { message?: string } | null }>)
@@ -7807,7 +7812,25 @@ function reserveAskedInline<T extends { source?: string | null }>(
         + ' be framed as something she has said rather than as true today. An item'
         + ' with NO tag is one nobody recorded a date for — treat it exactly as you'
         + ' would an untagged fact, neither fresher nor staler.\n'
-        + speakable.map((k) => `  * (${k.kind}) ${freshnessTagInline((k as { last_observed_at?: unknown }).last_observed_at, nowMsForFreshness)}${k.text}`).join('\n'))
+        // ⚠️ SAID OUT LOUD, BECAUSE AN UNEXPLAINED LABEL GETS USED WRONG. Without
+        // this sentence a model handed "HER WORDS" can read it as a line it must
+        // reproduce verbatim, which would put a transcript sentence into a script
+        // she then reads back at her own audience.
+        + ' Where an item carries HER WORDS, that is roughly what she actually said,'
+        + ' kept so you can write the specific rather than the summary. Use it as'
+        + ' evidence and as her phrasing; you do not have to reproduce it verbatim,'
+        + ' and you must never contradict it.\n'
+        // ⚠️ AND THE SENTENCE THAT EARNED IT, WHERE THERE IS ONE (0216). "She
+        // cares about pricing" and "she charges £400 for a full rebind because
+        // cheap ones fall apart within a year" are the same conclusion with and
+        // without the evidence; a writer handed the first fills the gap itself.
+        // Rendered as HER WORDS and labelled as such, so the model can quote it
+        // rather than paraphrase around it.
+        + speakable.map((k) => {
+          const tag = freshnessTagInline((k as { last_observed_at?: unknown }).last_observed_at, nowMsForFreshness)
+          const ev = String((k as { evidence?: unknown }).evidence ?? '').trim()
+          return `  * (${k.kind}) ${tag}${k.text}${ev ? `\n      HER WORDS: "${ev}"` : ''}`
+        }).join('\n'))
     }
     if (coveredRows.length) {
       // ⚠️ THIS LEAKED. The first version said only "do not repeat", and a run
