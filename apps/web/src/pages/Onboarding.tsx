@@ -686,8 +686,38 @@ function BuildingStep({
     let stopped = false
     // Hard cap: if the scan never resolves (stuck worker, dropped job), don't
     // trap the user on an infinite spinner, surface the manual fallback.
+    //
+    // ⚠️⚠️ IT WAS 220s AND THE MEDIAN SCAN TAKES LONGER THAN THAT. Measured on
+    // the last twelve `build_voice` jobs: 49, 91, 134, 199, 208, 266, 292, 340,
+    // 373, 380, 538, 952 seconds — p50 279, p90 522. SEVEN OF TWELVE (58%)
+    // crossed 220s, and ALL TWELVE completed successfully. Every one of the 53
+    // non-failed voices in production is `ready` WITH a usable profile, 100%.
+    //
+    // ⚠️ SO THIS TIMEOUT WAS NOT REPORTING A FAILURE, IT WAS CAUSING ONE. On
+    // expiry it stamps UNKNOWN and calls `onScanDead()`, which drops the
+    // voiceId — while the job runs on, succeeds, and writes a profile nobody
+    // ever collects. The creator is told "we could not read your account" about
+    // an account we read fine. The four genuinely failed voices carry no profile
+    // and a real error, so they are a different population and are unaffected.
+    //
+    // ⚖️ SET FROM THE MEASUREMENT WITH HEADROOM, NOT FROM A GUESS: 900s covers
+    // eleven of the twelve and is ~1.7x the p90. The slowest observed scan was
+    // 952s, so this still gives up on that one — a cap has to fall somewhere,
+    // and it now falls beyond almost every real scan instead of beneath most of
+    // them.
+    //
+    // ⚖️ AND A LONGER CAP IS CHEAP NOW IN A WAY IT WAS NOT BEFORE. The story
+    // questions sit in this wait and the finished scan is parked until they are
+    // answered, so the creator spends it writing rather than watching a spinner.
+    //
+    // ⚠️ A WALL CLOCK IS STILL THE WRONG INSTRUMENT AND THIS ONLY MOVES IT.
+    // "Stuck" is a fact about the JOB, not about elapsed time, and `dna-poll`
+    // already looks the job up — it could say whether one is still alive and let
+    // this stop guessing. That is the real fix and it is an edge function, so it
+    // needs the matrix lane; this one is `apps/web` and ships now, because 58%
+    // is happening today.
     const startedAt = Date.now()
-    const MAX_WAIT_MS = 220_000
+    const MAX_WAIT_MS = 900_000
     const tick = async () => {
       try {
         const res = await pollDna(draft.voiceId)
