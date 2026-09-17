@@ -241,8 +241,8 @@ describe('the insert degrades instead of losing the scan when the migration is b
     // PGRST204 taking the whole batch, so the pattern must name it too —
     // widening the regex to stop caring which columns are stripped would delete
     // the guard while leaving it green.
-    expect(INSERT).toMatch(/column .\*\(source\|cost\|consensus\|extractor_version\).\* does not exist/)
-    expect(INSERT).toMatch(/\{ source, cost, consensus, extractor_version, \.\.\.rest \}/)
+    expect(INSERT).toMatch(/column .\*\(source\|cost\|consensus\|extractor_version\|evidence\|question_id\).\* does not exist/)
+    expect(INSERT).toMatch(/\{ source, cost, consensus, extractor_version, evidence, question_id, \.\.\.rest \}/)
   })
 })
 

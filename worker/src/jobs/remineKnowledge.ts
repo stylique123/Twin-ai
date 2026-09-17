@@ -31,7 +31,9 @@ import { db, type Job } from '../db.js'
 import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { knowledgeRowsFrom } from '../knowledgeRows.js'
 import { EXTRACTOR_VERSION, voiceNeedsRemine } from '../extractorVersion.js'
-import { extractKnowledgeFromAudio } from '../voice.js'
+import { extractKnowledgeFromAudio, extractTargetedKnowledge } from '../voice.js'
+import { questionsFor } from '../targetedQuestions.js'
+import { ownerHasLiveProduct } from '../ownerProducts.js'
 
 /** How many stored transcripts one re-mine may read.
  *
@@ -144,7 +146,22 @@ export async function handleRemineKnowledge(job: Job): Promise<Record<string, un
     return { skipped: 'no_own_transcripts', extractor_version: EXTRACTOR_VERSION, forced: p.force === true }
   }
 
-  const items = await extractKnowledgeFromAudio(handle, platform, stored.map((t) => t.text))
+  // ⚠️⚠️ THE RE-MINE RUNS THE TARGETED PASS TOO, AND THAT IS THE ENTIRE REASON
+  // VERSION 3 EXISTS. A sweep that re-ran only the general pass would re-read
+  // 272 transcripts to produce paraphrases of what is already stored — spend with
+  // no new material. The seven questions are what the old extractor never asked,
+  // so they are what a re-mine is FOR.
+  //
+  // ⚖️ AND THE PRODUCT GATE IS THE SAME ONE, asked of the database. A re-mine
+  // must not become the path where the pricing questions get asked of a creator
+  // who sells nothing.
+  const hasProduct = await ownerHasLiveProduct(ownerId)
+  const texts = stored.map((t) => t.text)
+  const [general, targeted] = await Promise.all([
+    extractKnowledgeFromAudio(handle, platform, texts),
+    extractTargetedKnowledge(handle, platform, texts, questionsFor(hasProduct)),
+  ])
+  const items = [...targeted, ...general]
   const rows = knowledgeRowsFrom({
     items: items.map((r) => ({ ...r, __source: 'transcript' as const })),
     ownerId,
@@ -175,6 +192,12 @@ export async function handleRemineKnowledge(job: Job): Promise<Record<string, un
     transcripts_read: stored.length,
     chars_read: chars,
     items_returned: items.length,
+    // ⚖️ THE SPLIT, NOT JUST THE TOTAL. "Did the questions find anything the
+    // general pass did not" is the question this whole sweep is answering, and a
+    // single total cannot answer it.
+    items_targeted: targeted.length,
+    items_general: general.length,
+    track_b_asked: hasProduct,
     rows_offered: rows.length,
     rows_written: storedRows,
     merge_used: mergeUsed,
