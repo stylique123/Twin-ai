@@ -7575,13 +7575,51 @@ function reserveAskedInline<T extends { source?: string | null }>(
     let liveCtaEvidence: CtaEvidenceInline[] | null = null
     let ctaEvidenceCounted: { checked: number; unverifiable: number; found: number } | null = null
     try {
-      const { data: ownSpeech } = await admin
+      // ⚠️ `owner_id` ALONE READ TEN PEOPLE AS ONE PERSON. This table was
+      // scoped to the owner and nothing else, and one owner holds ten ready
+      // voices — ten different creators' accounts. Every script written for any
+      // one of them compiled its "how does this creator talk" evidence from the
+      // 8 most recent transcripts across ALL TEN (0220).
+      //
+      // ⚖️ THE NULL RULE IS THE DESIGN, NOT A LOOSE END. A row the backfill
+      // could not attribute is UNATTRIBUTED, not foreign, so it is admitted
+      // only when the owner has exactly one ready voice — where it cannot
+      // belong to anyone else. That keeps every single-voice owner (all of
+      // production but one) reading exactly what they read before, while a
+      // multi-voice owner stops blending strangers immediately, without
+      // waiting on the backfill to be complete or correct.
+      const { count: voiceCount } = await admin
+        .from('brand_voices')
+        .select('id', { count: 'exact', head: true })
+        .eq('owner_id', ownerId)
+      // ⚠️ EVERY VOICE, NOT EVERY READY VOICE. A failed or still-building voice
+      // can already own stored transcripts, so counting only `ready` would call
+      // an owner "sole" while a second creator's rows sat NULL beside them —
+      // readmitting exactly the mixing this scoping exists to stop.
+      const soleVoice = (voiceCount ?? 0) <= 1
+      const ownSpeechQuery = admin
         .from('transcripts')
         .select('id, text')
         .eq('owner_id', ownerId)
         .eq('subject', 'own')
+      // ⚠️ AN UNKNOWN COLUMN FAILS THE WHOLE SELECT, and this read falling back
+      // to `[]` would silently retire the style card rather than degrade it —
+      // so the filter is only applied when the voice is known, and the catch
+      // below keeps the pre-0220 behaviour until the apply lands.
+      if (voice?.id && !soleVoice) ownSpeechQuery.eq('brand_voice_id', voice.id)
+      else if (voice?.id) ownSpeechQuery.or(`brand_voice_id.is.null,brand_voice_id.eq.${voice.id}`)
+      const { data: ownSpeechScoped, error: ownSpeechErr } = await ownSpeechQuery
         .order('created_at', { ascending: false })
         .limit(8)
+      const ownSpeech = ownSpeechErr && /brand_voice_id/i.test(`${ownSpeechErr.message} ${ownSpeechErr.details ?? ''}`)
+        ? (await admin
+            .from('transcripts')
+            .select('id, text')
+            .eq('owner_id', ownerId)
+            .eq('subject', 'own')
+            .order('created_at', { ascending: false })
+            .limit(8)).data
+        : ownSpeechScoped
       // ⚠️ VOICE CAUSE 1(b) — AN ANSWERED QUESTION IS SPEECH TOO, AND WAS NEVER
       // COUNTED AS ANY. `askedRows` (source = 'asked') already feeds the
       // knowledge block above, but the creator's own sentence — typed by them,

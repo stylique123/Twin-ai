@@ -60,11 +60,20 @@ const PAGE = 20
 interface StoredTranscript { text: string; url: string | null }
 
 /** The creator's own stored speech, oldest first, paged to the bound above. */
-async function ownTranscripts(ownerId: string): Promise<StoredTranscript[]> {
+async function ownTranscripts(ownerId: string, voiceId: string, soleVoice: boolean): Promise<StoredTranscript[]> {
   const out: StoredTranscript[] = []
+  let unscoped = false
   for (let from = 0; from < REMINE_TRANSCRIPTS_MAX; from += PAGE) {
     const to = Math.min(from + PAGE, REMINE_TRANSCRIPTS_MAX) - 1
-    const { data, error } = await db
+    // ⚠️ AND `owner_id` IS NOT ONE CREATOR, WHICH THE COMMENT BELOW ALREADY
+    // CONDEMNS WITHOUT KNOWING IT. One owner holds ten ready voices — ten
+    // different people's accounts — so re-mining owner-wide files one
+    // creator's opinions into another's store just as surely as an `ingest`
+    // row would, and this path WRITES them (0220).
+    //
+    // ⚖️ NULL IS UNATTRIBUTED, NOT FOREIGN: admitted only for a sole-voice
+    // owner, where nobody else can own it.
+    const q = db
       .from('transcripts')
       .select('text, source_url')
       .eq('owner_id', ownerId)
@@ -73,8 +82,24 @@ async function ownTranscripts(ownerId: string): Promise<StoredTranscript[]> {
       // into a creator's knowledge store would file a stranger's opinions as
       // hers, which is worse than an empty store by a wide margin.
       .eq('subject', 'own')
-      .order('created_at', { ascending: true })
-      .range(from, to)
+    if (!unscoped) {
+      if (soleVoice) q.or(`brand_voice_id.is.null,brand_voice_id.eq.${voiceId}`)
+      else q.eq('brand_voice_id', voiceId)
+    }
+    let { data, error } = await q.order('created_at', { ascending: true }).range(from, to)
+    // ⚠️ AN UNAPPLIED COLUMN MUST NOT EMPTY THE STORE. Before 0220 lands the
+    // read degrades to the owner-wide behaviour it has always had, rather than
+    // throwing and failing the re-mine outright.
+    if (error && /brand_voice_id/i.test(`${error.message} ${error.details ?? ''}`)) {
+      unscoped = true
+      ;({ data, error } = await db
+        .from('transcripts')
+        .select('text, source_url')
+        .eq('owner_id', ownerId)
+        .eq('subject', 'own')
+        .order('created_at', { ascending: true })
+        .range(from, to))
+    }
     if (error) throw new Error(`remine_knowledge: could not read own transcripts: ${error.message}`)
     const page = (data ?? []) as Array<{ text?: unknown; source_url?: unknown }>
     for (const r of page) {
@@ -138,7 +163,13 @@ export async function handleRemineKnowledge(job: Job): Promise<Record<string, un
     }
   }
 
-  const stored = await ownTranscripts(ownerId)
+  // The same sole-voice test the blueprint compiler makes, for the same reason.
+  const { count: voiceCount } = await db
+    .from('brand_voices')
+    .select('id', { count: 'exact', head: true })
+    .eq('owner_id', ownerId)
+  // Every voice, not every ready one — see the blueprint compiler's note.
+  const stored = await ownTranscripts(ownerId, voiceId, (voiceCount ?? 0) <= 1)
   // ⚠️ NO TRANSCRIPTS IS NOT AN ERROR, IT IS AN EMPTY RE-MINE. A voice whose own
   // speech was never retained is a fact about when they were onboarded, not a
   // fault in this run, and failing the job would put a red row in the queue for

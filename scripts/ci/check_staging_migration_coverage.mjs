@@ -72,6 +72,22 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0220_ten_accounts_one_pool_and_the_writer_read_all_ten':
+    'Adds `brand_voice_id` to `public.transcripts` (plus an index and a backfill) so the '
+    + 'style compiler and the re-miner stop reading ONE OWNER\u2019S TEN VOICES as one '
+    + 'creator. THE EXCLUSION IS INHERITED, NOT A NEW JUDGEMENT: staging has no '
+    + '`public.transcripts` \u2014 0004 creates it far outside the matrix, which is why '
+    + '0169 and 0135 are excluded for the same table \u2014 so the `alter table` would '
+    + 'fail on its first line with `relation "public.transcripts" does not exist` rather '
+    + 'than pass vacuously. It also references `public.brand_voices`, absent for the same '
+    + 'reason. '
+    + '\u26a0\ufe0f MANUAL APPLY, PENDING. Order-independent: it adds a column no other '
+    + 'pending migration touches and replaces no function. '
+    + '\u26a0\u26a0 UNAPPLIED IT COSTS NOTHING AND LOSES NOTHING, WHICH IS DELIBERATE: '
+    + 'both readers and the writer carry a narrow retry keyed on the column name, so '
+    + 'until the apply lands the speech is still STORED (counted `stored_unattributed`) '
+    + 'and still READ with the owner-wide scope it has always had. The mixing is only '
+    + 'FIXED by applying it; nothing breaks by waiting. ',
   '0219_she_confirmed_what_we_had_she_did_not_answer_the_question':
     'Adds `creator_confirmed_at` to `creator_knowledge`, so the story screen can let a '
     + 'creator VERIFY an extracted row without that counting as ANSWERING the question. '
