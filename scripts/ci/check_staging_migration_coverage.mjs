@@ -404,6 +404,19 @@ export const EXCLUDED = {
     + 'job) and the grade it stores is what decides whether an extracted claim may '
     + 'be spoken — so an unapplied column would surface as a PostgREST error on the '
     + 'update, loudly, rather than as ungraded marketing copy reaching a script.',
+  '0217_nobody_could_see_which_creators_had_nothing_to_say':
+    'Creates the `creator_knowledge_coverage` view over `brand_voices`, '
+    + '`creator_knowledge` and `transcripts`. ⚠️ EXCLUDED FOR THE TABLE-'
+    + 'AVAILABILITY REASON 0121 SETS, AND CHECKED FIRST: `creator_knowledge` is '
+    + 'created by 0121, which is excluded, and `brand_voices` on staging is a '
+    + 'FIXTURE applied AFTER the migration loop — so CREATE VIEW would fail on a '
+    + 'missing relation inside the loop, the four-minute failure 0194, 0196, 0201 '
+    + 'and 0213 each paid for. '
+    + '⚠️ MANUAL APPLY REQUIRED. The cost of an unapplied 0217 is exactly one '
+    + 'admin panel: `admin-metrics` reports `knowledge_coverage: null` and logs '
+    + '`knowledge_coverage_unavailable`, and every other metric on that call is '
+    + 'unaffected. Nothing in the product reads it — it is a worklist for deciding '
+    + 'which creators to re-mine.',
   '0216_the_conclusion_arrived_without_the_sentence_that_earned_it':
     'Adds `evidence` and `question_id` to `creator_knowledge`, a CHECK naming the '
     + 'ten targeted question ids, and re-creates `merge_creator_knowledge` to '
@@ -420,6 +433,17 @@ export const EXCLUDED = {
     + '`question_id` the constraint refuses fails the WHOLE batch, exactly as an '
     + 'unlisted `kind` does, which is why `theSevenQuestionsNobodyAsked` compares '
     + 'the bank against this migration in CI.',
+  '0218_two_rows_that_normalised_the_same_lost_the_whole_batch':
+    'Re-creates `merge_creator_knowledge` so the INCOMING batch is deduped '
+    + 'against itself on the 0121 conflict key. ⚠️ EXCLUDED FOR THE SAME REASON '
+    + 'AS 0121, 0123, 0214, 0215 AND 0216: `creator_knowledge` is created by '
+    + '0121, which is excluded, so staging has no table to define the function '
+    + 'against. ⚠️ MANUAL APPLY REQUIRED, AND THIS ONE IS A LIVE BUG FIX rather '
+    + 'than a new capability: until it is applied, any extraction batch whose '
+    + 'items normalise to the same (owner, voice, kind, text) fails ENTIRELY '
+    + 'with "ON CONFLICT DO UPDATE command cannot affect row a second time", '
+    + 'losing every row that creator would have gained. Measured in production '
+    + 'on 2026-09-19: 1 of 11 re-mine jobs dead-lettered this way.',
   '0215_the_store_never_recorded_what_it_had_already_spent':
     'Adds `last_used_at`/`used_count` to `creator_knowledge`, the insert-only '
     + '`creator_knowledge_uses` ledger (FK to `creator_knowledge`) and '

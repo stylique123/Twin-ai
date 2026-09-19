@@ -49,16 +49,50 @@ Deno.serve(async (req: Request) => {
     return json({ case_study: { ...(cs ?? {}), email: prof.email, name: prof.display_name, plan: prof.plan, joined: prof.created_at } })
   }
 
-  const [{ data, error }, { data: funnel }, { data: retention }, { data: health }, { data: founder }] = await Promise.all([
+  const [
+    { data, error }, { data: funnel }, { data: retention }, { data: health }, { data: founder },
+    coverage,
+  ] = await Promise.all([
     admin.from('metrics_overview').select('*').single(),
     admin.rpc('activation_funnel'),
     admin.rpc('retention_curve'),
     admin.rpc('system_health'),
     admin.rpc('founder_metrics'),
+    // ⚠️ THE DEPTH QUESTION, PER CREATOR, AND IT IS HERE BECAUSE A VIEW NOBODY
+    // READS IS THE DEFECT THIS REPO KEEPS SHIPPING. "Which voices have nothing
+    // to say" has been answered by hand-written queries that expired in a
+    // transcript every time; 0217 gives it a home and this is its reader.
+    //
+    // ⚖️ ORDERED BY THE THINNEST FIRST, because the remedy is per creator and the
+    // list is a worklist rather than a chart. Bounded: this is an admin call, not
+    // a report, and 42 voices today could be 4,200 later.
+    admin.from('creator_knowledge_coverage')
+      .select('*')
+      .order('rows_substance', { ascending: true })
+      .limit(100),
   ])
   if (error) {
     console.error('admin-metrics: query failed', error)
     return json({ error: 'Could not load metrics' }, 500)
   }
-  return json({ ...(data ?? {}), funnel: funnel ?? null, retention: retention ?? null, health: health ?? null, founder: founder ?? null })
+  // ⚖️ A FAILED COVERAGE READ IS REPORTED AS NULL, NOT AS AN EMPTY LIST, AND IT
+  // NEVER FAILS THE CALL. 0217 is a hand-applied migration like the four before
+  // it, so an unapplied view must cost this one panel rather than every metric on
+  // the page — and "we could not read it" must not render as "no creator has any
+  // knowledge", which is the same number this view exists to find honestly.
+  if (coverage.error) {
+    console.warn(JSON.stringify({
+      event: 'knowledge_coverage_unavailable',
+      detail: 'migration 0217 may not be applied; the per-creator depth panel is absent, not empty',
+      error: String(coverage.error.message ?? ''),
+    }))
+  }
+  return json({
+    ...(data ?? {}),
+    funnel: funnel ?? null,
+    retention: retention ?? null,
+    health: health ?? null,
+    founder: founder ?? null,
+    knowledge_coverage: coverage.error ? null : (coverage.data ?? []),
+  })
 })
