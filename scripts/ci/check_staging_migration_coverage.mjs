@@ -389,6 +389,19 @@ export const EXCLUDED = {
     + 'job) and the grade it stores is what decides whether an extracted claim may '
     + 'be spoken — so an unapplied column would surface as a PostgREST error on the '
     + 'update, loudly, rather than as ungraded marketing copy reaching a script.',
+  '0217_nobody_could_see_which_creators_had_nothing_to_say':
+    'Creates the `creator_knowledge_coverage` view over `brand_voices`, '
+    + '`creator_knowledge` and `transcripts`. ⚠️ EXCLUDED FOR THE TABLE-'
+    + 'AVAILABILITY REASON 0121 SETS, AND CHECKED FIRST: `creator_knowledge` is '
+    + 'created by 0121, which is excluded, and `brand_voices` on staging is a '
+    + 'FIXTURE applied AFTER the migration loop — so CREATE VIEW would fail on a '
+    + 'missing relation inside the loop, the four-minute failure 0194, 0196, 0201 '
+    + 'and 0213 each paid for. '
+    + '⚠️ MANUAL APPLY REQUIRED. The cost of an unapplied 0217 is exactly one '
+    + 'admin panel: `admin-metrics` reports `knowledge_coverage: null` and logs '
+    + '`knowledge_coverage_unavailable`, and every other metric on that call is '
+    + 'unaffected. Nothing in the product reads it — it is a worklist for deciding '
+    + 'which creators to re-mine.',
   '0216_the_conclusion_arrived_without_the_sentence_that_earned_it':
     'Adds `evidence` and `question_id` to `creator_knowledge`, a CHECK naming the '
     + 'ten targeted question ids, and re-creates `merge_creator_knowledge` to '
