@@ -83,9 +83,16 @@ describe('1. occupation chips: 10 stored values, 8 offered, every one answered',
       /const ONBOARDING_WORK_KINDS: readonly BriefWorkKind\[\] = \[\s*'creator', 'founder', 'coach', 'professional', 'ecommerce', 'saas',\s*'local_service', 'other',\s*\]/)
   })
 
-  it('both chip renders use the offered set, not the full stored type', () => {
-    expect(ONBOARDING).toMatch(/\{ONBOARDING_WORK_KINDS\.map\(\(k\) => \(/)
+  // ⚠️ RE-ANCHORED: THERE IS ONLY ONE CHIP RENDER NOW. The confirm screen used
+  // to repeat this question with the same list and the same labels, which is the
+  // duplication the owner asked to be removed — screen 2 asks it, the confirm
+  // screen reads `draft.workKind`. The claim that survives is the one this test
+  // is named for: whatever renders chips offers the SEVEN-chip signup set, never
+  // the full ten-value stored type.
+  it('the chip render uses the offered set, not the full stored type', () => {
     expect(ONBOARDING).toMatch(/values=\{ONBOARDING_WORK_KINDS\} label=\{WORK_KIND_LABEL\} chosen=\{draft\.workKind\}/)
+    // And the duplicate is gone rather than merely unused.
+    expect(ONBOARDING).not.toMatch(/\{ONBOARDING_WORK_KINDS\.map\(\(k\) => \(/)
   })
 
   it('the stored type keeps all ten, so nothing already answered is rewritten', () => {

@@ -1218,15 +1218,24 @@ export function ConfirmStep({
   // ⚖️ THE DRAFT STILL WINS. A saved answer is a decision, and re-suggesting
   // over it would replace what the creator told us with what we inferred —
   // the same rule `claimsGuess` below already states.
-  const [audience, setAudience] = useState(draft.audience || draft.profile?.audience || '')
-  const [product, setProduct] = useState(draft.product || draft.profile?.offer || '')
+  // ⚠️ READ, NEVER ASKED HERE ANY MORE. Screen 2's chips are the question; this
+  // keeps whatever the scan or a previous answer produced so the save shape and
+  // every existing account are untouched.
+  const audience = draft.audience || draft.profile?.audience || ''
+  // ⚖️ THE OFFER LIVES IN THE PRODUCT LIBRARY NOW. Carried through unchanged so
+  // an account that already has one does not lose it on a re-save.
+  const product = draft.product || draft.profile?.offer || ''
   // ⚖️ `goal` STAYS BLANK AND THAT IS STILL DELIBERATE. A business goal is not
   // readable from someone's posts, and the screen asks rather than guesses.
-  const [goal, setGoal] = useState(draft.goal)
+  // ⚠️ `goal` (the free-text one) IS NO LONGER ASKED — zero of 53 accounts ever
+  // filled it. Kept so the draft shape and any stored answer survive a re-save.
+  const goal = draft.goal
   // §8a.1's brief. `workKind` decides whether the claims question appears at
   // all; `forbiddenClaims` is the answer no model can infer.
-  const [workKind, setWorkKind] = useState<BriefWorkKind | null>(draft.workKind)
-  const [workKindOther, setWorkKindOther] = useState<string>(draft.workKindOther ?? '')
+  // From screen 2. Still read here because it decides whether the claims
+  // question is asked at all.
+  const workKind: BriefWorkKind | null = draft.workKind
+  const workKindOther: string = draft.workKindOther ?? ''
   // ⚠️ THE SCAN ALREADY FOUND HIS RESTRICTION AND FILED IT AS A CTA. Measured on
   // a real Senior MSK Physiotherapist: "Always discuss this with your
   // physiotherapist or surgeon." was captured as a recurring CTA while THIS
@@ -1242,6 +1251,19 @@ export function ConfirmStep({
     : []
   const claimsGuess = foundDisclaimers.join(' · ')
   const [forbiddenClaims, setForbiddenClaims] = useState(draft.forbiddenClaims ?? claimsGuess)
+  // ⚖️ THE CHIPS AND THE BOX ARE ONE STORED STRING. `forbidden_claims` is read
+  // downstream as prose and nothing about that changes here — joining on ' · '
+  // is the separator `claimsGuess` above already uses, so a chip answer and a
+  // scan-found disclaimer arrive in the same shape and no reader learns a new
+  // one. Splitting them into a second column would fork one fact in two.
+  const [claimChips, setClaimChips] = useState<string[]>([])
+  // ⚠️ ONE VALUE, OR THE CHIPS ARE DECORATION. The tapped restrictions and
+  // anything typed underneath are joined into the single `forbidden_claims`
+  // string every downstream reader already expects. Saving only the box would
+  // have made a tapped chip look recorded and reach no script — the defect this
+  // codebase keeps finding, in a control that visibly responds to the tap.
+  const claimsValue = [...claimChips, forbiddenClaims.trim()]
+    .map((x) => x.trim()).filter(Boolean).join(' · ') || null
   // True only while the creator is still looking at OUR words, so the note
   // disappears the moment they touch the field.
   const [claimsAreGuessed, setClaimsAreGuessed] = useState(
@@ -1259,7 +1281,11 @@ export function ConfirmStep({
   // not a feature. Tracking whether the creator changed it is what separates
   // "they told us" from "the model guessed and nobody corrected it", and only
   // the first may decide a call to action.
-  const [offerTouched, setOfferTouched] = useState(draft.offerFromCreator)
+  // ⚠️ STILL READ, AND NOW ONLY EVER FALSE FOR A NEW SIGNUP. It is what keeps a
+  // GUESSED offer out of every script (`offer: offerTouched ? product : null`),
+  // and accounts that confirmed an offer before it moved to the Product Library
+  // keep theirs. Removing it would promote every old guess into a live CTA.
+  const offerTouched: boolean = draft.offerFromCreator
   // §2.2's `can_record_screen`, ANSWERED DURING THE SCAN (see BuildingStep) and
   // carried here so the durable save still writes it. Read from the draft rather
   // than re-asked: two screens asking one question is two places that can
@@ -1333,7 +1359,7 @@ export function ConfirmStep({
     if (vp) {
       onDraftChange(vp, audience, product, goal, {
         workKind, workKindOther: workKindOther.trim() || null,
-        forbiddenClaims: forbiddenClaims.trim() || null, q4, offerFromCreator: offerTouched,
+        forbiddenClaims: claimsValue, q4, offerFromCreator: offerTouched,
         // Only meaningful where Q3 minted something. Where it did not, the
         // creator was never shown the block and has no opinion to record —
         // which is the null this three-state field exists to keep.
@@ -1341,7 +1367,7 @@ export function ConfirmStep({
         canRecordScreen, canFilmObjects,
       })
     }
-  }, [vp, audience, product, goal, workKind, workKindOther, forbiddenClaims, q4, ownsEntity, offerTouched, canRecordScreen, canFilmObjects, onDraftChange])
+  }, [vp, audience, product, goal, workKind, workKindOther, claimsValue, q4, ownsEntity, offerTouched, canRecordScreen, canFilmObjects, onDraftChange])
 
   if (!vp) {
     return (
@@ -1625,76 +1651,28 @@ export function ConfirmStep({
         </div>
         {/* Captured here so the DNA is complete from day one (the scan can't read
             these). Optional — empty is fine, the creator can fill them in Settings. */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
-          <Labeled label="Who you're talking to">
-            <input className="field" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="e.g. busy founders, 25-40" />
-          </Labeled>
-          {/* Q3b — §8a calls this the highest-value field on the form. It is
-              otherwise INFERRED, and voice.ts's prompt forbids a blank, so the
-              model must produce something: a guessed offer is a wrong call to
-              action on every video shipped. */}
-          <Labeled label="What is your offer called, and what does it do?">
-            <input
-              className="field"
-              value={product}
-              onChange={(e) => { setProduct(e.target.value); setOfferTouched(true) }}
-              placeholder="e.g. Twin — it edits your videos for you"
-            />
-            {/* ⚠️ THE NOTICE SAID THE OPPOSITE OF WHAT THE CODE DOES, AND THE
-                NOTICE IS WHAT A CREATOR BELIEVES. "It becomes the call to action
-                on every video" is false for an untouched guess: `offer` is
-                written only when `offerTouched`, so a guess nobody edits is
-                stored as null and reaches no script.
-                MEASURED: a real account was shown "A radical mindset shift
-                towards patience, self-awareness…" under that sentence. That is
-                a THEME, not an offer — and being told it would drive every CTA
-                is exactly the alarm a creator should feel about a claim they
-                never made. The behaviour was already right; the sentence was
-                manufacturing the fear. */}
-            {!offerTouched && product && (
-              <p className="mt-1 text-[11px] text-amber">
-                We guessed this from your posts. We will not use it until you edit it —
-                fix it if it is wrong, or leave it and Twin stays quiet about your offer.
-              </p>
-            )}
-          </Labeled>
-        </div>
-        {/* Q3 — decides where business truth comes from, and whether the claims
-            question below is asked at all. */}
-        <Labeled label="What do you do?">
-          <div className="flex flex-wrap gap-2">
-            {ONBOARDING_WORK_KINDS.map((k) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setWorkKind(workKind === k ? null : k)}
-                className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                  workKind === k
-                    ? 'border-coral bg-coral/15 text-cream'
-                    : 'border-white/15 text-sand hover:bg-white/5'
-                }`}
-              >
-                {WORK_KIND_LABEL[k]}
-              </button>
-            ))}
-          </div>
-          {/* THE BOX THE CONTRACT HAS ALWAYS REQUIRED.
-              `otherWithoutText` has existed in preScriptBrief.ts since the brief
-              was written, and nothing rendered a place to type. So `other`
-              reached the script as the bare word "other" — which describes
-              nobody, and is the one answer where the creator has more to say
-              than any chip could hold. Shown only for `other`, because a text
-              box beside six chips invites everyone to skip the chips. */}
-          {workKind === 'other' && (
-            <input
-              value={workKindOther}
-              onChange={(e) => setWorkKindOther(e.target.value.slice(0, 240))}
-              placeholder="In one line — what do you actually do?"
-              aria-label="Describe what you do"
-              className="mt-2 w-full rounded-lg border border-white/15 bg-transparent px-3 py-2 text-sm text-cream placeholder:text-sand/50 focus:border-coral focus:outline-none"
-            />
-          )}
-        </Labeled>
+        {/* ⚠️⚠️ TWO TYPED BOXES REMOVED HERE, AND THE MEASUREMENT IS WHY.
+            "Who you're talking to" ASKED THE SAME THING SCREEN 2 ALREADY ASKS as
+            chips ("Who do you mainly want to reach?" plus "How much do they
+            already know?"), and those chips have real readers — `audienceSeg`
+            and `audienceKnowledge` travel on the pre-script brief. A second,
+            free-text copy could not be routed, compared against the scan or used
+            to pick a register, which is the reason screen 2 stopped being a box
+            in the first place.
+
+            ⚖️ THE OFFER MOVED TO THE PRODUCT LIBRARY, where a product is entered
+            with its real name and link behind an attestation. Measured: 51 of 53
+            ready voices carry `profile.offer` and every one of them is the
+            SCAN'S GUESS — the field was deliberately not used unless the creator
+            edited it, so what it mostly bought was a box that looked answered
+            and changed nothing. A name and a link, captured once, in the place
+            that grants the claim, beats a sentence typed at signup.
+            `generationReadiness` already reads the product entity. */}
+        {/* ⚠️ THE "What do you do?" CHIPS ARE GONE FROM HERE TOO, for the
+            same reason: screen 2 asks exactly this, from the same
+            `ONBOARDING_WORK_KINDS` list with the same labels. `workKind` below
+            still comes from the draft, so the claims question it gates is
+            unaffected — this removed a second asking, not an answer. */}
         {/* WHAT Q3 ALREADY TOLD US — SHOWN, NOT ASKED.
             A creator who has just said "Software" is not then asked whether they
             have a product. Q3 mints the owned entity and it appears here
@@ -1786,11 +1764,46 @@ export function ConfirmStep({
             model that can infer what a regulator will not let someone say. */}
         {asksForbiddenClaims(workKind) && (
           <Labeled label="Is there anything you are not allowed to claim?">
+            {/* ⚠️⚠️ ZERO OF 53 READY VOICES EVER FILLED THE BOX THIS REPLACES,
+                and this is the one field where an empty answer is dangerous
+                rather than merely thin: it is unguessable, and unforgivable to
+                get wrong for a doctor, lawyer, adviser or supplement brand. A
+                blank box asks someone to inventory their own regulator from
+                memory at the end of signup, which is why nobody did it.
+
+                ⚖️ CHIPS MAKE IT RECOGNITION INSTEAD OF RECALL — the same move
+                that fixed the story screen. These are the restrictions that
+                recur across regulated work, so tapping two is a second's work
+                where writing them was a task.
+
+                ⚠️⚠️ AND THE LIST IS NEVER PRESENTED AS EXHAUSTIVE. A creator
+                whose restriction is not here must still be able to say it, so
+                the free-text box remains underneath and always. Chips that
+                quietly CAP what someone may declare about their own legal
+                exposure would be worse than the blank box they replace. */}
+            <div className="flex flex-wrap gap-2">
+              {CLAIM_RESTRICTIONS.map((c: string) => {
+                const on = claimChips.includes(c)
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => { setClaimChips(on ? claimChips.filter((x) => x !== c) : [...claimChips, c]); setClaimsAreGuessed(false) }}
+                    className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                      on ? 'border-coral bg-coral/15 text-cream'
+                        : 'border-white/15 text-sand hover:bg-white/5'
+                    }`}
+                  >
+                    {c}
+                  </button>
+                )
+              })}
+            </div>
             <input
-              className="field"
+              className="field mt-2"
               value={forbiddenClaims}
               onChange={(e) => { setForbiddenClaims(e.target.value); setClaimsAreGuessed(false) }}
-              placeholder="e.g. no guaranteed outcomes, never the word “cure”"
+              placeholder="Anything else you are not allowed to say"
             />
             {claimsAreGuessed ? (
               <p className="mt-1 text-[11px] text-amber">
@@ -1802,9 +1815,24 @@ export function ConfirmStep({
             </p>
           </Labeled>
         )}
-        <Labeled label="Your goal">
-          <input className="field" value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="e.g. grow to 50k, drive signups, build trust" />
-        </Labeled>
+        {/* ⚠️⚠️ THE TYPED "Your goal" BOX IS GONE AND IS *NOT* REPLACED BY CHIPS,
+            which is the opposite of what the rest of this block did, so here is
+            why. Measured: ZERO of 53 ready voices ever carried a typed goal — it
+            was the most skippable thing on the screen and everyone skipped it.
+            The obvious fix is the one applied to the claims question below:
+            offer the options instead of a box.
+
+            ⚠️ THAT WOULD HAVE UNDONE A MEASURED DECISION. The seven goal chips
+            were deliberately REMOVED from onboarding — `the-cta-already-said-
+            what-the-videos-are-for` pins their absence, and records the reason:
+            the goal is CONFIRMED from the creator's own sign-offs on screen 2
+            ("Is this what your videos are for?"), and where it cannot be
+            inferred the question is deleted rather than softened. Re-adding the
+            chips here would be, in that test's own words, "the third asking".
+
+            ⚖️ SO THE DEAD BOX IS REMOVED AND NOTHING TAKES ITS PLACE.
+            `contentGoals` still reaches the writer through the brief; it is
+            answered where it can be answered honestly. */}
       </div>
 
       {/* THE VOICE DETAILS, AND THEY COLLAPSE WHEN THERE IS NOTHING IN THEM.
@@ -1972,6 +2000,27 @@ const KNOWLEDGE_LABEL: Record<AudienceKnowledge, string> = {
   experienced: 'Mostly experienced',
   mixed: 'A mix',
 }
+
+/** The restrictions that recur across regulated work.
+ *
+ * ⚠️ A STARTING LIST, NEVER A CLOSED ONE. It exists so that tapping is possible,
+ * not so that typing becomes impossible — the free-text box sits underneath it
+ * and always. Capping what a creator may declare about their own legal exposure
+ * would be a worse failure than the empty box this replaces, which zero of 53
+ * accounts ever filled.
+ *
+ * ⚖️ WORDED AS THE CREATOR WOULD SAY IT, not as a compliance taxonomy. These are
+ * stored verbatim into `forbidden_claims`, which the writer reads as prose, so
+ * they have to read like something a person wrote. */
+const CLAIM_RESTRICTIONS: readonly string[] = [
+  'No guaranteed outcomes',
+  'No medical or health claims',
+  'No income or earnings claims',
+  'Never the word "cure"',
+  'No before-and-after comparisons',
+  'Must say "consult a professional"',
+  'No naming competitors',
+]
 
 const CONTENT_GOAL_LABEL: Record<BriefGoal, string> = {
   followers: 'Reach more people',
