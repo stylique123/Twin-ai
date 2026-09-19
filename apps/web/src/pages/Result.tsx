@@ -20,6 +20,7 @@ import { recordScriptIntent } from '../lib/api'
 import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getPendingSourceAsset, pollSourceAssetReady, getLatestEditProject, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo, getOutputBundle, resolveFinishedOutputsResult, loadCapabilities, approvalState, approvalBlockReason } from '../lib/api'
 import { explainFailure } from '../lib/api'
 import { creatorPick, defaultCapture, freeformEntry } from '../lib/api'
+import { withSelectedHook, establishDurableRecordingScriptLive } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
 import { TwinKnowledgeLink } from '../components/TwinKnowledgeLink'
@@ -605,6 +606,39 @@ export default function Result() {
         selected_hook: h,
         hook_choice: i >= 0 ? creatorPick(i) : freeformEntry(),
       })
+    }
+    // ── AND THE CHOICE REACHES THE SCRIPT THE TELEPROMPTER ACTUALLY READS ──
+    //
+    // ⚠️ #927 FIXED THIS ON THE WRONG SURFACE. It put `withSelectedHook` inside
+    // `ScriptEditor`, so the editor showed the chosen hook and the camera did
+    // not — `prepareCaptureMode` takes the PERSISTED script whenever one exists.
+    // Reconciling there (see `recordingScriptApi`) repairs the generations
+    // already stored; writing it here means a fresh pick is right immediately
+    // rather than at the next teleprompter entry.
+    //
+    // ⚖️ NOT AFTER A TAKE EXISTS. A recorded take's provenance binds to the
+    // script it was read from, and rewriting that script underneath it would
+    // invalidate the binding. The choice still records for the cover and the
+    // b-roll; the script she already performed stays as performed.
+    if (liveScript && !serverSourceAssetId) {
+      const patched = withSelectedHook(liveScript, h)
+      // Returns the SAME object when nothing should change.
+      if (patched && patched !== liveScript) {
+        void (async () => {
+          const durable = await establishDurableRecordingScriptLive(patched)
+          if (durable.ok && durable.script) { setLiveScript(durable.script); return }
+          // ⚠️ SAID OUT LOUD RATHER THAN SWALLOWED. A failed persist is exactly
+          // the state this change exists to end. The capture gate reconciles on
+          // the next entry and the recorder's SHA check refuses a take against a
+          // stale script, so this degrades to a visible refusal rather than a
+          // wrong video — but silence is how the defect survived two fixes.
+          console.warn(JSON.stringify({
+            event: 'hook_choice_not_persisted',
+            generation_id: id,
+            reason: durable.reason ?? 'unknown',
+          }))
+        })()
+      }
     }
   }
   // "Post now" → reveal the posting options (the "Where to post" tab on both layouts).

@@ -6213,7 +6213,10 @@ const KNOWLEDGE_COLS_BASE = 'id, kind, text, basis, times_seen, confidence, sour
 // from 0216, and both are applied by hand — so the fallback below must name
 // NEITHER. Losing the rotation and the evidence sentence costs quality; naming an
 // absent column costs the creator every knowledge row.
-const KNOWLEDGE_COLS_FULL = `${KNOWLEDGE_COLS_BASE}, used_count, last_used_at, evidence`
+// ⚠️ `creator_confirmed_at` (0218) JOINS THE WIDE LIST, NOT THE BASE ONE, so an
+// unapplied migration costs the marker and never the knowledge — the narrow
+// retry below already exists for exactly this and needs no new branch.
+const KNOWLEDGE_COLS_FULL = `${KNOWLEDGE_COLS_BASE}, used_count, last_used_at, evidence, creator_confirmed_at`
 
 /** Read creator knowledge with the rotation columns, or without them if 0215 has
  *  not been applied. `narrow` is reported so the degraded state is visible rather
@@ -6225,7 +6228,7 @@ async function readKnowledge(
   if (!wide.error) return { rows: (wide.data as Array<Record<string, unknown>>) ?? [], narrow: false }
   console.warn(JSON.stringify({
     event: 'knowledge_rotation_columns_absent',
-    detail: 'migration 0215/0216 not applied; ranking without spend (every item reads as never supplied) and without the evidence sentence',
+    detail: "migration 0215/0216/0218 not applied; ranking without spend (every item reads as never supplied), without the evidence sentence, and without the creator-confirmed marker",
     error: String(wide.error.message ?? ''),
   }))
   const narrow = await (build(KNOWLEDGE_COLS_BASE) as unknown as Promise<{ data: unknown; error: { message?: string } | null }>)
@@ -7829,7 +7832,16 @@ function reserveAskedInline<T extends { source?: string | null }>(
         + speakable.map((k) => {
           const tag = freshnessTagInline((k as { last_observed_at?: unknown }).last_observed_at, nowMsForFreshness)
           const ev = String((k as { evidence?: unknown }).evidence ?? '').trim()
-          return `  * (${k.kind}) ${tag}${k.text}${ev ? `\n      HER WORDS: "${ev}"` : ''}`
+          // ⚠️ SHE PERSONALLY VOUCHED FOR THIS ONE (0218). Everything else here
+          // is a model's reading of her speech, however good; a confirmed row is
+          // one she was shown and said yes to. That is the strongest provenance
+          // this store can carry short of her typing it, and the writer should
+          // reach for it first — which it cannot do if nothing says which rows
+          // they are. Absent on every row nobody has been asked about, and then
+          // simply not marked.
+          const vouched = String((k as { creator_confirmed_at?: unknown }).creator_confirmed_at ?? '').trim()
+          const mark = vouched ? ' [she confirmed this herself]' : ''
+          return `  * (${k.kind}) ${tag}${k.text}${mark}${ev ? `\n      HER WORDS: "${ev}"` : ''}`
         }).join('\n'))
     }
     if (coveredRows.length) {

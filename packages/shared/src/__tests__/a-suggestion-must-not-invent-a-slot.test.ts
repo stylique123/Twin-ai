@@ -17,6 +17,11 @@
 // passes, because the real production rows carry neither field and are still
 // refused on exactly the grounds they always were. What is new is that a row
 // which DOES carry one can now be offered.
+// ⚠️ RE-ANCHORED 2026-09-19: `suggestStoryAnswers` now returns a LIST per slot,
+// not one suggestion, and the meaning changed with it — these are what the store
+// ALREADY HOLDS, shown so she can confirm a row and then tell us something new,
+// never candidate answers that close the question (0218). Every claim below is
+// unchanged; each reads the head of the list where it read the single value.
 import { describe, expect, it } from 'vitest'
 import {
   suggestStoryAnswers, SUGGESTIBLE_SLOTS, CREATOR_QUESTIONS, OPENING_THREE,
@@ -99,10 +104,10 @@ const STANCE_WITH_A_CONSENSUS = spoken(
 describe('a recorded cost makes a lesson, and nothing else does', () => {
   it('offers the lesson with its price rejoined', () => {
     const out = suggestStoryAnswers(Q, [LESSON_WITH_A_PRICE])
-    expect(out.expensive_lesson?.questionId).toBe('expensive_lesson')
-    expect(out.expensive_lesson?.text).toContain('$40,000')
+    expect(out.expensive_lesson?.[0]?.questionId).toBe('expensive_lesson')
+    expect(out.expensive_lesson?.[0]?.text).toContain('$40,000')
     // The creator's own sentence survives verbatim inside the offer.
-    expect(out.expensive_lesson?.text).toContain('forty thousand dollars of inventory')
+    expect(out.expensive_lesson?.[0]?.text).toContain('forty thousand dollars of inventory')
   })
 
   it('refuses the same sentence when no cost was recorded', () => {
@@ -131,9 +136,9 @@ describe('a recorded cost makes a lesson, and nothing else does', () => {
 describe('a recorded consensus makes a stance, and nothing else does', () => {
   it('offers both halves, in the order the question asks for them', () => {
     const out = suggestStoryAnswers(Q, [STANCE_WITH_A_CONSENSUS])
-    expect(out.contrarian?.questionId).toBe('contrarian')
+    expect(out.contrarian?.[0]?.questionId).toBe('contrarian')
     // What they believe, then what the creator believes instead.
-    const text = out.contrarian!.text
+    const text = out.contrarian![0].text
     expect(text.indexOf('ten thousand followers')).toBeLessThan(text.indexOf('two hundred people'))
   })
 
@@ -209,8 +214,8 @@ describe('the new fields obey every guard the old slot already obeyed', () => {
 describe('best_result is suggested only when it is really a result', () => {
   it('offers the creator their own figure back', () => {
     const out = suggestStoryAnswers(Q, [REAL_RESULT])
-    expect(out.best_result?.text).toContain('£13,500')
-    expect(out.best_result?.questionId).toBe('best_result')
+    expect(out.best_result?.[0]?.text).toContain('£13,500')
+    expect(out.best_result?.[0]?.questionId).toBe('best_result')
   })
 
   it('refuses a number with no achievement behind it', () => {
@@ -245,7 +250,7 @@ describe('a suggestion must survive the write it is heading for', () => {
     const tooShort = spoken('experience', 'Sold 5.')
     const out = suggestStoryAnswers(Q, [tooLong, tooShort])
     expect(out.best_result).toBeUndefined()
-    const ok = suggestStoryAnswers(Q, [REAL_RESULT]).best_result!
+    const ok = suggestStoryAnswers(Q, [REAL_RESULT]).best_result![0]
     expect(ok.text.length).toBeGreaterThanOrEqual(ANSWER_MIN)
     expect(ok.text.length).toBeLessThanOrEqual(ANSWER_MAX)
   })

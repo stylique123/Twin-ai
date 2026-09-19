@@ -72,6 +72,21 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0218_she_confirmed_what_we_had_she_did_not_answer_the_question':
+    'Adds `creator_confirmed_at` to `creator_knowledge`, so the story screen can let a '
+    + 'creator VERIFY an extracted row without that counting as ANSWERING the question. '
+    + '`0121_creator_knowledge` is itself EXCLUDED, so staging has no such table and the '
+    + 'statement would fail on its first line rather than pass vacuously. THE EXCLUSION '
+    + 'IS INHERITED from 0178/0214, not a new judgement. '
+    + '\u26a0\ufe0f MANUAL APPLY, PENDING. Order-independent: it touches no function and no '
+    + 'column any other pending migration adds. '
+    + '\u26a0\u26a0 AND UNAPPLIED IT COSTS EXACTLY TWO THINGS, NEITHER OF THEM DATA: the '
+    + 'confirm button reports failure and records nothing (`confirmExtractedRow` returns '
+    + 'false and the tick does not appear, deliberately — claiming a confirmation we did '
+    + 'not store is worse than not offering it), and the writer loses the '
+    + '"she confirmed this herself" marker because the column rides the WIDE select, '
+    + 'whose existing narrow retry already covers it. Knowledge itself still reaches the '
+    + 'prompt either way.',
   '0181_a_remix_needs_something_to_be_a_remix_of':
     'Replaces `user_case_study` to add `opens` and `remix_rate`. ⚠️ EXCLUDED BECAUSE THE '
     + 'EDITOR MATRIX HAS NO `analytics_events` — that table comes from 0024, which is not in '

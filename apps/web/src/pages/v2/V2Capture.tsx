@@ -125,13 +125,25 @@ function CaptureGate({ genId, mode, onBack }: { genId: string; mode: 'upload' | 
     setFailed(null); setTimeline(null); setUploadReady(false)
     ;(async () => {
       try {
+        // ⚖️ FETCHED ONCE AND SHARED, LAZILY. Both `selectedHook` and
+        // `synthScript` need the generation row; memoising keeps entering record
+        // mode at one read instead of two, and calling it only from inside
+        // `prepareCaptureMode` keeps UPLOAD at zero reads, which that module
+        // states as an invariant.
+        let genOnce: ReturnType<typeof getGeneration> | null = null
+        const generation = () => (genOnce ??= getGeneration(genId))
         const r = await prepareCaptureMode(mode, {
           loadScript: () => loadRecordingScript(genId),
           synthScript: async () => {
-            const g = await getGeneration(genId)
+            const g = await generation()
             return g ? buildRecordingScript({ generationId: genId, blueprint: g.blueprint, selectedHook: g.selected_hook }) : null
           },
           establish: (t) => establishDurableRecordingScriptLive(t),
+          // ⚠️ THE HOOK THE CREATOR ACTUALLY TAPPED. Without it a persisted
+          // script keeps whichever hook the blueprint put in scene 1, and the
+          // camera reads a line she did not choose — the defect #927 is named
+          // for and did not reach.
+          selectedHook: async () => (await generation())?.selected_hook ?? null,
         })
         if (!alive) return
         if (r.ready && r.mode === 'upload') { setUploadReady(true); return }
