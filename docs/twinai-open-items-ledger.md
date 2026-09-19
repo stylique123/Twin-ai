@@ -3200,3 +3200,73 @@ Its status is unchanged from section I3: `scraped_posts` has no replies column,
 and whether the actors return comments is **UNVERIFIED**. The difference is that
 we now know exactly which claim to check and where it came from, and that it must
 not be quoted as evidence until one real actor response is inspected.
+
+## N. 2026-09-19 — the hook fix was on the wrong surface, and prefilling nearly ate the runway
+
+### N1. ⚠️ #927's OWN TITLE STAYED TRUE AFTER #927
+
+Reported by the owner as unfixed several times, and it was. #927 — *"She tapped
+the fourth hook and the teleprompter read the first"* — put `withSelectedHook`
+inside `ScriptEditor`. **The teleprompter does not go through `ScriptEditor`.**
+It goes through `prepareCaptureMode`, whose record path took the persisted
+script with no hook patch; only the `synthScript` fallback passed
+`selectedHook`, and that branch runs **solely when nothing is persisted**. So it
+covered exactly the generations nobody had opened in the editor, and missed
+every one they had.
+
+⚖️ **FIXED BY PERSISTING, NOT BY PATCHING EACH READER.**
+`editor_recording_script_canonical` (0091) computes the capture SHA from the
+PERSISTED `scene_timeline`, so a client recording against a locally-patched
+scene 1 produces an `intendedDialogueSha256` the create RPC refuses — a
+memory-only fix trades a wrong teleprompter for a refused take.
+
+⚠️ **THE TRANSFERABLE PART: A FIX VERIFIED ON THE SCREEN THAT SHOWS THE VALUE IS
+NOT VERIFIED.** The editor rendered the right hook the whole time. Ask which
+surface CONSUMES the thing, and check that one.
+
+### N2. ⚠️⚠️ PREFILLING FROM THE EXTRACTOR ALMOST DESTROYED THE THING IT WAS HELPING
+
+The story screen was made to offer back what the scan already heard her say, so
+she could recognise instead of recall. The owner caught the trap before it
+shipped, and it is worth stating in full because it is invisible from the code:
+
+> if we're already using the extractor and we don't get any new stories, how
+> does that help the new videos?
+
+**If confirming a suggestion counts as ANSWERING the question:** the row already
+exists in `creator_knowledge`, so the confirmation adds NO supply — and
+`creator_questions_put`'s never-ask-twice rule then guarantees she is never
+asked again. One tap permanently trades the story we do not have for a re-label
+of one we do, and **a creator with a RICH scan contributes nothing at all** —
+the better the extractor gets, the worse this gets.
+
+⚖️ **SO CONFIRMING AND ANSWERING ARE DIFFERENT ACTIONS ON DIFFERENT ROWS (0218).**
+Confirming marks `creator_confirmed_at` on THAT row and leaves the question
+open; only a new `source = 'asked'` row adds supply. The card sits ABOVE the
+question and the box stays open underneath it, always.
+
+⚖️ **AND THE SHOWN MATERIAL IS WORTH MORE THAT WAY, NOT LESS.** It is a memory
+aid AND a statement of what not to repeat, which is what makes *"tell me another
+one"* an honest question rather than an invitation to repeat what we hold.
+
+⚠️ **THE GENERAL RULE, BECAUSE IT WILL RECUR EVERY TIME EXTRACTED MATERIAL IS
+SHOWN BACK: a screen that spends a question must ADD something the store does
+not already have.** Recognition UIs are worth building and must never be allowed
+to close the only channel that grows supply.
+
+### N3. Two sessions built the same three migrations, and neither knew
+
+`0214`/`0215`/`0216` were built twice, independently, on the same day, with the
+same intent and different numbering — see the closed #931 for the mapping. The
+merged versions are better in each case (a re-mine enqueue function, a
+`creator_knowledge_uses` table with RLS, `question_id`).
+
+⚠️ **AND #936's MINER IS BETTER THAN #931's FOR A REASON WORTH KEEPING.** It
+measured its cue patterns against all 331 stored transcripts (504,180
+characters): the first list returned ZERO rows, and the whole corpus holds TWO
+audience-demand sentences and ZERO promised-video ones. #931's patterns were
+written from how creators are imagined to talk and never measured. Same rule as
+§I3 and §M3, unapplied to itself.
+
+⚖️ **BEFORE STARTING WORK ON THIS REPO, FETCH `main` AND READ THE LAST DAY OF
+MERGES.** A long-running branch here can be a day of duplicated work.
