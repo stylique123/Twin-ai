@@ -11,6 +11,7 @@ import {
   totalDurationSec,
 } from './recordingScript'
 import { buildRecordingScriptSnapshot } from './editor/scriptSnapshot'
+import { withSelectedHook } from './recordingScriptAdapter'
 
 export async function loadRecordingScript(generationId: string): Promise<RecordingScript | null> {
   const { data, error } = await getClient()
@@ -173,11 +174,57 @@ export interface CaptureModeDeps {
   loadScript: () => Promise<RecordingScript | null>
   synthScript: () => Promise<RecordingScript | null> // build from blueprint when none persisted
   establish: (t: RecordingScript) => Promise<DurableScriptResult>
+  /** The hook the creator chose, from `generations.selected_hook`.
+   *
+   *  ⚠️ A FUNCTION, NOT A VALUE, AND THAT IS NOT A STYLE CHOICE. This module's
+   *  header promises that UPLOAD does "ZERO script load/build/persist/reload",
+   *  and a plain value would have to be resolved by the caller BEFORE
+   *  `prepareCaptureMode` is entered — making every upload pay a generation read
+   *  it does not need, and quietly retiring the one invariant the upload path
+   *  has. Called only where it is used: the persisted-script branch.
+   *
+   *  ⚠️ OPTIONAL SO EVERY EXISTING CALLER AND FIXTURE KEEPS ITS MEANING. Absent
+   *  means "nobody told us", which reconciles nothing — not "there is no hook". */
+  selectedHook?: () => Promise<string | null>
 }
 export async function prepareCaptureMode(mode: 'upload' | 'record', deps: CaptureModeDeps): Promise<CaptureModeResult> {
   if (mode === 'upload') return { ready: true, mode: 'upload' } // ZERO script work — upload needs no recorded-against script
   const persisted = await deps.loadScript()
-  if (persisted) return { ready: true, mode: 'record', script: persisted }
+  if (persisted) {
+    // ── THE PERSISTED SCRIPT AND THE CHOSEN HOOK CAN DISAGREE ──────────────
+    //
+    // ⚠️⚠️ AND FOR EVERY GENERATION PICKED BEFORE THIS LANDED, THEY DO. The
+    // hook chooser wrote `selected_hook` and nothing rewrote scene 1, so the
+    // line the teleprompter reads is whichever hook the blueprint happened to
+    // put first. #927 patched this in `ScriptEditor` only, which fixed the
+    // EDITOR's rendering and left this path — the one the camera uses —
+    // reading the stale scene. Fixing it at the point of choice (Result's
+    // `pickHook`) repairs every future pick; this repairs the ones already
+    // stored, and is the belt to that fix's braces.
+    //
+    // ⚖️ IT RECONCILES THROUGH `establish`, NEVER IN MEMORY, and that is the
+    // whole reason this is safe. `editor_recording_script_canonical` (0091)
+    // computes the capture SHA from the PERSISTED `scene_timeline`, so a script
+    // patched only on the client would make the recorder produce an
+    // `intendedDialogueSha256` the create RPC refuses. Persist-reload-compare
+    // is what keeps the database, the teleprompter and the SHA one thing.
+    //
+    // ⚖️ AND A FAILURE HERE IS `ready: false`, exactly like the synthesis path
+    // below. Continuing with a script that disagrees with the creator's choice
+    // is the defect; refusing visibly and retryably is the behaviour this
+    // module already chose for every other way of not having one script.
+    const reconciled = deps.selectedHook
+      ? withSelectedHook(persisted, await deps.selectedHook())
+      : persisted
+    // Returns the SAME object when nothing should change, so an agreeing script
+    // costs nothing and takes the fast path unchanged.
+    if (!reconciled || reconciled === persisted) return { ready: true, mode: 'record', script: persisted }
+    const durable = await deps.establish(reconciled)
+    if (!durable.ok || !durable.script) {
+      return { ready: false, mode: 'record', reason: durable.reason ?? 'persist_failed', error: durable.error }
+    }
+    return { ready: true, mode: 'record', script: durable.script }
+  }
   const synthesized = await deps.synthScript()
   if (!synthesized) return { ready: false, mode: 'record', reason: 'load' }
   const durable = await deps.establish(synthesized)

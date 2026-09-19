@@ -20,6 +20,7 @@ import { recordScriptIntent } from '../lib/api'
 import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getPendingSourceAsset, pollSourceAssetReady, getLatestEditProject, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo, getOutputBundle, resolveFinishedOutputsResult, loadCapabilities, approvalState, approvalBlockReason } from '../lib/api'
 import { explainFailure } from '../lib/api'
 import { creatorPick, defaultCapture, freeformEntry } from '../lib/api'
+import { withSelectedHook, establishDurableRecordingScriptLive } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
 import { TwinKnowledgeLink } from '../components/TwinKnowledgeLink'
@@ -605,6 +606,57 @@ export default function Result() {
         selected_hook: h,
         hook_choice: i >= 0 ? creatorPick(i) : freeformEntry(),
       })
+    }
+    // ── AND THE CHOICE REACHES THE SCRIPT THE TELEPROMPTER ACTUALLY READS ──
+    //
+    // ⚠️⚠️ #927 FIXED THIS ON THE WRONG SURFACE, WHICH IS WHY IT KEPT COMING
+    // BACK. That change put `withSelectedHook` inside `ScriptEditor`, so the
+    // editor on this page showed the chosen hook — and the teleprompter did
+    // not. `prepareCaptureMode` takes the PERSISTED script whenever one exists
+    // (`loadScript: () => loadRecordingScript(genId)`) and applies no hook
+    // patch at all; only its `synthScript` fallback passes `selectedHook`, and
+    // that path runs solely when NOTHING is persisted. Every generation the
+    // creator has opened in the editor has a `scene_timeline`, so every one of
+    // them took the unpatched branch. The bug the title of #927 describes —
+    // she tapped the fourth hook and the teleprompter read the first — was
+    // still exactly true after #927.
+    //
+    // ⚖️ SO THE FIX IS TO PERSIST, NOT TO PATCH AT EACH READER. Adding
+    // `withSelectedHook` to the teleprompter too would be whack-a-mole (the
+    // cover, the b-roll and the editor read this script as well) and it would
+    // be actively DANGEROUS: `editor_recording_script_canonical` (0091) builds
+    // the capture SHA from the PERSISTED `scene_timeline`, so a client that
+    // recorded against a locally-patched scene 1 would produce an
+    // `intendedDialogueSha256` the create RPC refuses. One durable script is
+    // also what Constitution §5.1 already requires; the divergence was the bug.
+    //
+    // ⚖️ NOT AFTER A TAKE EXISTS. A recorded take's provenance binds to the
+    // script it was read from, and rewriting that script underneath it would
+    // invalidate the binding. With a take on the row the creator's hook choice
+    // still records for the cover and the b-roll; the script they already
+    // performed stays as performed.
+    if (liveScript && !serverSourceAssetId) {
+      const patched = withSelectedHook(liveScript, h)
+      // `withSelectedHook` returns the SAME object when nothing should change,
+      // so this writes only on a real change.
+      if (patched && patched !== liveScript) {
+        void (async () => {
+          const durable = await establishDurableRecordingScriptLive(patched)
+          if (durable.ok && durable.script) { setLiveScript(durable.script); return }
+          // ⚠️ SAID OUT LOUD RATHER THAN SWALLOWED. A failed persist is exactly
+          // the state this whole change exists to end — the editor showing one
+          // hook and the teleprompter reading another — and it must not look
+          // like success. The recorder's own SHA check will refuse a take
+          // against the stale script, so this degrades to a visible refusal
+          // rather than to a wrong video, but silence here is how the defect
+          // survived two fixes.
+          console.warn(JSON.stringify({
+            event: 'hook_choice_not_persisted',
+            generation_id: id,
+            reason: durable.reason ?? 'unknown',
+          }))
+        })()
+      }
     }
   }
   // "Post now" → reveal the posting options (the "Where to post" tab on both layouts).
