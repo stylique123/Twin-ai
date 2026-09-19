@@ -7838,7 +7838,20 @@ function reserveAskedInline<T extends { source?: string | null }>(
       // but it's still true" — our notes narrated to the audience, carrying an
       // unchecked claim about their back catalogue.
       knowledgeParts.push('\nALREADY COVERED — they have made a video about each of these. Do NOT hand them their own upload back; go at the topic from an angle they have not used. THIS LIST IS NEVER SPOKEN. It steers what you choose and must not appear in any line: a script that says "we\'ve had a video on this" is narrating our notes to the audience. Pick a DIFFERENT angle, then write as though the earlier video were simply not the subject.\n'
-        + coveredRows.map((k) => `  * ${k.text}`).join('\n'))
+        // ⚠️ WITH THE COUNT, BECAUSE "ONCE" AND "SIX TIMES" ARE DIFFERENT
+        // INSTRUCTIONS. A subject covered once is a topic to come at from a new
+        // angle; a subject covered six times is this creator's THESIS — the thing
+        // their audience comes for — and treating the two the same either wastes
+        // their best subject or repeats their weakest. `times_seen` is how many
+        // of their videos carried it, which is the count that already exists and
+        // which nothing has ever rendered.
+        //
+        // ⚖️ ONLY WHEN IT IS MORE THAN ONE. "(once)" on every line is noise, and
+        // a count of 1 is the default reading anyway.
+        + coveredRows.map((k) => {
+          const n = Number((k as { times_seen?: unknown }).times_seen)
+          return `  * ${k.text}${Number.isFinite(n) && n > 1 ? ` — covered in ${Math.trunc(n)} of their videos` : ''}`
+        }).join('\n'))
     }
     const knowledgeBlock = knowledgeParts.join('\n')
     // ⚠️ THE SHAPE BLOCK, COMPUTED HERE AND ABSENT BY DEFAULT. Two independent

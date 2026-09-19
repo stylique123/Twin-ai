@@ -460,6 +460,12 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     attempted: urls.length,
     routes,
     knowledge_items: knowledgeStored,
+    // ⚠️ THE DENOMINATOR FOR THE ONE NUMBER THIS WHOLE PROBLEM TURNS ON. Yield
+    // was reconstructed after the fact as "1.63 rows per transcript", which
+    // divides by VIDEOS and hides the cap that decides how much text the
+    // extractor actually read. Characters is the honest denominator, it is free
+    // to record here, and without it the loss is not written down anywhere.
+    transcript_chars: transcripts.reduce((n, t) => n + t.length, 0),
     // ⚠️ STORED, NOT LOGGED — the counter-durability rule. This is the number the
     // 5→10 decision is waiting on: how much NEW canonical substance positions
     // 6-10 bought, after the merge collapsed repeats. A console line would
