@@ -91,6 +91,15 @@ describe('what she typed survives the tab closing', () => {
     // existing rule protects a box being typed into right now; a sentence
     // restored from a previous visit is the same words, older, and losing it to
     // a suggestion would delete precisely what the restore saved.
+    //
+    // ⚠️ RE-ANCHORED 2026-09-19. This also asserted that the suggestion was not
+    // RENDERED at all, which was the old way of protecting the box: the card and
+    // the textarea shared one slot, so showing one meant losing the other. They
+    // no longer share anything — the card sits above the question, never writes
+    // to `text`, and 0218 makes confirming it a different action from answering.
+    // So it may appear beside her restored words, and it is useful there: it is
+    // what tells her not to re-tell a story we already hold. What must still be
+    // true, and is asserted below, is that HER SENTENCE SURVIVES.
     window.localStorage.setItem(
       'twinai.storyDraft.v1', JSON.stringify({ best_result: HERS }),
     )
@@ -98,7 +107,6 @@ describe('what she typed survives the tab closing', () => {
     render(<StoryInterview voiceId={null} onDone={() => {}} />)
     await waitFor(() => expect(loadExtractedKnowledge).toHaveBeenCalled())
 
-    expect(screen.queryByText(RESULT_ROW.text)).toBeNull()
     await waitFor(() => expect(
       boxes().some((b) => (b as HTMLTextAreaElement).value === HERS),
     ).toBe(true))

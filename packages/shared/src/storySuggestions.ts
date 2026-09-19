@@ -100,6 +100,8 @@ import { ANSWER_MAX, ANSWER_MIN, type CreatorQuestion } from './creatorQuestions
 /** The subset of a stored row this module reads. Deliberately narrow: anything
  *  it does not name, it cannot accidentally come to depend on. */
 export interface StoredKnowledgeItem {
+  /** The row's id, so a confirmation can mark THIS row rather than create one. */
+  id?: string | null
   kind: string
   text: string
   basis?: string | null
@@ -111,15 +113,39 @@ export interface StoredKnowledgeItem {
   /** The belief they named and argued against. Null/absent means they never
    *  named one — never "they argue with nobody". */
   consensus?: string | null
+  /** ONE sentence of her own speech supporting this row (0216 on main). Absent
+   *  on rows written before it, and on every caption row by construction. */
+  evidence?: string | null
+  /** 0219. When she personally confirmed it. A confirmed row is not offered
+   *  again — she has already told us it is right, and asking twice wastes the
+   *  one screen where her attention is cheap. */
+  creator_confirmed_at?: string | null
 }
 
-/** One extracted item offered back for confirmation. */
+/** One extracted item shown back to her.
+ *
+ * ⚠️⚠️ IT IS NOT AN ANSWER TO THE QUESTION AND MUST NOT BE TREATED AS ONE. See
+ * 0219: the row already exists, so confirming it adds no supply, and letting it
+ * close the question would mean she is never asked for the story we DO NOT have.
+ * It is shown for two reasons, both of which survive that rule — it jogs the
+ * memory the blank box was asking her to search cold, and it says what NOT to
+ * repeat. */
 export interface StorySuggestion {
-  /** Which of the three slots it fills. */
+  /** Which of the three slots it was matched against. */
   questionId: string
-  /** The creator's own material, as the store holds it. Shown verbatim and
-   *  editable — never written anywhere until they say yes. */
+  /** The row it came from, so confirming marks THAT row. Absent on a row stored
+   *  before ids were selected here, and then confirmation is simply not offered
+   *  — a confirmation that cannot be attributed is not worth collecting. */
+  id?: string | null
+  /** The creator's own material, as the store holds it. */
   text: string
+  /** The sentence she was heard saying it in, when one was recorded (0216).
+   *
+   *  ⚖️ THIS IS WHAT MAKES THE CARD CREDIBLE RATHER THAN UNCANNY. A distillate
+   *  offered back cold — "charges £400 because cheap rebinds fail" — reads as a
+   *  thing the machine decided about her. The same line under her own sentence
+   *  is a quote she can check in one glance. */
+  evidence?: string | null
 }
 
 /** The slots this module can fill. `best_result` from the measured regex over
@@ -127,6 +153,17 @@ export interface StorySuggestion {
 export const SUGGESTIBLE_SLOTS: readonly string[] = Object.freeze([
   'best_result', 'expensive_lesson', 'contrarian',
 ])
+
+/** How many already-known lines one slot may show.
+ *
+ * ⚠️ IT WAS ONE, AND ONE IS THE WRONG NUMBER FOR BOTH JOBS THIS CARD NOW DOES.
+ * As a memory aid, a single line barely jogs anything; as a statement of what we
+ * already have — which is what stops her re-telling a story the store holds —
+ * one line understates it and she repeats something we already had.
+ *
+ * ⚖️ THREE, NOT MORE. Past three the screen becomes a reading task, which is the
+ * failure mode this is trying to leave, pointing the other way. */
+export const MAX_SUGGESTIONS_PER_SLOT = 3
 
 /** ⚠️ ONLY SPOKEN MATERIAL MAY BE OFFERED BACK. A caption proves a video was
  *  made, never what it concluded, which is why caption extraction is clamped to
@@ -247,12 +284,17 @@ export function suggestStoryAnswers(
   questions: readonly CreatorQuestion[],
   items: readonly StoredKnowledgeItem[],
   opts: { discarded?: readonly string[] } = {},
-): Record<string, StorySuggestion> {
+): Record<string, StorySuggestion[]> {
   const discarded = new Set((opts.discarded ?? []).map(String))
   const usable = (items ?? []).filter(
-    (it) => it && typeof it.text === 'string' && isSpokenAndStated(it) && !isAlreadyAsked(it),
+    (it) => it && typeof it.text === 'string' && isSpokenAndStated(it) && !isAlreadyAsked(it)
+      // ⚠️ AND NOT ONE SHE HAS ALREADY CONFIRMED (0219). She has told us this
+      // row is right; showing it again spends the one screen where her attention
+      // is cheap on a question she has answered, and makes the product look like
+      // it was not listening.
+      && !recorded(it.creator_confirmed_at),
   )
-  const out: Record<string, StorySuggestion> = {}
+  const out: Record<string, StorySuggestion[]> = {}
 
   for (const q of questions ?? []) {
     if (!q || discarded.has(q.id)) continue
@@ -265,15 +307,29 @@ export function suggestStoryAnswers(
       : q.id === 'contrarian' ? fillsContrarian
       : null
     if (!fills) continue
+    const found: StorySuggestion[] = []
+    const seen = new Set<string>()
     for (const it of usable) {
       // ⚠️ `isStorable` IS APPLIED TO THE COMPOSED LINE, NOT TO THE TEXT ALONE.
       // The join is what gets stored on confirm, and two halves that each fit
       // can exceed ANSWER_MAX together. A blank box is the honest fallback.
       const composed = fills(it)
       if (!composed || !isStorable(composed)) continue
-      out[q.id] = { questionId: q.id, text: composed }
-      break
+      // Two rows can distil to the same line — paraphrase merging collapses
+      // re-wordings, not every restatement — and showing one line twice makes a
+      // choice look like a bug.
+      const key = composed.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      found.push({
+        questionId: q.id,
+        id: recorded(it.id) ?? undefined,
+        text: composed,
+        evidence: recorded(it.evidence) ?? undefined,
+      })
+      if (found.length >= MAX_SUGGESTIONS_PER_SLOT) break
     }
+    if (found.length > 0) out[q.id] = found
   }
   return out
 }

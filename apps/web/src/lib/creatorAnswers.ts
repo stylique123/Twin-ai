@@ -232,6 +232,41 @@ export async function loadKnowledgeCounts(): Promise<StoreCounts | null> {
   }
 }
 
+/** Mark an extracted row as personally confirmed by the creator.
+ *
+ * ⚠️⚠️ THIS IS NOT AN ANSWER, AND THE DISTINCTION IS THE WHOLE POINT (0219). The
+ * row already exists, so confirming adds NO supply — what it adds is trust, on a
+ * claim she has now personally vouched for. It deliberately does NOT touch
+ * `creator_questions_put`: marking the question answered here would mean she is
+ * never asked again, and one tap would permanently trade the story we do not
+ * have for a re-label of one we do. The question stays open.
+ *
+ * ⚖️ BEST-EFFORT. She is mid-onboarding; losing a confirmation costs a trust
+ * upgrade, and blocking her on it costs the sign-up.
+ */
+export async function confirmExtractedRow(rowId: string): Promise<boolean> {
+  try {
+    const { data: auth } = await supabase.auth.getUser()
+    const ownerId = auth?.user?.id
+    if (!ownerId || !rowId) return false
+    const { error } = await supabase
+      .from('creator_knowledge')
+      .update({ creator_confirmed_at: new Date().toISOString() })
+      .eq('id', rowId)
+      .eq('owner_id', ownerId)
+    if (error) {
+      // An unapplied 0219 is the ordinary case until it is applied, and it must
+      // cost the confirmation and nothing else.
+      console.warn('confirmation not recorded', error.message)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.warn('confirmation not recorded', err)
+    return false
+  }
+}
+
 export async function loadExtractedKnowledge(): Promise<StoredKnowledgeItem[] | null> {
   try {
     const { data: auth } = await supabase.auth.getUser()
@@ -239,7 +274,7 @@ export async function loadExtractedKnowledge(): Promise<StoredKnowledgeItem[] | 
     if (!ownerId) return null
     const { data, error } = await supabase
       .from('creator_knowledge')
-      .select('kind, text, basis, source, source_ref')
+      .select('id, kind, text, basis, source, source_ref, evidence, creator_confirmed_at')
       .eq('owner_id', ownerId)
       // ⚠️ SPOKEN MATERIAL ONLY. A caption never attested anything — see
       // `storySuggestions.ts`. Filtering here as well as in the matcher keeps

@@ -4,7 +4,7 @@ import {
   creatorQuestionsFor, openingQuestionsFor, type SellsKind,
   type CreatorQuestion, type StorySuggestion,
 } from '@twinai/shared'
-import { answerQuestion, skipQuestion, markQuestionShown, loadExtractedKnowledge } from '../lib/creatorAnswers'
+import { answerQuestion, skipQuestion, markQuestionShown, loadExtractedKnowledge, confirmExtractedRow } from '../lib/creatorAnswers'
 import { readStoryDraft, writeStoryDraft, clearStoryDraft } from '../lib/storyDraft'
 
 /**
@@ -163,7 +163,10 @@ export function StoryInterview({
   const [text, setText] = useState<Record<string, string>>(() => readStoryDraft())
   const [problem, setProblem] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
-  const [suggestions, setSuggestions] = useState<Record<string, StorySuggestion>>({})
+  const [suggestions, setSuggestions] = useState<Record<string, StorySuggestion[]>>({})
+  /** Which rows she has confirmed this session, for the tick. Local only: the
+   *  write is best-effort and a failed one must not claim success. */
+  const [confirmed, setConfirmed] = useState<Record<string, boolean>>({})
   const [slot, setSlot] = useState<Record<string, SlotState>>({})
 
   // ⚖️ WRITTEN ON EVERY CHANGE RATHER THAN ON A TIMER. These are three short
@@ -209,11 +212,20 @@ export function StoryInterview({
   /** ⚠️ CONFIRM WRITES NOTHING BY ITSELF. It moves the sentence into the same
    *  field a typed answer occupies and lets `submit()` do the one write there
    *  has ever been. */
-  function confirmSuggestion(id: string) {
-    const s = suggestions[id]
-    if (!s) return
-    setText((prev) => ({ ...prev, [id]: s.text }))
-    setSlot((prev) => ({ ...prev, [id]: 'confirmed' }))
+  /** ⚠️⚠️ CONFIRMING IS NOT ANSWERING, AND IT DELIBERATELY DOES NOT TOUCH
+   *  `text`, `slot` OR `creator_questions_put`. The row already exists, so this
+   *  adds no supply — it adds TRUST, on a claim she has personally vouched for.
+   *  Marking the question answered here would mean she is never asked again
+   *  (0128's never-ask-twice rule), and one tap would permanently trade the
+   *  story we do not have for a re-label of one we do. The box stays open. */
+  async function confirmKnown(questionId: string, rowId: string) {
+    const ok = await confirmExtractedRow(rowId)
+    // ⚖️ THE TICK FOLLOWS THE WRITE, never precedes it. Showing "Confirmed" for a
+    // write that failed is the one thing worse than not offering the button.
+    if (ok) setConfirmed((prev) => ({ ...prev, [rowId]: true }))
+    // The impression is recorded either way: she has now seen this slot's
+    // material, which is a different fact from having answered it.
+    void markQuestionShown(questionId)
   }
 
   /** ⚠️ DISCARD CLEARS THE FIELD AS WELL AS THE CARD. Leaving the sentence in
@@ -294,72 +306,76 @@ export function StoryInterview({
       <div className="mt-4 space-y-4">
         {questions.map((q) => {
           const state = slot[q.id]
-          const suggestion = suggestions[q.id]
-          const showCard = !!suggestion && (state === 'offered' || state === 'confirmed')
+          // ⚠️⚠️ WHAT THE STORE ALREADY HAS — NOT A CANDIDATE ANSWER. See 0219.
+          // These rows already exist, so confirming one adds NO supply; letting
+          // it close the question would mean she is never asked for the story we
+          // do NOT have, and one tap would permanently trade a new story for a
+          // re-label of an old one. So the card sits ABOVE the question and the
+          // box stays open underneath it, always.
+          const known = suggestions[q.id] ?? []
+          const dismissed = state === 'discarded'
           return (
             <div key={q.id}>
-              <p className="font-display text-base leading-snug text-cream">{q.ask}</p>
-              <p className="mt-1 text-xs text-stone">{q.hint}</p>
-
-              {showCard && state === 'offered' && (
-                <div className="mt-2 rounded-xl border border-teal/30 bg-ink/40 p-3">
-                  <p className="text-xs text-stone">We found this in your videos — is this right?</p>
-                  <p className="mt-1.5 text-sm text-sand">{suggestion.text}</p>
-                  <div className="mt-2.5 flex flex-wrap items-center gap-3">
-                    <button
-                      type="button" onClick={() => confirmSuggestion(q.id)} disabled={saving}
-                      className="rounded-full bg-teal/90 px-3 py-1 text-xs font-semibold text-ink disabled:opacity-50"
-                    >
-                      Yes, that is right
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setText((prev) => ({ ...prev, [q.id]: suggestion.text }))
-                        setSlot((prev) => ({ ...prev, [q.id]: 'editing' }))
-                      }}
-                      disabled={saving}
-                      className="text-xs text-stone hover:text-cream disabled:opacity-50"
-                    >
-                      Close, but let me fix it
-                    </button>
-                    <button
-                      type="button" onClick={() => discardSuggestion(q.id)} disabled={saving}
-                      className="text-xs text-stone hover:text-cream disabled:opacity-50"
-                    >
-                      Not this — I will write my own
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {showCard && state === 'confirmed' && (
-                <div className="mt-2 rounded-xl border border-teal/40 bg-teal/[0.08] p-3">
-                  <p className="text-xs text-teal">Kept — this is yours.</p>
-                  <p className="mt-1.5 text-sm text-sand">{text[q.id]}</p>
+              {known.length > 0 && !dismissed && (
+                <div className="mb-2 rounded-xl border border-teal/25 bg-ink/40 p-3">
+                  <p className="text-xs text-stone">
+                    {known.length === 1
+                      ? 'We already heard you say this — so you do not need to repeat it:'
+                      : 'We already heard you say these — so you do not need to repeat them:'}
+                  </p>
+                  <ul className="mt-1.5 space-y-2">
+                    {known.map((k) => (
+                      <li key={k.id ?? k.text}>
+                        <p className="text-sm text-sand">{k.text}</p>
+                        {/* ⚖️ HER OWN SENTENCE UNDER OUR DISTILLATE. A distillate
+                            offered back cold reads as something the machine
+                            decided about her; the words she actually said are a
+                            quote she can check in one glance — and they jog the
+                            memory the blank box asks her to search cold. */}
+                        {k.evidence && (
+                          <p className="mt-0.5 border-l-2 border-teal/30 pl-2 text-xs italic text-stone">
+                            “{k.evidence}”
+                          </p>
+                        )}
+                        {k.id && (
+                          <button
+                            type="button" onClick={() => void confirmKnown(q.id, k.id!)} disabled={saving}
+                            className="mt-1 text-xs text-teal hover:text-cream disabled:opacity-50"
+                          >
+                            {confirmed[k.id] ? 'Confirmed ✓' : 'Yes, that is right'}
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
                   <button
-                    type="button"
-                    onClick={() => setSlot((prev) => ({ ...prev, [q.id]: 'editing' }))}
-                    disabled={saving}
+                    type="button" onClick={() => discardSuggestion(q.id)} disabled={saving}
                     className="mt-2 text-xs text-stone hover:text-cream disabled:opacity-50"
                   >
-                    Change it
+                    Hide these
                   </button>
                 </div>
               )}
 
-              {!showCard && (
-                <textarea
-                  value={text[q.id] ?? ''}
-                  onChange={(e) => setText((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                  rows={2}
-                  aria-label={q.ask}
-                  placeholder="A couple of sentences is plenty — or leave it blank"
-                  disabled={saving}
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-ink/60 px-3 py-2 text-sm text-sand
-                             placeholder:text-stone/70 focus:border-teal/40 focus:outline-none"
-                />
-              )}
+              <p className="font-display text-base leading-snug text-cream">{q.ask}</p>
+              {/* ⚠️ THE ASK CHANGES WHEN WE ALREADY HAVE SOME. "Another one" is
+                  the only version of this question that can still grow the
+                  store, and it is also the honest one — asking flat for a
+                  contrarian belief when we just showed her two of hers reads as
+                  not having listened. */}
+              <p className="mt-1 text-xs text-stone">
+                {known.length > 0 && !dismissed ? `Something different from those — ${q.hint}` : q.hint}
+              </p>
+              <textarea
+                value={text[q.id] ?? ''}
+                onChange={(e) => setText((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                rows={2}
+                aria-label={q.ask}
+                placeholder="A couple of sentences is plenty — or leave it blank"
+                disabled={saving}
+                className="mt-2 w-full rounded-xl border border-white/10 bg-ink/60 px-3 py-2 text-sm text-sand
+                           placeholder:text-stone/70 focus:border-teal/40 focus:outline-none"
+              />
               {problem[q.id] && <p className="mt-1 text-xs text-coral">{problem[q.id]}</p>}
             </div>
           )

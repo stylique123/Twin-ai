@@ -6213,7 +6213,10 @@ const KNOWLEDGE_COLS_BASE = 'id, kind, text, basis, times_seen, confidence, sour
 // from 0216, and both are applied by hand — so the fallback below must name
 // NEITHER. Losing the rotation and the evidence sentence costs quality; naming an
 // absent column costs the creator every knowledge row.
-const KNOWLEDGE_COLS_FULL = `${KNOWLEDGE_COLS_BASE}, used_count, last_used_at, evidence`
+// ⚠️ `creator_confirmed_at` (0219) JOINS THE WIDE LIST, NOT THE BASE ONE, so an
+// unapplied migration costs the marker and never the knowledge — the narrow
+// retry below already exists for exactly this and needs no new branch.
+const KNOWLEDGE_COLS_FULL = `${KNOWLEDGE_COLS_BASE}, used_count, last_used_at, evidence, creator_confirmed_at`
 
 /** Read creator knowledge with the rotation columns, or without them if 0215 has
  *  not been applied. `narrow` is reported so the degraded state is visible rather
@@ -6225,7 +6228,7 @@ async function readKnowledge(
   if (!wide.error) return { rows: (wide.data as Array<Record<string, unknown>>) ?? [], narrow: false }
   console.warn(JSON.stringify({
     event: 'knowledge_rotation_columns_absent',
-    detail: 'migration 0215/0216 not applied; ranking without spend (every item reads as never supplied) and without the evidence sentence',
+    detail: "migration 0215/0216/0219 not applied; ranking without spend (every item reads as never supplied), without the evidence sentence, and without the creator-confirmed marker",
     error: String(wide.error.message ?? ''),
   }))
   const narrow = await (build(KNOWLEDGE_COLS_BASE) as unknown as Promise<{ data: unknown; error: { message?: string } | null }>)
@@ -7572,13 +7575,51 @@ function reserveAskedInline<T extends { source?: string | null }>(
     let liveCtaEvidence: CtaEvidenceInline[] | null = null
     let ctaEvidenceCounted: { checked: number; unverifiable: number; found: number } | null = null
     try {
-      const { data: ownSpeech } = await admin
+      // ⚠️ `owner_id` ALONE READ TEN PEOPLE AS ONE PERSON. This table was
+      // scoped to the owner and nothing else, and one owner holds ten ready
+      // voices — ten different creators' accounts. Every script written for any
+      // one of them compiled its "how does this creator talk" evidence from the
+      // 8 most recent transcripts across ALL TEN (0220).
+      //
+      // ⚖️ THE NULL RULE IS THE DESIGN, NOT A LOOSE END. A row the backfill
+      // could not attribute is UNATTRIBUTED, not foreign, so it is admitted
+      // only when the owner has exactly one ready voice — where it cannot
+      // belong to anyone else. That keeps every single-voice owner (all of
+      // production but one) reading exactly what they read before, while a
+      // multi-voice owner stops blending strangers immediately, without
+      // waiting on the backfill to be complete or correct.
+      const { count: voiceCount } = await admin
+        .from('brand_voices')
+        .select('id', { count: 'exact', head: true })
+        .eq('owner_id', ownerId)
+      // ⚠️ EVERY VOICE, NOT EVERY READY VOICE. A failed or still-building voice
+      // can already own stored transcripts, so counting only `ready` would call
+      // an owner "sole" while a second creator's rows sat NULL beside them —
+      // readmitting exactly the mixing this scoping exists to stop.
+      const soleVoice = (voiceCount ?? 0) <= 1
+      const ownSpeechQuery = admin
         .from('transcripts')
         .select('id, text')
         .eq('owner_id', ownerId)
         .eq('subject', 'own')
+      // ⚠️ AN UNKNOWN COLUMN FAILS THE WHOLE SELECT, and this read falling back
+      // to `[]` would silently retire the style card rather than degrade it —
+      // so the filter is only applied when the voice is known, and the catch
+      // below keeps the pre-0220 behaviour until the apply lands.
+      if (voice?.id && !soleVoice) ownSpeechQuery.eq('brand_voice_id', voice.id)
+      else if (voice?.id) ownSpeechQuery.or(`brand_voice_id.is.null,brand_voice_id.eq.${voice.id}`)
+      const { data: ownSpeechScoped, error: ownSpeechErr } = await ownSpeechQuery
         .order('created_at', { ascending: false })
         .limit(8)
+      const ownSpeech = ownSpeechErr && /brand_voice_id/i.test(`${ownSpeechErr.message} ${ownSpeechErr.details ?? ''}`)
+        ? (await admin
+            .from('transcripts')
+            .select('id, text')
+            .eq('owner_id', ownerId)
+            .eq('subject', 'own')
+            .order('created_at', { ascending: false })
+            .limit(8)).data
+        : ownSpeechScoped
       // ⚠️ VOICE CAUSE 1(b) — AN ANSWERED QUESTION IS SPEECH TOO, AND WAS NEVER
       // COUNTED AS ANY. `askedRows` (source = 'asked') already feeds the
       // knowledge block above, but the creator's own sentence — typed by them,
@@ -7829,7 +7870,16 @@ function reserveAskedInline<T extends { source?: string | null }>(
         + speakable.map((k) => {
           const tag = freshnessTagInline((k as { last_observed_at?: unknown }).last_observed_at, nowMsForFreshness)
           const ev = String((k as { evidence?: unknown }).evidence ?? '').trim()
-          return `  * (${k.kind}) ${tag}${k.text}${ev ? `\n      HER WORDS: "${ev}"` : ''}`
+          // ⚠️ SHE PERSONALLY VOUCHED FOR THIS ONE (0219). Everything else here
+          // is a model's reading of her speech, however good; a confirmed row is
+          // one she was shown and said yes to. That is the strongest provenance
+          // this store can carry short of her typing it, and the writer should
+          // reach for it first — which it cannot do if nothing says which rows
+          // they are. Absent on every row nobody has been asked about, and then
+          // simply not marked.
+          const vouched = String((k as { creator_confirmed_at?: unknown }).creator_confirmed_at ?? '').trim()
+          const mark = vouched ? ' [she confirmed this herself]' : ''
+          return `  * (${k.kind}) ${tag}${k.text}${mark}${ev ? `\n      HER WORDS: "${ev}"` : ''}`
         }).join('\n'))
     }
     if (coveredRows.length) {

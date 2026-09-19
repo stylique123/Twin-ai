@@ -175,20 +175,39 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
         // ⚖️ BEST EFFORT, ALWAYS. A storage failure must never cost the voice
         // upgrade this job exists to perform — the transcript has already done
         // its primary work by the time we get here.
+        // ⚠️ AND IT IS STAMPED WITH THE VOICE, BECAUSE `owner_id` IS NOT AN
+        // IDENTITY. One owner holds ten voices in production — ten different
+        // people's accounts — and the compiler's `subject='own'` read was
+        // scoped to the owner alone, so all ten shared one pool of speech
+        // (0220). An unstamped row is not wrong, it is UNATTRIBUTED, and the
+        // reader's NULL rule is what makes that safe.
+        const row = {
+          owner_id: job.owner_id,
+          source_url: url,
+          url_key: ownUrlKey(url),
+          platform: p.platform ?? null,
+          language: t.language,
+          duration_sec: t.duration_sec,
+          text,
+          words: t.words,
+          segments: t.segments,
+          subject: 'own',
+        }
         try {
-          await db.from('transcripts').insert({
-            owner_id: job.owner_id,
-            source_url: url,
-            url_key: ownUrlKey(url),
-            platform: p.platform ?? null,
-            language: t.language,
-            duration_sec: t.duration_sec,
-            text,
-            words: t.words,
-            segments: t.segments,
-            subject: 'own',
-          })
-          bump('stored')
+          // ⚠️ AN UNKNOWN COLUMN REJECTS THE WHOLE INSERT (PGRST204/42703), so
+          // shipping this ahead of the apply would cost the creator their
+          // speech entirely — the exact trade 0220 exists to prevent. The
+          // narrow retry keeps the row; only its attribution waits.
+          const { error } = await db.from('transcripts').insert({ ...row, brand_voice_id: voiceId || null })
+          if (error && /brand_voice_id/i.test(`${error.message} ${error.details ?? ''}`)) {
+            const { error: legacyErr } = await db.from('transcripts').insert(row)
+            if (legacyErr) throw legacyErr
+            bump('stored_unattributed')
+          } else if (error) {
+            throw error
+          } else {
+            bump('stored')
+          }
         } catch (err) {
           // Counted, not swallowed: a store that silently fails is how the
           // table stayed empty while the scans looked successful.

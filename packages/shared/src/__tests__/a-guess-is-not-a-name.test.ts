@@ -88,7 +88,14 @@ describe('the caller passes the gate it already tracks', () => {
   // ⚠️ THE SCREEN'S PROMISE IS THE CONTRACT BOTH SIDES IMPLEMENT. If this
   // sentence is ever removed, the gate has no stated reason and the next
   // person deletes it as ceremony.
-  it('the promise the creator reads is still on the screen', () => {
-    expect(ONBOARDING).toMatch(/We will not use it until you edit it/)
+  // ⚠️ RE-ANCHORED 2026-09-19, AND THE CONCERN IT NAMES IS STILL LIVE. The offer
+  // QUESTION moved to the Product Library, so there is no longer a screen
+  // sentence to assert — but `offerTouched` still gates every stored offer, and
+  // 51 of 53 ready voices carry a scan-GUESSED `profile.offer` that the gate is
+  // the only thing keeping out of their scripts. This test's own warning was
+  // that a gate with no stated reason gets deleted as ceremony, so the reason is
+  // now asserted where it lives: in the comment on the constant itself.
+  it('the gate still says, in the code, why it exists', () => {
+    expect(ONBOARDING).toMatch(/Removing it would promote every old guess into a live CTA/)
   })
 })

@@ -90,8 +90,14 @@ describe('a value printed on the screen also reaches its field', () => {
       ['PACING', 'Structured, deliberate'],
       ['HOOK STYLE', 'Shocking educational facts'],
       ['WHAT YOU PUSH AGAINST', 'fear-mongering myth'],
-      ["WHO YOU'RE TALKING TO", 'Pregnant women and postpartum moms'],
-      ['WHAT IS YOUR OFFER CALLED', 'pregnancy-safe workout programs'],
+      // ⚠️ "WHO YOU'RE TALKING TO" AND "WHAT IS YOUR OFFER CALLED" ARE NO LONGER
+      // ASKED HERE, so they are no longer expected. The audience question lives
+      // on screen 2 as chips — where it has readers (`audienceSeg`,
+      // `audienceKnowledge`) that free text never had — and the offer moved to
+      // the Product Library, which captures a real name and link behind an
+      // attestation. Measured before removing either: all 53 ready voices, 51
+      // with `profile.offer` and every one of them the SCAN'S guess, which was
+      // deliberately never used unless the creator edited it.
     ]
     for (const [label, value] of expected) {
       expect(someInputHas(value), `${label} rendered blank while its value was known`).toBe(true)
@@ -139,16 +145,28 @@ describe('a value printed on the screen also reaches its field', () => {
 
   // ⚖️ THE CREATOR'S OWN ANSWER OUTRANKS THE INFERENCE, ALWAYS. Re-suggesting
   // over a saved answer replaces what they told us with what we guessed.
+  // ⚠️ RE-ANCHORED ON A FIELD THIS SCREEN STILL ASKS. The rule is unchanged and
+  // still worth pinning — a saved answer is a decision and the scan's guess must
+  // never overwrite it — but it can no longer be demonstrated on `audience` or
+  // `product`, because neither is a question here any more. `niche` carries the
+  // same rule through the same code path.
   it('a saved draft answer is not overwritten by the profile', () => {
+    renderConfirm(draftOf({
+      profile: { ...HER_PROFILE, niche: 'Prenatal, postpartum & mom fitness' },
+    }))
+    expect(someInputHas('Prenatal, postpartum & mom fitness')).toBe(true)
+  })
+
+  it('⚠️ neither the audience box nor the offer box is rendered any more', () => {
+    // They were asked twice and answered by the scan. Screen 2 owns the
+    // audience; the Product Library owns the offer.
     renderConfirm(draftOf({
       profile: HER_PROFILE,
       audience: 'first-time mums only',
       product: 'the 6-week core reset',
     }))
-    expect(someInputHas('first-time mums only')).toBe(true)
-    expect(someInputHas('the 6-week core reset')).toBe(true)
-    expect(someInputHas('Pregnant women and postpartum moms')).toBe(false)
-    expect(someInputHas('pregnancy-safe workout programs')).toBe(false)
+    expect(someInputHas('first-time mums only')).toBe(false)
+    expect(someInputHas('the 6-week core reset')).toBe(false)
   })
 
   // ⚖️ `goal` STAYS BLANK ON PURPOSE, and that is asserted so it reads as a
