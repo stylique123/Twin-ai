@@ -3362,3 +3362,88 @@ RELEVANT.** All 92 commands in `no-legacy-editor` now run and pass, as do all
 three test suites. Among them `check_column_readers` and `check_symbol_readers`,
 the two that exist to catch exactly the dead-column defect this branch is built
 around, and `check_counter_durability`, which caught a real one.
+
+## M. 2026-09-19 — three reported defects, and two of them were already built
+
+Owner reported three things. Audited the same way: **grep for a reader first.**
+
+### M1. ⚠️ THE HOOK FIX WAS APPLIED TO THE WRONG SURFACE, AND #927's OWN TITLE STAYED TRUE
+
+Reported repeatedly as unfixed, and it was. #927 — *"She tapped the fourth hook
+and the teleprompter read the first"* — put `withSelectedHook` inside
+`ScriptEditor`. The teleprompter does not go through `ScriptEditor`. It goes
+through `prepareCaptureMode`, whose record path was:
+
+```ts
+const persisted = await deps.loadScript()
+if (persisted) return { ready: true, mode: 'record', script: persisted }
+```
+
+The persisted script, no hook patch. Only the `synthScript` fallback passed
+`selectedHook`, and that branch runs **solely when nothing is persisted** — so it
+covered exactly the generations nobody had opened in the editor, and missed every
+one they had. **The editor showed hook four and the camera read hook one.**
+
+⚖️ **FIXED BY PERSISTING, NOT BY PATCHING AT EACH READER**, and that is
+load-bearing. `editor_recording_script_canonical` (0091) computes the capture SHA
+from the PERSISTED `scene_timeline`, so a client recording against a
+locally-patched scene 1 produces an `intendedDialogueSha256` the create RPC
+refuses. A memory-only fix trades a wrong teleprompter for a refused take.
+Patching each reader is also whack-a-mole: the cover, the b-roll and the editor
+all read this script.
+
+Two populations, two places: `pickHook` (future picks) and `prepareCaptureMode`
+(the ones already stored). Not after a take exists — provenance binds a take to
+the script it was read from.
+
+⚠️ **AND A NEAR-MISS WORTH RECORDING.** A first draft made `selectedHook` a VALUE
+on the deps, which forced the caller to resolve it before entering the function
+and made every **upload** pay a generation read — silently retiring this module's
+own stated invariant that upload does zero script work. It is a function, and
+there is a test.
+
+### M2. Onboarding screen two — already done
+
+The three written questions moved off the scan screen to their own step; what
+remains there is categorical only. No free-text on that screen. Nothing to do.
+
+### M3. Screen three — the suggestions are BUILT AND STARVED
+
+Creator feedback: *the questions are clearly relevant and I don't know what to
+put in them.* That is recall, not wording, which is why re-wording has not helped.
+
+⚠️ **AND THE RECOGNITION FIX ALREADY EXISTS.** `suggestStoryAnswers` offers back
+what the scan heard her say, with confirm / edit / discard. It does not help
+because its supply is empty:
+
+| slot | requires | measured |
+|---|---|---|
+| `contrarian` | a recorded `consensus` | **129 of 129 opinions have none** |
+| `expensive_lesson` | a recorded `cost` | **1 of 69 experiences had one** |
+
+Those are exactly the fields the extractor never asked for before 0178, and that
+**Track A (#931) now asks for by name.** So the unlock for this screen is the
+re-mine at extractor v2 — not a new screen. ⚠️ Do NOT rebuild the suggestion
+path; it is the third feature this week found built-and-starved rather than
+missing (see §I3, §L5).
+
+What was genuinely improvable in the screen: it offered exactly **one**
+candidate (now up to three — one card barely offers recognition at all), and it
+showed the distillate without her sentence (now renders `evidence` from 0215,
+shown never stored).
+
+### M4. 0217 — a tap is not a sentence she wrote
+
+The suggestion path made this necessary: confirming put the sentence in the same
+field a typed answer occupies and `submit()` could not tell them apart. Approving
+a sentence we composed is weaker evidence that these are HER words than writing
+one, and the writer may put an `asked` row in her mouth.
+
+⚖️ A separate column, **not** a new `source` value — 0189 already paid for that.
+NULL sorts with `typed`, because every answer collected before it came from a
+textarea. Reader: the `ASKED_FLOOR` promotion takes typed first.
+
+⚠️ **OWNER ACTION — 0217 joins the 0214/0215/0216 batch.** It is
+order-independent of them. An unapplied 0217 costs the distinction and never the
+answer: the client retries without the field, which is the 0189 failure not
+repeated.
