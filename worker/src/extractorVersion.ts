@@ -26,8 +26,14 @@
  *  HISTORY, so a bump is auditable rather than folklore:
  *    1  (implicit, NULL) every row written before 2026-09-17.
  *    2  the stamp itself. Prompt unchanged — this version exists so that the
- *       NEXT prompt change has something to be newer than. */
-export const EXTRACTOR_VERSION = 2
+ *       NEXT prompt change has something to be newer than.
+ *    3  the targeted pass: seven questions asked of every creator (ten when a
+ *       product is on record), each answer carrying the EVIDENCE sentence behind
+ *       it. The general pass is unchanged and still runs — this version marks a
+ *       store that has been asked the questions as well as read. Every voice
+ *       stamped 2 or NULL is therefore worth re-mining, which is the whole
+ *       mechanism doing its job for the first time. */
+export const EXTRACTOR_VERSION = 3
 
 /** Would the current extractor produce something this row's did not?
  *

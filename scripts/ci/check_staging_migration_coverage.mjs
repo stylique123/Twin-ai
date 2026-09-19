@@ -389,6 +389,22 @@ export const EXCLUDED = {
     + 'job) and the grade it stores is what decides whether an extracted claim may '
     + 'be spoken — so an unapplied column would surface as a PostgREST error on the '
     + 'update, loudly, rather than as ungraded marketing copy reaching a script.',
+  '0216_the_conclusion_arrived_without_the_sentence_that_earned_it':
+    'Adds `evidence` and `question_id` to `creator_knowledge`, a CHECK naming the '
+    + 'ten targeted question ids, and re-creates `merge_creator_knowledge` to '
+    + 'carry both. ⚠️ EXCLUDED FOR THE SAME REASON AS 0121, 0123, 0214 AND 0215, '
+    + 'AND CHECKED AGAINST THIS FILE\'S RULE FIRST: `creator_knowledge` is created '
+    + 'by 0121, which is excluded, so staging has no table to alter. '
+    + '⚠️ MANUAL APPLY REQUIRED. The cost of an unapplied 0216 is bounded and '
+    + 'stated in code: `insertKnowledge` catches PGRST204 and retries WITHOUT '
+    + '`evidence`/`question_id`, so the targeted answers are still stored and only '
+    + 'the evidence sentence is lost; `generate-blueprint` asks for `evidence` in '
+    + 'the FULL column list only and falls back to the base list, logging '
+    + '`knowledge_rotation_columns_absent`. ⚠️ AND THE CHECK IS THE PART THAT MUST '
+    + 'BE APPLIED BEFORE A WORKER DEPLOY CARRIES A NEW QUESTION ID: a '
+    + '`question_id` the constraint refuses fails the WHOLE batch, exactly as an '
+    + 'unlisted `kind` does, which is why `theSevenQuestionsNobodyAsked` compares '
+    + 'the bank against this migration in CI.',
   '0215_the_store_never_recorded_what_it_had_already_spent':
     'Adds `last_used_at`/`used_count` to `creator_knowledge`, the insert-only '
     + '`creator_knowledge_uses` ledger (FK to `creator_knowledge`) and '

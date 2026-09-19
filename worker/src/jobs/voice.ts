@@ -5,7 +5,9 @@ import { EXTRACTOR_VERSION } from '../extractorVersion.js'
 import { transcribeFromUrl } from '../media.js'
 import { mapWithConcurrency, TRANSCRIBE_CONCURRENCY } from '../boundedMap.js'
 import { transcriptBudgetFor } from '../transcriptSelection.js'
-import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions } from '../voice.js'
+import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions, extractTargetedKnowledge } from '../voice.js'
+import { questionsFor } from '../targetedQuestions.js'
+import { ownerHasLiveProduct } from '../ownerProducts.js'
 
 // ⚖️ THE SAME NORMALISATION `transcribe.ts` USES, and it must stay the same: the
 // key is what lets one video pasted by several people hit one cached row, so two
@@ -287,6 +289,12 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
   // voice; trading a working feature for a new one is not an upgrade.
   let knowledgeStored = 0
   let cohortYield: Record<string, unknown> | null = null
+  // ⚠️ STORED, NOT LOGGED, LIKE `cohort_yield` BESIDE IT. "Which of the seven
+  // questions does this creator's speech never answer" is the number that says
+  // whether the bank is right, and it is unrecoverable once the rows are merged
+  // into a store of 1,339. A console line expires within days; the job result is
+  // a row. NULL means the pass did not run, never "it found nothing".
+  let targetedYield: Record<string, unknown> | null = null
   const ownerId = (existing as { owner_id?: string } | null)?.owner_id ?? null
   // No owner means no row can be attributed, and an unattributed claim about a
   // person is worse than none at all.
@@ -298,9 +306,25 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     // video was made, not what it concluded — and the caption prompt refuses to
     // file an opinion as `stated` for exactly that reason.
     const captions = Array.isArray(p.captions) ? p.captions : []
-    const [fromAudio, fromCaptions] = await Promise.all([
+    // ⚠️⚠️ THREE PASSES, AND THE THIRD IS AN ADDITION RATHER THAN A REPLACEMENT.
+    // The general pass asks "what does she know" and answers it well (84%
+    // substance on transcript rows); what it cannot guarantee is that the seven
+    // things a script actually needs — a number, an enemy, an episode, someone
+    // else's words, a contrarian position, a mistake, her real CTA — are among
+    // the answers. The targeted pass asks for them by name and keeps the EVIDENCE
+    // sentence beside each conclusion. Both write through the same merge, so a
+    // fact both find increments `times_seen` instead of duplicating.
+    //
+    // ⚠️ AND TRACK B DOES NOT RUN WITHOUT A PRODUCT ON RECORD. Not every creator
+    // sells anything; asking "what does she charge" of a creator with no offer
+    // produces an invented price, which is the exact failure this project has
+    // spent months removing. `hasProduct` is a STORED ENTITY, never an inference
+    // from the transcript.
+    const hasProduct = await ownerHasLiveProduct(ownerId)
+    const [fromAudio, fromCaptions, fromTargeted] = await Promise.all([
       extractKnowledgeFromAudio(handle, platform, transcripts),
       extractKnowledgeFromCaptions(handle, platform, captions),
+      extractTargetedKnowledge(handle, platform, transcripts, questionsFor(hasProduct)),
     ])
     // Audio first: where both sources produced the same claim, the one somebody
     // was HEARD saying should win the dedup below.
@@ -308,7 +332,22 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     // become indistinguishable one line later. `basis` correlates today only
     // because captions are clamped to `demonstrated`; recording the pipeline is
     // the fact, and the correlation is the coincidence.
+    targetedYield = {
+      asked: questionsFor(hasProduct).length,
+      returned: fromTargeted.length,
+      track_b_asked: hasProduct,
+      // Per question, because the SILENCE is the measurement.
+      by_question: questionsFor(hasProduct).reduce<Record<string, number>>((acc, q) => {
+        acc[q.id] = fromTargeted.filter((r) => String(r?.question_id ?? '') === q.id).length
+        return acc
+      }, {}),
+    }
     const raw = [
+      // ⚖️ THE TARGETED ANSWERS GO FIRST, AND THE REASON IS THE WRITE CAP. A scan
+      // may store `KNOWLEDGE_ROWS_PER_SCAN` rows and the slice is taken from the
+      // front, so the seven answers a script was measured to need must not be the
+      // ones a hundred caption rows push over the edge.
+      ...fromTargeted.map((r) => ({ ...r, __source: 'transcript' as const })),
       ...fromAudio.map((r) => ({ ...r, __source: 'transcript' as const })),
       ...fromCaptions.map((r) => ({ ...r, __source: 'caption' as const })),
     ]
@@ -396,6 +435,7 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     // whose measurement query failed, must not read as "the extra videos added
     // nothing" — that is the answer this instrument exists to find honestly.
     cohort_yield: cohortYield,
+    targeted_yield: targetedYield,
     fields_from_audio: audioFields.size,
     fields_from_captions: Object.values(provenance).filter((v) => v === 'caption_synthesis').length,
   }

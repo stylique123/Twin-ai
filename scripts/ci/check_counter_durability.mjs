@@ -644,6 +644,12 @@ const EVENTS = {
   readiness_answers_not_persisted: { kind: 'incident', why: 'Brief answers that did not survive the write.' },
   knowledge_insert_failed: { kind: 'incident', why: 'A knowledge write that did not land.' },
   knowledge_kind_rejected: { kind: 'incident', why: 'An extracted item whose kind the schema refuses.' },
+  targeted_knowledge_extracted: {
+    kind: 'counter',
+    stored: 'jobs.result',
+    why: 'How many of the seven (or ten) targeted questions this creator\'s speech actually answered, per question. The SILENCE is the measurement — "which question does nobody ever answer" is what says whether the bank is right — and it is unrecoverable once the rows merge into a store of 1,339. build_voice writes it to the job result as `targeted_yield`; remine_knowledge writes items_targeted/items_general/track_b_asked to its own.',
+  },
+  owner_product_check_failed: { kind: 'incident', why: 'The product gate could not be read, so the three pricing questions were NOT asked. Unknown means no, and this line is the only thing that distinguishes "she sells nothing" from "we could not tell".' },
   creator_knowledge_merge_absent: { kind: 'incident', why: '0123 unapplied — dedupe is off, and that must be loud.' },
   creator_knowledge_source_column_absent: { kind: 'incident', why: '0122 unapplied — the selector cannot see source.' },
   knowledge_rotation_columns_absent: { kind: 'incident', why: '0215 unapplied — the selector cannot see what it has already spent, so the same items lead every script. Per generation, because that is how long the degraded ranking lasts.' },
