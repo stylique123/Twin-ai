@@ -3405,8 +3405,15 @@ function selectSpeakable<T extends { kind: string }>(
   // weakest. Bounded at ASKED_FLOOR so a creator with twenty answers does not
   // have every slot filled by their own back catalogue; enters at the HEAD so it
   // cannot evict the episode, which takes the last reserved slot.
-  const promotedAsked = spoken.filter((i) => String((i as { source?: unknown }).source ?? '') === 'asked')
-    .slice(0, ASKED_FLOOR)
+  // ⚠️ TYPED BEFORE CONFIRMED. Mirrors `wasConfirmed` in
+  // packages/shared/src/knowledgeSelection.ts: both are answers, they are not
+  // equally hers. A NULL `answer_mode` predates 0217 and sorts with typed.
+  const answered = spoken.filter((i) => String((i as { source?: unknown }).source ?? '') === 'asked')
+  const isConfirmed = (i: T) => String((i as { answer_mode?: unknown }).answer_mode ?? '') === 'confirmed'
+  const promotedAsked = [
+    ...answered.filter((i) => !isConfirmed(i)),
+    ...answered.filter(isConfirmed),
+  ].slice(0, ASKED_FLOOR)
   const promotedSet = new Set<T>(promotedAsked)
   const bySpokenFirst = [...promotedAsked, ...spoken.filter((i) => !promotedSet.has(i)), ...rest]
   const floorSlots = Math.min(floor, cap)
@@ -6127,7 +6134,7 @@ Deno.serve(async (req: Request) => {
 // — returns as it always did, so this cannot turn a broken database into a
 // creator with nothing to say.
 const KNOWLEDGE_COLS_FULL =
-  'id, kind, text, basis, times_seen, confidence, source, last_observed_at, evidence, last_spent_at, spend_count'
+  'id, kind, text, basis, times_seen, confidence, source, last_observed_at, evidence, last_spent_at, spend_count, answer_mode'
 const KNOWLEDGE_COLS_LEGACY = 'kind, text, basis, times_seen, confidence, source'
 
 function knowledgeColumnMissing(error: unknown): boolean {

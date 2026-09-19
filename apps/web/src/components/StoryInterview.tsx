@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  CREATOR_QUESTIONS, OPENING_THREE, ANSWER_MAX, suggestStoryAnswers, anchorAllToSubNiche,
+  CREATOR_QUESTIONS, OPENING_THREE, ANSWER_MAX, suggestStoryAnswers, suggestStoryAnswerOptions, anchorAllToSubNiche,
   creatorQuestionsFor, openingQuestionsFor, type SellsKind,
   type CreatorQuestion, type StorySuggestion,
 } from '@twinai/shared'
@@ -164,6 +164,15 @@ export function StoryInterview({
   const [problem, setProblem] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [suggestions, setSuggestions] = useState<Record<string, StorySuggestion>>({})
+  // ⚠️ THE ALTERNATIVES, AND ONE CARD WAS THE WRONG SHAPE FOR THIS SCREEN. The
+  // reported problem is not the wording — a creator said the questions are
+  // clearly relevant — it is that answering means searching a blank page cold.
+  // Recognition is the fix, and a single take-it-or-leave-it card barely offers
+  // any: if that one line is not the story she would have told, she is back at
+  // the blank box having gained nothing.
+  const [options, setOptions] = useState<Record<string, StorySuggestion[]>>({})
+  // Which candidate each slot is showing. Reset with the slot, never global.
+  const [optIndex, setOptIndex] = useState<Record<string, number>>({})
   const [slot, setSlot] = useState<Record<string, SlotState>>({})
 
   // ⚖️ WRITTEN ON EVERY CHANGE RATHER THAN ON A TIMER. These are three short
@@ -182,7 +191,9 @@ export function StoryInterview({
     void (async () => {
       const items = await loadExtractedKnowledge()
       if (!live || items === null) return
+      const all = suggestStoryAnswerOptions(questions, items)
       const found = suggestStoryAnswers(questions, items)
+      setOptions(all)
       if (Object.keys(found).length === 0) return
       setSuggestions(found)
       setSlot((prev) => {
@@ -209,10 +220,15 @@ export function StoryInterview({
   /** ⚠️ CONFIRM WRITES NOTHING BY ITSELF. It moves the sentence into the same
    *  field a typed answer occupies and lets `submit()` do the one write there
    *  has ever been. */
-  function confirmSuggestion(id: string) {
-    const s = suggestions[id]
-    if (!s) return
-    setText((prev) => ({ ...prev, [id]: s.text }))
+  /** ⚠️ IT TAKES THE SENTENCE ON SCREEN, NOT `suggestions[id]`. With more than
+   *  one candidate per slot those differ the moment she taps "Show me another",
+   *  and reading the head here would store a line she had already moved past —
+   *  a confirmation of something she did not confirm, which is the worst thing
+   *  this screen could record. */
+  function confirmSuggestion(id: string, text: string) {
+    const clean = text.trim()
+    if (clean === '') return
+    setText((prev) => ({ ...prev, [id]: clean }))
     setSlot((prev) => ({ ...prev, [id]: 'confirmed' }))
   }
 
@@ -250,7 +266,12 @@ export function StoryInterview({
         nextProblems[q.id] = 'Shorter is better — one real moment beats a paragraph.'
         continue
       }
-      const res = await answerQuestion(q, answer, voiceId)
+      // ⚖️ HOW SHE GAVE IT, NOT JUST WHAT SHE GAVE. `confirmed` means she
+      // approved a sentence composed from her own scan; `typed` means she wrote
+      // it. An edited suggestion is TYPED — the moment she changes a word the
+      // words are hers, and `slot` already distinguishes 'confirmed' from
+      // 'editing' for exactly that reason.
+      const res = await answerQuestion(q, answer, voiceId, slot[q.id] === 'confirmed' ? 'confirmed' : 'typed')
       if (!res.ok && res.reason === 'too_short') {
         nextProblems[q.id] = 'A few more words and it is usable.'
       }
@@ -294,7 +315,13 @@ export function StoryInterview({
       <div className="mt-4 space-y-4">
         {questions.map((q) => {
           const state = slot[q.id]
-          const suggestion = suggestions[q.id]
+          // ⚖️ THE SHOWN CANDIDATE IS THE ONE THE INDEX POINTS AT, falling back
+          // to the head. `suggestions` stays the source of truth for "is there
+          // anything at all", so a slot with no candidates behaves exactly as
+          // it always did — a blank box.
+          const slotOptions = options[q.id] ?? (suggestions[q.id] ? [suggestions[q.id]] : [])
+          const at = Math.min(optIndex[q.id] ?? 0, Math.max(slotOptions.length - 1, 0))
+          const suggestion = slotOptions[at] ?? suggestions[q.id]
           const showCard = !!suggestion && (state === 'offered' || state === 'confirmed')
           return (
             <div key={q.id}>
@@ -303,11 +330,31 @@ export function StoryInterview({
 
               {showCard && state === 'offered' && (
                 <div className="mt-2 rounded-xl border border-teal/30 bg-ink/40 p-3">
+                  {/* ⚠️ NO "2 of 3" COUNTER, AND THE RULE IS NOT MINE — the
+                      onboarding test forbids a progress count on this screen
+                      because it turns a screen into a queue, and it caught this
+                      when a first draft added one next to the suggestion. The
+                      rule holds here too: a creator counting down candidates is
+                      doing a reading task, which is the failure mode this whole
+                      change is trying to leave. "Show me another" is the whole
+                      affordance, and it disappears when there are none left. */}
                   <p className="text-xs text-stone">We found this in your videos — is this right?</p>
                   <p className="mt-1.5 text-sm text-sand">{suggestion.text}</p>
+                  {/* ⚠️ HER OWN SENTENCE, UNDER OUR DISTILLATE (0215). A
+                      distillate offered back cold reads as something the machine
+                      decided about her; the same line under the words she
+                      actually said reads as a quote she can check in one glance.
+                      It also jogs the memory the blank box was asking her to
+                      search cold, which is the reported problem with this
+                      screen. Absent on older rows, and then simply not shown. */}
+                  {suggestion.evidence && (
+                    <p className="mt-1.5 border-l-2 border-teal/30 pl-2 text-xs italic text-stone">
+                      You said: “{suggestion.evidence}”
+                    </p>
+                  )}
                   <div className="mt-2.5 flex flex-wrap items-center gap-3">
                     <button
-                      type="button" onClick={() => confirmSuggestion(q.id)} disabled={saving}
+                      type="button" onClick={() => confirmSuggestion(q.id, suggestion.text)} disabled={saving}
                       className="rounded-full bg-teal/90 px-3 py-1 text-xs font-semibold text-ink disabled:opacity-50"
                     >
                       Yes, that is right
@@ -323,6 +370,20 @@ export function StoryInterview({
                     >
                       Close, but let me fix it
                     </button>
+                    {/* ⚖️ ANOTHER CANDIDATE BEFORE THE BLANK BOX. Discarding is
+                        still one tap away and still means "ask me instead"; this
+                        only stops a single unlucky first card from being the
+                        whole of what recognition was offered. */}
+                    {slotOptions.length > 1 && at < slotOptions.length - 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setOptIndex((prev) => ({ ...prev, [q.id]: at + 1 }))}
+                        disabled={saving}
+                        className="text-xs text-stone hover:text-cream disabled:opacity-50"
+                      >
+                        Show me another
+                      </button>
+                    )}
                     <button
                       type="button" onClick={() => discardSuggestion(q.id)} disabled={saving}
                       className="text-xs text-stone hover:text-cream disabled:opacity-50"

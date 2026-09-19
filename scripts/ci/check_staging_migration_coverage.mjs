@@ -72,6 +72,21 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0217_a_tap_is_not_a_sentence_she_wrote':
+    'Adds `answer_mode` to `creator_knowledge` so a CONFIRMED suggestion can be told '
+    + 'from a TYPED answer. `0121_creator_knowledge` is itself EXCLUDED, so staging has '
+    + 'no such table and the statement would fail on its first line rather than pass '
+    + 'vacuously. THE EXCLUSION IS INHERITED from 0178/0214, not a new judgement. '
+    + '\u26a0\ufe0f MANUAL APPLY, PENDING, and it joins 0214/0215/0216 in the same batch. '
+    + 'It is ORDER-INDEPENDENT of those three: it touches neither '
+    + '`merge_creator_knowledge` (which 0214 and 0215 both replace, last-applied-wins) '
+    + 'nor any column they add. '
+    + '\u26a0\u26a0 AND THE CLIENT DEGRADES RATHER THAN LOSING THE ANSWER, which is the '
+    + 'lesson 0189 paid for: a client insert naming a column the database does not have '
+    + 'is rejected WHOLE, and that is how TWELVE real answers from FOUR creators were '
+    + 'marked answered and stored nowhere. `answerQuestion` catches PGRST204/42703, '
+    + 'retries without the field and logs `answer_mode_not_recorded`, so an unapplied '
+    + '0217 costs the distinction and never the sentence.',
   '0214_nothing_recorded_which_extractor_wrote_it':
     'Adds `extractor_version` to `creator_knowledge` and replaces '
     + '`merge_creator_knowledge` so the primary write path carries it. '

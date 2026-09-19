@@ -127,6 +127,8 @@ export function wasSpoken(item: { source?: string | null }): boolean {
 export interface SelectableItem {
   kind: string
   text: string
+  /** 0217. How an `asked` row was given: `typed` | `confirmed` | absent. */
+  answer_mode?: string | null
   basis?: string | null
   /** `transcript` | `caption` | null. Null means unrecorded, NOT caption — items
    *  stored before 0122 have no source and must not be demoted for it. */
@@ -197,6 +199,15 @@ export function isFirstPerson(item: { kind?: string }): boolean {
  * because a no-op floor is exactly what `FIRST_PERSON_FLOOR` was on the day it
  * shipped, against a store that did have episodes nobody was reading.
  */
+/** Did she APPROVE a sentence we proposed, rather than write one?
+ *
+ *  ⚠️ NULL IS NOT `confirmed`. A row with no `answer_mode` predates 0217, when
+ *  every answer came from a textarea, so an absent value reads as typed. Guessing
+ *  the other way would demote every answer this product has ever collected. */
+export function wasConfirmed(item: { answer_mode?: string | null }): boolean {
+  return String(item?.answer_mode ?? '') === 'confirmed'
+}
+
 export const ASKED_FLOOR = 2
 
 /** Did the creator type this themselves, in answer to a question we asked? */
@@ -258,7 +269,22 @@ export function selectSpeakable<T extends SelectableItem>(
   // slot, so neither can evict the other while `floor >= 2`. At `floor === 1`
   // the episode still wins, deliberately: that floor was measured 17-7 and this
   // one has no production data at all, so the unmeasured rule yields.
-  const promotedAsked = spoken.filter(wasAsked).slice(0, ASKED_FLOOR)
+  // ⚠️ TYPED BEFORE CONFIRMED, WITHIN THE PROMOTION. Both are answers and both
+  // belong in the reservation; they are not equally hers. `typed` is a sentence
+  // she wrote; `confirmed` is a sentence composed from her own scan that she
+  // approved with a tap. The writer is allowed to put an `asked` row in her
+  // mouth, so when only two slots are held, the two she authored outright go
+  // first. A NULL `answer_mode` predates the distinction (0217) and sorts with
+  // `typed`, because that is what those rows almost certainly were — the
+  // suggestion path did not exist when they were written.
+  //
+  // ⚖️ A STABLE PARTITION AGAIN, NOT A SORT. Relevance still decides which typed
+  // answer, exactly as it decides which experience.
+  const answered = spoken.filter(wasAsked)
+  const promotedAsked = [
+    ...answered.filter((i) => !wasConfirmed(i)),
+    ...answered.filter(wasConfirmed),
+  ].slice(0, ASKED_FLOOR)
   const promoted = new Set<T>(promotedAsked)
   const bySpokenFirst = [...promotedAsked, ...spoken.filter((i) => !promoted.has(i)), ...rest]
   const floorSlots = Math.min(floor, cap)

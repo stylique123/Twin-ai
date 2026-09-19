@@ -111,6 +111,9 @@ export interface StoredKnowledgeItem {
   /** The belief they named and argued against. Null/absent means they never
    *  named one — never "they argue with nobody". */
   consensus?: string | null
+  /** ONE sentence of her own speech supporting this row (0215). Absent on every
+   *  row written before the stamp, and on every caption row by construction. */
+  evidence?: string | null
 }
 
 /** One extracted item offered back for confirmation. */
@@ -120,6 +123,20 @@ export interface StorySuggestion {
   /** The creator's own material, as the store holds it. Shown verbatim and
    *  editable — never written anywhere until they say yes. */
   text: string
+  /** The sentence she was heard saying it in, when one was recorded.
+   *
+   *  ⚖️ THIS IS WHAT MAKES A SUGGESTION CREDIBLE RATHER THAN UNCANNY. A
+   *  distillate offered back cold — "charges £400 because cheap rebinds fail" —
+   *  reads as a thing the machine decided about her. The same line under her own
+   *  sentence reads as a quote she can check, and she can tell in one glance
+   *  whether we understood her. It also jogs the memory the blank box was asking
+   *  her to search cold, which is the whole reported problem with this screen.
+   *
+   *  ⚠️ NEVER STORED ON CONFIRM. What gets written is `text`, exactly as the
+   *  textarea holds it. The sentence is context for a human decision, and
+   *  storing it would put a quotation in a field the writer may put in her
+   *  mouth. */
+  evidence?: string | null
 }
 
 /** The slots this module can fill. `best_result` from the measured regex over
@@ -127,6 +144,20 @@ export interface StorySuggestion {
 export const SUGGESTIBLE_SLOTS: readonly string[] = Object.freeze([
   'best_result', 'expensive_lesson', 'contrarian',
 ])
+
+/** How many candidates one slot may offer.
+ *
+ * ⚠️ IT WAS ONE, AND ONE IS THE WRONG NUMBER FOR A RECOGNITION TASK. The
+ * reported problem with this screen is not that the questions are badly worded —
+ * a creator said they are clearly relevant — it is that answering them means
+ * searching a blank page cold. Recognition fixes that and a single take-it-or-
+ * leave-it card barely offers any: if that one line is not the story she would
+ * have told, she is back at the blank box with nothing gained.
+ *
+ * ⚖️ THREE, NOT MORE. Past three, choosing becomes its own chore and the screen
+ * turns into a reading task — which is the failure mode this is trying to leave,
+ * pointing the other way. */
+export const MAX_SUGGESTIONS_PER_SLOT = 3
 
 /** ⚠️ ONLY SPOKEN MATERIAL MAY BE OFFERED BACK. A caption proves a video was
  *  made, never what it concluded, which is why caption extraction is clamped to
@@ -248,12 +279,30 @@ export function suggestStoryAnswers(
   items: readonly StoredKnowledgeItem[],
   opts: { discarded?: readonly string[] } = {},
 ): Record<string, StorySuggestion> {
+  const all = suggestStoryAnswerOptions(questions, items, opts)
+  const first: Record<string, StorySuggestion> = {}
+  for (const [id, list] of Object.entries(all)) if (list[0]) first[id] = list[0]
+  return first
+}
+
+/**
+ * Every candidate for each slot, best first.
+ *
+ * ⚖️ THE LIST IS THE PRIMITIVE AND `suggestStoryAnswers` IS THE HEAD OF IT, not
+ * two functions that each decide what qualifies. Two places answering "is this
+ * offerable" is how the card and the alternatives start disagreeing about the
+ * same row.
+ */
+export function suggestStoryAnswerOptions(
+  questions: readonly CreatorQuestion[],
+  items: readonly StoredKnowledgeItem[],
+  opts: { discarded?: readonly string[] } = {},
+): Record<string, StorySuggestion[]> {
   const discarded = new Set((opts.discarded ?? []).map(String))
+  const alternatives: Record<string, StorySuggestion[]> = {}
   const usable = (items ?? []).filter(
     (it) => it && typeof it.text === 'string' && isSpokenAndStated(it) && !isAlreadyAsked(it),
   )
-  const out: Record<string, StorySuggestion> = {}
-
   for (const q of questions ?? []) {
     if (!q || discarded.has(q.id)) continue
     // ⚠️ STILL EXHAUSTIVE BY OMISSION. A slot with no predicate gets no branch
@@ -265,15 +314,28 @@ export function suggestStoryAnswers(
       : q.id === 'contrarian' ? fillsContrarian
       : null
     if (!fills) continue
+    const found: StorySuggestion[] = []
+    const seen = new Set<string>()
     for (const it of usable) {
       // ⚠️ `isStorable` IS APPLIED TO THE COMPOSED LINE, NOT TO THE TEXT ALONE.
       // The join is what gets stored on confirm, and two halves that each fit
       // can exceed ANSWER_MAX together. A blank box is the honest fallback.
       const composed = fills(it)
       if (!composed || !isStorable(composed)) continue
-      out[q.id] = { questionId: q.id, text: composed }
-      break
+      // Two rows can distil to the same sentence — `canonicaliseRepeats` merges
+      // paraphrases, not every restatement — and offering one line twice makes
+      // a choice look like a bug.
+      const key = composed.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      found.push({
+        questionId: q.id,
+        text: composed,
+        evidence: recorded(it.evidence) ?? undefined,
+      })
+      if (found.length >= MAX_SUGGESTIONS_PER_SLOT) break
     }
+    if (found.length > 0) alternatives[q.id] = found
   }
-  return out
+  return alternatives
 }

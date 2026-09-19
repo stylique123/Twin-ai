@@ -96,10 +96,31 @@ export async function skipQuestion(questionId: string): Promise<boolean> {
  *  ⚖️ RETURNS THE REFUSAL REASON RATHER THAN A BARE FALSE. "Too long" and "we
  *  could not save it" need different sentences in front of a creator who just
  *  typed three sentences, and only this layer knows which happened. */
+/** Does this error mean the column does not exist yet?
+ *
+ *  ⚠️ PostgREST rejects an insert naming an unknown column WHOLE, with PGRST204;
+ *  Postgres itself uses 42703. Both mean "the migration has not landed", which
+ *  must cost a field and never a row. */
+function isUnknownColumn(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false
+  return error.code === 'PGRST204' || error.code === '42703'
+    || /column .* does not exist|could not find the .* column/i.test(String(error.message ?? ''))
+}
+
+/** How the answer was given.
+ *
+ *  ⚠️ `confirmed` IS WEAKER EVIDENCE THAN `typed` AND THE STORE HAS TO SAY SO.
+ *  Approving a sentence we composed from her scan is not the same fact as
+ *  writing one, and the writer is allowed to put an `asked` row in her mouth.
+ *  Defaults to `typed` because every caller that does not pass one is a
+ *  textarea. */
+export type AnswerMode = 'typed' | 'confirmed'
+
 export async function answerQuestion(
   question: CreatorQuestion,
   answer: string,
   voiceId: string | null,
+  mode: AnswerMode = 'typed',
 ): Promise<{ ok: true } | { ok: false; reason: 'empty' | 'too_short' | 'too_long' | 'not_saved' }> {
   const built = answerToKnowledge(question, answer)
   if (!built.ok) return built
@@ -128,7 +149,7 @@ export async function answerQuestion(
     // ⚖️ SO THE MARK ONLY HAPPENS ONCE THE ANSWER IS SAFE. If the mark then
     // fails, they may see the question again with their answer already stored —
     // which is the failure worth having, because nothing is lost.
-    const { error } = await supabase.from('creator_knowledge').insert({
+    const row: Record<string, unknown> = {
       owner_id: ownerId,
       voice_id: voiceId,
       kind: built.row.kind,
@@ -142,7 +163,29 @@ export async function answerQuestion(
       // would make a position stated today look older than one read off a
       // two-year-old video, and the writer ranks partly on recency.
       last_observed_at: new Date().toISOString(),
-    })
+      answer_mode: mode,
+    }
+    const { error } = await supabase.from('creator_knowledge').insert(row)
+    // ⚠️⚠️ AND AN UNAPPLIED 0217 MUST NOT COST THE ANSWER. This is the exact
+    // shape of the 0189 disaster: a client insert naming a column the database
+    // does not have is rejected WHOLE, so shipping `answer_mode` naively would
+    // make every story answer fail to store — twelve real answers from four
+    // creators, marked taken and saved nowhere, is what that cost last time.
+    // Losing the mode costs a distinction; losing the row costs her sentence.
+    if (error && isUnknownColumn(error)) {
+      const { answer_mode: _dropped, ...withoutMode } = row
+      const retry = await supabase.from('creator_knowledge').insert(withoutMode)
+      if (!retry.error) {
+        console.warn(JSON.stringify({
+          event: 'answer_mode_not_recorded',
+          detail: 'migration 0217 not applied; the answer is stored without how it was given',
+        }))
+        await markPut(question.id, 'answered')
+        return { ok: true }
+      }
+      console.warn('answer not stored as knowledge', retry.error.message)
+      return { ok: false, reason: 'not_saved' }
+    }
     if (error) {
       // ⚠️ AND THE QUESTION IS NOT MARKED ANSWERED, so they will be asked
       // again rather than losing the sentence for good.
