@@ -11,6 +11,7 @@ import { handleAssessReference } from './assessReference.js'
 import { handleExtractionParity } from './extractionParity.js'
 import { extractionReplication } from './extractionReplication.js'
 import { handleSampleOwnAccount } from './sampleOwnAccount.js'
+import { handleRemineKnowledge } from './remineKnowledge.js'
 
 export type JobHandler = (job: Job) => Promise<Record<string, unknown>>
 
@@ -44,6 +45,12 @@ export const handlers: Record<string, JobHandler> = {
   // onboarding, and the entire output is an optional warning. See
   // `sampleOwnAccount.ts` for why it does not reuse build_voice's download.
   sample_own_account: handleSampleOwnAccount,
+  // Re-reads the creator's OWN STORED transcripts with the current extractor,
+  // for the voices whose knowledge was produced by an older one. Enqueued by
+  // `enqueue_stale_knowledge_remine` (0214), never by a timer: a new prompt is
+  // the only thing that makes already-read text worth re-reading. See
+  // `remineKnowledge.ts`.
+  remine_knowledge: handleRemineKnowledge,
   extraction_parity: handleExtractionParity,
   extraction_replication: extractionReplication,
   // Deletes the BYTES behind a removed media_asset. Enqueued by a database

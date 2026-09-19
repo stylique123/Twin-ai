@@ -389,6 +389,23 @@ export const EXCLUDED = {
     + 'job) and the grade it stores is what decides whether an extracted claim may '
     + 'be spoken — so an unapplied column would surface as a PostgREST error on the '
     + 'update, loudly, rather than as ungraded marketing copy reaching a script.',
+  '0214_nothing_recorded_which_extractor_said_it':
+    'Adds `extractor_version` to `creator_knowledge`, re-creates '
+    + '`merge_creator_knowledge` to carry it, and adds '
+    + '`enqueue_stale_knowledge_remine`. ⚠️ EXCLUDED FOR THE SAME REASON AS 0121 '
+    + 'AND 0123, AND CHECKED AGAINST THIS FILE\'S OWN RULE BEFORE BEING WRITTEN: '
+    + '`creator_knowledge` is created by 0121, which is excluded, so staging has no '
+    + 'such table and `alter table` would fail in the loop — the four-minute '
+    + 'failure 0194, 0196, 0201 and 0213 each paid for. The function also reads '
+    + '`public.transcripts`, whose `subject` column comes from 0135, excluded '
+    + 'below for the same table-availability reason. '
+    + '⚠️ MANUAL APPLY REQUIRED, like 0120/0121/0123/0178. Until it is applied the '
+    + 'worker keeps storing knowledge: `insertKnowledge` catches PGRST204 and '
+    + 'retries WITHOUT the stamp, logging '
+    + '`creator_knowledge_source_column_absent`. The cost of an unapplied 0214 is '
+    + 'therefore that the re-mine cohort cannot be computed at all — '
+    + '`remine_knowledge` fails its version read and refuses rather than re-mining '
+    + 'every voice blind, which is the intended direction of that failure.',
   '0121_creator_knowledge':
     'Creates `creator_knowledge` and `audience_questions`, both with foreign keys to '
     + '`public.brand_voices` — the same staging FIXTURE-APPLIED-AFTER-THE-LOOP ordering '

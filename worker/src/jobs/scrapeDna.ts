@@ -3,6 +3,7 @@ import { scrapeProfile, UnsupportedPlatformError, ProfileReadFailedError, type S
 import { assessScanTarget } from '../scanTarget.js'
 import { selectVideosToTranscribe, transcriptBudgetFor, scrapePoolFor } from '../transcriptSelection.js'
 import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
+import { EXTRACTOR_VERSION } from '../extractorVersion.js'
 import { synthesizeVoiceFromPosts, extractKnowledgeFromCaptions } from '../voice.js'
 import { byReachDesc, averagePlays, reachOf } from '../reach.js'
 import { scrapedPostRows } from '../scrapedPostRows.js'
@@ -475,6 +476,10 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
         // This path reads TITLES. Recorded explicitly rather than inferred from
         // the `demonstrated` clamp, which only correlates by coincidence.
         source: 'caption',
+        // Which prompt said it — see `extractorVersion.ts`. Stamped on BOTH
+        // write paths, because a column that is only sometimes written makes
+        // "older than N" mean "older than N, or written by the other job".
+        extractor_version: EXTRACTOR_VERSION,
       }))
     if (rows.length) {
       const { error: kErr } = await insertKnowledge(db as never, rows)

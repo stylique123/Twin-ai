@@ -55,6 +55,12 @@ beforeAll(async () => {
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..')
 const VOICE = readFileSync(join(SRC, 'voice.ts'), 'utf8')
 const JOB = readFileSync(join(SRC, 'jobs', 'voice.ts'), 'utf8')
+// ⚠️ THE ROW BUILDER MOVED, AND THE ANCHORS MOVED WITH IT. The normalisation the
+// three assertions below pin was lifted out of `jobs/voice.ts` into
+// `knowledgeRows.ts` so that `remine_knowledge` runs the SAME rules rather than a
+// second copy of them — which is the defect these anchors exist to prevent, not
+// an escape from them. Re-anchored, not re-litigated.
+const ROWS = readFileSync(join(SRC, 'knowledgeRows.ts'), 'utf8')
 
 // ── THE FROZEN FIXTURES ───────────────────────────────────────────────────
 //
@@ -202,23 +208,23 @@ describe('a caption is stripped of both fields by construction, not by instructi
 
 describe('the row builder carries both fields to the database', () => {
   it('maps them onto the insert, normalised', () => {
-    expect(JOB).toMatch(/cost: shortOrNull\(r\.cost\)/)
-    expect(JOB).toMatch(/consensus: shortOrNull\(r\.consensus\)/)
+    expect(ROWS).toMatch(/cost: shortOrNull\(r\.cost\)/)
+    expect(ROWS).toMatch(/consensus: shortOrNull\(r\.consensus\)/)
   })
 
   it('collapses a blank to null rather than storing an empty string', () => {
     // "Nobody recorded a cost" and "it cost nothing" are different facts and
     // only null says the first.
-    expect(JOB).toMatch(/const shortOrNull = \(v: unknown\): string \| null =>/)
-    expect(JOB).toMatch(/return t === '' \? null : t\.slice\(0, 240\)/)
+    expect(ROWS).toMatch(/const shortOrNull = \(v: unknown\): string \| null =>/)
+    expect(ROWS).toMatch(/return t === '' \? null : t\.slice\(0, 240\)/)
   })
 
   it('does not add a kind, so the closed taxonomy is untouched', () => {
     // ⚠️ `creator_knowledge_kind_valid` CHECKs nine kinds and an unlisted one
     // fails the WHOLE batch. The worker's mirror of that list must still hold
     // exactly nine, or `knowledgeKindParity` is being routed around.
-    const list = JOB.slice(JOB.indexOf('const KNOWLEDGE_KINDS_WORKER'))
-      .slice(0, JOB.slice(JOB.indexOf('const KNOWLEDGE_KINDS_WORKER')).indexOf(']'))
+    const list = ROWS.slice(ROWS.indexOf('const KNOWLEDGE_KINDS_WORKER'))
+      .slice(0, ROWS.slice(ROWS.indexOf('const KNOWLEDGE_KINDS_WORKER')).indexOf(']'))
     expect(list.match(/'/g)!.length / 2).toBe(9)
     expect(list).not.toMatch(/lesson|contrarian/)
   })
@@ -230,8 +236,13 @@ describe('the insert degrades instead of losing the scan when the migration is b
     // `source` naively once stopped ALL creator knowledge from being stored;
     // two more columns is two more chances at exactly that.
     const INSERT = readFileSync(join(SRC, 'knowledgeInsert.ts'), 'utf8')
-    expect(INSERT).toMatch(/column .\*\(source\|cost\|consensus\).\* does not exist/)
-    expect(INSERT).toMatch(/\{ source, cost, consensus, \.\.\.rest \}/)
+    // ⚠️ `extractor_version` JOINED THE STRIP LIST (0214) AND THE ASSERTION
+    // FOLLOWED IT. A fourth column in the row literal is a fourth chance at
+    // PGRST204 taking the whole batch, so the pattern must name it too —
+    // widening the regex to stop caring which columns are stripped would delete
+    // the guard while leaving it green.
+    expect(INSERT).toMatch(/column .\*\(source\|cost\|consensus\|extractor_version\).\* does not exist/)
+    expect(INSERT).toMatch(/\{ source, cost, consensus, extractor_version, \.\.\.rest \}/)
   })
 })
 

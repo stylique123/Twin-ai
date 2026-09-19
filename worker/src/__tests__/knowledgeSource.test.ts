@@ -15,6 +15,7 @@ import { insertKnowledge } from '../knowledgeInsert.js'
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 const SCAN = readFileSync(join(REPO, 'worker/src/jobs/scrapeDna.ts'), 'utf8')
 const VOICE = readFileSync(join(REPO, 'worker/src/jobs/voice.ts'), 'utf8')
+const ROWS = readFileSync(join(REPO, 'worker/src/knowledgeRows.ts'), 'utf8')
 const MIG = readFileSync(join(REPO, 'supabase/migrations/0122_creator_knowledge_source.sql'), 'utf8')
 
 const fakeDb = (behaviour: 'ok' | 'missing_column' | 'other_error', rpc: 'ok' | 'absent' | 'error' = 'absent') => {
@@ -57,7 +58,12 @@ describe('each pipeline tags its own rows', () => {
     // They are merged one line later and become indistinguishable.
     expect(VOICE).toMatch(/__source: 'transcript' as const/)
     expect(VOICE).toMatch(/__source: 'caption' as const/)
-    expect(VOICE).toMatch(/source: r\.__source/)
+    // ⚠️ AND THE TAG IS STILL WHAT REACHES THE COLUMN — in `knowledgeRows.ts`
+    // since the normalisation was lifted there for `remine_knowledge` to share.
+    // Tagging without carrying, or carrying a guess, is the defect this pair of
+    // assertions exists to catch, and it does not matter which file holds which
+    // half as long as both halves are pinned.
+    expect(ROWS).toMatch(/source: r\.__source/)
   })
 })
 
