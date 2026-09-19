@@ -116,7 +116,7 @@ export interface StoredKnowledgeItem {
   /** ONE sentence of her own speech supporting this row (0216 on main). Absent
    *  on rows written before it, and on every caption row by construction. */
   evidence?: string | null
-  /** 0218. When she personally confirmed it. A confirmed row is not offered
+  /** 0219. When she personally confirmed it. A confirmed row is not offered
    *  again — she has already told us it is right, and asking twice wastes the
    *  one screen where her attention is cheap. */
   creator_confirmed_at?: string | null
@@ -125,7 +125,7 @@ export interface StoredKnowledgeItem {
 /** One extracted item shown back to her.
  *
  * ⚠️⚠️ IT IS NOT AN ANSWER TO THE QUESTION AND MUST NOT BE TREATED AS ONE. See
- * 0218: the row already exists, so confirming it adds no supply, and letting it
+ * 0219: the row already exists, so confirming it adds no supply, and letting it
  * close the question would mean she is never asked for the story we DO NOT have.
  * It is shown for two reasons, both of which survive that rule — it jogs the
  * memory the blank box was asking her to search cold, and it says what NOT to
@@ -288,7 +288,7 @@ export function suggestStoryAnswers(
   const discarded = new Set((opts.discarded ?? []).map(String))
   const usable = (items ?? []).filter(
     (it) => it && typeof it.text === 'string' && isSpokenAndStated(it) && !isAlreadyAsked(it)
-      // ⚠️ AND NOT ONE SHE HAS ALREADY CONFIRMED (0218). She has told us this
+      // ⚠️ AND NOT ONE SHE HAS ALREADY CONFIRMED (0219). She has told us this
       // row is right; showing it again spends the one screen where her attention
       // is cheap on a question she has answered, and makes the product look like
       // it was not listening.

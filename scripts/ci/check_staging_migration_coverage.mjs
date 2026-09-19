@@ -72,7 +72,7 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
-  '0218_she_confirmed_what_we_had_she_did_not_answer_the_question':
+  '0219_she_confirmed_what_we_had_she_did_not_answer_the_question':
     'Adds `creator_confirmed_at` to `creator_knowledge`, so the story screen can let a '
     + 'creator VERIFY an extracted row without that counting as ANSWERING the question. '
     + '`0121_creator_knowledge` is itself EXCLUDED, so staging has no such table and the '

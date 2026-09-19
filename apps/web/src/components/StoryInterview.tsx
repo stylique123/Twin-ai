@@ -306,7 +306,7 @@ export function StoryInterview({
       <div className="mt-4 space-y-4">
         {questions.map((q) => {
           const state = slot[q.id]
-          // ⚠️⚠️ WHAT THE STORE ALREADY HAS — NOT A CANDIDATE ANSWER. See 0218.
+          // ⚠️⚠️ WHAT THE STORE ALREADY HAS — NOT A CANDIDATE ANSWER. See 0219.
           // These rows already exist, so confirming one adds NO supply; letting
           // it close the question would mean she is never asked for the story we
           // do NOT have, and one tap would permanently trade a new story for a

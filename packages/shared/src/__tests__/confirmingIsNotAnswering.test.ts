@@ -9,7 +9,7 @@
 // a re-label of one we do, and a creator with a rich scan ends up contributing
 // nothing at all.
 //
-// ⚖️ SO THE TWO ACTIONS ARE SEPARATE (0218): confirming marks THAT row and
+// ⚖️ SO THE TWO ACTIONS ARE SEPARATE (0219): confirming marks THAT row and
 // leaves the question open; only a new `source = 'asked'` row adds supply. The
 // shown material is then worth MORE, not less — it is a memory aid and a
 // statement of what not to repeat, which makes "tell me another one" an honest
@@ -25,7 +25,7 @@ import { CREATOR_QUESTIONS, OPENING_THREE } from '../creatorQuestions'
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
 const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
 const MIGRATION = readFileSync(
-  join(REPO, 'supabase/migrations/0218_she_confirmed_what_we_had_she_did_not_answer_the_question.sql'), 'utf8')
+  join(REPO, 'supabase/migrations/0219_she_confirmed_what_we_had_she_did_not_answer_the_question.sql'), 'utf8')
 const ANSWERS = readFileSync(join(REPO, 'apps/web/src/lib/creatorAnswers.ts'), 'utf8')
 
 const QS = CREATOR_QUESTIONS.filter((q) => OPENING_THREE.includes(q.id))
@@ -116,7 +116,7 @@ describe('a confirmed row is worth more TO THE WRITER, or the column is decorati
     expect(EDGE).toMatch(/KNOWLEDGE_COLS_FULL = `\$\{KNOWLEDGE_COLS_BASE\}[^`]*creator_confirmed_at`/)
   })
 
-  it('an unapplied 0218 costs the marker and never the knowledge', () => {
+  it('an unapplied 0219 costs the marker and never the knowledge', () => {
     // It joins the WIDE list, so the existing narrow retry covers it with no
     // new branch.
     expect(EDGE).toMatch(/const KNOWLEDGE_COLS_BASE = '[^']*'/)

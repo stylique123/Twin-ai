@@ -234,7 +234,7 @@ export async function loadKnowledgeCounts(): Promise<StoreCounts | null> {
 
 /** Mark an extracted row as personally confirmed by the creator.
  *
- * ⚠️⚠️ THIS IS NOT AN ANSWER, AND THE DISTINCTION IS THE WHOLE POINT (0218). The
+ * ⚠️⚠️ THIS IS NOT AN ANSWER, AND THE DISTINCTION IS THE WHOLE POINT (0219). The
  * row already exists, so confirming adds NO supply — what it adds is trust, on a
  * claim she has now personally vouched for. It deliberately does NOT touch
  * `creator_questions_put`: marking the question answered here would mean she is
@@ -255,7 +255,7 @@ export async function confirmExtractedRow(rowId: string): Promise<boolean> {
       .eq('id', rowId)
       .eq('owner_id', ownerId)
     if (error) {
-      // An unapplied 0218 is the ordinary case until it is applied, and it must
+      // An unapplied 0219 is the ordinary case until it is applied, and it must
       // cost the confirmation and nothing else.
       console.warn('confirmation not recorded', error.message)
       return false

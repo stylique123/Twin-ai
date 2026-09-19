@@ -3240,7 +3240,7 @@ asked again. One tap permanently trades the story we do not have for a re-label
 of one we do, and **a creator with a RICH scan contributes nothing at all** —
 the better the extractor gets, the worse this gets.
 
-⚖️ **SO CONFIRMING AND ANSWERING ARE DIFFERENT ACTIONS ON DIFFERENT ROWS (0218).**
+⚖️ **SO CONFIRMING AND ANSWERING ARE DIFFERENT ACTIONS ON DIFFERENT ROWS (0219).**
 Confirming marks `creator_confirmed_at` on THAT row and leaves the question
 open; only a new `source = 'asked'` row adds supply. The card sits ABOVE the
 question and the box stays open underneath it, always.
