@@ -985,6 +985,8 @@ jobs:
         run: bash scripts/db-tests/gate-e/run.sh
       - name: Gate-N (gallery curation trigger — the failed state, plus cooldown controls)
         run: bash scripts/db-tests/gate-n/run.sh
+      - name: Gate-P (one batch carrying the same claim twice must not lose the batch)
+        run: bash scripts/db-tests/gate-p/run.sh
       - name: Gate-O (gallery de-duplication — earliest survives, shape inherited, index holds)
         run: bash scripts/db-tests/gate-o/run.sh
       # Gate-F was NOT in required CI until an audit pointed it out. It has been
