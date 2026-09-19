@@ -3270,3 +3270,42 @@ written from how creators are imagined to talk and never measured. Same rule as
 
 ⚖️ **BEFORE STARTING WORK ON THIS REPO, FETCH `main` AND READ THE LAST DAY OF
 MERGES.** A long-running branch here can be a day of duplicated work.
+
+## §O — The speech was transcribed, used, and thrown away (measured 2026-09-19)
+
+⚠️ **THE "53 READY VOICES, 21 WITH OWN SPEECH" GAP IS NOT 32 QUIET CREATORS.**
+It is 32 voices built before `transcripts` persistence landed. Measured on the
+2026-08-12 cohort: every one reports `upgraded: true`, `videos_used: 3–5`,
+`fields_from_audio: 14` — and holds ZERO rows with `subject='own'`. The scan
+downloaded the videos, ran Whisper, spent the audio on 14 profile fields, and
+dropped the transcript. `own-speech-is-persisted.test.ts` guards the code path
+today; nothing ever repaired the rows it was written for.
+
+⚖️ **THIS IS THE CEILING UNDER THE WHOLE DEPTH ROADMAP.** The spend ledger
+(#17/#18), re-mining and pattern mining all read `transcripts`. A voice whose
+speech was consumed in August cannot be re-mined for a single sentence — the
+text exists nowhere. That, not creator silence, is why the 22 remine jobs
+plateaued: they ran on the only cohort that still had text.
+
+⚖️ **RECOVERY IS CHEAP AND MOSTLY POSSIBLE, BECAUSE A VIDEO URL IS NOT A
+PROFILE PAGE.** `build_voice` takes explicit urls, and the historical job
+payloads still carry them. Measured on `real_techh`, whose profile page is now
+unreadable (account deleted/renamed/private — its `scrape_dna` fails while a
+control handle succeeds in the same minute): re-running the stored payload
+through current code transcribed and STORED 4 of 5 videos, 2,263 chars, from
+zero. 31 voices have no own speech; 24 still carry urls (tiktok 8, youtube 8,
+instagram 8). TikTok and YouTube recover for free; **instagram is paid per
+video and must not be run without the owner's say-so.**
+
+⚠️ **A JUDGEMENT CALL APPLIED BY HAND IS NOT A GUARD, AND THIS ONE FAILED
+WITHIN THE HOUR.** Three of the tiktok candidates are `garyvee` under THREE
+DIFFERENT OWNERS — three people scanned a celebrity instead of themselves.
+Scraping them stores a public figure's sentences as a stranger's own speech,
+under `subject='own'`, feeding the script writer words the creator never said:
+the exact fabrication class this repo is built to refuse. They were excluded by
+hand once, the reasoning was written down nowhere executable, and the very next
+cohort query — generated from `status='ready' and own_n=0` — silently put all
+three back. They were caught only because the insert echoed its rows. **A
+celebrity/duplicate-handle guard belongs in the cohort selection and in
+onboarding, not in an operator's head.** Until it exists, every bulk voice
+operation must print the handles it is about to act on.
