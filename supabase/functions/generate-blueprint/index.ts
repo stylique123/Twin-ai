@@ -8729,12 +8729,47 @@ function reserveAskedInline<T extends { source?: string | null }>(
       ? `\n- What they already know: ${AUDIENCE_LEVEL_LINES[audienceLevelRaw]}`
       : ''
 
-    const povLine = povList.length
-      ? povList.join(' | ')
-      : 'NONE STORED. Infer 1-2 stances this creator would plausibly hold from their niche, tone and vocabulary, and carry them through the script. Stay on-brand; do not fabricate specific facts or numbers.'
-    const enemyLine = vp?.enemy
-      ? vp.enemy
-      : 'NONE STORED. Infer the conventional wisdom, bad habit or villain this creator would push against, from their niche and tone.'
+    // ⚠️⚠️ HER ACTUAL ANSWER OUTRANKS THE SYNTHESISED FIELD, AND BOTH OUTRANK THE
+    // INSTRUCTION TO INVENT ONE. Two of these three lines end in "Infer ..." when
+    // nothing is stored, which is a licence to make up a stance and hand it to a
+    // creator to say out loud. That licence was defensible while nothing better
+    // existed: `pov` and `enemy` are synthesised from scraped captions, and a
+    // blank there was common.
+    //
+    // ⚖️ IT IS NO LONGER THE ONLY OPTION. The targeted extraction pass asks her
+    // transcripts, in words, what she pushes back against
+    // (`pushes_back_against`) and what she believes that others in her space do
+    // not (`others_disagree`), and stores the answer WITH THE SENTENCE SHE SAID
+    // (0216). That is her real position rather than a plausible one, so it goes
+    // first — and the invention fallback stays where it was, last, rather than
+    // being deleted: removing it would leave a thin-scan creator with no stance
+    // at all, which is the state the write-time enrichment note above measured
+    // and rejected.
+    const answersTo = (id: string): Array<{ text: string; evidence: string }> => kRows
+      .filter((k) => String((k as { question_id?: unknown }).question_id ?? '') === id)
+      .filter((k) => k.basis !== 'inferred')
+      .map((k) => ({
+        text: String(k.text ?? '').trim(),
+        evidence: String((k as { evidence?: unknown }).evidence ?? '').trim(),
+      }))
+      .filter((a) => a.text !== '')
+    // ⚖️ HER WORDS TRAVEL WITH THE CONCLUSION, in the same shape the knowledge
+    // block uses, so the writer can take her phrasing rather than paraphrase
+    // around a summary.
+    const fromAnswers = (as: Array<{ text: string; evidence: string }>): string =>
+      as.map((a) => (a.evidence ? `${a.text} (her words: "${a.evidence}")` : a.text)).join(' | ')
+    const povAnswers = answersTo('others_disagree')
+    const enemyAnswers = answersTo('pushes_back_against')
+    const povLine = povAnswers.length
+      ? fromAnswers(povAnswers)
+      : povList.length
+        ? povList.join(' | ')
+        : 'NONE STORED. Infer 1-2 stances this creator would plausibly hold from their niche, tone and vocabulary, and carry them through the script. Stay on-brand; do not fabricate specific facts or numbers.'
+    const enemyLine = enemyAnswers.length
+      ? fromAnswers(enemyAnswers)
+      : vp?.enemy
+        ? vp.enemy
+        : 'NONE STORED. Infer the conventional wisdom, bad habit or villain this creator would push against, from their niche and tone.'
     // FENCING UNTRUSTED TEXT.
     //
     // Four sources reach this prompt and NONE is authored by us: the creator
