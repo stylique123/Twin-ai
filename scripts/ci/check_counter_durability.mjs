@@ -654,6 +654,7 @@ const EVENTS = {
     stored: 'jobs.result',
     why: 'How many audience questions and promised videos were found in her own speech by the regex pass, split by which. It is the supply figure for the channel `audience_questions` was deleted for lacking, so "does this actually find anything on a real corpus" has to be answerable later; build_voice writes `mined_lines` to the job result and remine_knowledge writes `items_mined` to its own.',
   },
+  knowledge_coverage_unavailable: { kind: 'incident', why: 'The per-creator depth view could not be read, so that panel is ABSENT rather than empty. Per admin call, because an empty list here would read as "no creator has any knowledge" — the same number the view exists to find honestly.' },
   owner_product_check_failed: { kind: 'incident', why: 'The product gate could not be read, so the three pricing questions were NOT asked. Unknown means no, and this line is the only thing that distinguishes "she sells nothing" from "we could not tell".' },
   creator_knowledge_merge_absent: { kind: 'incident', why: '0123 unapplied — dedupe is off, and that must be loud.' },
   creator_knowledge_source_column_absent: { kind: 'incident', why: '0122 unapplied — the selector cannot see source.' },
