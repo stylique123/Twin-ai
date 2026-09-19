@@ -123,10 +123,19 @@ const CODE = EDGE.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' '
 
 describe('the tag actually reaches the prompt', () => {
   it('selects the column — without this nothing else can work', () => {
-    // Both knowledge reads: the ranked one and the asked one.
-    const selects = CODE.match(/\.select\('kind, text, basis, times_seen, confidence, source[^']*'\)/g) ?? []
-    expect(selects.length).toBe(2)
-    for (const sel of selects) expect(sel).toContain('last_observed_at')
+    // ⚠️ RE-ANCHORED, NOT RELAXED. Both knowledge reads — the ranked one and the
+    // asked one — now pass their column list through `readKnowledge`, which asks
+    // for the rotation columns and falls back to the base list when 0215 is not
+    // applied. The claim is unchanged: the column must be in the list BOTH reads
+    // use, or nothing downstream can work. It is now one list instead of two
+    // copies, which is strictly harder to get wrong.
+    const base = CODE.match(/KNOWLEDGE_COLS_BASE = '([^']*)'/)
+    expect(base, 'the knowledge column list moved — re-anchor this').not.toBeNull()
+    expect(base?.[1]).toContain('last_observed_at')
+    const reads = CODE.match(/readKnowledge\(\(cols\) => admin/g) ?? []
+    expect(reads.length).toBe(2)
+    // And the fallback list is the one that keeps the column, not a narrower one.
+    expect(CODE).toMatch(/build\(KNOWLEDGE_COLS_BASE\)/)
   })
 
   it('is interpolated into the line the writer reads', () => {

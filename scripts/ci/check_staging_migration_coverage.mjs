@@ -389,6 +389,21 @@ export const EXCLUDED = {
     + 'job) and the grade it stores is what decides whether an extracted claim may '
     + 'be spoken — so an unapplied column would surface as a PostgREST error on the '
     + 'update, loudly, rather than as ungraded marketing copy reaching a script.',
+  '0215_the_store_never_recorded_what_it_had_already_spent':
+    'Adds `last_used_at`/`used_count` to `creator_knowledge`, the insert-only '
+    + '`creator_knowledge_uses` ledger (FK to `creator_knowledge`) and '
+    + '`record_knowledge_use`. ⚠️ EXCLUDED FOR THE SAME REASON AS 0121, 0123 AND '
+    + '0214, AND CHECKED AGAINST THIS FILE\'S RULE FIRST: `creator_knowledge` is '
+    + 'created by 0121, which is excluded, so staging has neither the table to '
+    + 'alter nor the FK target. The editor matrix never generates a blueprint, so '
+    + 'it could only ever exercise this vacuously. '
+    + '⚠️ MANUAL APPLY REQUIRED. The cost of an unapplied 0215 is stated in code '
+    + 'rather than left to be discovered: `generate-blueprint` asks for the two '
+    + 'columns, and on failure logs `knowledge_rotation_columns_absent` and '
+    + 're-reads WITHOUT them, so the knowledge still reaches the writer and only '
+    + 'the rotation is lost. `record_knowledge_use` is absent, logged once per '
+    + 'generation as `knowledge_spend_not_recorded`, and the ranking behaves '
+    + 'exactly as it did before this change.',
   '0214_nothing_recorded_which_extractor_said_it':
     'Adds `extractor_version` to `creator_knowledge`, re-creates '
     + '`merge_creator_knowledge` to carry it, and adds '
