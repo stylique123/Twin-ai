@@ -213,7 +213,12 @@ describe('the pass runs, and it runs alongside the general one', () => {
 
   it('the re-mine runs it too, which is what version 3 is for', () => {
     expect(REMINE).toMatch(/extractTargetedKnowledge\(handle, platform, texts, questionsFor\(hasProduct\)\)/)
-    expect(REMINE).toMatch(/const items = \[\.\.\.targeted, \.\.\.general\]/)
+    // ⚖️ RE-ANCHORED: the regex pass (audience questions, promised videos) joined
+    // the list ahead of both model passes, because it is free and because the
+    // write cap slices from the front. The claim is unchanged — the targeted
+    // answers and the general pass are BOTH in what the re-mine stores.
+    expect(REMINE).toMatch(/\.\.\.targeted,\n\s+\.\.\.general,/)
+    expect(REMINE).toMatch(/const mined = mineTranscripts\(texts\)/)
     expect(EXTRACTOR_VERSION).toBe(3)
   })
 })
