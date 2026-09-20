@@ -153,6 +153,30 @@ const EVENTS = {
   // to the next pass. A durable counter here would store a number derivable
   // from the rows it describes, which is the second authority this registry
   // exists to prevent.
+  transcript_retry: {
+    kind: 'counter_ephemeral',
+    why: 'A transcript call hit a transient or rate-limited failure and is being '
+      + 'tried once more. Not persisted because the OUTCOME is what matters and it '
+      + 'is already durable: if the retry succeeds the row records the route that '
+      + 'worked, and if it fails the row records `failed_transient` / '
+      + '`failed_rate_limited` in `routes`. A durable retry count would store a '
+      + 'number derivable from those two.',
+  },
+  youtube_apify_failed_falling_back_local: {
+    kind: 'incident',
+    why: 'The paid YouTube Actor failed for a reason that is OURS rather than a fact '
+      + 'about the video, so the local yt-dlp rung is being tried instead. One '
+      + 'occurrence matters because it means the vendor path is degraded — the '
+      + 'durable rate lives on the job row as `routes.failed_<class>` (billing, '
+      + 'actor_missing, transient), which is what turns "0 of 15, reason unknown" '
+      + 'into a named cause.',
+  },
+  instagram_apify_failed_falling_back_local: {
+    kind: 'incident',
+    why: 'Same as the YouTube line beside it, for the Instagram Actor — which until '
+      + 'now had NO fallback at all, so a vendor failure was total. Durable rate is '
+      + '`routes.failed_<class>` on the build_voice row.',
+  },
   frames_only_no_cached_transcript: {
     kind: 'counter_ephemeral',
     why: 'A frames-only job found no stored transcript for the URL and returned '

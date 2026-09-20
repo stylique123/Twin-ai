@@ -9,6 +9,10 @@
 // Secrets: supabase secrets set GEMINI_API_KEY=...
 //          (optional) supabase secrets set GEMINI_MODEL=gemini-3.1-pro
 
+import { renderDirectionGuidance,
+  type ProductKind as ProductKindInline,
+  type Showability as ShowabilityInline,
+  type ObjectShape as ObjectShapeInline } from '../_shared/performanceDirection.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { buildLinkAllowlist, sanitizeBlueprintLinks, type LinkAllowlist } from '../_shared/outputLinks.ts'
 import { templateFor } from '../_shared/containerTemplates.ts'
@@ -4897,6 +4901,48 @@ const CMP_COMPARATIVE: readonly RegExp[] = [
  * the two lines that needed it. One derivation, reachable from both, is the fix
  * that cannot drift back apart.
  */
+/** Facts the extractor stored, as {field, value} pairs. */
+function knowledgeFacts(ownedEntity: unknown): Array<{ field: string; value: string }> {
+  const k = (ownedEntity as { knowledge?: unknown } | null)?.knowledge
+  if (!Array.isArray(k)) return []
+  return k.flatMap((f) => {
+    const field = (f as { field?: unknown })?.field
+    const value = (f as { value?: unknown })?.value
+    return typeof field === 'string' && typeof value === 'string' && value.trim() !== ''
+      ? [{ field, value: value.trim() }]
+      : []
+  })
+}
+
+/**
+ * What the product physically IS, when a photograph said so.
+ *
+ * ⚠️ AN UNRECOGNISED WORD IS NOT A SHAPE. The extractor is asked for one of a
+ * fixed list, and anything else it returns is treated as ABSENT rather than
+ * passed through — a shape the taxonomy does not know would narrow the action
+ * set to nothing, which reads downstream as "this product cannot be handled"
+ * and is the glass-of-water failure wearing a different hat.
+ */
+function shapeFromKnowledge(ownedEntity: unknown): ObjectShapeInline | null {
+  const known = ['jar', 'bottle', 'tube', 'bag', 'box', 'flat', 'garment', 'device', 'food']
+  const raw = knowledgeFacts(ownedEntity).find((f) => f.field === 'object_shape')?.value?.toLowerCase()
+  return raw && known.includes(raw) ? (raw as ObjectShapeInline) : null
+}
+
+/** Sections the extractor actually SAW on the page. Never inferred from kind. */
+function sectionsFromKnowledge(ownedEntity: unknown): string[] {
+  // De-duplicated case-insensitively, kept in the extractor's own words, and
+  // bounded — a page map is a handful of names the creator can point a camera
+  // at, never a site index.
+  const byLower = new Map<string, string>()
+  for (const f of knowledgeFacts(ownedEntity)) {
+    if (f.field !== 'page_section') continue
+    const v = f.value.slice(0, 60)
+    if (!byLower.has(v.toLowerCase())) byLower.set(v.toLowerCase(), v)
+  }
+  return [...byLower.values()].slice(0, 12)
+}
+
 function productFactCountOf(ownedEntity: unknown): number {
   const k = (ownedEntity as { knowledge?: unknown } | null)?.knowledge
   return Array.isArray(k)
@@ -6308,10 +6354,25 @@ function reserveAskedInline<T extends { source?: string | null }>(
 }
 // ── END ASKED RESERVATION ───────────────────────────────────────────────────
 
-  const rankedRead = await readKnowledge((cols) => admin
+  // ⚠️ `voice_id` HAS BEEN ON EVERY ROW SINCE THE TABLE EXISTED — 1,949 of
+  // 1,949 in production — AND THIS READ THREW IT AWAY. Owner-scoped, the top-40
+  // ranking for a creator with more than one voice is drawn from all of them at
+  // once: one owner holds TEN, ten different people's accounts, so the writer
+  // was handed a stranger's beliefs as the creator's own and ranked them by
+  // `times_seen` against her real ones. The sibling readers already do this
+  // correctly — `remineKnowledge.storedVersions` and the web's
+  // `twinStrengthLoad` both filter on `voice_id` — so this is the odd one out,
+  // not a new rule.
+  //
+  // ⚖️ NO MIGRATION AND NO BACKFILL, WHICH IS THE WHOLE POINT: the writer never
+  // stopped recording which voice a belief came from. Only the reader stopped
+  // asking.
+  const scopeToVoice = <T extends { eq: (c: string, v: string) => T }>(q: T): T =>
+    voice?.id ? q.eq('voice_id', voice.id) : q
+  const rankedRead = await readKnowledge((cols) => scopeToVoice(admin
     .from('creator_knowledge')
     .select(cols)
-    .eq('owner_id', ownerId)
+    .eq('owner_id', ownerId))
     .order('times_seen', { ascending: false })
     .limit(40))
   const rankedRows = rankedRead.rows
@@ -6326,11 +6387,12 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // caption rows, which is the material MEASURED to push substance out of the
   // selection (73% grounded transcript-only against 58% mixed). This asks for the
   // scarce thing by name and leaves the ranking alone.
-  const askedRead = await readKnowledge((cols) => admin
+  // Same scoping, same reason: an answer this creator typed for THIS voice.
+  const askedRead = await readKnowledge((cols) => scopeToVoice(admin
     .from('creator_knowledge')
     .select(cols)
     .eq('owner_id', ownerId)
-    .eq('source', 'asked')
+    .eq('source', 'asked'))
     .order('created_at', { ascending: false })
     .limit(20))
   const askedRows = askedRead.rows
@@ -9464,7 +9526,30 @@ This is the video's position. Every field below must serve it. If the reference'
 `
       : ''
 
+    // ⚠️ THE FIELD THAT INVENTED A GLASS OF WATER. `action_posing` is asked for
+    // in free text (see SYSTEM), and for a creator selling a MEAL-PREP SERVICE
+    // it produced "Hold a clean glass of water in one hand" — a prop she does
+    // not sell, invented because the instruction had nothing real to draw on
+    // and a blank is not an option a model takes.
+    //
+    // ⚖️ SO IT IS NARROWED HERE, WHERE THE PRODUCT IS KNOWN, RATHER THAN IN
+    // SYSTEM, WHICH IS MODULE-LEVEL AND CANNOT SEE ONE. `showability` and
+    // `type` are already on the chosen entity and already selected above; this
+    // reads them rather than adding a column. When showability is NEVER — seven
+    // products in production — the taxonomy returns body-and-face cues only, so
+    // the model has somewhere real to go instead of a prop.
+    const directionGuidance = renderDirectionGuidance({
+      kind: (ownedEntity as { type?: string | null } | null)?.type as ProductKindInline ?? null,
+      showability: (ownedEntity as { showability?: string | null } | null)?.showability as ShowabilityInline ?? null,
+      // ⚠️ READ OUT OF THE SAME `knowledge` BLOB THE EXTRACTOR WRITES THEM TO,
+      // because a column written and never read is this repo's signature defect
+      // and `object_shape` would have been the next instance of it.
+      shape: shapeFromKnowledge(ownedEntity),
+      sections: sectionsFromKnowledge(ownedEntity),
+    })
     const userPrompt = `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
+
+${directionGuidance}
 
 ${positionBlock}${referenceBlock}${historyBlock ? `
 

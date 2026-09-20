@@ -3,6 +3,7 @@ import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { knowledgeRowsFrom } from '../knowledgeRows.js'
 import { EXTRACTOR_VERSION } from '../extractorVersion.js'
 import { transcribeFromUrl } from '../media.js'
+import { classifyTranscriptFailure } from '../transcriptFailure.js'
 import { mapWithConcurrency, TRANSCRIBE_CONCURRENCY } from '../boundedMap.js'
 import { transcriptBudgetFor } from '../transcriptSelection.js'
 import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions, extractTargetedKnowledge } from '../voice.js'
@@ -58,13 +59,21 @@ export async function measureCohortYield(
   ownerId: string,
   urls: string[],
   since: string,
+  voiceId?: string,
 ): Promise<Record<string, unknown> | null> {
   try {
-    const { data } = await db
+    // ⚠️ OWNER-SCOPED, THIS MEASURED THE WRONG SCAN. An owner with more than one
+    // voice (production holds one with TEN) gets every sibling voice's new rows
+    // counted into THIS scan's yield, and the number that decides whether the
+    // transcript budget is worth spending is inflated by work it did not do.
+    // `voice_id` is on every row already.
+    const q = db
       .from('creator_knowledge')
       .select('kind, source_url')
       .eq('owner_id', ownerId)
       .gte('created_at', since)
+    if (voiceId) q.eq('voice_id', voiceId)
+    const { data } = await q
     const rows = (data ?? []) as Array<{ kind?: string; source_url?: string | null }>
     const first = new Set(urls.slice(0, TRANSCRIPT_COHORT_SIZE))
     const second = new Set(urls.slice(TRANSCRIPT_COHORT_SIZE))
@@ -151,6 +160,10 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
   // not missing data, discarded data.
   const routes: Record<string, number> = {}
   const bump = (k: string) => { routes[k] = (routes[k] ?? 0) + 1 }
+  // One sample message for the whole run — enough to act on, never a log dump.
+  let firstFailureDetail: string | null = null
+  // Whether that sample is already an `unknown`. Once it is, it stays.
+  let firstFailureWasUnknown = false
   // ⚠️⚠️ THIS WAS A SERIAL LOOP AND IT IS WHAT THE CREATOR WAITS ON. `dna-poll`
   // reports ready from `brand_voices.status`, which this job sets, so every
   // second here is a second on the onboarding screen. Measured on the last
@@ -257,8 +270,33 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     } catch (err) {
       // ⚖️ A FAILED TRANSCRIPT IS NOT A FREE ONE. It may already have spent an
       // Apify call before throwing, so it is counted apart rather than ignored.
+      //
+      // ⚠️ AND FOR NINE DAYS IT WAS COUNTED WITHOUT BEING EXPLAINED. Production
+      // held `routes: {failed: 5}` for a youtube run and an instagram run and
+      // nothing else — the reason went to a log that expires, the count went to
+      // the row that survives. "Apify is out of credits" and "that reel is
+      // private" were the same integer, and they need opposite responses.
+      // The CLASS is durable now; the message rides along once, for the first
+      // failure only, so a long run cannot turn the result row into a log file.
+      const kind = classifyTranscriptFailure(err)
       bump('failed')
-      console.error('build_voice: transcript failed', url, err instanceof Error ? err.message : err)
+      bump(`failed_${kind}`)
+      const detail = err instanceof Error ? err.message : String(err)
+      // ⚠️ THE SAMPLE KEPT THE FIRST FAILURE, NOT THE FIRST UNEXPLAINED ONE, AND
+      // THAT IS BACKWARDS. Measured 2026-09-20 on tandorstudio: ten videos, six
+      // `no_speech` and four `unknown` — and the one stored sample was a
+      // `no_speech` message, which the CLASS already said. The four that needed
+      // text got none, so the run could not be diagnosed at all.
+      //
+      // ⚖️ A NAMED CLASS IS SELF-DESCRIBING; `unknown` IS THE ONLY ONE THAT
+      // NEEDS ITS WORDS. So an unknown outranks a classified sample once, and
+      // after that first-wins as before — this still cannot become a log file.
+      const worthMore = kind === 'unknown' && !firstFailureWasUnknown
+      if (!firstFailureDetail || worthMore) {
+        firstFailureDetail = `${kind}: ${detail.slice(0, 200)}`
+        firstFailureWasUnknown = kind === 'unknown'
+      }
+      console.error('build_voice: transcript failed', url, kind, detail)
       return null
     }
   }
@@ -268,7 +306,16 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
 
   if (!transcripts.length) {
     // Nothing usable — leave the caption voice in place. Not a hard failure.
-    return { upgraded: false, reason: 'no usable spoken transcripts', attempted: urls.length, routes }
+    // ⚠️ THE ALL-FAILED CASE IS THE ONE THAT MOST NEEDED THE REASON AND CARRIED
+    // IT LEAST. This is the exact row production wrote for youtube and
+    // instagram: zero stored, `routes: {failed: N}`, and nothing about why.
+    return {
+      upgraded: false,
+      reason: 'no usable spoken transcripts',
+      attempted: urls.length,
+      routes,
+      ...(firstFailureDetail ? { failure_sample: firstFailureDetail } : {}),
+    }
   }
 
   const profile = await synthesizeVoiceFromAudio(handle, platform, transcripts)
@@ -480,7 +527,7 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
         if (kErr) console.warn(JSON.stringify({ event: 'knowledge_insert_failed', rows: fresh.length, error: kErr.message }))
         else {
           knowledgeStored = fresh.length
-          cohortYield = await measureCohortYield(ownerId, urls, before)
+          cohortYield = await measureCohortYield(ownerId, urls, before, voiceId)
         }
       }
     }
@@ -510,6 +557,7 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     // and the budget question is entirely about that ratio.
     attempted: urls.length,
     routes,
+    ...(firstFailureDetail ? { failure_sample: firstFailureDetail } : {}),
     knowledge_items: knowledgeStored,
     // ⚠️ THE DENOMINATOR FOR THE ONE NUMBER THIS WHOLE PROBLEM TURNS ON. Yield
     // was reconstructed after the fact as "1.63 rows per transcript", which

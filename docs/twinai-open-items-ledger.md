@@ -3339,6 +3339,284 @@ and index 0, before re-applying the corrected file. Had the DDL committed and
 only the backfill failed, the column would exist unpopulated and every reader's
 degradation path would have been the thing keeping the product alive.
 
+## §Q — `creator_knowledge.voice_id`: written on every row since the table existed, never read where it mattered
+
+⚠️ **1,949 OF 1,949 ROWS CARRY `voice_id` IN PRODUCTION — 100%, NO NULLS.** The
+writer has recorded which voice every belief came from since the column was
+added. `generate-blueprint`, the one reader whose output is the script the
+creator actually films, selected on `owner_id` alone. For an owner with more
+than one voice — production holds one with TEN, ten different people's accounts
+— the top-40 `times_seen` ranking blended strangers' beliefs with hers and then
+ranked them against each other. The `source='asked'` read, the creator's own
+typed sentences, had the same hole.
+
+⚖️ **THIS IS THE `transcripts` BUG'S TWIN AND THE OPPOSITE REPAIR.** 0220 had to
+ADD a column and backfill it, because the writer had genuinely never recorded
+the attribution. Here nothing was missing from the table and no migration was
+needed: the answer was already stored on every row and the reader simply did not
+ask the question. The repo's signature defect is "a column written and never
+read"; this is the costliest instance of it found so far, because the unread
+column was the one separating one creator from ten.
+
+⚖️ **AND THE SIBLINGS WERE ALREADY CORRECT, which is what makes it a defect
+rather than a design question.** `remineKnowledge.storedVersions` filters on
+`voice_id`. The web's `twinStrengthLoad` filters on `voice_id`. Only the
+blueprint compiler did not — the odd one out, not a new rule being introduced.
+
+⚠️ **`measureCohortYield` HAD IT TOO, AND IT CORRUPTS A DECISION RATHER THAN A
+SCRIPT.** Owner-scoped, it counted every sibling voice's new rows into the yield
+of whichever scan happened to run, and that number is what the transcript-budget
+question is settled by. A measurement inflated by work it did not do.
+
+⚖️ **THE GUARD THAT WOULD HAVE CAUGHT ALL THREE** is not "check for unread
+columns" in the abstract: it is asking, of every `owner_id` filter on a
+per-creator table, whether the owner IS the creator. Production says no for
+20 voices across 6 handles (§R).
+
+## §R — One handle, many owners: the guard that cannot simply refuse
+
+⚠️ **MEASURED 2026-09-20 — SIX HANDLES ARE CLAIMED BY MORE THAN ONE OWNER, 20
+VOICES IN TOTAL, ALL `ready`:**
+
+| handle | platform | distinct owners |
+|---|---|---|
+| `garyvee` | tiktok | 5 |
+| `styliquetechnologies` | instagram | 5 |
+| `hormozi` | instagram | 4 |
+| `alexhormozi` | youtube | 2 |
+| `mrbeast` | instagram | 2 |
+| `woodsyleather` | youtube | 2 |
+
+Two people cannot both own one TikTok account, so this is an OBJECTIVE signal
+needing no celebrity list and no follower threshold.
+
+⚠️ **BUT IT DOES NOT MEAN ONE THING, WHICH IS WHY "REFUSE" IS THE WRONG FIX.**
+`garyvee`, `hormozi`, `alexhormozi` and `mrbeast` are strangers' accounts
+scanned as the creator's own — storing their sentences under `subject='own'` and
+feeding them to the writer as things the creator said. `styliquetechnologies`
+under five owners is almost certainly one team legitimately sharing a company
+account. An auto-refusal breaks the second case; silence ships the first.
+
+⚠️ **AND THE PER-VOICE SCOPING MAKES THE BAD CASE CLEANER, NOT SAFER.** Under
+0220's sole-voice rule an owner whose ONLY voice is `mrbeast` now reads those
+rows as unambiguously theirs. The fabrication is better attributed than before.
+
+⚖️ **SO THE GUARD IS A QUESTION, NOT A BLOCK: "is this your account?" at scan
+time when the handle is already claimed by another owner** — recorded as an
+answer, not inferred. Not built; it needs a product decision on what a "no"
+does to an existing voice.
+
+⚠️ **UNTIL IT EXISTS, EVERY BULK VOICE OPERATION MUST PRINT THE HANDLES IT IS
+ABOUT TO ACT ON.** This has now caught the same class twice in one session: the
+tiktok recovery cohort silently re-included three `garyvee` rows after they were
+excluded by hand, and the youtube cohort surfaced `mrbeast`, `aliabdaal`,
+`matthew_berman`, `starterstory` and `davidheikka`. Both were caught only
+because the row list was read before the work ran.
+
+## §S — Recovery works on exactly one platform, and that is measured, not assumed
+
+> ⚠️ **SUPERSEDED BY §V, 2026-09-20.** Every measurement below ran through a
+> REJECTED APIFY TOKEN. The youtube and instagram zeros are artefacts of that
+> credential, not facts about those platforms: the same voices recovered 18 of
+> 20 once it was rotated. The tiktok row stands. Read §V before acting on
+> anything here.
+
+⚠️ **THE PRE-PERSISTENCE COHORT (§O) IS RECOVERABLE ONLY ON TIKTOK.** Each
+platform was tried with the stored `build_voice` payload through current code,
+on voices holding ZERO own transcripts:
+
+| platform | attempted | stored | cost |
+|---|---|---|---|
+| **tiktok** | 5 voices / 25 videos | **works** — 4–5 stored per voice | free (local whisper) |
+| youtube | 3 voices / 15 videos | **0** — `routes: {failed: 5}` ×3 | none charged |
+| instagram | 1 voice / 5 videos | **0** — `routes: {failed: 5}` | none charged |
+
+⚖️ **THE ONE-VOICE INSTAGRAM TRIAL IS WHY THE OTHER SEVEN WERE NEVER RUN.** It
+cost nothing, and it established that the remaining 40 videos would return
+nothing too. A cohort of 8 was cancelled on the evidence of 5 videos.
+
+⚠️ **"FREE" WAS WRONG ABOUT YOUTUBE AND THE ROUTE COUNTERS SAID SO ALL ALONG.**
+Successful YouTube runs record `youtube_captions_paid` and
+`paid_because_free_path_failed` — the free path fails routinely and falls back
+to a PAID captions route. The three jobs here failed before that fallback
+engaged, so nothing was spent, but the premise was wrong when they were
+enqueued. **Read the route counters of a platform's last successful run before
+calling its path free.**
+
+⚖️ **WHY IT FAILS NOW WHEN IT WORKED IN AUGUST IS NOT ESTABLISHED.** Instagram
+last stored on 2026-08-30 (`instagram_paid: 9`), YouTube on 2026-09-14
+(`youtube_captions_paid: 8`); both return bare `failed` counts now. TikTok,
+which fetches differently, is unaffected — so this is the media fetch, not the
+recovery path. Not chased.
+
+⚠️ **AND THE COHORTS WERE MOSTLY NOT THE CREATORS' OWN ACCOUNTS ANYWAY.** Of the
+8 instagram candidates, FIVE were public figures — `garyvee` (claimed by 6
+owners), `mrbeast` (3), `hubermanlab`, `zachking` — and the youtube list added
+`aliabdaal`, `matthew_berman`, `starterstory`, `davidheikka`. Recovering those
+would have paid to store famous people's sentences as strangers' own speech.
+Both cohorts were filtered by hand, and §R still has no executable guard.
+
+## §T — The direction gate is only as good as the column it reads
+
+⚖️ **STEP 6 VERIFIED AGAINST THE REAL ROW.** `product_entities` fa34ac8f,
+`Weekly Meal Prep`, type `SERVICE`, showability `NEVER` — the product whose
+creator was told to "Hold a clean glass of water in one hand". Its direction
+block now reads, from its own stored values:
+
+> Format for this product: Talking Review.
+> Why this set: This product is recorded as never showable on camera, so there
+> is nothing to hold and no screen to point at. … Never invent a prop to fill
+> the gap — that is how a meal-prep creator was once told to hold a glass of
+> water.
+> - lean_in: Lean in toward the lens and hold eye contact …
+
+⚠️ **BUT `showability` IS A HAND-SET COLUMN AND AT LEAST ONE ROW IS WRONG.**
+`Custom Bible Rebind` is stored `SERVICE` / `NEVER` — and it is a full-grain
+leather Bible, hand-stitched, one of the most showable objects in the entire
+table. Under the new gate that creator now gets body-and-face direction ONLY,
+and will never be told to hold up the thing she makes.
+
+⚖️ **THAT IS THE TRADE AND IT IS THE RIGHT WAY ROUND, BUT IT IS NOT FREE.**
+A wrong `NEVER` costs a handling cue that should have been offered; a wrong
+`ALWAYS` costs an invented prop in a creator's script. The first is a thin
+video, the second is a fabrication — so the gate stays. What is missing is any
+way to NOTICE the first: nothing measures how many products are marked NEVER
+while holding a physical `object_shape`, and that combination is close to a
+contradiction. **A `SERVICE` with a photo-derived shape is the row most likely
+to be mis-marked**, and once `object_shape` starts landing (§Q's sibling) that
+becomes a one-line query rather than a judgement.
+
+⚠️ **AND SEVEN OF THE NINE SERVICE ROWS CARRY NO `name` OR NO
+`creator_summary`.** Two have neither. The gate does not depend on those, but a
+product the creator never finished describing is a product the writer can only
+talk around — which is a different hole in the same table, and one nothing is
+currently counting either.
+## §U — `apify … returned 401`: the token, not the code
+
+⚠️ **ROOT CAUSE, MEASURED 2026-09-20 AFTER THREE ROUNDS OF INSTRUMENTATION:**
+
+    apify 67Q6fmd8iedTVcCwY returned 401
+
+**401 Unauthorized. The Apify token is rejected.** Not 402 (credits), not 404
+(a deleted actor). And it is on the YouTube CHANNEL actor — a DIFFERENT actor
+from the transcript one that failed earlier — which is what makes this
+account-level rather than actor-level.
+
+⚖️ **SO NONE OF THE FETCH WORK TONIGHT WAS THE FIX, AND THAT IS WORTH SAYING
+PLAINLY.** The fallback, the retry policy, the residential-proxy routing and the
+three durable failure classes are all real improvements — but the thing that
+took YouTube and Instagram to zero is a credential, and no amount of code
+fixes it. **The action is: rotate `APIFY_TOKEN` on the VPS** (or re-issue it in
+the Apify console if it was revoked).
+
+⚠️ **WHAT THE CODE DID EARN: the answer took three rounds because each round of
+instrumentation was itself incomplete.**
+
+| round | recorded | why it was not enough |
+|---|---|---|
+| before | `routes: {failed: 5}` | no reason at all |
+| #945 | `failed_unknown` + a yt-dlp sample | the fallback ERASED the vendor error and kept the local one |
+| #947 | both rungs in one message | the scan path still stored only the creator-facing sentence |
+| #948 | `failure_class` + sample on the scan row | `401` was not in the classifier, so it read `unknown` |
+
+⚠️ **THE CLASSIFIER WAS CORRECTED BY PRODUCTION THREE TIMES IN ONE NIGHT** —
+`bot_check`, then the swallowed vendor reason, then `credentials`. Each gap had
+the same shape: a class list written from what failures were *imagined* to look
+like rather than from strings production had actually produced. **The only
+reliable way to extend it is a real failure, so the next unknown is a bug
+report about this file, not an unlucky error.**
+
+⚠️ **THE RULE WAS TESTED WITHIN THE HOUR AND HELD.** Minutes after the token
+rotation restored both platforms, an Instagram scan returned `profile read
+failed: Post does not exist` — an account its owner had DEACTIVATED. The
+scraper gave the honest answer; the classifier had no word for it, so a settled
+fact about the account arrived as `unknown`, which is the class that sends
+someone hunting for a bug that does not exist. Fourth gap in one day, same
+shape, now `unavailable`.
+
+⚖️ **AND IT IS THE CHEAPEST BUG IN THIS FILE.** Nothing was broken, the run
+cost nothing, and the only damage available was an operator's hour. That is
+what the rule buys: the gaps keep arriving, but they arrive as one-line
+corrections instead of three-round investigations.
+
+⚖️ **`credentials` IS NOT `billing`, DELIBERATELY.** A rejected key and an
+exhausted balance both stop every call, but one is rotated and the other is
+paid. Pooling them sends someone to the wrong page.
+
+## §V — §S was measured honestly and was still wrong, because every run went through a dead credential
+
+⚠️ **§S CONCLUDED "RECOVERY WORKS ON EXACTLY ONE PLATFORM, AND THAT IS
+MEASURED, NOT ASSUMED." IT WAS MEASURED. IT WAS WRONG.** Re-run on
+2026-09-20 after the owner rotated `APIFY_TOKEN`, same voices, same stored
+`build_voice` payloads:
+
+| voice | platform | during the outage | after the rotation |
+|---|---|---|---|
+| `BuildersCentral` | youtube | 0 of 5 | **5 of 5** |
+| `codebrewappdevelopment` | youtube | 0 of 5 | **5 of 5** |
+| `thejoemoffett` | youtube | 0 of 5 | **4 of 5** |
+| `hanushkaa` | instagram | 0 of 5 | **4 of 5** |
+
+**18 of 20 against 0 of 20.** The instagram cohort §S records as "CANCELLED on
+that evidence, not deferred" was cancelled on an artefact of a rejected key.
+
+⚖️ **THE LESSON IS NOT "MEASURE MORE", IT IS "A MEASUREMENT INHERITS EVERY
+FAULT UPSTREAM OF IT".** Each of those zeros was a real observation of a real
+production run. What none of them could see is that one credential sat under
+all of them, so four independent-looking results were one result repeated. **A
+cohort that fails UNIFORMLY is evidence about the pipeline before it is
+evidence about the cohort** — and §S drew the second conclusion from the first
+shape.
+
+⚖️ **THE TELL WAS AVAILABLE AND WAS READ AS NOISE.** Tiktok kept working
+throughout, and its exemption was explained away as "tiktok transcribes
+locally" — which is TRUE, and which is exactly why it was the control that
+should have indicted the vendor path rather than excused it.
+
+⚠️ **AND THE TWO REAL FAILURES WERE A FIFTH CLASSIFIER GAP.** `no audio url
+found` (a reel with no audio track) and `run-failed` (an Actor run that
+collapsed) both landed in `unknown`. The first is a bounded fact about one
+video; the second is ours and retryable. Now `no_speech` and `transient`. Same
+shape as the four before it, and §U's rule stands: the next `unknown` is a bug
+report about `transcriptFailure.ts`.
+## §W — The runway number, closed out, and the sample that explained nothing
+
+⚖️ **THE NUMBER THIS WHOLE THREAD EXISTS FOR HAS MOVED.** Measured
+2026-09-20 after the credential was rotated and the recovery re-run:
+
+| | at the start of the session | now |
+|---|---|---|
+| ready voices with own speech | **21 of 53** | **31 of 53** |
+
+⚠️ **AND THE REMAINDER IS NOT A BACKLOG, IT IS THE §R PROBLEM.** Of the 22
+voices still holding no speech, **14 carry a handle claimed by more than one
+owner**. Of the 8 that do not, SIX are public figures scanned by someone who
+is not them (`hubermanlab`, `zachking`, `aliabdaal`, `davidheikka`,
+`matthew_berman`, `starterstory`). **So ~20 of the 22 are the same unresolved
+question, not twenty different ones**, and no amount of recovery work reduces
+it — recovering them is precisely the thing §R exists to refuse.
+
+⚖️ **THE TWO THAT ARE REAL ARE BOTH HONEST ANSWERS RATHER THAN FAULTS.**
+`tandorstudio` returned six of ten videos as `no_speech` — it posts silent
+content, and that is a fact about the account. `itsabd_63` has no stored urls
+at all, so it has never had a transcript pass to recover; it needs a fresh
+scan, not a re-run.
+
+⚠️ **AND THE SAMPLE KEPT THE FIRST FAILURE RATHER THAN THE FIRST UNEXPLAINED
+ONE, WHICH IS BACKWARDS.** Same `tandorstudio` run: six `no_speech`, four
+`unknown`, and the one stored sample was a `no_speech` message — text the CLASS
+already carried. The four failures that needed words got none, so a run with a
+real unexplained fault in it could not be diagnosed at all.
+
+⚖️ **A NAMED CLASS IS SELF-DESCRIBING; `unknown` IS THE ONLY ONE WHOSE WORDS
+CARRY INFORMATION.** So an unknown now outranks a classified sample exactly
+once, and after that first-wins as before — otherwise each later unknown
+overwrites the last and the field becomes a tail of the log rather than one
+sample. This is the sixth correction to the failure-reporting path in two days
+and, like the five before it, it was found by reading what production actually
+wrote rather than by reasoning about what it might write.
+
+
 ## §X — The guard that is a question, built; and the row I was about to overwrite
 
 ⚖️ **§R IS BUILT AND APPLIED (0221).** Six handle+platform pairs are claimed by
