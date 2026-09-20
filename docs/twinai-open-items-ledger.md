@@ -3310,6 +3310,34 @@ celebrity/duplicate-handle guard belongs in the cohort selection and in
 onboarding, not in an operator's head.** Until it exists, every bulk voice
 operation must print the handles it is about to act on.
 
+## §P — A migration excluded from staging is executed for the first time in production
+
+⚠️ **0220 SHIPPED GREEN THROUGH ALL NINE CHECKS WITH `min(uuid)` IN IT, A
+FUNCTION POSTGRES DOES NOT HAVE.** It failed on its first and only execution:
+the production apply. Nothing caught it earlier because nothing *ran* it — the
+staging matrix has no `public.transcripts` (0004 creates it far outside the
+matrix), so 0220 is in `EXCLUDED`, and `check_staging_migration_coverage` then
+asks only that the exclusion carry a REASON, never that the SQL parses.
+
+⚖️ **SO THE EXCLUSION LIST IS NOT A LIST OF UNTESTED MIGRATIONS — IT IS A LIST
+OF MIGRATIONS WHOSE FIRST EXECUTION IS PRODUCTION.** 42 entries now. The guard
+was built to stop "we did not get to it" hiding as coverage, and it does that
+honestly; what it cannot do is tell a well-reasoned exclusion from a syntax
+error. A reason field is prose, and prose does not parse SQL.
+
+⚖️ **THE CHEAP FIX IS NOT COVERAGE, IT IS A PARSE.** An excluded migration
+could still be run through a throwaway Postgres in CI far enough to reject
+unknown functions and bad casts — `EXPLAIN`-only, or applied to an empty schema
+where a missing table fails loudly and a missing FUNCTION fails just as loudly.
+That distinguishes "staging lacks the table" (fine, expected) from "this SQL is
+not valid anywhere" (never fine). Not built.
+
+⚠️ **AND THE ROLLBACK IS THE ONLY REASON THIS COST NOTHING.** The apply is
+transactional, so the failed `update` took the `alter table` and the
+`create index` back with it and production was untouched — verified, column 0
+and index 0, before re-applying the corrected file. Had the DDL committed and
+only the backfill failed, the column would exist unpopulated and every reader's
+degradation path would have been the thing keeping the product alive.
 ## §Q — `creator_knowledge.voice_id`: written on every row since the table existed, never read where it mattered
 
 ⚠️ **1,949 OF 1,949 ROWS CARRY `voice_id` IN PRODUCTION — 100%, NO NULLS.** The
