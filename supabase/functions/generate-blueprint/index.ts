@@ -9,6 +9,9 @@
 // Secrets: supabase secrets set GEMINI_API_KEY=...
 //          (optional) supabase secrets set GEMINI_MODEL=gemini-3.1-pro
 
+import { renderDirectionGuidance,
+  type ProductKind as ProductKindInline,
+  type Showability as ShowabilityInline } from '../_shared/performanceDirection.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { buildLinkAllowlist, sanitizeBlueprintLinks, type LinkAllowlist } from '../_shared/outputLinks.ts'
 import { templateFor } from '../_shared/containerTemplates.ts'
@@ -9480,7 +9483,29 @@ This is the video's position. Every field below must serve it. If the reference'
 `
       : ''
 
+    // ⚠️ THE FIELD THAT INVENTED A GLASS OF WATER. `action_posing` is asked for
+    // in free text (see SYSTEM), and for a creator selling a MEAL-PREP SERVICE
+    // it produced "Hold a clean glass of water in one hand" — a prop she does
+    // not sell, invented because the instruction had nothing real to draw on
+    // and a blank is not an option a model takes.
+    //
+    // ⚖️ SO IT IS NARROWED HERE, WHERE THE PRODUCT IS KNOWN, RATHER THAN IN
+    // SYSTEM, WHICH IS MODULE-LEVEL AND CANNOT SEE ONE. `showability` and
+    // `type` are already on the chosen entity and already selected above; this
+    // reads them rather than adding a column. When showability is NEVER — seven
+    // products in production — the taxonomy returns body-and-face cues only, so
+    // the model has somewhere real to go instead of a prop.
+    const directionGuidance = renderDirectionGuidance({
+      kind: (ownedEntity as { type?: string | null } | null)?.type as ProductKindInline ?? null,
+      showability: (ownedEntity as { showability?: string | null } | null)?.showability as ShowabilityInline ?? null,
+      // Shape and sections land here once the extraction steps fill them; absent
+      // means "do not narrow" and "name no section", never a guess.
+      shape: null,
+      sections: null,
+    })
     const userPrompt = `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
+
+${directionGuidance}
 
 ${positionBlock}${referenceBlock}${historyBlock ? `
 
