@@ -3519,6 +3519,19 @@ like rather than from strings production had actually produced. **The only
 reliable way to extend it is a real failure, so the next unknown is a bug
 report about this file, not an unlucky error.**
 
+⚠️ **THE RULE WAS TESTED WITHIN THE HOUR AND HELD.** Minutes after the token
+rotation restored both platforms, an Instagram scan returned `profile read
+failed: Post does not exist` — an account its owner had DEACTIVATED. The
+scraper gave the honest answer; the classifier had no word for it, so a settled
+fact about the account arrived as `unknown`, which is the class that sends
+someone hunting for a bug that does not exist. Fourth gap in one day, same
+shape, now `unavailable`.
+
+⚖️ **AND IT IS THE CHEAPEST BUG IN THIS FILE.** Nothing was broken, the run
+cost nothing, and the only damage available was an operator's hour. That is
+what the rule buys: the gaps keep arriving, but they arrive as one-line
+corrections instead of three-round investigations.
+
 ⚖️ **`credentials` IS NOT `billing`, DELIBERATELY.** A rejected key and an
 exhausted balance both stop every call, but one is rotated and the other is
 paid. Pooling them sends someone to the wrong page.

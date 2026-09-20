@@ -35,6 +35,13 @@ describe('the failure class survives the log', () => {
     // A settled fact about ONE post — never ours, never worth a retry.
     expect(classifyTranscriptFailure(new Error("Couldn't read that Instagram video — it may be private")))
       .toBe('unavailable')
+    // ⚠️ THE ACTUAL PRODUCTION STRING for an account its owner deactivated.
+    // Read as `unknown` until 2026-09-20 — a settled fact about the account
+    // wearing the costume of an open question about our code.
+    expect(classifyTranscriptFailure(new Error('profile read failed: Post does not exist')))
+      .toBe('unavailable')
+    expect(classifyTranscriptFailure(new Error('This account has been deactivated')))
+      .toBe('unavailable')
     expect(classifyTranscriptFailure(new Error('This video has no speech we can read'))).toBe('no_speech')
     expect(classifyTranscriptFailure(new Error('APIFY_TOKEN is not set'))).toBe('not_configured')
   })
