@@ -3411,3 +3411,40 @@ tiktok recovery cohort silently re-included three `garyvee` rows after they were
 excluded by hand, and the youtube cohort surfaced `mrbeast`, `aliabdaal`,
 `matthew_berman`, `starterstory` and `davidheikka`. Both were caught only
 because the row list was read before the work ran.
+
+## §S — Recovery works on exactly one platform, and that is measured, not assumed
+
+⚠️ **THE PRE-PERSISTENCE COHORT (§O) IS RECOVERABLE ONLY ON TIKTOK.** Each
+platform was tried with the stored `build_voice` payload through current code,
+on voices holding ZERO own transcripts:
+
+| platform | attempted | stored | cost |
+|---|---|---|---|
+| **tiktok** | 5 voices / 25 videos | **works** — 4–5 stored per voice | free (local whisper) |
+| youtube | 3 voices / 15 videos | **0** — `routes: {failed: 5}` ×3 | none charged |
+| instagram | 1 voice / 5 videos | **0** — `routes: {failed: 5}` | none charged |
+
+⚖️ **THE ONE-VOICE INSTAGRAM TRIAL IS WHY THE OTHER SEVEN WERE NEVER RUN.** It
+cost nothing, and it established that the remaining 40 videos would return
+nothing too. A cohort of 8 was cancelled on the evidence of 5 videos.
+
+⚠️ **"FREE" WAS WRONG ABOUT YOUTUBE AND THE ROUTE COUNTERS SAID SO ALL ALONG.**
+Successful YouTube runs record `youtube_captions_paid` and
+`paid_because_free_path_failed` — the free path fails routinely and falls back
+to a PAID captions route. The three jobs here failed before that fallback
+engaged, so nothing was spent, but the premise was wrong when they were
+enqueued. **Read the route counters of a platform's last successful run before
+calling its path free.**
+
+⚖️ **WHY IT FAILS NOW WHEN IT WORKED IN AUGUST IS NOT ESTABLISHED.** Instagram
+last stored on 2026-08-30 (`instagram_paid: 9`), YouTube on 2026-09-14
+(`youtube_captions_paid: 8`); both return bare `failed` counts now. TikTok,
+which fetches differently, is unaffected — so this is the media fetch, not the
+recovery path. Not chased.
+
+⚠️ **AND THE COHORTS WERE MOSTLY NOT THE CREATORS' OWN ACCOUNTS ANYWAY.** Of the
+8 instagram candidates, FIVE were public figures — `garyvee` (claimed by 6
+owners), `mrbeast` (3), `hubermanlab`, `zachking` — and the youtube list added
+`aliabdaal`, `matthew_berman`, `starterstory`, `davidheikka`. Recovering those
+would have paid to store famous people's sentences as strangers' own speech.
+Both cohorts were filtered by hand, and §R still has no executable guard.
