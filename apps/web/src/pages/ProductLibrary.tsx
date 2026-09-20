@@ -53,6 +53,7 @@ import {
   surfaceChoices, buildCommunityMap, whatIsMissing,
   type ProductSuggestion,
   relationshipLabel,
+  showabilityContradiction,
 } from '@twinai/shared'
 import { readOnboardingDraft } from '../lib/onboardingDraft'
 import type {
@@ -1421,6 +1422,29 @@ export default function ProductLibrary() {
               <legend className="text-xs font-medium uppercase tracking-wide text-stone">
                 {CAPABILITY_PROMPT[capabilityQuestionFor(e)!]}
               </legend>
+              {/* ── §T — A `NEVER` THE CREATOR'S OWN SENTENCE DISAGREES WITH ──
+                  ⚠️ `showability` IS HAND-SET AND NOTHING WATCHED IT. `Custom
+                  Bible Rebind` is stored SERVICE / NEVER while its summary reads
+                  "full-grain leather … hand-stitched" — so the direction gate
+                  gives that creator body-and-face direction only, and will never
+                  tell her to hold up the thing she makes.
+
+                  ⚖️ IT ASKS, IT DOES NOT CORRECT. The corrector is the radio
+                  group directly below and has existed all along; what was
+                  missing was any way to NOTICE. The detector argues only toward
+                  SHOWING — a wrong NEVER costs a handling cue, a wrong ALWAYS
+                  costs an invented prop — and quotes her own words back rather
+                  than asserting a verdict. */}
+              {showabilityContradiction(e.showability, e.creatorSummary) && (
+                <p className="mt-2 rounded-lg border border-amber-400/25 bg-amber-400/[0.06] px-3 py-2 text-xs leading-relaxed text-sand">
+                  You described this as{' '}
+                  <span className="font-semibold text-cream">
+                    “{showabilityContradiction(e.showability, e.creatorSummary)!.evidence.join('”, “')}”
+                  </span>{' '}
+                  — but it is saved as never showable, so your scripts will never
+                  ask you to hold it up. If you can film it, change the answer below.
+                </p>
+              )}
               <div className="mt-2 space-y-1">
                 {SHOW_OPTIONS.map((o) => (
                   <label key={o.value} className="flex items-start gap-2 text-sm">
