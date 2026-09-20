@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { withSelectedHook } from '@twinai/shared'
+import { withSelectedHook, type RecordingScript } from '@twinai/shared'
 
 const PAGE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'Result.tsx'), 'utf8')
 
@@ -53,18 +53,23 @@ describe('the patch itself, on the real production pair', () => {
       { scene_number: 1, dialogue: 'I lost two hundred dollars on candles before learning this one rule.', duration_sec: 8, caption_text: null },
       { scene_number: 2, dialogue: 'Second beat.', duration_sec: 10, caption_text: null },
     ],
-  } as never
+  } as unknown as RecordingScript
+
+  // ⚠️ TYPED, NOT `as never`. The first draft cast this fixture to `never`, which
+  // made `script.hook` below a type error — caught by CI's `npm run typecheck`
+  // and NOT by the `tsc -p apps/web/tsconfig.json` run here, because the two do
+  // not see the same files. The repo's own command is the one that counts.
 
   const CHOSEN = 'The biggest beginner mistake in making delicate handmade soy candles.'
 
   it('moves scene 1 AND the top-level hook, or other readers keep the old one', () => {
-    const out = withSelectedHook(script, CHOSEN) as { hook: string; scenes: Array<{ dialogue: string }> }
+    const out = withSelectedHook(script, CHOSEN)!
     expect(out.scenes[0].dialogue).toBe(CHOSEN)
     expect(out.hook).toBe(CHOSEN)
   })
 
   it('leaves every other scene exactly alone', () => {
-    const out = withSelectedHook(script, CHOSEN) as { scenes: Array<{ dialogue: string }> }
+    const out = withSelectedHook(script, CHOSEN)!
     expect(out.scenes[1].dialogue).toBe('Second beat.')
   })
 
