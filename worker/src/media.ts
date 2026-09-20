@@ -83,6 +83,8 @@ export type TranscriptSource =
 export type PaidBecause = 'no_captions' | 'free_path_failed'
 
 import { downloadArgsFor, routeName, type DownloadRoute } from './downloadRoute.js'
+import { classifyTranscriptFailure, type TranscriptFailure } from './transcriptFailure.js'
+export { classifyTranscriptFailure, type TranscriptFailure }
 import { phaseOf, classifyDownloadFailure, type DownloadTrace } from './downloadFailure.js'
 
 // WHICH ROUTE READ THIS VIDEO — recorded, never inferred.
@@ -946,11 +948,45 @@ export async function readReferenceVideoFacts(
   }
 }
 
+/** Worth trying again on its own; everything else fails the same way twice. */
+const RETRYABLE: ReadonlySet<TranscriptFailure> = new Set(['transient', 'rate_limited'])
+
+/**
+ * ⚖️ ONE RETRY, AND ONLY FOR THE TWO CLASSES THAT CAN CHANGE THEIR ANSWER.
+ * Retrying a 402 spends nothing and fixes nothing; retrying a private reel
+ * asks a settled question twice. A paid call is not free to repeat, so the
+ * classes that cannot change are never repeated.
+ */
+async function withOneRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn()
+  } catch (err) {
+    const kind = classifyTranscriptFailure(err)
+    if (!RETRYABLE.has(kind)) throw err
+    console.warn(JSON.stringify({ event: 'transcript_retry', label, kind }))
+    await new Promise((r) => setTimeout(r, kind === 'rate_limited' ? 15_000 : 4_000))
+    return await fn()
+  }
+}
+
 export async function transcribeFromUrl(
   rawUrl: string,
   route: DownloadRoute = { kind: 'local_impersonated' },
 ): Promise<Transcript> {
   const u = assertAllowedUrl(rawUrl)
+  // ⚠️ A SINGLE VENDOR OUTAGE TOOK BOTH PLATFORMS TO ZERO, AND NEITHER HAD
+  // ANYWHERE ELSE TO GO. YouTube and Instagram both terminate at an Apify
+  // Actor; TikTok downloads and transcribes locally. So when Apify stopped
+  // answering, tiktok kept working and the other two returned nothing —
+  // exactly the production signature (youtube 0/15, instagram 0/5, tiktok
+  // unaffected). The fix is not a better Apify call, it is a LAST RUNG that
+  // does not involve Apify at all: the same yt-dlp + local whisper path
+  // tiktok already proves works from this box.
+  //
+  // ⚖️ THE LOCAL RUNG IS LAST, NOT FIRST, FOR YOUTUBE AND INSTAGRAM. Both
+  // bot-block datacenter IPs (that is WHY the Apify routes exist), so it will
+  // often fail — but "often fails" and "cannot be attempted" are different
+  // numbers, and only one of them is currently zero.
   if (isYouTube(u)) {
     // Free first (YouTube doesn't block us), Apify only as a paid fallback.
     try {
@@ -963,12 +999,51 @@ export async function transcribeFromUrl(
       // report our own timeouts as evidence about YouTube.
       const paidBecause: PaidBecause = /NO_CAPTIONS/.test(why) ? 'no_captions' : 'free_path_failed'
       console.error(`free YT transcript failed (${paidBecause}), falling back to Apify:`, why)
-      return { ...(await youtubeTranscriptViaApify(rawUrl)), source: 'youtube_captions_paid', paidBecause }
+      try {
+        return {
+          ...(await withOneRetry('youtube_apify', () => youtubeTranscriptViaApify(rawUrl))),
+          source: 'youtube_captions_paid',
+          paidBecause,
+        }
+      } catch (apifyErr) {
+        const kind = classifyTranscriptFailure(apifyErr)
+        // A fact about THIS video is settled; do not spend a download on it.
+        if (kind === 'unavailable' || kind === 'no_speech') throw apifyErr
+        console.error(JSON.stringify({
+          event: 'youtube_apify_failed_falling_back_local', kind,
+          detail: (apifyErr instanceof Error ? apifyErr.message : String(apifyErr)).slice(0, 300),
+        }))
+        return await transcribeViaDownload(rawUrl, route)
+      }
     }
   }
-  if (isInstagram(u)) return { ...(await instagramTranscriptViaApify(rawUrl)), source: 'instagram_paid' }
+  if (isInstagram(u)) {
+    try {
+      return {
+        ...(await withOneRetry('instagram_apify', () => instagramTranscriptViaApify(rawUrl))),
+        source: 'instagram_paid',
+      }
+    } catch (apifyErr) {
+      const kind = classifyTranscriptFailure(apifyErr)
+      if (kind === 'unavailable' || kind === 'no_speech') throw apifyErr
+      console.error(JSON.stringify({
+        event: 'instagram_apify_failed_falling_back_local', kind,
+        detail: (apifyErr instanceof Error ? apifyErr.message : String(apifyErr)).slice(0, 300),
+      }))
+      return await transcribeViaDownload(rawUrl, route)
+    }
+  }
   // scraped IG/FB CDN mp4 → free local whisper
   if (isDirectMedia(u)) return { ...(await transcribeDirectMedia(rawUrl)), source: 'local_whisper' }
+  return await transcribeViaDownload(rawUrl, route)
+}
+
+/** yt-dlp download + local faster-whisper. The tiktok route, and the last rung
+ *  for every other platform whose vendor path has failed. */
+async function transcribeViaDownload(
+  rawUrl: string,
+  route: DownloadRoute = { kind: 'local_impersonated' },
+): Promise<Transcript> {
   const dir = await mkdtemp(join(tmpdir(), 'twinai-'))
   const audioPath = join(dir, 'audio.m4a')
   const outPath = join(dir, 'transcript.json')
