@@ -3449,6 +3449,41 @@ owners), `mrbeast` (3), `hubermanlab`, `zachking` — and the youtube list added
 would have paid to store famous people's sentences as strangers' own speech.
 Both cohorts were filtered by hand, and §R still has no executable guard.
 
+## §T — The direction gate is only as good as the column it reads
+
+⚖️ **STEP 6 VERIFIED AGAINST THE REAL ROW.** `product_entities` fa34ac8f,
+`Weekly Meal Prep`, type `SERVICE`, showability `NEVER` — the product whose
+creator was told to "Hold a clean glass of water in one hand". Its direction
+block now reads, from its own stored values:
+
+> Format for this product: Talking Review.
+> Why this set: This product is recorded as never showable on camera, so there
+> is nothing to hold and no screen to point at. … Never invent a prop to fill
+> the gap — that is how a meal-prep creator was once told to hold a glass of
+> water.
+> - lean_in: Lean in toward the lens and hold eye contact …
+
+⚠️ **BUT `showability` IS A HAND-SET COLUMN AND AT LEAST ONE ROW IS WRONG.**
+`Custom Bible Rebind` is stored `SERVICE` / `NEVER` — and it is a full-grain
+leather Bible, hand-stitched, one of the most showable objects in the entire
+table. Under the new gate that creator now gets body-and-face direction ONLY,
+and will never be told to hold up the thing she makes.
+
+⚖️ **THAT IS THE TRADE AND IT IS THE RIGHT WAY ROUND, BUT IT IS NOT FREE.**
+A wrong `NEVER` costs a handling cue that should have been offered; a wrong
+`ALWAYS` costs an invented prop in a creator's script. The first is a thin
+video, the second is a fabrication — so the gate stays. What is missing is any
+way to NOTICE the first: nothing measures how many products are marked NEVER
+while holding a physical `object_shape`, and that combination is close to a
+contradiction. **A `SERVICE` with a photo-derived shape is the row most likely
+to be mis-marked**, and once `object_shape` starts landing (§Q's sibling) that
+becomes a one-line query rather than a judgement.
+
+⚠️ **AND SEVEN OF THE NINE SERVICE ROWS CARRY NO `name` OR NO
+`creator_summary`.** Two have neither. The gate does not depend on those, but a
+product the creator never finished describing is a product the writer can only
+talk around — which is a different hole in the same table, and one nothing is
+currently counting either.
 ## §U — `apify … returned 401`: the token, not the code
 
 ⚠️ **ROOT CAUSE, MEASURED 2026-09-20 AFTER THREE ROUNDS OF INSTRUMENTATION:**
