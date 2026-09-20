@@ -81,12 +81,35 @@ export const TYPE_LABEL: Partial<Record<EvidenceType, string>> = {
   narrative_beat: 'Story structure',
   stated_cta: 'Call to action',
   why_it_works_claim: 'Why it works',
+  // ⚖️ THESE THREE CAN BE OBSERVED, AND ARE, WHEN THE PASS READS THEM.
+  // `visualEvidence.ts` maps each to a real field: `camera_distance_movement`
+  // to camera.shotType + positionChanges, `subject_framing` to
+  // camera.framingChanges + shotType, `shot_semantics` to primaryMode +
+  // performance. A null on one of these is a fact about ONE reference, and the
+  // row saying so is the screen doing its job.
   shot_semantics: 'Shot choices',
   camera_distance_movement: 'Camera work',
   subject_framing: 'Framing',
-  zoom_frequency_intensity: 'Zooms',
-  music_energy_beat_alignment: 'Music',
-  silence_and_visual_waste: 'Pacing of dead space',
+  // ⚠️⚠️ `zoom_frequency_intensity`, `music_energy_beat_alignment` AND
+  // `silence_and_visual_waste` ARE DELETED HERE, and this is the same decision
+  // already taken for `caption_layout_cadence` and `transition_types` directly
+  // above — now applied to the three the owner kept reporting.
+  //
+  // ⚠️ THEY COULD NEVER BE OBSERVED, AND `visualEvidence.ts` SAYS SO IN ITS OWN
+  // WORDS: "zoom_frequency_intensity ... NO. There is no zoom field",
+  // "music_energy_beat_alignment  NO. Frames carry no audio",
+  // "silence_and_visual_waste ... NO. Never measured." Three rows with no
+  // possible writer, printing "We did not analyse the video" on every reference
+  // forever.
+  //
+  // ⚖️ AND A PERMANENT "NOT OBSERVED" IS WORSE THAN NO ROW, because it reads as
+  // a gap that a better scan would close. It cannot be closed. The rule this
+  // file already states: "a row that cannot change a scene field, a direction
+  // note or an edit decision is furniture."
+  //
+  // ⚠️ THE TYPES THEMSELVES ARE LEFT IN THE TAXONOMY. If a pass ever measures
+  // zooms or audio, restoring the row is one line here — and until then nothing
+  // silently claims the field exists.
 }
 
 /**
@@ -106,8 +129,11 @@ export const NOT_OBSERVED_SOURCE = 'We did not analyse the video — your brand 
 /**
  * Build §1.1's rows from a persisted evidence set.
  *
- * The nine unlooked-at things are ALWAYS present, whether or not the evidence
- * set names them. That is the whole point of the screen: a shorter list on a
+ * The unlooked-at things are ALWAYS present, whether or not the evidence set
+ * names them — and the list is the ones that CAN be looked at. (It said "nine"
+ * when there were nine; two were deleted for having no writer, then three more
+ * for the same reason, and a count in prose is a second source for a fact the
+ * list already states.) That is the whole point of the screen: a shorter list on a
  * reference we happened to extract less from would let absence look like
  * completeness, which is the failure the screen exists to prevent.
  */

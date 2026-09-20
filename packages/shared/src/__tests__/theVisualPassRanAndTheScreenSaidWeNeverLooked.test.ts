@@ -85,24 +85,27 @@ describe('what the frames can honestly answer', () => {
   })
 })
 
-describe('what must stay unobserved, which is the point', () => {
-  it('zoom stays a gap, because nothing measures zoom', () => {
-    // The owner named zooms specifically. There is no zoom field in the profile
-    // and deriving one from shotType changes would be a guess with a citation.
-    expect(byLabel(REAL_PROFILE, 'Zooms').kind).toBe('unknown')
-    expect(byLabel(REAL_PROFILE, 'Zooms').source).toBe(NOT_OBSERVED)
-  })
+describe('what has no possible writer is no longer a row at all', () => {
+  // ⚠️⚠️ THIS BLOCK ASSERTED THE OPPOSITE UNTIL 2026-09-20, and it was right
+  // then: given that `Zooms`, `Music` and `Pacing of dead space` were ROWS, they
+  // had to stay honest gaps rather than be filled with a guess.
+  //
+  // ⚖️ THE OWNER REMOVED THE PREMISE. "If you already pulled it add it,
+  // otherwise remove it" — so a dimension nothing can ever measure stops being
+  // shown, and the question of what it should SAY stops existing. The stronger
+  // property is asserted instead: they cannot come back as rows while nothing
+  // writes them.
+  for (const label of ['Zooms', 'Music', 'Pacing of dead space']) {
+    it(`${label} is not a row, because nothing can ever measure it`, () => {
+      const labels = transferRows(null, undefined, REAL_PROFILE).map((r) => r.label)
+      expect(labels).not.toContain(label)
+    })
+  }
 
-  it('music stays a gap, because frames carry no audio', () => {
-    expect(byLabel(REAL_PROFILE, 'Music').source).toBe(NOT_OBSERVED)
-  })
-
-  it('dead-space pacing stays a gap', () => {
-    expect(byLabel(REAL_PROFILE, 'Pacing of dead space').source).toBe(NOT_OBSERVED)
-  })
-
-  it('every row still appears, so absence never looks like completeness', () => {
-    expect(rowsFor(REAL_PROFILE).length).toBe(rowsFor(null).length)
+  it('and the three that CAN be read are still rows', () => {
+    // A null on one of these is a fact about ONE video, which is worth saying.
+    const labels = transferRows(null, undefined, REAL_PROFILE).map((r) => r.label)
+    for (const l of ['Shot choices', 'Camera work', 'Framing']) expect(labels).toContain(l)
   })
 })
 

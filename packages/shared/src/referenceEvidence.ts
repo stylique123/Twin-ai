@@ -71,10 +71,34 @@ export const EVIDENCE_TYPES = [
 export type EvidenceType = (typeof EVIDENCE_TYPES)[number]
 
 /** §3: extraction is extended only where a downstream decision needs evidence. */
+/**
+ * The dimensions a reference row may report as unlooked-at.
+ *
+ * ⚠️⚠️ THREE WERE REMOVED 2026-09-20 ON THE OWNER'S INSTRUCTION — "if you
+ * already pulled it add it, otherwise remove it" — and the measurement agrees
+ * with him. `zoom_frequency_intensity`, `music_energy_beat_alignment` and
+ * `silence_and_visual_waste` have NO POSSIBLE WRITER, which `visualEvidence.ts`
+ * states in its own words: "There is no zoom field", "Frames carry no audio",
+ * "Never measured". They printed "We did not analyse the video" on every
+ * reference that has ever existed and would have printed it on every future one.
+ *
+ * ⚖️ A PERMANENT "NOT OBSERVED" IS WORSE THAN NO ROW, because it reads as a gap
+ * a better scan would close, and it cannot be closed. This is the same decision
+ * already taken for `caption_layout_cadence` and `transition_types`; an earlier
+ * pass kept these three on the grounds that a writer was BUILDABLE. Three
+ * reports later, "buildable but unbuilt" had cost more trust than the rows were
+ * worth. The types stay in the taxonomy, so restoring a row is one line if a
+ * pass ever measures them.
+ *
+ * ⚖️ THE THREE THAT REMAIN CAN ALL BE OBSERVED and are, when the pass reads
+ * them: `camera_distance_movement` from camera.shotType + positionChanges,
+ * `subject_framing` from camera.framingChanges + shotType, `shot_semantics`
+ * from primaryMode + performance. Measured on the reference the owner
+ * screenshotted: the pass RAN, sampled 4 frames, and read 1 of 16 fields — so
+ * those rows were telling the truth about that video.
+ */
 export const MISSING_EVIDENCE_TYPES: readonly EvidenceType[] = [
   'shot_semantics', 'camera_distance_movement', 'subject_framing',
-  'zoom_frequency_intensity', 'music_energy_beat_alignment',
-  'silence_and_visual_waste',
 ]
 
 export interface EvidenceItem {
