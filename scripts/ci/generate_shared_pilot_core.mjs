@@ -42,6 +42,12 @@ const SOURCES = [
   ['packages/shared/src/script/emphasis.ts', 'supabase/functions/_shared/emphasis.ts'],
   ['packages/shared/src/script/beatAsk.ts', 'supabase/functions/_shared/beatAsk.ts'],
   ['packages/shared/src/script/shotLabel.ts', 'supabase/functions/_shared/shotLabel.ts'],
+  // ⚠️ THE PHYSICAL-DIRECTION TAXONOMY, GENERATED FOR THE REASON THE HOOK
+  // CONTRACT IS. This table decides whether a creator is told to hold her own
+  // product or a glass of water she does not sell, and the rule that matters
+  // most in it — `showability: NEVER` means ZERO handling cues — is exactly the
+  // kind of line a hand copy keeps after the original is fixed.
+  ['packages/shared/src/script/performanceDirection.ts', 'supabase/functions/_shared/performanceDirection.ts'],
   ['packages/shared/src/scanCeiling.ts', 'supabase/functions/_shared/scanCeiling.ts'],
   ['packages/shared/src/brandTruthPrompt.ts', 'supabase/functions/_shared/brandTruthPrompt.ts'],
   ['packages/shared/src/script/repetition.ts', 'supabase/functions/_shared/repetition.ts'],

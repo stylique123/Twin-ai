@@ -194,7 +194,13 @@ const SCHEMA = {
             type: 'string',
             enum: ['name', 'category', 'description', 'audience', 'feature',
               'use_case', 'integration', 'benefit', 'claim', 'price', 'plan',
-              'guarantee', 'cta'],
+              'guarantee', 'cta',
+              // ⚠️ TWO FIELDS THAT EXIST TO STOP THE WRITER INVENTING A PROP.
+              // `action_posing` once told a meal-prep creator to hold a glass of
+              // water, because nothing told it what the product physically IS.
+              // These are extracted the same way every other fact is and stored
+              // in the same `knowledge` blob — no new column, no second call.
+              'object_shape', 'page_section'],
           },
           value: { type: 'string' },
         },
@@ -220,6 +226,20 @@ const SYSTEM = [
   '',
   'Omit a field entirely rather than guessing at it. An absent value is a fact',
   'about the page; an invented one is a fact about you.',
+  '',
+  '`object_shape`: ONE word for what the product physically is, and ONLY from a',
+  'photograph or an explicit statement on the page. One of: jar, bottle, tube,',
+  'bag, box, flat, garment, device, food. This decides whether a creator is told',
+  'to twist a cap that exists or one that does not, so a guess is worse here than',
+  'a blank. If the product is a service, an app or anything with no physical',
+  'object, omit it — that is the correct answer, not a failure to find one.',
+  '',
+  '`page_section`: the NAME of a section that is actually present on the page —',
+  '"pricing table", "feature comparison", "dashboard screenshot", "onboarding',
+  'flow", "testimonials". A creator will be told to point a camera at what you',
+  'name here, so name only what you SAW. Never report a section because a product',
+  'of this kind usually has one: an invented "dashboard" sends someone to film a',
+  'screen that does not exist.',
 ].join('\n')
 
 /**
@@ -390,7 +410,7 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   // carry the PAGE's provenance, which is the exact laundering this split exists
   // to prevent.
   const imageRule = images.length > 0
-    ? `\n\nThe creator also supplied ${images.length} PHOTOGRAPH(S) of the product. From the images you may report ONLY: name, category, description - what the thing IS and what it LOOKS LIKE. You must NOT report a price, plan, guarantee, benefit, claim or call to action from an image, even if you can read one in the picture. A number visible in a photograph is not a stated price.`
+    ? `\n\nThe creator also supplied ${images.length} PHOTOGRAPH(S) of the product. From the images you may report ONLY: name, category, description, object_shape - what the thing IS and what it LOOKS LIKE. You must NOT report a price, plan, guarantee, benefit, claim or call to action from an image, even if you can read one in the picture. A number visible in a photograph is not a stated price.`
     : ''
   const out = await geminiJson(
     SYSTEM,
