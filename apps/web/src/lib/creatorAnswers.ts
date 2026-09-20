@@ -267,14 +267,32 @@ export async function confirmExtractedRow(rowId: string): Promise<boolean> {
   }
 }
 
-export async function loadExtractedKnowledge(): Promise<StoredKnowledgeItem[] | null> {
+export async function loadExtractedKnowledge(
+  voiceId: string | null = null,
+): Promise<StoredKnowledgeItem[] | null> {
   try {
     const { data: auth } = await supabase.auth.getUser()
     const ownerId = auth?.user?.id
     if (!ownerId) return null
+    // ⚠️⚠️ `cost` AND `consensus` WERE MISSING, AND THEY ARE THE TWO FIELDS THE
+    // SUGGESTER ACTUALLY DECIDES ON. `fillsExpensiveLesson` returns null unless
+    // `item.cost` is recorded; `fillsContrarian` returns null unless
+    // `item.consensus` is. Neither column was selected here, so both read
+    // `undefined` on every row and BOTH SLOTS COULD NEVER SUGGEST ANYTHING —
+    // no matter what the creator had said on camera.
+    //
+    // ⚠️ AND IT TYPECHECKED, which is why it survived. `StoredKnowledgeItem`
+    // declares both as OPTIONAL (`cost?`, `consensus?`) because a row genuinely
+    // may not have them — so a loader that never fetches them is indistinguishable
+    // to the compiler from one whose rows happen to be empty.
+    //
+    // ⚖️ MEASURED 2026-09-20 ON THE REAL STORE: of 40 voices with usable
+    // knowledge, 19 hold an opinion carrying a named consensus and 5 hold an
+    // experience carrying a cost. Every one of those 24 saw three blank boxes.
+    // Only `best_result` ever fired, because it reads `text`, which IS selected.
     const { data, error } = await supabase
       .from('creator_knowledge')
-      .select('id, kind, text, basis, source, source_ref, evidence, creator_confirmed_at')
+      .select('id, kind, text, basis, source, source_ref, cost, consensus, evidence, creator_confirmed_at, voice_id')
       .eq('owner_id', ownerId)
       // ⚠️ SPOKEN MATERIAL ONLY. A caption never attested anything — see
       // `storySuggestions.ts`. Filtering here as well as in the matcher keeps
@@ -284,10 +302,35 @@ export async function loadExtractedKnowledge(): Promise<StoredKnowledgeItem[] | 
       .order('last_observed_at', { ascending: false, nullsFirst: false })
       .limit(200)
     if (error) {
+      // ⚠️ AN UNKNOWN COLUMN REJECTS THE WHOLE SELECT (PGRST204/42703), so a
+      // store without `cost`/`consensus`/`voice_id` must fall back rather than
+      // cost the creator every suggestion. Narrower, never nothing.
+      if (/cost|consensus|voice_id/i.test(`${error.message} ${error.details ?? ''}`)) {
+        const { data: legacy } = await supabase
+          .from('creator_knowledge')
+          .select('id, kind, text, basis, source, source_ref, evidence, creator_confirmed_at')
+          .eq('owner_id', ownerId)
+          .eq('source', 'transcript')
+          .eq('basis', 'stated')
+          .order('last_observed_at', { ascending: false, nullsFirst: false })
+          .limit(200)
+        return (legacy ?? []) as StoredKnowledgeItem[]
+      }
       console.warn('extracted knowledge not read', error.message)
       return null
     }
-    return (data ?? []) as StoredKnowledgeItem[]
+    // ⚠️ SCOPED TO THE VOICE IN MEMORY, NOT IN THE QUERY, AND ONLY WHEN IT IS
+    // SAFE TO. `owner_id` alone reads one owner's TEN voices as one creator —
+    // the defect 0220 fixed for transcripts and §Q found in this very table.
+    // Filtering server-side would drop rows whose `voice_id` is NULL (written
+    // before the column existed), so the rule mirrors 0220's: a row belonging to
+    // ANOTHER voice is excluded; an UNATTRIBUTED row is kept, because
+    // unattributed is not the same as foreign.
+    const rows = (data ?? []) as Array<StoredKnowledgeItem & { voice_id?: string | null }>
+    const scoped = voiceId === null
+      ? rows
+      : rows.filter((r) => !r.voice_id || r.voice_id === voiceId)
+    return scoped as StoredKnowledgeItem[]
   } catch (err) {
     console.warn('extracted knowledge not read', err)
     return null

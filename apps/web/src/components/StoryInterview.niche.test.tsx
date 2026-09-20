@@ -92,7 +92,12 @@ describe('the wording follows the niche once it arrives', () => {
     // module that owns them.
     const code = readFileSync(
       sourcePath('apps/web/src/components/StoryInterview.tsx'), 'utf8')
-    expect(code).toMatch(/creatorQuestionsFor\(niche, CREATOR_QUESTIONS,/)
+    expect(code).toMatch(/creatorQuestionsFor\(\s*\n?\s*niche, CREATOR_QUESTIONS,/)
+    // ⚠️ AND `subNiche` IS PASSED, which is what puts a creator back in her
+    // bucket after a re-scan broadened her `niche` to something that matches
+    // nothing — "Handmade candle crafting" became "Home Decor" in production
+    // and the maker questions silently reverted to the generic bank.
+    expect(code).toMatch(/sells === 'none' \? null : sells, subNiche\)/)
     expect(code).toMatch(/openingQuestionsFor\(byNiche, sells, stageBand\)/)
   })
 })

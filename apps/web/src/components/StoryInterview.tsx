@@ -130,7 +130,12 @@ export function StoryInterview({
     // words THESE three by what she SELLS, which is the axis that actually
     // decides whether a question can be answered honestly. Sells runs second so
     // it wins on the ids it owns.
-    const byNiche = creatorQuestionsFor(niche, CREATOR_QUESTIONS, sells === 'none' ? null : sells)
+    // ⚠️ `subNiche` IS PASSED AS EVIDENCE, NOT ONLY AS WORDING. It already
+    // anchored the sentence below; it now also decides the BUCKET when `niche`
+    // matches nothing — a re-scan that broadened "Handmade candle crafting" to
+    // "Home Decor" had silently returned that creator to the generic bank.
+    const byNiche = creatorQuestionsFor(
+      niche, CREATOR_QUESTIONS, sells === 'none' ? null : sells, subNiche)
     const worded = openingQuestionsFor(byNiche, sells, stageBand)
     // ⚠️⚠️ THREE, AND IT WENT TO FIVE ONCE BY MY MISREADING. The owner asked for
     // extra depth questions on the SCAN screen, where the wait already is, and I
@@ -183,7 +188,11 @@ export function StoryInterview({
   useEffect(() => {
     let live = true
     void (async () => {
-      const items = await loadExtractedKnowledge()
+      // ⚠️ SCOPED TO THIS VOICE. `owner_id` alone reads one owner's ten voices
+      // as one creator — the same pooling 0220 fixed for transcripts. A
+      // suggestion drawn from a DIFFERENT creator's speech, offered as "you
+      // said this", is the worst thing this screen could do.
+      const items = await loadExtractedKnowledge(voiceId)
       if (!live || items === null) return
       const found = suggestStoryAnswers(questions, items)
       if (Object.keys(found).length === 0) return

@@ -108,6 +108,32 @@ export function nicheBucket(niche: unknown): NicheBucket | null {
 }
 
 /**
+ * The bucket for a creator, reading `sub_niche` when `niche` answers nothing.
+ *
+ * ⚠️⚠️ THE REGRESSION THIS EXISTS FOR, AND IT IS ONE ACCOUNT SCANNED TWICE.
+ * `firo.candles` was first stored as "Handmade candle crafting and DIY process"
+ * — bucket `making`, so she was asked "what did you have to remake or throw
+ * away while learning this?". A later re-scan rewrote her niche as "Home Decor",
+ * which matches NO pattern, and from that moment she was asked "what does almost
+ * everyone in your niche believe" — the generic bank. Nothing about her changed.
+ * The model simply chose a broader word, and the questions silently got vaguer.
+ *
+ * ⚖️ SO THE COARSE FIELD IS NOT THE ONLY EVIDENCE, AND IT IS NOT THE BEST.
+ * `sub_niche` is the scan's own phrase for the actual work — "aesthetic handmade
+ * soy candles", "custom Bible rebinding" — and it stays specific precisely when
+ * `niche` drifts broad. Measured on 54 ready voices: `niche` buckets 53 and
+ * `sub_niche` rescues the 54th, taking the generic bank to ZERO creators.
+ *
+ * ⚠️ NICHE STILL WINS WHEN IT ANSWERS. `sub_niche` is a fallback, not an
+ * override: where the broad field already classifies her, a narrower phrase
+ * cannot move her into a different world and change which questions she is part
+ * way through answering.
+ */
+export function creatorBucket(niche: unknown, subNiche: unknown = null): NicheBucket | null {
+  return nicheBucket(niche) ?? nicheBucket(subNiche)
+}
+
+/**
  * ⚠️⚠️ THE ID IS UNCHANGED AND THAT IS NOT COSMETIC. `CreatorQuestion.id` carries
  * its own warning — "NEVER REUSE AN ID FOR A DIFFERENT QUESTION. A creator who
  * answered the old one would silently never see the new one." A niche variant is
@@ -613,8 +639,12 @@ export function creatorQuestionsFor(
   niche: unknown,
   bank: readonly CreatorQuestion[] = CREATOR_QUESTIONS,
   sells: SellsKind | null = null,
+  subNiche: unknown = null,
 ): readonly CreatorQuestion[] {
-  const bucket = nicheBucket(niche)
+  // ⚠️ `sub_niche` IS READ WHEN `niche` ANSWERS NOTHING. A re-scan that rewrote
+  // a candle maker's niche as "Home Decor" moved her from the maker questions
+  // back to the generic bank — see `creatorBucket`.
+  const bucket = creatorBucket(niche, subNiche)
   const overrides = bucket === null ? {} : OVERRIDES[bucket]
   const sold = sells === null ? null : SELLS_OVERRIDES[sells]
   if (Object.keys(overrides).length === 0 && sold === null) return bank
