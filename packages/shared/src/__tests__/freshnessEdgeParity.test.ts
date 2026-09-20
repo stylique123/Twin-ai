@@ -132,7 +132,12 @@ describe('the tag actually reaches the prompt', () => {
     const base = CODE.match(/KNOWLEDGE_COLS_BASE = '([^']*)'/)
     expect(base, 'the knowledge column list moved — re-anchor this').not.toBeNull()
     expect(base?.[1]).toContain('last_observed_at')
-    const reads = CODE.match(/readKnowledge\(\(cols\) => admin/g) ?? []
+    // ⚠️ RE-ANCHORED A SECOND TIME, AND STILL NOT RELAXED. Both reads are now
+    // wrapped in `scopeToVoice(...)` so the compiler reads ONE creator's
+    // beliefs rather than every voice the account holder owns. The count is the
+    // claim — BOTH reads must go through `readKnowledge` — and it is unchanged
+    // at 2; only the expression inside the arrow gained a wrapper.
+    const reads = CODE.match(/readKnowledge\(\(cols\) => (?:scopeToVoice\()?admin/g) ?? []
     expect(reads.length).toBe(2)
     // And the fallback list is the one that keeps the column, not a narrower one.
     expect(CODE).toMatch(/build\(KNOWLEDGE_COLS_BASE\)/)

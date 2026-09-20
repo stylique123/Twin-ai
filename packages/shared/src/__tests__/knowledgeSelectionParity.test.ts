@@ -172,7 +172,12 @@ describe('the edge prefers spoken material by the same rule', () => {
     expect(base, 'the knowledge column list moved — re-anchor this').not.toBeNull()
     expect(base?.[1]).toContain('source')
     expect(EDGE).toMatch(/KNOWLEDGE_COLS_FULL = `\$\{KNOWLEDGE_COLS_BASE\}[^`]*`/)
-    const reads = EDGE.match(/readKnowledge\(\(cols\) => admin/g) ?? []
+    // ⚠️ RE-ANCHORED A SECOND TIME, AND STILL NOT RELAXED. Both reads are now
+    // wrapped in `scopeToVoice(...)` so the compiler reads ONE creator's
+    // beliefs rather than every voice the account holder owns. The count is the
+    // claim — BOTH reads must go through `readKnowledge` — and it is unchanged
+    // at 2; only the expression inside the arrow gained a wrapper.
+    const reads = EDGE.match(/readKnowledge\(\(cols\) => (?:scopeToVoice\()?admin/g) ?? []
     expect(reads.length, 'both knowledge reads must go through the helper').toBe(2)
   })
 
