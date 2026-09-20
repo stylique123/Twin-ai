@@ -72,8 +72,23 @@ describe('the failure class survives the log', () => {
   })
 
   it('carries ONE sample message, so a long run cannot become a log file', () => {
-    expect(VOICE).toMatch(/if \(!firstFailureDetail\)/)
+    expect(VOICE).toMatch(/if \(!firstFailureDetail \|\| worthMore\)/)
     expect(VOICE).toMatch(/failure_sample/)
+  })
+
+  it('keeps the sample that EXPLAINS something, not merely the first one', () => {
+    // ⚠️ MEASURED 2026-09-20 on tandorstudio: ten videos, six `no_speech` and
+    // four `unknown`, and the stored sample was a `no_speech` message — which
+    // the class already said. The four that needed text got none, so the run
+    // could not be diagnosed. A named class is self-describing; `unknown` is
+    // the only one whose words carry information.
+    expect(VOICE).toMatch(/const worthMore = kind === 'unknown' && !firstFailureWasUnknown/)
+  })
+
+  it('an unknown outranks a classified sample ONCE, then first-wins again', () => {
+    // Otherwise every later unknown overwrites the last and the field becomes
+    // a tail of the log rather than one sample.
+    expect(VOICE).toMatch(/firstFailureWasUnknown = kind === 'unknown'/)
   })
 
   it('reports the reason on the all-failed row too — the case that needed it most', () => {
