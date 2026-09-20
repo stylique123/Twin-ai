@@ -103,3 +103,44 @@ describe('neither platform ends at a single vendor any more', () => {
     expect(MEDIA).toMatch(/kind: 'residential_proxy'/)
   })
 })
+
+// ── THE SCAN PATH HAD THE SAME HOLE ─────────────────────────────────────────
+//
+// ⚠️ MEASURED 2026-09-20: a youtube scan — a path that goes STRAIGHT to an
+// Apify Actor with NO free attempt — failed in TWO SECONDS. That is an
+// immediate HTTP rejection, not a run that executed, and the status code that
+// would have named it went to `console.error`. The row kept only the sentence
+// shown to the creator, which is deliberately vague because it is written for
+// a person: "We couldn't read @handle just now."
+//
+// ⚖️ THE CREATOR STILL READS THE KIND SENTENCE. The class and one sample are
+// added BESIDE it, not in place of it — an operator needs "billing" and a
+// creator needs "try again shortly", and those are different audiences for the
+// same event.
+const SCRAPE = readFileSync(join(SRC, 'jobs', 'scrapeDna.ts'), 'utf8')
+
+describe('a failed scan records why, not only what we told the creator', () => {
+  it('classifies the cause onto the durable result', () => {
+    expect(SCRAPE).toMatch(/failure_class: classifyTranscriptFailure\(cause\)/)
+  })
+
+  it('keeps the creator-facing sentence unchanged beside it', () => {
+    expect(SCRAPE).toMatch(/reason: msg, kept_existing: true, \.\.\.diag/)
+    expect(SCRAPE).toMatch(/reason: msg, \.\.\.diag/)
+  })
+
+  it('carries a bounded sample, never the whole error', () => {
+    expect(SCRAPE).toMatch(/\.slice\(0, 200\)/)
+  })
+
+  it('stays silent when there is no cause to report', () => {
+    // `fail` is also called for reasons that are not exceptions; those must not
+    // invent a class. An absent cause means an absent diagnosis.
+    expect(SCRAPE).toMatch(/cause === undefined \? \{\} :/)
+  })
+
+  it('passes the real error at every catch site, not a re-thrown string', () => {
+    const sites = SCRAPE.match(/^\s+err,$/gm) ?? []
+    expect(sites.length).toBeGreaterThanOrEqual(3)
+  })
+})

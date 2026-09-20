@@ -2,6 +2,7 @@ import { db, type Job } from '../db.js'
 import { scrapeProfile, UnsupportedPlatformError, ProfileReadFailedError, type ScrapedPost } from '../media.js'
 import { assessScanTarget } from '../scanTarget.js'
 import { selectVideosToTranscribe, transcriptBudgetFor, scrapePoolFor } from '../transcriptSelection.js'
+import { classifyTranscriptFailure } from '../transcriptFailure.js'
 import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { EXTRACTOR_VERSION } from '../extractorVersion.js'
 import { synthesizeVoiceFromPosts, extractKnowledgeFromCaptions } from '../voice.js'
@@ -104,15 +105,29 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   // carries a usable profile (niche/tone/summary), keep it ready — the creator's
   // existing DNA stands, they just didn't get a fresh scan. Only mark 'failed'
   // when there's nothing to fall back to (a first scan that produced no voice).
-  const fail = async (msg: string) => {
+  //
+  // ⚠️ AND THE ROW RECORDED ONLY THE SENTENCE WE SHOW THE CREATOR, WHICH IS
+  // DELIBERATELY VAGUE. "We couldn't read @handle just now" is the right thing
+  // to say to a person and the wrong thing to store: measured 2026-09-20, a
+  // youtube scan — a path that goes STRAIGHT to an Apify Actor with no free
+  // attempt — failed in TWO SECONDS, which is an immediate HTTP rejection
+  // rather than a run that executed. The status code that would have named it
+  // went to `console.error`. Same defect the transcript path had, same fix: the
+  // CLASS and one sample ride the durable result, while the creator still reads
+  // the kind sentence.
+  const fail = async (msg: string, cause?: unknown) => {
+    const diag = cause === undefined ? {} : {
+      failure_class: classifyTranscriptFailure(cause),
+      failure_sample: (cause instanceof Error ? cause.message : String(cause)).slice(0, 200),
+    }
     const { data: cur } = await db.from('brand_voices').select('profile').eq('id', voiceId).maybeSingle()
     const vp = cur?.profile as { niche?: unknown; tone?: unknown; summary?: unknown } | null
     if (vp && (vp.niche || vp.tone || vp.summary)) {
       await db.from('brand_voices').update({ status: 'ready', error: null }).eq('id', voiceId)
-      return { ok: false, reason: msg, kept_existing: true }
+      return { ok: false, reason: msg, kept_existing: true, ...diag }
     }
     await db.from('brand_voices').update({ status: 'failed', error: msg }).eq('id', voiceId)
-    return { ok: false, reason: msg }
+    return { ok: false, reason: msg, ...diag }
   }
 
   // ── WHY WAS THIS CLAIM NOT MADE? (C8 item 3) ─────────────────────────────
@@ -176,6 +191,7 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
       }))
       return await fail(
         `We can't scan ${platform} accounts yet. Connect a TikTok or YouTube account, or set up your voice manually.`,
+        err,
       )
     }
     // ⚠️ THE READER SAID IT COULD NOT READ, AND THAT IS OURS TO OWN. An Apify
@@ -190,6 +206,7 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
       return await fail(
         `We couldn't finish reading @${handle} just now — that is on our side, not your account. ` +
           `Try again in a minute, or set up your voice manually.`,
+        err,
       )
     }
     const detail = err instanceof Error ? err.message : String(err)
@@ -204,6 +221,7 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     }))
     return await fail(
       `We couldn't read @${handle} on ${platform} just now. This is usually on our side — try again shortly, or set up your voice manually.`,
+      err,
     )
   }
 
