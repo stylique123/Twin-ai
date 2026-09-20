@@ -35,7 +35,7 @@ describe('generation never sees a withdrawn entity', () => {
     // reads must filter archived rows, so both are asserted — checking only
     // the fallback would let a withdrawn product reach a script through the
     // path a creator actually chooses.
-    const at = EDGE.indexOf('const { data: picked } = await admin')
+    const at = EDGE.indexOf('const { data: picked, error: pickErr } = await admin')
     expect(at, 'the chosen-product read was not found — did it get renamed?').toBeGreaterThan(-1)
     const read = EDGE.slice(at)
     expect(read.slice(0, read.indexOf('.maybeSingle()'))).toMatch(/\.is\('archived_at', null\)/)

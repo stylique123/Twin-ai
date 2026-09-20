@@ -20,7 +20,7 @@ const fact = (trust: 'usable' | 'needs_confirmation'): ExtractedFact => ({
 })
 
 const entityBase = (): ProductEntityRecord => ({
-  id: 'e1', name: 'Thing', creatorSummary: null, type: 'SAAS', relationship: 'OWN_PRODUCT',
+  id: 'e1', name: 'Thing', creatorSummary: null, offer: null, type: 'SAAS', relationship: 'OWN_PRODUCT',
   personalUse: 'NOT_CONFIRMED', showability: 'UNKNOWN',
   productUrl: null, affiliateUrl: null, evidence: null,
   restrictions: emptyRestrictions(), source: 'user_answer', userConfirmed: true,

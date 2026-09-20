@@ -153,6 +153,27 @@ const EVENTS = {
   // to the next pass. A durable counter here would store a number derivable
   // from the rows it describes, which is the second authority this registry
   // exists to prevent.
+  // ⚠️⚠️ THE SWEEP THAT EXISTS BECAUSE THE PREVIOUS WRITER WAS A HUMAN.
+  // `caption_shape` had one writer — a manual script — so classification froze
+  // on 2026-09-10 at 596 rows while `gallery_items` grew to 6,423, and
+  // `generate-blueprint` kept reading that stale column on every generation.
+  //
+  // ⚖️ EPHEMERAL, AND THE REASON IS THE TABLE ITSELF. Every number in this line
+  // is a `select … group by caption_shape_reason` away: the sweep WRITES its
+  // misses (`no_pattern_match`, `too_short`, `not_english`) rather than skipping
+  // them, precisely so the corpus can be asked what it understood and what it
+  // could not. A durable counter here would store a total derivable from the
+  // rows it describes — the second authority this registry exists to prevent —
+  // and `caption_shape_at` already carries when each row was last read.
+  caption_sweep: {
+    kind: 'counter_ephemeral',
+    why: 'How many gallery cards one sweep read, classified and could not '
+      + 'classify, with the refusal reasons. Not persisted because every figure is '
+      + 'already durable IN `gallery_items`: the sweep writes `caption_shape_reason` '
+      + 'on a miss and `caption_shape_at` on every row it touches, so "what does the '
+      + 'corpus understand, and when was it last read" is a query rather than a '
+      + 'counter. The log line exists to make a stalled sweep visible in the moment.',
+  },
   transcript_retry: {
     kind: 'counter_ephemeral',
     why: 'A transcript call hit a transient or rate-limited failure and is being '

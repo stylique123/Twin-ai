@@ -18,6 +18,10 @@ import { probeAlignment, alignmentSummary } from './alignmentCapabilities.js'
 import { isLeaseLost, isPermanent } from './errors.js'
 import { redact, errorText } from './sanitizeError.js'
 import { stalledUploadIds, SWEEP_INTERVAL_MS, STALLED_UPLOAD_AGE_MS, SWEEP_BATCH } from './stalledUploads.js'
+import {
+  classifyBatch, tally, CAPTION_SWEEP_INTERVAL_MS, CAPTION_SWEEP_BATCH,
+} from './captionSweep.js'
+import { CAPTION_SHAPE_VERSION as CAPTION_SHAPE_VERSION_N } from './generated/captionShape.js'
 
 let running = true
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -132,6 +136,65 @@ async function sweepStalledUploads(): Promise<void> {
     })
   } catch (err) {
     log('error', 'upload_sweep_threw', { error: errorText(err) })
+  }
+}
+
+let lastCaptionSweep = 0
+
+/**
+ * Classify `gallery_items` the corpus has never read.
+ *
+ * ⚠️⚠️ THE READER WAS LIVE AND THE WRITER WAS A HUMAN. `generate-blueprint`
+ * builds its shape block from `caption_shape` on every generation, but the only
+ * thing that ever wrote that column was a script somebody runs by hand — last
+ * run 2026-09-10. 397 cards had never been looked at and 393 had arrived since.
+ *
+ * ⚖️ VERSION-GUARDED, WHICH IS WHAT MAKES A PATTERN CHANGE REACH THE CORPUS.
+ * Rows carrying an OLDER `caption_shape_version` are re-read, so bumping
+ * `CAPTION_SHAPE_VERSION` is the re-run — otherwise a widened pattern set would
+ * never revisit the rows it was widened for and the fix would be invisible.
+ */
+async function sweepCaptionShapes(): Promise<void> {
+  const now = Date.now()
+  if (now - lastCaptionSweep < CAPTION_SWEEP_INTERVAL_MS) return
+  // ⚠️ STAMPED BEFORE THE WORK, not after — the same rule the upload sweep
+  // above learned: stamping on success turns one broken read into a hot loop.
+  lastCaptionSweep = now
+  try {
+    const { data, error } = await db
+      .from('gallery_items')
+      .select('id, title, caption_shape_version')
+      .or(`caption_shape_version.is.null,caption_shape_version.lt.${CAPTION_SHAPE_VERSION_N}`)
+      .limit(CAPTION_SWEEP_BATCH)
+    if (error) {
+      // ⚠️ AN UNKNOWN COLUMN REJECTS THE WHOLE SELECT, and this worker must not
+      // die on a corpus column. Counted and dropped; the queue is the job.
+      log('error', 'caption_sweep_read_failed', { error: redact(error.message) })
+      return
+    }
+    const rows = Array.isArray(data) ? data : []
+    if (rows.length === 0) return
+    const updates = classifyBatch(rows, new Date().toISOString())
+    if (updates.length === 0) return
+    // ⚖️ UPSERT ON THE PRIMARY KEY, one statement for the batch. These rows
+    // already exist; `upsert` here is an UPDATE keyed by id, and writing them
+    // one at a time would be 200 round trips for work nobody is waiting on.
+    const { error: writeErr } = await db.from('gallery_items').upsert(updates, { onConflict: 'id' })
+    if (writeErr) {
+      log('error', 'caption_sweep_write_failed', { error: redact(writeErr.message) })
+      return
+    }
+    const t = tally(updates)
+    log('info', 'caption_sweep', {
+      event: 'caption_sweep',
+      read: t.read,
+      classified: t.classified,
+      unclassified: t.unclassified,
+      reasons: t.byReason,
+      version: CAPTION_SHAPE_VERSION_N,
+    })
+  } catch (err) {
+    log('error', 'caption_sweep_threw', { error: errorText(err) })
   }
 }
 
@@ -344,6 +407,10 @@ async function main() {
       // ⚖️ BEFORE THE CLAIM AND NEVER BLOCKING IT: the sweep only enqueues, so
       // the jobs it creates are picked up by this same tick or the next one.
       await sweepStalledUploads()
+      // ⚖️ BESIDE THE UPLOAD SWEEP AND ON THE SAME TERMS: bounded, interval
+      // gated, and it never blocks the claim below. A corpus that grows only
+      // when somebody remembers to run a script is not a learning loop.
+      await sweepCaptionShapes()
       const didWork = await tick()
       if (!didWork) await sleep(env.pollMs) // idle backoff when the queue is empty
     } catch (err) {

@@ -28,7 +28,7 @@ describe('the prompt sees usable facts and nothing else', () => {
     // fallback is deleted — it was the shared cause of three audited compliance
     // failures — so the chosen lookup is now the only query that resolves the
     // product, and it is the one that must select `knowledge`.
-    for (const anchor of ['const { data: picked } = await admin', 'const requestedProductId']) {
+    for (const anchor of ['const { data: picked, error: pickErr } = await admin', 'const requestedProductId']) {
       const at = EDGE.indexOf(anchor)
       expect(at, `${anchor} not found — did it get renamed?`).toBeGreaterThan(-1)
       const read = EDGE.slice(at)

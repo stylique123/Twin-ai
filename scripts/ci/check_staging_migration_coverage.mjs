@@ -72,6 +72,17 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0222_the_offer_belonged_to_the_product_not_the_account':
+    'Adds `product_entities.offer` so the offer belongs to the PRODUCT rather than the '
+    + 'ACCOUNT. 52 of 54 ready voices carry a scanned `profile.offer` \u2014 one sentence per '
+    + 'account, written by a model, editable nowhere \u2014 and a creator with two products had '
+    + 'one offer between them. THE EXCLUSION IS INHERITED, NOT A NEW JUDGEMENT: '
+    + '`0120_product_entities` is itself excluded, so staging has no such table and the '
+    + '`alter table` would fail on its first line rather than pass vacuously. '
+    + '\u2696\ufe0f NOTHING BREAKS BY WAITING. The column is nullable and nothing is '
+    + 'backfilled, so until it lands the writer\u2019s offer chain reads exactly what it read '
+    + 'before; both the web loader and the blueprint read carry a narrow retry keyed on the '
+    + 'column name, so an unapplied migration costs the offer LINE and never the product. ',
   '0221_two_people_cannot_both_own_one_account':
     'Adds `brand_voices.ownership` + `ownership_asked_at` (\u00a7R), the conflict index, the '
     + 'restamp trigger and the `voice_ownership_conflicts()` reader, so a creator can ANSWER '

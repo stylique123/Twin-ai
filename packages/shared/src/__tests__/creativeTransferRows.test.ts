@@ -46,13 +46,37 @@ describe('two dimensions were deleted, and stay deleted', () => {
   // codebase, so a writer is buildable. "Obtainable" is not "written". Deleting
   // them would hide work that is worth doing; deleting the other two removed
   // work nobody can do.
-  it('the six buildable dimensions are still shown', () => {
+  // ⚠️⚠️ THIS ASSERTED SIX AND NOW ASSERTS THREE, on the owner's instruction —
+  // "if you already pulled it add it, otherwise remove it" — after the six rows
+  // were reported as broken-looking for the third time.
+  //
+  // ⚖️ THE EARLIER DECISION WAS NOT WRONG, IT WAS OUTLASTED. It kept `Zooms`,
+  // `Music` and `Pacing of dead space` because a writer was BUILDABLE. None was
+  // ever built, so all three printed "We did not analyse the video" on every
+  // reference that has ever existed — and a permanent NOT OBSERVED reads as a
+  // gap a better scan would close, which it never would.
+  //
+  // ⚖️ THE THREE THAT REMAIN CAN BE OBSERVED, and `visualEvidence.ts` maps each
+  // to a real field. A null on one of those is a fact about ONE video.
+  it('only the dimensions that CAN be observed are shown', () => {
     const labels = transferRows(null).map((r) => r.label)
-    for (const l of ['Shot choices', 'Camera work', 'Framing', 'Zooms', 'Music',
-      'Pacing of dead space']) {
+    for (const l of ['Shot choices', 'Camera work', 'Framing']) {
       expect(labels, `${l} disappeared with the deletion`).toContain(l)
     }
-    expect(MISSING_EVIDENCE_TYPES).toHaveLength(6)
+    for (const l of ['Zooms', 'Music', 'Pacing of dead space']) {
+      expect(labels, `${l} has no possible writer and must not be a row`).not.toContain(l)
+    }
+    expect(MISSING_EVIDENCE_TYPES).toHaveLength(3)
+  })
+
+  it('a row with no possible writer is never re-added by accident', () => {
+    // ⚠️ THE TYPES STAY IN THE TAXONOMY so a future pass can restore a row in
+    // one line. What must not happen is one drifting back into the gap list
+    // while `visualEvidence.ts` still says it has no source.
+    for (const t of ['zoom_frequency_intensity', 'music_energy_beat_alignment',
+      'silence_and_visual_waste'] as const) {
+      expect(MISSING_EVIDENCE_TYPES, `${t} is back without a writer`).not.toContain(t)
+    }
   })
 
   // ⚠️ AND EVERY UNMEASURED DIMENSION MUST HAVE A HUMAN LABEL. Removing a type

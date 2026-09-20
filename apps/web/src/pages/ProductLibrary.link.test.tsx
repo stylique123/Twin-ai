@@ -27,7 +27,7 @@ const updateEntityPresentation = vi.fn(async () => {})
 
 /** Already read once: the state in which the old card offered no way to re-read. */
 const KNOWN_ENTITY: ProductEntityRecord = {
-  id: 'e1', name: 'Peak Tripod', creatorSummary: null, type: 'PHYSICAL_PRODUCT',
+  id: 'e1', name: 'Peak Tripod', creatorSummary: null, offer: null, type: 'PHYSICAL_PRODUCT',
   relationship: 'OWN_PRODUCT', personalUse: 'NOT_CONFIRMED', showability: 'UNKNOWN',
   productUrl: 'https://peakdesign.example/tripod', affiliateUrl: null, evidence: null,
   restrictions: { approvedClaims: [], forbiddenClaims: [], complianceNotes: null },

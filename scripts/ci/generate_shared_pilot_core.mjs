@@ -111,7 +111,26 @@ const SOURCES = [
   // shipped as the RECOMMENDED option naming nothing at all. Generated rather
   // than retyped for the same reason as shotListSync.ts above.
   ['packages/shared/src/script/hookSubject.ts', 'supabase/functions/_shared/hookSubject.ts'],
+  // ⚠️⚠️ THE CAPTION CLASSIFIER, GENERATED INTO THE WORKER, AND THE REASON IS A
+  // CORPUS THAT STOPPED GROWING. `caption_shape` had exactly ONE writer —
+  // `scripts/backfill-caption-shapes.ts`, a manual script an operator runs by
+  // hand — so classification froze on 2026-09-10 at 596 rows while the table
+  // grew to 6,423. 397 cards were never processed at all. The shape block in
+  // `generate-blueprint` reads that column on EVERY generation, so a reader on
+  // a live path was being fed a snapshot nobody was refreshing.
+  //
+  // ⚖️ AND THE SCRIPT'S OWN HEADER EXPLAINS WHY IT WAS A SCRIPT: the worker may
+  // not import `@twinai/shared`, so a worker job would need a SECOND COPY of
+  // eight regexes behind a parity test — and 0196 warns that a corpus quietly
+  // mixing two vocabularies is unrecoverable. That argument is correct about a
+  // HAND copy. This mechanism is the one thing it does not apply to: the copy is
+  // generated, CI fails on a diff, and there is still exactly one author.
+  ['packages/shared/src/assessed.ts', 'worker/src/generated/assessed.ts'],
+  ['packages/shared/src/corpus/captionShape.ts', 'worker/src/generated/captionShape.ts'],
 ]
+
+/** Destinations the Node worker imports, which resolve `.js` — not Deno. */
+const isWorkerDest = (to) => to.startsWith('worker/')
 
 // ⚠️ A SHEBANG IS LEGAL ONLY ON LINE 1, AND THE HEADER PUSHES IT TO LINE 5.
 // The first five sources here are library modules with no shebang, so this went
@@ -120,8 +139,22 @@ const SOURCES = [
 // both. Stripped rather than tolerated: the Deno copy is imported, never run.
 const stripShebang = (src) => src.replace(/^#![^\n]*\n/, '')
 
-const render = (from, src0) => {
+const render = (from, src0, to = '') => {
   const src = stripShebang(src0)
+  // ⚠️⚠️ THE WORKER IS NODE, NOT DENO, AND THE DEFAULT REWRITE IS BACKWARDS FOR
+  // IT. Every rule below turns a relative specifier INTO `.ts`, which Node's ESM
+  // resolver rejects outright. A worker copy therefore takes the opposite
+  // rewrite: bare relative imports gain `.js`, and the one parent-directory
+  // import this set has (`../assessed`) is flattened to its sibling copy —
+  // which is why `assessed.ts` is generated beside it rather than reached for.
+  if (isWorkerDest(to)) {
+    return `// GENERATED FROM ${from} — DO NOT EDIT.\n`
+    + `// Run: node scripts/ci/generate_shared_pilot_core.mjs\n`
+    + `// Edit the source instead. CI regenerates this file and fails on a diff.\n`
+    + src
+      .replace(/from '\.\.\/assessed'/g, "from './assessed.js'")
+      .replace(/(from\s+'\.\/[A-Za-z0-9_-]+)'/g, "$1.js'")
+  }
   return `// GENERATED FROM ${from} — DO NOT EDIT.\n`
   + `// Run: node scripts/ci/generate_shared_pilot_core.mjs\n`
   + `// Edit the source instead. CI regenerates this file and fails on a diff.\n`
@@ -153,13 +186,23 @@ const unresolvableImports = (text) => {
   return out
 }
 
+/** The worker's mirror image: a relative `.ts` specifier Node cannot resolve. */
+const unresolvableTsImports = (text) => {
+  const out = []
+  for (const m of text.matchAll(/from\s+'(\.[^']*\.ts)'/g)) out.push(m[1])
+  return out
+}
+
 const check = process.argv.includes('--check')
 let stale = 0
 for (const [from, to] of SOURCES) {
-  const want = render(from, readFileSync(from, 'utf8'))
+  const want = render(from, readFileSync(from, 'utf8'), to)
   let have = null
   try { have = readFileSync(to, 'utf8') } catch { /* absent counts as stale */ }
-  const unresolvable = unresolvableImports(want)
+  // ⚠️ THE ASSERTION IS PER-RUNTIME, because the two are exact opposites: a
+  // relative `.js` is fatal to Deno and REQUIRED by Node. Checking a worker copy
+  // with the Deno rule would fail every correct file.
+  const unresolvable = isWorkerDest(to) ? unresolvableTsImports(want) : unresolvableImports(want)
   if (unresolvable.length > 0) {
     console.error(`::error::${to} would import ${unresolvable.join(', ')} — Deno cannot resolve a `
       + `relative .js specifier and the edge deploy fails on "Module not found ... Maybe change `

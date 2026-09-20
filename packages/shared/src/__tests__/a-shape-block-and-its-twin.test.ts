@@ -15,7 +15,7 @@ import { dirname, resolve } from 'node:path'
 import { transformSync } from 'esbuild'
 import { selectEvidenceCohort, shapeBlock } from '../corpus/cohort'
 import { MIN_COHORT, type FacetVector } from '../corpus/facets'
-import { nicheBucket } from '../nicheQuestions'
+import { nicheBucket, NICHE_BUCKETS } from '../nicheQuestions'
 import type { CohortCard } from '../corpus/cohort'
 
 const EDGE = readFileSync(
@@ -44,11 +44,27 @@ function loadInline(): {
 const inline = loadInline()
 
 describe('the two bucket readers agree on every niche the corpus holds', () => {
+  // ⚠️⚠️ THIS TABLE IS NOT A SAMPLE ANY MORE, AND THE REASON IS A REAL MISS.
+  // `making` was added to `nicheQuestions.ts` on 2026-09-15 and never reached
+  // the edge copy — and THIS TEST PASSED THROUGHOUT, because its fourteen
+  // hand-picked niches happened to contain no leatherworker. The one guard
+  // against the two lists drifting agreed they matched while they did not.
+  //
+  // ⚖️ SO COVERAGE IS ASSERTED AGAINST `NICHE_BUCKETS` ITSELF. Every bucket the
+  // canonical list declares must have a niche here that lands in it; adding a
+  // bucket without exercising it now FAILS rather than passing quietly. A fixed
+  // sample can only ever prove the two agree on what somebody remembered.
   const NICHES = [
     'micro-bakery and sourdough', 'ai tools for founders', 'skincare routines',
     'physio and rehab', 'short-form content creation', 'comedy skits and dubbing',
     'real estate investing', 'saas marketing', 'android development',
     '', '   ', 'underwater basket weaving', 'FOOD', 'Fitness Coaching',
+    // The buckets the fixed sample never reached. Each is a REAL stored niche.
+    'Leathercraft & Custom Bible Rebinding', 'Handmade Soy Candles',
+    'Mobile Auto Repair & Mechanic Storytime',
+    'Education', 'viral product ideas', 'Lifestyle', 'mindset and patience',
+    'Automotive', 'Visual illusions', 'solo phone videography', 'reed basketry',
+    'feel-good productivity', 'Psychology', 'Pakistani professional success',
   ]
   for (const n of NICHES) {
     it(`agrees on: ${JSON.stringify(n)}`, () => {
@@ -56,9 +72,29 @@ describe('the two bucket readers agree on every niche the corpus holds', () => {
     })
   }
 
-  it('the table actually exercises real buckets, or it proves nothing', () => {
-    const hit = NICHES.map((n) => nicheBucket(n)).filter((b) => b !== null)
-    expect(new Set(hit).size).toBeGreaterThanOrEqual(5)
+  it('every declared bucket is actually exercised, or this proves nothing', () => {
+    // ⚠️ THE ASSERTION THAT WOULD HAVE CAUGHT `making`. A bucket no niche in the
+    // table reaches is a bucket this file is silent about — and silence here is
+    // what let one list grow past the other for five days.
+    const reached = new Set(NICHES.map((n) => nicheBucket(n)).filter((b) => b !== null))
+    const missing = NICHE_BUCKETS.filter((b) => !reached.has(b))
+    expect(missing).toEqual([])
+  })
+
+  it('a niche that matches nothing is null on both sides', () => {
+    // ⚖️ NULL IS A REAL ANSWER AND MUST STAY ONE. Widening the list must never
+    // turn "we do not know her world" into a confident wrong bucket.
+    expect(nicheBucket('underwater basket weaving')).toBe(inline.nicheBucketInline('underwater basket weaving'))
+  })
+
+  it('the four added buckets did not steal a creator from an existing one', () => {
+    // ⚠️⚠️ `find` RETURNS THE FIRST MATCH, so appending is only safe if nothing
+    // above changed. These are the collisions that would matter: each word below
+    // appears in BOTH a new pattern and an older one, and the older must win.
+    expect(nicheBucket('business success stories')).toBe('business')   // not mindset
+    expect(nicheBucket('fitness training for students')).toBe('health') // not education
+    expect(nicheBucket('mechanic storytime')).toBe('making')            // not automotive
+    expect(nicheBucket('cooking tutorials')).toBe('food')               // not education
   })
 })
 

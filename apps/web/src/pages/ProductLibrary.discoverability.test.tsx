@@ -29,7 +29,7 @@ vi.mock('react-router-dom', async () => {
 })
 
 const ENTITY: ProductEntityRecord = {
-  id: 'e1', name: 'Peak Tripod', creatorSummary: null, type: 'PHYSICAL_PRODUCT',
+  id: 'e1', name: 'Peak Tripod', creatorSummary: null, offer: null, type: 'PHYSICAL_PRODUCT',
   relationship: 'OWN_PRODUCT', personalUse: 'NOT_CONFIRMED', showability: 'UNKNOWN',
   productUrl: 'https://peakdesign.example/tripod', affiliateUrl: null, evidence: null,
   restrictions: { approvedClaims: [], forbiddenClaims: [], complianceNotes: null },
@@ -161,7 +161,7 @@ describe('the card does not tell a creator it knows nothing they have already to
     const original = load.getMockImplementation()
     load.mockImplementation(async (o?: { includeArchived?: boolean }) => o?.includeArchived ? [] : [{
       ...ENTITY, knowledge: null, productUrl: null,
-      creatorSummary: 'Sourdough loaves, baked to order for people near me',
+      creatorSummary: 'Sourdough loaves, baked to order for people near me', offer: null,
     }])
     try {
       const { default: ProductLibrary } = await import('./ProductLibrary')
@@ -179,7 +179,7 @@ describe('the card does not tell a creator it knows nothing they have already to
     const load = vi.mocked(shared.loadProductEntities)
     const original = load.getMockImplementation()
     load.mockImplementation(async (o?: { includeArchived?: boolean }) => o?.includeArchived ? [] : [{
-      ...ENTITY, knowledge: null, productUrl: null, creatorSummary: null,
+      ...ENTITY, knowledge: null, productUrl: null, creatorSummary: null, offer: null,
     }])
     try {
       const { default: ProductLibrary } = await import('./ProductLibrary')
@@ -200,8 +200,8 @@ describe('two unnamed products are not two identical blank cards', () => {
     const load = vi.mocked(shared.loadProductEntities)
     const original = load.getMockImplementation()
     load.mockImplementation(async (o?: { includeArchived?: boolean }) => o?.includeArchived ? [] : [
-      { ...ENTITY, id: 'a', name: null, creatorSummary: null, productUrl: 'https://www.medicube.example/booster' },
-      { ...ENTITY, id: 'b', name: null, creatorSummary: 'Sourdough loaves, baked to order', productUrl: null },
+      { ...ENTITY, id: 'a', name: null, creatorSummary: null, offer: null, productUrl: 'https://www.medicube.example/booster' },
+      { ...ENTITY, id: 'b', name: null, creatorSummary: 'Sourdough loaves, baked to order', offer: null, productUrl: null },
     ])
     try { await fn() } finally { load.mockImplementation(original!) }
   }
@@ -225,7 +225,7 @@ describe('two unnamed products are not two identical blank cards', () => {
     const load = vi.mocked(shared.loadProductEntities)
     const original = load.getMockImplementation()
     load.mockImplementation(async (o?: { includeArchived?: boolean }) => o?.includeArchived ? [] : [
-      { ...ENTITY, name: null, creatorSummary: null, productUrl: null },
+      { ...ENTITY, name: null, creatorSummary: null, offer: null, productUrl: null },
     ])
     try {
       const { default: ProductLibrary } = await import('./ProductLibrary')
@@ -293,7 +293,7 @@ describe('a save is confirmed beside the field that was edited', () => {
 
   it('reports on the one-line description independently', async () => {
     await page()
-    const box = screen.getByPlaceholderText(/Sourdough loaves/i)
+    const box = screen.getByPlaceholderText(/What it is, and who it is for/i)
     fireEvent.blur(box, { target: { value: 'A travel tripod for phone filming' } })
     await waitFor(() => expect(updateEntityPresentation).toHaveBeenCalled())
     await waitFor(() =>
