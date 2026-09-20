@@ -72,6 +72,21 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0221_two_people_cannot_both_own_one_account':
+    'Adds `brand_voices.ownership` + `ownership_asked_at` (\u00a7R), the conflict index, the '
+    + 'restamp trigger and the `voice_ownership_conflicts()` reader, so a creator can ANSWER '
+    + '\u201cis this your account?\u201d for a handle another owner also claims \u2014 six such '
+    + 'handles cover 20 ready voices, and the false claim feeds a stranger\u2019s sentences to the '
+    + 'writer as the creator\u2019s own. THE EXCLUSION IS INHERITED, NOT A NEW JUDGEMENT: the '
+    + 'restamp trigger updates `public.transcripts`, which staging does not have (0004 creates it '
+    + 'far outside the matrix \u2014 the same reason 0135, 0169 and 0220 are excluded). '
+    + '\u26a0\ufe0f AND \u00a7P APPLIES: an excluded migration\u2019s first execution IS '
+    + 'production, so this one was read against the real schema before applying rather than trusted '
+    + 'because CI was green. '
+    + '\u2696\ufe0f NOTHING BREAKS BY WAITING. `ownership` defaults to `unverified`, which behaves '
+    + 'exactly as before the column existed; the worker\u2019s stamp read and the client\u2019s '
+    + 'conflict read both degrade to the pre-0221 behaviour when the column or function is absent. '
+    + 'Only an explicit \u201cno\u201d changes anything, and nobody can give one until this lands. ',
   '0220_ten_accounts_one_pool_and_the_writer_read_all_ten':
     'Adds `brand_voice_id` to `public.transcripts` (plus an index and a backfill) so the '
     + 'style compiler and the re-miner stop reading ONE OWNER\u2019S TEN VOICES as one '

@@ -1299,6 +1299,11 @@ export interface StartDnaResult {
   // 'manual' when the creator opted to describe their voice by hand (no scan);
   // 'building' otherwise.
   status: 'building' | 'ready' | 'manual'
+  // §R — true when ANOTHER owner already holds this exact handle+platform. Two
+  // people cannot both own one TikTok account, so one of the claims is false.
+  // It is a flag, not a verdict: five owners sharing one company account is
+  // legitimate, which is why this asks rather than refuses.
+  ownership_conflict?: boolean
 }
 
 // ---- Referrals -----------------------------------------------------------
@@ -1401,6 +1406,46 @@ export async function listBrandVoices(): Promise<BrandVoice[]> {
 // profile also marks the voice READY: a voice the creator has reviewed and saved
 // is usable by definition, so it must never be left in a 'building'/'failed' scan
 // state that would later block remixing (the "import your brand DNA" snag).
+// §R — which of this creator's voices carry a handle someone else also claims.
+//
+// ⚠️ THIS CANNOT BE COMPUTED CLIENT-SIDE. RLS lets a creator read their own
+// `brand_voices` rows and nobody else's, so the very fact the question depends
+// on is invisible here. The `security definer` function answers it without
+// returning who the other owners are.
+//
+// ⚖️ DEGRADES TO "NO CONFLICTS". If the function is not deployed yet, the call
+// must not break the voice list — a missing guard shows what it showed before,
+// it does not show an error where a creator's voices should be.
+export async function listVoiceOwnershipConflicts(): Promise<Record<string, number>> {
+  try {
+    const { data, error } = await supabase.rpc('voice_ownership_conflicts')
+    if (error) return {}
+    const out: Record<string, number> = {}
+    for (const r of (data ?? []) as Array<{ voice_id?: string; other_owners?: number }>) {
+      if (r?.voice_id) out[r.voice_id] = Number(r.other_owners ?? 0)
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+// §R — record the creator's ANSWER to "is this your account?".
+//
+// ⚖️ "NO" IS A DEMOTION, NOT A DELETION. Studying a competitor is legitimate;
+// claiming their speech as your own is not. The voice keeps its row and its
+// profile and becomes a reference voice — and 0221's trigger restamps its stored
+// transcripts from `subject='own'` to `subject='reference'`, which switches off
+// every reader that compiles the creator's cadence without any of them needing a
+// new column. Nothing here deletes anything.
+export async function answerVoiceOwnership(id: string, mine: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('brand_voices')
+    .update({ ownership: mine ? 'own' : 'reference', ownership_asked_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function saveVoiceProfile(id: string, profile: VoiceProfile): Promise<void> {
   const { data, error } = await supabase
     .from('brand_voices')

@@ -222,11 +222,51 @@ Deno.serve(async (req: Request) => {
     voiceId = voice.id
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // §R — "is this your account?", asked only when something objective says it
+  // might not be.
+  //
+  // ⚠️ TWO PEOPLE CANNOT BOTH OWN ONE TIKTOK ACCOUNT. When another owner already
+  // holds this exact handle+platform, one of the two claims is false — and in
+  // production six such pairs cover 20 ready voices. The bad case stores a
+  // stranger's sentences under `subject='own'` and hands them to the writer as
+  // things this creator said.
+  //
+  // ⚖️ IT IS A FLAG, NOT A BLOCK, AND THE SCAN PROCEEDS EITHER WAY. Five owners
+  // sharing `styliquetechnologies` are one team on one company account, and a
+  // refusal would break them to stop the other four. The client asks; the answer
+  // is written to `brand_voices.ownership`; a "no" demotes the voice to reference
+  // and restamps its speech (0221). Until answered, behaviour is unchanged.
+  //
+  // ⚖️ BEST EFFORT. A failure here must never cost the creator their scan, so the
+  // flag falls back to `false` — the pre-0221 behaviour — rather than throwing.
+  let ownershipConflict = false
+  try {
+    const { data: claimants } = await admin
+      .from('brand_voices')
+      .select('owner_id')
+      .ilike('handle', handle)
+      .eq('platform', platform)
+      .limit(50)
+    ownershipConflict = (claimants ?? []).some((c) => c?.owner_id && c.owner_id !== user.id)
+    if (ownershipConflict) {
+      // ⚠️ STAMPED ONLY WHEN WE ACTUALLY ASK, so the UI can tell "never asked"
+      // from "asked and dismissed" and stop re-prompting on every page load.
+      await admin
+        .from('brand_voices')
+        .update({ ownership_asked_at: new Date().toISOString() })
+        .eq('id', voiceId)
+        .eq('ownership', 'unverified')
+    }
+  } catch (err) {
+    console.error('start-dna: ownership conflict check failed', err)
+  }
+
   // MANUAL: no scrape. The row exists (status 'building'); the creator fills the
   // confirm form, which saves their profile and flips it to ready. Return now so
   // the client jumps straight to that form — the first run can never hang here.
   if (isManual) {
-    return json({ brand_voice_id: voiceId, job_id: null, status: 'manual' })
+    return json({ brand_voice_id: voiceId, job_id: null, status: 'manual', ownership_conflict: ownershipConflict })
   }
 
   // HANDLE CACHE: a creator's public voice is identical no matter who scans it, so
@@ -294,6 +334,7 @@ Deno.serve(async (req: Request) => {
         job_id: knowledgeJob?.id ?? null,
         status: 'ready',
         cached: true,
+        ownership_conflict: ownershipConflict,
       })
     }
   }
@@ -344,7 +385,7 @@ Deno.serve(async (req: Request) => {
       })
       .select('id')
       .single()
-    return json({ brand_voice_id: voiceId, job_id: job?.id ?? null, status: 'building' })
+    return json({ brand_voice_id: voiceId, job_id: job?.id ?? null, status: 'building', ownership_conflict: ownershipConflict })
   }
 
   // Kick the Apify scrape asynchronously. If Apify isn't configured/healthy,
@@ -361,7 +402,7 @@ Deno.serve(async (req: Request) => {
       })
       .select('id')
       .single()
-    return json({ brand_voice_id: voiceId, job_id: job?.id ?? null, status: 'building' })
+    return json({ brand_voice_id: voiceId, job_id: job?.id ?? null, status: 'building', ownership_conflict: ownershipConflict })
   } catch (err) {
     console.error('start-dna: apify start failed', err)
     await admin

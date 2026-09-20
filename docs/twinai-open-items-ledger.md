@@ -3338,6 +3338,7 @@ transactional, so the failed `update` took the `alter table` and the
 and index 0, before re-applying the corrected file. Had the DDL committed and
 only the backfill failed, the column would exist unpopulated and every reader's
 degradation path would have been the thing keeping the product alive.
+
 ## §Q — `creator_knowledge.voice_id`: written on every row since the table existed, never read where it mattered
 
 ⚠️ **1,949 OF 1,949 ROWS CARRY `voice_id` IN PRODUCTION — 100%, NO NULLS.** The
@@ -3614,3 +3615,105 @@ overwrites the last and the field becomes a tail of the log rather than one
 sample. This is the sixth correction to the failure-reporting path in two days
 and, like the five before it, it was found by reading what production actually
 wrote rather than by reasoning about what it might write.
+
+
+## §X — The guard that is a question, built; and the row I was about to overwrite
+
+⚖️ **§R IS BUILT AND APPLIED (0221).** Six handle+platform pairs are claimed by
+more than one owner, across 20 `ready` voices. Two people cannot both own one
+TikTok account, so one claim in each pair is false — and the false one stores a
+stranger's sentences under `subject='own'` and hands them to the writer as things
+this creator said.
+
+⚖️ **THE SHAPE THAT UNBLOCKED IT WAS "WHAT DOES A NO DO", AND THE ANSWER IS
+DEMOTE, NOT DELETE.** Studying a competitor is legitimate; claiming their speech
+is not. A disclaimed voice keeps its row and its profile and becomes a REFERENCE
+voice, and a trigger restamps its transcripts from `subject='own'` to
+`subject='reference'`.
+
+⚖️ **AND THAT RESTAMP IS WHY THIS IS SMALL.** Every reader that matters already
+filters on `subject='own'` — the style compiler, `remineKnowledge`, the voice
+compiler. One flip switches ALL of them off at once. The guard rides the filter
+the codebase already trusts instead of adding a second one beside it for a reader
+to forget. **No new reader was written, and that is the feature.**
+
+⚠️ **SCOPED BY `brand_voice_id`, WHICH IS WHY 0220 HAD TO LAND FIRST.** Under
+`owner_id` alone, one answer about one voice would have demoted all ten of a
+multi-voice owner's voices.
+
+⚠️ **THE CONFLICT IS INVISIBLE TO THE BROWSER, AND THAT IS NOT AN OVERSIGHT.**
+RLS lets a creator read their own `brand_voices` rows and nobody else's — the
+very fact the question depends on. `voice_ownership_conflicts()` is
+`security definer` for that reason, and returns ids and a COUNT, never the other
+owners: who else claims a handle is not the asking creator's business, and
+leaking it would turn a safety question into a directory of other people's
+accounts.
+
+⚠️ **NOTHING IS BACKFILLED TO `own`.** Six single-owner voices are public figures
+scanned by someone who is not them (hubermanlab, zachking, aliabdaal,
+davidheikka, matthew_berman, starterstory) and show NO objective signal. Marking
+them `own` would assert an ownership fact nobody supplied — the same fabrication
+in a smaller font. `unverified` behaves exactly as before the column existed.
+
+⚠️ **A TEST CAUGHT THE GUARD HIDING THE THING IT GUARDS.** The conflict read
+started life inside the voice list's `Promise.all`, so a stubbed module without
+the export rejected the pair and left an error where the creator's brands go. A
+safety question that can take down the page it asks on is worse than no question.
+Separate await, separate catch, and deliberately second.
+
+**Applied and verified:** 2 columns, 2 functions, 1 trigger, 1 constraint, **0
+rows changed**, 418 `own` transcripts untouched. The reader selects exactly the
+20 contested voices — and `Hormozi` beside `hormozi` is why the lowercasing
+earns its place.
+
+---
+
+## §Y — §T said one row was wrong. The creator had answered it herself.
+
+⚠️ **I WAS ONE STATEMENT AWAY FROM OVERWRITING A HUMAN'S ANSWER.** §T records
+`Custom Bible Rebind` as stored `SERVICE`/`NEVER` and calls it "at least one row
+is wrong" — its summary reads *"I rebind your Bible in full-grain leather —
+Horween or Pueblo, hand-stitched, Oxford hollow spine"*, which is about as
+showable as an object gets. The correction was written and ready to apply.
+
+⚖️ **THEN THE ROW SAID `source: 'user_answer'`, `user_confirmed: true`.** She
+chose NEVER. Substituting my inference for her stated answer is exactly the
+fabrication class this codebase refuses, and it would have been indistinguishable
+from a bug the next time anyone looked.
+
+⚖️ **AND THE REASON I CANNOT SEE MAY BE A GOOD ONE.** The Bible she rebinds is
+the CUSTOMER'S — it is not hers to put on camera. Or she does not want her hands
+in frame. §T assumed a wrong column; the column may be right and the ledger
+wrong. **I do not know, and that is precisely why a question beats a correction.**
+
+⚖️ **SO §T IS RESOLVED AS A QUESTION, NOT A DATA FIX.** `showabilityContradiction`
+renders a nudge directly above the showability corrector that has existed all
+along — what was missing was never the corrector, it was any way to NOTICE. It
+quotes her own words back (`“leather”`, `“hand-stitched”`) and never writes.
+
+⚠️⚠️ **THE OBVIOUS DETECTOR IS THE ONE THAT MUST NOT BE BUILT, AND THE TEST IS
+MOSTLY ABOUT SILENCE.** "Does the summary mention a physical noun" fires on
+`Weekly Meal Prep` ("five days of fresh meals") and on a workshop row mentioning
+"a bestselling book" — and Weekly Meal Prep is THE product whose creator was told
+to hold a clean glass of water. So the detector looks for ONE narrow thing:
+vocabulary naming what a thing is MADE OF, or a construction verb. A meal is not
+made of leather. All nine production `NEVER` rows are in the test; **eight of
+them assert silence.**
+
+⚖️ **IT ARGUES ONLY IN THE CHEAP DIRECTION.** §T's own trade, enforced in code: a
+wrong `NEVER` costs a handling cue, a wrong `ALWAYS` costs an invented prop in a
+creator's script — thin video versus fabrication. So a word-match may argue
+toward SHOWING and never toward hiding. `showabilityContradiction('ALWAYS', …)`
+returns null by construction.
+
+⚠️ **AND A TEST CAUGHT IT MISQUOTING ITS OWN EVIDENCE.** It first returned the
+dictionary term it searched for, so a creator who wrote "hand-stitched" would
+have been shown "hand stitched" as her own words. A question that misquotes its
+evidence is not showing its work, it is inventing it. It now returns the match.
+
+⚠️ **SEPARATELY: `object_shape` IS NULL ON ALL 22 PRODUCT ROWS.** §T proposed
+keying the detector on it. The Step-3 extractor that writes it shipped hours ago
+and products are extracted on demand, so nothing has re-run — this is "not yet
+exercised", NOT a broken writer, and should not be read as one. It is also why
+the detector above keys on the creator's sentence instead: **a gate cannot wait
+on a column nothing has written yet.**

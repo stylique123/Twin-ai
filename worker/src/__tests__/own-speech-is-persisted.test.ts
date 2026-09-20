@@ -27,11 +27,16 @@ describe('the scan persists the speech it paid for', () => {
     expect(VOICE).toMatch(/await db\s*\n?\s*\.from\('transcripts'\)\s*\n?\s*\.insert\(\{/)
   })
 
-  it("stamps it `own`, which is what the style compiler filters on", () => {
+  it("stamps it from `ownSubject`, which is what the style compiler filters on", () => {
     // ⚠️ AN UNSTAMPED ROW IS INVISIBLE TO THE READER and a mis-stamped one
     // teaches the writer a stranger's cadence. Neither fails loudly.
-    expect(VOICE).toMatch(/subject: 'own'/)
-    expect(VOICE).not.toMatch(/subject: 'reference'/)
+    expect(VOICE).toMatch(/subject: ownSubject/)
+    // ⚠️ AND THE DEFAULT IS STILL `own`. §R/0221 lets a creator answer "this is
+    // not my account", which demotes the stamp to 'reference' — but an UNKNOWN
+    // answer, a missing column, or a failed read must never silently demote
+    // speech the scan has already paid for.
+    expect(VOICE).toMatch(/let ownSubject: 'own' \| 'reference' = 'own'/)
+    expect(VOICE).toMatch(/ownership'\) === 'reference'\)|=== 'reference'\) \{/)
   })
 
   it('stores the URL it actually transcribed, not the handle or the job id', () => {
