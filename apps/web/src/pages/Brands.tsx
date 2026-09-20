@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, Check, Loader2, Pencil, AtSign, Sparkles, AlertCircle, Building2, X, Star,
-  ScanSearch, FileText, Share2, Users,
+  ScanSearch, FileText, Share2, Users, HelpCircle,
 } from 'lucide-react'
 import {
   listBrandVoices, setDefaultBrandVoice, renameBrandVoice, ensureBrandShareToken, startDna, pollDna,
+  listVoiceOwnershipConflicts, answerVoiceOwnership,
 } from '../lib/api'
 import { planFor, EXTRA_BRAND_VOICE_PRICE } from '../lib/brand'
 import { useAuth } from '../context/AuthContext'
@@ -43,6 +44,12 @@ export default function Brands() {
   // mid-scan (otherwise it keeps polling for up to ~2 minutes after unmount).
   const retryTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   useEffect(() => () => { if (retryTimer.current) clearInterval(retryTimer.current) }, [])
+  // §R — voice ids whose handle another owner also claims, to the count of the
+  // other claimants. Two people cannot both own one TikTok account, so one of
+  // the claims is false; six such handles cover 20 ready voices in production.
+  // It is a QUESTION, never a verdict — five owners sharing one company account
+  // is legitimate, and a refusal would break them to stop the other four.
+  const [conflicts, setConflicts] = useState<Record<string, number>>({})
 
   const plan = planFor(profile?.plan)
   const ready = voices.filter((v) => v.status === 'ready')
@@ -52,6 +59,15 @@ export default function Brands() {
   const load = async () => {
     try {
       setVoices(await listBrandVoices())
+      // ⚠️ SEPARATE AWAIT, SEPARATE CATCH, AND DELIBERATELY AFTER. Sharing the
+      // voice list's `Promise.all` meant ANY failure in the guard — an
+      // undeployed function, a stubbed module missing the export — rejected the
+      // pair and left the page showing an error where the creator's brands go.
+      // A safety question that can hide the thing it is asking about is worse
+      // than no question. The list renders first; the guard decorates it.
+      try {
+        setConflicts(await listVoiceOwnershipConflicts())
+      } catch { /* no question is better than no brands */ }
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not load your brands')
     } finally {
@@ -168,6 +184,8 @@ export default function Brands() {
                 key={v.id}
                 voice={v}
                 busy={busyId === v.id}
+                otherOwners={conflicts[v.id] ?? 0}
+                onAnswered={load}
                 onActivate={() => makeActive(v.id)}
                 onRetry={() => retry(v)}
                 onRenamed={load}
@@ -218,18 +236,38 @@ export default function Brands() {
 // ─── Brand card ──────────────────────────────────────────────────────────────────
 
 function BrandCard({
-  voice, busy, onActivate, onRetry, onRenamed,
+  voice, busy, otherOwners, onActivate, onRetry, onRenamed, onAnswered,
 }: {
   voice: BrandVoice
   busy: boolean
+  otherOwners: number
   onActivate: () => void
   onRetry: () => void
   onRenamed: () => void
+  onAnswered: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [label, setLabel] = useState(voice.label ?? `@${voice.handle}`)
   const [saving, setSaving] = useState(false)
   const [shared, setShared] = useState(false)
+  const [answering, setAnswering] = useState(false)
+
+  // §R — the answer, not an inference.
+  //
+  // ⚖️ "NO" DEMOTES, IT DOES NOT DELETE. Studying a competitor is legitimate;
+  // claiming their speech as your own is not. The voice keeps its row and its
+  // profile and becomes a reference voice, and its stored transcripts are
+  // restamped out of `subject='own'` so no script is ever written in a
+  // stranger's cadence as though it were this creator's.
+  const answer = async (mine: boolean) => {
+    setAnswering(true)
+    try {
+      await answerVoiceOwnership(voice.id, mine)
+      onAnswered()
+    } finally {
+      setAnswering(false)
+    }
+  }
 
   // White-label: generate (lazily) + copy a login-free client report link for this brand.
   const shareReport = async () => {
@@ -269,6 +307,39 @@ function BrandCard({
         <span className="absolute -top-2.5 left-5 inline-flex items-center gap-1 rounded-full bg-signature px-2.5 py-0.5 text-[11px] font-bold text-ink">
           <Star className="h-3 w-3 fill-current" /> Active
         </span>
+      )}
+
+      {otherOwners > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-400/25 bg-amber-400/[0.06] p-3.5">
+          <div className="flex items-start gap-2">
+            <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-cream">Is @{voice.handle} your account?</p>
+              <p className="mt-1 text-xs leading-relaxed text-sand">
+                {otherOwners === 1 ? 'Someone else' : `${otherOwners} other people`} also added this
+                handle. If it is yours — a shared company account, for example — nothing changes. If
+                it is not, we will keep it as a reference you can study, and stop writing your
+                scripts in their voice.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  onClick={() => answer(true)}
+                  disabled={answering}
+                  className="rounded-lg bg-teal/15 px-3 py-1.5 text-xs font-semibold text-teal transition-colors hover:bg-teal/25 disabled:opacity-50"
+                >
+                  {answering ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Yes, it is mine'}
+                </button>
+                <button
+                  onClick={() => answer(false)}
+                  disabled={answering}
+                  className="rounded-lg bg-white/5 px-3 py-1.5 text-xs font-semibold text-sand transition-colors hover:bg-white/10 disabled:opacity-50"
+                >
+                  No — keep it as a reference
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="flex items-start justify-between gap-3">

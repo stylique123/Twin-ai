@@ -115,6 +115,30 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
   const urls = Array.isArray(p.urls) ? p.urls.slice(0, budget) : []
   if (!voiceId || !urls.length) throw new Error('build_voice needs brand_voice_id and urls')
 
+  // ⚠️ §R — A VOICE THE CREATOR HAS DISCLAIMED MUST NOT PRODUCE `own` SPEECH.
+  // 0221 restamps the rows that already exist when the answer arrives, but a
+  // re-scan of a disclaimed voice would insert FRESH `subject='own'` rows right
+  // behind it — the trigger has already fired and will not fire again. So the
+  // stamp is decided here, from the answer, at the moment of writing.
+  //
+  // ⚖️ DEGRADES TO 'own', WHICH IS THE PRE-0221 BEHAVIOUR. If the column is not
+  // there yet (PGRST204/42703 rejects the whole select) or the read fails, this
+  // job must still store the speech it has already paid for. An unknown answer
+  // is not a "no".
+  let ownSubject: 'own' | 'reference' = 'own'
+  try {
+    const { data: voiceRow, error: voiceRowErr } = await db
+      .from('brand_voices')
+      .select('ownership')
+      .eq('id', voiceId)
+      .maybeSingle()
+    if (!voiceRowErr && String((voiceRow as { ownership?: unknown } | null)?.ownership ?? '') === 'reference') {
+      ownSubject = 'reference'
+    }
+  } catch (err) {
+    console.error('build_voice: could not read voice ownership', err)
+  }
+
   // Best-effort: skip any video that fails (private / blocked / no speech).
   // ⚖️ FILLED IN INPUT ORDER from `mapWithConcurrency`'s indexed results, not in
   // completion order. See `boundedMap.ts`.
@@ -167,10 +191,13 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
         // reader asking "how does this creator actually talk" found a table full
         // of strangers.
         //
-        // ⚖️ AND IT IS STAMPED `own`, which is the whole point. The style
-        // compiler in `generate-blueprint` filters on `subject = 'own'` before
-        // compiling a voice, so an unstamped row is invisible to it and a
-        // MIS-stamped one would teach the writer a stranger's cadence.
+        // ⚖️ AND THE STAMP IS THE WHOLE POINT. The style compiler in
+        // `generate-blueprint` filters on `subject = 'own'` before compiling a
+        // voice, so an unstamped row is invisible to it and a MIS-stamped one
+        // would teach the writer a stranger's cadence. `ownSubject` is 'own'
+        // unless the creator has answered "this is not my account" (§R/0221),
+        // in which case it is 'reference' and every one of those readers skips
+        // it without needing to know why.
         //
         // ⚖️ BEST EFFORT, ALWAYS. A storage failure must never cost the voice
         // upgrade this job exists to perform — the transcript has already done
@@ -191,7 +218,7 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
           text,
           words: t.words,
           segments: t.segments,
-          subject: 'own',
+          subject: ownSubject,
         }
         try {
           // ⚠️ AN UNKNOWN COLUMN REJECTS THE WHOLE INSERT (PGRST204/42703), so
@@ -207,6 +234,11 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
             throw error
           } else {
             bump('stored')
+            // ⚠️ COUNTED SEPARATELY, NOT INSTEAD. `stored` must keep meaning "a
+            // row was stored" or the store-failure instrument stops matching it.
+            // This is the additional fact: the row went in as reference because
+            // the creator answered that the account is not theirs (§R/0221).
+            if (ownSubject === 'reference') bump('stored_disclaimed_as_reference')
           }
         } catch (err) {
           // Counted, not swallowed: a store that silently fails is how the

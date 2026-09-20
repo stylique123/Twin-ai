@@ -100,6 +100,14 @@ export interface BrandVoice {
   // answered nothing" — and `readStoredBrief` maps both to `{}` only because it
   // is the reader's job to collapse them, not the type's job to hide them.
   pre_script_brief?: Record<string, unknown> | null
+  // §R/0221 — the creator's ANSWER to "is this your account?", never an
+  // inference. `unverified` is the default and behaves exactly as before the
+  // column existed; only `reference` has teeth, and it demotes this voice's
+  // stored speech out of `subject='own'` so no reader compiles a stranger's
+  // cadence as the creator's. `ownership_asked_at` separates "never asked" from
+  // "asked and not answered", so the UI stops re-prompting on every page load.
+  ownership?: 'unverified' | 'own' | 'reference' | null
+  ownership_asked_at?: string | null
   error: string | null
   created_at: string
   updated_at: string
