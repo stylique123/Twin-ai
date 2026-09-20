@@ -61,7 +61,12 @@ with pairs as (
     and j.payload->>'brand_voice_id' ~ '^[0-9a-fA-F-]{36}$'
     and j.owner_id is not null
 ), unambiguous as (
-  select owner_id, url, min(vid) as vid
+  -- ⚠️ `min(uuid)` DOES NOT EXIST IN POSTGRES, and this shipped saying it did:
+  -- CI is green on this file because staging has no `public.transcripts`, so
+  -- the statement is never executed anywhere until it reaches production. The
+  -- text cast is the aggregate; the `having` above already guarantees there is
+  -- exactly ONE distinct value, so which row it picks cannot matter.
+  select owner_id, url, (min(vid::text))::uuid as vid
   from pairs
   group by owner_id, url
   having count(distinct vid) = 1
