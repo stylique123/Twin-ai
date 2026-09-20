@@ -39,6 +39,16 @@ describe('the failure class survives the log', () => {
     expect(classifyTranscriptFailure(new Error('APIFY_TOKEN is not set'))).toBe('not_configured')
   })
 
+  it('names the bot check, which was `unknown` on its first real occurrence', () => {
+    // ⚠️ MEASURED 2026-09-20 on all ten woodsyleather urls, and it landed in
+    // `failed_unknown` — the one class that tells you nothing. This is not a
+    // fact about the video and not a blip; it is YouTube refusing this IP.
+    expect(classifyTranscriptFailure(new Error(
+      "ERROR: [youtube] SMgirNSwIYk: Sign in to confirm you\u2019re not a bot. "
+      + 'Use --cookies-from-browser or --cookies for the authentication.',
+    ))).toBe('bot_check')
+  })
+
   it('records the class on the durable row, not only in a log', () => {
     expect(VOICE).toMatch(/bump\(`failed_\$\{kind\}`\)/)
   })
@@ -76,6 +86,20 @@ describe('neither platform ends at a single vendor any more', () => {
 
   it('the local rung is the SAME path tiktok already proves works', () => {
     expect(MEDIA).toMatch(/async function transcribeViaDownload/)
-    expect(MEDIA).toMatch(/return await transcribeViaDownload\(rawUrl, route\)/)
+    expect(MEDIA).toMatch(/return await transcribeViaDownload\(rawUrl, viaProxy\)/)
+  })
+
+  it('does NOT erase why the vendor failed — the first version of this did', () => {
+    // The local error used to propagate alone, so the durable row recorded a
+    // yt-dlp message and nothing about Apify: the same "reason went to a log
+    // that expires" defect, one layer up. Both classes now ride one message.
+    expect(MEDIA).toMatch(/vendor\(\$\{vendorKind\}\).*local\(\$\{localKind\}\)/)
+  })
+
+  it('asks for a residential egress first, because the datacenter IP is what is blocked', () => {
+    // local_impersonated goes out from this box — the very thing both platforms
+    // block, and the entire reason their vendor routes exist.
+    expect(MEDIA).toMatch(/env\.apifyProxyPassword/)
+    expect(MEDIA).toMatch(/kind: 'residential_proxy'/)
   })
 })

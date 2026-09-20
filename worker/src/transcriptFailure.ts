@@ -20,6 +20,7 @@ export type TranscriptFailure =
   | 'actor_missing'  // 404 — the Actor id no longer resolves. Ours, total.
   | 'rate_limited'   // 429 — back off, then retry.
   | 'transient'      // 5xx / timeout / socket. Retry once.
+  | 'bot_check'      // the platform demanded proof we are not a robot.
   | 'unavailable'    // private, removed, region-locked. A fact about the post.
   | 'no_speech'      // read fine, nothing said. Not an error anywhere.
   | 'not_configured' // no token set at all.
@@ -32,6 +33,14 @@ export function classifyTranscriptFailure(err: unknown): TranscriptFailure {
   if (/\b404\b|not found|no such act/.test(m)) return 'actor_missing'
   if (/\b429\b|rate.?limit|too many/.test(m)) return 'rate_limited'
   if (/\b5\d\d\b|timeout|timed out|aborted|socket|econn|network|fetch failed/.test(m)) return 'transient'
+  // ⚠️ THIS WAS `unknown` ON ITS FIRST REAL OCCURRENCE, WHICH IS THE ONE CLASS
+  // THAT TELLS YOU NOTHING. Measured 2026-09-20 on all ten woodsyleather urls:
+  // "Sign in to confirm you're not a bot. Use --cookies-from-browser or
+  // --cookies for the authentication." That is not a fact about the video and
+  // not a transient blip — it is YouTube refusing this IP, and the action it
+  // implies (cookies, or egress that is not a datacenter) is specific enough
+  // that pooling it with `unknown` wastes the whole point of classifying.
+  if (/not a bot|confirm you.{0,3}re not|sign in to confirm|cookies-from-browser|captcha|are you a robot/i.test(m)) return 'bot_check'
   if (/private|removed|region|unavailable|deleted|couldn't read that/.test(m)) return 'unavailable'
   if (/no speech|has no speech|no captions|no_captions/.test(m)) return 'no_speech'
   return 'unknown'

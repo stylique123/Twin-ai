@@ -969,6 +969,47 @@ async function withOneRetry<T>(label: string, fn: () => Promise<T>): Promise<T> 
   }
 }
 
+/**
+ * THE LAST RUNG, AND IT MUST NOT ERASE WHY THE FIRST ONE FAILED.
+ *
+ * ⚠️ THE FIRST VERSION OF THIS FALLBACK SWALLOWED THE VENDOR'S REASON. It
+ * logged the Apify class to `console.error` and then let the LOCAL error
+ * propagate, so the durable row recorded the yt-dlp message and nothing about
+ * Apify — reintroducing, one layer up, the exact "the reason went to a log that
+ * expires" defect this whole change exists to remove. Measured immediately:
+ * `failed_unknown: 10` with a yt-dlp sample and no trace of the vendor at all.
+ *
+ * ⚠️ AND THE ROUTE MATTERS. `local_impersonated` goes out from this box's
+ * datacenter IP — which is the very thing YouTube and Instagram block, and the
+ * entire reason their vendor routes exist. Measured on all ten woodsyleather
+ * urls: "Sign in to confirm you're not a bot". So the fallback asks for the
+ * residential proxy when one is configured, and only then falls back to the
+ * local egress; trying the blocked path first would burn the attempt on a
+ * refusal we can already predict.
+ */
+async function lastRungAfterVendor(
+  rawUrl: string,
+  route: DownloadRoute,
+  vendorErr: unknown,
+): Promise<Transcript> {
+  const vendorKind = classifyTranscriptFailure(vendorErr)
+  const vendorMsg = (vendorErr instanceof Error ? vendorErr.message : String(vendorErr)).slice(0, 200)
+  const viaProxy: DownloadRoute = env.apifyProxyPassword
+    ? { kind: 'residential_proxy', sessionId: `fallback-${Date.now().toString(36)}` }
+    : route
+  try {
+    return await transcribeViaDownload(rawUrl, viaProxy)
+  } catch (localErr) {
+    const localKind = classifyTranscriptFailure(localErr)
+    const localMsg = (localErr instanceof Error ? localErr.message : String(localErr)).slice(0, 200)
+    // ⚖️ BOTH RUNGS, IN ONE MESSAGE, SO THE ROW CAN NAME EITHER. The vendor
+    // class leads because it is the one a human can act on — a bot check on the
+    // last rung is expected; a 402 on the first is a bill nobody paid.
+    const err = new Error(`vendor(${vendorKind}): ${vendorMsg} | local(${localKind}): ${localMsg}`)
+    throw err
+  }
+}
+
 export async function transcribeFromUrl(
   rawUrl: string,
   route: DownloadRoute = { kind: 'local_impersonated' },
@@ -1013,7 +1054,7 @@ export async function transcribeFromUrl(
           event: 'youtube_apify_failed_falling_back_local', kind,
           detail: (apifyErr instanceof Error ? apifyErr.message : String(apifyErr)).slice(0, 300),
         }))
-        return await transcribeViaDownload(rawUrl, route)
+        return await lastRungAfterVendor(rawUrl, route, apifyErr)
       }
     }
   }
@@ -1030,7 +1071,7 @@ export async function transcribeFromUrl(
         event: 'instagram_apify_failed_falling_back_local', kind,
         detail: (apifyErr instanceof Error ? apifyErr.message : String(apifyErr)).slice(0, 300),
       }))
-      return await transcribeViaDownload(rawUrl, route)
+      return await lastRungAfterVendor(rawUrl, route, apifyErr)
     }
   }
   // scraped IG/FB CDN mp4 → free local whisper
