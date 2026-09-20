@@ -1223,7 +1223,19 @@ export default function ProductLibrary() {
           <input
             className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
             defaultValue={e.creatorSummary ?? ''}
-            placeholder="Sourdough loaves, baked to order for people near me"
+            /* ⚠️⚠️ THIS NAMED SOMEBODY ELSE'S PRODUCT TO EVERY CREATOR. It read
+               "Sourdough loaves, baked to order for people near me" — the
+               baker this field was built for — on a candle maker's screen, in
+               the same grey as a real value, in a box that saves on blur. The
+               owner read it as data that had been pre-filled wrongly, which is
+               a reasonable reading of a specific product sitting in a specific
+               creator's product card.
+
+               ⚖️ A PLACEHOLDER MAY SHOW THE SHAPE OF AN ANSWER, NEVER AN
+               ANSWER. Naming a product nobody sells is an invented fact in the
+               one field whose entire job is to be the creator's own sentence
+               when no page can be read. */
+            placeholder="What it is, and who it is for"
             onBlur={(ev) => {
               const v = ev.target.value.trim()
               if (v !== (e.creatorSummary ?? '')) void save(e.id, { creatorSummary: v || null })
@@ -1232,6 +1244,34 @@ export default function ProductLibrary() {
           {fieldNote(e.id, 'creatorSummary')}
           <p className="mt-1 text-xs text-stone">
             Used if the page cannot be read — Twin will not leave this product with nothing.
+          </p>
+
+          {/* ── THE OFFER, ON THE PRODUCT (0222) ───────────────────────────
+              ⚠️ IT EXISTED ONLY ON THE ACCOUNT, AND A MODEL WROTE IT. 52 of 54
+              ready voices carry a scanned `profile.offer` — one sentence per
+              ACCOUNT, guessed from their posts, editable nowhere. A creator
+              with two products had one offer between them.
+
+              ⚖️ AND THE WRITER ALREADY REACHED FOR IT. Its CTA resolves
+              `answers.offer ?? brief.offer ?? vp.offer ?? dna.product`, which
+              falls back to the account-level guess because nothing narrower
+              has ever existed. This box is the narrower thing. */}
+          <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-stone">
+            What does it cost, and what do they get?
+          </label>
+          <input
+            className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
+            defaultValue={e.offer ?? ''}
+            placeholder="The price, and what is included"
+            onBlur={(ev) => {
+              const v = ev.target.value.trim()
+              if (v !== (e.offer ?? '')) void save(e.id, { offer: v || null })
+            }}
+          />
+          {fieldNote(e.id, 'offer')}
+          <p className="mt-1 text-xs text-stone">
+            Used when a script names the offer. Leave it blank and Twin falls back to
+            what your scan guessed about the account.
           </p>
 
           {/* ⚠️ TWO BOXES FOR ONE FACT, AND THE SECOND ONE WAS THE ONLY ONE
@@ -2178,7 +2218,11 @@ function StartFromLink({ onCancel, onClaim, busy }: {
           type="text"
           value={summary}
           onChange={(e) => setSummary(e.target.value)}
-          placeholder="e.g. A editing app for creators who film on their phone"
+          /* ⚠️ KEPT AS AN EXAMPLE, AND THE `e.g.` IS WHAT MAKES IT ONE. This
+             sits in "Add a product", where nothing has been saved yet and the
+             box is unambiguously empty — unlike the library card, where the
+             same shape of text read as a stored value. */
+          placeholder="e.g. an editing app for creators who film on their phone"
           className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
         />
         <p className="mt-1 text-xs text-stone">

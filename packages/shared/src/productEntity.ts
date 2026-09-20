@@ -403,6 +403,12 @@ export function mintFromWorkKind(
     // reaches the writer labelled as the creator's OWN description of the
     // product, which an edited offer line is and an unedited guess is not.
     creatorSummary: confirmed ? offered : null,
+    // ⚠️ NULL AT MINT, AND NOT BECAUSE IT IS UNKNOWABLE (0222). The scan's
+    // account-level guess is RIGHT THERE in `offered` — and copying it here
+    // would write a sentence about the whole business into the field that names
+    // what ONE product costs. `creatorSummary` above takes it only when the
+    // creator CONFIRMED it; an offer nobody typed is not an offer.
+    offer: null,
     type,
     relationship: mint.relationship,
     // The default, and nothing here may move it. A founder owning a product
@@ -488,6 +494,9 @@ export interface EntityAttestation {
    *  with a link Twin can read, and this exists for the ones that do not, or the
    *  ones whose page fails. See migration 0177. */
   creatorSummary?: string | null
+  /** 0222 — what this product costs and what the buyer gets, as the creator
+   *  typed it. Absent means they were not asked or left it blank. */
+  offer?: string | null
   productUrl?: string | null
   flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
   /** ⚠️ THE THREE-WAY ANSWER THE FORM ALREADY SHOWS THEM. Absent means they
@@ -516,6 +525,8 @@ export function attestedEntity(a: EntityAttestation): DraftEntity {
   return {
     name: name === '' ? null : name,
     creatorSummary: summary === '' ? null : summary,
+    // 0222 — carried from the attestation when the creator gave one, else null.
+    offer: recordedOffer(a.offer),
     type: a.type,
     relationship: a.relationship,
     personalUse: a.personalUse,
@@ -869,12 +880,28 @@ export function emptyRestrictions(): EntityRestrictions {
 
 /** An entity before it has an id — what a mint or a Q4 answer produces, and
  *  what the confirm screen edits. */
+/** ⚖️ A BLANK IS NOT AN ANSWER. Trimmed to null so "  " never reaches the
+ *  writer's offer chain as though somebody had described the product. */
+function recordedOffer(v: unknown): string | null {
+  const t = typeof v === 'string' ? v.trim() : ''
+  return t === '' ? null : t
+}
+
 export interface DraftEntity {
   name: string | null
   /** ⚠️ THE FORM'S OWN FALLBACK, NOT EXTRACTED KNOWLEDGE. One sentence, in the
    *  creator's own words, kept for the moment a pasted page cannot be read.
    *  See migration 0177. Null means the question was skipped or left blank. */
   creatorSummary: string | null
+  /** ⚠️ WHAT THIS ONE PRODUCT COSTS AND WHAT THE BUYER GETS (0222). Distinct
+   *  from `brand_voices.profile.offer`, which is a scan's GUESS about the whole
+   *  ACCOUNT — 52 of 54 ready voices carry one, written by a model, belonging to
+   *  no product in particular and editable nowhere.
+   *
+   *  ⚖️ NULL MEANS NOBODY HAS DESCRIBED IT YET, never "it is free". The writer's
+   *  offer chain must keep falling through on a null rather than read a blank as
+   *  an answer. */
+  offer: string | null
   type: EntityType
   relationship: EntityRelationship
   personalUse: PersonalUse

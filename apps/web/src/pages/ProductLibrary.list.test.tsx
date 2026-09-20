@@ -24,7 +24,7 @@ vi.mock('../context/AuthContext', () => ({
 }))
 
 const ONE: ProductEntityRecord = {
-  id: 'e1', name: 'Peak Tripod', creatorSummary: null, type: 'PHYSICAL_PRODUCT',
+  id: 'e1', name: 'Peak Tripod', creatorSummary: null, offer: null, type: 'PHYSICAL_PRODUCT',
   relationship: 'OWN_PRODUCT', personalUse: 'NOT_CONFIRMED', showability: 'UNKNOWN',
   productUrl: 'https://peakdesign.example/tripod', affiliateUrl: null, evidence: null,
   restrictions: { approvedClaims: [], forbiddenClaims: [], complianceNotes: null },

@@ -37,7 +37,7 @@ describe('the map reaches the writer at all', () => {
     // failures. The PROPERTY is unchanged — the query that resolves the product
     // must select `community_map` or the block can only ever be empty — so the
     // anchor moves and the assertion stays.
-    const marker = bp.indexOf('const { data: picked } = await admin')
+    const marker = bp.indexOf('const { data: picked, error: pickErr } = await admin')
     expect(marker, 'the chosen-product query was not found').toBeGreaterThan(-1)
     // ⚠️ AND THE DIRECTION CHANGED WITH THE ANCHOR, WHICH IS WHY THIS IS NOT A
     // ONE-WORD EDIT. The old marker was the relationship filter, which sits

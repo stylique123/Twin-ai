@@ -6544,9 +6544,10 @@ function reserveAskedInline<T extends { source?: string | null }>(
   const declinedAProduct = requestedProductId === NO_PRODUCT_CHOICE_INLINE
   let chosenEntity: unknown = null
   if (requestedProductId !== '' && !declinedAProduct) {
-    const { data: picked } = await admin
+    // ⚠️ `offer` IS SELECTED (0222) — `readyOffer` below is its only reader.
+    const { data: picked, error: pickErr } = await admin
       .from('product_entities')
-      .select('id, name, creator_summary, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
+      .select('id, name, creator_summary, offer, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
       .eq('owner_id', ownerId)
       .eq('voice_id', voice?.id ?? null)
       .eq('id', requestedProductId)
@@ -6558,7 +6559,22 @@ function reserveAskedInline<T extends { source?: string | null }>(
       .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE', 'AFFILIATE', 'SPONSOR'])
       .is('archived_at', null)
       .maybeSingle()
-    chosenEntity = picked ?? null
+    // ⚠️ AN UNKNOWN COLUMN REJECTS THE WHOLE SELECT (PGRST204/42703), and this
+    // read is the creator's CHOSEN product — losing it writes a script about
+    // nothing. The retry repeats the identical query minus `offer`: same owner,
+    // same voice, same relationship clamp, same archive exclusion.
+    const legacyPick = pickErr && /offer/i.test(`${pickErr.message} ${pickErr.details ?? ''}`)
+      ? (await admin
+          .from('product_entities')
+          .select('id, name, creator_summary, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
+          .eq('owner_id', ownerId)
+          .eq('voice_id', voice?.id ?? null)
+          .eq('id', requestedProductId)
+          .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE', 'AFFILIATE', 'SPONSOR'])
+          .is('archived_at', null)
+          .maybeSingle()).data
+      : undefined
+    chosenEntity = legacyPick ?? picked ?? null
   }
 
   // ── THE STOPGAP IS GONE: NOTHING IS NAMED THAT WAS NOT SELECTED ─────────
@@ -6982,7 +6998,26 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // unavoidable for all of them rather than targeted at the few who promote.
   // `readyOffer` keeps the full chain because the CTA still needs a fallback;
   // only the REQUIREMENT narrows to the creator's own words.
-  const readyOffer = answers.offer ?? brief.offer ?? (vp?.offer as string | undefined) ?? (dna.product as string | undefined)
+  // ⚠️⚠️ THE PRODUCT'S OWN OFFER OUTRANKS THE ACCOUNT'S GUESS (0222). `vp.offer`
+  // is one sentence per ACCOUNT, written by the scan — 52 of 54 ready voices
+  // carry one — so a creator with two products had one offer between them and
+  // every script named the same thing. `product_entities.offer` is what THIS
+  // product costs, typed by the creator, and it slots in ahead of the guess.
+  //
+  // ⚖️ BELOW THE CREATOR'S DIRECT ANSWERS, NEVER ABOVE THEM. `answers.offer` and
+  // `brief.offer` are what she said for THIS video; a stored product line must
+  // not overrule the sentence she just typed.
+  //
+  // ⚠️ AND A BLANK IS NOT AN ANSWER. `productOffer` is null unless somebody
+  // actually described it, so an undescribed product falls through to exactly
+  // what this chain read before rather than naming nothing.
+  const productOffer = ((): string | undefined => {
+    const raw = (ownedEntity as { offer?: unknown } | null)?.offer
+    const t = typeof raw === 'string' ? raw.trim() : ''
+    return t === '' ? undefined : t
+  })()
+  const readyOffer = answers.offer ?? brief.offer ?? productOffer
+    ?? (vp?.offer as string | undefined) ?? (dna.product as string | undefined)
   const readyOfferStated = answers.offer ?? brief.offer
   // ⚖️ AND "NOTHING TO SELL" IS AN ANSWER, NOT A GAP. A creator who said so at
   // onboarding must never be asked what they promote.

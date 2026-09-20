@@ -1790,6 +1790,8 @@ interface ProductEntityRow {
   id: string
   name: string | null
   creator_summary?: string | null
+  /** 0222. Optional because an unapplied migration must degrade, not throw. */
+  offer?: string | null
   type: string
   relationship: string
   personal_use: string
@@ -1811,7 +1813,7 @@ interface ProductEntityRow {
 }
 
 const ENTITY_COLUMNS =
-  'id, name, creator_summary, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at, archived_at, knowledge, knowledge_extracted_at, knowledge_source_url, knowledge_failed_at, knowledge_error, community_map'
+  'id, name, creator_summary, offer, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at, archived_at, knowledge, knowledge_extracted_at, knowledge_source_url, knowledge_failed_at, knowledge_error, community_map'
 
 /** Read `restrictions` back defensively. `approvedClaims` is the field §5a.5
  *  turns on — an outcome claim needs a permission that EXISTS — so a malformed
@@ -1847,10 +1849,16 @@ function readEntityRow(row: ProductEntityRow): ProductEntityRecord | null {
   const name = typeof row.name === 'string' && row.name.trim() !== '' ? row.name.trim() : null
   const creatorSummary = typeof row.creator_summary === 'string' && row.creator_summary.trim() !== ''
     ? row.creator_summary.trim() : null
+  // ⚠️ NULL IS A REAL ANSWER (0222). A product with no offer recorded is not one
+  // being given away — it is one nobody has described yet, and the writer's
+  // offer chain must keep falling through rather than read a blank as "no offer".
+  const offer = typeof row.offer === 'string' && row.offer.trim() !== ''
+    ? row.offer.trim() : null
   return {
     id: row.id,
     name,
     creatorSummary,
+    offer,
     type: row.type,
     relationship: row.relationship,
     // A malformed personal-use value falls back to the SAFE side, never the
@@ -2426,6 +2434,10 @@ export interface EntityPresentationEdit {
   /** The creator's own one-line fallback — see migration 0177. Editable for the
    *  same reason `name` is: neither is an entitlement field. */
   creatorSummary?: string | null
+  /** 0222 — what this ONE product costs and what the buyer gets. Distinct from
+   *  `brand_voices.profile.offer`, which is a scan's guess about the whole
+   *  account and belongs to no product in particular. */
+  offer?: string | null
   productUrl?: string | null
   /** ⚖️ WHERE THE COMMISSION LINK POINTS — a DIFFERENT fact from `productUrl`,
    *  and the reason both exist. `product_url` is where the thing lives and is
@@ -2478,6 +2490,11 @@ export async function updateEntityPresentation(
   if ('name' in edit) row.name = edit.name === null ? null : String(edit.name).trim() || null
   if ('creatorSummary' in edit) {
     row.creator_summary = edit.creatorSummary === null ? null : String(edit.creatorSummary).trim() || null
+  }
+  // 0222. Editable for the same reason `creatorSummary` is: neither is an
+  // entitlement field, so neither can widen what a script may claim.
+  if ('offer' in edit) {
+    row.offer = edit.offer === null ? null : String(edit.offer).trim() || null
   }
   if ('productUrl' in edit) row.product_url = edit.productUrl === null ? null : String(edit.productUrl).trim() || null
   if ('affiliateUrl' in edit) row.affiliate_url = edit.affiliateUrl === null ? null : String(edit.affiliateUrl).trim() || null
