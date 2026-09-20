@@ -12,6 +12,9 @@ function need(name: string): string {
 // a legitimate analyzer-version cache bump.  It must never be selectable by a
 // production worker, even if an environment variable is injected accidentally.
 // Non-production callers must opt in explicitly as well.
+import { speechModelLabel } from './speechModelLabel.js'
+export { speechModelLabel }
+
 export function resolveSpeechModelManifest(source: NodeJS.ProcessEnv = process.env): string {
   if ((source.NODE_ENV ?? '').trim() === 'production') return ''
   if (source.EDITOR_ALLOW_TEST_MODEL_MANIFEST !== 'true') return ''
@@ -239,7 +242,10 @@ export const env = {
   // ASR model LABEL for the speech component (independent of the caption/reference
   // knob so a caption tweak can never silently change component identity). The
   // actual weights come from speechModelPath (pinned snapshot), not this alias.
-  speechModel: (process.env.EDITOR_SPEECH_MODEL ?? process.env.WHISPER_MODEL ?? 'small').trim(),
+  // ⚠️ DERIVED FROM THE PINNED PATH BELOW, never from `WHISPER_MODEL`. See
+  // `speechModelLabel` for the production mismatch this closes.
+  speechModel: speechModelLabel(
+    (process.env.EDITOR_SPEECH_MODEL_PATH ?? '/opt/models/faster-whisper-small').trim()),
   // PINNED local snapshot dir + manifest. The Docker build (and CI) fetch the
   // exact revision here and digest-verify it; the bridge loads ONLY this path
   // with the network disabled. Overridable for CI, where the snapshot is fetched
