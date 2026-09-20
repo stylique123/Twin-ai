@@ -43,6 +43,15 @@ describe('the failure class survives the log', () => {
     expect(classifyTranscriptFailure(new Error('This account has been deactivated')))
       .toBe('unavailable')
     expect(classifyTranscriptFailure(new Error('This video has no speech we can read'))).toBe('no_speech')
+    // ⚠️ BOTH PRODUCTION STRINGS FROM THE 2026-09-20 RECOVERY RUN, where 18 of
+    // 20 videos stored and these two did not. A reel with no audio track is a
+    // fact about the reel; an Actor run that collapsed is ours and retryable.
+    // Pooling either into `unknown` hides a bounded loss inside an open one.
+    expect(classifyTranscriptFailure(new Error('This Instagram video could not be read: no audio url found')))
+      .toBe('no_speech')
+    expect(classifyTranscriptFailure(new Error(
+      'YouTube transcript service error 400: {"error":{"type":"run-failed","message":"Actor run did not succeed"}}',
+    ))).toBe('transient')
     expect(classifyTranscriptFailure(new Error('APIFY_TOKEN is not set'))).toBe('not_configured')
   })
 

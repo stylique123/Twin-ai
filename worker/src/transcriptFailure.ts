@@ -67,6 +67,15 @@ export function classifyTranscriptFailure(err: unknown): TranscriptFailure {
   // produced (§U). It is also the cheapest possible bug: the run cost nothing,
   // nothing was broken, and the only damage would have been an operator's hour.
   if (/private|removed|region|unavailable|deleted|deactivat|does not exist|no longer (available|exists)|couldn't read that/.test(m)) return 'unavailable'
-  if (/no speech|has no speech|no captions|no_captions/.test(m)) return 'no_speech'
+  // ⚠️ `no audio url found` IS A FACT ABOUT ONE REEL, NOT A FAULT. Fifth gap,
+  // measured on the post-rotation recovery run where 18 of 20 videos stored.
+  if (/no speech|has no speech|no captions|no_captions|no audio url/.test(m)) return 'no_speech'
+  // ⚠️ AN ACTOR THAT STARTS AND DIES IS OURS AND IT IS TRANSIENT. Same run:
+  // `YouTube transcript service error 400: {"type":"run-failed","message":
+  // "Actor run did not s…` on ONE video of five while the other four stored.
+  // A 400 normally means WE sent something wrong, so it must not read as
+  // `billing` or `credentials`; `run-failed` says the run itself collapsed,
+  // which is exactly what the one retry exists for.
+  if (/run-failed|actor run did not|run did not succeed/.test(m)) return 'transient'
   return 'unknown'
 }
