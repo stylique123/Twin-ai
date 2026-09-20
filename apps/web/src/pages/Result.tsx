@@ -351,6 +351,7 @@ export default function Result() {
   // fire it on every render of this page.
   const [liveScript, setLiveScript] = useState<RecordingScript | null>(null)
   const onScriptChange = useCallback((s: RecordingScript | null) => setLiveScript(s), [])
+
   const [bundle, setBundle] = useState<OutputBundle | null>(null)
   const [editOutputAttempt, setEditOutputAttempt] = useState(0)
   // The three fields the fetch actually depends on, lifted out of the row.
@@ -538,6 +539,53 @@ export default function Result() {
   // can be passed is a path that can be wrong). Only a READY asset has one here,
   // which is also exactly the precondition the server enforces.
   const [serverSourceAssetId, setServerSourceAssetId] = useState<string | null>(null)
+
+  // ── THE STORED SCRIPT FOLLOWS THE CHOSEN HOOK, WHENEVER THEY DISAGREE ──────
+  //
+  // ⚠️⚠️ MEASURED IN PRODUCTION 2026-09-20, AND IT IS EVERY CASE THAT MATTERS:
+  // of the six most recent generations carrying a `selected_hook`, the four
+  // where the creator kept the DEFAULT have a `scene_timeline` that agrees, and
+  // BOTH where she picked a different option have a timeline still holding
+  // option 0. Generation 788d20b4 chose "The biggest beginner mistake…" and its
+  // stored scene 1 reads "I lost two hundred dollars on candles…".
+  //
+  // ⚠️ #927 PATCHED `ScriptEditor` AND #940 PATCHED THE TAP, and this survived
+  // both — because the tap handler required `liveScript` to be loaded ALREADY at
+  // the moment of the tap. A creator who chooses before the editor has reported
+  // its script, or whose pick is restored from a previous visit, wrote
+  // `selected_hook` and nothing else. The third report was correct.
+  //
+  // ⚖️ AN EFFECT, NOT A HANDLER, IS THE FIX. Reconciling on the PAIR means the
+  // order stops mattering: whichever of the two arrives second triggers it.
+  //
+  // ⚖️ AND IT IS IDEMPOTENT BY CONSTRUCTION. `withSelectedHook` returns the SAME
+  // object when the script already carries the hook, so an agreeing pair costs
+  // one identity comparison and never writes.
+  //
+  // ⚠️ NOT AFTER A TAKE EXISTS. A recorded take's provenance binds to the script
+  // it was read from; rewriting that underneath it would invalidate the binding.
+  useEffect(() => {
+    if (!liveScript || serverSourceAssetId || !chosenHook) return
+    const patched = withSelectedHook(liveScript, chosenHook)
+    if (!patched || patched === liveScript) return
+    let alive = true
+    void (async () => {
+      const durable = await establishDurableRecordingScriptLive(patched)
+      if (!alive) return
+      if (durable.ok && durable.script) { setLiveScript(durable.script); return }
+      // ⚠️ SAID OUT LOUD RATHER THAN SWALLOWED. A failed persist is exactly the
+      // state this exists to end. The capture gate reconciles on the next entry
+      // and the recorder's SHA check refuses a take against a stale script, so
+      // this degrades to a visible refusal rather than a wrong video — but
+      // silence is how the defect survived two fixes.
+      console.warn(JSON.stringify({
+        event: 'hook_choice_not_persisted',
+        generation_id: id,
+        reason: durable.reason ?? 'unknown',
+      }))
+    })()
+    return () => { alive = false }
+  }, [liveScript, chosenHook, serverSourceAssetId, id])
   // Which in-flight state the take is in, so the copy below can tell a creator
   // the truth instead of one sentence for two situations.
   const [pendingTake, setPendingTake] = useState<'uploading' | 'validating' | null>(null)
@@ -620,26 +668,10 @@ export default function Result() {
     // script it was read from, and rewriting that script underneath it would
     // invalidate the binding. The choice still records for the cover and the
     // b-roll; the script she already performed stays as performed.
-    if (liveScript && !serverSourceAssetId) {
-      const patched = withSelectedHook(liveScript, h)
-      // Returns the SAME object when nothing should change.
-      if (patched && patched !== liveScript) {
-        void (async () => {
-          const durable = await establishDurableRecordingScriptLive(patched)
-          if (durable.ok && durable.script) { setLiveScript(durable.script); return }
-          // ⚠️ SAID OUT LOUD RATHER THAN SWALLOWED. A failed persist is exactly
-          // the state this change exists to end. The capture gate reconciles on
-          // the next entry and the recorder's SHA check refuses a take against a
-          // stale script, so this degrades to a visible refusal rather than a
-          // wrong video — but silence is how the defect survived two fixes.
-          console.warn(JSON.stringify({
-            event: 'hook_choice_not_persisted',
-            generation_id: id,
-            reason: durable.reason ?? 'unknown',
-          }))
-        })()
-      }
-    }
+    // ⚠️ THE PERSIST NO LONGER HAPPENS HERE. It ran only at the instant of the
+    // tap, which required `liveScript` to already be loaded at that instant —
+    // and left the stored script stale whenever it was not. The effect below
+    // reconciles on BOTH the tap and the load, so the order stops mattering.
   }
   // "Post now" → reveal the posting options (the "Where to post" tab on both layouts).
   const goPost = () => {
