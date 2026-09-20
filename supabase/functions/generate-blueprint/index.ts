@@ -1879,13 +1879,24 @@ function resolveSubjectSourceInline(
 // ⚠️ PARITY: `a-shape-block-and-its-twin.test.ts` executes BOTH this and the
 // shared original over one table of cases.
 const NICHE_BUCKET_PATTERNS_INLINE: ReadonlyArray<{ bucket: string; test: RegExp }> = [
-  { bucket: 'business', test: /\b(entrepreneur\w*|business\w*|startups?|founders?|scal\w+|hustles?|wealth|sales|b2b|saas|marketing|real estate|investing|property|resale|e-?commerce)\b/i },
+  { bucket: 'business', test: /\b(entrepreneur\w*|business\w*|startups?|founders?|scal\w+|hustles?|wealth|sales|b2b|saas|marketing|real estate|investing|property|resale|e-?commerce|viral products?|product ideas?)\b/i },
   { bucket: 'tech', test: /\b(ai|artificial intelligence|tech\w*|coding|software|develop\w*|android|ios|apps?)\b/i },
   { bucket: 'beauty_fashion', test: /\b(beauty|skincare|fashion|makeup|style|grooming)\b/i },
   { bucket: 'food', test: /\b(food|bak\w+|cook\w*|recipes?|kitchen|micro-?bakery)\b/i },
   { bucket: 'health', test: /\b(fitness|health\w*|physio\w*|training|wellness|rehab)\b/i },
-  { bucket: 'creator', test: /\b(content creation|creators?|youtube|tiktok|short-?form)\b/i },
-  { bucket: 'entertainment', test: /\b(entertainment|humou?r|comedy|challenges?|dubbing|music|skits?)\b/i },
+  { bucket: 'creator', test: /\b(content creation|creators?|youtube|tiktok|short-?form|videography)\b/i },
+  { bucket: 'entertainment', test: /\b(entertainment|humou?r|comedy|challenges?|dubbing|music|skits?|illusions?|magic)\b/i },
+  // ⚠️⚠️ `making` WAS ADDED TO `nicheQuestions.ts` ON 2026-09-15 AND NEVER
+  // REACHED HERE, AND THE PARITY TEST PASSED ANYWAY. It compared the two readers
+  // over FOURTEEN HAND-PICKED NICHES, none of which was a leatherworker's — so
+  // one list grew a bucket, the other did not, and the only guard against
+  // exactly that drift agreed they matched. The test is now driven by
+  // `NICHE_BUCKETS` itself, so a bucket nothing exercises fails the build.
+  { bucket: 'making', test: /\b(leather\w*|bookbind\w*|rebind\w*|handmade|hand-made|craft\w*|maker|makers|woodwork\w*|candles?|sewing|pottery|ceramics?|jewel\w*|basketry|trades?|tradie|mechanic\w*|repair\w*|restorations?|welding|carpent\w*|plumb\w*|electrician)\b/i },
+  { bucket: 'education', test: /\b(education|educational|learning|teach\w*|tutorials?|stud(y|ies)|students?|exams?|school|university)\b/i },
+  { bucket: 'mindset', test: /\b(mindset|motivation\w*|productivity|discipline|psychology|self-?improvement|patience|habits?|success)\b/i },
+  { bucket: 'lifestyle', test: /\b(lifestyle|daily life|vlogs?|vlogging|routines?)\b/i },
+  { bucket: 'automotive', test: /\b(automotive|cars?|auto|vehicles?|driving|motorcycles?)\b/i },
 ]
 
 // ── NICHE VOCABULARY, INLINED ─────────────────────────────────────────────

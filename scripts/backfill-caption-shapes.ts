@@ -26,45 +26,15 @@
 // credentials would be a second place a production key has to live.
 
 import { readFileSync, writeFileSync } from 'node:fs'
-import { assessedCaptionShape, captionBody, isLikelyEnglish, CAPTION_SHAPE_VERSION, MIN_CLASSIFIABLE_CHARS, CAPTION_SHAPES }
+import { classifyOne, CAPTION_SHAPE_VERSION, CAPTION_SHAPES, type NoShapeReason }
   from '../packages/shared/src/corpus/captionShape.ts'
 
-export type NoShapeReason = 'no_title' | 'empty_after_strip' | 'too_short' | 'not_english' | 'no_pattern_match'
-
-export interface CaptionVerdict {
-  shape: string | null
-  basis: 'inferred' | null
-  reason: NoShapeReason | null
-}
-
-/**
- * The gates in the order the measurement found them.
- *
- * ⚠️ A SHAPE AND A REASON ARE MUTUALLY EXCLUSIVE, and 0196 enforces that with a
- * CHECK rather than trusting this function. The database is the authority
- * because a second writer will eventually exist.
- */
-export function classifyOne(title: string | null | undefined): CaptionVerdict {
-  const t = (title ?? '').trim()
-  if (!t) return { shape: null, basis: null, reason: 'no_title' }
-  const body = captionBody(t)
-  if (!body) return { shape: null, basis: null, reason: 'empty_after_strip' }
-  // ⚠️ TOO SHORT AND WRONG-LANGUAGE ARE TWO FACTS AND `isLikelyEnglish` FOLDS
-  // THEM. Its false is correct as a gate and useless as an explanation: without
-  // this split a 10-character English caption is recorded as `not_english`,
-  // which is a false fact in the column whose purpose is to be trustworthy.
-  // This is the PR's own defect class, committed inside the PR that names it,
-  // and its own selftest caught it on "How to win".
-  if (body.length < MIN_CLASSIFIABLE_CHARS) return { shape: null, basis: null, reason: 'too_short' }
-  if (!isLikelyEnglish(body)) return { shape: null, basis: null, reason: 'not_english' }
-  const a = assessedCaptionShape(t)
-  // ⚠️ NULL, NOT AN ASSESSED CARRYING A NULL VALUE. `assessedCaptionShape`
-  // returns null outright when nothing matches — read off its own behaviour
-  // after a first draft crashed on `.value`.
-  const shape = a === null ? null : ((a as { value?: string | null }).value ?? null)
-  if (!shape) return { shape: null, basis: null, reason: 'no_pattern_match' }
-  return { shape, basis: 'inferred', reason: null }
-}
+// ⚠️ `classifyOne` NOW LIVES IN THE SHARED MODULE, beside the patterns it gates.
+// It was here, which made this script the only thing in the system that could
+// classify a card — and the corpus froze for ten days as a result. Re-exported
+// so this file's own callers and selftest keep working unchanged.
+export { classifyOne } from '../packages/shared/src/corpus/captionShape.ts'
+export type { NoShapeReason } from '../packages/shared/src/corpus/captionShape.ts'
 
 /** The five column values 0196 expects for one row, including its provenance. */
 export function rowUpdate(id: string, title: string | null | undefined, at: string) {

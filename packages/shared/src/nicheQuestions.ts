@@ -38,6 +38,13 @@ import { CREATOR_QUESTIONS, type CreatorQuestion } from './creatorQuestions'
 
 export const NICHE_BUCKETS = [
   'business', 'tech', 'entertainment', 'health', 'beauty_fashion', 'food', 'creator', 'making',
+  // ⚠️⚠️ THE FOUR ADDED 2026-09-20, AND THEY WERE MEASURED IN THE CORPUS, NOT
+  // IMAGINED. Of 596 classified `gallery_items`, 183 — the second-largest group
+  // after business — matched NO pattern, and they are not a long tail: thirteen
+  // distinct niches, led by `Education` 78, `viral product ideas` 50 and
+  // `Lifestyle` 18. A bucket nothing can land in is a shape block that is
+  // permanently global for those creators.
+  'education', 'mindset', 'lifestyle', 'automotive',
 ] as const
 export type NicheBucket = (typeof NICHE_BUCKETS)[number]
 
@@ -51,13 +58,17 @@ export type NicheBucket = (typeof NICHE_BUCKETS)[number]
  * niche on 2026-09-09.
  */
 const BUCKET_PATTERNS: ReadonlyArray<{ bucket: NicheBucket; test: RegExp }> = [
-  { bucket: 'business', test: /\b(entrepreneur\w*|business\w*|startups?|founders?|scal\w+|hustles?|wealth|sales|b2b|saas|marketing|real estate|investing|property|resale|e-?commerce)\b/i },
+  // ⚠️ `viral products?|product ideas?` ADDED 2026-09-20 FOR 50 CORPUS CARDS and
+  // ZERO creators — measured, because widening an EXISTING pattern (rather than
+  // appending a new one) is the one edit here that could re-bucket somebody who
+  // is already answering business questions. None does.
+  { bucket: 'business', test: /\b(entrepreneur\w*|business\w*|startups?|founders?|scal\w+|hustles?|wealth|sales|b2b|saas|marketing|real estate|investing|property|resale|e-?commerce|viral products?|product ideas?)\b/i },
   { bucket: 'tech', test: /\b(ai|artificial intelligence|tech\w*|coding|software|develop\w*|android|ios|apps?)\b/i },
   { bucket: 'beauty_fashion', test: /\b(beauty|skincare|fashion|makeup|style|grooming)\b/i },
   { bucket: 'food', test: /\b(food|bak\w+|cook\w*|recipes?|kitchen|micro-?bakery)\b/i },
   { bucket: 'health', test: /\b(fitness|health\w*|physio\w*|training|wellness|rehab)\b/i },
-  { bucket: 'creator', test: /\b(content creation|creators?|youtube|tiktok|short-?form)\b/i },
-  { bucket: 'entertainment', test: /\b(entertainment|humou?r|comedy|challenges?|dubbing|music|skits?)\b/i },
+  { bucket: 'creator', test: /\b(content creation|creators?|youtube|tiktok|short-?form|videography)\b/i },
+  { bucket: 'entertainment', test: /\b(entertainment|humou?r|comedy|challenges?|dubbing|music|skits?|illusions?|magic)\b/i },
   // ⚠️⚠️ THE FOUR NICHES NOTHING CLASSIFIED, AND THEY WERE ALL ONE KIND OF
   // PERSON. Measured 2026-09-15 over the 47 distinct stored niches: exactly four
   // returned null, and every one of them makes or repairs a physical thing by
@@ -70,7 +81,23 @@ const BUCKET_PATTERNS: ReadonlyArray<{ bucket: NicheBucket; test: RegExp }> = [
   // "micro-bakery" is food even though both involve making something; putting
   // this ahead of them would re-bucket creators whose questions are already
   // right. Every keyword below matched a real stored niche.
-  { bucket: 'making', test: /\b(leather\w*|bookbind\w*|rebind\w*|handmade|hand-made|craft\w*|maker|makers|woodwork\w*|candles?|sewing|pottery|ceramics?|jewel\w*|trades?|tradie|mechanic\w*|repair\w*|restorations?|welding|carpent\w*|plumb\w*|electrician)\b/i },
+  { bucket: 'making', test: /\b(leather\w*|bookbind\w*|rebind\w*|handmade|hand-made|craft\w*|maker|makers|woodwork\w*|candles?|sewing|pottery|ceramics?|jewel\w*|basketry|trades?|tradie|mechanic\w*|repair\w*|restorations?|welding|carpent\w*|plumb\w*|electrician)\b/i },
+  // ⚠️⚠️ APPENDED, NEVER REORDERED, AND THAT IS THE WHOLE SAFETY ARGUMENT.
+  // `find` returns the FIRST match, so anything added below cannot move a
+  // creator who already matches a pattern above. Measured before writing: of 53
+  // ready voices, ZERO change bucket because of these four — they only catch
+  // creators who matched nothing at all, whose questions were already the
+  // generic bank. The gain is in the CORPUS, where 181 of the 183 unbucketed
+  // classified cards now land somewhere.
+  //
+  // ⚖️ EVERY KEYWORD BELOW MATCHED A REAL STORED NICHE on 2026-09-20 — the bar
+  // this file already sets for itself. `Education` 78 cards, `Lifestyle` 18,
+  // `mindset and patience` + `feel-good productivity` + `Psychology` +
+  // `Mindset and motivation` 13, `Automotive` 4.
+  { bucket: 'education', test: /\b(education|educational|learning|teach\w*|tutorials?|stud(y|ies)|students?|exams?|school|university)\b/i },
+  { bucket: 'mindset', test: /\b(mindset|motivation\w*|productivity|discipline|psychology|self-?improvement|patience|habits?|success)\b/i },
+  { bucket: 'lifestyle', test: /\b(lifestyle|daily life|vlogs?|vlogging|routines?)\b/i },
+  { bucket: 'automotive', test: /\b(automotive|cars?|auto|vehicles?|driving|motorcycles?)\b/i },
 ]
 
 /** The bucket a stored niche falls in, or null when nothing matches. */
@@ -219,6 +246,17 @@ const OVERRIDES: Readonly<Record<NicheBucket, Readonly<Record<string, OverrideWo
   beauty_fashion: Object.freeze({}),
   food: Object.freeze({}),
   creator: Object.freeze({}),
+  // ⚖️ EMPTY, AND EMPTY IS NOT A PLACEHOLDER — IT IS THE DECISION. A bucket with
+  // no table returns the generic bank verbatim (`creatorQuestionsFor` bails when
+  // `Object.keys(overrides).length === 0`), which is EXACTLY what these creators
+  // get today with no bucket at all. So bucketing them changes the corpus and
+  // changes nothing about their questions, which is the only way to widen this
+  // list without the unmeasured side effect `health` above was kept empty to
+  // avoid. Writing tables for them is its own change, with its own number.
+  education: Object.freeze({}),
+  mindset: Object.freeze({}),
+  lifestyle: Object.freeze({}),
+  automotive: Object.freeze({}),
   // ⚠️ THE BUCKET THAT DID NOT EXIST, AND THE ACCOUNT THAT REPORTED IT. A
   // leatherworker rebinding Bibles was asked "what did you get wrong publicly"
   // — the wording reserved for a creator who sells NOTHING — because his niche

@@ -1,3 +1,6 @@
+// GENERATED FROM packages/shared/src/corpus/captionShape.ts — DO NOT EDIT.
+// Run: node scripts/ci/generate_shared_pilot_core.mjs
+// Edit the source instead. CI regenerates this file and fails on a diff.
 // WHAT SHAPE IS THIS CARD'S CAPTION, AND WHAT THAT IS NOT.
 //
 // ⚠️⚠️ THE SPEC CALLS THIS `hook_shape`. IT IS NOT ONE, AND NAMING IT THAT WOULD
@@ -46,7 +49,7 @@
 // "#top10tips" would otherwise fire the how-to and number patterns on captions
 // that are nothing but tags. This was the first thing the sample made obvious.
 
-import type { Assessed } from '../assessed'
+import type { Assessed } from './assessed.js'
 
 /**
  * The shapes a caption can take. Taken from the spec's taxonomy, minus the ones
