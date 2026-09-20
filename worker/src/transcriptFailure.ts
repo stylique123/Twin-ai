@@ -55,13 +55,26 @@ export function classifyTranscriptFailure(err: unknown): TranscriptFailure {
   // implies (cookies, or egress that is not a datacenter) is specific enough
   // that pooling it with `unknown` wastes the whole point of classifying.
   if (/not a bot|confirm you.{0,3}re not|sign in to confirm|cookies-from-browser|captcha|are you a robot/i.test(m)) return 'bot_check'
-  if (/private|removed|region|unavailable|deleted|couldn't read that/.test(m)) return 'unavailable'
+  // ⚠️ A DEACTIVATED ACCOUNT READ AS `unknown`, WHICH SENDS SOMEONE HUNTING FOR
+  // A BUG THAT DOES NOT EXIST. Measured 2026-09-20, minutes after the token
+  // rotation fixed everything: `profile read failed: Post does not exist` on an
+  // Instagram handle whose account the owner had deactivated. The scraper gave
+  // the honest answer; the classifier had no word for it, so a settled fact
+  // about the account arrived looking like an open question about our code.
+  //
+  // ⚖️ THIS IS THE FOURTH GAP IN ONE DAY AND THEY ALL HAD ONE SHAPE — a class
+  // list written from failures IMAGINED rather than strings production
+  // produced (§U). It is also the cheapest possible bug: the run cost nothing,
+  // nothing was broken, and the only damage would have been an operator's hour.
+  if (/private|removed|region|unavailable|deleted|deactivat|does not exist|no longer (available|exists)|couldn't read that/.test(m)) return 'unavailable'
+  // ⚠️ `no audio url found` IS A FACT ABOUT ONE REEL, NOT A FAULT. Fifth gap,
+  // measured on the post-rotation recovery run where 18 of 20 videos stored.
   if (/no speech|has no speech|no captions|no_captions|no audio url/.test(m)) return 'no_speech'
-  // ⚠️ AN ACTOR THAT STARTS AND DIES IS OURS AND IT IS TRANSIENT. Measured
-  // 2026-09-20: `YouTube transcript service error 400: {"type":"run-failed",
-  // "message":"Actor run did not s…` on ONE video of five while the other four
-  // stored. A 400 normally means we sent something wrong, so it must not read
-  // as `billing` or `credentials`; `run-failed` says the run itself collapsed,
+  // ⚠️ AN ACTOR THAT STARTS AND DIES IS OURS AND IT IS TRANSIENT. Same run:
+  // `YouTube transcript service error 400: {"type":"run-failed","message":
+  // "Actor run did not s…` on ONE video of five while the other four stored.
+  // A 400 normally means WE sent something wrong, so it must not read as
+  // `billing` or `credentials`; `run-failed` says the run itself collapsed,
   // which is exactly what the one retry exists for.
   if (/run-failed|actor run did not|run did not succeed/.test(m)) return 'transient'
   return 'unknown'
