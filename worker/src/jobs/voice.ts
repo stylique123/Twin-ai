@@ -58,13 +58,21 @@ export async function measureCohortYield(
   ownerId: string,
   urls: string[],
   since: string,
+  voiceId?: string,
 ): Promise<Record<string, unknown> | null> {
   try {
-    const { data } = await db
+    // ⚠️ OWNER-SCOPED, THIS MEASURED THE WRONG SCAN. An owner with more than one
+    // voice (production holds one with TEN) gets every sibling voice's new rows
+    // counted into THIS scan's yield, and the number that decides whether the
+    // transcript budget is worth spending is inflated by work it did not do.
+    // `voice_id` is on every row already.
+    const q = db
       .from('creator_knowledge')
       .select('kind, source_url')
       .eq('owner_id', ownerId)
       .gte('created_at', since)
+    if (voiceId) q.eq('voice_id', voiceId)
+    const { data } = await q
     const rows = (data ?? []) as Array<{ kind?: string; source_url?: string | null }>
     const first = new Set(urls.slice(0, TRANSCRIPT_COHORT_SIZE))
     const second = new Set(urls.slice(TRANSCRIPT_COHORT_SIZE))
@@ -448,7 +456,7 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
         if (kErr) console.warn(JSON.stringify({ event: 'knowledge_insert_failed', rows: fresh.length, error: kErr.message }))
         else {
           knowledgeStored = fresh.length
-          cohortYield = await measureCohortYield(ownerId, urls, before)
+          cohortYield = await measureCohortYield(ownerId, urls, before, voiceId)
         }
       }
     }

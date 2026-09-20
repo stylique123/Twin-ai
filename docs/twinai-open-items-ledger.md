@@ -3338,3 +3338,76 @@ transactional, so the failed `update` took the `alter table` and the
 and index 0, before re-applying the corrected file. Had the DDL committed and
 only the backfill failed, the column would exist unpopulated and every reader's
 degradation path would have been the thing keeping the product alive.
+## §Q — `creator_knowledge.voice_id`: written on every row since the table existed, never read where it mattered
+
+⚠️ **1,949 OF 1,949 ROWS CARRY `voice_id` IN PRODUCTION — 100%, NO NULLS.** The
+writer has recorded which voice every belief came from since the column was
+added. `generate-blueprint`, the one reader whose output is the script the
+creator actually films, selected on `owner_id` alone. For an owner with more
+than one voice — production holds one with TEN, ten different people's accounts
+— the top-40 `times_seen` ranking blended strangers' beliefs with hers and then
+ranked them against each other. The `source='asked'` read, the creator's own
+typed sentences, had the same hole.
+
+⚖️ **THIS IS THE `transcripts` BUG'S TWIN AND THE OPPOSITE REPAIR.** 0220 had to
+ADD a column and backfill it, because the writer had genuinely never recorded
+the attribution. Here nothing was missing from the table and no migration was
+needed: the answer was already stored on every row and the reader simply did not
+ask the question. The repo's signature defect is "a column written and never
+read"; this is the costliest instance of it found so far, because the unread
+column was the one separating one creator from ten.
+
+⚖️ **AND THE SIBLINGS WERE ALREADY CORRECT, which is what makes it a defect
+rather than a design question.** `remineKnowledge.storedVersions` filters on
+`voice_id`. The web's `twinStrengthLoad` filters on `voice_id`. Only the
+blueprint compiler did not — the odd one out, not a new rule being introduced.
+
+⚠️ **`measureCohortYield` HAD IT TOO, AND IT CORRUPTS A DECISION RATHER THAN A
+SCRIPT.** Owner-scoped, it counted every sibling voice's new rows into the yield
+of whichever scan happened to run, and that number is what the transcript-budget
+question is settled by. A measurement inflated by work it did not do.
+
+⚖️ **THE GUARD THAT WOULD HAVE CAUGHT ALL THREE** is not "check for unread
+columns" in the abstract: it is asking, of every `owner_id` filter on a
+per-creator table, whether the owner IS the creator. Production says no for
+20 voices across 6 handles (§R).
+
+## §R — One handle, many owners: the guard that cannot simply refuse
+
+⚠️ **MEASURED 2026-09-20 — SIX HANDLES ARE CLAIMED BY MORE THAN ONE OWNER, 20
+VOICES IN TOTAL, ALL `ready`:**
+
+| handle | platform | distinct owners |
+|---|---|---|
+| `garyvee` | tiktok | 5 |
+| `styliquetechnologies` | instagram | 5 |
+| `hormozi` | instagram | 4 |
+| `alexhormozi` | youtube | 2 |
+| `mrbeast` | instagram | 2 |
+| `woodsyleather` | youtube | 2 |
+
+Two people cannot both own one TikTok account, so this is an OBJECTIVE signal
+needing no celebrity list and no follower threshold.
+
+⚠️ **BUT IT DOES NOT MEAN ONE THING, WHICH IS WHY "REFUSE" IS THE WRONG FIX.**
+`garyvee`, `hormozi`, `alexhormozi` and `mrbeast` are strangers' accounts
+scanned as the creator's own — storing their sentences under `subject='own'` and
+feeding them to the writer as things the creator said. `styliquetechnologies`
+under five owners is almost certainly one team legitimately sharing a company
+account. An auto-refusal breaks the second case; silence ships the first.
+
+⚠️ **AND THE PER-VOICE SCOPING MAKES THE BAD CASE CLEANER, NOT SAFER.** Under
+0220's sole-voice rule an owner whose ONLY voice is `mrbeast` now reads those
+rows as unambiguously theirs. The fabrication is better attributed than before.
+
+⚖️ **SO THE GUARD IS A QUESTION, NOT A BLOCK: "is this your account?" at scan
+time when the handle is already claimed by another owner** — recorded as an
+answer, not inferred. Not built; it needs a product decision on what a "no"
+does to an existing voice.
+
+⚠️ **UNTIL IT EXISTS, EVERY BULK VOICE OPERATION MUST PRINT THE HANDLES IT IS
+ABOUT TO ACT ON.** This has now caught the same class twice in one session: the
+tiktok recovery cohort silently re-included three `garyvee` rows after they were
+excluded by hand, and the youtube cohort surfaced `mrbeast`, `aliabdaal`,
+`matthew_berman`, `starterstory` and `davidheikka`. Both were caught only
+because the row list was read before the work ran.

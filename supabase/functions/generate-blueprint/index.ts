@@ -6308,10 +6308,25 @@ function reserveAskedInline<T extends { source?: string | null }>(
 }
 // ── END ASKED RESERVATION ───────────────────────────────────────────────────
 
-  const rankedRead = await readKnowledge((cols) => admin
+  // ⚠️ `voice_id` HAS BEEN ON EVERY ROW SINCE THE TABLE EXISTED — 1,949 of
+  // 1,949 in production — AND THIS READ THREW IT AWAY. Owner-scoped, the top-40
+  // ranking for a creator with more than one voice is drawn from all of them at
+  // once: one owner holds TEN, ten different people's accounts, so the writer
+  // was handed a stranger's beliefs as the creator's own and ranked them by
+  // `times_seen` against her real ones. The sibling readers already do this
+  // correctly — `remineKnowledge.storedVersions` and the web's
+  // `twinStrengthLoad` both filter on `voice_id` — so this is the odd one out,
+  // not a new rule.
+  //
+  // ⚖️ NO MIGRATION AND NO BACKFILL, WHICH IS THE WHOLE POINT: the writer never
+  // stopped recording which voice a belief came from. Only the reader stopped
+  // asking.
+  const scopeToVoice = <T extends { eq: (c: string, v: string) => T }>(q: T): T =>
+    voice?.id ? q.eq('voice_id', voice.id) : q
+  const rankedRead = await readKnowledge((cols) => scopeToVoice(admin
     .from('creator_knowledge')
     .select(cols)
-    .eq('owner_id', ownerId)
+    .eq('owner_id', ownerId))
     .order('times_seen', { ascending: false })
     .limit(40))
   const rankedRows = rankedRead.rows
@@ -6326,11 +6341,12 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // caption rows, which is the material MEASURED to push substance out of the
   // selection (73% grounded transcript-only against 58% mixed). This asks for the
   // scarce thing by name and leaves the ranking alone.
-  const askedRead = await readKnowledge((cols) => admin
+  // Same scoping, same reason: an answer this creator typed for THIS voice.
+  const askedRead = await readKnowledge((cols) => scopeToVoice(admin
     .from('creator_knowledge')
     .select(cols)
     .eq('owner_id', ownerId)
-    .eq('source', 'asked')
+    .eq('source', 'asked'))
     .order('created_at', { ascending: false })
     .limit(20))
   const askedRows = askedRead.rows
