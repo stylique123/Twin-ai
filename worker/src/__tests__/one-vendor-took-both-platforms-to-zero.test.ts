@@ -39,6 +39,17 @@ describe('the failure class survives the log', () => {
     expect(classifyTranscriptFailure(new Error('APIFY_TOKEN is not set'))).toBe('not_configured')
   })
 
+  it('names a rejected credential, which was `unknown` on its first real occurrence', () => {
+    // ⚠️ THE ACTUAL PRODUCTION STRING, 2026-09-20. This is the cause a human
+    // fixes in a minute by rotating a key, and it arrived as the class that
+    // says nothing. It is deliberately NOT `billing`: a rejected key is
+    // rotated, an exhausted balance is paid, and those are different pages.
+    expect(classifyTranscriptFailure(new Error('apify 67Q6fmd8iedTVcCwY returned 401')))
+      .toBe('credentials')
+    expect(classifyTranscriptFailure(new Error('apify act returned 402 payment required')))
+      .toBe('billing')
+  })
+
   it('names the bot check, which was `unknown` on its first real occurrence', () => {
     // ⚠️ MEASURED 2026-09-20 on all ten woodsyleather urls, and it landed in
     // `failed_unknown` — the one class that tells you nothing. This is not a
