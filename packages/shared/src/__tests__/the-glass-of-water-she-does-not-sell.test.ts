@@ -144,15 +144,59 @@ describe('the taxonomy actually reaches the writer', () => {
     expect(EDGE).toMatch(/kind: \(ownedEntity as/)
   })
 
-  it('passes shape and sections as absent rather than guessing them', () => {
-    // These fill in once the extraction steps land. Absent must mean
-    // "do not narrow" / "name nothing", never an invented default.
-    expect(EDGE).toMatch(/shape: null/)
-    expect(EDGE).toMatch(/sections: null/)
+  it('passes shape and sections from the extractor, never a guessed default', () => {
+    // Absent must mean "do not narrow" / "name nothing" — which is what the
+    // two readers return when the extractor found neither.
+    expect(EDGE).toMatch(/shape: shapeFromKnowledge\(ownedEntity\)/)
+    expect(EDGE).toMatch(/sections: sectionsFromKnowledge\(ownedEntity\)/)
   })
 
   it('the edge copy is generated from the shared module, not hand-typed', () => {
     expect(GENERATED).toMatch(/generate_shared_pilot_core\.mjs/)
     expect(GENERATED).toMatch(/showability === 'NEVER'/)
+  })
+})
+
+// ── THE EXTRACTION THAT MAKES SHAPE AND SECTIONS REAL ───────────────────────
+//
+// ⚖️ THE EXTRACTOR ALREADY READ THE PHOTOGRAPHS. `extract_product` has sent
+// product images to the model in the same call as the page for some time — what
+// it never asked them was the one question the direction field needs: what IS
+// this thing, physically. So this is two enum values on an existing schema, not
+// a new extraction pass.
+const EXTRACT = read(j(ROOT, 'worker', 'src', 'jobs', 'extractProduct.ts'), 'utf8')
+
+describe('the extractor is asked the one question the direction field needs', () => {
+  it('can report an object shape and a page section', () => {
+    expect(EXTRACT).toMatch(/'object_shape', 'page_section'/)
+  })
+
+  it('takes shape from a photograph, which it was already reading', () => {
+    expect(EXTRACT).toMatch(/name, category, description, object_shape/)
+  })
+
+  it('is told a blank shape is the right answer for a service, not a miss', () => {
+    expect(EXTRACT).toMatch(/omit it — that is the correct answer, not a failure to find one/)
+  })
+
+  it('is told never to report a section it did not see', () => {
+    expect(EXTRACT).toMatch(/Never report a section because a product\s*',\s*'of this kind usually has one/)
+  })
+})
+
+describe('and the writer reads them back — no write-only column', () => {
+  it('pulls both out of the same knowledge blob the extractor writes', () => {
+    expect(EDGE).toMatch(/shape: shapeFromKnowledge\(ownedEntity\)/)
+    expect(EDGE).toMatch(/sections: sectionsFromKnowledge\(ownedEntity\)/)
+  })
+
+  it('treats a shape the taxonomy does not know as ABSENT, never passes it through', () => {
+    // An unknown shape would narrow the action set to nothing, which reads
+    // downstream as "this cannot be handled" — the same failure, new hat.
+    expect(EDGE).toMatch(/known\.includes\(raw\) \? \(raw as ObjectShapeInline\) : null/)
+  })
+
+  it('bounds the section list — a camera target list, not a site index', () => {
+    expect(EDGE).toMatch(/\.slice\(0, 12\)/)
   })
 })

@@ -11,7 +11,8 @@
 
 import { renderDirectionGuidance,
   type ProductKind as ProductKindInline,
-  type Showability as ShowabilityInline } from '../_shared/performanceDirection.ts'
+  type Showability as ShowabilityInline,
+  type ObjectShape as ObjectShapeInline } from '../_shared/performanceDirection.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { buildLinkAllowlist, sanitizeBlueprintLinks, type LinkAllowlist } from '../_shared/outputLinks.ts'
 import { templateFor } from '../_shared/containerTemplates.ts'
@@ -4900,6 +4901,48 @@ const CMP_COMPARATIVE: readonly RegExp[] = [
  * the two lines that needed it. One derivation, reachable from both, is the fix
  * that cannot drift back apart.
  */
+/** Facts the extractor stored, as {field, value} pairs. */
+function knowledgeFacts(ownedEntity: unknown): Array<{ field: string; value: string }> {
+  const k = (ownedEntity as { knowledge?: unknown } | null)?.knowledge
+  if (!Array.isArray(k)) return []
+  return k.flatMap((f) => {
+    const field = (f as { field?: unknown })?.field
+    const value = (f as { value?: unknown })?.value
+    return typeof field === 'string' && typeof value === 'string' && value.trim() !== ''
+      ? [{ field, value: value.trim() }]
+      : []
+  })
+}
+
+/**
+ * What the product physically IS, when a photograph said so.
+ *
+ * ⚠️ AN UNRECOGNISED WORD IS NOT A SHAPE. The extractor is asked for one of a
+ * fixed list, and anything else it returns is treated as ABSENT rather than
+ * passed through — a shape the taxonomy does not know would narrow the action
+ * set to nothing, which reads downstream as "this product cannot be handled"
+ * and is the glass-of-water failure wearing a different hat.
+ */
+function shapeFromKnowledge(ownedEntity: unknown): ObjectShapeInline | null {
+  const known = ['jar', 'bottle', 'tube', 'bag', 'box', 'flat', 'garment', 'device', 'food']
+  const raw = knowledgeFacts(ownedEntity).find((f) => f.field === 'object_shape')?.value?.toLowerCase()
+  return raw && known.includes(raw) ? (raw as ObjectShapeInline) : null
+}
+
+/** Sections the extractor actually SAW on the page. Never inferred from kind. */
+function sectionsFromKnowledge(ownedEntity: unknown): string[] {
+  // De-duplicated case-insensitively, kept in the extractor's own words, and
+  // bounded — a page map is a handful of names the creator can point a camera
+  // at, never a site index.
+  const byLower = new Map<string, string>()
+  for (const f of knowledgeFacts(ownedEntity)) {
+    if (f.field !== 'page_section') continue
+    const v = f.value.slice(0, 60)
+    if (!byLower.has(v.toLowerCase())) byLower.set(v.toLowerCase(), v)
+  }
+  return [...byLower.values()].slice(0, 12)
+}
+
 function productFactCountOf(ownedEntity: unknown): number {
   const k = (ownedEntity as { knowledge?: unknown } | null)?.knowledge
   return Array.isArray(k)
@@ -9498,10 +9541,11 @@ This is the video's position. Every field below must serve it. If the reference'
     const directionGuidance = renderDirectionGuidance({
       kind: (ownedEntity as { type?: string | null } | null)?.type as ProductKindInline ?? null,
       showability: (ownedEntity as { showability?: string | null } | null)?.showability as ShowabilityInline ?? null,
-      // Shape and sections land here once the extraction steps fill them; absent
-      // means "do not narrow" and "name no section", never a guess.
-      shape: null,
-      sections: null,
+      // ⚠️ READ OUT OF THE SAME `knowledge` BLOB THE EXTRACTOR WRITES THEM TO,
+      // because a column written and never read is this repo's signature defect
+      // and `object_shape` would have been the next instance of it.
+      shape: shapeFromKnowledge(ownedEntity),
+      sections: sectionsFromKnowledge(ownedEntity),
     })
     const userPrompt = `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
