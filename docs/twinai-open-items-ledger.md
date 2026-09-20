@@ -3448,3 +3448,42 @@ owners), `mrbeast` (3), `hubermanlab`, `zachking` — and the youtube list added
 `aliabdaal`, `matthew_berman`, `starterstory`, `davidheikka`. Recovering those
 would have paid to store famous people's sentences as strangers' own speech.
 Both cohorts were filtered by hand, and §R still has no executable guard.
+
+## §U — `apify … returned 401`: the token, not the code
+
+⚠️ **ROOT CAUSE, MEASURED 2026-09-20 AFTER THREE ROUNDS OF INSTRUMENTATION:**
+
+    apify 67Q6fmd8iedTVcCwY returned 401
+
+**401 Unauthorized. The Apify token is rejected.** Not 402 (credits), not 404
+(a deleted actor). And it is on the YouTube CHANNEL actor — a DIFFERENT actor
+from the transcript one that failed earlier — which is what makes this
+account-level rather than actor-level.
+
+⚖️ **SO NONE OF THE FETCH WORK TONIGHT WAS THE FIX, AND THAT IS WORTH SAYING
+PLAINLY.** The fallback, the retry policy, the residential-proxy routing and the
+three durable failure classes are all real improvements — but the thing that
+took YouTube and Instagram to zero is a credential, and no amount of code
+fixes it. **The action is: rotate `APIFY_TOKEN` on the VPS** (or re-issue it in
+the Apify console if it was revoked).
+
+⚠️ **WHAT THE CODE DID EARN: the answer took three rounds because each round of
+instrumentation was itself incomplete.**
+
+| round | recorded | why it was not enough |
+|---|---|---|
+| before | `routes: {failed: 5}` | no reason at all |
+| #945 | `failed_unknown` + a yt-dlp sample | the fallback ERASED the vendor error and kept the local one |
+| #947 | both rungs in one message | the scan path still stored only the creator-facing sentence |
+| #948 | `failure_class` + sample on the scan row | `401` was not in the classifier, so it read `unknown` |
+
+⚠️ **THE CLASSIFIER WAS CORRECTED BY PRODUCTION THREE TIMES IN ONE NIGHT** —
+`bot_check`, then the swallowed vendor reason, then `credentials`. Each gap had
+the same shape: a class list written from what failures were *imagined* to look
+like rather than from strings production had actually produced. **The only
+reliable way to extend it is a real failure, so the next unknown is a bug
+report about this file, not an unlucky error.**
+
+⚖️ **`credentials` IS NOT `billing`, DELIBERATELY.** A rejected key and an
+exhausted balance both stop every call, but one is rotated and the other is
+paid. Pooling them sends someone to the wrong page.

@@ -16,7 +16,9 @@
  * fact about one post; `transient` is worth a retry and the others are not.
  */
 export type TranscriptFailure =
-  | 'billing'        // 402/403 — credits exhausted or token rejected. Ours, total.
+  | 'credentials'    // 401 — the token itself is rejected. Ours, total, and a
+                     //       DIFFERENT fix from billing: rotate the key.
+  | 'billing'        // 402/403 — credits exhausted or plan refused. Ours, total.
   | 'actor_missing'  // 404 — the Actor id no longer resolves. Ours, total.
   | 'rate_limited'   // 429 — back off, then retry.
   | 'transient'      // 5xx / timeout / socket. Retry once.
@@ -29,6 +31,18 @@ export type TranscriptFailure =
 export function classifyTranscriptFailure(err: unknown): TranscriptFailure {
   const m = (err instanceof Error ? err.message : String(err)).toLowerCase()
   if (/not set|not configured/.test(m)) return 'not_configured'
+  // ⚠️ 401 WAS `unknown`, AND IT IS THE MOST ACTIONABLE FAILURE THERE IS.
+  // Measured 2026-09-20: `apify 67Q6fmd8iedTVcCwY returned 401` — the Apify
+  // token rejected outright, on a DIFFERENT actor from the transcript one,
+  // which is what made this account-level rather than actor-level. The old
+  // pattern matched 402/403 and the word "unauthorised", and this message
+  // carries neither, so the one cause a human could fix in a minute arrived
+  // as the one class that says nothing.
+  //
+  // ⚖️ AND IT IS NOT `billing`. A rejected key and an exhausted balance both
+  // stop every call, but one is rotated and the other is paid — pooling them
+  // would send someone to the wrong page.
+  if (/\b401\b|unauthori[sz]ed|invalid token|token .{0,12}(invalid|rejected|expired)|bad credentials/.test(m)) return 'credentials'
   if (/\b(402|403)\b|payment|credit|quota|insufficient|unauthor/.test(m)) return 'billing'
   if (/\b404\b|not found|no such act/.test(m)) return 'actor_missing'
   if (/\b429\b|rate.?limit|too many/.test(m)) return 'rate_limited'
