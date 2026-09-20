@@ -3578,3 +3578,39 @@ collapsed) both landed in `unknown`. The first is a bounded fact about one
 video; the second is ours and retryable. Now `no_speech` and `transient`. Same
 shape as the four before it, and §U's rule stands: the next `unknown` is a bug
 report about `transcriptFailure.ts`.
+## §W — The runway number, closed out, and the sample that explained nothing
+
+⚖️ **THE NUMBER THIS WHOLE THREAD EXISTS FOR HAS MOVED.** Measured
+2026-09-20 after the credential was rotated and the recovery re-run:
+
+| | at the start of the session | now |
+|---|---|---|
+| ready voices with own speech | **21 of 53** | **31 of 53** |
+
+⚠️ **AND THE REMAINDER IS NOT A BACKLOG, IT IS THE §R PROBLEM.** Of the 22
+voices still holding no speech, **14 carry a handle claimed by more than one
+owner**. Of the 8 that do not, SIX are public figures scanned by someone who
+is not them (`hubermanlab`, `zachking`, `aliabdaal`, `davidheikka`,
+`matthew_berman`, `starterstory`). **So ~20 of the 22 are the same unresolved
+question, not twenty different ones**, and no amount of recovery work reduces
+it — recovering them is precisely the thing §R exists to refuse.
+
+⚖️ **THE TWO THAT ARE REAL ARE BOTH HONEST ANSWERS RATHER THAN FAULTS.**
+`tandorstudio` returned six of ten videos as `no_speech` — it posts silent
+content, and that is a fact about the account. `itsabd_63` has no stored urls
+at all, so it has never had a transcript pass to recover; it needs a fresh
+scan, not a re-run.
+
+⚠️ **AND THE SAMPLE KEPT THE FIRST FAILURE RATHER THAN THE FIRST UNEXPLAINED
+ONE, WHICH IS BACKWARDS.** Same `tandorstudio` run: six `no_speech`, four
+`unknown`, and the one stored sample was a `no_speech` message — text the CLASS
+already carried. The four failures that needed words got none, so a run with a
+real unexplained fault in it could not be diagnosed at all.
+
+⚖️ **A NAMED CLASS IS SELF-DESCRIBING; `unknown` IS THE ONLY ONE WHOSE WORDS
+CARRY INFORMATION.** So an unknown now outranks a classified sample exactly
+once, and after that first-wins as before — otherwise each later unknown
+overwrites the last and the field becomes a tail of the log rather than one
+sample. This is the sixth correction to the failure-reporting path in two days
+and, like the five before it, it was found by reading what production actually
+wrote rather than by reasoning about what it might write.

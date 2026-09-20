@@ -138,6 +138,8 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
   const bump = (k: string) => { routes[k] = (routes[k] ?? 0) + 1 }
   // One sample message for the whole run — enough to act on, never a log dump.
   let firstFailureDetail: string | null = null
+  // Whether that sample is already an `unknown`. Once it is, it stays.
+  let firstFailureWasUnknown = false
   // ⚠️⚠️ THIS WAS A SERIAL LOOP AND IT IS WHAT THE CREATOR WAITS ON. `dna-poll`
   // reports ready from `brand_voices.status`, which this job sets, so every
   // second here is a second on the onboarding screen. Measured on the last
@@ -248,7 +250,20 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
       bump('failed')
       bump(`failed_${kind}`)
       const detail = err instanceof Error ? err.message : String(err)
-      if (!firstFailureDetail) firstFailureDetail = `${kind}: ${detail.slice(0, 200)}`
+      // ⚠️ THE SAMPLE KEPT THE FIRST FAILURE, NOT THE FIRST UNEXPLAINED ONE, AND
+      // THAT IS BACKWARDS. Measured 2026-09-20 on tandorstudio: ten videos, six
+      // `no_speech` and four `unknown` — and the one stored sample was a
+      // `no_speech` message, which the CLASS already said. The four that needed
+      // text got none, so the run could not be diagnosed at all.
+      //
+      // ⚖️ A NAMED CLASS IS SELF-DESCRIBING; `unknown` IS THE ONLY ONE THAT
+      // NEEDS ITS WORDS. So an unknown outranks a classified sample once, and
+      // after that first-wins as before — this still cannot become a log file.
+      const worthMore = kind === 'unknown' && !firstFailureWasUnknown
+      if (!firstFailureDetail || worthMore) {
+        firstFailureDetail = `${kind}: ${detail.slice(0, 200)}`
+        firstFailureWasUnknown = kind === 'unknown'
+      }
       console.error('build_voice: transcript failed', url, kind, detail)
       return null
     }
