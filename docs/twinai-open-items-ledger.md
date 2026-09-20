@@ -3414,6 +3414,12 @@ because the row list was read before the work ran.
 
 ## §S — Recovery works on exactly one platform, and that is measured, not assumed
 
+> ⚠️ **SUPERSEDED BY §V, 2026-09-20.** Every measurement below ran through a
+> REJECTED APIFY TOKEN. The youtube and instagram zeros are artefacts of that
+> credential, not facts about those platforms: the same voices recovered 18 of
+> 20 once it was rotated. The tiktok row stands. Read §V before acting on
+> anything here.
+
 ⚠️ **THE PRE-PERSISTENCE COHORT (§O) IS RECOVERABLE ONLY ON TIKTOK.** Each
 platform was tried with the stored `build_voice` payload through current code,
 on voices holding ZERO own transcripts:
@@ -3522,3 +3528,40 @@ report about this file, not an unlucky error.**
 ⚖️ **`credentials` IS NOT `billing`, DELIBERATELY.** A rejected key and an
 exhausted balance both stop every call, but one is rotated and the other is
 paid. Pooling them sends someone to the wrong page.
+
+## §V — §S was measured honestly and was still wrong, because every run went through a dead credential
+
+⚠️ **§S CONCLUDED "RECOVERY WORKS ON EXACTLY ONE PLATFORM, AND THAT IS
+MEASURED, NOT ASSUMED." IT WAS MEASURED. IT WAS WRONG.** Re-run on
+2026-09-20 after the owner rotated `APIFY_TOKEN`, same voices, same stored
+`build_voice` payloads:
+
+| voice | platform | during the outage | after the rotation |
+|---|---|---|---|
+| `BuildersCentral` | youtube | 0 of 5 | **5 of 5** |
+| `codebrewappdevelopment` | youtube | 0 of 5 | **5 of 5** |
+| `thejoemoffett` | youtube | 0 of 5 | **4 of 5** |
+| `hanushkaa` | instagram | 0 of 5 | **4 of 5** |
+
+**18 of 20 against 0 of 20.** The instagram cohort §S records as "CANCELLED on
+that evidence, not deferred" was cancelled on an artefact of a rejected key.
+
+⚖️ **THE LESSON IS NOT "MEASURE MORE", IT IS "A MEASUREMENT INHERITS EVERY
+FAULT UPSTREAM OF IT".** Each of those zeros was a real observation of a real
+production run. What none of them could see is that one credential sat under
+all of them, so four independent-looking results were one result repeated. **A
+cohort that fails UNIFORMLY is evidence about the pipeline before it is
+evidence about the cohort** — and §S drew the second conclusion from the first
+shape.
+
+⚖️ **THE TELL WAS AVAILABLE AND WAS READ AS NOISE.** Tiktok kept working
+throughout, and its exemption was explained away as "tiktok transcribes
+locally" — which is TRUE, and which is exactly why it was the control that
+should have indicted the vendor path rather than excused it.
+
+⚠️ **AND THE TWO REAL FAILURES WERE A FIFTH CLASSIFIER GAP.** `no audio url
+found` (a reel with no audio track) and `run-failed` (an Actor run that
+collapsed) both landed in `unknown`. The first is a bounded fact about one
+video; the second is ours and retryable. Now `no_speech` and `transient`. Same
+shape as the four before it, and §U's rule stands: the next `unknown` is a bug
+report about `transcriptFailure.ts`.
