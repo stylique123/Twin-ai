@@ -9,7 +9,7 @@
 // Secrets: supabase secrets set GEMINI_API_KEY=...
 //          (optional) supabase secrets set GEMINI_MODEL=gemini-3.1-pro
 
-import { renderDirectionGuidance,
+import { renderDirectionGuidance, cleanActionPosing,
   type ProductKind as ProductKindInline,
   type Showability as ShowabilityInline,
   type ObjectShape as ObjectShapeInline } from '../_shared/performanceDirection.ts'
@@ -11437,6 +11437,35 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         removals: linkRemovals.slice(0, 20),
       }))
     }
+
+    // ── THE MENU'S OWN KEY MUST NOT REACH THE CREATOR ────────────────────────
+    //
+    // ⚠️ MEASURED 2026-09-21: five beats — one whole run — shipped
+    // `action_posing` beginning with the taxonomy id that selected it
+    // ("hold_up: Hold it up to chest height..."). `renderDirectionGuidance`
+    // prints the menu as `- <id>: <does>` and the writer sometimes copies the
+    // id along with the direction. An internal enum key is not something a
+    // person can do, and it lands under a heading promising direction.
+    //
+    // ⚖️ HERE, WITH THE OTHER FINAL PASSES, for the same reason they are here:
+    // this is the last point before the blueprint ships, so nothing downstream
+    // can reintroduce it. `cleanActionPosing` is idempotent and leaves text
+    // that never leaked untouched, so this costs a trim on the common path.
+    try {
+      const script = (blueprint as { script?: unknown })?.script
+      if (Array.isArray(script)) {
+        for (const beat of script) {
+          if (!beat || typeof beat !== 'object') continue
+          const b = beat as { action_posing?: unknown }
+          if (typeof b.action_posing !== 'string') continue
+          const cleaned = cleanActionPosing(b.action_posing)
+          if (cleaned !== b.action_posing) {
+            console.warn(JSON.stringify({ event: 'action_posing_key_stripped' }))
+            b.action_posing = cleaned
+          }
+        }
+      }
+    } catch { /* never fail a generation on a hygiene pass */ }
 
     // ── THE SHOT LIST MUST QUOTE THE SCRIPT THAT ACTUALLY SHIPS ──────────────
     //
