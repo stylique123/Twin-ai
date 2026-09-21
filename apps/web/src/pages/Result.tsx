@@ -1308,11 +1308,26 @@ export default function Result() {
               <ScriptIntentAsk
                 answered={gen?.script_intent != null}
                 onAnswer={(intent, reason) => recordScriptIntent(id, intent, reason)}
+                /* ⚠️⚠️ THE LABEL PROMISED AN ACTION THE BUTTON DID NOT PERFORM.
+                   "Maybe — I want to change something" recorded
+                   `would_edit_first` and the card vanished, with no way to
+                   change anything — which is why the owner reported it as
+                   having no observable behaviour. It was not broken; it was
+                   dishonest.
+
+                   ⚖️ THE EDITOR IS ALREADY ON THIS PAGE, per beat. Sending them
+                   to it costs one scroll and makes the label true. */
+                onWantsEdit={() => {
+                  document.getElementById('script-section')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }}
               />
             )}
 
             {/* Script Teleprompter */}
-            <div className="space-y-4">
+            {/* ⚠️ AN ANCHOR, BECAUSE A BUTTON NAMED "I want to change something"
+                HAD NOWHERE TO SEND ANYBODY. See `ScriptIntentAsk`. */}
+            <div id="script-section" className="space-y-4 scroll-mt-6">
               <div className="flex items-center justify-between">
                 <h2 className="font-heading text-xs font-semibold tracking-wide uppercase text-stone flex items-center gap-2">
                   <FileText className="h-4 w-4 text-stone" /> Script teleprompter

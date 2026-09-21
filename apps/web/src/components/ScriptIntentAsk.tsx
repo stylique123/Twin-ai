@@ -32,9 +32,20 @@ export interface ScriptIntentAskProps {
   answered: boolean
   /** Returns false when the write did not land, so the UI can stay asking. */
   onAnswer: (intent: ScriptIntent, reason?: NoRecordReason | null) => Promise<boolean>
+  /** ⚠️⚠️ "Maybe — I want to change something" IS THE ONLY OPTION THAT NAMES AN
+   *  ACTION, AND IT PERFORMED NONE. It recorded `would_edit_first` and the card
+   *  vanished — the owner reported it as having no observable behaviour, which
+   *  is exactly right: it was not broken, it was DISHONEST. A label that says
+   *  "I want to change something" has to lead somewhere a change can be made.
+   *
+   *  ⚖️ OPTIONAL, SO THE SIGNAL STILL LANDS WITHOUT IT. A caller that cannot
+   *  offer an editor records the answer exactly as before rather than losing it.
+   *  Only fired after the write succeeds — sending someone to the editor on a
+   *  failed save would hide the failure behind a scroll. */
+  onWantsEdit?: () => void
 }
 
-export function ScriptIntentAsk({ answered, onAnswer }: ScriptIntentAskProps) {
+export function ScriptIntentAsk({ answered, onAnswer, onWantsEdit }: ScriptIntentAskProps) {
   const [intent, setIntent] = useState<ScriptIntent | null>(null)
   const [done, setDone] = useState(false)
   const [dismissed, setDismissed] = useState(false)
@@ -53,8 +64,12 @@ export function ScriptIntentAsk({ answered, onAnswer }: ScriptIntentAskProps) {
     setSaving(false)
     // ⚖️ A FAILED WRITE STAYS ASKING. Showing "thanks" for an answer that was
     // never stored would be the silent-failure shape this repo keeps closing.
-    if (ok) setDone(true)
-    else setFailed(true)
+    if (ok) {
+      setDone(true)
+      // ⚖️ AFTER THE WRITE, NEVER INSTEAD OF IT. The answer is the thing this
+      // card exists to collect; the scroll is what makes the label honest.
+      if (i === 'would_edit_first') onWantsEdit?.()
+    } else setFailed(true)
   }
 
   return (
