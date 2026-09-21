@@ -5489,7 +5489,7 @@ SCRIPT & HOOK INTEGRATION:
 - THE FIRST SCRIPT BEAT (the Hook section) MUST contain the actual spoken words of your #1 recommended hook (hook_options[0]), written out in full. NEVER output a placeholder, a bracketed token (e.g. "[Hook Option 1]", "[Insert selected hook from above]"), or a reference like "your hook here" in any script line. Every script line must be real, speakable words a creator can read off a teleprompter.
 - background: specify the background setup, props, lighting, or visual context for this specific beat. Avoid generic descriptors (e.g. "sitting at desk"). Provide specific, creative visual setups matching the brand DNA.
 - cuts_info: specify camera angles, zooms, pacing, and cut locations. Give professional instructions (e.g., "Cut on action to a tight zoom", "Slide-in transition from right to keep pacing", "Fast cut to clean product shot").
-- action_posing: specify the creator's physical actions, hand gestures, body language, facial expressions, and positioning (e.g., "Hold product at eye level, point finger, maintain intense eye contact with lens", "Lean forward slightly with a knowing smile, hands open to suggest accessibility").
+- action_posing: the creator's physical action, gesture, body language and positioning for this beat. NAME THE THING IN THEIR HANDS, never "it", "the product" or "the item" — a creator holding three objects cannot act on "point at a specific spot on it". Say which object and which part. Good: "Hold the cracked tin up to chest height, thumb over the split seam." "Rest the finished candle flat on an open palm so the window light catches the surface." Bad: "Hold product at eye level." "Point one finger at a specific spot on it." If no product is attached to this video, direct the body and face instead and name nothing you were not told exists.
 - SUBSTANCE BEFORE PROSE. Before writing any line, decide WHAT GOES IN IT, then declare where that came from. Two fields on every beat:
   * "substance": exactly one of creator_knowledge | product_dna | general | needs_user | none.
     - creator_knowledge = the beat is built on something listed under WHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID. You may only choose this if the item is actually in that list above. Inventing a plausible-sounding position and labelling it creator_knowledge is the single worst thing you can do here, and it is checked.
@@ -7871,8 +7871,36 @@ function reserveAskedInline<T extends { source?: string | null }>(
     // forty that do not and spends budget the reference read needs. Relevance is
     // lexical overlap with what this video is ABOUT — simple and explainable on
     // purpose, so "why did it say that" has an answer.
+    // ⚠️⚠️ THE PRODUCT THE VIDEO IS ABOUT WAS NOT PART OF WHAT THE VIDEO IS
+    // ABOUT. This read `reference_note` and `brief.idea` — what the creator
+    // TYPED — and nothing about the product they picked from their own library.
+    // So on a product-led video, where the idea box is often empty or a single
+    // word, relevance was scored against almost nothing, and the ranking fell
+    // through to `times_seen`: the belief they repeat most often, whatever this
+    // video is for.
+    //
+    // ⚠️ THAT IS THE SHAPE OF THE OWNER'S ISSUE 2. A Daisy Candle video was
+    // given the peony-wedding order — a real story she had told often, and the
+    // wrong one for this product. With three rows in her store it was supplied
+    // regardless (three items, ten slots, relevance cannot choose), so THAT
+    // instance was the empty shelf and not this. But with a full store the
+    // ranking decides, and until this line the product had no vote in it.
+    //
+    // ⚖️ NAME, OFFER AND SUMMARY, because all three carry the nouns a story
+    // would share with the product — "candle", "wax", "tin" live in the summary
+    // far more often than in a one-line name. Still lexical, still explainable:
+    // "why did it say that" keeps an answer.
+    const entityAbout = ownedEntity as
+      { name?: unknown; offer?: unknown; creator_summary?: unknown } | null
     const aboutTerms = new Set(
-      `${reference_note} ${brief.idea ?? ''}`.toLowerCase().split(/[^a-z0-9]+/)
+      [
+        reference_note,
+        brief.idea ?? '',
+        entityAbout?.name ?? '',
+        entityAbout?.offer ?? '',
+        entityAbout?.creator_summary ?? '',
+      ].map((v) => String(v ?? '')).join(' ')
+        .toLowerCase().split(/[^a-z0-9]+/)
         .filter((w) => w.length > 3))
     const ranked = kRows.filter((k) => k.basis !== 'inferred' && k.kind !== 'covered')
     const scored = ranked.map((k) => ({
