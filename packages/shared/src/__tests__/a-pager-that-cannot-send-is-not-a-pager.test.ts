@@ -140,7 +140,13 @@ const RUNNER = readFileSync(
 
 describe('the runner reaches the transport, not merely the policy', () => {
   it('imports and calls every piece of the message module', () => {
-    for (const symbol of ['pageBody', 'digestMarkdown', 'pageAction', 'PAGE_LABEL', 'PAGE_TITLE']) {
+    for (const symbol of [
+      'pageBody', 'digestMarkdown', 'pageAction', 'PAGE_LABEL', 'PAGE_TITLE',
+      // ⚖️ THE MONITOR CHANNEL IS HELD TO THE SAME RULE. It was added because
+      // the monitor died silently for 75 straight runs; shipping its formatter
+      // unreached would be that defect a third time.
+      'monitorBody', 'monitorAction', 'MONITOR_LABEL', 'MONITOR_TITLE',
+    ]) {
       expect(RUNNER, symbol).toContain(symbol)
     }
     expect(RUNNER).toMatch(/deliverPage\(/)

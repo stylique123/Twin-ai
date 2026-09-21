@@ -5,6 +5,12 @@
 # throughout, and a person found it. Nothing was using the thing on a schedule,
 # so nothing could tell.
 #
+# ⚠️ AND IT REPORTS ITS OWN DEATH. Setup failures — a missing secret, a sign-in
+# that no longer works — open a SEPARATE issue saying Twin was not measured,
+# rather than dying before the pager exists. 75 of 75 runs failed silently that
+# way before this was wired. This step going red now means one thing only: the
+# monitor could not run, and the issue it opened says so.
+#
 # ⚖️ HOURLY, AND NOT MORE OFTEN. Faster would not have found this outage sooner
 # in any way that mattered (it lasted two days), and it would cost real
 # generations against real quota. The rate that matters is the ALERT rate, and
