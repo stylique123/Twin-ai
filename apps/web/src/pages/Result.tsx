@@ -30,6 +30,7 @@ import { CreativeTransfer } from '../components/CreativeTransfer'
 import { isWhollyPlaceholder } from '../lib/api'
 import { UnfilledContainers } from '../components/UnfilledContainers'
 import { CountPromise } from '../components/CountPromise'
+import { blueprintCountIssues, honestWhyItWorks } from '../lib/api'
 import { DeclaredClips } from '../components/DeclaredClips'
 import { CoverButton } from '../components/CoverDialog'
 import { SchedulePostDialog } from '../components/SchedulePostDialog'
@@ -785,6 +786,14 @@ export default function Result() {
   // generations and neither distinguishes the 74 that have a reference from the
   // 4 that do not. Every surface below that claims something about "the
   // reference" reads THIS, so a fifth cannot drift from the other four.
+  // ⚠️⚠️ TWO PANELS ON ONE SCREEN ASSERTED OPPOSITE THINGS ABOUT ONE HOOK. The
+  // honesty check flagged "promises 2 and delivers 0" while "Why it works"
+  // praised the same hook for naming a number. `honestWhyItWorks` suppresses
+  // the praise when — and only when — the check has contradicted it; the
+  // verdict is computed HERE, from the same `blueprintCountIssues` the
+  // `CountPromise` card renders, so the two cannot disagree about whether they
+  // disagree.
+  const countPromiseBroken = blueprintCountIssues(b).length > 0
   const hasReference = cameFromAReference(gen.reference_url)
   const lengthLine = lengthSentence(measureScriptLength(updatedScript))
   // ⚠️ FIX 8 (Wave 3). The SAME computed runtime `lengthLine` is built from,
@@ -1540,7 +1549,7 @@ export default function Result() {
                       <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Why it works</h3>
                     </div>
                     <ul className="space-y-3">
-                      {b.reference_read.why_it_works.map((w, i) => (
+                      {honestWhyItWorks(b.reference_read.why_it_works, countPromiseBroken).map((w, i) => (
                         <li key={i} className="flex gap-2.5 text-xs text-sand leading-relaxed">
                           <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal" /> {w}
                         </li>
@@ -1871,7 +1880,7 @@ export default function Result() {
                   <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Why it works</h3>
                 </div>
                 <ul className="space-y-2.5">
-                  {b.reference_read.why_it_works.map((w, i) => (
+                  {honestWhyItWorks(b.reference_read.why_it_works, countPromiseBroken).map((w, i) => (
                     <li key={i} className="flex gap-2 text-xs text-sand leading-relaxed">
                       <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-teal" /> {w}
                     </li>
