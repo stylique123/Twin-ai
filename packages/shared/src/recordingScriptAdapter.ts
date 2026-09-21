@@ -10,6 +10,7 @@
 import {
   declaredClipOf, isWhollyPlaceholder, stripDeclaredClips, type ClipMedium,
 } from './containerResolution.js'
+import { hookRemainder } from './script/hookRemainder.js'
 import type { Blueprint } from './types'
 import {
   type RecordingScene,
@@ -361,6 +362,20 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
       // The FIRST hook-like line is the one scene 1 displaced; a later one is a
       // re-hook whose plan entry is not scene 1's to take.
       if (hookIdx === null) hookIdx = idx
+      // ⚠️⚠️ AND THE BEAT MAY HAVE SAID MORE THAN THE HOOK. Measured on all
+      // three of the owner's 2026-09-20 runs: the opening beat is the hook
+      // sentence FOLLOWED BY a second, entirely new one. Dropping the whole
+      // beat removed a line the writer wrote to be spoken — and the shot card,
+      // which quotes `script[]`, went on showing it. That is the report "the
+      // shot list carries an extra sentence": the shot list was right and the
+      // teleprompter was short.
+      //
+      // ⚖️ THE HOOK STILL SPEAKS ONCE. Only the part past it survives, and
+      // only when `hookRemainder` is certain of the split — see its header for
+      // the shapes it deliberately declines. When it returns nothing, this is
+      // the same unconditional drop it has always been.
+      const rest = hookRemainder(l, looksLikeHook)
+      if (rest !== '') usable.push({ seg: { ...seg, line: rest }, idx })
       return
     }
     usable.push({ seg, idx })
