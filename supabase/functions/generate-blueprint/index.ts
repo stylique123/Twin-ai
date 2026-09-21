@@ -9726,6 +9726,11 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // first-appearance sequence, or both; `setupCount` is the number of
     // distinct (background, framing) setups this shot list resolved to.
     let setupLabelResync: { relabeled: number; setupCount: number } | null = null
+    // ⚠️ THE STRIP ERASES ITS OWN EVIDENCE. Once the key is off the beat, the
+    // stored blueprint looks exactly like one that never leaked — so unlike the
+    // resyncs above, this count is NOT derivable from the rows it describes.
+    // That is precisely why it rides the audit rather than only a log line.
+    let actionPosingHygiene: { stripped: number; of: number } | null = null
     // ⚖️ FIX 1 (Wave 1). NULL MEANS THE REFERENCE HAD NO READABLE TRANSCRIPT TO
     // CHECK AGAINST — never zero. `found` is beats that shared a ≥6-content-word
     // contiguous run with the reference transcript; `repaired` is how many were
@@ -11454,15 +11459,22 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     try {
       const script = (blueprint as { script?: unknown })?.script
       if (Array.isArray(script)) {
+        let stripped = 0
+        let seen = 0
         for (const beat of script) {
           if (!beat || typeof beat !== 'object') continue
           const b = beat as { action_posing?: unknown }
           if (typeof b.action_posing !== 'string') continue
+          seen++
           const cleaned = cleanActionPosing(b.action_posing)
           if (cleaned !== b.action_posing) {
-            console.warn(JSON.stringify({ event: 'action_posing_key_stripped' }))
+            stripped++
             b.action_posing = cleaned
           }
+        }
+        actionPosingHygiene = { stripped, of: seen }
+        if (stripped > 0) {
+          console.warn(JSON.stringify({ event: 'action_posing_key_stripped', stripped, of: seen }))
         }
       }
     } catch { /* never fail a generation on a hygiene pass */ }
@@ -11675,6 +11687,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       beatAudit.shot_list_resync = shotListResync
       beatAudit.retention_map_resync = retentionMapResync
       beatAudit.setup_label_resync = setupLabelResync
+      beatAudit.action_posing_hygiene = actionPosingHygiene
       beatAudit.shots_named_by_number = shotsNumberedNotNamed
       beatAudit.reference_phrase_overlap = referencePhraseOverlap
       beatAudit.cta_entity_unmatched = ctaEntityUnmatched

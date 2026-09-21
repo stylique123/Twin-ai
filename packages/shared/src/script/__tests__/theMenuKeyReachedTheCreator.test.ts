@@ -80,3 +80,29 @@ describe('the writer runs the hygiene pass before it ships', () => {
     expect(EDGE).toMatch(/action_posing_key_stripped/)
   })
 })
+
+describe('the strip is countable, because it erases its own evidence', () => {
+  // ⚠️ THE SIBLING PASSES LEAVE THEIR RESULT IN THE BLUEPRINT, so "did it fire"
+  // is a query over the rows. This one REMOVES the key — afterwards a repaired
+  // beat is indistinguishable from one that never leaked. If the count were
+  // only a log line, a prompt drifting back would be invisible the moment edge
+  // logs expire, which is the exact failure this repo keeps digging out.
+  it('records both numbers on the durable audit, not only in a log line', () => {
+    expect(EDGE).toMatch(/beatAudit\.action_posing_hygiene = actionPosingHygiene/)
+    expect(EDGE).toMatch(/actionPosingHygiene = \{ stripped, of: seen \}/)
+  })
+
+  // ⚖️ "2 stripped" says nothing without "of 6 beats that carried a direction".
+  it('carries the denominator, so the number is a rate and not a tally', () => {
+    expect(EDGE).toMatch(/stripped, of: seen/)
+  })
+
+  it('is registered with the counter-durability gate', () => {
+    const registry = readFileSync(
+      join(__dirname, '..', '..', '..', '..', '..', 'scripts', 'ci', 'check_counter_durability.mjs'),
+      'utf8',
+    )
+    expect(registry).toMatch(/action_posing_key_stripped:\s*\{/)
+    expect(registry).toMatch(/beat_audit\.action_posing_hygiene/)
+  })
+})
