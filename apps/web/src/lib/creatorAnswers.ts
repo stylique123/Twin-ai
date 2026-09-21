@@ -31,6 +31,7 @@
 // been failing on a CHECK constraint that never listed 'asked' (0189), and
 // this ordering is what hid it for weeks.
 import { supabase } from './supabase'
+import { typedMaterialToKnowledge } from '@twinai/shared'
 import type { StoreCounts } from '@twinai/shared'
 import { answerToKnowledge, type CreatorQuestion, type StoredKnowledgeItem } from '@twinai/shared'
 
@@ -264,6 +265,67 @@ export async function confirmExtractedRow(rowId: string): Promise<boolean> {
   } catch (err) {
     console.warn('confirmation not recorded', err)
     return false
+  }
+}
+
+/**
+ * Keep what the creator typed into the idea or product boxes.
+ *
+ * ⚠️⚠️ THE COUNTER SAT AT "2 real stories and 1 number" THROUGH A WHOLE TEST
+ * SESSION that fed it three onboarding answers, four idea-mode paragraphs and
+ * several product-mode answers. `creator_knowledge` had three writers and none
+ * of them was this box, so every one of those sentences reached exactly one
+ * script and then existed nowhere.
+ *
+ * ⚖️ BEST EFFORT, AND NEVER IN FRONT OF THE SCRIPT. The creator asked for a
+ * video, not for a knowledge row; a failure here must cost the row and nothing
+ * else. Same posture as `recordScriptEdit`, for the same reason.
+ *
+ * ⚖️ ONE ROW PER (generation, field), SO A RETRY CANNOT DOUBLE-COUNT. The
+ * `source_ref` carries both, and a creator who regenerates the same idea gets
+ * one row rather than a pool quietly inflating with copies of one sentence.
+ */
+export async function storeTypedMaterial(
+  typed: unknown,
+  opts: { generationId: string; field: string; voiceId: string | null },
+): Promise<{ ok: boolean; reason?: string }> {
+  const sourceRef = `typed:${opts.field}:${opts.generationId}`
+  const built = typedMaterialToKnowledge(typed, sourceRef)
+  if (!built.ok) return { ok: false, reason: built.reason }
+  try {
+    const { data: auth } = await supabase.auth.getUser()
+    const ownerId = auth?.user?.id
+    if (!ownerId) return { ok: false, reason: 'not_signed_in' }
+    const { error } = await supabase.from('creator_knowledge').insert({
+      owner_id: ownerId,
+      voice_id: opts.voiceId,
+      kind: built.row.kind,
+      text: built.row.text,
+      basis: built.row.basis,
+      // ⚠️ `asked` IS THE SOURCE, AND THAT IS NOT A LIE OF CONVENIENCE. The
+      // column's CHECK lists the sources the store accepts, and this material
+      // has the same provenance as an answered question: the creator typed it
+      // themselves, in their own words, just now. `source_ref` carries the
+      // distinction (`typed:` rather than `asked:`) for any reader that needs it
+      // — including `storySuggestions`, whose `isAlreadyAsked` refuses to offer
+      // back a row that came from a question, and correctly does not refuse
+      // this one.
+      source: 'asked',
+      confidence: built.row.confidence,
+      times_seen: built.row.times_seen,
+      source_ref: built.row.source_ref,
+      last_observed_at: new Date().toISOString(),
+    })
+    if (error) {
+      // A duplicate is a retry, not a failure worth reporting as one.
+      if (/duplicate key|unique/i.test(error.message)) return { ok: true }
+      console.warn('typed material not stored', error.message)
+      return { ok: false, reason: 'not_saved' }
+    }
+    return { ok: true }
+  } catch (err) {
+    console.warn('typed material not stored', err)
+    return { ok: false, reason: 'not_saved' }
   }
 }
 
