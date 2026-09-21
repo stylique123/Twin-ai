@@ -16,6 +16,7 @@ import { TalkingHeadWarning } from '../../components/TalkingHeadWarning'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@twinai/shared'
 import { readProfileAnswers } from '../../lib/profileAnswersRead'
+import { storeTypedMaterial } from '../../lib/creatorAnswers'
 import { readCreatorCtas } from '../../lib/creatorCtasRead'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
@@ -1398,6 +1399,35 @@ export default function V2Building() {
           // sending '' would be a claim that they chose nothing.
           ...(chosenProductId ? { selected_product_id: chosenProductId } : {}),
         })
+        // ── KEEP WHAT THEY TYPED, NOT JUST SPEND IT ───────────────────────
+        //
+        // ⚠️⚠️ EVERY SENTENCE IN THESE BOXES USED TO REACH ONE SCRIPT AND THEN
+        // EXIST NOWHERE. `creator_knowledge` has three writers — the scan, the
+        // asked-questions card, the beat-ask — and none of them is this screen.
+        // Measured by the owner across three generations: the strength counter
+        // read "2 real stories and 1 number" before the session and after it,
+        // having been handed four idea paragraphs and several product answers
+        // in between.
+        //
+        // ⚠️ AND A FROZEN POOL IS WHAT FORCES A BAD MATCH. With two stories
+        // stored, a Daisy Candle script needing a second one reused the
+        // peony-wedding order and welded it to a claim about ambient burn. This
+        // is the supply side of that failure.
+        //
+        // ⚖️ FIRE-AND-FORGET, AFTER THE SCRIPT EXISTS, AND REFUSING BY DEFAULT.
+        // `typedMaterialToKnowledge` stores only what reads as something that
+        // happened to them — an instruction like "make the hook punchier" is
+        // about ONE video and would read back later as a fact about the
+        // creator. A failure here costs the row and nothing else.
+        void storeTypedMaterial(state.reference_note, {
+          generationId: gen.id, field: 'idea', voiceId: gen.brand_voice_id ?? null,
+        })
+        for (const [field, value] of Object.entries(readinessAnswers)) {
+          void storeTypedMaterial(value, {
+            generationId: gen.id, field, voiceId: gen.brand_voice_id ?? null,
+          })
+        }
+
         // A recreation was just spent — refresh so the remixes-left counter is
         // accurate everywhere (AppShell / Dashboard / Settings), not one behind.
         void refreshProfile()
