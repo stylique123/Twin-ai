@@ -3,6 +3,7 @@ import { scrapeProfile, UnsupportedPlatformError, ProfileReadFailedError, type S
 import { assessScanTarget } from '../scanTarget.js'
 import { selectVideosToTranscribe, transcriptBudgetFor, scrapePoolFor } from '../transcriptSelection.js'
 import { classifyTranscriptFailure } from '../transcriptFailure.js'
+import { voiceHasOwnMaterial } from '../voiceOwnMaterial.js'
 import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { EXTRACTOR_VERSION } from '../extractorVersion.js'
 import { synthesizeVoiceFromPosts, extractKnowledgeFromCaptions } from '../voice.js'
@@ -115,6 +116,13 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   // went to `console.error`. Same defect the transcript path had, same fix: the
   // CLASS and one sample ride the durable result, while the creator still reads
   // the kind sentence.
+  //
+  // ⚠️ AND "ALREADY CARRIES A USABLE PROFILE" WAS THE WRONG QUESTION, because
+  // the handle cache writes exactly that profile onto a BRAND NEW row seconds
+  // before queueing the scan this function is failing. Eleven of forty `ready`
+  // voices in production reached that state: a cached profile, a failed scan,
+  // `kept_existing: true`, and an empty knowledge table underneath. See
+  // `voiceHasOwnMaterial` for what the row has to hold to count as built.
   const fail = async (msg: string, cause?: unknown) => {
     const diag = cause === undefined ? {} : {
       failure_class: classifyTranscriptFailure(cause),
@@ -122,7 +130,12 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     }
     const { data: cur } = await db.from('brand_voices').select('profile').eq('id', voiceId).maybeSingle()
     const vp = cur?.profile as { niche?: unknown; tone?: unknown; summary?: unknown } | null
-    if (vp && (vp.niche || vp.tone || vp.summary)) {
+    // ⚖️ BOTH CONDITIONS, AND IN THIS ORDER. The profile check still guards the
+    // creator-facing surface (a row with no profile has nothing to show either
+    // way); the material check is what separates a voice this account built
+    // from one the cache lent it. Only a voice that is both presentable AND
+    // grounded is worth keeping ready through a failed rescan.
+    if (vp && (vp.niche || vp.tone || vp.summary) && (await voiceHasOwnMaterial(voiceId))) {
       await db.from('brand_voices').update({ status: 'ready', error: null }).eq('id', voiceId)
       return { ok: false, reason: msg, kept_existing: true, ...diag }
     }
@@ -274,7 +287,10 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   } catch (err) {
     stage('synthesize_voice', 'failed', err instanceof Error ? err.message : String(err))
     console.error('scrape_dna: synth failed', err instanceof Error ? err.message : err)
-    return await fail('We could not finish building your voice. Please try again or set it up manually.')
+    // ⚠️ THE CAUSE WAS DROPPED HERE AND ONLY HERE. Every other `fail()` call
+    // passes its error, so this path — the one that produced the report that
+    // started this — stored the vague creator sentence and no class at all.
+    return await fail('We could not finish building your voice. Please try again or set it up manually.', err)
   }
   // Capture platform stats for the dashboard ("understand your brand"). The TikTok
   // path previously wrote none, so every TikTok creator's dashboard showed blank
