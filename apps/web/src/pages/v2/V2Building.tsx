@@ -17,6 +17,7 @@ import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@twinai/shared'
 import { readProfileAnswers } from '../../lib/profileAnswersRead'
 import { storeTypedMaterial } from '../../lib/creatorAnswers'
+import { namedAlternatives } from '@twinai/shared'
 import { readCreatorCtas } from '../../lib/creatorCtasRead'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
@@ -174,6 +175,11 @@ function buildKey(state: BuildState): string {
 // means a remount that happens while the first build is still writing (so no
 // generation row exists to find yet) doesn't sit through the ~72s read a second
 // time for an answer we already have. It dies with the tab, like the key.
+/** Per-video, never persisted to a profile: which of the two subjects she
+ *  named this build is about. `__all__` means she kept both. */
+const IDEA_FOCUS_FIELD = 'idea_focus'
+const IDEA_FOCUS_ALL = '__all__'
+
 const transcriptSlot = (key: string) => `twinai.transcript.${key}`
 function rememberTranscript(key: string, id: string): void {
   try { sessionStorage.setItem(transcriptSlot(key), id) } catch { /* storage off — just re-read */ }
@@ -1087,8 +1093,36 @@ export default function V2Building() {
                     ],
                   } as AskItem]
                 : []
+            // ── SHE NAMED BOTH ANSWERS, AND NOTHING ASKED ────────────────
+            //
+            // ⚠️ MEASURED ON 25 REAL IDEA PARAGRAPHS: eleven say "idk", and TWO
+            // also name the two subjects they are torn between — "idk if that's
+            // a story about the work or about why handmade even matters". She
+            // has done the hardest part and the build then picks one silently.
+            //
+            // ⚖️ ONLY WHEN SHE NAMED THEM. The other nine say they are unsure
+            // without proposing anything, and a menu of subjects SHE never
+            // proposed is an invention wearing her doubt as a prompt.
+            //
+            // ⚖️ HER WORDS AS THE LABELS, and "All of it" last — because a
+            // paragraph holding two videos can legitimately be one video about
+            // both, and removing that answer would force a split she did not ask
+            // for.
+            const torn = namedAlternatives(state.reference_note)
+            const focusQuestion: AskItem[] = torn && !(answersRef.current[IDEA_FOCUS_FIELD] ?? '').trim()
+              ? [{
+                  field: IDEA_FOCUS_FIELD,
+                  question: 'You weren\u2019t sure which this is about. Which one?',
+                  options: [
+                    { value: torn.options[0], label: torn.options[0] },
+                    { value: torn.options[1], label: torn.options[1] },
+                    { value: IDEA_FOCUS_ALL, label: 'All of it' },
+                  ],
+                } as AskItem]
+              : []
             const ask: AskItem[] = [
               ...unanswered.filter((q) => !(goalIsDisplayed && q.field === 'video_goal')),
+              ...focusQuestion,
               ...productQuestion,
               ...relevant.slice(0, MAX_TEXT_QUESTIONS),
             ]
@@ -1359,10 +1393,23 @@ export default function V2Building() {
           if (INTENT_FIELDS.has(k)) intentAnswers[k] = v
           else readinessAnswers[k] = v
         }
+        // ⚖️ ABSENT WHEN SHE WAS NEVER ASKED, OR KEPT BOTH. "All of it" is a
+        // real answer meaning the video is about both, so it adds no directive
+        // rather than a line saying she chose nothing.
+        const chosenFocus = (answersRef.current[IDEA_FOCUS_FIELD] ?? '').trim()
+        const ideaFocusLine = chosenFocus === '' || chosenFocus === IDEA_FOCUS_ALL
+          ? ''
+          : `This video is about: ${chosenFocus}.\n\n`
         const gen = await generateBlueprint({
           mentioned_product_id: mentionedProductId || undefined,
           reference_url: refUrl,
-          reference_note: state.reference_note || '',
+          // ⚠️ HER CHOICE RIDES HER OWN PARAGRAPH, AND THE PARAGRAPH SURVIVES
+          // WHOLE. Narrowing `reference_note` to the chosen half would throw
+          // away material she typed — the defect Issue 3 was about — so the
+          // answer arrives as a line ABOVE everything she wrote, and the writer
+          // reads the same field it always has. No new request field, and
+          // nothing persisted to a profile: this is a fact about THIS video.
+          reference_note: ideaFocusLine + (state.reference_note || ''),
           fidelity: state.fidelity ?? 'balanced',
           tone: state.tone,
           target_seconds: state.target_seconds,
