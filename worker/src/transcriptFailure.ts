@@ -79,3 +79,44 @@ export function classifyTranscriptFailure(err: unknown): TranscriptFailure {
   if (/run-failed|actor run did not|run did not succeed/.test(m)) return 'transient'
   return 'unknown'
 }
+
+// ── IS A RETRY WORTH ONE OF THE THREE ATTEMPTS? ─────────────────────────────
+//
+// ⚠️⚠️ MEASURED END TO END, 2026-09-21. Brand voice 4a64f374's `scrape_dna`
+// failed at the voice-synth step, recorded `{"ok": false}` with `status: done`,
+// and used 1 of its 3 attempts. Re-queued by hand twenty-four hours later with
+// the SAME payload it succeeded in 31 seconds: 42 posts, 21 caption knowledge
+// items, 25 transcripts. The store went from 3 rows to 38 and the own
+// transcripts from 0 to 18.
+//
+// So the failure that produced an entire findings document — a five-scene
+// script for a sixty-second video, a story force-fitted to reach length, a
+// voice that said `ready` over an empty table — was a transient blip with two
+// unspent retries sitting behind it. Nothing retried, because the handler
+// RETURNED its failure instead of throwing, and a handler that returns settles
+// `done`.
+//
+// ⚖️ AND `unknown` RETRIES, WHICH IS THE UNOBVIOUS PART. Every other class here
+// names a cause and most of them name one a retry cannot fix. `unknown` is the
+// class that means "we could not tell", and the case this exists for — a voice
+// with nothing of its own — is precisely where guessing wrong is cheap in one
+// direction and expensive in the other: a wasted attempt costs 30 seconds, a
+// missed one costs the creator a voice that never gets built. Bounded by
+// `max_attempts` either way.
+const RETRY_WORTH: ReadonlySet<TranscriptFailure> = new Set<TranscriptFailure>([
+  'rate_limited', // back off and go again — that is what the class means
+  'transient',    // 5xx, timeout, socket
+  'unknown',      // we could not tell, and the downside is asymmetric
+])
+
+/**
+ * Whether a scan failure is worth spending another attempt on.
+ *
+ * ⚠️ SAYS NOTHING ABOUT WHETHER THE CALLER SHOULD RETRY. A voice that already
+ * holds the creator's own material has something to fall back on and should
+ * keep it rather than churn; only a voice with nothing has anything to gain.
+ * That judgement belongs to the caller, which is the one that knows.
+ */
+export function retryWorthScanFailure(err: unknown): boolean {
+  return RETRY_WORTH.has(classifyTranscriptFailure(err))
+}

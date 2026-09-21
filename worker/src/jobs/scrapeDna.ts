@@ -2,7 +2,7 @@ import { db, type Job } from '../db.js'
 import { scrapeProfile, UnsupportedPlatformError, ProfileReadFailedError, type ScrapedPost } from '../media.js'
 import { assessScanTarget } from '../scanTarget.js'
 import { selectVideosToTranscribe, transcriptBudgetFor, scrapePoolFor } from '../transcriptSelection.js'
-import { classifyTranscriptFailure } from '../transcriptFailure.js'
+import { classifyTranscriptFailure, retryWorthScanFailure } from '../transcriptFailure.js'
 import { voiceHasOwnMaterial } from '../voiceOwnMaterial.js'
 import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { EXTRACTOR_VERSION } from '../extractorVersion.js'
@@ -140,6 +140,34 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
       return { ok: false, reason: msg, kept_existing: true, ...diag }
     }
     await db.from('brand_voices').update({ status: 'failed', error: msg }).eq('id', voiceId)
+    // ⚠️⚠️ AND A VOICE WITH NOTHING GETS THE RETRIES IT WAS ALREADY BUDGETED.
+    // Measured 2026-09-21: this voice's scan failed at the synth step, settled
+    // `done`, and left 2 of its 3 attempts unspent. Re-queued by hand with the
+    // same payload it succeeded in 31 seconds — 42 posts, 21 caption knowledge
+    // items, 25 transcripts — taking the store from 3 rows to 38. The blip that
+    // produced a whole findings document had two free retries behind it, and
+    // nothing took them, because a handler that RETURNS its failure settles
+    // `done`. Throwing is what hands the job back to the queue loop.
+    //
+    // ⚖️ ONLY WHEN THERE IS NOTHING TO LOSE. The branch above — a voice with
+    // its own material — keeps that material and returns, as it always has;
+    // churning a built voice through retries risks replacing something real
+    // with a fresh failure. Here there is nothing to protect.
+    //
+    // ⚖️ AND ONLY WHILE ATTEMPTS REMAIN. On the last one the throw would buy
+    // nothing and would replace this honest, classified record with a bare
+    // stack trace, so the final word is always the sentence the creator reads.
+    //
+    // ⚠️ AN ABSENT CAUSE IS NEVER RETRIED, AND THE `undefined` CHECK IS LOAD
+    // BEARING. `classifyTranscriptFailure(undefined)` stringifies to
+    // "undefined" and lands in `unknown`, which IS retry-worth — so without
+    // this the "we read @handle and found no posts" path, which deliberately
+    // passes no cause because it is a fact about the account rather than an
+    // error, would scrape three times to learn the same thing and tell the
+    // creator nothing new.
+    if (cause !== undefined && job.attempts < job.max_attempts && retryWorthScanFailure(cause)) {
+      throw cause instanceof Error ? cause : new Error(msg)
+    }
     return { ok: false, reason: msg, ...diag }
   }
 
