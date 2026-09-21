@@ -9,7 +9,8 @@
 // Secrets: supabase secrets set GEMINI_API_KEY=...
 //          (optional) supabase secrets set GEMINI_MODEL=gemini-3.1-pro
 
-import { renderDirectionGuidance,
+import { referencePointsFromTranscriptStructure, referenceUrlKey } from '../_shared/transcriptReferencePoints.ts'
+import { renderDirectionGuidance, cleanActionPosing,
   type ProductKind as ProductKindInline,
   type Showability as ShowabilityInline,
   type ObjectShape as ObjectShapeInline } from '../_shared/performanceDirection.ts'
@@ -5488,7 +5489,7 @@ SCRIPT & HOOK INTEGRATION:
 - THE FIRST SCRIPT BEAT (the Hook section) MUST contain the actual spoken words of your #1 recommended hook (hook_options[0]), written out in full. NEVER output a placeholder, a bracketed token (e.g. "[Hook Option 1]", "[Insert selected hook from above]"), or a reference like "your hook here" in any script line. Every script line must be real, speakable words a creator can read off a teleprompter.
 - background: specify the background setup, props, lighting, or visual context for this specific beat. Avoid generic descriptors (e.g. "sitting at desk"). Provide specific, creative visual setups matching the brand DNA.
 - cuts_info: specify camera angles, zooms, pacing, and cut locations. Give professional instructions (e.g., "Cut on action to a tight zoom", "Slide-in transition from right to keep pacing", "Fast cut to clean product shot").
-- action_posing: specify the creator's physical actions, hand gestures, body language, facial expressions, and positioning (e.g., "Hold product at eye level, point finger, maintain intense eye contact with lens", "Lean forward slightly with a knowing smile, hands open to suggest accessibility").
+- action_posing: the creator's physical action, gesture, body language and positioning for this beat. NAME THE THING IN THEIR HANDS, never "it", "the product" or "the item" — a creator holding three objects cannot act on "point at a specific spot on it". Say which object and which part. Good: "Hold the cracked tin up to chest height, thumb over the split seam." "Rest the finished candle flat on an open palm so the window light catches the surface." Bad: "Hold product at eye level." "Point one finger at a specific spot on it." If no product is attached to this video, direct the body and face instead and name nothing you were not told exists.
 - SUBSTANCE BEFORE PROSE. Before writing any line, decide WHAT GOES IN IT, then declare where that came from. Two fields on every beat:
   * "substance": exactly one of creator_knowledge | product_dna | general | needs_user | none.
     - creator_knowledge = the beat is built on something listed under WHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID. You may only choose this if the item is actually in that list above. Inventing a plausible-sounding position and labelling it creator_knowledge is the single worst thing you can do here, and it is checked.
@@ -7870,8 +7871,36 @@ function reserveAskedInline<T extends { source?: string | null }>(
     // forty that do not and spends budget the reference read needs. Relevance is
     // lexical overlap with what this video is ABOUT — simple and explainable on
     // purpose, so "why did it say that" has an answer.
+    // ⚠️⚠️ THE PRODUCT THE VIDEO IS ABOUT WAS NOT PART OF WHAT THE VIDEO IS
+    // ABOUT. This read `reference_note` and `brief.idea` — what the creator
+    // TYPED — and nothing about the product they picked from their own library.
+    // So on a product-led video, where the idea box is often empty or a single
+    // word, relevance was scored against almost nothing, and the ranking fell
+    // through to `times_seen`: the belief they repeat most often, whatever this
+    // video is for.
+    //
+    // ⚠️ THAT IS THE SHAPE OF THE OWNER'S ISSUE 2. A Daisy Candle video was
+    // given the peony-wedding order — a real story she had told often, and the
+    // wrong one for this product. With three rows in her store it was supplied
+    // regardless (three items, ten slots, relevance cannot choose), so THAT
+    // instance was the empty shelf and not this. But with a full store the
+    // ranking decides, and until this line the product had no vote in it.
+    //
+    // ⚖️ NAME, OFFER AND SUMMARY, because all three carry the nouns a story
+    // would share with the product — "candle", "wax", "tin" live in the summary
+    // far more often than in a one-line name. Still lexical, still explainable:
+    // "why did it say that" keeps an answer.
+    const entityAbout = ownedEntity as
+      { name?: unknown; offer?: unknown; creator_summary?: unknown } | null
     const aboutTerms = new Set(
-      `${reference_note} ${brief.idea ?? ''}`.toLowerCase().split(/[^a-z0-9]+/)
+      [
+        reference_note,
+        brief.idea ?? '',
+        entityAbout?.name ?? '',
+        entityAbout?.offer ?? '',
+        entityAbout?.creator_summary ?? '',
+      ].map((v) => String(v ?? '')).join(' ')
+        .toLowerCase().split(/[^a-z0-9]+/)
         .filter((w) => w.length > 3))
     const ranked = kRows.filter((k) => k.basis !== 'inferred' && k.kind !== 'covered')
     const scored = ranked.map((k) => ({
@@ -9095,6 +9124,12 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         // the third state is that nobody may make that claim without counting.
         let substanceBudgetBeats: number | null = null
         let substanceReferencePoints: number | null = null
+        // ⚠️ WHERE THE POINTS CAME FROM, NOT ONLY HOW MANY. The budget records
+        // its TOTAL; nothing recorded which of the two corpora supplied the
+        // reference half, so "is the transcript fallback working" could not be
+        // asked of the data. 'profile' is the gallery row, 'transcript' the
+        // pasted reference, null nobody counted.
+        let referencePointsSource: 'profile' | 'transcript' | null = null
         let lengthTarget: number | null = null
         let lengthTargetSource: string | null = null
         let lengthBeatsAllowed: number | null = null
@@ -9212,6 +9247,7 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
           // is the shape that says how much there is to say.
           substanceReferencePoints = referencePointsFromInline(
             (assessed?.profile as { structure?: unknown } | null)?.structure)
+          if (substanceReferencePoints !== null) referencePointsSource = 'profile'
           const container = (assessed?.profile as
             { structure?: { containerType?: { value?: string; basis?: string } } } | null)
             ?.structure?.containerType
@@ -9520,6 +9556,53 @@ ${fenced('claims this creator may NOT make', forbidden)}
     // enough substance for N beats, write N and stop" — a fact the writer needs
     // BEFORE writing. Counting it afterwards could only ever describe padding
     // that already happened.
+    // ── THE REFERENCE THEY PASTED HAS NEVER COUNTED ─────────────────────────
+    //
+    // ⚠️⚠️ MEASURED ACROSS ALL 154 GENERATIONS, 2026-09-21:
+    //
+    //   generations carrying a reference ............................ 154
+    //   whose reference has ANY `reference_content_profiles` row ...... 3
+    //   whose reference has a `structure` there ....................... 1
+    //
+    // `substanceReferencePoints` above is read from
+    // `reference_content_profiles`, which holds the SCRAPED GALLERY — 2,393
+    // rows, all gallery URLs. Creators paste their own URLs. The two corpora
+    // are disjoint, so one of the budget's three inputs has been null on 153
+    // of 154 real generations. The comment at the budget call already
+    // suspected this ("has been null on every real generation ever made");
+    // this is the count.
+    //
+    // ⚠️ AND THE ANSWER WAS ALREADY IN THE DATABASE. `transcripts.structure`
+    // holds the beat breakdown of what creators actually paste — 113 rows
+    // carry one — and nothing had ever read it for the budget. A column
+    // written and never read, in the table the reference already lives in.
+    //
+    // ⚖️ A FALLBACK, NOT A REPLACEMENT. The gallery profile is richer and
+    // carries real beat ROLES; it wins wherever it exists. This only runs when
+    // it produced nothing, which today is almost always.
+    //
+    // ⚖️ AND IT COSTS ONE INDEXED READ ON A KEY THAT ALREADY EXISTS.
+    // `transcripts_urlkey_idx` is on `(url_key, created_at desc)`, which is
+    // exactly this query.
+    if (substanceReferencePoints === null && typeof reference_url === 'string' && reference_url !== '') {
+      try {
+        const { data: refT } = await admin
+          .from('transcripts')
+          .select('structure')
+          .eq('url_key', referenceUrlKey(reference_url))
+          .not('structure', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        const fromTranscript = referencePointsFromTranscriptStructure(
+          refT?.structure as Parameters<typeof referencePointsFromTranscriptStructure>[0])
+        if (fromTranscript !== null) {
+          substanceReferencePoints = fromTranscript
+          referencePointsSource = 'transcript'
+        }
+      } catch { /* the budget keeps its null — never fail a generation on a fallback */ }
+    }
+
     const substanceBudgetComputed = substanceBudgetInline(
       substanceReferencePoints,
       Array.isArray(knowledgeRows) ? knowledgeRows.length : null,
@@ -9726,6 +9809,11 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // first-appearance sequence, or both; `setupCount` is the number of
     // distinct (background, framing) setups this shot list resolved to.
     let setupLabelResync: { relabeled: number; setupCount: number } | null = null
+    // ⚠️ THE STRIP ERASES ITS OWN EVIDENCE. Once the key is off the beat, the
+    // stored blueprint looks exactly like one that never leaked — so unlike the
+    // resyncs above, this count is NOT derivable from the rows it describes.
+    // That is precisely why it rides the audit rather than only a log line.
+    let actionPosingHygiene: { stripped: number; of: number } | null = null
     // ⚖️ FIX 1 (Wave 1). NULL MEANS THE REFERENCE HAD NO READABLE TRANSCRIPT TO
     // CHECK AGAINST — never zero. `found` is beats that shared a ≥6-content-word
     // contiguous run with the reference transcript; `repaired` is how many were
@@ -11438,6 +11526,42 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       }))
     }
 
+    // ── THE MENU'S OWN KEY MUST NOT REACH THE CREATOR ────────────────────────
+    //
+    // ⚠️ MEASURED 2026-09-21: five beats — one whole run — shipped
+    // `action_posing` beginning with the taxonomy id that selected it
+    // ("hold_up: Hold it up to chest height..."). `renderDirectionGuidance`
+    // prints the menu as `- <id>: <does>` and the writer sometimes copies the
+    // id along with the direction. An internal enum key is not something a
+    // person can do, and it lands under a heading promising direction.
+    //
+    // ⚖️ HERE, WITH THE OTHER FINAL PASSES, for the same reason they are here:
+    // this is the last point before the blueprint ships, so nothing downstream
+    // can reintroduce it. `cleanActionPosing` is idempotent and leaves text
+    // that never leaked untouched, so this costs a trim on the common path.
+    try {
+      const script = (blueprint as { script?: unknown })?.script
+      if (Array.isArray(script)) {
+        let stripped = 0
+        let seen = 0
+        for (const beat of script) {
+          if (!beat || typeof beat !== 'object') continue
+          const b = beat as { action_posing?: unknown }
+          if (typeof b.action_posing !== 'string') continue
+          seen++
+          const cleaned = cleanActionPosing(b.action_posing)
+          if (cleaned !== b.action_posing) {
+            stripped++
+            b.action_posing = cleaned
+          }
+        }
+        actionPosingHygiene = { stripped, of: seen }
+        if (stripped > 0) {
+          console.warn(JSON.stringify({ event: 'action_posing_key_stripped', stripped, of: seen }))
+        }
+      }
+    } catch { /* never fail a generation on a hygiene pass */ }
+
     // ── THE SHOT LIST MUST QUOTE THE SCRIPT THAT ACTUALLY SHIPS ──────────────
     //
     // ⚠️ MEASURED ACROSS THE FOUR-RUN HARNESS: shot_list and script are written
@@ -11646,6 +11770,15 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       beatAudit.shot_list_resync = shotListResync
       beatAudit.retention_map_resync = retentionMapResync
       beatAudit.setup_label_resync = setupLabelResync
+      beatAudit.action_posing_hygiene = actionPosingHygiene
+      // ⚖️ BOTH HALVES OF THE SAME FACT. `substance_budget` says how many
+      // beats were affordable; this says whether the reference contributed to
+      // that at all, and from which corpus. Without it, a fallback that stops
+      // firing looks exactly like a run of thin references.
+      beatAudit.reference_points = {
+        points: substanceReferencePoints,
+        source: referencePointsSource,
+      }
       beatAudit.shots_named_by_number = shotsNumberedNotNamed
       beatAudit.reference_phrase_overlap = referencePhraseOverlap
       beatAudit.cta_entity_unmatched = ctaEntityUnmatched

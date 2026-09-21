@@ -204,10 +204,60 @@ export function renderDirectionGuidance(ctx: DirectionContext): string {
     `PHYSICAL DIRECTION — CHOOSE, DO NOT INVENT.`,
     `Format for this product: ${set.format}.`,
     `Why this set: ${set.because}`,
-    `For every beat's action_posing, pick ONE id from this list and write it in the creator's`,
-    `own words. If none of them fits the sentence, use the plainest one rather than inventing`,
-    `a prop, a gesture or a screen that is not listed.`,
+    `For every beat's action_posing, pick ONE id from this list and write ONLY the direction`,
+    `in the creator's own words. NEVER write the id itself — "hold_up:" is a key for choosing,`,
+    `not something a person can do. If none of them fits the sentence, use the plainest one`,
+    `rather than inventing a prop, a gesture or a screen that is not listed.`,
+    `And "it" below is a BLANK, not a word to copy: name the actual thing in their hands`,
+    `("the cracked tin", "the finished candle"), because "point at a specific spot on it" tells`,
+    `a creator holding three objects nothing at all.`,
     ...lines,
     sections,
   ].filter(Boolean).join('\n')
+}
+
+// ── THE MENU LEAKED ONTO THE CREATOR'S SCREEN ───────────────────────────────
+//
+// ⚠️⚠️ MEASURED 2026-09-21 across all 154 stored generations. Five beats — one
+// whole run of three, all on 2026-09-20 — shipped `action_posing` values that
+// begin with the taxonomy's own key:
+//
+//   "hold_up: Hold it up to chest height, steady, label facing the lens."
+//   "point_at: Point one finger at a specific spot on it to highlight..."
+//   "set_down: Put it down deliberately and look back at the lens."
+//
+// `renderDirectionGuidance` prints the menu as `- <id>: <does> — <bestFor>` and
+// asks the writer to "pick ONE id from this list and write it in the creator's
+// own words". Sometimes it writes the id too. An internal enum key is not a
+// direction a person can act on, and it appears under a heading that promises
+// one.
+//
+// ⚖️ STRIPPED RATHER THAN RE-PROMPTED, AND BOTH. A prompt can always drift
+// back; a pure function at the boundary cannot. The guidance below is also
+// clearer now, which should lower the rate — but this is what makes the rate
+// irrelevant.
+//
+// ⚠️ THE PREFIX MUST LOOK LIKE A KEY AND NOTHING ELSE. "Hold it up: label to
+// the lens" is a real sentence a director would write, and its first word is
+// not an id. Matching only lowercase `snake_case` with no spaces, and only when
+// it is one of the ids this module actually defines, is what keeps a legitimate
+// clause from being eaten.
+const DIRECTION_IDS: ReadonlySet<string> = new Set(
+  [...PHYSICAL_ACTIONS, ...SCREEN_DIRECTIONS, ...SELF_DIRECTIONS].map((d) => d.id),
+)
+
+/**
+ * `action_posing` as a creator should read it: the direction, never the key
+ * that selected it.
+ *
+ * ⚖️ IDEMPOTENT, and safe on text that never leaked — which is the overwhelming
+ * majority. A value with no key prefix is returned trimmed and otherwise
+ * untouched.
+ */
+export function cleanActionPosing(text: unknown): string {
+  const s = typeof text === 'string' ? text.trim() : ''
+  if (s === '') return ''
+  const m = /^([a-z][a-z0-9_]*):\s+(\S.*)$/s.exec(s)
+  if (!m || !DIRECTION_IDS.has(m[1]!)) return s
+  return m[2]!.trim()
 }

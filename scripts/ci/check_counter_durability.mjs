@@ -174,6 +174,26 @@ const EVENTS = {
       + 'corpus understand, and when was it last read" is a query rather than a '
       + 'counter. The log line exists to make a stalled sweep visible in the moment.',
   },
+  // ⚠️ THE ONE PASS WHOSE WORK ERASES ITS OWN EVIDENCE. The shot-list and
+  // setup-label resyncs beside it leave their result in the blueprint, so
+  // "did it fire" is a query over the rows. This one REMOVES the leaked key —
+  // afterwards a repaired beat is indistinguishable from one that never
+  // leaked, so nothing in the shipped artefact records that the prompt drifted.
+  //
+  // ⚖️ SO THE FIGURE IS WRITTEN WHERE IT CANNOT EXPIRE, and only then is the
+  // log line allowed to be ephemeral. `beat_audit.action_posing_hygiene`
+  // carries `{ stripped, of }` on the generation row — both numbers, because
+  // "2 stripped" says nothing without "of 6 beats that carried a direction".
+  action_posing_key_stripped: {
+    kind: 'counter_ephemeral',
+    why: 'A beat shipped `action_posing` beginning with the taxonomy key that '
+      + 'selected it ("hold_up: Hold it up to chest height") and the key was '
+      + 'stripped before the blueprint shipped. The log line is not persisted '
+      + 'because the figure already is: `generations.beat_audit.action_posing_hygiene` '
+      + 'records `{ stripped, of }` per generation, so "is the prompt drifting back" '
+      + 'is a query over generations rather than a counter. The warn line exists to '
+      + 'make a sudden spike visible in the moment.',
+  },
   transcript_retry: {
     kind: 'counter_ephemeral',
     why: 'A transcript call hit a transient or rate-limited failure and is being '
