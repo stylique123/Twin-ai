@@ -9,6 +9,7 @@
 // Secrets: supabase secrets set GEMINI_API_KEY=...
 //          (optional) supabase secrets set GEMINI_MODEL=gemini-3.1-pro
 
+import { referencePointsFromTranscriptStructure, referenceUrlKey } from '../_shared/transcriptReferencePoints.ts'
 import { renderDirectionGuidance, cleanActionPosing,
   type ProductKind as ProductKindInline,
   type Showability as ShowabilityInline,
@@ -9095,6 +9096,12 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         // the third state is that nobody may make that claim without counting.
         let substanceBudgetBeats: number | null = null
         let substanceReferencePoints: number | null = null
+        // ⚠️ WHERE THE POINTS CAME FROM, NOT ONLY HOW MANY. The budget records
+        // its TOTAL; nothing recorded which of the two corpora supplied the
+        // reference half, so "is the transcript fallback working" could not be
+        // asked of the data. 'profile' is the gallery row, 'transcript' the
+        // pasted reference, null nobody counted.
+        let referencePointsSource: 'profile' | 'transcript' | null = null
         let lengthTarget: number | null = null
         let lengthTargetSource: string | null = null
         let lengthBeatsAllowed: number | null = null
@@ -9212,6 +9219,7 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
           // is the shape that says how much there is to say.
           substanceReferencePoints = referencePointsFromInline(
             (assessed?.profile as { structure?: unknown } | null)?.structure)
+          if (substanceReferencePoints !== null) referencePointsSource = 'profile'
           const container = (assessed?.profile as
             { structure?: { containerType?: { value?: string; basis?: string } } } | null)
             ?.structure?.containerType
@@ -9520,6 +9528,53 @@ ${fenced('claims this creator may NOT make', forbidden)}
     // enough substance for N beats, write N and stop" — a fact the writer needs
     // BEFORE writing. Counting it afterwards could only ever describe padding
     // that already happened.
+    // ── THE REFERENCE THEY PASTED HAS NEVER COUNTED ─────────────────────────
+    //
+    // ⚠️⚠️ MEASURED ACROSS ALL 154 GENERATIONS, 2026-09-21:
+    //
+    //   generations carrying a reference ............................ 154
+    //   whose reference has ANY `reference_content_profiles` row ...... 3
+    //   whose reference has a `structure` there ....................... 1
+    //
+    // `substanceReferencePoints` above is read from
+    // `reference_content_profiles`, which holds the SCRAPED GALLERY — 2,393
+    // rows, all gallery URLs. Creators paste their own URLs. The two corpora
+    // are disjoint, so one of the budget's three inputs has been null on 153
+    // of 154 real generations. The comment at the budget call already
+    // suspected this ("has been null on every real generation ever made");
+    // this is the count.
+    //
+    // ⚠️ AND THE ANSWER WAS ALREADY IN THE DATABASE. `transcripts.structure`
+    // holds the beat breakdown of what creators actually paste — 113 rows
+    // carry one — and nothing had ever read it for the budget. A column
+    // written and never read, in the table the reference already lives in.
+    //
+    // ⚖️ A FALLBACK, NOT A REPLACEMENT. The gallery profile is richer and
+    // carries real beat ROLES; it wins wherever it exists. This only runs when
+    // it produced nothing, which today is almost always.
+    //
+    // ⚖️ AND IT COSTS ONE INDEXED READ ON A KEY THAT ALREADY EXISTS.
+    // `transcripts_urlkey_idx` is on `(url_key, created_at desc)`, which is
+    // exactly this query.
+    if (substanceReferencePoints === null && typeof reference_url === 'string' && reference_url !== '') {
+      try {
+        const { data: refT } = await admin
+          .from('transcripts')
+          .select('structure')
+          .eq('url_key', referenceUrlKey(reference_url))
+          .not('structure', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        const fromTranscript = referencePointsFromTranscriptStructure(
+          refT?.structure as Parameters<typeof referencePointsFromTranscriptStructure>[0])
+        if (fromTranscript !== null) {
+          substanceReferencePoints = fromTranscript
+          referencePointsSource = 'transcript'
+        }
+      } catch { /* the budget keeps its null — never fail a generation on a fallback */ }
+    }
+
     const substanceBudgetComputed = substanceBudgetInline(
       substanceReferencePoints,
       Array.isArray(knowledgeRows) ? knowledgeRows.length : null,
@@ -11688,6 +11743,14 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       beatAudit.retention_map_resync = retentionMapResync
       beatAudit.setup_label_resync = setupLabelResync
       beatAudit.action_posing_hygiene = actionPosingHygiene
+      // ⚖️ BOTH HALVES OF THE SAME FACT. `substance_budget` says how many
+      // beats were affordable; this says whether the reference contributed to
+      // that at all, and from which corpus. Without it, a fallback that stops
+      // firing looks exactly like a run of thin references.
+      beatAudit.reference_points = {
+        points: substanceReferencePoints,
+        source: referencePointsSource,
+      }
       beatAudit.shots_named_by_number = shotsNumberedNotNamed
       beatAudit.reference_phrase_overlap = referencePhraseOverlap
       beatAudit.cta_entity_unmatched = ctaEntityUnmatched
