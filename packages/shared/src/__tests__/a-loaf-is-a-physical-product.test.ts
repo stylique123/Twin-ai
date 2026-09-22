@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { ENTITY_TYPES } from '../productEntity'
 
 /**
  * A LABELLING FAILURE IS NOT A USER ERROR.
@@ -32,8 +33,11 @@ const choices = (() => {
 })()
 
 describe('the list parses, or every assertion below is vacuous', () => {
-  it('reads all nine choices', () => {
-    expect(choices.length).toBe(9)
+  // ⚠️ COUNTED FROM THE ENUM, NOT TYPED IN. This said "nine" and had to be
+  // found and edited when BUSINESS arrived — a count restated by hand is the
+  // same drift this suite exists to catch, one level up.
+  it('reads every choice the enum has', () => {
+    expect(choices.length).toBe(ENTITY_TYPES.length)
   })
 })
 
@@ -75,12 +79,14 @@ describe('nothing about the stored contract moved', () => {
   // ⚖️ ORDER AND WORDING ONLY. If a value were dropped, existing rows would
   // render as unselectable and `inferShowability` would read a type the picker
   // can no longer express.
-  it('every enum value the picker used before is still offered', () => {
+  // ⚠️ THE LIST WAS HAND-COPIED AND IS NOW THE ENUM ITSELF, which asserts MORE
+  // rather than less: a dropped value still fails, and a value added to the
+  // contract with no way to pick it now fails too. That second case is real —
+  // `BUSINESS` shipped 2026-09-22 and a picker that did not offer it would
+  // leave the type storable and unreachable.
+  it('offers every value the stored contract has, and no other', () => {
     const values = choices.map((c) => c.value).sort()
-    expect(values).toEqual([
-      'APP', 'COMMUNITY', 'COURSE', 'DIGITAL_PRODUCT', 'MARKETPLACE',
-      'OTHER', 'PHYSICAL_PRODUCT', 'SAAS', 'SERVICE',
-    ])
+    expect(values).toEqual([...ENTITY_TYPES].sort())
   })
 
   // ⚠️ AND `OTHER` STAYS LAST. It is deliberately offered — forcing a

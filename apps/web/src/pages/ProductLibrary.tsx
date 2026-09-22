@@ -39,7 +39,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation, rowIsCreatorSupplied,
-  normalizeLink, looksLikeBareDomain,
+  normalizeLink, looksLikeBareDomain, READ_DID_NOT_COME_BACK, changeEntityRelationship,
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
   requestProductExtraction, recordExtractionNeverStarted,
   confirmProductFacts, uploadProductImage,
@@ -48,6 +48,7 @@ import {
   signEditUrls,
   bestSuggestion,
   asksPersonalUse, ownsIt, capabilityQuestion, CAPABILITY_PROMPT,
+  type CapabilityAsked,
   capabilityFlag,
   productLifecycle, LIFECYCLE_MESSAGE,
   CAPTURE_COPY, PLATFORM_CHOICES, PRIVACY_CHOICES, RATHER_NOT_SAY, FIGURE_HINT,
@@ -59,6 +60,7 @@ import {
 import { readOnboardingDraft } from '../lib/onboardingDraft'
 import type {
   ProductEntityRecord, Showability, EntityRelationship, EntityType, PersonalUse,
+  ProductClaim,
   ExtractedFact as ProductFact,
   CommunityPlatform, CommunityProofItem, ShotPrivacy,
 } from '@twinai/shared'
@@ -101,6 +103,12 @@ const TYPE_CHOICES: Array<{ value: EntityType; label: string }> = [
   { value: 'COURSE', label: 'A course' },
   { value: 'COMMUNITY', label: 'A community or membership' },
   { value: 'MARKETPLACE', label: 'A marketplace or store' },
+  // ⚠️ THE THING THE OTHERS BELONG TO. Reported 2026-09-22: a creator wanted to
+  // add her business, not one of its products, and every option above is
+  // something a business SELLS. Her choices were to misdescribe a loaf as the
+  // subject or pick "Something else", which exists to avoid a wrong guess and
+  // yields the generic walkthrough. Neither is what her videos are about.
+  { value: 'BUSINESS', label: 'My whole business, not one product' },
   { value: 'SAAS', label: 'Software' },
   { value: 'APP', label: 'A mobile app' },
   { value: 'OTHER', label: 'Something else' },
@@ -173,7 +181,7 @@ function cardTitle(e: ProductEntityRecord): string {
  *  ⚖️ IT ALSO SUBSUMES THE OLD `capabilityAnswerIsUsed` GATE: `capabilityQuestion`
  *  returns null exactly where the answer would be discarded, so "should we ask"
  *  and "which question" stop being two decisions that can disagree. */
-function capabilityQuestionFor(e: ProductEntityRecord): 'screen' | 'physical' | null {
+function capabilityQuestionFor(e: ProductEntityRecord): CapabilityAsked | null {
   return capabilityQuestion({ type: e.type as EntityType, relationship: e.relationship })
 }
 
@@ -205,18 +213,15 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
   suggestion?: ProductSuggestion | null
   onCancel: () => void
   busy: boolean
-  onClaim: (a: {
-    relationship: EntityRelationship; personalUse: PersonalUse
-    type: EntityType; name: string
-    // ⚠️ G2 — THE CAPABILITY QUESTION THE LINK-PASTE FLOW ALREADY ASKS AND THIS
-    // ONE NEVER DID. Claiming from here fell back to the account-wide default
-    // capability flags — set once during onboarding, for a creator who may film
-    // very different products very differently. A creator who claimed a
-    // suggested product could get the wrong scene type for THAT product even
-    // after correctly answering the account-wide question for a different one.
-    showability?: Showability | null
-    flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
-  }) => void
+  // ⚠️ THE SHARED CLAIM SHAPE. This form ASKS for less than the add dialog —
+  // a suggestion claim is not the place to type a price — but it can no longer
+  // be unable to SEND a field the contract has. See `ProductClaim`.
+  //
+  // ⚠️ G2 — THE CAPABILITY QUESTION THE LINK-PASTE FLOW ALREADY ASKS AND THIS
+  // ONE NEVER DID. Claiming from here fell back to the account-wide default
+  // capability flags — set once during onboarding, for a creator who may film
+  // very different products very differently.
+  onClaim: (a: ProductClaim) => void
 }) {
   // ⚖️ NOT PREFILLED FROM THE SUGGESTION TEXT. A suggestion is a CLAIM — "Early
   // is an iOS alarm app that requires push-ups" — not a name. Dropping that into
@@ -352,7 +357,12 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
             // creator picks to say "I do not know yet" into a stored denial,
             // silently forbidding every scene that shows the thing. The null
             // check has to precede the coercion, here as everywhere.
-            flags: capability === 'physical' ? { canFilmObjects: capabilityFlag(showability) }
+            // ⚠️ `place` SENDS THE OBJECT FLAG, because `inferShowability`
+            // reads a BUSINESS through `canFilmObjects` — what is filmed is
+            // the room, which is the same permission as holding a thing up.
+            // A third flag would be a second authority on one fact.
+            flags: capability === 'physical' || capability === 'place'
+              ? { canFilmObjects: capabilityFlag(showability) }
               : capability === 'screen' ? { canRecordScreen: capabilityFlag(showability) }
                 : undefined,
           })}
@@ -443,6 +453,12 @@ export default function ProductLibrary() {
   // creator has typed in that card's Link box.
   const [learnUrl, setLearnUrl] = useState<Record<string, string>>({})
   const [learning, setLearning] = useState<string | null>(null)
+  // ⚠️ A RELATIONSHIP CHANGE IS ITS OWN EVENT, so it carries its own open /
+  // busy / error state rather than borrowing the field-edit ones. Sharing them
+  // would let a failed entitlement write report itself as a saved field.
+  const [relOpen, setRelOpen] = useState<string | null>(null)
+  const [relBusy, setRelBusy] = useState<string | null>(null)
+  const [relErr, setRelErr] = useState<string | null>(null)
   const [claimBusy, setClaimBusy] = useState(false)
   const { session } = useAuth()
   const [voiceId, setVoiceId] = useState<string | null>(null)
@@ -742,26 +758,39 @@ export default function ProductLibrary() {
     )
   }
 
-  async function claim(s: ProductSuggestion | null, a: {
-    relationship: EntityRelationship; personalUse: PersonalUse; type: EntityType; name: string
-    /** The creator's own one-line fallback. See migration 0177. */
-    creatorSummary?: string | null
-    /** ⚖️ THE LINK IS PART OF THE ATTESTATION, NOT A LATER EDIT. A creator who
-     *  starts from a page is telling us WHICH thing they mean; storing it on the
-     *  mint is what lets Twin read it without asking them to find it twice. */
-    productUrl?: string | null
-    /** ⚖️ PATHS, NOT FILES. The upload has already happened by the time this
-     *  runs — a claim that also had to carry bytes could fail halfway and leave
-     *  a product minted with photographs nobody can find. */
-    imagePaths?: string[]
-    flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
-    // ⚠️ G2 — CARRIED THROUGH FROM ClaimForm, NOT DEFAULTED HERE. Absent means
-    // this claim path did not ask (the extraction flow's own claim call above
-    // does not set it either), which `claimProductEntity` reads by falling back
-    // to the account default — the pre-#2 behaviour, preserved for every OTHER
-    // caller of `claim()`.
-    showability?: Showability | null
-  }) {
+  /** Record that the creator's tie to this product has changed.
+   *
+   *  ⚖️ THE COMMISSION ADDRESS TRAVELS WITH THE CHANGE, not after it. Leaving
+   *  it to a second edit would put an AFFILIATE row on screen with no link for
+   *  as long as the creator took to notice the box — and `changeEntityRelationship`
+   *  clears the address on every other destination, so a later write is not
+   *  where it belongs. */
+  async function changeRelationship(id: string, next: EntityRelationship) {
+    const current = (entities ?? []).find((x) => x.id === id)
+    // ⚠️ NOT A CHANGE IS NOT A WRITE. Re-picking what is already stored would
+    // bump `updated` and read afterwards as an entitlement change nobody made.
+    if (!current || current.relationship === next) { setRelOpen(null); return }
+    setRelBusy(id); setRelErr(null)
+    try {
+      const updated = await changeEntityRelationship(
+        id,
+        next as Exclude<EntityRelationship, 'NONE'>,
+        next === 'AFFILIATE' ? current.affiliateUrl : null,
+      )
+      if (updated) {
+        setEntities((prev) => (prev ?? []).map((x) => (x.id === id ? updated : x)))
+        setRelOpen(null)
+      } else {
+        setRelErr('That relationship could not be recorded. Please try again.')
+      }
+    } catch (err) {
+      setRelErr(err instanceof Error ? err.message : 'That relationship could not be recorded.')
+    } finally { setRelBusy(null) }
+  }
+
+  // ⚠️ ONE PARAMETER TYPE FOR EVERY CLAIM PATH. Both forms above send
+  // `ProductClaim`; restating the fields here was the third copy of the list.
+  async function claim(s: ProductSuggestion | null, a: ProductClaim) {
     // ⚠️ AN EMPTY OWNER ID MUST NOT REACH THE INSERT. RLS is owner-scoped, so a
     // blank id fails somewhere deep with a policy error that reads as a bug in
     // the product form. Say the real thing instead.
@@ -1409,7 +1438,11 @@ export default function ProductLibrary() {
                 // find. The lifecycle names the state, so the label follows it
                 // rather than re-deriving one from `knowledge === null` — which
                 // cannot tell a failed read from a page never given.
-                : productLifecycle(e, photoPathsOf(e).length) === 'IMPORT_FAILED' ? 'Retry'
+                // ⚠️ A STALL READS THE SAME WORD, because to the creator it is
+                // the same situation: a link is on file and nothing came back.
+                // The states differ in whether the attempt reported; the button
+                // differs in nothing at all.
+                : READ_DID_NOT_COME_BACK.has(productLifecycle(e, photoPathsOf(e).length)) ? 'Retry'
                   : e.knowledge === null ? 'Read the page' : 'Read it again'}
             </button>
           </div>
@@ -1688,8 +1721,12 @@ export default function ProductLibrary() {
                     more than one line can. What changes is the claim about what
                     Twin currently knows, which was simply untrue. */}
                 <p className="mt-1 text-sm text-sand">
-                  {productLifecycle(e, photoPathsOf(e).length) === 'IMPORT_FAILED'
-                    ? 'That read did not finish. Press Read the page above to try the same link again, or change it first.'
+                  {/* ⚠️ A STALLED READ USED TO LAND ON THE LAST LINE HERE and
+                      be told to "Add a link above" — with its link sitting in
+                      the box above, already read. That sentence is what made
+                      the state look stuck rather than broken. */}
+                  {READ_DID_NOT_COME_BACK.has(productLifecycle(e, photoPathsOf(e).length))
+                    ? 'That read did not finish. Press Retry above to try the same link again, or change it first.'
                     : (e.creatorSummary ?? '').trim() !== ''
                       ? 'Twin will use the line you wrote above. Add a link and press Read the page if you want it to learn more than that line.'
                       : 'Add a link above and press Read the page, so your scripts can say what it actually does instead of guessing.'}
@@ -1754,9 +1791,23 @@ export default function ProductLibrary() {
             )}
           </div>
 
-          {/* ⚖️ READ-ONLY, AND SAID SO PLAINLY. A greyed-out control with no
-              explanation reads as broken; naming why it cannot change here tells
-              the creator what to do instead. */}
+          {/* ── "ASK US TO CHANGE IT" WAS NOT A ROUTE ─────────────────────
+              ⚠️ REPORTED 2026-09-22 as "the relationship field doesn't appear
+              to save." MEASURED, AND IT SAVES: production carries 2 AFFILIATE
+              and 2 SPONSOR rows written by the add form, and the tie reaches
+              the writer through `brief.promotes`. What was true is that it
+              could not be CHANGED — this panel was text, and the escape hatch
+              it offered ("Ask us") pointed at nobody. A creator whose deal had
+              actually changed saw a field that would not take her answer.
+
+              ⚖️ THE LOCK'S ARGUMENT SURVIVES INTACT, one layer down.
+              `relationship` is an entitlement, so `EntityPresentationEdit`
+              still forbids it and `updateEntityPresentation` still cannot
+              write it. This calls `changeEntityRelationship`, which exists to
+              be that deliberate second thing — and which clears the commission
+              address on the way out of AFFILIATE, because a stale one would
+              send a viewer through a commission link on a video that carried
+              no disclosure. */}
           <div className="mt-4 rounded-lg bg-white/[0.03] px-3 py-2">
             <p className="text-xs font-medium uppercase tracking-wide text-stone">
               Your relationship to it
@@ -1765,10 +1816,39 @@ export default function ProductLibrary() {
               {relationshipLabel(e.relationship)}
               {e.personalUse === 'CONFIRMED' && ' — and you use it yourself'}
             </p>
-            <p className="mt-1 text-xs text-stone">
-              This decides what your scripts may claim, so it is not editable here.
-              Ask us to change it and we will record what changed and when.
-            </p>
+            {relOpen === e.id ? (
+              <>
+                <Choices
+                  label="What is it now?"
+                  options={RELATIONSHIP_CHOICES}
+                  chosen={e.relationship as EntityRelationship}
+                  onPick={(v) => void changeRelationship(e.id, v)}
+                />
+                <button
+                  type="button"
+                  className="mt-2 text-xs underline"
+                  onClick={() => setRelOpen(null)}
+                >Cancel</button>
+              </>
+            ) : (
+              <>
+                <p className="mt-1 text-xs text-stone">
+                  This decides what your scripts may claim and whether they must
+                  disclose a paid tie, so it is changed on its own — not as a
+                  field edit. The change is recorded against this product with
+                  the time it was made.
+                </p>
+                <button
+                  type="button"
+                  className="mt-2 text-xs underline"
+                  onClick={() => setRelOpen(e.id)}
+                >This has changed</button>
+              </>
+            )}
+            {relBusy === e.id && <p className="mt-2 text-xs text-stone">Saving…</p>}
+            {relErr && relOpen === e.id && (
+              <p className="mt-2 text-xs text-coral">{relErr}</p>
+            )}
           </div>
 
           {/* ⚖️ THE CARD-LEVEL NOTE STAYS FOR THE SAVES THAT ARE NOT A FIELD —
@@ -2173,28 +2253,11 @@ function CommunityQuestions({ value, onChange }: {
 function StartFromLink({ onCancel, onClaim, busy }: {
   onCancel: () => void
   busy: boolean
-  onClaim: (a: {
-    relationship: EntityRelationship; personalUse: PersonalUse
-    type: EntityType; name: string; productUrl?: string | null; imagePaths?: string[]
-    /** The creator's own one-line fallback. See migration 0177. */
-    creatorSummary?: string | null
-    /** ⚠️ 0222's COLUMN, WHICH THIS FORM COULD NOT SEND. `EntityAttestation`
-     *  has declared `offer` since 0222 and this prop type never widened to
-     *  match, so the field was unreachable from "Add a product" — the price had
-     *  to be found by opening a product you had just created. */
-    offer?: string | null
-    /** ⚖️ THE ANSWER TO THE ONE CAPABILITY QUESTION THIS PRODUCT WARRANTED.
-     *  Absent when the type warranted none — a service — and absent is NOT a
-     *  denial: `attestedEntity` reads a missing flag as UNKNOWN. */
-    flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
-    /** ⚠️ THE SAME ANSWER, UNFLATTENED. The flag above can only carry yes/no, and
-     *  this form has always offered three options — so SOMETIMES arrived as a
-     *  `false` and was stored as NEVER. See `answeredShowability`. */
-    showability?: Showability | null
-    /** ⚖️ Present only for a COMMUNITY, and null when the form was not filled
-     *  in far enough to be usable. Absent is the ordinary state. */
-    communityMap?: unknown
-  }) => void
+  // ⚠️ THE SHARED CLAIM SHAPE, NOT A COPY OF IT. This prop used to restate
+  // the field list by hand, and that is exactly how `offer` came to exist on
+  // the opened product and not on this form: 0222 widened `EntityAttestation`
+  // and nobody widened the duplicate. See `ProductClaim`.
+  onClaim: (a: ProductClaim) => void
 }) {
   const [url, setUrl] = useState('')
   // ⚖️ UPLOADED AS THEY ARE PICKED, NOT ON SUBMIT. A submit that also had to
@@ -2535,7 +2598,12 @@ function StartFromLink({ onCancel, onClaim, busy }: {
             // creator picks to say "I do not know yet" into a stored denial,
             // silently forbidding every scene that shows the thing. The null
             // check has to precede the coercion, here as everywhere.
-            flags: capability === 'physical' ? { canFilmObjects: capabilityFlag(showability) }
+            // ⚠️ `place` SENDS THE OBJECT FLAG, because `inferShowability`
+            // reads a BUSINESS through `canFilmObjects` — what is filmed is
+            // the room, which is the same permission as holding a thing up.
+            // A third flag would be a second authority on one fact.
+            flags: capability === 'physical' || capability === 'place'
+              ? { canFilmObjects: capabilityFlag(showability) }
               : capability === 'screen' ? { canRecordScreen: capabilityFlag(showability) }
                 : undefined,
           })}

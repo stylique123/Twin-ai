@@ -33,6 +33,10 @@ export type ProductLifecycle =
   /** A source exists and no extraction has completed yet.
    *  ⚠️ THIS STATE IS AMBIGUOUS AND THE AMBIGUITY IS REAL — see below. */
   | 'READING'
+  /** Twin said it was reading, and has been saying so for longer than any read
+   *  has ever taken. ⚠️ SEE `READING_HAS_AN_OUTSIDE_EDGE` for the measurement
+   *  this bound comes from and for what this state can and cannot know. */
+  | 'READING_STALLED'
   /** Twin read the source and found nothing it could use. A finding, not a
    *  failure: some pages genuinely say nothing about the product. */
   | 'NOTHING_FOUND'
@@ -46,7 +50,14 @@ const usable = (f: ExtractedFact) => f.trust === 'usable'
 /** ⚖️ ORDER IS THE DEFINITION. Archived outranks everything; a source check
  *  precedes a knowledge check, because "we never had anywhere to look" is a
  *  different sentence from "we looked and found nothing". */
-export function productLifecycle(e: ProductEntityRecord, photoCount = 0): ProductLifecycle {
+export function productLifecycle(
+  e: ProductEntityRecord,
+  photoCount = 0,
+  /** ⚖️ INJECTED, NOT READ FROM THE CLOCK, so the rule below is testable and so
+   *  this function stays pure. Defaulted because every existing caller passes
+   *  two arguments and none of them should have to learn about time. */
+  now: number = Date.now(),
+): ProductLifecycle {
   if (e.archivedAt) return 'ARCHIVED'
 
   const hasSource = !!(e.productUrl ?? '').trim() || photoCount > 0
@@ -61,7 +72,11 @@ export function productLifecycle(e: ProductEntityRecord, photoCount = 0): Produc
   // ⚠️ null AND [] ARE DIFFERENT ANSWERS, and collapsing them is the mistake the
   // record's own comment warns about. null = never extracted; [] = extracted and
   // nothing usable found.
-  if (k === null) return hasSource ? 'READING' : 'NEEDS_SOURCE'
+  if (k === null) {
+    if (!hasSource) return 'NEEDS_SOURCE'
+    // ⚠️ A READ THAT NEVER ENDS IS NOT A READ. See `READING_HAS_AN_OUTSIDE_EDGE`.
+    return startedReadingBefore(e, now - READ_STALLS_AFTER_MS) ? 'READING_STALLED' : 'READING'
+  }
   if (k.length === 0) return 'NOTHING_FOUND'
 
   return k.some(usable) ? (k.every(usable) ? 'READY' : 'REVIEW_REQUIRED') : 'REVIEW_REQUIRED'
@@ -73,6 +88,7 @@ export const LIFECYCLE_MESSAGE: Record<ProductLifecycle, string> = {
   IMPORT_FAILED: 'Twin could not read that page. Try again, or add the details yourself.',
   NEEDS_SOURCE: 'Add a link or a photo and Twin can learn what this is.',
   READING: 'Twin is reading the page. This keeps going if you leave.',
+  READING_STALLED: 'That read never finished. Press Read the page to try again, or add the details yourself.',
   NOTHING_FOUND: 'Twin read the page and could not find anything usable. You can add details yourself.',
   REVIEW_REQUIRED: 'Twin found some things. Check the ones it is unsure about.',
   READY: 'Ready. Scripts can talk about this one.',
@@ -80,6 +96,55 @@ export const LIFECYCLE_MESSAGE: Record<ProductLifecycle, string> = {
 
 /** ⚠️ MAY A SCRIPT QUOTE FACTS ABOUT THIS PRODUCT? Only where facts exist and a
  *  human has not been left with unchecked guesses standing in for them. */
+// ── A READ THAT NEVER ENDS IS NOT A READ ─────────────────────────────────
+//
+// ⚠️ REPORTED 2026-09-22: "'Twin is reading the page' appears stuck." It was not
+// slow. `READING` is the state this file returns whenever a row has a source,
+// has never been extracted, and has recorded no failure — and NOTHING in that
+// description ever expires. A job that was enqueued and died without writing
+// `knowledge_failed_at` leaves a row matching it forever, so the card says Twin
+// is reading, `NEEDS_CREATOR_ACTION` deliberately omits `READING` because it
+// "finishes on its own", and the product waits for an event that will never
+// arrive. There was no end state, which is why it read as stuck: it WAS stuck.
+//
+// ⚠️⚠️ MEASURED ON PRODUCTION 2026-09-22, every row that has ever been
+// extracted (n=12). Eight are first reads and they took 5, 9, 13, 105, 125,
+// 164, 215 and 1053 seconds — the slowest under eighteen minutes. The other
+// four are 20-to-34-DAY gaps, which are re-reads of rows created long before,
+// not slow reads. So thirty minutes is above every first read ever observed
+// here by a factor of nearly two, and is not a guess about what is reasonable.
+//
+// ⚖️ AND IT IS A LOWER BOUND ON STALENESS, WHICH IS THE HONEST DIRECTION. There
+// is no `knowledge_requested_at` column; `updated` is the closest thing the row
+// carries, and any edit bumps it. So renaming a stuck product restarts this
+// clock and the state falls back to `READING` — it can only ever under-report a
+// stall, never invent one. Under-reporting is exactly what shipped, so this is
+// strictly better than today and does not pretend to be complete. A real
+// `requested_at` column would make it exact and is not worth a migration until
+// a row is measured surviving this bound.
+//
+// ⚖️ AND IT IS NOT `IMPORT_FAILED`, WHICH WOULD BE A CLAIM WE CANNOT MAKE. That
+// state means Twin tried and the attempt reported back. This one means nothing
+// reported at all, and the difference is the sentence the creator reads.
+export const READ_STALLS_AFTER_MS = 30 * 60 * 1000
+
+/** Did this row's source arrive before `cutoff`? `updated` is the only clock
+ *  the record carries — see above for what that costs. */
+function startedReadingBefore(e: ProductEntityRecord, cutoff: number): boolean {
+  const t = Date.parse(e.updated ?? '')
+  // ⚠️ AN UNPARSEABLE OR ABSENT TIMESTAMP IS NOT A STALL. Saying a read failed
+  // because we cannot read our own column would blame the creator for our gap.
+  return Number.isFinite(t) && t < cutoff
+}
+
+/** A link is on file and nothing came back — whether the attempt reported its
+ *  own failure or simply never reported. ⚖️ THE TWO STATES ARE DIFFERENT FACTS
+ *  AND ONE SITUATION: to the creator, both mean "press Retry". Named here so
+ *  the screen reads the pair once instead of re-deriving it per control, which
+ *  is how the stall came to be handled in one place and not the other. */
+export const READ_DID_NOT_COME_BACK: ReadonlySet<ProductLifecycle> =
+  new Set<ProductLifecycle>(['IMPORT_FAILED', 'READING_STALLED'])
+
 export const factsAreQuotable = (s: ProductLifecycle): boolean => s === 'READY'
 
 /**

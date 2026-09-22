@@ -57,6 +57,11 @@ import { productLifecycle, type ProductLifecycle } from './productLifecycle'
 export const NEEDS_CREATOR_ACTION: ReadonlySet<ProductLifecycle> = new Set<ProductLifecycle>([
   'NEEDS_SOURCE',
   'IMPORT_FAILED',
+  // ⚠️ AND THE STALL, WHICH THE SENTENCE ABOVE USED TO EXCLUDE BY NAME.
+  // "`READING` finishes on its own" is true of a read that is running and false
+  // of one that stopped without saying so — and the second case was invisible
+  // precisely because it wore the first one's state. See `READ_STALLS_AFTER_MS`.
+  'READING_STALLED',
   'NOTHING_FOUND',
   'REVIEW_REQUIRED',
 ])

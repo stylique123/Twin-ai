@@ -146,6 +146,7 @@ const ENTITY_TYPE_LABEL: Record<EntityType, string> = {
   COURSE: 'course',
   COMMUNITY: 'community',
   MARKETPLACE: 'store',
+  BUSINESS: 'business',
   OTHER: 'product',
 }
 import { EASE } from '../components/motion'

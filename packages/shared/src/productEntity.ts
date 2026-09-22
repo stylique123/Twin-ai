@@ -58,7 +58,23 @@ import type { OwnProductKind, OwnServiceKind } from './creatorProfileQuestions'
 // may ask for, so a WRONG kind is worse than an unspecific one.
 export const ENTITY_TYPES = [
   'SAAS', 'APP', 'PHYSICAL_PRODUCT', 'DIGITAL_PRODUCT',
-  'SERVICE', 'COURSE', 'COMMUNITY', 'MARKETPLACE', 'OTHER',
+  'SERVICE', 'COURSE', 'COMMUNITY', 'MARKETPLACE',
+  // ⚠️ THE THING THE PRODUCTS BELONG TO, WHICH HAD NO WAY IN. Reported
+  // 2026-09-22: "a whole business, not just individual products, as an addable
+  // entity." Every type above is something a business SELLS; a creator whose
+  // videos are about the bakery rather than about one loaf had to either pick
+  // the nearest product type — making scripts talk about a loaf when the story
+  // is the shop — or pick OTHER, which exists to avoid misclassification and
+  // yields the generic dashboard walkthrough. Both are wrong in the same way:
+  // the subject of the video was not in the vocabulary.
+  //
+  // ⚖️ A TYPE, NOT A PARENT. A business that OWNS its products is a hierarchy —
+  // a column, a query, and a decision about which one a script is about — and
+  // nobody has asked for that. This is the smaller true thing: a business is a
+  // subject a creator can declare, read a page for, and have scripts talk
+  // about. If products ever need to hang off one, that is a second change with
+  // its own reasons, and this does not prejudge it.
+  'BUSINESS', 'OTHER',
 ] as const
 export type EntityType = (typeof ENTITY_TYPES)[number]
 
@@ -194,7 +210,15 @@ export function inferShowability(
   // everything else that can be shown at all is shown through a screen. OTHER
   // takes the screen branch because it is the weaker permission of the two —
   // recording a screen is the capability more creators have.
-  const flag = type === 'PHYSICAL_PRODUCT' ? flags.canFilmObjects : flags.canRecordScreen
+  // ⚠️ A BUSINESS TAKES THE OBJECT FLAG, NOT THE SCREEN ONE, and the axis is
+  // where the camera points rather than whether the thing is tangible. What a
+  // creator films of their business is the place and the work — the counter,
+  // the bench, the packing, their own hands — which is the same permission as
+  // holding a product up, not the permission to show a screen. Routing it to
+  // `canRecordScreen` would have asked a baker whether she can screen-record
+  // her bakery.
+  const filmedInTheRoom = type === 'PHYSICAL_PRODUCT' || type === 'BUSINESS'
+  const flag = filmedInTheRoom ? flags.canFilmObjects : flags.canRecordScreen
   if (flag === true) return 'ALWAYS'
   if (flag === false) return 'NEVER'
   // Unanswered. Not a denial, and not a permission.
@@ -509,6 +533,37 @@ export interface EntityAttestation {
    *  than a half-map, so anything arriving here is already usable or is null. */
   communityMap?: unknown
   now?: string
+}
+
+// ── ONE DECLARATION OF WHAT A CLAIM CARRIES ──────────────────────────────
+//
+// ⚠️ REPORTED 2026-09-22 AS "the offer field is on one form and not the other",
+// and that is the SYMPTOM. There were FOUR hand-copied field lists for a single
+// fact: `EntityAttestation` here, and three inline object types in
+// `ProductLibrary.tsx` — `ClaimForm`'s prop, `StartFromLink`'s prop, and
+// `claim()`'s own parameter. 0222 added `offer` to this interface and to the
+// edit card; the two add-time prop types were never widened, so the field was
+// UNREACHABLE from "Add a product" and the price had to be found by opening a
+// product you had just created. Nothing failed — the value simply had no route.
+//
+// ⚖️ SO THE FIX IS THE TYPE, NOT THE FIELD. A fifth field added tomorrow drifts
+// exactly the same way while four lists exist. This is the one list; the forms
+// reference it, and a field added here is accepted by every claim path on the
+// day it is added. What a given form ASKS is still its own decision — a
+// suggestion claim does not ask for a price — but no form can now be unable to
+// SEND one.
+//
+// ⚠️ `name` IS REQUIRED HERE AND NULLABLE ABOVE, WHICH IS NOT AN OVERSIGHT. A
+// form always has a string in its input, even an empty one; a stored entity can
+// genuinely have no name (see `mintFromWorkKind`). `attestedEntity` trims the
+// string to null, so the narrowing happens in exactly one place.
+export type ProductClaim = Omit<EntityAttestation, 'now' | 'name'> & {
+  name: string
+  /** ⚖️ PATHS, NOT FILES. The upload has already happened by the time a claim
+   *  runs — a claim that also had to carry bytes could fail halfway and leave a
+   *  product minted with photographs nobody can find. Not part of the
+   *  attestation because it is evidence about the thing, not a claim about it. */
+  imagePaths?: string[]
 }
 
 /** Build the entity a creator has explicitly claimed.
