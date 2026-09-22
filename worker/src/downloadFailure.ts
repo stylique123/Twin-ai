@@ -61,6 +61,25 @@ export const DOWNLOAD_FAILURES = [
    *  bill attached: it would send a failure whose cause is the proxy back
    *  through that same proxy. Deliberately NOT in RETRYABLE_VIA_PROXY. */
   'PROXY_TRANSPORT_FAILED',
+  /**
+   * ⚠️⚠️ THE HOST DEMANDED PROOF WE ARE NOT A ROBOT. YouTube's exact wording,
+   * recovered from production residue 2026-09-22:
+   *
+   *   ERROR: [youtube] <id>: Sign in to confirm you’re not a bot.
+   *   Use --cookies-from-browser or --cookies for the authentication.
+   *
+   * ⚖️ IT HAD NO CODE, AND THE COST WAS THE ENTIRE VISUAL PASS. This list was
+   * TikTok-shaped — `TIKTOK_CHALLENGE_FAILED`, `TIKTOK_IP_BLOCKED` — and
+   * YouTube's sentence matches neither, so every one landed in
+   * `UNKNOWN_DOWNLOAD_FAILURE`. 1,666 of 1,676 visual failures carry that code:
+   * 99.4%, still arriving today. With no frames, `Shot choices`, `Camera work`
+   * and `Framing` read NOT OBSERVED on the creator's panel forever.
+   *
+   * ⚠️ AND THE APOSTROPHE IS CURLY, WHICH IS NOT A DETAIL. The message carries
+   * U+2019, not U+0027. A rule written against a straight quote matches nothing
+   * and would look correct in review.
+   */
+  'HOST_BOT_CHECK',
   /** ⚖️ NOT A DUMPING GROUND, AND NOT A LICENCE TO SPEND. Unrecognised means
    *  unrecognised; it does not graduate to paid routing, because "we do not know
    *  why this failed" is not evidence that an IP would fix it. */
@@ -80,6 +99,18 @@ export type DownloadFailure = (typeof DOWNLOAD_FAILURES)[number]
 export const RETRYABLE_VIA_PROXY: ReadonlySet<DownloadFailure> = new Set<DownloadFailure>([
   'TIKTOK_CHALLENGE_FAILED',
   'TIKTOK_IP_BLOCKED',
+  // ⚠️⚠️ A BOT CHECK IS THE TEXTBOOK CASE FOR A DIFFERENT EGRESS, and it meets
+  // this file's own stated bar without stretching it: "a failure has to be
+  // positively identified as access/challenge/reputation to graduate."
+  // "Sign in to confirm you are not a bot" is a verdict on the IP, not on the
+  // video — the same judgement `TIKTOK_IP_BLOCKED` already earns.
+  //
+  // ⚖️ IT WAS NEVER REFUSED ON THE MERITS. It was never CLASSIFIED, so it
+  // inherited UNKNOWN's refusal — and UNKNOWN's reasoning ("we do not know why
+  // this failed is not evidence that an IP would fix it") is sound and was
+  // being applied to a failure we now do know the cause of. The residential
+  // proxy exists for exactly this and has never once been asked.
+  'HOST_BOT_CHECK',
 ])
 
 /**
@@ -97,6 +128,24 @@ export function classifyDownloadFailure(raw: unknown): DownloadFailure {
   // The exact string yt-dlp raises when the challenge blob is missing.
   if (s.includes('unexpected response from webpage request')
     || s.includes('unable to extract challenge data')) return 'TIKTOK_CHALLENGE_FAILED'
+
+  // ⚠️⚠️ CHECKED BEFORE THE LOGIN WALL, AND THE ORDER IS LOAD-BEARING. YouTube's
+  // bot-check sentence CONTAINS "Sign in", and a login wall is a property of the
+  // video while a bot check is a property of our IP — opposite fixes. Tested
+  // first, the right one wins; tested second, every bot check would file as
+  // PRIVATE_OR_UNAVAILABLE and become permanently unretryable instead.
+  //
+  // ⚖️ THE APOSTROPHE CLASS IS DELIBERATE. Production carries U+2019 ("you’re");
+  // a rule written with a straight quote matches nothing and reviews clean.
+  // ⚠️⚠️ `cookies-from-browser` IS NOT IN THIS RULE, AND AN EXISTING TEST IS WHY.
+  // It was, on the first draft — and `only-some-failures-may-cost-money` failed
+  // immediately: yt-dlp appends "Use --cookies-from-browser or --cookies for the
+  // authentication" to LOGIN WALLS TOO. Both production TikTok walls carry it.
+  // Matching on it would have made a private video payable — precisely the spend
+  // the allowlist exists to prevent. Only the bot-check SENTENCE counts.
+  if (/not a bot|confirm you.{0,3}re not|are you a robot|captcha/i.test(s)) {
+    return 'HOST_BOT_CHECK'
+  }
 
   // ⚖️ CHECKED BEFORE THE BLOCK CODES. A login wall is about the video.
   // ⚠️ THE LAST FOUR ARRIVED FROM PRODUCTION, NOT FROM IMAGINATION. The first

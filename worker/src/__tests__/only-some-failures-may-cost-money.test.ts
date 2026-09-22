@@ -84,10 +84,17 @@ describe('the 2026-08 dependency bug keeps its own code', () => {
 })
 
 describe('the allowlist is closed', () => {
-  it('lets exactly the two access classes graduate, and nothing else', () => {
-    expect([...RETRYABLE_VIA_PROXY].sort()).toEqual(['TIKTOK_CHALLENGE_FAILED', 'TIKTOK_IP_BLOCKED'])
+  it('lets exactly the three access classes graduate, and nothing else', () => {
+    // ⚠️⚠️ THREE SINCE 2026-09-22, AND THE THIRD IS NOT A LOOSENING. The bar is
+    // this file's own: "positively identified as access/challenge/reputation".
+    // `HOST_BOT_CHECK` is YouTube stating a verdict on our IP — the same thing
+    // `TIKTOK_IP_BLOCKED` already earns, in different words. It spent its whole
+    // life inside UNKNOWN, which is refused for not being identified at all, so
+    // it was never refused on the merits.
+    expect([...RETRYABLE_VIA_PROXY].sort())
+      .toEqual(['HOST_BOT_CHECK', 'TIKTOK_CHALLENGE_FAILED', 'TIKTOK_IP_BLOCKED'])
     const payable = DOWNLOAD_FAILURES.filter((c: DownloadFailure) => mayRetryViaProxy(c))
-    expect(payable).toHaveLength(2)
+    expect(payable).toHaveLength(3)
   })
 })
 
