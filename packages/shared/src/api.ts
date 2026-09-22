@@ -2692,10 +2692,18 @@ function readBrandRow(r: BrandRow): Brand {
 /** Her brands, oldest first. Empty when the migration is unapplied, never a throw
  *  — a missing brand must cost the brand box, not the whole Product Library. */
 export async function loadBrands(): Promise<Brand[]> {
-  const { data, error } = await supabase.from('brands').select(BRAND_COLUMNS)
-    .order('created_at', { ascending: true })
-  if (error) return []
-  return ((data ?? []) as BrandRow[]).map(readBrandRow)
+  // ⚠️ THE TRY COVERS THE CLIENT LOOKUP TOO. `supabase` throws synchronously
+  // when no client was initialised (a page rendered in a test harness), and
+  // "never a throw" has to hold there as well — CI caught it as an unhandled
+  // rejection from every Product Library test.
+  try {
+    const { data, error } = await supabase.from('brands').select(BRAND_COLUMNS)
+      .order('created_at', { ascending: true })
+    if (error) return []
+    return ((data ?? []) as BrandRow[]).map(readBrandRow)
+  } catch {
+    return []
+  }
 }
 
 /** Save a brand. `confirmed` is true only when she pressed the button or typed it. */
