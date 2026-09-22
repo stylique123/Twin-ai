@@ -175,6 +175,11 @@ export const NO_PRODUCT_EXPLANATION: Record<NoProductReason, string> = {
 // decision they did not make.
 export const NO_PRODUCT_CHOICE = 'none'
 
+/** A picked BRAND travels in the same field as a product, prefixed, so every
+ *  existing reader of the choice keeps working and the edge can tell them
+ *  apart. Mirrored as `BRAND_CHOICE_PREFIX_INLINE` in generate-blueprint. */
+export const BRAND_CHOICE_PREFIX = 'brand:'
+
 /** The plain sentence a creator reads beside each option, so the choice is not
  *  made blind.
  *

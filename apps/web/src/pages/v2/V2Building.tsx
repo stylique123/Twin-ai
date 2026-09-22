@@ -7,7 +7,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
 import { creatorFacingMessage } from '@twinai/shared'
-import { loadProductEntities } from '../../lib/api'
+import { loadProductEntities, loadBrands, type Brand } from '../../lib/api'
 import type { ProductEntityRecord } from '../../lib/api'
 import { assessReadiness, isCommercialField } from '../../lib/api'
 import { judgeFit, warningForPickedVideo, recordTalkingHeadChoice } from '../../lib/api'
@@ -24,7 +24,7 @@ import {
   // ⚖️ THE WRITER'S OWN TARGET, shown to the creator before the money moves.
   targetSeconds, spokenTime,
   INTENT_QUESTIONS, intentQuestionsFor, type IntentQuestion, type VideoGoal, focusForGoal,
-  mustAskWhichProduct, PRODUCT_CHOICE_FIELD, NO_PRODUCT_CHOICE, NO_PRODUCT_EXPLANATION,
+  mustAskWhichProduct, PRODUCT_CHOICE_FIELD, NO_PRODUCT_CHOICE, NO_PRODUCT_EXPLANATION, BRAND_CHOICE_PREFIX,
   selectProduct,
   productChoiceConstraint,
   // ⚖️ THIS BRANCH'S OWN ADDITION, kept alongside main's rather than instead of
@@ -853,12 +853,15 @@ export default function V2Building() {
             // library's answer before it can decide whether to ask anything —
             // fetching it later, only once a question was already on screen,
             // would mean asking first and checking second.
-            const [voices, libraryProducts] = await Promise.all([
+            const [voices, libraryProducts, libraryBrands] = await Promise.all([
               listBrandVoices(),
               // A failed read falls back to "nothing on file" — the same
               // conservative default `assessReadiness` already treats a gap
               // as, never a reason to block this courtesy pre-check.
               loadProductEntities().catch(() => [] as ProductEntityRecord[]),
+              // ⚖️ ONLY BRANDS SHE CONFIRMED CAN BE A VIDEO'S SUBJECT. A
+              // suggestion she has not checked is not an answer (0224).
+              loadBrands().then((b) => b.filter((x) => x.confirmed)).catch(() => [] as Brand[]),
             ])
             // Reused by the `offer` chip's product picker below, so a creator
             // who reaches that branch does not pay for the same fetch twice.
@@ -874,7 +877,15 @@ export default function V2Building() {
             const chosen = pickedProduct(
               libraryProducts,
               answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null)
-            const chosenName = (chosen?.name ?? '').trim()
+            // ⚖️ THE WHOLE BRAND AS THE SUBJECT. Picked as `brand:<id>` in the same
+            // "Which one is this video about?" question. A brand is hers by
+            // definition, so its relationship is OWN_PRODUCT, and her own
+            // description of it is what the video may say about it.
+            const pickedId = answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? ''
+            const chosenBrand = pickedId.startsWith(BRAND_CHOICE_PREFIX)
+              ? libraryBrands.find((b) => `${BRAND_CHOICE_PREFIX}${b.id}` === pickedId) ?? null
+              : null
+            const chosenName = (chosenBrand?.name ?? chosen?.name ?? '').trim()
             const verdict = assessReadiness({
               goal: state.goal ?? str(vBrief.goal) ?? null,
               angle: state.reference_note || refUrl || str(vBrief.idea) || null,
@@ -900,7 +911,7 @@ export default function V2Building() {
               // "Nothing to sell" is an ANSWER too, and passing it through as
               // the relationship keeps `assessReadiness` from treating it as a
               // gap.
-              relationship: chosen?.relationship
+              relationship: chosen?.relationship ?? (chosenBrand ? 'OWN_PRODUCT' : null)
                 ?? libraryRelationship(libraryProducts, str(vBrief.offer)) ?? str(vBrief.promotes) ?? null,
               // ⚖️ THE NAME ONLY. Deliberately a separate input from `offer`
               // above, which stays the creator's own words — see
@@ -938,7 +949,9 @@ export default function V2Building() {
               // on a name it never has, then falls back to "only if she owns
               // exactly one" — so a creator with two products was asked to
               // retype what Twin had already extracted from her page.
-              productFacts: factsOfProduct(chosen) ?? libraryFacts(libraryProducts, str(vBrief.offer)),
+              productFacts: factsOfProduct(chosen)
+                ?? (chosenBrand?.description ? [chosenBrand.description] : null)
+                ?? libraryFacts(libraryProducts, str(vBrief.offer)),
             })
             const missing: AskItem[] = verdict.fields
               .filter((f) => f.state === 'MISSING_REQUIRED' && f.question)
@@ -1069,9 +1082,12 @@ export default function V2Building() {
               (p) => (p.relationship === 'OWN_PRODUCT' || p.relationship === 'OWN_SERVICE'
                 || p.relationship === 'AFFILIATE' || p.relationship === 'SPONSOR')
                 && p.archivedAt === null)
+            const brandChoices = libraryBrands.map((b) => ({
+              value: `${BRAND_CHOICE_PREFIX}${b.id}`, label: `${b.name} (the whole brand)`,
+            }))
             const productQuestion: AskItem[] =
               mustAskWhichProduct({
-                ownedProductIds: ownedProducts.map((p) => p.id),
+                ownedProductIds: [...ownedProducts.map((p) => p.id), ...brandChoices.map((b) => b.value)],
                 // ⚖️ THE DOOR'S CHOICE COUNTS AS AN ANSWER. Without this the
                 // screen re-asks "which one is this video about?" straight
                 // after the creator picked one to get here.
@@ -1085,6 +1101,10 @@ export default function V2Building() {
                     // typed into Product Library; a paraphrase here would be a
                     // second name for one thing.
                     options: [
+                      // ⚖️ HER BRANDS FIRST: "a video about Dog Days Co" is a
+                      // real answer, and it is the one the old picker could
+                      // not express.
+                      ...brandChoices,
                       ...ownedProducts.map((p) => ({ value: p.id, label: p.name })),
                       // ⚠️ LAST, AND ALWAYS PRESENT. A commercial video about
                       // none of these had no honest answer before it: pick a
@@ -1936,6 +1956,11 @@ export default function V2Building() {
                         {entity && (
                           <span className="mt-1 block text-xs text-stone">
                             {productChoiceConstraint(entity.relationship, entity.personalUse)}
+                          </span>
+                        )}
+                        {o.value.startsWith(BRAND_CHOICE_PREFIX) && (
+                          <span className="mt-0.5 block text-xs text-stone">
+                            A video about your brand as a whole, not one product.
                           </span>
                         )}
                         {o.value === NO_PRODUCT_CHOICE && (
