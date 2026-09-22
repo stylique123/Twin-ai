@@ -6538,6 +6538,14 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // voice match could never find the affiliate product a creator picked,
   // `chosenEntity` stayed null, and the relationship gate sent her to the
   // Product Library to set what was already set. Owner scoping still holds.
+  // ⚖️ THE WHOLE BRAND AS THE SUBJECT — `brand:<id>` in `selected_product_id`,
+  // mirroring BRAND_CHOICE_PREFIX in packages/shared/src/productSelection.ts.
+  // It skips the product lookup below (not a product id) and resolves later as
+  // `chosenBrand`, confirmed and owner-scoped.
+  const BRAND_CHOICE_PREFIX_INLINE = 'brand:'
+  const rawChoice = typeof body.selected_product_id === 'string' ? body.selected_product_id.trim() : ''
+  const requestedBrandId = rawChoice.startsWith(BRAND_CHOICE_PREFIX_INLINE)
+    ? rawChoice.slice(BRAND_CHOICE_PREFIX_INLINE.length) : ''
   const voiceOrUnscoped = `voice_id.eq.${voice?.id ?? '00000000-0000-0000-0000-000000000000'},voice_id.is.null`
   const requestedProductId = typeof body.selected_product_id === 'string'
     ? body.selected_product_id.trim() : ''
@@ -6552,7 +6560,7 @@ function reserveAskedInline<T extends { source?: string | null }>(
   const NO_PRODUCT_CHOICE_INLINE = 'none'
   const declinedAProduct = requestedProductId === NO_PRODUCT_CHOICE_INLINE
   let chosenEntity: unknown = null
-  if (requestedProductId !== '' && !declinedAProduct) {
+  if (requestedProductId !== '' && !declinedAProduct && requestedBrandId === '') {
     // ⚠️ `offer` IS SELECTED (0222) — `readyOffer` below is its only reader.
     const { data: picked, error: pickErr } = await admin
       .from('product_entities')
@@ -6644,7 +6652,8 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // ⚖️ A FAILED READ COSTS THE BRAND LINE, NEVER THE GENERATION; an unapplied
   // 0224 lands here too.
   const confirmedBrand = await (async () => {
-    const bid = (ownedEntity as { brand_id?: unknown } | null)?.brand_id
+    const bid = requestedBrandId !== '' ? requestedBrandId
+      : (ownedEntity as { brand_id?: unknown } | null)?.brand_id
     if (typeof bid !== 'string' || bid === '') return null
     const { data, error } = await admin.from('brands')
       .select('name, website, description')
@@ -6652,6 +6661,9 @@ function reserveAskedInline<T extends { source?: string | null }>(
     if (error) { console.error('brand read failed', error); return null }
     return data as { name: string; website: string | null; description: string | null } | null
   })()
+  // The brand she picked as the subject — set only when it exists, is hers and
+  // is confirmed. A stale or foreign id resolves to nothing, like a product id.
+  const chosenBrand = requestedBrandId !== '' ? confirmedBrand : null
 
   // ── WHERE EACH FACT ON THIS PRODUCT ACTUALLY BELONGS ───────────────────
   //
@@ -7054,6 +7066,9 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // actually described it, so an undescribed product falls through to exactly
   // what this chain read before rather than naming nothing.
   const productOffer = ((): string | undefined => {
+    // ⚖️ A VIDEO ABOUT THE WHOLE BRAND POINTS AT THE BRAND, not at the
+    // account's scanned one-line guess.
+    if (chosenBrand) return chosenBrand.name
     const raw = (ownedEntity as { offer?: unknown } | null)?.offer
     const t = typeof raw === 'string' ? raw.trim() : ''
     return t === '' ? undefined : t
@@ -7110,7 +7125,7 @@ function reserveAskedInline<T extends { source?: string | null }>(
     const distinct = new Set(answered)
     return distinct.size === 1 ? answered[0] : null
   })()
-  const readyRel = ownedEntity?.relationship ?? readyLibraryRel ?? readyUnanimousRel ?? brief.promotes ?? answers.relationship
+  const readyRel = (chosenBrand ? 'OWN_PRODUCT' : null) ?? ownedEntity?.relationship ?? readyLibraryRel ?? readyUnanimousRel ?? brief.promotes ?? answers.relationship
   const readyEv = productEvidence as { sections?: Array<{ label?: string }> } | 'declined' | null | undefined
   const readyFacts = readyEv && typeof readyEv === 'object' && Array.isArray(readyEv.sections)
     ? readyEv.sections.map((x) => String(x?.label ?? '')).filter((x) => x.trim() !== '')
@@ -7182,11 +7197,16 @@ function reserveAskedInline<T extends { source?: string | null }>(
   }) as Array<{ id: string; name: string }>
   const readyNeedsPick = readyPromoting && !ownedEntity && !declinedAProduct
     && requestedProductId === '' && readyPickable.length > 0
+  const readyBrandOptions = readyNeedsPick
+    ? (((await admin.from('brands').select('id, name').eq('owner_id', ownerId).eq('confirmed', true)).data ?? []) as Array<{ id: string; name: string }>)
+        .map((b) => ({ value: `${BRAND_CHOICE_PREFIX_INLINE}${b.id}`, label: `${b.name} (the whole brand)` }))
+    : []
   if (readyNeedsPick) {
     readyMissing.push({
       field: 'selected_product',
       question: 'Which one is this video about?',
       options: [
+        ...readyBrandOptions,
         ...readyPickable.map((r) => ({ value: String(r.id), label: String(r.name).trim() })),
         { value: NO_PRODUCT_CHOICE_INLINE, label: 'None of these' },
       ],
@@ -7213,6 +7233,9 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // OFFER do?", the question those three things exist to answer. Reported
   // 2026-09-22 from the screen: "the offer still comes up when I told you".
   const readyEntityKnows = (() => {
+    // A brand she picked and described answers "what does it do" for a video
+    // about the brand as a whole.
+    if (chosenBrand && readyPresent(chosenBrand.description)) return true
     const e = ownedEntity as { knowledge?: unknown; offer?: unknown; creator_summary?: unknown } | null
     if (!e) return false
     // Only facts that belong to THIS product count — a homepage's brand story
@@ -8228,7 +8251,9 @@ function reserveAskedInline<T extends { source?: string | null }>(
     // product, not about this creator having none.
     const briefTies = briefListInline(briefRaw, 'commercialTies')
     const tieConsistency = commercialConsistencyInline(briefTies, ownedEntity?.relationship)
-    const rel = (ownedEntity?.relationship ?? 'NONE') as string
+    // ⚖️ A BRAND SHE PICKED IS HERS: the same permissions as her own product
+    // (a commercial CTA is allowed; no paid-tie disclosure is owed).
+    const rel = (chosenBrand ? 'OWN_PRODUCT' : (ownedEntity?.relationship ?? 'NONE')) as string
     const personalUse = (ownedEntity?.personal_use ?? 'NOT_CONFIRMED') as string
     // The one line that is NOT per-relationship: personal experience is
     // established by the creator alone, so no relationship may override it.
@@ -8503,7 +8528,13 @@ function reserveAskedInline<T extends { source?: string | null }>(
     // pinning a collar's description on a bandana.
     // ⚖️ HER CONFIRMED BRAND OUTRANKS WHAT A HOMEPAGE SAID. She has checked it;
     // the homepage lines were only read. When she has one, it is the brand.
-    if (confirmedBrand) {
+    if (chosenBrand) {
+      claimLines.push('\n- THIS VIDEO IS ABOUT THE CREATOR\'S OWN BRAND AS A WHOLE, not one product:\n'
+        + `  * name: ${chosenBrand.name}\n`
+        + (chosenBrand.website ? `  * website: ${chosenBrand.website}\n` : '')
+        + (chosenBrand.description ? `  * in her words: ${chosenBrand.description}\n` : '')
+        + '  Talk about the business — what it makes, who it is for, why it exists. Do not single out or invent a specific product, price or feature that is not listed here.')
+    } else if (confirmedBrand) {
       claimLines.push('\n- THE BRAND THAT MAKES IT, as the creator confirmed it (true of the business, NOT a description of this product):\n'
         + `  * name: ${confirmedBrand.name}\n`
         + (confirmedBrand.website ? `  * website: ${confirmedBrand.website}\n` : '')
