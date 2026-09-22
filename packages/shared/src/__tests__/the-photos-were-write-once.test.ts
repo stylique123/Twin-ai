@@ -77,6 +77,10 @@ describe('the two lists are tabs, in words a creator already knows', () => {
   })
 
   it('the live list is filtered by the tab, not merely styled by it', () => {
-    expect(PAGE).toMatch(/tab === 'live' \? entities : \[\]/)
+    // ⚠️ RE-ANCHORED 2026-09-22, CLAIM UNCHANGED. The live list is still
+    // filtered by the tab rather than merely styled by it; the array it maps is
+    // now `shownEntities`, which drops rows the creator never supplied anything
+    // to. See `aProductSheNeverAdded.test.ts`.
+    expect(PAGE).toMatch(/tab === 'live' \? shownEntities : \[\]/)
   })
 })

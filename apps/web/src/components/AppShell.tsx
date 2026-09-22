@@ -9,7 +9,7 @@ import { BrandReminder } from './BrandReminder'
 import { NotificationBell } from './NotificationBell'
 import { useAuth } from '../context/AuthContext'
 import { videosFromCredits } from '../lib/brand'
-import { loadProductEntities, productsNeedingAttention, type ProductEntityRecord } from '@twinai/shared'
+import { loadProductEntities, productsNeedingAttention, rowIsCreatorSupplied, type ProductEntityRecord } from '@twinai/shared'
 import { cn } from '../lib/cn'
 import { EASE } from './motion'
 
@@ -77,7 +77,12 @@ function useProductsWaiting(): number {
     void (async () => {
       try {
         const rows = await loadProductEntities()
-        if (live) setWaiting(productsNeedingAttention(rows, photoCountOf))
+        // ⚠️⚠️ ONLY THE ROWS SHE CAN SEE, OR THE BADGE POINTS AT NOTHING. The
+        // Product Library stopped rendering unconfirmed mints — a row minted
+        // from her work-kind answer carrying only a derived type. Counting one
+        // here would send her to a page whose list does not contain it: a badge
+        // reading "1 to fix" above an empty library is worse than no badge.
+        if (live) setWaiting(productsNeedingAttention(rows.filter(rowIsCreatorSupplied), photoCountOf))
       } catch { /* decoration only — never break the shell over a badge */ }
     })()
     return () => { live = false }
@@ -137,12 +142,21 @@ export function AppShell({ children, mobileChrome = true }: { children: React.Re
                 <span className="flex-1">{n.label}</span>
                 {/* ⚠️ THE COUNT, NOT A DOT. "4" gets someone to open the page;
                     an anonymous dot only says "something, somewhere". */}
+                {/* ⚠️⚠️ THE BARE NUMBER READ AS A PRODUCT COUNT, AND IT IS NOT
+                    ONE. Reported 2026-09-22: "when I added two products it said
+                    one". It said one because ONE of the two needed attention —
+                    correct, and indistinguishable from a wrong count sitting
+                    next to the word "Products". The `aria-label` has always
+                    said what it means; a sighted creator never saw it.
+
+                    ⚖️ SO THE GLYPH CARRIES THE MEANING NOW. "1 to fix" cannot
+                    be read as an inventory, which is the whole failure. */}
                 {n.to === '/products' && productsWaiting > 0 && (
                   <span
                     aria-label={`${productsWaiting} ${productsWaiting === 1 ? 'product needs' : 'products need'} your attention`}
-                    className="ml-auto min-w-[1.25rem] rounded-full bg-amber/20 px-1.5 py-0.5 text-center text-[11px] font-semibold text-amber"
+                    className="ml-auto shrink-0 rounded-full bg-amber/20 px-1.5 py-0.5 text-center text-[11px] font-semibold text-amber"
                   >
-                    {productsWaiting}
+                    {productsWaiting} to fix
                   </span>
                 )}
               </Link>

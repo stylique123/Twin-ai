@@ -59,7 +59,12 @@ describe('the Products nav entry', () => {
     // photo count is what stops the badge overstating the backlog the way the
     // SQL measurement did.
     expect(shell).toMatch(/photoCountOf/)
-    expect(shell).toMatch(/productsNeedingAttention\(rows, photoCountOf\)/)
+    // ⚠️ RE-ANCHORED 2026-09-22, CLAIM UNCHANGED. The badge still counts through
+    // `productsNeedingAttention` with the same photo counter; the rows handed to
+    // it are now narrowed by `rowIsCreatorSupplied`, because the Product Library
+    // stopped rendering unconfirmed mints and a badge counting a row the list
+    // does not show would point at nothing.
+    expect(shell).toMatch(/productsNeedingAttention\(rows\.filter\(rowIsCreatorSupplied\), photoCountOf\)/)
   })
 
   it('names the count for a screen reader instead of leaving a bare number', () => {
