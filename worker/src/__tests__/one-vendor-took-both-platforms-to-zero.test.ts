@@ -43,11 +43,18 @@ describe('the failure class survives the log', () => {
     expect(classifyTranscriptFailure(new Error('This account has been deactivated')))
       .toBe('unavailable')
     expect(classifyTranscriptFailure(new Error('This video has no speech we can read'))).toBe('no_speech')
-    // ⚠️ BOTH PRODUCTION STRINGS FROM THE 2026-09-20 RECOVERY RUN, where 18 of
-    // 20 videos stored and these two did not. A reel with no audio track is a
-    // fact about the reel; an Actor run that collapsed is ours and retryable.
-    // Pooling either into `unknown` hides a bounded loss inside an open one.
+    // ⚠️⚠️ CORRECTED. This assertion used to demand `no_speech`, on the reading
+    // that a reel with no audio track is a fact about the reel. The wider
+    // measurement says otherwise: the same string came back for 60 of 60
+    // Instagram fetches — 0 ok, 0 transcripts. Sixty different videos do not
+    // share one defect; a vendor contract does. Believing the reel cost
+    // Instagram its entire fallback, because `no_speech` is settled at the
+    // vendor and never reaches the local rung.
     expect(classifyTranscriptFailure(new Error('This Instagram video could not be read: no audio url found')))
+      .toBe('actor_contract')
+    // ⚖️ AND THE GENUINE ARTICLE STILL CLASSIFIES AS ITSELF. The two rules are
+    // adjacent and order-dependent, so this is the pair that keeps them apart.
+    expect(classifyTranscriptFailure(new Error('This Instagram video has no speech we can read')))
       .toBe('no_speech')
     expect(classifyTranscriptFailure(new Error(
       'YouTube transcript service error 400: {"error":{"type":"run-failed","message":"Actor run did not succeed"}}',
@@ -118,7 +125,13 @@ describe('neither platform ends at a single vendor any more', () => {
   it('but never spends a download on a question already settled', () => {
     // A private reel and a silent video are facts about the post. Retrying
     // them locally burns a download to re-learn the same answer.
-    const guards = MEDIA.match(/if \(kind === 'unavailable' \|\| kind === 'no_speech'\) throw apifyErr/g) ?? []
+    //
+    // ⚠️ RE-ANCHORED, NOT RE-LITIGATED. This pinned the two INLINE conditions
+    // by their source text. The claim is unchanged and still guarded; the rule
+    // now lives in one exported predicate, because two hand-copied conditions
+    // are precisely how a single wrong classification took Instagram to zero on
+    // both paths at once. See the-fallback-instagram-never-reached.test.ts.
+    const guards = MEDIA.match(/if \(settledAtVendor\(apifyErr\)\) throw apifyErr/g) ?? []
     expect(guards.length).toBe(2)
   })
 

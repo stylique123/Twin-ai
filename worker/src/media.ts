@@ -83,7 +83,7 @@ export type TranscriptSource =
 export type PaidBecause = 'no_captions' | 'free_path_failed'
 
 import { downloadArgsFor, routeName, type DownloadRoute } from './downloadRoute.js'
-import { classifyTranscriptFailure, type TranscriptFailure } from './transcriptFailure.js'
+import { classifyTranscriptFailure, settledAtVendor, type TranscriptFailure } from './transcriptFailure.js'
 export { classifyTranscriptFailure, type TranscriptFailure }
 import { phaseOf, classifyDownloadFailure, type DownloadTrace } from './downloadFailure.js'
 
@@ -1049,7 +1049,7 @@ export async function transcribeFromUrl(
       } catch (apifyErr) {
         const kind = classifyTranscriptFailure(apifyErr)
         // A fact about THIS video is settled; do not spend a download on it.
-        if (kind === 'unavailable' || kind === 'no_speech') throw apifyErr
+        if (settledAtVendor(apifyErr)) throw apifyErr
         console.error(JSON.stringify({
           event: 'youtube_apify_failed_falling_back_local', kind,
           detail: (apifyErr instanceof Error ? apifyErr.message : String(apifyErr)).slice(0, 300),
@@ -1066,7 +1066,7 @@ export async function transcribeFromUrl(
       }
     } catch (apifyErr) {
       const kind = classifyTranscriptFailure(apifyErr)
-      if (kind === 'unavailable' || kind === 'no_speech') throw apifyErr
+      if (settledAtVendor(apifyErr)) throw apifyErr
       console.error(JSON.stringify({
         event: 'instagram_apify_failed_falling_back_local', kind,
         detail: (apifyErr instanceof Error ? apifyErr.message : String(apifyErr)).slice(0, 300),
