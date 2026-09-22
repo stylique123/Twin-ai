@@ -6556,7 +6556,7 @@ function reserveAskedInline<T extends { source?: string | null }>(
     // ⚠️ `offer` IS SELECTED (0222) — `readyOffer` below is its only reader.
     const { data: picked, error: pickErr } = await admin
       .from('product_entities')
-      .select('id, name, creator_summary, offer, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map, product_url')
+      .select('id, name, creator_summary, offer, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map, product_url, brand_id')
       .eq('owner_id', ownerId)
       .or(voiceOrUnscoped)
       .eq('id', requestedProductId)
@@ -6575,7 +6575,7 @@ function reserveAskedInline<T extends { source?: string | null }>(
     const legacyPick = pickErr && /offer/i.test(`${pickErr.message} ${pickErr.details ?? ''}`)
       ? (await admin
           .from('product_entities')
-          .select('id, name, creator_summary, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map, product_url')
+          .select('id, name, creator_summary, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map, product_url, brand_id')
           .eq('owner_id', ownerId)
           .or(voiceOrUnscoped)
           .eq('id', requestedProductId)
@@ -6634,6 +6634,24 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // braces. It states at the point of use that a decline yields no subject, and
   // the next person to add a fallback has to delete an explicit `null` to do it.
   const ownedEntity = declinedAProduct ? null : chosenEntity
+
+  // ── THE BRAND IT BELONGS TO — ONLY ONCE SHE HAS SAID IT IS RIGHT ─────────
+  //
+  // ⚠️ THE OWNER'S CONDITION, 2026-09-22: "every time you pre-fill something,
+  // it's not the right one." A brand Twin suggested sits with `confirmed =
+  // false` until she presses "Yes, that's right" or edits it, and this read
+  // filters on that column — so a wrong suggestion cannot reach a script.
+  // ⚖️ A FAILED READ COSTS THE BRAND LINE, NEVER THE GENERATION; an unapplied
+  // 0224 lands here too.
+  const confirmedBrand = await (async () => {
+    const bid = (ownedEntity as { brand_id?: unknown } | null)?.brand_id
+    if (typeof bid !== 'string' || bid === '') return null
+    const { data, error } = await admin.from('brands')
+      .select('name, website, description')
+      .eq('id', bid).eq('owner_id', ownerId).eq('confirmed', true).maybeSingle()
+    if (error) { console.error('brand read failed', error); return null }
+    return data as { name: string; website: string | null; description: string | null } | null
+  })()
 
   // ── WHERE EACH FACT ON THIS PRODUCT ACTUALLY BELONGS ───────────────────
   //
@@ -8483,7 +8501,16 @@ function reserveAskedInline<T extends { source?: string | null }>(
     // homepage, so true — but of the business, not of this product. Offered so
     // a script can say where it comes from ("a small BC-based shop") without
     // pinning a collar's description on a bandana.
-    const brandFactLines = placedEntityFacts.brand
+    // ⚖️ HER CONFIRMED BRAND OUTRANKS WHAT A HOMEPAGE SAID. She has checked it;
+    // the homepage lines were only read. When she has one, it is the brand.
+    if (confirmedBrand) {
+      claimLines.push('\n- THE BRAND THAT MAKES IT, as the creator confirmed it (true of the business, NOT a description of this product):\n'
+        + `  * name: ${confirmedBrand.name}\n`
+        + (confirmedBrand.website ? `  * website: ${confirmedBrand.website}\n` : '')
+        + (confirmedBrand.description ? `  * about: ${confirmedBrand.description}\n` : '')
+        + '  Use this to say who makes it. Never present it as what this product is or does.')
+    }
+    const brandFactLines = confirmedBrand ? [] : placedEntityFacts.brand
       .filter((f) => f.trust === 'usable' || f.field === 'claim')
       .map((f) => `  * ${f.field}: ${String(f.value).trim()}`)
       .slice(0, 8)

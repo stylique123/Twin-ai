@@ -106,7 +106,11 @@ const CODE = LIB.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(l))
 
 describe('the library renders the narrowed list, not the raw one', () => {
   it('computes the shown list through the shared predicate', () => {
-    expect(CODE).toMatch(/shownEntities\s*=\s*\(entities \?\? \[\]\)\.filter\(rowIsCreatorSupplied\)/)
+    // ⚖️ RE-PINNED 2026-09-22: the list is now split into her own products and
+    // things she promotes for others, but both halves come from the SAME
+    // predicate-filtered set, which is the claim this test makes.
+    expect(CODE).toMatch(/suppliedEntities\s*=\s*\(entities \?\? \[\]\)\.filter\(rowIsCreatorSupplied\)/)
+    expect(CODE).toMatch(/shownEntities = \[\s*\.\.\.suppliedEntities\.filter\(isOwnProduct\),\s*\.\.\.suppliedEntities\.filter/)
   })
 
   it('and the row map reads it', () => {

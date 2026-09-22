@@ -957,6 +957,11 @@ export interface DraftEntity {
    *  offer chain must keep falling through on a null rather than read a blank as
    *  an answer. */
   offer: string | null
+  /** 0224 — the brand this product belongs to. Null for anything that is not
+   *  the creator's own (an affiliate or sponsored product never needs one) and
+   *  for every product until she links it. Optional so older fixtures and an
+   *  unapplied migration both read as "no brand" rather than failing. */
+  brandId?: string | null
   type: EntityType
   relationship: EntityRelationship
   personalUse: PersonalUse

@@ -87,10 +87,17 @@ describe('the creator can reach it', () => {
     expect(codeOnly(LIB)).toMatch(/TYPE_CHOICES\.map/)
   })
 
+// ⚖️ BUSINESS IS NOT OFFERED AS A KIND OF PRODUCT, AND THAT IS THE OWNER'S
+  // DECISION (2026-09-22): "it doesn't actually change anything… remove that."
+  // A business is now a BRAND row at the top of the Library (0224), not a product
+  // type. The value stays in the contract so the database constraint and readers
+  // agree; production holds 0 rows of it. Exempted BY NAME, so any other value
+  // missing from the picker still fails.
   it('offers every kind the enum allows, so no product is unrepresentable', () => {
     // TYPE_CHOICES is the list the corrector maps over; a kind missing from it
     // would be a product a creator could never correct their way into.
     for (const t of ENTITY_TYPES) {
+      if (t === 'BUSINESS') continue // see the note above this describe block
       expect(LIB).toContain(`value: '${t}'`)
     }
   })

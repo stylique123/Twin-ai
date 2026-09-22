@@ -37,7 +37,7 @@ describe('the list parses, or every assertion below is vacuous', () => {
   // found and edited when BUSINESS arrived — a count restated by hand is the
   // same drift this suite exists to catch, one level up.
   it('reads every choice the enum has', () => {
-    expect(choices.length).toBe(ENTITY_TYPES.length)
+    expect(choices.length).toBe(ENTITY_TYPES.length - 1) // all but BUSINESS; see below
   })
 })
 
@@ -86,7 +86,9 @@ describe('nothing about the stored contract moved', () => {
   // leave the type storable and unreachable.
   it('offers every value the stored contract has, and no other', () => {
     const values = choices.map((c) => c.value).sort()
-    expect(values).toEqual([...ENTITY_TYPES].sort())
+    // ⚖️ BUSINESS EXCEPTED BY NAME — a business is a brand now (0224), not a
+    // product kind, by the owner's decision. Every other value must be offered.
+    expect(values).toEqual([...ENTITY_TYPES].filter((t) => t !== 'BUSINESS').sort())
   })
 
   // ⚠️ AND `OTHER` STAYS LAST. It is deliberately offered — forcing a

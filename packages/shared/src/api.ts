@@ -16,6 +16,7 @@ import type { AcceptedFinalStamp } from './acceptedFinal'
 import { mapIsUsable, type CommunityMap } from './communityMap'
 import { readStoredReferenceProfile, type StoredProfileRow } from './storedReferenceProfile'
 import type { ReferenceProfile } from './referenceProfile'
+import type { Brand } from './brandSuggestion'
 import {
   emptyRestrictions, isEntityRelationship, isEntityType, isPersonalUse, isShowability,
   attestedEntity, isOwned,
@@ -1811,10 +1812,12 @@ interface ProductEntityRow {
   knowledge_failed_at?: string | null
   knowledge_error?: string | null
   community_map?: unknown
+  /** 0224. Optional so an unapplied migration degrades to "no brand". */
+  brand_id?: string | null
 }
 
 const ENTITY_COLUMNS =
-  'id, name, creator_summary, offer, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at, archived_at, knowledge, knowledge_extracted_at, knowledge_source_url, knowledge_failed_at, knowledge_error, community_map'
+  'id, name, creator_summary, offer, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at, archived_at, knowledge, knowledge_extracted_at, knowledge_source_url, knowledge_failed_at, knowledge_error, community_map, brand_id'
 
 /** Read `restrictions` back defensively. `approvedClaims` is the field §5a.5
  *  turns on — an outcome claim needs a permission that EXISTS — so a malformed
@@ -1860,6 +1863,7 @@ function readEntityRow(row: ProductEntityRow): ProductEntityRecord | null {
     name,
     creatorSummary,
     offer,
+    brandId: typeof row.brand_id === 'string' ? row.brand_id : null,
     type: row.type,
     relationship: row.relationship,
     // A malformed personal-use value falls back to the SAFE side, never the
@@ -2658,6 +2662,76 @@ export async function changeEntityRelationship(
     .single()
   if (error) throw error
   return readEntityRow(data as ProductEntityRow)
+}
+
+// ── BRANDS (0224) ─────────────────────────────────────────────────────────
+//
+// ⚖️ A BRAND IS A PARENT HER OWN PRODUCTS POINT AT, and nothing else needs one.
+// See `brandSuggestion.ts` for why a suggestion is stored unconfirmed.
+
+interface BrandRow {
+  id: string
+  name: string
+  website: string | null
+  description: string | null
+  confirmed: boolean
+}
+
+const BRAND_COLUMNS = 'id, name, website, description, confirmed'
+
+function readBrandRow(r: BrandRow): Brand {
+  return {
+    id: r.id,
+    name: r.name,
+    website: r.website && r.website.trim() !== '' ? r.website.trim() : null,
+    description: r.description && r.description.trim() !== '' ? r.description.trim() : null,
+    confirmed: r.confirmed === true,
+  }
+}
+
+/** Her brands, oldest first. Empty when the migration is unapplied, never a throw
+ *  — a missing brand must cost the brand box, not the whole Product Library. */
+export async function loadBrands(): Promise<Brand[]> {
+  // ⚠️ THE TRY COVERS THE CLIENT LOOKUP TOO. `supabase` throws synchronously
+  // when no client was initialised (a page rendered in a test harness), and
+  // "never a throw" has to hold there as well — CI caught it as an unhandled
+  // rejection from every Product Library test.
+  try {
+    const { data, error } = await supabase.from('brands').select(BRAND_COLUMNS)
+      .order('created_at', { ascending: true })
+    if (error) return []
+    return ((data ?? []) as BrandRow[]).map(readBrandRow)
+  } catch {
+    return []
+  }
+}
+
+/** Save a brand. `confirmed` is true only when she pressed the button or typed it. */
+export async function saveBrand(
+  ownerId: string,
+  b: { id?: string; name: string; website?: string | null; description?: string | null; confirmed: boolean },
+): Promise<Brand | null> {
+  const name = b.name.trim()
+  if (name === '') return null
+  const row = {
+    name,
+    website: (b.website ?? '').trim() || null,
+    description: (b.description ?? '').trim() || null,
+    confirmed: b.confirmed,
+    updated_at: new Date().toISOString(),
+  }
+  const q = b.id
+    ? supabase.from('brands').update(row).eq('id', b.id)
+    : supabase.from('brands').insert({ ...row, owner_id: ownerId })
+  const { data, error } = await q.select(BRAND_COLUMNS).single()
+  if (error) throw error
+  return readBrandRow(data as BrandRow)
+}
+
+/** Put a product under a brand, or take it out (null). */
+export async function setProductBrand(productId: string, brandId: string | null): Promise<void> {
+  const { error } = await supabase.from('product_entities').update({ brand_id: brandId }).eq('id', productId)
+  if (error) throw error
 }
 
 /**
