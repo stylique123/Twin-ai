@@ -90,6 +90,11 @@ const HEALTH_BY_CODE: Record<string, LibraryHealth> = {
   // IT. Counting it as route_blocked would argue for spending on a failure
   // nobody has understood.
   TIKTOK_STATUS_UNMAPPED: 'unsupported_or_unavailable',
+  // ⚠️ THE HOST'S OPINION OF OUR IP, which is the one class a different egress
+  // fixes — the same bucket `TIKTOK_IP_BLOCKED` sits in, for the same reason.
+  // Filing it under `unsupported_or_unavailable` would say "nothing we build or
+  // buy changes this" about the failure a proxy is built to change.
+  HOST_BOT_CHECK: 'route_blocked',
   UNKNOWN_DOWNLOAD_FAILURE: 'unsupported_or_unavailable',
 }
 
