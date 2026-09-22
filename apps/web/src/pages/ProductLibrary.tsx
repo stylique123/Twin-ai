@@ -50,7 +50,7 @@ import {
   asksPersonalUse, ownsIt, capabilityQuestion, CAPABILITY_PROMPT,
   type CapabilityAsked,
   capabilityFlag,
-  productLifecycle, LIFECYCLE_MESSAGE,
+  productLifecycle, LIFECYCLE_MESSAGE, type ProductLifecycle,
   CAPTURE_COPY, PLATFORM_CHOICES, PRIVACY_CHOICES, RATHER_NOT_SAY, FIGURE_HINT,
   surfaceChoices, buildCommunityMap, whatIsMissing,
   type ProductSuggestion,
@@ -1320,11 +1320,12 @@ export default function ProductLibrary() {
             <span className="block truncate text-sm font-semibold text-cream">{cardTitle(e)}</span>
             {/* ⚖️ THE SAME SENTENCE THE PANEL SHOWS, from the same shared map —
                 the row must not invent a second account of one product's state. */}
-            <span className="mt-0.5 block truncate text-xs text-stone">
-              {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
+            <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <StatusPill state={productLifecycle(e, photoPathsOf(e).length)} />
+              <span className="truncate text-xs text-stone">{relationshipLabel(e.relationship)}</span>
             </span>
-            <span className="mt-0.5 block truncate text-xs text-sand/70">
-              {relationshipLabel(e.relationship)}
+            <span className="mt-1 block truncate text-xs text-stone">
+              {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
             </span>
           </span>
           {/* ⚠️ THE WORD, NOT ONLY A CHEVRON. "no option to edit or remove it"
@@ -1339,7 +1340,7 @@ export default function ProductLibrary() {
           aria-modal="true"
           className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/60 p-3 backdrop-blur-sm sm:p-6"
         >
-        <section className="mx-auto max-w-2xl rounded-xl border border-white/10 bg-ink2 p-4 shadow-2xl">
+        <section className="mx-auto max-w-2xl rounded-2xl border border-white/10 bg-ink2 p-5 shadow-2xl sm:p-6">
           {/* ⚖️ CLOSING IS ALWAYS AVAILABLE AND NEVER DESTRUCTIVE. Every field
               here saves on blur, so there is nothing to discard and no
               "are you sure" to earn. */}
@@ -1375,9 +1376,21 @@ export default function ProductLibrary() {
               add buttons and two capability questions; answering this report
               with a second remove control would make the same mistake again. */}
           <div className="mb-3 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold">{cardTitle(e)}</h2>
-              <p className="mt-0.5 text-xs text-stone">
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold text-cream">{cardTitle(e)}</h2>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <StatusPill state={productLifecycle(e, photoPathsOf(e).length)} />
+                <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-sand">
+                  {relationshipLabel(e.relationship)}
+                </span>
+                {(() => {
+                  const b = (brands ?? []).find((x) => x.id === e.brandId)
+                  return b ? (
+                    <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-sand">{b.name}</span>
+                  ) : null
+                })()}
+              </div>
+              <p className="mt-2 text-xs text-stone">
                 {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
               </p>
             </div>
@@ -1434,10 +1447,13 @@ export default function ProductLibrary() {
           {/* ⚠️ THE EDIT AFFORDANCE, SAID IN WORDS. These are plain boxes that
               save on blur; nothing on the card told a creator either half of
               that, so "there is no way to edit it" is what the screen taught. */}
-          <p className="mb-3 text-xs text-stone">
-            Everything below can be changed — type in a box and it saves when you click away.
-          </p>
+          <MissingList items={missingFor(e, photoPathsOf(e).length, capabilityQuestionFor(e) !== null)} />
 
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <p className="text-sm font-semibold text-cream">Basics</p>
+            <p className="text-[11px] text-stone">Edit any box — type in a box and it saves when you click away</p>
+          </div>
           <label className="block text-xs font-medium uppercase tracking-wide text-stone">
             Name
           </label>
@@ -1496,9 +1512,6 @@ export default function ProductLibrary() {
             }}
           />
           {fieldNote(e.id, 'creatorSummary')}
-          <p className="mt-1 text-xs text-stone">
-            Used if the page cannot be read — Twin will not leave this product with nothing.
-          </p>
 
           {/* ── THE OFFER, ON THE PRODUCT (0222) ───────────────────────────
               ⚠️ IT EXISTED ONLY ON THE ACCOUNT, AND A MODEL WROTE IT. 52 of 54
@@ -1511,7 +1524,7 @@ export default function ProductLibrary() {
               falls back to the account-level guess because nothing narrower
               has ever existed. This box is the narrower thing. */}
           <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-stone">
-            What does it cost, and what do they get?
+            Offer — price and what they get
           </label>
           <input
             className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
@@ -1524,10 +1537,7 @@ export default function ProductLibrary() {
             }}
           />
           {fieldNote(e.id, 'offer')}
-          <p className="mt-1 text-xs text-stone">
-            Used when a script names the offer. Leave it blank and Twin falls back to
-            what your scan guessed about the account.
-          </p>
+          <p className="mt-1 text-[11px] text-stone">Scripts use this when they mention the offer.</p>
 
           {/* ⚠️ TWO BOXES FOR ONE FACT, AND THE SECOND ONE WAS THE ONLY ONE
               WITH A BUTTON. This Link field saved `product_url` and could not
@@ -1722,7 +1732,11 @@ export default function ProductLibrary() {
               what a creator read when they first answered; showing different
               words for one stored field is how somebody learns their answer did
               not mean what they thought. */}
-          <fieldset className="mt-4">
+          </div>
+
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <p className="text-sm font-semibold text-cream">Filming</p>
+          <fieldset className="mt-3">
             <legend className="text-xs font-medium uppercase tracking-wide text-stone">
               What kind of thing is it?
             </legend>
@@ -1802,6 +1816,7 @@ export default function ProductLibrary() {
           ) : (
             <p className="mt-4 text-xs text-stone">{FIXED_SHOW_NOTE[e.type] ?? ''}</p>
           )}
+          </div>
 
           {/* ── WHAT IT LOOKS LIKE ───────────────────────────────────────
               ⚠️ THE PHOTOS WERE WRITE-ONCE AND INVISIBLE. They could be attached
@@ -1812,8 +1827,8 @@ export default function ProductLibrary() {
               ⚖️ SLOTS RATHER THAN A COUNTER. Four squares say how many there are
               and how many are left in one glance, without a sentence doing
               arithmetic at the creator. */}
-          <div className="mt-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-stone">Photos of it</p>
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+            <p className="text-sm font-semibold text-cream">Photos</p>
             <p className="mt-1 text-xs text-stone">
               Your own pictures of the thing. Twin reads them for what it can see, and
               never states a price or a claim from a photo.
@@ -1861,8 +1876,8 @@ export default function ProductLibrary() {
               ⚖️ NULL AND EMPTY SAY DIFFERENT THINGS. "Never extracted" offers a
               link; "read it and found nothing" says so, rather than pretending
               nobody ever tried. Same `unset ≠ false` rule as everywhere else. */}
-          <div className="mt-4 rounded-lg border border-white/10 p-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-stone">
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+            <p className="text-sm font-semibold text-cream">
               What Twin knows about it
             </p>
 
@@ -1994,7 +2009,7 @@ export default function ProductLibrary() {
                         <p className="text-xs font-medium uppercase tracking-wide text-stone">Price &amp; options</p>
                         {e.offer && <p className="mt-1 text-sm"><span className="text-stone">Your words: </span>{e.offer}</p>}
                         {prices.length === 0 && !e.offer && (
-                          <p className="mt-1 text-sm text-stone">No price yet. Add it in “What does it cost, and what do they get?” above.</p>
+                          <p className="mt-1 text-sm text-stone">No price yet. Add it under “Offer” above.</p>
                         )}
                         {prices.length > 0 && (
                           <ul className="mt-1 space-y-1">
@@ -2052,8 +2067,10 @@ export default function ProductLibrary() {
           {/* ⚖️ WHICH BRAND — ASKED ONLY WHEN THERE IS A CHOICE. One brand
               links automatically; an affiliate or sponsored product never
               needs one, so it is never asked there. */}
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <p className="text-sm font-semibold text-cream">Brand &amp; relationship</p>
           {isOwnProduct(e) && (brands?.length ?? 0) > 1 && (
-            <div className="mt-4">
+            <div className="mt-3">
               <label className="text-xs font-medium uppercase tracking-wide text-stone">Which brand is this for?</label>
               <select
                 className="mt-1 w-full rounded-lg border border-white/12 bg-white/5 px-3 py-2 text-sm"
@@ -2069,7 +2086,7 @@ export default function ProductLibrary() {
               </select>
             </div>
           )}
-          <div className="mt-4 rounded-lg bg-white/[0.03] px-3 py-2">
+          <div className="mt-3">
             <p className="text-xs font-medium uppercase tracking-wide text-stone">
               Your relationship to it
             </p>
@@ -2093,11 +2110,8 @@ export default function ProductLibrary() {
               </>
             ) : (
               <>
-                <p className="mt-1 text-xs text-stone">
-                  This decides what your scripts may claim and whether they must
-                  disclose a paid tie, so it is changed on its own — not as a
-                  field edit. The change is recorded against this product with
-                  the time it was made.
+                <p className="mt-1 text-[11px] text-stone">
+                  Decides what scripts may claim and whether they disclose a paid tie.
                 </p>
                 <button
                   type="button"
@@ -2110,6 +2124,7 @@ export default function ProductLibrary() {
             {relErr && relOpen === e.id && (
               <p className="mt-2 text-xs text-coral">{relErr}</p>
             )}
+          </div>
           </div>
 
           {/* ⚖️ THE CARD-LEVEL NOTE STAYS FOR THE SAVES THAT ARE NOT A FIELD —
@@ -3079,8 +3094,8 @@ function BrandHeader({ brand, productCount, onSave, onRemove, onAddProduct }: {
     <div>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-stone">Your brand</p>
-          <p className="mt-1 text-base font-semibold text-cream">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-teal">Brand</p>
+          <p className="mt-0.5 text-lg font-semibold text-cream">
             {brand.name}{brand.website && <span className="font-normal text-stone"> · {brand.website}</span>}
           </p>
           {brand.description && <p className="mt-1 text-sm text-sand">{brand.description}</p>}
@@ -3104,6 +3119,62 @@ function BrandHeader({ brand, productCount, onSave, onRemove, onAddProduct }: {
       {productCount === 0 && (
         <p className="mt-2 text-xs text-stone">No products under this brand yet.</p>
       )}
+    </div>
+  )
+}
+
+// ── STATUS, AS A PILL ─────────────────────────────────────────────────────
+// ⚖️ A WORD AND A COLOUR, never the colour alone. The sentence from
+// LIFECYCLE_MESSAGE still sits under the title; this is the at-a-glance half.
+const PILL: Record<ProductLifecycle, [string, string]> = {
+  READY: ['Ready', 'border-teal/40 bg-teal/10 text-teal'],
+  REVIEW_REQUIRED: ['Check facts', 'border-amber-400/40 bg-amber-400/10 text-amber-200'],
+  READING: ['Reading…', 'border-white/15 bg-white/5 text-sand'],
+  READING_STALLED: ['Still reading', 'border-amber-400/40 bg-amber-400/10 text-amber-200'],
+  NEEDS_SOURCE: ['Needs a link or photo', 'border-amber-400/40 bg-amber-400/10 text-amber-200'],
+  IMPORT_FAILED: ['Could not read', 'border-coral/40 bg-coral/10 text-coral'],
+  NOTHING_FOUND: ['Nothing found', 'border-white/15 bg-white/5 text-sand'],
+  ARCHIVED: ['Archived', 'border-white/15 bg-white/5 text-stone'],
+}
+
+function StatusPill({ state }: { state: ProductLifecycle }) {
+  const [label, cls] = PILL[state] ?? [state, 'border-white/15 text-sand']
+  return <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${cls}`}>{label}</span>
+}
+
+// ── WHAT'S MISSING, AS A CHECKLIST ────────────────────────────────────────
+// ⚠️ THE PANEL WAS A LONG FORM WITH NO TOP. A creator opening a half-filled
+// product had to read every box to learn which ones mattered. Only things a
+// script actually uses are listed, and each is something they can fix here.
+function missingFor(e: ProductEntityRecord, photoCount: number, asksFilming: boolean): string[] {
+  const out: string[] = []
+  const kind = pageKindOf(e.productUrl)
+  if (!e.productUrl) out.push('A link to its page')
+  else if (kind === 'homepage' || kind === 'collection') out.push('A link to its own page, not the shop front')
+  if (!e.offer) out.push('The price and what is included')
+  if (asksFilming && !e.showability) out.push('Whether you can film it')
+  if (photoCount === 0 && e.type === 'PHYSICAL_PRODUCT') out.push('A photo')
+  return out
+}
+
+function MissingList({ items }: { items: string[] }) {
+  if (items.length === 0) {
+    return (
+      <p className="rounded-xl border border-teal/30 bg-teal/[0.06] px-4 py-2.5 text-sm text-teal">
+        Nothing missing — Twin has what it needs for scripts.
+      </p>
+    )
+  }
+  return (
+    <div className="rounded-xl border border-amber-400/25 bg-amber-400/[0.05] px-4 py-3">
+      <p className="text-sm font-semibold text-cream">To make better scripts, add:</p>
+      <ul className="mt-1.5 space-y-1">
+        {items.map((m) => (
+          <li key={m} className="flex items-start gap-2 text-sm text-sand">
+            <span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300" />{m}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
