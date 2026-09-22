@@ -39,7 +39,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation, rowIsCreatorSupplied,
-  normalizeLink, looksLikeBareDomain, READ_DID_NOT_COME_BACK,
+  normalizeLink, looksLikeBareDomain, READ_DID_NOT_COME_BACK, changeEntityRelationship,
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
   requestProductExtraction, recordExtractionNeverStarted,
   confirmProductFacts, uploadProductImage,
@@ -441,6 +441,12 @@ export default function ProductLibrary() {
   // creator has typed in that card's Link box.
   const [learnUrl, setLearnUrl] = useState<Record<string, string>>({})
   const [learning, setLearning] = useState<string | null>(null)
+  // ⚠️ A RELATIONSHIP CHANGE IS ITS OWN EVENT, so it carries its own open /
+  // busy / error state rather than borrowing the field-edit ones. Sharing them
+  // would let a failed entitlement write report itself as a saved field.
+  const [relOpen, setRelOpen] = useState<string | null>(null)
+  const [relBusy, setRelBusy] = useState<string | null>(null)
+  const [relErr, setRelErr] = useState<string | null>(null)
   const [claimBusy, setClaimBusy] = useState(false)
   const { session } = useAuth()
   const [voiceId, setVoiceId] = useState<string | null>(null)
@@ -738,6 +744,36 @@ export default function ProductLibrary() {
         {savingKey === key ? 'Saving…' : savedKey === key ? 'Saved.' : ''}
       </p>
     )
+  }
+
+  /** Record that the creator's tie to this product has changed.
+   *
+   *  ⚖️ THE COMMISSION ADDRESS TRAVELS WITH THE CHANGE, not after it. Leaving
+   *  it to a second edit would put an AFFILIATE row on screen with no link for
+   *  as long as the creator took to notice the box — and `changeEntityRelationship`
+   *  clears the address on every other destination, so a later write is not
+   *  where it belongs. */
+  async function changeRelationship(id: string, next: EntityRelationship) {
+    const current = (entities ?? []).find((x) => x.id === id)
+    // ⚠️ NOT A CHANGE IS NOT A WRITE. Re-picking what is already stored would
+    // bump `updated` and read afterwards as an entitlement change nobody made.
+    if (!current || current.relationship === next) { setRelOpen(null); return }
+    setRelBusy(id); setRelErr(null)
+    try {
+      const updated = await changeEntityRelationship(
+        id,
+        next as Exclude<EntityRelationship, 'NONE'>,
+        next === 'AFFILIATE' ? current.affiliateUrl : null,
+      )
+      if (updated) {
+        setEntities((prev) => (prev ?? []).map((x) => (x.id === id ? updated : x)))
+        setRelOpen(null)
+      } else {
+        setRelErr('That relationship could not be recorded. Please try again.')
+      }
+    } catch (err) {
+      setRelErr(err instanceof Error ? err.message : 'That relationship could not be recorded.')
+    } finally { setRelBusy(null) }
   }
 
   // ⚠️ ONE PARAMETER TYPE FOR EVERY CLAIM PATH. Both forms above send
@@ -1743,9 +1779,23 @@ export default function ProductLibrary() {
             )}
           </div>
 
-          {/* ⚖️ READ-ONLY, AND SAID SO PLAINLY. A greyed-out control with no
-              explanation reads as broken; naming why it cannot change here tells
-              the creator what to do instead. */}
+          {/* ── "ASK US TO CHANGE IT" WAS NOT A ROUTE ─────────────────────
+              ⚠️ REPORTED 2026-09-22 as "the relationship field doesn't appear
+              to save." MEASURED, AND IT SAVES: production carries 2 AFFILIATE
+              and 2 SPONSOR rows written by the add form, and the tie reaches
+              the writer through `brief.promotes`. What was true is that it
+              could not be CHANGED — this panel was text, and the escape hatch
+              it offered ("Ask us") pointed at nobody. A creator whose deal had
+              actually changed saw a field that would not take her answer.
+
+              ⚖️ THE LOCK'S ARGUMENT SURVIVES INTACT, one layer down.
+              `relationship` is an entitlement, so `EntityPresentationEdit`
+              still forbids it and `updateEntityPresentation` still cannot
+              write it. This calls `changeEntityRelationship`, which exists to
+              be that deliberate second thing — and which clears the commission
+              address on the way out of AFFILIATE, because a stale one would
+              send a viewer through a commission link on a video that carried
+              no disclosure. */}
           <div className="mt-4 rounded-lg bg-white/[0.03] px-3 py-2">
             <p className="text-xs font-medium uppercase tracking-wide text-stone">
               Your relationship to it
@@ -1754,10 +1804,39 @@ export default function ProductLibrary() {
               {relationshipLabel(e.relationship)}
               {e.personalUse === 'CONFIRMED' && ' — and you use it yourself'}
             </p>
-            <p className="mt-1 text-xs text-stone">
-              This decides what your scripts may claim, so it is not editable here.
-              Ask us to change it and we will record what changed and when.
-            </p>
+            {relOpen === e.id ? (
+              <>
+                <Choices
+                  label="What is it now?"
+                  options={RELATIONSHIP_CHOICES}
+                  chosen={e.relationship as EntityRelationship}
+                  onPick={(v) => void changeRelationship(e.id, v)}
+                />
+                <button
+                  type="button"
+                  className="mt-2 text-xs underline"
+                  onClick={() => setRelOpen(null)}
+                >Cancel</button>
+              </>
+            ) : (
+              <>
+                <p className="mt-1 text-xs text-stone">
+                  This decides what your scripts may claim and whether they must
+                  disclose a paid tie, so it is changed on its own — not as a
+                  field edit. The change is recorded against this product with
+                  the time it was made.
+                </p>
+                <button
+                  type="button"
+                  className="mt-2 text-xs underline"
+                  onClick={() => setRelOpen(e.id)}
+                >This has changed</button>
+              </>
+            )}
+            {relBusy === e.id && <p className="mt-2 text-xs text-stone">Saving…</p>}
+            {relErr && relOpen === e.id && (
+              <p className="mt-2 text-xs text-coral">{relErr}</p>
+            )}
           </div>
 
           {/* ⚖️ THE CARD-LEVEL NOTE STAYS FOR THE SAVES THAT ARE NOT A FIELD —

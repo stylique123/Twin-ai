@@ -20,7 +20,7 @@ import {
   emptyRestrictions, isEntityRelationship, isEntityType, isPersonalUse, isShowability,
   attestedEntity, isOwned,
   type DraftEntity, type EntityAttestation, type EntityRestrictions,
-  type EntityType, type ProductEntityRecord, type Showability,
+  type EntityType, type EntityRelationship, type ProductEntityRecord, type Showability,
 } from './productEntity'
 import {
   EXTRACTED_FIELDS, EXTRACTION_SOURCES, type ExtractedFact,
@@ -2562,6 +2562,93 @@ export async function updateEntityPresentation(
   // An empty edit must not issue a no-op UPDATE that only bumps `updated_at`,
   // which would read afterwards as a change the creator never made.
   if (Object.keys(row).length === 0) return null
+
+  const { data, error } = await supabase
+    .from('product_entities')
+    .update(row)
+    .eq('id', id)
+    .select(ENTITY_COLUMNS)
+    .single()
+  if (error) throw error
+  return readEntityRow(data as ProductEntityRow)
+}
+
+// ── "ASK US TO CHANGE IT" WAS NOT A ROUTE ────────────────────────────────
+//
+// ⚠️ REPORTED 2026-09-22: the relationship field "doesn't appear to save."
+// MEASURED, AND IT SAVES. Production carries 2 AFFILIATE and 2 SPONSOR rows
+// alongside 23 OWN_PRODUCT and 1 OWN_SERVICE, all written by the add form. The
+// pick is not dropped, and the tie DOES reach the writer — through
+// `brief.promotes`, which generate-blueprint reads fifteen times and which
+// drives the disclosure rules. So the claim "it does not save" is false and
+// this note says so before fixing anything.
+//
+// ⚠️⚠️ WHAT IS TRUE IS THAT IT CANNOT BE CHANGED. The opened product renders
+// the relationship as text with the sentence "This decides what your scripts
+// may claim, so it is not editable here. Ask us to change it and we will record
+// what changed and when." There is no us to ask on that screen. A creator whose
+// relationship has actually changed — a review that became an affiliate deal, a
+// sponsorship that ended — has no route at all, and what she sees is a field
+// that will not take her answer. That is the reported experience, exactly.
+//
+// ⚖️ THE LOCK HAD A REAL ARGUMENT AND IT IS NARROWED, NOT DISCARDED.
+// `relationship` is an ENTITLEMENT: it decides whether a commercial CTA is
+// permitted and whether disclosure is required, which is why
+// `EntityPresentationEdit` forbids it and why `updateEntityPresentation` builds
+// its row key by key rather than spreading. All of that stays exactly as it is.
+// This is a SEPARATE function, so that guarantee is untouched: presentation
+// still cannot carry an entitlement, and an entitlement change has to be
+// written as one, deliberately, here.
+//
+// ⚠️ AND LEAVING AFFILIATE CLEARS THE COMMISSION ADDRESS. A stale
+// `affiliate_url` on a product that no longer pays a commission is the one
+// mistake with a victim: it would point a viewer through a commission link on a
+// video that correctly carried no disclosure, because disclosure follows the
+// relationship and the link would not have. Clearing it is not tidiness.
+//
+// ⚖️ `NONE` IS NOT A DESTINATION OR AN ORIGIN. It is the onboarding answer "I
+// sell nothing" — a fact about the creator, not a relationship to a product —
+// and `rowAnswersProductQuestion` reads it as having answered. Letting this
+// write it would let a product edit silently re-answer onboarding; letting it
+// overwrite one would delete an answer from a screen that is not asking.
+//
+// ⚖️ AND `personalUse` IS UNTOUCHED, for the reason `promoteToAffiliate` gives:
+// taking a commission still is not evidence of having used the thing.
+export type RelationshipChange = Exclude<EntityRelationship, 'NONE'>
+
+/** Record that the creator's relationship to a product they already declared
+ *  has changed. Returns the re-read row, like every other write here, so the
+ *  caller renders what the database holds rather than what it hoped it wrote. */
+export async function changeEntityRelationship(
+  id: string,
+  next: RelationshipChange,
+  /** The commission address, where the new relationship has one to give. */
+  affiliateUrl?: string | null,
+): Promise<ProductEntityRecord | null> {
+  // ⚠️ CHECKED AT RUNTIME THOUGH THE TYPE ALREADY EXCLUDES IT. The compile-time
+  // guarantee is only worth what the runtime one is — the same reason
+  // `updateEntityPresentation` builds its row key by key — and an `any` from a
+  // caller is exactly how an entitlement field gets written by accident.
+  const want = String(next)
+  if (!isEntityRelationship(want) || want === 'NONE') return null
+
+  const row: Record<string, unknown> = {
+    relationship: want,
+    // ⚠️ THIS IS THE CREATOR SPEAKING, AND THE PAIR IS WHAT RECORDS IT. Same
+    // rule as `attestedEntity`: neither may be set where nobody answered, and
+    // `updated_at` carries when — which is the whole of "we will record what
+    // changed and when" that the old copy promised. There is no audit table,
+    // so the copy this replaces no longer claims one.
+    source: 'user_answer',
+    user_confirmed: true,
+  }
+  // See above: the address may only exist where the commission does.
+  if (want === 'AFFILIATE') {
+    const url = (affiliateUrl ?? '').trim()
+    if (url !== '') row.affiliate_url = url
+  } else {
+    row.affiliate_url = null
+  }
 
   const { data, error } = await supabase
     .from('product_entities')
