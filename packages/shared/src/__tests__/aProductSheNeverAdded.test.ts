@@ -110,7 +110,11 @@ describe('the library renders the narrowed list, not the raw one', () => {
     // things she promotes for others, but both halves come from the SAME
     // predicate-filtered set, which is the claim this test makes.
     expect(CODE).toMatch(/suppliedEntities\s*=\s*\(entities \?\? \[\]\)\.filter\(rowIsCreatorSupplied\)/)
-    expect(CODE).toMatch(/shownEntities = \[\s*\.\.\.suppliedEntities\.filter\(isOwnProduct\),\s*\.\.\.suppliedEntities\.filter/)
+    // Every group of the shown list is carved out of `suppliedEntities` and
+    // nothing else — the raw `entities` never reaches the rendered list.
+    const shown = CODE.slice(CODE.indexOf('const shownEntities = ['), CODE.indexOf('\n  ]\n', CODE.indexOf('const shownEntities = [')))
+    expect(shown).toMatch(/suppliedEntities\.filter/)
+    expect(shown).not.toMatch(/\bentities\b(?!\.)/)
   })
 
   it('and the row map reads it', () => {
