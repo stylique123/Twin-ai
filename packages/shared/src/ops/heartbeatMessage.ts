@@ -141,3 +141,101 @@ export function pageAction(reason: PageReason, hasOpenPage: boolean): PageAction
   if (reason === 'recovered') return hasOpenPage ? 'closed' : 'skipped_no_open_page'
   return hasOpenPage ? 'commented' : 'opened'
 }
+
+// ── THE MONITOR'S OWN DEATH, WHICH IS A DIFFERENT FACT ────────────────────
+//
+// ⚠️⚠️ MEASURED, NOT IMAGINED. On 2026-09-21 this workflow had failed 75 runs
+// out of 75 since it landed — every scheduled run, for as long as the API
+// retains them — on `heartbeat could not sign in: Invalid login credentials`.
+// Production agreed and was blunter: `count(*) filter (where is_heartbeat)` was
+// ZERO across 154 generations. The monitor had never once reached the product.
+//
+// ⚖️ AND NOTHING SAID SO, BY CONSTRUCTION. `heartbeatToken()` throws during
+// module setup — before the page state is loaded, before `deliverPage` exists
+// to be called — so a monitor that cannot log in cannot page. The only evidence
+// was a red run in a tab nobody opens. That is precisely the silence-that-looks-
+// like-health this whole workflow was built to end, reproduced one layer up.
+//
+// ⚠️ SO IT IS A SEPARATE ISSUE, WITH A SEPARATE LABEL, AND NOT A COMMENT ON THE
+// PRODUCT PAGE. `heartbeatToken()`'s own comment has the rule right and should
+// not be softened: paging "Twin is broken" when the truth is "the monitor's
+// password expired" is how a pager loses its credibility. The fix is not to
+// route this to that issue — it is to say the true thing in a place of its own:
+// Twin's health this hour is UNKNOWN, and nobody is watching until a human acts.
+//
+// ⚖️ ITS DEDUPLICATION IS GITHUB'S, NOT SUPABASE'S, AND THAT IS THE POINT. The
+// product pager remembers "already paged" in `heartbeat_page_state` — a table
+// reached with the same configuration that just failed. Asking a dead monitor
+// to consult its memory before reporting that it is dead is circular. An open
+// issue with this label IS the memory, and it needs nothing to be working.
+//
+// ⚠️ AND IT NEVER COMMENTS. The product pager reminds hourly because an outage
+// is news that decays. A broken monitor is not news — it is a standing task,
+// and the open issue already carries it. Hourly reminders on a configuration
+// error that will not fix itself are 24 notifications a day for one fact.
+
+/** ⚠️ DELIBERATELY NOT `PAGE_LABEL`. Sharing the key would make the product's
+ *  recovery close the monitor's issue, and a broken monitor cannot recover by
+ *  Twin getting better — it is not measuring Twin at all. */
+export const MONITOR_LABEL = 'heartbeat-monitor-down'
+
+/** Constant for the same reason `PAGE_TITLE` is: the label finds the issue, and
+ *  a title carrying a timestamp would open a fresh one every hour. */
+export const MONITOR_TITLE = 'heartbeat: the monitor itself could not run'
+
+export interface MonitorContext {
+  /** What stopped it — the thrown message, verbatim. */
+  detail: string
+  /** Epoch ms, passed in so the body stays pure. */
+  at: number
+  runUrl?: string | null
+}
+
+/**
+ * What a reader needs at 3am when the MONITOR is the broken thing.
+ *
+ * ⚠️ THE FIRST LINE REFUSES TO IMPLY ANYTHING ABOUT TWIN. A body that opened
+ * with "the heartbeat failed" would be read as an outage, and the reader would
+ * go looking at `generate-blueprint`, which may be perfectly healthy. The
+ * honest report is that this hour was NOT MEASURED.
+ */
+export function monitorBody(ctx: MonitorContext): string {
+  const when = new Date(ctx.at).toISOString()
+  const link = ctx.runUrl ? `\n\n[The run that could not start](${ctx.runUrl})` : ''
+  return [
+    `**The heartbeat could not run, so Twin's health is unknown.** This is not a report `
+      + `that Twin is broken — nothing was measured at ${when}.`,
+    '',
+    `It stopped here: \`${ctx.detail}\``,
+    '',
+    'What this means: until this is fixed, **nobody is watching**. A real outage would '
+      + 'look exactly like this hour does — no page, no digest, no generation.',
+    '',
+    'It is configuration, not code: the scheduled run needs `SUPABASE_URL`, '
+      + '`SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `HEARTBEAT_REFERENCE_URL`, and a '
+      + 'real Supabase auth account in `HEARTBEAT_USER_EMAIL` / `HEARTBEAT_USER_PASSWORD` '
+      + 'whose id is set as `HEARTBEAT_USER_ID` on the edge function, so its generations are '
+      + 'flagged `is_heartbeat` and stay out of the corpus.',
+    '',
+    '`heartbeat.mjs --page-test` proves the pager without spending a generation.',
+    '',
+    '_This issue is not reminded hourly. It stays open until a human closes the gap; '
+      + 'the next successful run closes it._',
+  ].join('\n') + link
+}
+
+export type MonitorAction = 'opened' | 'skipped_already_open' | 'closed' | 'skipped_no_open_page'
+
+/**
+ * The monitor channel's whole decision, as a pure function — same split as
+ * `pageAction`, same reason: the rule gets unit-tested, the arrival does not
+ * get faked.
+ *
+ * ⚖️ `skipped_already_open` IS THE HALF THAT KEEPS IT QUIET. Without it an
+ * hourly schedule against a misconfigured secret is 24 notifications a day
+ * saying the same unchanged thing.
+ */
+export function monitorAction(state: 'down' | 'up', hasOpenMonitorPage: boolean): MonitorAction {
+  if (state === 'up') return hasOpenMonitorPage ? 'closed' : 'skipped_no_open_page'
+  return hasOpenMonitorPage ? 'skipped_already_open' : 'opened'
+}

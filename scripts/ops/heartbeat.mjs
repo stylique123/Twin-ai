@@ -34,6 +34,7 @@ import {
 } from '../../packages/shared/src/ops/heartbeatPolicy.ts'
 import {
   pageBody, digestMarkdown, pageAction, PAGE_LABEL, PAGE_TITLE,
+  monitorBody, monitorAction, MONITOR_LABEL, MONITOR_TITLE,
 } from '../../packages/shared/src/ops/heartbeatMessage.ts'
 import { appendFile } from 'node:fs/promises'
 
@@ -179,9 +180,9 @@ async function gh(token, method, path, body) {
 }
 
 /** The one open page issue, or null. */
-export async function findOpenPage(token, repo) {
+export async function findOpenPage(token, repo, label = PAGE_LABEL) {
   const issues = await gh(token, 'GET',
-    `/repos/${repo}/issues?state=open&labels=${encodeURIComponent(PAGE_LABEL)}&per_page=1`)
+    `/repos/${repo}/issues?state=open&labels=${encodeURIComponent(label)}&per_page=1`)
   return Array.isArray(issues) && issues.length > 0 ? issues[0] : null
 }
 
@@ -222,6 +223,37 @@ export async function deliverPage(ctx, { token, repo }) {
     .catch(() => {})
   const made = await gh(token, 'POST', `/repos/${repo}/issues`,
     { title: PAGE_TITLE, body, labels: [PAGE_LABEL] })
+  return { action, number: made.number }
+}
+
+/**
+ * Report that the MONITOR could not run — a different fact from "Twin is down",
+ * carried on a different issue.
+ *
+ * ⚠️ IT NEEDS ONLY THE GITHUB TOKEN, WHICH IS WHY IT CAN SPEAK AT ALL. Every
+ * other input — Supabase, the account, the reference — is a thing that may be
+ * the reason we are here. A reporter that depends on the failed subsystem is
+ * not a reporter.
+ */
+export async function deliverMonitorPage(ctx, { token, repo, state }) {
+  const open = await findOpenPage(token, repo, MONITOR_LABEL)
+  const action = monitorAction(state, open !== null)
+
+  if (action === 'skipped_no_open_page' || action === 'skipped_already_open') return { action }
+
+  if (action === 'closed') {
+    await gh(token, 'POST', `/repos/${repo}/issues/${open.number}/comments`,
+      { body: '**The monitor is running again.** A cycle got past setup and reached the '
+        + 'product, so the gap this issue describes is closed.' })
+    await gh(token, 'PATCH', `/repos/${repo}/issues/${open.number}`, { state: 'closed' })
+    return { action, number: open.number }
+  }
+
+  await gh(token, 'POST', `/repos/${repo}/labels`,
+    { name: MONITOR_LABEL, color: 'd93f0b', description: 'The heartbeat could not run at all.' })
+    .catch(() => {})
+  const made = await gh(token, 'POST', `/repos/${repo}/issues`,
+    { title: MONITOR_TITLE, body: monitorBody(ctx), labels: [MONITOR_LABEL] })
   return { action, number: made.number }
 }
 
@@ -360,6 +392,27 @@ if (SELFTEST) {
       first.page === 'started_failing' && decideHeartbeat(persisted, dead(30 * 60_000)).page === null)
   }
 
+  // ── THE MONITOR'S OWN CHANNEL, THROUGH THIS RUNNER ──────────────────────
+  //
+  // ⚖️ THE FAILURE THIS GUARDS WAS NOT A WRONG ANSWER, IT WAS NO ANSWER. So
+  // the assertion that matters is the quiet one: a misconfiguration that
+  // repeats hourly must open ONE issue, not twenty-four a day.
+  check('a dead monitor opens one issue and then stays quiet',
+    monitorAction('down', false) === 'opened' && monitorAction('down', true) === 'skipped_already_open')
+  check('a monitor that starts working again closes its own issue',
+    monitorAction('up', true) === 'closed' && monitorAction('up', false) === 'skipped_no_open_page')
+  // ⚠️ THE TWO CHANNELS MUST NOT SHARE A KEY. One label would let a Twin
+  // recovery close a monitor issue that nothing has fixed.
+  check('the monitor page is a different issue from the product page',
+    MONITOR_LABEL !== PAGE_LABEL && MONITOR_TITLE !== PAGE_TITLE)
+  {
+    const body = monitorBody({ detail: 'Invalid login credentials', at: 0, runUrl: null })
+    check('the monitor body refuses to imply Twin is broken',
+      body.includes("Twin's health is unknown") && !/Twin is not producing/.test(body), body.slice(0, 120))
+    check('and it says nobody is watching until a human acts',
+      body.includes('nobody is watching'))
+  }
+
   console.log(fail === 0 ? '\nheartbeat selftest: OK' : `\nheartbeat selftest: ${fail} FAILED`)
   process.exit(fail === 0 ? 0 : 1)
 }
@@ -417,16 +470,78 @@ function requireEnv(name) {
   return v
 }
 
-const SUPABASE_URL = requireEnv('SUPABASE_URL')
-const SERVICE_KEY = requireEnv('SUPABASE_SERVICE_ROLE_KEY')
-const ANON_KEY = requireEnv('SUPABASE_ANON_KEY')
-const REFERENCE_URL = requireEnv('HEARTBEAT_REFERENCE_URL')
+// ⚠️⚠️ THE PAGER'S OWN CREDENTIALS COME FIRST, AND NOTHING MAY BE READ BEFORE
+// THEM. Everything below can fail, and the only way to SAY it failed is this
+// token. Reading Supabase configuration first — as this file did until the
+// monitor spent its first two weeks dead and silent — means the process exits
+// while the one channel that could have reported it is still unopened.
+//
+// ⚖️ THESE TWO STILL EXIT RATHER THAN PAGE, BECAUSE THERE IS NOWHERE TO PAGE
+// TO. A red run is genuinely all that is left, and pretending otherwise would
+// be the third layer of the same mistake.
 const GH_TOKEN = requireEnv('GITHUB_TOKEN')
 const GH_REPO = requireEnv('GITHUB_REPOSITORY')
 
-const { createClient } = await import('@supabase/supabase-js')
-// Service client: the pager's memory and the digest row. NOT the generation.
-const db = createClient(SUPABASE_URL, SERVICE_KEY)
+const SETUP_RUN_URL = process.env.GITHUB_SERVER_URL && process.env.GITHUB_RUN_ID
+  ? `${process.env.GITHUB_SERVER_URL}/${GH_REPO}/actions/runs/${process.env.GITHUB_RUN_ID}`
+  : null
+
+/** Like `requireEnv`, but THROWS so the caller can report it instead of dying
+ *  where it stands. `requireEnv` exits the process, which is correct for the
+ *  pager's own token and fatal for everything after it. */
+function needEnv(name) {
+  const v = process.env[name]
+  if (!v) throw new Error(`${name} is not set`)
+  return v
+}
+
+// ── SETUP, WHICH IS ALLOWED TO FAIL OUT LOUD ──────────────────────────────
+//
+// ⚠️ EVERY LINE IN HERE USED TO BE TOP-LEVEL, AND EACH ONE COULD END THE RUN
+// WITHOUT A WORD TO ANYBODY. 75 of 75 scheduled runs died on the sign-in inside
+// this block and `count(*) filter (where is_heartbeat)` stayed at 0 across 154
+// production generations — a monitor that had never measured the product once,
+// reporting nothing, for as long as it had existed.
+let SUPABASE_URL, SERVICE_KEY, ANON_KEY, REFERENCE_URL, db, ACCESS_TOKEN
+try {
+  SUPABASE_URL = needEnv('SUPABASE_URL')
+  SERVICE_KEY = needEnv('SUPABASE_SERVICE_ROLE_KEY')
+  ANON_KEY = needEnv('SUPABASE_ANON_KEY')
+  REFERENCE_URL = needEnv('HEARTBEAT_REFERENCE_URL')
+
+  const { createClient } = await import('@supabase/supabase-js')
+  // Service client: the pager's memory and the digest row. NOT the generation.
+  db = createClient(SUPABASE_URL, SERVICE_KEY)
+
+  ACCESS_TOKEN = await heartbeatToken(SUPABASE_URL, ANON_KEY)
+} catch (e) {
+  const detail = e instanceof Error ? e.message : String(e)
+  // ⚠️ THE CAUSE IS LOGGED BEFORE THE PAGE IS ATTEMPTED, NOT AFTER. If delivery
+  // itself throws — a revoked token, GitHub down — a report written afterwards
+  // is a report nobody gets, and the run log would show the delivery error with
+  // no trace of what it was trying to report.
+  console.error(`heartbeat could not start: ${detail}`)
+  const result = await deliverMonitorPage(
+    { detail, at: Date.now(), runUrl: SETUP_RUN_URL },
+    { token: GH_TOKEN, repo: GH_REPO, state: 'down' })
+  console.error(`monitor page: ${result.action}${result.number ? ` #${result.number}` : ''}`)
+  // ⚖️ EXIT 1, DELIBERATELY UNLIKE THE PRODUCT PATH. That path exits 0 even
+  // when it pages, so GitHub does not notify twice about one outage — the page
+  // IS the signal and the run did its job. This run did not: it measured
+  // nothing. A green tick on a cycle that never touched the product is the
+  // same lie in the Actions tab that this whole file exists to stop telling.
+  process.exit(1)
+}
+
+// ⚠️ RECOVERY IS CLAIMED ONLY HERE, AFTER SETUP ACTUALLY SUCCEEDED — never from
+// a Twin recovery. The two channels measure different things and one must not
+// close the other's issue.
+{
+  const result = await deliverMonitorPage(
+    { detail: '', at: Date.now(), runUrl: SETUP_RUN_URL },
+    { token: GH_TOKEN, repo: GH_REPO, state: 'up' })
+  if (result.action === 'closed') console.log(`monitor page closed #${result.number}`)
+}
 
 // ⚠️ THE HEARTBEAT IS A REAL ACCOUNT, NOT THE SERVICE ROLE, AND IT HAS TO BE.
 // `generate-blueprint` calls `auth.getUser()` and returns 401 without a user —
@@ -436,11 +551,12 @@ const db = createClient(SUPABASE_URL, SERVICE_KEY)
 // ⚖️ AND IT IS THE SAME ACCOUNT THE EDGE FLAGS AS THE HEARTBEAT. `is_heartbeat`
 // is derived server-side from this user's id, so the corpus exclusion cannot be
 // spoofed by any other caller and cannot be forgotten by this one.
-async function heartbeatToken() {
-  const auth = createClient(SUPABASE_URL, ANON_KEY)
+async function heartbeatToken(url, anonKey) {
+  const { createClient } = await import('@supabase/supabase-js')
+  const auth = createClient(url, anonKey)
   const { data, error } = await auth.auth.signInWithPassword({
-    email: requireEnv('HEARTBEAT_USER_EMAIL'),
-    password: requireEnv('HEARTBEAT_USER_PASSWORD'),
+    email: needEnv('HEARTBEAT_USER_EMAIL'),
+    password: needEnv('HEARTBEAT_USER_PASSWORD'),
   })
   // A monitor that cannot log in has learned nothing about whether the product
   // works — so this throws rather than being classified as a product failure.
@@ -452,7 +568,6 @@ async function heartbeatToken() {
   return data.session.access_token
 }
 
-const ACCESS_TOKEN = await heartbeatToken()
 
 /**
  * One variant, end to end.
@@ -523,9 +638,7 @@ const findings = [
 const decision = decideHeartbeat(prev, worst.run, findings)
 await savePageState(db, decision.nextState)
 
-const runUrl = process.env.GITHUB_SERVER_URL && process.env.GITHUB_RUN_ID
-  ? `${process.env.GITHUB_SERVER_URL}/${GH_REPO}/actions/runs/${process.env.GITHUB_RUN_ID}`
-  : null
+const runUrl = SETUP_RUN_URL
 
 if (decision.page) {
   const result = await deliverPage({
