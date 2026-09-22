@@ -84,7 +84,23 @@ describe('the build stops before the wait, not after it', () => {
       BUILDING.indexOf("if (refUrl && platformIsUnreadable"),
       BUILDING.indexOf('\n', BUILDING.indexOf("if (refUrl && platformIsUnreadable")))
     expect(line).not.toMatch(/instagram/i)
-    expect(platformIsUnreadable('instagram')).toBe(true)
+    // ⚠️⚠️ AND IT DID LIFT ITSELF, EXACTLY AS DESIGNED. The entry is gone —
+    // 22 of 51 real `/p/` posts transcribe, and the 109 failures behind the
+    // original listing were `explore/tags/` browse pages with no video on them.
+    // Because this file reads the shared list, nothing here needed finding and
+    // removing; the halt simply stopped firing.
+    expect(platformIsUnreadable('instagram')).toBe(false)
+  })
+
+  it('refuses a browse page instead, which is the thing that really has no video', () => {
+    // ⚖️ THE HALT-BEFORE-THE-WAIT RULE IS KEPT, on the cause that is actually
+    // true. A hashtag page cannot be watched no matter whose fault it is, and
+    // she can fix it in five seconds — which the platform ban never let her do.
+    const line = BUILDING.slice(
+      BUILDING.indexOf('if (refUrl && !isSingleVideoUrl(refUrl))'),
+      BUILDING.indexOf('\n', BUILDING.indexOf('if (refUrl && !isSingleVideoUrl(refUrl))')))
+    expect(line).not.toMatch(/instagram/i)
+    expect(BUILDING).toMatch(/halt\('not_a_single_video'\)/)
   })
 
   // ⚠️ THE NEGATIVE CONTROL. A halt that fired for everyone would "fix" this by

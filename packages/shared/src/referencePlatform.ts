@@ -86,3 +86,60 @@ export function resolveReferencePlatform(
   // something else" are different facts, and only the second is an answer.
   return null
 }
+
+// ── A LINK CAN NAME A PLATFORM AND STILL NOT BE A VIDEO ───────────────────
+//
+// ⚠️⚠️ MEASURED 2026-09-22, AND IT OVERTURNS THE REASON INSTAGRAM WAS BLOCKED.
+// Every Instagram reference attempt in production, split by what the URL
+// actually points at:
+//
+//   url shape      attempts   clean   "no audio url"   "no speech"
+//   hashtag page       109        0            109              0
+//   /p/ post            51       22             13             15
+//   /reel/               0        0              0              0
+//
+// ⚖️ SO THE 109 FAILURES ARE NOT A BROKEN INTEGRATION. `instagram.com/explore/
+// tags/...` is a BROWSE PAGE. It has no video on it, so "no audio url found" is
+// the Actor answering correctly, every single time, and we were reading that
+// correct answer as evidence that Instagram cannot be read at all. Real posts
+// transcribe 22 times out of 51.
+//
+// ⚠️ AND A ZERO THAT NOBODY ASKED FOR IS NOT A ZERO. Not one `/reel/` url has
+// ever been submitted. "Instagram reels cannot be read" was never measured —
+// it was inferred from hashtag pages and then believed.
+//
+// ⚖️ THE HONEST SPLIT IS THEREFORE BY URL, NOT BY PLATFORM. A browse page
+// deserves "that is not a video", which tells the creator what to paste
+// instead; a post deserves a real attempt. One of those is a sentence she can
+// act on and the other was a door we closed on ourselves.
+
+/** Instagram paths that identify ONE post. Everything else on the domain is a
+ *  browse surface — a profile, a hashtag, the explore grid — with no single
+ *  video to read. */
+const IG_SINGLE_VIDEO = /\/(?:p|reel|reels|tv)\/[^/]+/i
+
+/**
+ * Does this link point at ONE video we could actually read?
+ *
+ * ⚠️ FALSE MEANS "NOT A VIDEO", NEVER "UNREADABLE". The distinction is the
+ * whole point: one is a fact about the link the creator pasted, which she can
+ * fix in five seconds, and the other is a claim about our own capability that
+ * cost Instagram its place in the product for weeks.
+ *
+ * ⚖️ ONLY INSTAGRAM IS JUDGED HERE, BECAUSE ONLY INSTAGRAM WAS MEASURED.
+ * TikTok and YouTube browse urls surely exist too, but inventing patterns for
+ * failures nobody has produced is how the last wrong rule got written. A
+ * platform with no evidence gets the benefit of the doubt and a real attempt.
+ */
+export function isSingleVideoUrl(url: string | null | undefined): boolean {
+  const raw = String(url ?? '').trim()
+  if (raw === '') return false
+  if (platformFromUrl(raw) !== 'instagram') return true
+  let path: string
+  try {
+    path = new URL(raw).pathname
+  } catch {
+    return true
+  }
+  return IG_SINGLE_VIDEO.test(path)
+}

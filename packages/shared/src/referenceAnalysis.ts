@@ -184,6 +184,18 @@ export type ReferenceUnreadCause =
    * wait for it anyway is the part that cannot be defended.
    */
   | 'platform_unreadable'
+  /**
+   * The link names a platform we can read, but does not point at ONE video.
+   *
+   * ⚠️ MEASURED 2026-09-22: 109 of 160 Instagram reference attempts were
+   * `explore/tags/...` BROWSE PAGES. The Actor answered "no audio url found"
+   * correctly every time — there is no video on a hashtag page — and we read
+   * that correct answer as proof Instagram could not be read at all.
+   *
+   * ⚖️ THIS IS THE ONE CAUSE ON THE LIST SHE CAN FIX IN FIVE SECONDS, so it is
+   * the one that says what to paste instead.
+   */
+  | 'not_a_single_video'
 
 /**
  * What to tell the creator, per cause. One sentence of fact, then nothing —
@@ -215,7 +227,12 @@ export const REFERENCE_UNREAD_TEXT: Record<ReferenceUnreadCause, string> = {
   // ⚖️ NAMES THE PLATFORM AND WHOSE LIMIT IT IS, AND PROMISES NOTHING ELSE. No
   // "try again later", because nothing she can do changes it; no claim that her
   // video is the problem, because we never read it.
-  platform_unreadable: 'Twin cannot read Instagram videos yet — that is a limit on our side, not your link. A TikTok or YouTube link will work.',
+  // ⚠️⚠️ THIS SENTENCE IS NOW UNREACHABLE AND THAT IS THE POINT — `UNREADABLE_
+  // PLATFORMS` is empty. It stays because the mechanism stays: a platform that
+  // genuinely dies tomorrow gets an honest sentence rather than an invented one.
+  // It no longer names Instagram, which reads 22 of 51 real posts.
+  platform_unreadable: 'Twin cannot read this platform yet — that is a limit on our side, not your link. A TikTok, Instagram or YouTube link will work.',
+  not_a_single_video: 'That link opens a hashtag or profile page rather than one video, so there is nothing for us to watch. Open the post or reel itself and paste that link.',
 }
 
 /**

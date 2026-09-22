@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
-import { messageForOwnAccount, type AccountCounts } from '../index'
+import { messageForOwnAccount, UNREADABLE_PLATFORMS, type AccountCounts } from '../index'
 
 // ⚖️ ANCHORED TO THIS FILE, NOT TO process.cwd(). CI runs each workspace with
 // cwd = that workspace, so a repo-root-relative path built from cwd doubles
@@ -37,15 +37,23 @@ describe('the unreadable-platform line says what Twin DID use', () => {
   })
 
   it('with a real count it names the captions', () => {
-    const m = messageForOwnAccount({ ...ZERO_ON_IG, learnedFrom: 8 })
-    expect(m.detail).toMatch(/captions are what it learned from/i)
+    // ⚠️⚠️ NO LONGER DRIVEN OFF INSTAGRAM. Instagram is off the unreadable list
+    // — 22 of 51 real `/p/` posts transcribe — so it now gets the measurement
+    // like any readable platform. The captions line belongs to the CONFESSION,
+    // so it is exercised through whatever is actually confessed to.
+    for (const p of UNREADABLE_PLATFORMS) {
+      const m = messageForOwnAccount({ usable: 0, checked: 6, complete: true, platform: p, learnedFrom: 8 })
+      expect(m.detail, p).toMatch(/captions are what it learned from/i)
+    }
   })
 
   it('and it still says whose limit it is, either way', () => {
-    for (const learned of [null, 8]) {
-      const m = messageForOwnAccount({ ...ZERO_ON_IG, learnedFrom: learned })
-      expect(m.detail).toMatch(/limit on our side/i)
-      expect(m.headline).toMatch(/cannot read Instagram videos yet/i)
+    for (const p of UNREADABLE_PLATFORMS) {
+      for (const learned of [null, 8]) {
+        const m = messageForOwnAccount({ usable: 0, checked: 6, complete: true, platform: p, learnedFrom: learned })
+        expect(m.detail, p).toMatch(/limit on our side/i)
+        expect(m.headline, p).not.toMatch(/we looked at/i)
+      }
     }
   })
 
@@ -78,8 +86,18 @@ describe('the corrected diagnosis is written down, not quietly dropped', () => {
     expect(SRC).toMatch(/ZERO are reels/i)
   })
 
-  it('and Instagram is still on the list', () => {
-    // The outcome did not change — only the reason for it.
-    expect(messageForOwnAccount(ZERO_ON_IG).headline).toMatch(/cannot read Instagram/i)
+  it('⚠️⚠️ and Instagram is OFF the list now, on the evidence that finished it', () => {
+    // THE EARLIER CORRECTION STOPPED ONE STEP SHORT. It established that 57 of
+    // the 60 rows were hashtag pages, then kept the entry anyway on the ground
+    // that "we have never once ASKED for a reel — absent is not zero".
+    //
+    // ⚖️ THAT JUSTIFICATION IS SPENT. Measured 2026-09-22: 51 real `/p/` posts
+    // HAVE been asked, and 22 came back clean, today included. The zero was
+    // never Instagram's — it belonged to browse pages we should not have sent.
+    // Keeping the entry now would refuse 22 working reads to avoid 109 links
+    // that were never videos.
+    const m = messageForOwnAccount(ZERO_ON_IG)
+    expect(m.headline).not.toMatch(/cannot read Instagram/i)
+    expect(m.headline).toMatch(/we looked at/i)
   })
 })
