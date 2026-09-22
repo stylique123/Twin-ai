@@ -518,6 +518,11 @@ function recallAsk(key: string): AskItem[] | null {
   } catch { return null }
 }
 
+type PickKind = 'brand' | 'own' | 'promoted'
+const PICK_KIND_LABEL: Record<PickKind, string> = {
+  brand: 'The brand as a whole', own: 'One of my products', promoted: 'Something I promote',
+}
+
 export default function V2Building() {
   const nav = useNavigate()
   const loc = useLocation()
@@ -634,6 +639,22 @@ export default function V2Building() {
   const [plan, setPlan] = useState<VideoPlanInput | null>(null)
   const [askQuestions, setAskQuestions] = useState<AskItem[] | null>(
     () => recallAsk(buildKey((loc.state || {}) as BuildState)))
+  // ⚖️ WHAT KIND OF VIDEO FIRST, THEN WHICH ONE. Reported 2026-09-22: one long
+  // list of brands, products and promoted items was confusing. Three plain
+  // choices come first; the list underneath only shows items of that kind.
+  const [pickKind, setPickKind] = useState<PickKind | null>(null)
+  const pickerKindOf = (v: string): PickKind | 'none' => {
+    if (v.startsWith(BRAND_CHOICE_PREFIX)) return 'brand'
+    if (v === NO_PRODUCT_CHOICE) return 'none'
+    const rel = (products ?? []).find((p) => p.id === v)?.relationship
+    return rel === 'AFFILIATE' || rel === 'SPONSOR' ? 'promoted' : 'own'
+  }
+  const pickerKinds = (options: readonly { value: string }[], current: string) => {
+    const kinds = (['brand', 'own', 'promoted'] as const).filter((k) => options.some((o) => pickerKindOf(o.value) === k))
+    const cur = current ? pickerKindOf(current) : 'none'
+    const active: PickKind | null = pickKind ?? (cur !== 'none' ? cur : null) ?? kinds[0] ?? null
+    return { kinds, active }
+  }
   const [askAnswers, setAskAnswers] = useState<Record<string, string>>(
     () => recallAnswers(buildKey((loc.state || {}) as BuildState)))
   // Answers survive the retry so a second refusal never re-asks what was typed.
@@ -1929,7 +1950,25 @@ export default function V2Building() {
                 // should learn that the script must disclose it here, at the
                 // moment of choosing, not from the finished script.
                 <div className="mt-2.5 space-y-2">
-                  {q.options.map((o) => {
+                  {(() => {
+                    const { kinds, active } = pickerKinds(q.options, askAnswers[q.field] ?? '')
+                    return kinds.length > 1 ? (
+                      <div className="flex flex-wrap gap-2 pb-1">
+                        {kinds.map((k) => (
+                          <button key={k} type="button" aria-pressed={active === k}
+                            onClick={() => setPickKind(k)}
+                            className={cn('rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                              active === k ? 'border-coral/50 bg-coral/[0.1] text-cream' : 'border-white/12 text-sand hover:border-white/25')}
+                          >{PICK_KIND_LABEL[k]}</button>
+                        ))}
+                      </div>
+                    ) : null
+                  })()}
+                  {q.options.filter((o) => {
+                    const { kinds, active } = pickerKinds(q.options, askAnswers[q.field] ?? '')
+                    const k = pickerKindOf(o.value)
+                    return k === 'none' || kinds.length <= 1 || k === active
+                  }).map((o) => {
                     const picked = (askAnswers[q.field] ?? '') === o.value
                     const entity = (products ?? []).find((p) => p.id === o.value) ?? null
                     return (
@@ -1960,7 +1999,7 @@ export default function V2Building() {
                         )}
                         {o.value.startsWith(BRAND_CHOICE_PREFIX) && (
                           <span className="mt-0.5 block text-xs text-stone">
-                            A video about your brand as a whole, not one product.
+                            Your brand's story — no single product.
                           </span>
                         )}
                         {o.value === NO_PRODUCT_CHOICE && (
@@ -1983,7 +2022,7 @@ export default function V2Building() {
                       a tap: exactly what #746 closed. The Library is where that
                       question is asked properly. */}
                   <p className="pt-1 text-xs text-stone">
-                    Something missing? Add it in your Product Library — this video can go ahead without it.
+                    Something missing? Add it in Brands &amp; products — this video can go ahead without it.
                   </p>
                 </div>
               ) : isChip(q) ? (
