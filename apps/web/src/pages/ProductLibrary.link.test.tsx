@@ -126,10 +126,16 @@ describe('the product card has one link field, and it can be read from', () => {
 
   it('refuses a malformed link at the field, and does not save it', async () => {
     const link = await openCard()
-    fireEvent.change(link, { target: { value: 'peakdesign.example' } })
+    // ⚠️⚠️ THE FIXTURE CHANGED, THE RULE DID NOT. This fed `peakdesign.example`
+    // — a BARE DOMAIN — and demanded a refusal. That is exactly what a person
+    // types, and refusing it was reported 2026-09-22 as a dead end:
+    // `www.thedogdaysco.com` rejected with a message that named no fix. Bare
+    // domains are now accepted and normalised by `normalizeLink`, so the
+    // example of "malformed" has to be something genuinely malformed.
+    fireEvent.change(link, { target: { value: 'peakdesign' } })
 
     // ⚠️ NEXT TO ITS CAUSE, not in the banner at the top of the page.
-    await screen.findByText('That does not look like a full link. It should start with https://')
+    await screen.findByText('That does not look like a web address — try something like twinai.com/shop')
     expect((screen.getByRole('button', { name: 'Read it again' }) as HTMLButtonElement).disabled).toBe(true)
 
     // ⚠️ AND NOT PERSISTED. Storing it would hand the worker a job that can only

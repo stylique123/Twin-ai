@@ -39,6 +39,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation, rowIsCreatorSupplied,
+  normalizeLink, looksLikeBareDomain,
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
   requestProductExtraction, recordExtractionNeverStarted,
   confirmProductFacts, uploadProductImage,
@@ -391,8 +392,9 @@ const PHOTO_SLOTS = 4
  */
 function looksLikeLink(v: string): boolean {
   const s = v.trim()
-  return s === '' || /^https:\/\/\S+\.\S+/i.test(s)
+  return s === '' || /^https:\/\/\S+\.\S+/i.test(s) || looksLikeBareDomain(s)
 }
+
 
 function photoPathsOf(e: ProductEntityRecord): string[] {
   const ev = e.evidence
@@ -519,6 +521,44 @@ export default function ProductLibrary() {
    *  ⚖️ AND UPLOADING RE-READS. New pictures are new evidence; storing them
    *  without extraction would leave the writer working from the old set while
    *  the page showed the new one, which is the worst of both. */
+  /**
+   * REMOVE ONE PHOTO, WHICH WAS IMPOSSIBLE WHILE NOTHING STORED THE SET.
+   *
+   * ⚠️ REPORTED WITH THE PERSISTENCE BUG AND CAUSED BY IT: "no delete/replace on
+   * uploaded photos — only add." You cannot take an item out of a list nobody
+   * wrote down. Now that `evidence` holds the list, removal is rewriting it.
+   *
+   * ⚖️ THE FILE IN STORAGE IS LEFT ALONE, DELIBERATELY. Detaching is the
+   * creator's intent; deleting the object is irreversible and is not what
+   * "remove this photo" promises. The row stops pointing at it, which is what
+   * every reader here goes through.
+   */
+  async function removePhotoFrom(entity: ProductEntityRecord, path: string) {
+    const remaining = photoPathsOf(entity).filter((p) => p !== path)
+    setAddingPhotoTo(entity.id); setErr(null)
+    try {
+      const stored = await updateEntityPresentation(entity.id, {
+        // ⚠️ AN EMPTY SET IS null, NOT AN EMPTY EVIDENCE OBJECT. "She removed
+        // the last photo" and "a capture produced no sections" are different
+        // facts, and `photoPathsOf` already reads both as no photos — but only
+        // null says nobody supplied any.
+        evidence: remaining.length === 0 ? null : {
+          form: 'images',
+          linkRole: 'knowledge',
+          url: null,
+          capturedAt: new Date().toISOString(),
+          sections: remaining.map((imagePath, order) => ({ order, label: '', imagePath })),
+        },
+      })
+      if (stored) setEntities((prev) => (prev ?? []).map((x) => (x.id === entity.id ? stored : x)))
+      setSaved(entity.id)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'That photo could not be removed.')
+    } finally {
+      setAddingPhotoTo(null)
+    }
+  }
+
   async function addPhotosTo(entity: ProductEntityRecord, files: FileList | null) {
     const ownerId = session?.user?.id
     if (!ownerId || !files || files.length === 0) return
@@ -553,6 +593,25 @@ export default function ProductLibrary() {
         } catch { /* leave the row as it was; the message below still lands */ }
         throw e
       }
+      // ⚠️⚠️ THE STEP THAT WAS MISSING, AND IT IS WHY "saved" WAS A LIE. Until
+      // now the file reached storage, the path reached `enqueue-extraction`,
+      // the analysis genuinely ran — and the ENTITY never recorded that it has
+      // a photo. `photoPathsOf` reads `evidence.sections[].imagePath`; 0 of 28
+      // production rows carried evidence at all, so every reload showed none.
+      //
+      // ⚖️ WRITTEN AFTER THE ENQUEUE SUCCEEDS, NOT BEFORE. A row claiming a
+      // photo whose read was never queued is the mirror of this same defect.
+      const nextPaths = [...existing, ...added]
+      const stored = await updateEntityPresentation(entity.id, {
+        evidence: {
+          form: 'images',
+          linkRole: 'knowledge',
+          url: null,
+          capturedAt: new Date().toISOString(),
+          sections: nextPaths.map((imagePath, order) => ({ order, label: '', imagePath })),
+        },
+      })
+      if (stored) setEntities((prev) => (prev ?? []).map((x) => (x.id === entity.id ? stored : x)))
       const signed = await signEditUrls(added)
       setThumbs((prev) => ({ ...prev, ...signed }))
       setSaved(entity.id)
@@ -725,7 +784,10 @@ export default function ProductLibrary() {
         // that is the part that had to succeed. Reading the page is a
         // convenience that runs on the worker minutes later, and a reader that
         // could undo an attestation would be the wrong shape entirely.
-        const url = (a.productUrl ?? '').trim()
+        // ⚠️ NORMALISED AT THE BOUNDARY, ONCE. `requestProductExtraction`,
+        // the edge function and the worker all require https; the creator does
+        // not have to. See `normalizeLink`.
+        const url = normalizeLink(a.productUrl ?? '')
         const imgs = a.imagePaths ?? []
         if (url || imgs.length > 0) {
           try { await requestProductExtraction(created.id, url, imgs) }
@@ -808,7 +870,7 @@ export default function ProductLibrary() {
     // keystroke to populate `learnUrl` -- so reading `learnUrl` alone here would
     // send an empty string for the exact tap the box shows a real link for.
     const entity = (entities ?? []).find((x) => x.id === id)
-    const url = (learnUrl[id] ?? entity?.productUrl ?? '').trim()
+    const url = normalizeLink(learnUrl[id] ?? entity?.productUrl ?? '')
     setErr(null)
     const ownerId = session?.user?.id
     if (!ownerId) { setErr('Please sign in again.'); return }
@@ -1208,6 +1270,7 @@ export default function ProductLibrary() {
           </label>
           <input
             className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
+            key={`name-${e.id}-${e.updated ?? ''}`}
             defaultValue={e.name ?? ''}
             placeholder="What you call it on camera"
             onBlur={(ev) => {
@@ -1239,6 +1302,7 @@ export default function ProductLibrary() {
           </label>
           <input
             className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
+            key={`summary-${e.id}-${e.updated ?? ''}`}
             defaultValue={e.creatorSummary ?? ''}
             /* ⚠️⚠️ THIS NAMED SOMEBODY ELSE'S PRODUCT TO EVERY CREATOR. It read
                "Sourdough loaves, baked to order for people near me" — the
@@ -1278,6 +1342,7 @@ export default function ProductLibrary() {
           </label>
           <input
             className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
+            key={`offer-${e.id}-${e.updated ?? ''}`}
             defaultValue={e.offer ?? ''}
             placeholder="The price, and what is included"
             onBlur={(ev) => {
@@ -1321,7 +1386,7 @@ export default function ProductLibrary() {
                 // worker a job that can only fail, and the failure would arrive
                 // minutes later on a card that had already said "saved".
                 if (!looksLikeLink(v)) return
-                if (v !== (e.productUrl ?? '')) void save(e.id, { productUrl: v || null })
+                if (v !== (e.productUrl ?? '')) void save(e.id, { productUrl: normalizeLink(v) || null })
               }}
             />
             {/* ⚖️ ALWAYS OFFERED, NOT ONLY BEFORE THE FIRST READ. A page that
@@ -1353,7 +1418,7 @@ export default function ProductLibrary() {
               fold, away from the field that caused it. */}
           {!looksLikeLink(learnUrl[e.id] ?? '') && (
             <p className="mt-1 text-xs text-coral">
-              That does not look like a full link. It should start with https://
+              That does not look like a web address — try something like twinai.com/shop
             </p>
           )}
           {fieldNote(e.id, 'productUrl')}
@@ -1385,6 +1450,7 @@ export default function ProductLibrary() {
               </label>
               <input
                 className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
+                key={`aff-${e.id}-${e.updated ?? ''}`}
                 defaultValue={e.affiliateUrl ?? ''}
                 placeholder="https://"
                 onBlur={(ev) => {
@@ -1541,10 +1607,20 @@ export default function ProductLibrary() {
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {photoPathsOf(e).map((path, i) => (
-                <div key={path} className="h-16 w-16 overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
+                <div key={path} className="group relative h-16 w-16 overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
                   {thumbs[path]
                     ? <img src={thumbs[path]} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
                     : <span className="grid h-full w-full place-items-center text-[10px] text-stone">…</span>}
+                  {/* ⚖️ REMOVE, NOT "DELETE". The file stays in storage; this row
+                      stops pointing at it. Wrong-photo recovery was previously
+                      adding a second one on top of the first. */}
+                  <button
+                    type="button"
+                    aria-label={`Remove photo ${i + 1}`}
+                    disabled={addingPhotoTo === e.id}
+                    onClick={() => void removePhotoFrom(e, path)}
+                    className="absolute right-0 top-0 rounded-bl-lg bg-black/70 px-1.5 text-[11px] leading-5 text-cream opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+                  >×</button>
                 </div>
               ))}
               {photoPathsOf(e).length < PHOTO_SLOTS && (
@@ -2409,7 +2485,7 @@ function StartFromLink({ onCancel, onClaim, busy }: {
           className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
         />
         {!linkLooksReal && (
-          <p className="mt-1 text-xs text-coral">That does not look like a full link. It should start with https://</p>
+          <p className="mt-1 text-xs text-coral">That does not look like a web address — try something like twinai.com/shop</p>
         )}
       </div>
       {/* ⚖️ THE BUTTON SAYS WHY IT IS DISABLED. The old gate demanded a field
@@ -2434,7 +2510,7 @@ function StartFromLink({ onCancel, onClaim, busy }: {
             // experience claim out of silence.
             personalUse: asksPersonalUse(ctx) ? personalUse! : 'NOT_CONFIRMED',
             type: type!,
-            name: name.trim(), creatorSummary: summary.trim() || null, offer: offer.trim() || null, productUrl: link || null, imagePaths,
+            name: name.trim(), creatorSummary: summary.trim() || null, offer: offer.trim() || null, productUrl: normalizeLink(link) || null, imagePaths,
             // ⚠️ THE ANSWER ABOUT THIS PRODUCT, WHICH BEATS THE ACCOUNT DEFAULT.
             // `attestedEntity` derives showability from flags, so the flag that
             // matches the question asked is the one sent.
