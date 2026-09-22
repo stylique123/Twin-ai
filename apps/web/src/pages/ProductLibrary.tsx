@@ -535,6 +535,11 @@ export default function ProductLibrary() {
    *  whatever was already expanded — so on the one screen that matters, adding a
    *  product looked exactly like nothing happening. */
   const [justAdded, setJustAdded] = useState<string | null>(null)
+  // ⚖️ THE REVIEW THAT FOLLOWS A READ. Requested 2026-09-22: "after adding a
+  // product… a pop-up: we have found this about the product, this about your
+  // brand — is this correct?" Opens once the worker has actually written
+  // something, never on a guess of what it might find.
+  const [reviewId, setReviewId] = useState<string | null>(null)
   const [tab, setTab] = useState<'live' | 'retired'>('live')
   /** Storage path → signed URL, for photos already attached to a product. */
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
@@ -880,7 +885,10 @@ export default function ProductLibrary() {
         const url = normalizeLink(a.productUrl ?? '')
         const imgs = a.imagePaths ?? []
         if (url || imgs.length > 0) {
-          try { await requestProductExtraction(created.id, url, imgs) }
+          try {
+            await requestProductExtraction(created.id, url, imgs)
+            void waitForReadThenReview(created.id)
+          }
           catch (e) {
             // ⚠️ THE BANNER USED TO BE THE ONLY THING THAT KNEW. It said "we
             // could not start reading that page" and wrote nothing, so
@@ -954,13 +962,15 @@ export default function ProductLibrary() {
     }
   }
 
-  async function learn(id: string) {
+  async function learn(id: string, override?: string) {
     // ⚠️ FALLS BACK TO THE ENTITY'S OWN LINK, THE SAME FALLBACK THE BOX DISPLAYS.
     // The retry box is pre-filled with `e.productUrl` without requiring a
     // keystroke to populate `learnUrl` -- so reading `learnUrl` alone here would
     // send an empty string for the exact tap the box shows a real link for.
     const entity = (entities ?? []).find((x) => x.id === id)
-    const url = normalizeLink(learnUrl[id] ?? entity?.productUrl ?? '')
+    // `override` is the brand-shop lookup: state set in the same click has not
+    // landed yet, so the URL is passed rather than read back.
+    const url = normalizeLink(override ?? learnUrl[id] ?? entity?.productUrl ?? '')
     setErr(null)
     const ownerId = session?.user?.id
     if (!ownerId) { setErr('Please sign in again.'); return }
@@ -1001,16 +1011,26 @@ export default function ProductLibrary() {
       // ⚖️ POLLS THE ENTITY, NOT THE JOB. A creator who reloads or comes back
       // tomorrow sees whatever the worker got to; watching a job id would lose
       // the result the moment the tab did.
-      for (let i = 0; i < 40; i++) {
-        await new Promise((r) => window.setTimeout(r, 3000))
-        const rows = await loadProductEntities()
-        const found = rows.find((e) => e.id === id)
-        if (found && found.knowledge !== null) { setEntities(rows); break }
-      }
+      await waitForReadThenReview(id)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not read that page.')
     } finally {
       setLearning(null)
+    }
+  }
+
+  /** Poll the entity until the worker has written what it read, then open the
+   *  review. Polls the ENTITY, not the job: a reload keeps the result. */
+  async function waitForReadThenReview(id: string) {
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => window.setTimeout(r, 3000))
+      const rows = await loadProductEntities()
+      const found = rows.find((e) => e.id === id)
+      if (found && found.knowledge !== null) {
+        setEntities(rows)
+        if (found.knowledge.length > 0) setReviewId(id)
+        return
+      }
     }
   }
 
@@ -1570,6 +1590,25 @@ export default function ProductLibrary() {
                   : e.knowledge === null ? 'Read the page' : 'Read it again'}
             </button>
           </div>
+          {/* ⚖️ FIND IT ON HER OWN SHOP. Reported 2026-09-22: "why can't you
+              search for this product inside that brand?" When the product has
+              no link, or its link is the shop's front page, and its brand has a
+              website, this reads the brand's shop and the worker looks the
+              product up BY NAME there (worker/src/shopProductLookup.ts). A
+              match replaces the homepage link with the product's own page. */}
+          {(() => {
+            const brand = (brands ?? []).find((b) => b.id === e.brandId)
+            const site = brand?.website
+            const needs = !e.productUrl || pageKindOf(e.productUrl) === 'homepage' || pageKindOf(e.productUrl) === 'collection'
+            if (!site || !needs || !e.name) return null
+            return (
+              <button type="button" disabled={learning === e.id}
+                className="mt-2 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-sand hover:border-white/30 disabled:opacity-40"
+                onClick={() => { setLearnUrl((p) => ({ ...p, [e.id]: site })); void learn(e.id, site) }}>
+                Find “{e.name}” on {site}
+              </button>
+            )
+          })()}
           {/* ⚠️ NEXT TO ITS CAUSE. Errors on this page went to one banner at the
               top, so a creator who mistyped a link was told about it above the
               fold, away from the field that caused it. */}
@@ -1899,10 +1938,22 @@ export default function ProductLibrary() {
                   // is the same rule the writer uses, so this screen shows
                   // exactly what a script will and will not say.
                   const placed = placeFacts(e.knowledge ?? [], { url: e.productUrl, productName: e.name })
-                  const usable = placed.product.filter((f) => f.trust === 'usable')
-                  const pending = placed.product.filter((f) => f.trust === 'needs_confirmation')
+                  // ⚖️ PRICES ARE THEIR OWN SECTION, BESIDE HER OWN OFFER. Reported
+                  // 2026-09-22: prices and variants were mixed in with everything
+                  // else, and "there's no option of offer over here".
+                  const isPrice = (f: { field: string }) => f.field === 'price' || f.field === 'plan'
+                  const usable = placed.product.filter((f) => f.trust === 'usable' && !isPrice(f))
+                  const pending = placed.product.filter((f) => f.trust === 'needs_confirmation' && !isPrice(f))
+                  const prices = placed.product.filter(isPrice)
                   return (
                     <>
+                      <p className="mt-3 text-xs font-medium uppercase tracking-wide text-stone">About this product</p>
+                      {usable.length === 0 && pending.length === 0 && (
+                        <p className="mt-1 text-sm text-stone">
+                          Nothing about this product itself yet{placed.brand.length > 0 ? ' — what Twin read was about your brand' : ''}.
+                          {' '}Use “Find it on …” above, paste the product's own page, or add photos.
+                        </p>
+                      )}
                       {usable.length > 0 && (
                         <ul className="mt-2 space-y-1">
                           {usable.map((f) => (
@@ -1939,6 +1990,26 @@ export default function ProductLibrary() {
                           </ul>
                         </div>
                       )}
+                      <div className="mt-4">
+                        <p className="text-xs font-medium uppercase tracking-wide text-stone">Price &amp; options</p>
+                        {e.offer && <p className="mt-1 text-sm"><span className="text-stone">Your words: </span>{e.offer}</p>}
+                        {prices.length === 0 && !e.offer && (
+                          <p className="mt-1 text-sm text-stone">No price yet. Add it in “What does it cost, and what do they get?” above.</p>
+                        )}
+                        {prices.length > 0 && (
+                          <ul className="mt-1 space-y-1">
+                            {prices.map((f) => (
+                              <li key={`p-${f.value}`} className="flex items-start justify-between gap-2 text-sm">
+                                <span>{f.value}</span>
+                                {f.trust === 'needs_confirmation' ? (
+                                  <button type="button" className="whitespace-nowrap text-xs underline"
+                                    onClick={() => void confirmFact(e.id, f.value)}>That's right</button>
+                                ) : <span className="text-xs text-stone">confirmed</span>}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
                       {placed.brand.length > 0 && (
                         <div className="mt-3">
                           <p className="text-xs font-medium uppercase tracking-wide text-stone">About your brand, not this product</p>
@@ -2065,6 +2136,61 @@ export default function ProductLibrary() {
           + Add something you promote for someone else
         </button>
       )}
+
+      {reviewId && (() => {
+        const e = (entities ?? []).find((x) => x.id === reviewId)
+        if (!e) return null
+        const placed = placeFacts(e.knowledge ?? [], { url: e.productUrl, productName: e.name })
+        const isPrice = (f: { field: string }) => f.field === 'price' || f.field === 'plan'
+        const Row = ({ f }: { f: ProductFact }) => (
+          <li className="flex items-start justify-between gap-3 py-1 text-sm">
+            <span><span className="text-stone">{f.field}: </span>{f.value}</span>
+            {f.trust === 'needs_confirmation' ? (
+              <button type="button" className="whitespace-nowrap rounded-md border border-white/20 px-2 py-0.5 text-xs hover:border-white/40"
+                onClick={() => void confirmFact(e.id, f.value)}>That's right</button>
+            ) : <span className="whitespace-nowrap text-xs text-stone">✓ Twin will use this</span>}
+          </li>
+        )
+        const product = placed.product.filter((f) => !isPrice(f))
+        const prices = placed.product.filter(isPrice)
+        return (
+          <div role="dialog" aria-modal="true" aria-labelledby="review-title"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-ink2 p-5 shadow-2xl">
+              <h2 id="review-title" className="text-base font-semibold">Here's what Twin found about {cardTitle(e)}</h2>
+              <p className="mt-1 text-xs text-sand">
+                Press “That's right” on anything that is. Twin will not say the rest in a script until you do.
+              </p>
+              <section className="mt-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-stone">About this product</p>
+                {product.length > 0 ? <ul className="mt-1 divide-y divide-white/5">{product.map((f) => <Row key={`r-${f.field}-${f.value}`} f={f} />)}</ul>
+                  : <p className="mt-1 text-sm text-stone">Nothing about the product itself — the page Twin read was about your brand.</p>}
+              </section>
+              {prices.length > 0 && (
+                <section className="mt-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-stone">Price &amp; options</p>
+                  <ul className="mt-1 divide-y divide-white/5">{prices.map((f) => <Row key={`rp-${f.value}`} f={f} />)}</ul>
+                </section>
+              )}
+              {placed.brand.length > 0 && (
+                <section className="mt-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-stone">About your brand, not this product</p>
+                  <ul className="mt-1 space-y-1">{placed.brand.map((f) => <li key={`rb-${f.value}`} className="text-sm text-sand">{f.value}</li>)}</ul>
+                  <p className="mt-1 text-xs text-stone">Kept apart so a script never describes your brand as this product.</p>
+                </section>
+              )}
+              {placed.setAside.length > 0 && (
+                <p className="mt-3 text-xs text-stone">
+                  Left out: {placed.setAside.length} website button{placed.setAside.length === 1 ? '' : 's'} or other products' prices.
+                </p>
+              )}
+              <div className="mt-5 flex justify-end">
+                <button type="button" className="btn-gradient rounded-lg px-4 py-1.5 text-sm" onClick={() => setReviewId(null)}>Done</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {tab === 'retired' && (
         <section>

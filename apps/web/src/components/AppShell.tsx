@@ -154,9 +154,13 @@ export function AppShell({ children, mobileChrome = true }: { children: React.Re
                 {n.to === '/products' && productsWaiting > 0 && (
                   <span
                     aria-label={`${productsWaiting} ${productsWaiting === 1 ? 'product needs' : 'products need'} your attention`}
+                    title="Open Products to see what each one still needs — a link, a price, or facts to check."
                     className="ml-auto shrink-0 rounded-full bg-amber/20 px-1.5 py-0.5 text-center text-[11px] font-semibold text-amber"
                   >
-                    {productsWaiting} to fix
+                    {/* ⚠️ "2 to fix" READ AS "2 THINGS ARE BROKEN" — reported
+                        2026-09-22 as "so confusing". Nothing is broken; the
+                        products are waiting on her. Said as that. */}
+                    {productsWaiting} need{productsWaiting === 1 ? 's' : ''} you
                   </span>
                 )}
               </Link>
