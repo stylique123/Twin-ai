@@ -2268,6 +2268,14 @@ export async function claimProductEntity(
     voice_id: owned ? voiceId : null,
     name: entity.name,
     creator_summary: entity.creatorSummary,
+    // ⚠️⚠️ THE COLUMN WAS MISSING FROM THIS ROW AND FROM NOWHERE ELSE. 0222 added
+    // `offer`, `EntityAttestation` declares it, and `attestedEntity` computes it
+    // as `recordedOffer(a.offer)` — and this INSERT never wrote it. So an offer
+    // typed while ADDING a product was dropped on the floor, while the same
+    // field edited AFTER opening the product saved fine through
+    // `updateEntityPresentation`. One path persisted, the other discarded, and
+    // nothing failed: the classic shape of a value computed and never stored.
+    offer: entity.offer,
     type: entity.type,
     relationship: entity.relationship,
     personal_use: entity.personalUse,

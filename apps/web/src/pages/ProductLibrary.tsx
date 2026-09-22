@@ -38,7 +38,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  loadProductEntities, loadProductSuggestions, updateEntityPresentation,
+  loadProductEntities, loadProductSuggestions, updateEntityPresentation, rowIsCreatorSupplied,
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
   requestProductExtraction, recordExtractionNeverStarted,
   confirmProductFacts, uploadProductImage,
@@ -405,6 +405,12 @@ function photoPathsOf(e: ProductEntityRecord): string[] {
 
 export default function ProductLibrary() {
   const [entities, setEntities] = useState<ProductEntityRecord[] | null>(null)
+  // ⚠️ WHAT SHE IS SHOWN, WHICH IS NOT WHAT IS STORED. `entities` stays whole —
+  // every count, save and reload below works on the real set — and only the
+  // rendered list is narrowed to rows a creator actually put something into.
+  // Filtering at the source would make an unconfirmed mint un-savable and
+  // un-deletable, which is a worse version of the problem being fixed.
+  const shownEntities = (entities ?? []).filter(rowIsCreatorSupplied)
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -1054,7 +1060,18 @@ export default function ProductLibrary() {
       {/* ── ONE ROW PER PRODUCT; ONE PANEL FOR THE ONE BEING WORKED ON ──────
           ⚖️ THE ROW IS A BUTTON, not a card with a link in it. The whole thing
           is the target, because "click the product" is what a creator does. */}
-      {(tab === 'live' ? entities : []).map((e) => openId !== e.id ? (
+      {/* ⚠️⚠️ AN INFERENCE IS NOT ONE OF HER PRODUCTS. `mintFromWorkKind` writes
+          a row from the onboarding work-kind answer carrying nothing but a
+          derived type — no name, no description she edited, no link — and it
+          rendered as "Not named yet / You own this product" at the top of a
+          library she was being asked to fill. She never added it.
+
+          ⚖️ THE ROW IS NOT DELETED, AND THAT IS DELIBERATE. It still answers
+          "do you have a product?" (see `rowAnswersProductQuestion`), still
+          carries the type and showability she implied, and a `NONE` row still
+          records "nothing to sell". Only the CARD goes — the earlier pass
+          traded a wrong name for no name and left the phantom on screen. */}
+      {(tab === 'live' ? shownEntities : []).map((e) => openId !== e.id ? (
         <button
           key={e.id}
           type="button"
@@ -2085,6 +2102,11 @@ function StartFromLink({ onCancel, onClaim, busy }: {
     type: EntityType; name: string; productUrl?: string | null; imagePaths?: string[]
     /** The creator's own one-line fallback. See migration 0177. */
     creatorSummary?: string | null
+    /** ⚠️ 0222's COLUMN, WHICH THIS FORM COULD NOT SEND. `EntityAttestation`
+     *  has declared `offer` since 0222 and this prop type never widened to
+     *  match, so the field was unreachable from "Add a product" — the price had
+     *  to be found by opening a product you had just created. */
+    offer?: string | null
     /** ⚖️ THE ANSWER TO THE ONE CAPABILITY QUESTION THIS PRODUCT WARRANTED.
      *  Absent when the type warranted none — a service — and absent is NOT a
      *  denial: `attestedEntity` reads a missing flag as UNKNOWN. */
@@ -2111,6 +2133,12 @@ function StartFromLink({ onCancel, onClaim, busy }: {
   // because the worker turns this into a `user_confirmed` fact exactly where
   // extraction itself produced nothing. See `worker/src/jobs/extractProduct.ts`.
   const [summary, setSummary] = useState('')
+  // ⚠️⚠️ ASKED AT ADD TIME, WHICH IT NEVER WAS. The field existed on the OPENED
+  // product ("What does it cost, and what do they get?") and not on this form,
+  // so the price had to be discovered by opening a product you had just made.
+  // Reported 2026-09-22: "there's no option of offer, so it's not being listed,
+  // not being added, and not being used in script."
+  const [offer, setOffer] = useState('')
   const [relationship, setRelationship] = useState<EntityRelationship | null>(null)
   const [type, setType] = useState<EntityType | null>(null)
   const [personalUse, setPersonalUse] = useState<PersonalUse | null>(null)
@@ -2227,6 +2255,27 @@ function StartFromLink({ onCancel, onClaim, busy }: {
         />
         <p className="mt-1 text-xs text-stone">
           Used if the page cannot be read — Twin will not leave this product with nothing.
+        </p>
+      </div>
+      {/* ⚖️ THE SAME QUESTION THE OPENED PRODUCT ASKS, IN THE SAME WORDS. Two
+          wordings for one field is how a creator concludes they are two fields.
+          Optional here exactly as it is there: a price nobody typed is not a
+          price, and `recordedOffer` stores null rather than an empty string. */}
+      <div>
+        <label className="text-xs font-medium uppercase tracking-wide text-stone" htmlFor="product-offer">
+          What does it cost, and what do they get?
+        </label>
+        <input
+          id="product-offer"
+          type="text"
+          value={offer}
+          onChange={(e) => setOffer(e.target.value)}
+          placeholder="e.g. $28 — one bandana, free shipping over $50"
+          className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+        />
+        <p className="mt-1 text-xs text-stone">
+          Optional. Used when a script names the offer — including more than one
+          price or variant, if that is how you sell it.
         </p>
       </div>
 
@@ -2385,7 +2434,7 @@ function StartFromLink({ onCancel, onClaim, busy }: {
             // experience claim out of silence.
             personalUse: asksPersonalUse(ctx) ? personalUse! : 'NOT_CONFIRMED',
             type: type!,
-            name: name.trim(), creatorSummary: summary.trim() || null, productUrl: link || null, imagePaths,
+            name: name.trim(), creatorSummary: summary.trim() || null, offer: offer.trim() || null, productUrl: link || null, imagePaths,
             // ⚠️ THE ANSWER ABOUT THIS PRODUCT, WHICH BEATS THE ACCOUNT DEFAULT.
             // `attestedEntity` derives showability from flags, so the flag that
             // matches the question asked is the one sent.

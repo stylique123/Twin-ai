@@ -82,3 +82,62 @@ export function rowAnswersProductQuestion(row: ProductAnswerFields | null | unde
 // wrapper that only its own tests call is the exact defect this project keeps
 // finding: something built correctly that nothing reads. Callers map over their
 // own rows with `rowAnswersProductQuestion`, which is one line.
+
+// ── AND A ROW THAT ANSWERED IS NOT THE SAME AS A PRODUCT SHE HAS ──────────
+//
+// ⚠️⚠️ REPORTED FROM THE SCREEN, 2026-09-22: "when I come into the screen
+// there's already a product added, not named, nothing — and it's so hard to
+// delete." The card reads:
+//
+//   Not named yet
+//   Add a link or a photo and Twin can learn what this is.
+//   You own this product
+//
+// She did not add it. `mintFromWorkKind` did, from her work-kind answer.
+//
+// ⚖️ THE EARLIER PASS WAS RIGHT THAT THE ROW IS NOT THE DEFECT, AND IT STOPPED
+// ONE STEP SHORT. Deleting the mint would throw away the type and showability
+// she implied, and would re-ask the creator who answered "nothing to sell" —
+// `rowAnswersProductQuestion` exists precisely so that row keeps answering.
+// Both of those remain true. What was never examined is whether a row carrying
+// ONLY our inference should be RENDERED to her as one of her products.
+//
+// ⚠️ IT SHOULD NOT, AND THE COST IS NOT COSMETIC. A phantom entry is the first
+// thing she sees in a library she is being asked to fill, it competes with the
+// products she then adds, and "You own this product" is an assertion about her
+// business that nobody made. The previous fix traded a WRONG NAME for NO NAME
+// and left the row on screen; the honest end of that same reasoning is that an
+// unconfirmed inference is not a product until she puts something in it.
+//
+// ⚖️ SO THE ROW STAYS AND THE CARD GOES. Nothing downstream changes: the
+// capture prompt still sees a row, the derived type and showability survive,
+// and `relationship === 'NONE'` still answers. She simply stops being shown a
+// product she never created.
+//
+// ⚠️ AND `NONE` IS DELIBERATELY NOT SHOWN EITHER, which is why this is not just
+// `rowAnswersProductQuestion`. "I sell nothing" is a real answer and a real row
+// — it is not a product, and rendering it as a card would be the same defect
+// wearing the opposite answer.
+
+/** The fields that can show a creator put something into this row. */
+export interface ProductShownFields extends ProductAnswerFields {
+  productUrl?: string | null
+  userConfirmed?: boolean | null
+}
+
+/**
+ * Is this row a product the CREATOR supplied, rather than one we inferred?
+ *
+ * ⚠️ ANY ONE OF THESE IS HER, AND A URL COUNTS BEFORE A NAME DOES. A creator
+ * who pastes a link and lets Twin read the page has created a product and has
+ * not named it yet — hiding that row would delete her work from the screen
+ * while the read is still running, which is the opposite of this rule's point.
+ *
+ * ⚖️ AN UNCONFIRMED MINT CARRIES NONE OF THEM. That is the whole population
+ * this excludes: no name, no description she edited, no link, never confirmed.
+ */
+export function rowIsCreatorSupplied(row: ProductShownFields | null | undefined): boolean {
+  if (!row) return false
+  if (row.userConfirmed === true) return true
+  return filled(row.name) || filled(row.creatorSummary) || filled(row.productUrl)
+}
