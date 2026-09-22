@@ -117,14 +117,18 @@ describe('requiredness is PER VIDEO, in both copies', () => {
   it('the relationship accepts EITHER authority, so an affiliate is not re-asked', () => {
     // `product_entities` only carries the creator's OWN product; a tie to
     // somebody else's is recorded on the brief as `promotes`.
-    expect(EDGE).toMatch(/ownedEntity\?\.relationship \?\? readyLibraryRel \?\? brief\.promotes/)
+    // ⚠️ RE-PINNED 2026-09-22: `readyUnanimousRel` joined the chain between the
+    // library lookup and the brief — the server now resolves products that all
+    // agree, as the client already did. Without it the card passed and the
+    // server refused with the same question.
+    expect(EDGE).toMatch(/ownedEntity\?\.relationship \?\? readyLibraryRel \?\? readyUnanimousRel \?\? brief\.promotes/)
   })
 
   it('D2: the entity settles the relationship BEFORE any typed answer', () => {
     // Product Library's four-chip question is the sole place this is asked
     // now — Quick-things stopped asking it as free text. `answers.relationship`
     // is read last, purely for a caller this UI no longer produces.
-    expect(EDGE).toMatch(/ownedEntity\?\.relationship \?\? readyLibraryRel \?\? brief\.promotes \?\? answers\.relationship/)
+    expect(EDGE).toMatch(/ownedEntity\?\.relationship \?\? readyLibraryRel \?\? readyUnanimousRel \?\? brief\.promotes \?\? answers\.relationship/)
   })
 })
 

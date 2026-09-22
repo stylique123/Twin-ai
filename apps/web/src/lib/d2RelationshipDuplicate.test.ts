@@ -24,16 +24,42 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..
 const WEB = readFileSync(join(REPO, 'apps/web/src/pages/v2/V2Building.tsx'), 'utf8')
 const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
 
-describe('D2: Quick-things no longer shows the free-text relationship question', () => {
-  it('the relationship branch renders a Product Library link, not an <input>', () => {
+// ⚠️⚠️ RE-PINNED 2026-09-22, BECAUSE THIS FILE PINNED THE DEFECT. It asserted
+// that the relationship branch renders "Open Product Library" and calls
+// `nav('/products')` — and the owner then reported, from the screen, that this
+// exact button was a dead end: "it was just the main screen of that product
+// library… that relationship has been set. And whatever I did… it never
+// worked." The library showed the answer already set and nothing there could
+// satisfy the card, so Create asked again forever.
+//
+// ⚖️ D2's ACTUAL CLAIM SURVIVES AND IS STILL PINNED: no FREE TEXT. The defect
+// D2 fixed was a typed sentence that never matched the enum. Chips that send
+// the enum spelling exactly are the opposite of that defect — they are the
+// only answer that CAN match — so the branch now asserts four enum chips and
+// still forbids an <input>.
+describe('D2: the relationship is answered here, as the enum, never as free text', () => {
+  const branchOf = () => {
     const start = WEB.indexOf("q.field === 'relationship'")
     const end = WEB.indexOf(') : (', start)
-    const branch = WEB.slice(start, end)
-    expect(branch).toMatch(/Open Product Library/)
-    expect(branch).toMatch(/nav\('\/products'\)/)
-    // The generic free-text `<input>` fallback must not appear inside this
-    // branch — it belongs to the `else` arm this branch pre-empts.
-    expect(branch).not.toMatch(/<input/)
+    return WEB.slice(start, end)
+  }
+
+  it('offers the four enum answers on the card itself', () => {
+    const branch = branchOf()
+    for (const v of ['OWN_PRODUCT', 'AFFILIATE', 'SPONSOR', 'REVIEW_ONLY']) {
+      expect(branch).toContain(`'${v}'`)
+    }
+  })
+
+  it('is not a link away to a page that cannot answer it', () => {
+    // The dead end, by name. A button whose only effect is navigation cannot
+    // satisfy the gate that rendered it.
+    expect(branchOf()).not.toMatch(/nav\('\/products'\)/)
+    expect(branchOf()).not.toMatch(/Open Product Library/)
+  })
+
+  it('never renders a free-text input for it', () => {
+    expect(branchOf()).not.toMatch(/<input/)
   })
 
   it('the relationship branch sits before the generic free-text input in the renderer', () => {
@@ -44,13 +70,10 @@ describe('D2: Quick-things no longer shows the free-text relationship question',
     expect(rel).toBeLessThan(genericInput)
   })
 
-  it('never sends readiness_answers.relationship from typing on this screen', () => {
-    // The only way `askAnswers.relationship` could be populated is a call to
-    // `answer('relationship', ...)`. The relationship branch must not call it.
-    const start = WEB.indexOf("q.field === 'relationship'")
-    const end = WEB.indexOf(') : (', start)
-    const branch = WEB.slice(start, end)
-    expect(branch).not.toMatch(/answer\(q\.field/)
+  it('answers with the enum value, not the label', () => {
+    // `answer(q.field, value)` with `value` from the enum tuple — the one
+    // spelling `READINESS_RELATIONSHIPS` accepts on the server.
+    expect(branchOf()).toMatch(/answer\(q\.field, active \? '' : value\)/)
   })
 })
 
@@ -116,8 +139,17 @@ describe('D2: the courtesy pre-check resolves relationship from Product Library'
 })
 
 describe('D2: the server gate prefers the entity over a typed answer', () => {
-  it('readyRel reads ownedEntity, then the wider library, then brief.promotes, then the typed answer last', () => {
-    expect(EDGE).toMatch(/const readyRel = ownedEntity\?\.relationship \?\? readyLibraryRel \?\? brief\.promotes \?\? answers\.relationship/)
+  // ⚠️ RE-PINNED 2026-09-22: A TERM WAS ADDED, AND IT IS THE FIX. The client
+  // resolved unanimous products (`libraryRelationship`) and this copy did not,
+  // so the card passed and the server refused with the same question. The
+  // order is the claim: entity first, typed answer last.
+  it('readyRel reads the entity, the library, unanimity, brief.promotes, then the typed answer last', () => {
+    const at = EDGE.indexOf('const readyRel =')
+    const expr = EDGE.slice(at, EDGE.indexOf('\n', EDGE.indexOf('\n', at) + 1))
+    const order = ['ownedEntity?.relationship', 'readyLibraryRel', 'readyUnanimousRel', 'brief.promotes', 'answers.relationship']
+    const idx = order.map((t) => expr.indexOf(t))
+    for (const [i, t] of order.entries()) expect(idx[i], `${t} missing`).toBeGreaterThan(-1)
+    for (let i = 1; i < idx.length; i++) expect(idx[i - 1]).toBeLessThan(idx[i])
   })
 
   it('readyLibraryRel looks the named offer up in the whole library, not just the voice-scoped row', () => {

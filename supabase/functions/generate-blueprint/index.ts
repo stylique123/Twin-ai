@@ -6531,6 +6531,12 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // apply — an id that is not theirs matches nothing and falls through to the
   // stopgap rather than reaching another creator's product. `selectProduct` in
   // packages/shared states this rule; a parity test pins the two together.
+  // ⚠️ THE LOOKUP BELOW MATCHES `voice_id` OR NULL, and the null is the fix.
+  // 0120 writes `voice_id = null` for every non-owned entity — measured
+  // 2026-09-22: 3 of the 4 AFFILIATE/SPONSOR rows in production — so an exact
+  // voice match could never find the affiliate product a creator picked,
+  // `chosenEntity` stayed null, and the relationship gate sent her to the
+  // Product Library to set what was already set. Owner scoping still holds.
   const requestedProductId = typeof body.selected_product_id === 'string'
     ? body.selected_product_id.trim() : ''
   // ⚠️ "NONE OF THESE" IS AN ANSWER, AND WITHOUT THIS LINE IT WAS WORSE THAN
@@ -6550,7 +6556,7 @@ function reserveAskedInline<T extends { source?: string | null }>(
       .from('product_entities')
       .select('id, name, creator_summary, offer, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
       .eq('owner_id', ownerId)
-      .eq('voice_id', voice?.id ?? null)
+      .or(`voice_id.eq.${voice?.id ?? '00000000-0000-0000-0000-000000000000'},voice_id.is.null`)
       .eq('id', requestedProductId)
       // ⚠️ THE CHOSEN LOOKUP ACCEPTS A PAID TIE; THE STOPGAP BELOW DOES NOT, AND
       // THE ASYMMETRY IS THE POLICY. A creator asking for a video about their
@@ -6569,7 +6575,7 @@ function reserveAskedInline<T extends { source?: string | null }>(
           .from('product_entities')
           .select('id, name, creator_summary, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
           .eq('owner_id', ownerId)
-          .eq('voice_id', voice?.id ?? null)
+          .or(`voice_id.eq.${voice?.id ?? '00000000-0000-0000-0000-000000000000'},voice_id.is.null`)
           .eq('id', requestedProductId)
           .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE', 'AFFILIATE', 'SPONSOR'])
           .is('archived_at', null)
@@ -6656,7 +6662,7 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // four would mean inventing the other two.
   const { data: libraryRows, error: libraryErr } = await admin
     .from('product_entities')
-    .select('id, name, type, relationship, knowledge')
+    .select('id, name, type, relationship, knowledge, voice_id')
     .eq('owner_id', ownerId)
     // Grounding must not resolve a claim against a product the creator retired.
     .is('archived_at', null)
@@ -7048,7 +7054,28 @@ function reserveAskedInline<T extends { source?: string | null }>(
     }) as { relationship?: string | null } | undefined
     return hit?.relationship ?? null
   })()
-  const readyRel = ownedEntity?.relationship ?? readyLibraryRel ?? brief.promotes ?? answers.relationship
+  // ⚠️⚠️ THE CLIENT LEARNED UNANIMITY AND THIS COPY NEVER DID. Reported
+  // 2026-09-22, from the screen, after it had been "fixed" once: a creator with
+  // two products, BOTH `OWN_PRODUCT`, picked Sell something and was asked "What
+  // is your relationship to it?" with one action — "Open Product Library to set
+  // it →" — a page where it is already set. Back, Create, same question, forever.
+  //
+  // `libraryRelationship` in V2Building resolves "every answered product says
+  // the same thing" (measured 2026-09-14: three accounts, all agreeing, all
+  // dead-ended). That fixed the CLIENT's readiness and not this one, so the
+  // card passed and the server refused with the same question. The server is
+  // the one that decides, so the server is where the rule has to live.
+  //
+  // ⚖️ SAME RULE, SAME LIMIT: unanimity is an answer, disagreement is not. When
+  // two products genuinely differ and none was picked, the null stands.
+  const readyUnanimousRel = (() => {
+    const answered = (libraryRows ?? [])
+      .map((r) => String((r as { relationship?: unknown }).relationship ?? ''))
+      .filter((x) => x !== '' && x !== 'NONE')
+    const distinct = new Set(answered)
+    return distinct.size === 1 ? answered[0] : null
+  })()
+  const readyRel = ownedEntity?.relationship ?? readyLibraryRel ?? readyUnanimousRel ?? brief.promotes ?? answers.relationship
   const readyEv = productEvidence as { sections?: Array<{ label?: string }> } | 'declined' | null | undefined
   const readyFacts = readyEv && typeof readyEv === 'object' && Array.isArray(readyEv.sections)
     ? readyEv.sections.map((x) => String(x?.label ?? '')).filter((x) => x.trim() !== '')
@@ -7102,8 +7129,39 @@ function reserveAskedInline<T extends { source?: string | null }>(
   if (!readyPresent(reference_note) && !readyPresent(brief.idea) && !readyPresent(reference_url)) {
     readyMissing.push({ field: 'angle', question: 'What is this video about?' })
   }
+  // ⚠️ NO PRODUCT CHOSEN IS NOT "RELATIONSHIP MISSING". When a selling video
+  // reaches here with a library of products and no `selected_product_id`, the
+  // relationship and the claims are unknowable because the SUBJECT is — and
+  // asking those two first sent her to a library where every product already
+  // had both. Ask the question that is actually open: which one. The card
+  // already renders this field as the product picker (`PRODUCT_CHOICE_FIELD`),
+  // with "None of these" as an honest way out. Absent from ORDER below, so it
+  // sorts first: nothing else on the card is answerable until it is.
+  const readyPickable = (libraryRows ?? []).filter((r) => {
+    const x = r as { id?: unknown; name?: unknown; relationship?: unknown; voice_id?: unknown }
+    const rel = String(x.relationship ?? '')
+    const v = x.voice_id as string | null | undefined
+    return String(x.name ?? '').trim() !== ''
+      && ['OWN_PRODUCT', 'OWN_SERVICE', 'AFFILIATE', 'SPONSOR'].includes(rel)
+      && (v == null || v === (voice?.id ?? null))
+  }) as Array<{ id: string; name: string }>
+  const readyNeedsPick = readyPromoting && !ownedEntity && !declinedAProduct
+    && requestedProductId === '' && readyPickable.length > 0
+  if (readyNeedsPick) {
+    readyMissing.push({
+      field: 'selected_product',
+      question: 'Which one is this video about?',
+      options: [
+        ...readyPickable.map((r) => ({ value: String(r.id), label: String(r.name).trim() })),
+        { value: NO_PRODUCT_CHOICE_INLINE, label: 'None of these' },
+      ],
+    } as { field: string; question: string })
+  }
+  // ⚖️ "NONE OF THESE" NEEDS NO RELATIONSHIP. She said this video is about none
+  // of her products, so there is no product to have a relationship with — and
+  // asking anyway was a question with no possible answer on this screen.
   if (readyPromoting && !READINESS_RELATIONSHIPS.includes(String(readyRel ?? '').toUpperCase())
-    && !readyPresent(readyRel)) {
+    && !readyPresent(readyRel) && !declinedAProduct && !readyNeedsPick) {
     readyMissing.push({ field: 'relationship', question: 'What is your relationship to it — do you own it, earn from it, are you paid to feature it, or are you just covering it?' })
   }
   // ⚠️ `brief.cta` IS NOT A STORED KEY AND NEVER WAS, so this fallback has always
@@ -7113,7 +7171,21 @@ function reserveAskedInline<T extends { source?: string | null }>(
   if (readyCommercial && !readyPresent(answers.cta ?? brief.defaultCta ?? brief.cta)) {
     readyMissing.push({ field: 'cta', question: 'What should viewers do after watching?' })
   }
-  if (readyPromoting && readyFacts.length === 0 && !readyPresent(answers.claims)) {
+  // ⚠️ THE PRODUCT ALREADY ANSWERED THIS, AND THE GATE COULD NOT SEE IT.
+  // `readyFacts` reads only photo-section LABELS, which the library writes
+  // empty — so a product carrying twelve extracted facts, a creator's own
+  // one-line description AND a typed price was still asked "What does the
+  // OFFER do?", the question those three things exist to answer. Reported
+  // 2026-09-22 from the screen: "the offer still comes up when I told you".
+  const readyEntityKnows = (() => {
+    const e = ownedEntity as { knowledge?: unknown; offer?: unknown; creator_summary?: unknown } | null
+    if (!e) return false
+    const usable = Array.isArray(e.knowledge)
+      && e.knowledge.some((f) => (f as { trust?: unknown })?.trust === 'usable')
+    return usable || readyPresent(e.offer) || readyPresent(e.creator_summary)
+  })()
+  if (readyPromoting && readyFacts.length === 0 && !readyPresent(answers.claims)
+    && !readyEntityKnows && !readyNeedsPick) {
     readyMissing.push({
       field: 'claims',
       question: READY_OBJECTIVE_QUESTIONS[readyObjective] ?? readyClaimsQuestion(readyOffer),
