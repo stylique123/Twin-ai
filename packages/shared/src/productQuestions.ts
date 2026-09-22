@@ -47,6 +47,13 @@ const KIND: Record<EntityType, ProductType | null> = {
   SERVICE: 'service',
   COMMUNITY: 'community',
   MARKETPLACE: null,
+  // ⚠️ NULL FOR THE REASON THE COMMENT ABOVE GIVES, and the capability question
+  // is supplied separately rather than by inventing a registry kind. There is no
+  // `business` in `ProductType`, and calling one a 'physical_product' so the
+  // hold-it-up question fires would ask a creator whether she can have her
+  // bakery with her while filming. See the `'place'` branch in
+  // `capabilityQuestion`, which asks the question that actually fits.
+  BUSINESS: null,
   OTHER: null,
 }
 
@@ -113,7 +120,20 @@ export const asksPhysicalAvailability = (c: ProductFormContext): boolean =>
 /** ⚖️ ONE CAPABILITY QUESTION AT MOST, AND NEVER BOTH. A thing is either an
  *  object in the room or a thing on a screen; asking both would reintroduce the
  *  universal form in a smaller costume. */
-export function capabilityQuestion(c: ProductFormContext): 'screen' | 'physical' | null {
+export function capabilityQuestion(c: ProductFormContext): CapabilityAsked | null {
+  // ⚠️ A BUSINESS IS FILMABLE AND NEITHER EXISTING QUESTION FITS IT. "Can you
+  // have it with you when you film?" is absurd about a shop, and "can you show
+  // it on a screen" is about software. Falling through to null would have left
+  // every business UNKNOWN forever — showable in principle, and never built
+  // into a scene, which is the "shipped and unreachable" shape this repo keeps
+  // finding. So the third question exists because a third case does.
+  //
+  // ⚖️ AND IT IS ASKED RATHER THAN ASSUMED, unlike COMMUNITY. A community is
+  // ALWAYS without asking because no answer could change the shot — the creator
+  // holds their own phone up. A business is not like that: plenty of creators
+  // genuinely cannot film where they work, and assuming otherwise would write a
+  // scene they discover is impossible with a phone in their hand.
+  if (c.type === 'BUSINESS') return 'place'
   if (asksPhysicalAvailability(c)) return 'physical'
   // ⚠️ THE SAME FACT WAS ASKABLE ON ONE SURFACE AND NOT THE OTHER, and that is
   // the "one question owns one fact" break rather than a missing question.
@@ -178,7 +198,17 @@ export function screenAnswerIsUsed(type: EntityType): boolean {
  *  ⚖️ THE STORED FIELD IS STILL `canRecordScreen` / `can_record_screen`. Renaming
  *  it means a migration over live rows for no behavioural gain. What had to be
  *  true is the sentence a creator reads, and that is what changed. */
-export const CAPABILITY_PROMPT: Record<'screen' | 'physical', string> = {
+/** The three shapes a capability question can take. One per kind of shot.
+ *
+ *  ⚖️ A LIST FIRST AND A TYPE FROM IT, like `ENTITY_TYPES`, so a test can
+ *  enumerate the members instead of restating them — which is how this union
+ *  came to be hand-copied into an assertion that then had to be found and
+ *  edited when `'place'` arrived. */
+export const CAPABILITY_ASKED = ['screen', 'physical', 'place'] as const
+export type CapabilityAsked = (typeof CAPABILITY_ASKED)[number]
+
+export const CAPABILITY_PROMPT: Record<CapabilityAsked, string> = {
+  place: 'Can you film where the work happens?',
   screen: 'Can you have it open on a screen while you film?',
   physical: 'Can you have it with you when you film?',
 }

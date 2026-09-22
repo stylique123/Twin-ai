@@ -34,7 +34,7 @@
 // byte for byte, because a paraphrase is how the two copies come to disagree.
 export type EntityType =
   | 'SAAS' | 'APP' | 'PHYSICAL_PRODUCT' | 'DIGITAL_PRODUCT'
-  | 'SERVICE' | 'COURSE' | 'COMMUNITY' | 'MARKETPLACE' | 'OTHER'
+  | 'SERVICE' | 'COURSE' | 'COMMUNITY' | 'MARKETPLACE' | 'BUSINESS' | 'OTHER'
 export type Showability = 'ALWAYS' | 'SOMETIMES' | 'NEVER' | 'UNKNOWN'
 
 /** What the creator is looking at, doing, and saying — all three, or it is not
@@ -262,6 +262,37 @@ const COMMUNITY_MOMENTS: readonly ShowMoment[] = Object.freeze([
   }),
 ])
 
+/** ⚠️ A BUSINESS IS FILMED AS A PLACE AND A PROCESS, which is neither of the
+ *  two shapes above. The object moments say "hold it up" and there is nothing
+ *  to hold; the screen moments say "open the main screen" and there is no app.
+ *  What a viewer wants from a business is the evidence it is real: where it
+ *  happens, the work in progress, and the person doing it.
+ *
+ *  ⚖️ AND NONE OF THESE ASK FOR A SECOND PIECE OF KIT OR A SECOND PERSON. Every
+ *  beat is filmable one-handed by the creator standing in their own workplace,
+ *  because a shot that needs a camera operator is a shot that does not get
+ *  filmed — the same rule the object moments already follow. */
+const BUSINESS_MOMENTS: readonly ShowMoment[] = Object.freeze([
+  Object.freeze({
+    onScreen: 'Where the work happens — the room, the bench, the counter, the corner of the kitchen.',
+    doThis: 'Stand where you actually work and let the place be behind you, or hold the phone out and turn once, slowly. Do not tidy it into somewhere else; the real one is the point.',
+    sayWhat: 'Say what this place is and how long it has been yours. A business becomes believable the moment a viewer can picture where it is.',
+    sceneType: 'product_demo',
+  }),
+  Object.freeze({
+    onScreen: 'The work itself, mid-action — the making, the packing, the setting up.',
+    doThis: 'Film a real step you were going to do anyway, hands in shot. Start after it has already begun; the first few seconds of any task are the least interesting part of it.',
+    sayWhat: 'Say what this step is for. Not that it is hard — what would go wrong if it were skipped.',
+    sceneType: 'product_demo',
+  }),
+  Object.freeze({
+    onScreen: 'The thing that leaves — the finished order, the box going out, the plate, the file sent.',
+    doThis: 'Hold up or point at one real finished piece of work. One, not a display of everything.',
+    sayWhat: 'Say who this one is going to and what they asked for. A single named customer says more about a business than any total.',
+    sceneType: 'product_demo',
+  }),
+])
+
 const SERVICE_MOMENTS: readonly ShowMoment[] = Object.freeze([
   Object.freeze({
     onScreen: 'You, talking.',
@@ -280,6 +311,13 @@ function backgroundFor(type: EntityType): string | null {
   }
   if (ON_A_SCREEN.includes(type)) {
     return 'Somewhere plain and evenly lit, with the light in front of you rather than behind. You are holding a screen up next to your face, and a bright window behind you turns both of you into a silhouette.'
+  }
+  // ⚖️ THE ONE BACKGROUND INSTRUCTION THAT IS NOT "FIND A PLAIN WALL". For every
+  // other type the room is a distraction to be minimised; for a business it is
+  // the subject. Telling a creator to hide their own workplace behind a plain
+  // wall would remove the only thing these moments are filming.
+  if (type === 'BUSINESS') {
+    return 'Your actual workplace, not a plain wall. The room is the evidence here, so leave it as it is — tidy enough to read, not staged into somewhere else.'
   }
   return null
 }
@@ -366,6 +404,10 @@ export function productSceneGuidance(
     APP: APP_MOMENTS,
     DIGITAL_PRODUCT: DIGITAL_PRODUCT_MOMENTS,
     COMMUNITY: COMMUNITY_MOMENTS,
+    // ⚠️ A BUSINESS IS FILMED AS A PLACE, so it gets neither the object set nor
+    // the screen set. Without this entry it would fall through to
+    // SCREEN_MOMENTS and a bakery would be told to open its dashboard.
+    BUSINESS: BUSINESS_MOMENTS,
   }
 
   const moments = HELD_IN_HAND.includes(type) ? OBJECT_MOMENTS

@@ -24,8 +24,18 @@ describe('the two surfaces cannot ask different capability questions', () => {
     // place it still exists. If a future change to `capabilityQuestion` makes
     // these diverge, that divergence is a DECISION, and this test is where it
     // has to be made deliberately instead of shipping as a surface mismatch.
+    // ⚠️ THE DIVERGENCE THIS FILE'S HEADER ASKED FOR, MADE DELIBERATELY.
+    // `BUSINESS` arrived 2026-09-22 and the retired rule is WRONG about it: its
+    // "anything that is not a physical product is a screen" would have asked a
+    // baker whether she can show her bakery on a screen. A business is filmed
+    // as a place, which is a third shot and a third question (`'place'`), so
+    // the authority and the old copy genuinely disagree here — and the
+    // authority is the one that is right. Recorded as one named exception
+    // rather than by deleting the comparison, so every OTHER type stays pinned.
     const cardLocal = (t: (typeof ENTITY_TYPES)[number]) =>
-      capabilityAnswerIsUsed(t) ? (t === 'PHYSICAL_PRODUCT' ? 'physical' : 'screen') : null
+      capabilityAnswerIsUsed(t)
+        ? (t === 'BUSINESS' ? 'place' : t === 'PHYSICAL_PRODUCT' ? 'physical' : 'screen')
+        : null
     const disagreements: string[] = []
     for (const type of ENTITY_TYPES) {
       for (const relationship of ENTITY_RELATIONSHIPS) {

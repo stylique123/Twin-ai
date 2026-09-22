@@ -37,6 +37,7 @@ const TYPE_LABEL: Record<EntityType, string> = {
   COURSE: 'A course',
   COMMUNITY: 'A community',
   MARKETPLACE: 'A marketplace',
+  BUSINESS: 'My whole business',
   OTHER: 'Something else',
 }
 // ⚖️ SAAS AND APP COLLAPSE TO ONE LABEL HERE ONLY. The entity schema keeps them

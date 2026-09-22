@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { capabilityQuestion, screenAnswerIsUsed, CAPABILITY_PROMPT } from '../productQuestions'
+import { capabilityQuestion, screenAnswerIsUsed, CAPABILITY_PROMPT, CAPABILITY_ASKED } from '../productQuestions'
 import { inferShowability, ENTITY_TYPES } from '../productEntity'
 import type { EntityType } from '../productEntity'
 
@@ -63,10 +63,17 @@ describe('one authority decides whether a screen answer is used', () => {
   })
 
   // ⚖️ ONE CAPABILITY QUESTION AT MOST, unchanged. The original rule.
+  //
+  // ⚠️ THE MEMBER LIST GREW AND THE RULE DID NOT. `'place'` joined the union
+  // when BUSINESS arrived — a business is filmable and neither existing
+  // question fits it — so this now reads the union rather than restating two of
+  // its members, and a fourth shape cannot slip past it either. What is being
+  // asserted is still "at most one question", which is what `ask` returning a
+  // single value already means.
   it('never asks both', () => {
     for (const t of ENTITY_TYPES) {
       const q = ask(t as EntityType)
-      expect(q === null || q === 'screen' || q === 'physical').toBe(true)
+      expect(q === null || (CAPABILITY_ASKED as readonly string[]).includes(q)).toBe(true)
     }
   })
 

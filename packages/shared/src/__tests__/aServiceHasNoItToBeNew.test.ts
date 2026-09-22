@@ -92,9 +92,24 @@ describe('the form is read off the entity, never guessed', () => {
     expect(offerFormOf('NOT_A_TYPE')).toBeNull()
   })
 
+  // ⚠️ TWO NAMED EXEMPTIONS, AND BOTH ARE THE SAME DECISION. `OTHER` exists so
+  // the enum never forces a misclassification. `BUSINESS`, added 2026-09-22, is
+  // not an offer form at all — it is the thing that HAS one, and which one
+  // depends on the business: a bakery's is an artefact, a consultancy's is
+  // performed. Coercing either would word the question wrongly for half the
+  // creators it reaches, which is what this file's subject already argues.
+  //
+  // ⚖️ EXEMPTED BY NAME RATHER THAN BY WEAKENING THE RULE, so a type added
+  // tomorrow with no mapping and no argument still fails here.
   it('covers every value of ENTITY_TYPES, so a new type cannot be silently unmapped', () => {
-    const unmapped = ENTITY_TYPES.filter((t) => t !== 'OTHER' && offerFormOf(t) === null)
+    const noFormByDesign = ['OTHER', 'BUSINESS']
+    const unmapped = ENTITY_TYPES
+      .filter((t) => !noFormByDesign.includes(t) && offerFormOf(t) === null)
     expect(unmapped).toEqual([])
+  })
+
+  it('gives BUSINESS the default wording rather than guessing its offer form', () => {
+    expect(offerFormOf('BUSINESS')).toBeNull()
   })
 
   it('reads the type case- and space-insensitively, since it comes from a row', () => {

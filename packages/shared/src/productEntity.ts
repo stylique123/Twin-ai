@@ -58,7 +58,23 @@ import type { OwnProductKind, OwnServiceKind } from './creatorProfileQuestions'
 // may ask for, so a WRONG kind is worse than an unspecific one.
 export const ENTITY_TYPES = [
   'SAAS', 'APP', 'PHYSICAL_PRODUCT', 'DIGITAL_PRODUCT',
-  'SERVICE', 'COURSE', 'COMMUNITY', 'MARKETPLACE', 'OTHER',
+  'SERVICE', 'COURSE', 'COMMUNITY', 'MARKETPLACE',
+  // ⚠️ THE THING THE PRODUCTS BELONG TO, WHICH HAD NO WAY IN. Reported
+  // 2026-09-22: "a whole business, not just individual products, as an addable
+  // entity." Every type above is something a business SELLS; a creator whose
+  // videos are about the bakery rather than about one loaf had to either pick
+  // the nearest product type — making scripts talk about a loaf when the story
+  // is the shop — or pick OTHER, which exists to avoid misclassification and
+  // yields the generic dashboard walkthrough. Both are wrong in the same way:
+  // the subject of the video was not in the vocabulary.
+  //
+  // ⚖️ A TYPE, NOT A PARENT. A business that OWNS its products is a hierarchy —
+  // a column, a query, and a decision about which one a script is about — and
+  // nobody has asked for that. This is the smaller true thing: a business is a
+  // subject a creator can declare, read a page for, and have scripts talk
+  // about. If products ever need to hang off one, that is a second change with
+  // its own reasons, and this does not prejudge it.
+  'BUSINESS', 'OTHER',
 ] as const
 export type EntityType = (typeof ENTITY_TYPES)[number]
 
@@ -194,7 +210,15 @@ export function inferShowability(
   // everything else that can be shown at all is shown through a screen. OTHER
   // takes the screen branch because it is the weaker permission of the two —
   // recording a screen is the capability more creators have.
-  const flag = type === 'PHYSICAL_PRODUCT' ? flags.canFilmObjects : flags.canRecordScreen
+  // ⚠️ A BUSINESS TAKES THE OBJECT FLAG, NOT THE SCREEN ONE, and the axis is
+  // where the camera points rather than whether the thing is tangible. What a
+  // creator films of their business is the place and the work — the counter,
+  // the bench, the packing, their own hands — which is the same permission as
+  // holding a product up, not the permission to show a screen. Routing it to
+  // `canRecordScreen` would have asked a baker whether she can screen-record
+  // her bakery.
+  const filmedInTheRoom = type === 'PHYSICAL_PRODUCT' || type === 'BUSINESS'
+  const flag = filmedInTheRoom ? flags.canFilmObjects : flags.canRecordScreen
   if (flag === true) return 'ALWAYS'
   if (flag === false) return 'NEVER'
   // Unanswered. Not a denial, and not a permission.

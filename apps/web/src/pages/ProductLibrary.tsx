@@ -48,6 +48,7 @@ import {
   signEditUrls,
   bestSuggestion,
   asksPersonalUse, ownsIt, capabilityQuestion, CAPABILITY_PROMPT,
+  type CapabilityAsked,
   capabilityFlag,
   productLifecycle, LIFECYCLE_MESSAGE,
   CAPTURE_COPY, PLATFORM_CHOICES, PRIVACY_CHOICES, RATHER_NOT_SAY, FIGURE_HINT,
@@ -102,6 +103,12 @@ const TYPE_CHOICES: Array<{ value: EntityType; label: string }> = [
   { value: 'COURSE', label: 'A course' },
   { value: 'COMMUNITY', label: 'A community or membership' },
   { value: 'MARKETPLACE', label: 'A marketplace or store' },
+  // ⚠️ THE THING THE OTHERS BELONG TO. Reported 2026-09-22: a creator wanted to
+  // add her business, not one of its products, and every option above is
+  // something a business SELLS. Her choices were to misdescribe a loaf as the
+  // subject or pick "Something else", which exists to avoid a wrong guess and
+  // yields the generic walkthrough. Neither is what her videos are about.
+  { value: 'BUSINESS', label: 'My whole business, not one product' },
   { value: 'SAAS', label: 'Software' },
   { value: 'APP', label: 'A mobile app' },
   { value: 'OTHER', label: 'Something else' },
@@ -174,7 +181,7 @@ function cardTitle(e: ProductEntityRecord): string {
  *  ⚖️ IT ALSO SUBSUMES THE OLD `capabilityAnswerIsUsed` GATE: `capabilityQuestion`
  *  returns null exactly where the answer would be discarded, so "should we ask"
  *  and "which question" stop being two decisions that can disagree. */
-function capabilityQuestionFor(e: ProductEntityRecord): 'screen' | 'physical' | null {
+function capabilityQuestionFor(e: ProductEntityRecord): CapabilityAsked | null {
   return capabilityQuestion({ type: e.type as EntityType, relationship: e.relationship })
 }
 
@@ -350,7 +357,12 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
             // creator picks to say "I do not know yet" into a stored denial,
             // silently forbidding every scene that shows the thing. The null
             // check has to precede the coercion, here as everywhere.
-            flags: capability === 'physical' ? { canFilmObjects: capabilityFlag(showability) }
+            // ⚠️ `place` SENDS THE OBJECT FLAG, because `inferShowability`
+            // reads a BUSINESS through `canFilmObjects` — what is filmed is
+            // the room, which is the same permission as holding a thing up.
+            // A third flag would be a second authority on one fact.
+            flags: capability === 'physical' || capability === 'place'
+              ? { canFilmObjects: capabilityFlag(showability) }
               : capability === 'screen' ? { canRecordScreen: capabilityFlag(showability) }
                 : undefined,
           })}
@@ -2586,7 +2598,12 @@ function StartFromLink({ onCancel, onClaim, busy }: {
             // creator picks to say "I do not know yet" into a stored denial,
             // silently forbidding every scene that shows the thing. The null
             // check has to precede the coercion, here as everywhere.
-            flags: capability === 'physical' ? { canFilmObjects: capabilityFlag(showability) }
+            // ⚠️ `place` SENDS THE OBJECT FLAG, because `inferShowability`
+            // reads a BUSINESS through `canFilmObjects` — what is filmed is
+            // the room, which is the same permission as holding a thing up.
+            // A third flag would be a second authority on one fact.
+            flags: capability === 'physical' || capability === 'place'
+              ? { canFilmObjects: capabilityFlag(showability) }
               : capability === 'screen' ? { canRecordScreen: capabilityFlag(showability) }
                 : undefined,
           })}

@@ -86,7 +86,14 @@ export function offerFormOf(type: string | null | undefined): OfferForm | null {
     case 'COURSE':
     case 'MARKETPLACE':
       return 'artefact'
-    // 'OTHER', unknown, or absent: the default wording, never a guess.
+    // ⚠️ `BUSINESS` FALLS THROUGH DELIBERATELY, FOR `OTHER`'S REASON. A
+    // business is not an offer form at all — it is the thing that HAS one, and
+    // which one depends on the business: a bakery's is an artefact, a
+    // consultancy's is performed, and a shop that also teaches is both. Picking
+    // either would word the question wrongly for half of them, and this file's
+    // own rule is that a wrong kind is worse than an unspecific one.
+    //
+    // 'OTHER', 'BUSINESS', unknown, or absent: the default wording, never a guess.
     default:
       return null
   }
