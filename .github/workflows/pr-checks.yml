@@ -733,6 +733,15 @@ jobs:
         run: |
           node scripts/ci/check_column_readers.mjs --selftest
           node scripts/ci/check_column_readers.mjs
+      # ⚠️ AND THE MIRROR OF IT: A VALUE NOBODY MAY WRITE. Found on production
+      # 2026-09-22, after the merge. #967 added BUSINESS to ENTITY_TYPES and not
+      # to product_entities_type_known, so the picker offered "My whole
+      # business", the row was built, and the CHECK would have refused it --
+      # merged, deployed, dead on first use. Every test passed: they all mock
+      # supabase, so the one authority that would have refused was the one
+      # authority never consulted.
+      - name: Enum/constraint parity (a type the database has never heard of)
+        run: node scripts/ci/check_enum_constraint_parity.mjs
       # ⚠️ AND SYMBOLS, WHICH IS WHERE THIS DEFECT ACTUALLY COST MONEY. Two rules
       # found by hand on 2026-09-05 had zero production callers: isBillableScript,
       # which decides whether a script that asks the creator to fill its own
