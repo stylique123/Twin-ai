@@ -104,8 +104,12 @@ describe('Instagram is recorded as broken on a date, not as never working', () =
   })
 
   it('the creator-facing sentence still promises nothing it cannot keep', () => {
+    // ⚠️⚠️ IT NO LONGER NAMES INSTAGRAM, because naming it was the false part.
+    // Measured 2026-09-22: 22 of 51 real `/p/` posts read clean. The sentence
+    // survives for a platform that genuinely dies later; the wording rules it
+    // had to satisfy are unchanged and still asserted.
     const msg = REFERENCE_UNREAD_TEXT.platform_unreadable
-    expect(msg).toMatch(/cannot read Instagram videos yet/)
+    expect(msg).not.toMatch(/cannot read Instagram/)
     expect(msg).toMatch(/limit on our side/)
     expect(msg).not.toMatch(/try again/i)
   })

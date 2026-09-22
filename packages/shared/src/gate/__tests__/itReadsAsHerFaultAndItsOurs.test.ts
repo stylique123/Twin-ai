@@ -1,21 +1,34 @@
 // "WE COULD NOT READ ANY OF THE 6 VIDEOS WE LOOKED AT" — WHEN WE NEVER READ ONE.
 //
-// ⚠️ MEASURED ON PRODUCTION 2026-09-12: 60 Instagram profile fetches, 0 ok, 60
-// errored, 0 transcripts. Every one carried the IDENTICAL message
-// `no audio url found` — the Apify actor's own `errMsg`. Sixty different videos
-// do not independently lose their audio on the same day; a 100% rate behind a
-// single string is a contract that moved. Instagram references have NEVER
-// reached a transcript.
+// ⚠️ THE ORIGINAL DEFECT, AND IT WAS REAL: a sentence implying six of HER videos
+// were looked at and judged, when our side had read none. The fix was a
+// confession with an expiry — `UNREADABLE_PLATFORMS` — and the rule that a
+// platform earns its entry only by never having worked.
 //
-// ⚠️ SO THE SENTENCE WAS FALSE IN THE DIRECTION THAT COSTS THE MOST. It implies
-// six specific videos of hers were looked at and judged not clear enough. The
-// truth is our side never read one. That is the sharpest version of a defect
-// this file already fixed once, when the wording told creators to post
-// differently to fix a detector failing on 10 of 10 accounts.
+// ⚠️⚠️ AND THE CONFESSION OUTLIVED ITS EVIDENCE, WHICH COST MORE THAN THE
+// SENTENCE EVER DID. Instagram was listed on a 2026-09-12 reading of "60 of 60
+// failed, every one `no audio url found` — a contract that moved". Re-measured
+// 2026-09-22, split by what the url actually points at:
 //
-// ⚖️ AND THE FIX IS A CONFESSION WITH AN EXPIRY. `UNREADABLE_PLATFORMS` is meant
-// to shrink: the moment the actor works, delete the entry and the honest
-// sentence disappears with it.
+//   url shape      attempts   clean   "no audio url"   "no speech"
+//   hashtag page       109        0            109              0
+//   /p/ post            51       22             13             15
+//   /reel/               0        0              0              0
+//
+// The 109 are `explore/tags/` BROWSE PAGES. There is no video on one, so the
+// Actor's "no audio url found" is correct every time — and we read a correct
+// answer about hashtag pages as a verdict on the whole platform. Real posts
+// transcribe 22 times out of 51, today included. Not one `/reel/` has ever been
+// submitted, so "reels cannot be read" was never measured at all.
+//
+// ⚖️ THE ENTRY DID NOT JUST MISSPEAK, IT CLOSED THE DOOR. `V2Building` reads
+// this list and HALTS BEFORE ANY ATTEMPT, so every Instagram reference was
+// refused unread. Instagram was not failing; it was never being tried.
+//
+// ⚖️ SO THE LIST IS EMPTY, AND THESE TESTS NOW GUARD THE MECHANISM RATHER THAN
+// ITS ONE OCCUPANT. Every quality rule the confession had to satisfy is
+// iterated over whatever is listed — vacuous while nothing is, and live again
+// the moment a platform genuinely dies.
 import { describe, it, expect } from 'vitest'
 import {
   messageForOwnAccount, platformIsUnreadable, UNREADABLE_PLATFORMS,
@@ -24,41 +37,63 @@ import { ownSampleCounts } from '../ownSampleRow'
 
 const zero = { usable: 0, checked: 6, complete: true }
 
-describe('a platform we cannot read is not a verdict on her videos', () => {
-  it('names the limit and whose it is', () => {
+describe('instagram is not on the list, because it works', () => {
+  it('no longer claims Twin cannot read Instagram', () => {
+    // ⚠️ THE SENTENCE A CREATOR ACTUALLY SAW, NOW FALSE AND GONE.
     const m = messageForOwnAccount({ ...zero, platform: 'instagram' })
-    expect(m.kind).toBe('none')
-    expect(m.headline).toBe('Twin cannot read Instagram videos yet')
-    expect(m.detail).toContain('limit on our side')
+    expect(m.headline).not.toMatch(/cannot read Instagram/i)
+    expect(platformIsUnreadable('instagram')).toBe(false)
+    expect(platformIsUnreadable('Instagram')).toBe(false)
   })
 
-  it('never reports our outage as her sample', () => {
+  it('gives her the real measurement instead of a blanket apology', () => {
+    // ⚖️ A ZERO ON A PLATFORM WE CAN READ IS A MEASUREMENT, and she is owed it.
     const m = messageForOwnAccount({ ...zero, platform: 'instagram' })
-    // ⚠️ THE EXACT CLAIM THAT WAS WRONG: a count of HER videos, judged.
-    expect(m.headline).not.toMatch(/we looked at/i)
-    expect(m.headline).not.toMatch(/\b6\b/)
+    expect(m.headline).toMatch(/we looked at/i)
+    expect(m.headline).toContain('6')
+  })
+
+  it('the list is empty, and the mechanism survives it', () => {
+    expect([...UNREADABLE_PLATFORMS]).toEqual([])
+    expect(platformIsUnreadable('tiktok')).toBe(false)
+    expect(platformIsUnreadable('youtube')).toBe(false)
+  })
+})
+
+describe('whatever IS confessed to must still be confessed to honestly', () => {
+  // ⚠️ THESE ARE VACUOUS TODAY AND THAT IS DELIBERATE. They iterate the list, so
+  // adding a platform tomorrow re-arms every rule the confession was held to,
+  // rather than shipping a fresh excuse with no guard on its wording.
+  it('names the limit as ours, and never her sample', () => {
+    for (const p of UNREADABLE_PLATFORMS) {
+      const m = messageForOwnAccount({ ...zero, platform: p })
+      expect(m.kind, p).toBe('none')
+      expect(m.detail, p).toContain('limit on our side')
+      // The exact claim that was wrong: a count of HER videos, judged.
+      expect(m.headline, p).not.toMatch(/we looked at/i)
+      expect(m.headline, p).not.toMatch(/\b6\b/)
+    }
   })
 
   it('gives her nothing to do, because there is nothing she can do', () => {
-    // ⚖️ AN INSTRUCTION BUILT ON OUR FAILURE IS WORSE THAN A REFUSAL — the file's
-    // own note, learned the expensive way. No "post more", no "try again".
-    const m = messageForOwnAccount({ ...zero, platform: 'instagram' })
-    expect(`${m.headline} ${m.detail}`).not.toMatch(/post |scan again|try again|upload/i)
+    // ⚖️ AN INSTRUCTION BUILT ON OUR FAILURE IS WORSE THAN A REFUSAL.
+    for (const p of UNREADABLE_PLATFORMS) {
+      const m = messageForOwnAccount({ ...zero, platform: p })
+      expect(`${m.headline} ${m.detail}`, p).not.toMatch(/post |scan again|try again|upload/i)
+    }
   })
 
-  it('claims nothing about what Twin learned instead', () => {
-    // ⚠️ THIS FUNCTION CANNOT SEE HER KNOWLEDGE STORE. A comforting "your
-    // captions are what it learned from" would be a SECOND false statement on
-    // the same card for a creator who has none.
-    const m = messageForOwnAccount({ ...zero, platform: 'instagram' })
-    expect(`${m.headline} ${m.detail}`).not.toMatch(/caption/i)
+  it('only speaks at zero — anything readable gets the real number', () => {
+    for (const p of UNREADABLE_PLATFORMS) {
+      const m = messageForOwnAccount({ usable: 1, checked: 6, complete: true, platform: p })
+      expect(m.headline, p).toMatch(/we could only read 1/i)
+    }
   })
 })
 
 describe('the excuse is narrow, which is what keeps it honest', () => {
-  // ⚠️ THE NEGATIVE CONTROL THE CONFESSION MAKES NECESSARY. If an unreadable
-  // platform silenced every zero, Twin would blame itself for real detector
-  // failures on platforms it CAN read — and the true sentence would vanish.
+  // ⚠️ THE NEGATIVE CONTROL. If an unreadable platform silenced every zero, Twin
+  // would blame itself for real detector failures on platforms it CAN read.
   it('a readable platform still gets the measurement', () => {
     const m = messageForOwnAccount({ ...zero, platform: 'youtube' })
     expect(m.headline).toMatch(/we looked at/i)
@@ -73,26 +108,12 @@ describe('the excuse is narrow, which is what keeps it honest', () => {
     }
   })
 
-  // ⚠️ TIKTOK IS DELIBERATELY NOT LISTED. It fails OFTEN (119 of 154 invisible
-  // failures) but not ALWAYS — 807 assess jobs finished clean overall. "Often"
-  // is a different sentence from "never", and listing it would excuse Twin from
-  // a limit it does not have.
-  it('only names platforms that have never worked', () => {
-    expect([...UNREADABLE_PLATFORMS]).toEqual(['instagram'])
-    expect(platformIsUnreadable('tiktok')).toBe(false)
-    expect(platformIsUnreadable('youtube')).toBe(false)
-  })
-
-  it('matches case-insensitively, because a stored platform is not normalised everywhere', () => {
-    expect(platformIsUnreadable('Instagram')).toBe(true)
-    expect(platformIsUnreadable('  INSTAGRAM ')).toBe(true)
-  })
-
-  // ⚖️ AND IT ONLY SPEAKS AT ZERO. A creator whose Instagram somehow yielded a
-  // usable video must hear the real number, not a blanket apology.
-  it('says nothing special once anything was readable', () => {
-    const m = messageForOwnAccount({ usable: 1, checked: 6, complete: true, platform: 'instagram' })
-    expect(m.headline).toMatch(/we could only read 1/i)
+  it('still normalises case, so a listed platform cannot be missed by spelling', () => {
+    // ⚖️ THE COMPARISON STAYS CASE- AND SPACE-INSENSITIVE even with nothing
+    // listed: a stored platform is not normalised everywhere, and the bug that
+    // would hide a real confession is spelling, not logic.
+    expect(platformIsUnreadable('  TIKTOK ')).toBe(false)
+    expect(platformIsUnreadable('YouTube')).toBe(false)
   })
 })
 

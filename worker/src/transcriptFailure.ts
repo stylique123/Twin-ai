@@ -25,6 +25,9 @@ export type TranscriptFailure =
   | 'bot_check'      // the platform demanded proof we are not a robot.
   | 'unavailable'    // private, removed, region-locked. A fact about the post.
   | 'no_speech'      // read fine, nothing said. Not an error anywhere.
+  | 'actor_contract' // the Actor ran and answered in a shape we no longer read.
+                     //       OURS, TOTAL, and — unlike `no_speech` — a reason to
+                     //       try the next rung rather than believe the answer.
   | 'not_configured' // no token set at all.
   | 'unknown'
 
@@ -67,9 +70,27 @@ export function classifyTranscriptFailure(err: unknown): TranscriptFailure {
   // produced (§U). It is also the cheapest possible bug: the run cost nothing,
   // nothing was broken, and the only damage would have been an operator's hour.
   if (/private|removed|region|unavailable|deleted|deactivat|does not exist|no longer (available|exists)|couldn't read that/.test(m)) return 'unavailable'
-  // ⚠️ `no audio url found` IS A FACT ABOUT ONE REEL, NOT A FAULT. Fifth gap,
-  // measured on the post-rotation recovery run where 18 of 20 videos stored.
-  if (/no speech|has no speech|no captions|no_captions|no audio url/.test(m)) return 'no_speech'
+  // ⚠️⚠️ THIS LINE USED TO SAY `no audio url found` WAS "A FACT ABOUT ONE REEL,
+  // NOT A FAULT", AND POOLED IT INTO `no_speech`. THAT WAS WRONG, AND IT COST
+  // INSTAGRAM ENTIRELY. `no_speech` is one of the two classes `transcribeFromUrl`
+  // treats as SETTLED — it rethrows instead of trying the local rung — so every
+  // Instagram reel ended at the vendor and the yt-dlp fallback built for exactly
+  // this outage has never once run.
+  //
+  // ⚖️ THE MEASUREMENT WAS ALREADY IN THIS REPOSITORY, IN A DIFFERENT FILE.
+  // `classifyReferenceFailure` calls the same string `actor_contract` and says
+  // why: on 2026-09-12 it came back for 60 of 60 Instagram profile fetches — 0
+  // ok, 0 transcripts — every one carrying that identical message. A 100% rate
+  // behind a single string is a CONTRACT signature, not a property of sixty
+  // different videos. Two classifiers disagreed about one string and the one
+  // that gates the fallback had it backwards.
+  //
+  // ⚠️ SO IT IS ITS OWN CLASS, AND IT IS TESTED FIRST. Ordering is load-bearing:
+  // `no audio url` must never reach the `no_speech` rule below, and the genuine
+  // no-speech strings must never reach this one.
+  if (/no audio url/.test(m)) return 'actor_contract'
+  // A reel that really was read and really said nothing. Still not an error.
+  if (/no speech|has no speech|no captions|no_captions/.test(m)) return 'no_speech'
   // ⚠️ AN ACTOR THAT STARTS AND DIES IS OURS AND IT IS TRANSIENT. Same run:
   // `YouTube transcript service error 400: {"type":"run-failed","message":
   // "Actor run did not s…` on ONE video of five while the other four stored.
@@ -107,7 +128,35 @@ const RETRY_WORTH: ReadonlySet<TranscriptFailure> = new Set<TranscriptFailure>([
   'rate_limited', // back off and go again — that is what the class means
   'transient',    // 5xx, timeout, socket
   'unknown',      // we could not tell, and the downside is asymmetric
+  // ⚠️ `actor_contract` IS DELIBERATELY ABSENT. The Actor answered; it answered
+  // in a shape we no longer read. Asking it again gets the same shape back.
+  // What fixes it is the NEXT RUNG, which `SETTLED_AT_VENDOR` below lets run.
 ])
+
+/**
+ * THE CLASSES THAT END THE ATTEMPT AT THE VENDOR, WITH NO LOCAL FALLBACK.
+ *
+ * ⚠️⚠️ THIS WAS TWO IDENTICAL INLINE CONDITIONS IN `media.ts`, ONE PER PLATFORM,
+ * AND THAT IS HOW THE BUG SURVIVED. Both read
+ * `kind === 'unavailable' || kind === 'no_speech'`, so a string misclassified as
+ * `no_speech` silently disabled the fallback on BOTH paths at once, and no
+ * single place stated the rule to argue with.
+ *
+ * ⚖️ THE TEST IS "HAS THE QUESTION BEEN ANSWERED", NOT "DID IT FAIL". A private
+ * reel and a silent one are settled facts — a second, slower attempt asks a
+ * question that already has an answer and spends a download doing it. Everything
+ * else, `actor_contract` firmly included, is a statement about OUR side of the
+ * call, and our side is exactly what the next rung replaces.
+ */
+export const SETTLED_AT_VENDOR: ReadonlySet<TranscriptFailure> = new Set<TranscriptFailure>([
+  'unavailable', // private, removed, region-locked. A fact about the post.
+  'no_speech',   // read fine, nothing said. Asking again cannot change it.
+])
+
+/** Whether a vendor failure settles the question, or the local rung should run. */
+export function settledAtVendor(err: unknown): boolean {
+  return SETTLED_AT_VENDOR.has(classifyTranscriptFailure(err))
+}
 
 /**
  * Whether a scan failure is worth spending another attempt on.

@@ -15,7 +15,12 @@ describe('the platforms we have never read do not get a remix button', () => {
   it('every unreadable platform is refused', () => {
     // Driven off the list itself, so a platform added to it is covered here
     // without anybody remembering to add a case.
-    expect(UNREADABLE_PLATFORMS.length).toBeGreaterThan(0)
+    //
+    // ⚠️⚠️ THE LIST IS EMPTY TODAY, WHICH MAKES THIS VACUOUS ON PURPOSE. It used
+    // to hold Instagram on a misread: 109 of 160 attempts were `explore/tags/`
+    // BROWSE PAGES, where "no audio url found" is the correct answer and not a
+    // verdict on the platform. Real posts read 22 of 51. Asserting the list is
+    // non-empty would now demand a confession we no longer have evidence for.
     for (const p of UNREADABLE_PLATFORMS) {
       expect(remixOffer(p).kind).toBe('refused')
       expect(mayPromiseRemix(p)).toBe(false)
@@ -42,18 +47,29 @@ describe('the platforms we have never read do not get a remix button', () => {
 describe('one limit, one sentence', () => {
   it('the refusal reuses the studio\'s wording exactly', () => {
     // Two surfaces explaining one limit in two wordings is how a creator
-    // concludes they hit two different problems.
-    const r = remixOffer('instagram')
-    expect(r.kind === 'refused' && r.because).toBe(REFERENCE_UNREAD_TEXT.platform_unreadable)
+    // concludes they hit two different problems. Driven off the list, so it
+    // holds for whatever is confessed to rather than for one hard-coded name.
+    for (const p of UNREADABLE_PLATFORMS) {
+      const r = remixOffer(p)
+      expect(r.kind === 'refused' && r.because, p).toBe(REFERENCE_UNREAD_TEXT.platform_unreadable)
+    }
   })
 
   it('it says whose limit it is, and never blames the creator', () => {
-    const r = remixOffer('instagram')
-    const text = r.kind === 'refused' ? r.because : ''
+    // ⚖️ ASSERTED ON THE SENTENCE ITSELF, which exists whether or not anything
+    // is currently listed — the wording is the thing that must stay honest.
+    const text = REFERENCE_UNREAD_TEXT.platform_unreadable
     expect(text).toMatch(/our side/i)
     expect(text).not.toMatch(/\byour (account|video|fault)\b/i)
     // And it names a way forward rather than ending on the refusal.
     expect(text).toMatch(/TikTok|YouTube/)
+  })
+
+  it('instagram gets the button back, because instagram reads', () => {
+    // ⚠️ THE OUTCOME THAT MATTERS TO A CREATOR: an Instagram gallery card was
+    // refused a remix on evidence that turned out to be about hashtag pages.
+    expect(remixOffer('instagram').kind).toBe('offer')
+    expect(mayPromiseRemix('Instagram')).toBe(true)
   })
 })
 

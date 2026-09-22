@@ -41,7 +41,7 @@ import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../l
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE, isReadCapacityExhausted } from '../../lib/api'
 import { READINESS_INCOMPLETE_CODE, SELL_WITHOUT_TARGET_CODE, OUT_OF_REMIXES_CODE } from '../../lib/api'
 import type { ReadinessQuestion } from '../../lib/api'
-import { isSupportedReference, platformFromUrl, platformIsUnreadable } from '@twinai/shared'
+import { isSupportedReference, platformFromUrl, platformIsUnreadable, isSingleVideoUrl } from '@twinai/shared'
 import { useAuth } from '../../context/AuthContext'
 import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
@@ -1200,6 +1200,21 @@ export default function V2Building() {
         // here and on the account card together.
         if (refUrl && platformIsUnreadable(platformFromUrl(refUrl))) {
           halt('platform_unreadable'); return
+        }
+
+        // ⚠️⚠️ THE CHECK THAT SHOULD HAVE BEEN HERE INSTEAD OF A PLATFORM BAN.
+        // 109 of 160 Instagram reference attempts were `explore/tags/` browse
+        // pages: no video on them, so the Actor's "no audio url found" was
+        // right every time. Blocking the PLATFORM on that evidence refused 51
+        // real posts — 22 of which read fine — to avoid 109 links that were
+        // never videos.
+        //
+        // ⚖️ AND IT STILL STOPS BEFORE THE WAIT, which is the rule the halt
+        // above exists for: knowing the answer and making her wait for it
+        // anyway is the part that cannot be defended. The difference is that
+        // this one tells her something she can act on.
+        if (refUrl && !isSingleVideoUrl(refUrl)) {
+          halt('not_a_single_video'); return
         }
 
         // A read this key already completed. Skipping it skips only the WAIT —

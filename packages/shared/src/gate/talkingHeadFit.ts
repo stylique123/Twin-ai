@@ -321,7 +321,27 @@ export interface AccountCounts {
  *  154 invisible failures) but not ALWAYS, and 807 assess jobs finished clean
  *  overall. "Often" is a different sentence from "never", and putting it here
  *  would excuse Twin from a limit it does not actually have. */
-export const UNREADABLE_PLATFORMS: readonly string[] = Object.freeze(['instagram'])
+// ⚠️⚠️ EMPTIED 2026-09-22, WHICH IS WHAT THIS LIST'S OWN COMMENT ASKED FOR:
+// "a confession, not a policy... the moment the actor works, delete the entry
+// and the honest sentence disappears with it."
+//
+// ⚖️ THE CONDITION IT SET HAS BEEN MET MANY TIMES OVER. It said "WHAT WOULD
+// CHANGE THIS: one real /p/ or /reel/ url assessed." Production now holds 22
+// clean Instagram transcripts from 51 real `/p/` posts, still arriving today.
+// The 109 failures that justified the entry are ALL `explore/tags/` browse
+// pages — no video on them, so the Actor's "no audio url found" was correct
+// every time, and we read a correct answer about hashtag pages as a verdict on
+// the platform.
+//
+// ⚠️ SO THE SENTENCE IT PRODUCED WAS FALSE, AND IT WAS THE ONLY THING A
+// CREATOR SAW. "Twin cannot read Instagram videos yet" halted the build BEFORE
+// ANY ATTEMPT — `V2Building` checked this list and returned. Instagram was not
+// failing; it was never being tried.
+//
+// ⚖️ THE MECHANISM STAYS, EMPTY. A platform that genuinely dies tomorrow gets
+// its honest sentence back by adding one string, and a list that is meant to
+// shrink should be allowed to reach zero rather than be deleted for it.
+export const UNREADABLE_PLATFORMS: readonly string[] = Object.freeze([])
 
 /** Whether Twin can read this platform's videos at all. */
 export function platformIsUnreadable(platform: string | null | undefined): boolean {
