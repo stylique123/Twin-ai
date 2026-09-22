@@ -39,7 +39,10 @@ describe('the offer has a place to be typed', () => {
   })
 
   it('saves it, and saves a blank as null rather than an empty answer', () => {
-    expect(PAGE).toMatch(/save\(e\.id, \{ offer: v \|\| null \}\)/)
+    // Re-anchored 2026-09-22: the offer is now edited as option/price rows
+    // (OfferEditor); `serializeOffer` returns null when every row is blank.
+    expect(PAGE).toMatch(/save\(e\.id, \{ offer: v \}\)/)
+    expect(readFileSync(new URL('../lib/offerRows.ts', import.meta.url), 'utf8')).toMatch(/return lines\.length \? lines\.join\('\\n'\) : null/)
   })
 })
 
