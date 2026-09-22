@@ -6,6 +6,7 @@ import {
 } from './editor/capabilities'
 import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
 import { sanitizeBriefForWrite, readStoredBrief, type BriefAnswers } from './preScriptBrief'
+import type { ProductEvidence } from './productEvidence'
 import type { HookChoice } from './hookChoice'
 import {
   SCRIPT_INTENTS, NO_RECORD_REASONS,
@@ -1972,7 +1973,17 @@ export async function requestProductExtraction(
   if (clean === '' && imagePaths.length === 0) {
     throw new Error('Add a link or at least one photo so Twin has something to read.')
   }
-  if (clean !== '' && !/^https:\/\//i.test(clean)) throw new Error('Please paste a full https:// link.')
+  // ⚠️⚠️ THE SENTENCE THAT WAS A DEAD END. It said only "Please paste a full
+  // https:// link", and a creator who typed `www.thedogdaysco.com` — which is
+  // what a person types — had no way to know what was wrong with it. The
+  // reporter got past it by already knowing the fix.
+  //
+  // ⚖️ THE CALLERS NOW NORMALISE (`normalizeLink`), so reaching this at all
+  // means the string is not a link in any form. It therefore shows what a
+  // working one looks like rather than restating the rule it just failed.
+  if (clean !== '' && !/^https:\/\//i.test(clean)) {
+    throw new Error('That does not look like a web address. Paste the page link — for example twinai.com/shop or https://twinai.com/shop.')
+  }
   // ⚠️⚠️ THIS USED TO `supabase.from('jobs').insert(...)` FROM THE BROWSER, AND
   // RLS HAD BEEN REFUSING IT SINCE MIGRATION 0030 — four weeks in which every
   // "Read the page" tap enqueued nothing and 12 production products accumulated
@@ -2438,6 +2449,25 @@ export async function deleteProductEntity(id: string): Promise<void> {
  *  is decidable. Ownership changes go through an attestation flow that records
  *  what the creator claimed and when, never through here. */
 export interface EntityPresentationEdit {
+  /**
+   * ⚠️⚠️ THE CREATOR'S OWN PHOTOS, WHICH NOTHING PERSISTED. Reported 2026-09-22:
+   * "uploaded photo doesn't persist — shows saved but the image isn't there
+   * after." Measured: 0 of 28 production rows carry `evidence` AT ALL, and
+   * `photoPathsOf` — the only thing the Product Library asks for a photo list —
+   * reads `evidence.sections[].imagePath`.
+   *
+   * ⚖️ THE UPLOAD WAS NEVER THE BROKEN PART. The file reaches storage, the path
+   * reaches `enqueue-extraction`, and the analysis genuinely runs: both of that
+   * creator's products carry `knowledge` extracted from `creator_image` within
+   * 40 seconds, with no url at all. What never happened is the entity recording
+   * that it HAS a photo, so a reload showed none and the work looked lost.
+   *
+   * ⚠️ AND A LIST, NOT AN APPEND, WHICH IS WHAT MAKES REMOVAL POSSIBLE. The
+   * second half of the same report — "no delete/replace on uploaded photos,
+   * only add" — is unfixable while nothing stores the set: you cannot remove an
+   * item from a list that was never written down.
+   */
+  evidence?: ProductEvidence | null
   name?: string | null
   /** The creator's own one-line fallback — see migration 0177. Editable for the
    *  same reason `name` is: neither is an entitlement field. */
@@ -2495,6 +2525,22 @@ export async function updateEntityPresentation(
   // `relationship` — straight past the type that exists to forbid it. The
   // compile-time guarantee is only worth what the runtime one is.
   const row: Record<string, unknown> = {}
+  // ⚠️ SHAPE-CHECKED, NOT FORWARDED. `evidence` is jsonb with a check
+  // constraint, and a half-built object would fail the UPDATE and cost the
+  // creator the photo rather than the field. `imagePath` is the only part the
+  // library reads, so a section without one is dropped instead of stored.
+  if ('evidence' in edit) {
+    const ev = edit.evidence
+    row.evidence = (ev === null || ev === undefined) ? null : {
+      form: ev.form,
+      linkRole: ev.linkRole,
+      url: ev.url ?? null,
+      capturedAt: ev.capturedAt ?? null,
+      sections: (Array.isArray(ev.sections) ? ev.sections : [])
+        .filter((x) => typeof x?.imagePath === 'string' && x.imagePath.trim() !== '')
+        .map((x, i) => ({ order: i, label: String(x.label ?? ''), imagePath: x.imagePath })),
+    }
+  }
   if ('name' in edit) row.name = edit.name === null ? null : String(edit.name).trim() || null
   if ('creatorSummary' in edit) {
     row.creator_summary = edit.creatorSummary === null ? null : String(edit.creatorSummary).trim() || null

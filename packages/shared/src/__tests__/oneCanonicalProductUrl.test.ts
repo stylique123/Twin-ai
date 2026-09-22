@@ -60,6 +60,9 @@ describe('the other two inputs still do what they claim', () => {
   })
 
   it('the add form still carries the link into the claim', () => {
-    expect(code).toMatch(/productUrl:\s*link/)
+    // ⚠️ RE-ANCHORED 2026-09-22, CLAIM UNCHANGED. The link still travels into
+    // the claim; it now passes through `normalizeLink` on the way, which is
+    // what lets a creator type `thedogdaysco.com` instead of being refused.
+    expect(code).toMatch(/productUrl:\s*normalizeLink\(link\)/)
   })
 })
