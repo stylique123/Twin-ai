@@ -2728,6 +2728,13 @@ export async function saveBrand(
   return readBrandRow(data as BrandRow)
 }
 
+/** Remove a brand. Its products stay; `on delete set null` (0224) simply takes
+ *  them out from under it, so nothing she wrote about a product is lost. */
+export async function deleteBrand(id: string): Promise<void> {
+  const { error } = await supabase.from('brands').delete().eq('id', id)
+  if (error) throw error
+}
+
 /** Put a product under a brand, or take it out (null). */
 export async function setProductBrand(productId: string, brandId: string | null): Promise<void> {
   const { error } = await supabase.from('product_entities').update({ brand_id: brandId }).eq('id', productId)
