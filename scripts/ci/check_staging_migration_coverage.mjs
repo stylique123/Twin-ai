@@ -72,6 +72,14 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0224_a_brand_and_the_things_it_sells':
+    'Adds `brands` and `product_entities.brand_id` so a creator\u2019s business is a parent '
+    + 'row her products point at, not a product type that changed nothing. THE EXCLUSION IS '
+    + 'INHERITED, NOT A NEW JUDGEMENT: `0120_product_entities` is itself excluded, so staging '
+    + 'has no `product_entities` and the `alter table` would fail rather than pass vacuously. '
+    + '\u2696\ufe0f NOTHING BREAKS BY WAITING: `brand_id` is nullable, and the writer reads a '
+    + 'brand only when one is linked AND confirmed, so an unapplied migration costs the brand '
+    + 'block and never the product. ',
   '0223_a_type_the_database_had_never_heard_of':
     'Recreates `product_entities_type_known` with `BUSINESS`, which #967 added to '
     + '`ENTITY_TYPES` and not to the CHECK \u2014 so the picker offered "My whole business, '

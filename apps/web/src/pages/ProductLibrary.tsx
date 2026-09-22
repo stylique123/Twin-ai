@@ -35,11 +35,11 @@
 // from a blank field into things they demonstrably talked about; claiming one
 // still costs an explicit assertion. What the suggestion saves is typing, which
 // is the difference between a page nobody fills in and one they finish.
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation, rowIsCreatorSupplied,
-  normalizeLink, looksLikeBareDomain, READ_DID_NOT_COME_BACK, changeEntityRelationship, pageKindOf, placeFacts,
+  normalizeLink, looksLikeBareDomain, READ_DID_NOT_COME_BACK, changeEntityRelationship, pageKindOf, placeFacts, loadBrands, saveBrand, suggestBrand, setProductBrand,
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
   requestProductExtraction, recordExtractionNeverStarted,
   confirmProductFacts, uploadProductImage,
@@ -60,7 +60,7 @@ import {
 import { readOnboardingDraft } from '../lib/onboardingDraft'
 import type {
   ProductEntityRecord, Showability, EntityRelationship, EntityType, PersonalUse,
-  ProductClaim,
+  ProductClaim, Brand,
   ExtractedFact as ProductFact,
   CommunityPlatform, CommunityProofItem, ShotPrivacy,
 } from '@twinai/shared'
@@ -103,12 +103,12 @@ const TYPE_CHOICES: Array<{ value: EntityType; label: string }> = [
   { value: 'COURSE', label: 'A course' },
   { value: 'COMMUNITY', label: 'A community or membership' },
   { value: 'MARKETPLACE', label: 'A marketplace or store' },
-  // ⚠️ THE THING THE OTHERS BELONG TO. Reported 2026-09-22: a creator wanted to
-  // add her business, not one of its products, and every option above is
-  // something a business SELLS. Her choices were to misdescribe a loaf as the
-  // subject or pick "Something else", which exists to avoid a wrong guess and
-  // yields the generic walkthrough. Neither is what her videos are about.
-  { value: 'BUSINESS', label: 'My whole business, not one product' },
+  // ⚖️ "MY WHOLE BUSINESS" WAS HERE AND IS GONE. The owner, 2026-09-22: "it
+  // doesn't actually change anything… how about we remove that?" The business
+  // is now a BRAND — a parent row at the top of this page (`BrandBox`, 0224) —
+  // not a product type. The `BUSINESS` value stays in the contract so the
+  // database constraint and existing readers keep agreeing; it is simply no
+  // longer offered as a kind of product.
   { value: 'SAAS', label: 'Software' },
   { value: 'APP', label: 'A mobile app' },
   { value: 'OTHER', label: 'Something else' },
@@ -422,7 +422,20 @@ export default function ProductLibrary() {
   // rendered list is narrowed to rows a creator actually put something into.
   // Filtering at the source would make an unconfirmed mint un-savable and
   // un-deletable, which is a worse version of the problem being fixed.
-  const shownEntities = (entities ?? []).filter(rowIsCreatorSupplied)
+  // ⚖️ HER OWN THINGS FIRST, THEN WHAT SHE PROMOTES FOR OTHERS. Reported
+  // 2026-09-22: "there's a brand and then there's products", and a flat list
+  // made an affiliate item look like one of hers. Same rows, two groups, sorted
+  // by the relationship she already gave — nothing new to answer.
+  const isOwnProduct = (e: ProductEntityRecord) =>
+    e.relationship === 'OWN_PRODUCT' || e.relationship === 'OWN_SERVICE'
+  const suppliedEntities = (entities ?? []).filter(rowIsCreatorSupplied)
+  const shownEntities = [
+    ...suppliedEntities.filter(isOwnProduct),
+    ...suppliedEntities.filter((e) => !isOwnProduct(e)),
+  ]
+  const firstOwnId = shownEntities.find(isOwnProduct)?.id
+  const firstPromotedId = shownEntities.find((e) => !isOwnProduct(e))?.id
+  const [brands, setBrands] = useState<Brand[] | null>(null)
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -685,6 +698,8 @@ export default function ProductLibrary() {
         const rows = await loadProductEntities()
         if (!alive) return
         setEntities(rows)
+        // Brands load beside the library and may fail alone; see `loadBrands`.
+        void loadBrands().then((b) => { if (alive) setBrands(b) })
         // ⚖️ THE PHOTOS EXISTED AND NOBODY COULD SEE THEM. A creator uploaded up
         // to four pictures at add time, extraction read them, and the page then
         // showed only the words it got out of them — so "did my photo arrive"
@@ -1162,7 +1177,38 @@ export default function ProductLibrary() {
           carries the type and showability she implied, and a `NONE` row still
           records "nothing to sell". Only the CARD goes — the earlier pass
           traded a wrong name for no name and left the phantom on screen. */}
-      {(tab === 'live' ? shownEntities : []).map((e) => openId !== e.id ? (
+      {tab === 'live' && entities !== null && brands !== null && (
+        <BrandBox
+          brands={brands}
+          suggestion={brands.length === 0 ? suggestBrand(entities) : null}
+          onSave={async (b) => {
+            const ownerId = session?.user?.id
+            if (!ownerId) return
+            const saved = await saveBrand(ownerId, b)
+            if (!saved) return
+            const next = [...(brands ?? []).filter((x) => x.id !== saved.id), saved]
+            setBrands(next)
+            // ⚖️ WITH ONE BRAND, HER OWN PRODUCTS ARE ITS PRODUCTS. There is no
+            // question to ask, so none is asked: every OWN product not yet under
+            // a brand goes under this one. With two or more brands, each
+            // product card asks which (see the brand picker on the card).
+            if (next.length === 1) {
+              const loose = (entities ?? []).filter((e) => isOwnProduct(e) && !e.brandId)
+              await Promise.all(loose.map((e) => setProductBrand(e.id, saved.id).catch(() => undefined)))
+              setEntities((prev) => (prev ?? []).map((e) =>
+                isOwnProduct(e) && !e.brandId ? { ...e, brandId: saved.id } : e))
+            }
+          }}
+        />
+      )}
+      {(tab === 'live' ? shownEntities : []).map((e) => (<Fragment key={e.id}>
+        {e.id === firstOwnId && (
+          <p className="mb-2 mt-4 text-xs font-medium uppercase tracking-wide text-stone">Your products</p>
+        )}
+        {e.id === firstPromotedId && (
+          <p className="mb-2 mt-4 text-xs font-medium uppercase tracking-wide text-stone">Things you promote for others</p>
+        )}
+        {openId !== e.id ? (
         <button
           key={e.id}
           type="button"
@@ -1854,6 +1900,26 @@ export default function ProductLibrary() {
               address on the way out of AFFILIATE, because a stale one would
               send a viewer through a commission link on a video that carried
               no disclosure. */}
+          {/* ⚖️ WHICH BRAND — ASKED ONLY WHEN THERE IS A CHOICE. One brand
+              links automatically; an affiliate or sponsored product never
+              needs one, so it is never asked there. */}
+          {isOwnProduct(e) && (brands?.length ?? 0) > 1 && (
+            <div className="mt-4">
+              <label className="text-xs font-medium uppercase tracking-wide text-stone">Which brand is this for?</label>
+              <select
+                className="mt-1 w-full rounded-lg border border-white/12 bg-white/5 px-3 py-2 text-sm"
+                value={e.brandId ?? ''}
+                onChange={(ev) => {
+                  const id = ev.target.value || null
+                  void setProductBrand(e.id, id).then(() =>
+                    setEntities((prev) => (prev ?? []).map((x) => (x.id === e.id ? { ...x, brandId: id } : x))))
+                }}
+              >
+                <option value="">Not chosen yet</option>
+                {(brands ?? []).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+          )}
           <div className="mt-4 rounded-lg bg-white/[0.03] px-3 py-2">
             <p className="text-xs font-medium uppercase tracking-wide text-stone">
               Your relationship to it
@@ -1908,7 +1974,7 @@ export default function ProductLibrary() {
           </div>
         </section>
         </div>
-      ))}
+      )}</Fragment>))}
 
       {tab === 'retired' && (
         <section>
@@ -2698,5 +2764,103 @@ function Choices<T extends string>({ label, options, chosen, onPick }: {
         ))}
       </div>
     </div>
+  )
+}
+
+// ── YOUR BRAND, AT THE TOP, AND NEVER A GUESS PASSED OFF AS AN ANSWER ──────
+//
+// ⚠️ THE OWNER'S CONDITIONS, 2026-09-22: "every time you pre-fill something,
+// it's not the right one. So make sure it is the right one and I can properly
+// edit it. And you can add more brands as well."
+//
+// ⚖️ SO A SUGGESTION IS SHOWN AS ONE. It is labelled "please check this", its
+// fields are editable in place, and it is saved only when she presses "Yes,
+// that's right" — which is the only thing that sets `confirmed`, and the writer
+// reads no brand without it. No suggestion, empty boxes: nothing is invented.
+function BrandBox({ brands, suggestion, onSave }: {
+  brands: Brand[]
+  suggestion: { name: string; website: string | null; description: string | null } | null
+  onSave: (b: { id?: string; name: string; website: string | null; description: string | null; confirmed: boolean }) => Promise<void>
+}) {
+  const [editing, setEditing] = useState<string | null>(brands.length === 0 ? 'new' : null)
+  const [draft, setDraft] = useState({
+    name: suggestion?.name ?? '', website: suggestion?.website ?? '', description: suggestion?.description ?? '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const start = (b: Brand | null) => {
+    setDraft(b
+      ? { name: b.name, website: b.website ?? '', description: b.description ?? '' }
+      : { name: '', website: '', description: '' })
+    setEditing(b ? b.id : 'new')
+    setErr(null)
+  }
+  const save = async (id?: string) => {
+    if (draft.name.trim() === '') { setErr('Give your brand a name first.'); return }
+    setBusy(true); setErr(null)
+    try {
+      await onSave({ id, name: draft.name, website: draft.website || null, description: draft.description || null, confirmed: true })
+      setEditing(null)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'That could not be saved. Please try again.')
+    } finally { setBusy(false) }
+  }
+
+  const form = (id?: string, isSuggestion = false) => (
+    <div className="space-y-2">
+      {isSuggestion && (
+        <p className="text-xs text-sand">
+          Twin read this from your shop's page. Please check it — scripts will not use it until you say it is right.
+        </p>
+      )}
+      <input className="w-full rounded-lg border border-white/12 bg-white/5 px-3 py-2 text-sm"
+        placeholder="Brand name" value={draft.name}
+        onChange={(ev) => setDraft({ ...draft, name: ev.target.value })} />
+      <input className="w-full rounded-lg border border-white/12 bg-white/5 px-3 py-2 text-sm"
+        placeholder="Website (optional)" value={draft.website}
+        onChange={(ev) => setDraft({ ...draft, website: ev.target.value })} />
+      <textarea className="w-full rounded-lg border border-white/12 bg-white/5 px-3 py-2 text-sm" rows={2}
+        placeholder="What your brand is, in one or two lines" value={draft.description}
+        onChange={(ev) => setDraft({ ...draft, description: ev.target.value })} />
+      {err && <p className="text-xs text-coral">{err}</p>}
+      <div className="flex gap-2">
+        <button type="button" disabled={busy} onClick={() => void save(id)}
+          className="btn-gradient rounded-lg px-3 py-1.5 text-sm disabled:opacity-40">
+          {busy ? 'Saving…' : isSuggestion ? "Yes, that's right" : 'Save'}
+        </button>
+        {brands.length > 0 && (
+          <button type="button" className="text-xs underline" onClick={() => setEditing(null)}>Cancel</button>
+        )}
+      </div>
+    </div>
+  )
+
+  return (
+    <section className="mb-4 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-stone">
+        {brands.length > 1 ? 'Your brands' : 'Your brand'}
+        {editing === 'new' && suggestion && brands.length === 0 && ' — please check this'}
+      </p>
+      {brands.map((b) => (
+        <div key={b.id} className="mt-2">
+          {editing === b.id ? form(b.id) : (
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm text-cream">{b.name}{b.website && <span className="text-stone"> · {b.website}</span>}</p>
+                {b.description && <p className="mt-0.5 text-xs text-sand">{b.description}</p>}
+              </div>
+              <button type="button" className="text-xs underline" onClick={() => start(b)}>Edit</button>
+            </div>
+          )}
+        </div>
+      ))}
+      {editing === 'new' && <div className="mt-2">{form(undefined, brands.length === 0 && suggestion !== null)}</div>}
+      {editing === null && (
+        <button type="button" className="mt-2 text-xs underline" onClick={() => start(null)}>
+          {brands.length === 0 ? '+ Add your brand' : '+ Add another brand'}
+        </button>
+      )}
+    </section>
   )
 }
