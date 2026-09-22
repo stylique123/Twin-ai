@@ -110,11 +110,14 @@ describe('the mode it runs in is pinned, because it is a product decision', () =
     expect(EDGE).toMatch(/csEntityEvidence\(claim\.entity, \{ items: csItems, entities: csEntities \}\)/)
     // And the library is actually read — a `csEntities` that is always `[]`
     // would satisfy the line above while changing nothing.
-    expect(EDGE).toMatch(/from\('product_entities'\)\s*\n\s*\.select\('id, name, type, relationship, knowledge'\)/)
+    expect(EDGE).toMatch(/from\('product_entities'\)\s*\n\s*\.select\('id, name, type, relationship, knowledge, voice_id'\)/)
     // Not scoped to a voice: a product the creator owns is theirs whichever
     // handle this video is for, and 0120 allows a null `voice_id`.
     const read = EDGE.slice(EDGE.indexOf("const { data: libraryRows"))
-    expect(read.slice(0, read.indexOf('csEntities'))).not.toMatch(/voice_id/)
+    // ⚖️ RE-PINNED 2026-09-22: `voice_id` is now SELECTED (the product picker
+    // must not offer another voice's product), so the claim is about FILTERING
+    // — the read must never be narrowed by voice, which is what this forbids.
+    expect(read.slice(0, read.indexOf('csEntities'))).not.toMatch(/\.(eq|or|is)\(['`]voice_id/)
     // Zero must stay readable as "no library" rather than "not wired".
     expect(EDGE).toMatch(/library_entities: csEntities\.length/)
   })

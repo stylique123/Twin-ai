@@ -2128,13 +2128,43 @@ export default function V2Building() {
                 // spelling, which a typed sentence never is. So this sends the
                 // creator to the one place that answer actually counts,
                 // instead of asking it again for nothing.
-                <button
-                  type="button"
-                  onClick={() => nav('/products')}
-                  className="mt-2.5 w-full rounded-xl border border-white/10 bg-white/[0.02] px-3.5 py-2.5 text-left text-[13px] text-sand transition-colors hover:border-white/20 hover:bg-white/[0.04]"
-                >
-                  Open Product Library to set it →
-                </button>
+                // ⚠️⚠️ AND THAT BUTTON WAS A DEAD END. Reported 2026-09-22:
+                // "it showed me a button to go to product library… it was like
+                // that relationship has been set. And whatever I did… it never
+                // worked." The library opened on its main screen with the
+                // answer already there, and nothing on it could satisfy THIS
+                // card — so Create asked again, forever. A question whose only
+                // action cannot answer it is not a question.
+                //
+                // ⚖️ SO THE FOUR ANSWERS ARE HERE, AS THE ENUM. The server's gate
+                // accepts exactly these spellings in `answers.relationship`, so
+                // a tap always unblocks Create. It answers for THIS video and
+                // does not rewrite the product's stored relationship — that is
+                // an entitlement change, made on its own in the Library.
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  {([
+                    ['OWN_PRODUCT', 'I make or sell it'],
+                    ['AFFILIATE', 'I earn a commission on it'],
+                    ['SPONSOR', 'A sponsor pays me to feature it'],
+                    ['REVIEW_ONLY', 'I just talk about it'],
+                  ] as const).map(([value, label]) => {
+                    const active = (askAnswers[q.field] ?? '') === value
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => answer(q.field, active ? '' : value)}
+                        className={cn(
+                          'rounded-xl border px-3.5 py-2 text-left text-[13px] transition-colors',
+                          active
+                            ? 'border-coral/50 bg-coral/[0.08] text-cream'
+                            : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20 hover:bg-white/[0.04]',
+                        )}
+                      >{label}</button>
+                    )
+                  })}
+                </div>
               ) : (
                 <input
                   type="text"
