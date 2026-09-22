@@ -418,6 +418,11 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Same shape: product_entities holds the rows, so the count is derivable from them.',
   },
+  product_found_on_shop: {
+    kind: 'counter_ephemeral',
+    why: 'The durable fact is product_entities.product_url, rewritten from the shop front to '
+      + 'the product page it found; the log is the live trace of that rewrite.',
+  },
   scan_target_assessed: {
     kind: 'counter_ephemeral',
     why: 'What a handle resolved to. brand_voices already stores the resolved facts; this '

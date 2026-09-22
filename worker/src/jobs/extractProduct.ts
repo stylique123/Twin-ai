@@ -29,6 +29,7 @@ function mimeFor(path: string): string {
     : p.endsWith('.webp') ? 'image/webp' : 'image/png'
 }
 import { modelForTask } from '../modelRouting.js'
+import { isShopFront, findShopProduct, variantPriceLines } from '../shopProductLookup.js'
 import { readExtractedFact, EXTRACTED_FIELDS, EXTRACTION_SOURCES, imageFactAllowed,
   type ExtractedFact, type ExtractedField, type ExtractionSource }
   from './productExtractionContract.js'
@@ -96,6 +97,17 @@ function harvestHead(html: string): string[] {
     if (raw) out.push(`STRUCTURED DATA: ${raw.slice(0, 4_000)}`)
   }
   return out
+}
+
+/** A shop's public JSON, or null. HTTPS only, short timeout, never throws —
+ *  a shop that will not answer simply leaves the old path in place. */
+async function fetchShopJson(u: string): Promise<unknown | null> {
+  if (!/^https:\/\//i.test(u)) return null
+  try {
+    const res = await fetch(u, { signal: AbortSignal.timeout(10_000), headers: { Accept: 'application/json' }, redirect: 'follow' })
+    if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) return null
+    return await res.json()
+  } catch { return null }
 }
 
 /** Fetch the page and return what it says about itself.
@@ -307,7 +319,7 @@ function creatorSafeReason(e: unknown): string {
 async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   const payload = (job.payload ?? {}) as Record<string, unknown>
   const entityId = typeof payload.entity_id === 'string' ? payload.entity_id : ''
-  const url = typeof payload.url === 'string' ? payload.url.trim() : ''
+  let url = typeof payload.url === 'string' ? payload.url.trim() : ''
   // ⚠️ EITHER SOURCE IS ENOUGH, AND THAT IS A CHANGE. This demanded a URL, so a
   // job carrying only photographs failed before it started — and plenty of
   // products have no page worth reading.
@@ -333,6 +345,29 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   const ownerId = (entity as { owner_id?: string | null } | null)?.owner_id ?? ''
   const existingName = (entity as { name?: string | null } | null)?.name ?? null
   const creatorSummary = (entity as { creator_summary?: string | null } | null)?.creator_summary ?? null
+
+  // ── HER PRODUCT, FOUND ON HER OWN SHOP ──────────────────────────────────
+  //
+  // ⚠️ A HOMEPAGE LINK READ AS A PRODUCT PAGE IS HOW THE BANDANA GOT THE BRAND'S
+  // STORY AND THREE OTHER PRODUCTS' PRICES. When the link is the shop's front
+  // (or it had no link and was sent with her brand's website), look the product up BY
+  // NAME on that shop and read its own page instead. See shopProductLookup.ts.
+  // ⚖️ ONLY WHEN SHE NAMED IT, and a weak match is refused — reading the wrong
+  // product confidently is worse than the old behaviour.
+  // A product with no link of its own is sent here with its BRAND's website
+  // (Product Library, "Find it on …"), which is a shop front by definition.
+  const shopBase = isShopFront(url) ? url : ''
+  const shopProduct = shopBase && existingName
+    ? await findShopProduct(shopBase, existingName, fetchShopJson).catch(() => null)
+    : null
+  if (shopProduct) {
+    url = shopProduct.url
+    // Her link now points at the product itself, so the card and every later
+    // read use the right page. Recorded, never silent: logged below.
+    await db.from('product_entities').update({ product_url: shopProduct.url }).eq('id', entityId)
+    console.log(JSON.stringify({ event: 'product_found_on_shop', entity_id: entityId, url: shopProduct.url,
+      variants: shopProduct.variants.length }))
+  }
 
   const text = url ? await fetchPageText(url) : null
   // ⚠️ THE UNREADABLE-PAGE BRANCH MUST NOT SWALLOW AN IMAGE-ONLY JOB. It writes
@@ -372,7 +407,7 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
     return { extracted: fallback.length, reason: 'unreadable' }
   }
 
-  const source = sourceFor(url, productUrl)
+  const source = sourceFor(url, shopProduct ? shopProduct.url : productUrl)
   // ⚠️ `thinkingBudget: 0` IS INVALID FOR THIS MODEL CLASS, AND THE FIRST REAL
   // RUN FOUND IT: "Budget 0 is invalid. This model only works in thinking mode."
   // Every other `geminiJson` caller in the worker either omits the budget or
@@ -454,6 +489,22 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
       now,
     })
     if (f) facts.push(f)
+  }
+
+  // ⚖️ THE SHOP'S OWN DATA, NOT THE MODEL'S READING OF IT. Variant prices come
+  // straight from the product's JSON, one line per option, so "€28 and €13" are
+  // attached to the sizes they belong to rather than guessed off a listing.
+  // Graded by the same classifier as every other fact: a price waits for her.
+  if (shopProduct) {
+    const seen = new Set(facts.map((f) => `${f.field}|${f.value}`))
+    const add = (field: string, value: string) => {
+      if (seen.has(`${field}|${value}`)) return
+      const f = readExtractedFact({ field: field as never, value, source, sourceUrl: shopProduct.url, now })
+      if (f) { facts.push(f); seen.add(`${field}|${value}`) }
+    }
+    if (shopProduct.description) add('description', shopProduct.description)
+    for (const line of variantPriceLines(shopProduct)) add('price', line)
+    if (shopProduct.options.length > 0) add('feature', `Comes in options by ${shopProduct.options.join(' and ')}`)
   }
 
   // ⚠️ A RE-EXTRACT USED TO DESTROY EVERY CONFIRMATION THE CREATOR HAD MADE.
