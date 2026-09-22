@@ -49,6 +49,7 @@ import {
   productSceneGuidance, productSceneDirection,
   type EntityType, type Showability,
 } from '../_shared/productScenes.ts'
+import { placeFacts } from '../_shared/factPlacement.ts'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
 // Internal credits per recreation. Adjustable via the RECREATION_COST secret so we
@@ -6537,6 +6538,7 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // voice match could never find the affiliate product a creator picked,
   // `chosenEntity` stayed null, and the relationship gate sent her to the
   // Product Library to set what was already set. Owner scoping still holds.
+  const voiceOrUnscoped = `voice_id.eq.${voice?.id ?? '00000000-0000-0000-0000-000000000000'},voice_id.is.null`
   const requestedProductId = typeof body.selected_product_id === 'string'
     ? body.selected_product_id.trim() : ''
   // ⚠️ "NONE OF THESE" IS AN ANSWER, AND WITHOUT THIS LINE IT WAS WORSE THAN
@@ -6554,9 +6556,9 @@ function reserveAskedInline<T extends { source?: string | null }>(
     // ⚠️ `offer` IS SELECTED (0222) — `readyOffer` below is its only reader.
     const { data: picked, error: pickErr } = await admin
       .from('product_entities')
-      .select('id, name, creator_summary, offer, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
+      .select('id, name, creator_summary, offer, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map, product_url')
       .eq('owner_id', ownerId)
-      .or(`voice_id.eq.${voice?.id ?? '00000000-0000-0000-0000-000000000000'},voice_id.is.null`)
+      .or(voiceOrUnscoped)
       .eq('id', requestedProductId)
       // ⚠️ THE CHOSEN LOOKUP ACCEPTS A PAID TIE; THE STOPGAP BELOW DOES NOT, AND
       // THE ASYMMETRY IS THE POLICY. A creator asking for a video about their
@@ -6573,9 +6575,9 @@ function reserveAskedInline<T extends { source?: string | null }>(
     const legacyPick = pickErr && /offer/i.test(`${pickErr.message} ${pickErr.details ?? ''}`)
       ? (await admin
           .from('product_entities')
-          .select('id, name, creator_summary, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map')
+          .select('id, name, creator_summary, type, relationship, personal_use, showability, evidence, restrictions, knowledge, community_map, product_url')
           .eq('owner_id', ownerId)
-          .or(`voice_id.eq.${voice?.id ?? '00000000-0000-0000-0000-000000000000'},voice_id.is.null`)
+          .or(voiceOrUnscoped)
           .eq('id', requestedProductId)
           .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE', 'AFFILIATE', 'SPONSOR'])
           .is('archived_at', null)
@@ -6632,6 +6634,21 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // braces. It states at the point of use that a decline yields no subject, and
   // the next person to add a fallback has to delete an explicit `null` to do it.
   const ownedEntity = declinedAProduct ? null : chosenEntity
+
+  // ── WHERE EACH FACT ON THIS PRODUCT ACTUALLY BELONGS ───────────────────
+  //
+  // ⚠️ MEASURED 2026-09-22 on a real row: "Reversible Scrunchie Bandana" was
+  // linked to the shop's HOMEPAGE, so all twelve facts were the homepage's —
+  // the brand's story, the site's "View cart"/"Check out" buttons, and three
+  // prices belonging to three other products. Every one reached the writer as a
+  // fact about the bandana. `placeFacts` (packages/shared/src/factPlacement.ts,
+  // mirrored at _shared/) decides from the link's shape where each belongs:
+  // the product, the brand, or nowhere a script may use.
+  const placedEntityFacts = (() => {
+    const e = ownedEntity as { knowledge?: unknown; product_url?: unknown; name?: unknown } | null
+    const k = Array.isArray(e?.knowledge) ? (e!.knowledge as Array<{ field: string; value: string; trust?: string }>) : []
+    return placeFacts(k, { url: String(e?.product_url ?? ''), productName: String(e?.name ?? '') })
+  })()
 
   // ⚠️ THE LIBRARY IS PLURAL AND THE GROUNDING CHECK NEVER SAW IT. The query
   // above answers ONE question — "what does this voice sell" — and it is scoped
@@ -7180,8 +7197,9 @@ function reserveAskedInline<T extends { source?: string | null }>(
   const readyEntityKnows = (() => {
     const e = ownedEntity as { knowledge?: unknown; offer?: unknown; creator_summary?: unknown } | null
     if (!e) return false
-    const usable = Array.isArray(e.knowledge)
-      && e.knowledge.some((f) => (f as { trust?: unknown })?.trust === 'usable')
+    // Only facts that belong to THIS product count — a homepage's brand story
+    // does not tell the writer what the bandana does.
+    const usable = placedEntityFacts.product.some((f) => f.trust === 'usable')
     return usable || readyPresent(e.offer) || readyPresent(e.creator_summary)
   })()
   if (readyPromoting && readyFacts.length === 0 && !readyPresent(answers.claims)
@@ -8437,9 +8455,10 @@ function reserveAskedInline<T extends { source?: string | null }>(
     // ⚠️ THE STORED GRADE IS HONOURED, NOT RECOMPUTED. Re-deciding it in this
     // function would put a second copy of the rules in a third place, and the
     // one that ran at extraction time is the one the creator reviewed against.
-    const knowledge = Array.isArray((ownedEntity as { knowledge?: unknown } | null)?.knowledge)
-      ? ((ownedEntity as { knowledge: unknown[] }).knowledge)
-      : []
+    // ⚠️ PLACED, NOT RAW. See `placedEntityFacts`: only facts that belong to
+    // this product are offered as its facts; the brand's go in their own block
+    // below, and site buttons and listing prices go nowhere.
+    const knowledge: unknown[] = placedEntityFacts.product
     // ⚠️ BELOW THIS MANY GRADED FACTS, THE GRADED BLOCK CANNOT CARRY A SCRIPT
     // ALONE and the creator's own description is emitted beside it.
     //
@@ -8460,6 +8479,22 @@ function reserveAskedInline<T extends { source?: string | null }>(
       })
       .filter((l) => l !== '')
       .slice(0, 24)
+    // ⚖️ THE BRAND'S FACTS, LABELLED AS THE BRAND'S. Read from the shop's own
+    // homepage, so true — but of the business, not of this product. Offered so
+    // a script can say where it comes from ("a small BC-based shop") without
+    // pinning a collar's description on a bandana.
+    const brandFactLines = placedEntityFacts.brand
+      .filter((f) => f.trust === 'usable' || f.field === 'claim')
+      .map((f) => `  * ${f.field}: ${String(f.value).trim()}`)
+      .slice(0, 8)
+    if (brandFactLines.length > 0) {
+      claimLines.push('\n- ABOUT THE BRAND THAT MAKES IT (true of the business, NOT a description of this product):\n'
+        + brandFactLines.join('\n')
+        + '\n  Use these only to say who makes it or how the shop works. Never present them as what this product is or does.')
+    }
+    if (placedEntityFacts.pageKind === 'homepage' || placedEntityFacts.pageKind === 'collection') {
+      claimLines.push('\n- NOTE: this product\'s link is the shop\'s ' + placedEntityFacts.pageKind + ' page, not the product\'s own page, so no price or product detail from that page is known to belong to it. Do not quote a price.')
+    }
     if (usableProductFacts.length > 0) {
       claimLines.push('\n- WHAT IS TRUE ABOUT THIS PRODUCT, read from its own pages and safe to state:\n'
         + usableProductFacts.join('\n')

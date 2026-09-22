@@ -39,7 +39,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation, rowIsCreatorSupplied,
-  normalizeLink, looksLikeBareDomain, READ_DID_NOT_COME_BACK, changeEntityRelationship,
+  normalizeLink, looksLikeBareDomain, READ_DID_NOT_COME_BACK, changeEntityRelationship, pageKindOf, placeFacts,
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
   requestProductExtraction, recordExtractionNeverStarted,
   confirmProductFacts, uploadProductImage,
@@ -1455,6 +1455,23 @@ export default function ProductLibrary() {
             </p>
           )}
           {fieldNote(e.id, 'productUrl')}
+          {/* ⚠️ A HOMEPAGE IS NOT THIS PRODUCT'S PAGE, AND IT SAID NOTHING.
+              Measured 2026-09-22: "Reversible Scrunchie Bandana" was linked to
+              the shop's homepage, so everything Twin read was the brand's
+              story, the site's cart buttons and other products' prices. The
+              classifier now keeps those off the product (`placeFacts`); this
+              tells her why, and the one thing that fixes it. */}
+          {(() => {
+            const kind = pageKindOf(e.productUrl)
+            if (kind !== 'homepage' && kind !== 'collection') return null
+            return (
+              <p className="mt-1 text-xs text-sand">
+                This is your shop's {kind === 'homepage' ? 'homepage' : 'list of products'}, not this product's own page.
+                What Twin read there is about your brand, so it will not be used as facts about this product.
+                Paste the link to this product's page to fix it.
+              </p>
+            )
+          })()}
 
           {/* ⚠️ ONLY FOR AN AFFILIATE, AND THE FIELD EXISTED BEFORE THE BOX DID.
               `affiliate_url` has been on every entity since the entity contract
@@ -1750,43 +1767,72 @@ export default function ProductLibrary() {
               <p className="mt-1 text-sm text-sand">{LIFECYCLE_MESSAGE.NOTHING_FOUND}</p>
             ) : (
               <>
-                <ul className="mt-2 space-y-1">
-                  {e.knowledge.filter((f) => f.trust === 'usable').map((f) => (
-                    <li key={`u-${f.field}-${f.value}`} className="text-sm">
-                      <span className="text-stone">{f.field}: </span>{f.value}
-                      <FactAge fact={f} />
-                    </li>
-                  ))}
-                </ul>
-                {e.knowledge.some((f) => f.trust === 'needs_confirmation') && (
-                  <div className="mt-3 rounded-lg bg-amber-500/10 p-2">
-                    {/* ⚠️ THE POINT OF THE WHOLE SPLIT. These came off a page and
-                        carry a number or promise a result, so they are stored,
-                        shown, and NOT given to the writer until a person says
-                        they are true. Confirming is per fact — one tap that
-                        approved a dozen claims would be the escalation the claim
-                        flow already refuses. */}
-                    <p className="text-xs text-sand">
-                      Twin found these but will not say them until you confirm each one —
-                      they claim a number or a result.
-                    </p>
-                    <ul className="mt-2 space-y-1">
-                      {e.knowledge.filter((f) => f.trust === 'needs_confirmation').map((f) => (
-                        <li key={`n-${f.field}-${f.value}`} className="flex items-start justify-between gap-2 text-sm">
-                          <span>
-                            <span className="text-stone">{f.field}: </span>{f.value}
-                            <FactAge fact={f} />
-                          </span>
-                          <button
-                            type="button"
-                            className="whitespace-nowrap text-xs underline"
-                            onClick={() => void confirmFact(e.id, f.value)}
-                          >That's right</button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                {(() => {
+                  // ⚠️ GROUPED BY WHERE EACH FACT BELONGS, not by trust alone.
+                  // Reported 2026-09-22: a bandana's card listed the SHOP's
+                  // story, the site's "View cart" button and three other
+                  // products' prices as facts about the bandana. `placeFacts`
+                  // is the same rule the writer uses, so this screen shows
+                  // exactly what a script will and will not say.
+                  const placed = placeFacts(e.knowledge ?? [], { url: e.productUrl, productName: e.name })
+                  const usable = placed.product.filter((f) => f.trust === 'usable')
+                  const pending = placed.product.filter((f) => f.trust === 'needs_confirmation')
+                  return (
+                    <>
+                      {usable.length > 0 && (
+                        <ul className="mt-2 space-y-1">
+                          {usable.map((f) => (
+                            <li key={`u-${f.field}-${f.value}`} className="text-sm">
+                              <span className="text-stone">{f.field}: </span>{f.value}
+                              <FactAge fact={f} />
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {pending.length > 0 && (
+                        <div className="mt-3 rounded-lg bg-amber-500/10 p-2">
+                          {/* ⚠️ THE POINT OF THE WHOLE SPLIT. These carry a number
+                              or promise a result, so they are shown and NOT given
+                              to the writer until a person says they are true. */}
+                          <p className="text-xs text-sand">
+                            Twin found these but will not say them until you confirm each one —
+                            they claim a number or a result.
+                          </p>
+                          <ul className="mt-2 space-y-1">
+                            {pending.map((f) => (
+                              <li key={`n-${f.field}-${f.value}`} className="flex items-start justify-between gap-2 text-sm">
+                                <span>
+                                  <span className="text-stone">{f.field}: </span>{f.value}
+                                  <FactAge fact={f} />
+                                </span>
+                                <button
+                                  type="button"
+                                  className="whitespace-nowrap text-xs underline"
+                                  onClick={() => void confirmFact(e.id, f.value)}
+                                >That's right</button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {placed.brand.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-xs font-medium uppercase tracking-wide text-stone">About your brand, not this product</p>
+                          <ul className="mt-1 space-y-1">
+                            {placed.brand.map((f) => (
+                              <li key={`b-${f.field}-${f.value}`} className="text-sm text-sand">{f.value}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {placed.setAside.length > 0 && (
+                        <p className="mt-2 text-xs text-stone">
+                          Left out: {placed.setAside.length} website button{placed.setAside.length === 1 ? '' : 's'} or price{placed.setAside.length === 1 ? '' : 's'} from other products. Scripts will not use these.
+                        </p>
+                      )}
+                    </>
+                  )
+                })()}
               </>
             )}
           </div>
