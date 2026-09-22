@@ -72,6 +72,19 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0223_a_type_the_database_had_never_heard_of':
+    'Recreates `product_entities_type_known` with `BUSINESS`, which #967 added to '
+    + '`ENTITY_TYPES` and not to the CHECK \u2014 so the picker offered "My whole business, '
+    + 'not one product", the row was built, and the constraint would have refused it. '
+    + 'Merged, deployed and dead on first use; found by reading `pg_constraint` on '
+    + 'production after the merge, because every test mocks `supabase` and never asked the '
+    + 'one authority that would have said no. THE EXCLUSION IS INHERITED, NOT A NEW '
+    + 'JUDGEMENT: `0120_product_entities` is itself excluded, so staging has no such table '
+    + 'and the `alter table` would fail on its first line rather than pass vacuously. '
+    + '\u2696\ufe0f AND THE CLASS IS COVERED WHERE STAGING CANNOT COVER IT: '
+    + '`check_enum_constraint_parity` compares every such list against its CHECK on every '
+    + 'PR, reading the migrations rather than a database, so the next member cannot drift '
+    + 'even while this table stays out of the matrix. ',
   '0222_the_offer_belonged_to_the_product_not_the_account':
     'Adds `product_entities.offer` so the offer belongs to the PRODUCT rather than the '
     + 'ACCOUNT. 52 of 54 ready voices carry a scanned `profile.offer` \u2014 one sentence per '
