@@ -52,13 +52,21 @@ const entityBase = (): ProductEntityRecord => ({
 const entity = (over: Partial<ProductEntityRecord> = {}): ProductEntityRecord =>
   Object.assign(entityBase(), over)
 
+/** ⚠️ THESE TESTS ARE ABOUT SOURCES AND KNOWLEDGE, NOT ABOUT TIME, and the
+ *  fixture's `updated` is a fixed date in the past. Once `READING` acquired an
+ *  outside edge (`READ_STALLS_AFTER_MS`), reading the real clock made three of
+ *  them assert `READING` on a row that had by then been "reading" for a month —
+ *  which is the new rule working, not these tests being wrong. They now state
+ *  the moment they mean: a read that has only just begun. */
+const justStarted = Date.parse(entityBase().updated) + 1000
+
 describe('the three states that used to look alike', () => {
   it('no link and no photo is NEEDS_SOURCE, not "reading"', () => {
     expect(productLifecycle(entity())).toBe('NEEDS_SOURCE')
   })
 
   it('a link with no extraction yet is READING', () => {
-    expect(productLifecycle(entity({ productUrl: 'https://example.com' }))).toBe('READING')
+    expect(productLifecycle(entity({ productUrl: 'https://example.com' }), 0, justStarted)).toBe('READING')
   })
 
   // ⚠️ null AND [] ARE DIFFERENT ANSWERS. Collapsing them is the exact mistake
@@ -73,7 +81,7 @@ describe('the three states that used to look alike', () => {
   // something to read, and telling its owner to "add a link" would be wrong.
   it('photographs alone count as a source', () => {
     expect(productLifecycle(entity(), 0)).toBe('NEEDS_SOURCE')
-    expect(productLifecycle(entity(), 2)).toBe('READING')
+    expect(productLifecycle(entity(), 2, justStarted)).toBe('READING')
   })
 
   it('a whitespace-only url is not a source', () => {
@@ -175,7 +183,7 @@ describe('the state that used to be missing, and now is not', () => {
   })
 
   it('no recorded failure still means READING while a source exists', () => {
-    expect(productLifecycle(entity({ productUrl: 'https://example.com' }))).toBe('READING')
+    expect(productLifecycle(entity({ productUrl: 'https://example.com' }), 0, justStarted)).toBe('READING')
   })
 
   it('the union now has seven states', () => {

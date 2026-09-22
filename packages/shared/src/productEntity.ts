@@ -511,6 +511,37 @@ export interface EntityAttestation {
   now?: string
 }
 
+// ── ONE DECLARATION OF WHAT A CLAIM CARRIES ──────────────────────────────
+//
+// ⚠️ REPORTED 2026-09-22 AS "the offer field is on one form and not the other",
+// and that is the SYMPTOM. There were FOUR hand-copied field lists for a single
+// fact: `EntityAttestation` here, and three inline object types in
+// `ProductLibrary.tsx` — `ClaimForm`'s prop, `StartFromLink`'s prop, and
+// `claim()`'s own parameter. 0222 added `offer` to this interface and to the
+// edit card; the two add-time prop types were never widened, so the field was
+// UNREACHABLE from "Add a product" and the price had to be found by opening a
+// product you had just created. Nothing failed — the value simply had no route.
+//
+// ⚖️ SO THE FIX IS THE TYPE, NOT THE FIELD. A fifth field added tomorrow drifts
+// exactly the same way while four lists exist. This is the one list; the forms
+// reference it, and a field added here is accepted by every claim path on the
+// day it is added. What a given form ASKS is still its own decision — a
+// suggestion claim does not ask for a price — but no form can now be unable to
+// SEND one.
+//
+// ⚠️ `name` IS REQUIRED HERE AND NULLABLE ABOVE, WHICH IS NOT AN OVERSIGHT. A
+// form always has a string in its input, even an empty one; a stored entity can
+// genuinely have no name (see `mintFromWorkKind`). `attestedEntity` trims the
+// string to null, so the narrowing happens in exactly one place.
+export type ProductClaim = Omit<EntityAttestation, 'now' | 'name'> & {
+  name: string
+  /** ⚖️ PATHS, NOT FILES. The upload has already happened by the time a claim
+   *  runs — a claim that also had to carry bytes could fail halfway and leave a
+   *  product minted with photographs nobody can find. Not part of the
+   *  attestation because it is evidence about the thing, not a claim about it. */
+  imagePaths?: string[]
+}
+
 /** Build the entity a creator has explicitly claimed.
  *
  *  ⚖️ `source` IS `user_answer` AND `userConfirmed` IS TRUE, because both are

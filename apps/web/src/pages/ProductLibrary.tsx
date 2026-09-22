@@ -39,7 +39,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation, rowIsCreatorSupplied,
-  normalizeLink, looksLikeBareDomain,
+  normalizeLink, looksLikeBareDomain, READ_DID_NOT_COME_BACK,
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
   requestProductExtraction, recordExtractionNeverStarted,
   confirmProductFacts, uploadProductImage,
@@ -59,6 +59,7 @@ import {
 import { readOnboardingDraft } from '../lib/onboardingDraft'
 import type {
   ProductEntityRecord, Showability, EntityRelationship, EntityType, PersonalUse,
+  ProductClaim,
   ExtractedFact as ProductFact,
   CommunityPlatform, CommunityProofItem, ShotPrivacy,
 } from '@twinai/shared'
@@ -205,18 +206,15 @@ function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
   suggestion?: ProductSuggestion | null
   onCancel: () => void
   busy: boolean
-  onClaim: (a: {
-    relationship: EntityRelationship; personalUse: PersonalUse
-    type: EntityType; name: string
-    // ⚠️ G2 — THE CAPABILITY QUESTION THE LINK-PASTE FLOW ALREADY ASKS AND THIS
-    // ONE NEVER DID. Claiming from here fell back to the account-wide default
-    // capability flags — set once during onboarding, for a creator who may film
-    // very different products very differently. A creator who claimed a
-    // suggested product could get the wrong scene type for THAT product even
-    // after correctly answering the account-wide question for a different one.
-    showability?: Showability | null
-    flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
-  }) => void
+  // ⚠️ THE SHARED CLAIM SHAPE. This form ASKS for less than the add dialog —
+  // a suggestion claim is not the place to type a price — but it can no longer
+  // be unable to SEND a field the contract has. See `ProductClaim`.
+  //
+  // ⚠️ G2 — THE CAPABILITY QUESTION THE LINK-PASTE FLOW ALREADY ASKS AND THIS
+  // ONE NEVER DID. Claiming from here fell back to the account-wide default
+  // capability flags — set once during onboarding, for a creator who may film
+  // very different products very differently.
+  onClaim: (a: ProductClaim) => void
 }) {
   // ⚖️ NOT PREFILLED FROM THE SUGGESTION TEXT. A suggestion is a CLAIM — "Early
   // is an iOS alarm app that requires push-ups" — not a name. Dropping that into
@@ -742,26 +740,9 @@ export default function ProductLibrary() {
     )
   }
 
-  async function claim(s: ProductSuggestion | null, a: {
-    relationship: EntityRelationship; personalUse: PersonalUse; type: EntityType; name: string
-    /** The creator's own one-line fallback. See migration 0177. */
-    creatorSummary?: string | null
-    /** ⚖️ THE LINK IS PART OF THE ATTESTATION, NOT A LATER EDIT. A creator who
-     *  starts from a page is telling us WHICH thing they mean; storing it on the
-     *  mint is what lets Twin read it without asking them to find it twice. */
-    productUrl?: string | null
-    /** ⚖️ PATHS, NOT FILES. The upload has already happened by the time this
-     *  runs — a claim that also had to carry bytes could fail halfway and leave
-     *  a product minted with photographs nobody can find. */
-    imagePaths?: string[]
-    flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
-    // ⚠️ G2 — CARRIED THROUGH FROM ClaimForm, NOT DEFAULTED HERE. Absent means
-    // this claim path did not ask (the extraction flow's own claim call above
-    // does not set it either), which `claimProductEntity` reads by falling back
-    // to the account default — the pre-#2 behaviour, preserved for every OTHER
-    // caller of `claim()`.
-    showability?: Showability | null
-  }) {
+  // ⚠️ ONE PARAMETER TYPE FOR EVERY CLAIM PATH. Both forms above send
+  // `ProductClaim`; restating the fields here was the third copy of the list.
+  async function claim(s: ProductSuggestion | null, a: ProductClaim) {
     // ⚠️ AN EMPTY OWNER ID MUST NOT REACH THE INSERT. RLS is owner-scoped, so a
     // blank id fails somewhere deep with a policy error that reads as a bug in
     // the product form. Say the real thing instead.
@@ -1409,7 +1390,11 @@ export default function ProductLibrary() {
                 // find. The lifecycle names the state, so the label follows it
                 // rather than re-deriving one from `knowledge === null` — which
                 // cannot tell a failed read from a page never given.
-                : productLifecycle(e, photoPathsOf(e).length) === 'IMPORT_FAILED' ? 'Retry'
+                // ⚠️ A STALL READS THE SAME WORD, because to the creator it is
+                // the same situation: a link is on file and nothing came back.
+                // The states differ in whether the attempt reported; the button
+                // differs in nothing at all.
+                : READ_DID_NOT_COME_BACK.has(productLifecycle(e, photoPathsOf(e).length)) ? 'Retry'
                   : e.knowledge === null ? 'Read the page' : 'Read it again'}
             </button>
           </div>
@@ -1688,8 +1673,12 @@ export default function ProductLibrary() {
                     more than one line can. What changes is the claim about what
                     Twin currently knows, which was simply untrue. */}
                 <p className="mt-1 text-sm text-sand">
-                  {productLifecycle(e, photoPathsOf(e).length) === 'IMPORT_FAILED'
-                    ? 'That read did not finish. Press Read the page above to try the same link again, or change it first.'
+                  {/* ⚠️ A STALLED READ USED TO LAND ON THE LAST LINE HERE and
+                      be told to "Add a link above" — with its link sitting in
+                      the box above, already read. That sentence is what made
+                      the state look stuck rather than broken. */}
+                  {READ_DID_NOT_COME_BACK.has(productLifecycle(e, photoPathsOf(e).length))
+                    ? 'That read did not finish. Press Retry above to try the same link again, or change it first.'
                     : (e.creatorSummary ?? '').trim() !== ''
                       ? 'Twin will use the line you wrote above. Add a link and press Read the page if you want it to learn more than that line.'
                       : 'Add a link above and press Read the page, so your scripts can say what it actually does instead of guessing.'}
@@ -2173,28 +2162,11 @@ function CommunityQuestions({ value, onChange }: {
 function StartFromLink({ onCancel, onClaim, busy }: {
   onCancel: () => void
   busy: boolean
-  onClaim: (a: {
-    relationship: EntityRelationship; personalUse: PersonalUse
-    type: EntityType; name: string; productUrl?: string | null; imagePaths?: string[]
-    /** The creator's own one-line fallback. See migration 0177. */
-    creatorSummary?: string | null
-    /** ⚠️ 0222's COLUMN, WHICH THIS FORM COULD NOT SEND. `EntityAttestation`
-     *  has declared `offer` since 0222 and this prop type never widened to
-     *  match, so the field was unreachable from "Add a product" — the price had
-     *  to be found by opening a product you had just created. */
-    offer?: string | null
-    /** ⚖️ THE ANSWER TO THE ONE CAPABILITY QUESTION THIS PRODUCT WARRANTED.
-     *  Absent when the type warranted none — a service — and absent is NOT a
-     *  denial: `attestedEntity` reads a missing flag as UNKNOWN. */
-    flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
-    /** ⚠️ THE SAME ANSWER, UNFLATTENED. The flag above can only carry yes/no, and
-     *  this form has always offered three options — so SOMETIMES arrived as a
-     *  `false` and was stored as NEVER. See `answeredShowability`. */
-    showability?: Showability | null
-    /** ⚖️ Present only for a COMMUNITY, and null when the form was not filled
-     *  in far enough to be usable. Absent is the ordinary state. */
-    communityMap?: unknown
-  }) => void
+  // ⚠️ THE SHARED CLAIM SHAPE, NOT A COPY OF IT. This prop used to restate
+  // the field list by hand, and that is exactly how `offer` came to exist on
+  // the opened product and not on this form: 0222 widened `EntityAttestation`
+  // and nobody widened the duplicate. See `ProductClaim`.
+  onClaim: (a: ProductClaim) => void
 }) {
   const [url, setUrl] = useState('')
   // ⚖️ UPLOADED AS THEY ARE PICKED, NOT ON SUBMIT. A submit that also had to
