@@ -36,9 +36,7 @@
     "changed by configuration — that is what makes the Director's decision",
     "reproducible from its recorded bundle, and it must stay null."
   ],
-
   "routingVersion": "model-routing-v1",
-
   "$taskClasses": [
     "id            what it is",
     "─────────────────────────────────────────────────────────────────────────",
@@ -49,7 +47,6 @@
     "profile       infer and write prose about a brand or voice; open-ended, and",
     "              the cost of a mediocre answer is a worse script"
   ],
-
   "$THE_ROUTING_LOOKS_INVERTED": [
     "RECORDED ON THE DAY THIS CATALOG WAS BUILT, because writing the three",
     "choices next to each other for the first time made it visible. It is a",
@@ -82,7 +79,6 @@
     "threshold against a legitimate 28.7% case, and an 80 ms caption tail guard",
     "against a real 93-120 ms shortfall."
   ],
-
   "taskClasses": {
     "decide": {
       "model": "gemini-3.5-flash",
@@ -111,6 +107,15 @@
         "Voice profile and post analysis. Reached the model by passing nothing",
         "at all and landing on geminiJson's fallthrough, which is exactly the",
         "kind of choice-by-omission this file exists to make visible."
+      ]
+    },
+    "search": {
+      "model": "gemini-2.5-flash",
+      "envOverride": null,
+      "$note": [
+        "Grounded Google Search for a product page with no link (productWebSearch.ts).",
+        "Used as the retry when the extract model answers with zero grounding sources",
+        "(measured 2026-09-23): 2.5 Flash is the model Google documents google_search for."
       ]
     }
   }

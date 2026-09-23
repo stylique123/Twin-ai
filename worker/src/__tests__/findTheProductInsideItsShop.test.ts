@@ -108,11 +108,11 @@ describe('the quick search missed it (2026-09-23)', () => {
   })
 
   it('reports the closest titles when nothing matches', async () => {
-    let closest: string[] = []
+    let closest: Array<{ title: string; url: string }> = []
     const fetchJson = async (u: string) => u.includes('suggest.json')
       ? { resources: { results: { products: [{ title: 'Scrunchie Bandana Mystery Packs', url: '/products/m' }] } } }
       : u.includes('/products.json') ? { products: [{ title: 'Scrunchie Bandana Mystery Packs', handle: 'm' }] } : null
     expect(await findShopProduct('https://x.com', 'Reversible Scrunchie Bandana', fetchJson, (c) => { closest = c })).toBeNull()
-    expect(closest[0]).toBe('Scrunchie Bandana Mystery Packs')
+    expect(closest[0]).toEqual({ title: 'Scrunchie Bandana Mystery Packs', url: 'https://x.com/products/m' })
   })
 })

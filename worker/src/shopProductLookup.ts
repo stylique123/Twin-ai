@@ -115,7 +115,7 @@ export async function findShopProduct(
   fetchJson: FetchJson,
   /** Told the closest titles the shop has when nothing matched — logged, so a
    *  miss can be diagnosed from production without reaching the shop. */
-  onMiss?: (closest: string[]) => void,
+  onMiss?: (closest: Array<{ title: string; url: string }>) => void,
 ): Promise<ShopProduct | null> {
   let origin: string
   try {
@@ -143,8 +143,17 @@ export async function findShopProduct(
       .sort((a, b) => b.score - a.score)[0]
     if (hit && hit.score >= MIN_NAME_MATCH) best = hit
     else {
-      onMiss?.([...found.map((r) => String(r.title ?? '')), ...list.map((p) => String(p.title ?? ''))]
-        .filter(Boolean).sort((x, y) => nameMatch(productName, y) - nameMatch(productName, x)).slice(0, 5))
+      // ⚖️ THE CLOSEST ONES, WITH THEIR PAGES, so she can pick hers.
+      const seen = new Set<string>()
+      const cands = [
+        ...found.map((r) => ({ title: String(r.title ?? ''), url: String(r.url ?? '').split('?')[0] })),
+        ...list.map((p) => ({ title: String(p.title ?? ''), url: p.handle ? `/products/${p.handle}` : '' })),
+      ]
+        .filter((c) => c.title !== '' && /^\/products\/[^/]+$/.test(c.url) && !seen.has(c.url) && seen.add(c.url))
+        .map((c) => ({ title: c.title, url: `${origin}${c.url}` }))
+        .sort((x, y) => nameMatch(productName, y.title) - nameMatch(productName, x.title))
+        .slice(0, 6)
+      onMiss?.(cands)
       return null
     }
   }

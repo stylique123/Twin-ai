@@ -55,6 +55,7 @@ import {
   capabilityFlag,
   productLifecycle, LIFECYCLE_MESSAGE, READ_STALLS_AFTER_MS, linkStatus, linkStatusMessage,
   loadProductStories, saveProductStories, type ProductStories,
+  loadLookupCandidates, clearLookupCandidates, type LookupCandidate,
   CAPTURE_COPY, PLATFORM_CHOICES, PRIVACY_CHOICES, RATHER_NOT_SAY, FIGURE_HINT,
   surfaceChoices, buildCommunityMap, whatIsMissing,
   type ProductSuggestion,
@@ -544,6 +545,7 @@ export default function ProductLibrary() {
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   /** 0225 — product id → the creator's three optional story answers. */
   const [stories, setStories] = useState<Record<string, ProductStories>>({})
+  const [candidates, setCandidates] = useState<Record<string, LookupCandidate[]>>({})
   async function saveStory(id: string, key: keyof ProductStories, v: string) {
     const current = stories[id] ?? { almostWentWrong: null, customersSay: null, howItsMade: null }
     if ((current[key] ?? '') === v) return
@@ -821,6 +823,7 @@ export default function ProductLibrary() {
         void loadBrands().then((b) => { if (alive) setBrands(b) })
         // 0225 — separate and best effort; see `loadProductStories`.
         void loadProductStories().then((s) => { if (alive) setStories(s) }).catch(() => { /* optional */ })
+        void loadLookupCandidates().then((c) => { if (alive) setCandidates(c) })
         // ⚖️ THE PHOTOS EXISTED AND NOBODY COULD SEE THEM. A creator uploaded up
         // to four pictures at add time, extraction read them, and the page then
         // showed only the words it got out of them — so "did my photo arrive"
@@ -1194,6 +1197,7 @@ export default function ProductLibrary() {
       }
       if (found && found.knowledge !== null) {
         setEntities(rows)
+        void loadLookupCandidates().then(setCandidates)
         if (openReview && found.knowledge.length > 0) setReviewId(id)
         return
       }
@@ -1597,6 +1601,37 @@ export default function ProductLibrary() {
           <p data-testid="link-status" className={`text-xs ${['FAILED', 'TIMED_OUT'].includes(linkStatus(e, now)) ? 'text-coral' : 'text-stone'}`}>
             {linkStatusMessage(e, now)}
           </p>
+          {/* ⚖️ NOT FOUND BY ITS EXACT NAME — SO ASK, DON'T GUESS. Measured
+              2026-09-23: her shop names each bandana by its print, and none is
+              called "Reversible Scrunchie Bandana". The worker keeps the
+              closest ones (0226); picking one reads that page as this product. */}
+          {(candidates[e.id] ?? []).length > 0 && learning !== e.id && (
+            <div className="mt-2 rounded-xl border border-teal/30 bg-teal/[0.05] p-3">
+              <p className="text-sm text-cream">
+                Twin couldn't find “{e.name}” by that exact name on your shop. Is it one of these?
+              </p>
+              <div className="mt-2 space-y-1.5">
+                {candidates[e.id].map((c) => (
+                  <button key={c.url} type="button"
+                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/12 px-3 py-2 text-left text-sm hover:border-white/30"
+                    onClick={() => {
+                      setCandidates((p) => { const n = { ...p }; delete n[e.id]; return n })
+                      void clearLookupCandidates(e.id).catch(() => undefined)
+                      setLearnUrl((p) => ({ ...p, [e.id]: c.url }))
+                      void save(e.id, { productUrl: c.url }).then(() => learn(e.id, c.url))
+                    }}>
+                    <span className="truncate text-cream">{c.title}</span>
+                    <span className="shrink-0 text-xs text-teal">This one</span>
+                  </button>
+                ))}
+              </div>
+              <button type="button" className="mt-2 text-xs text-stone underline hover:text-cream"
+                onClick={() => {
+                  setCandidates((p) => { const n = { ...p }; delete n[e.id]; return n })
+                  void clearLookupCandidates(e.id).catch(() => undefined)
+                }}>None of these — I'll paste the link</button>
+            </div>
+          )}
           {/* ⚖️ A PAGE TWIN FOUND BY ITSELF IS A QUESTION, NOT AN ANSWER. Its
               facts are marked `web_search` and wait for her; this asks the one
               thing that decides them all. "Not mine" clears the link and every

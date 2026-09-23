@@ -2811,6 +2811,34 @@ export async function setProductBrand(productId: string, brandId: string | null)
   if (error) throw error
 }
 
+/** 0226 — the closest products on her shop when Twin could not find hers by its
+ *  exact name, by product id. Best-effort and separate, like the stories: an
+ *  unapplied migration reads as "no candidates", never a broken library. */
+export interface LookupCandidate { title: string; url: string }
+export async function loadLookupCandidates(): Promise<Record<string, LookupCandidate[]>> {
+  try {
+    const { data, error } = await supabase.from('product_entities').select('id, lookup_candidates')
+      .not('lookup_candidates', 'is', null)
+    if (error || !data) return {}
+    const out: Record<string, LookupCandidate[]> = {}
+    for (const row of data as Array<{ id: string; lookup_candidates: unknown }>) {
+      const items = (row.lookup_candidates as { items?: unknown } | null)?.items
+      if (!Array.isArray(items)) continue
+      const list = items
+        .map((i) => ({ title: String((i as { title?: unknown }).title ?? ''), url: String((i as { url?: unknown }).url ?? '') }))
+        .filter((i) => i.title !== '' && /^https:\/\//.test(i.url))
+      if (list.length > 0) out[row.id] = list
+    }
+    return out
+  } catch { return {} }
+}
+
+/** She answered (picked one, or "none of these"): the list goes. */
+export async function clearLookupCandidates(productId: string): Promise<void> {
+  const { error } = await supabase.from('product_entities').update({ lookup_candidates: null }).eq('id', productId)
+  if (error) throw error
+}
+
 /** 0225 — the creator's three optional product stories, by product id.
  *  ⚖️ BEST-EFFORT AND SEPARATE from `loadProductEntities`: an unapplied
  *  migration costs these answers (an empty map), never the library. */
