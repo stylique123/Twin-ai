@@ -153,6 +153,7 @@ import { EASE } from '../components/motion'
 import { cn } from '../lib/cn'
 import { LogoMark } from '../components/Logo'
 import type { SellsKind } from '@twinai/shared'
+import { loadProductEntities, sellsAnswerWithLibrary, type LibraryProductView } from '@twinai/shared'
 import { StoryInterview } from '../components/StoryInterview'
 import { loadSellsFacet } from '../lib/ownSellsLoad'
 import { clearStoryDraft } from '../lib/storyDraft'
@@ -648,6 +649,17 @@ function BuildingStep({
   onTryPlatform: (platform: Platform) => void
   onDraftChange: (next: OnboardingDraft) => void
 }) {
+  // Her live Product Library rows, so an unanswered "do you sell" reads her
+  // products as the answer (as Settings does). Null on a failed read — never
+  // read as "no products".
+  const [library, setLibrary] = useState<LibraryProductView[] | null>(null)
+  useEffect(() => {
+    let alive = true
+    loadProductEntities()
+      .then((rows) => { if (alive) setLibrary(rows) })
+      .catch(() => { if (alive) setLibrary(null) })
+    return () => { alive = false }
+  }, [])
   const [err, setErr] = useState<string | null>(null)
   // ⚠️ THE CLASSIFIED FAILURE, BESIDE THE RAW STRING RATHER THAN INSTEAD OF IT.
   // `err` still drives anything that only needs a sentence; this decides whether
@@ -987,6 +999,7 @@ function BuildingStep({
             id={asked[qAt]}
             draft={draft}
             onDraftChange={onDraftChange}
+            library={library}
           />
           {/* THE CREATOR MOVES THE QUESTIONS, NOTHING ELSE DOES.
               Skipping is unpunished: a required question on a waiting screen
@@ -2287,10 +2300,13 @@ function Chips<T extends string>({ values, label, chosen, onPick }: {
  * so tapping the chosen answer again returns to unanswered everywhere, rather
  * than only where somebody remembered to write it.
  */
-export function ProfileQuestion({ id, draft, onDraftChange }: {
+export function ProfileQuestion({ id, draft, onDraftChange, library = null }: {
   id: ProfileQuestionId | undefined
   draft: OnboardingDraft
   onDraftChange: (next: OnboardingDraft) => void
+  /** Live Product Library rows — the evidence for an UNANSWERED sell/promote
+   *  question (the same `sellsAnswerWithLibrary` Settings uses). Null = unknown. */
+  library?: ReadonlyArray<LibraryProductView> | null
 }) {
   if (!id) return null
   const set = (patch: Partial<OnboardingDraft>) => onDraftChange({ ...draft, ...patch })
@@ -2304,7 +2320,10 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
     // asked together they read as an introduction, which is what they are.
     // Nothing about what is stored changed — the same four fields, the same
     // keys, the same draft.
-    const sells = sellsAnswerOf(draft.commercialTies)
+    // ⚠️ SAME READ AS SETTINGS: a stated answer wins; an unanswered one is
+    // pre-selected Yes from her own live library rows, with the reason shown.
+    const shownSells = sellsAnswerWithLibrary(draft.commercialTies, library)
+    const sells = shownSells.answer
     return (
       <>
         <Field label="What best describes what you do?">
@@ -2398,9 +2417,11 @@ export function ProfileQuestion({ id, draft, onDraftChange }: {
               // UNANSWERED and is not "nothing to sell" — turning silence into
               // a commercial statement is the error this screen exists to
               // avoid, and `sellsAnswerOf` keeps the two apart.
-              commercialTies: sells === a ? [] : [...SELLS_ANSWER_TO_TIES[a]],
+              // An inferred "yes" is saved as hers on tap, not cleared.
+              commercialTies: sells === a && !shownSells.fromLibrary ? [] : [...SELLS_ANSWER_TO_TIES[a]],
             })}
           />
+          {shownSells.reason && note(shownSells.reason)}
         </Field>
       </>
     )

@@ -149,3 +149,39 @@ describe('the step count is what the change claims', () => {
     expect(screen.getByText('Do you sell or promote anything in your videos?')).toBeTruthy()
   })
 })
+
+describe('gap #5: the library answers an unanswered question in onboarding too', () => {
+  const lib = [{ relationship: 'OWN_PRODUCT', source: 'user_answer', userConfirmed: true, archivedAt: null as string | null }]
+  const renderWith = (patch: Partial<OnboardingDraft>, library: typeof lib | null) => {
+    let latest = draftOf(patch)
+    render(<ProfileQuestion id="whoYouAre" draft={latest} onDraftChange={(n) => { latest = n }} library={library} />)
+    return () => latest
+  }
+
+  it('pre-selects Yes with the visible reason when unanswered and the library has her products', () => {
+    renderWith({ commercialTies: [] }, lib)
+    expect(screen.getByText('Yes').closest('button')?.getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByText(/Selected because your Product Library has 1 product you added/)).toBeTruthy()
+  })
+
+  it('tapping the inferred Yes saves it as hers rather than clearing it', () => {
+    const get = renderWith({ commercialTies: [] }, lib)
+    fireEvent.click(screen.getByText('Yes'))
+    expect(sellsAnswerOf(get().commercialTies)).toBe('yes')
+  })
+
+  it('a stated "Not right now" beats the library, and no reason shows', () => {
+    renderWith({ commercialTies: ['none'] }, lib)
+    expect(screen.getByText('Not right now').closest('button')?.getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByText(/Selected because/)).toBeNull()
+  })
+
+  it('archived or unconfirmed rows infer nothing', () => {
+    renderWith({ commercialTies: [] }, [
+      { relationship: 'OWN_PRODUCT', source: 'user_answer', userConfirmed: true, archivedAt: '2026-01-01' },
+      { relationship: 'AFFILIATE', source: 'scan', userConfirmed: false, archivedAt: null },
+    ])
+    expect(screen.getByText('Yes').closest('button')?.getAttribute('aria-pressed')).toBe('false')
+    expect(screen.queryByText(/Selected because/)).toBeNull()
+  })
+})
