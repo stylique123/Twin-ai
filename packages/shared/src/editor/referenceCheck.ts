@@ -193,3 +193,72 @@ export const REFERENCE_REASON_TEXT: Record<ReferenceReason, string> = {
 export function mayUseReference(assessment: ReferenceAssessment): boolean {
   return assessment.verdict !== 'unusable'
 }
+
+// ── ONE RULE FOR "LOW SPEECH", ONE SENTENCE, ONE OVERRIDE ─────────────────
+//
+// ⚠️ ITEM 24: THE SAME TIKTOK, TWO ATTEMPTS, TWO DIFFERENT ANSWERS. Local
+// whisper on a music-led clip returns a handful of words on one run and nothing
+// on the next. A handful reached `assessReference` as `sparse_speech` ("we found
+// very little speech"); nothing threw `empty transcript`, the job FAILED, and
+// the screen said "it may be private, deleted, or from an account that blocks
+// us" — a different class, a false cause, and no way to go ahead. YouTube's
+// "no captions we can read" and Instagram's "no speech we can read" took that
+// same failed-job path. And "Use it anyway" existed only on the early visual
+// check, so whether it was offered depended on which poll saw which answer.
+//
+// ⚖️ SO THE CLASS IS DECIDED BY ONE PURE FUNCTION over what the job returned,
+// and every low-speech signal — zero words, too few words, too slow, or a
+// reader that said there was no speech/captions/transcript — is ONE class with
+// ONE sentence, and it is ALWAYS overridable. Length refusals are never
+// overridable: a twelve-minute video is the wrong shape however it is read.
+export type ReferenceReadClass =
+  | 'usable'
+  | 'low_speech'
+  | 'too_long'
+  | 'too_short'
+  /** The job itself failed for a reason that is not about speech. */
+  | 'unreadable'
+  /** Finished with no transcript and no reason. */
+  | 'empty'
+
+export const LOW_SPEECH_TEXT =
+  'We found little or no speech in this one, so there is not much script for us to follow. '
+  + 'You can use it anyway — Twin keeps its shape and writes the words from your own material — or pick another.'
+
+/** Every reader message that means "read fine, nothing (much) was said". */
+const NO_SPEECH_ERROR = /no speech|has no speech|no captions|no_captions|empty transcript|no_speech/i
+
+export function isNoSpeechReadError(error: string | null | undefined): boolean {
+  return typeof error === 'string' && NO_SPEECH_ERROR.test(error)
+}
+
+export interface ReferenceReadInput {
+  status: string | null | undefined
+  error?: string | null
+  transcriptId?: string | null
+  durationSec?: number | null
+  words?: number | null
+}
+
+export interface ReferenceReadVerdict {
+  cls: ReferenceReadClass
+  /** Null for `usable`, `unreadable` and `empty` — those keep their own copy. */
+  message: string | null
+  /** The one override rule: offered for low speech, and only for low speech. */
+  overrideAllowed: boolean
+}
+
+export function classifyReferenceRead(input: ReferenceReadInput): ReferenceReadVerdict {
+  const low: ReferenceReadVerdict = { cls: 'low_speech', message: LOW_SPEECH_TEXT, overrideAllowed: true }
+  // A reader that said "no speech" is low speech whatever the job status.
+  if (isNoSpeechReadError(input.error)) return low
+  if (input.status === 'failed') return { cls: 'unreadable', message: null, overrideAllowed: false }
+  if (input.status !== 'done') return { cls: 'unreadable', message: null, overrideAllowed: false }
+  if (!input.transcriptId) return { cls: 'empty', message: null, overrideAllowed: false }
+  const check = assessReference({ durationSec: input.durationSec ?? null, wordCount: input.words ?? null })
+  if (check.reason === 'no_speech' || check.reason === 'sparse_speech') return low
+  if (check.reason === 'too_long' || check.reason === 'too_short') {
+    return { cls: check.reason, message: REFERENCE_REASON_TEXT[check.reason], overrideAllowed: false }
+  }
+  return { cls: 'usable', message: null, overrideAllowed: false }
+}

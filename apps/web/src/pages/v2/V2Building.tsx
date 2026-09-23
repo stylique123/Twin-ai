@@ -38,7 +38,7 @@ import {
   // second copy of the wording. The card re-derives; it does not redefine.
   objectiveQuestion, offerFormOf,
 } from '@twinai/shared'
-import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
+import { classifyReferenceRead, LOW_SPEECH_TEXT, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE, isReadCapacityExhausted } from '../../lib/api'
 import { READINESS_INCOMPLETE_CODE, SELL_WITHOUT_TARGET_CODE, OUT_OF_REMIXES_CODE } from '../../lib/api'
 import type { ReadinessQuestion } from '../../lib/api'
@@ -618,6 +618,12 @@ export default function V2Building() {
   // the job row for all of them; without this the card would reappear on every
   // tick after the creator had already answered it.
   const gateAsked = useRef(false)
+  // ⚖️ ITEM 24: ONE OVERRIDE PER REFERENCE. A creator who already said "use it
+  // anyway" to the early check is not asked again about the same video.
+  const usedAnyway = useRef(false)
+  // The low-speech card's answer, awaited exactly like the early gate's.
+  const lowSpeechResolve = useRef<((c: 'used_anyway' | 'picked_another') => void) | null>(null)
+  const [lowSpeechAsk, setLowSpeechAsk] = useState(false)
   // ⚖️ A CONTRADICTION, NOT A MISSING INPUT. Readiness asks a question because an
   // answer would unblock the build; this one has no question — the goal and what
   // the creator has to sell disagree, and only they can settle which was wrong.
@@ -832,6 +838,26 @@ export default function V2Building() {
         // the creator is told what to change instead of what went wrong.
         const halt = (cause: keyof typeof REFERENCE_UNREAD_TEXT) => {
           if (alive) { setUnusableRef(REFERENCE_UNREAD_TEXT[cause]); setUnreadCause(cause); setActive(0) }
+        }
+        // ⚖️ ITEM 24: THE LOW-SPEECH OVERRIDE, ALWAYS OFFERED, ASKED ONCE. True
+        // means go ahead with this reference; false means the build stopped
+        // (picked another, or cancelled) and nothing was spent.
+        const lowSpeechUsedAnyway = async (): Promise<boolean> => {
+          if (usedAnyway.current) return true
+          const choice = await new Promise<'used_anyway' | 'picked_another'>((resolve) => {
+            lowSpeechResolve.current = resolve
+            if (alive) { setUnusableRef(LOW_SPEECH_TEXT); setLowSpeechAsk(true); setIngesting(false); setActive(0) }
+          })
+          lowSpeechResolve.current = null
+          if (alive) { setUnusableRef(null); setLowSpeechAsk(false) }
+          if (cancelled.current) return false
+          if (choice === 'picked_another') {
+            if (alive) nav('/v2', { replace: true })
+            return false
+          }
+          usedAnyway.current = true
+          if (alive) setIngesting(true)
+          return true
         }
 
         // ── ASK BEFORE THE WAIT, NOT AFTER IT ──────────────────────────
@@ -1370,11 +1396,20 @@ export default function V2Building() {
                   // measure is one we have no opinion about, and discarding the
                   // creator's own choice on no evidence is the same overreach in
                   // the other direction.
-                  const check = assessReference({
+                  // ⚖️ ITEM 24: ONE CLASSIFIER, SHARED WITH THE FAILED-JOB BRANCH
+                  // below, so the same video gets the same class, the same
+                  // sentence and the same override on every attempt.
+                  const read = classifyReferenceRead({
+                    status: job.status, error: job.error ?? null,
+                    transcriptId: job.result.transcript_id,
                     durationSec: job.result.duration_sec ?? null,
-                    wordCount: job.result.words ?? null,
+                    words: job.result.words ?? null,
                   })
-                  if (mayUseReference(check)) {
+                  if (read.cls === 'low_speech') {
+                    if (!(await lowSpeechUsedAnyway())) return
+                    transcript_id = job.result.transcript_id
+                    unread = null
+                  } else if (read.cls === 'usable') {
                     transcript_id = job.result.transcript_id
                     unread = null // read, measured, and fit to follow
                   } else {
@@ -1392,7 +1427,7 @@ export default function V2Building() {
                     // have one for free: leave the reference out. What they must
                     // never get is a bill for us silently substituting that.
                     if (alive) {
-                      setUnusableRef(REFERENCE_REASON_TEXT[check.reason])
+                      setUnusableRef(read.message ?? REFERENCE_REASON_TEXT.duration_unknown)
                       setActive(0)
                     }
                     return
@@ -1410,6 +1445,14 @@ export default function V2Building() {
                 // was involved. The error text is on the row from the first
                 // attempt, which is what makes it answerable in time.
                 if (isReadCapacityExhausted(job.error)) { unread = 'read_unavailable'; break }
+                // ⚖️ ITEM 24: a reader that said "no speech / no captions /
+                // empty transcript" is LOW SPEECH, not "private or deleted".
+                if ((job.status === 'failed' || job.status === 'done')
+                  && classifyReferenceRead({ status: job.status, error: job.error ?? null }).cls === 'low_speech') {
+                  if (!(await lowSpeechUsedAnyway())) return
+                  unread = null
+                  break
+                }
                 if (job.status === 'done') { unread = 'read_empty'; break }
                 if (job.status === 'failed') { unread = 'read_failed'; break }
               }
@@ -1844,6 +1887,7 @@ export default function V2Building() {
     }
     setGateBusy(false)
     setGateWarn(null)
+    if (choice === 'used_anyway') usedAnyway.current = true
     const resolve = gateResolve.current
     gateResolve.current = null
     resolve?.(choice)
@@ -1962,6 +2006,13 @@ export default function V2Building() {
     focus: asOneOf(CONTENT_FOCUS, askAnswers.content_focus ?? answersRef.current.content_focus),
   }), { isProductSubject })
   const visibleAsk = (askQuestions ?? []).filter((q) => !q.whenCommercial || liveCommercial)
+  // ⚖️ ITEM 25: a pick made while the video was commercial, then left behind
+  // when the goal changed, is not an answer to a question no longer on the card.
+  const dropHiddenPick = () => {
+    if (!liveCommercial && (askQuestions ?? []).some((q) => q.whenCommercial)) {
+      delete answersRef.current[PRODUCT_CHOICE_FIELD]
+    }
+  }
   const decisions = visibleAsk.filter(isChip)
   const commercial = visibleAsk.filter((q) => !isChip(q))
   const hasTwoBlocks = decisions.length > 0 && commercial.length > 0
@@ -2449,12 +2500,7 @@ export default function V2Building() {
                 (q) => isChip(q) && !(askAnswers[q.field] ?? '').trim())}
               onClick={() => {
                 answersRef.current = { ...answersRef.current, ...askAnswers }
-                // ⚖️ A PICK MADE WHILE THE VIDEO WAS COMMERCIAL AND THEN LEFT
-                // BEHIND when the goal changed is not an answer to a question
-                // that is no longer on the card.
-                if (!liveCommercial && askQuestions.some((q) => q.whenCommercial)) {
-                  delete answersRef.current[PRODUCT_CHOICE_FIELD]
-                }
+                dropHiddenPick()
                 // ⚖️ THE ANSWERS OUTLIVE THE CARD, THE CARD DOES NOT. Keeping
                 // the answers means a tab reclaimed mid-build still sends them;
                 // clearing the questions means it does not re-ask what was just
@@ -2518,7 +2564,15 @@ export default function V2Building() {
                 own reading budget is spent it is not: the next reference hits
                 the identical wall, so sending someone off to re-pick videos
                 would cost them an afternoon to learn what we already know. */}
-            {unreadCause === 'read_unavailable' ? (
+            {lowSpeechAsk ? (
+              // ⚖️ ITEM 24: THE SAME TWO WAYS OUT AS THE EARLY CHECK, for the
+              // one class whose override rule is "always offered".
+              <>
+                <p className="mt-3 text-xs leading-relaxed text-stone/80">No remix has been used yet.</p>
+                <button onClick={() => lowSpeechResolve.current?.('used_anyway')} className="btn-gradient mt-6 w-full">Use it anyway</button>
+                <button onClick={() => lowSpeechResolve.current?.('picked_another')} className="btn-ghost mt-3 w-full">Pick another video</button>
+              </>
+            ) : unreadCause === 'read_unavailable' ? (
               <>
                 <p className="mt-3 text-xs leading-relaxed text-stone/80">
                   No remix was used, and another link will not help — this is on

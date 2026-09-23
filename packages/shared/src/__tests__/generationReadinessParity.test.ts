@@ -148,7 +148,8 @@ describe('the answers have a reader, and the right ones persist', () => {
   it('every question must be answered before the retry is allowed', () => {
     // Each one is present because guessing it would put a claim in the
     // creator's mouth, so a partial answer returns to the same refusal.
-    expect(WEB).toMatch(/disabled=\{askQuestions\.some\(\s*\n?\s*\(q\) => isChip\(q\) && !\(askAnswers\[q\.field\] \?\? ''\)\.trim\(\)\)\}/)
+    // Re-pointed (item 25): the check reads the questions actually visible.
+    expect(WEB).toMatch(/disabled=\{visibleAsk\.some\(\s*\n?\s*\(q\) => isChip\(q\) && !\(askAnswers\[q\.field\] \?\? ''\)\.trim\(\)\)\}/)
   })
 
   it('persists what is true of the CREATOR and nothing that is true of this video', () => {
