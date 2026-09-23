@@ -8,7 +8,7 @@ import type { Platform, Profile, VoiceProfile } from '../lib/types'
 import { asksForbiddenClaims, BRIEF_GOALS, type BriefWorkKind, type BriefGoal } from '../lib/api'
 import {
   profileQuestionsFor, asksScreenCapability, asksProductCapability,
-  ONBOARDING_SELLS_ANSWERS, sellsAnswerOf, SELLS_ANSWER_TO_TIES,
+  ONBOARDING_SELLS_ANSWERS, sellsAnswerOf, SELLS_ANSWER_TO_TIES, handleShapeError,
   type OnboardingSellsAnswer,
   AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE, goalFromCtas, goalConfirmationLine,
   scannedAudienceFacts, audienceFactConfirmed,
@@ -476,6 +476,9 @@ function HandleStep({
   const go = async () => {
     setErr(null)
     if (!handle.trim()) return setErr('Paste your handle or profile link first.')
+    // Same rule the server applies, so the sentence arrives before the round trip.
+    const shape = handleShapeError(handle)
+    if (shape) return setErr(shape)
     setBusy(true)
     try {
       // `replace: true` — onboarding is a SINGLE voice slot. If the creator already
