@@ -15,8 +15,10 @@
 // beat is dropped, a conflicting number is replaced by the one in her own
 // evidence, an invented name is reduced to its common noun, an overlong script
 // loses whole trailing sentences. Nothing here writes a new claim — so a script
-// that comes out SHORT is reported short, never padded (owner's ruling in
-// `durationContract.ts`: "never asks for padding").
+// that comes out SHORT is reported short, never padded here (owner's ruling in
+// `durationContract.ts`: "never asks for padding"). Below 80% of the budget the
+// edge may run ONE grounded extension pass (bottom of this file), which is
+// re-validated by this same function and discarded if it invents anything.
 //
 // Deno copy is GENERATED (scripts/ci/generate_shared_pilot_core.mjs); no imports.
 
@@ -26,6 +28,9 @@ export interface IntegrityBeat {
   ask?: unknown
   substance?: unknown
   substance_evidence?: unknown
+  /** Ids of the stored stories this beat tells (`tagStorySources`). Two beats
+   *  that share one are two tellings of one story, however they are worded. */
+  source_story_ids?: unknown
   [key: string]: unknown
 }
 
@@ -126,6 +131,99 @@ function terms(s: string): Set<string> {
     out.add(w.length > 4 && w.endsWith('s') ? w.slice(0, -1) : w)
   }
   return out
+}
+
+// ── DISTINCTIVE CONTENT (items 34/36, second pass) ────────────────────────
+// ⚠️ WORD OVERLAP ALONE MISSED A PARAPHRASE. Production generation 8ce1290d
+// told the snap-fastener story twice — "Replacing bad snap fasteners cost me 30
+// free orders" (Setup) and "faulty batches taught me…" (Durability Proof) —
+// with only two surface words in common. What two tellings of one story share
+// is its CONTENT: numbers, named things, and the stems of its content words —
+// and, when a stored story was supplied, the story itself (`source_story_ids`).
+const DISTINCT_STOP: ReadonlySet<string> = new Set([
+  ...STOP, 'used', 'even', 'still', 'always', 'never', 'much', 'many', 'some', 'these',
+  'those', 'being', 'been', 'where', 'while', 'until', 'after', 'before', 'again', 'first',
+  'right', 'know', 'make', 'made', 'want', 'does', 'doing', 'done', 'going', 'said', 'says',
+  'that’s', 'it’s', 'dont', 'didnt', 'cant', 'thats', 'youre', 'something', 'anything',
+])
+
+/** A deliberately small stemmer: enough to meet "fasteners"/"fastener",
+ *  "replacing"/"replace", "batches"/"batch". */
+export function stem(w: string): string {
+  let s = w.toLowerCase()
+  for (const suf of ['ing', 'es', 'ed', 's', 'e']) {
+    if (s.endsWith(suf) && s.length - suf.length >= 4) { s = s.slice(0, -suf.length); break }
+  }
+  return s
+}
+
+/** Numbers, named things and stemmed content words of a text. */
+export function distinctiveContent(text: string): Set<string> {
+  const out = new Set<string>()
+  const raw = String(text ?? '')
+  for (const m of raw.matchAll(/\d+(?:[.,]\d+)?/g)) out.add(`#${m[0]!.replace(',', '')}`)
+  for (const w of raw.split(/[^A-Za-z']+/)) {
+    const lw = w.toLowerCase().replace(/'s?$/, '').replace(/'/g, '')
+    if (lw.length < 4 || DISTINCT_STOP.has(lw)) continue
+    out.add(stem(lw))
+  }
+  return out
+}
+
+function sharedCount(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
+  let n = 0
+  for (const w of a) if (b.has(w)) n++
+  return n
+}
+
+/** Two lines retell one story when enough distinctive content is shared. */
+export function sharesDistinctiveContent(a: string, b: string): boolean {
+  const da = distinctiveContent(a)
+  const db = distinctiveContent(b)
+  const shared = sharedCount(da, db)
+  const smaller = Math.min(da.size, db.size)
+  const numberShared = [...da].some((w) => w.startsWith('#') && db.has(w))
+  return smaller > 0 && ((shared >= 4 && shared / smaller >= 0.4) || (numberShared && shared >= 3))
+}
+
+export interface StorySource { id?: unknown; text?: unknown; evidence?: unknown }
+
+/** Distinctive items a beat must share with a stored story to be tagged with it. */
+export const STORY_TAG_MIN_SHARED = 2
+
+/**
+ * Tag each spoken beat with the ids of the supplied stories it tells — matched
+ * on its line, or on cited evidence that quotes the story. Beats that gain a
+ * tag are shallow-copied; the rest pass through by reference.
+ */
+export function tagStorySources(
+  beats: readonly IntegrityBeat[] | null | undefined,
+  stories: readonly StorySource[] | null | undefined,
+): IntegrityBeat[] {
+  const list = Array.isArray(beats) ? beats : []
+  const src = (Array.isArray(stories) ? stories : [])
+    .map((s) => ({ id: String(s?.id ?? '').trim(), text: `${str(s?.text)} ${str(s?.evidence)}`.trim() }))
+    .filter((s) => s.id !== '' && s.text !== '')
+    .map((s) => ({ ...s, d: distinctiveContent(s.text), n: norm(s.text) }))
+  if (src.length === 0) return [...list]
+  return list.map((b) => {
+    if (!b || typeof b !== 'object' || str(b.line).trim() === '' || str(b.ask).trim() !== '') return b
+    const lineD = distinctiveContent(str(b.line))
+    const ev = norm(str(b.substance_evidence))
+    const ids: string[] = []
+    for (const s of src) {
+      const quoted = ev.length > 12 && (s.n.includes(ev) || ev.includes(s.n))
+      if (quoted || sharedCount(lineD, s.d) >= STORY_TAG_MIN_SHARED) ids.push(s.id)
+    }
+    if (ids.length === 0) return b
+    const prior = Array.isArray(b.source_story_ids) ? (b.source_story_ids as unknown[]).map(String) : []
+    return { ...b, source_story_ids: [...new Set([...prior, ...ids])] }
+  })
+}
+
+function storyIds(b: IntegrityBeat): Set<string> {
+  return new Set(Array.isArray(b.source_story_ids)
+    ? (b.source_story_ids as unknown[]).map(String).filter((x) => x !== '') : [])
 }
 
 const NUMBER_WORDS: Record<string, number> = {
@@ -297,6 +395,8 @@ export function repairScriptIntegrity(
     t: terms(str(b.line)),
     q: quantities(str(b.line)),
     ev: norm(str(b.substance_evidence)),
+    d: distinctiveContent(str(b.line)),
+    stories: storyIds(b),
     spoken: isSpoken(b) && !isAsk(b),
     protectedBeat: PROTECTED_SECTION.test(str(b.section)),
   }))
@@ -310,7 +410,14 @@ export function repairScriptIntegrity(
       for (const w of a.t) if (b.t.has(w)) shared++
       const smaller = Math.min(a.t.size, b.t.size)
       const sameEvidence = a.ev !== '' && a.ev.length > 20 && a.ev === b.ev
-      const retold = sameEvidence || (shared >= 4 && smaller > 0 && shared / smaller >= 0.6)
+      // ⚖️ THE SAME STORED STORY in both beats, provided the two lines also
+      // share some distinctive content of their own.
+      let sameStory = false
+      for (const id of a.stories) if (b.stories.has(id)) { sameStory = true; break }
+      sameStory = sameStory && sharedCount(a.d, b.d) >= 1
+      const paraphrased = sharesDistinctiveContent(str(beats[i]!.line), str(beats[j]!.line))
+      const retold = sameEvidence || sameStory || paraphrased
+        || (shared >= 4 && smaller > 0 && shared / smaller >= 0.6)
       const conflicts: string[] = []
       for (const qa of a.q) {
         for (const qb of b.q) {
@@ -364,4 +471,155 @@ export function repairScriptIntegrity(
   }
 
   return { beats, report }
+}
+
+// ── ITEM 38, THE OTHER DIRECTION: ONE GROUNDED EXTENSION PASS ──────────────
+//
+// ⚠️ A SHORT SCRIPT WAS ONLY LOGGED. Trimming handles the long side; below 80%
+// of the budget the creator got a video far shorter than the length she chose.
+//
+// ⚖️ LENGTHEN, NEVER INVENT. The edge asks the writer ONCE to lengthen the
+// middle beats using only facts already in the prompt. The answer is accepted
+// only if (a) it adds no number, and no capitalised name, that is in neither the
+// beat it replaces nor the creator's own material, and (b) the whole integrity
+// pass run again removes nothing — no duplicate, no invented line name, no
+// conflicting number. Otherwise the original stands. Padding with a fabricated
+// claim is worse than a short video.
+
+/** Extend when the spoken words are below this share of the target budget. */
+export const EXTEND_BELOW_SHARE = 0.8
+
+export interface ExtensionDecision {
+  extend: boolean
+  words: number
+  target: number
+  /** Words to add to reach the target (0 when no extension). */
+  wordsWanted: number
+  /** Indices of the beats the writer may lengthen. */
+  indices: number[]
+}
+
+/** The middle, spoken, non-ask, non-protected beats — the only ones a pass may touch. */
+export function extendableIndices(beats: readonly IntegrityBeat[]): number[] {
+  const out: number[] = []
+  beats.forEach((b, i) => {
+    if (i === 0 || i === beats.length - 1) return
+    if (!b || !isSpoken(b) || isAsk(b) || PROTECTED_SECTION.test(str(b.section))) return
+    out.push(i)
+  })
+  return out
+}
+
+/** Should the edge run its one extension pass? */
+export function shouldExtendScript(
+  beats: readonly IntegrityBeat[] | null | undefined,
+  targetSec: number | null | undefined,
+  wpm?: number | null,
+): ExtensionDecision {
+  const list = Array.isArray(beats) ? beats.filter((b) => b && typeof b === 'object') : []
+  const words = list.reduce((n, b) => n + wordsOf(str(b.line)), 0)
+  if (typeof targetSec !== 'number' || !Number.isFinite(targetSec) || targetSec <= 0) {
+    return { extend: false, words, target: 0, wordsWanted: 0, indices: [] }
+  }
+  const target = wordBudget(targetSec, wpm).target
+  const indices = extendableIndices(list)
+  const extend = words > 0 && words < target * EXTEND_BELOW_SHARE && indices.length > 0
+  return { extend, words, target, wordsWanted: extend ? target - words : 0, indices: extend ? indices : [] }
+}
+
+/** The instruction for the writer. Facts are exactly what the prompt already supplied. */
+export function buildExtensionPrompt(
+  beats: readonly IntegrityBeat[],
+  decision: ExtensionDecision,
+  facts: string,
+): string {
+  return 'This finished short-form script is too short for the length the creator chose'
+    + ` (${decision.words} spoken words; about ${decision.target} are needed).`
+    + ` Lengthen ONLY the beats listed below, adding about ${decision.wordsWanted} words in total,`
+    + ' spread across them. Use ONLY the facts in SUPPLIED FACTS: say more about what is already'
+    + ' there — how, why, what it looked like, what it meant. NEVER add a new number, name, product,'
+    + ' customer, result or claim. Keep each beat\'s purpose, voice and position; do not repeat'
+    + ' another beat\'s story. Return JSON: {"rewrites":[{"index":<number>,"line":"<new line>"}]}\n\n'
+    + `SUPPLIED FACTS:\n${facts.slice(0, 6000)}\n\nBEATS:\n`
+    + decision.indices.map((i) => `index ${i}\nSECTION: ${str(beats[i]?.section)}\nLINE: ${str(beats[i]?.line)}`).join('\n\n')
+}
+
+const NUM_TOKEN = /\$?\d+(?:[.,]\d+)?%?|\b(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|hundred)\b/gi
+
+function numberTokens(s: string): Set<string> {
+  return new Set([...s.matchAll(NUM_TOKEN)].map((m) => {
+    const t = m[0]!.toLowerCase().replace(/[$%,]/g, '')
+    return t in NUMBER_WORDS ? String(NUMBER_WORDS[t]) : t
+  }))
+}
+
+/** Capitalised words that are not sentence-initial ("Etsy", "Gucci"). */
+function namedWords(s: string): Set<string> {
+  const out = new Set<string>()
+  for (const sentence of splitSentences(s)) {
+    sentence.split(/\s+/).forEach((w, k) => {
+      const clean = w.replace(/[^A-Za-z0-9'-]/g, '')
+      if (k === 0 || clean === '' || clean === 'I' || /^I'/.test(clean)) return
+      if (/^[A-Z]/.test(clean)) out.add(clean.toLowerCase())
+    })
+  }
+  return out
+}
+
+/** What a rewrite introduced that neither its original beat nor the facts contain. */
+export function inventedByExtension(original: string, rewrite: string, facts: string): string[] {
+  const allowedNums = new Set([...numberTokens(original), ...numberTokens(facts)])
+  const known = ` ${norm(facts)} ${norm(original)} `
+  const out: string[] = []
+  for (const n of numberTokens(rewrite)) if (!allowedNums.has(n)) out.push(n)
+  for (const w of namedWords(rewrite)) if (!known.includes(` ${norm(w)} `)) out.push(w)
+  return out
+}
+
+export interface ExtensionResult {
+  accepted: boolean
+  reason: 'accepted' | 'no_rewrites' | 'invented' | 'not_longer' | 'integrity_removed'
+  beats: IntegrityBeat[]
+  report: IntegrityReport | null
+  wordsBefore: number
+  wordsAfter: number
+  invented: string[]
+}
+
+/**
+ * Apply the writer's rewrites, then RE-VALIDATE: nothing invented, the script
+ * actually longer, and a second full integrity pass that has nothing to remove
+ * or correct. Any failure returns the original beats untouched.
+ */
+export function acceptExtension(
+  original: readonly IntegrityBeat[],
+  rewrites: ReadonlyArray<{ index?: unknown; line?: unknown }> | null | undefined,
+  decision: ExtensionDecision,
+  opts: IntegrityOptions,
+): ExtensionResult {
+  const before = original.reduce((n, b) => n + wordsOf(str(b?.line)), 0)
+  const keep = (reason: ExtensionResult['reason'], invented: string[] = []): ExtensionResult =>
+    ({ accepted: false, reason, beats: [...original], report: null, wordsBefore: before, wordsAfter: before, invented })
+  const allowed = new Set(decision.indices)
+  const facts = String(opts.knownText ?? '')
+  const next = [...original]
+  const invented: string[] = []
+  let applied = 0
+  for (const r of Array.isArray(rewrites) ? rewrites : []) {
+    const i = Number(r?.index)
+    const line = typeof r?.line === 'string' ? r.line.trim() : ''
+    if (!Number.isInteger(i) || !allowed.has(i) || line === '' || !next[i]) continue
+    invented.push(...inventedByExtension(str(next[i]!.line), line, facts))
+    next[i] = { ...next[i]!, line }
+    applied++
+  }
+  if (applied === 0) return keep('no_rewrites')
+  if (invented.length) return keep('invented', [...new Set(invented)])
+  const again = repairScriptIntegrity(next, opts)
+  const r = again.report
+  if (r.droppedIndices.length || r.inventedNames.length || r.numberConflicts.length || r.numbersRestored) {
+    return keep('integrity_removed')
+  }
+  if (r.words <= before) return keep('not_longer')
+  return { accepted: true, reason: 'accepted', beats: again.beats, report: r, wordsBefore: before, wordsAfter: r.words, invented: [] }
 }

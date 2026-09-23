@@ -259,3 +259,82 @@ export function referenceHasNoSingleProductFocus(container: ContainerType | null
 export function singleProductReferenceNotice(productName: string): string {
   return `This reference isn't about one product — we'll use its structure for ${productName}.`
 }
+
+// ── THE FALLBACK: READ THE REFERENCE ITSELF ──────────────────────────────
+//
+// ⚠️ ITEM 26, SECOND HALF. The structural rule above needs an ASSESSED
+// container type; a reference nobody assessed (a pasted link, an older row)
+// went to the writer as a single-product shape however many products it
+// ranked. This reads the reference's own words instead: a list / ranking /
+// "top N" / "vs" pattern, or two or more distinct product nouns each carried by
+// a different beat, is a multi-product reference.
+//
+// ⚖️ LEXICAL AND EXPLAINABLE, and it returns WHY — the log says which pattern
+// or which nouns fired, so a false positive can be argued with.
+const MULTI_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
+  ['top_n', /\btop\s+(?:\d+|three|four|five|six|seven|eight|nine|ten)\b/i],
+  ['n_products', /\b(?:\d+|two|three|four|five|six|seven|eight|nine|ten)\s+(?:of\s+my\s+)?(?:best|favou?rite|must[- ]haves?|products|items|picks|essentials|gadgets|tools|apps|buys|finds|purchases)\b/i],
+  ['versus', /\b(?:vs\.?|versus)\s+\S/i],
+  ['ranking', /\b(?:ranking|ranked|tier list|ranks)\b/i],
+  ['numbered_items', /\bnumber\s+(?:one|1)\b[\s\S]{0,400}\bnumber\s+(?:two|2)\b/i],
+]
+
+const PRODUCT_NOUNS: ReadonlySet<string> = new Set([
+  'serum', 'moisturizer', 'moisturiser', 'cleanser', 'toner', 'sunscreen', 'spf', 'mascara', 'lipstick',
+  'concealer', 'blush', 'bronzer', 'primer', 'shampoo', 'conditioner', 'perfume', 'fragrance',
+  'candle', 'lotion', 'balm', 'eyeliner', 'palette', 'phone', 'laptop', 'tablet', 'headphones',
+  'earbuds', 'camera', 'microphone', 'keyboard', 'monitor', 'speaker', 'smartwatch',
+  'charger', 'blender', 'airfryer', 'kettle', 'toaster', 'vacuum', 'mattress', 'pillow', 'backpack',
+  'sneakers', 'shoes', 'boots', 'jacket', 'hoodie', 'leggings', 'jeans', 'handbag', 'wallet',
+  'sunglasses', 'bottle', 'mug', 'supplement', 'protein', 'creatine', 'software', 'plugin',
+])
+
+function productNounsIn(text: string): Set<string> {
+  const out = new Set<string>()
+  for (const raw of text.toLowerCase().split(/[^a-z]+/)) {
+    if (PRODUCT_NOUNS.has(raw)) { out.add(raw); continue }
+    const single = raw.endsWith('es') && PRODUCT_NOUNS.has(raw.slice(0, -2)) ? raw.slice(0, -2)
+      : raw.endsWith('s') && PRODUCT_NOUNS.has(raw.slice(0, -1)) ? raw.slice(0, -1) : ''
+    if (single !== '') out.add(single)
+  }
+  return out
+}
+
+export interface MultiProductReading {
+  multi: boolean
+  /** Which signal fired: a pattern name, or `distinct_products`. */
+  reason: string | null
+  products: string[]
+}
+
+/**
+ * Does the reference's own transcript or beat structure name or show two or
+ * more distinct products? `beats` are its beat summaries or beat lines, in order.
+ */
+export function referenceLooksMultiProduct(input: {
+  transcript?: string | null
+  beats?: ReadonlyArray<string | null | undefined> | null
+}): MultiProductReading {
+  const beats = (Array.isArray(input.beats) ? input.beats : [])
+    .map((b) => String(b ?? '').trim()).filter((b) => b !== '')
+  const whole = `${String(input.transcript ?? '')}\n${beats.join('\n')}`
+  for (const [name, re] of MULTI_PATTERNS) {
+    if (re.test(whole)) return { multi: true, reason: name, products: [] }
+  }
+  // Two distinct product nouns, each carried by a beat the other is absent from.
+  const perBeat = beats.map(productNounsIn)
+  const found = new Set<string>()
+  for (let i = 0; i < perBeat.length; i++) {
+    for (let j = i + 1; j < perBeat.length; j++) {
+      for (const a of perBeat[i]!) {
+        if (perBeat[j]!.has(a)) continue
+        for (const b of perBeat[j]!) {
+          if (b === a || perBeat[i]!.has(b)) continue
+          found.add(a); found.add(b)
+        }
+      }
+    }
+  }
+  if (found.size >= 2) return { multi: true, reason: 'distinct_products', products: [...found].sort() }
+  return { multi: false, reason: null, products: [] }
+}

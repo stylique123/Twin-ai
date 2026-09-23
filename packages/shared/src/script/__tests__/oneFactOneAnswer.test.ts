@@ -84,6 +84,20 @@ describe('wiring: the edge and the answer endpoint use these rules', () => {
     // The pass runs before the syncs that read the script.
     expect(src.indexOf('repairScriptIntegrity(bpAny.script')).toBeLessThan(src.indexOf('syncRetentionMapToScript('))
   })
+  it('generate-blueprint tags story sources before the pass and re-validates the one extension pass', () => {
+    const src = read('supabase/functions/generate-blueprint/index.ts')
+    const tag = src.indexOf('bpAny.script = tagStorySources(')
+    const pass = src.indexOf('repairScriptIntegrity(bpAny.script')
+    const decide = src.indexOf('shouldExtendScript(integrity.beats')
+    const accept = src.indexOf('acceptExtension(integrity.beats')
+    expect(tag).toBeGreaterThan(0)
+    expect(tag).toBeLessThan(pass)
+    expect(pass).toBeLessThan(decide)
+    expect(decide).toBeLessThan(accept)
+    expect(src.slice(decide, accept)).toMatch(/buildExtensionPrompt\(/)
+    expect(src).toMatch(/event: 'script_length_extended'/)
+    expect(accept).toBeLessThan(src.indexOf('syncRetentionMapToScript('))
+  })
 })
 
 describe('item 35: the hook remainder can never be a fragment of a later scene', () => {
