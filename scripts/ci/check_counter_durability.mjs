@@ -423,6 +423,11 @@ const EVENTS = {
     why: 'The durable fact is the price facts written into product_entities.knowledge; the log '
       + 'is the live trace of reading them from the page\'s schema.org data.',
   },
+  product_not_found_on_shop: {
+    kind: 'counter_ephemeral',
+    why: 'Diagnostic trace of a shop lookup miss (closest titles). Nothing durable changes; '
+      + 'product_entities keeps its old link.',
+  },
   product_found_on_shop: {
     kind: 'counter_ephemeral',
     why: 'The durable fact is product_entities.product_url, rewritten from the shop front to '
