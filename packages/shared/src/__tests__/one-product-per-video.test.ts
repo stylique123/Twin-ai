@@ -7,7 +7,7 @@ import {
   CONTAINER_TYPES,
 } from '../referenceContentProfile'
 import {
-  referenceHasNoSingleProductFocus, singleProductReferenceNotice, templateFor,
+  referenceHasNoSingleProductFocus, singleProductReferenceNotice, templateFor, referenceLooksMultiProduct,
 } from '../containerTemplates'
 import { mustAskWhichProduct, selectProduct } from '../productSelection'
 
@@ -57,5 +57,43 @@ describe('item 26: a multi-product reference built for one product', () => {
     expect(EDGE).toMatch(/referenceHasNoSingleProductFocus\(tpl\.container\)/)
     expect(EDGE).toMatch(/Never introduce, name, compare against or merge in any other product\./)
     expect(EDGE).toMatch(/reference_scope_note: referenceScopeNote/)
+  })
+})
+
+describe('item 26 fallback: a multi-product reference with no assessed container', () => {
+  it('reads list / ranking / top-N / vs patterns from the transcript', () => {
+    expect(referenceLooksMultiProduct({ transcript: 'My top 5 drugstore finds this month' }))
+      .toMatchObject({ multi: true, reason: 'top_n' })
+    expect(referenceLooksMultiProduct({ transcript: 'Three products I repurchase every single time.' }).multi).toBe(true)
+    expect(referenceLooksMultiProduct({ transcript: 'CeraVe vs La Roche-Posay, which one wins?' }))
+      .toMatchObject({ multi: true, reason: 'versus' })
+    expect(referenceLooksMultiProduct({ transcript: 'I ranked every lip oil I own.' }).multi).toBe(true)
+    expect(referenceLooksMultiProduct({ transcript: 'Number one is the cheapest. Number two surprised me.' }).multi).toBe(true)
+  })
+  it('reads two distinct product nouns carried by different beats', () => {
+    const r = referenceLooksMultiProduct({ beats: [
+      'Hook: holds up a tub',
+      'First, a gel moisturizer that sinks in fast',
+      'Then a mineral sunscreen with no white cast',
+      'Follow for part two',
+    ] })
+    expect(r).toMatchObject({ multi: true, reason: 'distinct_products' })
+    expect(r.products).toEqual(['moisturizer', 'sunscreen'])
+  })
+  it('leaves a single-product reference alone', () => {
+    expect(referenceLooksMultiProduct({
+      transcript: 'I have used this serum for thirty days. Here is what changed. Watch until the end.',
+      beats: ['Hook: the serum bottle', 'Day one with the serum', 'Day thirty: the serum results', 'Link in bio'],
+    }).multi).toBe(false)
+    expect(referenceLooksMultiProduct({ transcript: '3 mistakes I made starting my business' }).multi).toBe(false)
+    expect(referenceLooksMultiProduct({}).multi).toBe(false)
+  })
+  it('the edge applies the same notice and writer instruction on the fallback', () => {
+    expect(EDGE).toMatch(/referenceLooksMultiProduct\(/)
+    expect(EDGE).toMatch(/event: 'reference_multi_product_fallback'/)
+    const at = EDGE.indexOf('referenceLooksMultiProduct(')
+    const block = EDGE.slice(at, at + 2500)
+    expect(block).toMatch(/singleProductReferenceNotice\(/)
+    expect(block).toMatch(/THIS REFERENCE IS ABOUT SEVERAL PRODUCTS; THIS VIDEO IS ABOUT ONE/)
   })
 })

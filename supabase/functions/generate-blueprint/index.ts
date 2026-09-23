@@ -16,7 +16,7 @@ import { renderDirectionGuidance, cleanActionPosing,
   type ObjectShape as ObjectShapeInline } from '../_shared/performanceDirection.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { buildLinkAllowlist, sanitizeBlueprintLinks, type LinkAllowlist } from '../_shared/outputLinks.ts'
-import { templateFor, referenceHasNoSingleProductFocus, singleProductReferenceNotice } from '../_shared/containerTemplates.ts'
+import { templateFor, referenceHasNoSingleProductFocus, singleProductReferenceNotice, referenceLooksMultiProduct } from '../_shared/containerTemplates.ts'
 import { buildSlots, filledFrom, slotsReady } from '../_shared/writerInput.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
 import { applyHookContract } from '../_shared/hookContract.ts'
@@ -25,8 +25,11 @@ import { askForBeat, askIsUsable, scaffoldWithoutAnswer, boundAskBeats, productA
 import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
-import { gateStories, recentSupplyCounts } from '../_shared/storyRotation.ts'
-import { repairScriptIntegrity, type IntegrityBeat } from '../_shared/scriptIntegrity.ts'
+import { gateStories, recentSupplyCounts, STORY_KINDS } from '../_shared/storyRotation.ts'
+import {
+  repairScriptIntegrity, tagStorySources, shouldExtendScript, buildExtensionPrompt, acceptExtension,
+  type IntegrityBeat,
+} from '../_shared/scriptIntegrity.ts'
 import {
   resolveTemplate,
   evidenceLevel, groundingDepth, creatorDepth, substanceIssues, isProgressCheck,
@@ -5843,6 +5846,17 @@ const SPAN_REPAIR_SCHEMA = {
   required: ['candidates'],
 } as const
 
+/** ⚠️ `callModel` RETURNS TEXT. The claim-leak and phrase-overlap repairs read
+ *  `.rewrites` off that string directly, so no rewrite was ever applied
+ *  (found 2026-09-23). Parsed here, once, never throwing. */
+function parseRepairRewrites(raw: unknown): Array<{ index?: unknown; line?: unknown }> {
+  try {
+    const o = typeof raw === 'string' ? JSON.parse(raw) : raw
+    const list = (o as { rewrites?: unknown } | null)?.rewrites
+    return Array.isArray(list) ? list as Array<{ index?: unknown; line?: unknown }> : []
+  } catch { return [] }
+}
+
 async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder): Promise<string> {
   // The default MUST be a model that reliably returns a FULL blueprint inside the
   // edge wall-clock. gemini-3.1-pro-preview consistently ran 60-90s and timed out
@@ -9385,6 +9399,9 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         // the third state is that nobody may make that claim without counting.
         let substanceBudgetBeats: number | null = null
         let substanceReferencePoints: number | null = null
+        // The assessed reference's beat summaries, read with the container
+        // below and handed to the multi-product fallback (item 26).
+        let refBeatSummaries: string[] = []
         // ⚠️ WHERE THE POINTS CAME FROM, NOT ONLY HOW MANY. The budget records
         // its TOTAL; nothing recorded which of the two corpora supplied the
         // reference half, so "is the transcript fallback working" could not be
@@ -9509,6 +9526,13 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
           substanceReferencePoints = referencePointsFromInline(
             (assessed?.profile as { structure?: unknown } | null)?.structure)
           if (substanceReferencePoints !== null) referencePointsSource = 'profile'
+          const assessedBeats = (assessed?.profile as
+            { structure?: { beats?: { value?: unknown } } } | null)?.structure?.beats?.value
+          if (Array.isArray(assessedBeats)) {
+            refBeatSummaries = assessedBeats
+              .map((b) => String((b as { summary?: unknown } | null)?.summary ?? '').trim())
+              .filter((s) => s !== '')
+          }
           const container = (assessed?.profile as
             { structure?: { containerType?: { value?: string; basis?: string } } } | null)
             ?.structure?.containerType
@@ -9678,6 +9702,41 @@ ${beatLines.join('\n')}`
           // creator nothing — they get today's prompt, which is what every
           // generation before this line got.
           console.log(JSON.stringify({ event: 'container_template_absent', reason: 'read_failed', detail: String(e).slice(0, 120) }))
+        }
+
+        // ⚠️⚠️ ITEM 26, THE FALLBACK. The rule above needs an assessed container
+        // type; a reference with none (not assessed, `other`, or a shape with a
+        // single product slot) was built as single-product however many products
+        // it ranked. Read its own transcript and beats instead
+        // (`referenceLooksMultiProduct`) and apply the SAME notice and the SAME
+        // writer instruction.
+        if (referenceScopeNote === null) {
+          try {
+            const scopeSubject = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim()
+              || (chosenBrand?.name ?? '').trim()
+            const refStructureBeats = Array.isArray((ref?.structure as { beats?: unknown } | null)?.beats)
+              ? ((ref!.structure as { beats: unknown[] }).beats).map((b) => typeof b === 'string'
+                ? b
+                : String((b as { summary?: unknown; text?: unknown; line?: unknown } | null)?.summary
+                  ?? (b as { text?: unknown } | null)?.text ?? (b as { line?: unknown } | null)?.line ?? ''))
+              : []
+            const reading = scopeSubject === '' ? null : referenceLooksMultiProduct({
+              transcript: typeof ref?.text === 'string' ? ref.text : null,
+              beats: [...refBeatSummaries, ...refStructureBeats],
+            })
+            if (reading?.multi) {
+              referenceScopeNote = singleProductReferenceNotice(scopeSubject)
+              containerBlock += `\n\nTHIS REFERENCE IS ABOUT SEVERAL PRODUCTS; THIS VIDEO IS ABOUT ONE.
+Keep the reference's STRUCTURE and ORDER, but every beat that features a product
+is about "${scopeSubject}" — a different angle, use or reason for the SAME thing.
+Never introduce, name, compare against or merge in any other product.`
+              console.log(JSON.stringify({
+                event: 'reference_multi_product_fallback',
+                reason: reading.reason,
+                products: reading.products,
+              }))
+            }
+          } catch { /* a detector failure costs the notice, never the generation */ }
         }
 
         // ── HOW MUCH OF THE REFERENCE'S ACTUAL LANGUAGE THE WRITER SEES ──
@@ -11523,7 +11582,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
           REPAIR_SCHEMA,
         )
         let applied = 0
-        for (const r of ((fixed as { rewrites?: Array<{ index?: unknown; line?: unknown }> })?.rewrites ?? [])) {
+        for (const r of (parseRepairRewrites(fixed))) {
           const i = typeof r?.index === 'number' ? r.index : -1
           const line = typeof r?.line === 'string' ? r.line.trim() : ''
           if (i < 0 || line === '' || !Array.isArray(declared) || !declared[i]) continue
@@ -11594,7 +11653,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
             REPAIR_SCHEMA,
           )
           let applied = 0
-          for (const r of ((fixed as { rewrites?: Array<{ index?: unknown; line?: unknown }> })?.rewrites ?? [])) {
+          for (const r of (parseRepairRewrites(fixed))) {
             const i = typeof r?.index === 'number' ? r.index : -1
             const line = typeof r?.line === 'string' ? r.line.trim() : ''
             if (i < 0 || line === '' || !declared[i]) continue
@@ -11841,15 +11900,72 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
           ...(knowledgeRows ?? []).map((k) => `${String(k.text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`),
           ...productFactsForCheck,
         ].join('\n')
-        const integrity = repairScriptIntegrity(bpAny.script as IntegrityBeat[], {
+        // ⚠️ ITEMS 34/36: TAG EACH BEAT WITH THE STORED STORY IT TELLS. The
+        // writer never says which supplied item a beat rests on, so two beats
+        // paraphrasing one story ("Setup" and "Durability Proof" both telling
+        // the snap-fastener story, gen 8ce1290d) looked like two points. The
+        // tag (`source_story_ids`) is carried on the beat into the blueprint.
+        const suppliedStories = (speakable ?? [])
+          .filter((k) => STORY_KINDS.has(String((k as { kind?: unknown }).kind ?? '')))
+          .map((k) => ({
+            id: (k as { id?: unknown }).id,
+            text: (k as { text?: unknown }).text,
+            evidence: (k as { evidence?: unknown }).evidence,
+          }))
+        bpAny.script = tagStorySources(bpAny.script as IntegrityBeat[], suppliedStories)
+        const integrityOpts = {
           knownText,
           targetSec: resolveTargetInline(body.target_seconds, null).targetSec,
           // ⚠️ NO MEASURED PACE IS STORED PER CREATOR TODAY; the budget uses the
           // recorder's natural 150 wpm. The parameter exists so a stored pace
           // plugs in here without a second rule.
           wpm: null,
-        })
+        }
+        const integrity = repairScriptIntegrity(bpAny.script as IntegrityBeat[], integrityOpts)
         bpAny.script = integrity.beats
+        // ⚠️ ITEM 38: A SCRIPT UNDER 80% OF ITS BUDGET GETS ONE EXTENSION PASS.
+        // The writer lengthens the middle beats from the facts ALREADY in the
+        // prompt; `acceptExtension` rejects any new number or name and re-runs
+        // this whole integrity pass on the result. Any failure keeps the
+        // original — a short video beats a padded, invented one. The pass never
+        // drops a beat (a drop is a rejection), so `beat_plan` stays aligned.
+        const extendDecision = shouldExtendScript(integrity.beats, integrityOpts.targetSec, integrityOpts.wpm)
+        if (extendDecision.extend) {
+          let extensionReason = 'call_failed'
+          let wordsAfter = extendDecision.words
+          let invented: string[] = []
+          try {
+            const raw = await callModel(
+              apiKey,
+              'You lengthen single script lines using only facts you are given.'
+              + ' You never invent a new fact, product, number, name or experience. You return JSON only.',
+              buildExtensionPrompt(integrity.beats, extendDecision, knownText),
+              REPAIR_SCHEMA,
+            )
+            const parsed = JSON.parse(raw) as { rewrites?: Array<{ index?: unknown; line?: unknown }> }
+            const ext = acceptExtension(integrity.beats, parsed?.rewrites, extendDecision, integrityOpts)
+            extensionReason = ext.reason
+            invented = ext.invented
+            if (ext.accepted) {
+              bpAny.script = ext.beats
+              wordsAfter = ext.wordsAfter
+              integrity.report.words = ext.wordsAfter
+              integrity.report.underBy = ext.report?.underBy ?? integrity.report.underBy
+            }
+          } catch (e) {
+            extensionReason = `call_failed: ${String((e as Error)?.message ?? e).slice(0, 80)}`
+          }
+          console.warn(JSON.stringify({
+            event: 'script_length_extended',
+            accepted: extensionReason === 'accepted',
+            reason: extensionReason,
+            words_before: extendDecision.words,
+            words_after: wordsAfter,
+            target_words: extendDecision.target,
+            beats_offered: extendDecision.indices.length,
+            invented,
+          }))
+        }
         // ⚖️ THE PLAN IS PARALLEL TO THE SCRIPT; a dropped beat drops its plan row.
         if (integrity.report.droppedIndices.length && Array.isArray(bpAny.beat_plan)
           && bpAny.beat_plan.length === originalLen) {
