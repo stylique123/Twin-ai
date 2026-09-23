@@ -367,12 +367,17 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   // product confidently is worse than the old behaviour.
   // A product with no link of its own is sent here with its BRAND's website
   // (Product Library, "Find it on …"), which is a shop front by definition.
+  // ⚖️ WHAT EACH LOOKUP SAW, KEPT ON THE JOB'S OWN RESULT. Worker logs are not
+  // reachable from where misses get diagnosed; `jobs.result` is (2026-09-23).
+  const lookup: Record<string, unknown> = {}
   const shopBase = isShopFront(url) ? url : ''
   const shopProduct = shopBase && existingName
-    ? await findShopProduct(shopBase, existingName, fetchShopJson, (closest) =>
-      console.log(JSON.stringify({ event: 'product_not_found_on_shop', entity_id: entityId, shop: shopBase, closest })),
-    ).catch(() => null)
+    ? await findShopProduct(shopBase, existingName, fetchShopJson, (closest) => {
+      lookup.shop = { matched: false, closest }
+      console.log(JSON.stringify({ event: 'product_not_found_on_shop', entity_id: entityId, shop: shopBase, closest }))
+    }).catch((e) => { lookup.shop = { error: String(e).slice(0, 160) }; return null })
     : null
+  if (shopBase && existingName && !lookup.shop) lookup.shop = { matched: !!shopProduct, url: shopProduct?.url ?? null }
   if (shopProduct) {
     url = shopProduct.url
     // Her link now points at the product itself, so the card and every later
@@ -393,7 +398,7 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   let webMatch: WebProductMatch | null = null
   const shopMissed = shopBase !== '' && !shopProduct
   if (existingName && imagePaths.length === 0 && ((!url && webSearchAsked) || shopMissed)) {
-    webMatch = await searchWebForProduct(entityId, existingName)
+    webMatch = await searchWebForProduct(entityId, existingName, lookup)
     if (webMatch) {
       url = webMatch.url
       await db.from('product_entities').update({ product_url: webMatch.url }).eq('id', entityId)
@@ -437,7 +442,7 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
       knowledge_failed_at: null,
       knowledge_error: null,
     }).eq('id', entityId)
-    return { extracted: fallback.length, reason: 'unreadable' }
+    return { extracted: fallback.length, reason: 'unreadable', lookup }
   }
 
   // ⚠️ A PAGE TWIN FOUND ITSELF IS `web_search`, WHATEVER KIND OF PAGE IT IS.
@@ -633,12 +638,12 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
     needs_creator: attention.length,
     conflicts: attention.map(describeChange).slice(0, 10),
   }))
-  return { extracted: knowledge.length, usable, changed: changes.length, conflicts: attention.length }
+  return { extracted: knowledge.length, usable, changed: changes.length, conflicts: attention.length, lookup }
 }
 
 /** Run the grounded web search for a product, logging what happened. Returns
  *  null — and the caller keeps its old path — on every kind of failure. */
-async function searchWebForProduct(entityId: string, name: string): Promise<WebProductMatch | null> {
+async function searchWebForProduct(entityId: string, name: string, lookup: Record<string, unknown> = {}): Promise<WebProductMatch | null> {
   try {
     let brandName: string | null = null
     const { data: row } = await db.from('product_entities').select('brand_id').eq('id', entityId).maybeSingle()
@@ -654,6 +659,9 @@ async function searchWebForProduct(entityId: string, name: string): Promise<WebP
       search: (system, prompt) => geminiGroundedSearch(system, prompt, model),
       fetchPage: (u) => fetchPageText(u),
     })
+    lookup.web = outcome.ok
+      ? { matched: true, host: outcome.match.host, url: outcome.match.url }
+      : { matched: false, reason: outcome.reason, detail: outcome.detail ?? null, sources: outcome.sources }
     if (outcome.ok) {
       console.log(JSON.stringify({ event: 'product_found_on_web', entity_id: entityId, host: outcome.match.host,
         confidence: outcome.match.confidence }))
@@ -663,6 +671,7 @@ async function searchWebForProduct(entityId: string, name: string): Promise<WebP
       detail: outcome.detail ?? null, sources: outcome.sources }))
     return null
   } catch (e) {
+    lookup.web = { matched: false, reason: 'error', detail: (e instanceof Error ? e.message : String(e)).slice(0, 200) }
     console.log(JSON.stringify({ event: 'product_web_search_no_match', entity_id: entityId, reason: 'error',
       detail: (e instanceof Error ? e.message : String(e)).slice(0, 200) }))
     return null
