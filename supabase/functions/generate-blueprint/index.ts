@@ -16,7 +16,7 @@ import { renderDirectionGuidance, cleanActionPosing,
   type ObjectShape as ObjectShapeInline } from '../_shared/performanceDirection.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { buildLinkAllowlist, sanitizeBlueprintLinks, type LinkAllowlist } from '../_shared/outputLinks.ts'
-import { templateFor } from '../_shared/containerTemplates.ts'
+import { templateFor, referenceHasNoSingleProductFocus, singleProductReferenceNotice } from '../_shared/containerTemplates.ts'
 import { buildSlots, filledFrom, slotsReady } from '../_shared/writerInput.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
 import { applyHookContract } from '../_shared/hookContract.ts'
@@ -6642,6 +6642,9 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // braces. It states at the point of use that a decline yields no subject, and
   // the next person to add a fallback has to delete an explicit `null` to do it.
   const ownedEntity = declinedAProduct ? null : chosenEntity
+  // ⚖️ ITEM 26: set when a multi-product reference is built for ONE chosen
+  // subject. Saved on the blueprint so the result screen says so in one line.
+  let referenceScopeNote: string | null = null
 
   // ── THE BRAND IT BELONGS TO — ONLY ONCE SHE HAS SAID IT IS RIGHT ─────────
   //
@@ -9458,6 +9461,21 @@ ${tpl.beats.map((b, i) => `  ${i + 1}. ${b.label} (${b.role}) — ${b.purpose}${
 A beat marked [needs: product] or [needs: tool_or_software] requires something
 the creator actually has; if the knowledge above supplies none, write that beat
 about the topic in general rather than naming a product they never mentioned.`
+            // ⚠️⚠️ ITEM 26: A MULTI-PRODUCT SHAPE, ONE CHOSEN SUBJECT. A
+            // round-up or comparison has several beats that each need a
+            // different product; filling them for a product build merged every
+            // product the writer could reach into one script. The subject is
+            // exactly what she chose, so every product beat is about THAT, and
+            // the creator is told the reference's focus was not carried over.
+            const scopeSubject = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim()
+              || (chosenBrand?.name ?? '').trim()
+            if (scopeSubject !== '' && referenceHasNoSingleProductFocus(tpl.container)) {
+              referenceScopeNote = singleProductReferenceNotice(scopeSubject)
+              containerBlock += `\n\nTHIS REFERENCE IS ABOUT SEVERAL PRODUCTS; THIS VIDEO IS ABOUT ONE.
+Keep the reference's STRUCTURE and ORDER, but every beat marked [needs: product]
+is about "${scopeSubject}" — a different angle, use or reason for the SAME thing.
+Never introduce, name, compare against or merge in any other product.`
+            }
             const resolutions = resolveTemplate(
               tpl,
               {
@@ -12442,7 +12460,11 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         reference_url,
         reference_note,
         fidelity,
-        blueprint,
+        // ⚖️ ITEM 26: the one-line notice rides on the saved blueprint, so the
+        // result screen reads it without a second channel.
+        blueprint: referenceScopeNote
+          ? { ...(blueprint as Record<string, unknown>), reference_scope_note: referenceScopeNote }
+          : blueprint,
         reference_analysis: referenceAnalysis,
         brand_voice_id: voice?.id ?? null,
         transcript_id: transcript_id || null,

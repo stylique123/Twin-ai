@@ -229,7 +229,13 @@ type ChipQuestion = IntentQuestion
 const INTENT_FIELDS: ReadonlySet<string> = new Set(INTENT_QUESTIONS.map((q) => q.field))
 
 /** A question the card can render: free text, or chips. */
-type AskItem = ReadinessQuestion | ChipQuestion
+type AskItem = (ReadinessQuestion | ChipQuestion) & {
+  /** ⚖️ ITEM 25: shown only once the LIVE answers make this video carry a
+   *  product. The picker used to be decided once, before the goal chip was
+   *  tapped, so an idea build that became "about my product" on this card
+   *  never asked WHICH product. */
+  whenCommercial?: boolean
+}
 const isChip = (q: AskItem): q is ChipQuestion =>
   Array.isArray((q as ChipQuestion).options)
 
@@ -1106,16 +1112,28 @@ export default function V2Building() {
             const brandChoices = libraryBrands.map((b) => ({
               value: `${BRAND_CHOICE_PREFIX}${b.id}`, label: `${b.name} (the whole brand)`,
             }))
+            // ⚠️⚠️ ITEM 25: THE PICKER WAS DECIDED BEFORE THE CHIPS WERE TAPPED.
+            // In idea mode the goal/focus are unanswered on this pass, so
+            // `showsCommercialBlock` was false, the picker was dropped, and the
+            // second pass (after "Create my version") skips this block entirely.
+            // A creator who then chose "My product or service" / a selling goal
+            // was never asked WHICH product. So: if there is a tie to break and
+            // the intent could still become commercial, the picker rides along
+            // flagged `whenCommercial`, and the card shows it the moment the
+            // live answers make the video carry a product.
+            const productCommercialNow = showsCommercialBlock(answeredIntent, { isProductSubject })
+            const intentStillOpen = unanswered.some((q) => q.field === 'video_goal' || q.field === 'content_focus')
             const productQuestion: AskItem[] =
-              mustAskWhichProduct({
+              (productCommercialNow || intentStillOpen) && mustAskWhichProduct({
                 ownedProductIds: [...ownedProducts.map((p) => p.id), ...brandChoices.map((b) => b.value)],
                 // ⚖️ THE DOOR'S CHOICE COUNTS AS AN ANSWER. Without this the
                 // screen re-asks "which one is this video about?" straight
                 // after the creator picked one to get here.
                 chosenId: answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null,
-                mayUseAProduct: showsCommercialBlock(answeredIntent, { isProductSubject }),
+                mayUseAProduct: true,
               })
                 ? [{
+                    ...(productCommercialNow ? {} : { whenCommercial: true }),
                     field: PRODUCT_CHOICE_FIELD,
                     question: 'Which one is this video about?',
                     // ⚖️ THEIR OWN NAMES, NOT A SUMMARY. The label is what they
@@ -1921,8 +1939,16 @@ export default function V2Building() {
     )
     : null
 
-  const decisions = (askQuestions ?? []).filter(isChip)
-  const commercial = (askQuestions ?? []).filter((q) => !isChip(q))
+  // ⚖️ ITEM 25: THE LIVE COMMERCIAL READING, from the chips as they stand on
+  // this card — the same expression the build uses to decide whether a product
+  // may travel at all, so the picker appears exactly when a pick would be used.
+  const liveCommercial = showsCommercialBlock(compileVideoIntent({
+    goal: asOneOf(VIDEO_GOALS, askAnswers.video_goal ?? answersRef.current.video_goal),
+    focus: asOneOf(CONTENT_FOCUS, askAnswers.content_focus ?? answersRef.current.content_focus),
+  }), { isProductSubject })
+  const visibleAsk = (askQuestions ?? []).filter((q) => !q.whenCommercial || liveCommercial)
+  const decisions = visibleAsk.filter(isChip)
+  const commercial = visibleAsk.filter((q) => !isChip(q))
   const hasTwoBlocks = decisions.length > 0 && commercial.length > 0
 
   /** ⚖️ ONE RENDERER, TWO COLUMNS. The blocks differ in what they ask and
@@ -2404,10 +2430,16 @@ export default function V2Building() {
               // answerable, and they are what the build actually needs. A
               // readiness question left blank is a thinner script; a card that
               // cannot be dismissed is no script at all.
-              disabled={askQuestions.some(
+              disabled={visibleAsk.some(
                 (q) => isChip(q) && !(askAnswers[q.field] ?? '').trim())}
               onClick={() => {
                 answersRef.current = { ...answersRef.current, ...askAnswers }
+                // ⚖️ A PICK MADE WHILE THE VIDEO WAS COMMERCIAL AND THEN LEFT
+                // BEHIND when the goal changed is not an answer to a question
+                // that is no longer on the card.
+                if (!liveCommercial && askQuestions.some((q) => q.whenCommercial)) {
+                  delete answersRef.current[PRODUCT_CHOICE_FIELD]
+                }
                 // ⚖️ THE ANSWERS OUTLIVE THE CARD, THE CARD DOES NOT. Keeping
                 // the answers means a tab reclaimed mid-build still sends them;
                 // clearing the questions means it does not re-ask what was just
