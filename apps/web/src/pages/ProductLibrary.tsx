@@ -458,7 +458,10 @@ export default function ProductLibrary() {
     setBrands((prev) => (prev ?? []).filter((b) => b.id !== id))
     setEntities((prev) => (prev ?? []).map((e) => (e.brandId === id ? { ...e, brandId: null } : e)))
   }
-  const addProductTo = (brandId: string | null) => { setAddingToBrand(brandId); setAddingNew(true) }
+  const [addPrefillUrl, setAddPrefillUrl] = useState<string | undefined>(undefined)
+  const addProductTo = (brandId: string | null, prefillUrl?: string) => {
+    setAddingToBrand(brandId); setAddPrefillUrl(prefillUrl); setAddingNew(true)
+  }
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -2043,6 +2046,7 @@ export default function ProductLibrary() {
               whether they have used it — because those are permissions, and a
               permission read off a web page is a permission nobody granted. */}
           <StartFromLink
+            initialUrl={addPrefillUrl}
             busy={claimBusy}
             onCancel={() => setAddingNew(false)}
             onClaim={(a) => void claim(null, a)}
@@ -2126,7 +2130,8 @@ export default function ProductLibrary() {
                 <section key={b.id} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
                   <div className="border-b border-white/10 p-4">
                     <BrandHeader brand={b} productCount={items.length}
-                      onSave={saveBrandAndLink} onRemove={() => removeBrand(b.id)} onAddProduct={() => addProductTo(b.id)} />
+                      onSave={saveBrandAndLink} onRemove={() => removeBrand(b.id)} onAddProduct={() => addProductTo(b.id)}
+                      onBrandIsProduct={items.length === 0 && b.website ? () => addProductTo(b.id, b.website!) : undefined} />
                     {facts.length > 0 && (
                       <details className="mt-3 rounded-lg bg-white/[0.03] px-3 py-2">
                         <summary className="cursor-pointer text-xs font-medium text-sand">
@@ -2611,8 +2616,10 @@ function CommunityQuestions({ value, onChange }: {
   )
 }
 
-function StartFromLink({ onCancel, onClaim, busy }: {
+function StartFromLink({ onCancel, onClaim, busy, initialUrl }: {
   onCancel: () => void
+  /** Pre-filled when the brand IS the product: its own website. */
+  initialUrl?: string
   busy: boolean
   // ⚠️ THE SHARED CLAIM SHAPE, NOT A COPY OF IT. This prop used to restate
   // the field list by hand, and that is exactly how `offer` came to exist on
@@ -2620,7 +2627,7 @@ function StartFromLink({ onCancel, onClaim, busy }: {
   // and nobody widened the duplicate. See `ProductClaim`.
   onClaim: (a: ProductClaim) => void
 }) {
-  const [url, setUrl] = useState('')
+  const [url, setUrl] = useState(initialUrl ?? '')
   // ⚖️ UPLOADED AS THEY ARE PICKED, NOT ON SUBMIT. A submit that also had to
   // carry several megabytes can fail halfway, and the creator would be told
   // their product could not be added when the real problem was one photo.
@@ -3092,12 +3099,15 @@ function BrandForm({ initial, isSuggestion, onSave, onCancel }: {
   )
 }
 
-function BrandHeader({ brand, productCount, onSave, onRemove, onAddProduct }: {
+function BrandHeader({ brand, productCount, onSave, onRemove, onAddProduct, onBrandIsProduct }: {
   brand: Brand
   productCount: number
   onSave: (b: BrandDraft) => Promise<void>
   onRemove: () => Promise<void>
   onAddProduct: () => void
+  /** ⚖️ WHEN THE BRAND IS THE PRODUCT — one app, one course, one bakery — it
+   *  is added as its own product in one step, reading the brand's website. */
+  onBrandIsProduct?: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
@@ -3134,6 +3144,10 @@ function BrandHeader({ brand, productCount, onSave, onRemove, onAddProduct }: {
       )}
       <button type="button" onClick={onAddProduct}
         className="mt-3 rounded-lg border border-white/15 px-3 py-1.5 text-sm hover:border-white/30">+ Add a product to {brand.name}</button>
+      {onBrandIsProduct && (
+        <button type="button" onClick={onBrandIsProduct}
+          className="ml-2 mt-3 rounded-lg px-3 py-1.5 text-sm text-teal hover:underline">{brand.name} is the product itself</button>
+      )}
     </div>
   )
 }

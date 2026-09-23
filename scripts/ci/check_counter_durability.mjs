@@ -418,6 +418,11 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Same shape: product_entities holds the rows, so the count is derivable from them.',
   },
+  product_prices_from_page_data: {
+    kind: 'counter_ephemeral',
+    why: 'The durable fact is the price facts written into product_entities.knowledge; the log '
+      + 'is the live trace of reading them from the page\'s schema.org data.',
+  },
   product_found_on_shop: {
     kind: 'counter_ephemeral',
     why: 'The durable fact is product_entities.product_url, rewritten from the shop front to '
