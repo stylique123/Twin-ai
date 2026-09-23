@@ -185,8 +185,9 @@ describe('the renderer prefers the live wording, and the chips render above it',
     // ⚖️ THIS IS WHY RE-DERIVING WORKS AT ALL. If the claims question sat above
     // the objective chip, the creator would read the generic sentence, tap the
     // chip below it, and watch a question she had already answered change.
-    const decisions = SRC.indexOf('const decisions = (askQuestions')
-    const commercial = SRC.indexOf('const commercial = (askQuestions')
+    // Re-pointed: both now filter `visibleAsk` (item 25's live picker visibility).
+    const decisions = SRC.indexOf('const decisions = visibleAsk')
+    const commercial = SRC.indexOf('const commercial = visibleAsk')
     expect(decisions).toBeGreaterThan(-1)
     expect(decisions).toBeLessThan(commercial)
   })

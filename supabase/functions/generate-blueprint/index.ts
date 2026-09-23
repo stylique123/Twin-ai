@@ -7227,7 +7227,21 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // been undefined and every commercial video re-asked a creator who had already
   // told us. `defaultCta` is the real column — see `cta.ts` — and it holds only
   // text a person typed, which is exactly the standard this gate wants.
-  if (readyCommercial && !readyPresent(answers.cta ?? brief.defaultCta ?? brief.cta)) {
+  // ⚖️ ITEM 28: THE CHOSEN PRODUCT'S OWN CTA COUNTS. A `usable` extracted `cta`
+  // fact, or the offer line she typed — mirrors `productCtaOnRecord` in
+  // packages/shared/src/cta.ts. Asking the generic question over it was
+  // re-asking what was already on record.
+  const readyProductCta = ((): string | undefined => {
+    const e = ownedEntity as { knowledge?: unknown; offer?: unknown } | null
+    if (!e) return undefined
+    for (const f of Array.isArray(e.knowledge) ? e.knowledge : []) {
+      const x = f as { field?: unknown; value?: unknown; trust?: unknown } | null
+      if (x && x.field === 'cta' && x.trust === 'usable' && String(x.value ?? '').trim() !== '') return String(x.value).trim()
+    }
+    const o = typeof e.offer === 'string' ? e.offer.trim() : ''
+    return o === '' ? undefined : o
+  })()
+  if (readyCommercial && !readyPresent(answers.cta ?? brief.defaultCta ?? brief.cta ?? readyProductCta)) {
     readyMissing.push({ field: 'cta', question: 'What should viewers do after watching?' })
   }
   // ⚠️ THE PRODUCT ALREADY ANSWERED THIS, AND THE GATE COULD NOT SEE IT.

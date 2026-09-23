@@ -18,6 +18,7 @@ import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@t
 import { readProfileAnswers } from '../../lib/profileAnswersRead'
 import { storeTypedMaterial } from '../../lib/creatorAnswers'
 import { namedAlternatives } from '@twinai/shared'
+import { productCtaOnRecord } from '@twinai/shared'
 import { readCreatorCtas } from '../../lib/creatorCtasRead'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
@@ -913,6 +914,10 @@ export default function V2Building() {
               ? libraryBrands.find((b) => `${BRAND_CHOICE_PREFIX}${b.id}` === pickedId) ?? null
               : null
             const chosenName = (chosenBrand?.name ?? chosen?.name ?? '').trim()
+            // ⚖️ ITEM 28: THE CTA ON RECORD FOR THIS PRODUCT. When it exists the
+            // generic "what should viewers do" question is not asked; the card
+            // shows the value that will be used, as an editable box.
+            const productCta = productCtaOnRecord(chosen as { knowledge?: unknown; offer?: unknown } | null)
             const verdict = assessReadiness({
               goal: state.goal ?? str(vBrief.goal) ?? null,
               angle: state.reference_note || refUrl || str(vBrief.idea) || null,
@@ -965,7 +970,10 @@ export default function V2Building() {
               // which is why it is gated rather than read raw. A generic goal
               // must not select a product question.
               objective: isProductSubject ? (answersRef.current.video_goal ?? null) : null,
-              cta: str(vBrief.cta) ?? null,
+              // ⚠️ `brief.cta` WAS NEVER A STORED KEY — `defaultCta` is (see
+              // cta.ts) — so this read undefined for everyone and every
+              // commercial product build asked the generic CTA question.
+              cta: productCta ?? str(vBrief.defaultCta) ?? str(vBrief.cta) ?? null,
               audience: str(vBrief.audience) ?? str(v?.profile?.audience) ?? null,
               referenceRead: Boolean(refUrl),
               hasCreatorKnowledge: Boolean(v?.profile),
@@ -1185,6 +1193,13 @@ export default function V2Building() {
               ...productQuestion,
               ...relevant.slice(0, MAX_TEXT_QUESTIONS),
             ]
+            // ⚖️ ITEM 28: SHOWN, NOT ASKED. When the card is up anyway and the
+            // product carries a CTA, the creator sees what will be used and can
+            // edit it — prefilled, so leaving it alone is an answer.
+            if (ask.length && productCta && !ask.some((q) => q.field === 'cta')) {
+              ask.push({ field: 'cta', question: 'What viewers will be asked to do — from your product. Edit it if this video needs something else.' })
+              if (!(answersRef.current.cta ?? '').trim()) answer('cta', productCta)
+            }
             if (ask.length && alive) {
               // No spend, no ingest, no wait — and `active` stays at 0 so the
               // bar does not pretend work is happening behind the card.

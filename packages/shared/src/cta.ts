@@ -367,3 +367,27 @@ export function suggestedCta(recurringCtas: readonly unknown[] | null | undefine
   }
   return null
 }
+
+// ── THE PRODUCT ALREADY SAYS WHAT THE VIEWER SHOULD DO ────────────────────
+//
+// ⚠️ ITEM 28: a product build asked "What should viewers do after watching?"
+// under the objective's own question on every run — including for a product
+// whose page Twin had already read a CTA off, or whose offer the creator typed.
+// The generic question was redundant with what was on record.
+//
+// ⚖️ ONLY WHAT SOMEBODY STOOD BEHIND. A `usable` extracted `cta` fact (the
+// creator reviewed it) first, then the offer line she typed on the product.
+// A `needs_confirmation` fact is not an answer and does not hide the question.
+export function productCtaOnRecord(p: { knowledge?: unknown; offer?: unknown } | null | undefined): string | null {
+  if (!p) return null
+  const k = Array.isArray(p.knowledge) ? p.knowledge : []
+  for (const f of k) {
+    const x = f as { field?: unknown; value?: unknown; trust?: unknown } | null
+    if (x && x.field === 'cta' && x.trust === 'usable') {
+      const v = String(x.value ?? '').trim()
+      if (v !== '') return v
+    }
+  }
+  const offer = typeof p.offer === 'string' ? p.offer.trim() : ''
+  return offer === '' ? null : offer
+}
