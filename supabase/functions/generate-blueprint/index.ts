@@ -12799,8 +12799,10 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
             reference_analysis: referenceAnalysis,
             brand_voice_id: voice?.id ?? null,
             transcript_id: transcript_id || null,
-            // The credit stands, because the creator is getting the script.
-            credits_spent: BLUEPRINT_COST,
+            // The credit stands, because the creator is getting the script —
+            // UNLESS the quality gate already refunded it before the throw. Writing
+            // COST after a refund would show a charge the ledger reversed.
+            credits_spent: refunded ? 0 : BLUEPRINT_COST,
             idempotency_key: idempotency_key || null,
             // ⚖️ NULL, NOT ZERO, AND THE DISTINCTION IS THE WHOLE VALUE OF THESE
             // COLUMNS. The analysis is what threw, so its counters were never
