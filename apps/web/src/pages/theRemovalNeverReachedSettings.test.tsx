@@ -66,14 +66,18 @@ describe('the fact stays editable, which is why this is a collapse not a deletio
   it('reads an old thirteen-option answer back rather than showing it as unanswered', () => {
     // ⚖️ STOP WRITING, KEEP READING. An account still holding `own_service`
     // must read as "yes", not as somebody who never answered.
-    expect(CODE).toContain('sellsAnswerOf(')
+    // Re-pointed: Settings reads through `sellsAnswerWithLibrary`, which calls
+    // `sellsAnswerOf` first (pinned in creatorProfileQuestions.sellsLibrary.test).
+    expect(CODE).toContain('sellsAnswerWithLibrary(')
   })
 
   // ⚠️ SILENCE IS NOT "NOTHING TO SELL". Tapping the chosen answer again clears
   // it to unanswered; turning that into a commercial statement is the error the
   // question exists to avoid.
   it('clears to an empty list rather than to a stated absence', () => {
-    expect(CODE).toMatch(/commercialTies:\s*on \? \[\] :/)
+    // Re-pointed: a library-inferred "yes" is saved on tap rather than cleared;
+    // a stated answer still clears to [] exactly as before.
+    expect(CODE).toMatch(/commercialTies:\s*on && !shown\.fromLibrary \? \[\] :/)
   })
 })
 

@@ -154,6 +154,45 @@ export function sellsAnswerOf(
   return 'yes'
 }
 
+/** A library row as `sellsAnswerWithLibrary` reads it — structural, so a
+ *  loaded `ProductEntityRecord` or a plain row both fit. */
+export interface LibraryProductView {
+  relationship?: string | null
+  source?: string | null
+  userConfirmed?: boolean | null
+  archivedAt?: string | null
+}
+
+const PROMOTES = new Set(['OWN_PRODUCT', 'OWN_SERVICE', 'AFFILIATE', 'SPONSOR'])
+
+/**
+ * The yes/no as shown, with the Product Library as evidence when unanswered.
+ *
+ * ⚠️ OWNER REPORT: "Do you sell or promote anything?" sat unselected for a
+ * creator whose library already held her products. A stated answer always wins
+ * (including "not right now" — her words beat our inference); only an
+ * UNANSWERED question is pre-selected, and only from live rows the creator
+ * supplied or confirmed. `reason` is the sentence the screen must show, so an
+ * inferred "yes" is never silent.
+ */
+export function sellsAnswerWithLibrary(
+  ties: readonly CommercialTie[] | null | undefined,
+  products: ReadonlyArray<LibraryProductView> | null | undefined,
+): { answer: OnboardingSellsAnswer | null; fromLibrary: boolean; reason: string | null } {
+  const stated = sellsAnswerOf(ties)
+  if (stated) return { answer: stated, fromLibrary: false, reason: null }
+  const live = (Array.isArray(products) ? products : []).filter((p) =>
+    !p?.archivedAt
+    && (p?.source === 'user_answer' || p?.userConfirmed === true)
+    && PROMOTES.has(String(p?.relationship ?? '')))
+  if (live.length === 0) return { answer: null, fromLibrary: false, reason: null }
+  return {
+    answer: 'yes',
+    fromLibrary: true,
+    reason: `Selected because your Product Library has ${live.length} product${live.length === 1 ? '' : 's'} you added.`,
+  }
+}
+
 /** Only asked when `own_product` is among the ties. Decides what may be filmed,
  *  which is why it is asked at all rather than inferred from the work kind. */
 export const OWN_PRODUCT_KINDS = [
