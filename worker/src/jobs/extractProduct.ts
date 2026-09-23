@@ -30,6 +30,7 @@ function mimeFor(path: string): string {
 }
 import { modelForTask } from '../modelRouting.js'
 import { isShopFront, findShopProduct, variantPriceLines } from '../shopProductLookup.js'
+import { ldPriceLines } from '../ldProductPrices.js'
 import { readExtractedFact, EXTRACTED_FIELDS, EXTRACTION_SOURCES, imageFactAllowed,
   type ExtractedFact, type ExtractedField, type ExtractionSource }
   from './productExtractionContract.js'
@@ -114,6 +115,10 @@ async function fetchShopJson(u: string): Promise<unknown | null> {
  *
  *  Best effort: a page we cannot read is a page we report on honestly, never one
  *  we guess about. */
+/** Prices the fetched page stated as schema.org data, by URL. Filled as a side
+ *  effect of `fetchPageText` so its signature (and its tests) stay unchanged. */
+const pagePrices = new Map<string, string[]>()
+
 async function fetchPageText(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, {
@@ -131,6 +136,7 @@ async function fetchPageText(url: string): Promise<string | null> {
 
     // ⚠️ HEAD FIRST, AND BEFORE ANY STRIPPING. See `harvestHead`.
     const head = harvestHead(html)
+    pagePrices.set(url, ldPriceLines(html))
 
     const prose = html
       .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -505,7 +511,18 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
     if (shopProduct.description) add('description', shopProduct.description)
     for (const line of variantPriceLines(shopProduct)) add('price', line)
     if (shopProduct.options.length > 0) add('feature', `Comes in options by ${shopProduct.options.join(' and ')}`)
+  } else if (url && (pagePrices.get(url)?.length ?? 0) > 0) {
+    // ⚖️ ANY OTHER SHOP: the page's own schema.org product data (ldProductPrices.ts).
+    // One product on the page or nothing, so a homepage never lends its prices.
+    const seen = new Set(facts.map((f) => `${f.field}|${f.value}`))
+    for (const line of pagePrices.get(url)!) {
+      if (seen.has(`price|${line}`)) continue
+      const f = readExtractedFact({ field: 'price' as never, value: line, source, sourceUrl: url, now })
+      if (f) { facts.push(f); seen.add(`price|${line}`) }
+    }
+    console.log(JSON.stringify({ event: 'product_prices_from_page_data', entity_id: entityId, count: pagePrices.get(url)!.length }))
   }
+  if (url) pagePrices.delete(url)
 
   // ⚠️ A RE-EXTRACT USED TO DESTROY EVERY CONFIRMATION THE CREATOR HAD MADE.
   // This wrote `knowledge: facts` — a wholesale replace — and
