@@ -29,7 +29,7 @@ function mimeFor(path: string): string {
     : p.endsWith('.webp') ? 'image/webp' : 'image/png'
 }
 import { modelForTask } from '../modelRouting.js'
-import { isShopFront, findShopProduct, variantPriceLines } from '../shopProductLookup.js'
+import { isShopFront, findShopProduct, variantPriceLines, optionLines } from '../shopProductLookup.js'
 import { ldPriceLines } from '../ldProductPrices.js'
 import { readExtractedFact, EXTRACTED_FIELDS, EXTRACTION_SOURCES, imageFactAllowed,
   type ExtractedFact, type ExtractedField, type ExtractionSource }
@@ -508,9 +508,9 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
       const f = readExtractedFact({ field: field as never, value, source, sourceUrl: shopProduct.url, now })
       if (f) { facts.push(f); seen.add(`${field}|${value}`) }
     }
-    if (shopProduct.description) add('description', shopProduct.description)
+    if (shopProduct.description && !facts.some((f) => f.field === 'description')) add('description', shopProduct.description)
     for (const line of variantPriceLines(shopProduct)) add('price', line)
-    if (shopProduct.options.length > 0) add('feature', `Comes in options by ${shopProduct.options.join(' and ')}`)
+    for (const line of optionLines(shopProduct)) add('feature', `Options — ${line}`)
   } else if (url && (pagePrices.get(url)?.length ?? 0) > 0) {
     // ⚖️ ANY OTHER SHOP: the page's own schema.org product data (ldProductPrices.ts).
     // One product on the page or nothing, so a homepage never lends its prices.
@@ -546,7 +546,15 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
     ? rawPrev.map((r) => readStoredFactLike(r)).filter((f): f is ExtractedFact => f !== null)
     : null
 
-  const { knowledge, changes } = mergeExtraction(previous, facts)
+  // ⚠️ A NEW PAGE REPLACES WHAT THE OLD PAGE SAID. When the shop lookup moved
+  // her link from the shop's front page to the product's own page, the front
+  // page's facts (the brand's story, free shipping, other products' prices)
+  // were merged in beside the product's and showed on the card as its own.
+  // Only what she confirmed survives the move.
+  const carried = shopProduct && previous
+    ? previous.filter((f) => f.source === 'user_confirmed' || f.sourceUrl === url)
+    : previous
+  const { knowledge, changes } = mergeExtraction(carried, facts)
 
   // ⚠️ THE PAGE'S OWN NAME NEVER REACHED `product_entities.name`, AND THAT WAS
   // THE GAP: a creator who trusted "Twin will read this from the page" and left

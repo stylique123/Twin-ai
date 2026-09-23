@@ -6676,8 +6676,9 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // the product, the brand, or nowhere a script may use.
   const placedEntityFacts = (() => {
     const e = ownedEntity as { knowledge?: unknown; product_url?: unknown; name?: unknown } | null
-    const k = Array.isArray(e?.knowledge) ? (e!.knowledge as Array<{ field: string; value: string; trust?: string }>) : []
-    return placeFacts(k, { url: String(e?.product_url ?? ''), productName: String(e?.name ?? '') })
+    const k = Array.isArray(e?.knowledge) ? (e!.knowledge as Array<{ field: string; value: string; trust?: string; sourceUrl?: string | null }>) : []
+    return placeFacts(k, { url: String(e?.product_url ?? ''), productName: String(e?.name ?? ''),
+      brandName: (confirmedBrand as { name?: string } | null)?.name ?? null })
   })()
 
   // ⚠️ THE LIBRARY IS PLURAL AND THE GROUNDING CHECK NEVER SAW IT. The query

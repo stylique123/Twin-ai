@@ -74,7 +74,8 @@ describe('a suggestion is not an answer', () => {
 
 describe('brands, products, and things she promotes for others', () => {
   it('lets her add more than one brand', () => {
-    expect(LIB).toMatch(/\+ Add another brand/)
+    // Re-anchored 2026-09-23: the add-brand button now lives in the page header.
+    expect(LIB).toMatch(/\+ Add brand/)
   })
 
   it('groups her own products apart from what she promotes for others', () => {

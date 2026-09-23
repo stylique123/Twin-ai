@@ -51,7 +51,7 @@ import {
   asksPersonalUse, ownsIt, capabilityQuestion, CAPABILITY_PROMPT,
   type CapabilityAsked,
   capabilityFlag,
-  productLifecycle, LIFECYCLE_MESSAGE, type ProductLifecycle,
+  productLifecycle, LIFECYCLE_MESSAGE,
   CAPTURE_COPY, PLATFORM_CHOICES, PRIVACY_CHOICES, RATHER_NOT_SAY, FIGURE_HINT,
   surfaceChoices, buildCommunityMap, whatIsMissing,
   type ProductSuggestion,
@@ -459,8 +459,12 @@ export default function ProductLibrary() {
     setEntities((prev) => (prev ?? []).map((e) => (e.brandId === id ? { ...e, brandId: null } : e)))
   }
   const [addPrefillUrl, setAddPrefillUrl] = useState<string | undefined>(undefined)
-  const addProductTo = (brandId: string | null, prefillUrl?: string) => {
-    setAddingToBrand(brandId); setAddPrefillUrl(prefillUrl); setAddingNew(true)
+  const brandNameOf = (e: ProductEntityRecord) => (brands ?? []).find((b) => b.id === e.brandId)?.name ?? null
+  const [openBrandId, setOpenBrandId] = useState<string | null>(null)
+  const [addKind, setAddKind] = useState<'own' | 'promote' | 'any'>('any')
+  const addProductTo = (brandId: string | null, prefillUrl?: string, kind?: 'own' | 'promote' | 'any') => {
+    setAddingToBrand(brandId); setAddPrefillUrl(prefillUrl)
+    setAddKind(kind ?? (brandId ? 'own' : 'any')); setAddingNew(true)
   }
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([])
   const [err, setErr] = useState<string | null>(null)
@@ -880,10 +884,15 @@ export default function ProductLibrary() {
         const url = normalizeLink(a.productUrl ?? '')
           || ((brands ?? []).find((b) => b.id === targetBrand)?.website ?? '')
         const imgs = a.imagePaths ?? []
+        // Nothing to read: go straight to the product so the rest can be filled in.
+        if (!url && imgs.length === 0) setOpenId(created.id)
         if (url || imgs.length > 0) {
           try {
             await requestProductExtraction(created.id, url, imgs)
-            void waitForReadThenReview(created.id)
+            // ⚖️ THE POPUP OPENS NOW, saying it is reading, and fills in when the
+            // read lands. It belongs to ADDING — editing never raises it.
+            setReviewId(created.id)
+            void waitForReadThenReview(created.id, false)
           }
           catch (e) {
             // ⚠️ THE BANNER USED TO BE THE ONLY THING THAT KNEW. It said "we
@@ -1007,7 +1016,9 @@ export default function ProductLibrary() {
       // ⚖️ POLLS THE ENTITY, NOT THE JOB. A creator who reloads or comes back
       // tomorrow sees whatever the worker got to; watching a job id would lose
       // the result the moment the tab did.
-      await waitForReadThenReview(id)
+      // ⚖️ NO POPUP WHEN READING FROM THE OPEN PRODUCT. Reported 2026-09-23:
+      // "a pop up on a pop up". The panel itself shows what came back.
+      await waitForReadThenReview(id, false)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not read that page.')
     } finally {
@@ -1017,14 +1028,14 @@ export default function ProductLibrary() {
 
   /** Poll the entity until the worker has written what it read, then open the
    *  review. Polls the ENTITY, not the job: a reload keeps the result. */
-  async function waitForReadThenReview(id: string) {
+  async function waitForReadThenReview(id: string, openReview = true) {
     for (let i = 0; i < 100; i++) {
       await new Promise((r) => window.setTimeout(r, 3000))
       const rows = await loadProductEntities()
       const found = rows.find((e) => e.id === id)
       if (found && found.knowledge !== null) {
         setEntities(rows)
-        if (found.knowledge.length > 0) setReviewId(id)
+        if (openReview && found.knowledge.length > 0) setReviewId(id)
         return
       }
     }
@@ -1085,15 +1096,21 @@ export default function ProductLibrary() {
         >
           <span className="min-w-0">
             <span className="block truncate text-sm font-semibold text-cream">{cardTitle(e)}</span>
-            {/* ⚖️ THE SAME SENTENCE THE PANEL SHOWS, from the same shared map —
-                the row must not invent a second account of one product's state. */}
-            <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <StatusPill state={productLifecycle(e, photoPathsOf(e).length)} />
-              <span className="truncate text-xs text-stone">{relationshipLabel(e.relationship)}</span>
-            </span>
-            <span className="mt-1 block truncate text-xs text-stone">
-              {LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length)]}
-            </span>
+            {/* ⚖️ ONE QUIET LINE. Reported 2026-09-23: "Check facts / You own
+                this product / Twin found some things…" on every row was noise.
+                A row speaks up only when the product needs something (the same
+                shared sentence the panel uses); otherwise it shows its offer. */}
+            {(() => {
+              const state = productLifecycle(e, photoPathsOf(e).length)
+              const needsYou = state !== 'READY' && state !== 'REVIEW_REQUIRED'
+              const offerLine = (e.offer ?? '').split('\n')[0]
+              const line = needsYou ? LIFECYCLE_MESSAGE[state]
+                : [isOwnProduct(e) ? '' : relationshipLabel(e.relationship), offerLine || e.creatorSummary || '']
+                  .filter(Boolean).join(' · ')
+              return line ? (
+                <span className={`mt-0.5 block truncate text-xs ${needsYou ? 'text-amber-200/90' : 'text-stone'}`}>{line}</span>
+              ) : null
+            })()}
           </span>
           {/* ⚠️ THE WORD, NOT ONLY A CHEVRON. "no option to edit or remove it"
               was reported against a screen where both existed; naming the action
@@ -1297,7 +1314,7 @@ export default function ProductLibrary() {
           <OfferEditor
             key={`offer-${e.id}-${e.updated ?? ''}`}
             value={e.offer}
-            found={placeFacts(e.knowledge ?? [], { url: e.productUrl, productName: e.name }).product
+            found={placeFacts(e.knowledge ?? [], { url: e.productUrl, productName: e.name, brandName: brandNameOf(e) }).product
               .filter((f) => f.field === 'price' || f.field === 'plan').map((f) => f.value)}
             onSave={(v) => { if (v !== (e.offer ?? null)) void save(e.id, { offer: v }) }}
           />
@@ -1713,7 +1730,7 @@ export default function ProductLibrary() {
                   // products' prices as facts about the bandana. `placeFacts`
                   // is the same rule the writer uses, so this screen shows
                   // exactly what a script will and will not say.
-                  const placed = placeFacts(e.knowledge ?? [], { url: e.productUrl, productName: e.name })
+                  const placed = placeFacts(e.knowledge ?? [], { url: e.productUrl, productName: e.name, brandName: brandNameOf(e) })
                   // ⚖️ PRICES ARE THEIR OWN SECTION, BESIDE HER OWN OFFER. Reported
                   // 2026-09-22: prices and variants were mixed in with everything
                   // else, and "there's no option of offer over here".
@@ -1937,7 +1954,7 @@ export default function ProductLibrary() {
             <button type="button" className="rounded-lg border border-white/15 px-3 py-1.5 text-sm hover:border-white/30"
               onClick={() => addProductTo((brands?.length ?? 0) === 1 ? brands![0].id : null)}>Add a product</button>
             <button type="button" className="rounded-lg border border-white/15 px-3 py-1.5 text-sm text-sand hover:border-white/30"
-              onClick={() => addProductTo(null)}>+ Something you promote</button>
+              onClick={() => addProductTo(null, undefined, 'promote')}>+ Something you promote</button>
           </div>
         )}
       </header>
@@ -2047,6 +2064,7 @@ export default function ProductLibrary() {
               permission read off a web page is a permission nobody granted. */}
           <StartFromLink
             initialUrl={addPrefillUrl}
+            kind={addKind}
             busy={claimBusy}
             onCancel={() => setAddingNew(false)}
             onClaim={(a) => void claim(null, a)}
@@ -2098,16 +2116,6 @@ export default function ProductLibrary() {
         // "brand and product look so disconnected — it should appear like one."
         // The brand's header, what Twin knows about the brand, and its
         // products now share a single bordered card.
-        const brandFactsOf = (b: Brand) => {
-          const seen = new Set<string>()
-          const out: string[] = []
-          for (const e of suppliedEntities.filter((x) => x.brandId === b.id)) {
-            for (const f of placeFacts(e.knowledge ?? [], { url: e.productUrl, productName: e.name }).brand) {
-              if (!seen.has(f.value)) { seen.add(f.value); out.push(f.value) }
-            }
-          }
-          return out
-        }
         const loose = suppliedEntities.filter((e) => isOwnProduct(e) && !underBrand(e))
         const promoted = suppliedEntities.filter((e) => !isOwnProduct(e))
         const suggestion = brands.length === 0 ? suggestBrand(entities) : null
@@ -2125,32 +2133,36 @@ export default function ProductLibrary() {
             ) : null}
             {brands.map((b) => {
               const items = suppliedEntities.filter((e) => isOwnProduct(e) && e.brandId === b.id)
-              const facts = brandFactsOf(b)
               return (
                 <section key={b.id} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
-                  <div className="border-b border-white/10 p-4">
-                    <BrandHeader brand={b} productCount={items.length}
-                      onSave={saveBrandAndLink} onRemove={() => removeBrand(b.id)} onAddProduct={() => addProductTo(b.id)}
-                      onBrandIsProduct={items.length === 0 && b.website ? () => addProductTo(b.id, b.website!) : undefined} />
-                    {facts.length > 0 && (
-                      <details className="mt-3 rounded-lg bg-white/[0.03] px-3 py-2">
-                        <summary className="cursor-pointer text-xs font-medium text-sand">
-                          What Twin knows about {b.name} ({facts.length})
-                        </summary>
-                        <ul className="mt-2 space-y-1">
-                          {facts.map((v) => <li key={v} className="text-sm text-sand">{v}</li>)}
-                        </ul>
-                      </details>
-                    )}
-                  </div>
-                  <div className="p-3">
-                    <p className="mb-2 px-1 text-[11px] font-medium uppercase tracking-wide text-stone">
-                      Products · {items.length}
-                    </p>
+                  {/* ⚖️ THE BRAND IS ONE CLICK, like a product. Reported 2026-09-23:
+                      "if I click Dog Days, something opens instead". Editing, what
+                      Twin knows about it and removing it all live in its panel. */}
+                  <button type="button" onClick={() => setOpenBrandId(b.id)}
+                    aria-label={`Open ${b.name}`}
+                    className="flex w-full items-start gap-3 p-4 text-left transition-colors hover:bg-white/[0.03]">
+                    <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-amber-300/80 to-coral/80 text-base font-semibold text-black/80">
+                      {b.name.trim().charAt(0).toUpperCase() || '·'}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-base font-semibold text-cream">{b.name}</span>
+                      {b.website && <span className="block truncate text-xs text-stone">{b.website.replace(/^https?:\/\/(www\.)?/, '')}</span>}
+                      {b.description && <span className="mt-1 line-clamp-2 block text-sm text-sand">{b.description}</span>}
+                    </span>
+                    <span className="shrink-0 pt-1 text-xs font-medium text-teal">Open</span>
+                  </button>
+                  <div className="border-t border-white/10 p-3">
                     {items.map(renderEntity)}
-                    {items.length === 0 && (
-                      <p className="px-1 pb-1 text-sm text-stone">No products yet — add one with the button above.</p>
-                    )}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                      <button type="button" onClick={() => addProductTo(b.id)}
+                        className="rounded-xl border border-dashed border-white/15 px-4 py-2.5 text-sm text-sand hover:border-white/30 hover:text-cream">
+                        + Add a product to {b.name}
+                      </button>
+                      {items.length === 0 && b.website && (
+                        <button type="button" onClick={() => addProductTo(b.id, b.website!)}
+                          className="text-sm text-teal hover:underline">{b.name} is the product itself</button>
+                      )}
+                    </div>
                   </div>
                 </section>
               )
@@ -2175,10 +2187,28 @@ export default function ProductLibrary() {
         )
       })()}
 
+      {openBrandId && brands && (() => {
+        const b = brands.find((x) => x.id === openBrandId)
+        if (!b) return null
+        const facts: string[] = []
+        for (const e of suppliedEntities.filter((x) => x.brandId === b.id)) {
+          for (const f of placeFacts(e.knowledge ?? [], { url: e.productUrl, productName: e.name, brandName: b.name }).brand) {
+            if (!facts.includes(f.value)) facts.push(f.value)
+          }
+        }
+        return (
+          <BrandPanel brand={b} facts={facts}
+            productCount={suppliedEntities.filter((x) => x.brandId === b.id).length}
+            onSave={saveBrandAndLink}
+            onRemove={async () => { await removeBrand(b.id); setOpenBrandId(null) }}
+            onClose={() => setOpenBrandId(null)} />
+        )
+      })()}
+
       {reviewId && (() => {
         const e = (entities ?? []).find((x) => x.id === reviewId)
         if (!e) return null
-        const placed = placeFacts(e.knowledge ?? [], { url: e.productUrl, productName: e.name })
+        const placed = placeFacts(e.knowledge ?? [], { url: e.productUrl, productName: e.name, brandName: brandNameOf(e) })
         const isPrice = (f: { field: string }) => f.field === 'price' || f.field === 'plan'
         const Row = ({ f }: { f: ProductFact }) => (
           <li className="flex items-start justify-between gap-3 py-1 text-sm">
@@ -2195,35 +2225,38 @@ export default function ProductLibrary() {
           <div role="dialog" aria-modal="true" aria-labelledby="review-title"
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
             <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-ink2 p-5 shadow-2xl">
-              <h2 id="review-title" className="text-base font-semibold">Here's what Twin found about {cardTitle(e)}</h2>
-              <p className="mt-1 text-xs text-sand">
-                Press “That's right” on anything that is. Twin will not say the rest in a script until you do.
-              </p>
-              <section className="mt-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-stone">About this product</p>
-                {product.length > 0 ? <ul className="mt-1 divide-y divide-white/5">{product.map((f) => <Row key={`r-${f.field}-${f.value}`} f={f} />)}</ul>
-                  : <p className="mt-1 text-sm text-stone">Nothing about the product itself — the page Twin read was about your brand.</p>}
-              </section>
-              {prices.length > 0 && (
-                <section className="mt-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-stone">Price &amp; options</p>
-                  <ul className="mt-1 divide-y divide-white/5">{prices.map((f) => <Row key={`rp-${f.value}`} f={f} />)}</ul>
-                </section>
-              )}
-              {placed.brand.length > 0 && (
-                <section className="mt-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-stone">About your brand, not this product</p>
-                  <ul className="mt-1 space-y-1">{placed.brand.map((f) => <li key={`rb-${f.value}`} className="text-sm text-sand">{f.value}</li>)}</ul>
-                  <p className="mt-1 text-xs text-stone">Kept apart so a script never describes your brand as this product.</p>
-                </section>
-              )}
-              {placed.setAside.length > 0 && (
-                <p className="mt-3 text-xs text-stone">
-                  Left out: {placed.setAside.length} website button{placed.setAside.length === 1 ? '' : 's'} or other products' prices.
+              <p className="text-[11px] font-medium uppercase tracking-wide text-teal">Added</p>
+              <h2 id="review-title" className="mt-0.5 text-lg font-semibold">{cardTitle(e)}</h2>
+              {e.knowledge === null ? (
+                <p className="mt-3 flex items-center gap-2 text-sm text-sand">
+                  <span aria-hidden className="h-2 w-2 animate-pulse rounded-full bg-teal" />
+                  Twin is reading about it{e.productUrl ? ` on ${e.productUrl.replace(/^https?:\/\/(www\.)?/, '')}` : ''}… this takes about a minute.
                 </p>
+              ) : (
+                <>
+                  <p className="mt-1 text-sm text-sand">
+                    Here's what Twin found. Tick what's right — Twin won't say the rest in a script until you do.
+                  </p>
+                  <section className="mt-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-stone">About this product</p>
+                    {product.length > 0 ? <ul className="mt-1 divide-y divide-white/5">{product.map((f) => <Row key={`r-${f.field}-${f.value}`} f={f} />)}</ul>
+                      : <p className="mt-1 text-sm text-stone">Nothing about this product itself was found. You can add a link or photos next.</p>}
+                  </section>
+                  {prices.length > 0 && (
+                    <section className="mt-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-stone">Prices</p>
+                      <ul className="mt-1 divide-y divide-white/5">{prices.map((f) => <Row key={`rp-${f.value}`} f={f} />)}</ul>
+                    </section>
+                  )}
+                </>
               )}
-              <div className="mt-5 flex justify-end">
-                <button type="button" className="btn-gradient rounded-lg px-4 py-1.5 text-sm" onClick={() => setReviewId(null)}>Done</button>
+              <div className="mt-5 flex justify-end gap-2">
+                <button type="button" className="rounded-lg border border-white/15 px-4 py-1.5 text-sm hover:border-white/30"
+                  onClick={() => setReviewId(null)}>Close</button>
+                {/* ⚖️ THE REST OF THE PRODUCT, NEXT. Reported 2026-09-23: "only
+                    present after I edit it — add and edit, that's stupid". */}
+                <button type="button" className="btn-gradient rounded-lg px-4 py-1.5 text-sm"
+                  onClick={() => { setReviewId(null); setOpenId(e.id) }}>Fill in the rest →</button>
               </div>
             </div>
           </div>
@@ -2616,7 +2649,12 @@ function CommunityQuestions({ value, onChange }: {
   )
 }
 
-function StartFromLink({ onCancel, onClaim, busy, initialUrl }: {
+function StartFromLink({ onCancel, onClaim, busy, initialUrl, kind = 'any' }: {
+  /** ⚖️ WHICH DOOR SHE CAME IN BY. "+ Something you promote" only offers the
+   *  promoted relationships; "Add a product" inside a brand only her own. A
+   *  choice the door already answered is a choice she can get wrong (reported
+   *  2026-09-23: an affiliate item filed under her own products). */
+  kind?: 'own' | 'promote' | 'any'
   onCancel: () => void
   /** Pre-filled when the brand IS the product: its own website. */
   initialUrl?: string
@@ -2798,7 +2836,9 @@ function StartFromLink({ onCancel, onClaim, busy, initialUrl }: {
           neither is readable off a page — see this component's own note. */}
       <Choices
         label="What is your relationship to it?"
-        options={RELATIONSHIP_CHOICES}
+        options={RELATIONSHIP_CHOICES.filter((o) => kind === 'any'
+          || (kind === 'promote' ? (o.value === 'AFFILIATE' || o.value === 'SPONSOR')
+            : (o.value === 'OWN_PRODUCT' || o.value === 'OWN_SERVICE')))}
         chosen={relationship}
         onPick={(v) => setRelationship(v)}
       />
@@ -3099,82 +3139,6 @@ function BrandForm({ initial, isSuggestion, onSave, onCancel }: {
   )
 }
 
-function BrandHeader({ brand, productCount, onSave, onRemove, onAddProduct, onBrandIsProduct }: {
-  brand: Brand
-  productCount: number
-  onSave: (b: BrandDraft) => Promise<void>
-  onRemove: () => Promise<void>
-  onAddProduct: () => void
-  /** ⚖️ WHEN THE BRAND IS THE PRODUCT — one app, one course, one bakery — it
-   *  is added as its own product in one step, reading the brand's website. */
-  onBrandIsProduct?: () => void
-}) {
-  const [editing, setEditing] = useState(false)
-  const [confirmRemove, setConfirmRemove] = useState(false)
-  if (editing) {
-    return (
-      <BrandForm initial={brand} isSuggestion={false}
-        onSave={async (b) => { await onSave(b); setEditing(false) }}
-        onCancel={() => setEditing(false)} />
-    )
-  }
-  return (
-    <div>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-teal">Brand</p>
-          <p className="mt-0.5 text-lg font-semibold text-cream">
-            {brand.name}{brand.website && <span className="font-normal text-stone"> · {brand.website}</span>}
-          </p>
-          {brand.description && <p className="mt-1 text-sm text-sand">{brand.description}</p>}
-        </div>
-        <div className="flex shrink-0 gap-3 text-xs">
-          <button type="button" className="underline" onClick={() => setEditing(true)}>Edit</button>
-          <button type="button" className="underline text-stone" onClick={() => setConfirmRemove(true)}>Remove</button>
-        </div>
-      </div>
-      {confirmRemove && (
-        <div className="mt-2 rounded-lg bg-white/[0.04] p-2 text-xs text-sand">
-          Remove {brand.name}?{productCount > 0 ? ` Its ${productCount} product${productCount === 1 ? '' : 's'} will stay in your library, just not under this brand.` : ''}
-          <span className="ml-2 inline-flex gap-3">
-            <button type="button" className="underline text-coral" onClick={() => void onRemove()}>Yes, remove</button>
-            <button type="button" className="underline" onClick={() => setConfirmRemove(false)}>Keep it</button>
-          </span>
-        </div>
-      )}
-      <button type="button" onClick={onAddProduct}
-        className="mt-3 rounded-lg border border-white/15 px-3 py-1.5 text-sm hover:border-white/30">+ Add a product to {brand.name}</button>
-      {onBrandIsProduct && (
-        <button type="button" onClick={onBrandIsProduct}
-          className="ml-2 mt-3 rounded-lg px-3 py-1.5 text-sm text-teal hover:underline">{brand.name} is the product itself</button>
-      )}
-    </div>
-  )
-}
-
-// ── STATUS, AS A PILL ─────────────────────────────────────────────────────
-// ⚖️ A WORD AND A COLOUR, never the colour alone. The sentence from
-// LIFECYCLE_MESSAGE still sits under the title; this is the at-a-glance half.
-const PILL: Record<ProductLifecycle, [string, string]> = {
-  READY: ['Ready', 'border-teal/40 bg-teal/10 text-teal'],
-  REVIEW_REQUIRED: ['Check facts', 'border-amber-400/40 bg-amber-400/10 text-amber-200'],
-  READING: ['Reading…', 'border-white/15 bg-white/5 text-sand'],
-  READING_STALLED: ['Still reading', 'border-amber-400/40 bg-amber-400/10 text-amber-200'],
-  NEEDS_SOURCE: ['Needs a link or photo', 'border-amber-400/40 bg-amber-400/10 text-amber-200'],
-  IMPORT_FAILED: ['Could not read', 'border-coral/40 bg-coral/10 text-coral'],
-  NOTHING_FOUND: ['Nothing found', 'border-white/15 bg-white/5 text-sand'],
-  ARCHIVED: ['Archived', 'border-white/15 bg-white/5 text-stone'],
-}
-
-function StatusPill({ state }: { state: ProductLifecycle }) {
-  const [label, cls] = PILL[state] ?? [state, 'border-white/15 text-sand']
-  const dot = cls.split(' ').find((c) => c.startsWith('text-'))?.replace('text-', 'bg-') ?? 'bg-sand'
-  return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${cls.split(' ').filter((c) => c.startsWith('text-')).join(' ')}`}>
-      <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${dot}`} />{label}
-    </span>
-  )
-}
 
 // ── WHAT'S MISSING, AS A CHECKLIST ────────────────────────────────────────
 // ⚠️ THE PANEL WAS A LONG FORM WITH NO TOP. A creator opening a half-filled
@@ -3260,6 +3224,59 @@ function OfferEditor({ value, found, onSave }: {
         onClick={() => setRows((p) => [...p, { name: '', price: '' }])}>+ Add another option</button>
       <input className={input} placeholder="What's included (optional)" aria-label="What's included"
         value={included} onChange={(ev) => setIncluded(ev.target.value)} onBlur={() => commit()} />
+    </div>
+  )
+}
+
+// ── ONE BRAND, OPENED ─────────────────────────────────────────────────────
+function BrandPanel({ brand, facts, productCount, onSave, onRemove, onClose }: {
+  brand: Brand
+  facts: string[]
+  productCount: number
+  onSave: (b: BrandDraft) => Promise<void>
+  onRemove: () => Promise<void>
+  onClose: () => void
+}) {
+  const [confirmRemove, setConfirmRemove] = useState(false)
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="brand-panel-title"
+      className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/60 p-3 backdrop-blur-sm sm:p-6">
+      <section className="mx-auto max-w-2xl rounded-2xl border border-white/10 bg-ink2 p-5 shadow-2xl sm:p-6">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-teal">Brand</p>
+            <h2 id="brand-panel-title" className="mt-0.5 text-lg font-semibold text-cream">{brand.name}</h2>
+          </div>
+          <button type="button" onClick={onClose}
+            className="rounded-lg border border-white/15 px-2.5 py-1 text-xs text-stone hover:text-cream">Done</button>
+        </div>
+        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <p className="mb-3 text-sm font-semibold text-cream">Details</p>
+          <BrandForm initial={brand} isSuggestion={false} onSave={onSave} onCancel={null} />
+        </div>
+        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <p className="text-sm font-semibold text-cream">What Twin knows about {brand.name}</p>
+          <p className="mt-0.5 text-xs text-stone">True of the whole brand — scripts about any of its products may use it.</p>
+          {facts.length > 0 ? (
+            <ul className="mt-2 divide-y divide-white/5">
+              {facts.map((v) => <li key={v} className="py-1.5 text-sm text-sand">{v}</li>)}
+            </ul>
+          ) : <p className="mt-2 text-sm text-stone">Nothing yet. It fills in as Twin reads your products' pages.</p>}
+        </div>
+        <div className="mt-4 flex items-center justify-end gap-3 text-sm">
+          {confirmRemove ? (
+            <>
+              <span className="text-sand">
+                Remove {brand.name}?{productCount > 0 ? ` Its ${productCount} product${productCount === 1 ? '' : 's'} stay in your library.` : ''}
+              </span>
+              <button type="button" className="text-coral underline" onClick={() => void onRemove()}>Yes, remove</button>
+              <button type="button" className="underline" onClick={() => setConfirmRemove(false)}>Keep it</button>
+            </>
+          ) : (
+            <button type="button" className="text-stone underline hover:text-cream" onClick={() => setConfirmRemove(true)}>Remove this brand</button>
+          )}
+        </div>
+      </section>
     </div>
   )
 }

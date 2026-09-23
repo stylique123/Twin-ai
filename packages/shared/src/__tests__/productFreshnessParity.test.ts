@@ -69,7 +69,10 @@ describe('the job merges rather than replacing', () => {
     //     update({ knowledge: facts, ... })
     // A regression to it is one word long and silent in production.
     expect(code(JOB)).not.toMatch(/knowledge:\s*facts\b/)
-    expect(JOB).toMatch(/mergeExtraction\(previous, facts\)/)
+    // Re-anchored 2026-09-23: when the shop lookup moves the link, only the
+    // facts she CONFIRMED (or read from the new page) are carried into the merge.
+    expect(JOB).toMatch(/mergeExtraction\(carried, facts\)/)
+    expect(JOB).toMatch(/previous\.filter\(\(f\) => f\.source === 'user_confirmed'/)
     expect(JOB).toMatch(/knowledge,\n/)
   })
 

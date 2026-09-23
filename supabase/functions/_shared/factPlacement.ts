@@ -112,11 +112,21 @@ const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
  */
 export function placeFact(
   fact: { field: string; value: string },
-  ctx: { pageKind: PageKind; productName?: string | null },
+  ctx: { pageKind: PageKind; productName?: string | null; brandName?: string | null },
 ): FactPlace {
   const field = String(fact.field ?? '')
   const value = String(fact.value ?? '').trim()
   if (field === 'cta' && isShopButton(value)) return 'shop_button'
+
+  // ⚠️ TRUE OF THE WHOLE SHOP, WHATEVER PAGE SAID IT. "Free shipping on orders
+  // over $75 across Canada" is printed on every product page and is the
+  // store's policy, not this product's feature (reported 2026-09-23).
+  if (field !== 'price' && field !== 'plan' && isStorePolicy(value)) return 'brand'
+  // The brand's own name is never the product's name.
+  if (field === 'name') {
+    const bn = norm(String(ctx.brandName ?? ''))
+    if (bn !== '' && norm(value).replace(/ co$/, '') === bn.replace(/ co$/, '')) return 'brand'
+  }
 
   // Not read from a listing or homepage: it describes what the link points at.
   if (ctx.pageKind === 'product' || ctx.pageKind === 'unknown') return 'product'
@@ -136,6 +146,13 @@ export function placeFact(
   return 'brand'
 }
 
+const STORE_POLICY = /\b(free shipping|shipping on orders|orders over|ships? (?:within|in|worldwide)|delivery on orders|returns?\b|refunds?|exchanges?|money[- ]back|customer service|secure checkout|gift cards?)\b/i
+
+/** Shipping, returns, checkout: said by the shop about everything it sells. */
+export function isStorePolicy(value: string): boolean {
+  return STORE_POLICY.test(value)
+}
+
 /** One product's facts, split by where they belong. */
 export interface PlacedFacts<F> {
   product: F[]
@@ -145,14 +162,18 @@ export interface PlacedFacts<F> {
   pageKind: PageKind
 }
 
-export function placeFacts<F extends { field: string; value: string }>(
+export function placeFacts<F extends { field: string; value: string; sourceUrl?: string | null }>(
   facts: readonly F[],
-  ctx: { url?: string | null; productName?: string | null },
+  ctx: { url?: string | null; productName?: string | null; brandName?: string | null },
 ): PlacedFacts<F> {
   const pageKind = pageKindOf(ctx.url)
   const out: PlacedFacts<F> = { product: [], brand: [], setAside: [], pageKind }
   for (const f of facts) {
-    const place = placeFact(f, { pageKind, productName: ctx.productName })
+    // ⚠️ BY THE PAGE THE FACT WAS READ FROM, NOT THE LINK THE PRODUCT HAS NOW.
+    // A link moved from the shop's front page to the product's own page used
+    // to reclassify every front-page fact as the product's (2026-09-23).
+    const kind = f.sourceUrl ? pageKindOf(f.sourceUrl) : pageKind
+    const place = placeFact(f, { pageKind: kind, productName: ctx.productName, brandName: ctx.brandName })
     if (place === 'product') out.product.push(f)
     else if (place === 'brand') out.brand.push(f)
     else out.setAside.push(f)

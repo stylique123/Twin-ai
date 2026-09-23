@@ -81,6 +81,7 @@ describe('the two lists are tabs, in words a creator already knows', () => {
     // filtered by the tab rather than merely styled by it; the array it maps is
     // now `shownEntities`, which drops rows the creator never supplied anything
     // to. See `aProductSheNeverAdded.test.ts`.
-    expect(PAGE).toMatch(/tab === 'live' \? shownEntities : \[\]/)
+    // Re-anchored again 2026-09-23: the grouped live list only renders on the live tab.
+    expect(PAGE).toMatch(/\{tab === 'live' && entities !== null && brands !== null && \(\(\) => \{/)
   })
 })
