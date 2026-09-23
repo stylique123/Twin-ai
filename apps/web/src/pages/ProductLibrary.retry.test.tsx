@@ -52,8 +52,10 @@ describe('a failed read offers a real retry, on the product itself', () => {
 
     // The single sentence, from the shared lifecycle map -- and it must NOT
     // also claim Twin is still reading, which is bug #1's contradiction.
-    await screen.findByText('Twin could not read that page. Try again, or add the details yourself.')
-    expect(screen.queryByText('Twin is reading the page. This keeps going if you leave.')).toBeNull()
+    // Re-pointed 2026-09-23 (#17): a row whose LINK failed now says so, and why,
+    // rather than the generic lifecycle sentence a photo-only failure also uses.
+    await screen.findByText('This link could not be read (That page would not let Twin read it). Press Retry.')
+    expect(screen.queryByText(/Twin is reading it now/)).toBeNull()
 
     // The fields live one click in — the library lists products and opens one
     // at a time. The lifecycle sentence above is on the ROW, so it is read
@@ -65,7 +67,7 @@ describe('a failed read offers a real retry, on the product itself', () => {
     //    the second link box; the sibling suite covers NEEDS_SOURCE, this
     //    covers IMPORT_FAILED, and between them the duplicate has nowhere left
     //    to come back in unobserved.
-    expect(screen.getAllByPlaceholderText('https://')).toHaveLength(1)
+    expect(screen.getAllByPlaceholderText('yourshop.com/your-product')).toHaveLength(1)
 
     const retryButton = await screen.findByRole('button', { name: 'Retry' })
     // ⚠️ ANCHORED ON THE LABEL, NOT ON DOM ADJACENCY. This read the button's

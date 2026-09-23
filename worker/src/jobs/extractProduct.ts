@@ -32,6 +32,7 @@ function mimeFor(path: string): string {
 import { modelForTask } from '../modelRouting.js'
 import { isShopFront, findShopProduct, variantPriceLines, optionLines } from '../shopProductLookup.js'
 import { ldPriceLines } from '../ldProductPrices.js'
+import { withoutSiteButtons, labelUnlabeledPrices } from '../pageFactHygiene.js'
 import { readExtractedFact, EXTRACTED_FIELDS, EXTRACTION_SOURCES, imageFactAllowed,
   type ExtractedFact, type ExtractedField, type ExtractionSource }
   from './productExtractionContract.js'
@@ -502,7 +503,11 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   // wrong and far too permissive here: marketing copy may state a price, and a
   // photograph may not.
   const factSource = (!url && images.length > 0) ? 'creator_image' : source
-  for (const raw of out?.facts ?? []) {
+  // ⚠️ SITE BUTTONS ARE NOT SPOKEN CTAs, AND BARE MULTIPLE PRICES ARE NOT "THE"
+  // PRICE. See pageFactHygiene.ts. A page whose only CTAs were cart buttons
+  // stores no cta at all, which is the truth: it has no spoken one.
+  const modelFacts = labelUnlabeledPrices(withoutSiteButtons(out?.facts ?? []).kept)
+  for (const raw of modelFacts) {
     const field = String(raw?.field ?? '')
     // ⚠️ THE PROMPT ASKS AND THIS ENFORCES, AND THE DIFFERENCE IS THE WHOLE
     // POINT. A model told not to read a price off a photograph will mostly

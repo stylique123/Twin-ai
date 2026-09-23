@@ -100,7 +100,7 @@ describe('the product card has one link field, and it can be read from', () => {
     await openCard()
     // The affiliate box is a DIFFERENT fact and is hidden for OWN_PRODUCT;
     // this asserts what is on screen, whatever the reason.
-    expect(screen.getAllByPlaceholderText('https://')).toHaveLength(1)
+    expect(screen.getAllByPlaceholderText('yourshop.com/your-product')).toHaveLength(1)
     // And the button is the one on the Link field, not a second one below.
     // ⚖️ NO LINK AND NO BRAND WEBSITE: opening it starts a web search for the
     // product by name, so the one button may already read "Reading…".
@@ -113,7 +113,7 @@ describe('the product card has one link field, and it can be read from', () => {
 
   it('offers exactly one https:// box on a product Twin has read', async () => {
     await openCard()
-    expect(screen.getAllByPlaceholderText('https://')).toHaveLength(1)
+    expect(screen.getAllByPlaceholderText('yourshop.com/your-product')).toHaveLength(1)
   })
 
   it('lets an already-read product be read again', async () => {

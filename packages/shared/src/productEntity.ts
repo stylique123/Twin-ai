@@ -564,6 +564,9 @@ export type ProductClaim = Omit<EntityAttestation, 'now' | 'name'> & {
    *  product minted with photographs nobody can find. Not part of the
    *  attestation because it is evidence about the thing, not a claim about it. */
   imagePaths?: string[]
+  /** 0225 — the three optional story answers. Written after the insert, best
+   *  effort, because a missing column must never cost the product. */
+  stories?: Partial<import('./productStories').ProductStories>
 }
 
 /** Build the entity a creator has explicitly claimed.

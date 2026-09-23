@@ -6668,6 +6668,30 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // is confirmed. A stale or foreign id resolves to nothing, like a product id.
   const chosenBrand = requestedBrandId !== '' ? confirmedBrand : null
 
+  // ── WHAT ONLY SHE KNOWS ABOUT IT (0225, CTO decision 2026-09-23) ─────────
+  // Three optional answers typed on the product: what almost went wrong, what
+  // customers say back, how it is made or delivered. Creator-supplied, so they
+  // carry `user_confirmed` trust. ⚖️ A SEPARATE, BEST-EFFORT READ: selecting the
+  // column beside the others would make an unapplied migration reject the
+  // chosen-product lookup — the answers are optional, the product is not.
+  const creatorStoryLines = await (async (): Promise<string[]> => {
+    const id = (ownedEntity as { id?: unknown } | null)?.id
+    if (typeof id !== 'string' || id === '') return []
+    const { data, error } = await admin.from('product_entities')
+      .select('creator_stories').eq('id', id).eq('owner_id', ownerId).maybeSingle()
+    if (error) { console.error('creator stories read failed', error); return [] }
+    const s = (data as { creator_stories?: unknown } | null)?.creator_stories
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return []
+    const r = s as Record<string, unknown>
+    const line = (label: string, v: unknown) =>
+      typeof v === 'string' && v.trim() !== '' ? `  * ${label} (trust: user_confirmed): ${v.trim().slice(0, 600)}` : ''
+    return [
+      line('what almost went wrong with it', r.almostWentWrong),
+      line('what customers say back about it', r.customersSay),
+      line('how it is actually made or delivered', r.howItsMade),
+    ].filter((l) => l !== '')
+  })()
+
   // ── WHERE EACH FACT ON THIS PRODUCT ACTUALLY BELONGS ───────────────────
   //
   // ⚠️ MEASURED 2026-09-22 on a real row: "Reversible Scrunchie Bandana" was
@@ -8662,6 +8686,14 @@ function reserveAskedInline<T extends { source?: string | null }>(
       claimLines.push('\n- HOW THE CREATOR DESCRIBES THIS PRODUCT, in their own words: '
         + creatorSummaryLine.slice(0, 300)
         + '\n  Nothing has been verified about this product beyond this line — it is the creator\'s own description, not a checked fact. Use it to know what the thing IS and who it is FOR. Do not turn it into a capability claim, a result or a figure.')
+    }
+
+    // 0225 — her own answers about THIS product. Creator-supplied facts
+    // (user_confirmed): she said them, so they may be used as her experience —
+    // but never inflated into a figure or a result she did not state.
+    if (creatorStoryLines.length > 0) {
+      claimLines.push('\n- WHAT THE CREATOR TOLD US ABOUT THIS PRODUCT HERSELF (creator-supplied facts, user_confirmed — true in her words; use them as her own story, do not add numbers or results she did not state):\n'
+        + creatorStoryLines.join('\n'))
     }
 
     const claimRulesBlock = claimLines.join('')

@@ -80,13 +80,15 @@ export function pageKindOf(url: string | null | undefined): PageKind {
  *  reported row: four of four stored CTAs were site chrome. */
 const SHOP_BUTTON = new RegExp(
   '^(?:'
-  + 'view (?:cart|bag|basket)|(?:go to |your )?(?:cart|bag|basket)|check ?out|checkout'
+  // ⚠️ 2026-09-23: "View cart (0)", "Check out now", "SHOP HERE →" slipped past
+  // the exact-match form; a trailing count or arrow is still the same button.
+  + 'view (?:cart|bag|basket)|(?:go to |your )?(?:cart|bag|basket)|check ?out(?: now)?|checkout(?: now)?'
   + '|continue shopping|keep shopping|shop (?:here|now|all|the collection|more)|shop'
   + '|add to (?:cart|bag|basket)|buy (?:it )?now|order now'
   + '|sign ?in|log ?in|sign ?up|register|create (?:an )?account|my account'
   + '|subscribe|join (?:the )?(?:list|newsletter)|menu|search|close|next|previous|back'
   + '|learn more|read more|see more|view (?:all|more|details|product)|quick ?view|select options?|choose options?'
-  + ')[.!\\s]*$',
+  + ')(?:\\s*\\(\\d+\\))?[.!\\s→›»>]*$',
   'i',
 )
 

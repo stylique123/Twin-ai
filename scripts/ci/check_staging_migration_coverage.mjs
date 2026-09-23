@@ -72,6 +72,14 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0225_what_only_she_knows_about_it':
+    'Adds nullable `product_entities.creator_stories` (jsonb) for three optional per-product '
+    + 'answers the creator types. THE EXCLUSION IS INHERITED, NOT A NEW JUDGEMENT: '
+    + '`0120_product_entities` is itself excluded, so staging has no such table and the '
+    + '`alter table` would fail on its first line rather than pass vacuously. '
+    + '⚖️ NOTHING BREAKS BY WAITING: the web app and generate-blueprint read the '
+    + 'column in a separate best-effort query, so an unapplied migration costs the answers '
+    + 'and never the library or a generation. ',
   '0224_a_brand_and_the_things_it_sells':
     'Adds `brands` and `product_entities.brand_id` so a creator\u2019s business is a parent '
     + 'row her products point at, not a product type that changed nothing. THE EXCLUSION IS '

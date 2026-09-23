@@ -86,9 +86,12 @@ export function productLifecycle(
 export const LIFECYCLE_MESSAGE: Record<ProductLifecycle, string> = {
   ARCHIVED: 'Put away. Scripts will not use this one.',
   IMPORT_FAILED: 'Twin could not read that page. Try again, or add the details yourself.',
-  NEEDS_SOURCE: 'Add a link or a photo and Twin can learn what this is.',
-  READING: 'Twin is reading the page. This keeps going if you leave.',
-  READING_STALLED: 'That read never finished. Press Read the page to try again, or add the details yourself.',
+  NEEDS_SOURCE: 'No link or photo yet. Add one and Twin can learn what this is.',
+  // ⚠️ REPORTED 2026-09-23: "keeps going if you leave" promised no end. A read
+  // has three: it lands, it records a failure, or at 30 minutes it is called
+  // timed out (READING_STALLED) and Retry appears.
+  READING: 'Twin is reading it now — usually a few minutes. If it has not finished in 30 minutes it stops and you can retry.',
+  READING_STALLED: 'Reading timed out — it did not finish in 30 minutes. Press Retry, or add the details yourself.',
   NOTHING_FOUND: 'Twin read the page and could not find anything usable. You can add details yourself.',
   REVIEW_REQUIRED: 'Twin found some things. Check the ones it is unsure about.',
   READY: 'Ready. Scripts can talk about this one.',
@@ -171,3 +174,33 @@ export const factsAreQuotable = (s: ProductLifecycle): boolean => s === 'READY'
 export const IMPORT_FAILED_IS_DERIVABLE_SINCE_0169 =
   'A failed extraction now records knowledge_failed_at and knowledge_error, so '
   + 'READING can be distinguished from a failure that already happened.'
+
+// ── "NO LINK" AND "THE LINK FAILED" ARE DIFFERENT SENTENCES ───────────────
+//
+// ⚠️ REPORTED 2026-09-23: nothing on screen told "this product has no link"
+// apart from "Twin could not read its link". The lifecycle folds photos and a
+// link into one "source"; this names the LINK's own state, so the row and the
+// Link field can say exactly which one it is.
+export type LinkStatus = 'NO_LINK' | 'READING' | 'TIMED_OUT' | 'FAILED' | 'READ_NOTHING' | 'READ'
+
+export function linkStatus(e: ProductEntityRecord, now: number = Date.now()): LinkStatus {
+  if (!(e.productUrl ?? '').trim()) return 'NO_LINK'
+  const k = e.knowledge
+  if (e.knowledgeFailedAt && (k === null || k.length === 0)) return 'FAILED'
+  if (k === null) return startedReadingBefore(e, now - READ_STALLS_AFTER_MS) ? 'TIMED_OUT' : 'READING'
+  return k.length === 0 ? 'READ_NOTHING' : 'READ'
+}
+
+export function linkStatusMessage(e: ProductEntityRecord, now: number = Date.now()): string {
+  switch (linkStatus(e, now)) {
+    case 'NO_LINK': return 'No link added yet.'
+    case 'READING': return 'Reading this link now.'
+    case 'TIMED_OUT': return 'Reading this link timed out after 30 minutes. Press Retry.'
+    case 'FAILED': {
+      const why = (e.knowledgeError ?? '').trim().replace(/[.\s]+$/, '')
+      return `This link could not be read${why ? ` (${why})` : ''}. Press Retry.`
+    }
+    case 'READ_NOTHING': return 'This link was read, but it said nothing usable about the product.'
+    case 'READ': return 'This link was read.'
+  }
+}
