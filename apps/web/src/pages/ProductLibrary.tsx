@@ -209,7 +209,7 @@ const FIXED_SHOW_NOTE: Record<string, string> = {
  *  suggestion would write `relationship` and `personalUse` from a gesture that
  *  asserted nothing, which is the permission escalation the whole page is built
  *  to refuse. The cost of an entitlement is answering for it. */
-export function ClaimForm({ onCancel, onClaim, busy }: {
+export function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
   // ⚠️ OPTIONAL, AND THAT WAS THE BUG. This form shipped reachable ONLY from a
   // suggestion, so a creator whose product the extractor never saw could not
   // register it AT ALL. The suggestion only ever saved typing — and, as below,
@@ -232,6 +232,9 @@ export function ClaimForm({ onCancel, onClaim, busy }: {
   // is an iOS alarm app that requires push-ups" — not a name.
   return (
     <StartFromLink
+      // Keyed per suggestion, so opening another suggestion starts a clean form
+      // rather than carrying the previous one's answers across.
+      key={suggestion?.id ?? 'new'}
       kind="any"
       busy={busy}
       onCancel={onCancel}
@@ -3232,7 +3235,7 @@ function Choices<T extends string>({ label, options, chosen, onPick }: {
             onClick={() => onPick(o.value)}
             className={
               chosen === o.value
-                ? 'rounded-full border border-signature/50 bg-signature/10 px-3 py-1.5 text-xs text-cream'
+                ? 'rounded-full border px-3 py-1.5 text-xs border-coral/50 bg-coral/[0.08] text-cream'
                 : 'rounded-full border border-white/10 bg-white/[0.02] px-3 py-1.5 text-xs text-sand hover:border-white/25'
             }
           >{o.label}</button>
