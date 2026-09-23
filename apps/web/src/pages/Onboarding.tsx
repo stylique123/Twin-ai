@@ -886,11 +886,10 @@ function BuildingStep({
           the first questions "it just says that's all we need and then it just
           clears".
 
-          ⚖️ TWO, NOT THREE, AND THEY ARE NOT THE STORY THREE. `DEPTH_QUESTION_IDS`
-          says why: these must be answerable with NO DNA, because on this screen
-          there is none — which is the same reason the story three moved off it.
-          A method question and a number question, both minting kinds the writer
-          is measured to admit.
+          ⚖️ ONE, AND IT IS NOT THE STORY THREE (owner decision 2026-09-23: two
+          boxes sat under a "three things" header). `DEPTH_QUESTION_IDS` says why:
+          it must be answerable with NO DNA, because on this screen there is none.
+          The misconception question mints a `claim` and feeds the hook.
 
           ⚖️ THE SAME COMPONENT AS THE STORY SCREEN, deliberately. It already
           resolves every field as answered-or-skipped before `onDone`, records
@@ -900,11 +899,11 @@ function BuildingStep({
       {!err && questionsDone && !depthDone && (
         <div className="mt-5 rounded-card border border-amber/25 bg-amber/[0.06] p-4 sm:p-5">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
-            While we read · the parts only you know
+            While we read · one question
           </p>
           <p className="mt-2 text-xs text-stone">
-            Your videos can tell us what you make. They cannot tell us how you
-            work. Optional — skip anything you would rather not answer.
+            Your videos show what you make. They cannot show what people keep
+            getting wrong about it. Optional — skip it if nothing comes to mind.
           </p>
           {/* ⚠️ NO NICHE, AND THAT IS CORRECT RATHER THAN A FALLBACK. The scan
               has not landed here, so there is nothing to word these in; both
@@ -913,6 +912,8 @@ function BuildingStep({
             voiceId={draft.voiceId ?? null}
             onDone={() => setDepthDone(true)}
             questionIds={DEPTH_QUESTION_IDS}
+            heading="One thing only you know"
+            helper="What people assume, and what is actually true. Skip it if nothing comes to mind."
           />
         </div>
       )}

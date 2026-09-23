@@ -13,9 +13,10 @@ const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/inde
 const MIGRATION = readFileSync(join(REPO, 'supabase/migrations/0121_creator_knowledge.sql'), 'utf8')
 
 describe('the bank is usable as knowledge', () => {
-  it('has ten questions with unique, stable ids', () => {
-    expect(CREATOR_QUESTIONS).toHaveLength(10)
-    expect(new Set(CREATOR_QUESTIONS.map((q) => q.id)).size).toBe(10)
+  // Eleven since 2026-09-23: `keeps_explaining` joined as the one scan-screen question.
+  it('has eleven questions with unique, stable ids', () => {
+    expect(CREATOR_QUESTIONS).toHaveLength(11)
+    expect(new Set(CREATOR_QUESTIONS.map((q) => q.id)).size).toBe(11)
   })
 
   it('only mints kinds the store actually accepts', () => {
@@ -104,7 +105,7 @@ describe('nothing is ever asked twice', () => {
   it('counts progress against the CURRENT bank only', () => {
     // A retired id left in the log would otherwise push the count past the total
     // and read as corruption.
-    expect(askedProgress(['contrarian', 'a_question_we_removed'])).toEqual({ put: 1, of: 10, remaining: 9 })
+    expect(askedProgress(['contrarian', 'a_question_we_removed'])).toEqual({ put: 1, of: 11, remaining: 10 })
   })
 })
 

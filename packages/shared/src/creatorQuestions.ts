@@ -176,6 +176,17 @@ export const CREATOR_QUESTIONS: readonly CreatorQuestion[] = [
     kind: 'claim',
     hint: 'The real figure, and what people guess instead.',
   },
+  // ⚠️ THE ONE SCAN-SCREEN QUESTION (owner decision 2026-09-23). Two depth boxes
+  // under a "three things" header read as a miscount; one question people can
+  // answer cold replaced them. The answer is a misconception she corrects over
+  // and over — the "most people think X, actually Y" hook — so it mints `claim`
+  // and the writer is told so by its `source_ref`.
+  {
+    id: 'keeps_explaining',
+    ask: "What's the thing you keep having to explain to people, over and over?",
+    kind: 'claim',
+    hint: 'What people assume, and what is actually true. One or two sentences.',
+  },
 ]
 
 /** A knowledge row built from an answer, in the shape the store already takes. */
@@ -298,12 +309,12 @@ export function askedProgress(alreadyPut: readonly string[], bank: readonly Crea
  * re-asked a creator her own answer on the post-script card.
  */
 export const DEPTH_QUESTION_IDS: readonly string[] = Object.freeze([
-  // How the work is actually done — the `framework` the store has least of, and
-  // "When you do this well, what are the actual steps?" names no niche.
-  'own_method',
-  // ⚖️ THE `claim` THAT ASKS FOR A FIGURE WITHOUT NAMING A NICHE. Its hint is
-  // "the real figure, and what people guess instead", which is precisely the
-  // gap: `figures` is 2 across 374 caption-derived items. `number_that_matters`
-  // would have been the obvious pick and cannot be used here — see above.
-  'costs_more_than_people_think',
+  // ⚠️ ONE, BY OWNER DECISION 2026-09-23. `own_method` and
+  // `costs_more_than_people_think` were asked here under a header that said
+  // "three things"; they stay in the bank for the post-script card. The misconception
+  // question needs no niche and doubles as a hook source.
+  'keeps_explaining',
 ])
+
+/** The source_ref the writer reads as a "most people think X, actually Y" hook. */
+export const MISCONCEPTION_SOURCE_REF = 'asked:keeps_explaining'

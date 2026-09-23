@@ -6270,7 +6270,7 @@ function freshnessTagInline(lastObservedAt: unknown, nowMs: number): string {
 // defect the insert path already has a whole comment block about. So the rotation
 // columns are asked for, and their absence costs the rotation rather than the
 // knowledge.
-const KNOWLEDGE_COLS_BASE = 'id, kind, text, basis, times_seen, confidence, source, last_observed_at'
+const KNOWLEDGE_COLS_BASE = 'id, kind, text, basis, times_seen, confidence, source, source_ref, last_observed_at'
 // ⚠️ EVERY COLUMN THAT DEPENDS ON A HAND-APPLIED MIGRATION IS IN THIS LIST AND
 // NOT IN THE BASE ONE. `used_count`/`last_used_at` come from 0215 and `evidence`
 // from 0216, and both are applied by hand — so the fallback below must name
@@ -8227,7 +8227,14 @@ function reserveAskedInline<T extends { source?: string | null }>(
           // they are. Absent on every row nobody has been asked about, and then
           // simply not marked.
           const vouched = String((k as { creator_confirmed_at?: unknown }).creator_confirmed_at ?? '').trim()
-          const mark = vouched ? ' [she confirmed this herself]' : ''
+          // ⚠️ THE ONBOARDING MISCONCEPTION ANSWER (`asked:keeps_explaining`,
+          // mirror of MISCONCEPTION_SOURCE_REF in creatorQuestions.ts). It is the
+          // thing she corrects over and over — a ready "most people think X,
+          // actually Y" hook — and the writer cannot know that from the text alone.
+          const misconception = String((k as { source_ref?: unknown }).source_ref ?? '') === 'asked:keeps_explaining'
+            ? ' [what she keeps having to explain — a ready "most people think X, actually Y" hook]'
+            : ''
+          const mark = (vouched ? ' [she confirmed this herself]' : '') + misconception
           return `  * (${k.kind}) ${tag}${k.text}${mark}${ev ? `\n      HER WORDS: "${ev}"` : ''}`
         }).join('\n'))
     }

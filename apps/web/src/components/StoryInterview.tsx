@@ -67,6 +67,8 @@ type SlotState = 'offered' | 'editing' | 'confirmed' | 'discarded'
 export function StoryInterview({
   voiceId, onDone, niche = null, sells = null, stageBand = null, subNiche = null,
   questionIds = OPENING_THREE,
+  heading = 'Three things only you know',
+  helper = 'Answer what you can — skip the rest, and everything here stays editable later.',
 }: {
   voiceId: string | null
   /** ⚠️ CALLED ONLY WHEN ALL THREE ARE RESOLVED (answered or skipped). The
@@ -114,6 +116,11 @@ export function StoryInterview({
    *  `nextQuestion` from ever putting the same question again. A bespoke field
    *  on the scan screen would have re-asked a creator her own answer later. */
   questionIds?: readonly string[]
+  /** ⚠️ THE HEADER WAS HARD-CODED "Three things" AND THE SCAN SCREEN RENDERED
+   *  TWO BOXES UNDER IT. A caller asking a different set names its own header;
+   *  the default is the story screen's, unchanged. */
+  heading?: string
+  helper?: string
 }) {
   // ⚠️ THE BANK WAS READ RAW HERE AND THE NICHE-AWARE BUILDER WAS NEVER CALLED.
   // `creatorQuestionsFor` has existed and been correct; `CreatorQuestionCard`
@@ -307,10 +314,10 @@ export function StoryInterview({
   return (
     <div className="mt-5 rounded-card border border-teal/25 bg-teal/[0.06] p-4 sm:p-5">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-teal">
-        Three things only you know
+        {heading}
       </p>
       <p className="mt-1 text-xs text-stone">
-        Answer what you can — skip the rest, and everything here stays editable later.
+        {helper}
       </p>
       <div className="mt-4 space-y-4">
         {questions.map((q) => {
