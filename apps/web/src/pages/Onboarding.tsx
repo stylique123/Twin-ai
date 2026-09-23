@@ -155,6 +155,7 @@ import { LogoMark } from '../components/Logo'
 import type { SellsKind } from '@twinai/shared'
 import { StoryInterview } from '../components/StoryInterview'
 import { loadSellsFacet } from '../lib/ownSellsLoad'
+import { clearStoryDraft } from '../lib/storyDraft'
 import { loadVoiceStageBand } from '../lib/voiceNicheLoad'
 import {
   ONBOARDING_DRAFT_VERSION,
@@ -346,6 +347,21 @@ export default function Onboarding() {
     setMode('stories')
   }, [userId])
 
+  // ⚠️ A WAY BACK TO THE START FROM ANY STEP. Owner report: onboarding failed
+  // partway and nothing on screen could reset it. This clears only local state
+  // (the draft and the story draft); the voice row a scan already created is
+  // NOT deleted, and does not block re-entry — the handle step calls start-dna
+  // with `replace: true`, which repoints that same single slot. No orphan, no wall.
+  const [confirmingStartOver, setConfirmingStartOver] = useState(false)
+  const startOver = useCallback(() => {
+    safeClearDraft(userId)
+    try { clearStoryDraft() } catch { /* storage unavailable */ }
+    setDraft(null)
+    setRetrySeed(null)
+    setConfirmingStartOver(false)
+    setMode('handle')
+  }, [userId])
+
   if (!session) return <Navigate to="/auth" replace />
 
   // `min-h-screen` IS 100vh, AND ON iOS SAFARI THAT IS THE *LARGE* VIEWPORT —
@@ -428,6 +444,21 @@ export default function Onboarding() {
             </motion.div>
           </AnimatePresence>
         </div>
+        {mode !== 'handle' && (
+          <div className="mt-3 text-center text-xs text-stone">
+            {confirmingStartOver ? (
+              <span>
+                Clear your answers and start again from your handle?{' '}
+                <button type="button" className="text-coral underline underline-offset-2" onClick={startOver}>Yes, start over</button>{' '}
+                <button type="button" className="underline underline-offset-2" onClick={() => setConfirmingStartOver(false)}>Keep going</button>
+              </span>
+            ) : (
+              <button type="button" className="underline underline-offset-2 hover:text-cream" onClick={() => setConfirmingStartOver(true)}>
+                Stuck? Start over
+              </button>
+            )}
+          </div>
+        )}
       </motion.div>
     </main>
   )
@@ -1895,7 +1926,15 @@ export function ConfirmStep({
         <p className="text-xs text-stone">We’ll sharpen this from how you actually talk on camera within a few minutes — your spoken voice is the strongest signal.</p>
       </div>
 
-      {err && <p className="mt-3 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
+      {err && (
+        <div className="mt-3 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">
+          <p>{err}</p>
+          {/* Every write in `confirm` is an upsert, so running it again is a safe retry. */}
+          <button type="button" className="mt-1 text-xs underline underline-offset-2" onClick={() => void confirm()} disabled={busy}>
+            Try again
+          </button>
+        </div>
+      )}
       {mintWarning && (
         <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-600">{mintWarning}</p>
       )}
