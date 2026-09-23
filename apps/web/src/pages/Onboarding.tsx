@@ -19,7 +19,7 @@ import {
   type CapabilityAnswer,
 } from '../lib/api'
 import {
-  mintFromWorkKind, mintsOwnedEntity,
+  mintFromWorkKind, mintsOwnedEntity, claimProductEntity, splitProductList,
   saveMintedEntity, type EntityType, type Q4Answer,
 } from '../lib/api'
 import {
@@ -1313,6 +1313,9 @@ export function ConfirmStep({
   // a one-tap way out, which is what "correctable" means. A pre-fill with no
   // exit is just a decision we made and blamed on them.
   const [ownsEntity, setOwnsEntity] = useState<boolean>(draft.ownsEntity ?? true)
+  // ⚠️ A GUESSED LIST IS SEVERAL PRODUCTS. "bandanas, collars, bows, and mystery
+  // packs" could only be accepted as one entity or denied. Null = kept as one.
+  const [splitItems, setSplitItems] = useState<string[] | null>(null)
   // The offer arrives PRE-FILLED FROM THE SCAN — which is the defect §8a names,
   // not a feature. Tracking whether the creator changed it is what separates
   // "they told us" from "the model guessed and nobody corrected it", and only
@@ -1569,7 +1572,8 @@ export function ConfirmStep({
       // saved, to do it again.
       if (ownsEntity && mintsOwnedEntity(workKind)) {
         try {
-          await saveMintedEntity(
+          const items = splitItems && splitItems.length > 0 ? splitItems : null
+          const minted = await saveMintedEntity(
             draft.userId,
             draft.voiceId,
             // SHOWABILITY IS PRE-FILLED FROM THE CAPABILITY ANSWERS, not asked
@@ -1587,8 +1591,9 @@ export function ConfirmStep({
               // "Fresh artisan sourdough loaves ... via link in bio" on a
               // creator with no bio link. One promise, two consumers, one of
               // which kept it.
-              name: product.trim() || null,
-              offerConfirmed: offerTouched,
+              // A split names each entity by its own item — she chose the list.
+              name: items ? items[0] : (product.trim() || null),
+              offerConfirmed: items ? true : offerTouched,
               flags: { canRecordScreen, canFilmObjects },
               // ⚠️ THE FINER ANSWER, WHICH REACHED NOTHING UNTIL NOW. The scan
               // step asks "What kind of thing do you sell?" and the entity was
@@ -1599,6 +1604,17 @@ export function ConfirmStep({
               ownServiceKind: draft.ownServiceKind ?? null,
             }),
           )
+          // ⚖️ ONE ENTRY PER REMAINING ITEM, same kind and relationship as the
+          // mint. Personal use stays NOT_CONFIRMED — splitting asserts ownership
+          // of each, nothing more; the Product Library asks the rest.
+          if (items && minted) {
+            for (const name of items.slice(1)) {
+              await claimProductEntity(draft.userId, draft.voiceId, {
+                relationship: minted.relationship, personalUse: 'NOT_CONFIRMED',
+                type: minted.type, name, flags: { canRecordScreen, canFilmObjects },
+              })
+            }
+          }
         } catch (mintError) {
           // ⚠️ THIS WAS A BARE console.warn, AND IT HID THE ONE FAILURE THAT
           // CHANGES WHAT GETS WRITTEN. Not throwing is right — see above, the
@@ -1740,6 +1756,36 @@ export function ConfirmStep({
                 >
                   That’s not right — I don’t own one
                 </button>
+                {splitItems === null && splitProductList(product).length >= 2 && (
+                  <button
+                    type="button"
+                    onClick={() => setSplitItems(splitProductList(product))}
+                    className="ml-4 mt-2 text-[11px] text-stone underline decoration-white/20 underline-offset-2 hover:text-cream"
+                  >
+                    These are separate products
+                  </button>
+                )}
+                {splitItems !== null && (
+                  <div className="mt-3">
+                    <p className="text-xs text-sand">We’ll add each as its own product:</p>
+                    <ul className="mt-1 flex flex-wrap gap-1.5">
+                      {splitItems.map((it) => (
+                        <li key={it} className="flex items-center gap-1 rounded-full border border-white/10 px-2.5 py-0.5 text-xs text-cream">
+                          {it}
+                          <button type="button" aria-label={`Remove ${it}`} className="text-stone hover:text-cream"
+                            onClick={() => setSplitItems((prev) => {
+                              const next = (prev ?? []).filter((x) => x !== it)
+                              return next.length > 0 ? next : null
+                            })}>×</button>
+                        </li>
+                      ))}
+                    </ul>
+                    <button type="button" onClick={() => setSplitItems(null)}
+                      className="mt-1 text-[11px] text-stone underline decoration-white/20 underline-offset-2 hover:text-cream">
+                      Keep it as one
+                    </button>
+                  </div>
+                )}
               </>
             ) : (
               <>
