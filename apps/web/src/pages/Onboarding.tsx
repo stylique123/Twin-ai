@@ -1351,8 +1351,11 @@ export function ConfirmStep({
   // that would be wrong most visibly (niche and tone) and COUNTS the rest
   // rather than listing them, because a count is checkable at a glance and a
   // list is another wall.
+  // ⚠️ READS `vp`, THE SAME OBJECT THE FIELDS RENDER — not `draft.profile`.
+  // Two sources for one screen is how the summary once showed data over six
+  // blank boxes; one source means they cannot disagree, edits included.
   const voiceDigest = useMemo(() => {
-    const p = draft.profile
+    const p = vp
     if (!p) return 'What the scan heard.'
     const bits: string[] = []
     if (typeof p.niche === 'string' && p.niche.trim()) bits.push(p.niche.trim())
@@ -1362,7 +1365,7 @@ export function ConfirmStep({
     if (words) bits.push(`${words} signature ${words === 1 ? 'phrase' : 'phrases'}`)
     if (ctas) bits.push(`${ctas} recurring ${ctas === 1 ? 'CTA' : 'CTAs'}`)
     return bits.length ? `${bits.join(' · ')}. Tap to change anything.` : 'What the scan heard.'
-  }, [draft.profile])
+  }, [vp])
 
   // INVERTED, because the old default made a GOOD scan the worst screen.
   //

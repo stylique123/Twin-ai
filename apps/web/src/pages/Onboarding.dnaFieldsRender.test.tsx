@@ -192,3 +192,20 @@ describe('editing a field cannot discard the rest of the profile', () => {
     expect(src).not.toContain('setVp({ ...vp, [k]: v })')
   })
 })
+
+// ⚠️ ONE SOURCE FOR THE SUMMARY AND THE FIELDS. The summary read `draft.profile`
+// and the fields read `vp`; they agreed only while nobody edited. Now both read `vp`.
+describe('the summary line and the fields read the same object', () => {
+  it('the digest is computed from vp, not draft.profile', () => {
+    const src = ConfirmStep.toString()
+    const at = src.indexOf('What the scan heard.')
+    expect(at).toBeGreaterThan(-1)
+    expect(src.slice(Math.max(0, at - 200), at)).toMatch(/const p = vp\b/)
+  })
+
+  it('shows her niche in the summary while the NICHE field carries it', () => {
+    const { container } = renderConfirm(draftOf({ profile: HER_PROFILE }))
+    expect(container.textContent).toContain('Prenatal, postpartum & mom fitness · ')
+    expect(someInputHas('Prenatal, postpartum & mom fitness')).toBe(true)
+  })
+})
