@@ -35,7 +35,7 @@ import {
 } from '../lib/api'
 import {
   describeEdit, planSetups, startsSetup, setupStrip, openingSetupId, readSemanticRepetitionRepair,
-  withSelectedHook,
+  withSelectedHook, askGroupKey,
   type ScriptEditRecord, type SetupPlan, type SemanticRepetitionRepair,
 } from '@twinai/shared'
 import { recordScriptEdit } from '../lib/scriptEdits'
@@ -638,6 +638,8 @@ function AskCard({ scene, script, commit }: {
   // sentence in an analytics row. `logEvent` swallows its own errors by
   // contract, so none of this can stand between somebody and their camera.
   const beatIndex = scene.beat_index
+  // Other open scenes asking for the same missing fact (item 40).
+  const sharedWith = askPeerScenes(script.scenes, scene)
   useEffect(() => {
     if (typeof beatIndex !== 'number') return
     void logEvent('beat_ask_shown', { generation_id: script.generation_id, beat_index: beatIndex })
@@ -656,7 +658,7 @@ function AskCard({ scene, script, commit }: {
     setBusy(true)
     setError(null)
     try {
-      const { line, ask_state } = await answerBeatAsk(script.generation_id, scene.beat_index, answer)
+      const { line, ask_state, also } = await answerBeatAsk(script.generation_id, scene.beat_index, answer)
       // ⚖️ THE SERVER'S VERDICT, NOT THE CLIENT'S INTENT. `ask_state` is what
       // `answer-beat-ask` actually persisted; recording what we sent would count
       // an answer the server rejected as an answer.
@@ -664,8 +666,19 @@ function AskCard({ scene, script, commit }: {
         ...base, ask_state, produced_line: !!line, answer_chars: answer === null ? 0 : answer.length,
       })
       if (line) {
+        // ⚠️ ONE ANSWER FILLS EVERY BEAT ASKING FOR THE SAME FACT (item 40).
+        // The server already patched the peers; apply their lines here in the
+        // same commit so the editor shows one script, not a half-filled one.
+        let edited = applyAskAnswerEdit(script, scene.scene_number, line)
+        for (const peer of also ?? []) {
+          if (!edited.ok) break
+          const target = edited.script.scenes.find((x) => x.beat_index === peer.beat_index && x.dialogue == null)
+          if (!target) continue
+          const nextEdit = applyAskAnswerEdit(edited.script, target.scene_number, peer.line)
+          if (nextEdit.ok) edited = nextEdit
+        }
         const err = await commit(
-          applyAskAnswerEdit(script, scene.scene_number, line),
+          edited,
           describeEdit('dialogue', scene.scene_number, scene.dialogue, line),
         )
         setError(err)
@@ -699,6 +712,24 @@ function AskCard({ scene, script, commit }: {
       </div>
 
       <p className="mt-4 font-display text-lg leading-relaxed text-cream">{scene.ask}</p>
+      {/* ⚖️ ITEM 41: WHAT THE BEAT IS DOING, AND WHAT SHAPE OF ANSWER HELPS.
+          A first-time creator shown a bare question could not tell what it was
+          for or how much to write. */}
+      {(scene.ask_context || scene.purpose) && (
+        <p className="mt-2 text-xs text-sand">
+          <span className="font-semibold text-stone">This beat: </span>{scene.ask_context || scene.purpose}
+        </p>
+      )}
+      {scene.ask_example && (
+        <p className="mt-1 text-xs text-stone">Answer in one sentence, like: {scene.ask_example.replace(/^e\.g\.\s*/, '')}</p>
+      )}
+      {sharedWith.length > 0 && (
+        <p className="mt-2 text-xs text-teal">
+          {sharedWith[0]! < scene.scene_number
+            ? `Same question as scene ${sharedWith.join(', ')} — one answer fills ${sharedWith.length > 1 ? 'all of them' : 'both'}.`
+            : `Your answer also fills scene ${sharedWith.join(', ')}, which asks the same thing.`}
+        </p>
+      )}
 
       {skipped && (
         <p className="mt-2 text-xs text-stone">
@@ -739,6 +770,17 @@ function AskCard({ scene, script, commit }: {
       {scene.background?.trim() && <Guidance scene={scene} />}
     </div>
   )
+}
+
+/** Scene numbers of the OTHER unanswered ask scenes asking for the same fact. */
+function askPeerScenes(scenes: readonly RecordingScene[], scene: RecordingScene): number[] {
+  const open = (s: RecordingScene) => typeof s.dialogue !== 'string' && typeof s.ask === 'string' && s.ask.trim() !== ''
+  if (!open(scene)) return []
+  const key = askGroupKey(scene)
+  if (key === '') return []
+  return scenes
+    .filter((s) => s.scene_number !== scene.scene_number && open(s) && askGroupKey(s) === key)
+    .map((s) => s.scene_number)
 }
 
 function SilentCard({ scene }: { scene: RecordingScene }) {

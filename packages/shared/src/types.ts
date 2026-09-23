@@ -200,6 +200,13 @@ export interface Blueprint {
     /** The full spoken line with exactly one `{answer}` slot, so the beat can be
      *  completed by one typed fact and no second model call. */
     line_scaffold?: string
+    /** The missing fact this ask stands for; beats sharing it share one answer
+     *  (`askPeers`, item 40). Absent on rows written before it existed. */
+    ask_fact?: string
+    /** What this beat is doing on screen, shown with the question (item 41). */
+    ask_context?: string
+    /** An example of the expected answer format (item 41). */
+    ask_example?: string
     /** ⚠️ WHERE THIS BEAT'S CONTENT CAME FROM, and the field the billing
      *  decision counts. `generate-blueprint` refunds a generation whose beats
      *  are ≥40% `needs_user` (`script_mostly_questions`), so this drives a real

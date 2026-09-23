@@ -32,7 +32,8 @@ describe('the product counts toward what the video is about', () => {
   })
 
   it('keeps what the creator typed, rather than replacing it', () => {
-    const block = EDGE.slice(EDGE.indexOf('const entityAbout'), EDGE.indexOf('const ranked = kRows'))
+    // Re-pointed: `ranked` is now the story gate's output (item 32, storyRotation.ts).
+    const block = EDGE.slice(EDGE.indexOf('const entityAbout'), EDGE.indexOf('const ranked = storyGate.kept'))
     expect(block).toContain('reference_note')
     expect(block).toContain("brief.idea ?? ''")
   })
@@ -40,7 +41,8 @@ describe('the product counts toward what the video is about', () => {
   // ⚖️ STILL LEXICAL, STILL EXPLAINABLE. The comment beside it promises "why
   // did it say that" keeps an answer; a model call here would take that away.
   it('stays a word-overlap rule rather than becoming a judgement', () => {
-    const block = EDGE.slice(EDGE.indexOf('const entityAbout'), EDGE.indexOf('const ranked = kRows'))
+    // Re-pointed: `ranked` is now the story gate's output (item 32, storyRotation.ts).
+    const block = EDGE.slice(EDGE.indexOf('const entityAbout'), EDGE.indexOf('const ranked = storyGate.kept'))
     expect(block).toMatch(/toLowerCase\(\)\.split\(\/\[\^a-z0-9\]\+\//)
     expect(block).not.toMatch(/await |gemini|callModel/i)
   })

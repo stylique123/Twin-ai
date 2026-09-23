@@ -25,7 +25,7 @@
 // Deploy:  supabase functions deploy answer-beat-ask
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
-import { resolveAskAnswer, ANSWER_MAX_CHARS } from '../_shared/beatAsk.ts'
+import { resolveAskAnswer, askPeers, ANSWER_MAX_CHARS } from '../_shared/beatAsk.ts'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
 const cors = {
@@ -141,7 +141,20 @@ Deno.serve(async (req: Request) => {
     ask_state: resolution.state,
     answer: resolution.state === 'answered' ? (rawAnswer as string).trim() : null,
   }
-  const nextScript = script.map((b, i) => (i === beatIndex ? nextBeat : b))
+  // ⚠️ ONE MISSING FACT, ONE ANSWER (item 40). Beats asking for the same fact
+  // (`askPeers`: same `ask_fact`, or identical ask text on older rows) are
+  // filled from this answer too, each through its OWN scaffold. A skip only
+  // skips this beat; an answered peer is never overwritten.
+  const peerLines: Array<{ beat_index: number; line: string }> = []
+  const peers = resolution.state === 'answered' ? new Set(askPeers(script, beatIndex as number)) : new Set<number>()
+  const nextScript = script.map((b, i) => {
+    if (i === beatIndex) return nextBeat
+    if (!peers.has(i)) return b
+    const r = resolveAskAnswer(b.ask, b.line_scaffold, rawAnswer as string)
+    if (r.state !== 'answered') return b
+    peerLines.push({ beat_index: i, line: r.line })
+    return { ...b, line: r.line, ask_state: r.state, answer: (rawAnswer as string).trim() }
+  })
   const { error: updateError } = await admin
     .from('generations')
     .update({ blueprint: { ...blueprint, script: nextScript } })
@@ -176,5 +189,5 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  return json({ ok: true, line: resolution.line, ask_state: resolution.state })
+  return json({ ok: true, line: resolution.line, ask_state: resolution.state, also: peerLines })
 })

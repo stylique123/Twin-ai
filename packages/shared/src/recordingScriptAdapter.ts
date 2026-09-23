@@ -375,7 +375,16 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
       // the shapes it deliberately declines. When it returns nothing, this is
       // the same unconditional drop it has always been.
       const rest = hookRemainder(l, looksLikeHook)
-      if (rest !== '') usable.push({ seg: { ...seg, line: rest }, idx })
+      // ⚠️ ITEM 35: A HEADERLESS, MID-SENTENCE SCENE THAT REPEATED A LATER ONE.
+      // The remainder becomes its own scene under the hook's label, so it must
+      // be a whole sentence (not a split after "Dr." or a comma) and must not
+      // be words a later beat already says — otherwise the creator reads a
+      // fragment, then reads it again.
+      const restNorm = rest.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+      const saidLater = restNorm !== '' && (blueprint.script ?? []).some((other, j) => j > idx
+        && String(other?.line ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').includes(restNorm))
+      const whole = /^["'“‘(]?[A-Z0-9]/.test(rest)
+      if (rest !== '' && whole && !saidLater) usable.push({ seg: { ...seg, line: rest }, idx })
       return
     }
     usable.push({ seg, idx })
@@ -513,6 +522,9 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
           dialogue: null,
           ask,
           beat_index: idx,
+          ...(typeof seg.ask_fact === 'string' && seg.ask_fact.trim() ? { ask_fact: seg.ask_fact.trim() } : {}),
+          ...(typeof seg.ask_context === 'string' && seg.ask_context.trim() ? { ask_context: seg.ask_context.trim() } : {}),
+          ...(typeof seg.ask_example === 'string' && seg.ask_example.trim() ? { ask_example: seg.ask_example.trim() } : {}),
           duration_sec: beatDurationSec(beatPlan, idx, DEFAULT_ASK_SEC),
           ...(beatPlan?.[idx]?.targetSec != null ? { target_sec: beatPlan[idx].targetSec } : {}),
           ...framingFor(i + 1, blueprint, seg),

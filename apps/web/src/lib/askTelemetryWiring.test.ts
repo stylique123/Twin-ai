@@ -76,7 +76,8 @@ describe('the outcome recorded is the server verdict', () => {
     // answer, which is the one reading that would make this counter lie.
     const submit = CODE.slice(CODE.indexOf("logEvent('beat_ask_submitted'"))
     expect(submit).toMatch(/ask_state,/)
-    const destructure = CODE.indexOf('const { line, ask_state } = await answerBeatAsk')
+    // Re-pointed: the destructure also takes `also` (item 40: one answer fills peer beats).
+    const destructure = CODE.indexOf('const { line, ask_state, also } = await answerBeatAsk')
     expect(destructure).toBeGreaterThan(-1)
     expect(destructure).toBeLessThan(CODE.indexOf("logEvent('beat_ask_submitted'"))
   })
