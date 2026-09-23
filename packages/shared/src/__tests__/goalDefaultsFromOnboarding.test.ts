@@ -99,7 +99,8 @@ describe('the remix screen offers the standing goal as a starting point, not a b
   it('displays the goal with a change affordance rather than a question', () => {
     expect(src).toMatch(/setChangingGoal\(true\)/)
     expect(src).toMatch(/>Change</)
-    expect(src).toMatch(/CANONICAL_GOAL_LABELS\[displayedGoal\]/)
+    // Re-pointed: label now via goalDisplayLabel so a product build shows its objective wording (item 29).
+    expect(src).toMatch(/goalDisplayLabel\(displayedGoal, \{ isProductSubject \}\)/)
     // Says where the value came from: a prefilled value with no provenance is
     // indistinguishable from a guess.
     expect(src).toMatch(/From what you told us your content is for/)

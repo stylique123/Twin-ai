@@ -32,7 +32,7 @@ import {
   // moments — one before the creator chooses, one when a finished script failed
   // to disclose — and neither replaces the other.
   disclosureRefusalMessage,
-  defaultVideoGoalFromContentGoals, CANONICAL_GOAL_LABELS,
+  defaultVideoGoalFromContentGoals, goalDisplayLabel,
   // ⚖️ THE SAME TWO FUNCTIONS `assessReadiness` USES FOR THIS WORDING, not a
   // second copy of the wording. The card re-derives; it does not redefine.
   objectiveQuestion, offerFormOf,
@@ -1872,7 +1872,11 @@ export default function V2Building() {
   // which is true both when the pre-check just filled it from the standing
   // preference and when sessionStorage restored it, without a second flag that
   // could disagree with the first.
-  const goalQuestion = INTENT_QUESTIONS.find((q) => q.field === 'video_goal') ?? null
+  // ⚠️ THE PRODUCT FORM ON A PRODUCT BUILD. "Change" used to reopen the generic
+  // sheet, so a product creator changing her objective was offered a different
+  // question with different words for the same values.
+  const goalQuestion = intentQuestionsFor({ hasReference: true, isProductSubject })
+    .find((q) => q.field === 'video_goal') ?? null
   const displayedGoal = !(askQuestions ?? []).some((q) => q.field === 'video_goal')
     ? ((VIDEO_GOALS as readonly string[]).includes(askAnswers.video_goal ?? '')
       ? askAnswers.video_goal as VideoGoal : null)
@@ -2347,7 +2351,7 @@ export default function V2Building() {
                     <span className="text-sm leading-relaxed text-cream">This video is for</span>
                     <div className="mt-2.5 flex flex-wrap items-center gap-2">
                       <span className="rounded-full border border-coral/50 bg-coral/[0.08] px-3.5 py-2 text-[13px] text-cream">
-                        {CANONICAL_GOAL_LABELS[displayedGoal]}
+                        {goalDisplayLabel(displayedGoal, { isProductSubject })}
                       </span>
                       <button
                         type="button"
@@ -2359,7 +2363,9 @@ export default function V2Building() {
                         RATHER THAN A GUESS. A prefilled value with no
                         provenance is indistinguishable from Twin deciding. */}
                     <span className="mt-1.5 block text-[11px] leading-snug text-stone/70">
-                      From what you told us your content is for. Changing it here only affects this video.
+                      {isProductSubject
+                        ? 'What this video needs to do for the product. Changing it here only affects this video.'
+                        : 'From what you told us your content is for. Changing it here only affects this video.'}
                     </span>
                   </div>
                 )}
