@@ -995,6 +995,23 @@ export const PRODUCT_OBJECTIVES: readonly IntentOption[] = Object.freeze([
   { value: 'personal_brand', label: 'Say why I made it', hint: 'The story behind it' },
 ])
 
+/**
+ * THE LABEL SHOWN FOR A CHOSEN GOAL, IN THE VOCABULARY IT WAS CHOSEN IN.
+ *
+ * ⚠️ A PRODUCT BUILD PICKS FROM `PRODUCT_OBJECTIVES` BUT THE "THIS VIDEO IS FOR"
+ * CHIP RENDERED `CANONICAL_GOAL_LABELS`. So "Get people to try it" came back as
+ * "Get leads or clients" and "Launch it" as "Sell something" — the same value,
+ * a different sentence, and the creator reads it as Twin having changed her
+ * answer. Every surface displaying a chosen goal reads this, never the table.
+ */
+export function goalDisplayLabel(goal: VideoGoal, opts: { isProductSubject?: boolean } = {}): string {
+  if (opts.isProductSubject) {
+    const objective = PRODUCT_OBJECTIVES.find((o) => o.value === goal)
+    if (objective) return objective.label
+  }
+  return CANONICAL_GOAL_LABELS[goal]
+}
+
 /** The product-mode form of the goal question. */
 export const PRODUCT_OBJECTIVE_QUESTION = 'What does this video need to do for it?'
 

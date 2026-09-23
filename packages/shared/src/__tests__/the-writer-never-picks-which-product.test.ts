@@ -110,8 +110,10 @@ describe('the card asks, and the answer reaches the writer', () => {
     // asked nothing about the product. The flag is ONE definition at component
     // scope that all four readers share, which is the same anti-drift rule this
     // assertion exists for, so it is asserted here too.
+    // Re-pointed (item 25): the same expression now gates the picker as
+    // `productCommercialNow`, and the card re-reads it live via `liveCommercial`.
     expect(BUILD).toMatch(
-      /mayUseAProduct: showsCommercialBlock\(answeredIntent, \{ isProductSubject \}\)/)
+      /const productCommercialNow = showsCommercialBlock\(answeredIntent, \{ isProductSubject \}\)/)
     expect(BUILD).toMatch(
       /const isProductSubject = state\.door === 'product' \|\| !!state\.selected_product_id/)
     expect(BUILD.match(/state\.door === 'product' \|\| !!state\.selected_product_id/g)!.length)

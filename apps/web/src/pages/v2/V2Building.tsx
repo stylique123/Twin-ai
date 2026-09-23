@@ -18,6 +18,7 @@ import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@t
 import { readProfileAnswers } from '../../lib/profileAnswersRead'
 import { storeTypedMaterial } from '../../lib/creatorAnswers'
 import { namedAlternatives } from '@twinai/shared'
+import { productCtaOnRecord } from '@twinai/shared'
 import { readCreatorCtas } from '../../lib/creatorCtasRead'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
@@ -32,12 +33,12 @@ import {
   // moments — one before the creator chooses, one when a finished script failed
   // to disclose — and neither replaces the other.
   disclosureRefusalMessage,
-  defaultVideoGoalFromContentGoals, CANONICAL_GOAL_LABELS,
+  defaultVideoGoalFromContentGoals, goalDisplayLabel,
   // ⚖️ THE SAME TWO FUNCTIONS `assessReadiness` USES FOR THIS WORDING, not a
   // second copy of the wording. The card re-derives; it does not redefine.
   objectiveQuestion, offerFormOf,
 } from '@twinai/shared'
-import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
+import { classifyReferenceRead, LOW_SPEECH_TEXT, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE, isReadCapacityExhausted } from '../../lib/api'
 import { READINESS_INCOMPLETE_CODE, SELL_WITHOUT_TARGET_CODE, OUT_OF_REMIXES_CODE } from '../../lib/api'
 import type { ReadinessQuestion } from '../../lib/api'
@@ -229,7 +230,13 @@ type ChipQuestion = IntentQuestion
 const INTENT_FIELDS: ReadonlySet<string> = new Set(INTENT_QUESTIONS.map((q) => q.field))
 
 /** A question the card can render: free text, or chips. */
-type AskItem = ReadinessQuestion | ChipQuestion
+type AskItem = (ReadinessQuestion | ChipQuestion) & {
+  /** ⚖️ ITEM 25: shown only once the LIVE answers make this video carry a
+   *  product. The picker used to be decided once, before the goal chip was
+   *  tapped, so an idea build that became "about my product" on this card
+   *  never asked WHICH product. */
+  whenCommercial?: boolean
+}
 const isChip = (q: AskItem): q is ChipQuestion =>
   Array.isArray((q as ChipQuestion).options)
 
@@ -611,6 +618,12 @@ export default function V2Building() {
   // the job row for all of them; without this the card would reappear on every
   // tick after the creator had already answered it.
   const gateAsked = useRef(false)
+  // ⚖️ ITEM 24: ONE OVERRIDE PER REFERENCE. A creator who already said "use it
+  // anyway" to the early check is not asked again about the same video.
+  const usedAnyway = useRef(false)
+  // The low-speech card's answer, awaited exactly like the early gate's.
+  const lowSpeechResolve = useRef<((c: 'used_anyway' | 'picked_another') => void) | null>(null)
+  const [lowSpeechAsk, setLowSpeechAsk] = useState(false)
   // ⚖️ A CONTRADICTION, NOT A MISSING INPUT. Readiness asks a question because an
   // answer would unblock the build; this one has no question — the goal and what
   // the creator has to sell disagree, and only they can settle which was wrong.
@@ -826,6 +839,26 @@ export default function V2Building() {
         const halt = (cause: keyof typeof REFERENCE_UNREAD_TEXT) => {
           if (alive) { setUnusableRef(REFERENCE_UNREAD_TEXT[cause]); setUnreadCause(cause); setActive(0) }
         }
+        // ⚖️ ITEM 24: THE LOW-SPEECH OVERRIDE, ALWAYS OFFERED, ASKED ONCE. True
+        // means go ahead with this reference; false means the build stopped
+        // (picked another, or cancelled) and nothing was spent.
+        const lowSpeechUsedAnyway = async (): Promise<boolean> => {
+          if (usedAnyway.current) return true
+          const choice = await new Promise<'used_anyway' | 'picked_another'>((resolve) => {
+            lowSpeechResolve.current = resolve
+            if (alive) { setUnusableRef(LOW_SPEECH_TEXT); setLowSpeechAsk(true); setIngesting(false); setActive(0) }
+          })
+          lowSpeechResolve.current = null
+          if (alive) { setUnusableRef(null); setLowSpeechAsk(false) }
+          if (cancelled.current) return false
+          if (choice === 'picked_another') {
+            if (alive) nav('/v2', { replace: true })
+            return false
+          }
+          usedAnyway.current = true
+          if (alive) setIngesting(true)
+          return true
+        }
 
         // ── ASK BEFORE THE WAIT, NOT AFTER IT ──────────────────────────
         //
@@ -907,6 +940,10 @@ export default function V2Building() {
               ? libraryBrands.find((b) => `${BRAND_CHOICE_PREFIX}${b.id}` === pickedId) ?? null
               : null
             const chosenName = (chosenBrand?.name ?? chosen?.name ?? '').trim()
+            // ⚖️ ITEM 28: THE CTA ON RECORD FOR THIS PRODUCT. When it exists the
+            // generic "what should viewers do" question is not asked; the card
+            // shows the value that will be used, as an editable box.
+            const productCta = productCtaOnRecord(chosen as { knowledge?: unknown; offer?: unknown } | null)
             const verdict = assessReadiness({
               goal: state.goal ?? str(vBrief.goal) ?? null,
               angle: state.reference_note || refUrl || str(vBrief.idea) || null,
@@ -959,7 +996,10 @@ export default function V2Building() {
               // which is why it is gated rather than read raw. A generic goal
               // must not select a product question.
               objective: isProductSubject ? (answersRef.current.video_goal ?? null) : null,
-              cta: str(vBrief.cta) ?? null,
+              // ⚠️ `brief.cta` WAS NEVER A STORED KEY — `defaultCta` is (see
+              // cta.ts) — so this read undefined for everyone and every
+              // commercial product build asked the generic CTA question.
+              cta: productCta ?? str(vBrief.defaultCta) ?? str(vBrief.cta) ?? null,
               audience: str(vBrief.audience) ?? str(v?.profile?.audience) ?? null,
               referenceRead: Boolean(refUrl),
               hasCreatorKnowledge: Boolean(v?.profile),
@@ -1106,16 +1146,28 @@ export default function V2Building() {
             const brandChoices = libraryBrands.map((b) => ({
               value: `${BRAND_CHOICE_PREFIX}${b.id}`, label: `${b.name} (the whole brand)`,
             }))
+            // ⚠️⚠️ ITEM 25: THE PICKER WAS DECIDED BEFORE THE CHIPS WERE TAPPED.
+            // In idea mode the goal/focus are unanswered on this pass, so
+            // `showsCommercialBlock` was false, the picker was dropped, and the
+            // second pass (after "Create my version") skips this block entirely.
+            // A creator who then chose "My product or service" / a selling goal
+            // was never asked WHICH product. So: if there is a tie to break and
+            // the intent could still become commercial, the picker rides along
+            // flagged `whenCommercial`, and the card shows it the moment the
+            // live answers make the video carry a product.
+            const productCommercialNow = showsCommercialBlock(answeredIntent, { isProductSubject })
+            const intentStillOpen = unanswered.some((q) => q.field === 'video_goal' || q.field === 'content_focus')
             const productQuestion: AskItem[] =
-              mustAskWhichProduct({
+              (productCommercialNow || intentStillOpen) && mustAskWhichProduct({
                 ownedProductIds: [...ownedProducts.map((p) => p.id), ...brandChoices.map((b) => b.value)],
                 // ⚖️ THE DOOR'S CHOICE COUNTS AS AN ANSWER. Without this the
                 // screen re-asks "which one is this video about?" straight
                 // after the creator picked one to get here.
                 chosenId: answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null,
-                mayUseAProduct: showsCommercialBlock(answeredIntent, { isProductSubject }),
+                mayUseAProduct: true,
               })
                 ? [{
+                    ...(productCommercialNow ? {} : { whenCommercial: true }),
                     field: PRODUCT_CHOICE_FIELD,
                     question: 'Which one is this video about?',
                     // ⚖️ THEIR OWN NAMES, NOT A SUMMARY. The label is what they
@@ -1167,6 +1219,13 @@ export default function V2Building() {
               ...productQuestion,
               ...relevant.slice(0, MAX_TEXT_QUESTIONS),
             ]
+            // ⚖️ ITEM 28: SHOWN, NOT ASKED. When the card is up anyway and the
+            // product carries a CTA, the creator sees what will be used and can
+            // edit it — prefilled, so leaving it alone is an answer.
+            if (ask.length && productCta && !ask.some((q) => q.field === 'cta')) {
+              ask.push({ field: 'cta', question: 'What viewers will be asked to do — from your product. Edit it if this video needs something else.' })
+              if (!(answersRef.current.cta ?? '').trim()) answer('cta', productCta)
+            }
             if (ask.length && alive) {
               // No spend, no ingest, no wait — and `active` stays at 0 so the
               // bar does not pretend work is happening behind the card.
@@ -1337,11 +1396,20 @@ export default function V2Building() {
                   // measure is one we have no opinion about, and discarding the
                   // creator's own choice on no evidence is the same overreach in
                   // the other direction.
-                  const check = assessReference({
+                  // ⚖️ ITEM 24: ONE CLASSIFIER, SHARED WITH THE FAILED-JOB BRANCH
+                  // below, so the same video gets the same class, the same
+                  // sentence and the same override on every attempt.
+                  const read = classifyReferenceRead({
+                    status: job.status, error: job.error ?? null,
+                    transcriptId: job.result.transcript_id,
                     durationSec: job.result.duration_sec ?? null,
-                    wordCount: job.result.words ?? null,
+                    words: job.result.words ?? null,
                   })
-                  if (mayUseReference(check)) {
+                  if (read.cls === 'low_speech') {
+                    if (!(await lowSpeechUsedAnyway())) return
+                    transcript_id = job.result.transcript_id
+                    unread = null
+                  } else if (read.cls === 'usable') {
                     transcript_id = job.result.transcript_id
                     unread = null // read, measured, and fit to follow
                   } else {
@@ -1359,7 +1427,7 @@ export default function V2Building() {
                     // have one for free: leave the reference out. What they must
                     // never get is a bill for us silently substituting that.
                     if (alive) {
-                      setUnusableRef(REFERENCE_REASON_TEXT[check.reason])
+                      setUnusableRef(read.message ?? REFERENCE_REASON_TEXT.duration_unknown)
                       setActive(0)
                     }
                     return
@@ -1377,6 +1445,14 @@ export default function V2Building() {
                 // was involved. The error text is on the row from the first
                 // attempt, which is what makes it answerable in time.
                 if (isReadCapacityExhausted(job.error)) { unread = 'read_unavailable'; break }
+                // ⚖️ ITEM 24: a reader that said "no speech / no captions /
+                // empty transcript" is LOW SPEECH, not "private or deleted".
+                if ((job.status === 'failed' || job.status === 'done')
+                  && classifyReferenceRead({ status: job.status, error: job.error ?? null }).cls === 'low_speech') {
+                  if (!(await lowSpeechUsedAnyway())) return
+                  unread = null
+                  break
+                }
                 if (job.status === 'done') { unread = 'read_empty'; break }
                 if (job.status === 'failed') { unread = 'read_failed'; break }
               }
@@ -1811,6 +1887,7 @@ export default function V2Building() {
     }
     setGateBusy(false)
     setGateWarn(null)
+    if (choice === 'used_anyway') usedAnyway.current = true
     const resolve = gateResolve.current
     gateResolve.current = null
     resolve?.(choice)
@@ -1872,7 +1949,11 @@ export default function V2Building() {
   // which is true both when the pre-check just filled it from the standing
   // preference and when sessionStorage restored it, without a second flag that
   // could disagree with the first.
-  const goalQuestion = INTENT_QUESTIONS.find((q) => q.field === 'video_goal') ?? null
+  // ⚠️ THE PRODUCT FORM ON A PRODUCT BUILD. "Change" used to reopen the generic
+  // sheet, so a product creator changing her objective was offered a different
+  // question with different words for the same values.
+  const goalQuestion = intentQuestionsFor({ hasReference: true, isProductSubject })
+    .find((q) => q.field === 'video_goal') ?? null
   const displayedGoal = !(askQuestions ?? []).some((q) => q.field === 'video_goal')
     ? ((VIDEO_GOALS as readonly string[]).includes(askAnswers.video_goal ?? '')
       ? askAnswers.video_goal as VideoGoal : null)
@@ -1917,8 +1998,23 @@ export default function V2Building() {
     )
     : null
 
-  const decisions = (askQuestions ?? []).filter(isChip)
-  const commercial = (askQuestions ?? []).filter((q) => !isChip(q))
+  // ⚖️ ITEM 25: THE LIVE COMMERCIAL READING, from the chips as they stand on
+  // this card — the same expression the build uses to decide whether a product
+  // may travel at all, so the picker appears exactly when a pick would be used.
+  const liveCommercial = showsCommercialBlock(compileVideoIntent({
+    goal: asOneOf(VIDEO_GOALS, askAnswers.video_goal ?? answersRef.current.video_goal),
+    focus: asOneOf(CONTENT_FOCUS, askAnswers.content_focus ?? answersRef.current.content_focus),
+  }), { isProductSubject })
+  const visibleAsk = (askQuestions ?? []).filter((q) => !q.whenCommercial || liveCommercial)
+  // ⚖️ ITEM 25: a pick made while the video was commercial, then left behind
+  // when the goal changed, is not an answer to a question no longer on the card.
+  const dropHiddenPick = () => {
+    if (!liveCommercial && (askQuestions ?? []).some((q) => q.whenCommercial)) {
+      delete answersRef.current[PRODUCT_CHOICE_FIELD]
+    }
+  }
+  const decisions = visibleAsk.filter(isChip)
+  const commercial = visibleAsk.filter((q) => !isChip(q))
   const hasTwoBlocks = decisions.length > 0 && commercial.length > 0
 
   /** ⚖️ ONE RENDERER, TWO COLUMNS. The blocks differ in what they ask and
@@ -2347,7 +2443,7 @@ export default function V2Building() {
                     <span className="text-sm leading-relaxed text-cream">This video is for</span>
                     <div className="mt-2.5 flex flex-wrap items-center gap-2">
                       <span className="rounded-full border border-coral/50 bg-coral/[0.08] px-3.5 py-2 text-[13px] text-cream">
-                        {CANONICAL_GOAL_LABELS[displayedGoal]}
+                        {goalDisplayLabel(displayedGoal, { isProductSubject })}
                       </span>
                       <button
                         type="button"
@@ -2359,7 +2455,9 @@ export default function V2Building() {
                         RATHER THAN A GUESS. A prefilled value with no
                         provenance is indistinguishable from Twin deciding. */}
                     <span className="mt-1.5 block text-[11px] leading-snug text-stone/70">
-                      From what you told us your content is for. Changing it here only affects this video.
+                      {isProductSubject
+                        ? 'What this video needs to do for the product. Changing it here only affects this video.'
+                        : 'From what you told us your content is for. Changing it here only affects this video.'}
                     </span>
                   </div>
                 )}
@@ -2398,10 +2496,11 @@ export default function V2Building() {
               // answerable, and they are what the build actually needs. A
               // readiness question left blank is a thinner script; a card that
               // cannot be dismissed is no script at all.
-              disabled={askQuestions.some(
+              disabled={visibleAsk.some(
                 (q) => isChip(q) && !(askAnswers[q.field] ?? '').trim())}
               onClick={() => {
                 answersRef.current = { ...answersRef.current, ...askAnswers }
+                dropHiddenPick()
                 // ⚖️ THE ANSWERS OUTLIVE THE CARD, THE CARD DOES NOT. Keeping
                 // the answers means a tab reclaimed mid-build still sends them;
                 // clearing the questions means it does not re-ask what was just
@@ -2465,7 +2564,15 @@ export default function V2Building() {
                 own reading budget is spent it is not: the next reference hits
                 the identical wall, so sending someone off to re-pick videos
                 would cost them an afternoon to learn what we already know. */}
-            {unreadCause === 'read_unavailable' ? (
+            {lowSpeechAsk ? (
+              // ⚖️ ITEM 24: THE SAME TWO WAYS OUT AS THE EARLY CHECK, for the
+              // one class whose override rule is "always offered".
+              <>
+                <p className="mt-3 text-xs leading-relaxed text-stone/80">No remix has been used yet.</p>
+                <button onClick={() => lowSpeechResolve.current?.('used_anyway')} className="btn-gradient mt-6 w-full">Use it anyway</button>
+                <button onClick={() => lowSpeechResolve.current?.('picked_another')} className="btn-ghost mt-3 w-full">Pick another video</button>
+              </>
+            ) : unreadCause === 'read_unavailable' ? (
               <>
                 <p className="mt-3 text-xs leading-relaxed text-stone/80">
                   No remix was used, and another link will not help — this is on

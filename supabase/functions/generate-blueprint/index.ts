@@ -16,12 +16,12 @@ import { renderDirectionGuidance, cleanActionPosing,
   type ObjectShape as ObjectShapeInline } from '../_shared/performanceDirection.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { buildLinkAllowlist, sanitizeBlueprintLinks, type LinkAllowlist } from '../_shared/outputLinks.ts'
-import { templateFor } from '../_shared/containerTemplates.ts'
+import { templateFor, referenceHasNoSingleProductFocus, singleProductReferenceNotice } from '../_shared/containerTemplates.ts'
 import { buildSlots, filledFrom, slotsReady } from '../_shared/writerInput.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
 import { applyHookContract } from '../_shared/hookContract.ts'
 import { craftBeatsThatAsked, readsAsPlaceholder, fallbackCta, craftSectionKind } from '../_shared/craftBeats.ts'
-import { askForBeat, askIsUsable, scaffoldWithoutAnswer } from '../_shared/beatAsk.ts'
+import { askForBeat, askIsUsable, scaffoldWithoutAnswer, boundAskBeats } from '../_shared/beatAsk.ts'
 import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
@@ -5496,7 +5496,7 @@ SCRIPT & HOOK INTEGRATION:
     - creator_knowledge = the beat is built on something listed under WHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID. You may only choose this if the item is actually in that list above. Inventing a plausible-sounding position and labelling it creator_knowledge is the single worst thing you can do here, and it is checked.
     - product_dna = built on the supplied product facts.
     - general = a widely-known fact stated in NEUTRAL terms, framed as something true of the world rather than as something this person personally did.
-    - needs_user = only the creator can supply this. Write the beat around what you DO know and leave the personal detail out of the line entirely.
+    - needs_user = only the creator can supply this. Write the beat around what you DO know and leave the personal detail out of the line entirely. AT MOST 2 beats in the whole script may be needs_user, however long it is, and only for a fact the video cannot stand without. Product details the creator did not supply are NOT needs_user: use the supplied facts, or leave the beat out.
     - none = a transition, a CTA, or a beat that carries no factual claim.
   * "substance_evidence": for creator_knowledge and product_dna, quote or closely paraphrase the specific supplied item you used. For the others, one short phrase naming what the beat rests on. Never leave it empty when substance is creator_knowledge.
 - A PLACEHOLDER IS A FAILED BEAT, NOT A DRAFT. Never write "[Phone Model]", "[product name]", "the new XYZ phone", "Brand X", or any other stand-in for a specific you do not have. If you cannot name the thing, you have three honest options and no fourth: state the general fact in neutral terms, write the beat around a specific you DO have from the lists above, or drop the claim. Filling the gap with a bracket hands the creator a script they cannot read aloud.
@@ -6642,6 +6642,9 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // braces. It states at the point of use that a decline yields no subject, and
   // the next person to add a fallback has to delete an explicit `null` to do it.
   const ownedEntity = declinedAProduct ? null : chosenEntity
+  // ⚖️ ITEM 26: set when a multi-product reference is built for ONE chosen
+  // subject. Saved on the blueprint so the result screen says so in one line.
+  let referenceScopeNote: string | null = null
 
   // ── THE BRAND IT BELONGS TO — ONLY ONCE SHE HAS SAID IT IS RIGHT ─────────
   //
@@ -7224,7 +7227,21 @@ function reserveAskedInline<T extends { source?: string | null }>(
   // been undefined and every commercial video re-asked a creator who had already
   // told us. `defaultCta` is the real column — see `cta.ts` — and it holds only
   // text a person typed, which is exactly the standard this gate wants.
-  if (readyCommercial && !readyPresent(answers.cta ?? brief.defaultCta ?? brief.cta)) {
+  // ⚖️ ITEM 28: THE CHOSEN PRODUCT'S OWN CTA COUNTS. A `usable` extracted `cta`
+  // fact, or the offer line she typed — mirrors `productCtaOnRecord` in
+  // packages/shared/src/cta.ts. Asking the generic question over it was
+  // re-asking what was already on record.
+  const readyProductCta = ((): string | undefined => {
+    const e = ownedEntity as { knowledge?: unknown; offer?: unknown } | null
+    if (!e) return undefined
+    for (const f of Array.isArray(e.knowledge) ? e.knowledge : []) {
+      const x = f as { field?: unknown; value?: unknown; trust?: unknown } | null
+      if (x && x.field === 'cta' && x.trust === 'usable' && String(x.value ?? '').trim() !== '') return String(x.value).trim()
+    }
+    const o = typeof e.offer === 'string' ? e.offer.trim() : ''
+    return o === '' ? undefined : o
+  })()
+  if (readyCommercial && !readyPresent(answers.cta ?? brief.defaultCta ?? brief.cta ?? readyProductCta)) {
     readyMissing.push({ field: 'cta', question: 'What should viewers do after watching?' })
   }
   // ⚠️ THE PRODUCT ALREADY ANSWERED THIS, AND THE GATE COULD NOT SEE IT.
@@ -9458,6 +9475,21 @@ ${tpl.beats.map((b, i) => `  ${i + 1}. ${b.label} (${b.role}) — ${b.purpose}${
 A beat marked [needs: product] or [needs: tool_or_software] requires something
 the creator actually has; if the knowledge above supplies none, write that beat
 about the topic in general rather than naming a product they never mentioned.`
+            // ⚠️⚠️ ITEM 26: A MULTI-PRODUCT SHAPE, ONE CHOSEN SUBJECT. A
+            // round-up or comparison has several beats that each need a
+            // different product; filling them for a product build merged every
+            // product the writer could reach into one script. The subject is
+            // exactly what she chose, so every product beat is about THAT, and
+            // the creator is told the reference's focus was not carried over.
+            const scopeSubject = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim()
+              || (chosenBrand?.name ?? '').trim()
+            if (scopeSubject !== '' && referenceHasNoSingleProductFocus(tpl.container)) {
+              referenceScopeNote = singleProductReferenceNotice(scopeSubject)
+              containerBlock += `\n\nTHIS REFERENCE IS ABOUT SEVERAL PRODUCTS; THIS VIDEO IS ABOUT ONE.
+Keep the reference's STRUCTURE and ORDER, but every beat marked [needs: product]
+is about "${scopeSubject}" — a different angle, use or reason for the SAME thing.
+Never introduce, name, compare against or merge in any other product.`
+            }
             const resolutions = resolveTemplate(
               tpl,
               {
@@ -11097,6 +11129,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       const kept = askIsUsable(q, b.line_scaffold) ? scaffoldWithoutAnswer(b.line_scaffold) : null
       b.line = kept ?? ''
       b.substance = 'needs_user'
+      ;(b as { ask_reason?: string }).ask_reason = 'personal_fact'
       if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
       beatAsksEmitted += 1
       if (kept !== null) beatAsksWithScaffold += 1
@@ -11509,6 +11542,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
               ? b.ask
               : 'This line was too close to the reference video\'s own words. What would you actually say here?'
             b.substance = 'needs_user'
+            ;(b as { ask_reason?: string }).ask_reason = 'reference_overlap'
             applied++
           }
           referencePhraseOverlap = { found: overlaps.length, repaired: applied }
@@ -11572,6 +11606,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         b.line = ''
         b.substance = 'needs_user'
         b.substance_evidence = ''
+        ;(b as { ask_reason?: string }).ask_reason = 'placeholder'
         if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
       }
       if (bracketed) {
@@ -11629,6 +11664,8 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       b.line = ''
       b.substance = 'needs_user'
       b.substance_evidence = ''
+      // ⚖️ ITEM 30: fed by the OPTIONAL product boxes — never shipped as an ask.
+      ;(b as { ask_reason?: string }).ask_reason = 'product_detail'
       if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
       productEscalated++
     }
@@ -11654,6 +11691,30 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // production rather than inferred later from a confused creator — the
     // decision it informs (a real "here is what we need from you" screen) is a
     // UI change and belongs with one.
+    // ── ASKS ARE BOUNDED BY WHAT IS MISSING, NOT BY LENGTH (items 30, 31) ──
+    //
+    // ⚠️ Each escalation above turns one beat into one question, so the count
+    // scaled with scene count, and skipped OPTIONAL product boxes came back as
+    // in-script gaps. `boundAskBeats` keeps at most MAX_ASK_BEATS asks, only for
+    // required facts, and writes around or omits the rest. In place, because
+    // `declared` IS `blueprint.script`.
+    if (Array.isArray(declared)) {
+      const bound = boundAskBeats(declared as never)
+      declared.length = 0
+      ;(declared as unknown[]).push(...bound.beats)
+      const stillAsked = new Set(bound.beats
+        .map((b) => (b as { ask?: unknown }).ask)
+        .filter((a): a is string => typeof a === 'string'))
+      for (let i = creatorQuestions.length - 1; i >= 0; i--) {
+        if (!stillAsked.has(creatorQuestions[i])) creatorQuestions.splice(i, 1)
+      }
+      if (bound.writtenAround + bound.omitted > 0) {
+        console.log(JSON.stringify({
+          event: 'ask_beats_bounded', kept: bound.kept,
+          written_around: bound.writtenAround, omitted: bound.omitted,
+        }))
+      }
+    }
     const totalBeats = Array.isArray(declared) ? declared.length : 0
     const asked = Array.isArray(declared)
       ? declared.filter((b) => (b as { substance?: string })?.substance === 'needs_user').length
@@ -12442,7 +12503,11 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         reference_url,
         reference_note,
         fidelity,
-        blueprint,
+        // ⚖️ ITEM 26: the one-line notice rides on the saved blueprint, so the
+        // result screen reads it without a second channel.
+        blueprint: referenceScopeNote
+          ? { ...(blueprint as Record<string, unknown>), reference_scope_note: referenceScopeNote }
+          : blueprint,
         reference_analysis: referenceAnalysis,
         brand_voice_id: voice?.id ?? null,
         transcript_id: transcript_id || null,

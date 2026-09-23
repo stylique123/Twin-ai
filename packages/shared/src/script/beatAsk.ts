@@ -328,3 +328,87 @@ export function askForBeat(section: unknown, writersAsk: unknown): string {
     ? 'What would you say here, in your own words?'
     : `This is the ${s.toLowerCase()} beat — what would you say here, in your own words?`
 }
+
+// ── HOW MANY ASKS A SCRIPT MAY CARRY, AND WHICH ───────────────────────────
+//
+// ⚠️ ITEM 31: THE ASK COUNT SCALED WITH SCENE COUNT. Every escalation path turns
+// one beat into one question, so a nine-scene script with thin material came
+// back with five or seven asks and a three-scene one with one — the number
+// measured length, not what was missing.
+//
+// ⚠️ ITEM 30: AN OPTIONAL FIELD SKIPPED STILL CAME BACK AS A GAP. The product
+// boxes on the card are labelled optional; skipping them left the writer with
+// no product detail, and every product beat then escalated to "what does it
+// actually do here?" — the question the creator had just declined, re-asked
+// inside the script.
+//
+// ⚖️ THE DECISION (CTO): skipped optional material never creates an ask — the
+// writer uses what exists or omits the beat. Asks are reserved for a REQUIRED
+// fact only the creator can supply, and at most `MAX_ASK_BEATS` per script,
+// whatever its length.
+export const MAX_ASK_BEATS = 2
+
+/** Why a beat became a question. `product_detail` is the one fed by the
+ *  optional product boxes; every other reason is a fact nobody else can give. */
+export type AskReason = 'personal_fact' | 'product_detail' | 'placeholder' | 'reference_overlap'
+
+export const OPTIONAL_ASK_REASONS: readonly AskReason[] = Object.freeze(['product_detail'] as AskReason[])
+
+export interface BoundableBeat {
+  line?: unknown
+  ask?: unknown
+  substance?: unknown
+  line_scaffold?: unknown
+  ask_reason?: unknown
+}
+
+export interface AskBound {
+  /** Asks left in the script, in order. Never more than the cap. */
+  kept: number
+  /** Asks resolved by keeping the scaffold's line without the answer. */
+  writtenAround: number
+  /** Beats removed because nothing honest could be said without the answer. */
+  omitted: number
+  /** The script after bounding — a new array; beats are mutated in place. */
+  beats: BoundableBeat[]
+}
+
+/**
+ * Bound the asks: at most `max`, only for required facts, and every other
+ * `needs_user` beat is written around (its scaffold's own sentence stands) or
+ * omitted. `ask_reason` is consumed here and never ships.
+ */
+export function boundAskBeats(
+  beats: readonly BoundableBeat[],
+  opts: { max?: number; optional?: readonly AskReason[] } = {},
+): AskBound {
+  const max = Math.max(0, opts.max ?? MAX_ASK_BEATS)
+  const optional = new Set<string>(opts.optional ?? OPTIONAL_ASK_REASONS)
+  let kept = 0
+  let writtenAround = 0
+  let omitted = 0
+  const out: BoundableBeat[] = []
+  for (const b of beats) {
+    if (!b || typeof b !== 'object') { out.push(b); continue }
+    const isAsk = b.substance === 'needs_user' && typeof b.ask === 'string' && b.ask.trim() !== ''
+    const reason = typeof b.ask_reason === 'string' ? b.ask_reason : 'personal_fact'
+    delete b.ask_reason
+    if (!isAsk) { out.push(b); continue }
+    if (!optional.has(reason) && kept < max) {
+      kept++
+      out.push(b)
+      continue
+    }
+    const around = askIsUsable(b.ask, b.line_scaffold) ? scaffoldWithoutAnswer(b.line_scaffold) : null
+    if (around !== null && around.trim() !== '') {
+      b.line = around
+      b.substance = 'general'
+      delete b.ask
+      writtenAround++
+      out.push(b)
+    } else {
+      omitted++
+    }
+  }
+  return { kept, writtenAround, omitted, beats: out }
+}

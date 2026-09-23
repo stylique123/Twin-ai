@@ -241,3 +241,21 @@ export function requiredSlots(t: ContainerTemplate): readonly TemplateBeat[] {
 }
 
 export const CONTAINER_TEMPLATES = TEMPLATES
+
+// ── A REFERENCE ABOUT SEVERAL PRODUCTS, BUILT FOR ONE ─────────────────────
+//
+// ⚠️ ITEM 26: A round-up or a comparison is a reference with NO single product
+// focus — its shape has two or more beats that each need a different THING.
+// Built in product mode for one chosen product, the writer filled those beats
+// from everything it could find and handed back a merged result. The rule is
+// structural, not a guess: a template with two or more `needs: 'product'`
+// beats is a multi-product shape, whatever the transcript says.
+export function referenceHasNoSingleProductFocus(container: ContainerType | null): boolean {
+  const t = templateFor(container)
+  return t !== null && t.beats.filter((b) => b.needs === 'product').length >= 2
+}
+
+/** What the creator is told, in one sentence, when that happens. */
+export function singleProductReferenceNotice(productName: string): string {
+  return `This reference isn't about one product — we'll use its structure for ${productName}.`
+}

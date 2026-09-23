@@ -1211,6 +1211,10 @@ export default function Result() {
                 <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-teal">Your video idea</div>
                 <p className="text-sm font-semibold leading-snug text-cream">{b.concept.premise}</p>
                 {b.concept.your_scale && <p className="mt-1.5 text-xs leading-snug text-sand/85"><span className="text-stone">Film it solo: </span>{b.concept.your_scale}</p>}
+                {/* ⚖️ ITEM 26: a round-up/comparison reference built for ONE product says so. */}
+                {typeof (raw as { reference_scope_note?: unknown }).reference_scope_note === 'string' && (
+                  <p className="mt-1.5 text-xs leading-snug text-sand/85">{(raw as { reference_scope_note: string }).reference_scope_note}</p>
+                )}
                 {b.concept.translations?.length ? (
                   <div className="mt-2 space-y-1">
                     {b.concept.translations.map((t, i) => (

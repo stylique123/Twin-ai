@@ -35,8 +35,9 @@ describe('one renderer, two columns', () => {
   it('splits on the existing chip distinction, not a new parallel flag', () => {
     // ⚖️ A second notion of "which block is this" is a field that can disagree
     // with the renderer. `isChip` already means "fixed-enum decision".
-    expect(SRC).toMatch(/const decisions = \(askQuestions \?\? \[\]\)\.filter\(isChip\)/)
-    expect(SRC).toMatch(/const commercial = \(askQuestions \?\? \[\]\)\.filter\(\(q\) => !isChip\(q\)\)/)
+    // Re-pointed: the split now reads `visibleAsk` (askQuestions minus a picker hidden until the video is commercial, item 25).
+    expect(SRC).toMatch(/const decisions = visibleAsk\.filter\(isChip\)/)
+    expect(SRC).toMatch(/const commercial = visibleAsk\.filter\(\(q\) => !isChip\(q\)\)/)
   })
 })
 
