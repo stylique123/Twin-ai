@@ -1963,8 +1963,12 @@ export async function requestProductExtraction(
    *  different things: the page states the offer, the photos show the object.
    *  Passing them together is what lets one job produce both. */
   imagePaths: readonly string[] = [],
+  /** ⚖️ NO LINK, NO PHOTO, NO BRAND WEBSITE: ask the worker to search the web
+   *  for the product by its name. Only honoured when there is nothing else. */
+  opts: { webSearch?: boolean } = {},
 ): Promise<void> {
   const clean = url.trim()
+  const webSearch = opts.webSearch === true && clean === '' && imagePaths.length === 0
   // ⚠️ REFUSED HERE AS WELL AS IN THE EDGE FUNCTION AND THE WORKER. Those two
   // protect the credentialed processes; this one exists so the creator is told
   // immediately rather than watching a job fail silently.
@@ -1974,7 +1978,7 @@ export async function requestProductExtraction(
   // ⚖️ A URL THAT IS PRESENT MUST STILL BE REAL. This refuses a malformed link
   // rather than quietly dropping it, because a silently ignored link looks
   // exactly like a link that was read and found nothing.
-  if (clean === '' && imagePaths.length === 0) {
+  if (clean === '' && imagePaths.length === 0 && !webSearch) {
     throw new Error('Add a link or at least one photo so Twin has something to read.')
   }
   // ⚠️⚠️ THE SENTENCE THAT WAS A DEAD END. It said only "Please paste a full
@@ -2005,7 +2009,7 @@ export async function requestProductExtraction(
           url: clean,
           image_paths: imagePaths.filter((p) => typeof p === 'string' && p.trim() !== ''),
         }
-      : { entity_id: entityId, url: clean },
+      : webSearch ? { entity_id: entityId, url: '', web_search: true } : { entity_id: entityId, url: clean },
   })
   if (error) {
     // ⚠️ THE FUNCTION'S OWN SENTENCE, NOT "Edge Function returned a non-2xx
@@ -2050,6 +2054,60 @@ export async function confirmProductFacts(
   })
   const { data, error } = await supabase
     .from('product_entities').update({ knowledge: next }).eq('id', entityId)
+    .select(ENTITY_COLUMNS).single()
+  if (error) throw error
+  return readEntityRow(data as ProductEntityRow)
+}
+
+/** THE PAGE TWIN FOUND ON THE WEB, IF IT IS STILL WAITING FOR HER ANSWER.
+ *  A product whose link came from a grounded web search carries facts with
+ *  `source: 'web_search'` read from that same link. Returns its host, or null. */
+export function webFoundHost(e: Pick<ProductEntityRecord, 'productUrl' | 'knowledge'>): string | null {
+  if (!e.productUrl) return null
+  const found = (e.knowledge ?? []).some((f) => f.source === 'web_search' && f.sourceUrl === e.productUrl)
+  if (!found) return null
+  try { return new URL(e.productUrl).host.replace(/^www\./, '') } catch { return null }
+}
+
+/** "Yes, that's my product": keep the link, and re-label the page's facts by
+ *  what the page IS. ⚖️ TRUST IS NOT RAISED — each fact still waits for its own
+ *  confirmation; only the question "is this page hers?" is answered. */
+export async function confirmWebFoundProduct(entityId: string): Promise<ProductEntityRecord | null> {
+  const { data: current, error: readErr } = await supabase
+    .from('product_entities').select('knowledge, product_url').eq('id', entityId).single()
+  if (readErr) throw readErr
+  const row = current as { knowledge?: unknown; product_url?: string | null }
+  const url = row.product_url ?? ''
+  const kind = /(?:amazon\.|etsy\.|ebay\.)/i.test(url) ? 'listing' : 'official_product_page'
+  const facts = Array.isArray(row.knowledge) ? row.knowledge : []
+  const next = facts.map((raw) => {
+    const r = raw as Record<string, unknown>
+    return r && r.source === 'web_search' ? { ...r, source: kind } : raw
+  })
+  const { data, error } = await supabase
+    .from('product_entities').update({ knowledge: next }).eq('id', entityId)
+    .select(ENTITY_COLUMNS).single()
+  if (error) throw error
+  return readEntityRow(data as ProductEntityRow)
+}
+
+/** "Not mine": clear the link Twin found and every fact read from it. Facts
+ *  she confirmed herself, or from any other source, are kept. */
+export async function rejectWebFoundProduct(entityId: string): Promise<ProductEntityRecord | null> {
+  const { data: current, error: readErr } = await supabase
+    .from('product_entities').select('knowledge, product_url').eq('id', entityId).single()
+  if (readErr) throw readErr
+  const row = current as { knowledge?: unknown; product_url?: string | null }
+  const url = row.product_url ?? null
+  const facts = Array.isArray(row.knowledge) ? row.knowledge : []
+  const next = facts.filter((raw) => {
+    const r = raw as Record<string, unknown>
+    return !(r && r.source === 'web_search' && (url === null || r.sourceUrl === url))
+  })
+  const { data, error } = await supabase
+    .from('product_entities')
+    .update({ knowledge: next, product_url: null, knowledge_source_url: null })
+    .eq('id', entityId)
     .select(ENTITY_COLUMNS).single()
   if (error) throw error
   return readEntityRow(data as ProductEntityRow)

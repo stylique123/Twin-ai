@@ -102,9 +102,13 @@ describe('the product card has one link field, and it can be read from', () => {
     // this asserts what is on screen, whatever the reason.
     expect(screen.getAllByPlaceholderText('https://')).toHaveLength(1)
     // And the button is the one on the Link field, not a second one below.
-    expect(screen.getAllByRole('button', { name: 'Read the page' })).toHaveLength(1)
+    // ⚖️ NO LINK AND NO BRAND WEBSITE: opening it starts a web search for the
+    // product by name, so the one button may already read "Reading…".
+    const read = screen.getAllByRole('button', { name: /^(Read the page|Reading…)$/ })
+    expect(read).toHaveLength(1)
     // With no link on file it is offered but not armed — nothing to read yet.
-    expect((screen.getByRole('button', { name: 'Read the page' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((read[0] as HTMLButtonElement).disabled).toBe(true)
+    await waitFor(() => expect(requestProductExtraction).toHaveBeenCalledWith(UNREAD_ENTITY.id, '', [], { webSearch: true }))
   })
 
   it('offers exactly one https:// box on a product Twin has read', async () => {

@@ -1,6 +1,7 @@
 import { env } from './env.js'
 import { modelForTask } from './modelRouting.js'
 import { parseGeminiError, planRetry, quotaSummary } from './geminiQuota.js'
+import { readGroundedResponse, type GroundedAnswer } from './productWebSearch.js'
 
 // Minimal Gemini JSON client for the worker (structure derivation, later steps).
 // Provider is isolated here so it can be swapped without touching job handlers.
@@ -108,6 +109,60 @@ export async function geminiJson(
     const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('')
     if (!text) throw new Error('Empty response from model')
     return JSON.parse(text)
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+// ── GROUNDED WEB SEARCH ─────────────────────────────────────────────────────
+//
+// ⚖️ THE SAME KEY, ENDPOINT AND QUOTA HANDLING AS `geminiJson`, with Gemini's
+// built-in Google Search tool switched on. Returned RAW (text + the grounding
+// sources Google attached) because the caller must decide what to believe from
+// the SOURCES, never from the text: a URL the model wrote is a claim, a URL in
+// `groundingChunks` is a page Google actually retrieved.
+//
+// ⚠️ NO responseSchema: structured output and the search tool are not reliably
+// combinable on every model, so the caller parses the text leniently.
+
+export async function geminiGroundedSearch(
+  system: string,
+  prompt: string,
+  model: string,
+  timeoutMs = 45_000,
+): Promise<GroundedAnswer> {
+  if (!env.geminiKey) throw new Error('GEMINI_API_KEY not configured')
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: system }] },
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: { temperature: 0.1, maxOutputTokens: 2048 },
+  })
+  try {
+    let res: Response | null = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.geminiKey }, body },
+      )
+      if (res.ok) break
+      // Same quota discipline as `geminiJson`: the class decides, not the hint.
+      if (res.status === 429) {
+        const quota = parseGeminiError(res.status, await res.text())
+        const plan = planRetry(quota, attempt)
+        if (plan.retry) { await new Promise((r) => setTimeout(r, plan.delayMs)); continue }
+        throw new Error(`${quotaSummary(quota)} — ${plan.reason}`)
+      }
+      if (res.status >= 500 && attempt < 2) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1) * (attempt + 1)))
+        continue
+      }
+      throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`)
+    }
+    if (!res || !res.ok) throw new Error('Gemini request failed')
+    return readGroundedResponse(await res.json())
   } finally {
     clearTimeout(timer)
   }

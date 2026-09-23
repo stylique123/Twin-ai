@@ -14,7 +14,8 @@
 // decorative.
 import { db, type Job } from '../db.js'
 import { harvestSections } from '../pageSections.js'
-import { geminiJson, type InlineImage } from '../gemini.js'
+import { geminiJson, geminiGroundedSearch, type InlineImage } from '../gemini.js'
+import { findProductOnWeb, type WebProductMatch } from '../productWebSearch.js'
 
 /** Capped: each image is a full-resolution photo inlined into the request, so an
  *  unbounded list is a timeout and a bill. Four views of one object is already
@@ -332,7 +333,10 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   const imagePaths = Array.isArray(payload.image_paths)
     ? payload.image_paths.filter((p): p is string => typeof p === 'string' && p.trim() !== '')
     : []
-  if (!entityId || (!url && imagePaths.length === 0)) {
+  // ⚖️ A THIRD WAY IN: no link, no photo, and the page asked Twin to search the
+  // web for the product by name (productWebSearch.ts).
+  const webSearchAsked = payload.web_search === true
+  if (!entityId || (!url && imagePaths.length === 0 && !webSearchAsked)) {
     throw new Error('extract_product needs entity_id and either a url or image_paths')
   }
   // ⚠️ HTTPS ONLY. A creator-supplied URL is untrusted input, and this process
@@ -377,6 +381,26 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
       variants: shopProduct.variants.length }))
   }
 
+  // ── HER PRODUCT, FOUND ON THE WIDER WEB ─────────────────────────────────
+  //
+  // ⚖️ ONLY WHEN THERE IS NOTHING BETTER: no link of its own and no photo, or
+  // her brand's shop was searched and did not have it. A grounded Google search
+  // proposes a page; productWebSearch.ts refuses any URL Google did not
+  // actually retrieve and any page whose title lacks a word of her name.
+  // ⚠️ NEVER THROWS INTO THE JOB. Quota, timeout, a bad answer — every failure
+  // leaves the old path (her own sentence, or the shop's front page) in place.
+  let webMatch: WebProductMatch | null = null
+  const shopMissed = shopBase !== '' && !shopProduct
+  if (existingName && imagePaths.length === 0 && ((!url && webSearchAsked) || shopMissed)) {
+    webMatch = await searchWebForProduct(entityId, existingName)
+    if (webMatch) {
+      url = webMatch.url
+      await db.from('product_entities').update({ product_url: webMatch.url }).eq('id', entityId)
+    }
+  }
+
+  // (A web match was already read once to check its title; reading it again
+  // here keeps one path for every page, including its schema.org prices.)
   const text = url ? await fetchPageText(url) : null
   // ⚠️ THE UNREADABLE-PAGE BRANCH MUST NOT SWALLOW AN IMAGE-ONLY JOB. It writes
   // `knowledge: []` and returns, which for a creator who supplied photographs and
@@ -415,7 +439,9 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
     return { extracted: fallback.length, reason: 'unreadable' }
   }
 
-  const source = sourceFor(url, shopProduct ? shopProduct.url : productUrl)
+  // ⚠️ A PAGE TWIN FOUND ITSELF IS `web_search`, WHATEVER KIND OF PAGE IT IS.
+  // She never pointed at it, so all but its name waits for her "yes".
+  const source: ExtractionSource = webMatch ? 'web_search' : sourceFor(url, shopProduct ? shopProduct.url : productUrl)
   // ⚠️ `thinkingBudget: 0` IS INVALID FOR THIS MODEL CLASS, AND THE FIRST REAL
   // RUN FOUND IT: "Budget 0 is invalid. This model only works in thinking mode."
   // Every other `geminiJson` caller in the worker either omits the budget or
@@ -553,7 +579,7 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   // page's facts (the brand's story, free shipping, other products' prices)
   // were merged in beside the product's and showed on the card as its own.
   // Only what she confirmed survives the move.
-  const carried = shopProduct && previous
+  const carried = (shopProduct || webMatch) && previous
     ? previous.filter((f) => f.source === 'user_confirmed' || f.sourceUrl === url)
     : previous
   const { knowledge, changes } = mergeExtraction(carried, facts)
@@ -603,4 +629,37 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
     conflicts: attention.map(describeChange).slice(0, 10),
   }))
   return { extracted: knowledge.length, usable, changed: changes.length, conflicts: attention.length }
+}
+
+/** Run the grounded web search for a product, logging what happened. Returns
+ *  null — and the caller keeps its old path — on every kind of failure. */
+async function searchWebForProduct(entityId: string, name: string): Promise<WebProductMatch | null> {
+  try {
+    let brandName: string | null = null
+    const { data: row } = await db.from('product_entities').select('brand_id').eq('id', entityId).maybeSingle()
+    const brandId = (row as { brand_id?: string | null } | null)?.brand_id ?? null
+    if (brandId) {
+      const { data: b } = await db.from('brands').select('name').eq('id', brandId).maybeSingle()
+      brandName = (b as { name?: string | null } | null)?.name ?? null
+    }
+    const model = modelForTask('extract')
+    const outcome = await findProductOnWeb({
+      productName: name,
+      brandName,
+      search: (system, prompt) => geminiGroundedSearch(system, prompt, model),
+      fetchPage: (u) => fetchPageText(u),
+    })
+    if (outcome.ok) {
+      console.log(JSON.stringify({ event: 'product_found_on_web', entity_id: entityId, host: outcome.match.host,
+        confidence: outcome.match.confidence }))
+      return outcome.match
+    }
+    console.log(JSON.stringify({ event: 'product_web_search_no_match', entity_id: entityId, reason: outcome.reason,
+      detail: outcome.detail ?? null, sources: outcome.sources }))
+    return null
+  } catch (e) {
+    console.log(JSON.stringify({ event: 'product_web_search_no_match', entity_id: entityId, reason: 'error',
+      detail: (e instanceof Error ? e.message : String(e)).slice(0, 200) }))
+    return null
+  }
 }

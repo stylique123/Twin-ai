@@ -41,7 +41,7 @@ Deno.serve(async (req: Request) => {
   const { data: { user } } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)
 
-  let body: { entity_id?: string; url?: string; image_paths?: unknown }
+  let body: { entity_id?: string; url?: string; image_paths?: unknown; web_search?: unknown }
   try { body = await req.json() } catch { return json({ error: 'Invalid JSON body' }, 400) }
 
   const entityId = String(body.entity_id ?? '').trim()
@@ -49,12 +49,16 @@ Deno.serve(async (req: Request) => {
   const imagePaths = Array.isArray(body.image_paths)
     ? body.image_paths.filter((p): p is string => typeof p === 'string' && p.trim() !== '')
     : []
+  // ⚖️ A THIRD SOURCE: NO LINK, NO PHOTO, NO BRAND WEBSITE — the worker searches
+  // the web for the product BY ITS NAME (worker/src/productWebSearch.ts). Only a
+  // literal `true` counts; the worker still refuses a product with no name.
+  const webSearch = body.web_search === true
 
   if (entityId === '') return json({ error: 'Which product? entity_id is required.' }, 400)
   // ⚖️ THE SAME TWO REFUSALS THE PAGE MAKES, MADE AGAIN HERE. The page's copy of
   // them exists so a creator is told immediately; this copy is the one that
   // protects a credentialed process, and it cannot rely on the first having run.
-  if (url === '' && imagePaths.length === 0) {
+  if (url === '' && imagePaths.length === 0 && !webSearch) {
     return json({ error: 'Add a link or at least one photo so Twin has something to read.' }, 400)
   }
   if (url !== '' && !/^https:\/\//i.test(url)) return json({ error: 'Please paste a full https:// link.' }, 400)
@@ -91,6 +95,7 @@ Deno.serve(async (req: Request) => {
   const payload: Record<string, unknown> = imagePaths.length > 0
     ? { entity_id: entityId, url, image_paths: imagePaths }
     : { entity_id: entityId, url }
+  if (webSearch && url === '' && imagePaths.length === 0) payload.web_search = true
 
   const { data: job, error } = await admin
     .from('jobs')

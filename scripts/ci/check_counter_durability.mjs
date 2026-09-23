@@ -433,6 +433,16 @@ const EVENTS = {
     why: 'The durable fact is product_entities.product_url, rewritten from the shop front to '
       + 'the product page it found; the log is the live trace of that rewrite.',
   },
+  product_found_on_web: {
+    kind: 'counter_ephemeral',
+    why: 'The durable fact is product_entities.product_url plus knowledge facts with source '
+      + 'web_search; the log is the live trace of the grounded search that found the page.',
+  },
+  product_web_search_no_match: {
+    kind: 'counter_ephemeral',
+    why: 'Nothing is written on a miss — the old fallback runs unchanged — so this log is the '
+      + 'only trace that a web search ran and why its answer was refused.',
+  },
   scan_target_assessed: {
     kind: 'counter_ephemeral',
     why: 'What a handle resolved to. brand_voices already stores the resolved facts; this '
