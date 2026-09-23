@@ -5846,6 +5846,17 @@ const SPAN_REPAIR_SCHEMA = {
   required: ['candidates'],
 } as const
 
+/** ⚠️ `callModel` RETURNS TEXT. The claim-leak and phrase-overlap repairs read
+ *  `.rewrites` off that string directly, so no rewrite was ever applied
+ *  (found 2026-09-23). Parsed here, once, never throwing. */
+function parseRepairRewrites(raw: unknown): Array<{ index?: unknown; line?: unknown }> {
+  try {
+    const o = typeof raw === 'string' ? JSON.parse(raw) : raw
+    const list = (o as { rewrites?: unknown } | null)?.rewrites
+    return Array.isArray(list) ? list as Array<{ index?: unknown; line?: unknown }> : []
+  } catch { return [] }
+}
+
 async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder): Promise<string> {
   // The default MUST be a model that reliably returns a FULL blueprint inside the
   // edge wall-clock. gemini-3.1-pro-preview consistently ran 60-90s and timed out
@@ -11571,7 +11582,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
           REPAIR_SCHEMA,
         )
         let applied = 0
-        for (const r of ((fixed as { rewrites?: Array<{ index?: unknown; line?: unknown }> })?.rewrites ?? [])) {
+        for (const r of (parseRepairRewrites(fixed))) {
           const i = typeof r?.index === 'number' ? r.index : -1
           const line = typeof r?.line === 'string' ? r.line.trim() : ''
           if (i < 0 || line === '' || !Array.isArray(declared) || !declared[i]) continue
@@ -11642,7 +11653,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
             REPAIR_SCHEMA,
           )
           let applied = 0
-          for (const r of ((fixed as { rewrites?: Array<{ index?: unknown; line?: unknown }> })?.rewrites ?? [])) {
+          for (const r of (parseRepairRewrites(fixed))) {
             const i = typeof r?.index === 'number' ? r.index : -1
             const line = typeof r?.line === 'string' ? r.line.trim() : ''
             if (i < 0 || line === '' || !declared[i]) continue
