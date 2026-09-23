@@ -209,175 +209,35 @@ const FIXED_SHOW_NOTE: Record<string, string> = {
  *  suggestion would write `relationship` and `personalUse` from a gesture that
  *  asserted nothing, which is the permission escalation the whole page is built
  *  to refuse. The cost of an entitlement is answering for it. */
-function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
+export function ClaimForm({ onCancel, onClaim, busy }: {
   // ⚠️ OPTIONAL, AND THAT WAS THE BUG. This form shipped reachable ONLY from a
   // suggestion, so a creator whose product the extractor never saw could not
-  // register it AT ALL — 6 of 17 owners in production had no suggestions and so
-  // no way in. The attestation was never the part that needed a suggestion; the
-  // suggestion only ever saved typing.
+  // register it AT ALL. The suggestion only ever saved typing — and, as below,
+  // it is deliberately NOT used to prefill the name.
   suggestion?: ProductSuggestion | null
   onCancel: () => void
   busy: boolean
-  // ⚠️ THE SHARED CLAIM SHAPE. This form ASKS for less than the add dialog —
-  // a suggestion claim is not the place to type a price — but it can no longer
-  // be unable to SEND a field the contract has. See `ProductClaim`.
-  //
-  // ⚠️ G2 — THE CAPABILITY QUESTION THE LINK-PASTE FLOW ALREADY ASKS AND THIS
-  // ONE NEVER DID. Claiming from here fell back to the account-wide default
-  // capability flags — set once during onboarding, for a creator who may film
-  // very different products very differently.
   onClaim: (a: ProductClaim) => void
 }) {
+  // ⚠️ GAP #14 (2026-09-23): THREE DOORS, ONE FORM. Claiming from a suggestion
+  // used to ask name/type/relationship/use/filming only — no options & prices,
+  // no story questions, no link, no photos — so a product claimed here was born
+  // thinner than one added by "Add a product" and had to be opened to finish.
+  // It now IS the add form: the same fields (components/ProductFields.tsx), the
+  // same readiness gate, the same `ProductClaim` payload, saved by the same
+  // `claim()` (photos, stories, extraction). Every attestation question is still
+  // asked and still required — there is still no one-tap claim.
+  //
   // ⚖️ NOT PREFILLED FROM THE SUGGESTION TEXT. A suggestion is a CLAIM — "Early
-  // is an iOS alarm app that requires push-ups" — not a name. Dropping that into
-  // the name field would put a sentence where the prompt expects a noun.
-  const [name, setName] = useState('')
-  const [relationship, setRelationship] = useState<EntityRelationship | null>(null)
-  const [type, setType] = useState<EntityType | null>(null)
-  const [personalUse, setPersonalUse] = useState<PersonalUse | null>(null)
-  // ⚠️ G2 — SAME REGISTRY, SAME QUESTION, AS THE LINK-PASTE FLOW. `capabilityQuestion`
-  // decides screen/physical/null from type+relationship; this form asks nothing
-  // new, it just no longer skips the question the other claim path already asks.
-  const [showability, setShowability] = useState<Showability | null>(null)
-  const capability = type !== null && relationship !== null
-    ? capabilityQuestion({ type, relationship })
-    : null
-  // ⚖️ EVERY ANSWER IS REQUIRED, INCLUDING THE NAME. A nameless entity reaches
-  // the prompt as "the product", and an unanswered relationship has no default
-  // that is safe — `NONE` would silently forbid, `OWN_PRODUCT` would silently
-  // permit. So the button stays disabled rather than either.
-  const ready = name.trim() !== '' && relationship !== null && type !== null && personalUse !== null
-    && (capability === null || showability !== null)
-
+  // is an iOS alarm app that requires push-ups" — not a name.
   return (
-    <div className="mt-3 space-y-3 rounded-lg bg-white/[0.03] p-3">
-      <div>
-        <label className="text-xs font-medium uppercase tracking-wide text-stone">
-          What do you call it?
-        </label>
-        <input
-          className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
-          value={name}
-          placeholder="The name you use on camera"
-          onChange={(ev) => setName(ev.target.value)}
-        />
-      </div>
-
-      <fieldset>
-        <legend className="text-xs font-medium uppercase tracking-wide text-stone">
-          What is it?
-        </legend>
-        <div className="mt-1 flex flex-wrap gap-2">
-          {TYPE_CHOICES.map((t) => (
-            <button
-              key={t.value}
-              type="button"
-              aria-pressed={type === t.value}
-              onClick={() => setType(t.value)}
-              className={`rounded-full border px-3 py-1 text-xs ${
-                type === t.value
-                  ? 'border-coral/50 bg-coral/[0.08] text-cream'
-                  : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20'}`}
-            >{t.label}</button>
-          ))}
-        </div>
-      </fieldset>
-
-      <fieldset>
-        <legend className="text-xs font-medium uppercase tracking-wide text-stone">
-          Your relationship to it
-        </legend>
-        <div className="mt-1 space-y-1">
-          {RELATIONSHIP_CHOICES.map((r) => (
-            <label key={r.value} className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name={`rel-${suggestion?.id ?? 'new'}`}
-                checked={relationship === r.value}
-                onChange={() => setRelationship(r.value)}
-              />
-              {r.label}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-
-      <fieldset>
-        {/* ⚠️ ASKED SEPARATELY ON PURPOSE. Owning a product does not establish
-            having used it, and a commission establishes less still. This is the
-            answer that licenses "I use this every day"; the one above licenses
-            commercial language. They are different permissions. */}
-        <legend className="text-xs font-medium uppercase tracking-wide text-stone">
-          Do you use this yourself?
-        </legend>
-        <div className="mt-1 flex gap-2">
-          {/* Same two states as the link-paste path, same reason: the negative
-              covers "no" and "I'd rather not say" together. */}
-          {([['CONFIRMED', 'Yes, I use it'], ['NOT_CONFIRMED', 'No, or I\u2019d rather not say']] as const)
-            .map(([v, label]) => (
-              <button
-                key={v}
-                type="button"
-                aria-pressed={personalUse === v}
-                onClick={() => setPersonalUse(v)}
-                className={`rounded-full border px-3 py-1 text-xs ${
-                  personalUse === v
-                    ? 'border-coral/50 bg-coral/[0.08] text-cream'
-                    : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20'}`}
-              >{label}</button>
-            ))}
-        </div>
-      </fieldset>
-
-      {/* ⚠️ G2 — SAME QUESTION, SAME CHOICES, AS THE LINK-PASTE FLOW'S showability
-          picker. Rendered here only when the type+relationship pair asks one at
-          all — a service is asked nothing, because there is nothing to point a
-          camera at. */}
-      {capability !== null && (
-        <Choices
-          label={CAPABILITY_PROMPT[capability]}
-          options={CAPABILITY_CHOICES}
-          chosen={showability}
-          onPick={(v) => setShowability(v)}
-        />
-      )}
-
-      <div className="flex gap-2 pt-1">
-        <button
-          type="button"
-          disabled={!ready || busy}
-          onClick={() => ready && onClaim({
-            relationship: relationship!, personalUse: personalUse!, type: type!, name,
-            // ⚠️ THE ANSWER TRAVELS AS THE ANSWER, NOT AS A BOOLEAN — same trap
-            // named at the link-paste flow's own claim site: SOMETIMES sent as
-            // `false` reads to `inferShowability` as a denial. `showability`
-            // wins over `flags` in `answeredShowability`; `flags` still travels
-            // as the honest pre-fill for anything this question did not ask.
-            showability,
-            // ⚠️ AND "NOT SURE" TRAVELS AS null, NOT AS false. `answeredShowability`
-            // returns `inferShowability(type, flags)` for an UNKNOWN answer —
-            // it is the ONE answer that does not win over the flags — and
-            // `inferShowability` reads `false` as NEVER and null as UNKNOWN.
-            // So `showability === 'ALWAYS'` would have turned the option a
-            // creator picks to say "I do not know yet" into a stored denial,
-            // silently forbidding every scene that shows the thing. The null
-            // check has to precede the coercion, here as everywhere.
-            // ⚠️ `place` SENDS THE OBJECT FLAG, because `inferShowability`
-            // reads a BUSINESS through `canFilmObjects` — what is filmed is
-            // the room, which is the same permission as holding a thing up.
-            // A third flag would be a second authority on one fact.
-            flags: capability === 'physical' || capability === 'place'
-              ? { canFilmObjects: capabilityFlag(showability) }
-              : capability === 'screen' ? { canRecordScreen: capabilityFlag(showability) }
-                : undefined,
-          })}
-          className="btn-gradient rounded-lg px-3 py-1.5 text-sm disabled:opacity-40"
-        >{busy ? 'Adding…' : 'Add to my products'}</button>
-        <button type="button" onClick={onCancel} className="px-3 py-1.5 text-sm text-sand">
-          Cancel
-        </button>
-      </div>
-    </div>
+    <StartFromLink
+      kind="any"
+      busy={busy}
+      onCancel={onCancel}
+      onClaim={onClaim}
+      submitLabel="Add to my products"
+    />
   )
 }
 
@@ -2944,7 +2804,9 @@ function CommunityQuestions({ value, onChange }: {
   )
 }
 
-function StartFromLink({ onCancel, onClaim, busy, initialUrl, kind = 'any' }: {
+function StartFromLink({ onCancel, onClaim, busy, initialUrl, kind = 'any', submitLabel }: {
+  /** The claim-from-suggestion door names its button differently; nothing else differs. */
+  submitLabel?: string
   /** ⚖️ WHICH DOOR SHE CAME IN BY. "+ Something you promote" only offers the
    *  promoted relationships; "Add a product" inside a brand only her own. A
    *  choice the door already answered is a choice she can get wrong (reported
@@ -3333,7 +3195,7 @@ function StartFromLink({ onCancel, onClaim, busy, initialUrl, kind = 'any' }: {
                 : undefined,
           })}
           className="btn-gradient rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
-        >{busy ? 'Adding…' : (link || imagePaths.length > 0) ? 'Add it and take a look' : 'Add it'}</button>
+        >{busy ? 'Adding…' : submitLabel ?? ((link || imagePaths.length > 0) ? 'Add it and take a look' : 'Add it')}</button>
         <button
           type="button"
           onClick={onCancel}
