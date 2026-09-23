@@ -32,6 +32,8 @@ export interface ShopProduct {
   variants: ShopVariant[]
   /** The option names, e.g. ["Size", "Colour"], when the product has any. */
   options: string[]
+  /** Each option's values, e.g. { Size: ["Small", "Large"] }. */
+  optionValues?: Record<string, string[]>
 }
 
 type FetchJson = (url: string) => Promise<unknown | null>
@@ -47,21 +49,27 @@ export function isShopFront(url: string | null | undefined): boolean {
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+// "bandanas" and "bandana" are one word for matching purposes.
+const stem = (w: string) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w)
 
 /** How well a shop title matches the name she gave, 0..1. Word overlap, so
  *  "Reversible Scrunchie Bandana" finds "Reversible Scrunchie Bandana - Plaid". */
 export function nameMatch(wanted: string, title: string): number {
-  const w = new Set(norm(wanted).split(' ').filter((x) => x.length > 1))
-  const t = new Set(norm(title).split(' ').filter((x) => x.length > 1))
+  const w = new Set(norm(wanted).split(' ').filter((x) => x.length > 1).map(stem))
+  const t = new Set(norm(title).split(' ').filter((x) => x.length > 1).map(stem))
   if (w.size === 0) return 0
   let hit = 0
   for (const x of w) if (t.has(x)) hit++
   return hit / w.size
 }
 
-/** Below this overlap the best hit is not treated as her product. A wrong
- *  product read confidently is worse than no product read at all. */
-export const MIN_NAME_MATCH = 0.6
+/** EVERY WORD OF HER NAME MUST BE IN THE SHOP'S TITLE.
+ *  ⚠️ IT WAS 0.6, AND THAT PICKED THE WRONG PRODUCT IN PRODUCTION (2026-09-23):
+ *  "Reversible Scrunchie Bandana" matched "Scrunchie Bandana Mystery Packs" on
+ *  two words of three, and the card filled with another product's facts. The
+ *  word she typed that the title lacks ("Reversible") is exactly the word that
+ *  tells two products apart. Extra words in the title are fine. */
+export const MIN_NAME_MATCH = 1
 
 const stripHtml = (h: string) => h.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim()
 
@@ -82,7 +90,18 @@ export function readShopProduct(url: string, raw: unknown): ShopProduct | null {
       price: String((v as { price?: unknown }).price ?? '').trim(),
     })).filter((v) => v.price !== ''),
     options,
+    optionValues: Array.isArray(p.options)
+      ? Object.fromEntries(p.options
+        .map((o) => [String((o as { name?: unknown }).name ?? ''),
+          Array.isArray((o as { values?: unknown }).values) ? ((o as { values: unknown[] }).values).map(String) : []] as const)
+        .filter(([n, v]) => n !== '' && n !== 'Title' && v.length > 0))
+      : {},
   }
+}
+
+/** "Size: Mini, Small, Large" lines — the options, said once, not per price. */
+export function optionLines(p: ShopProduct): string[] {
+  return Object.entries(p.optionValues ?? {}).map(([n, v]) => `${n}: ${v.join(', ')}`)
 }
 
 /**
@@ -121,5 +140,15 @@ export function variantPriceLines(p: ShopProduct): string[] {
   const priced = p.variants.filter((v) => v.price !== '')
   if (priced.length === 0) return []
   if (priced.length === 1 || priced.every((v) => v.title === 'Default Title')) return [priced[0].price]
-  return priced.slice(0, 12).map((v) => `${v.title} — ${v.price}`)
+  // ⚠️ ONE LINE PER PRICE, NOT PER VARIANT. 6 sizes × 3 styles at one price
+  // was eighteen identical "That's right" rows (reported 2026-09-23). Group
+  // by price; name what each price covers by its first option.
+  const byPrice = new Map<string, Set<string>>()
+  for (const v of priced) {
+    const first = v.title.split(' / ')[0].trim()
+    if (!byPrice.has(v.price)) byPrice.set(v.price, new Set())
+    byPrice.get(v.price)!.add(first)
+  }
+  if (byPrice.size === 1) return [`${priced[0].price} (every option)`]
+  return [...byPrice].slice(0, 8).map(([price, firsts]) => `${[...firsts].join(', ')} — ${price}`)
 }

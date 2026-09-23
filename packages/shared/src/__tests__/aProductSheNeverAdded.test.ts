@@ -112,13 +112,18 @@ describe('the library renders the narrowed list, not the raw one', () => {
     expect(CODE).toMatch(/suppliedEntities\s*=\s*\(entities \?\? \[\]\)\.filter\(rowIsCreatorSupplied\)/)
     // Every group of the shown list is carved out of `suppliedEntities` and
     // nothing else — the raw `entities` never reaches the rendered list.
-    const shown = CODE.slice(CODE.indexOf('const shownEntities = ['), CODE.indexOf('\n  ]\n', CODE.indexOf('const shownEntities = [')))
-    expect(shown).toMatch(/suppliedEntities\.filter/)
-    expect(shown).not.toMatch(/\bentities\b(?!\.)/)
+    // Re-anchored 2026-09-23: each brand box, the loose list and the promoted
+    // list are separate `suppliedEntities.filter(...)` groups now.
+    expect(CODE).toMatch(/const items = suppliedEntities\.filter\(/)
+    expect(CODE).toMatch(/const loose = suppliedEntities\.filter\(/)
+    expect(CODE).toMatch(/const promoted = suppliedEntities\.filter\(/)
   })
 
   it('and the row map reads it', () => {
-    expect(CODE).toMatch(/\(tab === 'live' \? shownEntities : \[\]\)\.map\(/)
+    // Re-anchored 2026-09-23: the rows render per group through `renderEntity`.
+    expect(CODE).toMatch(/\{items\.map\(renderEntity\)\}/)
+    expect(CODE).toMatch(/\{loose\.map\(renderEntity\)\}/)
+    expect(CODE).toMatch(/\{promoted\.map\(renderEntity\)\}/)
   })
 
   it('⚖️ while saves and reloads still work on the whole set', () => {

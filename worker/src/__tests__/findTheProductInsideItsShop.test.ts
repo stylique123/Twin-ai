@@ -2,7 +2,7 @@
 // Fixtures are Shopify's documented storefront shapes, not the live shop: the
 // build container cannot reach it, and this says so rather than pretending.
 import { describe, expect, it } from 'vitest'
-import { isShopFront, nameMatch, findShopProduct, readShopProduct, variantPriceLines, MIN_NAME_MATCH } from '../shopProductLookup.js'
+import { isShopFront, nameMatch, findShopProduct, readShopProduct, variantPriceLines, optionLines, MIN_NAME_MATCH } from '../shopProductLookup.js'
 
 const SUGGEST = { resources: { results: { products: [
   { title: 'Custom Embroidered Bandana', url: '/products/custom-embroidered-bandana?_pos=2' },
@@ -61,5 +61,36 @@ describe('find the product inside its shop', () => {
     const p = await findShopProduct('https://shop.test', 'Bandana',
       fake({ 'suggest.json': { resources: { results: { products: [{ title: 'Bandana', url: 'https://evil.test/x' }] } } } }))
     expect(p).toBeNull()
+  })
+})
+
+describe('the production mismatch, 2026-09-23', () => {
+  it('does NOT take "Scrunchie Bandana Mystery Packs" for "Reversible Scrunchie Bandana"', async () => {
+    const fetchJson = async (u: string) => u.includes('suggest.json')
+      ? { resources: { results: { products: [{ title: 'Scrunchie Bandana Mystery Packs', url: '/products/scrunchie-bandana-mystery-packs' }] } } }
+      : { product: { title: 'Scrunchie Bandana Mystery Packs', variants: [{ title: 'Default Title', price: '45.00' }] } }
+    expect(await findShopProduct('https://www.thedogdaysco.com', 'Reversible Scrunchie Bandana', fetchJson)).toBeNull()
+  })
+
+  it('still finds it when the title has extra words, or a plural', () => {
+    expect(nameMatch('Reversible Scrunchie Bandana', 'Reversible Scrunchie Bandanas - Plaid')).toBe(1)
+  })
+
+  it('says one price once when every option costs the same, and lists the options separately', () => {
+    const p = readShopProduct('https://x.com/products/b', { product: { title: 'B',
+      options: [{ name: 'Size', values: ['Mini', 'Small'] }, { name: 'Style', values: ['Girly', 'Boyish'] }],
+      variants: [
+        { title: 'Mini / Girly', price: '28.51' }, { title: 'Mini / Boyish', price: '28.51' },
+        { title: 'Small / Girly', price: '28.51' }, { title: 'Small / Boyish', price: '28.51' },
+      ] } })!
+    expect(variantPriceLines(p)).toEqual(['28.51 (every option)'])
+    expect(optionLines(p)).toEqual(['Size: Mini, Small', 'Style: Girly, Boyish'])
+  })
+
+  it('groups by price when sizes cost different amounts', () => {
+    const p = readShopProduct('https://x.com/products/b', { product: { title: 'B', variants: [
+      { title: 'Mini / Girly', price: '22' }, { title: 'Mini / Boyish', price: '22' }, { title: 'Large / Girly', price: '30' },
+    ] } })!
+    expect(variantPriceLines(p)).toEqual(['Mini — 22', 'Large — 30'])
   })
 })

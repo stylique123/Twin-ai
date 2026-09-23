@@ -90,3 +90,26 @@ describe('a homepage is not a product', () => {
     expect(b).toBe(a)
   })
 })
+
+describe('what the shop says about everything it sells (2026-09-23)', () => {
+  const PRODUCT = 'https://thedogdaysco.com/products/reversible-scrunchie-bandana'
+  it('files each fact by the page it was READ from, not the link the product has now', () => {
+    const facts = [
+      { field: 'description', value: 'Our Dog Days collars are made-to-order', sourceUrl: 'https://www.thedogdaysco.com' },
+      { field: 'feature', value: 'Reversible, two prints in one', sourceUrl: PRODUCT },
+    ]
+    const placed = placeFacts(facts, { url: PRODUCT, productName: 'Reversible Scrunchie Bandana' })
+    expect(placed.brand.map((f) => f.value)).toEqual(['Our Dog Days collars are made-to-order'])
+    expect(placed.product.map((f) => f.value)).toEqual(['Reversible, two prints in one'])
+  })
+
+  it('puts shipping and returns on the brand, even from a product page', () => {
+    const placed = placeFacts([{ field: 'claim', value: 'Free Shipping on orders over $75 across Canada!' }], { url: PRODUCT })
+    expect(placed.brand).toHaveLength(1)
+  })
+
+  it('never takes the brand\'s own name as the product\'s', () => {
+    const placed = placeFacts([{ field: 'name', value: 'The Dog Days Co.' }], { url: PRODUCT, brandName: 'The Dog Days Co' })
+    expect(placed.brand).toHaveLength(1)
+  })
+})
