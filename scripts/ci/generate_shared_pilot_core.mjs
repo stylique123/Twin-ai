@@ -112,6 +112,10 @@ const SOURCES = [
   // shipped as the RECOMMENDED option naming nothing at all. Generated rather
   // than retyped for the same reason as shotListSync.ts above.
   ['packages/shared/src/script/hookSubject.ts', 'supabase/functions/_shared/hookSubject.ts'],
+  // ⚠️ ITEMS 32-38 (script integrity). Story rotation and the post-generation
+  // integrity pass — generated, not retyped, for the reason at the top.
+  ['packages/shared/src/script/storyRotation.ts', 'supabase/functions/_shared/storyRotation.ts'],
+  ['packages/shared/src/script/scriptIntegrity.ts', 'supabase/functions/_shared/scriptIntegrity.ts'],
   // ⚠️⚠️ THE CAPTION CLASSIFIER, GENERATED INTO THE WORKER, AND THE REASON IS A
   // CORPUS THAT STOPPED GROWING. `caption_shape` had exactly ONE writer —
   // `scripts/backfill-caption-shapes.ts`, a manual script an operator runs by

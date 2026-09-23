@@ -45,6 +45,11 @@ export interface RecordingScene {
    *  this existed has none, and no generation written before the writer emitted
    *  `ask` can ever grow one. */
   ask?: string | null
+  /** Items 40/41: the missing fact (shared across beats), what the beat shows,
+   *  and an example answer. Optional; absent on older scripts. */
+  ask_fact?: string | null
+  ask_context?: string | null
+  ask_example?: string | null
   /** THE `blueprint.script[]` INDEX THIS SCENE WAS BUILT FROM. Set only
    *  alongside `ask`: answering a beat writes back to `blueprint.script[i]`
    *  (see `answer-beat-ask`), and the adapter's filtering/reordering means

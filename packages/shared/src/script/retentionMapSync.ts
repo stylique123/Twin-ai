@@ -161,6 +161,64 @@ const POSITION_GOAL = (index: number, total: number, section?: unknown): string 
   return MIDDLE_GOALS[(index - 1) % MIDDLE_GOALS.length]!
 }
 
+// ⚠️ ITEM 39: THE SAME STOCK SENTENCE UNDER STRUCTURALLY DIFFERENT BEATS. A
+// middle beat's goal was chosen by POSITION alone, so "Detail Breakdown" and
+// "Durability Proof" got whichever of four sentences their index landed on, and
+// a nine-beat script repeated them. The goal now reads what KIND of beat it is
+// from its label, and no sentence is used twice in one script.
+const TYPED_GOALS: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
+  [/proof|evidence|result|test|durab|demo/i, [
+    'Show it, so the claim is something they saw rather than something you said.',
+    'Back the promise with something they can check.',
+  ]],
+  [/reveal|introduc|meet|product|unbox/i, [
+    'Put the thing itself on screen, so they know what this is about.',
+    'Name what you are showing before anyone has to guess.',
+  ]],
+  [/detail|feature|breakdown|how it|spec|close-?up/i, [
+    'Give one specific detail that only someone who made it would know.',
+    'Zoom in on the part that makes it different.',
+  ]],
+  [/benefit|value|why|outcome|payoff|double|save/i, [
+    'Say what the viewer gets out of it, in their terms.',
+    'Turn the feature into a reason to care.',
+  ]],
+  [/story|setup|background|context|problem|pain|mistake|struggle/i, [
+    'Make the problem feel familiar, so the answer lands.',
+    'Set up what went wrong before showing what fixed it.',
+  ]],
+  [/summary|recap|wrap|takeaway|lesson/i, [
+    'Leave them with the one line they will remember.',
+    'Pull the video into one takeaway before the ask.',
+  ]],
+  [/objection|myth|but|mistake/i, [
+    'Answer the doubt before they have time to scroll.',
+  ]],
+]
+
+function goalFor(index: number, total: number, label: string, used: Set<string>): string {
+  const positional = POSITION_GOAL(index, total, label)
+  const isMiddle = total > 1 && index !== 0 && index !== total - 1 && !REHOOK_SECTION.test(label)
+  const goal = isMiddle ? middleGoal(index, label, used) : positional
+  used.add(goal)
+  return goal
+}
+
+/** A middle beat's goal: by beat type when the label says one, never repeated. */
+function middleGoal(index: number, label: string, used: Set<string>): string {
+  for (const [pattern, goals] of TYPED_GOALS) {
+    if (!pattern.test(label)) continue
+    const fresh = goals.find((g) => !used.has(g))
+    if (fresh) return fresh
+  }
+  for (let k = 0; k < MIDDLE_GOALS.length; k++) {
+    const g = MIDDLE_GOALS[(index - 1 + k) % MIDDLE_GOALS.length]!
+    if (!used.has(g)) return g
+  }
+  // ⚖️ EVERY STOCK SENTENCE IS SPENT — name the beat rather than repeat one.
+  return `Carry the ${label.toLowerCase()} beat without repeating an earlier one.`
+}
+
 /**
  * Reconcile `reference_read.retention_map` against the FINAL `script` array
  * — the one the teleprompter renders, after every post-generation repair
@@ -185,6 +243,7 @@ export function syncRetentionMapToScript(
   const matchedSections = new Set<string>()
   let matched = 0
 
+  const usedGoals = new Set<string>()
   const out: RetentionMapRow[] = beats.map((beatEntry, index) => {
     const section = typeof beatEntry?.section === 'string' ? beatEntry.section.trim() : ''
     const key = section.toLowerCase()
@@ -204,7 +263,7 @@ export function syncRetentionMapToScript(
     const label = retentionBeatLabel(index, beats.length, section)
     return {
       beat: label,
-      goal: POSITION_GOAL(index, beats.length, label),
+      goal: goalFor(index, beats.length, label, usedGoals),
     }
   })
 

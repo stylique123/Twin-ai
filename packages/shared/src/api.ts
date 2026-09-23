@@ -1004,12 +1004,23 @@ export async function generateThumbnail(
 // action, matching `resolveAskAnswer`'s own reading of a blank answer.
 export async function answerBeatAsk(
   generationId: string, beatIndex: number, answer: string | null,
-): Promise<{ line: string; ask_state: 'unanswered' | 'answered' | 'skipped' }> {
+): Promise<{
+  line: string
+  ask_state: 'unanswered' | 'answered' | 'skipped'
+  /** Other beats asking for the same missing fact, filled by this answer (item 40). */
+  also: Array<{ beat_index: number; line: string }>
+}> {
   const { data, error } = await supabase.functions.invoke('answer-beat-ask', {
     body: { generation_id: generationId, beat_index: beatIndex, answer },
   })
   if (error) throw new Error(await readInvokeError(error))
-  return data as { line: string; ask_state: 'unanswered' | 'answered' | 'skipped' }
+  const d = data as { line: string; ask_state: 'unanswered' | 'answered' | 'skipped'; also?: unknown }
+  const also = Array.isArray(d.also)
+    ? (d.also as Array<{ beat_index?: unknown; line?: unknown }>)
+      .filter((a) => typeof a?.beat_index === 'number' && typeof a?.line === 'string' && a.line !== '')
+      .map((a) => ({ beat_index: a.beat_index as number, line: a.line as string }))
+    : []
+  return { line: d.line, ask_state: d.ask_state, also }
 }
 
 // ---- Dashboard (Phase 7: real stats from data we already own) ------------

@@ -45,6 +45,9 @@ function sentences(text: string): string[] {
     while (end + 1 < text.length && '.!?'.includes(text[end + 1]!)) end++
     const next = text[end + 1]
     if (next !== undefined && /\d/.test(next)) { i = end; continue }
+    // ⚠️ ITEM 35: NOR IS THE FULL STOP OF "Dr." — splitting there made the
+    // remainder a mid-sentence scene ("Lee told me…").
+    if (ch === '.' && /\b(?:dr|mr|mrs|ms|st|vs|etc|e\.g|i\.e|no)\.$/i.test(text.slice(start, end + 1))) { i = end; continue }
     const piece = text.slice(start, end + 1).trim()
     if (piece !== '') out.push(piece)
     start = end + 1

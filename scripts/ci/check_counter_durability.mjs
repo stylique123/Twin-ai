@@ -588,6 +588,8 @@ const EVENTS = {
     why: 'How sayable the shipped script was. Observe only; stored by 0145.',
   },
   product_claim_escalated: { kind: 'incident', why: 'A product claim raised past what evidence supports.' },
+  stories_withheld: { kind: 'incident', why: 'A stored story withheld: off-product, or told in 2 of the last 5 scripts (item 32).' },
+  script_integrity_repaired: { kind: 'incident', why: 'A finished script needed a header, a dropped duplicate story, a restored number, a stripped invented name or a length trim (items 33-38).' },
   entitlement_blocked: { kind: 'incident', why: 'A claim the creator is not entitled to make.' },
   entitlement_repair: { kind: 'incident', why: 'What the entitlement repair rewrote.' },
   entitlement_unrepaired: { kind: 'incident', why: 'A repair that did not take.' },

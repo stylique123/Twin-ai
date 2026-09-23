@@ -412,3 +412,73 @@ export function boundAskBeats(
   }
   return { kept, writtenAround, omitted, beats: out }
 }
+
+// ── ONE MISSING FACT, ONE QUESTION, ONE ANSWER (items 40, 41) ─────────────
+//
+// ⚠️ MEASURED 2026-09-22 on generation 8ce1290d: three beats (Hook, Re-hook,
+// Summary) carried the IDENTICAL ask "This beat needs a real detail about your
+// product, and nothing about it was supplied. What does it actually do here?".
+// The creator could not tell whether answering one covered the others (it did
+// not), the question never named the product, showed nothing of what the beat
+// was for, and gave no idea what shape of answer was wanted — one real answer
+// in that row is a keyboard mash.
+
+/** The fact a beat is asking for. Beats sharing a key share one answer. */
+export function askGroupKey(beat: { ask?: unknown; ask_fact?: unknown } | null | undefined): string {
+  const fact = String(beat?.ask_fact ?? '').trim()
+  if (fact !== '') return `fact:${fact}`
+  const ask = String(beat?.ask ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+  return ask === '' ? '' : `ask:${ask}`
+}
+
+/**
+ * The OTHER beats that ask for the same missing fact and are still open —
+ * the beats one answer should also fill. Answered beats are never overwritten.
+ */
+export function askPeers(
+  beats: ReadonlyArray<{ ask?: unknown; ask_fact?: unknown; ask_state?: unknown } | null | undefined>,
+  index: number,
+): number[] {
+  const list = Array.isArray(beats) ? beats : []
+  const key = askGroupKey(list[index])
+  if (key === '') return []
+  const out: number[] = []
+  list.forEach((b, j) => {
+    if (j === index || !b) return
+    if (String(b.ask_state ?? '') === 'answered') return
+    if (askGroupKey(b) === key) out.push(j)
+  })
+  return out
+}
+
+/** The first-time-user copy for a product ask: names the product, and carries
+ *  an example of the expected answer format. The canonical marker phrase
+ *  ("this beat needs a real detail about your product" / "...describes your
+ *  product in a way...") is kept verbatim — `generationReadiness` detects our
+ *  asks by authorship. */
+export function productAskCopy(
+  kind: 'product_function' | 'product_accuracy',
+  productName: unknown,
+): { ask: string; example: string } {
+  const raw = String(productName ?? '').trim().replace(/\s+/g, ' ')
+  const name = raw.length > 40 ? `${raw.slice(0, 39).trimEnd()}…` : raw
+  if (kind === 'product_function') {
+    return {
+      ask: `This beat needs a real detail about your product${name !== '' ? `, ${name}` : ''}. What does it actually do, in one sentence?`,
+      example: 'e.g. "It slips on over the head, so there are no snaps to fight with."',
+    }
+  }
+  return {
+    ask: `This beat describes your product in a way the supplied details do not cover${name !== '' ? ` (${name})` : ''}. What is the accurate version?`,
+    example: 'e.g. "It is hand-stitched cotton, and it is washable at 30 degrees."',
+  }
+}
+
+/** What the beat is doing on screen, so the question is asked in context. */
+export function askContext(beat: { section?: unknown; action_posing?: unknown; direction?: unknown } | null | undefined): string {
+  const section = String(beat?.section ?? '').trim()
+  const doing = String(beat?.action_posing ?? '').trim() || String(beat?.direction ?? '').trim()
+  if (section === '' && doing === '') return ''
+  if (doing === '') return `This is the ${section.toLowerCase()} beat.`
+  return section === '' ? `On screen: ${doing}` : `${section} beat — on screen: ${doing}`
+}

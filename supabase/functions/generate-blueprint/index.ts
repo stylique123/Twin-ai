@@ -21,10 +21,12 @@ import { buildSlots, filledFrom, slotsReady } from '../_shared/writerInput.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
 import { applyHookContract } from '../_shared/hookContract.ts'
 import { craftBeatsThatAsked, readsAsPlaceholder, fallbackCta, craftSectionKind } from '../_shared/craftBeats.ts'
-import { askForBeat, askIsUsable, scaffoldWithoutAnswer, boundAskBeats } from '../_shared/beatAsk.ts'
+import { askForBeat, askIsUsable, scaffoldWithoutAnswer, boundAskBeats, productAskCopy, askContext } from '../_shared/beatAsk.ts'
 import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
+import { gateStories, recentSupplyCounts } from '../_shared/storyRotation.ts'
+import { repairScriptIntegrity, type IntegrityBeat } from '../_shared/scriptIntegrity.ts'
 import {
   resolveTemplate,
   evidenceLevel, groundingDepth, creatorDepth, substanceIssues, isProgressCheck,
@@ -5485,6 +5487,8 @@ HOOKS (the single most important field):
 - THE FIRST FRAME decides the scroll-stop as much as the first words. In the script's Hook beat direction, name the literal first half-second on screen: the exact shot size, the facial expression, and any on-screen text, so the very first frame already stops the thumb.
 
 SCRIPT & HOOK INTEGRATION:
+- NEVER INVENT A NAME. Do not coin a product name, product-line or collection name (\"the … Collection\", \"… Line\", \"… Series\"), a brand name or a person's name. Use only names that appear verbatim in the creator's products, brands or knowledge above; otherwise say \"this bandana\", \"my candles\". A name that is not in her data is checked after writing and removed.
+- ONE STORY, ONCE. Tell each of the creator's stories in exactly one beat, and state each number exactly as her data states it — never a second version of the same event or a different figure for the same fact.
 - Script beats must be realistic, full spoken paragraphs (typically 2 to 4 sentences per beat, not just single short lines), telling the full story for each section (Hook, Setup, Re-hook, CTA). Keep them highly conversational, engaging, and ready for teleprompter reading.
 - Make the script beats modular and cohesive. Ensure the transition between the Hook options and Scene 2 (Setup) is grammatically correct and logically seamless for ANY of the 5 hook options. Scene 2 must not repeat or assume specific words from Hook Option 1, but rather flow naturally from any selected hook.
 - THE FIRST SCRIPT BEAT (the Hook section) MUST contain the actual spoken words of your #1 recommended hook (hook_options[0]), written out in full. NEVER output a placeholder, a bracketed token (e.g. "[Hook Option 1]", "[Insert selected hook from above]"), or a reference like "your hook here" in any script line. Every script line must be real, speakable words a creator can read off a teleprompter.
@@ -6490,6 +6494,23 @@ function reserveAskedInline<T extends { source?: string | null }>(
     seenKnowledge.add(k)
     return true
   })
+  // ⚠️ WHAT THIS CREATOR'S LAST FEW SCRIPTS WERE ALREADY BUILT OUT OF. One
+  // stored story reached 8 consecutive scripts (measured, used_count = 8) because
+  // rotation only broke ties. The insert-only ledger (0215) says exactly which
+  // generation was supplied which item; `gateStories` rests a story supplied in
+  // 2 of the last 5. Best-effort: a failed read rests nothing, as before.
+  let recentStorySupply = new Map<string, number>()
+  try {
+    const { data: ledger } = await admin
+      .from('creator_knowledge_uses')
+      .select('knowledge_id, generation_id, used_at')
+      .eq('owner_id', user.id)
+      .order('used_at', { ascending: false })
+      .limit(200)
+    recentStorySupply = recentSupplyCounts(ledger ?? [])
+  } catch (e) {
+    console.warn('story_ledger_read_failed', String((e as Error)?.message ?? e))
+  }
   // ⚠️ THE `audience_questions` READ IS GONE, AND ITS ABSENCE IS THE FEATURE.
   // It selected the top 8 rows by `asked` and interpolated them into the
   // knowledge block. The table has ZERO rows, has never had one, and has no
@@ -8075,7 +8096,25 @@ function reserveAskedInline<T extends { source?: string | null }>(
       ].map((v) => String(v ?? '')).join(' ')
         .toLowerCase().split(/[^a-z0-9]+/)
         .filter((w) => w.length > 3))
-    const ranked = kRows.filter((k) => k.basis !== 'inferred' && k.kind !== 'covered')
+    // ⚠️ A STORY IS NEVER ATTACHED TO A PRODUCT IT IS NOT ABOUT, AND A STORY
+    // TOLD IN TWO OF HER LAST FIVE SCRIPTS RESTS. See `storyRotation.ts`.
+    const storyGate = gateStories(
+      kRows.filter((k) => k.basis !== 'inferred' && k.kind !== 'covered'),
+      {
+        productText: ownedEntity
+          ? [entityAbout?.name ?? '', entityAbout?.offer ?? '', entityAbout?.creator_summary ?? '']
+              .map((v) => String(v ?? '')).join(' ')
+          : null,
+        recent: recentStorySupply,
+      })
+    if (storyGate.offProduct.length || storyGate.resting.length) {
+      console.warn(JSON.stringify({
+        event: 'stories_withheld',
+        off_product: storyGate.offProduct.length,
+        resting: storyGate.resting.length,
+      }))
+    }
+    const ranked = storyGate.kept
     const scored = ranked.map((k) => ({
       k,
       hit: String(k.text).toLowerCase().split(/[^a-z0-9]+/).filter((w) => aboutTerms.has(w)).length,
@@ -11672,9 +11711,18 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         : undefined
       // Already escalated by the entitlement pass — one beat, one outcome.
       if (!b || b.substance === 'needs_user') continue
-      const q = f.code === 'impossible_product_claim'
-        ? 'This beat needs a real detail about your product, and nothing about it was supplied. What does it actually do here?'
-        : 'This beat describes your product in a way the supplied details do not cover. What is the accurate version?'
+      // ⚠️ ITEMS 40/41: NAME THE PRODUCT, SHOW THE BEAT, GIVE AN EXAMPLE, AND
+      // KEY THE ASK BY THE MISSING FACT. Three beats of one real script carried
+      // the identical question with no product name, no context and no example;
+      // `ask_fact` lets `answer-beat-ask` fill every beat asking for the same
+      // fact from one answer (`askPeers`). The marker phrase is unchanged.
+      const askFact = f.code === 'impossible_product_claim' ? 'product_function' : 'product_accuracy'
+      const copy = productAskCopy(askFact, (ownedEntity as { name?: unknown } | null)?.name)
+      const q = copy.ask
+      ;(b as Record<string, unknown>).ask_fact = askFact
+      ;(b as Record<string, unknown>).ask_example = copy.example
+      const ctx = askContext(b as { section?: unknown; action_posing?: unknown; direction?: unknown })
+      if (ctx) (b as Record<string, unknown>).ask_context = ctx
       // ⚠️ THE QUESTION GOES IN `ask`, AND THE SPOKEN LINE GOES EMPTY. This site
       // used to write the question into `b.line` and never set `b.ask` at all,
       // and `line` is the SPOKEN field: `recordingScriptAdapter` decides an ask
@@ -11768,6 +11816,61 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     if (weakUnit) {
       console.warn(JSON.stringify({ event: 'contentless_enumeration_unit' }))
     }
+    // ── THE FINISHED SCRIPT'S INTEGRITY: HEADERS, ONE TELLING, TRUE NUMBERS,
+    // NO INVENTED NAMES, A LENGTH THAT FITS ─────────────────────────────────
+    //
+    // ⚠️ FIVE REPORTED DEFECTS, ONE PASS (`scriptIntegrity.ts`, generated into
+    // _shared). Placed after every escalation above and before every sync below,
+    // so the shot list, retention map and "why it works" read the repaired
+    // script. It only removes or restores — it never writes a new claim — so a
+    // short script is reported short, not padded.
+    try {
+      const bpAny = templated.bp as { script?: unknown; beat_plan?: unknown }
+      if (Array.isArray(bpAny.script)) {
+        const originalLen = bpAny.script.length
+        const knownText = [
+          JSON.stringify(ownedEntity ?? {}),
+          JSON.stringify(confirmedBrand ?? {}),
+          ...(knowledgeRows ?? []).map((k) => `${String(k.text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`),
+          ...productFactsForCheck,
+        ].join('\n')
+        const integrity = repairScriptIntegrity(bpAny.script as IntegrityBeat[], {
+          knownText,
+          targetSec: resolveTargetInline(body.target_seconds, null).targetSec,
+          // ⚠️ NO MEASURED PACE IS STORED PER CREATOR TODAY; the budget uses the
+          // recorder's natural 150 wpm. The parameter exists so a stored pace
+          // plugs in here without a second rule.
+          wpm: null,
+        })
+        bpAny.script = integrity.beats
+        // ⚖️ THE PLAN IS PARALLEL TO THE SCRIPT; a dropped beat drops its plan row.
+        if (integrity.report.droppedIndices.length && Array.isArray(bpAny.beat_plan)
+          && bpAny.beat_plan.length === originalLen) {
+          const gone = new Set(integrity.report.droppedIndices)
+          bpAny.beat_plan = (bpAny.beat_plan as unknown[]).filter((_, i) => !gone.has(i))
+        }
+        const r = integrity.report
+        if (r.fragmentsDropped || r.headersFilled || r.namesStripped || r.duplicatesDropped
+          || r.numbersRestored || r.numberConflicts.length || r.trimmedWords || r.underBy) {
+          console.warn(JSON.stringify({
+            event: 'script_integrity_repaired',
+            fragments_dropped: r.fragmentsDropped,
+            headers_filled: r.headersFilled,
+            invented_names: r.inventedNames,
+            duplicates_dropped: r.duplicatesDropped,
+            numbers_restored: r.numbersRestored,
+            number_conflicts: r.numberConflicts,
+            words: r.words,
+            budget: r.budget,
+            trimmed_words: r.trimmedWords,
+            under_by: r.underBy,
+          }))
+        }
+      }
+    } catch (e) {
+      console.error('script_integrity_failed', String((e as Error)?.message ?? e))
+    }
+
     const { blueprint, removals: linkRemovals } = sanitizeBlueprintLinks(
       templated.bp,
       linkAllow,
