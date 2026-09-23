@@ -8,7 +8,7 @@
 // Secrets: APIFY_TOKEN, GEMINI_API_KEY (shared with generate-blueprint)
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
-import { cors, json, normalizeHandle, startApifyRun, type Platform } from '../_shared/dna.ts'
+import { cors, json, normalizeHandle, handleShapeError, HANDLE_TOO_LONG, startApifyRun, type Platform } from '../_shared/dna.ts'
 import { monthlyScanCeiling, scanAllowance } from '../_shared/scanCeiling.ts'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
@@ -64,9 +64,12 @@ Deno.serve(async (req: Request) => {
 
   // Manual setups don't require a handle (the creator may have no account to scan);
   // fall back to a stable label so the row/reuse logic still works.
+  // Shape before length: a pasted sentence is "not a handle", never "too long".
+  const shapeErr = isManual ? null : handleShapeError(String(body.handle ?? ''))
+  if (shapeErr) return json({ error: shapeErr }, 400)
   const handle = normalizeHandle(body.handle ?? '') || (isManual ? 'my-voice' : '')
   if (!handle) return json({ error: 'A handle is required.' }, 400)
-  if (handle.length > 60) return json({ error: 'That handle looks too long.' }, 400)
+  if (handle.length > 60) return json({ error: HANDLE_TOO_LONG }, 400)
 
   const platform: Platform = PLATFORMS.includes(body.platform as Platform)
     ? (body.platform as Platform)

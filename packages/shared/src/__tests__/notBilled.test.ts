@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { notBilledNotice, wasNotBilled, needsUserCount } from '../notBilled'
+import { notBilledNotice, wasNotBilled, needsUserCount, askingBeatCount, billingDecisionFor } from '../notBilled'
 
 const beats = (n: number, asks: number) =>
   Array.from({ length: n }, (_, i) => ({ substance: i < asks ? 'needs_user' : 'creator_knowledge' }))
@@ -54,5 +54,39 @@ describe('notBilledNotice', () => {
     // Not billed for some other reason: say only what is certain.
     expect(notBilledNotice({ credits_spent: 0, script: beats(6, 0) }))
       .not.toContain('beats need a detail')
+  })
+})
+
+// ⚠️ THE 2026-09-22 SESSION: 8 remixes started, 8 scripts, counter ended 2 lower.
+// Ledger: -80 blueprint, +60 blueprint_refund_quality — reconciled. These are the
+// eight real (beats, asks, charged) triples. The rule must reproduce every charge,
+// and the notice must appear exactly when the charge was reversed.
+describe('the charge and the notice come from one decision', () => {
+  const ESC = 'Only you can supply this. What would you actually say here?'
+  const script = (n: number, asks: number) =>
+    Array.from({ length: n }, (_, i) => i < asks
+      ? { substance: 'needs_user', line: '', ask: ESC }
+      : { substance: 'creator_knowledge', line: 'A grounded line.' })
+  const rows: Array<[number, number, number]> = [
+    [9, 3, 0], [4, 1, 0], [8, 1, 0], [4, 1, 0], [4, 0, 10], [8, 1, 0], [8, 0, 10], [6, 2, 0],
+  ]
+  it.each(rows)('%i beats, %i asks → charged %i', (n, asks, spent) => {
+    const s = script(n, asks)
+    const d = billingDecisionFor(s)
+    expect(d.billable ? 10 : 0).toBe(spent)
+    const notice = notBilledNotice({ credits_spent: d.billable ? 10 : 0, script: s })
+    expect(Boolean(notice)).toBe(!d.billable)
+    if (notice) expect(notice).toContain(`${asks} of the ${n} beats`)
+  })
+
+  it('counts an escalation beat the writer did not mark needs_user', () => {
+    const s = [{ substance: 'general', line: '', ask: ESC }, { substance: 'general', line: 'x' }]
+    expect(askingBeatCount(s)).toBe(1)
+    expect(billingDecisionFor(s).billable).toBe(false)
+  })
+
+  it('reconciles the session: 8 started, 2 charged, 6 returned', () => {
+    const charged = rows.filter(([n, a]) => billingDecisionFor(script(n, a)).billable).length
+    expect(charged).toBe(2)
   })
 })

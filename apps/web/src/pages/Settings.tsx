@@ -8,7 +8,7 @@ import {
   loadProductEntities,
   setupAreas, setupSummary, panelAreas, type SetupArea, type SetupState, type SetupAction,
   readStoredBrief, savePreScriptBrief, suggestedCta, whatTwinLearned, heardCount, BASIS_LABEL, editTargetOf,
-  SELLS_ANSWER_TO_TIES, sellsAnswerOf,
+  SELLS_ANSWER_TO_TIES, sellsAnswerWithLibrary, paletteStanding, type LibraryProductView,
   scannedAudienceFacts, audienceFactConfirmed,
 } from '@twinai/shared'
 import { readProfileAnswers } from '../lib/profileAnswersRead'
@@ -127,11 +127,14 @@ export default function Settings() {
   // reporting zero. "We could not check" and "you have none" are different facts,
   // and rendering the second for the first is how a creator gets told to claim a
   // product they already claimed.
+  // The live library rows, so the sell/promote question can show her products as
+  // its evidence. Null on a failed read — never read as "no products".
+  const [library, setLibrary] = useState<LibraryProductView[] | null>(null)
   useEffect(() => {
     let alive = true
     loadProductEntities()
-      .then((rows) => { if (alive) setEntityCount(rows.length) })
-      .catch(() => { if (alive) setEntityCount(null) })
+      .then((rows) => { if (alive) { setEntityCount(rows.length); setLibrary(rows) } })
+      .catch(() => { if (alive) { setEntityCount(null); setLibrary(null) } })
     return () => { alive = false }
   }, [])
   // ⚖️ SAVED ON BLUR, NOT PER KEYSTROKE. Every intermediate value of a sentence
@@ -725,7 +728,8 @@ export default function Settings() {
                   // ⚖️ READ BACK THROUGH `sellsAnswerOf`, so an account still
                   // holding one of the thirteen old answers reads as "yes"
                   // rather than as unanswered. Stop writing, keep reading.
-                  const on = sellsAnswerOf(profileAnswers?.commercialTies ?? null) === v
+                  const shown = sellsAnswerWithLibrary(profileAnswers?.commercialTies ?? null, library)
+                  const on = shown.answer === v
                   return (
                     <button
                       key={v}
@@ -736,8 +740,9 @@ export default function Settings() {
                       // list is UNANSWERED and is not "nothing to sell";
                       // turning silence into a commercial statement is the
                       // error this question exists to avoid.
+                      // An inferred "yes" is saved as hers on tap, not cleared.
                       onClick={() => void saveProfileAnswers({
-                        commercialTies: on ? [] : [...SELLS_ANSWER_TO_TIES[v]],
+                        commercialTies: on && !shown.fromLibrary ? [] : [...SELLS_ANSWER_TO_TIES[v]],
                       })}
                       className={`rounded-full border px-3.5 py-2 text-[13px] ${
                         on ? 'border-coral/50 bg-coral/[0.08] text-cream'
@@ -746,6 +751,11 @@ export default function Settings() {
                   )
                 })}
               </div>
+              {sellsAnswerWithLibrary(profileAnswers?.commercialTies ?? null, library).reason && (
+                <p className="mt-1.5 text-[11px] text-stone">
+                  {sellsAnswerWithLibrary(profileAnswers?.commercialTies ?? null, library).reason}
+                </p>
+              )}
               {/* ⚖️ AND THE DOOR TO THE AUTHORITY, because the sentence above
                   names it. A question that points at another screen without a
                   way to reach it is a dead end wearing a signpost. */}
@@ -1035,6 +1045,23 @@ export default function Settings() {
                       <span>We couldn’t read your brand colours from your posts automatically — Instagram often blocks that. No problem: set them by hand below, or upload your logo, and they’ll be used everywhere.</span>
                     </div>
                   )}
+                  {/* ⚠️ A READING IS NOT HERS UNTIL SHE SAYS SO. An `auto` palette, or
+                      one with no source at all, used to render exactly like a
+                      confirmed one. It now names where it came from and asks —
+                      the same explicit step every hand-set palette already took. */}
+                  {paletteStanding(brandKit).state === 'unconfirmed' && (
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber/25 bg-amber/[0.06] px-3 py-2.5 text-[12px] text-sand">
+                      <span>
+                        {paletteStanding(brandKit).source === 'auto'
+                          ? 'Twin read these colours from your posts. They are not confirmed yet.'
+                          : 'These colours were filled in without a source. They are not confirmed yet.'}
+                      </span>
+                      <button type="button" className="rounded-full border border-amber/40 px-3 py-1 text-[12px] text-cream hover:border-amber/70"
+                        onClick={() => saveKit({ ...brandKit, palette_source: 'manual' })}>
+                        Yes, these are my colours
+                      </button>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-5">
                     {/* ⚠️ THREE SLOTS, BECAUSE THREE ARE READ. `highlight` is
                         consumed by `brandSnapshot` and by the blueprint's
@@ -1071,6 +1098,9 @@ export default function Settings() {
                             </label>
                           )}
                           {label}
+                          {set && paletteStanding(brandKit).state === 'unconfirmed' && (
+                            <span className="text-[10px] text-amber">unconfirmed</span>
+                          )}
                         </div>
                       )
                     })}

@@ -218,6 +218,28 @@ export interface BrandKitLike {
 }
 
 /**
+ * Where a stored palette stands, for the screen that shows it.
+ *
+ * ⚠️ OWNER REPORT: one account's palette was pre-filled with no source and no
+ * confirmation step, and rendered exactly like a confirmed one. Only `manual`
+ * is confirmed — the same rule `brandKitStatus` applies. `auto` is a reading,
+ * and a palette with NO source is unknown provenance: both must be confirmed
+ * before they are shown as hers. `source` is always returned, never blank.
+ */
+export function paletteStanding(kit?: {
+  palette?: Record<string, unknown> | null
+  palette_source?: string | null
+} | null): { state: 'confirmed' | 'unconfirmed' | 'pending' | 'none'; source: 'manual' | 'auto' | 'pending' | 'unknown' } {
+  const src = kit?.palette_source
+  const source = src === 'manual' || src === 'auto' || src === 'pending' ? src : 'unknown'
+  const anyHex = !!kit?.palette && Object.values(kit.palette)
+    .some((v) => typeof v === 'string' && /^#?[0-9a-f]{6}$/i.test(v.trim()))
+  if (source === 'pending') return { state: 'pending', source }
+  if (!anyHex) return { state: 'none', source }
+  return { state: source === 'manual' ? 'confirmed' : 'unconfirmed', source }
+}
+
+/**
  * ⚖️ READY MEANS SOMEBODY SAID SO. An auto-extracted palette is a reading, not a
  * decision, and a logo the creator uploaded is. Either one on its own is enough
  * to stop calling the kit unset — but a machine's guess never is.

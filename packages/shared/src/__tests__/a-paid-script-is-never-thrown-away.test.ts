@@ -115,7 +115,9 @@ describe('the catch saves before it refunds', () => {
 
   it('keeps the credit, because the creator is getting the script', () => {
     const block = EDGE.slice(CATCH, REFUND)
-    expect(block).toMatch(/credits_spent: BLUEPRINT_COST/)
+    // Re-pointed: the rescue now reads the refund latch, so a script the quality
+    // gate already refunded is not recorded as charged. The credit still stands otherwise.
+    expect(block).toMatch(/credits_spent: refunded \? 0 : BLUEPRINT_COST/)
   })
 
   it('writes NULL counters, never zero', () => {

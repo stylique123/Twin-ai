@@ -8,7 +8,7 @@ import type { Platform, Profile, VoiceProfile } from '../lib/types'
 import { asksForbiddenClaims, BRIEF_GOALS, type BriefWorkKind, type BriefGoal } from '../lib/api'
 import {
   profileQuestionsFor, asksScreenCapability, asksProductCapability,
-  ONBOARDING_SELLS_ANSWERS, sellsAnswerOf, SELLS_ANSWER_TO_TIES,
+  ONBOARDING_SELLS_ANSWERS, sellsAnswerOf, SELLS_ANSWER_TO_TIES, handleShapeError,
   type OnboardingSellsAnswer,
   AUDIENCE_SEGMENTS, AUDIENCE_KNOWLEDGE, goalFromCtas, goalConfirmationLine,
   scannedAudienceFacts, audienceFactConfirmed,
@@ -19,7 +19,7 @@ import {
   type CapabilityAnswer,
 } from '../lib/api'
 import {
-  mintFromWorkKind, mintsOwnedEntity,
+  mintFromWorkKind, mintsOwnedEntity, claimProductEntity, splitProductList,
   saveMintedEntity, type EntityType, type Q4Answer,
 } from '../lib/api'
 import {
@@ -155,6 +155,7 @@ import { LogoMark } from '../components/Logo'
 import type { SellsKind } from '@twinai/shared'
 import { StoryInterview } from '../components/StoryInterview'
 import { loadSellsFacet } from '../lib/ownSellsLoad'
+import { clearStoryDraft } from '../lib/storyDraft'
 import { loadVoiceStageBand } from '../lib/voiceNicheLoad'
 import {
   ONBOARDING_DRAFT_VERSION,
@@ -346,6 +347,21 @@ export default function Onboarding() {
     setMode('stories')
   }, [userId])
 
+  // ⚠️ A WAY BACK TO THE START FROM ANY STEP. Owner report: onboarding failed
+  // partway and nothing on screen could reset it. This clears only local state
+  // (the draft and the story draft); the voice row a scan already created is
+  // NOT deleted, and does not block re-entry — the handle step calls start-dna
+  // with `replace: true`, which repoints that same single slot. No orphan, no wall.
+  const [confirmingStartOver, setConfirmingStartOver] = useState(false)
+  const startOver = useCallback(() => {
+    safeClearDraft(userId)
+    try { clearStoryDraft() } catch { /* storage unavailable */ }
+    setDraft(null)
+    setRetrySeed(null)
+    setConfirmingStartOver(false)
+    setMode('handle')
+  }, [userId])
+
   if (!session) return <Navigate to="/auth" replace />
 
   // `min-h-screen` IS 100vh, AND ON iOS SAFARI THAT IS THE *LARGE* VIEWPORT —
@@ -428,6 +444,21 @@ export default function Onboarding() {
             </motion.div>
           </AnimatePresence>
         </div>
+        {mode !== 'handle' && (
+          <div className="mt-3 text-center text-xs text-stone">
+            {confirmingStartOver ? (
+              <span>
+                Clear your answers and start again from your handle?{' '}
+                <button type="button" className="text-coral underline underline-offset-2" onClick={startOver}>Yes, start over</button>{' '}
+                <button type="button" className="underline underline-offset-2" onClick={() => setConfirmingStartOver(false)}>Keep going</button>
+              </span>
+            ) : (
+              <button type="button" className="underline underline-offset-2 hover:text-cream" onClick={() => setConfirmingStartOver(true)}>
+                Stuck? Start over
+              </button>
+            )}
+          </div>
+        )}
       </motion.div>
     </main>
   )
@@ -476,6 +507,9 @@ function HandleStep({
   const go = async () => {
     setErr(null)
     if (!handle.trim()) return setErr('Paste your handle or profile link first.')
+    // Same rule the server applies, so the sentence arrives before the round trip.
+    const shape = handleShapeError(handle)
+    if (shape) return setErr(shape)
     setBusy(true)
     try {
       // `replace: true` — onboarding is a SINGLE voice slot. If the creator already
@@ -886,11 +920,10 @@ function BuildingStep({
           the first questions "it just says that's all we need and then it just
           clears".
 
-          ⚖️ TWO, NOT THREE, AND THEY ARE NOT THE STORY THREE. `DEPTH_QUESTION_IDS`
-          says why: these must be answerable with NO DNA, because on this screen
-          there is none — which is the same reason the story three moved off it.
-          A method question and a number question, both minting kinds the writer
-          is measured to admit.
+          ⚖️ ONE, AND IT IS NOT THE STORY THREE (owner decision 2026-09-23: two
+          boxes sat under a "three things" header). `DEPTH_QUESTION_IDS` says why:
+          it must be answerable with NO DNA, because on this screen there is none.
+          The misconception question mints a `claim` and feeds the hook.
 
           ⚖️ THE SAME COMPONENT AS THE STORY SCREEN, deliberately. It already
           resolves every field as answered-or-skipped before `onDone`, records
@@ -900,11 +933,11 @@ function BuildingStep({
       {!err && questionsDone && !depthDone && (
         <div className="mt-5 rounded-card border border-amber/25 bg-amber/[0.06] p-4 sm:p-5">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
-            While we read · the parts only you know
+            While we read · one question
           </p>
           <p className="mt-2 text-xs text-stone">
-            Your videos can tell us what you make. They cannot tell us how you
-            work. Optional — skip anything you would rather not answer.
+            Your videos show what you make. They cannot show what people keep
+            getting wrong about it. Optional — skip it if nothing comes to mind.
           </p>
           {/* ⚠️ NO NICHE, AND THAT IS CORRECT RATHER THAN A FALLBACK. The scan
               has not landed here, so there is nothing to word these in; both
@@ -913,6 +946,8 @@ function BuildingStep({
             voiceId={draft.voiceId ?? null}
             onDone={() => setDepthDone(true)}
             questionIds={DEPTH_QUESTION_IDS}
+            heading="One thing only you know"
+            helper="What people assume, and what is actually true. Skip it if nothing comes to mind."
           />
         </div>
       )}
@@ -1278,6 +1313,9 @@ export function ConfirmStep({
   // a one-tap way out, which is what "correctable" means. A pre-fill with no
   // exit is just a decision we made and blamed on them.
   const [ownsEntity, setOwnsEntity] = useState<boolean>(draft.ownsEntity ?? true)
+  // ⚠️ A GUESSED LIST IS SEVERAL PRODUCTS. "bandanas, collars, bows, and mystery
+  // packs" could only be accepted as one entity or denied. Null = kept as one.
+  const [splitItems, setSplitItems] = useState<string[] | null>(null)
   // The offer arrives PRE-FILLED FROM THE SCAN — which is the defect §8a names,
   // not a feature. Tracking whether the creator changed it is what separates
   // "they told us" from "the model guessed and nobody corrected it", and only
@@ -1316,8 +1354,11 @@ export function ConfirmStep({
   // that would be wrong most visibly (niche and tone) and COUNTS the rest
   // rather than listing them, because a count is checkable at a glance and a
   // list is another wall.
+  // ⚠️ READS `vp`, THE SAME OBJECT THE FIELDS RENDER — not `draft.profile`.
+  // Two sources for one screen is how the summary once showed data over six
+  // blank boxes; one source means they cannot disagree, edits included.
   const voiceDigest = useMemo(() => {
-    const p = draft.profile
+    const p = vp
     if (!p) return 'What the scan heard.'
     const bits: string[] = []
     if (typeof p.niche === 'string' && p.niche.trim()) bits.push(p.niche.trim())
@@ -1327,7 +1368,7 @@ export function ConfirmStep({
     if (words) bits.push(`${words} signature ${words === 1 ? 'phrase' : 'phrases'}`)
     if (ctas) bits.push(`${ctas} recurring ${ctas === 1 ? 'CTA' : 'CTAs'}`)
     return bits.length ? `${bits.join(' · ')}. Tap to change anything.` : 'What the scan heard.'
-  }, [draft.profile])
+  }, [vp])
 
   // INVERTED, because the old default made a GOOD scan the worst screen.
   //
@@ -1531,7 +1572,8 @@ export function ConfirmStep({
       // saved, to do it again.
       if (ownsEntity && mintsOwnedEntity(workKind)) {
         try {
-          await saveMintedEntity(
+          const items = splitItems && splitItems.length > 0 ? splitItems : null
+          const minted = await saveMintedEntity(
             draft.userId,
             draft.voiceId,
             // SHOWABILITY IS PRE-FILLED FROM THE CAPABILITY ANSWERS, not asked
@@ -1549,8 +1591,9 @@ export function ConfirmStep({
               // "Fresh artisan sourdough loaves ... via link in bio" on a
               // creator with no bio link. One promise, two consumers, one of
               // which kept it.
-              name: product.trim() || null,
-              offerConfirmed: offerTouched,
+              // A split names each entity by its own item — she chose the list.
+              name: items ? items[0] : (product.trim() || null),
+              offerConfirmed: items ? true : offerTouched,
               flags: { canRecordScreen, canFilmObjects },
               // ⚠️ THE FINER ANSWER, WHICH REACHED NOTHING UNTIL NOW. The scan
               // step asks "What kind of thing do you sell?" and the entity was
@@ -1561,6 +1604,17 @@ export function ConfirmStep({
               ownServiceKind: draft.ownServiceKind ?? null,
             }),
           )
+          // ⚖️ ONE ENTRY PER REMAINING ITEM, same kind and relationship as the
+          // mint. Personal use stays NOT_CONFIRMED — splitting asserts ownership
+          // of each, nothing more; the Product Library asks the rest.
+          if (items && minted) {
+            for (const name of items.slice(1)) {
+              await claimProductEntity(draft.userId, draft.voiceId, {
+                relationship: minted.relationship, personalUse: 'NOT_CONFIRMED',
+                type: minted.type, name, flags: { canRecordScreen, canFilmObjects },
+              })
+            }
+          }
         } catch (mintError) {
           // ⚠️ THIS WAS A BARE console.warn, AND IT HID THE ONE FAILURE THAT
           // CHANGES WHAT GETS WRITTEN. Not throwing is right — see above, the
@@ -1702,6 +1756,36 @@ export function ConfirmStep({
                 >
                   That’s not right — I don’t own one
                 </button>
+                {splitItems === null && splitProductList(product).length >= 2 && (
+                  <button
+                    type="button"
+                    onClick={() => setSplitItems(splitProductList(product))}
+                    className="ml-4 mt-2 text-[11px] text-stone underline decoration-white/20 underline-offset-2 hover:text-cream"
+                  >
+                    These are separate products
+                  </button>
+                )}
+                {splitItems !== null && (
+                  <div className="mt-3">
+                    <p className="text-xs text-sand">We’ll add each as its own product:</p>
+                    <ul className="mt-1 flex flex-wrap gap-1.5">
+                      {splitItems.map((it) => (
+                        <li key={it} className="flex items-center gap-1 rounded-full border border-white/10 px-2.5 py-0.5 text-xs text-cream">
+                          {it}
+                          <button type="button" aria-label={`Remove ${it}`} className="text-stone hover:text-cream"
+                            onClick={() => setSplitItems((prev) => {
+                              const next = (prev ?? []).filter((x) => x !== it)
+                              return next.length > 0 ? next : null
+                            })}>×</button>
+                        </li>
+                      ))}
+                    </ul>
+                    <button type="button" onClick={() => setSplitItems(null)}
+                      className="mt-1 text-[11px] text-stone underline decoration-white/20 underline-offset-2 hover:text-cream">
+                      Keep it as one
+                    </button>
+                  </div>
+                )}
               </>
             ) : (
               <>
@@ -1891,7 +1975,15 @@ export function ConfirmStep({
         <p className="text-xs text-stone">We’ll sharpen this from how you actually talk on camera within a few minutes — your spoken voice is the strongest signal.</p>
       </div>
 
-      {err && <p className="mt-3 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
+      {err && (
+        <div className="mt-3 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">
+          <p>{err}</p>
+          {/* Every write in `confirm` is an upsert, so running it again is a safe retry. */}
+          <button type="button" className="mt-1 text-xs underline underline-offset-2" onClick={() => void confirm()} disabled={busy}>
+            Try again
+          </button>
+        </div>
+      )}
       {mintWarning && (
         <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-600">{mintWarning}</p>
       )}

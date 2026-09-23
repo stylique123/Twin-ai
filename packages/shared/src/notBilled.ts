@@ -23,6 +23,8 @@
 // is broken; the truth is that Twin declined to bill for a script it knows is
 // mostly questions. Silence turned honest behaviour into a bug report.
 
+import { discoveryQuestions, isBillableScript } from './generationReadiness.js'
+
 /** The shape this reads. Structural rather than importing `Generation`, so a
  *  caller holding a plain row can ask too. */
 export interface BilledView {
@@ -31,7 +33,7 @@ export interface BilledView {
    *  telling a creator their charge was reversed when it was not is the same
    *  class of lie in the opposite direction. */
   credits_spent?: number | null
-  script?: ReadonlyArray<{ substance?: string | null }> | null
+  script?: ReadonlyArray<{ substance?: string | null; line?: string | null; ask?: string | null }> | null
 }
 
 /** Beats the writer marked as needing the creator — the same field the edge
@@ -39,6 +41,37 @@ export interface BilledView {
 export function needsUserCount(script: BilledView['script']): number {
   if (!Array.isArray(script)) return 0
   return script.filter((b) => b?.substance === 'needs_user').length
+}
+
+/** A beat's text as the edge's billing gate reads it: `line` AND `ask`. */
+const gateText = (b: { line?: string | null; ask?: string | null } | null | undefined) =>
+  `${String(b?.line ?? '')} ${String(b?.ask ?? '')}`
+
+/**
+ * Beats that ask the creator for something — marked `needs_user` OR carrying
+ * one of the escalation sentences the edge writes.
+ *
+ * ⚠️ 2026-09-22, 8 remixes, 6 refunded: the ledger reconciled exactly (-80,
+ * +60), but a 1-of-8 ask refunds the whole script (`script_asks_creator_for_context`)
+ * while the notice counted only `needs_user`. The count shown must be the count
+ * the gate saw, or "free" looks random.
+ */
+export function askingBeatCount(script: BilledView['script']): number {
+  if (!Array.isArray(script)) return 0
+  const lines = script.map(gateText)
+  const escalated = new Set(discoveryQuestions(lines))
+  return script.filter((b, i) => b?.substance === 'needs_user' || escalated.has(i)).length
+}
+
+/**
+ * The billing decision the edge makes, recomputed from the stored script —
+ * the same `isBillableScript` rule (parity-pinned to the edge's inline copy by
+ * `two-lists-one-refund.test.ts`). Used to check a row against its own charge.
+ */
+export function billingDecisionFor(script: BilledView['script']): { billable: boolean; reason: string | null } {
+  if (!Array.isArray(script)) return { billable: true, reason: null }
+  const { billable, reason } = isBillableScript(script.map(gateText), needsUserCount(script))
+  return { billable, reason }
 }
 
 /**
@@ -64,7 +97,7 @@ export function notBilledNotice(gen: BilledView | null | undefined): string | nu
   if (!wasNotBilled(gen)) return null
   const script = gen?.script
   const total = Array.isArray(script) ? script.length : 0
-  const asks = needsUserCount(script)
+  const asks = askingBeatCount(script)
   if (total === 0 || asks === 0) {
     // Not billed, but we cannot say which beats — so say only what is certain.
     return 'This one is free — Twin could not ground enough of it to charge you for it.'

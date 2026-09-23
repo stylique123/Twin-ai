@@ -77,7 +77,9 @@ describe('the caller passes the gate it already tracks', () => {
   // flag silently loses a CONFIRMED offer rather than storing a guess — the
   // safe direction, and still wrong.
   it('Onboarding passes offerTouched to the mint', () => {
-    expect(ONBOARDING).toMatch(/offerConfirmed: offerTouched/)
+    // Re-pointed: a creator-chosen split names each entity by its item (her act
+    // confirms it); otherwise the gate is still `offerTouched`.
+    expect(ONBOARDING).toMatch(/offerConfirmed: items \? true : offerTouched/)
   })
 
   // The brief's gate is the one that was already correct; it must stay.
