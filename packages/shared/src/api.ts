@@ -17,6 +17,7 @@ import { mapIsUsable, type CommunityMap } from './communityMap'
 import { readStoredReferenceProfile, type StoredProfileRow } from './storedReferenceProfile'
 import type { ReferenceProfile } from './referenceProfile'
 import type { Brand } from './brandSuggestion'
+import { readStories, storiesForStorage, EMPTY_STORIES, type ProductStories } from './productStories'
 import {
   emptyRestrictions, isEntityRelationship, isEntityType, isPersonalUse, isShowability,
   attestedEntity, isOwned,
@@ -2797,6 +2798,34 @@ export async function deleteBrand(id: string): Promise<void> {
 export async function setProductBrand(productId: string, brandId: string | null): Promise<void> {
   const { error } = await supabase.from('product_entities').update({ brand_id: brandId }).eq('id', productId)
   if (error) throw error
+}
+
+/** 0225 — the creator's three optional product stories, by product id.
+ *  ⚖️ BEST-EFFORT AND SEPARATE from `loadProductEntities`: an unapplied
+ *  migration costs these answers (an empty map), never the library. */
+export async function loadProductStories(): Promise<Record<string, ProductStories>> {
+  const { data, error } = await supabase.from('product_entities').select('id, creator_stories')
+  if (error || !Array.isArray(data)) return {}
+  const out: Record<string, ProductStories> = {}
+  for (const r of data as Array<{ id: string; creator_stories?: unknown }>) {
+    if (r.creator_stories) out[r.id] = readStories(r.creator_stories)
+  }
+  return out
+}
+
+/** Write the stories; blank answers are stored as null. Returns what was stored.
+ *  ⚠️ THROWS a plain sentence when the column is missing, so the field says so
+ *  rather than pretending it saved. */
+export async function saveProductStories(productId: string, stories: Partial<ProductStories>): Promise<ProductStories> {
+  const value = storiesForStorage(stories)
+  const { error } = await supabase.from('product_entities').update({ creator_stories: value }).eq('id', productId)
+  if (error) {
+    if (/creator_stories/i.test(`${error.message ?? ''} ${(error as { details?: string }).details ?? ''}`)) {
+      throw new Error('These answers cannot be saved yet — the update that stores them has not been applied.')
+    }
+    throw error
+  }
+  return value ?? { ...EMPTY_STORIES }
 }
 
 /**

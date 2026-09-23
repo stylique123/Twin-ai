@@ -36,7 +36,8 @@
 // still costs an explicit assertion. What the suggestion saves is typing, which
 // is the difference between a page nobody fills in and one they finish.
 import { useEffect, useRef, useState } from 'react'
-import { parseOffer, serializeOffer, type OfferRow } from '../lib/offerRows'
+// OfferEditor moved to components/ProductFields.tsx so the add form and the panel share it.
+import { OfferEditor, BlurText, StoryFields } from '../components/ProductFields'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation, rowIsCreatorSupplied,
@@ -52,7 +53,8 @@ import {
   asksPersonalUse, ownsIt, capabilityQuestion, CAPABILITY_PROMPT,
   type CapabilityAsked,
   capabilityFlag,
-  productLifecycle, LIFECYCLE_MESSAGE,
+  productLifecycle, LIFECYCLE_MESSAGE, READ_STALLS_AFTER_MS, linkStatus, linkStatusMessage,
+  loadProductStories, saveProductStories, type ProductStories,
   CAPTURE_COPY, PLATFORM_CHOICES, PRIVACY_CHOICES, RATHER_NOT_SAY, FIGURE_HINT,
   surfaceChoices, buildCommunityMap, whatIsMissing,
   type ProductSuggestion,
@@ -540,7 +542,47 @@ export default function ProductLibrary() {
   const [tab, setTab] = useState<'live' | 'retired'>('live')
   /** Storage path → signed URL, for photos already attached to a product. */
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
+  /** 0225 — product id → the creator's three optional story answers. */
+  const [stories, setStories] = useState<Record<string, ProductStories>>({})
+  async function saveStory(id: string, key: keyof ProductStories, v: string) {
+    const current = stories[id] ?? { almostWentWrong: null, customersSay: null, howItsMade: null }
+    if ((current[key] ?? '') === v) return
+    const fieldKey = `${id}:story-${key}`
+    setSavingKey(fieldKey); setErr(null)
+    try {
+      const saved = await saveProductStories(id, { ...current, [key]: v || null })
+      setStories((p) => ({ ...p, [id]: saved }))
+      setSavedKey(fieldKey)
+      window.setTimeout(() => setSavedKey((k) => (k === fieldKey ? null : k)), 2000)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'That answer could not be saved.')
+    } finally {
+      setSavingKey((k) => (k === fieldKey ? null : k))
+    }
+  }
   const [addingPhotoTo, setAddingPhotoTo] = useState<string | null>(null)
+  // ⚠️ "READING" MUST END ON SCREEN, NOT ONLY IN THE RULE. The 30-minute stall
+  // in `productLifecycle` is evaluated at render, and nothing re-rendered an
+  // idle page — so a stalled read kept saying "reading" until she clicked.
+  // A slow tick, only while something is reading, makes the end visible.
+  const [now, setNow] = useState(() => Date.now())
+  const anyReading = (entities ?? []).some((x) => linkStatus(x, now) === 'READING'
+    || productLifecycle(x, photoPathsOf(x).length, now) === 'READING')
+  useEffect(() => {
+    if (!anyReading) return
+    const t = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(t)
+  }, [anyReading])
+  // ⚖️ AND THE PAGE KEEPS LOOKING UNTIL THE READ ENDS. The popup's own poll gave
+  // up after five minutes; this refreshes the rows every 20s while any read is
+  // in flight, so success or failure lands without a reload.
+  useEffect(() => {
+    if (!anyReading) return
+    const t = window.setInterval(() => {
+      void loadProductEntities().then((rows) => setEntities(rows)).catch(() => { /* next tick */ })
+    }, 20_000)
+    return () => window.clearInterval(t)
+  }, [anyReading])
 
   // ── ONE SUGGESTION, WITH ITS EVIDENCE, OR NONE ────────────────────────────
   //
@@ -622,6 +664,47 @@ export default function ProductLibrary() {
     } finally {
       setAddingPhotoTo(null)
     }
+  }
+
+  /** REPLACE ONE PHOTO IN PLACE (2026-09-23: "no delete or replace").
+   *  ⚖️ SAME ORDER AS ADDING: upload first, queue the re-read with the new set,
+   *  and only then record the set on the row — so the row never names a file
+   *  that has not finished uploading, and a failed upload leaves the old photo. */
+  async function replacePhotoIn(entity: ProductEntityRecord, oldPath: string, file: File | null) {
+    if (!file) return
+    setAddingPhotoTo(entity.id); setErr(null)
+    try {
+      const dataUrl: string = await new Promise((res, rej) => {
+        const r = new FileReader()
+        r.onload = () => res(String(r.result)); r.onerror = rej
+        r.readAsDataURL(file)
+      })
+      const newPath = await uploadProductImage(dataUrl)
+      const swapped = photoPathsOf(entity).map((p) => (p === oldPath ? newPath : p))
+      try {
+        await requestProductExtraction(entity.id, entity.productUrl ?? '', swapped)
+      } catch (e) {
+        // The photo is still hers; the failed re-read is RECORDED so the card
+        // says so rather than "reading" (same rule as every enqueue site).
+        try {
+          await recordExtractionNeverStarted(entity.id, e)
+          setEntities((prev) => (prev ?? []).map((x) => (
+            x.id === entity.id ? { ...x, knowledgeFailedAt: new Date().toISOString() } : x)))
+        } catch { /* the message below still lands */ }
+      }
+      const stored = await updateEntityPresentation(entity.id, {
+        evidence: {
+          form: 'images', linkRole: 'knowledge', url: null, capturedAt: new Date().toISOString(),
+          sections: swapped.map((imagePath, order) => ({ order, label: '', imagePath })),
+        },
+      })
+      if (stored) setEntities((prev) => (prev ?? []).map((x) => (x.id === entity.id ? stored : x)))
+      const signed = await signEditUrls([newPath])
+      setThumbs((prev) => ({ ...prev, ...signed }))
+      setSaved(entity.id)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'That photo could not be replaced.')
+    } finally { setAddingPhotoTo(null) }
   }
 
   async function addPhotosTo(entity: ProductEntityRecord, files: FileList | null) {
@@ -736,6 +819,8 @@ export default function ProductLibrary() {
         setEntities(rows)
         // Brands load beside the library and may fail alone; see `loadBrands`.
         void loadBrands().then((b) => { if (alive) setBrands(b) })
+        // 0225 — separate and best effort; see `loadProductStories`.
+        void loadProductStories().then((s) => { if (alive) setStories(s) }).catch(() => { /* optional */ })
         // ⚖️ THE PHOTOS EXISTED AND NOBODY COULD SEE THEM. A creator uploaded up
         // to four pictures at add time, extraction read them, and the page then
         // showed only the words it got out of them — so "did my photo arrive"
@@ -868,6 +953,38 @@ export default function ProductLibrary() {
         try { await setProductBrand(claimed.id, targetBrand); created = { ...claimed, brandId: targetBrand } }
         catch { /* stays unfiled; the card still shows it */ }
       }
+      // ⚠️⚠️ THE PHOTOS ADDED WITH THE PRODUCT WERE NEVER STORED ON IT (#19,
+      // 2026-09-23). `attestedEntity` writes `evidence: null`, and the add form's
+      // paths went only to the extraction job — so the product said "added",
+      // the read ran, and on reload `photoPathsOf` found no photos at all.
+      // ⚖️ WRITTEN HERE, AFTER THE UPLOADS FINISHED (the form's Add button is
+      // disabled while any upload is in flight) and before the read is queued.
+      // A failure costs the gallery, never the product, and is said out loud.
+      const addedPhotos = (a.imagePaths ?? []).filter(Boolean)
+      if (created && addedPhotos.length > 0) {
+        try {
+          const stored = await updateEntityPresentation(created.id, {
+            evidence: {
+              form: 'images', linkRole: 'knowledge', url: null, capturedAt: new Date().toISOString(),
+              sections: addedPhotos.map((imagePath, order) => ({ order, label: '', imagePath })),
+            },
+          })
+          if (stored) created = { ...stored, brandId: created.brandId }
+          void signThumbs([created])
+        } catch {
+          setErr('Added, but the photos could not be attached. Open the product and add them again.')
+        }
+      }
+      // 0225 — the three optional story answers, best effort.
+      if (created && a.stories && Object.values(a.stories).some((v) => (v ?? '').trim() !== '')) {
+        const id = created.id
+        try {
+          const saved = await saveProductStories(id, a.stories)
+          setStories((p) => ({ ...p, [id]: saved }))
+        } catch (e) {
+          setErr(e instanceof Error ? e.message : 'Added, but your answers could not be saved.')
+        }
+      }
       setAddingToBrand(null)
       if (created) {
         setEntities((prev) => [...(prev ?? []), created])
@@ -883,7 +1000,9 @@ export default function ProductLibrary() {
         // looks this product up there by name, so the "here is what we found"
         // popup still arrives.
         const url = normalizeLink(a.productUrl ?? '')
-          || ((brands ?? []).find((b) => b.id === targetBrand)?.website ?? '')
+          // ⚠️ A BRAND WEBSITE IS STORED BARE ("thedogdaysco.com"); the extractor
+          // requires https, so it is normalised here like every other link.
+          || normalizeLink((brands ?? []).find((b) => b.id === targetBrand)?.website ?? '')
         const imgs = a.imagePaths ?? []
         // Nothing to read: go straight to the product so the rest can be filled in.
         if (!url && imgs.length === 0) setOpenId(created.id)
@@ -1062,10 +1181,17 @@ export default function ProductLibrary() {
   /** Poll the entity until the worker has written what it read, then open the
    *  review. Polls the ENTITY, not the job: a reload keeps the result. */
   async function waitForReadThenReview(id: string, openReview = true) {
-    for (let i = 0; i < 100; i++) {
+    // ⚠️ IT GAVE UP AFTER FIVE MINUTES, SILENTLY, while the popup still said it
+    // was reading. It now waits exactly as long as the stall rule, and stops on
+    // a recorded failure too — so the popup ends in success, failure or timeout.
+    for (let i = 0; i < READ_STALLS_AFTER_MS / 3000; i++) {
       await new Promise((r) => window.setTimeout(r, 3000))
       const rows = await loadProductEntities()
       const found = rows.find((e) => e.id === id)
+      if (found && found.knowledgeFailedAt && (found.knowledge ?? []).length === 0) {
+        setEntities(rows)
+        return
+      }
       if (found && found.knowledge !== null) {
         setEntities(rows)
         if (openReview && found.knowledge.length > 0) setReviewId(id)
@@ -1145,7 +1271,11 @@ export default function ProductLibrary() {
               const state = productLifecycle(e, photoPathsOf(e).length)
               const needsYou = state !== 'READY' && state !== 'REVIEW_REQUIRED'
               const offerLine = (e.offer ?? '').split('\n')[0]
-              const line = needsYou ? LIFECYCLE_MESSAGE[state]
+              // ⚖️ A LINK THAT FAILED OR TIMED OUT SAYS SO, AND WHY — never the
+              // same words as a product with no link at all.
+              const linkBroke = READ_DID_NOT_COME_BACK.has(state) && !!(e.productUrl ?? '').trim()
+              const line = linkBroke ? linkStatusMessage(e, now)
+                : needsYou ? LIFECYCLE_MESSAGE[state]
                 : [isOwnProduct(e) ? '' : relationshipLabel(e.relationship), offerLine || e.creatorSummary || '']
                   .filter(Boolean).join(' · ')
               return line ? (
@@ -1279,13 +1409,12 @@ export default function ProductLibrary() {
           <label className="block text-xs font-medium uppercase tracking-wide text-stone">
             Name
           </label>
-          <input
+          <BlurText
             className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
-            key={`name-${e.id}-${e.updated ?? ''}`}
-            defaultValue={e.name ?? ''}
+            key={`name-${e.id}`}
+            value={e.name ?? null}
             placeholder="What you call it on camera"
-            onBlur={(ev) => {
-              const v = ev.target.value.trim()
+            onCommit={(v) => {
               if (v !== (e.name ?? '')) void save(e.id, { name: v || null })
             }}
           />
@@ -1311,10 +1440,14 @@ export default function ProductLibrary() {
           <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-stone">
             In one line, what is it and who is it for?
           </label>
-          <input
+          {/* ⚠️⚠️ WHY IT CAME BACK EMPTY (2026-09-23): this box was keyed on
+              `updated_at`, so any other field's save remounted it and threw away
+              a half-typed sentence before its blur could save it. `BlurText`
+              is keyed by product only — see components/ProductFields.tsx. */}
+          <BlurText
             className="mt-1 w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
-            key={`summary-${e.id}-${e.updated ?? ''}`}
-            defaultValue={e.creatorSummary ?? ''}
+            key={`summary-${e.id}`}
+            value={e.creatorSummary ?? null}
             /* ⚠️⚠️ THIS NAMED SOMEBODY ELSE'S PRODUCT TO EVERY CREATOR. It read
                "Sourdough loaves, baked to order for people near me" — the
                baker this field was built for — on a candle maker's screen, in
@@ -1328,8 +1461,7 @@ export default function ProductLibrary() {
                one field whose entire job is to be the creator's own sentence
                when no page can be read. */
             placeholder="What it is, and who it is for"
-            onBlur={(ev) => {
-              const v = ev.target.value.trim()
+            onCommit={(v) => {
               if (v !== (e.creatorSummary ?? '')) void save(e.id, { creatorSummary: v || null })
             }}
           />
@@ -1352,8 +1484,12 @@ export default function ProductLibrary() {
           <p className="mt-4 block text-xs font-medium uppercase tracking-wide text-stone">
             Options &amp; prices
           </p>
+          <p className="mt-0.5 text-xs text-stone">What does it cost, and what do they get? One row per size or style.</p>
+          {/* ⚠️ KEYED BY PRODUCT ONLY — keyed on `updated_at` it remounted on any
+              other field's save and dropped rows being typed (same race as the
+              one-line box above). */}
           <OfferEditor
-            key={`offer-${e.id}-${e.updated ?? ''}`}
+            key={`offer-${e.id}`}
             value={e.offer}
             found={placeFacts(e.knowledge ?? [], { url: e.productUrl, productName: e.name, brandName: brandNameOf(e) }).product
               .filter((f) => f.field === 'price' || f.field === 'plan').map((f) => f.value)}
@@ -1383,7 +1519,9 @@ export default function ProductLibrary() {
               id={`link-${e.id}`}
               className="w-full rounded-lg border border-white/12 px-3 py-2 text-sm"
               value={learnUrl[e.id] ?? e.productUrl ?? ''}
-              placeholder="https://"
+              // ⚖️ A BARE DOMAIN IS FINE — "thedogdaysco.com" is saved as https://thedogdaysco.com.
+              placeholder="yourshop.com/your-product"
+              inputMode="url"
               onChange={(ev) => setLearnUrl((p) => ({ ...p, [e.id]: ev.target.value }))}
               onBlur={(ev) => {
                 const v = ev.target.value.trim()
@@ -1391,7 +1529,7 @@ export default function ProductLibrary() {
                 // worker a job that can only fail, and the failure would arrive
                 // minutes later on a card that had already said "saved".
                 if (!looksLikeLink(v)) return
-                if (v !== (e.productUrl ?? '')) void save(e.id, { productUrl: normalizeLink(v) || null })
+                if (normalizeLink(v) !== (e.productUrl ?? '')) void save(e.id, { productUrl: normalizeLink(v) || null })
               }}
             />
             {/* ⚖️ ALWAYS OFFERED, NOT ONLY BEFORE THE FIRST READ. A page that
@@ -1455,6 +1593,10 @@ export default function ProductLibrary() {
             </p>
           )}
           {fieldNote(e.id, 'productUrl')}
+          {/* ⚠️ "NO LINK" AND "LINK FAILED" SAID APART (2026-09-23). */}
+          <p data-testid="link-status" className={`text-xs ${['FAILED', 'TIMED_OUT'].includes(linkStatus(e, now)) ? 'text-coral' : 'text-stone'}`}>
+            {linkStatusMessage(e, now)}
+          </p>
           {/* ⚖️ A PAGE TWIN FOUND BY ITSELF IS A QUESTION, NOT AN ANSWER. Its
               facts are marked `web_search` and wait for her; this asks the one
               thing that decides them all. "Not mine" clears the link and every
@@ -1681,20 +1823,37 @@ export default function ProductLibrary() {
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {photoPathsOf(e).map((path, i) => (
-                <div key={path} className="group relative h-16 w-16 overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
+                <div key={path} className="w-16">
+                <div className="relative h-16 w-16 overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
                   {thumbs[path]
                     ? <img src={thumbs[path]} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
                     : <span className="grid h-full w-full place-items-center text-[10px] text-stone">…</span>}
+                </div>
                   {/* ⚖️ REMOVE, NOT "DELETE". The file stays in storage; this row
-                      stops pointing at it. Wrong-photo recovery was previously
-                      adding a second one on top of the first. */}
-                  <button
-                    type="button"
-                    aria-label={`Remove photo ${i + 1}`}
-                    disabled={addingPhotoTo === e.id}
-                    onClick={() => void removePhotoFrom(e, path)}
-                    className="absolute right-0 top-0 rounded-bl-lg bg-black/70 px-1.5 text-[11px] leading-5 text-cream opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 disabled:opacity-40"
-                  >×</button>
+                      stops pointing at it.
+                      ⚠️ 2026-09-23 "no delete or replace — only add": the × was
+                      hover-only (opacity-0), so on a phone it did not exist.
+                      Both controls are now always visible, in words. */}
+                  <div className="mt-1 flex justify-between text-[10px]">
+                    <label className={`cursor-pointer text-teal underline ${addingPhotoTo === e.id ? 'pointer-events-none opacity-40' : ''}`}>
+                      Replace
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        aria-label={`Replace photo ${i + 1}`}
+                        disabled={addingPhotoTo === e.id}
+                        onChange={(ev) => { void replacePhotoIn(e, path, ev.target.files?.[0] ?? null); ev.target.value = '' }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      aria-label={`Remove photo ${i + 1}`}
+                      disabled={addingPhotoTo === e.id}
+                      onClick={() => void removePhotoFrom(e, path)}
+                      className="text-stone underline hover:text-coral disabled:opacity-40"
+                    >Remove</button>
+                  </div>
                 </div>
               ))}
               {photoPathsOf(e).length < PHOTO_SLOTS && (
@@ -1716,6 +1875,19 @@ export default function ProductLibrary() {
                 Uploading, then re-reading everything you have given us about this product.
               </p>
             )}
+          </div>
+
+          {/* ── IN YOUR WORDS (0225, CTO decision 2026-09-23) ─────────────
+              Three things no page says. Optional; scripts treat them as her own
+              words about the product. Same component as the add form. */}
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+            <p className="text-sm font-semibold text-cream">In your words</p>
+            <p className="mb-3 mt-0.5 text-xs text-stone">Optional. Things only you know — scripts use them as your own words.</p>
+            <StoryFields key={`stories-${e.id}`} idPrefix={`story-${e.id}`} value={stories[e.id] ?? null}
+              onCommit={(key, v) => void saveStory(e.id, key, v)} />
+            <p className="mt-1 h-4 text-xs text-stone">
+              {savingKey?.startsWith(`${e.id}:story-`) ? 'Saving…' : savedKey?.startsWith(`${e.id}:story-`) ? 'Saved.' : ''}
+            </p>
           </div>
 
           {/* ── WHAT TWIN KNOWS ABOUT THIS PRODUCT ───────────────────────
@@ -2295,10 +2467,21 @@ export default function ProductLibrary() {
             <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-ink2 p-5 shadow-2xl">
               <p className="text-[11px] font-medium uppercase tracking-wide text-teal">Added</p>
               <h2 id="review-title" className="mt-0.5 text-lg font-semibold">{cardTitle(e)}</h2>
-              {e.knowledge === null ? (
+              {/* ⚖️ THREE ENDINGS, NEVER AN OPEN ONE (2026-09-23): found,
+                  failed (with Retry), or timed out (with Retry). */}
+              {READ_DID_NOT_COME_BACK.has(productLifecycle(e, photoPathsOf(e).length, now)) ? (
+                <div className="mt-3 text-sm text-coral">
+                  <p>{e.productUrl ? linkStatusMessage(e, now) : LIFECYCLE_MESSAGE[productLifecycle(e, photoPathsOf(e).length, now)]}</p>
+                  <button type="button" className="mt-2 rounded-lg border border-white/20 px-3 py-1 text-xs text-cream hover:border-white/40"
+                    disabled={learning === e.id}
+                    onClick={() => { void learn(e.id); void waitForReadThenReview(e.id, true) }}>
+                    {learning === e.id ? 'Reading…' : 'Retry'}
+                  </button>
+                </div>
+              ) : e.knowledge === null ? (
                 <p className="mt-3 flex items-center gap-2 text-sm text-sand">
                   <span aria-hidden className="h-2 w-2 animate-pulse rounded-full bg-teal" />
-                  Twin is reading about it{e.productUrl ? ` on ${e.productUrl.replace(/^https?:\/\/(www\.)?/, '')}` : ''}… this takes about a minute.
+                  Twin is reading about it{e.productUrl ? ` on ${e.productUrl.replace(/^https?:\/\/(www\.)?/, '')}` : ''}… usually a few minutes. If it has not finished in 30 minutes it stops and you can retry.
                 </p>
               ) : (
                 <>
@@ -2310,6 +2493,15 @@ export default function ProductLibrary() {
                     {product.length > 0 ? <ul className="mt-1 divide-y divide-white/5">{product.map((f) => <Row key={`r-${f.field}-${f.value}`} f={f} />)}</ul>
                       : <p className="mt-1 text-sm text-stone">Nothing about this product itself was found. You can add a link or photos next.</p>}
                   </section>
+                  {/* ⚖️ SAID OUT LOUD, NOT LEFT BLANK (2026-09-23): the page's
+                      cart buttons are never a spoken call to action. */}
+                  {!placed.product.some((f) => f.field === 'cta') && (
+                    <p className="mt-3 text-xs text-stone">
+                      No call to action you would say on camera was found on this page
+                      {placed.setAside.some((f) => f.field === 'cta') ? ' — its shop buttons (like "View cart" or "Check out") were left out' : ''}.
+                      Scripts will use your own.
+                    </p>
+                  )}
                   {prices.length > 0 && (
                     <section className="mt-4">
                       <p className="text-xs font-medium uppercase tracking-wide text-stone">Prices</p>
@@ -2752,6 +2944,7 @@ function StartFromLink({ onCancel, onClaim, busy, initialUrl, kind = 'any' }: {
   // Reported 2026-09-22: "there's no option of offer, so it's not being listed,
   // not being added, and not being used in script."
   const [offer, setOffer] = useState('')
+  const [stories, setStories] = useState<ProductStories>({ almostWentWrong: null, customersSay: null, howItsMade: null })
   const [relationship, setRelationship] = useState<EntityRelationship | null>(null)
   const [type, setType] = useState<EntityType | null>(null)
   const [personalUse, setPersonalUse] = useState<PersonalUse | null>(null)
@@ -2875,17 +3068,15 @@ function StartFromLink({ onCancel, onClaim, busy, initialUrl, kind = 'any' }: {
           Optional here exactly as it is there: a price nobody typed is not a
           price, and `recordedOffer` stores null rather than an empty string. */}
       <div>
-        <label className="text-xs font-medium uppercase tracking-wide text-stone" htmlFor="product-offer">
-          What does it cost, and what do they get?
-        </label>
-        <input
-          id="product-offer"
-          type="text"
-          value={offer}
-          onChange={(e) => setOffer(e.target.value)}
-          placeholder="e.g. $28 — one bandana, free shipping over $50"
-          className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
-        />
+        {/* ⚠️ 2026-09-23 "add and edit show different fields": this was one
+            free-text box while the opened product had option/price rows. Both
+            now render the same `OfferEditor` (components/ProductFields.tsx),
+            stored as the same `offer` text. */}
+        <p className="text-xs font-medium uppercase tracking-wide text-stone">Options &amp; prices</p>
+        <p className="mt-0.5 text-xs text-stone">What does it cost, and what do they get? One row per size or style.</p>
+        <div id="product-offer">
+          <OfferEditor value={offer || null} found={[]} onSave={(v) => setOffer(v ?? '')} />
+        </div>
         <p className="mt-1 text-xs text-stone">
           Optional. Used when a script names the offer — including more than one
           price or variant, if that is how you sell it.
@@ -3003,6 +3194,18 @@ function StartFromLink({ onCancel, onClaim, busy, initialUrl, kind = 'any' }: {
         {imagePaths.length > 0 && (
           <p className="mt-1 text-xs text-teal">{imagePaths.length} photo{imagePaths.length === 1 ? '' : 's'} ready</p>
         )}
+        {/* ⚖️ A WRONG PICK CAN BE TAKEN BACK HERE TOO, before it is ever stored. */}
+        {imagePaths.length > 0 && (
+          <ul className="mt-1 flex flex-wrap gap-2 text-xs text-stone">
+            {imagePaths.map((p, i) => (
+              <li key={p}>
+                Photo {i + 1}{' '}
+                <button type="button" className="underline hover:text-coral" aria-label={`Remove photo ${i + 1} before adding`}
+                  onClick={() => setImagePaths((prev) => prev.filter((x) => x !== p))}>Remove</button>
+              </li>
+            ))}
+          </ul>
+        )}
         {imgErr && <p className="mt-1 text-xs text-coral">{imgErr}</p>}
       </div>
 
@@ -3016,11 +3219,14 @@ function StartFromLink({ onCancel, onClaim, busy, initialUrl, kind = 'any' }: {
         </p>
         <input
           id="product-link"
-          type="url"
+          // ⚠️ type="text", NOT "url": a url input tells the browser a bare
+          // domain like thedogdaysco.com is invalid. `normalizeLink` adds https://.
+          type="text"
           inputMode="url"
+          autoCapitalize="off"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://…"
+          placeholder="yourshop.com/your-product"
           className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
         />
         {!linkLooksReal && (
@@ -3030,6 +3236,14 @@ function StartFromLink({ onCancel, onClaim, busy, initialUrl, kind = 'any' }: {
       {/* ⚖️ THE BUTTON SAYS WHY IT IS DISABLED. The old gate demanded a field
           that was never rendered, leaving a dead button and nothing on screen
           saying what was missing — the worst kind of dead end. */}
+      {/* ── OPTIONAL, AND THE SAME THREE QUESTIONS AS THE OPENED PRODUCT ── */}
+      <details className="rounded-lg border border-white/10 p-3">
+        <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-stone">In your words (optional)</summary>
+        <div className="mt-3">
+          <StoryFields idPrefix="add-story" value={stories}
+            onCommit={(key, v) => setStories((p) => ({ ...p, [key]: v || null }))} />
+        </div>
+      </details>
       {communityGaps.length > 0 && (
         <p className="text-xs text-stone">
           Still needed: {communityGaps.join(' · ')}
@@ -3049,7 +3263,7 @@ function StartFromLink({ onCancel, onClaim, busy, initialUrl, kind = 'any' }: {
             // experience claim out of silence.
             personalUse: asksPersonalUse(ctx) ? personalUse! : 'NOT_CONFIRMED',
             type: type!,
-            name: name.trim(), creatorSummary: summary.trim() || null, offer: offer.trim() || null, productUrl: normalizeLink(link) || null, imagePaths,
+            name: name.trim(), creatorSummary: summary.trim() || null, offer: offer.trim() || null, productUrl: normalizeLink(link) || null, imagePaths, stories,
             // ⚠️ THE ANSWER ABOUT THIS PRODUCT, WHICH BEATS THE ACCOUNT DEFAULT.
             // `attestedEntity` derives showability from flags, so the flag that
             // matches the question asked is the one sent.
@@ -3192,8 +3406,14 @@ function BrandForm({ initial, isSuggestion, onSave, onCancel }: {
       <input className="w-full rounded-lg border border-white/12 bg-white/5 px-3 py-2 text-sm"
         placeholder="Website (optional)" value={draft.website}
         onChange={(ev) => setDraft({ ...draft, website: ev.target.value })} />
-      <textarea className="w-full rounded-lg border border-white/12 bg-white/5 px-3 py-2 text-sm" rows={2}
-        placeholder="What your brand is, in one or two lines" value={draft.description}
+      {/* ⚖️ THE "WHOLE BUSINESS" DESCRIPTION LIVES HERE (decision 2026-09-23):
+          the brand is that entity, and a video "about the brand as a whole"
+          is written from this sentence (generate-blueprint, `chosenBrand`). */}
+      <label className="block text-xs font-medium uppercase tracking-wide text-stone" htmlFor={`brand-desc-${initial.id ?? 'new'}`}>
+        Your whole business, in a line or two
+      </label>
+      <textarea id={`brand-desc-${initial.id ?? 'new'}`} className="w-full rounded-lg border border-white/12 bg-white/5 px-3 py-2 text-sm" rows={3}
+        placeholder="What you make, who it is for, and why you started" value={draft.description}
         onChange={(ev) => setDraft({ ...draft, description: ev.target.value })} />
       {err && <p className="text-xs text-coral">{err}</p>}
       <div className="flex items-center gap-3">
@@ -3241,57 +3461,6 @@ function MissingList({ items }: { items: string[] }) {
           </li>
         ))}
       </ul>
-    </div>
-  )
-}
-
-// ── OPTIONS & PRICES ──────────────────────────────────────────────────────
-// ⚖️ ONE TEXT FIELD UNDERNEATH. `offer` is what generate-blueprint already
-// reads; rows are only how it is edited. Same "Option — price" shape the shop
-// lookup writes (worker/src/shopProductLookup.ts `variantPriceLines`).
-function OfferEditor({ value, found, onSave }: {
-  value: string | null
-  found: string[]
-  onSave: (v: string | null) => void
-}) {
-  const initial = parseOffer(value)
-  const [rows, setRows] = useState<OfferRow[]>(initial.rows.length ? initial.rows : [{ name: '', price: '' }])
-  const [included, setIncluded] = useState(initial.included)
-  const commit = (r = rows, inc = included) => onSave(serializeOffer(r, inc))
-  const input = 'w-full rounded-lg border border-white/12 px-3 py-2 text-sm'
-  return (
-    <div className="mt-1 space-y-2">
-      {!value && found.length > 0 && (
-        <div className="flex items-center justify-between gap-2 rounded-lg bg-teal/[0.06] px-3 py-2 text-xs text-sand">
-          <span>Twin found {found.length} price{found.length === 1 ? '' : 's'} on your shop.</span>
-          <button type="button" className="font-medium text-teal underline" onClick={() => {
-            const next = parseOffer(found.join('\n')).rows
-            setRows(next); commit(next)
-          }}>Use them</button>
-        </div>
-      )}
-      {rows.map((r, i) => (
-        <div key={i} className="flex gap-2">
-          <input className={input} placeholder="Option, e.g. Small" aria-label={`Option ${i + 1}`}
-            value={r.name}
-            onChange={(ev) => setRows((p) => p.map((x, j) => (j === i ? { ...x, name: ev.target.value } : x)))}
-            onBlur={() => commit()} />
-          <input className={`${input} max-w-[9rem]`} placeholder="Price" aria-label={`Price ${i + 1}`}
-            value={r.price}
-            onChange={(ev) => setRows((p) => p.map((x, j) => (j === i ? { ...x, price: ev.target.value } : x)))}
-            onBlur={() => commit()} />
-          <button type="button" aria-label={`Remove option ${i + 1}`}
-            className="shrink-0 rounded-lg px-2 text-lg leading-none text-stone hover:text-cream"
-            onClick={() => {
-              const next = rows.filter((_, j) => j !== i)
-              setRows(next.length ? next : [{ name: '', price: '' }]); commit(next)
-            }}>×</button>
-        </div>
-      ))}
-      <button type="button" className="text-xs font-medium text-teal"
-        onClick={() => setRows((p) => [...p, { name: '', price: '' }])}>+ Add another option</button>
-      <input className={input} placeholder="What's included (optional)" aria-label="What's included"
-        value={included} onChange={(ev) => setIncluded(ev.target.value)} onBlur={() => commit()} />
     </div>
   )
 }

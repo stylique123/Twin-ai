@@ -36,7 +36,9 @@ describe('the detail card can edit the description', () => {
   })
 
   it('reads the stored value rather than starting blank', () => {
-    expect(code).toMatch(/defaultValue=\{e\.creatorSummary \?\? ''\}/)
+    // Re-pointed 2026-09-23: the box is now `BlurText` fed `value=` — an
+    // uncontrolled `defaultValue` keyed on updated_at lost half-typed text.
+    expect(code).toMatch(/value=\{e\.creatorSummary \?\? null\}/)
   })
 
   // ⚠️ THE ACTUAL WIRE. A field that renders and never saves is the same
