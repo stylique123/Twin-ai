@@ -113,6 +113,9 @@ export async function findShopProduct(
   shopUrl: string,
   productName: string,
   fetchJson: FetchJson,
+  /** Told the closest titles the shop has when nothing matched — logged, so a
+   *  miss can be diagnosed from production without reaching the shop. */
+  onMiss?: (closest: string[]) => void,
 ): Promise<ShopProduct | null> {
   let origin: string
   try {
@@ -124,10 +127,28 @@ export async function findShopProduct(
   const suggest = await fetchJson(`${origin}/search/suggest.json?q=${q}&resources[type]=product&resources[limit]=5`)
   const found = (suggest as { resources?: { results?: { products?: Array<{ title?: string; url?: string }> } } } | null)
     ?.resources?.results?.products ?? []
-  const best = found
+  let best = found
     .map((r) => ({ r, score: nameMatch(productName, String(r.title ?? '')) }))
     .sort((a, b) => b.score - a.score)[0]
-  if (!best || best.score < MIN_NAME_MATCH || typeof best.r.url !== 'string') return null
+
+  // ⚠️ THE QUICK SEARCH RETURNS ITS TOP FIVE BY ITS OWN RANKING, not ours.
+  // Measured 2026-09-23: "Reversible Scrunchie Bandana" returned no full match
+  // from suggest.json. The shop's full catalogue (/products.json, up to 250)
+  // is the same public data, so check it before giving up.
+  if (!best || best.score < MIN_NAME_MATCH) {
+    const all = await fetchJson(`${origin}/products.json?limit=250`)
+    const list = (all as { products?: Array<{ title?: string; handle?: string }> } | null)?.products ?? []
+    const hit = list
+      .map((p) => ({ r: { title: p.title, url: p.handle ? `/products/${p.handle}` : undefined }, score: nameMatch(productName, String(p.title ?? '')) }))
+      .sort((a, b) => b.score - a.score)[0]
+    if (hit && hit.score >= MIN_NAME_MATCH) best = hit
+    else {
+      onMiss?.([...found.map((r) => String(r.title ?? '')), ...list.map((p) => String(p.title ?? ''))]
+        .filter(Boolean).sort((x, y) => nameMatch(productName, y) - nameMatch(productName, x)).slice(0, 5))
+      return null
+    }
+  }
+  if (typeof best.r.url !== 'string') return null
 
   const path = best.r.url.split('?')[0]
   if (!/^\/products\/[^/]+$/.test(path)) return null

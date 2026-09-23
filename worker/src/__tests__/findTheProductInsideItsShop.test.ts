@@ -94,3 +94,25 @@ describe('the production mismatch, 2026-09-23', () => {
     expect(variantPriceLines(p)).toEqual(['Mini — 22', 'Large — 30'])
   })
 })
+
+describe('the quick search missed it (2026-09-23)', () => {
+  it('falls back to the full catalogue when suggest has no full match', async () => {
+    const fetchJson = async (u: string) => {
+      if (u.includes('suggest.json')) return { resources: { results: { products: [{ title: 'Scrunchie Bandana Mystery Packs', url: '/products/mystery' }] } } }
+      if (u.includes('/products.json')) return { products: [{ title: 'Scrunchie Bandana Mystery Packs', handle: 'mystery' }, { title: 'Reversible Scrunchie Bandana', handle: 'reversible-scrunchie-bandana' }] }
+      if (u.endsWith('/products/reversible-scrunchie-bandana.json')) return { product: { title: 'Reversible Scrunchie Bandana', variants: [{ title: 'Default Title', price: '28.00' }] } }
+      return null
+    }
+    const p = await findShopProduct('https://www.thedogdaysco.com', 'Reversible Scrunchie Bandana', fetchJson)
+    expect(p?.url).toBe('https://www.thedogdaysco.com/products/reversible-scrunchie-bandana')
+  })
+
+  it('reports the closest titles when nothing matches', async () => {
+    let closest: string[] = []
+    const fetchJson = async (u: string) => u.includes('suggest.json')
+      ? { resources: { results: { products: [{ title: 'Scrunchie Bandana Mystery Packs', url: '/products/m' }] } } }
+      : u.includes('/products.json') ? { products: [{ title: 'Scrunchie Bandana Mystery Packs', handle: 'm' }] } : null
+    expect(await findShopProduct('https://x.com', 'Reversible Scrunchie Bandana', fetchJson, (c) => { closest = c })).toBeNull()
+    expect(closest[0]).toBe('Scrunchie Bandana Mystery Packs')
+  })
+})

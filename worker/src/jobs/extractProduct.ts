@@ -364,7 +364,9 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   // (Product Library, "Find it on …"), which is a shop front by definition.
   const shopBase = isShopFront(url) ? url : ''
   const shopProduct = shopBase && existingName
-    ? await findShopProduct(shopBase, existingName, fetchShopJson).catch(() => null)
+    ? await findShopProduct(shopBase, existingName, fetchShopJson, (closest) =>
+      console.log(JSON.stringify({ event: 'product_not_found_on_shop', entity_id: entityId, shop: shopBase, closest })),
+    ).catch(() => null)
     : null
   if (shopProduct) {
     url = shopProduct.url
