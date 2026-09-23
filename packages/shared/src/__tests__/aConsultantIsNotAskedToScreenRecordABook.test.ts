@@ -176,7 +176,13 @@ describe('the form actually consults the registry', () => {
   describe('the suggestion-claim form also consults the registry (G2)', () => {
     const claimFormStart = code.indexOf('function ClaimForm(')
     const claimFormEnd = code.indexOf('function ', claimFormStart + 1)
-    const claimFormBody = code.slice(claimFormStart, claimFormEnd)
+    // Re-pointed (gap #14): ClaimForm now renders StartFromLink, so the wiring it
+    // must carry lives in that body — asserted to be delegated to, then scanned.
+    const claimFormOwn = code.slice(claimFormStart, claimFormEnd)
+    const delegateStart = code.indexOf('function StartFromLink(')
+    const claimFormBody = /<StartFromLink\b/.test(claimFormOwn)
+      ? code.slice(delegateStart, code.indexOf('\nfunction ', delegateStart + 1))
+      : claimFormOwn
 
     it('found the function — a rename here would silently empty every check below', () => {
       expect(claimFormStart).toBeGreaterThan(-1)
