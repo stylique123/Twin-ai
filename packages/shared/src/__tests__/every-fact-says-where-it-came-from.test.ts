@@ -43,7 +43,7 @@ describe('every source a fact can carry has words a creator understands', () => 
     // own page asserted. A page that flagged everything would train people to
     // stop looking.
     const flagged = EXTRACTION_SOURCES.filter(sourceWarrantsAttention)
-    expect([...flagged].sort()).toEqual(['creator_image', 'marketing_copy'])
+    expect([...flagged].sort()).toEqual(['creator_image', 'marketing_copy', 'web_search'])
   })
 
   it('never flags what the creator confirmed themselves', () => {

@@ -89,6 +89,13 @@ export const EXTRACTION_SOURCES = [
   // an assertion — so `imageFactAllowed` below refuses those fields outright
   // rather than merely marking them for confirmation.
   'creator_image',
+  // ── A PAGE TWIN FOUND BY SEARCHING THE WEB ──────────────────────────────
+  //
+  // ⚖️ SHE NEVER POINTED AT IT. A product with no link and no brand website is
+  // looked up with a grounded web search, and the page it lands on is only a
+  // candidate until she says "yes, that's mine". So everything but its name
+  // waits for her, whatever kind of page it is.
+  'web_search',
 ] as const
 export type ExtractionSource = (typeof EXTRACTION_SOURCES)[number]
 
@@ -179,6 +186,10 @@ export function extractionTrust(input: {
   // first, and it fails closed.
   if (input.source === 'creator_image') return 'needs_confirmation'
 
+  // ⚠️ A SEARCH RESULT IS A GUESS ABOUT WHICH PAGE IS HERS. Only the name (which
+  // had to match every word she typed to be accepted at all) is usable.
+  if (input.source === 'web_search') return input.field === 'name' ? 'usable' : 'needs_confirmation'
+
   // ⚠️ MARKETING COPY IS NEVER USABLE UNCONFIRMED, WHATEVER IT SAYS. It is the
   // one source whose PURPOSE is persuasion, so even its plain-looking sentences
   // are selected to flatter. Identity from a marketing page is still identity,
@@ -214,6 +225,7 @@ export const SOURCE_LABEL: Record<ExtractionSource, string> = {
   marketing_copy: 'From marketing copy',
   user_confirmed: 'You told us this',
   creator_image: 'From your photo',
+  web_search: 'Found on the web',
 }
 
 /** ⚖️ WHICH ORIGINS A CREATOR SHOULD LOOK AT TWICE. Marketing copy is written to
@@ -221,7 +233,7 @@ export const SOURCE_LABEL: Record<ExtractionSource, string> = {
  *  somebody stands behind. This drives emphasis on the page, never a refusal —
  *  the refusals live in `extractionTrust` and `imageFactAllowed`. */
 export function sourceWarrantsAttention(source: ExtractionSource): boolean {
-  return source === 'marketing_copy' || source === 'creator_image'
+  return source === 'marketing_copy' || source === 'creator_image' || source === 'web_search'
 }
 
 /** One extracted fact with everything needed to decide whether it may be used. */

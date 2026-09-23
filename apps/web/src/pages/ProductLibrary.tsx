@@ -44,6 +44,7 @@ import {
   claimProductEntity, deleteProductEntity, archiveProductEntity, restoreProductEntity,
   requestProductExtraction, recordExtractionNeverStarted,
   confirmProductFacts, uploadProductImage,
+  webFoundHost, confirmWebFoundProduct, rejectWebFoundProduct,
   listBrandVoices, ProductLibraryFullError,
   isStale, factAgeDays, SOURCE_LABEL, sourceWarrantsAttention,
   signEditUrls,
@@ -967,6 +968,38 @@ export default function ProductLibrary() {
     }
   }
 
+  // ⚖️ NO LINK, NO PHOTO, NO BRAND WEBSITE: ask the worker to search the web
+  // for the product by its name (worker/src/productWebSearch.ts). A match comes
+  // back as a link plus facts marked `web_search`, and the panel asks her
+  // "Found on <domain> — is this your product?" before any of it is trusted.
+  async function learnFromWeb(id: string) {
+    setErr(null)
+    setLearning(id)
+    try {
+      try {
+        await requestProductExtraction(id, '', [], { webSearch: true })
+      } catch (e) {
+        try { await recordExtractionNeverStarted(id, e) } catch { /* the outer catch still tells them */ }
+        throw e
+      }
+      await waitForReadThenReview(id, false)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not search the web for that product.')
+    } finally {
+      setLearning(null)
+    }
+  }
+
+  async function answerWebFound(id: string, mine: boolean) {
+    setErr(null)
+    try {
+      const updated = mine ? await confirmWebFoundProduct(id) : await rejectWebFoundProduct(id)
+      if (updated) setEntities((prev) => (prev ?? []).map((e) => (e.id === id ? updated : e)))
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not save that answer.')
+    }
+  }
+
   async function learn(id: string, override?: string) {
     // ⚠️ FALLS BACK TO THE ENTITY'S OWN LINK, THE SAME FALLBACK THE BOX DISPLAYS.
     // The retry box is pre-filled with `e.productUrl` without requiring a
@@ -1073,7 +1106,15 @@ export default function ProductLibrary() {
     const e = (entities ?? []).find((x) => x.id === openId)
     if (!e || !e.name || autoFound.current.has(e.id)) return
     const site = (brands ?? []).find((b) => b.id === e.brandId)?.website
-    if (!site) return
+    if (!site) {
+      // ⚖️ NOTHING TO SEARCH INSIDE, SO SEARCH THE WEB — once per visit, and
+      // only for a product that has never been read and has no photo.
+      if (e.productUrl || photoPathsOf(e).length > 0) return
+      if (e.knowledge !== null && e.knowledge.length > 0) return
+      autoFound.current.add(e.id)
+      void learnFromWeb(e.id)
+      return
+    }
     const kind = pageKindOf(e.productUrl)
     if (e.productUrl && kind !== 'homepage' && kind !== 'collection') return
     autoFound.current.add(e.id)
@@ -1391,6 +1432,14 @@ export default function ProductLibrary() {
             const brand = (brands ?? []).find((b) => b.id === e.brandId)
             const site = brand?.website
             const needs = !e.productUrl || pageKindOf(e.productUrl) === 'homepage' || pageKindOf(e.productUrl) === 'collection'
+            // ⚖️ NO LINK AND NO BRAND WEBSITE: say what Twin will do instead.
+            if (!site && !e.productUrl && e.name && photoPathsOf(e).length === 0) {
+              return learning === e.id ? (
+                <p className="mt-2 text-xs text-sand">Searching the web for “{e.name}”…</p>
+              ) : (
+                <p className="mt-2 text-xs text-stone">No link and no brand website — Twin will search the web for it.</p>
+              )
+            }
             if (!site || !needs || !e.name) return null
             // ⚖️ AUTOMATIC NOW — see `autoFound`. Only a status line remains.
             return learning === e.id ? (
@@ -1406,6 +1455,25 @@ export default function ProductLibrary() {
             </p>
           )}
           {fieldNote(e.id, 'productUrl')}
+          {/* ⚖️ A PAGE TWIN FOUND BY ITSELF IS A QUESTION, NOT AN ANSWER. Its
+              facts are marked `web_search` and wait for her; this asks the one
+              thing that decides them all. "Not mine" clears the link and every
+              fact read from it. */}
+          {(() => {
+            const host = webFoundHost(e)
+            if (!host) return null
+            return (
+              <div className="mt-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-cream">
+                <p>Found on {host} — is this your product?</p>
+                <div className="mt-2 flex gap-2">
+                  <button type="button" onClick={() => void answerWebFound(e.id, true)}
+                    className="rounded-md border border-white/20 px-2 py-1 hover:bg-white/[0.05]">Yes, that's it</button>
+                  <button type="button" onClick={() => void answerWebFound(e.id, false)}
+                    className="rounded-md border border-white/20 px-2 py-1 hover:bg-white/[0.05]">Not mine</button>
+                </div>
+              </div>
+            )
+          })()}
           {/* ⚠️ A HOMEPAGE IS NOT THIS PRODUCT'S PAGE, AND IT SAID NOTHING.
               Measured 2026-09-22: "Reversible Scrunchie Bandana" was linked to
               the shop's homepage, so everything Twin read was the brand's
