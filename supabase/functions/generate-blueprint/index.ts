@@ -21,7 +21,7 @@ import { buildSlots, filledFrom, slotsReady } from '../_shared/writerInput.ts'
 import { speechIssues, speakableShare, spokenSentences } from '../_shared/speechPolish.ts'
 import { applyHookContract } from '../_shared/hookContract.ts'
 import { craftBeatsThatAsked, readsAsPlaceholder, fallbackCta, craftSectionKind } from '../_shared/craftBeats.ts'
-import { askForBeat, askIsUsable, scaffoldWithoutAnswer } from '../_shared/beatAsk.ts'
+import { askForBeat, askIsUsable, scaffoldWithoutAnswer, boundAskBeats } from '../_shared/beatAsk.ts'
 import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
@@ -5496,7 +5496,7 @@ SCRIPT & HOOK INTEGRATION:
     - creator_knowledge = the beat is built on something listed under WHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID. You may only choose this if the item is actually in that list above. Inventing a plausible-sounding position and labelling it creator_knowledge is the single worst thing you can do here, and it is checked.
     - product_dna = built on the supplied product facts.
     - general = a widely-known fact stated in NEUTRAL terms, framed as something true of the world rather than as something this person personally did.
-    - needs_user = only the creator can supply this. Write the beat around what you DO know and leave the personal detail out of the line entirely.
+    - needs_user = only the creator can supply this. Write the beat around what you DO know and leave the personal detail out of the line entirely. AT MOST 2 beats in the whole script may be needs_user, however long it is, and only for a fact the video cannot stand without. Product details the creator did not supply are NOT needs_user: use the supplied facts, or leave the beat out.
     - none = a transition, a CTA, or a beat that carries no factual claim.
   * "substance_evidence": for creator_knowledge and product_dna, quote or closely paraphrase the specific supplied item you used. For the others, one short phrase naming what the beat rests on. Never leave it empty when substance is creator_knowledge.
 - A PLACEHOLDER IS A FAILED BEAT, NOT A DRAFT. Never write "[Phone Model]", "[product name]", "the new XYZ phone", "Brand X", or any other stand-in for a specific you do not have. If you cannot name the thing, you have three honest options and no fourth: state the general fact in neutral terms, write the beat around a specific you DO have from the lists above, or drop the claim. Filling the gap with a bracket hands the creator a script they cannot read aloud.
@@ -11129,6 +11129,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       const kept = askIsUsable(q, b.line_scaffold) ? scaffoldWithoutAnswer(b.line_scaffold) : null
       b.line = kept ?? ''
       b.substance = 'needs_user'
+      ;(b as { ask_reason?: string }).ask_reason = 'personal_fact'
       if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
       beatAsksEmitted += 1
       if (kept !== null) beatAsksWithScaffold += 1
@@ -11541,6 +11542,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
               ? b.ask
               : 'This line was too close to the reference video\'s own words. What would you actually say here?'
             b.substance = 'needs_user'
+            ;(b as { ask_reason?: string }).ask_reason = 'reference_overlap'
             applied++
           }
           referencePhraseOverlap = { found: overlaps.length, repaired: applied }
@@ -11604,6 +11606,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         b.line = ''
         b.substance = 'needs_user'
         b.substance_evidence = ''
+        ;(b as { ask_reason?: string }).ask_reason = 'placeholder'
         if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
       }
       if (bracketed) {
@@ -11661,6 +11664,8 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       b.line = ''
       b.substance = 'needs_user'
       b.substance_evidence = ''
+      // ⚖️ ITEM 30: fed by the OPTIONAL product boxes — never shipped as an ask.
+      ;(b as { ask_reason?: string }).ask_reason = 'product_detail'
       if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
       productEscalated++
     }
@@ -11686,6 +11691,30 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // production rather than inferred later from a confused creator — the
     // decision it informs (a real "here is what we need from you" screen) is a
     // UI change and belongs with one.
+    // ── ASKS ARE BOUNDED BY WHAT IS MISSING, NOT BY LENGTH (items 30, 31) ──
+    //
+    // ⚠️ Each escalation above turns one beat into one question, so the count
+    // scaled with scene count, and skipped OPTIONAL product boxes came back as
+    // in-script gaps. `boundAskBeats` keeps at most MAX_ASK_BEATS asks, only for
+    // required facts, and writes around or omits the rest. In place, because
+    // `declared` IS `blueprint.script`.
+    if (Array.isArray(declared)) {
+      const bound = boundAskBeats(declared as never)
+      declared.length = 0
+      ;(declared as unknown[]).push(...bound.beats)
+      const stillAsked = new Set(bound.beats
+        .map((b) => (b as { ask?: unknown }).ask)
+        .filter((a): a is string => typeof a === 'string'))
+      for (let i = creatorQuestions.length - 1; i >= 0; i--) {
+        if (!stillAsked.has(creatorQuestions[i])) creatorQuestions.splice(i, 1)
+      }
+      if (bound.writtenAround + bound.omitted > 0) {
+        console.log(JSON.stringify({
+          event: 'ask_beats_bounded', kept: bound.kept,
+          written_around: bound.writtenAround, omitted: bound.omitted,
+        }))
+      }
+    }
     const totalBeats = Array.isArray(declared) ? declared.length : 0
     const asked = Array.isArray(declared)
       ? declared.filter((b) => (b as { substance?: string })?.substance === 'needs_user').length
