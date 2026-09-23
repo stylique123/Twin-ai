@@ -8,7 +8,7 @@ import {
   loadProductEntities,
   setupAreas, setupSummary, panelAreas, type SetupArea, type SetupState, type SetupAction,
   readStoredBrief, savePreScriptBrief, suggestedCta, whatTwinLearned, heardCount, BASIS_LABEL, editTargetOf,
-  SELLS_ANSWER_TO_TIES, sellsAnswerWithLibrary, type LibraryProductView,
+  SELLS_ANSWER_TO_TIES, sellsAnswerWithLibrary, paletteStanding, type LibraryProductView,
   scannedAudienceFacts, audienceFactConfirmed,
 } from '@twinai/shared'
 import { readProfileAnswers } from '../lib/profileAnswersRead'
@@ -1045,6 +1045,23 @@ export default function Settings() {
                       <span>We couldn’t read your brand colours from your posts automatically — Instagram often blocks that. No problem: set them by hand below, or upload your logo, and they’ll be used everywhere.</span>
                     </div>
                   )}
+                  {/* ⚠️ A READING IS NOT HERS UNTIL SHE SAYS SO. An `auto` palette, or
+                      one with no source at all, used to render exactly like a
+                      confirmed one. It now names where it came from and asks —
+                      the same explicit step every hand-set palette already took. */}
+                  {paletteStanding(brandKit).state === 'unconfirmed' && (
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber/25 bg-amber/[0.06] px-3 py-2.5 text-[12px] text-sand">
+                      <span>
+                        {paletteStanding(brandKit).source === 'auto'
+                          ? 'Twin read these colours from your posts. They are not confirmed yet.'
+                          : 'These colours were filled in without a source. They are not confirmed yet.'}
+                      </span>
+                      <button type="button" className="rounded-full border border-amber/40 px-3 py-1 text-[12px] text-cream hover:border-amber/70"
+                        onClick={() => saveKit({ ...brandKit, palette_source: 'manual' })}>
+                        Yes, these are my colours
+                      </button>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-5">
                     {/* ⚠️ THREE SLOTS, BECAUSE THREE ARE READ. `highlight` is
                         consumed by `brandSnapshot` and by the blueprint's
@@ -1081,6 +1098,9 @@ export default function Settings() {
                             </label>
                           )}
                           {label}
+                          {set && paletteStanding(brandKit).state === 'unconfirmed' && (
+                            <span className="text-[10px] text-amber">unconfirmed</span>
+                          )}
                         </div>
                       )
                     })}
