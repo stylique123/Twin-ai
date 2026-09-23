@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0226_the_closest_ones_on_her_shop':
+    'Adds nullable `product_entities.lookup_candidates` (jsonb). Inherited exclusion, same as 0225: '
+    + '`0120_product_entities` is excluded, so staging has no such table.',
   '0225_what_only_she_knows_about_it':
     'Adds nullable `product_entities.creator_stories` (jsonb) for three optional per-product '
     + 'answers the creator types. THE EXCLUSION IS INHERITED, NOT A NEW JUDGEMENT: '

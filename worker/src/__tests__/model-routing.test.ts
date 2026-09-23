@@ -13,8 +13,9 @@ import { DIRECTOR_MODEL } from '../jobs/directorContract.js'
 const ROUTING = loadModelRouting()
 
 describe('the catalog', () => {
-  it('declares the three classes the code actually has', () => {
-    expect(taskClassIds().sort()).toEqual(['decide', 'extract', 'profile'])
+  it('declares the classes the code actually has', () => {
+    // 2026-09-23: `search` added for the grounded product web search retry.
+    expect(taskClassIds().sort()).toEqual(['decide', 'extract', 'profile', 'search'])
   })
 
   it('every class states a model and an explicit envOverride', () => {

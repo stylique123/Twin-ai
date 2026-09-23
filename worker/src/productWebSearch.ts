@@ -124,7 +124,10 @@ export function pageTitlesOf(text: string): string[] {
 
 export const WEB_SEARCH_SYSTEM = [
   'You find the official web page for ONE specific product.',
-  'Use Google Search. Prefer, in order: the brand\'s own product page; then a',
+  'ALWAYS run a Google Search first — never answer from memory (measured 2026-09-23:',
+  'an answer with zero search sources). Search the product name with the brand name,',
+  'then the product name alone.',
+  'Prefer, in order: the brand\'s own product page; then a',
   'marketplace listing of that exact product (Etsy, Amazon, and similar).',
   'Never return a homepage, a search results page, a review, or a different product.',
   'If you are not sure it is the same product, say confidence "low".',
@@ -151,7 +154,7 @@ export async function findProductOnWeb(input: {
   }
   const n = answer.sources.length
   const picked = readSearchAnswer(answer.text)
-  if (!picked) return { ok: false, reason: 'no_answer', sources: n }
+  if (!picked) return { ok: false, reason: 'no_answer', detail: answer.text.replace(/\s+/g, ' ').trim().slice(0, 200), sources: n }
   if (picked.confidence !== 'high' && picked.confidence !== 'medium') return { ok: false, reason: 'low_confidence', sources: n }
   if (!urlInSources(picked.url, answer.sources)) return { ok: false, reason: 'not_in_sources', detail: hostOf(picked.url) ?? '', sources: n }
 

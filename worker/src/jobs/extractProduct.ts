@@ -370,10 +370,12 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   // ⚖️ WHAT EACH LOOKUP SAW, KEPT ON THE JOB'S OWN RESULT. Worker logs are not
   // reachable from where misses get diagnosed; `jobs.result` is (2026-09-23).
   const lookup: Record<string, unknown> = {}
+  let candidates: Array<{ title: string; url: string }> = []
   const shopBase = isShopFront(url) ? url : ''
   const shopProduct = shopBase && existingName
     ? await findShopProduct(shopBase, existingName, fetchShopJson, (closest) => {
-      lookup.shop = { matched: false, closest }
+      lookup.shop = { matched: false, closest: closest.map((c) => c.title) }
+      candidates = closest
       console.log(JSON.stringify({ event: 'product_not_found_on_shop', entity_id: entityId, shop: shopBase, closest }))
     }).catch((e) => { lookup.shop = { error: String(e).slice(0, 160) }; return null })
     : null
@@ -403,6 +405,17 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
       url = webMatch.url
       await db.from('product_entities').update({ product_url: webMatch.url }).eq('id', entityId)
     }
+  }
+
+  // ⚖️ NO EXACT MATCH: KEEP THE CLOSEST SHOP PRODUCTS FOR HER TO PICK FROM.
+  // Measured 2026-09-23: her name ("Reversible Scrunchie Bandana") is a kind of
+  // product; the shop names each by its print. Refusing to guess was right;
+  // leaving her with nothing was not. Any match clears the list.
+  const found = !!shopProduct || !!webMatch
+  if (found || candidates.length > 0) {
+    await db.from('product_entities').update({
+      lookup_candidates: found ? null : { source: 'shop', at: new Date().toISOString(), items: candidates },
+    }).eq('id', entityId)
   }
 
   // (A web match was already read once to check its title; reading it again
@@ -653,12 +666,19 @@ async function searchWebForProduct(entityId: string, name: string, lookup: Recor
       brandName = (b as { name?: string | null } | null)?.name ?? null
     }
     const model = modelForTask('extract')
-    const outcome = await findProductOnWeb({
+    const run = (m: string) => findProductOnWeb({
       productName: name,
       brandName,
-      search: (system, prompt) => geminiGroundedSearch(system, prompt, model),
+      search: (system, prompt) => geminiGroundedSearch(system, prompt, m),
       fetchPage: (u) => fetchPageText(u),
     })
+    let outcome = await run(model)
+    // ⚠️ ZERO SOURCES MEANS THE SEARCH NEVER RAN (measured 2026-09-23), not that
+    // the web had nothing. One retry on the model Google documents grounding for.
+    const searchModel = modelForTask('search')
+    if (!outcome.ok && outcome.sources === 0 && outcome.reason !== 'search_failed' && model !== searchModel) {
+      outcome = await run(searchModel)
+    }
     lookup.web = outcome.ok
       ? { matched: true, host: outcome.match.host, url: outcome.match.url }
       : { matched: false, reason: outcome.reason, detail: outcome.detail ?? null, sources: outcome.sources }
