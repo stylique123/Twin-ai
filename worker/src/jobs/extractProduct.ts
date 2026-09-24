@@ -676,7 +676,8 @@ async function searchWebForProduct(entityId: string, name: string, lookup: Recor
     // ⚠️ ZERO SOURCES MEANS THE SEARCH NEVER RAN (measured 2026-09-23), not that
     // the web had nothing. One retry on the model Google documents grounding for.
     const searchModel = modelForTask('search')
-    if (!outcome.ok && outcome.sources === 0 && outcome.reason !== 'search_failed' && model !== searchModel) {
+    // A retired or unavailable model surfaces as search_failed (a 404) — retry that too.
+    if (!outcome.ok && outcome.sources === 0 && model !== searchModel) {
       outcome = await run(searchModel)
     }
     lookup.web = outcome.ok
