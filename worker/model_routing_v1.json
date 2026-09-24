@@ -110,13 +110,14 @@
       ]
     },
     "search": {
-      "model": "gemini-3.6-flash",
+      "model": "gemini-3.8-flash",
       "envOverride": null,
       "$note": [
         "Grounded Google Search for a product page with no link (productWebSearch.ts).",
         "Also the retry when the extract model answers with zero grounding sources.",
         "Was gemini-2.5-flash until 2026-09-24: production returned 404 \"no longer",
-        "available to new users; use models/gemini-3.6-flash\"."
+        "available to new users; use models/gemini-3.6-flash\".",
+        "2026-09-24: owner confirmed gemini-3.8 available; search moved to it."
       ]
     }
   }
