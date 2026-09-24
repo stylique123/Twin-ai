@@ -2008,6 +2008,57 @@ function renderNicheBrainInline(rows: readonly BrainNoteInline[]): string {
   return `\n\nNICHE INTELLIGENCE — patterns read from real short-form videos close to this creator's niche. Use it to choose the ANGLE, the SHAPE of the hook, the ORDER of the argument, which objection to pre-empt and how to close, so this video fits what is already working and is built for the goal above. RULES: her own stories, DNA and product facts are the substance and always win; never copy these wordings; never present another creator's result, number or story as hers; skip anything that does not fit her product or voice.\n<<<UNTRUSTED_DATA niche intelligence\n${body}\nEND_UNTRUSTED_DATA>>>`
 }
 
+// ── NICHE BRAIN step 3: WHAT IS RISING IN HER LANE, AND HER OWN TRACK RECORD ──
+interface BrainTrendInline { kind: string; label: string; recent: number; prior: number; sample: string | null }
+interface TrackRecordInline {
+  best_posts?: Array<{ caption?: string; plays?: number }>
+  weakest_posts?: Array<{ caption?: string; plays?: number }>
+  median_plays?: number | null
+  recent_scripts?: Array<{ premise?: string; was_filmed?: boolean | null; was_published?: boolean | null; views_7d?: number | null }>
+  posted?: Array<{ caption?: string; views?: number | null }>
+}
+function renderTrendsInline(rows: readonly BrainTrendInline[]): string {
+  // ⚠️ ONLY HER LANE. Corpus-wide "moments" measured 2026-09-24 were the
+  // scraper's own search seeds for the week, not the world's — so they are
+  // withheld until an outside source confirms them.
+  const lane = (Array.isArray(rows) ? rows : []).filter((r) => r && (r.kind === 'sub_niche' || r.kind === 'topic')).slice(0, 6)
+  if (lane.length === 0) return ''
+  const lines = lane.map((r) => `  - ${r.kind === 'topic' ? 'topic' : 'sub-niche'}: ${String(r.label).slice(0, 120)} (${r.recent} creators this week vs ${r.prior} in the four weeks before)`)
+  const body = lines.join('\n').split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
+  return `\n\nRISING NOW IN HER LANE — measured from the video library this week. If one fits her product and voice naturally, ride it (as the angle or the hook's topic); never force it.\n<<<UNTRUSTED_DATA rising now\n${body}\nEND_UNTRUSTED_DATA>>>`
+}
+function renderTrackRecordInline(r: TrackRecordInline | null): string {
+  if (!r) return ''
+  const cap = (v: unknown, n = 110) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n)
+  const lines: string[] = []
+  const best = (r.best_posts ?? []).filter((p) => p && p.caption).slice(0, 4)
+  if (best.length) {
+    lines.push(`Her best posts (plays) — lean toward what these share:${r.median_plays ? ` (her median is ${Math.round(Number(r.median_plays))})` : ''}`)
+    for (const p of best) lines.push(`  - ${p.plays ?? '?'}: ${cap(p.caption)}`)
+  }
+  const weak = (r.weakest_posts ?? []).filter((p) => p && p.caption).slice(0, 3)
+  if (weak.length) {
+    lines.push('Her weakest posts — avoid repeating what these share:')
+    for (const p of weak) lines.push(`  - ${p.plays ?? '?'}: ${cap(p.caption)}`)
+  }
+  const done = (r.recent_scripts ?? []).filter((x) => x && x.premise).slice(0, 8)
+  if (done.length) {
+    lines.push('Scripts Twin already wrote her — DO NOT repeat these premises; find a fresh angle:')
+    for (const x of done) {
+      const fate = x.was_published ? `posted${x.views_7d != null ? `, ${x.views_7d} views in 7d` : ''}` : x.was_filmed ? 'filmed' : ''
+      lines.push(`  - ${cap(x.premise, 140)}${fate ? ` (${fate})` : ''}`)
+    }
+  }
+  const posted = (r.posted ?? []).filter((p) => p && p.caption).slice(0, 3)
+  if (posted.length) {
+    lines.push('Posted through Twin:')
+    for (const p of posted) lines.push(`  - ${cap(p.caption)}${p.views != null ? ` (${p.views} views)` : ''}`)
+  }
+  if (lines.length === 0) return ''
+  const body = lines.join('\n').split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
+  return `\n\nHER TRACK RECORD — her own results. Weigh them above any niche pattern: what already works for HER audience beats what works for others.\n<<<UNTRUSTED_DATA her track record\n${body}\nEND_UNTRUSTED_DATA>>>`
+}
+
 function nicheVocabulariesInline(
   cardsByNiche: ReadonlyMap<string, ReadonlyArray<{
     creator: string | null | undefined; title: string | null | undefined
@@ -7955,41 +8006,59 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // and the script is written exactly as it was before this block existed.
     let brainBlock = ''
     let brainNotesUsed = 0
-    try {
+    {
+      const ctrl = new AbortController()
+      const brainTimer = setTimeout(() => ctrl.abort(), 2500)
       const brainQuery = [subNiche, niche, typeof offer === 'string' && offer !== 'unspecified' ? offer : '', reference_note]
         .map((v) => String(v ?? '').trim()).filter(Boolean).join(' | ').slice(0, 1500)
-      if (apiKey && brainQuery) {
-        const ctrl = new AbortController()
-        const brainTimer = setTimeout(() => ctrl.abort(), 2500)
-        try {
-          const embRes = await fetch(
-            'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent',
-            {
-              method: 'POST', signal: ctrl.signal,
-              headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-              body: JSON.stringify({
-                content: { parts: [{ text: brainQuery }] },
-                taskType: 'SEMANTIC_SIMILARITY', outputDimensionality: 768,
-              }),
-            },
-          )
-          const emb = embRes.ok
-            ? ((await embRes.json()) as { embedding?: { values?: number[] } })?.embedding?.values
-            : null
-          if (Array.isArray(emb) && emb.length === 768) {
-            const { data: notes } = await admin.rpc('brain_brief', { p_embedding: `[${emb.join(',')}]`, p_k: 24 })
-              .abortSignal(ctrl.signal)
-            const rows = Array.isArray(notes) ? notes as BrainNoteInline[] : []
-            brainNotesUsed = rows.length
-            brainBlock = renderNicheBrainInline(rows)
-            console.log(JSON.stringify({ event: 'niche_brain', notes: brainNotesUsed, rendered: brainBlock !== '' }))
-          }
-        } finally {
-          clearTimeout(brainTimer)
-        }
+      // ⚖️ THREE INDEPENDENT READS IN PARALLEL, EACH FAIL-OPEN: a failure or a
+      // timeout in one only drops that one section.
+      const notesP = (async (): Promise<BrainNoteInline[]> => {
+        if (!apiKey || !brainQuery) return []
+        const embRes = await fetch(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent',
+          {
+            method: 'POST', signal: ctrl.signal,
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+            body: JSON.stringify({
+              content: { parts: [{ text: brainQuery }] },
+              taskType: 'SEMANTIC_SIMILARITY', outputDimensionality: 768,
+            }),
+          },
+        )
+        const emb = embRes.ok
+          ? ((await embRes.json()) as { embedding?: { values?: number[] } })?.embedding?.values
+          : null
+        if (!Array.isArray(emb) || emb.length !== 768) return []
+        const { data } = await admin.rpc('brain_brief', { p_embedding: `[${emb.join(',')}]`, p_k: 24 })
+          .abortSignal(ctrl.signal)
+        return Array.isArray(data) ? data as BrainNoteInline[] : []
+      })().catch(() => [] as BrainNoteInline[])
+      const trendsP = (async (): Promise<BrainTrendInline[]> => {
+        const bucket = nicheBucketInline(niche)
+        if (bucket === null) return []
+        const { data } = await admin.rpc('brain_trends', { p_bucket: bucket, p_sub_niche: subNiche || null })
+          .abortSignal(ctrl.signal)
+        return Array.isArray(data) ? data as BrainTrendInline[] : []
+      })().catch(() => [] as BrainTrendInline[])
+      const recordP = (async (): Promise<TrackRecordInline | null> => {
+        const { data } = await admin.rpc('creator_track_record', { p_owner: ownerId, p_voice: voice?.id ?? null })
+          .abortSignal(ctrl.signal)
+        return data && typeof data === 'object' ? data as TrackRecordInline : null
+      })().catch(() => null)
+      try {
+        const [notes, trends, record] = await Promise.all([notesP, trendsP, recordP])
+        brainNotesUsed = notes.length
+        brainBlock = renderNicheBrainInline(notes) + renderTrendsInline(trends) + renderTrackRecordInline(record)
+        console.log(JSON.stringify({
+          event: 'niche_brain', notes: brainNotesUsed, trends: trends.length,
+          record: record !== null, rendered: brainBlock !== '',
+        }))
+      } catch {
+        brainBlock = ''
+      } finally {
+        clearTimeout(brainTimer)
       }
-    } catch {
-      brainBlock = ''
     }
     // Founder/B2B fix (panel): a founder's real voice lives in their TEXT (LinkedIn
     // posts, blog) more than a sparse video scan. If they pasted writing samples,
