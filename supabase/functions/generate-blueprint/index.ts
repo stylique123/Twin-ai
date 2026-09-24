@@ -6385,6 +6385,38 @@ function reserveAskedInline<T extends { source?: string | null }>(
 }
 // ── END ASKED RESERVATION ───────────────────────────────────────────────────
 
+// ── THE ROTATING OBJECTIVE QUESTION, INLINED ────────────────────────────────
+//
+// Mirror of the source_ref / id rules in
+// `packages/shared/src/objectiveQuestionPool.ts` — the edge cannot import
+// @twinai/shared. Pinned by `objectiveQuestionPool.test.ts`, which asserts the
+// prefix and both patterns appear here verbatim.
+const OBJECTIVE_SOURCE_REF_PREFIX_INLINE = 'asked:objective:'
+const OBJECTIVE_QUESTION_ID_PATTERN_INLINE = /^[a-z_]{2,40}\.[a-z_]{2,40}$/
+const OBJECTIVE_PRODUCT_KEY_PATTERN_INLINE = /^[A-Za-z0-9:_-]{1,80}$/
+
+function objectiveAnswerInline(answers: Record<string, unknown>): {
+  questionId: string; question: string; text: string; sourceRef: string
+} | null {
+  const id = typeof answers.objective_question_id === 'string' ? answers.objective_question_id.trim() : ''
+  if (!OBJECTIVE_QUESTION_ID_PATTERN_INLINE.test(id)) return null
+  const text = typeof answers.claims === 'string' ? answers.claims.trim().replace(/\s+/g, ' ').slice(0, 2000) : ''
+  if (text.length < 3) return null
+  const rawKey = typeof answers.objective_product_key === 'string' ? answers.objective_product_key.trim() : ''
+  const key = OBJECTIVE_PRODUCT_KEY_PATTERN_INLINE.test(rawKey) ? rawKey : 'none'
+  const question = typeof answers.objective_question === 'string'
+    ? answers.objective_question.trim().replace(/\s+/g, ' ').slice(0, 240) : ''
+  return { questionId: id, question, text, sourceRef: `${OBJECTIVE_SOURCE_REF_PREFIX_INLINE}${key}:${id}` }
+}
+
+function freshObjectiveAnswerLine(question: string, answer: string): string {
+  return '\n- FRESH MATERIAL FOR THIS VIDEO — the creator answered this just now, in their own words.'
+    + (question ? ` The question was: "${question}"` : '')
+    + '\n  Their answer: ' + answer
+    + '\n  This is new, creator-supplied material that no earlier video had. Build this video\'s central beat around it, and PREFER it over any older stored story, experience or example listed elsewhere in this prompt — do not fall back to a story already used in previous scripts when this answer can carry the beat. It has NOT been verified, so do not present it as independently checked, and a sentence here that promises a RESULT is still not an approved outcome claim.'
+}
+// ── END OBJECTIVE QUESTION ──────────────────────────────────────────────────
+
   // ⚠️ `voice_id` HAS BEEN ON EVERY ROW SINCE THE TABLE EXISTED — 1,949 of
   // 1,949 in production — AND THIS READ THREW IT AWAY. Owner-scoped, the top-40
   // ranking for a creator with more than one voice is drawn from all of them at
@@ -7414,6 +7446,46 @@ function reserveAskedInline<T extends { source?: string | null }>(
   if (readyPresent(answers.offer)) brief.offer = String(answers.offer).slice(0, 240)
   if (readyPresent(answers.relationship)) brief.promotes = String(answers.relationship).slice(0, 240)
   if (readyPresent(answers.claims)) brief.productFacts = String(answers.claims).slice(0, 2000)
+  // ── THE ROTATING OBJECTIVE QUESTION: STORED UNDER ITS ID ────────────────
+  //
+  // ⚠️ ONE FIXED QUESTION PER OBJECTIVE MEANT NOTHING NEW EVER ARRIVED, and one
+  // story was reused across nine scripts. The card now rotates through a pool
+  // (packages/shared/src/objectiveQuestionPool.ts) and sends the id of the
+  // question this answer is for. Stored as an `asked` row whose `source_ref`
+  // carries that id — the read the card rotates on — and fed to the writer
+  // below as FRESH material for THIS video.
+  const objectiveAnswer = objectiveAnswerInline(answers)
+  if (objectiveAnswer) {
+    const { error: objErr } = await admin.from('creator_knowledge').insert({
+      owner_id: ownerId,
+      voice_id: voice?.id ?? null,
+      kind: 'experience',
+      text: objectiveAnswer.text,
+      basis: 'stated',
+      source: 'asked',
+      confidence: 0.9,
+      times_seen: 1,
+      source_ref: objectiveAnswer.sourceRef,
+      question_id: objectiveAnswer.questionId,
+      last_observed_at: new Date().toISOString(),
+    })
+    // ⚖️ BEST EFFORT: a failed store costs rotation, never the script. A
+    // duplicate (the same sentence already held) is refreshed so rotation still
+    // sees this question as just answered.
+    if (objErr && /duplicate key|unique/i.test(String(objErr.message ?? ''))) {
+      await admin.from('creator_knowledge')
+        .update({ source_ref: objectiveAnswer.sourceRef, question_id: objectiveAnswer.questionId, last_observed_at: new Date().toISOString() })
+        .eq('owner_id', ownerId)
+        .eq('source', 'asked')
+        .ilike('text', objectiveAnswer.text.replace(/[%_\\]/g, (c) => `\\${c}`))
+    }
+    console.log(JSON.stringify({
+      event: 'objective_answer_stored',
+      question_id: objectiveAnswer.questionId,
+      ok: !objErr || /duplicate key|unique/i.test(String(objErr.message ?? '')),
+      error: objErr ? String(objErr.message ?? '') : null,
+    }))
+  }
   // ⚠️ THE ANSWER REACHED THE GATE AND NOTHING ELSE. `answers.cta` unblocked the
   // readiness check and was then dropped: not merged here, not persisted, never
   // in the prompt. A creator answered "What should viewers do after watching?"
@@ -8688,7 +8760,15 @@ function reserveAskedInline<T extends { source?: string | null }>(
     // lines building.
     const typedProductFacts = readyPresent(brief.productFacts)
       ? String(brief.productFacts).slice(0, 2000) : ''
-    if (typedProductFacts !== '') {
+    // ⚖️ AN ANSWER TO THIS VIDEO'S ROTATING OBJECTIVE QUESTION IS FRESH
+    // MATERIAL, NOT A PRODUCT FACT. It was asked precisely so this video has
+    // something no earlier one had — so it is labelled as new and preferred
+    // over the stored stories listed elsewhere in this prompt.
+    // Not merged into `brief`: `brief` is persisted to pre_script_brief, and
+    // this is a fact about THIS video only.
+    if (typedProductFacts !== '' && objectiveAnswer) {
+      claimLines.push(freshObjectiveAnswerLine(objectiveAnswer.question, typedProductFacts))
+    } else if (typedProductFacts !== '') {
       claimLines.push('\n- WHAT THE CREATOR TYPED ABOUT THIS PRODUCT, in their own words: '
         + typedProductFacts
         + '\n  These are the creator\'s own statement of what the thing IS — use them for its identity, format, price, sizes and who it is for, and prefer them to describing it vaguely. They have NOT been verified by anyone, so do not restate them as proven or independently checked.'

@@ -36,8 +36,10 @@ describe('one renderer, two columns', () => {
     // ⚖️ A second notion of "which block is this" is a field that can disagree
     // with the renderer. `isChip` already means "fixed-enum decision".
     // Re-pointed: the split now reads `visibleAsk` (askQuestions minus a picker hidden until the video is commercial, item 25).
-    expect(SRC).toMatch(/const decisions = visibleAsk\.filter\(isChip\)/)
-    expect(SRC).toMatch(/const commercial = visibleAsk\.filter\(\(q\) => !isChip\(q\)\)/)
+    // Re-pointed: the objective's question is now its own step, so outside that
+    // step `commercial` also excludes `claims` when the split applies.
+    expect(SRC).toMatch(/const decisions = onAnswerStep \? \[\] : visibleAsk\.filter\(isChip\)/)
+    expect(SRC).toMatch(/: visibleAsk\.filter\(\(q\) => !isChip\(q\) && !\(splitObjectiveStep && q\.field === 'claims'\)\)/)
   })
 })
 

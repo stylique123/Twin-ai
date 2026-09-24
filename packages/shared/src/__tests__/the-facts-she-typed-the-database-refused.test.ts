@@ -86,7 +86,9 @@ function loadTypedFactsRule(): (value: unknown) => string[] {
   const end = EDGE.indexOf('\n    }\n', start) + 7
   expect(end).toBeGreaterThan(start)
   const js = transformSync(
-    'function rule(brief, readyPresent) {\n  const claimLines = []\n'
+    // Re-pointed: the reader now also takes the rotating objective answer
+    // (null here = no pooled question, the original branch under test).
+    'function rule(brief, readyPresent, objectiveAnswer = null, freshObjectiveAnswerLine = null) {\n  const claimLines = []\n'
     + EDGE.slice(start, end) + '\n  return claimLines }',
     { loader: 'ts', format: 'cjs' },
   ).code

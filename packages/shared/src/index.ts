@@ -39,6 +39,7 @@ export * from './generationReadiness'
 // objective on the same screen — so the card recomputes it live from the chip
 // the creator just tapped. One definition, two moments.
 export * from './productObjectiveQuestion'
+export * from './objectiveQuestionPool'
 // The three per-video intent questions and their compilation. Exported here
 // because the create screen, the building screen and the readiness gate all need
 // the same enums, and a second copy is what this module exists to end.
