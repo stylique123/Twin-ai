@@ -29,14 +29,15 @@ async function knownSubNiches(bucketHint: string | null): Promise<string[]> {
 }
 
 /** File one note: merge into its twin, or insert and (maybe) link as related. */
-async function fileNote(n: NoteDraft, sourceId: string, views: number): Promise<string | null> {
+async function fileNote(n: NoteDraft, sourceId: string, views: number, owner: string | null = null): Promise<string | null> {
   const emb = await geminiEmbed(embedText(n))
   let target: string | null = null
   let relatedTo: string | null = null
 
   if (emb) {
-    const { data } = await db.rpc('brain_nearest', {
-      p_embedding: vec(emb), p_kind: n.kind, p_bucket: n.bucket, p_sub_niche: n.sub_niche, p_k: 3,
+    // ⚖️ OWNER-SCOPED: her private notes never merge into shared ones.
+    const { data } = await db.rpc('brain_nearest_scoped', {
+      p_embedding: vec(emb), p_kind: n.kind, p_bucket: n.bucket, p_sub_niche: n.sub_niche, p_owner: owner, p_k: 3,
     })
     const p = place(Array.isArray(data) ? data : [])
     if (p.action === 'merge') target = p.into
@@ -47,6 +48,7 @@ async function fileNote(n: NoteDraft, sourceId: string, views: number): Promise<
     let q = db.from('brain_notes').select('id').eq('kind', n.kind).eq('key', n.key)
     q = n.bucket === null ? q.is('bucket', null) : q.eq('bucket', n.bucket)
     q = n.sub_niche === null ? q.is('sub_niche', null) : q.eq('sub_niche', n.sub_niche)
+    q = owner === null ? q.is('owner_id', null) : q.eq('owner_id', owner)
     const { data } = await q.maybeSingle()
     if (data?.id) target = data.id as string
   }
@@ -64,7 +66,7 @@ async function fileNote(n: NoteDraft, sourceId: string, views: number): Promise<
   }
 
   const { data: ins, error } = await db.from('brain_notes').insert({
-    ...n, embedding: vec(emb), total_views: views, sources: [sourceId],
+    ...n, owner_id: owner, embedding: vec(emb), total_views: views, sources: [sourceId],
   }).select('id').single()
   if (error || !ins) return null
   if (relatedTo) {
@@ -88,12 +90,12 @@ async function link(from: string, to: string, relation: string): Promise<void> {
 }
 
 /** File every note a read produced and link them to its topic. */
-export async function fileRead(read: CorpusRead, sourceId: string, views: number): Promise<number> {
+export async function fileRead(read: CorpusRead, sourceId: string, views: number, owner: string | null = null): Promise<number> {
   const notes = notesFromRead(read)
   let topicId: string | null = null
   let filed = 0
   for (const n of notes) {
-    const id = await fileNote(n, sourceId, views)
+    const id = await fileNote(n, sourceId, views, owner)
     if (!id) continue
     filed += 1
     if (n.kind === 'topic') { topicId = id; continue }
@@ -122,7 +124,11 @@ export function kickBrainSweep(log: Log): void {
   if (inFlight || now - last < BRAIN_SWEEP_INTERVAL_MS) return
   last = now
   inFlight = true
-  void runBrainSweep(log).catch((err) => {
+  void (async () => {
+    await runBrainSweep(log)
+    await runOwnPostSweep(log)
+    await runLearner(log)
+  })().catch((err) => {
     log('error', 'brain_sweep_threw', { error: err instanceof Error ? err.message : String(err) })
   }).finally(() => { inFlight = false })
 }
@@ -164,4 +170,59 @@ export async function runBrainSweep(log: Log): Promise<void> {
     notes += await fileRead(r as CorpusRead, card.id, views)
   }
   log('info', 'brain_sweep', { event: 'brain_sweep', batch: todo.length, read, unreadable, failed, notes, model })
+}
+
+// ── HER LOOP: her own posts, read by the same reader, filed as PRIVATE notes ──
+// ⚖️ Best-performing first (brain_unread_own orders by plays), so the notes that
+// matter most exist soonest. Plays ride along as the note's views, so her own
+// winners outrank her own misses inside her private lane.
+export const OWN_SWEEP_BATCH = 10
+
+export async function runOwnPostSweep(log: Log): Promise<void> {
+  const { data, error } = await db.rpc('brain_unread_own', { p_version: CORPUS_READ_VERSION, p_limit: OWN_SWEEP_BATCH })
+  if (error) { log('error', 'own_sweep_read_failed', { error: error.message }); return }
+  const posts = (Array.isArray(data) ? data : []) as Array<{
+    id: string; owner_id: string; caption: string | null; plays: number | null; platform: string | null
+    niche: string | null; sub_niche: string | null
+  }>
+  if (posts.length === 0) return
+  const model = modelForTask('read')
+  let read = 0, unreadable = 0, failed = 0, notes = 0
+  for (const p of posts) {
+    const card: CorpusCard = {
+      id: p.id, title: p.caption, platform: p.platform,
+      niche: [p.niche, p.sub_niche].filter(Boolean).join(' / ') || null,
+      reach: p.plays != null ? `${p.plays} views` : null,
+    }
+    const { read: r, failure } = await readOne(card, model)
+    const status = failure ? 'failed' : r?.readable ? 'read' : 'unreadable'
+    if (status === 'failed') {
+      failed += 1
+      if (failure && /quota|429|API key|GEMINI_API_KEY/i.test(failure)) {
+        log('error', 'own_sweep_stopped', { error: failure })
+        break
+      }
+    }
+    await db.from('own_post_reads').upsert({
+      scraped_post_id: p.id, owner_id: p.owner_id, version: CORPUS_READ_VERSION, status,
+      topic: r?.topic ?? null, hook_type: r?.hook_type ?? null, hook_pattern: r?.hook_pattern ?? null,
+      mode: r?.mode ?? null, goal: r?.goal ?? null, why_it_works: r?.why_it_works ?? null,
+      plays: p.plays, failure, read_at: new Date().toISOString(),
+    }, { onConflict: 'scraped_post_id' })
+    if (status !== 'read' || !r) { if (status === 'unreadable') unreadable += 1; continue }
+    read += 1
+    notes += await fileRead(r, p.id, Number(p.plays ?? 0), p.owner_id)
+  }
+  log('info', 'own_sweep', { event: 'own_sweep', batch: posts.length, read, unreadable, failed, notes, model })
+}
+
+// ── SCRIPT LOOP: credit notes whose scripts were filmed, posted and viewed ──
+export const LEARN_INTERVAL_MS = 30 * 60 * 1000
+let lastLearn = 0
+export async function runLearner(log: Log): Promise<void> {
+  if (Date.now() - lastLearn < LEARN_INTERVAL_MS) return
+  lastLearn = Date.now()
+  const { data, error } = await db.rpc('brain_learn')
+  if (error) { log('error', 'brain_learn_failed', { error: error.message }); return }
+  log('info', 'brain_learn', { event: 'brain_learn', notes_updated: Number(data ?? 0) })
 }

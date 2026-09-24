@@ -1973,6 +1973,7 @@ function creatorSetsInline(
 // ⚠️ EVIDENCE, NOT SCRIPT: the model is told never to copy wording and never to
 // present another creator's result as this creator's own experience.
 interface BrainNoteInline {
+  id?: string; is_hers?: boolean
   kind: string; title: string; body: string | null; sub_niche: string | null
   times_seen: number; total_views: number | string; similarity: number
 }
@@ -1998,7 +1999,7 @@ function renderNicheBrainInline(rows: readonly BrainNoteInline[]): string {
     if (picked.length === 0) continue
     lines.push(`${label}:`)
     for (const r of picked) {
-      const seen = r.times_seen > 1 ? `seen in ${r.times_seen} videos` : 'seen once'
+      const seen = r.is_hers ? 'from HER OWN posts' : r.times_seen > 1 ? `seen in ${r.times_seen} videos` : 'seen once'
       const views = brainViewsInline(r.total_views)
       lines.push(`  - ${r.title.slice(0, 220)} (${[seen, views].filter(Boolean).join(', ')})`)
     }
@@ -2016,6 +2017,7 @@ interface TrackRecordInline {
   median_plays?: number | null
   recent_scripts?: Array<{ premise?: string; was_filmed?: boolean | null; was_published?: boolean | null; views_7d?: number | null }>
   posted?: Array<{ caption?: string; views?: number | null }>
+  edits?: Array<{ before_text?: string; after_text?: string }>
 }
 function renderTrendsInline(rows: readonly BrainTrendInline[]): string {
   // ⚠️ ONLY HER LANE. Corpus-wide "moments" measured 2026-09-24 were the
@@ -2053,6 +2055,11 @@ function renderTrackRecordInline(r: TrackRecordInline | null): string {
   if (posted.length) {
     lines.push('Posted through Twin:')
     for (const p of posted) lines.push(`  - ${cap(p.caption)}${p.views != null ? ` (${p.views} views)` : ''}`)
+  }
+  const edits = (r.edits ?? []).filter((e) => e && e.after_text).slice(0, 4)
+  if (edits.length) {
+    lines.push('Lines she rewrote in earlier Twin scripts — write the way her AFTER versions sound:')
+    for (const e of edits) lines.push(`  - "${cap(e.before_text, 120)}" → "${cap(e.after_text, 120)}"`)
   }
   if (lines.length === 0) return ''
   const body = lines.join('\n').split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
@@ -8006,6 +8013,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // and the script is written exactly as it was before this block existed.
     let brainBlock = ''
     let brainNotesUsed = 0
+    let brainNoteIds: string[] = []
     {
       const ctrl = new AbortController()
       const brainTimer = setTimeout(() => ctrl.abort(), 2500)
@@ -8030,7 +8038,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
           ? ((await embRes.json()) as { embedding?: { values?: number[] } })?.embedding?.values
           : null
         if (!Array.isArray(emb) || emb.length !== 768) return []
-        const { data } = await admin.rpc('brain_brief', { p_embedding: `[${emb.join(',')}]`, p_k: 24 })
+        const { data } = await admin.rpc('brain_brief_scoped', { p_embedding: `[${emb.join(',')}]`, p_owner: ownerId, p_k: 24 })
           .abortSignal(ctrl.signal)
         return Array.isArray(data) ? data as BrainNoteInline[] : []
       })().catch(() => [] as BrainNoteInline[])
@@ -8042,13 +8050,18 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         return Array.isArray(data) ? data as BrainTrendInline[] : []
       })().catch(() => [] as BrainTrendInline[])
       const recordP = (async (): Promise<TrackRecordInline | null> => {
-        const { data } = await admin.rpc('creator_track_record', { p_owner: ownerId, p_voice: voice?.id ?? null })
-          .abortSignal(ctrl.signal)
-        return data && typeof data === 'object' ? data as TrackRecordInline : null
+        const [rec, edits] = await Promise.all([
+          admin.rpc('creator_track_record', { p_owner: ownerId, p_voice: voice?.id ?? null }).abortSignal(ctrl.signal),
+          admin.rpc('creator_recent_edits', { p_owner: ownerId }).abortSignal(ctrl.signal),
+        ])
+        const data = rec.data
+        if (!data || typeof data !== 'object') return null
+        return { ...(data as TrackRecordInline), edits: Array.isArray(edits.data) ? edits.data : [] }
       })().catch(() => null)
       try {
         const [notes, trends, record] = await Promise.all([notesP, trendsP, recordP])
         brainNotesUsed = notes.length
+        brainNoteIds = notes.map((n) => n.id).filter((id): id is string => typeof id === 'string')
         brainBlock = renderNicheBrainInline(notes) + renderTrendsInline(trends) + renderTrackRecordInline(record)
         console.log(JSON.stringify({
           event: 'niche_brain', notes: brainNotesUsed, trends: trends.length,
@@ -10325,6 +10338,14 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // the generation row below has to be able to name the same run.
     const scriptRunId = crypto.randomUUID()
     runIdForFailure = scriptRunId
+    // ⚖️ THE SCRIPT LOOP'S LEDGER: which brain notes reached this script, so
+    // brain_learn() can credit them when it is filmed, posted and viewed.
+    // Fire-and-forget; a failed insert costs learning, never the script.
+    if (brainNoteIds.length > 0) {
+      void admin.from('brain_note_uses')
+        .insert(brainNoteIds.map((note_id) => ({ run_id: scriptRunId, note_id, owner_id: ownerId })))
+        .then(() => {}, () => {})
+    }
     const raw = await callModel(apiKey, SYSTEM, userPrompt, blueprintSchema,
       attemptRecorder(admin, ownerId, scriptRunId))
 
