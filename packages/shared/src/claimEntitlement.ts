@@ -93,9 +93,15 @@ function repairFor(strength: ClaimStrength, available: EvidenceLevel | null): st
   }
   if (strength === 'history') {
     return available === 'opinion'
+      // ⚠️ THIS USED TO SUPPLY THE PHRASE ("I still think…"), and the repair
+      // model used it verbatim: generation 81cfb5ba (goal: leads) shipped it
+      // three times as rebuttals to objections nobody raised, one of them
+      // contradicting the script's own Tension beat. See goalFidelity.ts.
       ? 'Rewrite WITHOUT any personal history. The creator is on record holding a view'
-        + ' about this, so state the view ("I still think…") — never an action they took,'
-        + ' owned, bought, tried or stopped.'
+        + ' about this, so state the view plainly as a statement of what they believe — never an action they took,'
+        + ' owned, bought, tried or stopped. Do NOT frame it as a rebuttal (no "I still think",'
+        + ' "some people say", "you might think"): no objection was raised, and the view must'
+        + ' agree with every other beat of the script.'
       : 'Rewrite WITHOUT any first-person claim. Only the subject is on record, not the'
         + ' creator\'s experience of it. Say what is true of the thing, not what they did with it.'
   }

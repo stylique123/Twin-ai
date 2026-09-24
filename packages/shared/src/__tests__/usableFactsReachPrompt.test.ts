@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { factReachesWriter } from '../script/goalFidelity'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
 const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
@@ -36,9 +37,16 @@ describe('the prompt sees usable facts and nothing else', () => {
     }
   })
 
-  it('filters on the STORED trust, and only on `usable`', () => {
+  it('filters on the STORED trust, and only on `usable` (a promotion or price: only `user_confirmed`)', () => {
+    // ⚖️ STILL THE STORED GRADE, NOW THROUGH ONE GATE. `factReachesWriter`
+    // (goalFidelity.ts) admits `usable` facts — plus `user_confirmed` — and holds
+    // a PROMOTION to the price rule: "BUY 3 GET 1 FREE" (needs_confirmation, her
+    // shop front page) reached a script before it existed (ae4031ba).
     const block = EDGE.slice(EDGE.indexOf('const usableProductFacts'))
-    expect(block.slice(0, block.indexOf('.map('))).toMatch(/trust\?: unknown \}\)\?\.trust === 'usable'/)
+    expect(block.slice(0, block.indexOf('.map('))).toMatch(/factReachesWriter\(f as \{ field\?: unknown; value\?: unknown; trust\?: unknown \}\)/)
+    expect(factReachesWriter({ field: 'feature', value: 'Reversible', trust: 'usable' })).toBe(true)
+    expect(factReachesWriter({ field: 'feature', value: 'Reversible', trust: 'needs_confirmation' })).toBe(false)
+    expect(factReachesWriter({ field: 'feature', value: 'BUY 3 GET 1 FREE', trust: 'usable' })).toBe(false)
   })
 
   it('does NOT re-derive trust in the edge', () => {

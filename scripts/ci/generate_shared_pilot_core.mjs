@@ -116,6 +116,9 @@ const SOURCES = [
   // integrity pass — generated, not retyped, for the reason at the top.
   ['packages/shared/src/script/storyRotation.ts', 'supabase/functions/_shared/storyRotation.ts'],
   ['packages/shared/src/script/scriptIntegrity.ts', 'supabase/functions/_shared/scriptIntegrity.ts'],
+  // Goal fidelity: rebuttal framing, promotion gating, CTA-per-goal, shot-list
+  // claim diff. Generated for the same reason as scriptIntegrity just above.
+  ['packages/shared/src/script/goalFidelity.ts', 'supabase/functions/_shared/goalFidelity.ts'],
   // ⚠️⚠️ THE CAPTION CLASSIFIER, GENERATED INTO THE WORKER, AND THE REASON IS A
   // CORPUS THAT STOPPED GROWING. `caption_shape` had exactly ONE writer —
   // `scripts/backfill-caption-shapes.ts`, a manual script an operator runs by

@@ -45,6 +45,11 @@ import { verbatimBudget, referenceShapeDigest, renderShapeDigest, REFERENCE_EXPO
 import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText } from '../_shared/shotListSync.ts'
+import {
+  rebuttalPromptRule, repairRebuttalFraming, ctaGoalPromptRule, repairCtaForGoal,
+  factReachesWriter, removeUnbackedPromotions, confirmedPromotionText,
+  shotListClaimDiff, isUnconfirmedInferredProduct, UNCONFIRMED_PRODUCT_MARK,
+} from '../_shared/goalFidelity.ts'
 import { syncRetentionMapToScript } from '../_shared/retentionMapSync.ts'
 import { syncWhyItWorksToScript } from '../_shared/whyItWorksSync.ts'
 import { hooksWithoutASubject } from '../_shared/hookSubject.ts'
@@ -4807,7 +4812,7 @@ function repairFor(strength: ClaimStrength, available: string | null): string {
   }
   if (strength === 'history') {
     return available === 'opinion'
-      ? 'Rewrite WITHOUT any personal history. The creator is on record holding a view about this, so state the view ("I still think…") — never an action they took, owned, bought, tried or stopped.'
+      ? 'Rewrite WITHOUT any personal history. The creator is on record holding a view about this, so state the view plainly as a statement of what they believe — never an action they took, owned, bought, tried or stopped. Do NOT frame it as a rebuttal (no "I still think", "some people say", "you might think"): no objection was raised, and the view must agree with every other beat of the script.'
       : 'Rewrite WITHOUT any first-person claim. Only the subject is on record, not the creator\'s experience of it. Say what is true of the thing, not what they did with it.'
   }
   return 'Rewrite WITHOUT stating this as the creator\'s own position. It is a subject they have covered, not a view they are on record holding. Attribute it, or state it neutrally.'
@@ -6880,7 +6885,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // The gate. An entity nobody chose contributes nothing the writer can say.
     if (!nameableEntityIds.has(id)) continue
     const facts = (Array.isArray(e.knowledge) ? e.knowledge : [])
-      .filter((f) => (f as { trust?: unknown })?.trust === 'usable')
+      .filter((f) => factReachesWriter(f as { field?: unknown; value?: unknown; trust?: unknown }))
       .map((f) => {
         const k = f as { field?: unknown; value?: unknown }
         const value = String(k.value ?? '').trim()
@@ -7327,7 +7332,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     if (!e) return undefined
     for (const f of Array.isArray(e.knowledge) ? e.knowledge : []) {
       const x = f as { field?: unknown; value?: unknown; trust?: unknown } | null
-      if (x && x.field === 'cta' && x.trust === 'usable' && String(x.value ?? '').trim() !== '') return String(x.value).trim()
+      if (x && x.field === 'cta' && factReachesWriter(x) && String(x.value ?? '').trim() !== '') return String(x.value).trim()
     }
     const o = typeof e.offer === 'string' ? e.offer.trim() : ''
     return o === '' ? undefined : o
@@ -7780,6 +7785,15 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
 
     const audience = brief.audience ?? vp?.audience ?? dna.audience ?? 'unspecified'
     const offer = brief.offer ?? vp?.offer ?? dna.product ?? 'unspecified'
+    // The offer a CTA may name: the chosen product (or brand) first, then a
+    // typed offer. Never the 'unspecified' sentinel.
+    const ctaOfferName = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim()
+      || String((chosenBrand as { name?: unknown } | null)?.name ?? '').trim()
+      || (typeof offer === 'string' && offer !== 'unspecified' && offer.length <= 48 ? offer : '')
+    // A price may be spoken only when she confirmed one.
+    const ctaConfirmedPrice = String(placedEntityFacts.product
+      .find((f) => f.field === 'price' && f.trust === 'user_confirmed')?.value ?? '').trim()
+    const ctaPriceConfirmed = ctaConfirmedPrice !== ''
     const pain = vp?.audience_pain ?? dna.pain ?? ''
     const dream = vp?.dream_outcome ?? dna.dream ?? ''
 
@@ -8279,6 +8293,12 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // difference no reader could explain.
     const nowMsForFreshness = Date.now()
     const coveredRows = kRows.filter((k) => k.kind === 'covered')
+    // Names she confirmed: her library and her brand. Anything a scan inferred
+    // that matches none of these is not an established product name.
+    const confirmedProductNames: string[] = [
+      ...csEntities.map((e) => e.name),
+      String((confirmedBrand as { name?: unknown } | null)?.name ?? ''),
+    ].filter((n) => n.trim() !== '')
     const knowledgeParts: string[] = []
     if (speakable.length) {
       knowledgeParts.push('\nWHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID — real substance, not style. Build the video out of THIS. These are their own positions and examples, so you may put them in their mouth; anything you add that is not here is yours, and they did not say it.\n'
@@ -8320,7 +8340,15 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
           const misconception = String((k as { source_ref?: unknown }).source_ref ?? '') === 'asked:keeps_explaining'
             ? ' [what she keeps having to explain — a ready "most people think X, actually Y" hook]'
             : ''
-          const mark = (vouched ? ' [she confirmed this herself]' : '') + misconception
+          // ⚠️ ITEM 2: A PRODUCT THE SCAN INFERRED FROM HER CAPTIONS IS NOT A
+          // PRODUCT LINE SHE CONFIRMED. "Autumn Collection scrunchie bandanas"
+          // (row f26eb603, source 'caption') reached two scripts as an
+          // established line. Marked unless it matches her library or brand.
+          const inferredProduct = isUnconfirmedInferredProduct(
+            k as { kind?: unknown; source?: unknown; text?: unknown; creator_confirmed_at?: unknown },
+            confirmedProductNames,
+          ) ? UNCONFIRMED_PRODUCT_MARK : ''
+          const mark = (vouched ? ' [she confirmed this herself]' : '') + misconception + inferredProduct
           return `  * (${k.kind}) ${tag}${k.text}${mark}${ev ? `\n      HER WORDS: "${ev}"` : ''}`
         }).join('\n'))
     }
@@ -8497,10 +8525,17 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // it no longer does is write a sentence over the top of theirs.
     const typedCta = readyPresent(brief.defaultCta) ? String(brief.defaultCta).slice(0, 240) : ''
     const ctaWordingLine = typedCta
-      ? `\n- THE CREATOR'S OWN CALL TO ACTION: "${typedCta}". Use their wording for the closing ask unless this video may not carry a commercial ask at all, in which case ask for engagement instead. Do NOT paraphrase it into something smoother — it is theirs.`
+      ? `\n- THE CREATOR'S OWN CALL TO ACTION: "${typedCta}". Use their wording for the closing ask unless this video may not carry a commercial ask at all, in which case ask for engagement instead. Do NOT paraphrase it into something smoother — it is theirs. If it does not fit this video's goal (a buy ask on a leads video, or no product on a sell video), the goal's CTA rule wins.`
       : ''
-    const ctaIntentLine = sellIntent
-      ? '\n- CTA INTENT: this creator\'s goal is commercial and they have a commercial tie to what is being promoted, so a purchase or signup CTA is appropriate here.'
+    // ⚠️ ITEM 4: SELL AND GET-LEADS USED TO SHARE THIS ONE LINE ("a purchase or
+    // signup CTA is appropriate"), and shipped the same ending (d0efa4b4/8ce1290d
+    // sell, 81cfb5ba leads: "Try one on your dog and tag us in the photo"). CTO
+    // decision: keep both, differentiate structurally — leads is a
+    // direct-contact ask and never a buy.
+    const ctaIntentLine = sellIntent && intent.goal === 'leads'
+      ? '\n- CTA INTENT: GET LEADS. The call to action is a DIRECT-CONTACT ask — DM me, send me a message, comment a keyword, book a call, or the link to enquire. NEVER a buy, shop or order CTA.'
+      : sellIntent
+      ? '\n- CTA INTENT: this creator\'s goal is commercial and they have a commercial tie to what is being promoted, so a purchase CTA that names the product is appropriate here.'
       : commercialCta === 'forbidden' && goalWantsSale
         ? '\n- CTA INTENT: NO COMMERCIAL CTA. The creator has no commercial tie to this thing — they do not own it, earn from it, and are not paid to feature it — so there is nothing here they may ask the viewer to buy or sign up for, whatever the stated goal. The call to action is engagement: follow, save, share, or a question worth answering.'
         : '\n- CTA INTENT: NOT a selling video. Do NOT write a purchase, signup, pre-order, "link in bio to buy", merch or course CTA — even if the creator owns something and even if the reference ends on one. The call to action is engagement: follow, save, share, or a question worth answering.'
@@ -8688,7 +8723,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // exactly as it did before.
     const MIN_GRADED_FACTS_TO_STAND_ALONE = 3
     const usableProductFacts = knowledge
-      .filter((f) => (f as { trust?: unknown })?.trust === 'usable')
+      .filter((f) => factReachesWriter(f as { field?: unknown; value?: unknown; trust?: unknown }))
       .map((f) => {
         const r = f as { field?: unknown; value?: unknown }
         const value = String(r.value ?? '').trim()
@@ -8715,8 +8750,13 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         + (confirmedBrand.description ? `  * about: ${confirmedBrand.description}\n` : '')
         + '  Use this to say who makes it. Never present it as what this product is or does.')
     }
+    // ⚠️ ITEM 3(c): BRAND FACTS RESPECT TRUST. This used to pass every `claim`
+    // regardless of trust, so a `needs_confirmation` homepage line reached the
+    // writer as a brand fact. And a PROMOTION ("BUY 3 GET 1 FREE" on her shop
+    // front page) is gated like price: `factReachesWriter` admits it only when
+    // `user_confirmed` — here and in the product and entity blocks.
     const brandFactLines = confirmedBrand ? [] : placedEntityFacts.brand
-      .filter((f) => f.trust === 'usable' || f.field === 'claim')
+      .filter((f) => factReachesWriter(f))
       .map((f) => `  * ${f.field}: ${String(f.value).trim()}`)
       .slice(0, 8)
     if (brandFactLines.length > 0) {
@@ -10063,6 +10103,14 @@ ${fenced('claims this creator may NOT make', forbidden)}
     const availableBeats = countedSomething ? substanceBudgetComputed.beats : null
     const durationBrief_ = durationBriefInline(body.target_seconds, null, availableBeats)
     const durationBriefLine = durationBrief_ === '' ? '' : `${durationBrief_}\n`
+    // ⚠️ ITEMS 1 AND 4: THE GOAL'S STRUCTURE, STATED TO THE WRITER — and checked
+    // after generation by the same module (`goalFidelity.ts`), so the prompt and
+    // the repair cannot disagree about what a leads or a sell CTA is.
+    const goalRules = [
+      rebuttalPromptRule(intent.goal, intent.focus),
+      ctaGoalPromptRule(intent.goal, ctaOfferName, ctaPriceConfirmed),
+    ].filter((r) => r !== '')
+    const goalRulesLine = goalRules.length ? `${goalRules.map((r) => `- ${r}`).join('\n')}\n` : ''
     const positionBlock = position
       ? `${fenced('what THIS video is (composed from the creator\'s own answers)', position)}
 This is the video's position. Every field below must serve it. If the reference's mechanism pulls away from it, adapt the mechanism and keep the position.
@@ -10100,7 +10148,7 @@ ${positionBlock}${referenceBlock}${historyBlock ? `
 ${fenced("this creator's existing catalogue", historyBlock)}` : ''}
 ${claimsBlock}
 Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
-${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each one should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds, not a guess after the fact, and beats should differ in length when their jobs differ. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
+${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each one should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds, not a guess after the fact, and beats should differ in length when their jobs differ. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
 - beat_plan[].proof is WHAT THE CAMERA SEES, and it was measured returning the wrong thing on 186 of 192 real beats. It is NOT where the substance came from and NOT what the beat achieves — those are the substance and beat fields, and repeating either here wastes the only field that tells the creator what to physically put in frame. NEVER write "creator_knowledge", "creator_experience", "general", "Creator's experience with X", "Establishes the problem" or "Sets up the framework": the first three are another field's enum, the fourth names a SOURCE, the fifth restates the PURPOSE. Write the thing a person holds, points at, or shows: "The phone in hand, showing the wonky line", "The receipt on the desk", "The dashboard on your laptop, camera over your shoulder, pointing at the graph", "The scar on your left hand". If a beat is you talking straight to camera with nothing to show, write exactly "Straight to camera" — that is a real answer and it is short. NEVER ask for a screen recording, a screen capture, or footage the creator would have to record separately and edit in: everything you name must be something they can do ON CAMERA, in the take, with the thing in their hands. A screen belongs INSIDE the shot — a phone held up beside the face, a laptop turned around — never as a separate recording.
 - visual_hook: what the viewer SEES in the first second, and why it interrupts a scroll. Something that changes on screen, not a description of the spoken line. Achievable with a phone and whatever is already in the creator's room.
 - concept: FIRST nail the actual video premise by adapting ONE of the creator's real video FORMATS (listed in CREATOR DNA) to the reference's winning mechanism, then translate the reference's production down to what one person with a phone can shoot (never assume a team, budget or gear they lack).
@@ -10209,6 +10257,8 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // proposed that a later repair or ask dropped — and were blanked rather
     // than left quoting a line the teleprompter no longer says.
     let shotListResync: { resynced: number; orphaned: number } | null = null
+    let goalFidelity: Record<string, unknown> | null = null
+    let shotListClaimDrift: number | null = null
     // ⚠️ FIX 5 (Wave 2). NULL MEANS THE GENERATION CARRIED NO RETENTION MAP TO
     // RECONCILE — never zero. `matched` is how many output rows landed on a
     // beat whose NAME the model's original retention_map still used (that
@@ -11063,7 +11113,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       // empty store, and those are correct output, never a gap.
       particular_floor_gaps: particularFailuresInline(declared, suppliedForCheck).length,
       comparative_claim_gaps: comparativeFailures(
-        declared, goal === 'sell' || ownedEntity !== null, productFactCountOf(ownedEntity)).length,
+        declared, intent.goal === 'sell' || ownedEntity !== null, productFactCountOf(ownedEntity)).length,
       proof_quality: proofQualityCounts(
         (templated.bp as { beat_plan?: unknown })?.beat_plan),
       // ⚠️ THE SHOT THE CREATOR CANNOT SUPPLY. Twin stopped directing screen
@@ -11240,7 +11290,9 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
     // have are the stated goal and an owned product entity. N1 carried a
     // commercial goal with an EMPTY offer field, which is exactly the shape
     // that must still count.
-    const isCommercial = goal === 'sell' || ownedEntity !== null
+    // ⚠️ `goal` HERE IS THE DIRECTIVE PARAGRAPH (`intent.goalDirective`), so
+    // `goal === 'sell'` was never true; the chosen goal id is `intent.goal`.
+    const isCommercial = intent.goal === 'sell' || ownedEntity !== null
     // ⚠️ MERGED INTO THE SAME LIST SO IT GETS THE SAME TREATMENT: one repair
     // call, a re-check, and — for anything that survives — the existing "never
     // spoken as written" path below. A second parallel mechanism would be a
@@ -11271,7 +11323,18 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       try {
         const repairPrompt = 'These script beats claim more about the creator than the evidence supports.'
           + ' Rewrite ONLY the lines listed. Keep each line the same length, purpose and position in the'
-          + ' video. Do not add new facts. Return JSON: {"rewrites":[{"index":<number>,"line":"<new line>"}]}\n\n'
+          + ' video. Do not add new facts. Return JSON: {"rewrites":[{"index":<number>,"line":"<new line>"}]}\n'
+          // ⚠️ THE WHOLE SCRIPT, READ-ONLY. Each line used to be rewritten with no
+          // view of the others, and generation 81cfb5ba's rewritten Hook ("I still
+          // think keeping a strict turnaround rule makes sense") contradicted its
+          // own untouched Tension beat ("rules take a back seat"). A rewrite must
+          // agree with the beats around it.
+          + 'Every rewrite must agree with the rest of the script below: never assert the opposite of another beat, and never frame a line as a rebuttal to an objection the script does not raise.\n'
+          + (rebuttalPromptRule(intent.goal, intent.focus) ? `${rebuttalPromptRule(intent.goal, intent.focus)}\n` : '')
+          + '\nFULL SCRIPT (context only — rewrite only the indexed lines):\n'
+          + (Array.isArray(declared) ? declared as Array<{ section?: unknown; line?: unknown }> : [])
+            .map((b, i) => `[${i}] ${String(b?.section ?? '')}: ${String(b?.line ?? '')}`).join('\n')
+          + '\n\nLINES TO REWRITE:\n\n'
           + entFails.map((f) => `index ${f.index}\nLINE: ${f.line}\nREQUIRED FIX: ${f.repair}`).join('\n\n')
         // ⚖️ `callModel`, not `callOnce`: the repair inherits the same attempt
         // ladder, timeout and model pin as the draft. A repair on a different
@@ -11547,6 +11610,77 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       capsRuns = runs
       if (runs > 0) console.warn(JSON.stringify({ event: 'caps_emphasis_moved', runs }))
     } catch { /* never fail a generation on an emphasis split */ }
+
+    // ── GOAL FIDELITY: NO UNRAISED REBUTTALS, NO UNCONFIRMED PROMOTIONS, AND A
+    // CTA THAT DOES WHAT THE GOAL SAYS ─────────────────────────────────────────
+    //
+    // ⚠️ THREE REPORTED DEFECTS, MEASURED ON REAL GENERATIONS (goalFidelity.ts):
+    //   - 81cfb5ba (leads): "I still think…" ×3, rebutting objections nobody raised;
+    //   - ae4031ba (sell): "take advantage of our buy 3 get 1 free offer", a
+    //     front-page promotion stored `needs_confirmation`;
+    //   - sell and leads runs closing on the SAME non-CTA ("tag us in the photo").
+    // ⚖️ DETERMINISTIC, AFTER EVERY MODEL REPAIR ABOVE and before the integrity
+    // pass and the shot-list derivation below, so both read the repaired lines.
+    // It only removes framing, removes an unbacked promotion clause, or replaces
+    // a mismatched CTA with a fixed line naming only the offer.
+    try {
+      if (Array.isArray(declared)) {
+        const beatsNow = declared as Array<{ line?: unknown; section?: unknown }>
+        const reb = repairRebuttalFraming(beatsNow, intent.goal, intent.focus)
+        // What she confirmed: text she typed, and facts she marked confirmed.
+        const libraryConfirmedPromos = (libraryRows ?? []).map((r) => confirmedPromotionText(
+          Array.isArray((r as { knowledge?: unknown }).knowledge)
+            ? (r as { knowledge: Array<{ field?: unknown; value?: unknown; trust?: unknown }> }).knowledge : [],
+        ))
+        const confirmedPromoText = [
+          String(brief.defaultCta ?? ''),
+          String(brief.productFacts ?? ''),
+          String(brief.offer ?? ''),
+          String(answers.cta ?? ''),
+          String(answers.claims ?? ''),
+          String((ownedEntity as { offer?: unknown } | null)?.offer ?? ''),
+          String((ownedEntity as { creator_summary?: unknown } | null)?.creator_summary ?? ''),
+          String((confirmedBrand as { description?: unknown } | null)?.description ?? ''),
+          ...libraryConfirmedPromos,
+        ].join('\n')
+        const promo = removeUnbackedPromotions(reb.beats, confirmedPromoText)
+        const last = promo.beats.length - 1
+        const afterPromo = promo.beats.map((b, i) => (promo.emptied.includes(i) && i === last
+          ? { ...b, line: fallbackCta(intent.goal, ctaOfferName || null) }
+          : b))
+        const cta = repairCtaForGoal(afterPromo, intent.goal, ctaOfferName, ctaConfirmedPrice)
+        cta.beats.forEach((b, i) => {
+          if (beatsNow[i] && beatsNow[i]!.line !== b.line) beatsNow[i]!.line = b.line
+        })
+        goalFidelity = {
+          rebuttals_stripped: reb.stripped,
+          rebuttals_unrepaired: reb.unrepaired.length,
+          promotions_removed: promo.removed.length,
+          cta_before: cta.before,
+          cta_replaced: cta.replaced,
+        }
+        if (reb.stripped || reb.unrepaired.length) {
+          console.warn(JSON.stringify({
+            event: 'rebuttal_framing_stripped', goal: intent.goal, focus: intent.focus,
+            stripped: reb.stripped, beats: reb.beatsTouched, unrepaired: reb.unrepaired.length,
+          }))
+        }
+        if (promo.removed.length) {
+          console.warn(JSON.stringify({
+            event: 'unconfirmed_promotion_removed', removed: promo.removed, beats: promo.beatsTouched,
+            emptied: promo.emptied.length,
+          }))
+        }
+        if (cta.replaced || (cta.before !== 'fits' && cta.before !== 'not_checked')) {
+          console.warn(JSON.stringify({
+            event: 'cta_goal_mismatch_repaired', goal: intent.goal, before: cta.before,
+            replaced: cta.replaced, index: cta.index,
+          }))
+        }
+      }
+    } catch (e) {
+      console.error('goal_fidelity_failed', String((e as Error)?.message ?? e))
+    }
 
     // ── THREE COUNTERS THAT WERE STORING THEIR OWN ABSENCE ──────────────────
     //
@@ -12000,6 +12134,27 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
           // recorder's natural 150 wpm. The parameter exists so a stored pace
           // plugs in here without a second rule.
           wpm: null,
+          // ⚠️ ITEM 2: PRODUCT-LINE NAMES GROUND ONLY IN WHAT SHE CONFIRMED — her
+          // library, her brand, what she typed, the product's own facts. Not the
+          // scan's caption inference, which is how "Autumn Collection" survived.
+          nameGroundingText: [
+            JSON.stringify(ownedEntity ?? {}),
+            JSON.stringify(confirmedBrand ?? {}),
+            ...csEntities.map((e) => e.name),
+            ...productFactsForCheck,
+            String(brief.productFacts ?? ''),
+            String(brief.offer ?? ''),
+            ...(knowledgeRows ?? [])
+              .filter((k) => !isUnconfirmedInferredProduct(
+                k as { kind?: unknown; source?: unknown; text?: unknown; creator_confirmed_at?: unknown },
+                csEntities.map((e) => e.name),
+              ))
+              .map((k) => `${String(k.text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`),
+          ].join('\n'),
+          // ⚠️ ITEM 37: an unanswered ask beat reserves its planned seconds.
+          beatSeconds: Array.isArray(bpAny.beat_plan) && bpAny.beat_plan.length === originalLen
+            ? (bpAny.beat_plan as Array<{ target_sec?: unknown }>).map((p) => Number(p?.target_sec))
+            : null,
         }
         const integrity = repairScriptIntegrity(bpAny.script as IntegrityBeat[], integrityOpts)
         bpAny.script = integrity.beats
@@ -12009,7 +12164,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
         // this whole integrity pass on the result. Any failure keeps the
         // original — a short video beats a padded, invented one. The pass never
         // drops a beat (a drop is a rejection), so `beat_plan` stays aligned.
-        const extendDecision = shouldExtendScript(integrity.beats, integrityOpts.targetSec, integrityOpts.wpm)
+        const extendDecision = shouldExtendScript(integrity.beats, integrityOpts.targetSec, integrityOpts.wpm, integrity.report.reservedWords)
         if (extendDecision.extend) {
           let extensionReason = 'call_failed'
           let wordsAfter = extendDecision.words
@@ -12042,6 +12197,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
             words_before: extendDecision.words,
             words_after: wordsAfter,
             target_words: extendDecision.target,
+            reserved_words: integrity.report.reservedWords,
             beats_offered: extendDecision.indices.length,
             invented,
           }))
@@ -12067,6 +12223,7 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
             budget: r.budget,
             trimmed_words: r.trimmedWords,
             under_by: r.underBy,
+            reserved_words: r.reservedWords,
           }))
         }
       }
@@ -12146,6 +12303,20 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
       const shots = (blueprint as { shot_list?: unknown })?.shot_list
       const script = (blueprint as { script?: unknown })?.script
       if (Array.isArray(shots) && shots.length > 0) {
+        // ⚠️ ITEM 1: THE SHOT LIST IS DERIVED FROM THE TELEPROMPTER, NEVER A
+        // SECOND AUTHOR. Diff first — every spoken row that asserts something the
+        // final beat does not — so a drift is logged and counted, then re-derive.
+        const drift = shotListClaimDiff(
+          shots as Array<{ spoken_text?: unknown }>,
+          Array.isArray(script) ? script as Array<{ line?: unknown }> : [],
+        )
+        shotListClaimDrift = drift.length
+        if (drift.length > 0) {
+          console.warn(JSON.stringify({
+            event: 'shot_list_claim_drift', rows: drift.length, of: shots.length,
+            beats: drift.map((d) => d.beat),
+          }))
+        }
         const synced = syncShotListSpokenText(
           shots as Array<{ spoken_text?: unknown }>,
           Array.isArray(script) ? script as Array<{ line?: unknown }> : [],
@@ -12333,6 +12504,8 @@ ${durationBriefLine}- beat_plan: BEFORE writing any words, decide the video's sh
 
     if (beatAudit) {
       beatAudit.shot_list_resync = shotListResync
+      beatAudit.goal_fidelity = goalFidelity
+      beatAudit.shot_list_claim_drift = shotListClaimDrift
       beatAudit.retention_map_resync = retentionMapResync
       beatAudit.setup_label_resync = setupLabelResync
       beatAudit.action_posing_hygiene = actionPosingHygiene

@@ -281,6 +281,7 @@ export * from './script/semanticRepetition'
 // repair has already run, so the shot card and the teleprompter never
 // disagree about what a beat says.
 export * from './script/shotListSync'
+export * from './script/goalFidelity'
 
 // ⚖️ FIX 7 (Wave 3). `shot_list[].notes` carries a "Setup <letter> ·
 // description · framing" label the model writes once, in the same response

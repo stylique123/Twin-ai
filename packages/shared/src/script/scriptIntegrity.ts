@@ -42,6 +42,15 @@ export interface IntegrityOptions {
   targetSec?: number | null
   /** The creator's measured speaking rate, when one is stored. */
   wpm?: number | null
+  /** ⚠️ ITEM 2: what a PRODUCT-LINE NAME may be grounded against. When given,
+   *  it replaces `knownText` for names only — so a name that exists only in a
+   *  scan's caption inference ("Autumn Collection", `creator_knowledge` source
+   *  'caption') is not treated as a product she confirmed. Omitted = knownText. */
+  nameGroundingText?: string | null
+  /** ⚠️ ITEM 37: planned seconds per input beat (`beat_plan[i].target_sec`),
+   *  aligned with the input. An unanswered ask beat is spoken by the creator
+   *  later, so its planned time is RESERVED rather than counted as zero. */
+  beatSeconds?: ReadonlyArray<number | null | undefined> | null
 }
 
 export interface IntegrityReport {
@@ -57,6 +66,8 @@ export interface IntegrityReport {
   budget: { target: number; min: number; max: number; wpm: number } | null
   trimmedWords: number
   underBy: number
+  /** Words reserved for unanswered ask beats (the creator's own answer). */
+  reservedWords: number
   /** Original indices of beats removed, ascending — so a parallel array
    *  (`beat_plan`) can be kept aligned by the caller. */
   droppedIndices: number[]
@@ -296,6 +307,37 @@ function isAsk(b: IntegrityBeat): boolean {
 const PROTECTED_SECTION = /hook|cta|call to action|outro|sign.?off/i
 
 /**
+ * ⚠️ ITEM 37, THE CAUSE THE TRIM AND EXTENSION DID NOT REACH. Measured on the
+ * owner's last 14 generations: every run that undershot its length (8ce1290d
+ * 125/225 words, c54c3e40 160/225, de34a257 155/225, c41a70b8 84/150, 705cc15c
+ * 56/75) carried 1-2 unanswered ASK beats — lines blanked so the creator
+ * speaks her own answer there — and every run with no ask beat landed inside
+ * ±20%. The budget counted an ask beat as ZERO words, so the script looked
+ * short, and an extension pass would pad the OTHER beats to make up time the
+ * creator is going to fill herself (overshooting once she answers).
+ *
+ * ⚖️ SO AN ASK BEAT RESERVES ITS PLANNED TIME: its `beat_plan` seconds when the
+ * plan is aligned, otherwise an even share of the target across the beats.
+ */
+export function askReservedWords(
+  beats: readonly IntegrityBeat[],
+  targetSec: number,
+  wpm: number | null | undefined,
+  beatSeconds: ReadonlyArray<number | null | undefined> | null,
+  plannedBeats?: number,
+): number {
+  const rate = budgetWpm(wpm)
+  const n = Math.max(1, plannedBeats ?? beats.length)
+  let sec = 0
+  beats.forEach((b, i) => {
+    if (!b || isSpoken(b) || !isAsk(b)) return
+    const planned = Array.isArray(beatSeconds) ? Number(beatSeconds[i]) : NaN
+    sec += Number.isFinite(planned) && planned > 0 ? planned : targetSec / n
+  })
+  return Math.round((sec / 60) * rate)
+}
+
+/**
  * Run every integrity rule. Returns a NEW array; beat objects that change are
  * shallow-copied, untouched ones are passed through by reference.
  */
@@ -307,7 +349,7 @@ export function repairScriptIntegrity(
     headersFilled: 0, fragmentsDropped: 0, terminalsAdded: 0,
     inventedNames: [], namesStripped: 0, duplicatesDropped: 0,
     numbersRestored: 0, numberConflicts: [],
-    words: 0, budget: null, trimmedWords: 0, underBy: 0, droppedIndices: [],
+    words: 0, budget: null, trimmedWords: 0, underBy: 0, reservedWords: 0, droppedIndices: [],
   }
   const source = Array.isArray(input) ? input : []
   let origin: number[] = []
@@ -348,7 +390,7 @@ export function repairScriptIntegrity(
   })
 
   // ── 2. NO INVENTED PRODUCT-LINE NAMES ─────────────────────────────────────
-  const known = String(opts.knownText ?? '')
+  const known = String(opts.nameGroundingText ?? opts.knownText ?? '')
   beats = beats.map((b) => {
     let line = str(b.line)
     if (line === '') return b
@@ -447,8 +489,15 @@ export function repairScriptIntegrity(
   if (typeof opts.targetSec === 'number' && Number.isFinite(opts.targetSec) && opts.targetSec > 0) {
     const budget = wordBudget(opts.targetSec, opts.wpm)
     report.budget = budget
+    const secs = opts.beatSeconds
+    report.reservedWords = askReservedWords(
+      beats, opts.targetSec, opts.wpm,
+      Array.isArray(secs) ? origin.map((o) => secs[o]) : null,
+      source.length,
+    )
+    const reserved = report.reservedWords
     let guard = 0
-    while (report.words > budget.max && guard++ < 200) {
+    while (report.words + reserved > budget.max && guard++ < 200) {
       // The longest trimmable beat loses its LAST sentence; hook, close and
       // asks are never trimmed, and no beat is trimmed to nothing.
       let best = -1
@@ -467,7 +516,7 @@ export function repairScriptIntegrity(
       beats = beats.map((b, i) => (i === best ? { ...b, line: kept } : b))
       report.words = count()
     }
-    report.underBy = Math.max(0, budget.min - report.words)
+    report.underBy = Math.max(0, budget.min - report.words - reserved)
   }
 
   return { beats, report }
@@ -515,6 +564,8 @@ export function shouldExtendScript(
   beats: readonly IntegrityBeat[] | null | undefined,
   targetSec: number | null | undefined,
   wpm?: number | null,
+  /** Words reserved for unanswered ask beats (`report.reservedWords`). */
+  reservedWords: number = 0,
 ): ExtensionDecision {
   const list = Array.isArray(beats) ? beats.filter((b) => b && typeof b === 'object') : []
   const words = list.reduce((n, b) => n + wordsOf(str(b.line)), 0)
@@ -523,8 +574,9 @@ export function shouldExtendScript(
   }
   const target = wordBudget(targetSec, wpm).target
   const indices = extendableIndices(list)
-  const extend = words > 0 && words < target * EXTEND_BELOW_SHARE && indices.length > 0
-  return { extend, words, target, wordsWanted: extend ? target - words : 0, indices: extend ? indices : [] }
+  const reserved = Number.isFinite(reservedWords) && reservedWords > 0 ? reservedWords : 0
+  const extend = words > 0 && words + reserved < target * EXTEND_BELOW_SHARE && indices.length > 0
+  return { extend, words, target, wordsWanted: extend ? target - words - reserved : 0, indices: extend ? indices : [] }
 }
 
 /** The instruction for the writer. Facts are exactly what the prompt already supplied. */
