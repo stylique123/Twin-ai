@@ -2018,6 +2018,7 @@ interface TrackRecordInline {
   recent_scripts?: Array<{ premise?: string; was_filmed?: boolean | null; was_published?: boolean | null; views_7d?: number | null }>
   posted?: Array<{ caption?: string; views?: number | null }>
   edits?: Array<{ before_text?: string; after_text?: string }>
+  feedback?: Array<{ stars?: number; tags?: string[]; change_note?: string | null; premise?: string }>
 }
 function renderTrendsInline(rows: readonly BrainTrendInline[]): string {
   // ⚠️ ONLY HER LANE. Corpus-wide "moments" measured 2026-09-24 were the
@@ -2068,6 +2069,14 @@ function renderTrackRecordInline(r: TrackRecordInline | null): string {
   if (edits.length) {
     lines.push('Lines she rewrote in earlier Twin scripts — write the way her AFTER versions sound:')
     for (const e of edits) lines.push(`  - "${cap(e.before_text, 120)}" → "${cap(e.after_text, 120)}"`)
+  }
+  const fb = (r.feedback ?? []).filter((f) => f && (f.change_note || (f.tags ?? []).length)).slice(0, 5)
+  if (fb.length) {
+    lines.push('What she said about earlier Twin scripts — act on it (her words outrank any niche pattern):')
+    for (const f of fb) {
+      const tags = (f.tags ?? []).slice(0, 5).join(', ')
+      lines.push(`  - ${f.stars ?? '?'}★${tags ? ` [${cap(tags, 120)}]` : ''}${f.change_note ? ` "${cap(f.change_note, 200)}"` : ''}`)
+    }
   }
   if (lines.length === 0) return ''
   const body = lines.join('\n').split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
@@ -8058,13 +8067,18 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         return Array.isArray(data) ? data as BrainTrendInline[] : []
       })().catch(() => [] as BrainTrendInline[])
       const recordP = (async (): Promise<TrackRecordInline | null> => {
-        const [rec, edits] = await Promise.all([
+        const [rec, edits, feedback] = await Promise.all([
           admin.rpc('creator_track_record', { p_owner: ownerId, p_voice: voice?.id ?? null }).abortSignal(ctrl.signal),
           admin.rpc('creator_recent_edits', { p_owner: ownerId }).abortSignal(ctrl.signal),
+          admin.rpc('creator_script_feedback', { p_owner: ownerId }).abortSignal(ctrl.signal),
         ])
         const data = rec.data
         if (!data || typeof data !== 'object') return null
-        return { ...(data as TrackRecordInline), edits: Array.isArray(edits.data) ? edits.data : [] }
+        return {
+          ...(data as TrackRecordInline),
+          edits: Array.isArray(edits.data) ? edits.data : [],
+          feedback: Array.isArray(feedback.data) ? feedback.data : [],
+        }
       })().catch(() => null)
       const momentsP = (async (): Promise<MomentInline[]> => {
         const bucket = nicheBucketInline(niche)

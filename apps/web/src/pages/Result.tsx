@@ -88,6 +88,7 @@ const START_ERROR_TEXT: Record<string, string> = {
 // Library does). Keyed by generation id; module-scoped so it survives route changes.
 const GEN_CACHE: Record<string, Generation> = {}
 import { useAuth } from '../context/AuthContext'
+import { RateThisScript } from '../components/RateThisScript'
 import type { Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { EASE } from '../components/motion'
@@ -887,6 +888,8 @@ export default function Result() {
               outcome row (every generation older than 0191) or when it is too
               soon, so no condition is duplicated here where it could drift. */}
           <DidYouFilmIt generationId={gen.id} generatedAt={gen.created_at ?? null} />
+          {/* One-tap rating a few seconds after the script appears; feeds the niche brain. */}
+          <RateThisScript generationId={gen.id} ownerId={profile?.id ?? null} />
 
           <motion.div
             initial={{ opacity: 0, y: 12 }}

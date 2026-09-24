@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0233_what_she_thought_of_it':
+    'script_ratings + niche-brain learner changes (0227 family, excluded; brain tables absent on '
+    + 'staging). The editor never reads them.',
   '0232_ideas_for_her':
     'Owner-scoped `creator_ideas` written by the niche-brain worker (0227 family, excluded) and '
     + 'read by the Create screen; references product_entities, which staging does not have.',
