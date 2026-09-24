@@ -37,6 +37,8 @@ import {
   // ⚖️ THE SAME TWO FUNCTIONS `assessReadiness` USES FOR THIS WORDING, not a
   // second copy of the wording. The card re-derives; it does not redefine.
   objectiveQuestion, offerFormOf,
+  // ⚖️ THE POOL AND ITS ROTATION: a different question each time, per product.
+  nextObjectiveQuestion, answeredForProduct, pooledWording, objectiveProductKey,
 } from '@twinai/shared'
 import { classifyReferenceRead, LOW_SPEECH_TEXT, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE, isReadCapacityExhausted } from '../../lib/api'
@@ -48,7 +50,7 @@ import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
 import { VideoPlanCard } from '../../components/VideoPlanCard'
 import type { VideoPlanInput } from '@twinai/shared'
-import { loadKnowledgeForPlan } from '../../lib/creatorAnswers'
+import { loadKnowledgeForPlan, loadObjectiveAnswers } from '../../lib/creatorAnswers'
 import { LogoMark } from '../../components/Logo'
 import { buildRecordingScript } from '../../lib/api'
 import { saveRecordingScript } from '../../lib/api'
@@ -719,6 +721,12 @@ export default function V2Building() {
   // point: the standing goal is shown, not asked, and the eight chips exist for
   // the exception rather than the rule.
   const [changingGoal, setChangingGoal] = useState(false)
+  // ⚖️ THE OBJECTIVE'S QUESTION IS ITS OWN STEP. It used to render on the same
+  // card as the objective chips, so the question changed under her finger as
+  // she tapped. Now: choose the objective, then answer its question (with Back).
+  const [askStep, setAskStep] = useState<'choose' | 'answer'>('choose')
+  // Answered objective-question rows, for rotation. null = not loaded yet.
+  const [objectiveAnswers, setObjectiveAnswers] = useState<Array<{ source_ref: string; last_observed_at: string | null; created_at: string | null }> | null>(null)
   const [retryNonce, setRetryNonce] = useState(0)
   const started = useRef(false)
   // Set ONLY by the explicit Cancel button — so leaving via the nav (Library,
@@ -1942,6 +1950,16 @@ export default function V2Building() {
     return () => { alive = false }
   }, [askQuestions, products])
 
+  // ⚖️ WHICH POOLED QUESTIONS SHE HAS ANSWERED, loaded only on a product build
+  // that is asking the claims question. A failed read is [] — pool order.
+  useEffect(() => {
+    if (!isProductSubject || objectiveAnswers !== null
+      || !askQuestions?.some((q) => q.field === 'claims')) return
+    let alive = true
+    void loadObjectiveAnswers().then((rows) => { if (alive) setObjectiveAnswers(rows) })
+    return () => { alive = false }
+  }, [askQuestions, isProductSubject, objectiveAnswers])
+
   // ── THE GOAL, DISPLAYED RATHER THAN RE-ASKED ─────────────────────────────
   //
   // ⚠️ DERIVED, NOT STORED, SO A RECLAIMED TAB STILL SHOWS IT. The condition is
@@ -1988,7 +2006,17 @@ export default function V2Building() {
   // ⚖️ AND NULL FALLS BACK TO WHAT THE SERVER ALREADY CHOSE. An objective with
   // no question of its own, or a non-product build, keeps `q.question`
   // untouched — this only ever replaces a generic sentence with a specific one.
-  const liveClaimsQuestion = isProductSubject
+  const liveProductId = askAnswers[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null
+  const liveOfferForm = offerFormOf(pickedProduct(products, liveProductId)?.type ?? null)
+  // ⚖️ ROTATION: the next pooled question she has NOT answered for this product
+  // (then the least recently answered). Null when the objective has no pool.
+  const pooledQuestion = isProductSubject
+    ? nextObjectiveQuestion(askAnswers.video_goal ?? null,
+      answeredForProduct(objectiveAnswers ?? [], liveProductId))
+    : null
+  const liveClaimsQuestion = pooledQuestion
+    ? pooledWording(pooledQuestion, liveOfferForm)
+    : isProductSubject
     ? objectiveQuestion(
       askAnswers.video_goal ?? null,
       offerFormOf(pickedProduct(
@@ -2013,9 +2041,31 @@ export default function V2Building() {
       delete answersRef.current[PRODUCT_CHOICE_FIELD]
     }
   }
-  const decisions = visibleAsk.filter(isChip)
-  const commercial = visibleAsk.filter((q) => !isChip(q))
+  // ⚖️ SPLIT ONLY WHEN THERE IS AN OBJECTIVE QUESTION TO ASK. Everything else
+  // keeps the single card it always had.
+  const splitObjectiveStep = isProductSubject && pooledQuestion !== null
+    && visibleAsk.some((q) => q.field === 'claims')
+  const onAnswerStep = splitObjectiveStep && askStep === 'answer'
+  const decisions = onAnswerStep ? [] : visibleAsk.filter(isChip)
+  const commercial = onAnswerStep
+    ? visibleAsk.filter((q) => q.field === 'claims')
+    : visibleAsk.filter((q) => !isChip(q) && !(splitObjectiveStep && q.field === 'claims'))
   const hasTwoBlocks = decisions.length > 0 && commercial.length > 0
+  /** ⚖️ THE ANSWER TRAVELS WITH THE ID OF THE QUESTION IT ANSWERS, so the
+   *  server stores it under that id and rotation can move on. The product key
+   *  is the same one the rotation read with, so what is written is exactly
+   *  what the next card will find. */
+  const attachObjectiveAnswer = (): void => {
+    if (splitObjectiveStep && pooledQuestion && (askAnswers.claims ?? '').trim()) {
+      answersRef.current.objective_question_id = pooledQuestion.id
+      answersRef.current.objective_question = liveClaimsQuestion ?? pooledQuestion.question
+      answersRef.current.objective_product_key = objectiveProductKey(liveProductId)
+    } else {
+      delete answersRef.current.objective_product_key
+      delete answersRef.current.objective_question_id
+      delete answersRef.current.objective_question
+    }
+  }
 
   /** ⚖️ ONE RENDERER, TWO COLUMNS. The blocks differ in what they ask and
    *  where they sit, never in how a question behaves — so the chip logic, the
@@ -2438,7 +2488,15 @@ export default function V2Building() {
                     to change it. Zero taps when it is right, one tap when it is
                     not, and the value is still sent so the per-video answer
                     still outranks the standing one on the server. */}
-                {displayedGoal && !changingGoal && (
+                {onAnswerStep && (() => {
+                  const g = asOneOf(VIDEO_GOALS, askAnswers.video_goal)
+                  return g ? (
+                    <span data-testid="objective-question-step" className="block text-[11px] uppercase tracking-wide text-stone/70">
+                      {goalDisplayLabel(g, { isProductSubject })}
+                    </span>
+                  ) : null
+                })()}
+                {!onAnswerStep && displayedGoal && !changingGoal && (
                   <div className="block">
                     <span className="text-sm leading-relaxed text-cream">This video is for</span>
                     <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -2465,7 +2523,7 @@ export default function V2Building() {
                     chip clears it, so the displayed value can legitimately
                     become empty while the creator is mid-change — gating on it
                     would make the whole question vanish under their finger. */}
-                {changingGoal && goalQuestion && renderAsk(goalQuestion)}
+                {!onAnswerStep && changingGoal && goalQuestion && renderAsk(goalQuestion)}
                 {decisions.map(renderAsk)}
               </div>
               {commercial.length > 0 && (
@@ -2499,7 +2557,14 @@ export default function V2Building() {
               disabled={visibleAsk.some(
                 (q) => isChip(q) && !(askAnswers[q.field] ?? '').trim())}
               onClick={() => {
+                // ⚖️ STEP ONE ENDS HERE WHEN THE OBJECTIVE HAS A QUESTION: the
+                // question is shown on its own, after the choice, never beside it.
+                if (splitObjectiveStep && askStep === 'choose') {
+                  setAskStep('answer')
+                  return
+                }
                 answersRef.current = { ...answersRef.current, ...askAnswers }
+                attachObjectiveAnswer()
                 dropHiddenPick()
                 // ⚖️ THE ANSWERS OUTLIVE THE CARD, THE CARD DOES NOT. Keeping
                 // the answers means a tab reclaimed mid-build still sends them;
@@ -2516,8 +2581,11 @@ export default function V2Building() {
               }}
               className="btn-gradient mt-6 w-full disabled:opacity-40"
             >
-              Create my version
+              {splitObjectiveStep && askStep === 'choose' ? 'Next' : 'Create my version'}
             </button>
+            {onAnswerStep && (
+              <button type="button" onClick={() => setAskStep('choose')} className="btn-ghost mt-3 w-full">Back</button>
+            )}
             <button onClick={() => nav('/v2', { replace: true })} className="btn-ghost mt-3 w-full">Start over</button>
           </div>
         ) : contradiction ? (

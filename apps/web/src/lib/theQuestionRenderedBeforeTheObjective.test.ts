@@ -32,6 +32,7 @@ import { fileURLToPath } from 'node:url'
 import { transformSync } from 'esbuild'
 import {
   objectiveQuestion, offerFormOf, OBJECTIVE_QUESTIONS, PRODUCT_CHOICE_FIELD,
+  nextObjectiveQuestion, answeredForProduct, pooledWording,
 } from '@twinai/shared'
 import { assessReadiness } from '@twinai/shared'
 
@@ -91,14 +92,23 @@ describe('the card re-derives the claims wording from the live objective', () =>
   /** ⚠️ THE REAL EXPRESSION, LIFTED AND RUN. Bounded on the declaration's own
    *  closing `: null`, so the next statement is not swallowed. */
   function loadFn(): Fn {
-    const start = SRC.indexOf('const liveClaimsQuestion = ')
-    expect(start, 'liveClaimsQuestion not found').toBeGreaterThan(-1)
-    const end = SRC.indexOf('\n    : null\n', start) + '\n    : null\n'.length
+    // Re-pointed: the block now starts at `liveProductId`, because the wording
+    // is chosen from the rotating pool first (objectiveQuestionPool.ts); the
+    // end is still the declaration's own closing `: null`.
+    const decl = SRC.indexOf('const liveClaimsQuestion = ')
+    expect(decl, 'liveClaimsQuestion not found').toBeGreaterThan(-1)
+    const start = SRC.indexOf('const liveProductId = ')
+    expect(start, 'liveProductId not found').toBeGreaterThan(-1)
+    expect(start).toBeLessThan(decl)
+    const end = SRC.indexOf('\n    : null\n', decl) + '\n    : null\n'.length
     expect(end).toBeGreaterThan(start)
     const block = SRC.slice(start, end)
     const js = transformSync(`function __live(__a) {
       const { isProductSubject, askAnswers, products, selectedProductId } = __a
       const state = { selected_product_id: selectedProductId }
+      // Nothing answered yet: rotation yields each pool's first question,
+      // which is the objective's original wording.
+      const objectiveAnswers = []
       ${block}
       return liveClaimsQuestion
     }`, { loader: 'ts', format: 'cjs' }).code
@@ -107,8 +117,10 @@ describe('the card re-derives the claims wording from the live objective', () =>
     // eslint-disable-next-line no-new-func
     return new Function(
       'objectiveQuestion', 'offerFormOf', 'pickedProduct', 'PRODUCT_CHOICE_FIELD',
+      'nextObjectiveQuestion', 'answeredForProduct', 'pooledWording',
       `${js}; return __live`,
-    )(objectiveQuestion, offerFormOf, pickedProduct, PRODUCT_CHOICE_FIELD) as Fn
+    )(objectiveQuestion, offerFormOf, pickedProduct, PRODUCT_CHOICE_FIELD,
+      nextObjectiveQuestion, answeredForProduct, pooledWording) as Fn
   }
 
   /** The card's own `pickedProduct`, lifted the same way. */
@@ -186,8 +198,10 @@ describe('the renderer prefers the live wording, and the chips render above it',
     // the objective chip, the creator would read the generic sentence, tap the
     // chip below it, and watch a question she had already answered change.
     // Re-pointed: both now filter `visibleAsk` (item 25's live picker visibility).
-    const decisions = SRC.indexOf('const decisions = visibleAsk')
-    const commercial = SRC.indexOf('const commercial = visibleAsk')
+    // Re-pointed again: on the objective's own step both are narrowed first
+    // (`onAnswerStep ? ...`), so the anchors are the declarations themselves.
+    const decisions = SRC.indexOf('const decisions = ')
+    const commercial = SRC.indexOf('const commercial = ')
     expect(decisions).toBeGreaterThan(-1)
     expect(decisions).toBeLessThan(commercial)
   })

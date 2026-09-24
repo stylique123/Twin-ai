@@ -479,3 +479,31 @@ export async function loadKnowledgeForPlan(): Promise<
     return null
   }
 }
+
+/**
+ * Every objective-question answer this creator has given, for rotation.
+ *
+ * ⚖️ READS ROWS THAT ALREADY EXIST. `generate-blueprint` stores each answer
+ * with `source_ref = asked:objective:<product>:<question id>`, so "which of the
+ * pool has she answered for this product" needs no new table. A failed read
+ * returns [] — the first question in the pool, which is what she saw before
+ * rotation existed — never a blocked card.
+ */
+export async function loadObjectiveAnswers(): Promise<Array<{ source_ref: string; last_observed_at: string | null; created_at: string | null }>> {
+  try {
+    const { data: auth } = await supabase.auth.getUser()
+    const ownerId = auth?.user?.id
+    if (!ownerId) return []
+    const { data, error } = await supabase
+      .from('creator_knowledge')
+      .select('source_ref, last_observed_at, created_at')
+      .eq('owner_id', ownerId)
+      .eq('source', 'asked')
+      .like('source_ref', 'asked:objective:%')
+      .limit(500)
+    if (error || !Array.isArray(data)) return []
+    return data as Array<{ source_ref: string; last_observed_at: string | null; created_at: string | null }>
+  } catch {
+    return []
+  }
+}

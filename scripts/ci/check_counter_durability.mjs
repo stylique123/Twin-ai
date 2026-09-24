@@ -752,6 +752,7 @@ const EVENTS = {
   owner_product_check_failed: { kind: 'incident', why: 'The product gate could not be read, so the three pricing questions were NOT asked. Unknown means no, and this line is the only thing that distinguishes "she sells nothing" from "we could not tell".' },
   creator_knowledge_merge_absent: { kind: 'incident', why: '0123 unapplied — dedupe is off, and that must be loud.' },
   creator_knowledge_source_column_absent: { kind: 'incident', why: '0122 unapplied — the selector cannot see source.' },
+  objective_answer_stored: { kind: 'incident', why: 'Per generation that carried an answer to the rotating objective question: whether it was stored under its question id. A failed store costs rotation (the same question comes back next time), never the script.' },
   knowledge_rotation_columns_absent: { kind: 'incident', why: '0215 unapplied — the selector cannot see what it has already spent, so the same items lead every script. Per generation, because that is how long the degraded ranking lasts.' },
   knowledge_spend_not_recorded: { kind: 'incident', why: 'A delivered script whose supplied knowledge was not written to the ledger. Silent, this looks exactly like a creator whose runway was never touched.' },
   scrape_dna_empty: { kind: 'incident', why: 'A scan that found nothing. Honesty about a failed scan, per scan.' },
