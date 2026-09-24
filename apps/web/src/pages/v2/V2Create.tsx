@@ -27,6 +27,7 @@
 // packages/shared/src/entryDoor.ts.
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { IdeasForYou } from '../../components/IdeasForYou'
 import { Link2, Wand2, Wind, Activity, Flame, SlidersHorizontal, ChevronDown, Lightbulb, Package, Compass } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { listGenerations, loadProductEntities } from '../../lib/api'
@@ -404,6 +405,12 @@ export default function V2Create() {
           <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed text-stone">
             Start from whatever you actually have.
           </p>
+
+          {/* Ideas the niche brain wrote for her today. Renders nothing when
+              there are none, so Create is unchanged for everyone else. */}
+          <div className="mx-auto mt-6 max-w-2xl text-left">
+            <IdeasForYou onPick={(idea) => { setInput(idea.premise); setPicked('idea') }} />
+          </div>
 
           {/* ── The four doors. All of them visible, always — a door behind a
               toggle is a door nobody counts, and the impression row records

@@ -188,6 +188,11 @@ const EVENTS = {
     why: 'One bucket\'s daily grounded search for world moments. Durable in `brain_moments` '
       + '(moments, sources, queries per bucket and day).',
   },
+  ideas: {
+    kind: 'counter_ephemeral',
+    why: 'How many ideas one daily batch wrote for one voice. Durable in `creator_ideas` '
+      + '(one row per idea, with batch_day, used_at, dismissed_at).',
+  },
   brain_sweep: {
     kind: 'counter_ephemeral',
     why: 'How many corpus videos one niche-brain sweep read, found unreadable or '
