@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0232_ideas_for_her':
+    'Owner-scoped `creator_ideas` written by the niche-brain worker (0227 family, excluded) and '
+    + 'read by the Create screen; references product_entities, which staging does not have.',
   '0231_what_the_world_is_talking_about':
     'One worker-written table read by generate-blueprint for the niche brain (0227 family, '
     + 'excluded); the editor never reads it.',

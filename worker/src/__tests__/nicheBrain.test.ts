@@ -95,3 +95,19 @@ describe('moment watcher', () => {
     expect(momentsPrompt('making', '2026-09-24')).toContain('2026-09-24')
   })
 })
+
+import { normalizeIdeas } from '../nicheBrain/ideasParse.js'
+describe('idea writer', () => {
+  it('keeps only her product ids, dedupes titles, drops empty ideas', () => {
+    const ideas = normalizeIdeas({ ideas: [
+      { title: 'Match-day bandanas', premise: 'Team colours for the World Cup', mode: 'sell', goal: 'sales', product_id: 'p1' },
+      { title: 'match-day bandanas', premise: 'dup' },
+      { title: 'x', premise: '' },
+      { title: 'Why scrunchies beat ties', premise: 'Demo', mode: 'rant', product_id: 'not-hers' },
+    ] }, new Set(['p1']))
+    expect(ideas).toHaveLength(2)
+    expect(ideas[0].product_id).toBe('p1')
+    expect(ideas[1].product_id).toBeNull()
+    expect(ideas[1].mode).toBeNull()
+  })
+})
