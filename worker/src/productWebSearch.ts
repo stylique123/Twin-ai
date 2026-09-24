@@ -106,6 +106,8 @@ export function urlInSources(url: string, sources: readonly GroundingSource[]): 
 
 /** Pull `{ "url": …, "confidence": … }` out of free text. Never throws. */
 export function readSearchAnswer(text: string): { url: string; confidence: string } | null {
+  const line = text.match(/URL:\s*(https?:\/\/\S+?)\s*\|\s*CONFIDENCE:\s*(high|medium|low)/i)
+  if (line) return { url: line[1].replace(/[).,]+$/, ''), confidence: line[2].toLowerCase() }
   const m = text.match(/\{[\s\S]*\}/)
   if (!m) return null
   try {
@@ -135,8 +137,12 @@ export const WEB_SEARCH_SYSTEM = [
   'marketplace listing of that exact product (Etsy, Amazon, and similar).',
   'Never return a homepage, a search results page, a review, or a different product.',
   'If you are not sure it is the same product, say confidence "low".',
-  'Answer with ONLY a JSON object: {"url": "<https url>", "confidence": "high" | "medium" | "low"}',
-  'If nothing matches, answer {"url": "", "confidence": "low"}.',
+  // ⚠️ NOT "ONLY JSON". Measured 2026-09-24: with a JSON-only instruction the
+  // model answered straight away and ran no search at all (webSearchQueries
+  // empty). It may write freely; the verdict is one plain last line.
+  'Write what you found in a sentence or two, then finish with exactly one line:',
+  'URL: <https url> | CONFIDENCE: high|medium|low',
+  'If nothing matches, finish with: URL: none | CONFIDENCE: low',
 ].join('\n')
 
 export async function findProductOnWeb(input: {
@@ -152,7 +158,7 @@ export async function findProductOnWeb(input: {
 
   let answer: GroundedAnswer
   try {
-    answer = await input.search(WEB_SEARCH_SYSTEM, `Product: ${query}`)
+    answer = await input.search(WEB_SEARCH_SYSTEM, `Search Google for this product and find its page: ${query}`)
   } catch (e) {
     return { ok: false, reason: 'search_failed', detail: (e instanceof Error ? e.message : String(e)).slice(0, 200), sources: 0 }
   }
