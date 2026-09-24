@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0228_the_brain_reaches_the_script':
+    'Adds one RPC over `brain_notes`, inheriting 0227\'s exclusion: staging has no '
+    + '`gallery_items`, so it has no brain tables for this to read.',
   '0227_the_niche_brain':
     'New corpus_reads / brain_notes / brain_links tables read only by the worker sweep and, later, '
     + 'the script strategist; the editor never reads them. Requires `gallery_items`, which staging '
