@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0230_the_brain_learns':
+    'Extends the niche-brain tables (0227, excluded: staging has no `gallery_items`) and adds '
+    + '`own_post_reads` over `scraped_posts`; the editor reads none of it.',
   '0229_what_is_rising_and_what_she_already_did':
     'Two read-only RPCs over corpus_reads/gallery_items and creator tables, inheriting 0227\'s '
     + 'exclusion: staging has no `gallery_items`.',

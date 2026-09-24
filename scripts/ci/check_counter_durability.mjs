@@ -172,6 +172,17 @@ const EVENTS = {
       + 'Learner step, which stores WHICH notes reached WHICH script so results can '
       + 'weight them; a bare count here would be a second, weaker authority.',
   },
+  own_sweep: {
+    kind: 'counter_ephemeral',
+    why: 'Per batch of her own posts read by the niche brain. Durable in `own_post_reads` '
+      + '(status, read_at per post) and private `brain_notes` rows, so progress is a query.',
+  },
+  brain_learn: {
+    kind: 'counter_ephemeral',
+    why: 'How many notes brain_learn() re-credited. The credit itself is durable on '
+      + '`brain_notes` (used/filmed/posted/outcome_views) and recomputed from '
+      + '`brain_note_uses`, so the count is derivable.',
+  },
   brain_sweep: {
     kind: 'counter_ephemeral',
     why: 'How many corpus videos one niche-brain sweep read, found unreadable or '

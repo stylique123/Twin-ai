@@ -72,3 +72,12 @@ describe('niche brain librarian', () => {
     expect(relationFor('objection')).toBe('answers')
   })
 })
+
+describe('niche brain learner wiring', () => {
+  it('the sweep reads her own posts and runs the learner after the corpus batch', () => {
+    const src = readFileSync(join(__dirname, '../nicheBrain/sweep.ts'), 'utf8')
+    expect(src).toContain("rpc('brain_unread_own'")
+    expect(src).toContain("rpc('brain_learn')")
+    expect(src).toContain("rpc('brain_nearest_scoped'")
+  })
+})
