@@ -320,14 +320,14 @@ export function ctaForGoal(goal: unknown, offerName?: unknown, confirmedPrice?: 
   const price = str(confirmedPrice).trim()
   if (g === 'leads') {
     return o !== ''
-      ? `If you want one of these, send me a message and I will help you pick the right ${o.toLowerCase()}.`
-      : 'If you want help with this, send me a message and we can talk it through.'
+      ? `DM me and I'll help you pick the right ${o.toLowerCase()}.`
+      : "DM me and we'll talk it through."
   }
   if (g === 'sell') {
-    if (o === '') return 'If you want one, the link to buy is in my bio.'
+    if (o === '') return 'Grab yours — the link is in my bio.'
     return price !== ''
-      ? `The ${o} is ${price}, and the link to buy it is in my bio.`
-      : `If you want the ${o}, the link to buy it is in my bio.`
+      ? `The ${o} is ${price} — grab yours, the link is in my bio.`
+      : `Grab your ${o} — the link is in my bio.`
   }
   return ''
 }

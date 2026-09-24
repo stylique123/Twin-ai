@@ -53,7 +53,9 @@ export const OBJECTIVE_QUESTION_POOLS: Readonly<Record<VideoGoal, readonly Poole
     first('educate', 'misunderstood'),
     q('educate.first_time', 'What do people usually get wrong the first time they use it?',
       'What do people usually get wrong the first time they work with you?'),
-    q('educate.not_for', 'Who is this NOT for, and why?'),
+    // Owner rejected 'who is it wrong for' (asks her to name a weakness) — 2026-09-24.
+    q('educate.surprise_use', 'What is something it does that surprises people when they first see it?',
+      'What is something about how you work that surprises people when they first see it?'),
     q('educate.small_detail', 'What small detail makes the biggest difference to how well it works?',
       'What small detail makes the biggest difference to how well it goes?'),
     q('educate.show_proof', 'What is one thing you could show on camera that proves how it works?',
@@ -89,8 +91,8 @@ export const OBJECTIVE_QUESTION_POOLS: Readonly<Record<VideoGoal, readonly Poole
     q('personal_brand.almost_quit', 'When did you almost give up on it, and what kept you going?'),
     q('personal_brand.first_customer', 'What do you remember about your first customer?',
       'What do you remember about your first client?'),
-    q('personal_brand.personal_why', 'Who in your life does this product remind you of, and why?',
-      'Who in your life does this work remind you of, and why?'),
+    q('personal_brand.personal_why', 'Why does this one matter to you more than anything else you make?',
+      'Why does this part of your work matter to you more than the rest?'),
   ]),
   followers: Object.freeze([
     first('followers', 'outsiders_wrong'),
