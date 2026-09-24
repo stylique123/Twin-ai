@@ -45,8 +45,9 @@ describe('URL acceptance', () => {
   it('reads grounding sources off a generateContent response', () => {
     const r = readGroundedResponse({ candidates: [{ content: { parts: [{ text: '{"url":"x"}' }] },
       groundingMetadata: { groundingChunks: [{ web: { uri: 'https://a.com/p', title: 'a.com' } }, { retrievedContext: {} }] } }] })
-    expect(r).toEqual({ text: '{"url":"x"}', sources: [{ uri: 'https://a.com/p', title: 'a.com' }] })
-    expect(readGroundedResponse(null)).toEqual({ text: '', sources: [] })
+    // 2026-09-24: the search queries are now read too (tells no-search from no-result).
+    expect(r).toEqual({ text: '{"url":"x"}', sources: [{ uri: 'https://a.com/p', title: 'a.com' }], queries: [] })
+    expect(readGroundedResponse(null)).toEqual({ text: '', sources: [], queries: [] })
   })
 })
 

@@ -20,7 +20,7 @@
 // testable without the network.
 /** A page Google retrieved for a grounded answer (`groundingChunks[].web`). */
 export interface GroundingSource { uri: string; title: string }
-export interface GroundedAnswer { text: string; sources: GroundingSource[] }
+export interface GroundedAnswer { text: string; sources: GroundingSource[]; queries?: string[] }
 
 /** Pull the text and the grounding sources out of a generateContent response.
  *  Never throws; an unfamiliar shape yields empty text and no sources. */
@@ -34,7 +34,11 @@ export function readGroundedResponse(raw: unknown): GroundedAnswer {
     const web = (c as { web?: { uri?: unknown; title?: unknown } } | null)?.web
     if (web && typeof web.uri === 'string') sources.push({ uri: web.uri, title: typeof web.title === 'string' ? web.title : '' })
   }
-  return { text, sources }
+  // ⚖️ WHAT GOOGLE WAS ASKED. Zero sources can mean "searched, found nothing"
+  // or "never searched" (2026-09-24); the queries tell the two apart.
+  const q = (cand?.groundingMetadata as { webSearchQueries?: unknown } | undefined)?.webSearchQueries
+  const queries = Array.isArray(q) ? q.filter((x): x is string => typeof x === 'string') : []
+  return { text, sources, queries }
 }
 
 
@@ -154,7 +158,7 @@ export async function findProductOnWeb(input: {
   }
   const n = answer.sources.length
   const picked = readSearchAnswer(answer.text)
-  if (!picked) return { ok: false, reason: 'no_answer', detail: answer.text.replace(/\s+/g, ' ').trim().slice(0, 200), sources: n }
+  if (!picked) return { ok: false, reason: 'no_answer', detail: `${answer.text.replace(/\s+/g, ' ').trim().slice(0, 160)} | queries: ${(answer.queries ?? []).join(' ; ') || 'none'}`, sources: n }
   if (picked.confidence !== 'high' && picked.confidence !== 'medium') return { ok: false, reason: 'low_confidence', sources: n }
   if (!urlInSources(picked.url, answer.sources)) return { ok: false, reason: 'not_in_sources', detail: hostOf(picked.url) ?? '', sources: n }
 
