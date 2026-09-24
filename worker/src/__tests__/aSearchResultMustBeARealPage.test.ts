@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { findProductOnWeb, urlInSources, webNameMatch, readSearchAnswer, MIN_WEB_NAME_MATCH } from '../productWebSearch.js'
+import { findProductOnWeb, urlInSources, webNameMatch, readSearchAnswer, MIN_WEB_NAME_MATCH, WEB_SEARCH_SYSTEM } from '../productWebSearch.js'
 import { readGroundedResponse, type GroundedAnswer } from '../productWebSearch.js'
 
 const PAGE = (title: string) => `TITLE: ${title}\nDESCRIPTION: ${'A soft cotton bandana that slips over the collar. '.repeat(3)}`
@@ -68,7 +68,7 @@ describe('findProductOnWeb', () => {
     let asked = ''
     await findProductOnWeb({ productName: 'Scrunchie', brandName: 'Dog Days',
       search: async (_s, p) => { asked = p; return answer('') }, fetchPage: pages({}) })
-    expect(asked).toBe('Product: Scrunchie Dog Days')
+    expect(asked).toBe('Search Google for this product and find its page: Scrunchie Dog Days') // 2026-09-24: the prompt now asks it to search
   })
 
   // ── NO MATCH → the caller keeps the old fallback ─────────────────────────
@@ -114,5 +114,18 @@ describe('extractProduct wiring (source anchors)', () => {
   it('uses the grounded Google Search tool, not a model-only guess', () => {
     const g = readFileSync(join(__dirname, '..', 'gemini.ts'), 'utf8')
     expect(g).toContain('tools: [{ google_search: {} }]')
+  })
+})
+
+describe('the plain-line verdict (2026-09-24: JSON-only stopped the model searching)', () => {
+  it('reads "URL: … | CONFIDENCE: …" from a free-text answer', () => {
+    expect(readSearchAnswer('Found it on the shop.\nURL: https://shop.com/products/x | CONFIDENCE: high'))
+      .toEqual({ url: 'https://shop.com/products/x', confidence: 'high' })
+  })
+  it('treats "URL: none" as no answer', () => {
+    expect(readSearchAnswer('Nothing matched.\nURL: none | CONFIDENCE: low')).toBeNull()
+  })
+  it('no longer demands JSON-only', () => {
+    expect(WEB_SEARCH_SYSTEM).not.toMatch(/ONLY a JSON object/)
   })
 })
