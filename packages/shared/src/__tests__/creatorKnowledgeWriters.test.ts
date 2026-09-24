@@ -75,6 +75,13 @@ const ALLOWED: Record<string, { ops: string[]; sources: string[]; why: string }>
     sources: ['asked'],
     why: 'The creator\'s typed answer to a beat ask.',
   },
+  // 2026-09-24 (#990): the rotating objective question. The row is the
+  // creator's TYPED answer from readiness_answers.claims, never script text.
+  'supabase/functions/generate-blueprint/index.ts': {
+    ops: ['insert', 'update'],
+    sources: ['asked'],
+    why: 'The creator\'s typed answer to the rotating objective question (objectiveAnswer.text).',
+  },
   'worker/src/knowledgeInsert.ts': {
     ops: ['rpc:merge_creator_knowledge', 'insert', 'update'],
     sources: ['caption', 'transcript'],
@@ -98,7 +105,13 @@ describe('creator_knowledge writers', () => {
   it('generate-blueprint never persists writer or blueprint output as knowledge', () => {
     const src = readFileSync(join(ROOT, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
     const code = codeLines(src).join('\n')
-    expect(code).not.toMatch(/\.from\(\s*['"]creator_knowledge['"]\s*\)\s*\.(insert|upsert|update|delete)\(/)
+    // Its ONLY insert is the creator's typed objective answer (source 'asked',
+    // text from objectiveAnswer) — never a line of the generated script.
+    const inserts = [...code.matchAll(/\.from\(\s*['"]creator_knowledge['"]\s*\)\.insert\(\{([\s\S]*?)\}\)/g)].map((m) => m[1])
+    expect(inserts.length).toBe(1)
+    expect(inserts[0]).toMatch(/text:\s*objectiveAnswer\.text/)
+    expect(inserts[0]).toMatch(/source:\s*'asked'/)
+    expect(code).not.toMatch(/\.from\(\s*['"]creator_knowledge['"]\s*\)\s*\.(upsert|delete)\(/)
     expect(code).not.toMatch(/merge_creator_knowledge/)
     // Its only write is the spend ledger (used_count / last_used_at via 0215).
     expect(code).toMatch(/rpc\('record_knowledge_use'/)
