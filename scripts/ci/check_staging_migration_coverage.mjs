@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0231_what_the_world_is_talking_about':
+    'One worker-written table read by generate-blueprint for the niche brain (0227 family, '
+    + 'excluded); the editor never reads it.',
   '0230_the_brain_learns':
     'Extends the niche-brain tables (0227, excluded: staging has no `gallery_items`) and adds '
     + '`own_post_reads` over `scraped_posts`; the editor reads none of it.',

@@ -2029,6 +2029,14 @@ function renderTrendsInline(rows: readonly BrainTrendInline[]): string {
   const body = lines.join('\n').split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
   return `\n\nRISING NOW IN HER LANE — measured from the video library this week. If one fits her product and voice naturally, ride it (as the angle or the hook's topic); never force it.\n<<<UNTRUSTED_DATA rising now\n${body}\nEND_UNTRUSTED_DATA>>>`
 }
+interface MomentInline { name?: string; when?: string | null; angle?: string | null }
+function renderMomentsInline(rows: readonly MomentInline[]): string {
+  const ms = (Array.isArray(rows) ? rows : []).filter((m) => m && typeof m.name === 'string').slice(0, 5)
+  if (ms.length === 0) return ''
+  const lines = ms.map((m) => `  - ${String(m.name).slice(0, 100)}${m.when ? ` (${String(m.when).slice(0, 60)})` : ''}${m.angle ? ` — ${String(m.angle).slice(0, 200)}` : ''}`)
+  const body = lines.join('\n').split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
+  return `\n\nWHAT THE WORLD IS TALKING ABOUT — from today's web search for her niche. Use one ONLY if it connects naturally to her product and this video's goal; a forced tie-in is worse than none.\n<<<UNTRUSTED_DATA world moments\n${body}\nEND_UNTRUSTED_DATA>>>`
+}
 function renderTrackRecordInline(r: TrackRecordInline | null): string {
   if (!r) return ''
   const cap = (v: unknown, n = 110) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n)
@@ -8058,14 +8066,24 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         if (!data || typeof data !== 'object') return null
         return { ...(data as TrackRecordInline), edits: Array.isArray(edits.data) ? edits.data : [] }
       })().catch(() => null)
+      const momentsP = (async (): Promise<MomentInline[]> => {
+        const bucket = nicheBucketInline(niche)
+        if (bucket === null) return []
+        const since = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10)
+        const { data } = await admin.from('brain_moments').select('moments, day')
+          .eq('bucket', bucket).gte('day', since).order('day', { ascending: false }).limit(1)
+          .abortSignal(ctrl.signal)
+        const row = Array.isArray(data) ? data[0] : null
+        return row && Array.isArray(row.moments) ? row.moments as MomentInline[] : []
+      })().catch(() => [] as MomentInline[])
       try {
-        const [notes, trends, record] = await Promise.all([notesP, trendsP, recordP])
+        const [notes, trends, record, moments] = await Promise.all([notesP, trendsP, recordP, momentsP])
         brainNotesUsed = notes.length
         brainNoteIds = notes.map((n) => n.id).filter((id): id is string => typeof id === 'string')
-        brainBlock = renderNicheBrainInline(notes) + renderTrendsInline(trends) + renderTrackRecordInline(record)
+        brainBlock = renderNicheBrainInline(notes) + renderTrendsInline(trends) + renderMomentsInline(moments) + renderTrackRecordInline(record)
         console.log(JSON.stringify({
           event: 'niche_brain', notes: brainNotesUsed, trends: trends.length,
-          record: record !== null, rendered: brainBlock !== '',
+          record: record !== null, moments: moments.length, rendered: brainBlock !== '',
         }))
       } catch {
         brainBlock = ''

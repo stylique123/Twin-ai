@@ -183,6 +183,11 @@ const EVENTS = {
       + '`brain_notes` (used/filmed/posted/outcome_views) and recomputed from '
       + '`brain_note_uses`, so the count is derivable.',
   },
+  moments: {
+    kind: 'counter_ephemeral',
+    why: 'One bucket\'s daily grounded search for world moments. Durable in `brain_moments` '
+      + '(moments, sources, queries per bucket and day).',
+  },
   brain_sweep: {
     kind: 'counter_ephemeral',
     why: 'How many corpus videos one niche-brain sweep read, found unreadable or '

@@ -81,3 +81,17 @@ describe('niche brain learner wiring', () => {
     expect(src).toContain("rpc('brain_nearest_scoped'")
   })
 })
+
+import { parseMoments, momentsPrompt } from '../nicheBrain/momentsParse.js'
+describe('moment watcher', () => {
+  it('parses only well-formed MOMENT lines, capped', () => {
+    const t = 'Here you go:\nMOMENT: **FIFA World Cup** | WHEN: Jun 11–Jul 19 | ANGLE: team-colour bandanas for match day\nrandom line\nMOMENT: Halloween | WHEN: Oct 31 | ANGLE: costume bandanas'
+    const m = parseMoments(t)
+    expect(m).toHaveLength(2)
+    expect(m[0].name).toBe('FIFA World Cup')
+  })
+  it('NONE means none', () => { expect(parseMoments('NONE')).toEqual([]) })
+  it('the prompt names the date and the niche', () => {
+    expect(momentsPrompt('making', '2026-09-24')).toContain('2026-09-24')
+  })
+})
