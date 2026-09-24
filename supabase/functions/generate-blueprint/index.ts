@@ -1968,6 +1968,46 @@ function creatorSetsInline(
   }
   return { creatorsOf, cardsOf }
 }
+// ── THE NICHE BRAIN BLOCK (step 2) ──────────────────────────────────────────
+// Renders the notes `brain_brief` returned into one short, fenced section.
+// ⚠️ EVIDENCE, NOT SCRIPT: the model is told never to copy wording and never to
+// present another creator's result as this creator's own experience.
+interface BrainNoteInline {
+  kind: string; title: string; body: string | null; sub_niche: string | null
+  times_seen: number; total_views: number | string; similarity: number
+}
+const BRAIN_MIN_NOTES = 4
+const BRAIN_SECTIONS: Array<[string, string, number]> = [
+  ['topic', 'Topics getting attention near this niche', 4],
+  ['hook', 'Openings those videos used (templates, fill with HER specifics)', 4],
+  ['angle', 'How the argument ran (before the ask → the ask → after)', 3],
+  ['proof', 'Proof viewers accepted', 3],
+  ['objection', 'Objections those videos answered', 2],
+  ['cta', 'How they closed', 2],
+]
+function brainViewsInline(v: number | string): string {
+  const n = Number(v)
+  if (!Number.isFinite(n) || n <= 0) return ''
+  return n >= 1e6 ? `${(n / 1e6).toFixed(1)}M views` : n >= 1e3 ? `${Math.round(n / 1e3)}K views` : `${n} views`
+}
+function renderNicheBrainInline(rows: readonly BrainNoteInline[]): string {
+  if (!Array.isArray(rows) || rows.length < BRAIN_MIN_NOTES) return ''
+  const lines: string[] = []
+  for (const [kind, label, max] of BRAIN_SECTIONS) {
+    const picked = rows.filter((r) => r && r.kind === kind && typeof r.title === 'string').slice(0, max)
+    if (picked.length === 0) continue
+    lines.push(`${label}:`)
+    for (const r of picked) {
+      const seen = r.times_seen > 1 ? `seen in ${r.times_seen} videos` : 'seen once'
+      const views = brainViewsInline(r.total_views)
+      lines.push(`  - ${r.title.slice(0, 220)} (${[seen, views].filter(Boolean).join(', ')})`)
+    }
+  }
+  if (lines.length === 0) return ''
+  const body = lines.join('\n').split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
+  return `\n\nNICHE INTELLIGENCE — patterns read from real short-form videos close to this creator's niche. Use it to choose the ANGLE, the SHAPE of the hook, the ORDER of the argument, which objection to pre-empt and how to close, so this video fits what is already working and is built for the goal above. RULES: her own stories, DNA and product facts are the substance and always win; never copy these wordings; never present another creator's result, number or story as hers; skip anything that does not fit her product or voice.\n<<<UNTRUSTED_DATA niche intelligence\n${body}\nEND_UNTRUSTED_DATA>>>`
+}
+
 function nicheVocabulariesInline(
   cardsByNiche: ReadonlyMap<string, ReadonlyArray<{
     creator: string | null | undefined; title: string | null | undefined
@@ -7903,6 +7943,54 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         : ['tiktok']
 
     const subNiche = vp?.sub_niche ?? dna.sub_niche ?? ''
+
+    // ── THE NICHE BRAIN (step 2) ────────────────────────────────────────────
+    // ⚖️ ON TOP, NEVER INSTEAD. What real videos close to THIS creator did —
+    // topics, openings, how the argument ran, proof, objections, closes — read
+    // from `brain_notes` (0227/0228). Her own stories, DNA and product facts stay
+    // the substance; this only informs the angle, hook shape and order.
+    //
+    // ⚠️ FAIL-OPEN AND TIME-BOXED. One embedding + one RPC under a hard 2.5s
+    // cap. Any error, timeout, or fewer than four close notes renders NOTHING,
+    // and the script is written exactly as it was before this block existed.
+    let brainBlock = ''
+    let brainNotesUsed = 0
+    try {
+      const brainQuery = [subNiche, niche, typeof offer === 'string' && offer !== 'unspecified' ? offer : '', reference_note]
+        .map((v) => String(v ?? '').trim()).filter(Boolean).join(' | ').slice(0, 1500)
+      if (apiKey && brainQuery) {
+        const ctrl = new AbortController()
+        const brainTimer = setTimeout(() => ctrl.abort(), 2500)
+        try {
+          const embRes = await fetch(
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent',
+            {
+              method: 'POST', signal: ctrl.signal,
+              headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+              body: JSON.stringify({
+                content: { parts: [{ text: brainQuery }] },
+                taskType: 'SEMANTIC_SIMILARITY', outputDimensionality: 768,
+              }),
+            },
+          )
+          const emb = embRes.ok
+            ? ((await embRes.json()) as { embedding?: { values?: number[] } })?.embedding?.values
+            : null
+          if (Array.isArray(emb) && emb.length === 768) {
+            const { data: notes } = await admin.rpc('brain_brief', { p_embedding: `[${emb.join(',')}]`, p_k: 24 })
+              .abortSignal(ctrl.signal)
+            const rows = Array.isArray(notes) ? notes as BrainNoteInline[] : []
+            brainNotesUsed = rows.length
+            brainBlock = renderNicheBrainInline(rows)
+            console.log(JSON.stringify({ event: 'niche_brain', notes: brainNotesUsed, rendered: brainBlock !== '' }))
+          }
+        } finally {
+          clearTimeout(brainTimer)
+        }
+      }
+    } catch {
+      brainBlock = ''
+    }
     // Founder/B2B fix (panel): a founder's real voice lives in their TEXT (LinkedIn
     // posts, blog) more than a sparse video scan. If they pasted writing samples,
     // they're the single strongest voice signal — feed them verbatim (bounded).
@@ -9941,13 +10029,13 @@ ${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
 - Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
 ${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}
 
 ${decompositionInstruction}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}
 
 ${decompositionInstruction}`
 

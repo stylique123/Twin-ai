@@ -165,6 +165,13 @@ const EVENTS = {
   // could not. A durable counter here would store a total derivable from the
   // rows it describes — the second authority this registry exists to prevent —
   // and `caption_shape_at` already carries when each row was last read.
+  niche_brain: {
+    kind: 'counter_ephemeral',
+    why: 'Per generation: how many niche-brain notes came back and whether the '
+      + 'block rendered. Not persisted yet because the durable record belongs to the '
+      + 'Learner step, which stores WHICH notes reached WHICH script so results can '
+      + 'weight them; a bare count here would be a second, weaker authority.',
+  },
   brain_sweep: {
     kind: 'counter_ephemeral',
     why: 'How many corpus videos one niche-brain sweep read, found unreadable or '
