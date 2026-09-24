@@ -15,7 +15,7 @@ const ROUTING = loadModelRouting()
 describe('the catalog', () => {
   it('declares the classes the code actually has', () => {
     // 2026-09-23: `search` added for the grounded product web search retry.
-    expect(taskClassIds().sort()).toEqual(['decide', 'extract', 'profile', 'search'])
+    expect(taskClassIds().sort()).toEqual(['decide', 'embed', 'extract', 'profile', 'read', 'search'])
   })
 
   it('every class states a model and an explicit envOverride', () => {

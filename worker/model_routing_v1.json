@@ -119,6 +119,24 @@
         "available to new users; use models/gemini-3.6-flash\".",
         "2026-09-24: owner confirmed gemini-3.8 available; search moved to it."
       ]
+    },
+    "read": {
+      "model": "gemini-3.8-flash",
+      "envOverride": null,
+      "$note": [
+        "Niche brain corpus reader (nicheBrain/reader.ts): one short caption in,",
+        "a schema-constrained read out, thousands of times. Flash by design;",
+        "3.8 confirmed live on the owner's key 2026-09-24."
+      ]
+    },
+    "embed": {
+      "model": "gemini-embedding-001",
+      "envOverride": null,
+      "$note": [
+        "Niche brain note embeddings (768 dims, matches brain_notes.embedding).",
+        "FROZEN: a different model would put new vectors in a different space",
+        "from the stored ones, and similarity between them would be meaningless."
+      ]
     }
   }
 }

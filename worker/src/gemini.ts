@@ -167,3 +167,38 @@ export async function geminiGroundedSearch(
     clearTimeout(timer)
   }
 }
+
+// ── EMBEDDINGS ──────────────────────────────────────────────────────────────
+//
+// For the niche brain's "have I seen this idea before?" search. 768 dims to
+// match `brain_notes.embedding`. ⚖️ RETURNS null ON ANY FAILURE instead of
+// throwing: an unembedded note still lands (the librarian falls back to its
+// exact key), so a missing embedding model degrades sorting, never the read.
+export const EMBED_DIMS = 768
+export async function geminiEmbed(text: string, timeoutMs = 20_000): Promise<number[] | null> {
+  if (!env.geminiKey || !text.trim()) return null
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${modelForTask('embed')}:embedContent`,
+      {
+        method: 'POST', signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.geminiKey },
+        body: JSON.stringify({
+          content: { parts: [{ text: text.slice(0, 2000) }] },
+          taskType: 'SEMANTIC_SIMILARITY',
+          outputDimensionality: EMBED_DIMS,
+        }),
+      },
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as { embedding?: { values?: number[] } }
+    const v = data?.embedding?.values
+    return Array.isArray(v) && v.length === EMBED_DIMS ? v : null
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}

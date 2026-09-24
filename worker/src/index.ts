@@ -22,6 +22,7 @@ import {
   classifyBatch, tally, CAPTION_SWEEP_INTERVAL_MS, CAPTION_SWEEP_BATCH,
 } from './captionSweep.js'
 import { CAPTION_SHAPE_VERSION as CAPTION_SHAPE_VERSION_N } from './generated/captionShape.js'
+import { kickBrainSweep } from './nicheBrain/sweep.js'
 
 let running = true
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -411,6 +412,9 @@ async function main() {
       // gated, and it never blocks the claim below. A corpus that grows only
       // when somebody remembers to run a script is not a learning loop.
       await sweepCaptionShapes()
+      // ⚖️ THE NICHE BRAIN READS THE CORPUS DETACHED: kicked, never awaited, so
+      // a slow Gemini read can never delay a creator's job being claimed.
+      kickBrainSweep(log)
       const didWork = await tick()
       if (!didWork) await sleep(env.pollMs) // idle backoff when the queue is empty
     } catch (err) {
