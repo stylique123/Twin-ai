@@ -143,7 +143,7 @@ describe('4. sell and get-leads end differently', () => {
   })
   it('keeps the non-CTA lead-in of a multi-sentence closing beat', () => {
     const r = repairCtaForGoal([{ line: 'Dress your pup in something effortless this season. Check out the link in bio to shop.' }], 'sell', 'Reversible Scrunchie Bandana')
-    expect(r.line).toBe('Dress your pup in something effortless this season. If you want the Reversible Scrunchie Bandana, the link to buy it is in my bio.')
+    expect(r.line).toBe('Dress your pup in something effortless this season. Grab your Reversible Scrunchie Bandana — the link is in my bio.') // 2026-09-24: owner-approved wording
   })
   it('states a price only when the caller confirmed one', () => {
     expect(ctaForGoal('sell', 'Scrunchie Bandana', '$24')).toMatch(/\$24/)
