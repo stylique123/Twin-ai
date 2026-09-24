@@ -694,7 +694,7 @@ Synthesize this creator's voice profile.${visionNote}`
   try {
     return await attempt(model, 60_000)
   } catch (err) {
-    const fb = Deno.env.get('GEMINI_FALLBACK_MODEL') ?? 'gemini-2.5-flash'
+    const fb = Deno.env.get('GEMINI_FALLBACK_MODEL') ?? 'gemini-3.7-flash'
     if (!fb || fb === model) throw err
     console.error(`synthesizeVoice: ${model} failed (${err instanceof Error ? err.message : err}); retrying with ${fb}`)
     return await attempt(fb, 45_000)

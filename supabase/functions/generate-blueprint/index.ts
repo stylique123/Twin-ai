@@ -5690,7 +5690,7 @@ async function composePosition(apiKey: string, facts: string): Promise<string | 
   const timer = setTimeout(() => ctrl.abort(), COMPOSER_TIMEOUT_MS)
   try {
     const res = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent',
       {
         method: 'POST',
         signal: ctrl.signal,
@@ -5869,13 +5869,13 @@ async function callModel(apiKey: string, system: string, prompt: string, schema:
   // for a paying creator, credit spent then refunded). Gemini 2.5 Flash returns
   // the same structured blueprint in ~20-45s. Operators can still trial the pro
   // model with GEMINI_MODEL once they've confirmed it returns in time.
-  const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-2.5-flash'
+  const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.8-flash'
   // Thinking OFF by default = fastest + most reliable. Raise GEMINI_THINKING_BUDGET
   // for more deliberation ONLY if your chosen model still returns within the
   // timeouts below.
   const thinkBudget = Number(Deno.env.get('GEMINI_THINKING_BUDGET') ?? '0')
   // The fallback model — same API key, reliable. Override with GEMINI_FALLBACK_MODEL.
-  const fallbackModel = Deno.env.get('GEMINI_FALLBACK_MODEL') ?? 'gemini-2.5-flash'
+  const fallbackModel = Deno.env.get('GEMINI_FALLBACK_MODEL') ?? 'gemini-3.7-flash'
 
   const attempts: Array<{ model: string; thinkBudget: number; timeoutMs: number }> = [
     // Generous timeouts so the model actually FINISHES — the previous 32-45s
