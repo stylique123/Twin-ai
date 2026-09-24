@@ -165,6 +165,14 @@ const EVENTS = {
   // could not. A durable counter here would store a total derivable from the
   // rows it describes — the second authority this registry exists to prevent —
   // and `caption_shape_at` already carries when each row was last read.
+  brain_sweep: {
+    kind: 'counter_ephemeral',
+    why: 'How many corpus videos one niche-brain sweep read, found unreadable or '
+      + 'failed on, and how many notes it filed. Not persisted because every figure is '
+      + 'durable IN `corpus_reads` (status + read_at per video) and `brain_notes` '
+      + '(times_seen, first_seen, last_seen), so progress is a query. The log line '
+      + 'makes a stalled sweep visible in the moment.',
+  },
   caption_sweep: {
     kind: 'counter_ephemeral',
     why: 'How many gallery cards one sweep read, classified and could not '

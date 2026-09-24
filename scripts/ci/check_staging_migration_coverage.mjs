@@ -72,6 +72,10 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0227_the_niche_brain':
+    'New corpus_reads / brain_notes / brain_links tables read only by the worker sweep and, later, '
+    + 'the script strategist; the editor never reads them. Requires `gallery_items`, which staging '
+    + 'does not have (corpus_reads references it).',
   '0226_the_closest_ones_on_her_shop':
     'Adds nullable `product_entities.lookup_candidates` (jsonb). Inherited exclusion, same as 0225: '
     + '`0120_product_entities` is excluded, so staging has no such table.',
