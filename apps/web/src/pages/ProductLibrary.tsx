@@ -1170,7 +1170,23 @@ export default function ProductLibrary() {
           {/* ⚠️ THE WORD, NOT ONLY A CHEVRON. "no option to edit or remove it"
               was reported against a screen where both existed; naming the action
               on the row is the whole point of the row. */}
-          <span className="shrink-0 text-xs font-medium text-teal">Open</span>
+          {/* ⚖️ THE TWO THINGS A SELLER CHECKS AT A GLANCE (#31): what it costs
+              and whether it can be bought — without opening the card. Price is
+              the first CONFIRMED one only; an unconfirmed price is not shown as
+              if it were true. */}
+          <span className="flex shrink-0 items-center gap-2">
+            {(() => {
+              const price = (e.knowledge ?? []).find((f) => (f.field === 'price' || f.field === 'plan') && f.trust === 'usable')?.value
+              return price ? <span className="text-xs text-sand">{String(price).split('—')[0]!.trim().slice(0, 24)}</span> : null
+            })()}
+            {availability[e.id]?.availability === 'sold_out' && (
+              <span className="rounded-full bg-coral/15 px-2 py-0.5 text-[11px] text-coral">Sold out</span>
+            )}
+            {availability[e.id]?.availability === 'partly_sold_out' && (
+              <span className="rounded-full bg-sand/15 px-2 py-0.5 text-[11px] text-sand">Some sold out</span>
+            )}
+            <span className="text-xs font-medium text-teal">Open</span>
+          </span>
         </button>
       ) : (
         <div
