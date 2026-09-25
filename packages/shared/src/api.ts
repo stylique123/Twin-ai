@@ -499,6 +499,16 @@ export const SELL_WITHOUT_TARGET_CODE = 'SELL_WITHOUT_COMMERCIAL_TARGET'
  */
 export const OUT_OF_REMIXES_CODE = 'OUT_OF_REMIXES'
 
+/**
+ * ⚠️ THE SERVER ANSWERED, SO THERE IS NOTHING TO RESCUE. Reported 2026-09-24:
+ * with the Gemini key rejected, every build sat in "The connection dropped…
+ * we are asking the server" for ninety seconds — but the server HAD answered,
+ * refunded, and said so. This code marks that definitive answer (no generation
+ * exists, nothing was charged), so the screen shows it at once instead of
+ * polling for a script that is not coming.
+ */
+export const GENERATION_FAILED_CODE = 'GENERATION_FAILED'
+
 export async function generateBlueprint(input: GenerateInput): Promise<Generation> {
   // Calls the Supabase Edge Function `generate-blueprint`, which runs the
   // LLM call server-side (keeps the API key off the client), decrements

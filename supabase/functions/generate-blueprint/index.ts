@@ -13557,6 +13557,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         detail: { fn: 'generate-blueprint', run_id: runIdForFailure, error: failDetail.slice(0, 600) },
       })
       .then(() => {}, () => {})
-    return json({ error: 'Generation failed. Your credits were not charged.' }, 500)
+    // ⚖️ A DEFINITIVE ANSWER CARRIES A CODE, so the client shows it instead of
+    // polling for a script that does not exist (see GENERATION_FAILED_CODE).
+    // A provider refusal (bad key, quota, outage) gets its own honest sentence.
+    const providerDown = /Gemini (4\d\d|5\d\d)|API key|quota|RESOURCE_EXHAUSTED|UNAVAILABLE/i.test(failDetail)
+    return json({
+      error: providerDown
+        ? "Twin's script writer is unavailable right now. You weren't charged — please try again in a few minutes."
+        : 'Generation failed. Your credits were not charged.',
+      code: 'GENERATION_FAILED',
+    }, providerDown ? 503 : 500)
   }
 })
