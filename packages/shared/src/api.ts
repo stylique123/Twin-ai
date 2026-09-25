@@ -2843,6 +2843,29 @@ export async function loadLookupCandidates(): Promise<Record<string, LookupCandi
   } catch { return {} }
 }
 
+/** 0234 — is it still for sale, by product id, as the shop reported it on the
+ *  worker's last daily check. Best effort and separate: a missing column or a
+ *  failed read means "unknown", never "in stock". */
+export interface ProductAvailability { availability: 'in_stock' | 'sold_out' | 'partly_sold_out'; soldOutVariants: string[]; checkedAt: string | null }
+export async function loadProductAvailability(): Promise<Record<string, ProductAvailability>> {
+  try {
+    const { data, error } = await supabase.from('product_entities')
+      .select('id, availability, sold_out_variants, availability_checked_at')
+      .not('availability', 'is', null)
+    if (error || !data) return {}
+    const out: Record<string, ProductAvailability> = {}
+    for (const row of data as Array<{ id: string; availability: string; sold_out_variants: string[] | null; availability_checked_at: string | null }>) {
+      if (!['in_stock', 'sold_out', 'partly_sold_out'].includes(row.availability)) continue
+      out[row.id] = {
+        availability: row.availability as ProductAvailability['availability'],
+        soldOutVariants: Array.isArray(row.sold_out_variants) ? row.sold_out_variants.map(String) : [],
+        checkedAt: row.availability_checked_at,
+      }
+    }
+    return out
+  } catch { return {} }
+}
+
 /** She answered (picked one, or "none of these"): the list goes. */
 export async function clearLookupCandidates(productId: string): Promise<void> {
   const { error } = await supabase.from('product_entities').update({ lookup_candidates: null }).eq('id', productId)

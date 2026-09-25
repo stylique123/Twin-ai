@@ -8028,6 +8028,28 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // ⚠️ FAIL-OPEN AND TIME-BOXED. One embedding + one RPC under a hard 2.5s
     // cap. Any error, timeout, or fewer than four close notes renders NOTHING,
     // and the script is written exactly as it was before this block existed.
+    // ── IS IT STILL FOR SALE? (0234) ────────────────────────────────────────
+    // ⚠️ AUDIT 2026-09-25: a script told viewers to buy a sold-out bowl. The
+    // worker reads the shop's live stock daily; a sold-out product may still be
+    // talked about, but the video must never send people to buy it now.
+    let availabilityBlock = ''
+    let productSoldOut = false
+    try {
+      const ownedId = (ownedEntity as { id?: unknown } | null)?.id
+      if (typeof ownedId === 'string') {
+        const { data: av } = await admin.from('product_entities')
+          .select('availability, sold_out_variants, availability_checked_at').eq('id', ownedId).maybeSingle()
+        const state = (av as { availability?: string | null } | null)?.availability ?? null
+        const soldVariants = ((av as { sold_out_variants?: string[] | null } | null)?.sold_out_variants ?? []).slice(0, 8)
+        if (state === 'sold_out') {
+          productSoldOut = true
+          availabilityBlock = '\n\n⚠️ THIS PRODUCT IS SOLD OUT RIGHT NOW (read from the shop today). Do NOT tell viewers to buy, shop, order or "grab" it, and do not say the link is live for purchase. You may still show and talk about it. Close instead with a restock alert, waitlist, "follow so you catch the next drop", or a DM for custom orders.'
+        } else if (state === 'partly_sold_out' && soldVariants.length) {
+          availabilityBlock = `\n\n⚠️ SOME OPTIONS ARE SOLD OUT (read from the shop today): ${soldVariants.join(', ').replace(/[<>]/g, '')}. Never tell viewers to buy those options; point them only at what is still available.`
+        }
+      }
+    } catch { availabilityBlock = '' }
+
     let brainBlock = ''
     let brainNotesUsed = 0
     let brainNoteIds: string[] = []
@@ -10143,13 +10165,13 @@ ${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
 - Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
 ${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${availabilityBlock}
 
 ${decompositionInstruction}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${availabilityBlock}
 
 ${decompositionInstruction}`
 
@@ -11862,6 +11884,20 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         cta.beats.forEach((b, i) => {
           if (beatsNow[i] && beatsNow[i]!.line !== b.line) beatsNow[i]!.line = b.line
         })
+        // ⚠️ SOLD OUT BEATS "SELL" (0234). The sell repair above writes a
+        // "grab yours — link in bio" close; for a product the shop reports sold
+        // out today that is an instruction to buy something that cannot be
+        // bought, so the closing ask becomes a restock ask instead.
+        if (productSoldOut && cta.index >= 0 && beatsNow[cta.index]) {
+          const closing = String(beatsNow[cta.index]!.line ?? '')
+          if (/\b(buy|shop|order|grab|purchase|link in (my )?bio|add to cart|get yours)\b/i.test(closing)) {
+            const keep = (closing.match(/[^.!?]+[.!?]*\s*/g) ?? [closing]).slice(0, -1)
+              .filter((x) => !/\b(buy|shop|order|grab|purchase|link in (my )?bio|add to cart|get yours)\b/i.test(x)).join('').trim()
+            const restock = "It's sold out right now — follow so you catch the next drop."
+            beatsNow[cta.index]!.line = keep ? `${keep} ${restock}` : restock
+            console.warn(JSON.stringify({ event: 'sold_out_cta_replaced' }))
+          }
+        }
         goalFidelity = {
           rebuttals_stripped: reb.stripped,
           rebuttals_unrepaired: reb.unrepaired.length,

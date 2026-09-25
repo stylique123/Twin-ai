@@ -56,6 +56,7 @@ import {
   productLifecycle, LIFECYCLE_MESSAGE, READ_STALLS_AFTER_MS, linkStatus, linkStatusMessage,
   loadProductStories, saveProductStories, type ProductStories,
   loadLookupCandidates, clearLookupCandidates, type LookupCandidate,
+  loadProductAvailability, type ProductAvailability,
   CAPTURE_COPY, PLATFORM_CHOICES, PRIVACY_CHOICES, RATHER_NOT_SAY, FIGURE_HINT,
   surfaceChoices, buildCommunityMap, whatIsMissing,
   type ProductSuggestion,
@@ -409,6 +410,7 @@ export default function ProductLibrary() {
   /** 0225 — product id → the creator's three optional story answers. */
   const [stories, setStories] = useState<Record<string, ProductStories>>({})
   const [candidates, setCandidates] = useState<Record<string, LookupCandidate[]>>({})
+  const [availability, setAvailability] = useState<Record<string, ProductAvailability>>({})
   async function saveStory(id: string, key: keyof ProductStories, v: string) {
     const current = stories[id] ?? { almostWentWrong: null, customersSay: null, howItsMade: null }
     if ((current[key] ?? '') === v) return
@@ -687,6 +689,8 @@ export default function ProductLibrary() {
         // 0225 — separate and best effort; see `loadProductStories`.
         void loadProductStories().then((s) => { if (alive) setStories(s) }).catch(() => { /* optional */ })
         void loadLookupCandidates().then((c) => { if (alive) setCandidates(c) })
+        // 0234 — sold out / partly sold out, from the shop's own stock.
+        void loadProductAvailability().then((a) => { if (alive) setAvailability(a) })
         // ⚖️ THE PHOTOS EXISTED AND NOBODY COULD SEE THEM. A creator uploaded up
         // to four pictures at add time, extraction read them, and the page then
         // showed only the words it got out of them — so "did my photo arrive"
@@ -1464,6 +1468,19 @@ export default function ProductLibrary() {
           <p data-testid="link-status" className={`text-xs ${['FAILED', 'TIMED_OUT'].includes(linkStatus(e, now)) ? 'text-coral' : 'text-stone'}`}>
             {linkStatusMessage(e, now)}
           </p>
+          {/* ⚠️ AUDIT 2026-09-25: a script sold a sold-out bowl. Said here, where
+              she manages the product, so she knows why her scripts will not ask
+              people to buy it. */}
+          {availability[e.id]?.availability === 'sold_out' && (
+            <p data-testid="availability" className="mt-1 inline-block rounded-full bg-coral/15 px-2 py-0.5 text-xs text-coral">
+              Sold out on your shop — scripts will ask people to follow for the restock, not to buy
+            </p>
+          )}
+          {availability[e.id]?.availability === 'partly_sold_out' && (
+            <p data-testid="availability" className="mt-1 text-xs text-sand">
+              Sold out: {availability[e.id].soldOutVariants.join(', ')} — scripts will only point to what is left
+            </p>
+          )}
           {/* ⚖️ NOT FOUND BY ITS EXACT NAME — SO ASK, DON'T GUESS. Measured
               2026-09-23: her shop names each bandana by its print, and none is
               called "Reversible Scrunchie Bandana". The worker keeps the

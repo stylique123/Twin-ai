@@ -193,6 +193,16 @@ const EVENTS = {
     why: 'How many ideas one daily batch wrote for one voice. Durable in `creator_ideas` '
       + '(one row per idea, with batch_day, used_at, dismissed_at).',
   },
+  availability: {
+    kind: 'counter_ephemeral',
+    why: 'How many product pages one availability sweep checked and found sold out. Durable on '
+      + '`product_entities` (availability, sold_out_variants, availability_checked_at).',
+  },
+  sold_out_cta_replaced: {
+    kind: 'counter_ephemeral',
+    why: 'A sold-out product\'s buy close was swapped for a restock close. The script itself is the '
+      + 'durable record; this line makes the swap visible when it happens.',
+  },
   brain_sweep: {
     kind: 'counter_ephemeral',
     why: 'How many corpus videos one niche-brain sweep read, found unreadable or '
