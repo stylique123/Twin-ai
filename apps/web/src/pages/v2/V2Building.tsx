@@ -25,7 +25,7 @@ import {
   // ⚖️ THE WRITER'S OWN TARGET, shown to the creator before the money moves.
   targetSeconds, spokenTime,
   INTENT_QUESTIONS, intentQuestionsFor, type IntentQuestion, type VideoGoal, focusForGoal,
-  mustAskWhichProduct, PRODUCT_CHOICE_FIELD, NO_PRODUCT_CHOICE, NO_PRODUCT_EXPLANATION, BRAND_CHOICE_PREFIX,
+  mustAskWhichProduct, promotedObjectiveQuestion, PRODUCT_CHOICE_FIELD, NO_PRODUCT_CHOICE, NO_PRODUCT_EXPLANATION, BRAND_CHOICE_PREFIX,
   selectProduct,
   productChoiceConstraint,
   // ⚖️ THIS BRANCH'S OWN ADDITION, kept alongside main's rather than instead of
@@ -2028,7 +2028,14 @@ export default function V2Building() {
     ? nextObjectiveQuestion(askAnswers.video_goal ?? null,
       answeredForProduct(objectiveAnswers ?? [], liveProductId))
     : null
-  const liveClaimsQuestion = pooledQuestion
+  // ⚠️ AUDIT: a promoted item asks why she recommends it now, not why she made it.
+  const promotedQuestion = isProductSubject
+    ? promotedObjectiveQuestion(askAnswers.video_goal ?? null,
+      (pickedProduct(products, liveProductId) as { relationship?: string | null } | null)?.relationship ?? null)
+    : null
+  const liveClaimsQuestion = promotedQuestion
+    ? promotedQuestion
+    : pooledQuestion
     ? pooledWording(pooledQuestion, liveOfferForm)
     : isProductSubject
     ? objectiveQuestion(

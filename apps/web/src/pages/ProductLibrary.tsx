@@ -1810,6 +1810,7 @@ export default function ProductLibrary() {
             <p className="text-sm font-semibold text-cream">In your words</p>
             <p className="mb-3 mt-0.5 text-xs text-stone">Optional. Things only you know — scripts use them as your own words.</p>
             <StoryFields key={`stories-${e.id}`} idPrefix={`story-${e.id}`} value={stories[e.id] ?? null}
+              promoted={e.relationship === 'AFFILIATE' || e.relationship === 'SPONSOR'}
               onCommit={(key, v) => void saveStory(e.id, key, v)} />
             <p className="mt-1 h-4 text-xs text-stone">
               {savingKey?.startsWith(`${e.id}:story-`) ? 'Saving…' : savedKey?.startsWith(`${e.id}:story-`) ? 'Saved.' : ''}
@@ -3178,6 +3179,7 @@ function StartFromLink({ onCancel, onClaim, busy, initialUrl, kind = 'any', subm
         <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-stone">In your words (optional)</summary>
         <div className="mt-3">
           <StoryFields idPrefix="add-story" value={stories}
+            promoted={relationship === 'AFFILIATE' || relationship === 'SPONSOR'}
             onCommit={(key, v) => setStories((p) => ({ ...p, [key]: v || null }))} />
         </div>
       </details>

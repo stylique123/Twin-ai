@@ -15,6 +15,12 @@ export interface ProductStories {
   almostWentWrong: string | null
   customersSay: string | null
   howItsMade: string | null
+  // ⚠️ AUDIT 2026-09-25 (P6 #11): "Something you promote" had no equivalent
+  // questions, so a promoted item's scripts had nothing of hers to stand on.
+  // Same jsonb, three more keys — no migration.
+  whyYes?: string | null
+  useItFor?: string | null
+  tellAFriend?: string | null
 }
 
 export type ProductStoryKey = keyof ProductStories
@@ -24,6 +30,14 @@ export const PRODUCT_STORY_QUESTIONS: ReadonlyArray<{ key: ProductStoryKey; labe
   { key: 'almostWentWrong', label: 'What almost went wrong with this one?', placeholder: 'A near-miss, a first batch that failed, a lesson' },
   { key: 'customersSay', label: 'What do customers say back to you about it?', placeholder: 'In their words, if you remember them' },
   { key: 'howItsMade', label: 'How is it actually made or delivered?', placeholder: 'By hand, in batches, shipped from…' },
+]
+
+/** The questions for something she PROMOTES (affiliate / sponsor) — about her
+ *  honest use of it, never about making it. */
+export const PROMOTED_STORY_QUESTIONS: ReadonlyArray<{ key: ProductStoryKey; label: string; placeholder: string }> = [
+  { key: 'whyYes', label: 'Why did you say yes to this one?', placeholder: 'What made it worth putting your name next to' },
+  { key: 'useItFor', label: 'What do you actually use it for?', placeholder: 'The real job it does for you, if you use it' },
+  { key: 'tellAFriend', label: 'What would you tell a friend before they buy it?', placeholder: 'Including anything it is not good for' },
 ]
 
 export const EMPTY_STORIES: ProductStories = { almostWentWrong: null, customersSay: null, howItsMade: null }
@@ -37,11 +51,14 @@ const clean = (v: unknown): string | null => {
 export function readStories(raw: unknown): ProductStories {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...EMPTY_STORIES }
   const r = raw as Record<string, unknown>
-  return { almostWentWrong: clean(r.almostWentWrong), customersSay: clean(r.customersSay), howItsMade: clean(r.howItsMade) }
+  return {
+    almostWentWrong: clean(r.almostWentWrong), customersSay: clean(r.customersSay), howItsMade: clean(r.howItsMade),
+    whyYes: clean(r.whyYes), useItFor: clean(r.useItFor), tellAFriend: clean(r.tellAFriend),
+  }
 }
 
 /** What is written: null when every answer is blank, so "never answered" stays null. */
 export function storiesForStorage(s: Partial<ProductStories> | null | undefined): ProductStories | null {
   const out = readStories(s ?? null)
-  return out.almostWentWrong || out.customersSay || out.howItsMade ? out : null
+  return out.almostWentWrong || out.customersSay || out.howItsMade || out.whyYes || out.useItFor || out.tellAFriend ? out : null
 }

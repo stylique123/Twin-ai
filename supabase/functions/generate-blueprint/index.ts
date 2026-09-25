@@ -6876,6 +6876,10 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       line('what almost went wrong with it', r.almostWentWrong),
       line('what customers say back about it', r.customersSay),
       line('how it is actually made or delivered', r.howItsMade),
+      // Promoted items (affiliate / sponsor): her honest use, never its making.
+      line('why she said yes to promoting it', r.whyYes),
+      line('what she actually uses it for', r.useItFor),
+      line('what she would tell a friend before they buy it', r.tellAFriend),
     ].filter((l) => l !== '')
   })()
 
