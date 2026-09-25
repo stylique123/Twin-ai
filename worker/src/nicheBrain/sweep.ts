@@ -14,6 +14,7 @@ import {
 } from './reader.js'
 import { runMomentWatcher } from './moments.js'
 import { runIdeaWriter } from './ideas.js'
+import { runAvailabilitySweep } from './availabilitySweep.js'
 import { MAX_SOURCES, embedText, notesFromRead, place, relationFor, type NoteDraft } from './librarian.js'
 
 export const BRAIN_SWEEP_INTERVAL_MS = 2 * 60 * 1000
@@ -132,6 +133,7 @@ export function kickBrainSweep(log: Log): void {
     await runLearner(log)
     await runMomentWatcher(log)
     await runIdeaWriter(log)
+    await runAvailabilitySweep(log)
   })().catch((err) => {
     log('error', 'brain_sweep_threw', { error: err instanceof Error ? err.message : String(err) })
   }).finally(() => { inFlight = false })

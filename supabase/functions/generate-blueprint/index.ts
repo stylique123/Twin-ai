@@ -2018,6 +2018,7 @@ interface TrackRecordInline {
   recent_scripts?: Array<{ premise?: string; was_filmed?: boolean | null; was_published?: boolean | null; views_7d?: number | null }>
   posted?: Array<{ caption?: string; views?: number | null }>
   edits?: Array<{ before_text?: string; after_text?: string }>
+  feedback?: Array<{ stars?: number; tags?: string[]; change_note?: string | null; premise?: string }>
 }
 function renderTrendsInline(rows: readonly BrainTrendInline[]): string {
   // ⚠️ ONLY HER LANE. Corpus-wide "moments" measured 2026-09-24 were the
@@ -2068,6 +2069,14 @@ function renderTrackRecordInline(r: TrackRecordInline | null): string {
   if (edits.length) {
     lines.push('Lines she rewrote in earlier Twin scripts — write the way her AFTER versions sound:')
     for (const e of edits) lines.push(`  - "${cap(e.before_text, 120)}" → "${cap(e.after_text, 120)}"`)
+  }
+  const fb = (r.feedback ?? []).filter((f) => f && (f.change_note || (f.tags ?? []).length)).slice(0, 5)
+  if (fb.length) {
+    lines.push('What she said about earlier Twin scripts — act on it (her words outrank any niche pattern):')
+    for (const f of fb) {
+      const tags = (f.tags ?? []).slice(0, 5).join(', ')
+      lines.push(`  - ${f.stars ?? '?'}★${tags ? ` [${cap(tags, 120)}]` : ''}${f.change_note ? ` "${cap(f.change_note, 200)}"` : ''}`)
+    }
   }
   if (lines.length === 0) return ''
   const body = lines.join('\n').split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
@@ -8019,6 +8028,28 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // ⚠️ FAIL-OPEN AND TIME-BOXED. One embedding + one RPC under a hard 2.5s
     // cap. Any error, timeout, or fewer than four close notes renders NOTHING,
     // and the script is written exactly as it was before this block existed.
+    // ── IS IT STILL FOR SALE? (0234) ────────────────────────────────────────
+    // ⚠️ AUDIT 2026-09-25: a script told viewers to buy a sold-out bowl. The
+    // worker reads the shop's live stock daily; a sold-out product may still be
+    // talked about, but the video must never send people to buy it now.
+    let availabilityBlock = ''
+    let productSoldOut = false
+    try {
+      const ownedId = (ownedEntity as { id?: unknown } | null)?.id
+      if (typeof ownedId === 'string') {
+        const { data: av } = await admin.from('product_entities')
+          .select('availability, sold_out_variants, availability_checked_at').eq('id', ownedId).maybeSingle()
+        const state = (av as { availability?: string | null } | null)?.availability ?? null
+        const soldVariants = ((av as { sold_out_variants?: string[] | null } | null)?.sold_out_variants ?? []).slice(0, 8)
+        if (state === 'sold_out') {
+          productSoldOut = true
+          availabilityBlock = '\n\n⚠️ THIS PRODUCT IS SOLD OUT RIGHT NOW (read from the shop today). Do NOT tell viewers to buy, shop, order or "grab" it, and do not say the link is live for purchase. You may still show and talk about it. Close instead with a restock alert, waitlist, "follow so you catch the next drop", or a DM for custom orders.'
+        } else if (state === 'partly_sold_out' && soldVariants.length) {
+          availabilityBlock = `\n\n⚠️ SOME OPTIONS ARE SOLD OUT (read from the shop today): ${soldVariants.join(', ').replace(/[<>]/g, '')}. Never tell viewers to buy those options; point them only at what is still available.`
+        }
+      }
+    } catch { availabilityBlock = '' }
+
     let brainBlock = ''
     let brainNotesUsed = 0
     let brainNoteIds: string[] = []
@@ -8058,13 +8089,18 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         return Array.isArray(data) ? data as BrainTrendInline[] : []
       })().catch(() => [] as BrainTrendInline[])
       const recordP = (async (): Promise<TrackRecordInline | null> => {
-        const [rec, edits] = await Promise.all([
+        const [rec, edits, feedback] = await Promise.all([
           admin.rpc('creator_track_record', { p_owner: ownerId, p_voice: voice?.id ?? null }).abortSignal(ctrl.signal),
           admin.rpc('creator_recent_edits', { p_owner: ownerId }).abortSignal(ctrl.signal),
+          admin.rpc('creator_script_feedback', { p_owner: ownerId }).abortSignal(ctrl.signal),
         ])
         const data = rec.data
         if (!data || typeof data !== 'object') return null
-        return { ...(data as TrackRecordInline), edits: Array.isArray(edits.data) ? edits.data : [] }
+        return {
+          ...(data as TrackRecordInline),
+          edits: Array.isArray(edits.data) ? edits.data : [],
+          feedback: Array.isArray(feedback.data) ? feedback.data : [],
+        }
       })().catch(() => null)
       const momentsP = (async (): Promise<MomentInline[]> => {
         const bucket = nicheBucketInline(niche)
@@ -10129,13 +10165,13 @@ ${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
 - Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
 ${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${availabilityBlock}
 
 ${decompositionInstruction}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${availabilityBlock}
 
 ${decompositionInstruction}`
 
@@ -11848,6 +11884,20 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         cta.beats.forEach((b, i) => {
           if (beatsNow[i] && beatsNow[i]!.line !== b.line) beatsNow[i]!.line = b.line
         })
+        // ⚠️ SOLD OUT BEATS "SELL" (0234). The sell repair above writes a
+        // "grab yours — link in bio" close; for a product the shop reports sold
+        // out today that is an instruction to buy something that cannot be
+        // bought, so the closing ask becomes a restock ask instead.
+        if (productSoldOut && cta.index >= 0 && beatsNow[cta.index]) {
+          const closing = String(beatsNow[cta.index]!.line ?? '')
+          if (/\b(buy|shop|order|grab|purchase|link in (my )?bio|add to cart|get yours)\b/i.test(closing)) {
+            const keep = (closing.match(/[^.!?]+[.!?]*\s*/g) ?? [closing]).slice(0, -1)
+              .filter((x) => !/\b(buy|shop|order|grab|purchase|link in (my )?bio|add to cart|get yours)\b/i.test(x)).join('').trim()
+            const restock = "It's sold out right now — follow so you catch the next drop."
+            beatsNow[cta.index]!.line = keep ? `${keep} ${restock}` : restock
+            console.warn(JSON.stringify({ event: 'sold_out_cta_replaced' }))
+          }
+        }
         goalFidelity = {
           rebuttals_stripped: reb.stripped,
           rebuttals_unrepaired: reb.unrepaired.length,
@@ -13543,6 +13593,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         detail: { fn: 'generate-blueprint', run_id: runIdForFailure, error: failDetail.slice(0, 600) },
       })
       .then(() => {}, () => {})
-    return json({ error: 'Generation failed. Your credits were not charged.' }, 500)
+    // ⚖️ A DEFINITIVE ANSWER CARRIES A CODE, so the client shows it instead of
+    // polling for a script that does not exist (see GENERATION_FAILED_CODE).
+    // A provider refusal (bad key, quota, outage) gets its own honest sentence.
+    const providerDown = /Gemini (4\d\d|5\d\d)|API key|quota|RESOURCE_EXHAUSTED|UNAVAILABLE/i.test(failDetail)
+    return json({
+      error: providerDown
+        ? "Twin's script writer is unavailable right now. You weren't charged — please try again in a few minutes."
+        : 'Generation failed. Your credits were not charged.',
+      code: 'GENERATION_FAILED',
+    }, providerDown ? 503 : 500)
   }
 })

@@ -499,6 +499,16 @@ export const SELL_WITHOUT_TARGET_CODE = 'SELL_WITHOUT_COMMERCIAL_TARGET'
  */
 export const OUT_OF_REMIXES_CODE = 'OUT_OF_REMIXES'
 
+/**
+ * ⚠️ THE SERVER ANSWERED, SO THERE IS NOTHING TO RESCUE. Reported 2026-09-24:
+ * with the Gemini key rejected, every build sat in "The connection dropped…
+ * we are asking the server" for ninety seconds — but the server HAD answered,
+ * refunded, and said so. This code marks that definitive answer (no generation
+ * exists, nothing was charged), so the screen shows it at once instead of
+ * polling for a script that is not coming.
+ */
+export const GENERATION_FAILED_CODE = 'GENERATION_FAILED'
+
 export async function generateBlueprint(input: GenerateInput): Promise<Generation> {
   // Calls the Supabase Edge Function `generate-blueprint`, which runs the
   // LLM call server-side (keeps the API key off the client), decrements
@@ -2828,6 +2838,29 @@ export async function loadLookupCandidates(): Promise<Record<string, LookupCandi
         .map((i) => ({ title: String((i as { title?: unknown }).title ?? ''), url: String((i as { url?: unknown }).url ?? '') }))
         .filter((i) => i.title !== '' && /^https:\/\//.test(i.url))
       if (list.length > 0) out[row.id] = list
+    }
+    return out
+  } catch { return {} }
+}
+
+/** 0234 — is it still for sale, by product id, as the shop reported it on the
+ *  worker's last daily check. Best effort and separate: a missing column or a
+ *  failed read means "unknown", never "in stock". */
+export interface ProductAvailability { availability: 'in_stock' | 'sold_out' | 'partly_sold_out'; soldOutVariants: string[]; checkedAt: string | null }
+export async function loadProductAvailability(): Promise<Record<string, ProductAvailability>> {
+  try {
+    const { data, error } = await supabase.from('product_entities')
+      .select('id, availability, sold_out_variants, availability_checked_at')
+      .not('availability', 'is', null)
+    if (error || !data) return {}
+    const out: Record<string, ProductAvailability> = {}
+    for (const row of data as Array<{ id: string; availability: string; sold_out_variants: string[] | null; availability_checked_at: string | null }>) {
+      if (!['in_stock', 'sold_out', 'partly_sold_out'].includes(row.availability)) continue
+      out[row.id] = {
+        availability: row.availability as ProductAvailability['availability'],
+        soldOutVariants: Array.isArray(row.sold_out_variants) ? row.sold_out_variants.map(String) : [],
+        checkedAt: row.availability_checked_at,
+      }
     }
     return out
   } catch { return {} }

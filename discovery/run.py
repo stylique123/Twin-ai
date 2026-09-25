@@ -88,22 +88,40 @@ def existing_pairs():
     return out
 
 
-def creator_niches(base):
+def _rotation_window(items, cap, day):
+    """A fair daily slice of `items`: day N takes the Nth window of `cap`, wrapping.
+
+    ⚠️ MEASURED 2026-09-24: taking the FIRST `cap` niches in database order meant
+    the same handful of creators were scraped every day and the rest never were,
+    so the corpus grew in bursts for a few niches and trends compared unlike with
+    unlike. Rotating the window covers every creator's niche every
+    ceil(len/cap) days, at the same run size as before."""
+    if not items or cap <= 0:
+        return []
+    if len(items) <= cap:
+        return list(items)
+    start = (day * cap) % len(items)
+    return [items[(start + i) % len(items)] for i in range(cap)]
+
+
+def creator_niches(base, day=None):
     """The niches REAL creators on the platform actually have (from their brand
     voices), so discovery covers THEM, not just a fixed list. A new signup's niche
-    starts getting discovered automatically the next run. De-duped against the base
-    set (case-insensitive) and capped so the run stays bounded."""
+    joins the rotation automatically. De-duped against the base set
+    (case-insensitive); a fair rotating window of CREATOR_NICHE_CAP runs per day."""
+    import datetime
     try:
         # Select ONLY the two niche fields, not the whole (large) voice profile.
+        # Ordered by id so the rotation is stable from one day to the next.
         rows = _sb('brand_voices', params={
             'select': 'niche:profile->>niche,sub_niche:profile->>sub_niche',
-            'status': 'eq.ready', 'limit': '500'})
+            'status': 'eq.ready', 'order': 'id', 'limit': '500'})
     except Exception as e:
         print('creator_niches lookup failed: %s' % e, file=sys.stderr)
         return []
     base_lower = set(n.strip().lower() for n in base)
     seen = set(base_lower)
-    out = []
+    everyone = []
     for r in (rows or []):
         # Cover BOTH the specific sub_niche (prioritized: it's what the audience
         # actually searches) and the broad niche. Store each verbatim as the label
@@ -115,12 +133,10 @@ def creator_niches(base):
             if k in seen:
                 continue
             seen.add(k)
-            out.append(n)
-            if len(out) >= CREATOR_NICHE_CAP:
-                break
-        if len(out) >= CREATOR_NICHE_CAP:
-            break
-    return out
+            everyone.append(n)
+    if day is None:
+        day = datetime.date.today().toordinal()
+    return _rotation_window(everyone, CREATOR_NICHE_CAP, day)
 
 
 def _fmt(n):
@@ -305,6 +321,16 @@ def _selftest():
     junk cards a week is checked here, by the same file that applies it. Run it
     with `python3 discovery/run.py --selftest`.
     """
+    # fair rotation: every item is covered within ceil(n/cap) days, windows are cap-sized
+    _items = ['n%d' % k for k in range(10)]
+    _seen = set()
+    for _d in range(4):
+        _w = _rotation_window(_items, 3, _d)
+        assert len(_w) == 3, 'rotation window must be cap-sized'
+        _seen.update(_w)
+    assert _seen == set(_items), 'rotation must cover every niche within ceil(n/cap) days'
+    assert _rotation_window(['a', 'b'], 5, 7) == ['a', 'b'], 'fewer than cap: take all'
+    print('  ok: creator niches rotate fairly')
     cases = [
         # The exact shape production stored, 92 times in seven days.
         ('https://www.instagram.com/explore/tags/%CF%83%CE%BF%CE%B6', False),

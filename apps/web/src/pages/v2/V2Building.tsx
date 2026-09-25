@@ -42,7 +42,7 @@ import {
 } from '@twinai/shared'
 import { classifyReferenceRead, LOW_SPEECH_TEXT, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE, isReadCapacityExhausted } from '../../lib/api'
-import { READINESS_INCOMPLETE_CODE, SELL_WITHOUT_TARGET_CODE, OUT_OF_REMIXES_CODE } from '../../lib/api'
+import { READINESS_INCOMPLETE_CODE, SELL_WITHOUT_TARGET_CODE, OUT_OF_REMIXES_CODE, GENERATION_FAILED_CODE } from '../../lib/api'
 import type { ReadinessQuestion } from '../../lib/api'
 import { isSupportedReference, platformFromUrl, platformIsUnreadable, isSingleVideoUrl } from '@twinai/shared'
 import { useAuth } from '../../context/AuthContext'
@@ -1726,6 +1726,15 @@ export default function V2Building() {
             ? e.message
             : "You're out of remixes.")
           setActive(0)
+          return
+        }
+
+        // ⚠️ THE SERVER ALREADY ANSWERED: it failed, refunded and said so. There
+        // is no script to rescue, so say it now instead of polling for ninety
+        // seconds under "the connection dropped".
+        if ((e as { code?: string } | null)?.code === GENERATION_FAILED_CODE) {
+          setRescuing(false)
+          setError(e instanceof Error && e.message ? e.message : 'Generation failed. Your credits were not charged.')
           return
         }
 

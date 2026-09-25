@@ -18,6 +18,7 @@ const Onboarding = lazy(() => import('./pages/Onboarding'))
 const Result = lazy(() => import('./pages/Result'))
 const History = lazy(() => import('./pages/History'))
 const Gallery = lazy(() => import('./pages/Gallery'))
+const WhatTwinKnows = lazy(() => import('./pages/WhatTwinKnows'))
 const ProductLibrary = lazy(() => import('./pages/ProductLibrary'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Brands = lazy(() => import('./pages/Brands'))
@@ -192,6 +193,7 @@ export default function App() {
     location.pathname.startsWith('/calendar') ||
     location.pathname.startsWith('/brands') ||
     location.pathname.startsWith('/gallery') ||
+    location.pathname.startsWith('/brain') ||
     location.pathname.startsWith('/record') ||
     location.pathname.startsWith('/result') ||
     location.pathname.startsWith('/billing') ||
@@ -286,6 +288,10 @@ export default function App() {
           <Route
             path="/brands"
             element={<Protected><AppShell><Page><Brands /></Page></AppShell></Protected>}
+          />
+          <Route
+            path="/brain"
+            element={<Protected><AppShell><Page><WhatTwinKnows /></Page></AppShell></Protected>}
           />
           <Route
             path="/gallery"
