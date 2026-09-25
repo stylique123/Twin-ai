@@ -1187,10 +1187,11 @@ export default function V2Building() {
                       // not express.
                       ...brandChoices,
                       ...ownedProducts.map((p) => ({ value: p.id, label: p.name })),
-                      // ⚠️ LAST, AND ALWAYS PRESENT. A commercial video about
-                      // none of these had no honest answer before it: pick a
-                      // wrong product, or abandon the build.
-                      { value: NO_PRODUCT_CHOICE, label: 'None of these' },
+                      // ⚠️ AUDIT 2026-09-25: "None of these" WAS REMOVED. A script
+                      // built under it carried no relationship, no claim limits and
+                      // no disclosure — reopening the fabrication risk the entity
+                      // gate closed. The whole brand is the honest general answer;
+                      // anything else is added to the library first.
                     ],
                   } as AskItem]
                 : []

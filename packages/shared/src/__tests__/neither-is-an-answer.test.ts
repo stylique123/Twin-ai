@@ -113,8 +113,12 @@ describe('the decline survives the wire', () => {
     expect(EDGE).not.toMatch(/stopgapEntity/)
   })
 
-  it('the card offers it as a real option and sends it', () => {
-    expect(CARD).toMatch(/value: NO_PRODUCT_CHOICE, label: 'None of these'/)
+  it('the card no longer offers "None of these" (owner audit 2026-09-25) but still sends the choice', () => {
+    // ⚠️ REVERSED BY THE OWNER'S AUDIT: a script built under "None of these"
+    // carried no relationship, claim limits or disclosure — the exact risk the
+    // entity gate closed. The whole brand is the general answer now. The server
+    // still ACCEPTS 'none' (older clients), which the tests above keep pinned.
+    expect(CARD).not.toMatch(/value: NO_PRODUCT_CHOICE, label: 'None of these'/)
     // ⚖️ SENT, NOT FILTERED OUT. It used to matter because an absence is "where
     // the stopgap lives"; the stopgap is gone, so it now matters because a
     // decline and an absence are different ANSWERS and only one of them was
