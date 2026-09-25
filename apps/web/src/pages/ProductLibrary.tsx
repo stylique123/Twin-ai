@@ -1126,7 +1126,9 @@ export default function ProductLibrary() {
   useEffect(() => {
     if (!openId) return
     const t = setTimeout(() => {
-      document.getElementById(`product-${openId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const el = document.getElementById(`product-${openId}`)
+      // Guarded: not every environment implements it (jsdom does not).
+      if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 60)
     return () => clearTimeout(t)
   }, [openId])
