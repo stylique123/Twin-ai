@@ -30,7 +30,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { IdeasForYou } from '../../components/IdeasForYou'
 import { Link2, Wand2, Wind, Activity, Flame, SlidersHorizontal, ChevronDown, Lightbulb, Package, Compass } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-import { listGenerations, loadProductEntities } from '../../lib/api'
+import { listGenerations, loadProductEntities, loadBrands, BRAND_CHOICE_PREFIX } from '../../lib/api'
 import type { ProductEntityRecord } from '../../lib/api'
 import { videosFromCredits } from '../../lib/brand'
 import { recordEntryDoor } from '../../lib/entryDoors'
@@ -212,13 +212,25 @@ export default function V2Create() {
   // immediate `replace` home, with the choice discarded on the way.
   const [chosenProduct, setChosenProduct] = useState<ProductEntityRecord | null>(null)
   const [myProducts, setMyProducts] = useState<ProductEntityRecord[] | null>(null)
+  // ⚠️ AUDIT 2026-09-25: the whole brand was selectable in Idea mode but missing
+  // here. Brands are offered first, as `brand:<id>` — the id the build screen
+  // already resolves (BRAND_CHOICE_PREFIX).
+  const [myBrands, setMyBrands] = useState<Array<{ id: string; name: string }>>([])
+  useEffect(() => {
+    let alive = true
+    void loadBrands().then((b) => { if (alive) setMyBrands(b.filter((x) => (x.name ?? '').trim() !== '').map((x) => ({ id: x.id, name: x.name }))) })
+      .catch(() => { /* brands are optional here */ })
+    return () => { alive = false }
+  }, [])
   useEffect(() => {
     let alive = true
     // ⚠️ NULL IS "WE DO NOT KNOW YET", NOT "YOU HAVE NONE". A failed read must
     // not render the empty state, which would tell a creator with a full
     // library that it is empty.
     void loadProductEntities()
-      .then((rows) => { if (alive) setMyProducts(rows.filter((r) => r.archivedAt === null)) })
+      // ⚠️ AUDIT: a nameless "Not named yet" ghost was offered beside real
+      // products. An entity with no name cannot be the subject of a script.
+      .then((rows) => { if (alive) setMyProducts(rows.filter((r) => r.archivedAt === null && (r.name ?? '').trim() !== '')) })
       .catch(() => { if (alive) setMyProducts(null) })
     return () => { alive = false }
   }, [])
@@ -656,6 +668,21 @@ export default function V2Create() {
                 ) : (
                   <>
                     <ul className="mt-4 space-y-2">
+                      {myBrands.map((b) => (
+                        <li key={`brand-${b.id}`}>
+                          <button
+                            type="button"
+                            className="w-full rounded-xl border border-white/10 px-4 py-3 text-left transition-colors hover:border-white/25 hover:bg-white/[0.04]"
+                            onClick={() => {
+                              setChosenProduct({ id: `${BRAND_CHOICE_PREFIX}${b.id}`, name: b.name } as unknown as ProductEntityRecord)
+                              setPicking(false)
+                            }}
+                          >
+                            <span className="block truncate text-sm font-semibold text-cream">{b.name}</span>
+                            <span className="mt-0.5 block truncate text-xs text-stone">The whole brand</span>
+                          </button>
+                        </li>
+                      ))}
                       {myProducts.map((p) => (
                         <li key={p.id}>
                           <button

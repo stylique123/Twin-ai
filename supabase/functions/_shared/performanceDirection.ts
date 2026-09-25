@@ -58,7 +58,14 @@ export const PHYSICAL_ACTIONS: readonly DirectionOption[] = [
   { id: 'point_at', does: 'Point one finger at a specific spot on it', bestFor: 'A detail the viewer would otherwise miss.' },
   { id: 'demonstrate', does: 'Use it the way it is meant to be used — pump, pour, apply, wear, click', bestFor: 'Anything with an action verb built into how it works.' },
   { id: 'unbox', does: 'Box, then packaging, then the item — in that order', bestFor: 'First-impression and what-is-inside beats.' },
-  { id: 'set_down', does: 'Put it down deliberately and look back at the lens', bestFor: 'Marks the turn from showing to talking.' },
+  // ⚠️ AUDIT 2026-09-25: this line closed almost every script on every account
+  // (chef, leatherworker, candles, bandanas, ceramics) — a fallback wearing the
+  // look of a choice. It is now a last resort, used at most once.
+  { id: 'set_down', does: 'Put it down deliberately and look back at the lens', bestFor: 'LAST RESORT, at most once per script: only when the next beat is talking with empty hands and nothing specific to this product fits. Never the default ending.' },
+  // ⚖️ THE SHOW-ONLY MOMENT. The audit found no way to tell her to stop talking
+  // and let the object carry the beat. It is a held shot AFTER her line, not an
+  // empty beat — an empty spoken line is what desynced teleprompter and shot list.
+  { id: 'show_silent', does: 'Finish the line, then stop talking and hold the shot on it for two full seconds — let the viewer look', bestFor: 'A visual payoff words would only weaken: a finish, a reveal, the detail the beat just named.' },
   { id: 'compare', does: 'Hold the two things side by side', bestFor: 'Before-and-after, old vs new, this vs the cheap one.' },
   { id: 'palm', does: 'Rest it flat on an open palm', bestFor: 'Small things — jewellery, a card, a small tool.' },
 ]
@@ -88,15 +95,15 @@ export const SELF_DIRECTIONS: readonly DirectionOption[] = [
 /** Shape narrows the physical set — a bag has no cap to twist, a flat card has
  *  nothing to rotate. Absent shape means "do not narrow", never "none apply". */
 const SHAPE_ACTIONS: Readonly<Record<ObjectShape, readonly string[]>> = {
-  jar: ['hold_up', 'rotate', 'twist_open', 'demonstrate', 'point_at', 'set_down'],
-  bottle: ['hold_up', 'rotate', 'twist_open', 'demonstrate', 'point_at', 'set_down'],
-  tube: ['hold_up', 'twist_open', 'demonstrate', 'point_at', 'set_down'],
-  bag: ['hold_up', 'rotate', 'twist_open', 'point_at', 'demonstrate', 'set_down'],
-  box: ['hold_up', 'rotate', 'unbox', 'point_at', 'set_down'],
-  flat: ['palm', 'hold_up', 'point_at', 'rotate'],
-  garment: ['hold_up', 'demonstrate', 'rotate', 'point_at', 'compare'],
-  device: ['hold_up', 'demonstrate', 'point_at', 'rotate', 'set_down'],
-  food: ['hold_up', 'demonstrate', 'point_at', 'compare', 'set_down'],
+  jar: ['hold_up', 'rotate', 'twist_open', 'demonstrate', 'point_at', 'show_silent', 'set_down'],
+  bottle: ['hold_up', 'rotate', 'twist_open', 'demonstrate', 'point_at', 'show_silent', 'set_down'],
+  tube: ['hold_up', 'twist_open', 'demonstrate', 'point_at', 'show_silent', 'set_down'],
+  bag: ['hold_up', 'rotate', 'twist_open', 'point_at', 'show_silent', 'demonstrate', 'set_down'],
+  box: ['hold_up', 'rotate', 'unbox', 'point_at', 'show_silent', 'set_down'],
+  flat: ['palm', 'hold_up', 'point_at', 'show_silent', 'rotate'],
+  garment: ['hold_up', 'demonstrate', 'rotate', 'point_at', 'show_silent', 'compare'],
+  device: ['hold_up', 'demonstrate', 'point_at', 'show_silent', 'rotate', 'set_down'],
+  food: ['hold_up', 'demonstrate', 'point_at', 'show_silent', 'compare', 'set_down'],
   unknown: PHYSICAL_ACTIONS.map((a) => a.id),
 }
 
@@ -208,6 +215,8 @@ export function renderDirectionGuidance(ctx: DirectionContext): string {
     `in the creator's own words. NEVER write the id itself — "hold_up:" is a key for choosing,`,
     `not something a person can do. If none of them fits the sentence, use the plainest one`,
     `rather than inventing a prop, a gesture or a screen that is not listed.`,
+    `set_down is a LAST RESORT: at most once per script and never the automatic last move —`,
+    `close on something specific to this product instead (a detail, a use, or show_silent).`,
     `And "it" below is a BLANK, not a word to copy: name the actual thing in their hands`,
     `("the cracked tin", "the finished candle"), because "point at a specific spot on it" tells`,
     `a creator holding three objects nothing at all.`,

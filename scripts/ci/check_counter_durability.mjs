@@ -203,6 +203,11 @@ const EVENTS = {
     why: 'A sold-out product\'s buy close was swapped for a restock close. The script itself is the '
       + 'durable record; this line makes the swap visible when it happens.',
   },
+  knowledge_scoped_to_product: {
+    kind: 'counter_ephemeral',
+    why: 'How many knowledge items were held back because they name another of her products. The '
+      + 'script is the durable record; this line makes the scoping visible while it is measured.',
+  },
   brain_sweep: {
     kind: 'counter_ephemeral',
     why: 'How many corpus videos one niche-brain sweep read, found unreadable or '

@@ -1120,8 +1120,21 @@ export default function ProductLibrary() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId, entities, brands, learning])
 
+  // ⚠️ AUDIT 2026-09-25: "Fill in the rest" looked dead on two products — it
+  // opened the editor on a card scrolled out of sight behind the review popup.
+  // Whatever opens a card now brings it into view.
+  useEffect(() => {
+    if (!openId) return
+    const t = setTimeout(() => {
+      const el = document.getElementById(`product-${openId}`)
+      // Guarded: not every environment implements it (jsdom does not).
+      if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 60)
+    return () => clearTimeout(t)
+  }, [openId])
+
   const renderEntity = (e: ProductEntityRecord) => (
-        <div key={e.id}>
+        <div key={e.id} id={`product-${e.id}`}>
         {openId !== e.id ? (
         <button
           key={e.id}
@@ -1799,6 +1812,7 @@ export default function ProductLibrary() {
             <p className="text-sm font-semibold text-cream">In your words</p>
             <p className="mb-3 mt-0.5 text-xs text-stone">Optional. Things only you know — scripts use them as your own words.</p>
             <StoryFields key={`stories-${e.id}`} idPrefix={`story-${e.id}`} value={stories[e.id] ?? null}
+              promoted={e.relationship === 'AFFILIATE' || e.relationship === 'SPONSOR'}
               onCommit={(key, v) => void saveStory(e.id, key, v)} />
             <p className="mt-1 h-4 text-xs text-stone">
               {savingKey?.startsWith(`${e.id}:story-`) ? 'Saving…' : savedKey?.startsWith(`${e.id}:story-`) ? 'Saved.' : ''}
@@ -2394,10 +2408,19 @@ export default function ProductLibrary() {
                   </button>
                 </div>
               ) : e.knowledge === null ? (
+                <>
                 <p className="mt-3 flex items-center gap-2 text-sm text-sand">
                   <span aria-hidden className="h-2 w-2 animate-pulse rounded-full bg-teal" />
                   Twin is reading about it{e.productUrl ? ` on ${e.productUrl.replace(/^https?:\/\/(www\.)?/, '')}` : ''}… usually a few minutes. If it has not finished in 30 minutes it stops and you can retry.
                 </p>
+                {/* ⚠️ AUDIT 2026-09-25: this held her in place for the whole read.
+                    The read runs on the server and the product is already saved,
+                    so she can leave; the popup returns here when the read lands. */}
+                <button type="button" className="mt-3 w-full rounded-lg border border-white/20 px-3 py-2 text-sm text-cream hover:border-white/40"
+                  onClick={() => setReviewId(null)}>
+                  Keep working — I'll show you what it finds when it's done
+                </button>
+                </>
               ) : (
                 <>
                   <p className="mt-1 text-sm text-sand">
@@ -3158,6 +3181,7 @@ function StartFromLink({ onCancel, onClaim, busy, initialUrl, kind = 'any', subm
         <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-stone">In your words (optional)</summary>
         <div className="mt-3">
           <StoryFields idPrefix="add-story" value={stories}
+            promoted={relationship === 'AFFILIATE' || relationship === 'SPONSOR'}
             onCommit={(key, v) => setStories((p) => ({ ...p, [key]: v || null }))} />
         </div>
       </details>

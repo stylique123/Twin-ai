@@ -205,3 +205,20 @@ export function nextObjectiveQuestion(
   for (const p of pool) if ((latest.get(p.id) ?? 0) < (latest.get(best.id) ?? 0)) best = p
   return best
 }
+
+// ── PROMOTED ITEMS ASK A DIFFERENT LAUNCH QUESTION (audit 2026-09-25, P6 #12) ──
+// "Launch it" on an affiliate or sponsored item asked release questions — "what
+// almost stopped you launching this?" — about something she did not make. For
+// a promoted item the honest question is why she is recommending it NOW.
+export const PROMOTED_OBJECTIVE_QUESTIONS: Readonly<Record<string, string>> = Object.freeze({
+  sell: 'What made you start recommending this — and why tell people about it now?',
+  educate: 'What do people usually get wrong about it before they try it?',
+  story: 'What were you using before this, and what made you switch?',
+})
+
+/** The question for a promoted (affiliate / sponsor) item, or null to keep the owned-product one. */
+export function promotedObjectiveQuestion(objective: string | null | undefined, relationship: string | null | undefined): string | null {
+  if (relationship !== 'AFFILIATE' && relationship !== 'SPONSOR') return null
+  const key = typeof objective === 'string' ? objective.trim() : ''
+  return PROMOTED_OBJECTIVE_QUESTIONS[key] ?? null
+}

@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url'
 import { transformSync } from 'esbuild'
 import {
   objectiveQuestion, offerFormOf, OBJECTIVE_QUESTIONS, PRODUCT_CHOICE_FIELD,
-  nextObjectiveQuestion, answeredForProduct, pooledWording,
+  nextObjectiveQuestion, answeredForProduct, pooledWording, promotedObjectiveQuestion,
 } from '@twinai/shared'
 import { assessReadiness } from '@twinai/shared'
 
@@ -117,10 +117,10 @@ describe('the card re-derives the claims wording from the live objective', () =>
     // eslint-disable-next-line no-new-func
     return new Function(
       'objectiveQuestion', 'offerFormOf', 'pickedProduct', 'PRODUCT_CHOICE_FIELD',
-      'nextObjectiveQuestion', 'answeredForProduct', 'pooledWording',
+      'nextObjectiveQuestion', 'answeredForProduct', 'pooledWording', 'promotedObjectiveQuestion',
       `${js}; return __live`,
     )(objectiveQuestion, offerFormOf, pickedProduct, PRODUCT_CHOICE_FIELD,
-      nextObjectiveQuestion, answeredForProduct, pooledWording) as Fn
+      nextObjectiveQuestion, answeredForProduct, pooledWording, promotedObjectiveQuestion) as Fn
   }
 
   /** The card's own `pickedProduct`, lifted the same way. */

@@ -25,7 +25,7 @@ import {
   // ⚖️ THE WRITER'S OWN TARGET, shown to the creator before the money moves.
   targetSeconds, spokenTime,
   INTENT_QUESTIONS, intentQuestionsFor, type IntentQuestion, type VideoGoal, focusForGoal,
-  mustAskWhichProduct, PRODUCT_CHOICE_FIELD, NO_PRODUCT_CHOICE, NO_PRODUCT_EXPLANATION, BRAND_CHOICE_PREFIX,
+  mustAskWhichProduct, promotedObjectiveQuestion, PRODUCT_CHOICE_FIELD, NO_PRODUCT_CHOICE, NO_PRODUCT_EXPLANATION, BRAND_CHOICE_PREFIX,
   selectProduct,
   productChoiceConstraint,
   // ⚖️ THIS BRANCH'S OWN ADDITION, kept alongside main's rather than instead of
@@ -1187,10 +1187,11 @@ export default function V2Building() {
                       // not express.
                       ...brandChoices,
                       ...ownedProducts.map((p) => ({ value: p.id, label: p.name })),
-                      // ⚠️ LAST, AND ALWAYS PRESENT. A commercial video about
-                      // none of these had no honest answer before it: pick a
-                      // wrong product, or abandon the build.
-                      { value: NO_PRODUCT_CHOICE, label: 'None of these' },
+                      // ⚠️ AUDIT 2026-09-25: "None of these" WAS REMOVED. A script
+                      // built under it carried no relationship, no claim limits and
+                      // no disclosure — reopening the fabrication risk the entity
+                      // gate closed. The whole brand is the honest general answer;
+                      // anything else is added to the library first.
                     ],
                   } as AskItem]
                 : []
@@ -1230,9 +1231,13 @@ export default function V2Building() {
             // ⚖️ ITEM 28: SHOWN, NOT ASKED. When the card is up anyway and the
             // product carries a CTA, the creator sees what will be used and can
             // edit it — prefilled, so leaving it alone is an answer.
-            if (ask.length && productCta && !ask.some((q) => q.field === 'cta')) {
-              ask.push({ field: 'cta', question: 'What viewers will be asked to do — from your product. Edit it if this video needs something else.' })
-              if (!(answersRef.current.cta ?? '').trim()) answer('cta', productCta)
+            // ⚠️ AUDIT 2026-09-25: the box appeared on every objective tested even
+            // though the product's CTA was already extracted and wired — and it
+            // did not change when the objective did. The CTA on record is USED
+            // (prefilled as the answer) but no longer asked; the server's
+            // goal-fidelity repair shapes the close for whichever goal she picks.
+            if (productCta && !ask.some((q) => q.field === 'cta') && !(answersRef.current.cta ?? '').trim()) {
+              answer('cta', productCta)
             }
             if (ask.length && alive) {
               // No spend, no ingest, no wait — and `active` stays at 0 so the
@@ -2023,7 +2028,14 @@ export default function V2Building() {
     ? nextObjectiveQuestion(askAnswers.video_goal ?? null,
       answeredForProduct(objectiveAnswers ?? [], liveProductId))
     : null
-  const liveClaimsQuestion = pooledQuestion
+  // ⚠️ AUDIT: a promoted item asks why she recommends it now, not why she made it.
+  const promotedQuestion = isProductSubject
+    ? promotedObjectiveQuestion(askAnswers.video_goal ?? null,
+      (pickedProduct(products, liveProductId) as { relationship?: string | null } | null)?.relationship ?? null)
+    : null
+  const liveClaimsQuestion = promotedQuestion
+    ? promotedQuestion
+    : pooledQuestion
     ? pooledWording(pooledQuestion, liveOfferForm)
     : isProductSubject
     ? objectiveQuestion(

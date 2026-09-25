@@ -45,7 +45,7 @@
 // question with an answer.
 
 // ⚖️ THE ONE CLASSIFIER. See the note above `deliveredItemCount`.
-import { statesCountOfItems, itemCounts } from './script/numberRole'
+import { statesCountOfItems, itemCounts, numberMentions } from './script/numberRole'
 
 /** Small integers a short-form list can plausibly enumerate. Above twelve, a
  *  "list" is a montage and the count stops being a promise anyone tracks; below
@@ -478,6 +478,21 @@ export function blueprintCountIssues(bp: BlueprintCountView | null | undefined):
   // exactly one plausible list size, that is the number the audience heard and
   // the script owes it. Two numbers in a hook is not a promise anyone tracked,
   // and inventing a contract out of an ambiguous line would fail good scripts.
+  // ⚠️ AUDIT 2026-09-25 (two accounts): "My mugs take two hours" was flagged as
+  // promising two items and delivering none. The hook reader already knows "two
+  // hours" is a duration; the MODEL-written mechanism did not, and recorded an
+  // enumeration of 2. When no hook states that count as items and a hook does
+  // use that very number as a duration / price / percentage / multiple, the
+  // enumeration is the model misreading a measurement — drop it.
+  if (mechanism.enumeration.isEnumerated && mechanism.enumeration.count !== null && hookList.length > 0) {
+    const n = mechanism.enumeration.count
+    const statedAsItems = hookList.some((h) => statesCountOfItems(h, n))
+    const usedAsMeasure = hookList.some((h) => numberMentions(h).some((m) => m.value === n && m.role !== 'enumeration'))
+    if (!statedAsItems && usedAsMeasure) {
+      mechanism = { ...mechanism, enumeration: { isEnumerated: false, count: null, unit: mechanism.enumeration.unit } }
+    }
+  }
+
   if (!mechanism.enumeration.isEnumerated && hookList.length > 0) {
     const promised = itemCounts(hookList[0])
     if (promised.length === 1) {

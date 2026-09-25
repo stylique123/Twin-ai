@@ -6,7 +6,7 @@
 // rendered by `StartFromLink` AND by the product panel in ProductLibrary.tsx, so
 // a field changed here changes in both.
 import { useEffect, useRef, useState } from 'react'
-import { PRODUCT_STORY_QUESTIONS, type ProductStories, type ProductStoryKey } from '@twinai/shared'
+import { PRODUCT_STORY_QUESTIONS, PROMOTED_STORY_QUESTIONS, type ProductStories, type ProductStoryKey } from '@twinai/shared'
 import { parseOffer, serializeOffer, type OfferRow } from '../lib/offerRows'
 
 /** The labels, once. */
@@ -124,14 +124,16 @@ export function OfferEditor({ value, found, onSave }: {
 }
 
 /** The three optional story questions (CTO decision 2026-09-23). */
-export function StoryFields({ value, onCommit, idPrefix }: {
+export function StoryFields({ value, onCommit, idPrefix, promoted = false }: {
   value: ProductStories | null
   onCommit: (key: ProductStoryKey, v: string) => void
   idPrefix: string
+  /** Affiliate / sponsor items get questions about her use of it, not its making. */
+  promoted?: boolean
 }) {
   return (
     <div className="space-y-3">
-      {PRODUCT_STORY_QUESTIONS.map((q) => (
+      {(promoted ? PROMOTED_STORY_QUESTIONS : PRODUCT_STORY_QUESTIONS).map((q) => (
         <div key={q.key}>
           <label htmlFor={`${idPrefix}-${q.key}`} className="block text-xs font-medium uppercase tracking-wide text-stone">
             {q.label} <span className="normal-case tracking-normal text-stone/70">(optional)</span>
