@@ -1231,9 +1231,13 @@ export default function V2Building() {
             // ⚖️ ITEM 28: SHOWN, NOT ASKED. When the card is up anyway and the
             // product carries a CTA, the creator sees what will be used and can
             // edit it — prefilled, so leaving it alone is an answer.
-            if (ask.length && productCta && !ask.some((q) => q.field === 'cta')) {
-              ask.push({ field: 'cta', question: 'What viewers will be asked to do — from your product. Edit it if this video needs something else.' })
-              if (!(answersRef.current.cta ?? '').trim()) answer('cta', productCta)
+            // ⚠️ AUDIT 2026-09-25: the box appeared on every objective tested even
+            // though the product's CTA was already extracted and wired — and it
+            // did not change when the objective did. The CTA on record is USED
+            // (prefilled as the answer) but no longer asked; the server's
+            // goal-fidelity repair shapes the close for whichever goal she picks.
+            if (productCta && !ask.some((q) => q.field === 'cta') && !(answersRef.current.cta ?? '').trim()) {
+              answer('cta', productCta)
             }
             if (ask.length && alive) {
               // No spend, no ingest, no wait — and `active` stays at 0 so the
