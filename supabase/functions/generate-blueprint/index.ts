@@ -8050,6 +8050,51 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       }
     } catch { availabilityBlock = '' }
 
+    // ── PRODUCT MODE GETS ITS OWN FRESH INPUT (audit 2026-09-25, root cause) ──
+    // ⚠️ MEASURED: Idea mode brings new material (her paragraph) and Reference
+    // mode new structure (the video); Product mode brought NEITHER — the note on
+    // every product-door run was just the product's name ("Petal Bowl"). With
+    // nothing fresh, the writer filled the gap: invented numbers and life details
+    // ("22 pieces", "alongside a 9-5", "thirty minutes") and reached for other
+    // products' facts. So a product run now gets a subject brief built ONLY from
+    // the selected product, a rotating angle, and a hard source rule.
+    let productModeBlock = ''
+    try {
+      const pName = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim()
+      const pId = (ownedEntity as { id?: unknown } | null)?.id
+      const note = String(reference_note ?? '').trim()
+      const noteIsJustTheName = note === '' || note.toLowerCase() === pName.toLowerCase()
+        || (note.split(/\s+/).length <= 5 && pName.toLowerCase().includes(note.toLowerCase()))
+      if (pName && typeof pId === 'string' && !reference_url && noteIsJustTheName) {
+        // Rotation counter: her earlier product-door runs for this product (their
+        // note is the product's name). Read from generations, not
+        // generation_choices, whose only writer/reader is recordGenerationChoice.
+        const { count } = await admin.from('generations')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', ownerId).ilike('reference_note', pName.replace(/[%_]/g, ''))
+        const angles = [
+          ...(creatorStoryLines.length ? creatorStoryLines.map((l) => `Tell the story in this line from her: ${l.replace(/^\s*\*\s*/, '')}`) : []),
+          `Show exactly how the ${pName} is made or used, step by step, with her hands on it`,
+          `Answer the one question people ask most about the ${pName}`,
+          `Who the ${pName} is for — and who it is not for`,
+          `One detail of the ${pName} most people never notice, shown up close`,
+        ]
+        const angle = angles[(count ?? 0) % angles.length]
+        const summary = String((ownedEntity as { creator_summary?: unknown } | null)?.creator_summary ?? '').trim().slice(0, 500)
+        const offerLine = String((ownedEntity as { offer?: unknown } | null)?.offer ?? '').trim().slice(0, 200)
+        productModeBlock = `\n\nPRODUCT MODE — THE SUBJECT IS THE ${pName.toUpperCase().replace(/[<>]/g, '')} AND NOTHING ELSE.`
+          + `\nTHIS RUN'S ANGLE (different each time she makes one for this product): ${angle.replace(/[<>]/g, '')}`
+          + (summary ? `\nHOW SHE DESCRIBES IT: ${summary.replace(/[<>]/g, '')}` : '')
+          + (offerLine ? `\nTHE OFFER: ${offerLine.replace(/[<>]/g, '')}` : '')
+          + (creatorStoryLines.length ? `\nHER OWN STORIES ABOUT IT:\n${creatorStoryLines.join('\n').replace(/[<>]/g, '')}` : '')
+          + '\nSOURCE RULE (strict): every number, price, duration, quantity, date, and every detail of her life or'
+          + ' business in this script must appear in the material above, in this product\'s facts, or in her knowledge'
+          + ` items that are about the ${pName.replace(/[<>]/g, '')}. If it is not there, do not say it — write around it.`
+          + ' Never borrow facts, prices or comparisons from her OTHER products. Mention the brand\'s own one-line'
+          + ' description at most once, and only if it adds something.'
+      }
+    } catch { productModeBlock = '' }
+
     let brainBlock = ''
     let brainNotesUsed = 0
     let brainNoteIds: string[] = []
@@ -8480,7 +8525,33 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // a STABLE PARTITION, not a sort: relevance still chooses WHICH experience,
     // the focus only decides that an experience takes a slot before a coverage
     // row does. An unanswered focus is the identity function.
-    const focusOrdered = preferKindsInline(relevanceOrdered, intent.prefersKinds)
+    const focusOrderedAll = preferKindsInline(relevanceOrdered, intent.prefersKinds)
+    // ⚠️ AUDIT 2026-09-25 (Sort Of Ceramics): CROSS-ENTITY LEAKAGE. The
+    // bowl-vs-mug pricing comparison — a real fact about BOTH products — reached
+    // scripts about the mug alone, a clay tool, and an unrelated idea, because her
+    // knowledge is chosen by topic, never by which product was selected. When a
+    // product IS selected, an item that names another of her products and not
+    // this one is held back: it belongs to that other product's script.
+    const focusOrdered = (() => {
+      const chosenName = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim().toLowerCase()
+      if (!chosenName) return focusOrderedAll
+      const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ')
+      const words = (n: string) => norm(n).split(/\s+/).filter((w) => w.length >= 3 && !['the', 'and', 'for', 'with', 'ceramic', 'handmade', 'small', 'large', 'red', 'blue'].includes(w))
+      const mine = new Set(words(chosenName))
+      const others = csEntities.map((e) => String(e.name ?? '')).filter((n) => n.trim() && n.trim().toLowerCase() !== chosenName)
+      const otherWords = new Set(others.flatMap(words).filter((w) => !mine.has(w)))
+      if (otherWords.size === 0) return focusOrderedAll
+      const kept = focusOrderedAll.filter((k) => {
+        const t = ` ${norm(String((k as { text?: unknown }).text ?? ''))} ${norm(String((k as { evidence?: unknown }).evidence ?? ''))} `
+        const namesOther = [...otherWords].some((w) => t.includes(` ${w} `) || t.includes(` ${w}s `))
+        const namesMine = [...mine].some((w) => t.includes(` ${w} `) || t.includes(` ${w}s `))
+        return !namesOther || namesMine
+      })
+      if (kept.length !== focusOrderedAll.length) {
+        console.log(JSON.stringify({ event: 'knowledge_scoped_to_product', held_back: focusOrderedAll.length - kept.length }))
+      }
+      return kept
+    })()
     // ⚠️ AND WHERE Q3 LANDS. The floor is how many of the ten slots must be real
     // substance. A video that has to teach a method or earn a purchase needs
     // more than the standing guarantee; one meant to be enjoyed does not. The
@@ -10165,13 +10236,13 @@ ${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
 - Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
 ${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${availabilityBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${availabilityBlock}${productModeBlock}
 
 ${decompositionInstruction}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${availabilityBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${availabilityBlock}${productModeBlock}
 
 ${decompositionInstruction}`
 
