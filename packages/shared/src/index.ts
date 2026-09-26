@@ -282,6 +282,7 @@ export * from './script/semanticRepetition'
 // disagree about what a beat says.
 export * from './script/shotListSync'
 export * from './script/personalUseGate'
+export * from './script/grainRule'
 export * from './script/goalFidelity'
 
 // ⚖️ FIX 7 (Wave 3). `shot_list[].notes` carries a "Setup <letter> ·
@@ -373,3 +374,4 @@ export * from './script/namedAlternatives'
 export * from './handleShape'
 export * from './productSplit'
 export * from './outcomeClaim'
+export * from './socialStats'

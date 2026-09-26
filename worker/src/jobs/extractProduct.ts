@@ -12,6 +12,7 @@
 // has just read persuasive copy is the worst available judge of whether that
 // copy is persuasive, and asking it to self-assess would make the whole split
 // decorative.
+import { subpageLinks, wantsSubpages } from '../productSubpages.js'
 import { db, type Job } from '../db.js'
 import { harvestSections } from '../pageSections.js'
 import { geminiJson, geminiGroundedSearch, type InlineImage } from '../gemini.js'
@@ -120,6 +121,8 @@ async function fetchShopJson(u: string): Promise<unknown | null> {
 /** Prices the fetched page stated as schema.org data, by URL. Filled as a side
  *  effect of `fetchPageText` so its signature (and its tests) stay unchanged. */
 const pagePrices = new Map<string, string[]>()
+/** Same-site pricing/features pages the fetched page links to, by URL. */
+const pageSubpages = new Map<string, string[]>()
 
 async function fetchPageText(url: string): Promise<string | null> {
   try {
@@ -139,6 +142,7 @@ async function fetchPageText(url: string): Promise<string | null> {
     // ⚠️ HEAD FIRST, AND BEFORE ANY STRIPPING. See `harvestHead`.
     const head = harvestHead(html)
     pagePrices.set(url, ldPriceLines(html))
+    pageSubpages.set(url, subpageLinks(html, url))
 
     const prose = html
       .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -351,7 +355,7 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   // are only honoured inside the owner's own folder, and without this the check
   // has nothing to compare against.
   const { data: entity } = await db.from('product_entities')
-    .select('product_url, owner_id, name, creator_summary').eq('id', entityId).maybeSingle()
+    .select('product_url, owner_id, name, creator_summary, type').eq('id', entityId).maybeSingle()
   const productUrl = (entity as { product_url?: string | null } | null)?.product_url ?? null
   const ownerId = (entity as { owner_id?: string | null } | null)?.owner_id ?? ''
   const existingName = (entity as { name?: string | null } | null)?.name ?? null
@@ -420,7 +424,17 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
 
   // (A web match was already read once to check its title; reading it again
   // here keeps one path for every page, including its schema.org prices.)
-  const text = url ? await fetchPageText(url) : null
+  const mainText = url ? await fetchPageText(url) : null
+  // ⚖️ A DIGITAL PRODUCT'S PRICING / FEATURES PAGES, when this page links to
+  // them on the same site (at most two). Appended under their own header so
+  // the section map and prices can come from where they really are.
+  let text = mainText
+  if (mainText && url && wantsSubpages((entity as { type?: string | null } | null)?.type)) {
+    for (const sub of pageSubpages.get(url) ?? []) {
+      const subText = await fetchPageText(sub)
+      if (subText) text = `${text}\n\nALSO FROM THE SAME SITE (${sub}):\n${subText.slice(0, 12_000)}`
+    }
+  }
   // ⚠️ THE UNREADABLE-PAGE BRANCH MUST NOT SWALLOW AN IMAGE-ONLY JOB. It writes
   // `knowledge: []` and returns, which for a creator who supplied photographs and
   // no link would read as "we looked at your photos and found nothing" — while
