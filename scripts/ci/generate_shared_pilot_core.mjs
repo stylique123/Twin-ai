@@ -91,6 +91,8 @@ const SOURCES = [
   // resync reuses `isSilentBeat` rather than a second marker check.
   ['packages/shared/src/script/silentBeat.ts', 'supabase/functions/_shared/silentBeat.ts'],
   ['packages/shared/src/script/shotListSync.ts', 'supabase/functions/_shared/shotListSync.ts'],
+  // Master fix doc Fix A: the hard personal-use gate, one tested copy.
+  ['packages/shared/src/script/personalUseGate.ts', 'supabase/functions/_shared/personalUseGate.ts'],
   // ⚠️ FIX 5 (Wave 2). The retention-map <-> final-script resync. Generated
   // rather than retyped for the same reason as shotListSync.ts just above —
   // a hand copy is exactly how the coaching panel's drift from the shipped

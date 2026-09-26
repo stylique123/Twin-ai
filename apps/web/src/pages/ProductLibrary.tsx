@@ -36,6 +36,7 @@
 // still costs an explicit assertion. What the suggestion saves is typing, which
 // is the difference between a page nobody fills in and one they finish.
 import { useEffect, useRef, useState } from 'react'
+import { isOutcomeClaim } from '@twinai/shared'
 // OfferEditor moved to components/ProductFields.tsx so the add form and the panel share it.
 import { OfferEditor, BlurText, StoryFields } from '../components/ProductFields'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -1949,8 +1950,8 @@ export default function ProductLibrary() {
                               or promise a result, so they are shown and NOT given
                               to the writer until a person says they are true. */}
                           <p className="text-xs text-sand">
-                            Twin found these but will not say them until you confirm each one —
-                            they claim a number or a result.
+                            The page claims these. Twin will not say them until you confirm each one —
+                            and confirm only what you can stand behind yourself, not just that the page says it.
                           </p>
                           <ul className="mt-2 space-y-1">
                             {pending.map((f) => (
@@ -1959,11 +1960,7 @@ export default function ProductLibrary() {
                                   <span className="text-stone">{f.field}: </span>{f.value}
                                   <FactAge fact={f} />
                                 </span>
-                                <button
-                                  type="button"
-                                  className="whitespace-nowrap text-xs underline"
-                                  onClick={() => void confirmFact(e.id, f.value)}
-                                >That's right</button>
+                                <ClaimConfirm onConfirm={() => void confirmFact(e.id, f.value)} />
                               </li>
                             ))}
                           </ul>
@@ -2399,8 +2396,10 @@ export default function ProductLibrary() {
           <li className="flex items-start justify-between gap-3 py-1 text-sm">
             <span><span className="text-stone">{f.field}: </span>{f.value}</span>
             {f.trust === 'needs_confirmation' ? (
-              <button type="button" className="whitespace-nowrap rounded-md border border-white/20 px-2 py-0.5 text-xs hover:border-white/40"
-                onClick={() => void confirmFact(e.id, f.value)}>That's right</button>
+              isOutcomeClaim(f)
+                ? <ClaimConfirm onConfirm={() => void confirmFact(e.id, f.value)} />
+                : <button type="button" className="whitespace-nowrap rounded-md border border-white/20 px-2 py-0.5 text-xs hover:border-white/40"
+                    onClick={() => void confirmFact(e.id, f.value)}>That's right</button>
             ) : <span className="whitespace-nowrap text-xs text-stone">✓ Twin will use this</span>}
           </li>
         )
@@ -3472,5 +3471,28 @@ function BrandPanel({ brand, facts, productCount, onSave, onRemove, onClose }: {
         </div>
       </section>
     </div>
+  )
+}
+
+// ── FIX C (master fix doc): A CLAIM IS NOT A FACT ─────────────────────────
+// ⚠️ "That's right" on "clinically proven" looked and felt exactly like "That's
+// right" on a price. Confirming that the page SAYS something is not confirming it
+// is TRUE. A claim now takes a deliberate second tap with different words.
+function ClaimConfirm({ onConfirm }: { onConfirm: () => void }) {
+  const [asking, setAsking] = useState(false)
+  if (!asking) {
+    return (
+      <button type="button" className="whitespace-nowrap rounded-md border border-amber-400/40 px-2 py-0.5 text-xs text-amber-200 hover:border-amber-300"
+        onClick={() => setAsking(true)}>Review claim</button>
+    )
+  }
+  return (
+    <span className="flex flex-col items-end gap-1 text-right" data-testid="claim-confirm">
+      <span className="max-w-[14rem] text-[11px] leading-snug text-sand">This is the page's claim, not a checked fact. Can you stand behind it yourself?</span>
+      <span className="flex gap-2">
+        <button type="button" className="rounded-md border border-amber-400/60 px-2 py-0.5 text-xs text-cream" onClick={onConfirm}>Yes, I stand behind it</button>
+        <button type="button" className="text-xs text-stone underline" onClick={() => setAsking(false)}>Not sure</button>
+      </span>
+    </span>
   )
 }

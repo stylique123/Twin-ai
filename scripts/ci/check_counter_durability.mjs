@@ -172,6 +172,11 @@ const EVENTS = {
       + 'Learner step, which stores WHICH notes reached WHICH script so results can '
       + 'weight them; a bare count here would be a second, weaker authority.',
   },
+  personal_use_gate: {
+    kind: 'counter_ephemeral',
+    why: 'Per script: first-person use claims flagged/repaired/dropped by Fix A. Durable in '
+      + '`generations.beat_audit.personal_use_gate`; a refusal is durable as `ops_events` generation_failed.',
+  },
   shape_sweep: {
     kind: 'counter_ephemeral',
     why: 'Per batch of product photos read. Durable as the `object_shape` fact on `product_entities.knowledge` plus `shape_checked_at`.',
