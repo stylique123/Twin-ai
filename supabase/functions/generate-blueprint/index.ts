@@ -10578,6 +10578,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     let shotListResync: { resynced: number; orphaned: number } | null = null
     let goalFidelity: Record<string, unknown> | null = null
     let shotListClaimDrift: number | null = null
+    // Fix A counts, stored on the row so the real rate can be measured.
+    let personalUseGateAudit: { flagged: number; repaired: number; dropped: number } | null = null
     // ⚠️ FIX 5 (Wave 2). NULL MEANS THE GENERATION CARRIED NO RETENTION MAP TO
     // RECONCILE — never zero. `matched` is how many output rows landed on a
     // beat whose NAME the model's original retention_map still used (that
@@ -12656,6 +12658,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           console.warn(JSON.stringify({
             event: 'personal_use_gate', flagged: flagged.length, repaired, dropped, failed: unsafeBeats.length,
           }))
+          personalUseGateAudit = { flagged: flagged.length, repaired, dropped }
           if (unsafeBeats.length > 0) {
             // ⚠️ THE RESCUE PATH WOULD SAVE THE UNREPAIRED SCRIPT. Clear it so the
             // refusal is a refusal: refunded, and nothing with the claim is stored.
@@ -12888,6 +12891,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       beatAudit.shot_list_resync = shotListResync
       beatAudit.goal_fidelity = goalFidelity
       beatAudit.shot_list_claim_drift = shotListClaimDrift
+      if (personalUseGateAudit) beatAudit.personal_use_gate = personalUseGateAudit
       beatAudit.retention_map_resync = retentionMapResync
       beatAudit.setup_label_resync = setupLabelResync
       beatAudit.action_posing_hygiene = actionPosingHygiene
