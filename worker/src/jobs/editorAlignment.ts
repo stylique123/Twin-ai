@@ -25,6 +25,7 @@
 // (a script region spoken twice) and an exact hookStartWordIndex boundary.
 // Nothing passes this component into the Director either, which is why the
 // component catalog records `consumedByDirector: false` for alignment.
+import { unscriptedClaims, type UnscriptedClaim } from './unscriptedClaims.js'
 import {
   alignScriptToSpoken, scriptToAlignTokens, toAlignTokens, scriptWordTimings,
   spokenScriptFromSnapshot, detectFalseStarts,
@@ -134,6 +135,8 @@ export function buildAlignmentEvidence(
   let reason: string | null = null
   let timings: Array<Record<string, unknown>> = []
   let falseStarts: FalseStart[] = []
+  // Fix B: claim-shaped ad-libs, flagged for review, never removed.
+  let unscripted: UnscriptedClaim[] = []
 
   if (result.ok) {
     const a = result.alignment
@@ -165,6 +168,9 @@ export function buildAlignmentEvidence(
         input.falseStarts.maxReported,
       )
     }
+    // Times from the SAME filtered word list the spoken tokens were built from,
+    // so a punctuation-only word can never shift an index.
+    unscripted = unscriptedClaims(a, spokenTokens, input.words.filter((w) => toAlignTokens([w]).length > 0))
     // The payload downstream actually wants: the SCRIPT's spelling at the
     // RECORDING's time. Words never spoken keep a null time rather than an
     // interpolated guess — a caption for something the viewer never hears is
@@ -201,6 +207,7 @@ export function buildAlignmentEvidence(
     droppedTimings: fitted.dropped,
     falseStarts,
     falseStartCount: falseStarts.length,
+    unscriptedClaims: unscripted,
     scriptSnapshotSha256: input.scriptSnapshotSha256,
     provenance: {
       speechVersion: input.speechVersion,
