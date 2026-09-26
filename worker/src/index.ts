@@ -23,6 +23,7 @@ import {
 } from './captionSweep.js'
 import { CAPTION_SHAPE_VERSION as CAPTION_SHAPE_VERSION_N } from './generated/captionShape.js'
 import { kickBrainSweep } from './nicheBrain/sweep.js'
+import { kickAudienceTests } from './nicheBrain/audience.js'
 
 let running = true
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -415,6 +416,8 @@ async function main() {
       // ⚖️ THE NICHE BRAIN READS THE CORPUS DETACHED: kicked, never awaited, so
       // a slow Gemini read can never delay a creator's job being claimed.
       kickBrainSweep(log)
+      // TEST VIEWERS: same terms — detached, one script per kick, every 15s.
+      kickAudienceTests(log)
       const didWork = await tick()
       if (!didWork) await sleep(env.pollMs) // idle backoff when the queue is empty
     } catch (err) {

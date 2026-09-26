@@ -2019,6 +2019,7 @@ interface TrackRecordInline {
   posted?: Array<{ caption?: string; views?: number | null }>
   edits?: Array<{ before_text?: string; after_text?: string }>
   feedback?: Array<{ stars?: number; tags?: string[]; change_note?: string | null; premise?: string }>
+  lessons?: Array<{ issue?: string; n?: number }>
 }
 function renderTrendsInline(rows: readonly BrainTrendInline[]): string {
   // ⚠️ ONLY HER LANE. Corpus-wide "moments" measured 2026-09-24 were the
@@ -2069,6 +2070,11 @@ function renderTrackRecordInline(r: TrackRecordInline | null): string {
   if (edits.length) {
     lines.push('Lines she rewrote in earlier Twin scripts — write the way her AFTER versions sound:')
     for (const e of edits) lines.push(`  - "${cap(e.before_text, 120)}" → "${cap(e.after_text, 120)}"`)
+  }
+  const ls = (r.lessons ?? []).filter((l) => l && l.issue && Number(l.n) >= 2).slice(0, 4)
+  if (ls.length) {
+    lines.push('What her test viewers kept flagging in earlier Twin scripts — avoid these from the first draft:')
+    for (const l of ls) lines.push(`  - ${cap(String(l.issue).replace(/_/g, ' '), 40)} (${Number(l.n)} scripts)`)
   }
   const fb = (r.feedback ?? []).filter((f) => f && (f.change_note || (f.tags ?? []).length)).slice(0, 5)
   if (fb.length) {
@@ -8138,10 +8144,11 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         return Array.isArray(data) ? data as BrainTrendInline[] : []
       })().catch(() => [] as BrainTrendInline[])
       const recordP = (async (): Promise<TrackRecordInline | null> => {
-        const [rec, edits, feedback] = await Promise.all([
+        const [rec, edits, feedback, lessons] = await Promise.all([
           admin.rpc('creator_track_record', { p_owner: ownerId, p_voice: voice?.id ?? null }).abortSignal(ctrl.signal),
           admin.rpc('creator_recent_edits', { p_owner: ownerId }).abortSignal(ctrl.signal),
           admin.rpc('creator_script_feedback', { p_owner: ownerId }).abortSignal(ctrl.signal),
+          admin.rpc('creator_audience_lessons', { p_owner: ownerId }).abortSignal(ctrl.signal),
         ])
         const data = rec.data
         if (!data || typeof data !== 'object') return null
@@ -8149,6 +8156,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
           ...(data as TrackRecordInline),
           edits: Array.isArray(edits.data) ? edits.data : [],
           feedback: Array.isArray(feedback.data) ? feedback.data : [],
+          lessons: Array.isArray(lessons.data) ? lessons.data : [],
         }
       })().catch(() => null)
       const momentsP = (async (): Promise<MomentInline[]> => {

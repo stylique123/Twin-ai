@@ -172,6 +172,11 @@ const EVENTS = {
       + 'Learner step, which stores WHICH notes reached WHICH script so results can '
       + 'weight them; a bare count here would be a second, weaker authority.',
   },
+  audience_test: {
+    kind: 'counter_ephemeral',
+    why: 'Per script tested by the test-viewer panel. Durable in `audience_tests` '
+      + '(one row per generation: hooks, viewers, fixes, learned_at), so every count is a query.',
+  },
   own_sweep: {
     kind: 'counter_ephemeral',
     why: 'Per batch of her own posts read by the niche brain. Durable in `own_post_reads` '
