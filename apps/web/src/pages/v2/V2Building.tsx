@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
+import { NameTheReference } from '../../components/NameTheReference'
 import { creatorFacingMessage } from '@twinai/shared'
 import { loadProductEntities, loadBrands, type Brand } from '../../lib/api'
 import type { ProductEntityRecord } from '../../lib/api'
@@ -1338,7 +1339,7 @@ export default function V2Building() {
         if (willIngest && !transcript_id) {
           setIngesting(true)
           try {
-            const { jobId, transcriptId } = await ingestReference(refUrl, platformFromUrl(refUrl) ?? undefined)
+            const { jobId, transcriptId } = await (earlyIngestRef.current ?? ingestReference(refUrl, platformFromUrl(refUrl) ?? undefined))
             transcript_id = transcriptId // cache hit → immediate
             if (!transcript_id) {
               // Starts as the timeout, because that is what an answer that
@@ -2438,6 +2439,23 @@ export default function V2Building() {
               )}
             </div>
   )
+  // ⚖️ NAME THE REFERENCE BACK (owner's redesign). The read starts the moment
+  // the questions are on screen instead of after them, so by the time she
+  // answers Twin can say what it watched — and the build then reuses this same
+  // read rather than starting a second one.
+  const [earlyIngest, setEarlyIngest] = useState<Promise<{ jobId: string; transcriptId?: string }> | null>(null)
+  // Read by the build through a ref, so the build effect's dependencies stay as they were.
+  const earlyIngestRef = useRef(earlyIngest)
+  earlyIngestRef.current = earlyIngest
+  useEffect(() => {
+    const url = (state.reference_url || '').trim()
+    if (!askQuestions || earlyIngest || !url) return
+    if (platformIsUnreadable(platformFromUrl(url)) || !isSingleVideoUrl(url)) return
+    const p = ingestReference(url, platformFromUrl(url) ?? undefined)
+    // A failed early read is forgotten, so the build's own read tries again.
+    p.catch(() => setEarlyIngest(null))
+    setEarlyIngest(p)
+  }, [askQuestions, earlyIngest, state.reference_url])
 
   return (
     // Brand canvas, vertically centered in the space BETWEEN the app chrome (top
@@ -2535,6 +2553,7 @@ export default function V2Building() {
                     to change it. Zero taps when it is right, one tap when it is
                     not, and the value is still sent so the per-video answer
                     still outranks the standing one on the server. */}
+                {!onAnswerStep && <NameTheReference early={earlyIngest} />}
                 {onAnswerStep && (() => {
                   const g = asOneOf(VIDEO_GOALS, askAnswers.video_goal)
                   return g ? (

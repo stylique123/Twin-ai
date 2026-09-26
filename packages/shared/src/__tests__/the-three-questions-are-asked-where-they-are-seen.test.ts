@@ -213,7 +213,7 @@ describe('the three questions open with the remix', () => {
     // — so a rename silently turned an ordering assertion into a tautology.
     // Both positions are now required to EXIST before they are compared.
     const asked = BUILD.indexOf('const unanswered = applicableQuestions.filter(')
-    const ingest = BUILD.indexOf('await ingestReference(')
+    const ingest = BUILD.indexOf('await (earlyIngestRef.current ?? ingestReference(')
     expect(asked).toBeGreaterThan(-1)
     expect(ingest).toBeGreaterThan(-1)
     expect(asked).toBeLessThan(ingest)
