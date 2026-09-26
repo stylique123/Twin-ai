@@ -18,6 +18,7 @@ interface Test {
   viewers: Viewer[]
   fixes: Fix[]
   summary: string | null
+  panel_voice_id: string | null
 }
 
 const POLL_MS = 4000
@@ -38,7 +39,7 @@ export function TestViewers({ generationId, chosenHook, onPick }: {
     let timer: ReturnType<typeof setTimeout> | undefined
     const load = () => {
       void supabase.from('audience_tests')
-        .select('status, panel_size, hooks, best_hook, viewers, fixes, summary')
+        .select('status, panel_size, hooks, best_hook, viewers, fixes, summary, panel_voice_id')
         .eq('generation_id', generationId).maybeSingle()
         .then(({ data }) => {
           if (!alive) return
@@ -65,7 +66,12 @@ export function TestViewers({ generationId, chosenHook, onPick }: {
     <div className="space-y-5" data-testid="test-viewers">
       <div className="space-y-2">
         <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Pick your hook</h3>
-        <p className="text-[11px] text-stone">Twin tested this on {n} viewers like yours. Twin plays them, so treat it as a practice audience, not a promise.</p>
+        <p className="text-[11px] text-stone">
+          {test.panel_voice_id
+            ? `Twin tested this on your ${n} regular viewers, built from how your real posts performed.`
+            : `Twin tested this on ${n} viewers like yours.`}
+          {' '}Twin plays them, so treat it as a practice audience, not a promise.
+        </p>
         <ul className="space-y-2">
           {ranked.map((h) => {
             const best = h.i === test.best_hook

@@ -172,6 +172,10 @@ const EVENTS = {
       + 'Learner step, which stores WHICH notes reached WHICH script so results can '
       + 'weight them; a bare count here would be a second, weaker authority.',
   },
+  panel_build: {
+    kind: 'counter_ephemeral',
+    why: 'Per voice panel build. Durable in `audience_panels` (personas, posts_seen, built_at), so every build is a query.',
+  },
   audience_test: {
     kind: 'counter_ephemeral',
     why: 'Per script tested by the test-viewer panel. Durable in `audience_tests` '
