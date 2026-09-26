@@ -5068,7 +5068,7 @@ function knowledgeFacts(ownedEntity: unknown): Array<{ field: string; value: str
  * and is the glass-of-water failure wearing a different hat.
  */
 function shapeFromKnowledge(ownedEntity: unknown): ObjectShapeInline | null {
-  const known = ['jar', 'bottle', 'tube', 'bag', 'box', 'flat', 'garment', 'device', 'food']
+  const known = ['jar', 'bottle', 'tube', 'bag', 'box', 'flat', 'garment', 'device', 'food', 'vessel']
   const raw = knowledgeFacts(ownedEntity).find((f) => f.field === 'object_shape')?.value?.toLowerCase()
   return raw && known.includes(raw) ? (raw as ObjectShapeInline) : null
 }

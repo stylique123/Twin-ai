@@ -32,7 +32,7 @@ export type Showability = 'ALWAYS' | 'SOMETIMES' | 'NEVER' | 'UNKNOWN'
 /** What the object physically IS, when a photo has been read. Narrows the set:
  *  a jar twists, a garment is worn, a card sits flat on an open palm. */
 export type ObjectShape =
-  | 'jar' | 'bottle' | 'tube' | 'bag' | 'box' | 'flat' | 'garment' | 'device' | 'food' | 'unknown'
+  | 'jar' | 'bottle' | 'tube' | 'bag' | 'box' | 'flat' | 'garment' | 'device' | 'food' | 'vessel' | 'unknown'
 
 /** The industry-converged UGC formats. Same five recur across every competitor
  *  surveyed, so they are the vocabulary the category already reads in — used as
@@ -104,6 +104,10 @@ const SHAPE_ACTIONS: Readonly<Record<ObjectShape, readonly string[]>> = {
   garment: ['hold_up', 'demonstrate', 'rotate', 'point_at', 'show_silent', 'compare'],
   device: ['hold_up', 'demonstrate', 'point_at', 'show_silent', 'rotate', 'set_down'],
   food: ['hold_up', 'demonstrate', 'point_at', 'show_silent', 'compare', 'set_down'],
+  // ⚠️ AUDIT 2026-09-26: a bowl or a mug fitted none of the shapes above, so a
+  // ceramics shop got the unnarrowed set — including "twist the cap off".
+  // A vessel is held, turned to show the glaze, filled or used, never unscrewed.
+  vessel: ['hold_up', 'rotate', 'demonstrate', 'point_at', 'show_silent', 'compare', 'set_down'],
   unknown: PHYSICAL_ACTIONS.map((a) => a.id),
 }
 

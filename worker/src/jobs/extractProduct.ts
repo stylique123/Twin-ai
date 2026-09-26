@@ -257,7 +257,7 @@ const SYSTEM = [
   '',
   '`object_shape`: ONE word for what the product physically is, and ONLY from a',
   'photograph or an explicit statement on the page. One of: jar, bottle, tube,',
-  'bag, box, flat, garment, device, food. This decides whether a creator is told',
+  'bag, box, flat, garment, device, food, vessel (bowl, mug, cup, vase). This decides whether a creator is told',
   'to twist a cap that exists or one that does not, so a guess is worse here than',
   'a blank. If the product is a service, an app or anything with no physical',
   'object, omit it — that is the correct answer, not a failure to find one.',

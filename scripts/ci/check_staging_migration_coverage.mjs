@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0238_product_shape_from_photo':
+    'Adds `shape_checked_at` to `product_entities`; inherited exclusion — `0120_product_entities` '
+    + 'is excluded, so staging has no such table.',
   '0237_retest_with_her_panel':
     'Re-test selection for the test-viewer panel (0235/0236 family, excluded; tables absent on '
     + 'staging). The editor never reads them.',
