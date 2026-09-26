@@ -172,6 +172,10 @@ const EVENTS = {
       + 'Learner step, which stores WHICH notes reached WHICH script so results can '
       + 'weight them; a bare count here would be a second, weaker authority.',
   },
+  shape_sweep: {
+    kind: 'counter_ephemeral',
+    why: 'Per batch of product photos read. Durable as the `object_shape` fact on `product_entities.knowledge` plus `shape_checked_at`.',
+  },
   panel_build: {
     kind: 'counter_ephemeral',
     why: 'Per voice panel build. Durable in `audience_panels` (personas, posts_seen, built_at), so every build is a query.',

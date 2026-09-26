@@ -76,6 +76,14 @@ describe('the photo narrows the set to what the object physically allows', () =>
     expect(ids).not.toContain('unbox')
   })
 
+  it('a bowl or mug (vessel) is turned to show the glaze, never unscrewed', () => {
+    const ids = directionsFor({ kind: 'PHYSICAL_PRODUCT', showability: 'ALWAYS', shape: 'vessel' })
+      .options.map((o) => o.id)
+    expect(ids).toContain('rotate')
+    expect(ids).not.toContain('twist_open')
+    expect(ids).not.toContain('unbox')
+  })
+
   it('a flat card is rested on a palm, not unboxed', () => {
     const ids = directionsFor({ kind: 'PHYSICAL_PRODUCT', showability: 'ALWAYS', shape: 'flat' })
       .options.map((o) => o.id)
