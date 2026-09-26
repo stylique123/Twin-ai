@@ -7,7 +7,8 @@ const EDGE = readFileSync(new URL('../../../../supabase/functions/generate-bluep
 describe('repair rewrites are parsed before use', () => {
   it('no repair reads .rewrites off the raw model string', () => {
     expect(EDGE).not.toMatch(/fixed as \{ rewrites\?/)
-    expect(EDGE.match(/parseRepairRewrites\(fixed\)/g)?.length).toBe(2)
+    // claim-leak, phrase-overlap and the personal-use gate (Fix A)
+    expect(EDGE.match(/parseRepairRewrites\(fixed\)/g)?.length).toBe(3)
   })
   it('the parser handles a string and never throws', () => {
     const fn = EDGE.slice(EDGE.indexOf('function parseRepairRewrites'), EDGE.indexOf('async function callModel('))

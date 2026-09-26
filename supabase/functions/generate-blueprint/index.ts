@@ -46,6 +46,10 @@ import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText } from '../_shared/shotListSync.ts'
 import {
+  personalUseGateApplies, personalUseViolations, claimsPersonalUse, dropPersonalUseSentences,
+  PERSONAL_USE_REPAIR_SYSTEM, personalUseRepairPrompt,
+} from '../_shared/personalUseGate.ts'
+import {
   rebuttalPromptRule, repairRebuttalFraming, ctaGoalPromptRule, repairCtaForGoal,
   factReachesWriter, removeUnbackedPromotions, confirmedPromotionText,
   shotListClaimDiff, isUnconfirmedInferredProduct, UNCONFIRMED_PRODUCT_MARK,
@@ -12612,6 +12616,55 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         }
       }
     } catch { /* never fail a generation on a hygiene pass */ }
+
+    // ── THE PERSONAL-USE GATE (master fix doc, Fix A) ────────────────────────
+    //
+    // ⚠️ A HARD GATE, NOT AN INSTRUCTION. The prompt already forbids a first-
+    // person usage claim when `personal_use` is not CONFIRMED; a real script
+    // still shipped one for an affiliate product. So the finished script is
+    // checked: flagged beats are rewritten in the third person, re-checked,
+    // and any sentence still claiming use is dropped. A beat that would be left
+    // empty fails the generation (refunded) rather than ship the claim.
+    // Runs BEFORE the shot-list sync so both documents carry the cleaned line.
+    {
+      const gateBeats = Array.isArray(declared) ? declared as Array<{ line?: unknown }> : []
+      const gateEntity = ownedEntity as { name?: unknown; personal_use?: unknown } | null
+      if (!chosenBrand && personalUseGateApplies(gateEntity?.personal_use as string | null, !!gateEntity)) {
+        const flagged = personalUseViolations(gateBeats)
+        if (flagged.length > 0) {
+          let repaired = 0, dropped = 0
+          try {
+            const fixed = await callModel(apiKey, PERSONAL_USE_REPAIR_SYSTEM,
+              personalUseRepairPrompt(gateBeats, flagged, String(gateEntity?.name ?? 'this product')), REPAIR_SCHEMA)
+            for (const r of parseRepairRewrites(fixed)) {
+              const i = typeof r?.index === 'number' ? r.index : -1
+              const line = typeof r?.line === 'string' ? r.line.trim() : ''
+              if (!flagged.includes(i) || line === '' || claimsPersonalUse(line)) continue
+              gateBeats[i].line = line
+              repaired++
+            }
+          } catch (err) {
+            console.warn('personal_use_repair_failed', err instanceof Error ? err.message : err)
+          }
+          const unsafeBeats: number[] = []
+          for (const i of personalUseViolations(gateBeats)) {
+            const kept = dropPersonalUseSentences(String(gateBeats[i].line ?? ''))
+            if (kept === '') { unsafeBeats.push(i); continue }
+            gateBeats[i].line = kept
+            dropped++
+          }
+          console.warn(JSON.stringify({
+            event: 'personal_use_gate', flagged: flagged.length, repaired, dropped, failed: unsafeBeats.length,
+          }))
+          if (unsafeBeats.length > 0) {
+            // ⚠️ THE RESCUE PATH WOULD SAVE THE UNREPAIRED SCRIPT. Clear it so the
+            // refusal is a refusal: refunded, and nothing with the claim is stored.
+            rescue = null
+            throw new Error(`personal_use_gate: ${unsafeBeats.length} beat(s) claim personal use of an unconfirmed product`)
+          }
+        }
+      }
+    }
 
     // ── THE SHOT LIST MUST QUOTE THE SCRIPT THAT ACTUALLY SHIPS ──────────────
     //

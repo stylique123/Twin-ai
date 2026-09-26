@@ -391,3 +391,22 @@ export function productCtaOnRecord(p: { knowledge?: unknown; offer?: unknown } |
   const offer = typeof p.offer === 'string' ? p.offer.trim() : ''
   return offer === '' ? null : offer
 }
+
+/**
+ * THE CTA ON RECORD FOR A WHOLE BRAND. A brand row carries no CTA of its own,
+ * so a brand-level build asked "What should viewers do after watching?" even
+ * when every product under it had one (master fix doc §2.5, "at brand level").
+ * The first product in the brand with a CTA on record answers it.
+ */
+export function brandCtaOnRecord(
+  brandId: string | null | undefined,
+  products: ReadonlyArray<{ brandId?: string | null; knowledge?: unknown; offer?: unknown }>,
+): string | null {
+  if (!brandId) return null
+  for (const p of products) {
+    if (p.brandId !== brandId) continue
+    const cta = productCtaOnRecord(p)
+    if (cta) return cta
+  }
+  return null
+}

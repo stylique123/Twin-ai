@@ -19,7 +19,7 @@ import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@t
 import { readProfileAnswers } from '../../lib/profileAnswersRead'
 import { storeTypedMaterial } from '../../lib/creatorAnswers'
 import { namedAlternatives } from '@twinai/shared'
-import { productCtaOnRecord } from '@twinai/shared'
+import { productCtaOnRecord, brandCtaOnRecord } from '@twinai/shared'
 import { readCreatorCtas } from '../../lib/creatorCtasRead'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
@@ -952,7 +952,10 @@ export default function V2Building() {
             // ⚖️ ITEM 28: THE CTA ON RECORD FOR THIS PRODUCT. When it exists the
             // generic "what should viewers do" question is not asked; the card
             // shows the value that will be used, as an editable box.
+            // ⚠️ §2.5 AT BRAND LEVEL: a brand has no CTA column, so a brand build
+            // re-asked it. Her products under that brand answer it.
             const productCta = productCtaOnRecord(chosen as { knowledge?: unknown; offer?: unknown } | null)
+              ?? (chosenBrand ? brandCtaOnRecord(chosenBrand.id, libraryProducts) : null)
             const verdict = assessReadiness({
               goal: state.goal ?? str(vBrief.goal) ?? null,
               angle: state.reference_note || refUrl || str(vBrief.idea) || null,

@@ -281,6 +281,7 @@ export * from './script/semanticRepetition'
 // repair has already run, so the shot card and the teleprompter never
 // disagree about what a beat says.
 export * from './script/shotListSync'
+export * from './script/personalUseGate'
 export * from './script/goalFidelity'
 
 // ⚖️ FIX 7 (Wave 3). `shot_list[].notes` carries a "Setup <letter> ·
@@ -371,3 +372,4 @@ export * from './script/transcriptReferencePoints'
 export * from './script/namedAlternatives'
 export * from './handleShape'
 export * from './productSplit'
+export * from './outcomeClaim'
