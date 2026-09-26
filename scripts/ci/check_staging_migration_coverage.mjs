@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0237_retest_with_her_panel':
+    'Re-test selection for the test-viewer panel (0235/0236 family, excluded; tables absent on '
+    + 'staging). The editor never reads them.',
   '0236_her_panel':
     'Fixed test-viewer panel per voice (0235/0227 family, excluded; brain tables absent on '
     + 'staging). The editor never reads them.',
