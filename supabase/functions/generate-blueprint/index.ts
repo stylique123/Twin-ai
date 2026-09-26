@@ -45,6 +45,7 @@ import { verbatimBudget, referenceShapeDigest, renderShapeDigest, REFERENCE_EXPO
 import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText } from '../_shared/shotListSync.ts'
+import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
 import {
   personalUseGateApplies, personalUseViolations, claimsPersonalUse, dropPersonalUseSentences,
   PERSONAL_USE_REPAIR_SYSTEM, personalUseRepairPrompt,
@@ -8024,6 +8025,8 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       ?? standingGoalDirectiveInline(briefListInline(briefRaw, 'contentGoals'))
       ?? (vp?.goal ?? dna.goal ?? 'turn attention into trust')
     const tone = vp?.tone ?? dna.voice ?? 'direct, warm, a little punchy'
+    // Owner's grain addendum: keep her rough edge; stronger for raw tone / craft niches.
+    const grainBlock = renderGrainRule(String(tone), `${niche} ${vp?.sub_niche ?? dna.sub_niche ?? ''}`)
     const editing = vp?.editing_style ?? dna.editing_style ?? 'fast jump cuts, burned-in captions'
     const platforms = voice?.platform
       ? [voice.platform]
@@ -10252,13 +10255,13 @@ ${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
 - Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
 ${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${availabilityBlock}${productModeBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${grainBlock}${availabilityBlock}${productModeBlock}
 
 ${decompositionInstruction}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${availabilityBlock}${productModeBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${grainBlock}${availabilityBlock}${productModeBlock}
 
 ${decompositionInstruction}`
 
@@ -12892,6 +12895,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       beatAudit.goal_fidelity = goalFidelity
       beatAudit.shot_list_claim_drift = shotListClaimDrift
       if (personalUseGateAudit) beatAudit.personal_use_gate = personalUseGateAudit
+      // Owner's grain addendum, MEASURED: of her own raw words, how many survived.
+      try {
+        const lines = (Array.isArray(declared) ? declared as Array<{ line?: unknown }> : [])
+          .map((b) => (typeof b?.line === 'string' ? b.line : ''))
+        const g = grainKept(String(reference_note ?? ''), lines)
+        if (g.raw > 0) beatAudit.grain = g
+      } catch { /* measurement only */ }
       beatAudit.retention_map_resync = retentionMapResync
       beatAudit.setup_label_resync = setupLabelResync
       beatAudit.action_posing_hygiene = actionPosingHygiene
