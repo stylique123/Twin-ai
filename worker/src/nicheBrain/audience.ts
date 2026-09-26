@@ -40,7 +40,7 @@ async function productFacts(owner: string, name: string | null): Promise<string 
 // ── HER PANEL: one voice per kick, only when due (missing, a week old, or her
 // post count moved). A failed build leaves the old panel, or none — the test
 // then invents viewers as before.
-export const PANEL_INTERVAL_MS = 5 * 60 * 1000
+export const PANEL_INTERVAL_MS = 60 * 1000
 let lastPanel = 0
 export async function runPanelBuilder(log: Log): Promise<void> {
   if (Date.now() - lastPanel < PANEL_INTERVAL_MS) return
@@ -76,7 +76,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
   const model = modelForTask('read')
   const s = scriptFromBlueprint(g.blueprint)
   const stamp = (row: Record<string, unknown>) =>
-    db.from('audience_tests').upsert({ generation_id: g.id, owner_id: g.user_id, model, ...row }, { onConflict: 'generation_id' })
+    db.from('audience_tests').upsert({ generation_id: g.id, owner_id: g.user_id, model, created_at: new Date().toISOString(), ...row }, { onConflict: 'generation_id' })
   if (!s) { await stamp({ status: 'failed', failure: 'no hooks or script lines' }); return }
 
   try {
