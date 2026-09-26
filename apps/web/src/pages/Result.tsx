@@ -89,6 +89,7 @@ const START_ERROR_TEXT: Record<string, string> = {
 const GEN_CACHE: Record<string, Generation> = {}
 import { useAuth } from '../context/AuthContext'
 import { RateThisScript } from '../components/RateThisScript'
+import { TestViewers } from '../components/TestViewers'
 import type { Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { EASE } from '../components/motion'
@@ -1550,6 +1551,7 @@ export default function Result() {
                   transition={{ duration: 0.25 }}
                   className="rounded-card border border-white/5 bg-ink2/85 p-6 space-y-6 shadow-glass backdrop-blur-md"
                 >
+                  <TestViewers generationId={gen.id} chosenHook={chosenHook} onPick={pickHook} />
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-stone" />
@@ -1881,6 +1883,7 @@ export default function Result() {
 
           {mobileTab === 'strategy' && (
             <div className="rounded-card border border-white/5 bg-ink2/85 p-5 space-y-6 shadow-glass backdrop-blur-md">
+              <TestViewers generationId={gen.id} chosenHook={chosenHook} onPick={pickHook} />
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-stone" />

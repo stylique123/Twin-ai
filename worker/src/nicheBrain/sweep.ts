@@ -32,7 +32,7 @@ async function knownSubNiches(bucketHint: string | null): Promise<string[]> {
 }
 
 /** File one note: merge into its twin, or insert and (maybe) link as related. */
-async function fileNote(n: NoteDraft, sourceId: string, views: number, owner: string | null = null): Promise<string | null> {
+export async function fileNote(n: NoteDraft, sourceId: string, views: number, owner: string | null = null): Promise<string | null> {
   const emb = await geminiEmbed(embedText(n))
   let target: string | null = null
   let relatedTo: string | null = null

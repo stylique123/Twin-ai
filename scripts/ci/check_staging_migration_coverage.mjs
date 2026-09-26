@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0235_test_viewers':
+    'Test-viewer panel + corpus read retries (0227 family, excluded; brain tables absent on '
+    + 'staging). The editor never reads them.',
   '0234_is_it_still_for_sale':
     'Adds availability columns to `product_entities`; inherited exclusion — `0120_product_entities` '
     + 'is excluded, so staging has no such table.',
