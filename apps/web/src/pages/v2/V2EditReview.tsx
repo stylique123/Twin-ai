@@ -29,6 +29,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Loader2, RotateCcw, Scissors, Sparkles, Type, ZoomIn } from 'lucide-react'
 import ScreenLayout from '../../components/v2/ScreenLayout'
+import { UnscriptedClaims } from '../../components/UnscriptedClaims'
 import { PrimaryButton, SectionTitle } from '../../components/v2/Primitives'
 import {
   buildReviewOverlay, getReviewBundle, isEmptyReviewOverlay, reviewOverlayOverCaps,
@@ -231,6 +232,8 @@ export default function V2EditReview() {
         lines are cuts we already planned — tap one to keep it after all.
         Nothing here can add words you did not say.
       </div>
+
+      <UnscriptedClaims projectId={projectId} />
 
       <SectionTitle>Your transcript</SectionTitle>
 
