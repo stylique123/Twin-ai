@@ -172,6 +172,10 @@ const EVENTS = {
       + 'Learner step, which stores WHICH notes reached WHICH script so results can '
       + 'weight them; a bare count here would be a second, weaker authority.',
   },
+  social_stats_sync: {
+    kind: 'counter_ephemeral',
+    why: 'Per cron tick: posts whose views were read back. Durable on `posts` (views, likes, comments, stats_synced_at) and `generation_outcomes` (views_24h, views_7d).',
+  },
   personal_use_gate: {
     kind: 'counter_ephemeral',
     why: 'Per script: first-person use claims flagged/repaired/dropped by Fix A. Durable in '

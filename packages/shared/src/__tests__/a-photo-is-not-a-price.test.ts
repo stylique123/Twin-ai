@@ -114,7 +114,7 @@ describe('the worker enforces what the prompt asks', () => {
 
   it('refuses a storage path outside the owner folder', () => {
     expect(JOB).toMatch(/if \(!path\.startsWith\(`\$\{ownerId\}\/`\)\)/)
-    expect(JOB).toMatch(/select\('product_url, owner_id, name, creator_summary'\)/)
+    expect(JOB).toMatch(/select\('product_url, owner_id, name, creator_summary, type'\)/)
   })
 
   it('caps how many images one job will inline', () => {
@@ -125,7 +125,8 @@ describe('the worker enforces what the prompt asks', () => {
     // ⚠️ That branch writes "we read it and got nothing" — which for a creator
     // who supplied photographs and no link would be a lie about work never done.
     expect(JOB).toMatch(/&& imagePaths\.length === 0\) \{/)
-    expect(JOB).toMatch(/const text = url \? await fetchPageText\(url\) : null/)
+    expect(JOB).toMatch(/const mainText = url \? await fetchPageText\(url\) : null/)
+    expect(JOB).toMatch(/let text = mainText/)
   })
 })
 

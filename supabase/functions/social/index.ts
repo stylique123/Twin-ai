@@ -22,6 +22,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { encryptToken, decryptToken } from './tokenCrypto.ts'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
+import { youtubeId, samePermalink, matchTikTokByTime, outcomeWindow, statsFrom, type PostStats } from '../_shared/socialStats.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -64,6 +65,9 @@ interface Adapter {
   refresh?: (refreshToken: string) => Promise<{ access_token: string; expires_at?: string }>
   account: (accessToken: string) => Promise<{ id: string; label: string }>
   publish: (a: { accessToken: string; accountId: string; videoUrl: string; title: string; caption: string }) => Promise<{ external_url: string }>
+  /** Views/likes/comments for a post Twin published. Null when it cannot be
+   *  matched — never a guess. */
+  stats?: (a: { accessToken: string; accountId: string; externalUrl: string | null; postedAt: string }) => Promise<PostStats | null>
 }
 
 // Small helper: poll an async condition up to `tries` times with `delayMs` spacing.
@@ -147,11 +151,12 @@ const ADAPTERS: Record<string, Adapter> = {
     },
   },
   // TikTok + Instagram: structured but require their (review-gated) content APIs.
+  // (YouTube stats are attached below, after the table, to keep this block readable.)
   tiktok: {
     label: 'TikTok', needs: ['TIKTOK_CLIENT_KEY', 'TIKTOK_CLIENT_SECRET'],
     configured: () => !!(env('TIKTOK_CLIENT_KEY') && env('TIKTOK_CLIENT_SECRET')),
     authorizeUrl: (state) => {
-      const p = new URLSearchParams({ client_key: env('TIKTOK_CLIENT_KEY')!, redirect_uri: REDIRECT(), response_type: 'code', scope: 'video.publish,video.upload', state })
+      const p = new URLSearchParams({ client_key: env('TIKTOK_CLIENT_KEY')!, redirect_uri: REDIRECT(), response_type: 'code', scope: 'user.info.basic,video.publish,video.upload,video.list', state })
       return `https://www.tiktok.com/v2/auth/authorize/?${p}`
     },
     exchange: async (code) => {
@@ -203,12 +208,21 @@ const ADAPTERS: Record<string, Adapter> = {
       // the connected profile. Link to the profile as the external reference.
       return { external_url: 'https://www.tiktok.com/' }
     },
+    // Matched by time: Direct Post returns no video id (see matchTikTokByTime).
+    stats: async ({ accessToken, postedAt }) => {
+      const r = await fetch('https://open.tiktokapis.com/v2/video/list/?fields=id,create_time,view_count,like_count,comment_count', {
+        method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json; charset=UTF-8' },
+        body: JSON.stringify({ max_count: 20 }),
+      }).then((x) => x.json()).catch(() => null)
+      const v = matchTikTokByTime((r?.data?.videos ?? []) as Array<Record<string, unknown> & { create_time?: number }>, postedAt)
+      return statsFrom(v, { views: 'view_count', likes: 'like_count', comments: 'comment_count' })
+    },
   },
   instagram: {
     label: 'Instagram', needs: ['META_APP_ID', 'META_APP_SECRET'],
     configured: () => !!(env('META_APP_ID') && env('META_APP_SECRET')),
     authorizeUrl: (state) => {
-      const p = new URLSearchParams({ client_id: env('META_APP_ID')!, redirect_uri: REDIRECT(), response_type: 'code', scope: 'instagram_basic,instagram_content_publish,pages_show_list', state })
+      const p = new URLSearchParams({ client_id: env('META_APP_ID')!, redirect_uri: REDIRECT(), response_type: 'code', scope: 'instagram_basic,instagram_content_publish,instagram_manage_insights,pages_show_list', state })
       return `https://www.facebook.com/v21.0/dialog/oauth?${p}`
     },
     exchange: async (code) => {
@@ -262,6 +276,17 @@ const ADAPTERS: Record<string, Adapter> = {
       let permalink = 'https://www.instagram.com/'
       try { const m = await fetch(`https://graph.facebook.com/v21.0/${pub.id}?fields=permalink&access_token=${accessToken}`).then((r) => r.json()); if (m?.permalink) permalink = m.permalink } catch { /* best-effort */ }
       return { external_url: permalink }
+    },
+    stats: async ({ accessToken, accountId, externalUrl }) => {
+      if (!accountId || !externalUrl) return null
+      const list = await fetch(`https://graph.facebook.com/v21.0/${accountId}/media?fields=id,permalink,like_count,comments_count&limit=50&access_token=${accessToken}`)
+        .then((x) => x.json()).catch(() => null)
+      const m = ((list?.data ?? []) as Array<Record<string, unknown>>).find((x) => samePermalink(String(x.permalink ?? ''), externalUrl))
+      if (!m?.id) return null
+      const ins = await fetch(`https://graph.facebook.com/v21.0/${m.id}/insights?metric=views&access_token=${accessToken}`)
+        .then((x) => x.json()).catch(() => null)
+      const views = (ins?.data ?? []).find((d: { name?: string }) => d?.name === 'views')?.values?.[0]?.value
+      return statsFrom({ ...m, views }, { views: 'views', likes: 'like_count', comments: 'comments_count' })
     },
   },
   linkedin: {
@@ -343,6 +368,59 @@ type Db = any
 // Publish ONE post via its owner's connection. Shared by the interactive
 // `publish` action and the cron `publish_due` scan. Signs the render, calls the
 // platform adapter, and records posted/external_url or the failure reason.
+ADAPTERS.youtube.stats = async ({ accessToken, externalUrl }) => {
+  const id = youtubeId(externalUrl)
+  if (!id) return null
+  const r = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${id}`, { headers: { Authorization: `Bearer ${accessToken}` } })
+    .then((x) => x.json()).catch(() => null)
+  return statsFrom(r?.items?.[0]?.statistics ?? null, { views: 'viewCount', likes: 'likeCount', comments: 'commentCount' })
+}
+
+// ---- VIEWS BACK (the learning loop's real signal) --------------------------
+// Posts Twin published in the last 30 days, re-read at most every 6 hours.
+// Writes the numbers onto the post AND into `generation_outcomes` (24h / 7d
+// windows) — the table the niche brain's learner already reads. A token that
+// cannot be decrypted or a post that cannot be matched is skipped, never guessed.
+async function syncStats(admin: Db): Promise<{ read: number; skipped: number }> {
+  const since = new Date(Date.now() - 30 * 86_400_000).toISOString()
+  const stale = new Date(Date.now() - 6 * 3_600_000).toISOString()
+  const { data: rows } = await admin.from('posts')
+    .select('id, owner_id, platform, generation_id, external_url, posted_at, stats_synced_at')
+    .eq('status', 'posted').gte('posted_at', since)
+    .or(`stats_synced_at.is.null,stats_synced_at.lt.${stale}`)
+    .limit(25)
+  let read = 0, skipped = 0
+  for (const p of rows ?? []) {
+    const ad = ADAPTERS[p.platform as string]
+    const stamp = () => admin.from('posts').update({ stats_synced_at: new Date().toISOString() }).eq('id', p.id)
+    if (!ad?.stats || !TOKEN_KEY()) { skipped++; await stamp(); continue }
+    try {
+      const { data: conn } = await admin.from('platform_connections').select('*').eq('owner_id', p.owner_id).eq('platform', p.platform).maybeSingle()
+      if (!conn?.access_token) { skipped++; await stamp(); continue }
+      const accessToken = await decryptToken(conn.access_token as string, TOKEN_KEY(), p.owner_id as string, p.platform as string)
+      const st = await ad.stats({ accessToken, accountId: conn.external_account_id ?? '', externalUrl: p.external_url as string | null, postedAt: p.posted_at as string })
+      if (!st) { skipped++; await stamp(); continue }
+      await admin.from('posts').update({
+        views: st.views, likes: st.likes, comments: st.comments, stats_synced_at: new Date().toISOString(),
+      }).eq('id', p.id)
+      if (p.generation_id && st.views !== null) {
+        const w = outcomeWindow(p.posted_at as string)
+        const { data: existing } = await admin.from('generation_outcomes').select('id, views_24h, views_7d').eq('generation_id', p.generation_id).maybeSingle()
+        const patch: Record<string, unknown> = { was_published: true }
+        if (w.views_24h && existing?.views_24h == null) patch.views_24h = st.views
+        if (w.views_7d && existing?.views_7d == null) patch.views_7d = st.views
+        if (existing) await admin.from('generation_outcomes').update(patch).eq('id', existing.id)
+        // Every generation already has an outcome row (0191); none means it is not ours to invent.
+      }
+      read++
+    } catch {
+      skipped++; await stamp()
+    }
+  }
+  if (read || skipped) console.log(JSON.stringify({ event: 'social_stats_sync', read, skipped }))
+  return { read, skipped }
+}
+
 async function publishOne(admin: Db, post: { id: string; owner_id: string; platform: string; generation_id: string; caption?: string | null; edit_project_id?: string | null; output_asset_id?: string | null }): Promise<{ ok: boolean; error?: string; external_url?: string; skipped?: boolean }> {
   const ad = ADAPTERS[post.platform]
   if (!ad) return { ok: false, error: 'Unknown platform' }
@@ -568,7 +646,9 @@ Deno.serve(async (req: Request) => {
       const r = await publishOne(admin, p)
       if (r.ok) published++; else if (r.skipped) skipped++; else failed++
     }
-    return json({ ok: true, published, failed, skipped, scanned: (due ?? []).length })
+    // Same cron tick: read views back for recently published posts.
+    const stats = await syncStats(admin).catch(() => ({ read: 0, skipped: 0 }))
+    return json({ ok: true, published, failed, skipped, scanned: (due ?? []).length, stats })
   }
 
   // ---- OAuth callback (browser redirect, no JWT) ----------------------------

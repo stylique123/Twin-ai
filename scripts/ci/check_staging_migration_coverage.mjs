@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0239_views_back':
+    'Adds `stats_synced_at` to `posts`; the social stats sync is production-only (no platform keys on '
+    + 'staging). The editor never reads it.',
   '0238_product_shape_from_photo':
     'Adds `shape_checked_at` to `product_entities`; inherited exclusion — `0120_product_entities` '
     + 'is excluded, so staging has no such table.',
