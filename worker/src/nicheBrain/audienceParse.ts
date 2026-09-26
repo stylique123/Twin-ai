@@ -6,6 +6,7 @@
 // while listing 6 cannot inflate the number she sees.
 
 export const PANEL_SIZE = 10
+const S0 = { type: 'STRING' }
 
 /** Closed list so the mistakes log can count the same mistake across scripts. */
 export const ISSUES = [
@@ -14,9 +15,50 @@ export const ISSUES = [
 ] as const
 export type Issue = typeof ISSUES[number]
 
+// ── HER PANEL: the fixed viewers, built once per voice from her real posts ──
+export interface Persona { who: string; about: string; stops_for: string; scrolls_when: string; asks: string | null }
+
+export const PANEL_SYSTEM = [
+  `Build the ${PANEL_SIZE} viewers who REALLY watch this creator, from her DNA and her real posts with their plays and likes.`,
+  'Her best posts show what her audience rewards; her weakest show what makes them scroll. Every persona must be traceable to that evidence or her DNA — no generic marketing personas.',
+  'Mix: loyal fans, first-time or gift buyers, sceptics (price, quality, trust), and fast scrollers, in the proportions her numbers suggest.',
+  '- who: short label (e.g. "Gift buyer", "Price sceptic").',
+  '- about: one line on who they are and why they follow her.',
+  '- stops_for: what makes them stop scrolling, grounded in her best posts.',
+  '- scrolls_when: what makes them leave, grounded in her weakest posts.',
+  '- asks: the question they typically ask in comments, or null.',
+].join('\n')
+
+export const PANEL_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    personas: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: { who: S0, about: S0, stops_for: S0, scrolls_when: S0, asks: { type: 'STRING', nullable: true } },
+        required: ['who', 'about', 'stops_for', 'scrolls_when'],
+      },
+    },
+  },
+  required: ['personas'],
+}
+
+export function normalizePanel(raw: unknown): Persona[] {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const t = (v: unknown, n: number) => (typeof v === 'string' && v.trim() ? v.replace(/\s+/g, ' ').trim().slice(0, n) : null)
+  return (Array.isArray(r.personas) ? r.personas : []).flatMap((p) => {
+    const o = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>
+    const who = t(o.who, 40), about = t(o.about, 200), stops = t(o.stops_for, 200), scrolls = t(o.scrolls_when, 200)
+    if (!who || !about || !stops || !scrolls) return []
+    return [{ who, about, stops_for: stops, scrolls_when: scrolls, asks: t(o.asks, 140) }]
+  }).slice(0, PANEL_SIZE)
+}
+
 export const AUDIENCE_SYSTEM = [
   'You run a test audience for a short-form video creator, BEFORE she films.',
-  `Invent exactly ${PANEL_SIZE} realistic viewers who would actually see this video in her niche: mix loyal fans, gift/first-time buyers, sceptics, and fast scrollers. Base them on her DNA, her audience, and the known objections in her niche.`,
+  'If HER PANEL is given, play exactly those viewers (same labels, same order) — do not invent others.',
+  `Otherwise invent exactly ${PANEL_SIZE} realistic viewers who would actually see this video in her niche: mix loyal fans, gift/first-time buyers, sceptics, and fast scrollers. Base them on her DNA, her audience, and the known objections in her niche.`,
   'Each viewer reads the hook options and the script, then answers honestly as that person — not as a marketer.',
   '- who: a short label for the viewer (e.g. "Gift buyer", "Price sceptic", "Pottery lover", "Fast scroller").',
   '- stops_for: the 0-based index of the ONE hook option that would make them stop scrolling, or -1 if none would.',
@@ -28,7 +70,7 @@ export const AUDIENCE_SYSTEM = [
   'Be tough but fair: a good script can have zero fixes.',
 ].join('\n')
 
-const S = { type: 'STRING' }
+const S = S0
 const N = { type: 'INTEGER' }
 export const AUDIENCE_SCHEMA = {
   type: 'OBJECT',
@@ -73,10 +115,11 @@ export function scriptFromBlueprint(bp: unknown): ScriptForTest | null {
   return { hooks, lines, concept: typeof c?.premise === 'string' ? c.premise : null }
 }
 
-export function audiencePrompt(s: ScriptForTest, ctx: { dna: unknown; product?: string | null; objections: string[]; lessons: unknown }): string {
+export function audiencePrompt(s: ScriptForTest, ctx: { dna: unknown; product?: string | null; objections: string[]; lessons: unknown; panel?: Persona[] }): string {
   const j = (v: unknown, n: number) => JSON.stringify(v ?? null).slice(0, n)
   return [
     `CREATOR DNA: ${j(ctx.dna, 1200)}`,
+    ctx.panel?.length ? `HER PANEL (play these viewers):\n${ctx.panel.map((p, i) => `${i}. ${p.who} — ${p.about} Stops for: ${p.stops_for} Scrolls when: ${p.scrolls_when}${p.asks ? ` Asks: ${p.asks}` : ''}`).join('\n')}` : '',
     ctx.product ? `PRODUCT FACTS (the only facts that exist): ${ctx.product.slice(0, 1200)}` : '',
     ctx.objections.length ? `KNOWN QUESTIONS/OBJECTIONS IN HER NICHE: ${ctx.objections.slice(0, 8).join(' | ')}` : '',
     `WHAT PAST TEST PANELS KEPT FLAGGING FOR HER: ${j(ctx.lessons, 500)}`,

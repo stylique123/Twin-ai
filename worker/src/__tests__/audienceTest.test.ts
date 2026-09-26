@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeAudience, scriptFromBlueprint, audiencePrompt } from '../nicheBrain/audienceParse.js'
+import { normalizeAudience, normalizePanel, scriptFromBlueprint, audiencePrompt } from '../nicheBrain/audienceParse.js'
 
 const s = { hooks: ['Hook A', 'Hook B', 'Hook C'], lines: ['line 0', 'line 1', 'line 2'], concept: 'mug' }
 const v = (stops_for: number, leaves_at = -1, question: string | null = null) =>
@@ -44,5 +44,19 @@ describe('test viewers', () => {
     expect(p).toContain('PRODUCT FACTS')
     expect(p).toContain('1. Hook B')
     expect(p).toContain('2. line 2')
+  })
+
+  it('panel keeps only complete personas, max 10', () => {
+    const good = { who: 'Gift buyer', about: 'Buys for mum', stops_for: 'glaze close-ups', scrolls_when: 'long intros', asks: null }
+    const out = normalizePanel({ personas: [good, { who: 'x' }, ...Array(12).fill(good)] })
+    expect(out.length).toBe(10)
+    expect(out.every((p) => p.about && p.stops_for)).toBe(true)
+  })
+
+  it('prompt tells the model to play her panel when one exists', () => {
+    const panel = [{ who: 'Price sceptic', about: 'a', stops_for: 'b', scrolls_when: 'c', asks: 'how much?' }]
+    const p = audiencePrompt(s, { dna: {}, objections: [], lessons: [], panel })
+    expect(p).toContain('HER PANEL')
+    expect(p).toContain('0. Price sceptic')
   })
 })
