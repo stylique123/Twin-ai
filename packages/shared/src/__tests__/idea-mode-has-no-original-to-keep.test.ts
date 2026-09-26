@@ -49,22 +49,25 @@ describe('idea mode has no original to keep', () => {
     const withRef = intentQuestionsFor({ hasReference: true })
     const noRef = intentQuestionsFor({ hasReference: false })
 
-    expect(withRef.map((q) => q.field)).toEqual(INTENT_QUESTIONS.map((q) => q.field))
+    // Owner's redesign: a reference build no longer re-asks the subject.
+    expect(withRef.map((q) => q.field)).toEqual(
+      INTENT_QUESTIONS.map((q) => q.field).filter((f) => f !== 'content_focus'))
     expect(noRef.map((q) => q.field)).not.toContain('reference_use')
     // ⚠️ AND NOT THE SUBJECT QUESTION EITHER, for the reason in the header:
     // the idea IS the subject, and it was typed a screen ago.
     expect(noRef.map((q) => q.field)).not.toContain('content_focus')
-    expect(noRef).toHaveLength(withRef.length - 2)
+    expect(noRef).toHaveLength(withRef.length - 1)
 
     // The creator questions that are NOT already answered by the input survive.
     // Naming them is the point: a filter that returned [] would satisfy "does
     // not contain reference_use".
     expect(noRef.map((q) => q.field)).toContain('video_goal')
 
-    // ⚖️ AND A REFERENCE BUILD STILL ASKS THE SUBJECT. Dropping it everywhere
-    // would take a real input away from a real reader; dropping it where the
-    // input already carries it is the whole distinction.
-    expect(withRef.map((q) => q.field)).toContain('content_focus')
+    // ⚖️ OWNER'S REDESIGN: a reference build drops the subject question (Twin
+    // has watched the video); a PRODUCT reference build still asks it.
+    expect(withRef.map((q) => q.field)).not.toContain('content_focus')
+    expect(intentQuestionsFor({ hasReference: true, isProductSubject: true }).map((q) => q.field))
+      .toContain('content_focus')
   })
 
   it('the question it drops is the one that names an original', () => {

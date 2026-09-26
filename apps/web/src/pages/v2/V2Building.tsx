@@ -24,7 +24,7 @@ import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   // ⚖️ THE WRITER'S OWN TARGET, shown to the creator before the money moves.
   targetSeconds, spokenTime,
-  INTENT_QUESTIONS, intentQuestionsFor, type IntentQuestion, type VideoGoal, focusForGoal,
+  INTENT_QUESTIONS, intentQuestionsFor, choiceFollowUp, followUpLines, FOLLOWUP_PREFIX, type IntentQuestion, type VideoGoal, focusForGoal,
   mustAskWhichProduct, promotedObjectiveQuestion, PRODUCT_CHOICE_FIELD, NO_PRODUCT_CHOICE, NO_PRODUCT_EXPLANATION, BRAND_CHOICE_PREFIX,
   selectProduct,
   productChoiceConstraint,
@@ -1535,6 +1535,8 @@ export default function V2Building() {
         const mentionedProductId = decided.kind === 'mention' ? decided.productId : ''
         for (const [k, v] of Object.entries(answersRef.current)) {
           if (k === PRODUCT_CHOICE_FIELD) continue
+          // Follow-up answers ride her note (below), never the brief.
+          if (k.startsWith(FOLLOWUP_PREFIX)) continue
           if (INTENT_FIELDS.has(k)) intentAnswers[k] = v
           else readinessAnswers[k] = v
         }
@@ -1554,7 +1556,7 @@ export default function V2Building() {
           // answer arrives as a line ABOVE everything she wrote, and the writer
           // reads the same field it always has. No new request field, and
           // nothing persisted to a profile: this is a fact about THIS video.
-          reference_note: ideaFocusLine + (state.reference_note || ''),
+          reference_note: ideaFocusLine + followUpLines(answersRef.current, { isProductSubject }) + (state.reference_note || ''),
           fidelity: state.fidelity ?? 'balanced',
           tone: state.tone,
           target_seconds: state.target_seconds,
@@ -2092,6 +2094,26 @@ export default function V2Building() {
    *  where they sit, never in how a question behaves — so the chip logic, the
    *  sub-option row and the keystroke-level save live here once. Copying them
    *  per column is how two lists drift into two behaviours. */
+  /** ⚖️ ONE QUESTION PER CHOICE, ASKED AFTER IT (owner's redesign).
+   *  Optional: a blank answer adds nothing, so the script is shorter rather
+   *  than invented. Rendered under a picked chip AND under a displayed goal. */
+  const renderFollowUp = (field: string, value: string | null | undefined) => {
+    const fu = choiceFollowUp(field, value, { isProductSubject })
+    if (!fu) return null
+    const key = FOLLOWUP_PREFIX + field
+    return (
+      <label className="mt-3 block" data-testid={`followup-${field}`}>
+        <span className="block text-[13px] text-cream">{fu}</span>
+        <textarea
+          value={askAnswers[key] ?? ''}
+          onChange={(e) => answer(key, e.target.value.slice(0, 600))}
+          rows={2}
+          placeholder="In your own words — optional"
+          className="mt-1.5 w-full rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-[13px] text-cream placeholder:text-stone focus:border-coral/40 focus:outline-none"
+        />
+      </label>
+    )
+  }
   const renderAsk = (q: AskItem) => (
             <div key={q.field} className="block">
               <span className="text-sm leading-relaxed text-cream">
@@ -2295,6 +2317,10 @@ export default function V2Building() {
                       })}
                     </div>
                   ))}
+                {/* ⚖️ ONE QUESTION PER CHOICE, ASKED AFTER IT (owner's redesign).
+                    Optional: a blank answer adds nothing, so the script is
+                    shorter rather than invented. */}
+                {renderFollowUp(q.field, askAnswers[q.field])}
                 </>
               ) : q.field === 'offer' && (products?.length ?? 0) > 0 ? (
                 // ⚠️ THE ONE QUESTION WHOSE ANSWER WE ALREADY HAVE. Asking a
@@ -2538,6 +2564,7 @@ export default function V2Building() {
                         ? 'What this video needs to do for the product. Changing it here only affects this video.'
                         : 'From what you told us your content is for. Changing it here only affects this video.'}
                     </span>
+                    {renderFollowUp('video_goal', askAnswers.video_goal || displayedGoal)}
                   </div>
                 )}
                 {/* ⚖️ NOT GATED ON `displayedGoal`, DELIBERATELY. Tapping an active

@@ -1029,7 +1029,12 @@ export function intentQuestionsFor(
       ? { ...q, question: PRODUCT_OBJECTIVE_QUESTION, options: PRODUCT_OBJECTIVES }
       : q))
     : INTENT_QUESTIONS
-  if (opts.hasReference) return base
+  // ⚠️ OWNER'S REDESIGN: in a reference build "What should this video be
+  // about?" re-asks what Twin has just watched. The one question the reference
+  // leaves open is how much of it to keep — and that answer now carries its own
+  // follow-up (`choiceFollowUp`). A product build keeps the subject question,
+  // which there decides which well of hers the product story draws from.
+  if (opts.hasReference) return opts.isProductSubject ? base : base.filter((q) => q.field !== 'content_focus')
   // ── IN IDEA MODE, THE IDEA IS THE SUBJECT ────────────────────────────────
   //
   // ⚠️ "WHAT SHOULD THIS VIDEO BE ABOUT?" IS ASKED OF SOMEBODY WHO HAS JUST
@@ -1054,6 +1059,54 @@ export function intentQuestionsFor(
   // pasted nothing — the commonest product build there is. Caught by reading
   // this branch after editing the one above it, not by a test that existed.
   return base.filter((q) => q.field !== 'reference_use' && q.field !== 'content_focus')
+}
+
+// ── ONE QUESTION PER CHOICE, ASKED AFTER THE CHOICE ─────────────────────────
+//
+// ⚠️ A QUESTION SHOWN BEFORE THE PICK CANNOT BE ABOUT THE PICK. The owner's
+// redesign: "My topic, their structure" means Twin needs HER version of what
+// happens, or it invents one; "Their topic, my take" needs her actual opinion,
+// or "my take" collapses into a restatement. The same holds for four goals in
+// Idea and Reference mode — each needs one different piece of material.
+//
+// ⚖️ OPTIONAL, AND HONEST WHEN SKIPPED. An answer rides her note to the writer
+// as her own words; a blank one adds nothing, so the script is shorter rather
+// than invented. Product builds keep their own objective questions
+// (objectiveQuestionPool), so nothing here applies to them.
+export const FOLLOWUP_PREFIX = 'followup_'
+
+const FOLLOW_UPS: Readonly<Record<string, Readonly<Record<string, string>>>> = Object.freeze({
+  reference_use: {
+    structure: "What's your version of what happens in this video?",
+    idea_structure: "What's your actual opinion on this?",
+  },
+  video_goal: {
+    authority: "What's the one thing that proves this, that you could point to?",
+    educate: "What's the one thing people get wrong about this, that you'd want to correct?",
+    conversations: "What's the most disagreeable way you could put this?",
+    entertain: "What's the funniest or most absurd part of this, if there is one?",
+  },
+})
+
+export function choiceFollowUp(
+  field: string, value: string | null | undefined, opts: { isProductSubject?: boolean } = {},
+): string | null {
+  if (opts.isProductSubject || !value) return null
+  return FOLLOW_UPS[field]?.[value] ?? null
+}
+
+/** Her follow-up answers as lines for her note, only where the answer still
+ *  belongs to the choice on screen (a changed choice drops its old answer). */
+export function followUpLines(
+  answers: Readonly<Record<string, string | undefined>>, opts: { isProductSubject?: boolean } = {},
+): string {
+  const out: string[] = []
+  for (const field of Object.keys(FOLLOW_UPS)) {
+    const q = choiceFollowUp(field, answers[field], opts)
+    const a = (answers[FOLLOWUP_PREFIX + field] ?? '').trim().slice(0, 600)
+    if (q && a) out.push(`${q}\nMy answer: ${a}`)
+  }
+  return out.length ? `${out.join('\n\n')}\n\n` : ''
 }
 
 /** Every value a creator can reach on screen, including sub-options. */
