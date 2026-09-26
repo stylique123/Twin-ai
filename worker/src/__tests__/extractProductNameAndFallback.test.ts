@@ -55,6 +55,6 @@ describe("the creator's own sentence is the floor under a page that cannot be re
   })
 
   it('selects creator_summary off the row so the fallback has something to read', () => {
-    expect(SRC).toMatch(/select\('product_url, owner_id, name, creator_summary'\)/)
+    expect(SRC).toMatch(/select\('product_url, owner_id, name, creator_summary, type'\)/)
   })
 })
