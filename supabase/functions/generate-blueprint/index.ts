@@ -50,6 +50,7 @@ import {
   personalUseGateApplies, personalUseViolations, claimsPersonalUse, dropPersonalUseSentences,
   PERSONAL_USE_REPAIR_SYSTEM, personalUseRepairPrompt,
 } from '../_shared/personalUseGate.ts'
+import { renderCustomerReviews } from '../_shared/customerReviews.ts'
 import { voiceRules, voiceViolations, vocabularyUsed, VOICE_REPAIR_SYSTEM, voiceRepairPrompt } from '../_shared/voiceGate.ts'
 import {
   rebuttalPromptRule, repairRebuttalFraming, ctaGoalPromptRule, repairCtaForGoal,
@@ -9129,6 +9130,19 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         + '\n  These are the creator\'s own statement of what the thing IS — use them for its identity, format, price, sizes and who it is for, and prefer them to describing it vaguely. They have NOT been verified by anyone, so do not restate them as proven or independently checked.'
         + ' And a sentence here that promises a RESULT is still not an approved outcome claim: state what the product is and costs, never what it will achieve, unless that outcome appears in the approved list above.')
     }
+
+    // ── CUSTOMER REVIEWS (24-ideas #14) ──────────────────────────────────
+    // Read from the product page's own data by the extractor and stored apart
+    // from her facts. Its own small read, so an older schema without the column
+    // costs nothing: it fails open to no line.
+    try {
+      const reviewEntityId = String((ownedEntity as { id?: unknown } | null)?.id ?? '')
+      if (reviewEntityId !== '' && !chosenBrand) {
+        const { data: rv } = await admin.from('product_entities').select('customer_reviews').eq('id', reviewEntityId).maybeSingle()
+        const reviewLine = renderCustomerReviews((rv as { customer_reviews?: unknown } | null)?.customer_reviews)
+        if (reviewLine) claimLines.push(reviewLine)
+      }
+    } catch { /* reviews are supporting material; never fail a script on them */ }
 
     // ── THE ONE LINE THE CREATOR TYPED THEMSELVES ────────────────────────
     //
