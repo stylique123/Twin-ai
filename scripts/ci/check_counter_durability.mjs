@@ -540,6 +540,11 @@ const EVENTS = {
     why: 'The durable fact is the price facts written into product_entities.knowledge; the log '
       + 'is the live trace of reading them from the page\'s schema.org data.',
   },
+  image_brand_mismatch: {
+    kind: 'counter_ephemeral',
+    why: 'Trace of a photo showing another brand; the durable effect is that no name/description/'
+      + 'category fact from that photo was written to product_entities.knowledge (jobs.result.lookup).',
+  },
   product_not_found_on_shop: {
     kind: 'counter_ephemeral',
     why: 'Diagnostic trace of a shop lookup miss (closest titles). Nothing durable changes; '

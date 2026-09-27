@@ -57,11 +57,23 @@ export interface WebProductMatch {
 export type WebSearchOutcome =
   | { ok: true; match: WebProductMatch }
   | { ok: false; reason: 'no_name' | 'search_failed' | 'no_answer' | 'low_confidence' | 'not_in_sources'
-      | 'unreadable' | 'name_mismatch'; detail?: string; sources: number }
+      | 'unreadable' | 'name_mismatch' | 'too_generic' | 'not_her_brand'; detail?: string; sources: number }
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 const stem = (w: string) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w)
 const words = (s: string) => new Set(norm(s).split(' ').filter((x) => x.length > 1).map(stem))
+
+/** ⚠️ A NAME THAT DESCRIBES A KIND OF PRODUCT, NOT ONE PRODUCT. Reported:
+ *  "Single-Origin Limited Release" searched with no brand can only match
+ *  somebody else's page. Words that say what sort of thing it is, not whose. */
+const GENERIC = new Set(['single', 'origin', 'limited', 'release', 'edition', 'blend', 'roast', 'coffee', 'bean', 'tea',
+  'special', 'signature', 'classic', 'original', 'premium', 'new', 'the', 'and', 'of', 'bag', 'box', 'set', 'pack', 'kit',
+  'collection', 'series', 'small', 'batch', 'handmade', 'custom', 'fresh', 'organic', 'natural', 'mini', 'large', 'medium',
+  'dark', 'light', 'house', 'seasonal', 'holiday', 'gift', 'bundle', 'sample', 'product', 'course', 'guide', 'ebook'])
+export function genericName(name: string): boolean {
+  const ws = [...words(name)]
+  return ws.length === 0 || ws.every((w) => GENERIC.has(w) || /^\d+$/.test(w))
+}
 
 /** Every word of her name must appear in the title (extra title words are fine). */
 export const MIN_WEB_NAME_MATCH = 1
@@ -154,6 +166,8 @@ export async function findProductOnWeb(input: {
   const name = input.productName.trim()
   if (name === '') return { ok: false, reason: 'no_name', sources: 0 }
   const brand = (input.brandName ?? '').trim()
+  // A kind-of-product name with no brand to anchor it is not searchable safely.
+  if (!brand && genericName(name)) return { ok: false, reason: 'too_generic', sources: 0 }
   const query = brand && !norm(name).includes(norm(brand)) ? `${name} ${brand}` : name
 
   let answer: GroundedAnswer
@@ -174,6 +188,13 @@ export async function findProductOnWeb(input: {
   const titles = pageTitlesOf(text)
   const best = titles.find((t) => webNameMatch(name, t) >= MIN_WEB_NAME_MATCH)
   if (!best) return { ok: false, reason: 'name_mismatch', detail: hostOf(picked.url) ?? '', sources: n }
+  // ⚠️ THE PAGE MUST BE HERS. With a brand known, the page (or its address)
+  // must name it; a generic name matched on a stranger's shop is refused.
+  if (brand) {
+    const b = norm(brand).replace(/ /g, '')
+    const hay = `${norm(text.slice(0, 20_000)).replace(/ /g, '')} ${(hostOf(picked.url) ?? '').replace(/[^a-z0-9]/g, '')}`
+    if (b.length >= 3 && !hay.includes(b)) return { ok: false, reason: 'not_her_brand', detail: hostOf(picked.url) ?? '', sources: n }
+  }
 
   return {
     ok: true,
