@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0246_outstand_publishing':
+    'Adds publishing columns (provider, title, media_path, external_post_id), post_stat_snapshots and the '
+    + 'post-media bucket for the Outstand path; production-only (needs OUTSTAND_API_KEY). The editor never reads it.',
   '0245_niche_comment_questions':
     'Adds `niche_comment_reads` and `niche_comment_due`; used only by a production worker sweep that '
     + 'needs YOUTUBE_API_KEY. The editor never reads it.',

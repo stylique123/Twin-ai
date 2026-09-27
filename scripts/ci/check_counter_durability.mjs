@@ -212,6 +212,10 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Per library video read: viewer questions filed as shared niche objection notes. Durable in `niche_comment_reads` (questions, read_at) and the `brain_notes` rows.',
   },
+  outstand_queue: {
+    kind: 'counter_ephemeral',
+    why: 'Per cron tick: posts handed to Outstand within its 30-day window, and handed-off posts settled. Durable on `posts` (status outstand_queued → posted/failed, external_post_id).',
+  },
   social_stats_sync: {
     kind: 'counter_ephemeral',
     why: 'Per cron tick: posts whose views were read back. Durable on `posts` (views, likes, comments, stats_synced_at) and `generation_outcomes` (views_24h, views_7d).',

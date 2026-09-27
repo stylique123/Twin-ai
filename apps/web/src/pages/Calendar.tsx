@@ -2,16 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   CalendarDays, Plus, Check, Trash2, ChevronLeft, ChevronRight, Loader2, X,
-  Clapperboard, Video, Send, Clock, Link2, AlertTriangle, RefreshCw, HelpCircle,
+  Clapperboard, Video, Send, Clock, Link2, AlertTriangle, RefreshCw, HelpCircle, Upload, BarChart3,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
-  listPosts, listGenerations, schedulePost, markScheduledPosted, deletePost, resolveFinishedOutputsResult,
+  listPosts, listGenerations, schedulePosts, uploadPostMedia, markScheduledPosted, deletePost, resolveFinishedOutputsResult,
   listConnections, startConnect, disconnectPlatform, publishPost,
   type Post, type PlatformConnection,
 } from '../lib/api'
 import type { Generation, Platform, FinishedOutput } from '../lib/types'
 import { Aurora } from '../components/Aurora'
+import { PostInsightsPanel } from '../components/PostInsights'
 import { Reveal } from '../components/motion'
 import { POSTING_LIVE } from '../lib/brand'
 import { cn } from '../lib/cn'
@@ -77,6 +78,7 @@ export default function Calendar() {
   const [connMsg, setConnMsg] = useState<string | null>(null)
   const [loadError, setLoadError] = useState(false)
   const [publishingId, setPublishingId] = useState<string | null>(null)
+  const [inspect, setInspect] = useState<Post | null>(null)
   const [params, setParams] = useSearchParams()
 
   // Which platforms this creator makes for (their DNA), else all three.
@@ -157,13 +159,18 @@ export default function Calendar() {
 
   const upcoming = useMemo(
     () => posts
-      .filter((p) => p.status === 'scheduled' && p.scheduled_for)
+      .filter((p) => (p.status === 'scheduled' || p.status === 'outstand_queued') && p.scheduled_for)
       .sort((a, b) => +new Date(a.scheduled_for!) - +new Date(b.scheduled_for!)),
     [posts],
   )
   // Failed posts must be VISIBLE and retryable — previously they dropped out of
   // every list (only 'scheduled' was shown) so a creator never learned a post
   // didn't go out. Surface them with the reason + a Retry.
+  const published = useMemo(
+    () => posts.filter((p) => p.status === 'posted')
+      .sort((a, b) => +new Date(b.posted_at ?? b.created_at) - +new Date(a.posted_at ?? a.created_at)).slice(0, 20),
+    [posts],
+  )
   const failedPosts = useMemo(
     () => posts.filter((p) => p.status === 'failed'),
     [posts],
@@ -323,9 +330,10 @@ export default function Calendar() {
                         <div className="mt-0.5 flex items-center gap-2 text-xs text-stone">
                           <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-semibold', PLATFORM_SKIN[p.platform] ?? 'bg-white/10 text-sand')}>{cap(p.platform)}</span>
                           <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" /> {new Date(p.scheduled_for!).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                          {p.status === 'outstand_queued' && <span className="text-teal">Queued with {cap(p.platform)}</span>}
                         </div>
                       </div>
-                      {POSTING_LIVE && connOf(p.platform) && (
+                      {POSTING_LIVE && connOf(p.platform) && p.status === 'scheduled' && (
                         <button onClick={() => postNow(p.id)} disabled={publishingId !== null} title={`Post to ${cap(p.platform)} now`} className="btn-gradient text-xs disabled:opacity-60">
                           {publishingId === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Post now
                         </button>
@@ -335,6 +343,23 @@ export default function Calendar() {
                     </div>
                   )
                 })}
+              </div>
+            )}
+
+            {/* Published — tap one for its numbers and comments, shaped per platform. */}
+            {published.length > 0 && (
+              <div className="mt-6" data-testid="published-list">
+                <p className="eyebrow !text-sand">Published</p>
+                <div className="mt-2.5 space-y-2">
+                  {published.map((p) => (
+                    <button key={p.id} onClick={() => setInspect(p)} className="glass flex w-full items-center gap-3 p-3 text-left hover:bg-white/[0.03]">
+                      <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-semibold', PLATFORM_SKIN[p.platform] ?? 'bg-white/10 text-sand')}>{cap(p.platform)}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm text-cream">{p.title || p.caption || 'Post'}</span>
+                      <span className="text-xs text-stone">{typeof p.views === 'number' ? `${p.views.toLocaleString()} views` : ''}</span>
+                      <BarChart3 className="h-4 w-4 text-stone" />
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -373,6 +398,7 @@ export default function Calendar() {
         </Reveal>
       </div>
 
+      {inspect && <PostInsightsPanel post={inspect} onClose={() => setInspect(null)} />}
       {composeFor && (
         <ScheduleModal
           finished={finished}
@@ -380,6 +406,7 @@ export default function Calendar() {
           day={composeFor}
           gens={gens}
           platforms={platforms}
+          connected={conns.filter((c) => c.status === 'connected').map((c) => c.platform)}
           onClose={() => setComposeFor(null)}
           onScheduled={() => { setComposeFor(null); refresh() }}
         />
@@ -390,7 +417,7 @@ export default function Calendar() {
 
 /* ─── Schedule modal ─────────────────────────────────────────────────── */
 
-function ScheduleModal({ day, gens, finished, finishedComplete, platforms, onClose, onScheduled }: {
+function ScheduleModal({ day, gens, finished, finishedComplete, platforms, connected, onClose, onScheduled }: {
   day: Date
   gens: Generation[]
   /** OUTPUT-1: passed in rather than re-derived, so the picker's finished/
@@ -399,27 +426,46 @@ function ScheduleModal({ day, gens, finished, finishedComplete, platforms, onClo
   /** Whether that map came from a lookup that actually ran. */
   finishedComplete: boolean
   platforms: Platform[]
+  /** Platforms with a live connection (one-click posting). */
+  connected: string[]
   onClose: () => void
   onScheduled: () => void
 }) {
+  // ⚖️ THE MULTI-CHANNEL COMPOSER (owner's blueprint): one video, several
+  // accounts, one post row per platform. The video is a finished Twin render or
+  // a file she uploads. YouTube gets its own title field.
+  const [source, setSource] = useState<'library' | 'upload'>(gens.length ? 'library' : 'upload')
   const [genId, setGenId] = useState<string>(gens[0]?.id ?? '')
-  const [platform, setPlatform] = useState<Platform>(platforms[0] ?? 'tiktok')
+  const [file, setFile] = useState<File | null>(null)
+  const [chosen, setChosen] = useState<Platform[]>([platforms[0] ?? 'tiktok'])
   const [date, setDate] = useState(ymd(day))
   const [time, setTime] = useState('18:00')
+  const [title, setTitle] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
-  const selected = gens.find((g) => g.id === genId)
-  // Prefill the caption from the script's publish plan for the chosen platform.
-  const caption = selected?.blueprint?.publish_plan?.find((pp) => pp.platform === platform)?.caption
+  const selected = source === 'library' ? gens.find((g) => g.id === genId) : undefined
+  const scriptCaption = selected?.blueprint?.publish_plan?.find((pp) => chosen.includes(pp.platform as Platform))?.caption
     ?? selected?.blueprint?.publish_plan?.[0]?.caption ?? ''
+  const [caption, setCaption] = useState<string | null>(null)
+  const captionValue = caption ?? scriptCaption
+  const hasYouTube = chosen.includes('youtube')
+  const onlyYouTube = hasYouTube && chosen.length === 1
+  const toggle = (p: Platform) => setChosen((c) => c.includes(p) ? c.filter((x) => x !== p) : [...c, p])
 
   const save = async () => {
-    if (!genId) { setErr('Pick a video to schedule.'); return }
+    if (source === 'library' && !genId) { setErr('Pick a video to schedule.'); return }
+    if (source === 'upload' && !file) { setErr('Choose a video file to upload.'); return }
+    if (!chosen.length) { setErr('Pick at least one account.'); return }
+    if (hasYouTube && !title.trim()) { setErr('YouTube needs a video title.'); return }
     setBusy(true); setErr(null)
     try {
       const scheduledFor = new Date(`${date}T${time}:00`).toISOString()
-      await schedulePost({ generationId: genId, platform, scheduledFor, caption })
+      const mediaPath = source === 'upload' && file ? await uploadPostMedia(file) : null
+      await schedulePosts({
+        generationId: source === 'library' ? genId : null, mediaPath,
+        platforms: chosen, scheduledFor, caption: captionValue, title: hasYouTube ? title : undefined,
+      })
       onScheduled()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not schedule. Try again.')
@@ -428,20 +474,24 @@ function ScheduleModal({ day, gens, finished, finishedComplete, platforms, onClo
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink/85 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="glass relative max-h-[88vh] w-full max-w-lg overflow-y-auto p-6 sm:p-7" onClick={(e) => e.stopPropagation()}>
+      <div className="glass relative max-h-[88vh] w-full max-w-lg overflow-y-auto p-6 sm:p-7" onClick={(e) => e.stopPropagation()} data-testid="composer">
         <button aria-label="Close" onClick={onClose} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
         <h2 className="font-display text-2xl tracking-tight">Schedule a post</h2>
-        <p className="mt-1 text-sm text-stone">Pick a finished video, a platform and a time.</p>
+        <p className="mt-1 text-sm text-stone">One video, as many accounts as you like, one time.</p>
 
-        {gens.length === 0 ? (
-          <div className="mt-6 rounded-card border border-white/8 bg-white/[0.02] p-6 text-center">
-            <p className="text-sm text-sand">You don't have any videos yet.</p>
-            <Link to="/app" className="btn-gradient mt-4 inline-flex">Make your first one</Link>
+        <div className="mt-5 space-y-4">
+          <div className="flex gap-2">
+            <button onClick={() => setSource('library')} className={cn('chip', source === 'library' && 'border-coral/60 bg-coral/10 text-cream')}>From your library</button>
+            <button onClick={() => setSource('upload')} className={cn('chip', source === 'upload' && 'border-coral/60 bg-coral/10 text-cream')}><Upload className="h-3.5 w-3.5" /> Upload a video</button>
           </div>
-        ) : (
-          <div className="mt-5 space-y-4">
-            <div>
-              <label className="eyebrow mb-1.5 block">Video from your library</label>
+
+          {source === 'library' ? (
+            gens.length === 0 ? (
+              <div className="rounded-card border border-white/8 bg-white/[0.02] p-6 text-center">
+                <p className="text-sm text-sand">You don't have any videos yet.</p>
+                <Link to="/app" className="btn-gradient mt-4 inline-flex">Make your first one</Link>
+              </div>
+            ) : (
               <div className="max-h-44 space-y-1.5 overflow-y-auto rounded-card border border-white/8 bg-ink/30 p-1.5">
                 {gens.map((g, i) => (
                   <button
@@ -456,47 +506,66 @@ function ScheduleModal({ day, gens, finished, finishedComplete, platforms, onClo
                   </button>
                 ))}
               </div>
-            </div>
+            )
+          ) : (
+            <label
+              className="block cursor-pointer rounded-card border border-dashed border-white/15 bg-white/[0.02] p-5 text-center text-sm text-sand hover:border-white/25"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) setFile(f) }}
+            >
+              <Upload className="mx-auto h-5 w-5 text-stone" />
+              <span className="mt-2 block">{file ? file.name : 'Drag a video here, or tap to choose'}</span>
+              <input type="file" accept="video/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            </label>
+          )}
 
-            <div>
-              <label className="eyebrow mb-1.5 block">Account</label>
-              <div className="flex flex-wrap gap-2">
-                {ALL_PLATFORMS.map((p) => (
-                  <button key={p} onClick={() => setPlatform(p)} className={cn('chip capitalize', p === platform ? 'border-coral/60 bg-coral/10 text-cream' : 'hover:border-white/20 hover:text-cream', !platforms.includes(p) && 'opacity-60')}>
-                    {p === platform && <Check className="h-3.5 w-3.5 text-coral" />} {cap(p)}
-                  </button>
-                ))}
-              </div>
+          <div>
+            <label className="eyebrow mb-1.5 block">Accounts</label>
+            <div className="flex flex-wrap gap-2">
+              {ALL_PLATFORMS.map((p) => (
+                <button key={p} onClick={() => toggle(p)} aria-pressed={chosen.includes(p)}
+                  className={cn('chip capitalize', chosen.includes(p) ? 'border-coral/60 bg-coral/10 text-cream' : 'hover:border-white/20 hover:text-cream', !connected.includes(p) && 'opacity-60')}>
+                  {chosen.includes(p) && <Check className="h-3.5 w-3.5 text-coral" />} {cap(p)}
+                </button>
+              ))}
             </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="eyebrow mb-1.5 block">Date</label>
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="field" />
-              </div>
-              <div>
-                <label className="eyebrow mb-1.5 block">Time</label>
-                <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="field" />
-              </div>
-            </div>
-
-            {caption && (
-              <div className="rounded-card border border-white/8 bg-white/[0.02] p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-stone">Caption (from your script)</p>
-                <p className="mt-1 line-clamp-2 text-sm text-sand">{caption}</p>
-              </div>
+            {chosen.some((p) => !connected.includes(p)) && (
+              <p className="mt-1.5 text-[11px] text-stone">Not connected yet: it goes on your calendar, and posts automatically once you connect.</p>
             )}
+          </div>
 
-            {err && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
+          {hasYouTube && (
+            <div>
+              <label className="eyebrow mb-1.5 block">YouTube video title</label>
+              <input value={title} maxLength={100} onChange={(e) => setTitle(e.target.value)} className="field" placeholder="What the video is called on YouTube" data-testid="youtube-title" />
+            </div>
+          )}
 
-            <div className="flex gap-2">
-              <button onClick={save} disabled={busy} className="btn-gradient flex-1">
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Schedule
-              </button>
-              <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <div>
+            <label className="eyebrow mb-1.5 block">{onlyYouTube ? 'YouTube description' : 'Caption'}</label>
+            <textarea value={captionValue} onChange={(e) => setCaption(e.target.value)} rows={3} className="field" placeholder="What goes under the video" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="eyebrow mb-1.5 block">Date</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="field" />
+            </div>
+            <div>
+              <label className="eyebrow mb-1.5 block">Time</label>
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="field" />
             </div>
           </div>
-        )}
+
+          {err && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
+
+          <div className="flex gap-2">
+            <button onClick={save} disabled={busy} className="btn-gradient flex-1">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Schedule{chosen.length > 1 ? ` on ${chosen.length} accounts` : ''}
+            </button>
+            <button onClick={onClose} className="btn-ghost">Cancel</button>
+          </div>
+        </div>
       </div>
     </div>
   )
