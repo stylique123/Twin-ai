@@ -43,6 +43,7 @@ import {
 } from '@twinai/shared'
 import { classifyReferenceRead, LOW_SPEECH_TEXT, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { referenceLengthFit, tooLongMatters } from '@twinai/shared'
+import { waitForVisualProfile } from '../../lib/visualProfileLoad'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE, isReadCapacityExhausted } from '../../lib/api'
 import { READINESS_INCOMPLETE_CODE, SELL_WITHOUT_TARGET_CODE, OUT_OF_REMIXES_CODE, GENERATION_FAILED_CODE } from '../../lib/api'
 import type { ReadinessQuestion } from '../../lib/api'
@@ -1597,6 +1598,10 @@ export default function V2Building() {
         const ideaFocusLine = ideaCardLines(state.idea_mode, state.idea_hook) + (chosenFocus === '' || chosenFocus === IDEA_FOCUS_ALL
           ? ''
           : `This video is about: ${chosenFocus}.\n\n`)
+        // ⚠️ SUNFLOWER #27: give the shot analysis (a separate job) a bounded
+        // moment to land, so the writer reads the reference's real framing and
+        // camera work instead of her brand defaults. Never blocks for long.
+        if (refUrl && transcript_id) await waitForVisualProfile(refUrl).catch(() => null)
         const gen = await generateBlueprint({
           mentioned_product_id: mentionedProductId || ideaMentionId || undefined,
           reference_url: refUrl,

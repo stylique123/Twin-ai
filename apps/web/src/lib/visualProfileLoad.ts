@@ -48,3 +48,27 @@ export async function loadReferenceVisualProfile(generationId: string): Promise<
     return null
   }
 }
+
+/** The stored visual profile for a reference URL, or null. Never throws. */
+export async function visualProfileForUrl(url: string): Promise<unknown> {
+  try {
+    const { data } = await supabase.from('reference_content_profiles')
+      .select('visual_profile').eq('url', url).maybeSingle()
+    return (data as { visual_profile?: unknown } | null)?.visual_profile ?? null
+  } catch { return null }
+}
+
+/**
+ * ⚠️ SUNFLOWER #27: THE SHOTS WERE ANALYSED, JUST AFTER THE SCRIPT WAS WRITTEN.
+ * The frames pass is its own job, queued once the transcript is in; the build
+ * called the writer immediately, so the writer used her brand defaults and the
+ * panel said "we did not analyse the video". This waits a bounded while for it.
+ */
+export async function waitForVisualProfile(url: string, maxMs = 45_000, everyMs = 5_000): Promise<unknown> {
+  const until = Date.now() + maxMs
+  for (;;) {
+    const vp = await visualProfileForUrl(url)
+    if (vp || Date.now() + everyMs > until) return vp
+    await new Promise((r) => setTimeout(r, everyMs))
+  }
+}
