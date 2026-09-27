@@ -25,6 +25,9 @@ export const env = {
   supabaseUrl: need('SUPABASE_URL'),
   serviceKey: need('SUPABASE_SERVICE_ROLE_KEY'),
   geminiKey: (process.env.GEMINI_API_KEY ?? '').trim(),
+  // Optional. Enables reading public YouTube comments on niche library videos
+  // (24-ideas #11). Absent = the sweep never runs.
+  youtubeApiKey: (process.env.YOUTUBE_API_KEY ?? '').trim(),
   // YouTube + Instagram ingestion: datacenter IPs get bot-blocked by yt-dlp
   // ("Sign in to confirm you're not a bot" on YouTube; "rate-limit reached or
   // login required" on Instagram). We route both through Apify transcript Actors

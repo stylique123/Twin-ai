@@ -72,6 +72,12 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0245_niche_comment_questions':
+    'Adds `niche_comment_reads` and `niche_comment_due`; used only by a production worker sweep that '
+    + 'needs YOUTUBE_API_KEY. The editor never reads it.',
+  '0244_when_she_said_it':
+    'Adds `creator_knowledge.video_posted_at` (+ a stamping trigger), `creator_shifts`, `shift_searches`, '
+    + '`decide_shift` and `shifts_due`; used by a production worker sweep. The editor never reads it.',
   '0243_found_you_elsewhere':
     'Adds `creator_mentions`, `mention_searches`, `decide_mention` and `mentions_due`; filled by a '
     + 'production worker sweep (grounded search). The editor never reads it.',

@@ -200,6 +200,18 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Per script: beats marked quiet working beats and plan targets raised to the real action time. Durable in `generations.beat_audit.action_pacing`.',
   },
+  shifts_found: {
+    kind: 'counter_ephemeral',
+    why: 'Per creator searched: change-of-mind candidates kept. Durable in `creator_shifts` (status found) and `shift_searches.searched_at`.',
+  },
+  shifts_filed: {
+    kind: 'counter_ephemeral',
+    why: 'Per worker tick: confirmed changes of mind filed as knowledge. Durable as `creator_shifts.filed_at` and `creator_knowledge` rows with source_ref shift:<id>.',
+  },
+  niche_questions: {
+    kind: 'counter_ephemeral',
+    why: 'Per library video read: viewer questions filed as shared niche objection notes. Durable in `niche_comment_reads` (questions, read_at) and the `brain_notes` rows.',
+  },
   social_stats_sync: {
     kind: 'counter_ephemeral',
     why: 'Per cron tick: posts whose views were read back. Durable on `posts` (views, likes, comments, stats_synced_at) and `generation_outcomes` (views_24h, views_7d).',

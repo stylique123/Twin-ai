@@ -145,6 +145,7 @@ const SOURCES = [
   // generated, CI fails on a diff, and there is still exactly one author.
   ['packages/shared/src/assessed.ts', 'worker/src/generated/assessed.ts'],
   ['packages/shared/src/corpus/captionShape.ts', 'worker/src/generated/captionShape.ts'],
+  ['packages/shared/src/postQuestions.ts', 'worker/src/generated/postQuestions.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */
