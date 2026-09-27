@@ -12,6 +12,8 @@ import { noteKey } from './librarian.js'
 import { fileNote } from './sweep.js'
 import { insertKnowledge } from '../knowledgeInsert.js'
 import { runMentionFinder, fileConfirmedMentions } from './mentions.js'
+import { runShiftFinder, fileConfirmedShifts } from './shifts.js'
+import { runNicheQuestions } from './nicheQuestions.js'
 import {
   AUDIENCE_SCHEMA, AUDIENCE_SYSTEM, PANEL_SCHEMA, PANEL_SIZE, PANEL_SYSTEM,
   audiencePrompt, normalizeAudience, normalizePanel, scriptFromBlueprint, type Persona,
@@ -29,6 +31,8 @@ export function kickAudienceTests(log: Log): void {
   inFlight = true
   void runPanelBuilder(log).then(() => runAudienceTests(log)).then(() => filePostQuestions(log)).then(() => fileHerReplies(log))
     .then(() => runMentionFinder(log)).then(() => fileConfirmedMentions(log))
+    .then(() => runShiftFinder(log)).then(() => fileConfirmedShifts(log))
+    .then(() => runNicheQuestions(log))
     .catch((err) => log('error', 'audience_threw', { error: err instanceof Error ? err.message : String(err) }))
     .finally(() => { inFlight = false })
 }

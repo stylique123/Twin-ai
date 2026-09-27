@@ -7,7 +7,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
 import { NameTheReference } from '../../components/NameTheReference'
-import { creatorFacingMessage } from '@twinai/shared'
+import { creatorFacingMessage, concreteness, CONCRETE_HINT } from '@twinai/shared'
 import { loadProductEntities, loadBrands, type Brand } from '../../lib/api'
 import type { ProductEntityRecord } from '../../lib/api'
 import { assessReadiness, isCommercialField } from '../../lib/api'
@@ -25,7 +25,7 @@ import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   // ⚖️ THE WRITER'S OWN TARGET, shown to the creator before the money moves.
   targetSeconds, spokenTime,
-  INTENT_QUESTIONS, intentQuestionsFor, choiceFollowUp, followUpLines, FOLLOWUP_PREFIX, type IntentQuestion, type VideoGoal, focusForGoal,
+  INTENT_QUESTIONS, intentQuestionsFor, choiceFollowUp, followUpLines, FOLLOWUP_PREFIX, IDEA_QUESTIONS, ideaLines, type IntentQuestion, type VideoGoal, focusForGoal,
   mustAskWhichProduct, promotedObjectiveQuestion, PRODUCT_CHOICE_FIELD, NO_PRODUCT_CHOICE, NO_PRODUCT_EXPLANATION, BRAND_CHOICE_PREFIX,
   selectProduct,
   productChoiceConstraint,
@@ -239,6 +239,9 @@ type AskItem = (ReadinessQuestion | ChipQuestion) & {
    *  tapped, so an idea build that became "about my product" on this card
    *  never asked WHICH product. */
   whenCommercial?: boolean
+  /** Idea mode's two content questions (owner's menu redesign). Optional text,
+   *  rendered with the decisions, never under "About what you sell". */
+  idea?: boolean
 }
 const isChip = (q: AskItem): q is ChipQuestion =>
   Array.isArray((q as ChipQuestion).options)
@@ -653,6 +656,8 @@ export default function V2Building() {
   // an outage would tell a creator "I have nothing from you" about a store that
   // is full.
   const [plan, setPlan] = useState<VideoPlanInput | null>(null)
+  // She said she has no concrete detail for the objective's question.
+  const [noDetail, setNoDetail] = useState(false)
   const [askQuestions, setAskQuestions] = useState<AskItem[] | null>(
     () => recallAsk(buildKey((loc.state || {}) as BuildState)))
   // ⚖️ WHAT KIND OF VIDEO FIRST, THEN WHICH ONE. Reported 2026-09-22: one long
@@ -1110,9 +1115,12 @@ export default function V2Building() {
             // the zero-taps affordance is worth keeping. What it may not do is
             // cross from a standing preference into a per-video commercial
             // decision — the distinction the product sheet exists to draw.
+            // ⚖️ MENU REDESIGN: outside Product mode the goal is no longer asked
+            // or shown, but her standing goal is still SENT, so the writer keeps
+            // the directive she gave at onboarding.
             if (standingGoal
               && !isProductSubject
-              && unanswered.some((q) => q.field === 'video_goal')
+              && !(answersRef.current.video_goal ?? '').trim()
               && !(askAnswers.video_goal ?? '').trim()) {
               answer('video_goal', standingGoal)
             }
@@ -1226,8 +1234,15 @@ export default function V2Building() {
                   ],
                 } as AskItem]
               : []
+            // Idea mode (no reference, not a product): ask about the content.
+            const ideaQuestions: AskItem[] = !(state.reference_url || '').trim() && !isProductSubject
+              ? IDEA_QUESTIONS
+                .filter((q) => !(answersRef.current[FOLLOWUP_PREFIX + q.field] ?? '').trim())
+                .map((q) => ({ field: FOLLOWUP_PREFIX + q.field, question: q.question, idea: true } as AskItem))
+              : []
             const ask: AskItem[] = [
               ...unanswered.filter((q) => !(goalIsDisplayed && q.field === 'video_goal')),
+              ...ideaQuestions,
               ...focusQuestion,
               ...productQuestion,
               ...relevant.slice(0, MAX_TEXT_QUESTIONS),
@@ -1560,7 +1575,7 @@ export default function V2Building() {
           // answer arrives as a line ABOVE everything she wrote, and the writer
           // reads the same field it always has. No new request field, and
           // nothing persisted to a profile: this is a fact about THIS video.
-          reference_note: ideaFocusLine + followUpLines(answersRef.current, { isProductSubject }) + (state.reference_note || ''),
+          reference_note: ideaFocusLine + ideaLines(answersRef.current) + followUpLines(answersRef.current, { isProductSubject }) + (state.reference_note || ''),
           fidelity: state.fidelity ?? 'balanced',
           tone: state.tone,
           target_seconds: state.target_seconds,
@@ -1992,7 +2007,7 @@ export default function V2Building() {
   // question with different words for the same values.
   const goalQuestion = intentQuestionsFor({ hasReference: true, isProductSubject })
     .find((q) => q.field === 'video_goal') ?? null
-  const displayedGoal = !(askQuestions ?? []).some((q) => q.field === 'video_goal')
+  const displayedGoal = isProductSubject && !(askQuestions ?? []).some((q) => q.field === 'video_goal')
     ? ((VIDEO_GOALS as readonly string[]).includes(askAnswers.video_goal ?? '')
       ? askAnswers.video_goal as VideoGoal : null)
     : null
@@ -2074,10 +2089,15 @@ export default function V2Building() {
     && visibleAsk.some((q) => q.field === 'claims')
   const onAnswerStep = splitObjectiveStep && askStep === 'answer'
   const decisions = onAnswerStep ? [] : visibleAsk.filter(isChip)
+  const ideaAsk = onAnswerStep ? [] : visibleAsk.filter((q) => q.idea)
   const commercial = onAnswerStep
     ? visibleAsk.filter((q) => q.field === 'claims')
-    : visibleAsk.filter((q) => !isChip(q) && !(splitObjectiveStep && q.field === 'claims'))
+    : visibleAsk.filter((q) => !isChip(q) && !q.idea && !(splitObjectiveStep && q.field === 'claims'))
   const hasTwoBlocks = decisions.length > 0 && commercial.length > 0
+  // ⚖️ MENU REDESIGN PART 4: the objective's answer must be concrete, or she
+  // says plainly she has none — never a vague line the writer would pad out.
+  const answerConcreteness = concreteness(askAnswers.claims)
+  const answerBlocked = onAnswerStep && answerConcreteness !== 'concrete' && !noDetail
   /** ⚖️ THE ANSWER TRAVELS WITH THE ID OF THE QUESTION IT ANSWERS, so the
    *  server stores it under that id and rotation can move on. The product key
    *  is the same one the rotation read with, so what is written is exactly
@@ -2440,6 +2460,19 @@ export default function V2Building() {
                   placeholder="Your answer"
                 />
               )}
+              {q.field === 'claims' && onAnswerStep && !noDetail && answerConcreteness !== 'concrete' && (
+                <span className="mt-1.5 block text-[12px] leading-snug text-stone" data-testid="concrete-hint">
+                  {CONCRETE_HINT}{' '}
+                  <button type="button" className="underline underline-offset-2 hover:text-cream"
+                    onClick={() => { setNoDetail(true); answer('claims', '') }}>I don’t have one</button>
+                </span>
+              )}
+              {q.field === 'claims' && onAnswerStep && noDetail && (
+                <span className="mt-1.5 block text-[12px] leading-snug text-stone">
+                  Fine — Twin will leave that part out rather than make something up.{' '}
+                  <button type="button" className="underline underline-offset-2 hover:text-cream" onClick={() => setNoDetail(false)}>Add one after all</button>
+                </span>
+              )}
             </div>
   )
   // ⚖️ NAME THE REFERENCE BACK (owner's redesign). The read starts the moment
@@ -2511,7 +2544,7 @@ export default function V2Building() {
           <div className="glass gradient-border p-7">
             <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft"><LogoMark size={22} /></span>
             <h2 className="mt-4 text-center font-display text-2xl">
-              {askQuestions.some(isChip) ? 'What is this video for?' : 'A couple of quick things'}
+              {isProductSubject && askQuestions.some(isChip) ? 'What is this video for?' : 'A couple of quick things'}
             </h2>
             <p className="mt-2 text-center text-sm leading-relaxed text-stone">
               {askQuestions.some(isChip)
@@ -2595,6 +2628,18 @@ export default function V2Building() {
                     would make the whole question vanish under their finger. */}
                 {!onAnswerStep && changingGoal && goalQuestion && renderAsk(goalQuestion)}
                 {decisions.map(renderAsk)}
+                {ideaAsk.map((q) => (
+                  <label key={q.field} className="block" data-testid={`idea-question-${q.field}`}>
+                    <span className="text-sm leading-relaxed text-cream">{q.question}</span>
+                    <textarea
+                      value={askAnswers[q.field] ?? ''}
+                      onChange={(e) => answer(q.field, e.target.value.slice(0, 600))}
+                      rows={2}
+                      placeholder="In your own words — optional"
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-[13px] text-cream placeholder:text-stone focus:border-coral/40 focus:outline-none"
+                    />
+                  </label>
+                ))}
               </div>
               {commercial.length > 0 && (
                 <div className="mt-6 space-y-4 lg:mt-0">
@@ -2625,7 +2670,7 @@ export default function V2Building() {
               // readiness question left blank is a thinner script; a card that
               // cannot be dismissed is no script at all.
               disabled={visibleAsk.some(
-                (q) => isChip(q) && !(askAnswers[q.field] ?? '').trim())}
+                (q) => isChip(q) && !(askAnswers[q.field] ?? '').trim()) || answerBlocked}
               onClick={() => {
                 // ⚖️ STEP ONE ENDS HERE WHEN THE OBJECTIVE HAS A QUESTION: the
                 // question is shown on its own, after the choice, never beside it.

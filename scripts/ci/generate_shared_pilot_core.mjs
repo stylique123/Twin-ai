@@ -98,6 +98,7 @@ const SOURCES = [
   // Views back from the platforms (social function stats sync).
   ['packages/shared/src/socialStats.ts', 'supabase/functions/_shared/socialStats.ts'],
   ['packages/shared/src/postQuestions.ts', 'supabase/functions/_shared/postQuestions.ts'],
+  ['packages/shared/src/script/actionPacing.ts', 'supabase/functions/_shared/actionPacing.ts'],
   ['packages/shared/src/customerReviews.ts', 'supabase/functions/_shared/customerReviews.ts'],
   ['packages/shared/src/script/voiceGate.ts', 'supabase/functions/_shared/voiceGate.ts'],
   // ⚠️ FIX 5 (Wave 2). The retention-map <-> final-script resync. Generated
@@ -144,6 +145,7 @@ const SOURCES = [
   // generated, CI fails on a diff, and there is still exactly one author.
   ['packages/shared/src/assessed.ts', 'worker/src/generated/assessed.ts'],
   ['packages/shared/src/corpus/captionShape.ts', 'worker/src/generated/captionShape.ts'],
+  ['packages/shared/src/postQuestions.ts', 'worker/src/generated/postQuestions.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */

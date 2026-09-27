@@ -31,7 +31,7 @@ describe('the budget table is total and correctly ordered', () => {
   })
 
   it('is ordered most-mine to most-theirs in BOTH ceilings', () => {
-    const order: ReferenceUseLevel[] = ['structure', 'idea_structure', 'stay_close']
+    const order: ReferenceUseLevel[] = ['structure', 'pacing', 'idea_structure', 'stay_close']
     for (let i = 1; i < order.length; i++) {
       expect(REFERENCE_EXPOSURE[order[i]].maxChars)
         .toBeGreaterThan(REFERENCE_EXPOSURE[order[i - 1]].maxChars)

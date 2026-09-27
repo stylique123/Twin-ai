@@ -18,6 +18,7 @@ interface Moment { name?: string; when?: string | null; angle?: string | null }
 interface Topic { text: string; times_seen: number; covered: boolean }
 interface OpenQuestion { id: string; question: string }
 interface Mention { id: string; kind: string; title: string; outlet: string; url: string }
+interface Shift { id: string; summary: string; earlier_text: string; later_text: string; earlier_at: string; later_at: string }
 
 // ── YOUR TOPIC MAP (24-ideas #6): what she keeps coming back to, with how many
 // of her videos said it, and whether she has already made the video. Read from
@@ -61,6 +62,7 @@ export default function WhatTwinKnows() {
   const [topics, setTopics] = useState<Topic[]>([])
   const [asked, setAsked] = useState<OpenQuestion[]>([])
   const [mentions, setMentions] = useState<Mention[]>([])
+  const [shifts, setShifts] = useState<Shift[]>([])
 
   useEffect(() => {
     let alive = true
@@ -72,7 +74,7 @@ export default function WhatTwinKnows() {
         const b = nicheBucket(p.niche ?? '')
         if (!alive) return
         setBucket(b); setSubNiche(p.sub_niche ?? null)
-        const [own, shared, mom, know, qs, men] = await Promise.all([
+        const [own, shared, mom, know, qs, men, sh] = await Promise.all([
           supabase.from('brain_notes').select('id, kind, title, body, sub_niche, times_seen, total_views, owner_id')
             .not('owner_id', 'is', null).order('total_views', { ascending: false }).limit(60),
           b ? supabase.from('brain_notes').select('id, kind, title, body, sub_niche, times_seen, total_views, owner_id')
@@ -86,6 +88,8 @@ export default function WhatTwinKnows() {
             .is('her_reply', null).order('created_at', { ascending: false }).limit(8),
           supabase.from('creator_mentions').select('id, kind, title, outlet, url')
             .eq('status', 'found').order('created_at', { ascending: false }).limit(6),
+          supabase.from('creator_shifts').select('id, summary, earlier_text, later_text, earlier_at, later_at')
+            .eq('status', 'found').order('created_at', { ascending: false }).limit(4),
         ])
         if (!alive) return
         setMine((own.data ?? []) as Note[])
@@ -95,6 +99,7 @@ export default function WhatTwinKnows() {
         setTopics(topicMap((know.data ?? []) as Array<{ kind: string; text: string; times_seen: number | null }>))
         setAsked((qs.data ?? []) as OpenQuestion[])
         setMentions((men.data ?? []) as Mention[])
+        setShifts((sh.data ?? []) as Shift[])
       } catch { /* an empty map is an honest answer */ }
       if (alive) setLoaded(true)
     })()
@@ -106,6 +111,12 @@ export default function WhatTwinKnows() {
     setMentions((m) => m.filter((x) => x.id !== id))
     await supabase.rpc('decide_mention', { p_id: id, p_is_me: isMe })
   }
+
+  const decideShift = async (id: string, isReal: boolean) => {
+    setShifts((m) => m.filter((x) => x.id !== id))
+    await supabase.rpc('decide_shift', { p_id: id, p_is_real: isReal })
+  }
+  const month = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
 
   const byKind = useMemo(() => {
     const g = (rows: Note[]) => Object.fromEntries(KINDS.map((k) => [k, rows.filter((r) => r.kind === k)]))
@@ -184,6 +195,25 @@ export default function WhatTwinKnows() {
           <p className="mt-1 text-sm text-stone">Your next scripts will answer these where they fit.</p>
           <ul className="mt-3 space-y-2 text-sm">
             {asked.map((q) => <li key={q.id} className="glass rounded-xl p-3">{q.question}</li>)}
+          </ul>
+        </section>
+      )}
+      {shifts.length > 0 && (
+        <section className="mt-8" data-testid="changed-your-mind">
+          <h2 className="font-display text-2xl tracking-tight">Did your view change?</h2>
+          <p className="mt-1 text-sm text-stone">From your own videos, months apart. A real change of mind makes a great story — only a yes is ever used.</p>
+          <ul className="mt-3 space-y-2 text-sm">
+            {shifts.map((x) => (
+              <li key={x.id} className="glass rounded-xl p-3">
+                <p className="text-cream">{x.summary}</p>
+                <p className="mt-1 text-xs text-stone">{month(x.earlier_at)}: “{x.earlier_text}”</p>
+                <p className="text-xs text-stone">{month(x.later_at)}: “{x.later_text}”</p>
+                <span className="mt-2 flex gap-2">
+                  <button onClick={() => void decideShift(x.id, true)} className="rounded border px-3 py-1">Yes, I changed my mind</button>
+                  <button onClick={() => void decideShift(x.id, false)} className="rounded px-3 py-1 text-stone">No</button>
+                </span>
+              </li>
+            ))}
           </ul>
         </section>
       )}

@@ -115,7 +115,7 @@ describe('the question is asked, and the answer reaches the writer', () => {
   })
 
   it('reaches the request, and the paragraph survives whole', () => {
-    expect(BUILDING).toMatch(/reference_note: ideaFocusLine \+ followUpLines\(answersRef\.current, \{ isProductSubject \}\) \+ \(state\.reference_note \|\| ''\)/)
+    expect(BUILDING).toMatch(/reference_note: ideaFocusLine \+ ideaLines\(answersRef\.current\) \+ followUpLines\(answersRef\.current, \{ isProductSubject \}\) \+ \(state\.reference_note \|\| ''\)/)
     expect(BUILDING).toMatch(/This video is about: \$\{chosenFocus\}/)
   })
 

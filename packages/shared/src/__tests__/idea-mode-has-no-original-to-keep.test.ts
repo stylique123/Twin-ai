@@ -50,18 +50,18 @@ describe('idea mode has no original to keep', () => {
     const noRef = intentQuestionsFor({ hasReference: false })
 
     // Owner's redesign: a reference build no longer re-asks the subject.
-    expect(withRef.map((q) => q.field)).toEqual(
-      INTENT_QUESTIONS.map((q) => q.field).filter((f) => f !== 'content_focus'))
+    // Owner's menu redesign (2026-09-27): only "how much to keep" survives.
+    expect(withRef.map((q) => q.field)).toEqual(['reference_use'])
     expect(noRef.map((q) => q.field)).not.toContain('reference_use')
     // ⚠️ AND NOT THE SUBJECT QUESTION EITHER, for the reason in the header:
     // the idea IS the subject, and it was typed a screen ago.
     expect(noRef.map((q) => q.field)).not.toContain('content_focus')
-    expect(noRef).toHaveLength(withRef.length - 1)
+    // …and the goal sheet is gone too: Idea mode asks about the content.
+    expect(noRef).toHaveLength(0)
 
-    // The creator questions that are NOT already answered by the input survive.
-    // Naming them is the point: a filter that returned [] would satisfy "does
-    // not contain reference_use".
-    expect(noRef.map((q) => q.field)).toContain('video_goal')
+    // Idea mode's questions are about the content itself (IDEA_QUESTIONS), and
+    // the product door still asks its objective.
+    expect(intentQuestionsFor({ hasReference: false, isProductSubject: true }).map((q) => q.field)).toContain('video_goal')
 
     // ⚖️ OWNER'S REDESIGN: a reference build drops the subject question (Twin
     // has watched the video); a PRODUCT reference build still asks it.

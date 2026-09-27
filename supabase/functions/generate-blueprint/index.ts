@@ -51,6 +51,7 @@ import {
   PERSONAL_USE_REPAIR_SYSTEM, personalUseRepairPrompt,
 } from '../_shared/personalUseGate.ts'
 import { renderCustomerReviews } from '../_shared/customerReviews.ts'
+import { pacingFor, quietBeatNote, handsOnVerb, PACING_RULE } from '../_shared/actionPacing.ts'
 import { voiceRules, voiceViolations, vocabularyUsed, VOICE_REPAIR_SYSTEM, voiceRepairPrompt } from '../_shared/voiceGate.ts'
 import {
   rebuttalPromptRule, repairRebuttalFraming, ctaGoalPromptRule, repairCtaForGoal,
@@ -3153,7 +3154,7 @@ const OUTCOME_FLOOR_INLINE: Record<string, number> = {
 // ⚠️ INLINED FROM `videoIntent.ts` AND PARITY-TESTED. Edge functions cannot
 // import @twinai/shared, so this is a deliberate copy — the parity test executes
 // BOTH copies against every value rather than comparing their text.
-const REFERENCE_USE_INLINE: readonly string[] = ['structure', 'idea_structure', 'stay_close']
+const REFERENCE_USE_INLINE: readonly string[] = ['structure', 'pacing', 'idea_structure', 'stay_close']
 // ⚠️ THE COMMITTED OLD→NEW TABLE, MIRRORED FROM `videoIntent.ts`. Four options
 // read as two pairs of paraphrases to creators; this is the ordered three-point
 // scale that replaces them, most-mine to most-theirs. `inspiration` →
@@ -3163,6 +3164,7 @@ const REFERENCE_USE_INLINE: readonly string[] = ['structure', 'idea_structure', 
 // keeps reading it.
 const REFERENCE_USE_MIGRATION_INLINE: Record<string, string> = {
   structure: 'structure',
+  pacing: 'pacing',
   idea_structure: 'idea_structure',
   stay_close: 'stay_close',
   inspiration: 'structure',
@@ -3175,14 +3177,16 @@ function normalizeReferenceUseInline(v: unknown): string | null {
 }
 const REFERENCE_USE_DIRECTIVE_INLINE: Record<string, string> = {
   structure:
-    'KEEP THE MECHANICS, REPLACE THE SUBJECT. Keep the beat order, the hook mechanism and the escalation; replace what every single beat is ABOUT with the creator\'s own material. The reference decides the SHAPE and nothing else — if a beat still names the reference\'s topic, it has not been rewritten.',
+    'KEEP THE OPENING, REPLACE THE SUBJECT. Keep the reference\'s opening and hook structure specifically — the kind of first line, what it withholds and how it earns the second line; replace what it is ABOUT with the creator\'s own material. After the hook, the body follows the creator\'s own material and pacing, not the reference\'s beat order.',
+  pacing:
+    'KEEP THE RHYTHM, REPLACE EVERYTHING ELSE. Keep the reference\'s beat-by-beat pacing — how many beats, roughly how long each runs, where it speeds up and where it holds. Do NOT copy its hook style or opening mechanism: open the creator\'s own way. Replace every subject, example and line with the creator\'s own material.',
   idea_structure:
     'KEEP THE POINT, REPLACE THE EVIDENCE. Keep what the reference is arguing and the order it argues it in; replace every example, number, story and named case with the creator\'s own. The claim may survive; not one of the things used to support it may.',
   stay_close:
     'KEEP AS MUCH AS THE CREATOR CAN HONESTLY SAY, REPLACE THE REST. Preserve the format, the beat count and the topic wherever the creator can speak to it from their own knowledge — and the moment a beat would need a fact, a number or an experience they do not have, re-ground that beat in something they do rather than borrowing the reference\'s.',
 }
 const KEEPS_REFERENCE_TOPIC_INLINE: Record<string, boolean> = {
-  structure: false, idea_structure: true, stay_close: true,
+  structure: false, pacing: false, idea_structure: true, stay_close: true,
 }
 
 // ⚠️ FIX 10 (Wave 4). ONE HOME FOR FIDELITY, INLINED FROM `videoIntent.ts` AND
@@ -3195,7 +3199,7 @@ const KEEPS_REFERENCE_TOPIC_INLINE: Record<string, boolean> = {
 // `fidelity`: it wins with `reference_use` whenever the creator answered it,
 // and falls back to the slider only when they have not.
 const FIDELITY_FROM_REFERENCE_USE_INLINE: Record<string, 'close' | 'balanced' | 'loose'> = {
-  structure: 'close', idea_structure: 'balanced', stay_close: 'close',
+  structure: 'close', pacing: 'balanced', idea_structure: 'balanced', stay_close: 'close',
 }
 function resolveFidelityInline(
   referenceUse: string | null,
@@ -10270,13 +10274,13 @@ ${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
 - Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
 ${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${grainBlock}${availabilityBlock}${productModeBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${grainBlock}${PACING_RULE}${availabilityBlock}${productModeBlock}
 
 ${decompositionInstruction}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${grainBlock}${availabilityBlock}${productModeBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${grainBlock}${PACING_RULE}${availabilityBlock}${productModeBlock}
 
 ${decompositionInstruction}`
 
@@ -10599,6 +10603,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // Fix A counts, stored on the row so the real rate can be measured.
     let personalUseGateAudit: { flagged: number; repaired: number; dropped: number } | null = null
     let voiceGateAudit: Record<string, unknown> | null = null
+    let pacingAudit: Record<string, unknown> | null = null
     // ⚠️ FIX 5 (Wave 2). NULL MEANS THE GENERATION CARRIED NO RETENTION MAP TO
     // RECONCILE — never zero. `matched` is how many output rows landed on a
     // beat whose NAME the model's original retention_map still used (that
@@ -12725,6 +12730,39 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       if (flagged.length > 0) console.warn(JSON.stringify({ event: 'voice_gate', rules, flagged: flagged.length, repaired }))
     } catch { /* the voice gate never fails a generation */ }
 
+    // ── PACING MATCHES THE REAL ACTION (owner's pacing addendum) ─────────────
+    //
+    // Each beat's hands-on action is timed from its own direction. Where the
+    // action clearly outlasts the words, the beat is marked a QUIET WORKING
+    // BEAT in its direction (she sees it on the teleprompter and shot list) and
+    // its planned length is raised to the real action time. Words are never
+    // added here — padding would mean inventing. Measured into beat_audit.
+    try {
+      const pBeats = Array.isArray(declared) ? declared as Array<{ line?: unknown; direction?: unknown; action_posing?: unknown }> : []
+      const plan = (templated.bp as { beat_plan?: unknown })?.beat_plan
+      const planArr = Array.isArray(plan) && plan.length === pBeats.length ? plan as Array<{ target_sec?: unknown }> : null
+      const pacing = pacingFor(pBeats)
+      let quiet = 0, raised = 0
+      for (const p of pacing) {
+        const b = pBeats[p.index]
+        if (p.quiet && !/quiet working beat/i.test(String(b.direction ?? ''))) {
+          const verb = handsOnVerb(`${String(b.direction ?? '')} ${String(b.action_posing ?? '')}`)
+          b.direction = `${String(b.direction ?? '').trim()} ${quietBeatNote(p, verb)}`.trim()
+          quiet++
+        }
+        if (planArr && p.action > 0) {
+          const cur = Number(planArr[p.index]?.target_sec)
+          if (!Number.isFinite(cur) || cur < p.seconds) { planArr[p.index].target_sec = Math.ceil(p.seconds); raised++ }
+        }
+      }
+      pacingAudit = {
+        quiet_beats: quiet, raised_targets: raised,
+        spoken_sec: Math.round(pacing.reduce((a, p) => a + p.spoken, 0)),
+        paced_sec: Math.round(pacing.reduce((a, p) => a + p.seconds, 0)),
+      }
+      if (quiet || raised) console.warn(JSON.stringify({ event: 'action_pacing', ...pacingAudit }))
+    } catch { /* pacing never fails a generation */ }
+
     // ── THE SHOT LIST MUST QUOTE THE SCRIPT THAT ACTUALLY SHIPS ──────────────
     //
     // ⚠️ MEASURED ACROSS THE FOUR-RUN HARNESS: shot_list and script are written
@@ -12949,6 +12987,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       beatAudit.shot_list_claim_drift = shotListClaimDrift
       if (personalUseGateAudit) beatAudit.personal_use_gate = personalUseGateAudit
       if (voiceGateAudit) beatAudit.voice_gate = voiceGateAudit
+      if (pacingAudit) beatAudit.action_pacing = pacingAudit
       // Owner's grain addendum, MEASURED: of her own raw words, how many survived.
       try {
         const lines = (Array.isArray(declared) ? declared as Array<{ line?: unknown }> : [])
