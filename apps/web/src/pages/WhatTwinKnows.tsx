@@ -15,6 +15,29 @@ interface Note {
   times_seen: number; total_views: number | string; owner_id: string | null
 }
 interface Moment { name?: string; when?: string | null; angle?: string | null }
+interface Topic { text: string; times_seen: number; covered: boolean }
+interface OpenQuestion { id: string; question: string }
+interface Mention { id: string; kind: string; title: string; outlet: string; url: string }
+
+// ── YOUR TOPIC MAP (24-ideas #6): what she keeps coming back to, with how many
+// of her videos said it, and whether she has already made the video. Read from
+// her own knowledge (RLS: only her rows). A count is how many videos, never a
+// score.
+export function topicMap(rows: ReadonlyArray<{ kind: string; text: string; times_seen: number | null }>): Topic[] {
+  const covered = rows.filter((r) => r.kind === 'covered').map((r) => r.text.toLowerCase())
+  const seen = new Map<string, Topic>()
+  for (const r of rows) {
+    if (r.kind !== 'topic') continue
+    const key = r.text.trim().toLowerCase()
+    if (!key || seen.has(key)) continue
+    const words = key.split(/\s+/).filter((w) => w.length > 3)
+    seen.set(key, {
+      text: r.text.trim(), times_seen: Math.max(1, Number(r.times_seen) || 1),
+      covered: covered.some((c) => words.length > 0 && words.filter((w) => c.includes(w)).length >= Math.ceil(words.length / 2)),
+    })
+  }
+  return [...seen.values()].sort((a, b) => b.times_seen - a.times_seen).slice(0, 16)
+}
 
 const KIND_LABEL: Record<string, string> = {
   topic: 'Topics', hook: 'Openings that work', angle: 'How the argument runs',
@@ -35,6 +58,9 @@ export default function WhatTwinKnows() {
   const [niche, setNiche] = useState<Note[]>([])
   const [moments, setMoments] = useState<Moment[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [topics, setTopics] = useState<Topic[]>([])
+  const [asked, setAsked] = useState<OpenQuestion[]>([])
+  const [mentions, setMentions] = useState<Mention[]>([])
 
   useEffect(() => {
     let alive = true
@@ -46,7 +72,7 @@ export default function WhatTwinKnows() {
         const b = nicheBucket(p.niche ?? '')
         if (!alive) return
         setBucket(b); setSubNiche(p.sub_niche ?? null)
-        const [own, shared, mom] = await Promise.all([
+        const [own, shared, mom, know, qs, men] = await Promise.all([
           supabase.from('brain_notes').select('id, kind, title, body, sub_niche, times_seen, total_views, owner_id')
             .not('owner_id', 'is', null).order('total_views', { ascending: false }).limit(60),
           b ? supabase.from('brain_notes').select('id, kind, title, body, sub_niche, times_seen, total_views, owner_id')
@@ -54,17 +80,32 @@ export default function WhatTwinKnows() {
             : Promise.resolve({ data: [] as Note[] }),
           b ? supabase.from('brain_moments').select('moments, day').eq('bucket', b).order('day', { ascending: false }).limit(1)
             : Promise.resolve({ data: [] as { moments: Moment[] }[] }),
+          supabase.from('creator_knowledge').select('kind, text, times_seen')
+            .in('kind', ['topic', 'covered']).order('times_seen', { ascending: false }).limit(200),
+          supabase.from('post_questions').select('id, question')
+            .is('her_reply', null).order('created_at', { ascending: false }).limit(8),
+          supabase.from('creator_mentions').select('id, kind, title, outlet, url')
+            .eq('status', 'found').order('created_at', { ascending: false }).limit(6),
         ])
         if (!alive) return
         setMine((own.data ?? []) as Note[])
         setNiche((shared.data ?? []) as Note[])
         const m = (mom.data ?? [])[0] as { moments?: Moment[] } | undefined
         setMoments(Array.isArray(m?.moments) ? m!.moments : [])
+        setTopics(topicMap((know.data ?? []) as Array<{ kind: string; text: string; times_seen: number | null }>))
+        setAsked((qs.data ?? []) as OpenQuestion[])
+        setMentions((men.data ?? []) as Mention[])
       } catch { /* an empty map is an honest answer */ }
       if (alive) setLoaded(true)
     })()
     return () => { alive = false }
   }, [])
+
+  // She decides whether each one is her. Only a "yes" ever reaches a script.
+  const decide = async (id: string, isMe: boolean) => {
+    setMentions((m) => m.filter((x) => x.id !== id))
+    await supabase.rpc('decide_mention', { p_id: id, p_is_me: isMe })
+  }
 
   const byKind = useMemo(() => {
     const g = (rows: Note[]) => Object.fromEntries(KINDS.map((k) => [k, rows.filter((r) => r.kind === k)]))
@@ -103,7 +144,7 @@ export default function WhatTwinKnows() {
         It grows every day from your own posts, videos in your niche, and what is happening in the world.
       </p>
       {!loaded && <p className="mt-8 text-sm text-stone">Loading…</p>}
-      {loaded && mine.length === 0 && niche.length === 0 && moments.length === 0 && (
+      {loaded && mine.length === 0 && niche.length === 0 && moments.length === 0 && topics.length === 0 && (
         <p className="mt-8 text-sm text-stone">
           Twin is still reading. Check back soon — or <Link to="/v2" className="underline">make a script</Link> now.
         </p>
@@ -116,6 +157,52 @@ export default function WhatTwinKnows() {
               <li key={i} className="glass rounded-xl p-3">
                 <b>{m.name}</b>{m.when ? <span className="text-stone"> · {m.when}</span> : null}
                 {m.angle && <p className="mt-1 text-stone">{m.angle}</p>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {topics.length > 0 && (
+        <section className="mt-8" data-testid="topic-map">
+          <h2 className="font-display text-2xl tracking-tight">What you talk about</h2>
+          <p className="mt-1 text-sm text-stone">From your own videos. The number is how many of them said it.</p>
+          <ul className="mt-3 flex flex-wrap gap-2 text-sm">
+            {topics.map((t) => (
+              <li key={t.text} className="glass rounded-full px-3 py-1.5">
+                {t.text}
+                <span className="ml-1.5 text-xs text-stone">
+                  {t.times_seen > 1 ? `${t.times_seen} videos` : '1 video'}{t.covered ? ' · already made' : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {asked.length > 0 && (
+        <section className="mt-8" data-testid="open-questions">
+          <h2 className="font-display text-2xl tracking-tight">Asked under your posts, not answered yet</h2>
+          <p className="mt-1 text-sm text-stone">Your next scripts will answer these where they fit.</p>
+          <ul className="mt-3 space-y-2 text-sm">
+            {asked.map((q) => <li key={q.id} className="glass rounded-xl p-3">{q.question}</li>)}
+          </ul>
+        </section>
+      )}
+      {mentions.length > 0 && (
+        <section className="mt-8" data-testid="found-you-elsewhere">
+          <h2 className="font-display text-2xl tracking-tight">Is this you?</h2>
+          <p className="mt-1 text-sm text-stone">Twin found these online. Nothing here is used until you say it is you.</p>
+          <ul className="mt-3 space-y-2 text-sm">
+            {mentions.map((m) => (
+              <li key={m.id} className="glass flex flex-wrap items-center justify-between gap-3 rounded-xl p-3">
+                <span>
+                  <span className="text-xs uppercase tracking-wide text-stone">{m.kind}</span>{' '}
+                  <a href={m.url} target="_blank" rel="noreferrer" className="underline">{m.title}</a>
+                  <span className="text-stone"> · {m.outlet}</span>
+                </span>
+                <span className="flex gap-2">
+                  <button onClick={() => void decide(m.id, true)} className="rounded border px-3 py-1">Yes, that's me</button>
+                  <button onClick={() => void decide(m.id, false)} className="rounded px-3 py-1 text-stone">Not me</button>
+                </span>
               </li>
             ))}
           </ul>

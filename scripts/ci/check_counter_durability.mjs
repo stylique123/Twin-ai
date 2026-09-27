@@ -172,6 +172,30 @@ const EVENTS = {
       + 'Learner step, which stores WHICH notes reached WHICH script so results can '
       + 'weight them; a bare count here would be a second, weaker authority.',
   },
+  post_questions_sync: {
+    kind: 'counter_ephemeral',
+    why: 'Per cron tick: posts whose comments were read and unanswered questions kept. Durable in `post_questions` (one row per comment) and `posts.questions_synced_at`.',
+  },
+  post_questions_filed: {
+    kind: 'counter_ephemeral',
+    why: 'Per worker tick: audience questions filed into her brain. Durable as `post_questions.filed_at` and the `brain_notes` rows themselves.',
+  },
+  her_replies_filed: {
+    kind: 'counter_ephemeral',
+    why: 'Per worker tick: her replies filed as knowledge. Durable as `post_questions.reply_filed_at` and `creator_knowledge` rows with source \'reply\'.',
+  },
+  voice_gate: {
+    kind: 'counter_ephemeral',
+    why: 'Per script: lines that broke a checkable rule from her own donts, and how many were rewritten. Durable in `generations.beat_audit.voice_gate` (rules, flagged, repaired, vocabulary used).',
+  },
+  mentions_found: {
+    kind: 'counter_ephemeral',
+    why: 'Per voice searched: podcast/interview/press candidates kept. Durable in `creator_mentions` (status found) and `mention_searches.searched_at`.',
+  },
+  mentions_filed: {
+    kind: 'counter_ephemeral',
+    why: 'Per worker tick: confirmed mentions filed as knowledge. Durable as `creator_mentions.filed_at` and `creator_knowledge` rows with source_ref mention:<id>.',
+  },
   social_stats_sync: {
     kind: 'counter_ephemeral',
     why: 'Per cron tick: posts whose views were read back. Durable on `posts` (views, likes, comments, stats_synced_at) and `generation_outcomes` (views_24h, views_7d).',

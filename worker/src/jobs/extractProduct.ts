@@ -33,6 +33,7 @@ function mimeFor(path: string): string {
 import { modelForTask } from '../modelRouting.js'
 import { isShopFront, findShopProduct, variantPriceLines, optionLines } from '../shopProductLookup.js'
 import { ldPriceLines } from '../ldProductPrices.js'
+import { ldReviews, type CustomerReviews } from '../ldProductReviews.js'
 import { withoutSiteButtons, labelUnlabeledPrices } from '../pageFactHygiene.js'
 import { readExtractedFact, EXTRACTED_FIELDS, EXTRACTION_SOURCES, imageFactAllowed,
   type ExtractedFact, type ExtractedField, type ExtractionSource }
@@ -121,6 +122,8 @@ async function fetchShopJson(u: string): Promise<unknown | null> {
 /** Prices the fetched page stated as schema.org data, by URL. Filled as a side
  *  effect of `fetchPageText` so its signature (and its tests) stay unchanged. */
 const pagePrices = new Map<string, string[]>()
+/** Customer reviews from the same page's product data (24-ideas #14). */
+const pageReviews = new Map<string, CustomerReviews>()
 /** Same-site pricing/features pages the fetched page links to, by URL. */
 const pageSubpages = new Map<string, string[]>()
 
@@ -142,6 +145,7 @@ async function fetchPageText(url: string): Promise<string | null> {
     // ⚠️ HEAD FIRST, AND BEFORE ANY STRIPPING. See `harvestHead`.
     const head = harvestHead(html)
     pagePrices.set(url, ldPriceLines(html))
+    { const rv = ldReviews(html); if (rv) pageReviews.set(url, rv) }
     pageSubpages.set(url, subpageLinks(html, url))
 
     const prose = html
@@ -637,8 +641,12 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
     ? { name: extractedName }
     : {}
 
+  // Customers' words, stored apart from her facts and only when the page states them.
+  const reviews = url ? pageReviews.get(url) ?? null : null
+  if (url) pageReviews.delete(url)
   const { error } = await db.from('product_entities').update({
     knowledge,
+    ...(reviews ? { customer_reviews: reviews } : {}),
     knowledge_extracted_at: now,
     knowledge_source_url: url,
     // Same clearing as the unreadable path, for the same reason.

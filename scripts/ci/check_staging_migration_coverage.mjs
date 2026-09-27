@@ -72,6 +72,18 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0243_found_you_elsewhere':
+    'Adds `creator_mentions`, `mention_searches`, `decide_mention` and `mentions_due`; filled by a '
+    + 'production worker sweep (grounded search). The editor never reads it.',
+  '0242_customer_reviews':
+    'Adds nullable `product_entities.customer_reviews`; written by the extractor, read by the writer '
+    + 'with its own fail-open select. The editor never reads it.',
+  '0241_her_replies':
+    'Adds `her_reply`/`reply_filed_at` to `post_questions` and allows source \'reply\' on '
+    + '`creator_knowledge`; filled only by the production social cron. The editor never reads it.',
+  '0240_post_questions':
+    'Adds `post_questions` and `posts.questions_synced_at`; filled by the production-only social '
+    + 'cron (no platform keys on staging). The editor never reads it.',
   '0239_views_back':
     'Adds `stats_synced_at` to `posts`; the social stats sync is production-only (no platform keys on '
     + 'staging). The editor never reads it.',

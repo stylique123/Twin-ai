@@ -31,7 +31,39 @@ export function renderGrainRule(tone: string | null | undefined, niche: string |
       ? '- For this creator, a line that sounds optimized or ad-like is a defect, even if it is true.'
       : '',
     '- This never loosens any fact rule: a rough, honest sentence and an invented one are different things.',
+    strong ? renderGrainExamples() : '',
   ].filter((l) => l !== '').join('\n')
+}
+
+// ── THE QUALITY BAR (addendum Part 5): two real Twin scripts, cold-read as
+// "brilliant for physical makers". Shown for TEXTURE only. Every fact in them
+// (shop, city, prices, counts, percentages) is replaced by a [bracket], so the
+// writer cannot lift another creator's facts into this one.
+export const GRAIN_EXAMPLES: ReadonlyArray<{ title: string; lines: readonly string[] }> = [
+  {
+    title: 'the price raise',
+    lines: [
+      'I raised my prices [her percentage] and it was terrifying.',
+      'Hovering the mouse over the publish button was genuinely terrifying, because every small maker fears that higher prices mean nobody will show up.',
+      'I threw away an entire batch and stopped making that shape.',
+    ],
+  },
+  {
+    title: 'time, not clay',
+    lines: [
+      'My [one piece] costs more than my [other piece] and takes less time.',
+      'And this is where the math clicks.',
+      'Calculate hands-on bench minutes first and add material costs last.',
+    ],
+  },
+]
+
+export function renderGrainExamples(): string {
+  return [
+    'THE BAR TO HIT — two real maker scripts, for their TEXTURE only (plain first person, the fear left in, a concrete admission, no polish).',
+    'Every [bracket] is a fact that belongs to someone else: never copy a fact, number, name, place or story from these — use only this creator\'s own.',
+    ...GRAIN_EXAMPLES.map((e) => `• ${e.title}: ${e.lines.map((l) => `"${l}"`).join(' / ')}`),
+  ].join('\n')
 }
 
 /** Emotionally raw or imperfect words — the ones a polishing writer drops. */

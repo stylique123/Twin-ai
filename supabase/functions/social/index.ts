@@ -22,6 +22,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { encryptToken, decryptToken } from './tokenCrypto.ts'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
+import { herAnswers, unansweredQuestions, type PlatformComment, type PostQuestion } from '../_shared/postQuestions.ts'
 import { youtubeId, samePermalink, matchTikTokByTime, outcomeWindow, statsFrom, type PostStats } from '../_shared/socialStats.ts'
 
 const cors = {
@@ -68,6 +69,9 @@ interface Adapter {
   /** Views/likes/comments for a post Twin published. Null when it cannot be
    *  matched — never a guess. */
   stats?: (a: { accessToken: string; accountId: string; externalUrl: string | null; postedAt: string }) => Promise<PostStats | null>
+  /** Top-level comments with whether she replied. Null when the post cannot
+   *  be matched. TikTok has none: its creator API does not list comments. */
+  comments?: (a: { accessToken: string; accountId: string; externalUrl: string | null }) => Promise<PlatformComment[] | null>
 }
 
 // Small helper: poll an async condition up to `tries` times with `delayMs` spacing.
@@ -222,7 +226,7 @@ const ADAPTERS: Record<string, Adapter> = {
     label: 'Instagram', needs: ['META_APP_ID', 'META_APP_SECRET'],
     configured: () => !!(env('META_APP_ID') && env('META_APP_SECRET')),
     authorizeUrl: (state) => {
-      const p = new URLSearchParams({ client_id: env('META_APP_ID')!, redirect_uri: REDIRECT(), response_type: 'code', scope: 'instagram_basic,instagram_content_publish,instagram_manage_insights,pages_show_list', state })
+      const p = new URLSearchParams({ client_id: env('META_APP_ID')!, redirect_uri: REDIRECT(), response_type: 'code', scope: 'instagram_basic,instagram_content_publish,instagram_manage_insights,instagram_manage_comments,pages_show_list', state })
       return `https://www.facebook.com/v21.0/dialog/oauth?${p}`
     },
     exchange: async (code) => {
@@ -374,6 +378,91 @@ ADAPTERS.youtube.stats = async ({ accessToken, externalUrl }) => {
   const r = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${id}`, { headers: { Authorization: `Bearer ${accessToken}` } })
     .then((x) => x.json()).catch(() => null)
   return statsFrom(r?.items?.[0]?.statistics ?? null, { views: 'viewCount', likes: 'likeCount', comments: 'commentCount' })
+}
+
+// YouTube: comment threads on the video; she replied when a reply's author
+// channel is hers (accountId is her channel id).
+ADAPTERS.youtube.comments = async ({ accessToken, accountId, externalUrl }) => {
+  const id = youtubeId(externalUrl)
+  if (!id) return null
+  const r = await fetch(`https://www.googleapis.com/youtube/v3/commentThreads?part=snippet,replies&maxResults=100&order=time&videoId=${id}`, { headers: { Authorization: `Bearer ${accessToken}` } })
+    .then((x) => x.json()).catch(() => null)
+  if (!Array.isArray(r?.items)) return null
+  const mine = (s: { authorChannelId?: { value?: string } } | undefined) => !!accountId && s?.authorChannelId?.value === accountId
+  // deno-lint-ignore no-explicit-any
+  return r.items.map((t: any) => {
+    const top = t?.snippet?.topLevelComment
+    return {
+      id: String(top?.id ?? t?.id ?? ''), text: String(top?.snippet?.textOriginal ?? ''), at: top?.snippet?.publishedAt ?? null,
+      byOwner: mine(top?.snippet),
+      // deno-lint-ignore no-explicit-any
+      replies: (t?.replies?.comments ?? []).map((c: any) => ({ byOwner: mine(c?.snippet), text: c?.snippet?.textOriginal ?? null })),
+    }
+  }).filter((c: PlatformComment) => c.id)
+}
+// Instagram: comments on the matched media; she replied when a reply is from
+// her own username.
+ADAPTERS.instagram.comments = async ({ accessToken, accountId, externalUrl }) => {
+  if (!accountId || !externalUrl) return null
+  const [me, list] = await Promise.all([
+    fetch(`https://graph.facebook.com/v21.0/${accountId}?fields=username&access_token=${accessToken}`).then((x) => x.json()).catch(() => null),
+    fetch(`https://graph.facebook.com/v21.0/${accountId}/media?fields=id,permalink&limit=50&access_token=${accessToken}`).then((x) => x.json()).catch(() => null),
+  ])
+  const m = ((list?.data ?? []) as Array<Record<string, unknown>>).find((x) => samePermalink(String(x.permalink ?? ''), externalUrl))
+  if (!m?.id || !me?.username) return null
+  const c = await fetch(`https://graph.facebook.com/v21.0/${m.id}/comments?fields=id,text,username,timestamp,replies{username,text}&limit=100&access_token=${accessToken}`)
+    .then((x) => x.json()).catch(() => null)
+  if (!Array.isArray(c?.data)) return null
+  // deno-lint-ignore no-explicit-any
+  return c.data.map((x: any) => ({
+    id: String(x?.id ?? ''), text: String(x?.text ?? ''), at: x?.timestamp ?? null,
+    byOwner: x?.username === me.username,
+    // deno-lint-ignore no-explicit-any
+    replies: (x?.replies?.data ?? []).map((r: any) => ({ byOwner: r?.username === me.username, text: r?.text ?? null })),
+  })).filter((x: PlatformComment) => x.id)
+}
+
+// ---- UNANSWERED QUESTIONS UNDER HER POSTS ----------------------------------
+// Posts Twin published in the last 30 days, re-read at most every 12 hours.
+// Only questions she never replied to are kept; the worker files them into her
+// private brain. A post that cannot be matched is skipped, never guessed.
+async function syncQuestions(admin: Db): Promise<{ posts: number; questions: number }> {
+  const since = new Date(Date.now() - 30 * 86_400_000).toISOString()
+  const stale = new Date(Date.now() - 12 * 3_600_000).toISOString()
+  const { data: rows } = await admin.from('posts')
+    .select('id, owner_id, platform, external_url')
+    .eq('status', 'posted').gte('posted_at', since)
+    .or(`questions_synced_at.is.null,questions_synced_at.lt.${stale}`)
+    .limit(15)
+  let posts = 0, questions = 0
+  for (const p of rows ?? []) {
+    const ad = ADAPTERS[p.platform as string]
+    await admin.from('posts').update({ questions_synced_at: new Date().toISOString() }).eq('id', p.id)
+    if (!ad?.comments || !TOKEN_KEY()) continue
+    try {
+      const { data: conn } = await admin.from('platform_connections').select('*').eq('owner_id', p.owner_id).eq('platform', p.platform).maybeSingle()
+      if (!conn?.access_token) continue
+      const accessToken = await decryptToken(conn.access_token as string, TOKEN_KEY(), p.owner_id as string, p.platform as string)
+      const list = await ad.comments({ accessToken, accountId: conn.external_account_id ?? '', externalUrl: p.external_url as string | null })
+      if (!list) continue
+      const qs: PostQuestion[] = unansweredQuestions(list)
+      const answered = herAnswers(list)
+      posts++
+      if (answered.length) {
+        await admin.from('post_questions').upsert(answered.map((a) => ({
+          owner_id: p.owner_id, post_id: p.id, platform: p.platform, external_comment_id: a.id,
+          question: a.question.slice(0, 240), her_reply: a.reply, asked_at: a.at,
+        })), { onConflict: 'platform,external_comment_id' }) // she may have answered since: overwrite
+      }
+      if (!qs.length) continue
+      await admin.from('post_questions').upsert(qs.map((q) => ({
+        owner_id: p.owner_id, post_id: p.id, platform: p.platform, external_comment_id: q.id, question: q.question.slice(0, 240), asked_at: q.at,
+      })), { onConflict: 'platform,external_comment_id', ignoreDuplicates: true })
+      questions += qs.length
+    } catch { /* one post never stops the tick */ }
+  }
+  if (posts) console.log(JSON.stringify({ event: 'post_questions_sync', posts, questions }))
+  return { posts, questions }
 }
 
 // ---- VIEWS BACK (the learning loop's real signal) --------------------------
@@ -648,7 +737,8 @@ Deno.serve(async (req: Request) => {
     }
     // Same cron tick: read views back for recently published posts.
     const stats = await syncStats(admin).catch(() => ({ read: 0, skipped: 0 }))
-    return json({ ok: true, published, failed, skipped, scanned: (due ?? []).length, stats })
+    const questions = await syncQuestions(admin).catch(() => ({ posts: 0, questions: 0 }))
+    return json({ ok: true, published, failed, skipped, scanned: (due ?? []).length, stats, questions })
   }
 
   // ---- OAuth callback (browser redirect, no JWT) ----------------------------
