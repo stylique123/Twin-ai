@@ -22,6 +22,6 @@ describe('a product follow-up answer must be real (menu redesign, Part 4)', () =
     const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
     const b = readFileSync(join(repo, 'apps/web/src/pages/v2/V2Building.tsx'), 'utf8')
     expect(b).toMatch(/answerBlocked = onAnswerStep && answerConcreteness !== 'concrete' && !noDetail/)
-    expect(b).toMatch(/\.trim\(\)\) \|\| answerBlocked\}/)
+    expect(b).toMatch(/\.trim\(\)\) \|\| answerBlocked \|\| followUpBlocked\}/)
   })
 })

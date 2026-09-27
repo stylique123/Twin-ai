@@ -1145,7 +1145,11 @@ export const FOLLOWUP_PREFIX = 'followup_'
 
 const FOLLOW_UPS: Readonly<Record<string, Readonly<Record<string, string>>>> = Object.freeze({
   reference_use: {
+    // ⚠️ ALL THREE OPTIONS ASK NOW. Only "match its opening" did, and the two
+    // that skipped it invented a cupping score and a batch size on live runs.
     structure: "What's your version of what happens in this video?",
+    pacing: "What's your version of what happens in this video?",
+    stay_close: "What's your version of what happens in this video?",
     idea_structure: "What's your actual opinion on this?",
   },
   video_goal: {
@@ -1155,6 +1159,17 @@ const FOLLOW_UPS: Readonly<Record<string, Readonly<Record<string, string>>>> = O
     entertain: "What's the funniest or most absurd part of this, if there is one?",
   },
 })
+
+/** ⚖️ THE FOLLOW-UPS THAT MAY NOT BE SKIPPED SILENTLY: a blank one let the
+ *  writer invent a life (reference mode, measured). She answers, or says
+ *  plainly she has nothing specific — which the writer is told in words. */
+export const REQUIRED_FOLLOW_UPS: ReadonlySet<string> = new Set(['reference_use'])
+export const NOTHING_SPECIFIC_SUFFIX = '_none'
+export const NOTHING_SPECIFIC_LINE =
+  'I have no personal story or specific numbers for this video. Keep it general and true to what I do — do not invent any events, names, scores or measurements.'
+/** Why Twin asks although it scanned her account (owner's brief). */
+export const WHY_ASK_WHAT_HAPPENED =
+  'Your scan taught Twin how you talk. It can\u2019t know what actually happened this time — only you can.'
 
 export function choiceFollowUp(
   field: string, value: string | null | undefined, opts: { isProductSubject?: boolean } = {},
@@ -1173,6 +1188,7 @@ export function followUpLines(
     const q = choiceFollowUp(field, answers[field], opts)
     const a = (answers[FOLLOWUP_PREFIX + field] ?? '').trim().slice(0, 600)
     if (q && a) out.push(`${q}\nMy answer: ${a}`)
+    else if (q && answers[FOLLOWUP_PREFIX + field + NOTHING_SPECIFIC_SUFFIX] === '1') out.push(NOTHING_SPECIFIC_LINE)
   }
   return out.length ? `${out.join('\n\n')}\n\n` : ''
 }

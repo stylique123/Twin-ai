@@ -1963,6 +1963,24 @@ export function ConfirmStep({
         </button>
       </div>
 
+      {/* ⚠️ REPORTED BLANK ON EVERY ACCOUNT TESTED, WHILE THE DATA WAS THERE.
+          The values live in text boxes inside a section that starts closed, and
+          a box's value is not page text — so a reader of the page (or a tool
+          reading it) saw empty labels. What the scan found is now also printed
+          as plain text, always visible; the boxes below stay for editing. */}
+      {!voiceIsEmpty && vp && (
+        <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-1.5 text-[12px] sm:grid-cols-[auto_1fr]" data-testid="voice-plain">
+          {([['Niche', vp.niche], ['Tone', vp.tone], ['Pacing', vp.pacing], ['Hook style', vp.hook_style], ['What you push against', vp.enemy]] as const)
+            .filter(([, v]) => typeof v === 'string' && v.trim())
+            .map(([k, v]) => (
+              <div key={k} className="contents">
+                <dt className="text-stone">{k}</dt>
+                <dd className="text-cream">{v}</dd>
+              </div>
+            ))}
+        </dl>
+      )}
+
       <div className={cn('mt-6 space-y-4', !showVoice && 'hidden')}>
         <Labeled label="Niche">
           <input className="field" value={vp.niche} onChange={(e) => setField('niche', e.target.value)} />

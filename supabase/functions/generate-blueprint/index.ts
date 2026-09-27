@@ -9546,13 +9546,24 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // ⚖️ SILENT WHEN UNANSWERED. A creator who never saw the question has not
     // asked for their subject to be replaced, and a default sentence here would
     // answer on their behalf.
-    const referenceUseBlock = intent.referenceUseDirective
+    // ⚠️⚠️ A REFERENCE LENDS FORM, NEVER A LIFE. Reported live on a coffee
+    // roaster: with her own version left blank, "match its opening" invented a
+    // wrong name, a 26-day emergency relocation, a code-enforcement action and a
+    // postpartum-depression disclosure — in her mouth, on camera. "Match its
+    // pacing" and "stay close" invented a cupping score (80, then 82 on a rerun)
+    // and "batches of exactly two pounds". Filling her own version fixed it, so
+    // the client now asks on all three options; this rule is the floor for the
+    // build where she said she has nothing to add, and for every other one.
+    const referenceTruthRule = (body.reference_url ?? '').trim()
+      ? `\n- THE REFERENCE LENDS FORM, NEVER A LIFE. Do NOT invent anything about the creator: no personal events or crises, no health or mental-health disclosures, no family details, moves, legal or regulatory trouble, no names (including her own unless given), and no dates, durations, scores, ratings, measurements, quantities or prices. The reference's own story belongs to its creator, not to her. Personal story may come ONLY from her own words in the note; with none, keep the script general and true — say what she does and thinks, not what "happened".`
+      : ''
+    const referenceUseBlock = referenceTruthRule + (intent.referenceUseDirective
       ? `\n- HOW MUCH OF THE REFERENCE TO KEEP — the creator chose this for THIS video:\n  * ${intent.referenceUseDirective}${
         intent.keepsReferenceTopic
           ? ''
           : '\n  * THE SUBJECT IS NOT THE REFERENCE\'S. They asked for the mechanics, so the topic must come from their own material — reusing what the reference was ABOUT answers a question they did not ask.'
       }`
-      : ''
+      : '')
 
     // WHAT THE CREATOR DOES FOR A LIVING.
     //

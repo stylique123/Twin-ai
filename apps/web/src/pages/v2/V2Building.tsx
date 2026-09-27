@@ -25,7 +25,7 @@ import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   // ⚖️ THE WRITER'S OWN TARGET, shown to the creator before the money moves.
   targetSeconds, spokenTime,
-  INTENT_QUESTIONS, intentQuestionsFor, choiceFollowUp, followUpLines, FOLLOWUP_PREFIX, IDEA_QUESTIONS, ideaLines, ideaCardLines, type IntentQuestion, type VideoGoal, focusForGoal,
+  INTENT_QUESTIONS, intentQuestionsFor, choiceFollowUp, followUpLines, FOLLOWUP_PREFIX, IDEA_QUESTIONS, ideaLines, ideaCardLines, REQUIRED_FOLLOW_UPS, NOTHING_SPECIFIC_SUFFIX, WHY_ASK_WHAT_HAPPENED, type IntentQuestion, type VideoGoal, focusForGoal,
   mustAskWhichProduct, promotedObjectiveQuestion, PRODUCT_CHOICE_FIELD, NO_PRODUCT_CHOICE, NO_PRODUCT_EXPLANATION, BRAND_CHOICE_PREFIX,
   selectProduct,
   productChoiceConstraint,
@@ -2121,6 +2121,12 @@ export default function V2Building() {
   // says plainly she has none — never a vague line the writer would pad out.
   const answerConcreteness = concreteness(askAnswers.claims)
   const answerBlocked = onAnswerStep && answerConcreteness !== 'concrete' && !noDetail
+  // ⚠️ A REQUIRED FOLLOW-UP (her version, on a reference) is answered or
+  // explicitly declined — never skipped into an invented story.
+  const followUpBlocked = [...REQUIRED_FOLLOW_UPS].some((f) =>
+    choiceFollowUp(f, askAnswers[f], { isProductSubject })
+    && !(askAnswers[FOLLOWUP_PREFIX + f] ?? '').trim()
+    && askAnswers[FOLLOWUP_PREFIX + f + NOTHING_SPECIFIC_SUFFIX] !== '1')
   /** ⚖️ THE ANSWER TRAVELS WITH THE ID OF THE QUESTION IT ANSWERS, so the
    *  server stores it under that id and rotation can move on. The product key
    *  is the same one the rotation read with, so what is written is exactly
@@ -2148,17 +2154,30 @@ export default function V2Building() {
     const fu = choiceFollowUp(field, value, { isProductSubject })
     if (!fu) return null
     const key = FOLLOWUP_PREFIX + field
+    const required = REQUIRED_FOLLOW_UPS.has(field)
+    const none = askAnswers[key + NOTHING_SPECIFIC_SUFFIX] === '1'
     return (
-      <label className="mt-3 block" data-testid={`followup-${field}`}>
-        <span className="block text-[13px] text-cream">{fu}</span>
-        <textarea
-          value={askAnswers[key] ?? ''}
-          onChange={(e) => answer(key, e.target.value.slice(0, 600))}
-          rows={2}
-          placeholder="In your own words — optional"
-          className="mt-1.5 w-full rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-[13px] text-cream placeholder:text-stone focus:border-coral/40 focus:outline-none"
-        />
-      </label>
+      <div className="mt-3 block" data-testid={`followup-${field}`}>
+        <label className="block">
+          <span className="block text-[13px] text-cream">{fu}</span>
+          {required && <span className="mt-0.5 block text-[11px] text-stone">{WHY_ASK_WHAT_HAPPENED}</span>}
+          <textarea
+            value={askAnswers[key] ?? ''}
+            onChange={(e) => answer(key, e.target.value.slice(0, 600))}
+            rows={2}
+            disabled={none}
+            placeholder={required ? 'What really happened, in your own words' : 'In your own words — optional'}
+            className="mt-1.5 w-full rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-[13px] text-cream placeholder:text-stone focus:border-coral/40 focus:outline-none disabled:opacity-40"
+          />
+        </label>
+        {required && (
+          <label className="mt-1.5 flex items-center gap-2 text-[12px] text-sand">
+            <input type="checkbox" checked={none}
+              onChange={(e) => answer(key + NOTHING_SPECIFIC_SUFFIX, e.target.checked ? '1' : '')} />
+            Nothing specific — keep it general, and don't make anything up
+          </label>
+        )}
+      </div>
     )
   }
   const renderAsk = (q: AskItem) => (
@@ -2693,7 +2712,7 @@ export default function V2Building() {
               // readiness question left blank is a thinner script; a card that
               // cannot be dismissed is no script at all.
               disabled={visibleAsk.some(
-                (q) => isChip(q) && !(askAnswers[q.field] ?? '').trim()) || answerBlocked}
+                (q) => isChip(q) && !(askAnswers[q.field] ?? '').trim()) || answerBlocked || followUpBlocked}
               onClick={() => {
                 // ⚖️ STEP ONE ENDS HERE WHEN THE OBJECTIVE HAS A QUESTION: the
                 // question is shown on its own, after the choice, never beside it.

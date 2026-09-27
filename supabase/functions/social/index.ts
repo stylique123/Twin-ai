@@ -881,6 +881,54 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true, published, failed, skipped, scanned: (due ?? []).length, stats, questions, queue })
   }
 
+  // ---- Outstand callback: nonce in the path, account already attached ----------
+  const oc = url.pathname.match(/\/outstand-cb\/([A-Za-z0-9_-]{16,128})\/?$/)
+  if (oc) {
+    const back = (q: string) => Response.redirect(`${appUrl()}/calendar?${q}`, 302)
+    try {
+      const { data: nonce } = await admin.from('oauth_nonce').delete().eq('nonce', oc[1])
+        .select('owner_id, platform, created_at').maybeSingle()
+      if (!nonce) return back('connect_error=state')
+      if (Date.now() - new Date(nonce.created_at).getTime() > NONCE_TTL_MS) return back('connect_error=expired')
+      const network = OUTSTAND_NETWORKS[nonce.platform]
+      if (!network || !OUTSTAND_KEY()) return back('connect_error=unconfigured')
+      const q = url.searchParams
+      if (q.get('success') === 'false' || q.get('error')) {
+        console.error('social: outstand denied', q.get('error') ?? q.get('message') ?? 'no reason')
+        return back('connect_error=denied')
+      }
+      let acc: { id: string; username: string | null; avatar: string | null } | null = null
+      const accountId = q.get('account_id') ?? q.get('accountId')
+      if (accountId) {
+        acc = { id: accountId, username: q.get('username'), avatar: null }
+      } else {
+        // The other documented shape: a pending session to finalize.
+        const session = q.get('session') ?? q.get('sessionToken') ?? q.get('session_token')
+        if (!session) return back('connect_error=missing')
+        const offered = outstandAccounts(await outstand(`/social-accounts/pending/${encodeURIComponent(session)}`))
+        const chosen = pickAccounts(offered, network)
+        if (!chosen.length) return back('connect_error=no_account')
+        const done = outstandAccounts(await outstand(`/social-accounts/pending/${encodeURIComponent(session)}/finalize`, {
+          method: 'POST', body: { accounts: chosen.map((a) => a.id) },
+        }))
+        acc = pickAccounts(done.length ? done : chosen, network)[0]
+      }
+      const { error: upErr } = await admin.from('platform_connections').upsert({
+        owner_id: nonce.owner_id, platform: nonce.platform,
+        account_label: `${ADAPTERS[nonce.platform]?.label ?? nonce.platform}${acc.username ? ` · ${acc.username}` : ''}`,
+        external_account_id: acc.id,
+        access_token: OUTSTAND_MARKER, refresh_token: null, token_expires_at: null,
+        provider: OUTSTAND_MARKER, username: acc.username, avatar_url: acc.avatar,
+        status: 'connected', updated_at: new Date().toISOString(),
+      }, { onConflict: 'owner_id,platform' })
+      if (upErr) { console.error('social: outstand save failed', upErr.message); return back('connect_error=save_failed') }
+      return back(`connected=${nonce.platform}`)
+    } catch (e) {
+      console.error('social: outstand callback failed', e instanceof Error ? e.message : e)
+      return back('connect_error=connect_failed')
+    }
+  }
+
   // ---- OAuth callback (browser redirect, no JWT) ----------------------------
   if (url.searchParams.get('action') === 'callback') {
     const back = (q: string) => Response.redirect(`${appUrl()}/calendar?${q}`, 302)
@@ -973,7 +1021,11 @@ Deno.serve(async (req: Request) => {
       await admin.from('oauth_nonce').insert({ nonce: state, owner_id: user.id, platform })
       try {
         const res = await outstand(`/social-networks/${OUTSTAND_NETWORKS[platform]}/auth-url`, {
-          method: 'POST', body: { redirect_uri: `${REDIRECT()}&state=${state}` },
+          // ⚠️ THE NONCE RIDES THE PATH, NOT THE QUERY. Outstand REPLACES the
+          // query string with its own (?success=&account_id=&username=), so a
+          // `&state=` there never came back and every connect ended in an error
+          // after the account had in fact been attached (seen live, TikTok).
+          method: 'POST', body: { redirect_uri: `${fnBase()}/outstand-cb/${state}` },
         })
         const link = outstandAuthUrl(res)
         if (!link) { console.error('social: outstand auth-url had no url', JSON.stringify(res).slice(0, 300)); return json({ error: 'Could not start the connection' }, 502) }
