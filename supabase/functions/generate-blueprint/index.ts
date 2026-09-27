@@ -51,6 +51,7 @@ import {
   PERSONAL_USE_REPAIR_SYSTEM, personalUseRepairPrompt,
 } from '../_shared/personalUseGate.ts'
 import { renderCustomerReviews } from '../_shared/customerReviews.ts'
+import { pacingFor, quietBeatNote, handsOnVerb, PACING_RULE } from '../_shared/actionPacing.ts'
 import { voiceRules, voiceViolations, vocabularyUsed, VOICE_REPAIR_SYSTEM, voiceRepairPrompt } from '../_shared/voiceGate.ts'
 import {
   rebuttalPromptRule, repairRebuttalFraming, ctaGoalPromptRule, repairCtaForGoal,
@@ -10273,13 +10274,13 @@ ${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
 - Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
 ${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${grainBlock}${availabilityBlock}${productModeBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${grainBlock}${PACING_RULE}${availabilityBlock}${productModeBlock}
 
 ${decompositionInstruction}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${grainBlock}${availabilityBlock}${productModeBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${grainBlock}${PACING_RULE}${availabilityBlock}${productModeBlock}
 
 ${decompositionInstruction}`
 
@@ -10602,6 +10603,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // Fix A counts, stored on the row so the real rate can be measured.
     let personalUseGateAudit: { flagged: number; repaired: number; dropped: number } | null = null
     let voiceGateAudit: Record<string, unknown> | null = null
+    let pacingAudit: Record<string, unknown> | null = null
     // ⚠️ FIX 5 (Wave 2). NULL MEANS THE GENERATION CARRIED NO RETENTION MAP TO
     // RECONCILE — never zero. `matched` is how many output rows landed on a
     // beat whose NAME the model's original retention_map still used (that
@@ -12728,6 +12730,39 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       if (flagged.length > 0) console.warn(JSON.stringify({ event: 'voice_gate', rules, flagged: flagged.length, repaired }))
     } catch { /* the voice gate never fails a generation */ }
 
+    // ── PACING MATCHES THE REAL ACTION (owner's pacing addendum) ─────────────
+    //
+    // Each beat's hands-on action is timed from its own direction. Where the
+    // action clearly outlasts the words, the beat is marked a QUIET WORKING
+    // BEAT in its direction (she sees it on the teleprompter and shot list) and
+    // its planned length is raised to the real action time. Words are never
+    // added here — padding would mean inventing. Measured into beat_audit.
+    try {
+      const pBeats = Array.isArray(declared) ? declared as Array<{ line?: unknown; direction?: unknown; action_posing?: unknown }> : []
+      const plan = (templated.bp as { beat_plan?: unknown })?.beat_plan
+      const planArr = Array.isArray(plan) && plan.length === pBeats.length ? plan as Array<{ target_sec?: unknown }> : null
+      const pacing = pacingFor(pBeats)
+      let quiet = 0, raised = 0
+      for (const p of pacing) {
+        const b = pBeats[p.index]
+        if (p.quiet && !/quiet working beat/i.test(String(b.direction ?? ''))) {
+          const verb = handsOnVerb(`${String(b.direction ?? '')} ${String(b.action_posing ?? '')}`)
+          b.direction = `${String(b.direction ?? '').trim()} ${quietBeatNote(p, verb)}`.trim()
+          quiet++
+        }
+        if (planArr && p.action > 0) {
+          const cur = Number(planArr[p.index]?.target_sec)
+          if (!Number.isFinite(cur) || cur < p.seconds) { planArr[p.index].target_sec = Math.ceil(p.seconds); raised++ }
+        }
+      }
+      pacingAudit = {
+        quiet_beats: quiet, raised_targets: raised,
+        spoken_sec: Math.round(pacing.reduce((a, p) => a + p.spoken, 0)),
+        paced_sec: Math.round(pacing.reduce((a, p) => a + p.seconds, 0)),
+      }
+      if (quiet || raised) console.warn(JSON.stringify({ event: 'action_pacing', ...pacingAudit }))
+    } catch { /* pacing never fails a generation */ }
+
     // ── THE SHOT LIST MUST QUOTE THE SCRIPT THAT ACTUALLY SHIPS ──────────────
     //
     // ⚠️ MEASURED ACROSS THE FOUR-RUN HARNESS: shot_list and script are written
@@ -12952,6 +12987,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       beatAudit.shot_list_claim_drift = shotListClaimDrift
       if (personalUseGateAudit) beatAudit.personal_use_gate = personalUseGateAudit
       if (voiceGateAudit) beatAudit.voice_gate = voiceGateAudit
+      if (pacingAudit) beatAudit.action_pacing = pacingAudit
       // Owner's grain addendum, MEASURED: of her own raw words, how many survived.
       try {
         const lines = (Array.isArray(declared) ? declared as Array<{ line?: unknown }> : [])

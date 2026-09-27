@@ -196,6 +196,10 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Per worker tick: confirmed mentions filed as knowledge. Durable as `creator_mentions.filed_at` and `creator_knowledge` rows with source_ref mention:<id>.',
   },
+  action_pacing: {
+    kind: 'counter_ephemeral',
+    why: 'Per script: beats marked quiet working beats and plan targets raised to the real action time. Durable in `generations.beat_audit.action_pacing`.',
+  },
   social_stats_sync: {
     kind: 'counter_ephemeral',
     why: 'Per cron tick: posts whose views were read back. Durable on `posts` (views, likes, comments, stats_synced_at) and `generation_outcomes` (views_24h, views_7d).',
