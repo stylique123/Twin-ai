@@ -6,6 +6,7 @@
 // until she presses the usual button.
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { IDEA_MODE_LABEL } from '@twinai/shared'
 
 export interface IdeaRow {
   id: string
@@ -15,11 +16,9 @@ export interface IdeaRow {
   goal: string | null
   why: string | null
   product_id: string | null
+  hook: string | null
 }
 
-const MODE_LABEL: Record<string, string> = {
-  educate: 'Educate', entertain: 'Entertain', teach: 'Teach', inspire: 'Inspire', sell: 'Sell',
-}
 
 export function IdeasForYou({ onPick }: { onPick: (idea: IdeaRow) => void }) {
   const [ideas, setIdeas] = useState<IdeaRow[]>([])
@@ -29,7 +28,7 @@ export function IdeasForYou({ onPick }: { onPick: (idea: IdeaRow) => void }) {
       try {
         const { data } = await supabase
           .from('creator_ideas')
-          .select('id, title, premise, mode, goal, why, product_id, batch_day')
+          .select('id, title, premise, mode, goal, why, hook, product_id, batch_day')
           .is('used_at', null)
           .is('dismissed_at', null)
           .order('batch_day', { ascending: false })
@@ -68,7 +67,7 @@ export function IdeasForYou({ onPick }: { onPick: (idea: IdeaRow) => void }) {
             {i.why && <p className="mt-1 text-xs leading-relaxed text-stone">{i.why}</p>}
             <div className="mt-2 flex items-center justify-between gap-2">
               <span className="text-[11px] uppercase tracking-wide text-stone">
-                {[i.mode ? MODE_LABEL[i.mode] ?? i.mode : null, i.goal].filter(Boolean).join(' · ')}
+                {[i.mode ? IDEA_MODE_LABEL[i.mode] ?? i.mode : null, i.goal].filter(Boolean).join(' · ')}
               </span>
               <button
                 type="button"

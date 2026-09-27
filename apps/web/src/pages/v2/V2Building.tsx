@@ -25,7 +25,7 @@ import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   // ⚖️ THE WRITER'S OWN TARGET, shown to the creator before the money moves.
   targetSeconds, spokenTime,
-  INTENT_QUESTIONS, intentQuestionsFor, choiceFollowUp, followUpLines, FOLLOWUP_PREFIX, IDEA_QUESTIONS, ideaLines, type IntentQuestion, type VideoGoal, focusForGoal,
+  INTENT_QUESTIONS, intentQuestionsFor, choiceFollowUp, followUpLines, FOLLOWUP_PREFIX, IDEA_QUESTIONS, ideaLines, ideaCardLines, type IntentQuestion, type VideoGoal, focusForGoal,
   mustAskWhichProduct, promotedObjectiveQuestion, PRODUCT_CHOICE_FIELD, NO_PRODUCT_CHOICE, NO_PRODUCT_EXPLANATION, BRAND_CHOICE_PREFIX,
   selectProduct,
   productChoiceConstraint,
@@ -126,6 +126,15 @@ interface BuildState {
   /** Which door she came through. Absent on an older client — treated as "not
    *  stated", never as a default door. */
   door?: 'reference' | 'idea' | 'product' | 'browse'
+  /** ⚠️ AN "IDEAS FOR YOU" CARD'S FRAMING. The card showed a type, a goal, a
+   *  suggested hook and sometimes a product; only the premise used to arrive
+   *  here, so a card labelled "EXPLAIN · AUTHORITY" built a script that heard
+   *  neither word. Carried whole; `goal` above takes the card's goal. */
+  idea_mode?: string
+  idea_hook?: string
+  /** A product the idea ties in NATURALLY — a mention, never the subject, so
+   *  it travels as `mentioned_product_id` and cannot unlock a pitch. */
+  idea_product_id?: string
 }
 
 // ONE CLICK-INTENT, ONE REMIX.
@@ -1118,7 +1127,14 @@ export default function V2Building() {
             // ⚖️ MENU REDESIGN: outside Product mode the goal is no longer asked
             // or shown, but her standing goal is still SENT, so the writer keeps
             // the directive she gave at onboarding.
-            if (standingGoal
+            // ⚖️ THE IDEA CARD'S GOAL COMES FIRST. She clicked a card that said
+            // what the video is for; her standing goal is the fallback only.
+            if (state.goal
+              && !isProductSubject
+              && !(answersRef.current.video_goal ?? '').trim()
+              && !(askAnswers.video_goal ?? '').trim()) {
+              answer('video_goal', state.goal)
+            } else if (standingGoal
               && !isProductSubject
               && !(answersRef.current.video_goal ?? '').trim()
               && !(askAnswers.video_goal ?? '').trim()) {
@@ -1552,6 +1568,9 @@ export default function V2Building() {
         // subject. Under its own name they cannot see it at all, which is the
         // correct default for a permission this narrow.
         const mentionedProductId = decided.kind === 'mention' ? decided.productId : ''
+        // The idea card's product rides as a mention too — only when nothing
+        // was chosen as the subject, so it can never compete with one.
+        const ideaMentionId = decided.kind !== 'chosen' && decided.kind !== 'auto' ? (state.idea_product_id ?? '') : ''
         for (const [k, v] of Object.entries(answersRef.current)) {
           if (k === PRODUCT_CHOICE_FIELD) continue
           // Follow-up answers ride her note (below), never the brief.
@@ -1563,11 +1582,12 @@ export default function V2Building() {
         // real answer meaning the video is about both, so it adds no directive
         // rather than a line saying she chose nothing.
         const chosenFocus = (answersRef.current[IDEA_FOCUS_FIELD] ?? '').trim()
-        const ideaFocusLine = chosenFocus === '' || chosenFocus === IDEA_FOCUS_ALL
+        // The clicked idea card's type and hook lead her note.
+        const ideaFocusLine = ideaCardLines(state.idea_mode, state.idea_hook) + (chosenFocus === '' || chosenFocus === IDEA_FOCUS_ALL
           ? ''
-          : `This video is about: ${chosenFocus}.\n\n`
+          : `This video is about: ${chosenFocus}.\n\n`)
         const gen = await generateBlueprint({
-          mentioned_product_id: mentionedProductId || undefined,
+          mentioned_product_id: mentionedProductId || ideaMentionId || undefined,
           reference_url: refUrl,
           // ⚠️ HER CHOICE RIDES HER OWN PARAGRAPH, AND THE PARAGRAPH SURVIVES
           // WHOLE. Narrowing `reference_note` to the chosen half would throw

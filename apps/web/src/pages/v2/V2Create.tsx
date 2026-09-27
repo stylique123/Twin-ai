@@ -27,7 +27,7 @@
 // packages/shared/src/entryDoor.ts.
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { IdeasForYou } from '../../components/IdeasForYou'
+import { IdeasForYou, type IdeaRow } from '../../components/IdeasForYou'
 import { Link2, Wand2, Wind, Activity, Flame, SlidersHorizontal, ChevronDown, Lightbulb, Package, Compass } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { listGenerations, loadProductEntities, loadBrands, BRAND_CHOICE_PREFIX } from '../../lib/api'
@@ -37,6 +37,7 @@ import { recordEntryDoor } from '../../lib/entryDoors'
 import {
   readEntryDoor, buildFieldsForDoor, looksLikeLink, ALL_DOORS, relationshipLabel, type EntryDoor,
   DEFAULT_TARGET_SECONDS, shapeFor, type TargetSeconds,
+  IDEA_GOAL_TO_VIDEO_GOAL,
 } from '@twinai/shared'
 import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
@@ -238,6 +239,9 @@ export default function V2Create() {
   // Seeding this with the inferred door would make every entry look chosen and
   // destroy the one distinction the impression table exists to record.
   const [picked, setPicked] = useState<EntryDoor | null>(null)
+  // The "Ideas for you" card she clicked, so its type, goal, hook and product
+  // reach the build instead of only its premise.
+  const [pickedIdea, setPickedIdea] = useState<IdeaRow | null>(null)
   const [advanced, setAdvanced] = useState(false)
   const [tone, setTone] = useState<Tone>('balanced') // recommended default
   // ⚖️ DEFAULTS TO 60, NOT 30. The twelve measured runs fail by being THIN, so
@@ -300,6 +304,14 @@ export default function V2Create() {
         // screen still puts it through `selectProduct`, which refuses it on a
         // video that may not carry a product at all.
         ...(params.get('product') ? { selected_product_id: params.get('product') as string } : {}),
+        // ⚠️ ONLY WHILE SHE IS STILL ON THE IDEA DOOR. Switching door after
+        // clicking a card means the card no longer describes this video.
+        ...(pickedIdea && door === 'idea' ? {
+          ...(pickedIdea.goal && IDEA_GOAL_TO_VIDEO_GOAL[pickedIdea.goal] ? { goal: IDEA_GOAL_TO_VIDEO_GOAL[pickedIdea.goal] } : {}),
+          ...(pickedIdea.mode ? { idea_mode: pickedIdea.mode } : {}),
+          ...(pickedIdea.hook ? { idea_hook: pickedIdea.hook } : {}),
+          ...(pickedIdea.product_id ? { idea_product_id: pickedIdea.product_id } : {}),
+        } : {}),
       },
     })
   }
@@ -421,7 +433,7 @@ export default function V2Create() {
           {/* Ideas the niche brain wrote for her today. Renders nothing when
               there are none, so Create is unchanged for everyone else. */}
           <div className="mx-auto mt-6 max-w-2xl text-left">
-            <IdeasForYou onPick={(idea) => { setInput(idea.premise); setPicked('idea') }} />
+            <IdeasForYou onPick={(idea) => { setInput(idea.premise); setPicked('idea'); setPickedIdea(idea) }} />
           </div>
 
           {/* ── The four doors. All of them visible, always — a door behind a
