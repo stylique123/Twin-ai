@@ -81,7 +81,7 @@ The `jobs` table is the seam between them.
    │  ┌──────────────┐   ┌────────────────────┐ │  │  │(daily cron)                     │
    │  │ tables + RLS │   │  Edge Functions    │ │  │  └──────────┘                      │
    │  │ profiles     │   │  generate-blueprint│ │  │  ┌──────────────────────────────┐ │
-   │  │ brand_voices │   │  ingest-reference  │ │  │  │ postiz (publish + analytics) │ │
+   │  │ brand_voices │   │  ingest-reference  │ │  │  │ outstand (publish + analytics)│ │
    │  │ generations  │◀──│  start-dna/dna-poll│ │  │  └──────────────────────────────┘ │
    │  │ jobs (queue) │   │  billing/-webhook  │ │  └────────────────┬──────────────────┘
    │  │ transcripts  │   │  review/social/... │ │     service-role   │ claim_job /
@@ -180,7 +180,7 @@ and **enqueues jobs** for heavy work. In `supabase/functions/`:
 ### 4.5 Satellite services (VPS / Docker)
 - **`discovery/`** — daily cron finding fresh viral references per niche
   (`discovery/deploy-vps.sh` installs it; reuses the worker container's secrets).
-- **`postiz/`** — self-hosted publishing + analytics (docker-compose + Caddy).
+- **Publishing** — Outstand (hosted API, managed platform apps) via the `social` edge function; Postiz was retired 2026-09-27.
 
 ### 4.6 Source of truth & CI/CD — GitHub
 - `main` is canonical.
@@ -225,7 +225,7 @@ The seam between the synchronous and asynchronous planes. Defined in
    the finished take autosaves to the private `takes` bucket. **AI editing is being
    rebuilt** (`docs/ai-editor-rebuild-status.md`); the new one-click editor will pick
    the take up from this seam and write `generations.edit_path`/`thumb_path`.
-4. **Publish + analytics** — hand off to Postiz → publish + pull metrics → dashboard.
+4. **Publish + analytics** — `social` edge function → Outstand → publish + pull metrics → Calendar insights.
 
 **The Scene Timeline is the single in-app source of truth** (`docs/PRODUCT_VISION.md`
 §8): script, teleprompter and publish copy all read from one scene object, so scene
@@ -277,7 +277,7 @@ the authoritative lists.
 | Database + RLS + RPCs | Supabase | `supabase db push` |
 | Edge functions | Supabase | `supabase functions deploy <name>` + `supabase secrets set …` |
 | Worker | VPS / Hetzner | `worker/deploy-vps.sh` (Docker) |
-| Discovery / postiz | VPS / Hetzner | `discovery/deploy-vps.sh`, `postiz/` |
+| Discovery | VPS / Hetzner | `discovery/deploy-vps.sh` |
 
 Full step-by-step runbook + smoke test: **`DEPLOY.md`**.
 
@@ -292,7 +292,6 @@ supabase/
   functions/    edge functions (the secure synchronous API)
 worker/         VPS job-queue worker (Node/TS + Python + ffmpeg)
 discovery/      daily viral-reference discovery cron
-postiz/         self-hosted publishing + analytics
 DESIGN.md             visual system
 docs/PRODUCT_VISION.md  product / UX system (Scene Timeline)
 ROADMAP.md            what's next

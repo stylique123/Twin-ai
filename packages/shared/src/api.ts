@@ -1102,7 +1102,12 @@ export interface Post {
   platform: string
   caption: string | null
   // 'posting' is a transient claim state (during publish); 'failed' carries `error`.
-  status: 'scheduled' | 'posted' | 'failed' | 'posting'
+  // 'outstand_queued': handed to the posting service, which publishes it at its time.
+  status: 'scheduled' | 'posted' | 'failed' | 'posting' | 'outstand_queued'
+  /** YouTube's own title (other platforms use the caption). */
+  title?: string | null
+  /** A video she uploaded in the composer (not a Twin render). */
+  media_path?: string | null
   scheduled_for: string | null
   posted_at: string | null
   external_url: string | null
@@ -1115,7 +1120,7 @@ export interface Post {
 export async function listPosts(): Promise<Post[]> {
   const { data, error } = await supabase
     .from('posts')
-    .select('id, generation_id, platform, caption, status, scheduled_for, posted_at, external_url, error, views, likes, created_at')
+    .select('id, generation_id, platform, caption, title, media_path, status, scheduled_for, posted_at, external_url, error, views, likes, created_at')
     .order('created_at', { ascending: false })
     .limit(100)
   if (error) return [] // table may not be migrated yet, fail soft
@@ -1246,6 +1251,70 @@ export async function schedulePost(input: {
   return data as Post
 }
 
+/**
+ * THE COMPOSER: one video to several platforms at once, one row per platform
+ * (so each platform's status, link and numbers stay its own). The video is a
+ * finished Twin render OR a file she uploaded (`uploadPostMedia`).
+ */
+export async function schedulePosts(input: {
+  generationId?: string | null
+  mediaPath?: string | null
+  platforms: string[]
+  scheduledFor: string
+  caption?: string
+  /** YouTube only. */
+  title?: string
+}): Promise<Post[]> {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) throw new Error('Not signed in')
+  if (!input.generationId && !input.mediaPath) throw new Error('Pick a video first')
+  if (!input.platforms.length) throw new Error('Pick at least one account')
+  const bound = input.generationId ? await bindCurrentOutput(input.generationId) : {}
+  const rows = input.platforms.map((platform) => ({
+    owner_id: auth.user!.id,
+    generation_id: input.generationId ?? null,
+    media_path: input.generationId ? null : input.mediaPath ?? null,
+    platform,
+    caption: input.caption ?? null,
+    title: platform === 'youtube' ? (input.title ?? '').trim().slice(0, 100) || null : null,
+    status: 'scheduled',
+    scheduled_for: input.scheduledFor,
+    ...bound,
+  }))
+  const { data, error } = await supabase.from('posts').insert(rows)
+    .select('id, generation_id, platform, caption, title, media_path, status, scheduled_for, posted_at, external_url, created_at')
+  if (error) throw error
+  return (data ?? []) as Post[]
+}
+
+/** Upload her own video to the private post-media bucket; returns its path. */
+export async function uploadPostMedia(file: File): Promise<string> {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) throw new Error('Not signed in')
+  if (!/^video\//.test(file.type)) throw new Error('Choose a video file')
+  const ext = (file.name.split('.').pop() ?? 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4'
+  const path = `${auth.user.id}/${crypto.randomUUID()}.${ext}`
+  const { error } = await supabase.storage.from('post-media').upload(path, file, { contentType: file.type, upsert: false })
+  if (error) throw new Error(error.message)
+  return path
+}
+
+export interface PostInsightMetrics { views: number | null; likes: number | null; comments: number | null; shares: number | null; saves: number | null; impressions: number | null }
+export interface PostInsights {
+  platform: string
+  /** Instagram / LinkedIn: history over time. TikTok / YouTube: lifetime totals. */
+  chart: 'timeseries' | 'lifetime'
+  commentsReadable: boolean
+  latest: PostInsightMetrics
+  history: Array<PostInsightMetrics & { taken_at: string }>
+  comments: Array<{ id: string; username: string | null; text: string; at: string | null }> | null
+}
+export async function postInsights(postId: string): Promise<PostInsights> {
+  const { data, error } = await supabase.functions.invoke('social', { body: { action: 'insights', post_id: postId } })
+  if (error) throw new Error(await readInvokeError(error))
+  return data as PostInsights
+}
+
 // Flip a scheduled post to posted (the creator confirms they published it).
 export async function markScheduledPosted(postId: string, externalUrl?: string): Promise<void> {
   const { error } = await supabase
@@ -1269,12 +1338,15 @@ export interface PlatformConnection {
   account_label: string | null
   status: string
   created_at: string
+  provider?: string | null
+  username?: string | null
+  avatar_url?: string | null
 }
 
 export async function listConnections(): Promise<PlatformConnection[]> {
   const { data, error } = await supabase
     .from('platform_connections')
-    .select('id, platform, account_label, status, created_at')
+    .select('id, platform, account_label, status, created_at, provider, username, avatar_url')
   if (error) return [] // table may not be migrated everywhere; fail soft
   return (data ?? []) as PlatformConnection[]
 }

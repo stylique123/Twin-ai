@@ -25,7 +25,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { encryptToken, decryptToken } from './tokenCrypto.ts'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
-import { OUTSTAND_API, OUTSTAND_NETWORKS, OUTSTAND_MARKER, outstandAuthUrl, outstandAccounts, pickAccounts, outstandPostBody, outstandPostResult, outstandMetrics } from '../_shared/outstand.ts'
+import { OUTSTAND_API, OUTSTAND_NETWORKS, OUTSTAND_MARKER, outstandAuthUrl, outstandAccounts, pickAccounts, outstandPostBody, outstandPostResult, outstandMetrics, outstandComments, outstandStatus, insightStyle, queueWindow, type OutstandMetricSet } from '../_shared/outstand.ts'
 import { herAnswers, unansweredQuestions, type PlatformComment, type PostQuestion } from '../_shared/postQuestions.ts'
 import { youtubeId, samePermalink, matchTikTokByTime, outcomeWindow, statsFrom, type PostStats } from '../_shared/socialStats.ts'
 
@@ -450,7 +450,7 @@ async function syncQuestions(admin: Db): Promise<{ posts: number; questions: num
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString()
   const stale = new Date(Date.now() - 12 * 3_600_000).toISOString()
   const { data: rows } = await admin.from('posts')
-    .select('id, owner_id, platform, external_url')
+    .select('id, owner_id, platform, external_url, external_post_id')
     .eq('status', 'posted').gte('posted_at', since)
     .or(`questions_synced_at.is.null,questions_synced_at.lt.${stale}`)
     .limit(15)
@@ -458,12 +458,21 @@ async function syncQuestions(admin: Db): Promise<{ posts: number; questions: num
   for (const p of rows ?? []) {
     const ad = ADAPTERS[p.platform as string]
     await admin.from('posts').update({ questions_synced_at: new Date().toISOString() }).eq('id', p.id)
-    if (!ad?.comments || !TOKEN_KEY()) continue
     try {
       const { data: conn } = await admin.from('platform_connections').select('*').eq('owner_id', p.owner_id).eq('platform', p.platform).maybeSingle()
       if (!conn?.access_token) continue
-      const accessToken = await decryptToken(conn.access_token as string, TOKEN_KEY(), p.owner_id as string, p.platform as string)
-      const list = await ad.comments({ accessToken, accountId: conn.external_account_id ?? '', externalUrl: p.external_url as string | null })
+      let list: PlatformComment[] | null = null
+      if (conn.provider === OUTSTAND_MARKER) {
+        // Through Outstand only Instagram / LinkedIn expose comment text. Her
+        // replies are not visible here, so only questions are kept.
+        if (!insightStyle(p.platform as string).commentsReadable || !p.external_post_id || !OUTSTAND_KEY()) continue
+        list = outstandComments(await outstand(`/posts/${encodeURIComponent(String(p.external_post_id))}/comments`))
+          .map((c) => ({ id: c.id, text: c.text, at: c.at, byOwner: false, replies: [] }))
+      } else {
+        if (!ad?.comments || !TOKEN_KEY()) continue
+        const accessToken = await decryptToken(conn.access_token as string, TOKEN_KEY(), p.owner_id as string, p.platform as string)
+        list = await ad.comments({ accessToken, accountId: conn.external_account_id ?? '', externalUrl: p.external_url as string | null })
+      }
       if (!list) continue
       const qs: PostQuestion[] = unansweredQuestions(list)
       const answered = herAnswers(list)
@@ -521,7 +530,7 @@ async function syncStats(admin: Db): Promise<{ read: number; skipped: number }> 
     try {
       const { data: conn } = await admin.from('platform_connections').select('*').eq('owner_id', p.owner_id).eq('platform', p.platform).maybeSingle()
       if (!conn?.access_token) { skipped++; await stamp(); continue }
-      if (conn.scopes === OUTSTAND_MARKER) {
+      if (conn.provider === OUTSTAND_MARKER) {
         const pid = (p as { external_post_id?: string | null }).external_post_id
         if (!pid || !OUTSTAND_KEY()) { skipped++; await stamp(); continue }
         const m = outstandMetrics(await outstand(`/posts/${encodeURIComponent(pid)}/analytics`))
@@ -531,6 +540,7 @@ async function syncStats(admin: Db): Promise<{ read: number; skipped: number }> 
         }
         if (!m) { skipped++; await stamp(); continue }
         await recordStats(admin, p, m)
+        await admin.from('post_stat_snapshots').insert({ post_id: p.id, owner_id: p.owner_id, ...m })
         read++
         continue
       }
@@ -548,7 +558,83 @@ async function syncStats(admin: Db): Promise<{ read: number; skipped: number }> 
   return { read, skipped }
 }
 
-async function publishOne(admin: Db, post: { id: string; owner_id: string; platform: string; generation_id: string; caption?: string | null; edit_project_id?: string | null; output_asset_id?: string | null }): Promise<{ ok: boolean; error?: string; external_url?: string; skipped?: boolean }> {
+/** A signed link must outlive a hand-off: until the post time plus two days. */
+function signSeconds(scheduledFor: string | null | undefined): number {
+  const t = Date.parse(String(scheduledFor ?? ''))
+  if (!Number.isFinite(t)) return 3600
+  return Math.max(3600, Math.ceil((t - Date.now()) / 1000) + 2 * 86_400)
+}
+
+/** Publish now, or hand a future post (≤ 30 days) to Outstand's own scheduler. */
+async function sendToOutstand(
+  admin: Db,
+  post: { id: string; platform: string; caption?: string | null; title?: string | null; scheduled_for?: string | null },
+  conn: { external_account_id?: string | null },
+  videoUrl: string,
+  current: { editProjectId: string; outputAssetId: string } | null,
+  handOff: boolean,
+  failPost: (msg: string) => Promise<{ ok: boolean; error?: string }>,
+): Promise<{ ok: boolean; error?: string; external_url?: string }> {
+  if (!OUTSTAND_KEY()) return await failPost('Posting service is not configured')
+  const lineage = { edit_project_id: current?.editProjectId ?? null, output_asset_id: current?.outputAssetId ?? null }
+  try {
+    const body = outstandPostBody(String(conn.external_account_id ?? ''), post.caption ?? '', videoUrl, {
+      scheduledAt: handOff ? post.scheduled_for ?? null : null, platform: post.platform, title: post.title ?? post.caption?.slice(0, 90) ?? null,
+    })
+    let res: unknown
+    try { res = await outstand('/posts', { method: 'POST', body }) } catch (e) {
+      // An option Outstand does not know (the YouTube title key) must not cost the post.
+      if (!body.youtube || !/400/.test(e instanceof Error ? e.message : '')) throw e
+      delete body.youtube
+      res = await outstand('/posts', { method: 'POST', body })
+    }
+    const r = outstandPostResult(res)
+    if (!r.id) return await failPost(r.error ?? 'The posting service did not accept the video')
+    const state = outstandStatus(r.status)
+    await admin.from('posts').update(handOff || state === 'pending'
+      ? { status: 'outstand_queued', external_post_id: r.id, external_url: r.url, error: null, ...lineage }
+      : { status: state === 'failed' ? 'failed' : 'posted', posted_at: new Date().toISOString(), external_post_id: r.id, external_url: r.url, error: r.error, ...lineage },
+    ).eq('id', post.id)
+    return { ok: state !== 'failed', external_url: r.url ?? undefined, error: state === 'failed' ? r.error ?? 'Publish failed' : undefined }
+  } catch (e) {
+    return await failPost(e instanceof Error ? e.message : 'Publish failed')
+  }
+}
+
+/** The 30-day queue engine: hand future posts to Outstand once they are within
+ *  its window, and read back the ones already handed off. */
+async function syncOutstandQueue(admin: Db): Promise<{ handed: number; settled: number }> {
+  if (!OUTSTAND_KEY()) return { handed: 0, settled: 0 }
+  let handed = 0, settled = 0
+  const horizon = new Date(Date.now() + 30 * 86_400_000).toISOString()
+  const { data: future } = await admin.from('posts')
+    .select('id, owner_id, platform, generation_id, caption, title, media_path, scheduled_for, edit_project_id, output_asset_id')
+    .eq('status', 'scheduled').gt('scheduled_for', new Date().toISOString()).lte('scheduled_for', horizon).limit(20)
+  for (const p of future ?? []) {
+    if (queueWindow(p.scheduled_for as string) !== 'hand_off') continue
+    const { data: conn } = await admin.from('platform_connections').select('provider').eq('owner_id', p.owner_id).eq('platform', p.platform).maybeSingle()
+    if (conn?.provider !== OUTSTAND_MARKER) continue
+    const r = await publishOne(admin, p, { handOff: true })
+    if (r.ok) handed++
+  }
+  const { data: queued } = await admin.from('posts').select('id, external_post_id, scheduled_for')
+    .eq('status', 'outstand_queued').lte('scheduled_for', new Date().toISOString()).limit(25)
+  for (const q of queued ?? []) {
+    try {
+      const r = outstandPostResult(await outstand(`/posts/${encodeURIComponent(String(q.external_post_id))}`))
+      const state = outstandStatus(r.status)
+      if (state === 'pending') continue
+      await admin.from('posts').update(state === 'posted'
+        ? { status: 'posted', posted_at: new Date().toISOString(), external_url: r.url }
+        : { status: 'failed', error: (r.error ?? 'The platform rejected the post').slice(0, 300) }).eq('id', q.id)
+      settled++
+    } catch { /* read again next tick */ }
+  }
+  if (handed || settled) console.log(JSON.stringify({ event: 'outstand_queue', handed, settled }))
+  return { handed, settled }
+}
+
+async function publishOne(admin: Db, post: { id: string; owner_id: string; platform: string; generation_id: string | null; caption?: string | null; edit_project_id?: string | null; output_asset_id?: string | null; media_path?: string | null; title?: string | null; scheduled_for?: string | null }, opts: { handOff?: boolean } = {}): Promise<{ ok: boolean; error?: string; external_url?: string; skipped?: boolean }> {
   const ad = ADAPTERS[post.platform]
   if (!ad) return { ok: false, error: 'Unknown platform' }
   // ATOMIC CLAIM — flip scheduled → posting and only proceed if THIS call won the
@@ -569,6 +655,15 @@ async function publishOne(admin: Db, post: { id: string; owner_id: string; platf
   }
   const { data: conn } = await admin.from('platform_connections').select('*').eq('owner_id', post.owner_id).eq('platform', post.platform).maybeSingle()
   if (!conn?.access_token) return await failPost(`${ad.label} not connected`)
+  // ── A VIDEO SHE UPLOADED HERSELF (composer), not a Twin render. No approval
+  // gate applies (nothing was generated), and only the posting service can
+  // publish it.
+  if (post.media_path && !post.generation_id) {
+    if (conn.provider !== OUTSTAND_MARKER) return await failPost('Uploaded videos post through the posting service — reconnect this account')
+    const { data: s1 } = await admin.storage.from('post-media').createSignedUrl(post.media_path, signSeconds(post.scheduled_for))
+    if (!s1?.signedUrl) return await failPost('Could not read the uploaded video')
+    return await sendToOutstand(admin, post, conn, s1.signedUrl, null, opts.handOff === true, failPost)
+  }
   // PUBLISH-1 + APPROVAL-1. WHICH FILE GOES OUT, and whether it was cleared to.
   //
   // This signed `generations.edit_path` unconditionally. Every consequence
@@ -577,6 +672,7 @@ async function publishOne(admin: Db, post: { id: string; owner_id: string; platf
   // exists), and where a legacy path DID exist alongside a v2 render, the
   // legacy one was published — a different file from the one the creator
   // reviewed and a client approved.
+  if (!post.generation_id) return await failPost('No finished video to publish yet')
   const { data: gen } = await admin
     .from('generations')
     .select('edit_path, approved, approved_output_asset_id, brand_voice_id')
@@ -595,7 +691,7 @@ async function publishOne(admin: Db, post: { id: string; owner_id: string; platf
   // "there is no video" — those resolve now, exactly as they always did.
   const current = post.output_asset_id && post.edit_project_id
     ? { editProjectId: post.edit_project_id, outputAssetId: post.output_asset_id }
-    : await currentOutput(admin, post.generation_id)
+    : await currentOutput(admin, post.generation_id!)
 
   // THE APPROVAL GATE, and it fails CLOSED on an explicit requirement only.
   //
@@ -627,9 +723,9 @@ async function publishOne(admin: Db, post: { id: string; owner_id: string; platf
   }
 
   const signedUrl = current
-    ? await signOutput(admin, current.editProjectId)
+    ? await signOutput(admin, current.editProjectId, signSeconds(opts.handOff ? post.scheduled_for : null))
     : (gen.edit_path
-        ? (await admin.storage.from('edits').createSignedUrl(gen.edit_path, 3600)).data?.signedUrl ?? null
+        ? (await admin.storage.from('edits').createSignedUrl(gen.edit_path, signSeconds(opts.handOff ? post.scheduled_for : null))).data?.signedUrl ?? null
         : null)
   if (!current && !gen.edit_path) return await failPost('No finished video to publish yet')
   // A BOUND POST THAT CANNOT BE SIGNED FAILS. It does NOT fall back to the
@@ -643,23 +739,11 @@ async function publishOne(admin: Db, post: { id: string; owner_id: string; platf
       : 'Could not read the video file')
   }
   const signed = { signedUrl }
-  if (conn.scopes === OUTSTAND_MARKER) {
-    if (!OUTSTAND_KEY()) return await failPost('Posting service is not configured')
-    try {
-      const r = outstandPostResult(await outstand('/posts', {
-        method: 'POST', body: outstandPostBody(String(conn.external_account_id ?? ''), post.caption ?? '', signed.signedUrl),
-      }))
-      if (!r.id) return await failPost(r.error ?? 'The posting service did not accept the video')
-      await admin.from('posts').update({
-        status: 'posted', posted_at: new Date().toISOString(),
-        external_url: r.url, external_post_id: r.id,
-        edit_project_id: current?.editProjectId ?? null, output_asset_id: current?.outputAssetId ?? null,
-      }).eq('id', post.id)
-      return { ok: true, external_url: r.url ?? undefined }
-    } catch (e) {
-      return await failPost(e instanceof Error ? e.message : 'Publish failed')
-    }
+  if (conn.provider === OUTSTAND_MARKER) {
+    return await sendToOutstand(admin, post, conn, signed.signedUrl, current, opts.handOff === true, failPost)
   }
+  // A native connection cannot hold a post for later; only the posting service can.
+  if (opts.handOff) return { ok: false, skipped: true }
   try {
     // Refresh a short-lived (YouTube) token before publishing so a next-day post
     // doesn't 401. Best-effort: on refresh failure we keep the old token and let
@@ -748,7 +832,7 @@ async function currentOutput(
 
 /** A signed URL for a completed project's video, or null if it is not READY. */
 async function signOutput(
-  admin: ReturnType<typeof createClient>, editProjectId: string,
+  admin: ReturnType<typeof createClient>, editProjectId: string, seconds = 3600,
 ): Promise<string | null> {
   const { data: out } = await admin
     .from('edit_outputs')
@@ -758,7 +842,7 @@ async function signOutput(
   // bytes that may not exist to a platform, where it cannot be taken back.
   if (!out || out.state !== 'ready') return null
   const { data: signed } = await admin.storage
-    .from(out.storage_bucket).createSignedUrl(out.storage_path, 3600)
+    .from(out.storage_bucket).createSignedUrl(out.storage_path, seconds)
   return signed?.signedUrl ?? null
 }
 
@@ -781,7 +865,7 @@ Deno.serve(async (req: Request) => {
     if (!secret || cronHeader !== secret) return json({ error: 'Forbidden' }, 403)
     const { data: due } = await admin
       .from('posts')
-      .select('id, owner_id, platform, generation_id, caption, edit_project_id, output_asset_id')
+      .select('id, owner_id, platform, generation_id, caption, title, media_path, scheduled_for, edit_project_id, output_asset_id')
       .eq('status', 'scheduled')
       .lte('scheduled_for', new Date().toISOString())
       .limit(25)
@@ -793,7 +877,8 @@ Deno.serve(async (req: Request) => {
     // Same cron tick: read views back for recently published posts.
     const stats = await syncStats(admin).catch(() => ({ read: 0, skipped: 0 }))
     const questions = await syncQuestions(admin).catch(() => ({ posts: 0, questions: 0 }))
-    return json({ ok: true, published, failed, skipped, scanned: (due ?? []).length, stats, questions })
+    const queue = await syncOutstandQueue(admin).catch(() => ({ handed: 0, settled: 0 }))
+    return json({ ok: true, published, failed, skipped, scanned: (due ?? []).length, stats, questions, queue })
   }
 
   // ---- OAuth callback (browser redirect, no JWT) ----------------------------
@@ -824,7 +909,8 @@ Deno.serve(async (req: Request) => {
           external_account_id: acc.id,
           // No platform token is held by Twin on this path: Outstand holds it.
           access_token: OUTSTAND_MARKER, refresh_token: null, token_expires_at: null,
-          scopes: OUTSTAND_MARKER, status: 'connected', updated_at: new Date().toISOString(),
+          provider: OUTSTAND_MARKER, username: acc.username, avatar_url: acc.avatar,
+          status: 'connected', updated_at: new Date().toISOString(),
         }, { onConflict: 'owner_id,platform' })
         return back(`connected=${nonce.platform}`)
       }
@@ -917,11 +1003,37 @@ Deno.serve(async (req: Request) => {
     if (!postId) return json({ error: 'Missing post_id' }, 400)
     // Ownership: the post row must be the caller's (publishOne re-verifies the
     // generation belongs to post.owner_id before signing its render).
-    const { data: post } = await admin.from('posts').select('id, owner_id, platform, generation_id, caption, edit_project_id, output_asset_id').eq('id', postId).eq('owner_id', user.id).maybeSingle()
+    const { data: post } = await admin.from('posts').select('id, owner_id, platform, generation_id, caption, title, media_path, scheduled_for, edit_project_id, output_asset_id').eq('id', postId).eq('owner_id', user.id).maybeSingle()
     if (!post) return json({ error: 'Post not found' }, 404)
     const r = await publishOne(admin, post)
     if (!r.ok) return json({ error: r.error ?? 'Publish failed.' }, 502)
     return json({ ok: true, external_url: r.external_url })
+  }
+
+  // ---- INSIGHTS: one post's numbers and comments, shaped by what the network gives.
+  if (action === 'insights') {
+    const postId = body.post_id
+    if (!postId) return json({ error: 'Missing post_id' }, 400)
+    const { data: p } = await admin.from('posts').select('id, owner_id, platform, external_post_id, views, likes, comments')
+      .eq('id', postId).eq('owner_id', user.id).maybeSingle()
+    if (!p) return json({ error: 'Post not found' }, 404)
+    const style = insightStyle(p.platform as string)
+    const { data: history } = await admin.from('post_stat_snapshots')
+      .select('taken_at, views, likes, comments, shares, saves, impressions').eq('post_id', p.id).order('taken_at').limit(200)
+    let latest: OutstandMetricSet | null = null
+    let comments: unknown[] | null = null
+    const { data: conn } = await admin.from('platform_connections').select('provider').eq('owner_id', user.id).eq('platform', p.platform).maybeSingle()
+    if (conn?.provider === OUTSTAND_MARKER && p.external_post_id && OUTSTAND_KEY()) {
+      latest = outstandMetrics(await outstand(`/posts/${encodeURIComponent(String(p.external_post_id))}/analytics`).catch(() => null))
+      if (style.commentsReadable) {
+        comments = outstandComments(await outstand(`/posts/${encodeURIComponent(String(p.external_post_id))}/comments`).catch(() => null))
+      }
+    }
+    return json({
+      platform: p.platform, chart: style.chart, commentsReadable: style.commentsReadable,
+      latest: latest ?? { views: p.views, likes: p.likes, comments: p.comments, shares: null, saves: null, impressions: null },
+      history: history ?? [], comments,
+    })
   }
 
   return json({ error: 'Unknown action' }, 400)

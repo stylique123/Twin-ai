@@ -84,8 +84,8 @@ cd discovery && sudo bash deploy-vps.sh
 # (The Revideo renderer was removed with the old AI editor. One-time cleanup on
 #  an existing box: docker rm -f twinai-revideo && docker rmi twinai-revideo)
 
-# Publishing + analytics — self-hosted Postiz (docker-compose + Caddy)
-cd postiz && docker compose up -d
+# Publishing + analytics — Outstand (hosted). Set OUTSTAND_API_KEY in Supabase
+# secrets; the `social` edge function does the rest. (Postiz retired 2026-09-27.)
 ```
 
 > **Deployment path.** The VPS + Docker path above (`worker/deploy-vps.sh`,
