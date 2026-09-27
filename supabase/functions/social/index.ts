@@ -18,10 +18,14 @@
 //   YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET
 //   TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET
 //   META_APP_ID, META_APP_SECRET            (Instagram via the Graph API)
+//   OUTSTAND_API_KEY   — when set, YouTube / TikTok / Instagram / LinkedIn connect,
+//                        publish and report views through Outstand's managed apps
+//                        (no developer app per platform). Native rows keep working.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { encryptToken, decryptToken } from './tokenCrypto.ts'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
+import { OUTSTAND_API, OUTSTAND_NETWORKS, OUTSTAND_MARKER, outstandAuthUrl, outstandAccounts, pickAccounts, outstandPostBody, outstandPostResult, outstandMetrics } from '../_shared/outstand.ts'
 import { herAnswers, unansweredQuestions, type PlatformComment, type PostQuestion } from '../_shared/postQuestions.ts'
 import { youtubeId, samePermalink, matchTikTokByTime, outcomeWindow, statsFrom, type PostStats } from '../_shared/socialStats.ts'
 
@@ -380,6 +384,22 @@ ADAPTERS.youtube.stats = async ({ accessToken, externalUrl }) => {
   return statsFrom(r?.items?.[0]?.statistics ?? null, { views: 'viewCount', likes: 'likeCount', comments: 'commentCount' })
 }
 
+// ---- OUTSTAND (one API, managed platform apps) ------------------------------
+const OUTSTAND_KEY = () => env('OUTSTAND_API_KEY') ?? ''
+const viaOutstand = (platform: string) => !!OUTSTAND_KEY() && !!OUTSTAND_NETWORKS[platform]
+async function outstand(path: string, init: { method?: string; body?: unknown } = {}): Promise<unknown> {
+  const r = await fetch(`${OUTSTAND_API}${path}`, {
+    method: init.method ?? 'GET',
+    headers: { Authorization: `Bearer ${OUTSTAND_KEY()}`, 'Content-Type': 'application/json' },
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+  })
+  const text = await r.text()
+  let j: unknown = null
+  try { j = text ? JSON.parse(text) : null } catch { j = { raw: text.slice(0, 300) } }
+  if (!r.ok) throw new Error(`outstand ${r.status}: ${text.slice(0, 200)}`)
+  return j
+}
+
 // YouTube: comment threads on the video; she replied when a reply's author
 // channel is hers (accountId is her channel id).
 ADAPTERS.youtube.comments = async ({ accessToken, accountId, externalUrl }) => {
@@ -470,11 +490,27 @@ async function syncQuestions(admin: Db): Promise<{ posts: number; questions: num
 // Writes the numbers onto the post AND into `generation_outcomes` (24h / 7d
 // windows) — the table the niche brain's learner already reads. A token that
 // cannot be decrypted or a post that cannot be matched is skipped, never guessed.
+/** Writes one reading onto the post and into generation_outcomes (24h / 7d). */
+async function recordStats(admin: Db, p: { id: string; generation_id?: string | null; posted_at: string }, st: PostStats): Promise<void> {
+  await admin.from('posts').update({
+    views: st.views, likes: st.likes, comments: st.comments, stats_synced_at: new Date().toISOString(),
+  }).eq('id', p.id)
+  if (p.generation_id && st.views !== null) {
+    const w = outcomeWindow(p.posted_at)
+    const { data: existing } = await admin.from('generation_outcomes').select('id, views_24h, views_7d').eq('generation_id', p.generation_id).maybeSingle()
+    const patch: Record<string, unknown> = { was_published: true }
+    if (w.views_24h && existing?.views_24h == null) patch.views_24h = st.views
+    if (w.views_7d && existing?.views_7d == null) patch.views_7d = st.views
+    if (existing) await admin.from('generation_outcomes').update(patch).eq('id', existing.id)
+    // Every generation already has an outcome row (0191); none means it is not ours to invent.
+  }
+}
+
 async function syncStats(admin: Db): Promise<{ read: number; skipped: number }> {
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString()
   const stale = new Date(Date.now() - 6 * 3_600_000).toISOString()
   const { data: rows } = await admin.from('posts')
-    .select('id, owner_id, platform, generation_id, external_url, posted_at, stats_synced_at')
+    .select('id, owner_id, platform, generation_id, external_url, external_post_id, posted_at, stats_synced_at')
     .eq('status', 'posted').gte('posted_at', since)
     .or(`stats_synced_at.is.null,stats_synced_at.lt.${stale}`)
     .limit(25)
@@ -482,25 +518,27 @@ async function syncStats(admin: Db): Promise<{ read: number; skipped: number }> 
   for (const p of rows ?? []) {
     const ad = ADAPTERS[p.platform as string]
     const stamp = () => admin.from('posts').update({ stats_synced_at: new Date().toISOString() }).eq('id', p.id)
-    if (!ad?.stats || !TOKEN_KEY()) { skipped++; await stamp(); continue }
     try {
       const { data: conn } = await admin.from('platform_connections').select('*').eq('owner_id', p.owner_id).eq('platform', p.platform).maybeSingle()
       if (!conn?.access_token) { skipped++; await stamp(); continue }
+      if (conn.scopes === OUTSTAND_MARKER) {
+        const pid = (p as { external_post_id?: string | null }).external_post_id
+        if (!pid || !OUTSTAND_KEY()) { skipped++; await stamp(); continue }
+        const m = outstandMetrics(await outstand(`/posts/${encodeURIComponent(pid)}/analytics`))
+        if (!p.external_url) {
+          const u = outstandPostResult(await outstand(`/posts/${encodeURIComponent(pid)}`).catch(() => null)).url
+          if (u) await admin.from('posts').update({ external_url: u }).eq('id', p.id)
+        }
+        if (!m) { skipped++; await stamp(); continue }
+        await recordStats(admin, p, m)
+        read++
+        continue
+      }
+      if (!ad?.stats || !TOKEN_KEY()) { skipped++; await stamp(); continue }
       const accessToken = await decryptToken(conn.access_token as string, TOKEN_KEY(), p.owner_id as string, p.platform as string)
       const st = await ad.stats({ accessToken, accountId: conn.external_account_id ?? '', externalUrl: p.external_url as string | null, postedAt: p.posted_at as string })
       if (!st) { skipped++; await stamp(); continue }
-      await admin.from('posts').update({
-        views: st.views, likes: st.likes, comments: st.comments, stats_synced_at: new Date().toISOString(),
-      }).eq('id', p.id)
-      if (p.generation_id && st.views !== null) {
-        const w = outcomeWindow(p.posted_at as string)
-        const { data: existing } = await admin.from('generation_outcomes').select('id, views_24h, views_7d').eq('generation_id', p.generation_id).maybeSingle()
-        const patch: Record<string, unknown> = { was_published: true }
-        if (w.views_24h && existing?.views_24h == null) patch.views_24h = st.views
-        if (w.views_7d && existing?.views_7d == null) patch.views_7d = st.views
-        if (existing) await admin.from('generation_outcomes').update(patch).eq('id', existing.id)
-        // Every generation already has an outcome row (0191); none means it is not ours to invent.
-      }
+      await recordStats(admin, p, st)
       read++
     } catch {
       skipped++; await stamp()
@@ -605,6 +643,23 @@ async function publishOne(admin: Db, post: { id: string; owner_id: string; platf
       : 'Could not read the video file')
   }
   const signed = { signedUrl }
+  if (conn.scopes === OUTSTAND_MARKER) {
+    if (!OUTSTAND_KEY()) return await failPost('Posting service is not configured')
+    try {
+      const r = outstandPostResult(await outstand('/posts', {
+        method: 'POST', body: outstandPostBody(String(conn.external_account_id ?? ''), post.caption ?? '', signed.signedUrl),
+      }))
+      if (!r.id) return await failPost(r.error ?? 'The posting service did not accept the video')
+      await admin.from('posts').update({
+        status: 'posted', posted_at: new Date().toISOString(),
+        external_url: r.url, external_post_id: r.id,
+        edit_project_id: current?.editProjectId ?? null, output_asset_id: current?.outputAssetId ?? null,
+      }).eq('id', post.id)
+      return { ok: true, external_url: r.url ?? undefined }
+    } catch (e) {
+      return await failPost(e instanceof Error ? e.message : 'Publish failed')
+    }
+  }
   try {
     // Refresh a short-lived (YouTube) token before publishing so a next-day post
     // doesn't 401. Best-effort: on refresh failure we keep the old token and let
@@ -747,6 +802,32 @@ Deno.serve(async (req: Request) => {
     try {
       const code = url.searchParams.get('code')
       const st = url.searchParams.get('state')
+      const session = url.searchParams.get('session') ?? url.searchParams.get('sessionToken') ?? url.searchParams.get('session_token')
+      if (session && st && OUTSTAND_KEY()) {
+        const { data: nonce } = await admin.from('oauth_nonce').delete().eq('nonce', st)
+          .select('owner_id, platform, created_at').maybeSingle()
+        if (!nonce) return back('connect_error=state')
+        if (Date.now() - new Date(nonce.created_at).getTime() > NONCE_TTL_MS) return back('connect_error=expired')
+        const network = OUTSTAND_NETWORKS[nonce.platform]
+        if (!network) return back('connect_error=unconfigured')
+        const offered = outstandAccounts(await outstand(`/social-accounts/pending/${encodeURIComponent(session)}`))
+        const chosen = pickAccounts(offered, network)
+        if (!chosen.length) return back('connect_error=no_account')
+        // The live API takes `accounts` (the docs' `socialAccountIds` is rejected).
+        const done = outstandAccounts(await outstand(`/social-accounts/pending/${encodeURIComponent(session)}/finalize`, {
+          method: 'POST', body: { accounts: chosen.map((a) => a.id) },
+        }))
+        const acc = pickAccounts(done.length ? done : chosen, network)[0]
+        await admin.from('platform_connections').upsert({
+          owner_id: nonce.owner_id, platform: nonce.platform,
+          account_label: `${ADAPTERS[nonce.platform]?.label ?? nonce.platform}${acc.username ? ` · ${acc.username}` : ''}`,
+          external_account_id: acc.id,
+          // No platform token is held by Twin on this path: Outstand holds it.
+          access_token: OUTSTAND_MARKER, refresh_token: null, token_expires_at: null,
+          scopes: OUTSTAND_MARKER, status: 'connected', updated_at: new Date().toISOString(),
+        }, { onConflict: 'owner_id,platform' })
+        return back(`connected=${nonce.platform}`)
+      }
       if (!code || !st) return back('connect_error=missing')
       // Atomically CONSUME the nonce (delete-returning): a replay finds no row, and
       // owner_id/platform come from the stored row, never from the redirect.
@@ -801,6 +882,21 @@ Deno.serve(async (req: Request) => {
   if (action === 'start') {
     const ad = ADAPTERS[platform]
     if (!ad) return json({ error: 'Unknown platform' }, 400)
+    if (viaOutstand(platform)) {
+      const state = newNonce()
+      await admin.from('oauth_nonce').insert({ nonce: state, owner_id: user.id, platform })
+      try {
+        const res = await outstand(`/social-networks/${OUTSTAND_NETWORKS[platform]}/auth-url`, {
+          method: 'POST', body: { redirect_uri: `${REDIRECT()}&state=${state}` },
+        })
+        const link = outstandAuthUrl(res)
+        if (!link) { console.error('social: outstand auth-url had no url', JSON.stringify(res).slice(0, 300)); return json({ error: 'Could not start the connection' }, 502) }
+        return json({ url: link })
+      } catch (e) {
+        console.error('social: outstand auth-url failed', e instanceof Error ? e.message : e)
+        return json({ error: 'Could not start the connection' }, 502)
+      }
+    }
     if (!ad.configured()) return json({ unconfigured: true, platform, needs: ad.needs })
     // Mint a single-use nonce bound to THIS authenticated user; the callback consumes
     // it and trusts the stored owner_id, never the redirect. Best-effort GC of old
