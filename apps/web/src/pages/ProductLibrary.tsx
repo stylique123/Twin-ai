@@ -230,13 +230,19 @@ export function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
   // `claim()` (photos, stories, extraction). Every attestation question is still
   // asked and still required — there is still no one-tap claim.
   //
-  // ⚖️ NOT PREFILLED FROM THE SUGGESTION TEXT. A suggestion is a CLAIM — "Early
-  // is an iOS alarm app that requires push-ups" — not a name.
+  // ⚖️ THE SUGGESTION TEXT IS A CLAIM, NOT A NAME — "Early is an iOS alarm app
+  // that requires push-ups" — so it prefills the description, and the name only
+  // when it is short and reads as one (`nameFromMention`).
   return (
     <StartFromLink
       // Keyed per suggestion, so opening another suggestion starts a clean form
       // rather than carrying the previous one's answers across.
       key={suggestion?.id ?? 'new'}
+      // ⚠️ REPORTED: "this is mine" opened a blank form, discarding what Twin
+      // had just shown her. What it found is carried in, editable: her own
+      // sentence as the description, and as the name only when it reads as one.
+      initialSummary={suggestion?.text ?? undefined}
+      initialName={suggestion ? nameFromMention(suggestion.text) ?? undefined : undefined}
       kind="any"
       busy={busy}
       onCancel={onCancel}
@@ -244,6 +250,14 @@ export function ClaimForm({ suggestion, onCancel, onClaim, busy }: {
       submitLabel="Add to my products"
     />
   )
+}
+
+/** A mention short enough to be a product's name, or null (a sentence is not a name). */
+export function nameFromMention(text: string | null | undefined): string | null {
+  const t = String(text ?? '').replace(/\s+/g, ' ').trim().replace(/[.!?]+$/, '')
+  if (!t || t.split(' ').length > 6) return null
+  if (/\b(?:i|my|we|our|you|your|is|are|link|bio|off|code|use|get|buy|shop)\b/i.test(t)) return null
+  return t
 }
 
 /** ⚖️ FOUR, MATCHING THE ADD FORM. One number, so "you can add four" and "you
@@ -2862,7 +2876,10 @@ function CommunityQuestions({ value, onChange }: {
   )
 }
 
-function StartFromLink({ onCancel, onClaim, busy, initialUrl, kind = 'any', submitLabel }: {
+function StartFromLink({ onCancel, onClaim, busy, initialUrl, initialName, initialSummary, kind = 'any', submitLabel }: {
+  /** What Twin already found about it (a claimed suggestion), pre-filled and editable. */
+  initialName?: string
+  initialSummary?: string
   /** The claim-from-suggestion door names its button differently; nothing else differs. */
   submitLabel?: string
   /** ⚖️ WHICH DOOR SHE CAME IN BY. "+ Something you promote" only offers the
@@ -2887,12 +2904,12 @@ function StartFromLink({ onCancel, onClaim, busy, initialUrl, kind = 'any', subm
   const [imagePaths, setImagePaths] = useState<string[]>([])
   const [uploading, setUploading] = useState(false)
   const [imgErr, setImgErr] = useState<string | null>(null)
-  const [name, setName] = useState('')
+  const [name, setName] = useState(initialName ?? '')
   // ⚠️ THE FALLBACK, IN THE CREATOR'S OWN WORDS. Not the summary Twin might read
   // off a page -- the one thing that survives a page that cannot be read at all,
   // because the worker turns this into a `user_confirmed` fact exactly where
   // extraction itself produced nothing. See `worker/src/jobs/extractProduct.ts`.
-  const [summary, setSummary] = useState('')
+  const [summary, setSummary] = useState(initialSummary ?? '')
   // ⚠️⚠️ ASKED AT ADD TIME, WHICH IT NEVER WAS. The field existed on the OPENED
   // product ("What does it cost, and what do they get?") and not on this form,
   // so the price had to be discovered by opening a product you had just made.

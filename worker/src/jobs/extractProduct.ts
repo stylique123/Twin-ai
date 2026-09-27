@@ -12,6 +12,7 @@
 // has just read persuasive copy is the worst available judge of whether that
 // copy is persuasive, and asking it to self-assess would make the whole split
 // decorative.
+import { brandIsHers, IDENTITY_FIELDS } from './imageBrandCheck.js'
 import { subpageLinks, wantsSubpages } from '../productSubpages.js'
 import { db, type Job } from '../db.js'
 import { harvestSections } from '../pageSections.js'
@@ -243,6 +244,8 @@ const SCHEMA = {
         required: ['field', 'value'],
       },
     },
+    // The brand printed ON the product in a photograph, if any (imageBrandCheck.ts).
+    visible_brand: { type: 'string' },
   },
   required: ['facts'],
 }
@@ -524,13 +527,13 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   // carry the PAGE's provenance, which is the exact laundering this split exists
   // to prevent.
   const imageRule = images.length > 0
-    ? `\n\nThe creator also supplied ${images.length} PHOTOGRAPH(S) of the product. From the images you may report ONLY: name, category, description, object_shape - what the thing IS and what it LOOKS LIKE. You must NOT report a price, plan, guarantee, benefit, claim or call to action from an image, even if you can read one in the picture. A number visible in a photograph is not a stated price.`
+    ? `\n\nThe creator also supplied ${images.length} PHOTOGRAPH(S) of the product. From the images you may report ONLY: name, category, description, object_shape - what the thing IS and what it LOOKS LIKE. You must NOT report a price, plan, guarantee, benefit, claim or call to action from an image, even if you can read one in the picture. A number visible in a photograph is not a stated price. If a brand name is printed on the product in a photograph, report it exactly as visible_brand.`
     : ''
   const out = await geminiJson(
     SYSTEM,
     `${url ? `PAGE (${url}):\n${text}` : 'No page was supplied; work from the photographs alone.'}${imageRule}`,
     SCHEMA, 60_000, undefined, modelForTask('extract'), images,
-  ) as { facts?: Array<{ field?: string; value?: string }> }
+  ) as { facts?: Array<{ field?: string; value?: string }>; visible_brand?: string }
 
   const now = new Date().toISOString()
   const facts: ExtractedFact[] = []
@@ -542,7 +545,22 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   // ⚠️ SITE BUTTONS ARE NOT SPOKEN CTAs, AND BARE MULTIPLE PRICES ARE NOT "THE"
   // PRICE. See pageFactHygiene.ts. A page whose only CTAs were cart buttons
   // stores no cta at all, which is the truth: it has no spoken one.
-  const modelFacts = labelUnlabeledPrices(withoutSiteButtons(out?.facts ?? []).kept)
+  let modelFacts = labelUnlabeledPrices(withoutSiteButtons(out?.facts ?? []).kept)
+  // ⚠️ SOMEONE ELSE'S PRODUCT IN THE PHOTO. See imageBrandCheck.ts.
+  if (factSource === 'creator_image' && out?.visible_brand) {
+    const { data: bs } = await db.from('brands').select('name').eq('owner_id', ownerId)
+    const { data: ps } = await db.from('product_entities').select('name').eq('owner_id', ownerId)
+    const { data: vs } = await db.from('brand_voices').select('handle, label').eq('owner_id', ownerId)
+    const hers = [existingName, creatorSummary,
+      ...(bs ?? []).map((r) => (r as { name?: string }).name),
+      ...(ps ?? []).map((r) => (r as { name?: string }).name),
+      ...(vs ?? []).flatMap((r) => [(r as { handle?: string }).handle, (r as { label?: string }).label])]
+    if (!brandIsHers(out.visible_brand, hers)) {
+      modelFacts = modelFacts.filter((f) => !IDENTITY_FIELDS.has(String(f?.field ?? '')))
+      lookup.image_brand_mismatch = String(out.visible_brand).slice(0, 80)
+      console.log(JSON.stringify({ event: 'image_brand_mismatch', entity_id: entityId, visible_brand: String(out.visible_brand).slice(0, 80) }))
+    }
+  }
   for (const raw of modelFacts) {
     const field = String(raw?.field ?? '')
     // ⚠️ THE PROMPT ASKS AND THIS ENFORCES, AND THE DIFFERENCE IS THE WHOLE
