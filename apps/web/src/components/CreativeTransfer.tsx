@@ -71,10 +71,23 @@ export function CreativeTransfer({ generationId, blueprint, referenceAnalysis }:
   // WAS WRITING 940 PROFILES. Fetched once per generation, never blocking: until
   // it lands, or when there is none, every row keeps the honest "not observed".
   const [visualProfile, setVisualProfile] = useState<unknown>(null)
+  const [looking, setLooking] = useState(true)
   useEffect(() => {
     let live = true
-    void loadReferenceVisualProfile(generationId).then((vp) => { if (live) setVisualProfile(vp) })
-    return () => { live = false }
+    // ⚠️ SUNFLOWER #27: the shot analysis can land a minute or two after the
+    // script. Keep looking for a few minutes rather than saying "not analysed".
+    let tries = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const look = () => {
+      void loadReferenceVisualProfile(generationId).then((vp) => {
+        if (!live) return
+        if (vp) { setVisualProfile(vp); setLooking(false); return }
+        if (++tries >= 12) { setLooking(false); return }
+        timer = setTimeout(look, 15_000)
+      })
+    }
+    look()
+    return () => { live = false; if (timer) clearTimeout(timer) }
   }, [generationId])
 
   const analysis = readReferenceAnalysis(referenceAnalysis)
@@ -117,6 +130,9 @@ export function CreativeTransfer({ generationId, blueprint, referenceAnalysis }:
         </p>
       )}
       <p className="mt-2 text-xs leading-relaxed text-stone">{transferSummary(rows)}</p>
+      {looking && !visualProfile && (
+        <p className="mt-1 text-[11px] text-sand/80" data-testid="visual-pending">Still analysing the video's shots, camera work and framing — this fills in within a minute or two.</p>
+      )}
       <ul className="mt-4 space-y-3">
         {rows.map((r) => <Row key={r.type} row={r} />)}
       </ul>
