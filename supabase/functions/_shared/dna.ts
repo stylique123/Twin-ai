@@ -522,6 +522,10 @@ export const voiceProfileSchema = obj(
     audience_pain: str, // the core problem that audience feels
     dream_outcome: str, // what that audience actually wants
     offer: str, // what the creator sells or the action they push
+    // ⚠️ THE OFFER, ONE THING PER ENTRY. "Fresh roasted beans and mentorship for
+    // building a coffee cart" is a product AND advice — two business models in
+    // one sentence, which the product screens then treated as one physical item.
+    offer_items: arr(obj({ name: str, kind: { type: 'STRING', enum: ['product', 'service', 'content'] } }, ['name', 'kind'])),
     tone: str,
     pacing: str,
     hook_style: str,
@@ -553,6 +557,7 @@ Hard rules:
 - hook_style must be their repeatable HOOK FORMULA written as a reusable fill-in template derived from their best openers, e.g. "[surprising number] + [who it is for] + comment [KEYWORD]" or "I did [X] so you do not have to. Here is what happened." Not adjectives, an actual template someone could fill in.
 - hook_patterns = the 2-3 DISTINCT opener MOVES this creator actually uses (a real creator has several, not one). Name each move and include a real example lifted from their captions, e.g. "Contrarian claim — 'Everyone is wrong about protein timing'", "Number drop — '3 lifts that fixed my back'", "Confession — 'I wasted 2 years doing this'", "Direct callout — 'If you train fasted, stop'". These let us write 5 hooks that feel different instead of one template five times.
 - POV = the 2-3 recurring BELIEFS or contrarian takes they repeat (the "thing they always say"), and enemy = the conventional wisdom, bad advice, or villain they push against. This is what makes their content unmistakably THEIRS: two creators with identical tone differ by what they believe and what they attack. Extract both from the posts, never invent a stance the captions do not support.
+- offer_items = the offer split into SEPARATE things, one entry each, with a short name (2-6 words) and a kind: "product" = a thing you can buy (beans, a mug, an app); "service" = paid help or advice (coaching, mentorship, consulting, a course); "content" = free advice/tips she posts, not sold. Never merge two things into one entry. One entry when there is one thing.
 - Also infer their AUDIENCE (who they make content for), that audience's core PAIN (the problem they feel), their DREAM OUTCOME (what they actually want), and the creator's OFFER (what they sell or the action they push). Infer these from the posts, bio, hashtags and niche even when not stated outright. Be specific, not generic.
 - Be concrete and specific to this creator — no generic "be authentic" filler. Every field should be unmistakably about THIS creator and useless for anyone else.
 - vocabulary = 4-8 actual words/phrases they lean on, lifted from their real captions. sample_hooks = 3 fresh hooks written the way THEY would write one, each drawing on a DIFFERENT hook_pattern and using their vocabulary.
@@ -606,6 +611,12 @@ export function enrichVoiceProfile(raw: unknown, handle: string, platform: Platf
     donts: asArr(p.donts),
     sample_hooks: sampleHooks,
     formats: asArr(p.formats),
+    offer_items: Array.isArray(p.offer_items)
+      ? (p.offer_items as Array<{ name?: unknown; kind?: unknown }>)
+        .filter((o) => o && typeof o.name === 'string' && o.name.trim() && ['product', 'service', 'content'].includes(String(o.kind)))
+        .map((o) => ({ name: String(o.name).trim().slice(0, 80), kind: String(o.kind) }))
+        .slice(0, 6)
+      : [],
   }
 }
 

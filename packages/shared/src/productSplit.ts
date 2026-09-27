@@ -28,3 +28,37 @@ export function splitProductList(text: string | null | undefined): string[] {
   }
   return out.length >= 2 ? out : []
 }
+
+export type OfferKind = 'product' | 'service' | 'content'
+export interface OfferPiece { name: string; kind: OfferKind }
+
+/** ⚠️ A BUNDLED OFFER IS SEVERAL THINGS OF DIFFERENT KINDS. "Fresh roasted beans
+ *  and mentorship for building a coffee cart" is a product and paid advice; the
+ *  name splitter above refuses it (it reads as a clause), so the scan's own
+ *  `offer_items` are used while the text is still the scan's. Once she edits
+ *  the offer, her words win and the plain splitter answers (as products). */
+export function offerPieces(
+  offerText: string | null | undefined,
+  scanOffer: string | null | undefined,
+  scanItems: ReadonlyArray<{ name?: unknown; kind?: unknown }> | null | undefined,
+): OfferPiece[] {
+  const text = String(offerText ?? '').trim()
+  const untouched = text !== '' && text === String(scanOffer ?? '').trim()
+  if (untouched && Array.isArray(scanItems)) {
+    const seen = new Set<string>()
+    const out: OfferPiece[] = []
+    for (const o of scanItems) {
+      const name = typeof o?.name === 'string' ? o.name.trim() : ''
+      const kind = o?.kind === 'product' || o?.kind === 'service' || o?.kind === 'content' ? o.kind : null
+      if (!name || !kind || seen.has(name.toLowerCase())) continue
+      seen.add(name.toLowerCase())
+      out.push({ name, kind })
+    }
+    if (out.length >= 2) return out
+  }
+  return splitProductList(text).map((name) => ({ name, kind: 'product' as const }))
+}
+
+export const OFFER_KIND_LABEL: Record<OfferKind, string> = {
+  product: 'product', service: 'service / advice', content: 'free content',
+}

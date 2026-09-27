@@ -135,6 +135,9 @@ interface BuildState {
   /** A product the idea ties in NATURALLY — a mention, never the subject, so
    *  it travels as `mentioned_product_id` and cannot unlock a pitch. */
   idea_product_id?: string
+  /** A ready-draft idea: built only from her confirmed record, so the Idea
+   *  follow-up questions are skipped. Other required questions still ask. */
+  idea_ready?: boolean
 }
 
 // ONE CLICK-INTENT, ONE REMIX.
@@ -1251,7 +1254,7 @@ export default function V2Building() {
                 } as AskItem]
               : []
             // Idea mode (no reference, not a product): ask about the content.
-            const ideaQuestions: AskItem[] = !(state.reference_url || '').trim() && !isProductSubject
+            const ideaQuestions: AskItem[] = !(state.reference_url || '').trim() && !isProductSubject && !state.idea_ready
               ? IDEA_QUESTIONS
                 .filter((q) => !(answersRef.current[FOLLOWUP_PREFIX + q.field] ?? '').trim())
                 .map((q) => ({ field: FOLLOWUP_PREFIX + q.field, question: q.question, idea: true } as AskItem))

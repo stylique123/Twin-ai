@@ -17,6 +17,9 @@ export interface IdeaRow {
   why: string | null
   product_id: string | null
   hook: string | null
+  /** Built only from her own confirmed record — no follow-up questions. */
+  ready: boolean
+  event_day: string | null
 }
 
 
@@ -28,12 +31,16 @@ export function IdeasForYou({ onPick }: { onPick: (idea: IdeaRow) => void }) {
       try {
         const { data } = await supabase
           .from('creator_ideas')
-          .select('id, title, premise, mode, goal, why, hook, product_id, batch_day')
+          .select('id, title, premise, mode, goal, why, hook, product_id, ready, event_day, batch_day')
           .is('used_at', null)
           .is('dismissed_at', null)
+          // ⚖️ CARRIED FORWARD: an unpicked idea stays until she uses or hides
+          // it. A dated one leaves on its day and is folded into seasonal
+          // knowledge by the idea writer rather than lost.
+          .or(`event_day.is.null,event_day.gte.${new Date().toISOString().slice(0, 10)}`)
           .order('batch_day', { ascending: false })
           .order('created_at', { ascending: true })
-          .limit(6)
+          .limit(4)
         if (alive && Array.isArray(data)) setIdeas(data as IdeaRow[])
       } catch { /* no ideas is a normal state */ }
     })()
@@ -48,8 +55,10 @@ export function IdeasForYou({ onPick }: { onPick: (idea: IdeaRow) => void }) {
   }
 
   return (
-    <section aria-label="Ideas for you" className="mb-6">
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-stone">Ideas for you</h2>
+    <section aria-label="Ideas for you" data-testid="ideas-for-you">
+      <p className="mb-2 text-sm text-sand">
+        Here {ideas.length === 1 ? 'is 1 idea' : `are ${ideas.length} ideas`} based on your account:
+      </p>
       <ul className="grid gap-2 sm:grid-cols-2">
         {ideas.map((i) => (
           <li key={i.id} className="glass rounded-xl p-3">
@@ -74,9 +83,14 @@ export function IdeasForYou({ onPick }: { onPick: (idea: IdeaRow) => void }) {
                 onClick={() => { mark(i.id, 'used_at'); onPick(i) }}
                 className="text-sm underline underline-offset-2 hover:text-cream"
               >
-                Use this idea
+                {i.ready ? 'Build the draft' : 'Use this idea'}
               </button>
             </div>
+            {/* ⚖️ SAID, NOT HIDDEN: a ready draft skips the follow-up questions
+                because it only recombines what she already confirmed. */}
+            {i.ready && (
+              <p className="mt-1.5 text-[11px] text-sand/70">Ready draft — built from what's worked for you before. Review and tweak.</p>
+            )}
           </li>
         ))}
       </ul>

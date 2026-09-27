@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0247_ideas_in_idea_mode':
+    'Idea basis/ready/event_day columns, creator_seasonal_ideas and the fold/ideas_due functions for the '
+    + 'Ideas-for-you redesign; read by the worker idea writer and the studio only. The editor never reads it.',
   '0246_outstand_publishing':
     'Adds publishing columns (provider, title, media_path, external_post_id), post_stat_snapshots and the '
     + 'post-media bucket for the Outstand path; production-only (needs OUTSTAND_API_KEY). The editor never reads it.',
