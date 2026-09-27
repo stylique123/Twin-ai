@@ -22,7 +22,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { encryptToken, decryptToken } from './tokenCrypto.ts'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
-import { unansweredQuestions, type PlatformComment, type PostQuestion } from '../_shared/postQuestions.ts'
+import { herAnswers, unansweredQuestions, type PlatformComment, type PostQuestion } from '../_shared/postQuestions.ts'
 import { youtubeId, samePermalink, matchTikTokByTime, outcomeWindow, statsFrom, type PostStats } from '../_shared/socialStats.ts'
 
 const cors = {
@@ -396,7 +396,7 @@ ADAPTERS.youtube.comments = async ({ accessToken, accountId, externalUrl }) => {
       id: String(top?.id ?? t?.id ?? ''), text: String(top?.snippet?.textOriginal ?? ''), at: top?.snippet?.publishedAt ?? null,
       byOwner: mine(top?.snippet),
       // deno-lint-ignore no-explicit-any
-      replies: (t?.replies?.comments ?? []).map((c: any) => ({ byOwner: mine(c?.snippet) })),
+      replies: (t?.replies?.comments ?? []).map((c: any) => ({ byOwner: mine(c?.snippet), text: c?.snippet?.textOriginal ?? null })),
     }
   }).filter((c: PlatformComment) => c.id)
 }
@@ -410,7 +410,7 @@ ADAPTERS.instagram.comments = async ({ accessToken, accountId, externalUrl }) =>
   ])
   const m = ((list?.data ?? []) as Array<Record<string, unknown>>).find((x) => samePermalink(String(x.permalink ?? ''), externalUrl))
   if (!m?.id || !me?.username) return null
-  const c = await fetch(`https://graph.facebook.com/v21.0/${m.id}/comments?fields=id,text,username,timestamp,replies{username}&limit=100&access_token=${accessToken}`)
+  const c = await fetch(`https://graph.facebook.com/v21.0/${m.id}/comments?fields=id,text,username,timestamp,replies{username,text}&limit=100&access_token=${accessToken}`)
     .then((x) => x.json()).catch(() => null)
   if (!Array.isArray(c?.data)) return null
   // deno-lint-ignore no-explicit-any
@@ -418,7 +418,7 @@ ADAPTERS.instagram.comments = async ({ accessToken, accountId, externalUrl }) =>
     id: String(x?.id ?? ''), text: String(x?.text ?? ''), at: x?.timestamp ?? null,
     byOwner: x?.username === me.username,
     // deno-lint-ignore no-explicit-any
-    replies: (x?.replies?.data ?? []).map((r: any) => ({ byOwner: r?.username === me.username })),
+    replies: (x?.replies?.data ?? []).map((r: any) => ({ byOwner: r?.username === me.username, text: r?.text ?? null })),
   })).filter((x: PlatformComment) => x.id)
 }
 
@@ -446,7 +446,14 @@ async function syncQuestions(admin: Db): Promise<{ posts: number; questions: num
       const list = await ad.comments({ accessToken, accountId: conn.external_account_id ?? '', externalUrl: p.external_url as string | null })
       if (!list) continue
       const qs: PostQuestion[] = unansweredQuestions(list)
+      const answered = herAnswers(list)
       posts++
+      if (answered.length) {
+        await admin.from('post_questions').upsert(answered.map((a) => ({
+          owner_id: p.owner_id, post_id: p.id, platform: p.platform, external_comment_id: a.id,
+          question: a.question.slice(0, 240), her_reply: a.reply, asked_at: a.at,
+        })), { onConflict: 'platform,external_comment_id' }) // she may have answered since: overwrite
+      }
       if (!qs.length) continue
       await admin.from('post_questions').upsert(qs.map((q) => ({
         owner_id: p.owner_id, post_id: p.id, platform: p.platform, external_comment_id: q.id, question: q.question.slice(0, 240), asked_at: q.at,

@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0241_her_replies':
+    'Adds `her_reply`/`reply_filed_at` to `post_questions` and allows source \'reply\' on '
+    + '`creator_knowledge`; filled only by the production social cron. The editor never reads it.',
   '0240_post_questions':
     'Adds `post_questions` and `posts.questions_synced_at`; filled by the production-only social '
     + 'cron (no platform keys on staging). The editor never reads it.',

@@ -23,7 +23,7 @@ import { claimStrength } from './claimStrength.ts'
 import type { ContainerTemplate, TemplateBeat } from './containerTemplates.ts'
 
 // ── INLINED TYPES (the allowed difference) ────────────────────────────────
-type KnowledgeSource = 'caption' | 'transcript' | 'user' | 'previous_video'
+type KnowledgeSource = 'caption' | 'transcript' | 'user' | 'previous_video' | 'asked' | 'reply'
 type KnowledgeBasis = 'stated' | 'demonstrated' | 'inferred'
 type KnowledgeKind =
   | 'fact' | 'opinion' | 'topic' | 'example' | 'experience' | 'framework'

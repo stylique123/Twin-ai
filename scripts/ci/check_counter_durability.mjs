@@ -180,6 +180,14 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Per worker tick: audience questions filed into her brain. Durable as `post_questions.filed_at` and the `brain_notes` rows themselves.',
   },
+  her_replies_filed: {
+    kind: 'counter_ephemeral',
+    why: 'Per worker tick: her replies filed as knowledge. Durable as `post_questions.reply_filed_at` and `creator_knowledge` rows with source \'reply\'.',
+  },
+  her_reply_file_failed: {
+    kind: 'counter_ephemeral',
+    why: 'Per failed insert of her reply. The row is still stamped `reply_filed_at`, so the failure is visible as a stamped question with no matching knowledge row.',
+  },
   social_stats_sync: {
     kind: 'counter_ephemeral',
     why: 'Per cron tick: posts whose views were read back. Durable on `posts` (views, likes, comments, stats_synced_at) and `generation_outcomes` (views_24h, views_7d).',
