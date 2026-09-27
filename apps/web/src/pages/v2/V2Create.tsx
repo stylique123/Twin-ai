@@ -27,7 +27,7 @@
 // packages/shared/src/entryDoor.ts.
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { IdeasForYou } from '../../components/IdeasForYou'
+import { IdeasForYou, type IdeaRow } from '../../components/IdeasForYou'
 import { Link2, Wand2, Wind, Activity, Flame, SlidersHorizontal, ChevronDown, Lightbulb, Package, Compass } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { listGenerations, loadProductEntities, loadBrands, BRAND_CHOICE_PREFIX } from '../../lib/api'
@@ -37,6 +37,7 @@ import { recordEntryDoor } from '../../lib/entryDoors'
 import {
   readEntryDoor, buildFieldsForDoor, looksLikeLink, ALL_DOORS, relationshipLabel, type EntryDoor,
   DEFAULT_TARGET_SECONDS, shapeFor, type TargetSeconds,
+  IDEA_GOAL_TO_VIDEO_GOAL,
 } from '@twinai/shared'
 import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
@@ -238,6 +239,10 @@ export default function V2Create() {
   // Seeding this with the inferred door would make every entry look chosen and
   // destroy the one distinction the impression table exists to record.
   const [picked, setPicked] = useState<EntryDoor | null>(null)
+  // The "Ideas for you" card she clicked, so its type, goal, hook and product
+  // reach the build instead of only its premise.
+  const [pickedIdea, setPickedIdea] = useState<IdeaRow | null>(null)
+  const [buildNow, setBuildNow] = useState(false)
   const [advanced, setAdvanced] = useState(false)
   const [tone, setTone] = useState<Tone>('balanced') // recommended default
   // ⚖️ DEFAULTS TO 60, NOT 30. The twelve measured runs fail by being THIN, so
@@ -300,6 +305,15 @@ export default function V2Create() {
         // screen still puts it through `selectProduct`, which refuses it on a
         // video that may not carry a product at all.
         ...(params.get('product') ? { selected_product_id: params.get('product') as string } : {}),
+        // ⚠️ ONLY WHILE SHE IS STILL ON THE IDEA DOOR. Switching door after
+        // clicking a card means the card no longer describes this video.
+        ...(pickedIdea && door === 'idea' ? {
+          ...(pickedIdea.goal && IDEA_GOAL_TO_VIDEO_GOAL[pickedIdea.goal] ? { goal: IDEA_GOAL_TO_VIDEO_GOAL[pickedIdea.goal] } : {}),
+          ...(pickedIdea.mode ? { idea_mode: pickedIdea.mode } : {}),
+          ...(pickedIdea.hook ? { idea_hook: pickedIdea.hook } : {}),
+          ...(pickedIdea.product_id ? { idea_product_id: pickedIdea.product_id } : {}),
+          ...(pickedIdea.ready && input.trim() === pickedIdea.premise.trim() ? { idea_ready: true } : {}),
+        } : {}),
       },
     })
   }
@@ -367,6 +381,14 @@ export default function V2Create() {
     }
     proceed()
   }
+  // "Build the draft" on a ready idea: her tap IS the build click, run once the
+  // premise has landed in the box so `go` reads it.
+  useEffect(() => {
+    if (!buildNow || !pickedIdea || input.trim() !== pickedIdea.premise.trim()) return
+    setBuildNow(false)
+    void go()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildNow, input, pickedIdea])
 
   return (
     <>
@@ -418,11 +440,6 @@ export default function V2Create() {
             Start from whatever you actually have.
           </p>
 
-          {/* Ideas the niche brain wrote for her today. Renders nothing when
-              there are none, so Create is unchanged for everyone else. */}
-          <div className="mx-auto mt-6 max-w-2xl text-left">
-            <IdeasForYou onPick={(idea) => { setInput(idea.premise); setPicked('idea') }} />
-          </div>
 
           {/* ── The four doors. All of them visible, always — a door behind a
               toggle is a door nobody counts, and the impression row records
@@ -471,6 +488,22 @@ export default function V2Create() {
               This is where she WRITES, so it is the one element that gets wider
               on a bigger screen. Both were `max-w-md`, which made the page read
               as four big boxes and then one more big box. */}
+          {/* ⚠️ IDEAS LIVE IN IDEA MODE ONLY, and only once she has CHOSEN it.
+              On the generic screen nobody could tell which mode they were for.
+              The two paths sit side by side as equals: a suggestion is never
+              presented as the faster or default way in. */}
+          {picked === 'idea' && (
+            <div className="mx-auto mt-6 max-w-md text-left lg:max-w-2xl">
+              <IdeasForYou onPick={(idea) => {
+                setInput(idea.premise); setPickedIdea(idea)
+                // A ready draft goes straight to the build — nothing to ask.
+                if (idea.ready) setBuildNow(true)
+              }} />
+              <p className="mt-4 text-center text-[11px] uppercase tracking-[0.2em] text-stone/70">── or ──</p>
+              <p className="mt-2 text-center text-sm text-sand">Have your own idea? Type or talk about it.</p>
+            </div>
+          )}
+
           {!isHandoff && (
             <div className="glass gradient-border mx-auto mt-5 max-w-md rounded-2xl p-4 text-left transition-shadow lg:max-w-2xl focus-within:shadow-[0_0_48px_-16px_rgba(255,91,123,.5)]">
               <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-sand/80">

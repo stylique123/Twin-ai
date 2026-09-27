@@ -18,6 +18,9 @@ export async function runIdeaWriter(log: Log): Promise<void> {
   if (Date.now() - last < IDEAS_INTERVAL_MS) return
   last = Date.now()
   const day = new Date().toISOString().slice(0, 10)
+  // Dated ideas whose day has passed become seasonal knowledge, never nothing.
+  const { error: foldErr } = await db.rpc('fold_passed_ideas', { p_today: day })
+  if (foldErr) log('error', 'ideas_fold_failed', { error: foldErr.message })
   const { data: due, error } = await db.rpc('ideas_due', { p_day: day, p_limit: 1 })
   if (error) { log('error', 'ideas_due_failed', { error: error.message }); return }
   const v = Array.isArray(due) ? due[0] as { voice_id: string; owner_id: string; profile: Record<string, unknown> } : null
@@ -28,10 +31,16 @@ export async function runIdeaWriter(log: Log): Promise<void> {
     const { data: products } = await db.from('product_entities')
       .select('id, name, offer, creator_summary').eq('owner_id', v.owner_id).is('archived_at', null).limit(12)
     const productIds = new Set((products ?? []).map((r) => r.id as string))
-    const [{ data: record }, { data: trends }, { data: moments }] = await Promise.all([
+    const soon = [0, 1, 2, 3, 4].map((w) => new Date(Date.now() + w * 7 * 86_400_000))
+    const months = [...new Set(soon.map((d) => d.getUTCMonth() + 1))]
+    const [{ data: record }, { data: trends }, { data: moments }, { data: open }, { data: hidden }, { data: seasonal }] = await Promise.all([
       db.rpc('creator_track_record', { p_owner: v.owner_id, p_voice: v.voice_id }),
       db.rpc('brain_trends', { p_bucket: null, p_sub_niche: sub || null }),
       db.from('brain_moments').select('bucket, moments').order('day', { ascending: false }).limit(12),
+      db.from('creator_ideas').select('title').eq('voice_id', v.voice_id).is('used_at', null).is('dismissed_at', null).limit(20),
+      db.from('creator_ideas').select('title, why').eq('voice_id', v.voice_id).not('dismissed_at', 'is', null)
+        .order('dismissed_at', { ascending: false }).limit(20),
+      db.from('creator_seasonal_ideas').select('month, day, title, outcome').eq('voice_id', v.voice_id).in('month', months).limit(12),
     ])
     const emb = await geminiEmbed([sub, niche, String(p.audience ?? '')].filter(Boolean).join(' | '))
     const notes = emb
@@ -43,6 +52,10 @@ export async function runIdeaWriter(log: Log): Promise<void> {
       `HER TRACK RECORD: ${j(record, 2500)}`,
       `RISING IN HER LANE: ${j((Array.isArray(trends) ? trends : []).filter((t: { kind?: string }) => t.kind !== 'moment').slice(0, 6), 800)}`,
       `WORLD MOMENTS (all niches, pick only relevant): ${j(moments, 2000)}`,
+      `TODAY: ${day}`,
+      `HER OPEN IDEAS (do not repeat): ${j((open ?? []).map((r) => r.title), 1200)}`,
+      `IDEAS SHE HID (never again without a clearly new reason): ${j(hidden, 1500)}`,
+      `LAST YEAR AROUND NOW: ${j(seasonal, 1200)}`,
       `NICHE PATTERNS: ${j((Array.isArray(notes) ? notes : []).map((n: { kind: string; title: string; is_hers?: boolean }) => `${n.kind}${n.is_hers ? ' (hers)' : ''}: ${n.title}`), 2500)}`,
     ].join('\n\n')
     const raw = await geminiJson(IDEAS_SYSTEM, prompt, IDEAS_SCHEMA, 60_000, 0, modelForTask('read'))

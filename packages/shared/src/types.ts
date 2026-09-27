@@ -42,6 +42,8 @@ export interface VoiceProfile {
   audience_pain?: string
   dream_outcome?: string
   offer?: string
+  /** The offer split into separate things, each with its kind (scan output). */
+  offer_items?: Array<{ name: string; kind: 'product' | 'service' | 'content' }>
   tone: string
   pacing: string
   hook_style: string

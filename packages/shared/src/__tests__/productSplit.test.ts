@@ -31,10 +31,11 @@ describe('the onboarding guess offers the split and saves one entry per item', (
   const ONB = readFileSync(join(repo, 'apps', 'web', 'src', 'pages', 'Onboarding.tsx'), 'utf8')
   it('offers "These are separate products" beside accept/deny', () => {
     expect(ONB).toContain('These are separate products')
-    expect(ONB).toMatch(/setSplitItems\(splitProductList\(product\)\)/)
+    expect(ONB).toMatch(/setSplitItems\(pieces\)/)
+    expect(ONB).toMatch(/const pieces = offerPieces\(product/)
   })
   it('mints the first item and claims each remaining item', () => {
     expect(ONB).toMatch(/name: items \? items\[0\]/)
-    expect(ONB).toMatch(/for \(const name of items\.slice\(1\)\)[\s\S]{0,120}claimProductEntity\(/)
+    expect(ONB).toMatch(/for \(const it of items\.slice\(1\)\)[\s\S]{0,400}claimProductEntity\(/)
   })
 })

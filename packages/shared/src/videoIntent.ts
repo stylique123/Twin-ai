@@ -1097,6 +1097,38 @@ export function ideaLines(answers: Readonly<Record<string, string | undefined>>)
   return out.length ? `${out.join('\n\n')}\n\n` : ''
 }
 
+// ── AN "IDEAS FOR YOU" CARD, CARRIED INTO THE BUILD ─────────────────────────
+//
+// ⚠️ THE CARD'S TYPE AND GOAL USED TO BE DROPPED ON CLICK. Only the premise
+// reached the build, so "EXPLAIN · AUTHORITY" framed nothing. The goal maps onto
+// the canonical `video_goal`; the type and suggested hook ride her note.
+//
+// ⚖️ "teach" AND "educate" KEEP THEIR STORED VALUES; only the words shown
+// change. "How-to" DOES the thing step by step, "Explain" says why it works.
+export const IDEA_MODE_LABEL: Record<string, string> = {
+  teach: 'How-to', educate: 'Explain', entertain: 'Entertain', inspire: 'Inspire', sell: 'Sell',
+}
+const IDEA_MODE_DIRECTION: Record<string, string> = {
+  teach: 'a how-to: walk the viewer through doing it, step by step, so they can do it themselves',
+  educate: 'an explainer: make the viewer understand why or how something works, not a step-by-step',
+  entertain: 'entertainment: a story or a laugh first; any lesson is secondary',
+  inspire: 'inspiration: behind the scenes or the journey, so the viewer feels they could do it too',
+  sell: 'a direct pitch for what I sell',
+}
+/** The card's goal words → the canonical per-video goal. */
+export const IDEA_GOAL_TO_VIDEO_GOAL: Record<string, VideoGoal> = {
+  views: 'followers', leads: 'leads', sales: 'sell', authority: 'authority', community: 'conversations',
+}
+/** The card's type and hook, as lines for her note. Empty when neither. */
+export function ideaCardLines(mode: string | null | undefined, hook: string | null | undefined): string {
+  const out: string[] = []
+  const dir = mode ? IDEA_MODE_DIRECTION[mode] : undefined
+  if (dir) out.push(`This video is ${dir}.`)
+  const h = (hook ?? '').replace(/\s+/g, ' ').trim().slice(0, 200)
+  if (h) out.push(`A possible opening line (use it or beat it): ${h}`)
+  return out.length ? `${out.join('\n')}\n\n` : ''
+}
+
 // ── ONE QUESTION PER CHOICE, ASKED AFTER THE CHOICE ─────────────────────────
 //
 // ⚠️ A QUESTION SHOWN BEFORE THE PICK CANNOT BE ABOUT THE PICK. The owner's

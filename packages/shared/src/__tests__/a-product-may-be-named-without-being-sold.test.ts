@@ -113,7 +113,7 @@ describe('the mention reaches the writer, under its own name', () => {
     // field would silently promote a mention to a subject on the day this
     // merged. Under its own name they cannot see it at all.
     expect(BUILDING).toMatch(/const mentionedProductId = decided\.kind === 'mention' \? decided\.productId : ''/)
-    expect(BUILDING).toMatch(/mentioned_product_id: mentionedProductId \|\| undefined/)
+    expect(BUILDING).toMatch(/mentioned_product_id: mentionedProductId \|\| ideaMentionId \|\| undefined/)
     expect(EDGE).toMatch(/body\.mentioned_product_id/)
   })
 
