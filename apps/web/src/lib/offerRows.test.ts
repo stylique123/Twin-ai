@@ -16,3 +16,14 @@ describe('offer rows', () => {
     expect(serializeOffer([{ name: ' ', price: '' }], ' ')).toBeNull()
   })
 })
+
+describe('what is included belongs to each option (Sunflower #7)', () => {
+  it('round-trips a per-row includes', () => {
+    const text = serializeOffer([{ name: '12oz bag', price: '$18', includes: 'whole bean' }, { name: '5lb bulk', price: '$70', includes: 'ground to order' }], '')
+    expect(text).toBe('12oz bag — $18 (includes: whole bean)\n5lb bulk — $70 (includes: ground to order)')
+    expect(parseOffer(text).rows[1]).toEqual({ name: '5lb bulk', price: '$70', includes: 'ground to order' })
+  })
+  it('still reads the older shared line', () => {
+    expect(parseOffer('Small — $5\nIncludes: a mug').included).toBe('a mug')
+  })
+})

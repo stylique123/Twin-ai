@@ -22,6 +22,8 @@ export interface Brand {
   description: string | null
   /** False until she pressed "Yes, that's right" or edited it. */
   confirmed: boolean
+  /** Claims this brand's scripts must never make (0248). */
+  forbiddenClaims?: string[]
 }
 
 export interface BrandSuggestion {

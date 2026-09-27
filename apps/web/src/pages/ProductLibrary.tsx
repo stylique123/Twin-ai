@@ -36,7 +36,7 @@
 // still costs an explicit assertion. What the suggestion saves is typing, which
 // is the difference between a page nobody fills in and one they finish.
 import { useEffect, useRef, useState } from 'react'
-import { isOutcomeClaim } from '@twinai/shared'
+import { isOutcomeClaim, setBrandForbiddenClaims, setProductForbiddenClaims } from '@twinai/shared'
 // OfferEditor moved to components/ProductFields.tsx so the add form and the panel share it.
 import { OfferEditor, BlurText, StoryFields } from '../components/ProductFields'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -1412,6 +1412,15 @@ export default function ProductLibrary() {
           />
           {fieldNote(e.id, 'offer')}
 
+          {/* ⚖️ WHAT THIS PRODUCT'S SCRIPTS MUST NEVER SAY (Sunflower #6). Added
+              to her standing list and her brand's, never replacing them. */}
+          <ClaimBans
+            key={`bans-${e.id}`}
+            label="Never say about this product"
+            hint="Added to your account's and brand's lists — e.g. can't promise this origin will return."
+            initial={(e.restrictions as { forbiddenClaims?: string[] } | null)?.forbiddenClaims ?? []}
+            onSave={(list) => setProductForbiddenClaims(e.id, list)} />
+
           {/* ⚠️ TWO BOXES FOR ONE FACT, AND THE SECOND ONE WAS THE ONLY ONE
               WITH A BUTTON. This Link field saved `product_url` and could not
               ask Twin to read it; the box inside "What Twin knows about it"
@@ -2147,10 +2156,10 @@ export default function ProductLibrary() {
           <div className="flex shrink-0 flex-wrap gap-2">
             <button type="button" className="btn-gradient rounded-lg px-3 py-1.5 text-sm"
               onClick={() => setAddingBrand(true)}>+ Add brand</button>
+            {/* One way in for any product — her own or one she promotes. The
+                form's first question is the relationship. */}
             <button type="button" className="rounded-lg border border-white/15 px-3 py-1.5 text-sm hover:border-white/30"
-              onClick={() => addProductTo((brands?.length ?? 0) === 1 ? brands![0].id : null)}>Add a product</button>
-            <button type="button" className="rounded-lg border border-white/15 px-3 py-1.5 text-sm text-sand hover:border-white/30"
-              onClick={() => addProductTo(null, undefined, 'promote')}>+ Something you promote</button>
+              onClick={() => addProductTo(null, undefined, 'any')}>Add a product</button>
           </div>
         )}
       </header>
@@ -2979,6 +2988,17 @@ function StartFromLink({ onCancel, onClaim, busy, initialUrl, initialName, initi
 
   return (
     <div className="mt-3 space-y-3 rounded-lg bg-white/[0.03] p-3">
+      {/* ⚠️ RELATIONSHIP FIRST (Sunflower #10). Three add buttons led to near-
+          identical forms; now one "Add a product" asks this before anything
+          else, and the rest of the form adapts to the answer. */}
+      <Choices
+        label="What is your relationship to it?"
+        options={RELATIONSHIP_CHOICES.filter((o) => kind === 'any'
+          || (kind === 'promote' ? (o.value === 'AFFILIATE' || o.value === 'SPONSOR')
+            : (o.value === 'OWN_PRODUCT' || o.value === 'OWN_SERVICE')))}
+        chosen={relationship}
+        onPick={(v) => setRelationship(v)}
+      />
       {/* ── THE ORDER IS THE INSTRUCTION, AND IT WAS BACKWARDS ─────────────
           ⚠️ REPORTED: the link came first and is OPTIONAL; the name came
           second and is what the card is titled by. So the first thing asked
@@ -3065,14 +3085,6 @@ function StartFromLink({ onCancel, onClaim, busy, initialUrl, initialName, initi
 
       {/* ⚠️ THE TWO PERMISSION QUESTIONS. Neither is derivable from the other and
           neither is readable off a page — see this component's own note. */}
-      <Choices
-        label="What is your relationship to it?"
-        options={RELATIONSHIP_CHOICES.filter((o) => kind === 'any'
-          || (kind === 'promote' ? (o.value === 'AFFILIATE' || o.value === 'SPONSOR')
-            : (o.value === 'OWN_PRODUCT' || o.value === 'OWN_SERVICE')))}
-        chosen={relationship}
-        onPick={(v) => setRelationship(v)}
-      />
       {/* ⚠️ ASKED OF AN OWNER TOO, AND THAT IS A REVERSAL. This used to read
           "owning a thing already authorises 'we built this', so asking an owner
           is not a permission question, it is noise." That conflated two facts:
@@ -3465,6 +3477,13 @@ function BrandPanel({ brand, facts, productCount, onSave, onRemove, onClose }: {
           <BrandForm initial={brand} isSuggestion={false} onSave={onSave} onCancel={null} />
         </div>
         <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <ClaimBans
+            label={`Never say about ${brand.name}`}
+            hint="Every product under this brand inherits these."
+            initial={brand.forbiddenClaims ?? []}
+            onSave={(list) => setBrandForbiddenClaims(brand.id, list)} />
+        </div>
+        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
           <p className="text-sm font-semibold text-cream">What Twin knows about {brand.name}</p>
           <p className="mt-0.5 text-xs text-stone">True of the whole brand — scripts about any of its products may use it.</p>
           {facts.length > 0 ? (
@@ -3511,5 +3530,51 @@ function ClaimConfirm({ onConfirm }: { onConfirm: () => void }) {
         <button type="button" className="text-xs text-stone underline" onClick={() => setAsking(false)}>Not sure</button>
       </span>
     </span>
+  )
+}
+
+/** A short list of claims scripts must never make. Saved on each change. */
+function ClaimBans({ label, hint, initial, onSave }: {
+  label: string
+  hint: string
+  initial: string[]
+  onSave: (list: string[]) => Promise<void>
+}) {
+  const [list, setList] = useState<string[]>(initial)
+  const [draft, setDraft] = useState('')
+  const [err, setErr] = useState(false)
+  const put = (next: string[]) => {
+    setList(next); setErr(false)
+    onSave(next).catch(() => setErr(true))
+  }
+  const add = () => {
+    const t = draft.trim()
+    if (!t || list.includes(t)) return
+    put([...list, t]); setDraft('')
+  }
+  return (
+    <div className="mt-4" data-testid="claim-bans">
+      <p className="text-xs font-medium uppercase tracking-wide text-stone">{label}</p>
+      <p className="mt-0.5 text-xs text-stone">{hint}</p>
+      {list.length > 0 && (
+        <ul className="mt-2 flex flex-wrap gap-1.5">
+          {list.map((c) => (
+            <li key={c} className="flex items-center gap-1 rounded-full border border-coral/25 px-2.5 py-0.5 text-xs text-cream">
+              {c}
+              <button type="button" aria-label={`Remove: ${c}`} className="text-stone hover:text-cream"
+                onClick={() => put(list.filter((x) => x !== c))}>×</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-2 flex gap-2">
+        <input className="w-full rounded-lg border border-white/12 bg-white/5 px-3 py-2 text-sm"
+          placeholder="Something scripts must never claim" aria-label={label}
+          value={draft} onChange={(ev) => setDraft(ev.target.value)}
+          onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); add() } }} />
+        <button type="button" onClick={add} className="shrink-0 rounded-lg border border-white/15 px-3 text-xs text-cream">Add</button>
+      </div>
+      {err && <p className="mt-1 text-xs text-coral">Could not save — try again.</p>}
+    </div>
   )
 }

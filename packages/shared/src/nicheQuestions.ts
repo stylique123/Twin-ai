@@ -737,13 +737,23 @@ const GROUP_PLACEHOLDER = /\bin your (?:corner of the internet|corner|niche|indu
  *
  * ⚖️ THE ID IS UNTOUCHED, as everywhere in this file: same question, her words.
  */
+/** ⚠️ SUNFLOWER #1: "in micro coffee roasting business" reads as a typo. A
+ *  trailing word that names the WRAPPER, not the craft, is dropped when at least
+ *  two words remain — "in micro coffee roasting". */
+const WRAPPER_TAIL = /\s+(?:business(?:es)?|journey|vlogs?|content|tips|niche|industry|space|community|brand)$/i
+export function tidySubNiche(phrase: string): string {
+  const t = phrase.trim()
+  const cut = t.replace(WRAPPER_TAIL, '')
+  return cut !== t && cut.split(/\s+/).length >= 2 ? cut : t
+}
+
 export function anchorToSubNiche(
   q: CreatorQuestion,
   subNiche: unknown,
 ): CreatorQuestion {
   if (!subNicheIsSpliceable(subNiche)) return q
   if (!GROUP_PLACEHOLDER.test(q.ask)) return q
-  return { ...q, ask: q.ask.replace(GROUP_PLACEHOLDER, `in ${subNiche.trim()}`) }
+  return { ...q, ask: q.ask.replace(GROUP_PLACEHOLDER, `in ${tidySubNiche(subNiche)}`) }
 }
 
 /** The same, across a set. */

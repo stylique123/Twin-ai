@@ -1079,6 +1079,13 @@ export async function transcribeFromUrl(
   return await transcribeViaDownload(rawUrl, route)
 }
 
+/** How much was actually said, whatever shape the transcript came back in. */
+function transcriptTextChars(t: Transcript): number {
+  const o = t as unknown as { text?: unknown; segments?: Array<{ text?: unknown }> }
+  if (typeof o.text === 'string') return o.text.trim().length
+  return (o.segments ?? []).reduce((n, g) => n + (typeof g.text === 'string' ? g.text.trim().length : 0), 0)
+}
+
 /** yt-dlp download + local faster-whisper. The tiktok route, and the last rung
  *  for every other platform whose vendor path has failed. */
 async function transcribeViaDownload(
@@ -1095,21 +1102,33 @@ async function transcribeViaDownload(
     // impersonation, the size cap and the trace cannot drift apart.
     const trace = await downloadReference(rawUrl, route, { medium: 'audio', outPath: audioPath })
     // 2. Transcribe via the Python faster-whisper wrapper (prints JSON).
-    await run(
+    const whisper = (language: string, beam: string) => run(
       'python3',
       [join(import.meta.dirname, '..', 'whisper_transcribe.py'),
        '--audio', audioPath, '--out', outPath,
        '--model', env.whisperModel, '--device', env.whisperDevice,
        // Reference clips can be in any language, so detect here (unlike the
        // creator's own take, which we pin to avoid English->Arabic misdetection).
-       '--language', 'auto', '--beam-size', '1',
+       '--language', language, '--beam-size', beam,
        '--max-seconds', String(env.maxMediaSecs)],
       Math.max(180_000, env.maxMediaSecs * 1000),
     )
+    await whisper('auto', '1')
+    let parsed = JSON.parse(await readFile(outPath, 'utf8')) as Transcript
+    // ⚠️ A SPEAKING VIDEO READ AS SILENT (Sunflower #13). A 62-second business
+    // talk downloaded fine (≈1 MB of audio) and came back with zero words on
+    // four runs: auto language detection on a music-led opening can settle on
+    // nothing. Before calling a real-length clip silent, read it once more with
+    // the language pinned and a wider beam. CPU only; no paid call.
+    if (transcriptTextChars(parsed) < 20 && (trace?.bytes_downloaded ?? 0) > 200_000) {
+      await whisper('en', '5').catch(() => undefined)
+      const second = JSON.parse(await readFile(outPath, 'utf8')) as Transcript
+      if (transcriptTextChars(second) > transcriptTextChars(parsed)) parsed = second
+    }
     // ⚠️ THE TIKTOK ROUTE. yt-dlp + local whisper, free per video and bounded
     // only by this box's CPU — the one platform whose budget is already raised.
     return {
-      ...(JSON.parse(await readFile(outPath, 'utf8')) as Transcript),
+      ...parsed,
       source: 'local_whisper',
       downloadRoute: routeName(route) as DownloadRouteName,
       // ⚖️ THE DOWNLOAD'S OWN TRACE, not one re-derived after transcription.

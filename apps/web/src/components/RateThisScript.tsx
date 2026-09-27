@@ -16,6 +16,8 @@ const TAGS = [
   'Hook is weak', 'Too long', 'Too salesy', 'Not my voice', 'Wrong product facts', 'Hard to film',
 ] as const
 
+export const RATE_DELAY_MS = 45_000
+
 const LATER_KEY = (id: string) => `twinai_rated_later_${id}`
 
 export function RateThisScript({ generationId, ownerId }: { generationId: string; ownerId: string | null }) {
@@ -33,7 +35,9 @@ export function RateThisScript({ generationId, ownerId }: { generationId: string
     const timer = setTimeout(() => {
       void supabase.from('script_ratings').select('generation_id').eq('generation_id', generationId).maybeSingle()
         .then(({ data, error }) => { if (alive && !error && !data) setOpen(true) }, () => {})
-    }, 6000)
+    // ⚖️ SUNFLOWER #26: 6s was before she could read the script. 45s is enough
+    // to read a 60-second script once; a quick leave never sees the prompt.
+    }, RATE_DELAY_MS)
     return () => { alive = false; clearTimeout(timer) }
   }, [generationId, ownerId])
 
@@ -73,17 +77,17 @@ export function RateThisScript({ generationId, ownerId }: { generationId: string
                   className={`text-3xl leading-none ${n <= stars ? 'text-cream' : 'text-stone/40'}`}>★</button>
               ))}
             </div>
+            <label className="mt-4 block text-sm font-medium text-cream">
+              What would you change?
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={1000}
+                className="mt-1 w-full rounded-lg bg-ink/60 p-2 text-sm text-cream" placeholder="e.g. open with the price, less formal, shorter middle" />
+            </label>
             <div className="mt-4 flex flex-wrap gap-2">
               {TAGS.map((t) => (
                 <button key={t} type="button" onClick={() => toggle(t)} aria-pressed={tags.includes(t)}
                   className={`rounded-full border px-3 py-1 text-xs ${tags.includes(t) ? 'border-cream text-cream' : 'border-stone/40 text-stone'}`}>{t}</button>
               ))}
             </div>
-            <label className="mt-4 block text-sm text-stone">
-              What would you change?
-              <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={1000}
-                className="mt-1 w-full rounded-lg bg-ink/60 p-2 text-sm text-cream" placeholder="e.g. open with the price, less formal, shorter middle" />
-            </label>
             <div className="mt-5 flex gap-2">
               <button type="button" onClick={save} disabled={stars === 0 || saving} className="btn-gradient flex-1 disabled:opacity-50">
                 {saving ? 'Saving…' : 'Send'}

@@ -93,7 +93,8 @@ export function OfferEditor({ value, found, onSave }: {
         </div>
       )}
       {rows.map((r, i) => (
-        <div key={i} className="flex gap-2">
+        <div key={i} className="space-y-1">
+        <div className="flex gap-2">
           <input className={input} placeholder="Option, e.g. Small" aria-label={`Option ${i + 1}`}
             value={r.name}
             onChange={(ev) => setRows((p) => p.map((x, j) => (j === i ? { ...x, name: ev.target.value } : x)))}
@@ -109,6 +110,11 @@ export function OfferEditor({ value, found, onSave }: {
               setRows(next.length ? next : [{ name: '', price: '' }]); commit(next)
             }}>×</button>
         </div>
+        <input className={`${input} text-xs`} placeholder="What this option includes (optional)" aria-label={`What option ${i + 1} includes`}
+          value={r.includes ?? ''}
+          onChange={(ev) => setRows((p) => p.map((x, j) => (j === i ? { ...x, includes: ev.target.value } : x)))}
+          onBlur={() => commit()} />
+        </div>
       ))}
       {unnamed && (
         <p className="text-xs text-sand">
@@ -117,8 +123,11 @@ export function OfferEditor({ value, found, onSave }: {
       )}
       <button type="button" className="text-xs font-medium text-teal"
         onClick={() => setRows((p) => [...p, { name: '', price: '' }])}>+ Add another option</button>
-      <input className={input} placeholder="What's included (optional)" aria-label="What's included"
-        value={included} onChange={(ev) => setIncluded(ev.target.value)} onBlur={() => commit()} />
+      {/* The older shared line, shown only while a product still has one. */}
+      {included.trim() !== '' && (
+        <input className={input} placeholder="Included with every option" aria-label="What's included"
+          value={included} onChange={(ev) => setIncluded(ev.target.value)} onBlur={() => commit()} />
+      )}
     </div>
   )
 }
