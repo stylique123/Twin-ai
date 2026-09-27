@@ -184,10 +184,6 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Per worker tick: her replies filed as knowledge. Durable as `post_questions.reply_filed_at` and `creator_knowledge` rows with source \'reply\'.',
   },
-  her_reply_file_failed: {
-    kind: 'counter_ephemeral',
-    why: 'Per failed insert of her reply. The row is still stamped `reply_filed_at`, so the failure is visible as a stamped question with no matching knowledge row.',
-  },
   voice_gate: {
     kind: 'counter_ephemeral',
     why: 'Per script: lines that broke a checkable rule from her own donts, and how many were rewritten. Durable in `generations.beat_audit.voice_gate` (rules, flagged, repaired, vocabulary used).',
@@ -199,10 +195,6 @@ const EVENTS = {
   mentions_filed: {
     kind: 'counter_ephemeral',
     why: 'Per worker tick: confirmed mentions filed as knowledge. Durable as `creator_mentions.filed_at` and `creator_knowledge` rows with source_ref mention:<id>.',
-  },
-  mention_file_failed: {
-    kind: 'counter_ephemeral',
-    why: 'Per failed insert of a confirmed mention. The mention is still stamped `filed_at`, so the failure is visible as a filed mention with no knowledge row.',
   },
   social_stats_sync: {
     kind: 'counter_ephemeral',
