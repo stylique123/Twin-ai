@@ -264,13 +264,13 @@ export type ViewerOutcome = (typeof VIEWER_OUTCOMES)[number]
 // reference's exact sentences still reached the draft. Renaming the options
 // makes the promise LEGIBLE, not TRUE. The behavioural fix is a separate change
 // and is not in this one; nobody reading this file should believe otherwise.
-export const REFERENCE_USE = ['structure', 'idea_structure', 'stay_close'] as const
+export const REFERENCE_USE = ['structure', 'pacing', 'idea_structure', 'stay_close'] as const
 export type ReferenceUse = (typeof REFERENCE_USE)[number]
 
 /** Every value `reference_use` has ever been stored as, including the retired
  *  one. Kept so the server can still READ what old clients and old rows hold. */
 export const LEGACY_REFERENCE_USE = [
-  'structure', 'idea_structure', 'stay_close', 'inspiration',
+  'structure', 'pacing', 'idea_structure', 'stay_close', 'inspiration',
 ] as const
 export type LegacyReferenceUse = (typeof LEGACY_REFERENCE_USE)[number]
 
@@ -290,6 +290,7 @@ export type LegacyReferenceUse = (typeof LEGACY_REFERENCE_USE)[number]
  */
 export const REFERENCE_USE_MIGRATION: Record<LegacyReferenceUse, ReferenceUse> = {
   structure: 'structure',
+  pacing: 'pacing',
   idea_structure: 'idea_structure',
   stay_close: 'stay_close',
   inspiration: 'structure',
@@ -312,7 +313,9 @@ export function normalizeReferenceUse(v: unknown): ReferenceUse | null {
  *  mechanism, replace every subject" is a decidable instruction. */
 export const REFERENCE_USE_DIRECTIVE: Record<ReferenceUse, string> = {
   structure:
-    'KEEP THE MECHANICS, REPLACE THE SUBJECT. Keep the beat order, the hook mechanism and the escalation; replace what every single beat is ABOUT with the creator\'s own material. The reference decides the SHAPE and nothing else — if a beat still names the reference\'s topic, it has not been rewritten.',
+    'KEEP THE OPENING, REPLACE THE SUBJECT. Keep the reference\'s opening and hook structure specifically — the kind of first line, what it withholds and how it earns the second line; replace what it is ABOUT with the creator\'s own material. After the hook, the body follows the creator\'s own material and pacing, not the reference\'s beat order.',
+  pacing:
+    'KEEP THE RHYTHM, REPLACE EVERYTHING ELSE. Keep the reference\'s beat-by-beat pacing — how many beats, roughly how long each runs, where it speeds up and where it holds. Do NOT copy its hook style or opening mechanism: open the creator\'s own way. Replace every subject, example and line with the creator\'s own material.',
   idea_structure:
     'KEEP THE POINT, REPLACE THE EVIDENCE. Keep what the reference is arguing and the order it argues it in; replace every example, number, story and named case with the creator\'s own. The claim may survive; not one of the things used to support it may.',
   stay_close:
@@ -325,6 +328,7 @@ export const REFERENCE_USE_DIRECTIVE: Record<ReferenceUse, string> = {
  *  dial is what made "use the structure" quietly keep the reference's topic. */
 export const KEEPS_REFERENCE_TOPIC: Record<ReferenceUse, boolean> = {
   structure: false,
+  pacing: false,
   idea_structure: true,
   stay_close: true,
 }
@@ -347,8 +351,10 @@ export const KEEPS_REFERENCE_TOPIC: Record<ReferenceUse, boolean> = {
 // independent, disagreeing signal. `resolveFidelity` below is the one place
 // that reads both and picks a winner; nothing else should compare them again.
 export const FIDELITY_FROM_REFERENCE_USE: Record<ReferenceUse, 'close' | 'balanced' | 'loose'> = {
-  // Keeps the beat order and hook mechanism tight, same as fidelity=close.
+  // Keeps the opening/hook mechanism tight, same as fidelity=close.
   structure: 'close',
+  // Keeps only the rhythm; everything else is hers — fidelity=balanced.
+  pacing: 'balanced',
   // Keeps the point but rewrites all the evidence — fidelity=balanced.
   idea_structure: 'balanced',
   // "Keep as much as the creator can honestly say" is literally fidelity=close.
@@ -923,20 +929,23 @@ export const INTENT_QUESTIONS: readonly IntentQuestion[] = [
     // most-theirs last; each step hands one more thing to the reference. The
     // old four were two pairs of paraphrases and a creator could not tell which
     // of a pair they wanted, because there was no difference to tell.
+    // ⚖️ OWNER'S MENU REDESIGN (2026-09-27): three concrete choices, each a
+    // different thing the writer keeps. `idea_structure` ("their topic, my
+    // take") left the screen; old rows still read it.
     options: [
       {
         value: 'structure',
-        label: 'My topic, their structure',
-        hint: 'Same shape and hook style, completely my subject',
+        label: 'Match its opening and hook',
+        hint: 'The same kind of first line and hook, then my own video',
       },
       {
-        value: 'idea_structure',
-        label: 'Their topic, my take',
-        hint: 'Same point, but my examples and my opinions',
+        value: 'pacing',
+        label: 'Match its pacing only',
+        hint: 'The same beat-by-beat rhythm, not its hook style',
       },
       {
         value: 'stay_close',
-        label: 'Stay close',
+        label: 'Stay close throughout',
         hint: 'Follow the original wherever I can honestly say it',
       },
     ],
@@ -1034,7 +1043,12 @@ export function intentQuestionsFor(
   // leaves open is how much of it to keep — and that answer now carries its own
   // follow-up (`choiceFollowUp`). A product build keeps the subject question,
   // which there decides which well of hers the product story draws from.
-  if (opts.hasReference) return opts.isProductSubject ? base : base.filter((q) => q.field !== 'content_focus')
+  // ⚖️ OWNER'S MENU REDESIGN (2026-09-27): EVERY OPTION MUST CHANGE THE SCRIPT.
+  // Re-asking the goal in Reference and Idea mode was confirmed to make no
+  // meaningful difference; her standing goal (onboarding) is still SENT, just
+  // not asked. Reference mode asks only how much to keep; Idea mode asks about
+  // the content itself (`IDEA_QUESTIONS`). Product mode is unchanged.
+  if (opts.hasReference) return opts.isProductSubject ? base : base.filter((q) => q.field === 'reference_use')
   // ── IN IDEA MODE, THE IDEA IS THE SUBJECT ────────────────────────────────
   //
   // ⚠️ "WHAT SHOULD THIS VIDEO BE ABOUT?" IS ASKED OF SOMEBODY WHO HAS JUST
@@ -1058,7 +1072,29 @@ export function intentQuestionsFor(
   // substitution for exactly the creator who came through the product door and
   // pasted nothing — the commonest product build there is. Caught by reading
   // this branch after editing the one above it, not by a test that existed.
-  return base.filter((q) => q.field !== 'reference_use' && q.field !== 'content_focus')
+  return base.filter((q) => q.field !== 'reference_use' && q.field !== 'content_focus'
+    && (opts.isProductSubject || q.field !== 'video_goal'))
+}
+
+// ── IDEA MODE ASKS ABOUT THE CONTENT, NOT A MARKETING CATEGORY ──────────────
+//
+// ⚠️ A goal sheet ("Reach more people") shown right after she wrote something
+// personal can make a beginner second-guess whether her idea may be a story at
+// all. These two ask about what she just described. Optional: a blank answer
+// adds nothing, so the script is shorter rather than invented.
+export const IDEA_QUESTIONS: ReadonlyArray<{ field: string; question: string }> = Object.freeze([
+  { field: 'idea_moment', question: 'What specific moment or tension is at the center of what you just described?' },
+  { field: 'idea_feeling', question: "What's the one feeling you want someone to still have after watching?" },
+])
+
+/** Her answers to the Idea questions, as lines for her note (her own words). */
+export function ideaLines(answers: Readonly<Record<string, string | undefined>>): string {
+  const out: string[] = []
+  for (const q of IDEA_QUESTIONS) {
+    const a = (answers[FOLLOWUP_PREFIX + q.field] ?? '').trim().slice(0, 600)
+    if (a) out.push(`${q.question}\nMy answer: ${a}`)
+  }
+  return out.length ? `${out.join('\n\n')}\n\n` : ''
 }
 
 // ── ONE QUESTION PER CHOICE, ASKED AFTER THE CHOICE ─────────────────────────

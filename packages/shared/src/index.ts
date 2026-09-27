@@ -102,6 +102,7 @@ export * from './authority'
 export * from './profileAssembler'
 export * from './creativeDecisionPlan'
 export * from './cta'
+export * from './concreteAnswer'
 
 // ⚠️ THE CARD THAT OPENED NOTHING. "Your voice — what Twin has learned" mapped
 // to `setTab('twin')` from a card already on the twin tab, so it re-selected the

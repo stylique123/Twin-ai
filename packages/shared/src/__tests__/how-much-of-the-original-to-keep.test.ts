@@ -96,12 +96,15 @@ describe('what the creator reads', () => {
     // is a coin toss the creator is asked to perform. This is now an ordered
     // three-point scale, and declaration order is presentation order.
     expect(q!.options).toHaveLength(3)
-    expect(q!.options.map((o) => o.value)).toEqual(['structure', 'idea_structure', 'stay_close'])
+    // ⚖️ OWNER'S MENU REDESIGN (2026-09-27): opening/hook, pacing only, stay close.
+    expect(q!.options.map((o) => o.value)).toEqual(['structure', 'pacing', 'stay_close'])
   })
 
   it('offers exactly the values the compiler accepts', () => {
     // ⚖️ A chip whose value the server discards is a question that lies.
-    expect(reachableIntentValues('reference_use').sort()).toEqual([...REFERENCE_USE].sort())
+    // `idea_structure` left the screen in the menu redesign; it stays a live value
+    // only so rows and clients that already hold it still read.
+    expect(reachableIntentValues('reference_use').sort()).toEqual([...REFERENCE_USE].filter((v) => v !== 'idea_structure').sort())
   })
 
   it('never says "structure", "transfer" or "adapt" on screen', () => {
@@ -143,7 +146,7 @@ describe('the edge copy says exactly what the shared one says', () => {
 
   it('agrees on which settings keep the topic', () => {
     expect(EDGE).toMatch(
-      /structure: false, idea_structure: true, stay_close: true,/)
+      /structure: false, pacing: false, idea_structure: true, stay_close: true,/)
   })
 
   it('defaults to keeping the topic when unanswered, on both sides', () => {

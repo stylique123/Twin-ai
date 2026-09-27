@@ -3153,7 +3153,7 @@ const OUTCOME_FLOOR_INLINE: Record<string, number> = {
 // ⚠️ INLINED FROM `videoIntent.ts` AND PARITY-TESTED. Edge functions cannot
 // import @twinai/shared, so this is a deliberate copy — the parity test executes
 // BOTH copies against every value rather than comparing their text.
-const REFERENCE_USE_INLINE: readonly string[] = ['structure', 'idea_structure', 'stay_close']
+const REFERENCE_USE_INLINE: readonly string[] = ['structure', 'pacing', 'idea_structure', 'stay_close']
 // ⚠️ THE COMMITTED OLD→NEW TABLE, MIRRORED FROM `videoIntent.ts`. Four options
 // read as two pairs of paraphrases to creators; this is the ordered three-point
 // scale that replaces them, most-mine to most-theirs. `inspiration` →
@@ -3163,6 +3163,7 @@ const REFERENCE_USE_INLINE: readonly string[] = ['structure', 'idea_structure', 
 // keeps reading it.
 const REFERENCE_USE_MIGRATION_INLINE: Record<string, string> = {
   structure: 'structure',
+  pacing: 'pacing',
   idea_structure: 'idea_structure',
   stay_close: 'stay_close',
   inspiration: 'structure',
@@ -3175,14 +3176,16 @@ function normalizeReferenceUseInline(v: unknown): string | null {
 }
 const REFERENCE_USE_DIRECTIVE_INLINE: Record<string, string> = {
   structure:
-    'KEEP THE MECHANICS, REPLACE THE SUBJECT. Keep the beat order, the hook mechanism and the escalation; replace what every single beat is ABOUT with the creator\'s own material. The reference decides the SHAPE and nothing else — if a beat still names the reference\'s topic, it has not been rewritten.',
+    'KEEP THE OPENING, REPLACE THE SUBJECT. Keep the reference\'s opening and hook structure specifically — the kind of first line, what it withholds and how it earns the second line; replace what it is ABOUT with the creator\'s own material. After the hook, the body follows the creator\'s own material and pacing, not the reference\'s beat order.',
+  pacing:
+    'KEEP THE RHYTHM, REPLACE EVERYTHING ELSE. Keep the reference\'s beat-by-beat pacing — how many beats, roughly how long each runs, where it speeds up and where it holds. Do NOT copy its hook style or opening mechanism: open the creator\'s own way. Replace every subject, example and line with the creator\'s own material.',
   idea_structure:
     'KEEP THE POINT, REPLACE THE EVIDENCE. Keep what the reference is arguing and the order it argues it in; replace every example, number, story and named case with the creator\'s own. The claim may survive; not one of the things used to support it may.',
   stay_close:
     'KEEP AS MUCH AS THE CREATOR CAN HONESTLY SAY, REPLACE THE REST. Preserve the format, the beat count and the topic wherever the creator can speak to it from their own knowledge — and the moment a beat would need a fact, a number or an experience they do not have, re-ground that beat in something they do rather than borrowing the reference\'s.',
 }
 const KEEPS_REFERENCE_TOPIC_INLINE: Record<string, boolean> = {
-  structure: false, idea_structure: true, stay_close: true,
+  structure: false, pacing: false, idea_structure: true, stay_close: true,
 }
 
 // ⚠️ FIX 10 (Wave 4). ONE HOME FOR FIDELITY, INLINED FROM `videoIntent.ts` AND
@@ -3195,7 +3198,7 @@ const KEEPS_REFERENCE_TOPIC_INLINE: Record<string, boolean> = {
 // `fidelity`: it wins with `reference_use` whenever the creator answered it,
 // and falls back to the slider only when they have not.
 const FIDELITY_FROM_REFERENCE_USE_INLINE: Record<string, 'close' | 'balanced' | 'loose'> = {
-  structure: 'close', idea_structure: 'balanced', stay_close: 'close',
+  structure: 'close', pacing: 'balanced', idea_structure: 'balanced', stay_close: 'close',
 }
 function resolveFidelityInline(
   referenceUse: string | null,

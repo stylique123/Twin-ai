@@ -86,7 +86,7 @@ describe('the goal is one vocabulary, owned by videoIntent', () => {
 
 describe('reference_use: four paraphrases became an ordered three-point scale', () => {
   it('is exactly three, in order, most-mine to most-theirs', () => {
-    expect([...REFERENCE_USE]).toEqual(['structure', 'idea_structure', 'stay_close'])
+    expect([...REFERENCE_USE]).toEqual(['structure', 'pacing', 'idea_structure', 'stay_close'])
   })
 
   it('every legacy value maps to exactly one live value', () => {

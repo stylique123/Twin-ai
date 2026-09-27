@@ -39,7 +39,7 @@
  *  mechanically copied into the edge runtime; `referenceExposure.test.ts`
  *  asserts the two lists are identical, so a value added there cannot go
  *  unbudgeted here. */
-export type ReferenceUseLevel = 'structure' | 'idea_structure' | 'stay_close'
+export type ReferenceUseLevel = 'structure' | 'pacing' | 'idea_structure' | 'stay_close'
 
 export interface ExposureBudget {
   /** Hard ceiling on verbatim characters, whatever the transcript's length. */
@@ -66,6 +66,13 @@ export const REFERENCE_EXPOSURE: Record<ReferenceUseLevel, ExposureBudget> = {
     maxChars: 1200,
     maxFraction: 0.25,
     supplies: 'the reference\'s SHAPE ONLY — beat order, hook mechanism, escalation and timing. The excerpt below is a short sample for your reference_read ONLY; there is deliberately not enough of it to write from, because the subject and every sentence must be this creator\'s.',
+  },
+  // "The same beat-by-beat rhythm, not its hook style." Only timing is taken,
+  // so the exposure is the tightest tier, as with `structure`.
+  pacing: {
+    maxChars: 1800,
+    maxFraction: 0.4,
+    supplies: 'the reference\'s PACING ONLY — how many beats, how long each runs, where it speeds up and holds. Not its hook style, not its subject, not its sentences: the excerpt below is a short sample for your reference_read ONLY.',
   },
   // The middle: the central argument plus the shape. Enough language to carry
   // the point across, not enough to lift phrasing from.

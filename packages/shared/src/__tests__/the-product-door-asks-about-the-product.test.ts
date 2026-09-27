@@ -111,14 +111,16 @@ describe('a door nobody stated is not a product door', () => {
     // reason — a product build inherits claim entitlement, and a wrong guess
     // there is a legal exposure rather than a worse question. This function
     // must not reintroduce the guess it declined to make.
-    const q = goalQ(intentQuestionsFor({ hasReference: true }))!
-    expect(q.options).toBe(INTENT_QUESTIONS.find((o) => o.field === 'video_goal')!.options)
-    expect(q.question).not.toBe(PRODUCT_OBJECTIVE_QUESTION)
+    // ⚖️ MENU REDESIGN (2026-09-27): outside the product door the goal is no
+    // longer asked at all — her standing goal is sent instead — so the product
+    // objectives can never appear without the flag.
+    expect(goalQ(intentQuestionsFor({ hasReference: true }))).toBeUndefined()
+    expect(goalQ(intentQuestionsFor({ hasReference: false }))).toBeUndefined()
+    expect(INTENT_QUESTIONS.find((o) => o.field === 'video_goal')!.question).not.toBe(PRODUCT_OBJECTIVE_QUESTION)
   })
 
   it('explicitly false behaves like absent', () => {
-    expect(goalQ(intentQuestionsFor({ hasReference: true, isProductSubject: false }))!.question)
-      .not.toBe(PRODUCT_OBJECTIVE_QUESTION)
+    expect(goalQ(intentQuestionsFor({ hasReference: true, isProductSubject: false }))).toBeUndefined()
   })
 })
 

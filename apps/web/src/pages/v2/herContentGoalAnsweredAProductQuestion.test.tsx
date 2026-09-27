@@ -46,10 +46,11 @@ describe('the two questions share a field, which is why this was invisible', () 
   })
 
   it('and the generic one carries a different question on the same field', () => {
+    // Menu redesign (2026-09-27): the generic goal is no longer asked at all
+    // outside the product door, so it cannot be answered by the wrong sheet.
     const generic = intentQuestionsFor({ hasReference: true, isProductSubject: false })
       .find((q) => q.field === 'video_goal')
-    expect(generic!.question).not.toBe(PRODUCT_OBJECTIVE_QUESTION)
-    expect(generic!.options).not.toBe(PRODUCT_OBJECTIVES)
+    expect(generic).toBeUndefined()
   })
 
   it('the objective labels are NOT the canonical goal labels she was shown', () => {
