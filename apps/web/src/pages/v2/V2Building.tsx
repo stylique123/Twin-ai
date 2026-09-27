@@ -42,6 +42,7 @@ import {
   nextObjectiveQuestion, answeredForProduct, pooledWording, objectiveProductKey,
 } from '@twinai/shared'
 import { classifyReferenceRead, LOW_SPEECH_TEXT, REFERENCE_REASON_TEXT } from '../../lib/api'
+import { referenceLengthFit, tooLongMatters } from '@twinai/shared'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE, isReadCapacityExhausted } from '../../lib/api'
 import { READINESS_INCOMPLETE_CODE, SELL_WITHOUT_TARGET_CODE, OUT_OF_REMIXES_CODE, GENERATION_FAILED_CODE } from '../../lib/api'
 import type { ReadinessQuestion } from '../../lib/api'
@@ -868,11 +869,11 @@ export default function V2Building() {
         // ⚖️ ITEM 24: THE LOW-SPEECH OVERRIDE, ALWAYS OFFERED, ASKED ONCE. True
         // means go ahead with this reference; false means the build stopped
         // (picked another, or cancelled) and nothing was spent.
-        const lowSpeechUsedAnyway = async (): Promise<boolean> => {
+        const lowSpeechUsedAnyway = async (text: string = LOW_SPEECH_TEXT): Promise<boolean> => {
           if (usedAnyway.current) return true
           const choice = await new Promise<'used_anyway' | 'picked_another'>((resolve) => {
             lowSpeechResolve.current = resolve
-            if (alive) { setUnusableRef(LOW_SPEECH_TEXT); setLowSpeechAsk(true); setIngesting(false); setActive(0) }
+            if (alive) { setUnusableRef(text); setLowSpeechAsk(true); setIngesting(false); setActive(0) }
           })
           lowSpeechResolve.current = null
           if (alive) { setUnusableRef(null); setLowSpeechAsk(false) }
@@ -1460,7 +1461,14 @@ export default function V2Building() {
                     if (!(await lowSpeechUsedAnyway())) return
                     transcript_id = job.result.transcript_id
                     unread = null
-                  } else if (read.cls === 'usable') {
+                  } else if (read.cls === 'usable'
+                    || (read.cls === 'too_long' && !tooLongMatters(answersRef.current.reference_use))) {
+                    // ⚖️ SUNFLOWER #11–#12: length is judged against the option
+                    // she chose. Opening-only builds take any length; pacing and
+                    // stay-close warn (with an override) when far off her target.
+                    const fit = referenceLengthFit(job.result.duration_sec ?? null,
+                      state.target_seconds ?? null, answersRef.current.reference_use)
+                    if (fit && !(await lowSpeechUsedAnyway(fit))) return
                     transcript_id = job.result.transcript_id
                     unread = null // read, measured, and fit to follow
                   } else {

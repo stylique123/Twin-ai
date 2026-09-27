@@ -675,3 +675,29 @@ export function acceptExtension(
   if (r.words <= before) return keep('not_longer')
   return { accepted: true, reason: 'accepted', beats: again.beats, report: r, wordsBefore: before, wordsAfter: r.words, invented: [] }
 }
+
+// ── FIGURES NOTHING SHE GAVE TWIN CONTAINS (Sunflower #23) ─────────────────
+//
+// ⚠️ THE VIEWER PANEL ONLY TESTS THE FIRST THREE SECONDS. An invented cupping
+// score ("above 80", then "82" on a rerun) and "batches of exactly two pounds"
+// sat mid-script where nothing looked. Every digit-written figure in the final
+// lines is checked against the whole of what the writer was given; one that
+// appears nowhere is returned so the creator can check it before recording.
+// Deterministic and narrow: digits only (spelled numbers are usually counts of
+// steps), and years/"24/7"-style tokens are ignored.
+export function unsourcedFigures(
+  lines: ReadonlyArray<string | null | undefined>,
+  material: string,
+): Array<{ beat: number; figure: string }> {
+  const have = new Set((material.match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => n.replace(',', '.')))
+  const out: Array<{ beat: number; figure: string }> = []
+  lines.forEach((line, beat) => {
+    for (const m of String(line ?? '').matchAll(/(?<![\d/])\d+(?:[.,]\d+)?(?![\d/])/g)) {
+      const n = m[0].replace(',', '.')
+      const v = Number(n)
+      if (!Number.isFinite(v) || (v >= 1900 && v <= 2100) || v <= 1) continue
+      if (!have.has(n) && !out.some((o) => o.figure === n)) out.push({ beat, figure: n })
+    }
+  })
+  return out
+}

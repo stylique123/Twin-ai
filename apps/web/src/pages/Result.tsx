@@ -728,6 +728,7 @@ export default function Result() {
       // were discarded on arrival before (see the comments below). Naming
       // this field is what keeps it from joining them.
       reference_duration_sec: rr.reference_duration_sec ?? null,
+      reference_has_story: (rr as { reference_has_story?: boolean | null }).reference_has_story ?? null,
     },
     b_roll_stats: {
       original_b_roll_count: br.original_b_roll_count ?? '0',
@@ -821,6 +822,16 @@ export default function Result() {
     ? `That is longer than a short-form video normally runs (over ${spokenTime(runtimeCompare.ceilingSec)}) — worth trimming before you record.`
     : null
 
+  // ⚠️ SUNFLOWER #15: said when the reference had no personal story to borrow.
+  const noStoryLine = (b.reference_read as { reference_has_story?: boolean | null }).reference_has_story === false
+    ? 'The reference is tips or a list with no personal story in it — so any story in this script comes from what you told Twin, not from the reference.'
+    : null
+  // ⚠️ SUNFLOWER #23: numbers nothing she gave Twin contains.
+  const unsourced = Array.isArray((raw as { unsourced_figures?: unknown }).unsourced_figures)
+    ? ((raw as { unsourced_figures: Array<{ beat: number; figure: string }> }).unsourced_figures) : []
+  const unsourcedLine = unsourced.length
+    ? `Check before you record: ${unsourced.map((u) => `“${u.figure}” (line ${u.beat + 1})`).join(', ')} — Twin couldn't find ${unsourced.length === 1 ? 'this number' : 'these numbers'} in anything you gave it.`
+    : null
   const verdict = hookVerdicts(b.hook_options, audience.test)
   return (
     <main className="relative min-h-screen overflow-clip bg-ink text-sand pb-20">
@@ -1359,6 +1370,8 @@ export default function Result() {
               <p className="text-xs text-stone/80">{lengthLine}</p>
               {referenceCompareLine && <p className="text-xs text-stone/80">{referenceCompareLine}</p>}
               {ceilingWarningLine && <p className="text-xs text-amber">{ceilingWarningLine}</p>}
+              {noStoryLine && <p className="text-xs text-sand" data-testid="no-story-line">{noStoryLine}</p>}
+              {unsourcedLine && <p className="text-xs text-amber" data-testid="unsourced-figures">{unsourcedLine}</p>}
               {/* WHAT A PERSON FORWARDING THIS SCRIPT NEEDS TO KNOW ABOUT IT.
                   The agency's report: "I need to know which product each script
                   used, or I'll send a client the wrong one."
@@ -1760,6 +1773,8 @@ export default function Result() {
                 <p className="text-xs text-stone/80">{lengthLine}</p>
               {referenceCompareLine && <p className="text-xs text-stone/80">{referenceCompareLine}</p>}
               {ceilingWarningLine && <p className="text-xs text-amber">{ceilingWarningLine}</p>}
+              {noStoryLine && <p className="text-xs text-sand" data-testid="no-story-line">{noStoryLine}</p>}
+              {unsourcedLine && <p className="text-xs text-amber" data-testid="unsourced-figures">{unsourcedLine}</p>}
                 
                 <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />

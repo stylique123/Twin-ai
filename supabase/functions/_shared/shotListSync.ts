@@ -54,6 +54,8 @@ import { isSilentBeat } from './silentBeat.ts'
 
 export interface SyncedScriptBeat {
   line?: unknown
+  /** The beat's own label ("Hook", "CTA"), used when a resynced row's label went stale. */
+  section?: unknown
 }
 
 export interface SyncedShotRow {
@@ -103,6 +105,11 @@ export function syncShotListSpokenText<T extends SyncedShotRow>(
 
     if (!beat) {
       orphaned += 1
+      // ⚠️ SUNFLOWER #16: A TALKING SHOT WITH NO LINE IS A PHANTOM SCENE. The
+      // teleprompter counted fewer scenes than the shot list because blanked
+      // talking-head rows kept their camera direction. A talking shot with
+      // nothing to say is dropped; any other row keeps its framing, blanked.
+      if (row.shot_type === 'talking_head') return null
       return original === '' ? row : { ...row, spoken_text: '' }
     }
 
@@ -111,8 +118,23 @@ export function syncShotListSpokenText<T extends SyncedShotRow>(
 
     if (resolved === original) return row
     resynced += 1
-    return { ...row, spoken_text: resolved }
-  })
+    // ⚠️ SUNFLOWER #17: THE LABEL WAS WRITTEN FOR THE OLD LINE ("Detailing the
+    // deadline" over a line about her business origin). A resynced row takes
+    // the script beat's own label when it has one.
+    const label = typeof beat.section === 'string' && beat.section.trim() ? beat.section.trim() : null
+    return { ...row, spoken_text: resolved, ...(label && 'shot' in row ? { shot: label } : {}) }
+  }).filter((r): r is T => r !== null)
 
   return { shots: out, resynced, orphaned }
+}
+
+// ⚠️ "I HAVE 26 SIX DAYS" (Sunflower #18). A repair pass merged two spellings of
+// one figure — the digits and the trailing spelled unit digit — and the script
+// line shipped that way while the hook option still read "twenty six days".
+// Deterministic, and deliberately narrow: only a number of 20+ followed by the
+// word for its own last digit collapses, so "5 two-pound bags" is untouched.
+const UNIT_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
+export function collapseDoubledNumbers(line: string): string {
+  return line.replace(/\b(\d{2,})[\s-]+(zero|one|two|three|four|five|six|seven|eight|nine)\b/gi, (m, n: string, w: string) =>
+    Number(n) >= 20 && UNIT_WORDS[Number(n.slice(-1))] === w.toLowerCase() ? n : m)
 }

@@ -99,7 +99,7 @@ export function TestViewers({ generationId }: { generationId: string }) {
         {test.panel_voice_id
           ? `Twin tested this on your ${n} regular viewers, built from how your real posts performed.`
           : `Twin tested this on ${n} viewers like yours.`}
-        {' '}Twin plays them, so treat it as a practice audience, not a promise. Their hook scores are on the hooks above.
+        {' '}Twin plays them, so treat it as a practice audience, not a promise. Their hook scores are on the hooks above. They judge whether people stay past the opening; numbers in the rest of the script are checked separately against what you gave Twin.
       </p>
 
       {test.fixes.length > 0 && (

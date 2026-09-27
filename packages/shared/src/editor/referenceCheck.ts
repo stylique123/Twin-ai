@@ -262,3 +262,32 @@ export function classifyReferenceRead(input: ReferenceReadInput): ReferenceReadV
   }
   return { cls: 'usable', message: null, overrideAllowed: false }
 }
+
+// ── LENGTH FIT, JUDGED PER FIDELITY OPTION (Sunflower #11–#12) ─────────────
+//
+// ⚖️ A DEGREE PROBLEM, SO A WARNING WITH AN OVERRIDE — NEVER A REFUSAL.
+// "Match its opening and hook" borrows the first seconds only, so a reference
+// of any length serves it. "Match its pacing" and "Stay close" map its beats
+// onto hers, and that breaks down when one is several times the other.
+export const LENGTH_FIT_RATIO = 2.5
+
+export function referenceLengthFit(
+  durationSec: number | null | undefined,
+  targetSec: number | null | undefined,
+  referenceUse: string | null | undefined,
+): string | null {
+  if (!realNumber(durationSec) || !realNumber(targetSec) || durationSec <= 0 || targetSec <= 0) return null
+  if (referenceUse !== 'pacing' && referenceUse !== 'stay_close') return null
+  const ratio = durationSec / targetSec
+  if (ratio <= LENGTH_FIT_RATIO && ratio >= 1 / LENGTH_FIT_RATIO) return null
+  const mins = (s: number) => (s >= 60 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : `${Math.round(s)} seconds`)
+  const way = ratio > 1 ? 'longer' : 'shorter'
+  const opt = referenceUse === 'pacing' ? '“Match its pacing”' : '“Stay close throughout”'
+  return `This reference runs ${mins(durationSec)} — much ${way} than your ${mins(targetSec)} video, so ${opt} won't map well. `
+    + '“Match its opening and hook” works at any length. You can use it anyway, or go back and pick another.'
+}
+
+/** "Too long" only matters when the whole video is followed, not just its opening. */
+export function tooLongMatters(referenceUse: string | null | undefined): boolean {
+  return referenceUse !== 'structure'
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { syncShotListSpokenText } from '../shotListSync.js'
+import { collapseDoubledNumbers, syncShotListSpokenText } from '../shotListSync.js'
 
 // ⚠️ FIX 4 (Wave 2). The four-run harness (`liveRunFixtures.test.ts` §4)
 // documents the shipped defect on FROZEN evidence: run A's shot list quotes
@@ -56,7 +56,9 @@ describe('syncShotListSpokenText', () => {
     expect(result.resynced).toBe(1)
   })
 
-  it('run-c-shaped: an extra shot-list beat with no matching final beat is blanked, not left stale', () => {
+  // ⚖️ SUNFLOWER #16: an extra TALKING shot is now dropped, not blanked — a
+  // blanked one was a phantom scene the teleprompter never counted.
+  it('run-c-shaped: an extra talking shot with no matching final beat is dropped, not left stale', () => {
     const shotList = [
       { shot: 'Hook', framing: '', notes: '', shot_type: 'talking_head', spoken_text: 'The hook.' },
       { shot: 'The pivot', framing: '', notes: '', shot_type: 'talking_head', spoken_text: 'A whole extra beat.' },
@@ -69,9 +71,9 @@ describe('syncShotListSpokenText', () => {
     const result = syncShotListSpokenText(shotList, finalScript)
 
     expect(result.shots[0]!.spoken_text).toBe('The hook.')
-    expect(result.shots[1]!.spoken_text).toBe('')
+    expect(result.shots).toHaveLength(2)
     // The cover-frame row (already empty) is passed through untouched.
-    expect(result.shots[2]).toBe(shotList[2])
+    expect(result.shots[1]).toBe(shotList[2])
     expect(result.orphaned).toBe(1)
   })
 
@@ -119,5 +121,19 @@ describe('syncShotListSpokenText', () => {
     expect(syncShotListSpokenText(null, null)).toEqual({ shots: [], resynced: 0, orphaned: 0 })
     expect(syncShotListSpokenText(undefined, [{ line: 'x' }])).toEqual({ shots: [], resynced: 0, orphaned: 0 })
     expect(syncShotListSpokenText([{ spoken_text: 'x' }], undefined).shots[0]!.spoken_text).toBe('')
+  })
+})
+
+describe('Sunflower #17–#18', () => {
+  it('a resynced row takes the beat label', () => {
+    const r = syncShotListSpokenText(
+      [{ shot: 'Detailing the deadline', shot_type: 'talking_head', spoken_text: 'old' }],
+      [{ section: 'Origin', line: 'I started roasting in my garage.' }])
+    expect(r.shots[0]!.shot).toBe('Origin')
+  })
+  it('collapses "26 six" and leaves real counts alone', () => {
+    expect(collapseDoubledNumbers('I have 26 six days to move.')).toBe('I have 26 days to move.')
+    expect(collapseDoubledNumbers('5 two-pound bags')).toBe('5 two-pound bags')
+    expect(collapseDoubledNumbers('I roast 12 two times')).toBe('I roast 12 two times')
   })
 })

@@ -29,6 +29,7 @@ import { gateStories, recentSupplyCounts, STORY_KINDS } from '../_shared/storyRo
 import {
   repairScriptIntegrity, tagStorySources, shouldExtendScript, buildExtensionPrompt, acceptExtension,
   type IntegrityBeat,
+  unsourcedFigures,
 } from '../_shared/scriptIntegrity.ts'
 import {
   resolveTemplate,
@@ -44,7 +45,7 @@ import { findPhraseOverlaps, MIN_OVERLAP_CONTENT_WORDS } from '../_shared/phrase
 import { verbatimBudget, referenceShapeDigest, renderShapeDigest, REFERENCE_EXPOSURE, type ReferenceUseLevel } from '../_shared/referenceExposure.ts'
 import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
-import { syncShotListSpokenText } from '../_shared/shotListSync.ts'
+import { syncShotListSpokenText, collapseDoubledNumbers } from '../_shared/shotListSync.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
 import {
   personalUseGateApplies, personalUseViolations, claimsPersonalUse, dropPersonalUseSentences,
@@ -7781,6 +7782,8 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // nothing; `beat_audit` paid for that lesson.
   let suppliedKnowledgeIds: string[] = []
   let rescue: { bp: unknown; allow: LinkAllowlist; runId: string } | null = null
+  // Everything the writer was given, kept for the figure audit (Sunflower #23).
+  let writerMaterial = ''
   let refunded = false
   const refundOnce = async (reason: string) => {
     if (refunded) return
@@ -10535,6 +10538,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         .insert(brainNoteIds.map((note_id) => ({ run_id: scriptRunId, note_id, owner_id: ownerId })))
         .then(() => {}, () => {})
     }
+    writerMaterial = userPrompt
     const raw = await callModel(apiKey, SYSTEM, userPrompt, blueprintSchema,
       attemptRecorder(admin, ownerId, scriptRunId))
 
@@ -12807,6 +12811,18 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     try {
       const shots = (blueprint as { shot_list?: unknown })?.shot_list
       const script = (blueprint as { script?: unknown })?.script
+      // Before the shot list copies them: "26 six days" → "26 days".
+      if (Array.isArray(script)) {
+        for (const b of script as Array<{ line?: unknown }>) {
+          if (typeof b?.line === 'string') b.line = collapseDoubledNumbers(b.line)
+        }
+      }
+      // ⚠️ SUNFLOWER #23: figures in the final script that nothing she gave
+      // Twin contains — shown on the result as "check before you record".
+      if (Array.isArray(script) && writerMaterial) {
+        ;(blueprint as { unsourced_figures?: unknown }).unsourced_figures = unsourcedFigures(
+          (script as Array<{ line?: unknown }>).map((b) => (typeof b?.line === 'string' ? b.line : '')), writerMaterial)
+      }
       if (Array.isArray(shots) && shots.length > 0) {
         // ⚠️ ITEM 1: THE SHOT LIST IS DERIVED FROM THE TELEPROMPTER, NEVER A
         // SECOND AUTHOR. Diff first — every spoken row that asserts something the
@@ -13141,6 +13157,21 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     ;(blueprint as { reference_read?: Record<string, unknown> }).reference_read &&
       ((blueprint as { reference_read: Record<string, unknown> }).reference_read.reference_duration_sec =
         ref?.duration_sec ?? null)
+
+    // ⚠️ SUNFLOWER #15: A REFERENCE WITH NO PERSONAL STORY IN IT. Listicles and
+    // advice round-ups carry no "I"/"my" narrative, so any story in the adapted
+    // script cannot have come from the reference. Measured, not asked: the share
+    // of first-person words in its transcript. The client says so plainly.
+    try {
+      const refText = typeof ref?.text === 'string' ? ref.text : ''
+      const words = refText.split(/\s+/).filter(Boolean)
+      if (words.length >= 40) {
+        const firstPerson = words.filter((w) => /^(i|i'm|i've|i'd|my|me|mine|we|our|us)$/i.test(w.replace(/[^a-z']/gi, ''))).length
+        ;(blueprint as { reference_read?: Record<string, unknown> }).reference_read &&
+          ((blueprint as { reference_read: Record<string, unknown> }).reference_read.reference_has_story =
+            firstPerson / words.length >= 0.02)
+      }
+    } catch { /* advisory */ }
 
     // ── ONE ADVISORY READ, AFTER THE SCRIPT IS ALREADY SAFE ──────────────────
     //
