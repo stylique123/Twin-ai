@@ -150,7 +150,7 @@ describe('the answers have a reader, and the right ones persist', () => {
     // creator's mouth, so a partial answer returns to the same refusal.
     // Re-pointed (item 25): the check reads the questions actually visible.
     // Menu redesign Part 4 adds: and the objective's answer is concrete (or she said she has none).
-    expect(WEB).toMatch(/disabled=\{visibleAsk\.some\(\s*\n?\s*\(q\) => isChip\(q\) && !\(askAnswers\[q\.field\] \?\? ''\)\.trim\(\)\) \|\| answerBlocked\}/)
+    expect(WEB).toMatch(/disabled=\{visibleAsk\.some\(\s*\n?\s*\(q\) => isChip\(q\) && !\(askAnswers\[q\.field\] \?\? ''\)\.trim\(\)\) \|\| answerBlocked \|\| followUpBlocked\}/)
   })
 
   it('persists what is true of the CREATOR and nothing that is true of this video', () => {

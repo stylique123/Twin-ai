@@ -89,7 +89,7 @@ const START_ERROR_TEXT: Record<string, string> = {
 const GEN_CACHE: Record<string, Generation> = {}
 import { useAuth } from '../context/AuthContext'
 import { RateThisScript } from '../components/RateThisScript'
-import { TestViewers } from '../components/TestViewers'
+import { TestViewers, useAudienceTest, hookVerdicts } from '../components/TestViewers'
 import type { Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { EASE } from '../components/motion'
@@ -265,6 +265,8 @@ export default function Result() {
   const { id } = useParams()
   const { profile } = useAuth()
   const [gen, setGen] = useState<Generation | null>(() => (id ? GEN_CACHE[id] ?? null : null))
+  // The viewer test for this script: hook scores sit ON the hook picker.
+  const audience = useAudienceTest(id ?? '')
   // Only block on the full-screen loader when we have NOTHING cached to show.
   const [loading, setLoading] = useState(() => !(id && GEN_CACHE[id]))
   const [posted, setPosted] = useState(false)
@@ -819,6 +821,7 @@ export default function Result() {
     ? `That is longer than a short-form video normally runs (over ${spokenTime(runtimeCompare.ceilingSec)}) — worth trimming before you record.`
     : null
 
+  const verdict = hookVerdicts(b.hook_options, audience.test)
   return (
     <main className="relative min-h-screen overflow-clip bg-ink text-sand pb-20">
       {/* Aurora Glow */}
@@ -1286,6 +1289,7 @@ export default function Result() {
               )}
               <div className="grid grid-cols-1 gap-3">
                 {b.hook_options.map((h, i) => {
+                  if (verdict?.hidden.has(h) && h !== chosenHook) return null
                   const isChosen = h === chosenHook
                   return (
                     <button
@@ -1303,7 +1307,8 @@ export default function Result() {
                         {isChosen && <Check className="h-3 w-3 text-ink stroke-[3]" />}
                       </span>
                       <div className="flex-1 min-w-0 leading-relaxed">
-                        {i === 0 && <span className="mr-2 inline-block rounded-full bg-amber/10 border border-amber/20 px-2 py-0.5 text-[9px] font-bold text-amber uppercase tracking-widest">Recommended</span>}
+                        {verdict?.best === h && <span className="mr-2 inline-block rounded-full bg-amber/10 border border-amber/20 px-2 py-0.5 text-[9px] font-bold text-amber uppercase tracking-widest">Recommended</span>}
+                        {verdict && <span className="mr-2 text-[11px] font-semibold not-italic text-sand">{verdict.stopped.get(h) ?? 0} of {verdict.n} would stop ·</span>}
                         <span className="italic font-semibold text-cream">“{h}”</span>
                       </div>
                     </button>
@@ -1551,7 +1556,7 @@ export default function Result() {
                   transition={{ duration: 0.25 }}
                   className="rounded-card border border-white/5 bg-ink2/85 p-6 space-y-6 shadow-glass backdrop-blur-md"
                 >
-                  <TestViewers generationId={gen.id} chosenHook={chosenHook} onPick={pickHook} />
+                  <TestViewers generationId={gen.id} />
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-stone" />
@@ -1716,6 +1721,7 @@ export default function Result() {
                 )}
                 <div className="grid grid-cols-1 gap-3">
                   {b.hook_options.map((h, i) => {
+                  if (verdict?.hidden.has(h) && h !== chosenHook) return null
                     const isChosen = h === chosenHook
                     return (
                       <button
@@ -1733,7 +1739,8 @@ export default function Result() {
                           {isChosen && <Check className="h-3 w-3 text-ink stroke-[3]" />}
                         </span>
                         <div className="flex-1 min-w-0 leading-relaxed">
-                          {i === 0 && <span className="mr-2 inline-block rounded-full bg-amber/10 border border-amber/20 px-2 py-0.5 text-[9px] font-bold text-amber uppercase tracking-widest">Recommended</span>}
+                          {verdict?.best === h && <span className="mr-2 inline-block rounded-full bg-amber/10 border border-amber/20 px-2 py-0.5 text-[9px] font-bold text-amber uppercase tracking-widest">Recommended</span>}
+                        {verdict && <span className="mr-2 text-[11px] font-semibold not-italic text-sand">{verdict.stopped.get(h) ?? 0} of {verdict.n} would stop ·</span>}
                           <span className="italic font-semibold text-cream">“{h}”</span>
                         </div>
                       </button>
@@ -1883,7 +1890,7 @@ export default function Result() {
 
           {mobileTab === 'strategy' && (
             <div className="rounded-card border border-white/5 bg-ink2/85 p-5 space-y-6 shadow-glass backdrop-blur-md">
-              <TestViewers generationId={gen.id} chosenHook={chosenHook} onPick={pickHook} />
+              <TestViewers generationId={gen.id} />
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-stone" />

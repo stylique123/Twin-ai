@@ -10,7 +10,7 @@ import { supabase } from '../lib/supabase'
 
 interface Viewer { who: string; quote: string; stops_for: number; leaves_at: number; question: string | null }
 interface Fix { issue: string; fix: string; beat: number; count: number }
-interface Test {
+export interface Test {
   status: 'done' | 'failed'
   panel_size: number | null
   hooks: Array<{ hook: string; stopped: number }>
@@ -24,15 +24,39 @@ interface Test {
 const POLL_MS = 4000
 const GIVE_UP_MS = 90_000
 
-export function TestViewers({ generationId, chosenHook, onPick }: {
-  generationId: string
-  chosenHook: string
-  onPick: (hook: string) => void
-}) {
+/** Words of a hook, for telling near-duplicates apart. */
+const words = (h: string) => new Set(h.toLowerCase().replace(/[^a-z0-9\s']/g, ' ').split(/\s+/).filter((w) => w.length > 2))
+/** ⚖️ TWO HOOKS SAYING THE SAME THING ARE ONE OPTION. Measured: five options
+ *  presented, four ideas tested. Share of the smaller hook's words. */
+export function sameIdea(a: string, b: string): boolean {
+  const A = words(a), B = words(b)
+  if (!A.size || !B.size) return false
+  let n = 0
+  for (const w of A) if (B.has(w)) n++
+  return n / Math.min(A.size, B.size) >= 0.6
+}
+
+/** ⚖️ THE ONE PLACE A HOOK IS "RECOMMENDED": the most viewers stopped for it.
+ *  The picker used to star option #1 regardless — which scored 0 of 10 on
+ *  three live runs while another option scored 4–6. Returns per-hook counts
+ *  keyed by hook text, and which near-duplicates to hide. */
+export function hookVerdicts(options: string[], test: Test | null) {
+  if (!test || test.status !== 'done' || !test.viewers.length) return null
+  const n = test.panel_size ?? test.viewers.length
+  const stopped = new Map(test.hooks.map((h) => [h.hook, h.stopped]))
+  const best = test.best_hook !== null ? test.hooks[test.best_hook]?.hook ?? null : null
+  const hidden = new Set<string>()
+  const byScore = [...options].sort((a, b) => (stopped.get(b) ?? -1) - (stopped.get(a) ?? -1))
+  byScore.forEach((h, i) => {
+    if (hidden.has(h)) return
+    for (const lower of byScore.slice(i + 1)) if (sameIdea(h, lower)) hidden.add(lower)
+  })
+  return { n, stopped, best, hidden }
+}
+
+export function useAudienceTest(generationId: string) {
   const [test, setTest] = useState<Test | null>(null)
   const [waiting, setWaiting] = useState(true)
-  const [open, setOpen] = useState(false)
-
   useEffect(() => {
     let alive = true
     const started = Date.now()
@@ -51,6 +75,14 @@ export function TestViewers({ generationId, chosenHook, onPick }: {
     load()
     return () => { alive = false; if (timer) clearTimeout(timer) }
   }, [generationId])
+  return { test, waiting }
+}
+
+/** The viewers' notes. Hook scores live on the hook picker itself now, so the
+ *  audience informs the choice instead of following it. */
+export function TestViewers({ generationId }: { generationId: string }) {
+  const { test, waiting } = useAudienceTest(generationId)
+  const [open, setOpen] = useState(false)
 
   if (!test) {
     return waiting
@@ -60,44 +92,15 @@ export function TestViewers({ generationId, chosenHook, onPick }: {
   if (test.status !== 'done' || test.viewers.length === 0) return null
 
   const n = test.panel_size ?? test.viewers.length
-  const ranked = test.hooks.map((h, i) => ({ ...h, i })).sort((a, b) => b.stopped - a.stopped)
 
   return (
     <div className="space-y-5" data-testid="test-viewers">
-      <div className="space-y-2">
-        <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Pick your hook</h3>
-        <p className="text-[11px] text-stone">
-          {test.panel_voice_id
-            ? `Twin tested this on your ${n} regular viewers, built from how your real posts performed.`
-            : `Twin tested this on ${n} viewers like yours.`}
-          {' '}Twin plays them, so treat it as a practice audience, not a promise.
-        </p>
-        <ul className="space-y-2">
-          {ranked.map((h) => {
-            const best = h.i === test.best_hook
-            const chosen = h.hook === chosenHook
-            const says = test.viewers.find((v) => v.stops_for === h.i)?.quote
-            return (
-              <li key={h.i}>
-                <button
-                  type="button"
-                  onClick={() => onPick(h.hook)}
-                  className={`w-full rounded-lg border p-3 text-left transition-colors ${chosen ? 'border-teal bg-teal/10' : 'border-white/5 hover:border-white/15'}`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-semibold text-sand">
-                      {best ? '⭐ Recommended · ' : ''}{h.stopped} of {n} would stop
-                    </span>
-                    {chosen && <span className="text-[10px] font-semibold uppercase text-teal">Your pick</span>}
-                  </div>
-                  <p className="mt-1 text-xs text-cream">“{h.hook}”</p>
-                  {says && <p className="mt-1 text-[11px] italic text-stone">A viewer: “{says}”</p>}
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      </div>
+      <p className="text-[11px] text-stone">
+        {test.panel_voice_id
+          ? `Twin tested this on your ${n} regular viewers, built from how your real posts performed.`
+          : `Twin tested this on ${n} viewers like yours.`}
+        {' '}Twin plays them, so treat it as a practice audience, not a promise. Their hook scores are on the hooks above.
+      </p>
 
       {test.fixes.length > 0 && (
         <div className="space-y-2">

@@ -108,7 +108,20 @@ export default function Calendar() {
     const ok = params.get('connected')
     const err = params.get('connect_error')
     if (ok) { setConnMsg(`${cap(ok)} connected.`); listConnections().then(setConns).catch(() => {}) }
-    else if (err) { setConnMsg(`Couldn't connect: ${err}`) }
+    else if (err) {
+      // Plain words for each failure, never a bare code.
+      const why: Record<string, string> = {
+        state: 'the sign-in link was already used. Please try again.',
+        expired: 'the sign-in took too long. Please try again.',
+        denied: 'permission was not granted on the platform.',
+        missing: 'the platform did not send the account back. Please try again.',
+        no_account: 'no account of that type was found on that login.',
+        unconfigured: 'this platform is not set up yet.',
+        save_failed: 'the account was approved but could not be saved. Please try again.',
+        connect_failed: 'something went wrong on our side. Please try again.',
+      }
+      setConnMsg(`Couldn't connect: ${why[err] ?? err}`)
+    }
     if (ok || err) { params.delete('connected'); params.delete('connect_error'); setParams(params, { replace: true }) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
