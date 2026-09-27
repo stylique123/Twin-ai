@@ -11,7 +11,7 @@ import { listBrandVoices, nicheBucket } from '@twinai/shared'
 import { supabase } from '../lib/supabase'
 
 interface Note {
-  id: string; kind: string; title: string; body: string | null; sub_niche: string | null
+  id: string; kind: string; title: string; body: string | null; sub_niche: string | null; sources?: unknown
   times_seen: number; total_views: number | string; owner_id: string | null
 }
 interface Moment { name?: string; when?: string | null; angle?: string | null }
@@ -57,6 +57,7 @@ export default function WhatTwinKnows() {
   const [subNiche, setSubNiche] = useState<string | null>(null)
   const [mine, setMine] = useState<Note[]>([])
   const [niche, setNiche] = useState<Note[]>([])
+  const [captions, setCaptions] = useState<Record<string, string>>({})
   const [moments, setMoments] = useState<Moment[]>([])
   const [loaded, setLoaded] = useState(false)
   const [topics, setTopics] = useState<Topic[]>([])
@@ -75,7 +76,7 @@ export default function WhatTwinKnows() {
         if (!alive) return
         setBucket(b); setSubNiche(p.sub_niche ?? null)
         const [own, shared, mom, know, qs, men, sh] = await Promise.all([
-          supabase.from('brain_notes').select('id, kind, title, body, sub_niche, times_seen, total_views, owner_id')
+          supabase.from('brain_notes').select('id, kind, title, body, sub_niche, times_seen, total_views, owner_id, sources')
             .not('owner_id', 'is', null).order('total_views', { ascending: false }).limit(60),
           b ? supabase.from('brain_notes').select('id, kind, title, body, sub_niche, times_seen, total_views, owner_id')
             .is('owner_id', null).eq('bucket', b).order('times_seen', { ascending: false }).limit(90)
@@ -93,6 +94,17 @@ export default function WhatTwinKnows() {
         ])
         if (!alive) return
         setMine((own.data ?? []) as Note[])
+        // ⚠️ HER REAL WORDS, NOT ONLY THE PATTERN. A note like "[Thrifted/cheap
+        // material] 🤝 [aesthetic upgrade]" read as invented; it came from her
+        // caption "thrifted tiles 🤝 coffeebar backsplash". Show that caption.
+        const ids = [...new Set(((own.data ?? []) as Note[]).flatMap((n) =>
+          Array.isArray(n.sources) ? (n.sources as unknown[]).map(String) : []))].slice(0, 120)
+        if (ids.length) {
+          const { data: posts } = await supabase.from('scraped_posts').select('id, caption').in('id', ids)
+          if (alive) setCaptions(Object.fromEntries(((posts ?? []) as Array<{ id: string; caption: string | null }>)
+            .map((p) => [p.id, (p.caption ?? '').replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()])
+            .filter(([, c]) => c)))
+        }
         setNiche((shared.data ?? []) as Note[])
         const m = (mom.data ?? [])[0] as { moments?: Moment[] } | undefined
         setMoments(Array.isArray(m?.moments) ? m!.moments : [])
@@ -135,8 +147,13 @@ export default function WhatTwinKnows() {
                 <li key={n.id}>
                   {n.title}
                   <span className="ml-1 text-xs text-stone">
-                    ({[hers ? 'your post' : n.times_seen > 1 ? `seen in ${n.times_seen} videos` : null, views(n.total_views)].filter(Boolean).join(', ')})
+                    ({[hers ? 'your post' : n.times_seen > 1 ? `seen in ${n.times_seen} other creators' videos` : null, views(n.total_views)].filter(Boolean).join(', ')})
                   </span>
+                  {hers && (() => {
+                    const said = (Array.isArray(n.sources) ? (n.sources as unknown[]).map(String) : [])
+                      .map((id) => captions[id]).find(Boolean)
+                    return said ? <span className="mt-0.5 block text-xs italic text-sand/80">You wrote: “{said.slice(0, 140)}”</span> : null
+                  })()}
                 </li>
               ))}
             </ul>
@@ -151,8 +168,8 @@ export default function WhatTwinKnows() {
       <p className="eyebrow">Your brain</p>
       <h1 className="mt-2 font-display text-4xl tracking-tight">What Twin knows</h1>
       <p className="mt-2 max-w-2xl text-sm text-stone">
-        Everything below is what your scripts are built from{subNiche ? <> — tuned to <b>{subNiche}</b></> : null}.
-        It grows every day from your own posts, videos in your niche, and what is happening in the world.
+        What your scripts are built from{subNiche ? <> — tuned to <b>{subNiche}</b></> : null}. First what Twin learned
+        from your own posts, then — kept separate — what other creators in your niche and the world are doing.
       </p>
       {!loaded && <p className="mt-8 text-sm text-stone">Loading…</p>}
       {loaded && mine.length === 0 && niche.length === 0 && moments.length === 0 && topics.length === 0 && (
@@ -160,19 +177,10 @@ export default function WhatTwinKnows() {
           Twin is still reading. Check back soon — or <Link to="/v2" className="underline">make a script</Link> now.
         </p>
       )}
-      {moments.length > 0 && (
-        <section className="mt-8">
-          <h2 className="font-display text-2xl tracking-tight">Happening now{bucket ? ` in ${bucket.replace('_', ' & ')}` : ''}</h2>
-          <ul className="mt-3 space-y-2 text-sm">
-            {moments.slice(0, 6).map((m, i) => (
-              <li key={i} className="glass rounded-xl p-3">
-                <b>{m.name}</b>{m.when ? <span className="text-stone"> · {m.when}</span> : null}
-                {m.angle && <p className="mt-1 text-stone">{m.angle}</p>}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {/* ⚠️ TWO KINDS OF KNOWLEDGE, NOW VISIBLY APART. Everything in "About
+          you" is read from her own posts and answers; "Around you" is other
+          creators and the calendar — ideas, never facts about her. */}
+      <h2 className="mt-10 border-b border-white/10 pb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cream">About you — from your own posts</h2>
       {topics.length > 0 && (
         <section className="mt-8" data-testid="topic-map">
           <h2 className="font-display text-2xl tracking-tight">What you talk about</h2>
@@ -238,8 +246,27 @@ export default function WhatTwinKnows() {
           </ul>
         </section>
       )}
-      {mine.length > 0 && section('From your own posts', byKind.mine, true)}
-      {niche.length > 0 && section('What works in your niche', byKind.niche, false)}
+      {mine.length > 0 && section('Your patterns', byKind.mine, true)}
+      {(moments.length > 0 || niche.length > 0) && (
+        <>
+          <h2 className="mt-14 border-b border-white/10 pb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cream">Around you — not about you</h2>
+          <p className="mt-2 text-sm text-stone">What is happening in the world and what works for other creators in your niche. Twin uses these as ideas — never as facts about you or your business.</p>
+        </>
+      )}
+      {moments.length > 0 && (
+        <section className="mt-8">
+          <h2 className="font-display text-2xl tracking-tight">Happening now{bucket ? ` in ${bucket.replace('_', ' & ')}` : ''}</h2>
+          <ul className="mt-3 space-y-2 text-sm">
+            {moments.slice(0, 6).map((m, i) => (
+              <li key={i} className="glass rounded-xl p-3">
+                <b>{m.name}</b>{m.when ? <span className="text-stone"> · {m.when}</span> : null}
+                {m.angle && <p className="mt-1 text-stone">{m.angle}</p>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {niche.length > 0 && section('What works for other creators in your niche', byKind.niche, false)}
     </div>
   )
 }
