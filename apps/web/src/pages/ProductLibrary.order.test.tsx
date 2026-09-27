@@ -45,12 +45,14 @@ const at = (needle: string): number => {
 }
 
 describe('the add form asks what they already know first', () => {
-  it('runs name → description → what is it → relationship → used it → link', () => {
+  // ⚖️ RELATIONSHIP FIRST (Sunflower #10): one "Add a product" for own and
+  // promoted things, so the relationship is asked before anything else.
+  it('runs relationship → name → description → what is it → used it → link', () => {
     const order = [
+      'label="What is your relationship to it?"',
       "htmlFor=\"product-name\"",
       "htmlFor=\"product-summary\"",
       'label="What is it?"',
-      'label="What is your relationship to it?"',
       "'Have you actually used it yourself?'",
       "htmlFor=\"product-link\"",
     ].map(at)

@@ -2827,9 +2827,10 @@ interface BrandRow {
   website: string | null
   description: string | null
   confirmed: boolean
+  forbidden_claims?: string[] | null
 }
 
-const BRAND_COLUMNS = 'id, name, website, description, confirmed'
+const BRAND_COLUMNS = 'id, name, website, description, confirmed, forbidden_claims'
 
 function readBrandRow(r: BrandRow): Brand {
   return {
@@ -2838,6 +2839,7 @@ function readBrandRow(r: BrandRow): Brand {
     website: r.website && r.website.trim() !== '' ? r.website.trim() : null,
     description: r.description && r.description.trim() !== '' ? r.description.trim() : null,
     confirmed: r.confirmed === true,
+    forbiddenClaims: Array.isArray(r.forbidden_claims) ? r.forbidden_claims.filter((x) => typeof x === 'string' && x.trim()) : [],
   }
 }
 
@@ -2878,6 +2880,24 @@ export async function saveBrand(
   const { data, error } = await q.select(BRAND_COLUMNS).single()
   if (error) throw error
   return readBrandRow(data as BrandRow)
+}
+
+/** Claims a brand's scripts must never make; its products inherit them. */
+export async function setBrandForbiddenClaims(id: string, claims: string[]): Promise<void> {
+  const clean = [...new Set(claims.map((c) => c.trim()).filter(Boolean))].slice(0, 20)
+  const { error } = await supabase.from('brands').update({ forbidden_claims: clean }).eq('id', id)
+  if (error) throw error
+}
+
+/** Claims THIS product's scripts must never make, kept in `restrictions` beside
+ *  whatever else is there (the writer already reads `forbiddenClaims`). */
+export async function setProductForbiddenClaims(id: string, claims: string[]): Promise<void> {
+  const clean = [...new Set(claims.map((c) => c.trim()).filter(Boolean))].slice(0, 20)
+  const { data, error: readErr } = await supabase.from('product_entities').select('restrictions').eq('id', id).maybeSingle()
+  if (readErr) throw readErr
+  const prev = (data?.restrictions && typeof data.restrictions === 'object' ? data.restrictions : {}) as Record<string, unknown>
+  const { error } = await supabase.from('product_entities').update({ restrictions: { ...prev, forbiddenClaims: clean } }).eq('id', id)
+  if (error) throw error
 }
 
 /** Remove a brand. Its products stay; `on delete set null` (0224) simply takes

@@ -8978,6 +8978,21 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         if (t !== '') unionForbidden.push(t)
       }
     }
+    // ⚖️ THE BRAND'S OWN BANS (0248), INHERITED BY EVERY PRODUCT UNDER IT.
+    // A separate best-effort read so an unapplied migration costs this line only.
+    {
+      const bid = requestedBrandId !== '' ? requestedBrandId
+        : (ownedEntity as { brand_id?: unknown } | null)?.brand_id
+      if (typeof bid === 'string' && bid !== '') {
+        const { data: bb } = await admin.from('brands').select('forbidden_claims')
+          .eq('id', bid).eq('owner_id', ownerId).maybeSingle()
+        const list = (bb as { forbidden_claims?: unknown } | null)?.forbidden_claims
+        if (Array.isArray(list)) for (const f of list) {
+          const t = String(f ?? '').trim()
+          if (t !== '') unionForbidden.push(t)
+        }
+      }
+    }
     // ⚖️ `ownershipLanguage` IS DERIVED ONCE, ABOVE, beside the claim lines that
     // now also need it — it used to be computed here, where only this block
     // could see it.
