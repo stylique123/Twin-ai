@@ -50,6 +50,7 @@ import {
   personalUseGateApplies, personalUseViolations, claimsPersonalUse, dropPersonalUseSentences,
   PERSONAL_USE_REPAIR_SYSTEM, personalUseRepairPrompt,
 } from '../_shared/personalUseGate.ts'
+import { voiceRules, voiceViolations, vocabularyUsed, VOICE_REPAIR_SYSTEM, voiceRepairPrompt } from '../_shared/voiceGate.ts'
 import {
   rebuttalPromptRule, repairRebuttalFraming, ctaGoalPromptRule, repairCtaForGoal,
   factReachesWriter, removeUnbackedPromotions, confirmedPromotionText,
@@ -10583,6 +10584,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     let shotListClaimDrift: number | null = null
     // Fix A counts, stored on the row so the real rate can be measured.
     let personalUseGateAudit: { flagged: number; repaired: number; dropped: number } | null = null
+    let voiceGateAudit: Record<string, unknown> | null = null
     // ⚠️ FIX 5 (Wave 2). NULL MEANS THE GENERATION CARRIED NO RETENTION MAP TO
     // RECONCILE — never zero. `matched` is how many output rows landed on a
     // beat whose NAME the model's original retention_map still used (that
@@ -12672,6 +12674,43 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       }
     }
 
+    // ── THE VOICE GATE (24-ideas #21) ────────────────────────────────────────
+    //
+    // Her stored `donts` that name something checkable (jargon, greetings,
+    // hype, lecturing) are enforced on the finished lines: flagged lines are
+    // rewritten in her voice and re-checked; a line the rewrite did not fix is
+    // KEPT as written — a style miss never fails a script or drops a fact.
+    // Her own vocabulary never counts as a miss. Before the shot-list sync.
+    try {
+      const vBeats = Array.isArray(declared) ? declared as Array<{ line?: unknown }> : []
+      const vProfile = (vp ?? {}) as { donts?: unknown; vocabulary?: unknown; tone?: unknown }
+      const rules = voiceRules(vProfile.donts)
+      const flagged = voiceViolations(vBeats, rules, vProfile.vocabulary)
+      let repaired = 0
+      if (flagged.length > 0) {
+        try {
+          const fixed = await callModel(apiKey, VOICE_REPAIR_SYSTEM,
+            voiceRepairPrompt(vBeats, flagged, String(vProfile.tone ?? ''), vProfile.vocabulary), REPAIR_SCHEMA)
+          const idx = new Set(flagged.map((f) => f.index))
+          for (const r of parseRepairRewrites(fixed)) {
+            const i = typeof r?.index === 'number' ? r.index : -1
+            const line = typeof r?.line === 'string' ? r.line.trim() : ''
+            if (!idx.has(i) || line === '') continue
+            // The rewrite must itself pass, and must not bring back a use claim.
+            if (voiceViolations([{ line }], rules.filter((x) => x !== 'no_greeting' || i === 0), vProfile.vocabulary).length > 0) continue
+            if (claimsPersonalUse(line) && !claimsPersonalUse(String(vBeats[i].line ?? ''))) continue
+            vBeats[i].line = line
+            repaired++
+          }
+        } catch (err) {
+          console.warn('voice_repair_failed', err instanceof Error ? err.message : err)
+        }
+      }
+      const lines = vBeats.map((b) => (typeof b?.line === 'string' ? b.line : ''))
+      voiceGateAudit = { rules, flagged: flagged.length, repaired, vocabulary: vocabularyUsed(vProfile.vocabulary, lines) }
+      if (flagged.length > 0) console.warn(JSON.stringify({ event: 'voice_gate', rules, flagged: flagged.length, repaired }))
+    } catch { /* the voice gate never fails a generation */ }
+
     // ── THE SHOT LIST MUST QUOTE THE SCRIPT THAT ACTUALLY SHIPS ──────────────
     //
     // ⚠️ MEASURED ACROSS THE FOUR-RUN HARNESS: shot_list and script are written
@@ -12895,6 +12934,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       beatAudit.goal_fidelity = goalFidelity
       beatAudit.shot_list_claim_drift = shotListClaimDrift
       if (personalUseGateAudit) beatAudit.personal_use_gate = personalUseGateAudit
+      if (voiceGateAudit) beatAudit.voice_gate = voiceGateAudit
       // Owner's grain addendum, MEASURED: of her own raw words, how many survived.
       try {
         const lines = (Array.isArray(declared) ? declared as Array<{ line?: unknown }> : [])

@@ -188,6 +188,10 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Per failed insert of her reply. The row is still stamped `reply_filed_at`, so the failure is visible as a stamped question with no matching knowledge row.',
   },
+  voice_gate: {
+    kind: 'counter_ephemeral',
+    why: 'Per script: lines that broke a checkable rule from her own donts, and how many were rewritten. Durable in `generations.beat_audit.voice_gate` (rules, flagged, repaired, vocabulary used).',
+  },
   social_stats_sync: {
     kind: 'counter_ephemeral',
     why: 'Per cron tick: posts whose views were read back. Durable on `posts` (views, likes, comments, stats_synced_at) and `generation_outcomes` (views_24h, views_7d).',
