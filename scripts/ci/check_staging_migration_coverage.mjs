@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0243_found_you_elsewhere':
+    'Adds `creator_mentions`, `mention_searches`, `decide_mention` and `mentions_due`; filled by a '
+    + 'production worker sweep (grounded search). The editor never reads it.',
   '0242_customer_reviews':
     'Adds nullable `product_entities.customer_reviews`; written by the extractor, read by the writer '
     + 'with its own fail-open select. The editor never reads it.',

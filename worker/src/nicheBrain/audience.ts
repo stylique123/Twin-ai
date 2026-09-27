@@ -11,6 +11,7 @@ import { modelForTask } from '../modelRouting.js'
 import { noteKey } from './librarian.js'
 import { fileNote } from './sweep.js'
 import { insertKnowledge } from '../knowledgeInsert.js'
+import { runMentionFinder, fileConfirmedMentions } from './mentions.js'
 import {
   AUDIENCE_SCHEMA, AUDIENCE_SYSTEM, PANEL_SCHEMA, PANEL_SIZE, PANEL_SYSTEM,
   audiencePrompt, normalizeAudience, normalizePanel, scriptFromBlueprint, type Persona,
@@ -27,6 +28,7 @@ export function kickAudienceTests(log: Log): void {
   last = now
   inFlight = true
   void runPanelBuilder(log).then(() => runAudienceTests(log)).then(() => filePostQuestions(log)).then(() => fileHerReplies(log))
+    .then(() => runMentionFinder(log)).then(() => fileConfirmedMentions(log))
     .catch((err) => log('error', 'audience_threw', { error: err instanceof Error ? err.message : String(err) }))
     .finally(() => { inFlight = false })
 }

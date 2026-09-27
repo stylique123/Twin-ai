@@ -17,6 +17,7 @@ interface Note {
 interface Moment { name?: string; when?: string | null; angle?: string | null }
 interface Topic { text: string; times_seen: number; covered: boolean }
 interface OpenQuestion { id: string; question: string }
+interface Mention { id: string; kind: string; title: string; outlet: string; url: string }
 
 // ── YOUR TOPIC MAP (24-ideas #6): what she keeps coming back to, with how many
 // of her videos said it, and whether she has already made the video. Read from
@@ -59,6 +60,7 @@ export default function WhatTwinKnows() {
   const [loaded, setLoaded] = useState(false)
   const [topics, setTopics] = useState<Topic[]>([])
   const [asked, setAsked] = useState<OpenQuestion[]>([])
+  const [mentions, setMentions] = useState<Mention[]>([])
 
   useEffect(() => {
     let alive = true
@@ -70,7 +72,7 @@ export default function WhatTwinKnows() {
         const b = nicheBucket(p.niche ?? '')
         if (!alive) return
         setBucket(b); setSubNiche(p.sub_niche ?? null)
-        const [own, shared, mom, know, qs] = await Promise.all([
+        const [own, shared, mom, know, qs, men] = await Promise.all([
           supabase.from('brain_notes').select('id, kind, title, body, sub_niche, times_seen, total_views, owner_id')
             .not('owner_id', 'is', null).order('total_views', { ascending: false }).limit(60),
           b ? supabase.from('brain_notes').select('id, kind, title, body, sub_niche, times_seen, total_views, owner_id')
@@ -82,6 +84,8 @@ export default function WhatTwinKnows() {
             .in('kind', ['topic', 'covered']).order('times_seen', { ascending: false }).limit(200),
           supabase.from('post_questions').select('id, question')
             .is('her_reply', null).order('created_at', { ascending: false }).limit(8),
+          supabase.from('creator_mentions').select('id, kind, title, outlet, url')
+            .eq('status', 'found').order('created_at', { ascending: false }).limit(6),
         ])
         if (!alive) return
         setMine((own.data ?? []) as Note[])
@@ -90,11 +94,18 @@ export default function WhatTwinKnows() {
         setMoments(Array.isArray(m?.moments) ? m!.moments : [])
         setTopics(topicMap((know.data ?? []) as Array<{ kind: string; text: string; times_seen: number | null }>))
         setAsked((qs.data ?? []) as OpenQuestion[])
+        setMentions((men.data ?? []) as Mention[])
       } catch { /* an empty map is an honest answer */ }
       if (alive) setLoaded(true)
     })()
     return () => { alive = false }
   }, [])
+
+  // She decides whether each one is her. Only a "yes" ever reaches a script.
+  const decide = async (id: string, isMe: boolean) => {
+    setMentions((m) => m.filter((x) => x.id !== id))
+    await supabase.rpc('decide_mention', { p_id: id, p_is_me: isMe })
+  }
 
   const byKind = useMemo(() => {
     const g = (rows: Note[]) => Object.fromEntries(KINDS.map((k) => [k, rows.filter((r) => r.kind === k)]))
@@ -173,6 +184,27 @@ export default function WhatTwinKnows() {
           <p className="mt-1 text-sm text-stone">Your next scripts will answer these where they fit.</p>
           <ul className="mt-3 space-y-2 text-sm">
             {asked.map((q) => <li key={q.id} className="glass rounded-xl p-3">{q.question}</li>)}
+          </ul>
+        </section>
+      )}
+      {mentions.length > 0 && (
+        <section className="mt-8" data-testid="found-you-elsewhere">
+          <h2 className="font-display text-2xl tracking-tight">Is this you?</h2>
+          <p className="mt-1 text-sm text-stone">Twin found these online. Nothing here is used until you say it is you.</p>
+          <ul className="mt-3 space-y-2 text-sm">
+            {mentions.map((m) => (
+              <li key={m.id} className="glass flex flex-wrap items-center justify-between gap-3 rounded-xl p-3">
+                <span>
+                  <span className="text-xs uppercase tracking-wide text-stone">{m.kind}</span>{' '}
+                  <a href={m.url} target="_blank" rel="noreferrer" className="underline">{m.title}</a>
+                  <span className="text-stone"> · {m.outlet}</span>
+                </span>
+                <span className="flex gap-2">
+                  <button onClick={() => void decide(m.id, true)} className="rounded border px-3 py-1">Yes, that's me</button>
+                  <button onClick={() => void decide(m.id, false)} className="rounded px-3 py-1 text-stone">Not me</button>
+                </span>
+              </li>
+            ))}
           </ul>
         </section>
       )}
