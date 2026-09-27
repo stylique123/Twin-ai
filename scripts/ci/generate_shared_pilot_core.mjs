@@ -97,6 +97,7 @@ const SOURCES = [
   ['packages/shared/src/script/grainRule.ts', 'supabase/functions/_shared/grainRule.ts'],
   // Views back from the platforms (social function stats sync).
   ['packages/shared/src/socialStats.ts', 'supabase/functions/_shared/socialStats.ts'],
+  ['packages/shared/src/postQuestions.ts', 'supabase/functions/_shared/postQuestions.ts'],
   // ⚠️ FIX 5 (Wave 2). The retention-map <-> final-script resync. Generated
   // rather than retyped for the same reason as shotListSync.ts just above —
   // a hand copy is exactly how the coaching panel's drift from the shipped

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { grainKept, grainWeight, rawPhrases, renderGrainRule } from '../grainRule'
+import { GRAIN_EXAMPLES, grainKept, grainWeight, rawPhrases, renderGrainRule } from '../grainRule'
 
 describe('the grain rule (owner addendum)', () => {
   it('weighs heavier for raw tone and craft niches', () => {
@@ -28,5 +28,12 @@ describe('the grain rule (owner addendum)', () => {
     const gb = readFileSync(join(repo, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
     expect(gb.match(/\$\{brainBlock\}\$\{grainBlock\}/g)?.length).toBe(2)
     expect(gb).toMatch(/beatAudit\.grain = g/)
+  })
+  it('shows the two real maker scripts as the bar, with no one else\'s facts', () => {
+    expect(renderGrainRule('raw', 'pottery')).toMatch(/THE BAR TO HIT/)
+    expect(renderGrainRule('professional', 'saas')).not.toMatch(/THE BAR TO HIT/)
+    const all = GRAIN_EXAMPLES.flatMap((e) => e.lines).join(' ')
+    expect(all).not.toMatch(/\d|Sort Of|Toronto|\bpercent\b|\$/)
+    expect(all).toMatch(/genuinely terrifying/)
   })
 })

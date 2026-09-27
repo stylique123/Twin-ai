@@ -25,7 +25,7 @@ export function kickAudienceTests(log: Log): void {
   if (inFlight || now - last < AUDIENCE_INTERVAL_MS) return
   last = now
   inFlight = true
-  void runPanelBuilder(log).then(() => runAudienceTests(log))
+  void runPanelBuilder(log).then(() => runAudienceTests(log)).then(() => filePostQuestions(log))
     .catch((err) => log('error', 'audience_threw', { error: err instanceof Error ? err.message : String(err) }))
     .finally(() => { inFlight = false })
 }
@@ -125,4 +125,29 @@ export async function runAudienceTests(log: Log): Promise<void> {
     await stamp({ status: 'failed', failure })
     log('error', 'audience_failed', { generation: g.id, error: failure })
   }
+}
+
+// ── HER REAL AUDIENCE'S QUESTIONS: the ones under her posts she never
+// answered (read by the social cron into `post_questions`) become private
+// objection notes, exactly like a test viewer's — so her next script answers
+// them. Only the question is filed; the commenter's words are never her facts.
+export async function filePostQuestions(log: Log): Promise<void> {
+  const { data } = await db.from('post_questions')
+    .select('id, owner_id, post_id, question').is('filed_at', null).order('created_at').limit(10)
+  let filed = 0
+  for (const q of (data ?? []) as Array<{ id: string; owner_id: string; post_id: string; question: string }>) {
+    const key = noteKey(q.question)
+    if (key.length >= 3) {
+      const { data: voice } = await db.from('brand_voices').select('profile').eq('owner_id', q.owner_id).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle()
+      const sn = (voice?.profile as { sub_niche?: unknown } | null)?.sub_niche
+      const sub = typeof sn === 'string' ? sn.toLowerCase().slice(0, 60) : null
+      const id = await fileNote(
+        { kind: 'objection', bucket: null, sub_niche: sub, mode: null, goal: null, key, title: q.question, body: 'asked under her post, not yet answered' },
+        q.post_id, 0, q.owner_id,
+      ).catch(() => null)
+      if (id) filed += 1
+    }
+    await db.from('post_questions').update({ filed_at: new Date().toISOString() }).eq('id', q.id)
+  }
+  if (filed) log('info', 'post_questions_filed', { event: 'post_questions_filed', filed })
 }
