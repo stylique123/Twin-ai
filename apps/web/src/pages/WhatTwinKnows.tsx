@@ -52,7 +52,7 @@ function views(v: number | string): string {
   return n >= 1e6 ? `${(n / 1e6).toFixed(1)}M views` : n >= 1e3 ? `${Math.round(n / 1e3)}K views` : `${n} views`
 }
 
-export default function WhatTwinKnows() {
+export default function WhatTwinKnows({ view = 'you' }: { view?: 'you' | 'niche' }) {
   const [bucket, setBucket] = useState<string | null>(null)
   const [subNiche, setSubNiche] = useState<string | null>(null)
   const [mine, setMine] = useState<Note[]>([])
@@ -165,22 +165,28 @@ export default function WhatTwinKnows() {
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-8">
-      <p className="eyebrow">Your brain</p>
-      <h1 className="mt-2 font-display text-4xl tracking-tight">What Twin knows</h1>
+      <p className="eyebrow">What Twin knows</p>
+      <h1 className="mt-2 font-display text-4xl tracking-tight">{view === 'you' ? 'My content profile' : 'My niche'}</h1>
       <p className="mt-2 max-w-2xl text-sm text-stone">
-        What your scripts are built from{subNiche ? <> — tuned to <b>{subNiche}</b></> : null}. First what Twin learned
-        from your own posts, then — kept separate — what other creators in your niche and the world are doing.
+        {view === 'you'
+          ? 'Learned only from your own posts and answers — this is you.'
+          : <>What other creators{subNiche ? <> in <b>{subNiche}</b></> : null} and the world are doing. Ideas for your scripts — never facts about you or your business.</>}
       </p>
+      <nav className="mt-4 flex gap-2 text-sm" aria-label="What Twin knows">
+        <Link to="/brain" className={view === 'you' ? 'rounded-full bg-white/[0.08] px-3 py-1 text-cream' : 'rounded-full px-3 py-1 text-stone hover:text-cream'}>About you</Link>
+        <Link to="/brain/niche" className={view === 'niche' ? 'rounded-full bg-white/[0.08] px-3 py-1 text-cream' : 'rounded-full px-3 py-1 text-stone hover:text-cream'}>Around you</Link>
+      </nav>
       {!loaded && <p className="mt-8 text-sm text-stone">Loading…</p>}
       {loaded && mine.length === 0 && niche.length === 0 && moments.length === 0 && topics.length === 0 && (
         <p className="mt-8 text-sm text-stone">
           Twin is still reading. Check back soon — or <Link to="/v2" className="underline">make a script</Link> now.
         </p>
       )}
+      {view === 'you' && (
+        <>
       {/* ⚠️ TWO KINDS OF KNOWLEDGE, NOW VISIBLY APART. Everything in "About
           you" is read from her own posts and answers; "Around you" is other
           creators and the calendar — ideas, never facts about her. */}
-      <h2 className="mt-10 border-b border-white/10 pb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cream">About you — from your own posts</h2>
       {topics.length > 0 && (
         <section className="mt-8" data-testid="topic-map">
           <h2 className="font-display text-2xl tracking-tight">What you talk about</h2>
@@ -247,12 +253,10 @@ export default function WhatTwinKnows() {
         </section>
       )}
       {mine.length > 0 && section('Your patterns', byKind.mine, true)}
-      {(moments.length > 0 || niche.length > 0) && (
-        <>
-          <h2 className="mt-14 border-b border-white/10 pb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cream">Around you — not about you</h2>
-          <p className="mt-2 text-sm text-stone">What is happening in the world and what works for other creators in your niche. Twin uses these as ideas — never as facts about you or your business.</p>
         </>
       )}
+      {view === 'niche' && (
+        <>
       {moments.length > 0 && (
         <section className="mt-8">
           <h2 className="font-display text-2xl tracking-tight">Happening now{bucket ? ` in ${bucket.replace('_', ' & ')}` : ''}</h2>
@@ -267,6 +271,8 @@ export default function WhatTwinKnows() {
         </section>
       )}
       {niche.length > 0 && section('What works for other creators in your niche', byKind.niche, false)}
+        </>
+      )}
     </div>
   )
 }

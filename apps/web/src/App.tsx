@@ -291,7 +291,11 @@ export default function App() {
           />
           <Route
             path="/brain"
-            element={<Protected><AppShell><Page><WhatTwinKnows /></Page></AppShell></Protected>}
+            element={<Protected><AppShell><Page><WhatTwinKnows view="you" /></Page></AppShell></Protected>}
+          />
+          <Route
+            path="/brain/niche"
+            element={<Protected><AppShell><Page><WhatTwinKnows view="niche" /></Page></AppShell></Protected>}
           />
           <Route
             path="/gallery"
