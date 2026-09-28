@@ -21,7 +21,7 @@ describe('a product follow-up answer must be real (menu redesign, Part 4)', () =
   it('blocks the build until it is concrete or she says she has none', () => {
     const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
     const b = readFileSync(join(repo, 'apps/web/src/pages/v2/V2Building.tsx'), 'utf8')
-    expect(b).toMatch(/answerBlocked = onAnswerStep && answerConcreteness !== 'concrete' && !noDetail/)
+    expect(b).toMatch(/answerBlocked = objectiveInline && !!\(askAnswers\.video_goal \?\? ''\)\.trim\(\)\s+&& answerConcreteness !== 'concrete' && !noDetail/)
     expect(b).toMatch(/\.trim\(\)\) \|\| answerBlocked \|\| followUpBlocked\}/)
   })
 })

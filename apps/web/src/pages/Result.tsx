@@ -1658,7 +1658,7 @@ export default function Result() {
                       <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Why it works</h3>
                     </div>
                     <ul className="space-y-3">
-                      {honestWhyItWorks(b.reference_read.why_it_works, countPromiseBroken).map((w, i) => (
+                      {honestWhyItWorks(b.reference_read.why_it_works, countPromiseBroken, chosenHook).map((w, i) => (
                         <li key={i} className="flex gap-2.5 text-xs text-sand leading-relaxed">
                           <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal" /> {w}
                         </li>
@@ -1996,7 +1996,7 @@ export default function Result() {
                   <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Why it works</h3>
                 </div>
                 <ul className="space-y-2.5">
-                  {honestWhyItWorks(b.reference_read.why_it_works, countPromiseBroken).map((w, i) => (
+                  {honestWhyItWorks(b.reference_read.why_it_works, countPromiseBroken, chosenHook).map((w, i) => (
                     <li key={i} className="flex gap-2 text-xs text-sand leading-relaxed">
                       <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-teal" /> {w}
                     </li>

@@ -2182,19 +2182,27 @@ export default function V2Building() {
   }
   // ⚖️ SPLIT ONLY WHEN THERE IS AN OBJECTIVE QUESTION TO ASK. Everything else
   // keeps the single card it always had.
-  const splitObjectiveStep = isProductSubject && pooledQuestion !== null
+  // ⚠️ COFFEE REPORT 3.4: ONE STABLE LAYOUT. The objective list used to vanish
+  // behind a second "answer" screen, the box resized as objectives changed, and
+  // Back / Start over did the same thing. The list now stays on screen with the
+  // chosen one highlighted and its question directly below, in a fixed-height
+  // slot, on the same card.
+  const objectiveInline = isProductSubject && pooledQuestion !== null
     && visibleAsk.some((q) => q.field === 'claims')
-  const onAnswerStep = splitObjectiveStep && askStep === 'answer'
+  const splitObjectiveStep = false as boolean
+  void askStep; void setAskStep
+  const onAnswerStep = false as boolean
   const decisions = onAnswerStep ? [] : visibleAsk.filter(isChip)
   const ideaAsk = onAnswerStep ? [] : visibleAsk.filter((q) => q.idea)
   const commercial = onAnswerStep
     ? visibleAsk.filter((q) => q.field === 'claims')
-    : visibleAsk.filter((q) => !isChip(q) && !q.idea && !(splitObjectiveStep && q.field === 'claims'))
+    : visibleAsk.filter((q) => !isChip(q) && !q.idea && !(objectiveInline && q.field === 'claims'))
   const hasTwoBlocks = decisions.length > 0 && commercial.length > 0
   // ⚖️ MENU REDESIGN PART 4: the objective's answer must be concrete, or she
   // says plainly she has none — never a vague line the writer would pad out.
   const answerConcreteness = concreteness(askAnswers.claims)
-  const answerBlocked = onAnswerStep && answerConcreteness !== 'concrete' && !noDetail
+  const answerBlocked = objectiveInline && !!(askAnswers.video_goal ?? '').trim()
+    && answerConcreteness !== 'concrete' && !noDetail
   // ⚠️ A REQUIRED FOLLOW-UP (her version, on a reference) is answered or
   // explicitly declined — never skipped into an invented story.
   const followUpBlocked = [...REQUIRED_FOLLOW_UPS].some((f) =>
@@ -2206,7 +2214,7 @@ export default function V2Building() {
    *  is the same one the rotation read with, so what is written is exactly
    *  what the next card will find. */
   const attachObjectiveAnswer = (): void => {
-    if (splitObjectiveStep && pooledQuestion && (askAnswers.claims ?? '').trim()) {
+    if (objectiveInline && pooledQuestion && (askAnswers.claims ?? '').trim()) {
       answersRef.current.objective_question_id = pooledQuestion.id
       answersRef.current.objective_question = liveClaimsQuestion ?? pooledQuestion.question
       answersRef.current.objective_product_key = objectiveProductKey(liveProductId)
@@ -2583,14 +2591,14 @@ export default function V2Building() {
                   placeholder="Your answer"
                 />
               )}
-              {q.field === 'claims' && onAnswerStep && !noDetail && answerConcreteness !== 'concrete' && (
+              {q.field === 'claims' && objectiveInline && !noDetail && answerConcreteness !== 'concrete' && (
                 <span className="mt-1.5 block text-[12px] leading-snug text-stone" data-testid="concrete-hint">
                   {CONCRETE_HINT}{' '}
                   <button type="button" className="underline underline-offset-2 hover:text-cream"
                     onClick={() => { setNoDetail(true); answer('claims', '') }}>I don’t have one</button>
                 </span>
               )}
-              {q.field === 'claims' && onAnswerStep && noDetail && (
+              {q.field === 'claims' && objectiveInline && noDetail && (
                 <span className="mt-1.5 block text-[12px] leading-snug text-stone">
                   Fine — Twin will leave that part out rather than make something up.{' '}
                   <button type="button" className="underline underline-offset-2 hover:text-cream" onClick={() => setNoDetail(false)}>Add one after all</button>
@@ -2751,6 +2759,13 @@ export default function V2Building() {
                     would make the whole question vanish under their finger. */}
                 {!onAnswerStep && changingGoal && goalQuestion && renderAsk(goalQuestion)}
                 {decisions.map(renderAsk)}
+                {objectiveInline && (
+                  <div className="min-h-[8.5rem]" data-testid="objective-question-slot">
+                    {(askAnswers.video_goal ?? '').trim()
+                      ? visibleAsk.filter((q) => q.field === 'claims').map(renderAsk)
+                      : <p className="text-[13px] leading-relaxed text-stone">Pick what this video should do, and its one question appears here.</p>}
+                  </div>
+                )}
                 {ideaAsk.map((q) => (
                   <label key={q.field} className="block" data-testid={`idea-question-${q.field}`}>
                     <span className="text-sm leading-relaxed text-cream">{q.question}</span>
