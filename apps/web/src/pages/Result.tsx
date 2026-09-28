@@ -860,6 +860,26 @@ export default function Result() {
     : null
 
   // ⚠️ SUNFLOWER #15: said when the reference had no personal story to borrow.
+  // ⚠️ COFFEE REPORT 1.3: the shot list's opening row quoted a line that was
+  // not the hook the teleprompter opens with (or had no hook row at all). It
+  // now shows the SAME hook: a row quoting a hook option becomes the chosen
+  // one, and when no row quotes it, a hook row is added in front, filmed like
+  // her first talking shot.
+  const shotRows = ((): Generation['blueprint']['shot_list'] => {
+    const rows = [...b.shot_list]
+    const hook = (chosenHook ?? '').trim()
+    if (!hook || rows.some((r) => (r.spoken_text ?? '').trim() === hook)) return rows
+    const first = rows.findIndex((r) => (r.spoken_text ?? '').trim() !== '')
+    if (first >= 0 && b.hook_options.includes((rows[first].spoken_text ?? '').trim())) {
+      rows[first] = { ...rows[first], spoken_text: hook }
+      return rows
+    }
+    const talk = rows.find((r) => r.shot_type === 'talking_head')
+    rows.splice(first >= 0 ? first : 0, 0, {
+      shot: 'Hook', framing: talk?.framing ?? 'Chest-up shot', notes: '', shot_type: 'talking_head', spoken_text: hook,
+    })
+    return rows
+  })()
   // ⚖️ A BEAT WITH NOTHING ON FILE IS LEFT OUT, NOT ASKED MID-SCRIPT (coffee report 2.4).
   const dropped = Array.isArray((raw as { dropped_beats?: unknown }).dropped_beats)
     ? ((raw as { dropped_beats: Array<{ section?: string }> }).dropped_beats) : []
@@ -1481,7 +1501,7 @@ export default function Result() {
                 <Clapperboard className="h-4 w-4 text-stone" /> Shots & extra clips
               </h2>
               <div className="grid grid-cols-1 gap-4">
-                {b.shot_list.map((s, i) => {
+                {shotRows.map((s, i) => {
                   const isBroll = s.shot_type === 'b_roll'
                   const isTalkingHead = s.shot_type === 'talking_head'
                   const isReplicate = s.b_roll_type === 'replicate'
@@ -1855,7 +1875,7 @@ export default function Result() {
                   <Clapperboard className="h-4 w-4 text-stone" /> Shots & extra clips
                 </h2>
                 <div className="grid grid-cols-1 gap-4">
-                  {b.shot_list.map((s, i) => {
+                  {shotRows.map((s, i) => {
                     const isBroll = s.shot_type === 'b_roll'
                     const isTalkingHead = s.shot_type === 'talking_head'
                     const isReplicate = s.b_roll_type === 'replicate'
