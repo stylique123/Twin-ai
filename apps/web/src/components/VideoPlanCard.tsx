@@ -46,7 +46,8 @@ export function VideoPlanCard({
   picks: readonly PlanPick[]
   excluded: ReadonlySet<string>
   onToggle: (id: string) => void
-  onWrite: () => void
+  /** Absent when the card sits inside the questions screen, whose own button builds. */
+  onWrite?: () => void
   busy?: boolean
 }) {
   const plan = buildVideoPlan(input)
@@ -105,7 +106,7 @@ export function VideoPlanCard({
         </div>
       ) : null}
 
-      <div className="mt-4">
+      {onWrite && <div className="mt-4">
         <button
           type="button"
           onClick={onWrite}
@@ -114,7 +115,7 @@ export function VideoPlanCard({
         >
           Write it
         </button>
-      </div>
+      </div>}
     </div>
   )
 }

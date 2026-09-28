@@ -701,6 +701,7 @@ export default function V2Building() {
   // an outage would tell a creator "I have nothing from you" about a store that
   // is full.
   const [plan, setPlan] = useState<VideoPlanInput | null>(null)
+  const [askPlan, setAskPlan] = useState<VideoPlanInput | null>(null)
   // Stories/numbers she tapped to leave out of THIS script; sent to the writer.
   const [excludedKnowledge, setExcludedKnowledge] = useState<Set<string>>(new Set())
   const ideaPurposeLabel = useRef<string | null>(null)
@@ -1353,6 +1354,16 @@ export default function V2Building() {
             if (ask.length && alive) {
               // No spend, no ingest, no wait — and `active` stays at 0 so the
               // bar does not pretend work is happening behind the card.
+              // ⚖️ ONE SCREEN (owner, 2026-09-28): the questions card also shows
+              // what Twin may use and what is missing, with one "Create" button,
+              // instead of a second "Before I write this" screen after it.
+              const planItems = await loadKnowledgeForPlan()
+              if (!alive) return
+              setAskPlan(planItems ? {
+                angle: null,
+                knowledge: planItems,
+                readyFacts: libraryFacts(libraryProducts, str(vBrief.offer)),
+              } : null)
               rememberAsk(key, ask)
               setAskQuestions(ask)
               setActive(0)
@@ -2814,6 +2825,20 @@ export default function V2Building() {
                 </div>
               )}
             </div>
+            {askPlan && (
+              <div className="mt-6">
+                <VideoPlanCard
+                  input={askPlan}
+                  picks={planPicks(askPlan.knowledge as never)}
+                  excluded={excludedKnowledge}
+                  onToggle={(id) => setExcludedKnowledge((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(id)) next.delete(id); else next.add(id)
+                    return next
+                  })}
+                />
+              </div>
+            )}
             <button
               type="button"
               // Every question must be answered: each one is here because
