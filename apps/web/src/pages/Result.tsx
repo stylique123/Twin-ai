@@ -273,15 +273,20 @@ export default function Result() {
   const [showDraft, setShowDraft] = useState(false)
   const freshScript = !!gen?.created_at && Date.now() - Date.parse(gen.created_at) < 10 * 60_000
   const checking = !!gen && freshScript && !audience.test && audience.waiting && !showDraft
-  const improvedRev = audience.test?.improved
-    ? audience.test.improved.hooks_added + audience.test.improved.lines.length : 0
+  const testDone = audience.test?.status === 'done'
+  const pickedHere = useRef(false)
   useEffect(() => {
-    // The worker wrote the better version into the script: read it back.
-    if (!id || improvedRev === 0) return
+    // The test reorders the hooks (best first), may rewrite lines, and makes the
+    // starred hook the default: read the tested version back.
+    if (!id || !testDone) return
     let live = true
-    void getGeneration(id).then((g) => { if (live && g) { GEN_CACHE[id] = g; setGen(g) } }).catch(() => {})
+    void getGeneration(id).then((g) => {
+      if (!live || !g) return
+      GEN_CACHE[id] = g; setGen(g)
+      if (!pickedHere.current && g.selected_hook) setChosenHook(g.selected_hook)
+    }).catch(() => {})
     return () => { live = false }
-  }, [id, improvedRev])
+  }, [id, testDone])
   // Only block on the full-screen loader when we have NOTHING cached to show.
   const [loading, setLoading] = useState(() => !(id && GEN_CACHE[id]))
   const [posted, setPosted] = useState(false)
@@ -517,7 +522,7 @@ export default function Result() {
         loadCapabilities(g.id)
           .then((c) => { if (alive.current) setNeedsApproval(c.needs_approval.value) })
           .catch(() => {})
-        // Default the shooting hook to the saved choice, else the recommended (1st).
+        // Default the shooting hook to the saved choice, else option 1 (the viewers' best once tested).
         const hooks = (g?.blueprint?.hook_options ?? []) as string[]
         const initial = g?.selected_hook ?? hooks[0] ?? ''
         setChosenHook(initial)
@@ -662,6 +667,7 @@ export default function Result() {
   // Pick which hook to shoot: persist it so the teleprompter, cover and b-roll all
   // use THIS hook. Optimistic — the UI updates immediately.
   const pickHook = (h: string) => {
+    pickedHere.current = true
     setChosenHook(h)
     // ⚖️ THE INDEX COMES FROM THE OPTIONS ON SCREEN, not from re-deriving it
     // later: only this moment knows a human tapped anything. A hook that is

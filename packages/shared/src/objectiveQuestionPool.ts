@@ -76,12 +76,12 @@ export const OBJECTIVE_QUESTION_POOLS: Readonly<Record<VideoGoal, readonly Poole
   // Answer what people keep asking — the real question, from new sides.
   conversations: Object.freeze([
     first('conversations', 'keep_getting'),
-    q('conversations.dm_this_week', 'What did someone message you about it this week?'),
-    q('conversations.wish_asked', 'What do you wish people asked you about it instead?',
-      'What do you wish people asked you about your work instead?'),
-    q('conversations.awkward', 'What is the question you find hardest to answer honestly?'),
-    q('conversations.before_buying', 'What do people ask right before they buy?',
-      'What do people ask right before they book?'),
+    q('conversations.dm_this_week', 'What did someone message you about it this week, and what did you say?'),
+    q('conversations.wish_asked', 'What do you wish people asked you about it instead, and what would you tell them?',
+      'What do you wish people asked you about your work instead, and what would you tell them?'),
+    q('conversations.awkward', 'What is the question you find hardest to answer honestly, and what is the honest answer?'),
+    q('conversations.before_buying', 'What do people ask right before they buy, and what do you tell them?',
+      'What do people ask right before they book, and what do you tell them?'),
   ]),
   // Say why I made it — the origin, from different moments.
   personal_brand: Object.freeze([

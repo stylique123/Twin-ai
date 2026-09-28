@@ -1,7 +1,7 @@
 // Item 32: one stored story reached 8 consecutive scripts (production
 // creator_knowledge.used_count = 8, 2026-09-22), once on an unrelated product.
 import { describe, expect, it } from 'vitest'
-import { gateStories, recentSupplyCounts, contentTerms } from '../storyRotation'
+import { gateStories, recentSupplyCounts, contentTerms, lastSupplied } from '../storyRotation'
 
 const SNAP = { id: 'snap', kind: 'experience', text: "I bought a bulk roll of snap fasteners without checking they'd hold on my fabric" }
 const PEONY = { id: 'peony', kind: 'experience', text: 'A bride ordered 50 peony candles for her wedding' }
@@ -45,5 +45,31 @@ describe('gateStories', () => {
 
   it('folds plurals so candles meets candle', () => {
     expect(contentTerms('candles').has('candle')).toBe(true)
+  })
+})
+
+describe('coffee report 1.1: sensitive, back-to-back, off-topic', () => {
+  const move = { id: 'm', kind: 'experience', text: 'Code enforcement told us to stop roasting coffee at home, 26 days to move' }
+  const batch = { id: 'b', kind: 'experience', text: 'A scorched coffee batch taught me to cup every roast' }
+  const claim = { id: 'c', kind: 'claim', text: 'I had postpartum depression while starting the roastery' }
+  it('withholds a sensitive item of any kind unless her words for this script raise it', () => {
+    const g = gateStories([move, claim, batch], { topicText: 'why I cup every coffee roast', chosenText: 'why I cup every coffee roast' })
+    expect(g.sensitive.map((x) => x.id)).toEqual(['m', 'c'])
+    expect(g.kept.map((x) => x.id)).toEqual(['b'])
+    const opted = gateStories([move], { topicText: 'the day code enforcement shut my home roasting down', chosenText: 'the day code enforcement shut my home roasting down' })
+    expect(opted.kept.map((x) => x.id)).toEqual(['m'])
+  })
+  it('rests a story told in her last script', () => {
+    const g = gateStories([batch], { last: new Set(['b']) })
+    expect(g.resting.map((x) => x.id)).toEqual(['b'])
+    expect(lastSupplied([
+      { knowledge_id: 'x', generation_id: 'g1', used_at: '2026-09-01T00:00:00Z' },
+      { knowledge_id: 'b', generation_id: 'g2', used_at: '2026-09-02T00:00:00Z' },
+    ])).toEqual(new Set(['b']))
+  })
+  it('with no product, a story must match what the video is about; no topic, no story', () => {
+    expect(gateStories([batch], { topicText: 'get people to try our subscription' }).offTopic.map((x) => x.id)).toEqual(['b'])
+    expect(gateStories([batch], { topicText: '' }).offTopic.map((x) => x.id)).toEqual(['b'])
+    expect(gateStories([batch], {}).kept.map((x) => x.id)).toEqual(['b'])
   })
 })
