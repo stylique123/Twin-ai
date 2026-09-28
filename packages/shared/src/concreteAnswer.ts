@@ -31,4 +31,4 @@ export function concreteness(text: string | null | undefined): Concreteness {
   return words.length >= 15 ? 'concrete' : 'vague'
 }
 
-export const CONCRETE_HINT = 'Add one real detail — a number, what someone actually said, or a measurement — so Twin never has to invent one.'
+export const CONCRETE_HINT = 'Give one real detail — a number, what someone actually said, or a measurement — and the script will use it.'
