@@ -12552,6 +12552,31 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         }))
       }
     }
+    // ⚠️ A QUESTION NEVER RENDERS INSIDE A SCRIPT (owner, coffee report 2.4).
+    // A dark-roast script showed "Only you can answer this. What was your
+    // situation right before this started?" as scene 2. Questions belong BEFORE
+    // generation; by here her paragraph and confirmed knowledge have had their
+    // chance, so a beat that still has nothing to say is DROPPED, and one line
+    // says so. The script is shorter and true rather than holding a gap.
+    const droppedBeats: Array<{ section: string; reason: string }> = []
+    if (Array.isArray(declared)) {
+      // beat_plan is one entry per script line: drop in step so timings stay aligned.
+      const plan = (templated.bp as { beat_plan?: unknown }).beat_plan
+      const planAligned = Array.isArray(plan) && plan.length === declared.length ? plan as unknown[] : null
+      for (let i = declared.length - 1; i >= 0; i--) {
+        const b = declared[i] as { ask?: unknown; line?: unknown; section?: unknown }
+        const empty = typeof b?.line !== 'string' || b.line.trim() === ''
+        if (typeof b?.ask === 'string' && b.ask.trim() !== '' && empty) {
+          droppedBeats.unshift({ section: String(b.section ?? '').trim() || `Beat ${i + 1}`, reason: b.ask.trim().slice(0, 200) })
+          declared.splice(i, 1)
+          if (planAligned) planAligned.splice(i, 1)
+        }
+      }
+      if (droppedBeats.length > 0) {
+        ;(templated.bp as Record<string, unknown>).dropped_beats = droppedBeats
+        console.log(JSON.stringify({ event: 'ask_beats_dropped', dropped: droppedBeats.length }))
+      }
+    }
     const totalBeats = Array.isArray(declared) ? declared.length : 0
     const asked = Array.isArray(declared)
       ? declared.filter((b) => (b as { substance?: string })?.substance === 'needs_user').length

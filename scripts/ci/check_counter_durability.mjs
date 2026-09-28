@@ -657,6 +657,7 @@ const EVENTS = {
   spoken_placeholders_or_empty_promises: { kind: 'incident', why: 'A placeholder that reached a spoken line.' },
   placeholder_beats_asked: { kind: 'incident', why: 'Beats sent back to the creator as questions.' },
   ask_beats_bounded: { kind: 'incident', why: 'Asks beyond the per-script cap, or fed only by skipped optional fields, written around or omitted (items 30/31).' },
+  ask_beats_dropped: { kind: 'incident', why: 'Beats with nothing on file dropped instead of rendering a question inside the script (coffee report 2.4).' },
   blueprint_links_stripped: { kind: 'incident', why: 'A destination the creator never vouched for, removed.' },
   // ⚖️ A COUNTER RATHER THAN AN INCIDENT, because one long sentence in one
   // script is not a defect worth waking anybody for — the RATE is the finding.

@@ -860,6 +860,12 @@ export default function Result() {
     : null
 
   // ⚠️ SUNFLOWER #15: said when the reference had no personal story to borrow.
+  // ⚖️ A BEAT WITH NOTHING ON FILE IS LEFT OUT, NOT ASKED MID-SCRIPT (coffee report 2.4).
+  const dropped = Array.isArray((raw as { dropped_beats?: unknown }).dropped_beats)
+    ? ((raw as { dropped_beats: Array<{ section?: string }> }).dropped_beats) : []
+  const droppedLine = dropped.length > 0
+    ? `Twin left out ${dropped.length === 1 ? 'one part' : `${dropped.length} parts`} (${dropped.map((d) => d.section || 'a beat').join(', ')}) because nothing you gave Twin covered ${dropped.length === 1 ? 'it' : 'them'}, so the script is shorter rather than made up. Add the detail in your idea and remake it to include ${dropped.length === 1 ? 'it' : 'them'}.`
+    : null
   const noStoryLine = (b.reference_read as { reference_has_story?: boolean | null }).reference_has_story === false
     ? 'The reference is tips or a list with no personal story in it — so any story in this script comes from what you told Twin, not from the reference.'
     : null
@@ -1413,6 +1419,7 @@ export default function Result() {
               {referenceCompareLine && <p className="text-xs text-stone/80">{referenceCompareLine}</p>}
               {ceilingWarningLine && <p className="text-xs text-amber">{ceilingWarningLine}</p>}
               {noStoryLine && <p className="text-xs text-sand" data-testid="no-story-line">{noStoryLine}</p>}
+              {droppedLine && <p className="text-xs text-sand" data-testid="dropped-beats-line">{droppedLine}</p>}
               {unsourcedLine && <p className="text-xs text-amber" data-testid="unsourced-figures">{unsourcedLine}</p>}
               {/* WHAT A PERSON FORWARDING THIS SCRIPT NEEDS TO KNOW ABOUT IT.
                   The agency's report: "I need to know which product each script
@@ -1816,6 +1823,7 @@ export default function Result() {
               {referenceCompareLine && <p className="text-xs text-stone/80">{referenceCompareLine}</p>}
               {ceilingWarningLine && <p className="text-xs text-amber">{ceilingWarningLine}</p>}
               {noStoryLine && <p className="text-xs text-sand" data-testid="no-story-line">{noStoryLine}</p>}
+              {droppedLine && <p className="text-xs text-sand" data-testid="dropped-beats-line">{droppedLine}</p>}
               {unsourcedLine && <p className="text-xs text-amber" data-testid="unsourced-figures">{unsourcedLine}</p>}
                 
                 <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
