@@ -56,7 +56,8 @@ export const RATING_LESSON_SYSTEM = [
   'Each lesson is one plain sentence under 25 words, written as an instruction ("Never say...", "Keep ... as a habit, not a rule", "Explain the product before any story").',
   'kind: "avoid" for something to never do or say again, "prefer" for something to keep doing, "style" for length, tone or structure.',
   'phrase: when she objects to specific words, copy those exact words (2-8 words) so they can be checked later; otherwise null.',
-  'Only lessons that would apply beyond this one script. Never invent a preference she did not state. At most 5 lessons.',
+  'scope: "standing" ONLY for a rule that would hold for ANY of her future videos (never inventing, never a phrase, voice, length). "this_script" for anything about THIS video\'s content: which story to open on, which product detail to explain, where this CTA goes, what to cut here. When in doubt, this_script.',
+  'Never invent a preference she did not state. At most 5 lessons.',
 ].join('\n')
 
 export const RATING_LESSON_SCHEMA = {
@@ -70,8 +71,9 @@ export const RATING_LESSON_SCHEMA = {
           kind: { type: 'string', enum: ['avoid', 'prefer', 'style'] },
           text: { type: 'string' },
           phrase: { type: 'string', nullable: true },
+          scope: { type: 'string', enum: ['standing', 'this_script'] },
         },
-        required: ['kind', 'text'],
+        required: ['kind', 'text', 'scope'],
       },
     },
   },
@@ -90,6 +92,9 @@ export function cleanRatingLessons(raw: unknown, note: string): CreatorLesson[] 
     const kind = (r as { kind?: unknown })?.kind
     const text = String((r as { text?: unknown })?.text ?? '').trim().slice(0, 200)
     if (!text || (kind !== 'avoid' && kind !== 'prefer' && kind !== 'style')) continue
+    // Round 3: a note about THIS video ("start from the customer", "explain the
+    // 12oz bag") is not a rule for every video. Only standing lessons are kept.
+    if ((r as { scope?: unknown })?.scope !== 'standing') continue
     const p = String((r as { phrase?: unknown })?.phrase ?? '').trim()
     const words = norm(p).split(' ').filter(Boolean).length
     const phrase = p && words >= 1 && words <= 8 && said.includes(norm(p)) ? p.replace(/^["“']|["”']$/g, '').slice(0, 80) : null
@@ -114,7 +119,7 @@ export function lessonsFromAudience(t: AudienceTestLike): CreatorLesson[] {
   if (best && Number(best.stopped) >= Math.ceil(panel * 0.6)) {
     out.push({
       kind: 'hook', phrase: null, source: 'audience', weight: 1,
-      text: `A hook that stopped ${Number(best.stopped)} of ${panel} of her test viewers: "${String(best.hook).slice(0, 140)}". Similar shapes work for her.`,
+      text: `A hook that stopped ${Number(best.stopped)} of ${panel} of her test viewers: "${String(best.hook).slice(0, 140)}". Copy its shape, never its topic.`,
     })
   }
   const fixes = Array.isArray(t.fixes) ? t.fixes as Array<{ issue?: unknown; fix?: unknown; count?: unknown }> : []
@@ -143,18 +148,51 @@ export function lessonFromHookPick(picked: string, twinDefault: string | null): 
 
 interface StoredLesson { kind: string; text: string; phrase?: string | null; weight?: number | null }
 
-/** Avoid-rules first, then heaviest; capped. The writer and the plan read the same order. */
+const STOP = new Set(['the', 'and', 'that', 'with', 'not', 'she', 'her', 'any', 'for', 'from', 'never', 'only', 'was', 'were', 'has', 'have', 'into', 'this', 'every', 'script', 'scripts'])
+const lessonWords = (t: string) => new Set(norm(t).split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w)))
+
+/** Two lessons that say the same thing (shared-word overlap of the smaller set). */
+export function sameLesson(a: string, b: string): boolean {
+  const x = lessonWords(a), y = lessonWords(b)
+  if (!x.size || !y.size) return false
+  let n = 0
+  for (const w of x) if (y.has(w)) n++
+  return n / Math.min(x.size, y.size) >= 0.5
+}
+
+/** Hooks her viewers liked but that open on a greeting break her own rule. */
+const GREETING = /^\W*(hi|hello|hey|welcome|good morning)\b/i
+const HOOK_IN_PROMPT = 2
+
+/**
+ * Avoid-rules first, then heaviest; near-duplicates collapse into the heaviest;
+ * at most two example hooks, never one that opens on a greeting; capped.
+ */
 export function orderLessons<T extends StoredLesson>(rows: readonly T[]): T[] {
   const rank = (k: string) => (k === 'avoid' ? 0 : k === 'style' ? 1 : k === 'prefer' ? 2 : 3)
-  return [...rows].sort((a, b) => rank(a.kind) - rank(b.kind) || Number(b.weight ?? 1) - Number(a.weight ?? 1))
-    .slice(0, LESSONS_IN_PROMPT)
+  const sorted = [...rows].sort((a, b) => rank(a.kind) - rank(b.kind) || Number(b.weight ?? 1) - Number(a.weight ?? 1))
+  const out: T[] = []
+  let hooks = 0
+  for (const l of sorted) {
+    if (l.kind === 'hook') {
+      const quoted = /"([^"]+)"/.exec(l.text)?.[1] ?? ''
+      if (hooks >= HOOK_IN_PROMPT || GREETING.test(quoted)) continue
+    }
+    // Example hooks share their template words; compare the hooks themselves.
+    const body = (x: StoredLesson) => (x.kind === 'hook' ? /"([^"]+)"/.exec(x.text)?.[1] ?? x.text : x.text)
+    if (out.some((o) => o.kind === l.kind || (o.kind !== 'hook' && l.kind !== 'hook') ? sameLesson(body(o), body(l)) : false)) continue
+    if (l.kind === 'hook') hooks++
+    out.push(l)
+    if (out.length >= LESSONS_IN_PROMPT) break
+  }
+  return out
 }
 
 /** The prompt block. Empty string when she has taught nothing yet. */
 export function lessonsPromptBlock(rows: readonly StoredLesson[]): string {
   const ordered = orderLessons(rows)
   if (!ordered.length) return ''
-  const lines = ordered.map((l) => `- ${l.text}${l.phrase ? ` (never write: "${l.phrase}")` : ''}`)
+  const lines = ordered.map((l) => `- ${l.kind === 'hook' ? l.text.replace(/Similar shapes work for her\.$/, 'Copy its shape, never its topic.') : l.text}${l.phrase ? ` (never write: "${l.phrase}")` : ''}`)
   return `\n\nWHAT SHE HAS TAUGHT TWIN (from her ratings, her test viewers and her own picks — these outrank style defaults):\n${lines.join('\n')}`
 }
 

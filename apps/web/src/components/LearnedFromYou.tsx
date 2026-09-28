@@ -7,7 +7,7 @@ import { cn } from '../lib/cn'
 
 interface Lesson {
   id: string; kind: string; text: string; phrase: string | null; source: string
-  weight: number; times_used: number; active: boolean
+  weight: number; heard: number; times_used: number; active: boolean
 }
 
 const FROM: Record<string, string> = {
@@ -20,7 +20,7 @@ export function LearnedFromYou() {
   useEffect(() => {
     let alive = true
     void supabase.from('creator_lessons')
-      .select('id, kind, text, phrase, source, weight, times_used, active')
+      .select('id, kind, text, phrase, source, weight, heard, times_used, active')
       .order('weight', { ascending: false }).limit(60)
       .then(({ data }) => { if (alive) setRows((data ?? []) as Lesson[]) }, () => { if (alive) setRows([]) })
     return () => { alive = false }
@@ -52,7 +52,7 @@ export function LearnedFromYou() {
                 </button>
               </div>
               <span className="mt-0.5 block text-[11px] text-stone">
-                From {FROM[l.source] ?? 'you'}{l.weight > 1 ? ` · heard ${l.weight}×` : ''}{l.times_used > 0 ? ` · used in ${l.times_used} script${l.times_used === 1 ? '' : 's'}` : ''}
+                From {FROM[l.source] ?? 'you'}{l.heard > 1 ? ` · heard ${l.heard}×` : ''}{l.times_used > 0 ? ` · used in ${l.times_used} script${l.times_used === 1 ? '' : 's'}` : ''}
               </span>
             </li>
           ))}

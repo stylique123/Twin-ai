@@ -89,7 +89,7 @@ const START_ERROR_TEXT: Record<string, string> = {
 const GEN_CACHE: Record<string, Generation> = {}
 import { useAuth } from '../context/AuthContext'
 import { RateThisScript } from '../components/RateThisScript'
-import { TestViewers, useAudienceTest, hookVerdicts } from '../components/TestViewers'
+import { TestViewers, useAudienceTest, hookVerdicts, HOOKS_SHOWN } from '../components/TestViewers'
 import type { Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { EASE } from '../components/motion'
@@ -913,6 +913,8 @@ export default function Result() {
   const hookList = [...b.hook_options, ...testedHooks.filter((h) => !b.hook_options.includes(h))]
   const verdict = hookVerdicts(hookList, audience.test)
   if (verdict) hookList.sort((x, y) => (verdict.stopped.get(y) ?? -1) - (verdict.stopped.get(x) ?? -1))
+  // Before the viewers have scored them, still never more than four to choose from.
+  if (!verdict && hookList.length > HOOKS_SHOWN) hookList.length = HOOKS_SHOWN
   return (
     <main className="relative min-h-screen overflow-clip bg-ink text-sand pb-20">
       {/* Aurora Glow */}

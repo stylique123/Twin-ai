@@ -48,6 +48,9 @@ export function sameIdea(a: string, b: string): boolean {
  *  The picker used to star option #1 regardless — which scored 0 of 10 on
  *  three live runs while another option scored 4–6. Returns per-hook counts
  *  keyed by hook text, and which near-duplicates to hide. */
+/** Mirrors HOOKS_SHOWN in worker/src/nicheBrain/audienceParse.ts. */
+export const HOOKS_SHOWN = 4
+
 export function hookVerdicts(options: string[], test: Test | null) {
   if (!test || test.status !== 'done' || !test.viewers.length) return null
   const n = test.panel_size ?? test.viewers.length
@@ -59,6 +62,9 @@ export function hookVerdicts(options: string[], test: Test | null) {
     if (hidden.has(h)) return
     for (const lower of byScore.slice(i + 1)) if (sameIdea(h, lower)) hidden.add(lower)
   })
+  // Quality over quantity (owner, 2026-09-28): only the best HOOKS_SHOWN are
+  // listed; the rest were tested and lost, so they stay out of her way.
+  byScore.filter((h) => !hidden.has(h)).slice(HOOKS_SHOWN).forEach((h) => hidden.add(h))
   return { n, stopped, best, hidden }
 }
 

@@ -10,14 +10,29 @@ import { geminiJson } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
 import {
   RATING_LESSON_SCHEMA, RATING_LESSON_SYSTEM, cleanRatingLessons, lessonFromHookPick, lessonsFromAudience,
-  lessonsFromTags, type CreatorLesson,
+  lessonsFromTags, sameLesson, type CreatorLesson,
 } from '../generated/creatorLessons.js'
 
 type Log = (level: string, msg: string, extra?: Record<string, unknown>) => void
 
+// Her existing lessons, per owner for this pass, so a lesson that says the same
+// thing as one she already has strengthens it instead of adding a near-copy.
+const known = new Map<string, string[]>()
+async function existing(owner: string): Promise<string[]> {
+  if (!known.has(owner)) {
+    const { data } = await db.from('creator_lessons').select('text').eq('owner_id', owner).limit(200)
+    known.set(owner, (data ?? []).map((r: { text: string }) => r.text))
+  }
+  return known.get(owner)!
+}
+
 async function file(owner: string, l: CreatorLesson, sourceId: string): Promise<boolean> {
+  const have = await existing(owner)
+  const twin = l.kind === 'hook' ? undefined : have.find((t) => sameLesson(t, l.text))
+  const text = twin ?? l.text
+  if (!twin) have.push(l.text)
   const { error } = await db.rpc('learn_lesson', {
-    p_owner: owner, p_kind: l.kind, p_text: l.text, p_phrase: l.phrase, p_source: l.source,
+    p_owner: owner, p_kind: l.kind, p_text: text, p_phrase: l.phrase, p_source: l.source,
     p_source_id: sourceId, p_weight: l.weight,
   })
   return !error
@@ -25,6 +40,7 @@ async function file(owner: string, l: CreatorLesson, sourceId: string): Promise<
 
 export async function runLessonLearner(log: Log): Promise<void> {
   let filed = 0
+  known.clear()
 
   // 1. Ratings: tags (deterministic) + her note (read by the model). A rating
   // she edits later is read again: a trigger clears lessons_at (0250).
