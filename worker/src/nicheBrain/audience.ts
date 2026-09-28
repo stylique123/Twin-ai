@@ -141,15 +141,23 @@ export async function runAudienceTests(log: Log): Promise<void> {
       tested = next; r = again
     }
     const lineChanges = [...changedLines].sort((a, b) => a - b).map((i) => ({ line: i, before: s.lines[i], after: tested.lines[i] }))
-    if (tested.hooks.length > s.hooks.length || lineChanges.length > 0) {
-      // Only the version that tested best is what she sees: better hooks
-      // become her options (best first), better lines replace the old ones on
-      // the teleprompter AND on the shot card that quotes them.
-      const bp = (g.blueprint && typeof g.blueprint === 'object' ? g.blueprint : {}) as Record<string, unknown>
+    // ⚠️ THE SCRIPT'S HOOK WAS NOT THE AUDIENCE'S BEST HOOK (7 of 9 coffee
+    // runs): the list said "recommended" over option 1 and the script was built
+    // on it, while the viewers starred another. Options are now always ordered
+    // by how many viewers stopped, a hook that stopped nobody is dropped when
+    // three others did better, and the default hook is the starred one unless
+    // she picked one herself.
+    const ranked = [...r.hooks].sort((a, b) => b.stopped - a.stopped)
+    const keep = ranked.filter((h) => h.stopped > 0).length >= 3 ? ranked.filter((h) => h.stopped > 0) : ranked
+    const ordered = keep.map((h) => h.hook).slice(0, 6)
+    const bp = (g.blueprint && typeof g.blueprint === 'object' ? g.blueprint : {}) as Record<string, unknown>
+    const oldOrder = Array.isArray(bp.hook_options) ? (bp.hook_options as unknown[]).join('\u0000') : ''
+    const reordered = ordered.length > 0 && ordered.join('\u0000') !== oldOrder
+    if (reordered || lineChanges.length > 0) {
+      // Only the version that tested best is what she sees: better lines
+      // replace the old ones on the teleprompter AND on the shot card.
       const next: Record<string, unknown> = { ...bp }
-      if (tested.hooks.length > s.hooks.length) {
-        next.hook_options = [...r.hooks].sort((a, b) => b.stopped - a.stopped).map((h) => h.hook).slice(0, 6)
-      }
+      if (reordered) next.hook_options = ordered
       if (lineChanges.length > 0 && Array.isArray(bp.script)) {
         const script = [...(bp.script as Array<Record<string, unknown>>)]
         const shots = Array.isArray(bp.shot_list) ? [...(bp.shot_list as Array<Record<string, unknown>>)] : null
@@ -166,6 +174,13 @@ export async function runAudienceTests(log: Log): Promise<void> {
         if (shots) next.shot_list = shots
       }
       await db.from('generations').update({ blueprint: next }).eq('id', g.id)
+    }
+    if (ordered[0]) {
+      const { data: cur } = await db.from('generations').select('selected_hook, hook_choice').eq('id', g.id).maybeSingle()
+      const picked = (cur?.hook_choice as { source?: string } | null)?.source === 'creator'
+      if (!picked && cur?.selected_hook !== ordered[0]) {
+        await db.from('generations').update({ selected_hook: ordered[0], hook_choice: { source: 'default', index: 0 } }).eq('id', g.id)
+      }
     }
     await stamp({
       status: 'done', panel_size: r.viewers.length, hooks: r.hooks, best_hook: r.best_hook,

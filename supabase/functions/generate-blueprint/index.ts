@@ -25,7 +25,7 @@ import { askForBeat, askIsUsable, scaffoldWithoutAnswer, boundAskBeats, productA
 import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
-import { gateStories, recentSupplyCounts, STORY_KINDS } from '../_shared/storyRotation.ts'
+import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_shared/storyRotation.ts'
 import {
   repairScriptIntegrity, tagStorySources, shouldExtendScript, buildExtensionPrompt, acceptExtension,
   type IntegrityBeat,
@@ -6613,6 +6613,9 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   return '\n- FRESH MATERIAL FOR THIS VIDEO — the creator answered this just now, in their own words.'
     + (question ? ` The question was: "${question}"` : '')
     + '\n  Their answer: ' + answer
+    + (/keep getting|people ask|message you|hardest to answer|wish people asked/i.test(question)
+      ? '\n  ⚠️ THIS VIDEO ANSWERS A REAL QUESTION. Say the question early, then give THEIR answer from above, plainly, before the close. Never tease the answer and not give it; never replace it with a plan, a poll or an answer they did not give. If they gave only the question, answer only from facts listed in this prompt, or say where to ask them — never invent one.'
+      : '')
     + '\n  This is new, creator-supplied material that no earlier video had. Build this video\'s central beat around it, and PREFER it over any older stored story, experience or example listed elsewhere in this prompt — do not fall back to a story already used in previous scripts when this answer can carry the beat. It has NOT been verified, so do not present it as independently checked, and a sentence here that promises a RESULT is still not an approved outcome claim.'
 }
 // ── END OBJECTIVE QUESTION ──────────────────────────────────────────────────
@@ -6746,6 +6749,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // generation was supplied which item; `gateStories` rests a story supplied in
   // 2 of the last 5. Best-effort: a failed read rests nothing, as before.
   let recentStorySupply = new Map<string, number>()
+  let lastStorySupply = new Set<string>()
   try {
     const { data: ledger } = await admin
       .from('creator_knowledge_uses')
@@ -6754,6 +6758,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       .order('used_at', { ascending: false })
       .limit(200)
     recentStorySupply = recentSupplyCounts(ledger ?? [])
+    lastStorySupply = lastSupplied(ledger ?? [])
   } catch (e) {
     console.warn('story_ledger_read_failed', String((e as Error)?.message ?? e))
   }
@@ -7453,7 +7458,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     sell: 'What is new about it, or why now?',
     educate: 'What do people misunderstand about how it works?',
     leads: 'What is the smallest first step someone can take?',
-    conversations: 'What is the question you keep getting?',
+    conversations: 'What is the question you keep getting, and what do you tell them?',
     followers: 'What do people outside your world get wrong about what you do?',
     authority: 'What can you do now that took you years to get right?',
     entertain: 'What is the worst or funniest thing that has happened doing this?',
@@ -8576,12 +8581,22 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
               .map((v) => String(v ?? '')).join(' ')
           : null,
         recent: recentStorySupply,
+        last: lastStorySupply,
+        // Her own words for THIS script: the only thing that can opt a
+        // sensitive item in, and (with no product) what a story must match.
+        chosenText: [reference_note, ...Object.values(brief ?? {}), ...Object.values(answers ?? {})]
+          .filter((v): v is string => typeof v === 'string').join(' '),
+        topicText: ownedEntity ? null
+          : [reference_note, ...Object.values(brief ?? {}), ...Object.values(answers ?? {})]
+          .filter((v): v is string => typeof v === 'string').join(' '),
       })
-    if (storyGate.offProduct.length || storyGate.resting.length) {
+    if (storyGate.offProduct.length || storyGate.resting.length || storyGate.sensitive.length || storyGate.offTopic.length) {
       console.warn(JSON.stringify({
         event: 'stories_withheld',
         off_product: storyGate.offProduct.length,
         resting: storyGate.resting.length,
+        sensitive: storyGate.sensitive.length,
+        off_topic: storyGate.offTopic.length,
       }))
     }
     const ranked = storyGate.kept

@@ -25,6 +25,17 @@
 //      (`creator_knowledge_uses`, 0215), not from `used_count`, because a
 //      lifetime counter cannot tell "twice last week" from "twice last year".
 //
+//   3. (owner, coffee report 1.1) A STORY TOLD IN HER LAST SCRIPT RESTS in
+//      this one, so the same episode never runs back to back.
+//   4. A SENSITIVE ITEM — health or mental health, pregnancy, legal or
+//      regulatory trouble, police, family loss, money hardship — is OPT-IN:
+//      supplied only when her own words for THIS script raise it. Any kind,
+//      not only stories: a claim can be just as private.
+//   5. WITH NO PRODUCT, A STORY MUST MATCH WHAT THIS VIDEO IS ABOUT (her
+//      paragraph, answers, reference note). A relocation story reached "get
+//      people to try it" because nothing checked. No topic, no story: the
+//      writer shortens the beat instead.
+//
 // Deno copy is GENERATED (scripts/ci/generate_shared_pilot_core.mjs); no imports.
 
 /** The kinds that are a told episode rather than a position or a fact. */
@@ -99,6 +110,24 @@ export interface StoryGateResult<T> {
   kept: T[]
   offProduct: T[]
   resting: T[]
+  sensitive: T[]
+  offTopic: T[]
+}
+
+/** Private matters that never reach a script unless she raises them there. */
+export const SENSITIVE = /\b(postpartum|post-partum|depress\w*|anxiety|panic attacks?|mental health|therap(y|ist)|miscarr\w*|pregnan\w*|infertil\w*|cancer|diagnos\w*|illness|surgery|hospital\w*|disorder|addict\w*|rehab|suicid\w*|divorc\w*|custody|funeral|passed away|died|death|grief|abus\w*|police|arrest\w*|lawsuit|sued|lawyer|attorney|code enforcement|evict\w*|shut (us|me|it) down|fined|citation|violation|illegal\w*|bankrupt\w*|debt|broke\b|foreclos\w*|laid off|fired)\b/i
+
+/** The ids supplied in the creator's single most recent generation. */
+export function lastSupplied(rows: readonly LedgerRow[] | null | undefined): Set<string> {
+  const list = Array.isArray(rows) ? rows : []
+  let lastGen = '', lastAt = -1
+  for (const r of list) {
+    const g = String(r?.generation_id ?? '').trim()
+    const t = Date.parse(String(r?.used_at ?? ''))
+    if (g !== '' && Number.isFinite(t) && t > lastAt) { lastAt = t; lastGen = g }
+  }
+  return new Set(list.filter((r) => String(r?.generation_id ?? '').trim() === lastGen && lastGen !== '')
+    .map((r) => String(r?.knowledge_id ?? '').trim()).filter(Boolean))
 }
 
 /**
@@ -108,24 +137,44 @@ export interface StoryGateResult<T> {
  */
 export function gateStories<T extends StoryCandidate>(
   ranked: readonly T[],
-  opts: { productText?: string | null; recent?: ReadonlyMap<string, number> | null },
+  opts: {
+    productText?: string | null
+    recent?: ReadonlyMap<string, number> | null
+    /** Ids supplied in her last script: a story among them rests. */
+    last?: ReadonlySet<string> | null
+    /** Her own words for THIS script (paragraph, answers, reference note). */
+    chosenText?: string | null
+    /** What this video is about when no product is chosen. Rule 5 applies
+     *  only when it is given (null keeps the old behaviour). */
+    topicText?: string | null
+  },
 ): StoryGateResult<T> {
   const productTerms = contentTerms(opts.productText ?? '')
   const recent = opts.recent ?? new Map<string, number>()
+  const last = opts.last ?? new Set<string>()
+  const chosen = String(opts.chosenText ?? '')
+  const chosenTerms = contentTerms(chosen)
+  const raisedSensitive = SENSITIVE.test(chosen)
+  const topicTerms = opts.topicText == null ? null : contentTerms(opts.topicText)
   const kept: T[] = []
   const offProduct: T[] = []
   const resting: T[] = []
+  const sensitive: T[] = []
+  const offTopic: T[] = []
   for (const item of ranked) {
+    const own = contentTerms(`${String(item?.text ?? '')} ${String(item?.evidence ?? '')}`)
+    const overlaps = (terms: Set<string>) => { for (const w of own) if (terms.has(w)) return true; return false }
+    if (SENSITIVE.test(`${String(item?.text ?? '')} ${String(item?.evidence ?? '')}`)
+      && !(raisedSensitive && overlaps(chosenTerms))) { sensitive.push(item); continue }
     if (!STORY_KINDS.has(String(item?.kind ?? ''))) { kept.push(item); continue }
     if (productTerms.size > 0) {
-      const own = contentTerms(`${String(item.text ?? '')} ${String(item.evidence ?? '')}`)
-      let shared = false
-      for (const w of own) if (productTerms.has(w)) { shared = true; break }
-      if (!shared) { offProduct.push(item); continue }
+      if (!overlaps(productTerms)) { offProduct.push(item); continue }
+    } else if (topicTerms !== null) {
+      if (topicTerms.size === 0 || !overlaps(topicTerms)) { offTopic.push(item); continue }
     }
     const id = String(item.id ?? '').trim()
-    if (id !== '' && (recent.get(id) ?? 0) >= STORY_REST_AFTER) { resting.push(item); continue }
+    if (id !== '' && ((recent.get(id) ?? 0) >= STORY_REST_AFTER || last.has(id))) { resting.push(item); continue }
     kept.push(item)
   }
-  return { kept, offProduct, resting }
+  return { kept, offProduct, resting, sensitive, offTopic }
 }

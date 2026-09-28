@@ -149,9 +149,10 @@ export const OBJECTIVE_QUESTIONS: Readonly<Partial<Record<VideoGoal, ObjectiveQu
       + 'This is the question that produced the free 3-day sample.',
   }),
   conversations: Object.freeze({
-    question: 'What is the question you keep getting?',
+    question: 'What is the question you keep getting, and what do you tell them?',
     because: 'Otherwise Twin invents the question — and on the DM run it '
-      + 'guessed wrong. Her real one becomes the hook.',
+      + 'guessed wrong. Her real one becomes the hook, and her answer the '
+      + 'middle: the coffee Q&A run never answered its own question.',
   }),
   followers: Object.freeze({
     question: 'What do people outside your world get wrong about what you do?',
