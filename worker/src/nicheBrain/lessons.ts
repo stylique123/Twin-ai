@@ -1,0 +1,73 @@
+// THE LESSON LEARNER — turns her ratings, her test viewers and her hook picks
+// into standing lessons the writer reads on every script (0250).
+//
+// ⚖️ ON TOP OF THE SYSTEM, NEVER IN ITS WAY: runs inside the brain sweep, small
+// batches, every failure logged and swallowed. A rating whose note cannot be
+// read this time is retried next sweep (lessons_at stays null).
+
+import { db } from '../db.js'
+import { geminiJson } from '../gemini.js'
+import { modelForTask } from '../modelRouting.js'
+import {
+  RATING_LESSON_SCHEMA, RATING_LESSON_SYSTEM, cleanRatingLessons, lessonFromHookPick, lessonsFromAudience,
+  lessonsFromTags, type CreatorLesson,
+} from '../generated/creatorLessons.js'
+
+type Log = (level: string, msg: string, extra?: Record<string, unknown>) => void
+
+async function file(owner: string, l: CreatorLesson, sourceId: string): Promise<boolean> {
+  const { error } = await db.rpc('learn_lesson', {
+    p_owner: owner, p_kind: l.kind, p_text: l.text, p_phrase: l.phrase, p_source: l.source,
+    p_source_id: sourceId, p_weight: l.weight,
+  })
+  return !error
+}
+
+export async function runLessonLearner(log: Log): Promise<void> {
+  let filed = 0
+
+  // 1. Ratings: tags (deterministic) + her note (read by the model). A rating
+  // she edits later is read again: a trigger clears lessons_at (0250).
+  const { data: ratings } = await db.from('script_ratings')
+    .select('generation_id, owner_id, stars, tags, change_note')
+    .is('lessons_at', null)
+    .order('updated_at', { ascending: true }).limit(10)
+  for (const r of ratings ?? []) {
+    try {
+      const lessons = lessonsFromTags(Array.isArray(r.tags) ? r.tags : [])
+      const note = String(r.change_note ?? '').trim()
+      if (note.length >= 12) {
+        const raw = await geminiJson(RATING_LESSON_SYSTEM, `Stars: ${r.stars}/5\nHer note: ${note}`, RATING_LESSON_SCHEMA, 45_000, 0, modelForTask('read'))
+        lessons.push(...cleanRatingLessons(raw, note))
+      }
+      for (const l of lessons) if (await file(r.owner_id, l, r.generation_id)) filed++
+      await db.from('script_ratings').update({ lessons_at: new Date().toISOString() }).eq('generation_id', r.generation_id)
+    } catch (err) {
+      log('warn', 'lessons_rating_failed', { event: 'lessons_rating_failed', error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  // 2. Her test viewers: the hook that stopped most, and gaps they keep flagging.
+  const { data: tests } = await db.from('audience_tests')
+    .select('generation_id, owner_id, hooks, fixes, panel_size')
+    .eq('status', 'done').is('lessons_at', null).limit(20)
+  for (const t of tests ?? []) {
+    for (const l of lessonsFromAudience(t)) if (await file(t.owner_id, l, t.generation_id)) filed++
+    await db.from('audience_tests').update({ lessons_at: new Date().toISOString() }).eq('generation_id', t.generation_id)
+  }
+
+  // 3. Her own hook pick over Twin's default, once per script.
+  const { data: picks } = await db.from('generations')
+    .select('id, user_id, selected_hook, blueprint')
+    .eq('hook_choice->>source', 'creator').is('hook_lesson_at', null)
+    .order('created_at', { ascending: false }).limit(20)
+  for (const g of picks ?? []) {
+    await db.from('generations').update({ hook_lesson_at: new Date().toISOString() }).eq('id', g.id)
+    const opts = (g.blueprint as { hook_options?: unknown } | null)?.hook_options
+    const first = Array.isArray(opts) && typeof opts[0] === 'string' ? opts[0] : null
+    const l = lessonFromHookPick(String(g.selected_hook ?? ''), first)
+    if (l && await file(g.user_id, l, g.id)) filed++
+  }
+
+  if (filed) log('info', 'lessons_learned', { event: 'lessons_learned', filed })
+}

@@ -147,6 +147,9 @@ const SOURCES = [
   // generated, CI fails on a diff, and there is still exactly one author.
   ['packages/shared/src/assessed.ts', 'worker/src/generated/assessed.ts'],
   ['packages/shared/src/corpus/captionShape.ts', 'worker/src/generated/captionShape.ts'],
+  // What Twin has learned from her: one rule set for the worker (learner) and the edge (writer).
+  ['packages/shared/src/script/creatorLessons.ts', 'worker/src/generated/creatorLessons.ts'],
+  ['packages/shared/src/script/creatorLessons.ts', 'supabase/functions/_shared/creatorLessons.ts'],
   ['packages/shared/src/postQuestions.ts', 'worker/src/generated/postQuestions.ts'],
 ]
 
