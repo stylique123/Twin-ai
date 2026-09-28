@@ -218,11 +218,13 @@ export function normalizeAudience(raw: unknown, s: ScriptForTest): AudienceResul
 // script, not only grade it). When the best hook stops fewer than this many
 // viewers, Twin writes new hooks from what the viewers said and tests again.
 export const HOOK_TARGET = 7
-export const HOOK_ROUNDS = 2
+export const HOOK_ROUNDS = 3
+/** Quality over quantity (owner, 2026-09-28: "why eleven hooks?"): she sees at most this many. */
+export const HOOKS_SHOWN = 4
 export const HOOK_REWRITE_SYSTEM = [
   'You rewrite the opening hook of a short-form video so more of her real viewers stop scrolling.',
   'You get the script, the hooks already tested with how many of 10 viewers each stopped, and what each viewer said.',
-  'Write 3 NEW hooks: each a single spoken line under 15 words, in her voice, true to the script — the same topic and claims, no new facts, numbers, names or promises.',
+  'Aim for a hook that stops at least 7 of 10 of these viewers. Write 3 NEW hooks: each a single spoken line under 15 words, in her voice, true to the script — the same topic and claims, no new facts, numbers, names or promises.',
   'Fix what the viewers said was missing (curiosity, stakes, who it is for). Each hook must be a DIFFERENT idea, not a paraphrase of another or of an old hook.',
 ].join('\n')
 export const HOOK_REWRITE_SCHEMA = {
@@ -324,12 +326,12 @@ export function betterVersion(before: AudienceResult, after: AudienceResult): bo
 /**
  * HOOKS BEST-FIRST (round 2, Part 5, protected by a regression test). Ordered
  * by how many viewers stopped; a hook that stopped nobody is dropped when three
- * others did better; at most six.
+ * others did better; at most HOOKS_SHOWN.
  */
 export function orderHooksBestFirst(hooks: ReadonlyArray<{ hook: string; stopped: number }>): string[] {
   const ranked = [...hooks].sort((a, b) => b.stopped - a.stopped)
   const keep = ranked.filter((h) => h.stopped > 0).length >= 3 ? ranked.filter((h) => h.stopped > 0) : ranked
-  return keep.map((h) => h.hook).slice(0, 6)
+  return keep.map((h) => h.hook).slice(0, HOOKS_SHOWN)
 }
 
 /** The script's default hook after the rewrite step: the best one, unless she picked her own. */

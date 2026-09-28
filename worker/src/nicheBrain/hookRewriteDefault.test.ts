@@ -37,3 +37,11 @@ describe('the default hook is the best-scoring hook after the rewrite step', () 
     expect(AUDIENCE).toMatch(/HOOK_TARGET/)
   })
 })
+
+describe('quality over quantity: at most four hooks (owner, 2026-09-28)', () => {
+  it('never offers more than four, best first', () => {
+    const many = Array.from({ length: 11 }, (_, i) => ({ hook: `h${i}`, stopped: i }))
+    const o = orderHooksBestFirst(many)
+    expect(o).toEqual(['h10', 'h9', 'h8', 'h7'])
+  })
+})
