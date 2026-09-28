@@ -28,7 +28,8 @@ describe('the offer question offers what the creator already registered', () => 
   it('only when the offer is actually being asked', () => {
     // ⚖️ ON THE ORDINARY PATH THE BUILD JUST RUNS. A fetch nobody's answer
     // depends on can only make a build slower.
-    expect(PAGE).toMatch(/askQuestions\?\.some\(\(q\) => q\.field === 'offer'\)/)
+    // Idea Mode's product row (owner, 2026-09-28) also reads it, only on that card.
+    expect(PAGE).toMatch(/askQuestions\?\.some\(\(q\) => q\.field === 'offer' \|\| q\.purpose\)/)
   })
 
   it('renders products as choices rather than a blank box', () => {
@@ -53,7 +54,7 @@ describe('the offer question offers what the creator already registered', () => 
     // ⚠️ `[]` WOULD ASSERT THE CREATOR HAS NO PRODUCTS. The three-state rule, at
     // the one point where getting it wrong silently hides their own products
     // from them.
-    const eff = PAGE.slice(PAGE.indexOf("q.field === 'offer') || products !== null"))
+    const eff = PAGE.slice(PAGE.indexOf("q.field === 'offer' || q.purpose) || products !== null"))
     expect(eff.slice(0, 600)).toMatch(/catch\(\(\) => \{ if \(alive\) setProducts\(\[\]\) \}\)/)
     expect(PAGE).toMatch(/useState<ProductEntityRecord\[\] \| null>\(null\)/)
   })
