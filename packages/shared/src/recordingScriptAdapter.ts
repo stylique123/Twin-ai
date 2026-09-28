@@ -146,9 +146,17 @@ function framingFor(
   seg?: {
     background?: string; action_posing?: string; direction?: string
     location?: string; broll_request?: string; editor_intent?: string; wardrobe?: string
+    line?: string
   },
 ): { camera_framing: string; background: string; movement: string } {
-  const shot = performedShots(blueprint)[i]
+  // ⚠️ COFFEE REPORT 1.3: direction differed between the teleprompter and the
+  // shot list on three of four scenes. Position is not a pairing — a silent
+  // cutaway row shifts every index after it — so the shot that QUOTES this
+  // beat's line is the one it is filmed as; position is the fallback.
+  const performed = performedShots(blueprint)
+  const said = typeof seg?.line === 'string' ? seg.line.trim() : ''
+  const shot = (said !== '' ? performed.find((s) => typeof s?.spoken_text === 'string' && s.spoken_text.trim() === said) : undefined)
+    ?? performed[i]
   // WHAT THE CREATOR READS WHILE STANDING IN THE ROOM (§5c + §5d).
   //
   // `placeToStand` returns `location` when the beat has one and the pre-split
