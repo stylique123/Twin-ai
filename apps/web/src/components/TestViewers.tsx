@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-interface Viewer { who: string; quote: string; stops_for: number; leaves_at: number; question: string | null }
+interface Viewer { who: string; quote: string; stops_for: number; leaves_at: number; question: string | null; would_stop?: number[] }
 interface Fix { issue: string; fix: string; beat: number; count: number }
 export interface Test {
   status: 'done' | 'failed'

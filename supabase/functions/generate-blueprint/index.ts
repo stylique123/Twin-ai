@@ -1985,8 +1985,40 @@ interface BrainNoteInline {
   id?: string; is_hers?: boolean
   kind: string; title: string; body: string | null; sub_niche: string | null
   times_seen: number; total_views: number | string; similarity: number
+  mode?: string | null; goal?: string | null
 }
 const BRAIN_MIN_NOTES = 4
+// 🎯 THE BRAIN WAS MODE-BLIND. Retrieval ranked on topic similarity alone, so an
+// entertain/views video got sell/leads closes and a sales video got pure
+// entertainment hooks. Notes carry the mode and goal of the video they came
+// from; rerank so the notes that match THIS video's job come first, and drop
+// sell-mode notes entirely when the video is not allowed to sell.
+const BRAIN_GOAL_MATCH: Record<string, readonly string[]> = {
+  sell: ['sales', 'leads'], leads: ['leads', 'sales'], authority: ['authority'],
+  educate: ['authority'], conversations: ['community'], personal_brand: ['community'],
+  followers: ['views'], entertain: ['views'],
+}
+const BRAIN_MODE_MATCH: Record<string, readonly string[]> = {
+  sell: ['sell'], leads: ['sell', 'educate'], authority: ['educate', 'teach'],
+  educate: ['educate', 'teach'], conversations: ['inspire', 'entertain'],
+  personal_brand: ['inspire'], followers: ['entertain', 'inspire'], entertain: ['entertain'],
+}
+function rankBrainNotesForGoal(rows: readonly BrainNoteInline[], videoGoal: string | null | undefined): BrainNoteInline[] {
+  const g = String(videoGoal ?? '')
+  const commercial = g === 'sell' || g === 'leads'
+  const goals = BRAIN_GOAL_MATCH[g] ?? []
+  const modes = BRAIN_MODE_MATCH[g] ?? []
+  return rows
+    .filter((r) => r && (commercial || r.mode !== 'sell' || r.is_hers))
+    .map((r, i) => {
+      let score = Number(r.similarity) || 0
+      if (r.goal && goals.includes(r.goal)) score += 0.08
+      if (r.mode && modes.includes(r.mode)) score += 0.05
+      return { r, score, i }
+    })
+    .sort((a, b) => b.score - a.score || a.i - b.i)
+    .map((x) => x.r)
+}
 const BRAIN_SECTIONS: Array<[string, string, number]> = [
   ['topic', 'Topics getting attention near this niche', 4],
   ['hook', 'Openings those videos used (templates, fill with HER specifics)', 4],
@@ -8148,9 +8180,20 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
           ? ((await embRes.json()) as { embedding?: { values?: number[] } })?.embedding?.values
           : null
         if (!Array.isArray(emb) || emb.length !== 768) return []
-        const { data } = await admin.rpc('brain_brief_scoped', { p_embedding: `[${emb.join(',')}]`, p_owner: ownerId, p_k: 24 })
+        const { data } = await admin.rpc('brain_brief_scoped', { p_embedding: `[${emb.join(',')}]`, p_owner: ownerId, p_k: 48 })
           .abortSignal(ctrl.signal)
-        return Array.isArray(data) ? data as BrainNoteInline[] : []
+        const rows = Array.isArray(data) ? data as BrainNoteInline[] : []
+        const ids = rows.map((r) => r.id).filter((x): x is string => typeof x === 'string')
+        if (ids.length > 0) {
+          const { data: meta } = await admin.from('brain_notes').select('id, mode, goal').in('id', ids)
+            .abortSignal(ctrl.signal)
+          const byId = new Map((Array.isArray(meta) ? meta : []).map((m: { id: string; mode: string | null; goal: string | null }) => [m.id, m]))
+          for (const r of rows) {
+            const m = r.id ? byId.get(r.id) : undefined
+            if (m) { r.mode = m.mode; r.goal = m.goal }
+          }
+        }
+        return rankBrainNotesForGoal(rows, videoGoal)
       })().catch(() => [] as BrainNoteInline[])
       const trendsP = (async (): Promise<BrainTrendInline[]> => {
         const bucket = nicheBucketInline(niche)

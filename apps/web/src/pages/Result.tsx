@@ -832,7 +832,12 @@ export default function Result() {
   const unsourcedLine = unsourced.length
     ? `Check before you record: ${unsourced.map((u) => `“${u.figure}” (line ${u.beat + 1})`).join(', ')} — Twin couldn't find ${unsourced.length === 1 ? 'this number' : 'these numbers'} in anything you gave it.`
     : null
-  const verdict = hookVerdicts(b.hook_options, audience.test)
+  // Hooks the viewer panel wrote and tested land on the script after it was
+  // loaded; show them with the originals, strongest first once scored.
+  const testedHooks = audience.test?.status === 'done' ? audience.test.hooks.map((h) => h.hook) : []
+  const hookList = [...b.hook_options, ...testedHooks.filter((h) => !b.hook_options.includes(h))]
+  const verdict = hookVerdicts(hookList, audience.test)
+  if (verdict) hookList.sort((x, y) => (verdict.stopped.get(y) ?? -1) - (verdict.stopped.get(x) ?? -1))
   return (
     <main className="relative min-h-screen overflow-clip bg-ink text-sand pb-20">
       {/* Aurora Glow */}
@@ -1299,7 +1304,7 @@ export default function Result() {
                 </div>
               )}
               <div className="grid grid-cols-1 gap-3">
-                {b.hook_options.map((h, i) => {
+                {hookList.map((h, i) => {
                   if (verdict?.hidden.has(h) && h !== chosenHook) return null
                   const isChosen = h === chosenHook
                   return (
@@ -1733,7 +1738,7 @@ export default function Result() {
                   </div>
                 )}
                 <div className="grid grid-cols-1 gap-3">
-                  {b.hook_options.map((h, i) => {
+                  {hookList.map((h, i) => {
                   if (verdict?.hidden.has(h) && h !== chosenHook) return null
                     const isChosen = h === chosenHook
                     return (
