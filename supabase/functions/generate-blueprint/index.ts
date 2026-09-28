@@ -8782,6 +8782,13 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         + ' be framed as something she has said rather than as true today. An item'
         + ' with NO tag is one nobody recorded a date for — treat it exactly as you'
         + ' would an untagged fact, neither fresher nor staler.\n'
+        // ⚠️ COFFEE REPORT 1.1 + 1.8: a stored cup score came out as 80 in four
+        // scripts and 82 in two; business facts ("two-pound batches", "zero
+        // inventory") were applied to one limited lot; "burns off more
+        // caffeine" became "has less caffeine than light roast".
+        + ' EXACT COPIES: a number, score, size, price or count in an item is used exactly as written, or not at all — never rounded, raised or changed between scripts.'
+        + ' LEVEL: an item about her business as a whole (how she roasts, batch sizes, inventory, scores in general) describes the business; never state it about one specific product or lot unless that product\'s own facts say it.'
+        + ' HER WORDS, NOT STRONGER: a claim about taste, health, caffeine, results or what a product guarantees is quoted as she said it or softened, never made stronger, more certain or more specific. No promised flavor notes unless her product facts list them.\n'
         // ⚠️ SAID OUT LOUD, BECAUSE AN UNEXPLAINED LABEL GETS USED WRONG. Without
         // this sentence a model handed "HER WORDS" can read it as a line it must
         // reproduce verbatim, which would put a transcript sentence into a script

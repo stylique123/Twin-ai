@@ -383,6 +383,16 @@ function pickedProduct(
 /** The facts already extracted for one specific product, in the shape
  *  `assessReadiness` expects — the same derivation `libraryFacts` does, minus
  *  the name-matching it only needs because it has no id to work from. */
+/** ⚠️ COFFEE REPORT 3.1: one line on each product row saying what is on file,
+ *  so she can see before picking that a blank product gives a general script. */
+function onFileLine(p: ProductEntityRecord): string {
+  const usable = (p.knowledge ?? []).filter((f) => f.trust === 'usable')
+  const prices = [...new Set(usable.filter((f) => f.field === 'price' || f.field === 'plan').map((f) => f.value.trim()).filter(Boolean))].slice(0, 3)
+  if (prices.length > 0) return `On file: ${prices.join(', ')}`
+  if (usable.length >= 3) return `On file: ${usable.length} details from its page`
+  return 'Little on file yet, so the script stays general.'
+}
+
 function factsOfProduct(p: ProductEntityRecord | null): readonly string[] | null {
   const ev = p?.evidence
   // ⚠️ DECLINED IS AN ANSWER, AND IT IS "NO". A creator who refused to hand over
@@ -2297,6 +2307,11 @@ export default function V2Building() {
                             silent — never a placeholder pretending to be one. */}
                         {entity?.creatorSummary && (
                           <span className="mt-0.5 block text-xs text-sand">{entity.creatorSummary}</span>
+                        )}
+                        {entity && (
+                          <span className="mt-0.5 block text-xs text-sand" data-testid="picker-on-file">
+                            {onFileLine(entity)}
+                          </span>
                         )}
                         {entity && (
                           <span className="mt-1 block text-xs text-stone">
