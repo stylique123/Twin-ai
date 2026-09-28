@@ -3,7 +3,7 @@
 //
 // ⚖️ ON TOP OF THE SYSTEM. Kicked, never awaited; one script at a time; any
 // failure is stamped 'failed' so the script is not retried forever. The script
-// itself is never modified — the result is shown beside it.
+// is improved only when a rewrite tests better on the same viewers.
 
 import { db } from '../db.js'
 import { geminiJson, geminiEmbed } from '../gemini.js'
@@ -17,6 +17,9 @@ import { runNicheQuestions } from './nicheQuestions.js'
 import {
   AUDIENCE_SCHEMA, AUDIENCE_SYSTEM, PANEL_SCHEMA, PANEL_SIZE, PANEL_SYSTEM,
   audiencePrompt, normalizeAudience, normalizePanel, scriptFromBlueprint, type Persona,
+  HOOK_TARGET, HOOK_ROUNDS, HOOK_REWRITE_SYSTEM, HOOK_REWRITE_SCHEMA, hookRewritePrompt, cleanNewHooks,
+  SCRIPT_TARGET, SCRIPT_ROUNDS, SCRIPT_REWRITE_SYSTEM, SCRIPT_REWRITE_SCHEMA, scriptRewritePrompt,
+  applyLineRewrites, betterVersion, watchedToEnd,
 } from './audienceParse.js'
 
 type Log = (level: string, msg: string, extra?: Record<string, unknown>) => void
@@ -99,15 +102,80 @@ export async function runAudienceTests(log: Log): Promise<void> {
     ])
     const panel = (Array.isArray(panelRow?.personas) ? panelRow.personas : []) as Persona[]
     const objections = (Array.isArray(notes) ? notes : [])
-      .filter((n: { kind: string }) => n.kind === 'objection').map((n: { title: string }) => n.title)
+      // Only her own questions or her exact sub-niche's: other accounts' objections are not her viewers'.
+      .filter((n: { kind: string; is_hers?: boolean; sub_niche?: string | null }) => n.kind === 'objection'
+        && (n.is_hers || (typeof p.sub_niche === 'string' && (n.sub_niche ?? '').toLowerCase() === p.sub_niche.toLowerCase())))
+      .map((n: { title: string }) => n.title)
     const dna = { niche: p.niche, sub_niche: p.sub_niche, audience: p.audience, tone: p.voice ?? p.tone, goal: p.goal }
     const raw = await geminiJson(AUDIENCE_SYSTEM, audiencePrompt(s, { dna, product, objections, lessons, panel }), AUDIENCE_SCHEMA, 45_000, 0, model)
-    const r = normalizeAudience(raw, s)
+    let r = normalizeAudience(raw, s)
     if (!r) { await stamp({ status: 'failed', failure: 'panel too small' }); return }
+    const hookBefore = { best: Math.max(0, ...r.hooks.map((h) => h.stopped)), watched: watchedToEnd(r.viewers) }
+    // ⚠️ THE PANEL NOW CHANGES THE SCRIPT, NOT ONLY GRADES IT. While the best
+    // hook stops fewer than HOOK_TARGET of 10, write new hooks from what the
+    // viewers said and test them on the same viewers (at most HOOK_ROUNDS).
+    let tested = s
+    let rounds = 0
+    const scoreOf = (x: NonNullable<typeof r>) => Math.round((Math.max(0, ...x.hooks.map((h) => h.stopped)) / Math.max(1, x.viewers.length)) * 10)
+    while (rounds < HOOK_ROUNDS && scoreOf(r) < HOOK_TARGET) {
+      rounds += 1
+      const fresh = cleanNewHooks(await geminiJson(HOOK_REWRITE_SYSTEM, hookRewritePrompt(tested, r.hooks, r.viewers), HOOK_REWRITE_SCHEMA, 30_000, 0, model), tested.hooks)
+      if (fresh.length === 0) break
+      const next = { ...tested, hooks: [...tested.hooks, ...fresh] }
+      const again = normalizeAudience(await geminiJson(AUDIENCE_SYSTEM, audiencePrompt(next, { dna, product, objections, lessons, panel }), AUDIENCE_SCHEMA, 45_000, 0, model), next)
+      if (!again) break
+      tested = next; r = again
+    }
+    // Then the body: lines and scenes. A rewrite is kept only if more viewers
+    // stay to the end on the same panel; otherwise the tested version stands.
+    let lineRounds = 0
+    const changedLines = new Set<number>()
+    while (lineRounds < SCRIPT_ROUNDS && watchedToEnd(r.viewers) < SCRIPT_TARGET) {
+      lineRounds += 1
+      const edit = applyLineRewrites(tested.lines, await geminiJson(SCRIPT_REWRITE_SYSTEM, scriptRewritePrompt(tested, r), SCRIPT_REWRITE_SCHEMA, 30_000, 0, model))
+      if (!edit) break
+      const next = { ...tested, lines: edit.lines }
+      const again = normalizeAudience(await geminiJson(AUDIENCE_SYSTEM, audiencePrompt(next, { dna, product, objections, lessons, panel }), AUDIENCE_SCHEMA, 45_000, 0, model), next)
+      if (!again || !betterVersion(r, again)) break
+      edit.changed.forEach((i) => changedLines.add(i))
+      tested = next; r = again
+    }
+    const lineChanges = [...changedLines].sort((a, b) => a - b).map((i) => ({ line: i, before: s.lines[i], after: tested.lines[i] }))
+    if (tested.hooks.length > s.hooks.length || lineChanges.length > 0) {
+      // Only the version that tested best is what she sees: better hooks
+      // become her options (best first), better lines replace the old ones on
+      // the teleprompter AND on the shot card that quotes them.
+      const bp = (g.blueprint && typeof g.blueprint === 'object' ? g.blueprint : {}) as Record<string, unknown>
+      const next: Record<string, unknown> = { ...bp }
+      if (tested.hooks.length > s.hooks.length) {
+        next.hook_options = [...r.hooks].sort((a, b) => b.stopped - a.stopped).map((h) => h.hook).slice(0, 6)
+      }
+      if (lineChanges.length > 0 && Array.isArray(bp.script)) {
+        const script = [...(bp.script as Array<Record<string, unknown>>)]
+        const shots = Array.isArray(bp.shot_list) ? [...(bp.shot_list as Array<Record<string, unknown>>)] : null
+        for (const c of lineChanges) {
+          const at = s.at?.[c.line]
+          if (at === undefined || !script[at]) continue
+          script[at] = { ...script[at], line: c.after }
+          if (shots) {
+            const k = shots.findIndex((x) => typeof x?.spoken_text === 'string' && x.spoken_text.trim() === c.before)
+            if (k >= 0) shots[k] = { ...shots[k], spoken_text: c.after }
+          }
+        }
+        next.script = script
+        if (shots) next.shot_list = shots
+      }
+      await db.from('generations').update({ blueprint: next }).eq('id', g.id)
+    }
     await stamp({
       status: 'done', panel_size: r.viewers.length, hooks: r.hooks, best_hook: r.best_hook,
       viewers: r.viewers, fixes: r.fixes, summary: r.summary,
       panel_voice_id: panel.length ? g.voice_id : null,
+      improved: {
+        before: hookBefore,
+        after: { best: Math.max(0, ...r.hooks.map((h) => h.stopped)), watched: watchedToEnd(r.viewers) },
+        hooks_added: tested.hooks.length - s.hooks.length, lines: lineChanges,
+      },
     })
 
     // ── LEARN: her viewers' questions become her private objection notes, so
@@ -124,7 +192,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
       if (id) filed += 1
     }
     await db.from('audience_tests').update({ learned_at: new Date().toISOString() }).eq('generation_id', g.id)
-    log('info', 'audience_test', { event: 'audience_test', generation: g.id, panel: r.viewers.length, of: PANEL_SIZE, best_hook: r.best_hook, fixes: r.fixes.length, filed, her_panel: panel.length > 0 })
+    log('info', 'audience_test', { event: 'audience_test', generation: g.id, panel: r.viewers.length, of: PANEL_SIZE, best_hook: r.best_hook, rounds, line_rounds: lineRounds, lines_changed: changedLines.size, fixes: r.fixes.length, filed, her_panel: panel.length > 0 })
   } catch (err) {
     const failure = err instanceof Error ? err.message.slice(0, 300) : 'unknown'
     // A quota wall says nothing about the script: leave it untested so the next tick retries.

@@ -267,6 +267,21 @@ export default function Result() {
   const [gen, setGen] = useState<Generation | null>(() => (id ? GEN_CACHE[id] ?? null : null))
   // The viewer test for this script: hook scores sit ON the hook picker.
   const audience = useAudienceTest(id ?? '')
+  // ⚖️ ONLY THE TESTED VERSION IS SHOWN FIRST. A fresh script waits (up to
+  // the test's give-up time) while her viewers check and improve it; she can
+  // always open the draft now.
+  const [showDraft, setShowDraft] = useState(false)
+  const freshScript = !!gen?.created_at && Date.now() - Date.parse(gen.created_at) < 10 * 60_000
+  const checking = !!gen && freshScript && !audience.test && audience.waiting && !showDraft
+  const improvedRev = audience.test?.improved
+    ? audience.test.improved.hooks_added + audience.test.improved.lines.length : 0
+  useEffect(() => {
+    // The worker wrote the better version into the script: read it back.
+    if (!id || improvedRev === 0) return
+    let live = true
+    void getGeneration(id).then((g) => { if (live && g) { GEN_CACHE[id] = g; setGen(g) } }).catch(() => {})
+    return () => { live = false }
+  }, [id, improvedRev])
   // Only block on the full-screen loader when we have NOTHING cached to show.
   const [loading, setLoading] = useState(() => !(id && GEN_CACHE[id]))
   const [posted, setPosted] = useState(false)
@@ -710,6 +725,22 @@ export default function Result() {
       </main>
     )
 
+  if (checking)
+    return (
+      <main className="mx-auto grid min-h-[60vh] max-w-md place-items-center px-5 text-center" data-testid="viewers-checking">
+        <div>
+          <Loader2 className="mx-auto h-5 w-5 animate-spin text-teal" />
+          <p className="mt-3 font-heading text-lg text-cream">Your viewers are checking this script</p>
+          <p className="mt-2 text-sm text-stone">
+            Twin is testing the hooks, the lines and the scenes on viewers like yours, rewriting what loses them and testing again. You’ll see the version that tested best. This takes about a minute.
+          </p>
+          <button type="button" onClick={() => setShowDraft(true)} className="btn-ghost mt-6 inline-flex">
+            Show me the draft now
+          </button>
+        </div>
+      </main>
+    )
+
   // Defensive normalization: an older or partial blueprint can be missing fields,
   // and calling .map on an undefined field would unmount the page (black screen).
   // Default every field so the result always renders something sensible.
@@ -832,7 +863,12 @@ export default function Result() {
   const unsourcedLine = unsourced.length
     ? `Check before you record: ${unsourced.map((u) => `“${u.figure}” (line ${u.beat + 1})`).join(', ')} — Twin couldn't find ${unsourced.length === 1 ? 'this number' : 'these numbers'} in anything you gave it.`
     : null
-  const verdict = hookVerdicts(b.hook_options, audience.test)
+  // Hooks the viewer panel wrote and tested land on the script after it was
+  // loaded; show them with the originals, strongest first once scored.
+  const testedHooks = audience.test?.status === 'done' ? audience.test.hooks.map((h) => h.hook) : []
+  const hookList = [...b.hook_options, ...testedHooks.filter((h) => !b.hook_options.includes(h))]
+  const verdict = hookVerdicts(hookList, audience.test)
+  if (verdict) hookList.sort((x, y) => (verdict.stopped.get(y) ?? -1) - (verdict.stopped.get(x) ?? -1))
   return (
     <main className="relative min-h-screen overflow-clip bg-ink text-sand pb-20">
       {/* Aurora Glow */}
@@ -1299,7 +1335,7 @@ export default function Result() {
                 </div>
               )}
               <div className="grid grid-cols-1 gap-3">
-                {b.hook_options.map((h, i) => {
+                {hookList.map((h, i) => {
                   if (verdict?.hidden.has(h) && h !== chosenHook) return null
                   const isChosen = h === chosenHook
                   return (
@@ -1733,7 +1769,7 @@ export default function Result() {
                   </div>
                 )}
                 <div className="grid grid-cols-1 gap-3">
-                  {b.hook_options.map((h, i) => {
+                  {hookList.map((h, i) => {
                   if (verdict?.hidden.has(h) && h !== chosenHook) return null
                     const isChosen = h === chosenHook
                     return (

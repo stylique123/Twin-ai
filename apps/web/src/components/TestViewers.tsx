@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-interface Viewer { who: string; quote: string; stops_for: number; leaves_at: number; question: string | null }
+interface Viewer { who: string; quote: string; stops_for: number; leaves_at: number; question: string | null; would_stop?: number[] }
 interface Fix { issue: string; fix: string; beat: number; count: number }
 export interface Test {
   status: 'done' | 'failed'
@@ -19,10 +19,18 @@ export interface Test {
   fixes: Fix[]
   summary: string | null
   panel_voice_id: string | null
+  /** What the viewers changed before she saw it (null on older tests). */
+  improved?: {
+    before: { best: number; watched: number }
+    after: { best: number; watched: number }
+    hooks_added: number
+    lines: Array<{ line: number; before: string; after: string }>
+  } | null
 }
 
 const POLL_MS = 4000
-const GIVE_UP_MS = 90_000
+// Hooks, then lines, each re-tested on the same viewers: allow for it.
+export const GIVE_UP_MS = 180_000
 
 /** Words of a hook, for telling near-duplicates apart. */
 const words = (h: string) => new Set(h.toLowerCase().replace(/[^a-z0-9\s']/g, ' ').split(/\s+/).filter((w) => w.length > 2))
@@ -63,7 +71,7 @@ export function useAudienceTest(generationId: string) {
     let timer: ReturnType<typeof setTimeout> | undefined
     const load = () => {
       void supabase.from('audience_tests')
-        .select('status, panel_size, hooks, best_hook, viewers, fixes, summary, panel_voice_id')
+        .select('status, panel_size, hooks, best_hook, viewers, fixes, summary, panel_voice_id, improved')
         .eq('generation_id', generationId).maybeSingle()
         .then(({ data }) => {
           if (!alive) return
@@ -99,6 +107,12 @@ export function TestViewers({ generationId }: { generationId: string }) {
         {test.panel_voice_id
           ? `Twin tested this on your ${n} regular viewers, built from how your real posts performed.`
           : `Twin tested this on ${n} viewers like yours.`}
+        {test.improved && (test.improved.hooks_added > 0 || test.improved.lines.length > 0) && (
+          <>{' '}Before showing it to you, Twin rewrote {[
+            test.improved.hooks_added > 0 ? `${test.improved.hooks_added} hook${test.improved.hooks_added === 1 ? '' : 's'}` : '',
+            test.improved.lines.length > 0 ? `${test.improved.lines.length} line${test.improved.lines.length === 1 ? '' : 's'}` : '',
+          ].filter(Boolean).join(' and ')} and re-tested: best hook {test.improved.before.best} → {test.improved.after.best} of {n} stopped, {test.improved.before.watched} → {test.improved.after.watched} of {n} watched to the end.</>
+        )}
         {' '}Twin plays them, so treat it as a practice audience, not a promise. Their hook scores are on the hooks above. They judge whether people stay past the opening; numbers in the rest of the script are checked separately against what you gave Twin.
       </p>
 

@@ -1,0 +1,69 @@
+import { describe, expect, it } from 'vitest'
+import { cleanNewHooks, normalizeAudience } from './audienceParse'
+
+const s = { hooks: ['a', 'b', 'c'], lines: ['x', 'y'] }
+const viewer = (n: number, would: number[], fav: number) => ({ who: `v${n}`, quote: 'q', stops_for: fav, would_stop: would, leaves_at: -1 })
+
+describe('hook scoring', () => {
+  it('counts every hook a viewer would stop for, not only the favourite', () => {
+    const r = normalizeAudience({ viewers: [0, 1, 2, 3].map((n) => viewer(n, [0, 1], 0)) }, s)!
+    expect(r.hooks.map((h) => h.stopped)).toEqual([4, 4, 0])
+    expect(r.best_hook).toBe(0)
+  })
+  it('still counts the favourite when would_stop is missing, and drops bad indexes', () => {
+    const r = normalizeAudience({ viewers: [0, 1, 2].map((n) => ({ ...viewer(n, [9, -1], 2), would_stop: n ? [9] : undefined })) }, s)!
+    expect(r.hooks[2].stopped).toBe(3)
+    expect(r.viewers[0].would_stop).toEqual([])
+  })
+})
+
+describe('cleanNewHooks', () => {
+  it('drops duplicates of old hooks, empties and overlong lines, keeps at most 3', () => {
+    const long = Array(20).fill('w').join(' ')
+    expect(cleanNewHooks({ hooks: ['A', ' new  one ', '', long, 'two', 'three', 'four'] }, ['a'])).toEqual(['new one', 'two', 'three'])
+    expect(cleanNewHooks(null, [])).toEqual([])
+  })
+})
+
+import { applyLineRewrites, betterVersion, scriptFromBlueprint } from './audienceParse'
+
+describe('applyLineRewrites', () => {
+  const lines = ['We roast 12 bags on Friday.', 'Sarah picks the beans.', 'Order before noon.']
+  it('keeps a tighter line that adds nothing new', () => {
+    expect(applyLineRewrites(lines, { lines: [{ index: 2, text: 'Order by noon.' }] })).toEqual({ lines: [lines[0], lines[1], 'Order by noon.'], changed: [2] })
+  })
+  it('refuses a new number, a new name, a bad index or a much longer line', () => {
+    expect(applyLineRewrites(lines, { lines: [
+      { index: 0, text: 'We roast 40 bags on Friday.' },
+      { index: 1, text: 'Sarah and Tom pick the beans.' },
+      { index: 9, text: 'x' },
+      { index: 2, text: 'Order before noon because otherwise you will wait a whole extra week for the next batch to arrive at home.' },
+    ] })).toBeNull()
+  })
+  it('allows names and numbers already in the script', () => {
+    expect(applyLineRewrites(lines, { lines: [{ index: 1, text: 'Every Friday, Sarah picks 12 bags of beans.' }] })?.changed).toEqual([1])
+  })
+})
+
+describe('betterVersion', () => {
+  const res = (watched: number, best: number) => ({
+    viewers: Array.from({ length: 10 }, (_, i) => ({ who: 'v', quote: 'q', stops_for: -1, would_stop: [], leaves_at: i < watched ? -1 : 1, question: null })),
+    hooks: [{ hook: 'h', stopped: best }], best_hook: 0, fixes: [], summary: null,
+  })
+  it('needs more viewers to the end without a worse hook', () => {
+    expect(betterVersion(res(4, 7) as never, res(6, 7) as never)).toBe(true)
+    expect(betterVersion(res(4, 7) as never, res(6, 5) as never)).toBe(false)
+    expect(betterVersion(res(4, 7) as never, res(4, 9) as never)).toBe(false)
+  })
+})
+
+describe('scriptFromBlueprint', () => {
+  it('maps lines to their script position and their scene', () => {
+    const s = scriptFromBlueprint({
+      hook_options: ['h'], script: [{ line: 'a' }, { line: '' }, { line: 'b' }],
+      shot_list: [{ shot: 'Close-up', framing: 'tight', notes: '', spoken_text: 'b' }],
+    })!
+    expect(s.at).toEqual([0, 2])
+    expect(s.shots).toEqual([null, 'Close-up · tight'])
+  })
+})

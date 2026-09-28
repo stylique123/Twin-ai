@@ -8,7 +8,7 @@ const v = (stops_for: number, leaves_at = -1, question: string | null = null) =>
 describe('test viewers', () => {
   it('reads hooks and lines from a blueprint', () => {
     expect(scriptFromBlueprint({ hook_options: ['a', ' ', 'b'], script: [{ line: 'x' }, {}] }))
-      .toEqual({ hooks: ['a', 'b'], lines: ['x'], concept: null })
+      .toEqual({ hooks: ['a', 'b'], lines: ['x'], at: [0], shots: [null], concept: null })
     expect(scriptFromBlueprint({ hook_options: [], script: [{ line: 'x' }] })).toBeNull()
   })
 
