@@ -267,6 +267,21 @@ export default function Result() {
   const [gen, setGen] = useState<Generation | null>(() => (id ? GEN_CACHE[id] ?? null : null))
   // The viewer test for this script: hook scores sit ON the hook picker.
   const audience = useAudienceTest(id ?? '')
+  // ⚖️ ONLY THE TESTED VERSION IS SHOWN FIRST. A fresh script waits (up to
+  // the test's give-up time) while her viewers check and improve it; she can
+  // always open the draft now.
+  const [showDraft, setShowDraft] = useState(false)
+  const freshScript = !!gen?.created_at && Date.now() - Date.parse(gen.created_at) < 10 * 60_000
+  const checking = !!gen && freshScript && !audience.test && audience.waiting && !showDraft
+  const improvedRev = audience.test?.improved
+    ? audience.test.improved.hooks_added + audience.test.improved.lines.length : 0
+  useEffect(() => {
+    // The worker wrote the better version into the script: read it back.
+    if (!id || improvedRev === 0) return
+    let live = true
+    void getGeneration(id).then((g) => { if (live && g) { GEN_CACHE[id] = g; setGen(g) } }).catch(() => {})
+    return () => { live = false }
+  }, [id, improvedRev])
   // Only block on the full-screen loader when we have NOTHING cached to show.
   const [loading, setLoading] = useState(() => !(id && GEN_CACHE[id]))
   const [posted, setPosted] = useState(false)
@@ -706,6 +721,22 @@ export default function Result() {
               Make a new video
             </Link>
           </div>
+        </div>
+      </main>
+    )
+
+  if (checking)
+    return (
+      <main className="mx-auto grid min-h-[60vh] max-w-md place-items-center px-5 text-center" data-testid="viewers-checking">
+        <div>
+          <Loader2 className="mx-auto h-5 w-5 animate-spin text-teal" />
+          <p className="mt-3 font-heading text-lg text-cream">Your viewers are checking this script</p>
+          <p className="mt-2 text-sm text-stone">
+            Twin is testing the hooks, the lines and the scenes on viewers like yours, rewriting what loses them and testing again. You’ll see the version that tested best. This takes about a minute.
+          </p>
+          <button type="button" onClick={() => setShowDraft(true)} className="btn-ghost mt-6 inline-flex">
+            Show me the draft now
+          </button>
         </div>
       </main>
     )

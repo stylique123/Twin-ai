@@ -101,6 +101,10 @@ export interface ScriptForTest {
   hooks: string[]
   lines: string[]
   concept?: string | null
+  /** The shot each line is filmed as, so viewers judge the scenes too. */
+  shots?: Array<string | null>
+  /** Position of each line in `blueprint.script`, for writing a rewrite back. */
+  at?: number[]
 }
 
 export function scriptFromBlueprint(bp: unknown): ScriptForTest | null {
@@ -108,12 +112,23 @@ export function scriptFromBlueprint(bp: unknown): ScriptForTest | null {
   const hooks = Array.isArray(b.hook_options)
     ? (b.hook_options as unknown[]).filter((h): h is string => typeof h === 'string' && !!h.trim()).slice(0, 5)
     : []
-  const lines = Array.isArray(b.script)
-    ? (b.script as Array<{ line?: unknown }>).map((s) => (typeof s?.line === 'string' ? s.line.trim() : '')).filter(Boolean)
-    : []
+  const lines: string[] = [], at: number[] = []
+  if (Array.isArray(b.script)) {
+    (b.script as Array<{ line?: unknown }>).forEach((s, i) => {
+      const t = typeof s?.line === 'string' ? s.line.trim() : ''
+      if (t) { lines.push(t); at.push(i) }
+    })
+  }
   if (hooks.length === 0 || lines.length === 0) return null
+  const rows = Array.isArray(b.shot_list) ? b.shot_list as Array<Record<string, unknown>> : []
+  const shots = lines.map((l) => {
+    const r = rows.find((x) => typeof x?.spoken_text === 'string' && x.spoken_text.trim() === l)
+    if (!r) return null
+    const d = [r.shot, r.framing, r.b_roll_visual, r.notes].filter((v) => typeof v === 'string' && v.trim()).join(' · ')
+    return d ? d.slice(0, 160) : null
+  })
   const c = b.concept as { premise?: unknown } | undefined
-  return { hooks, lines, concept: typeof c?.premise === 'string' ? c.premise : null }
+  return { hooks, lines, at, shots, concept: typeof c?.premise === 'string' ? c.premise : null }
 }
 
 export function audiencePrompt(s: ScriptForTest, ctx: { dna: unknown; product?: string | null; objections: string[]; lessons: unknown; panel?: Persona[] }): string {
@@ -126,7 +141,7 @@ export function audiencePrompt(s: ScriptForTest, ctx: { dna: unknown; product?: 
     `WHAT PAST TEST PANELS KEPT FLAGGING FOR HER: ${j(ctx.lessons, 500)}`,
     s.concept ? `IDEA: ${s.concept}` : '',
     `HOOK OPTIONS:\n${s.hooks.map((h, i) => `${i}. ${h}`).join('\n')}`,
-    `SCRIPT (line 0 is spoken with whichever hook she picks):\n${s.lines.map((l, i) => `${i}. ${l}`).join('\n')}`,
+    `SCRIPT (line 0 is spoken with whichever hook she picks; [scene] is what is on screen):\n${s.lines.map((l, i) => `${i}. ${l}${s.shots?.[i] ? ` [scene: ${s.shots[i]}]` : ''}`).join('\n')}`,
   ].filter(Boolean).join('\n\n')
 }
 
@@ -227,4 +242,74 @@ export function cleanNewHooks(raw: unknown, existing: readonly string[]): string
     if (out.length >= 3) break
   }
   return out
+}
+
+// ── MAKE THE WHOLE SCRIPT BETTER, THEN SHOW IT (owner: "check the structure,
+// the words, the scenes, show it to everyone, and only the best version is the
+// one she sees"). After the hooks, while fewer than SCRIPT_TARGET of 10 would
+// watch to the end, Twin rewrites ONLY the lines the viewers left at or flagged,
+// tests the new version on the same viewers, and keeps it only if more stay.
+export const SCRIPT_TARGET = 6
+export const SCRIPT_ROUNDS = 2
+export const MAX_LINE_CHANGES = 4
+export const watchedToEnd = (viewers: readonly { leaves_at: number }[]) => viewers.filter((v) => v.leaves_at === -1).length
+
+export const SCRIPT_REWRITE_SYSTEM = [
+  'You edit a short-form video script so more of her real viewers watch to the end.',
+  'You get the script line by line (with the scene on screen), where each viewer scrolled away, what they said, and the fixes they pointed to.',
+  `Rewrite at most ${MAX_LINE_CHANGES} lines — the ones viewers left at or flagged. Tighten, reorder the idea within the line, sharpen the words, make the scene\'s payoff land sooner.`,
+  'Keep her voice. Keep every line doing the same job (hook stays a hook, the close stays the close). Keep each line about as long or shorter.',
+  'NEVER add a fact that is not already in the script: no new numbers, prices, names, places, awards, results or promises. If a viewer wanted a missing fact, leave that line alone.',
+  'Return only the lines you changed, by their 0-based index. Return an empty list if the script is already right.',
+].join('\n')
+export const SCRIPT_REWRITE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    lines: { type: 'ARRAY', items: { type: 'OBJECT', properties: { index: N, text: S }, required: ['index', 'text'] } },
+  },
+  required: ['lines'],
+}
+export function scriptRewritePrompt(s: ScriptForTest, r: AudienceResult): string {
+  const left = (i: number) => r.viewers.filter((v) => v.leaves_at === i).map((v) => v.who)
+  return [
+    `SCRIPT:\n${s.lines.map((l, i) => `${i}. ${l}${s.shots?.[i] ? ` [scene: ${s.shots[i]}]` : ''}${left(i).length ? `  ← ${left(i).length} left here (${left(i).join(', ')})` : ''}`).join('\n')}`,
+    `WATCHED TO THE END: ${watchedToEnd(r.viewers)} of ${r.viewers.length}`,
+    `WHAT THE VIEWERS SAID:\n${r.viewers.map((v) => `${v.who}: ${v.quote}`).join('\n')}`,
+    r.fixes.length ? `FIXES THEY POINTED TO:\n${r.fixes.map((f) => `${f.beat >= 0 ? `line ${f.beat}` : 'whole video'} — ${f.issue}: ${f.fix}`).join('\n')}` : '',
+  ].filter(Boolean).join('\n\n')
+}
+
+const numbersIn = (t: string) => (t.toLowerCase().match(/\d[\d.,]*|\b(?:hundred|thousand|million|billion|percent)\b/g) ?? []).map((x) => x.replace(/[.,]+$/, ''))
+const namesIn = (t: string) => (t.match(/(?<!^|[.!?]\s)\b[A-Z][a-z]{2,}\b/g) ?? [])
+
+/** Apply a rewrite, refusing any line that brings in a number or name the
+ *  script did not already have, or grows much longer. Returns null if nothing
+ *  usable changed. */
+export function applyLineRewrites(lines: readonly string[], raw: unknown): { lines: string[]; changed: number[] } | null {
+  const list = (raw as { lines?: unknown } | null)?.lines
+  if (!Array.isArray(list)) return null
+  const all = lines.join(' ')
+  const known = new Set(numbersIn(all))
+  const knownNames = new Set((all.match(/\b[A-Z][a-z]{2,}\b/g) ?? []).map((x) => x.toLowerCase()))
+  const out = [...lines]
+  const changed: number[] = []
+  for (const item of list) {
+    const o = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>
+    const i = typeof o.index === 'number' && Number.isInteger(o.index) ? o.index : -1
+    const t = typeof o.text === 'string' ? o.text.replace(/\s+/g, ' ').trim() : ''
+    if (i < 0 || i >= lines.length || !t || changed.includes(i) || t === lines[i]) continue
+    if (t.split(' ').length > lines[i].split(' ').length * 1.3 + 4) continue
+    if (numbersIn(t).some((n) => !known.has(n))) continue
+    if (namesIn(t).some((n) => !knownNames.has(n.toLowerCase()))) continue
+    out[i] = t; changed.push(i)
+    if (changed.length >= MAX_LINE_CHANGES) break
+  }
+  return changed.length ? { lines: out, changed } : null
+}
+
+/** A new version wins only if more viewers watch to the end and the best
+ *  hook did not get worse. */
+export function betterVersion(before: AudienceResult, after: AudienceResult): boolean {
+  const best = (x: AudienceResult) => Math.max(0, ...x.hooks.map((h) => h.stopped))
+  return watchedToEnd(after.viewers) > watchedToEnd(before.viewers) && best(after) >= best(before)
 }

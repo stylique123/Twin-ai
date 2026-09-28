@@ -1985,7 +1985,7 @@ interface BrainNoteInline {
   id?: string; is_hers?: boolean
   kind: string; title: string; body: string | null; sub_niche: string | null
   times_seen: number; total_views: number | string; similarity: number
-  mode?: string | null; goal?: string | null
+  mode?: string | null; goal?: string | null; bucket?: string | null
 }
 const BRAIN_MIN_NOTES = 4
 // 🎯 THE BRAIN WAS MODE-BLIND. Retrieval ranked on topic similarity alone, so an
@@ -2002,6 +2002,36 @@ const BRAIN_MODE_MATCH: Record<string, readonly string[]> = {
   sell: ['sell'], leads: ['sell', 'educate'], authority: ['educate', 'teach'],
   educate: ['educate', 'teach'], conversations: ['inspire', 'entertain'],
   personal_brand: ['inspire'], followers: ['entertain', 'inspire'], entertain: ['entertain'],
+}
+// ⚠️ OTHER ACCOUNTS' VIDEOS WERE LEAKING IN (owner: "cross contaminating").
+// Measured on the coffee roaster: every shared note scored ~0.86 similarity —
+// gym shaker bottles, posture gadgets, a beauty brand's founder story — so the
+// 0.6 floor let all of it through, and her niche bucket ("business") is too
+// broad to fence it. A shared FACT note must name her subject (coffee,
+// roasting) or share her exact sub-niche; a shared SHAPE note (hook, angle,
+// close) needs only her bucket. Her own notes always pass.
+const LANE_FILLER = new Set(['business', 'businesses', 'small', 'journey', 'vlogs', 'vlog', 'specialty', 'micro', 'batch',
+  'content', 'creator', 'creators', 'videos', 'video', 'brand', 'brands', 'life', 'lifestyle', 'daily', 'with', 'from',
+  'about', 'tips', 'online', 'shop', 'store', 'products', 'product', 'owner', 'owners', 'local', 'home', 'based'])
+function laneStems(text: string): string[] {
+  return [...new Set(text.toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 4 && !LANE_FILLER.has(w)).map((w) => w.slice(0, 5)))]
+}
+function inHerLane(rows: readonly BrainNoteInline[], herBucket: string | null, herSub: string, herNiche: string): BrainNoteInline[] {
+  const sub = herSub.trim().toLowerCase()
+  const stems = laneStems(`${herSub} ${herNiche}`)
+  const mentions = (r: BrainNoteInline) => {
+    const words = laneStems(`${r.title} ${r.body ?? ''} ${r.sub_niche ?? ''}`)
+    return stems.some((s) => words.includes(s))
+  }
+  return rows.filter((r) => {
+    if (!r) return false
+    if (r.is_hers) return true
+    if (sub !== '' && (r.sub_niche ?? '').toLowerCase() === sub) return true
+    // Facts (topics, proof, objections) must be about HER subject.
+    if (mentions(r)) return true
+    // Shapes (hook, angle, close) carry no facts: her bucket is enough.
+    return (r.kind === 'hook' || r.kind === 'angle' || r.kind === 'cta') && herBucket !== null && r.bucket === herBucket
+  })
 }
 function rankBrainNotesForGoal(rows: readonly BrainNoteInline[], videoGoal: string | null | undefined): BrainNoteInline[] {
   const g = String(videoGoal ?? '')
@@ -8185,15 +8215,15 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         const rows = Array.isArray(data) ? data as BrainNoteInline[] : []
         const ids = rows.map((r) => r.id).filter((x): x is string => typeof x === 'string')
         if (ids.length > 0) {
-          const { data: meta } = await admin.from('brain_notes').select('id, mode, goal').in('id', ids)
+          const { data: meta } = await admin.from('brain_notes').select('id, mode, goal, bucket').in('id', ids)
             .abortSignal(ctrl.signal)
-          const byId = new Map((Array.isArray(meta) ? meta : []).map((m: { id: string; mode: string | null; goal: string | null }) => [m.id, m]))
+          const byId = new Map((Array.isArray(meta) ? meta : []).map((m: { id: string; mode: string | null; goal: string | null; bucket: string | null }) => [m.id, m]))
           for (const r of rows) {
             const m = r.id ? byId.get(r.id) : undefined
-            if (m) { r.mode = m.mode; r.goal = m.goal }
+            if (m) { r.mode = m.mode; r.goal = m.goal; r.bucket = m.bucket }
           }
         }
-        return rankBrainNotesForGoal(rows, videoGoal)
+        return rankBrainNotesForGoal(inHerLane(rows, nicheBucketInline(niche), String(subNiche ?? ''), String(niche ?? '')), videoGoal)
       })().catch(() => [] as BrainNoteInline[])
       const trendsP = (async (): Promise<BrainTrendInline[]> => {
         const bucket = nicheBucketInline(niche)

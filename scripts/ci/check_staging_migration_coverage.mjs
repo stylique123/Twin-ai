@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0249_audience_improved':
+    'Adds audience_tests.improved (what the test viewers changed before the creator saw the script); '
+    + 'written by the worker and read by the Result page only. The editor never reads it.',
   '0248_brand_claim_bans':
     'Adds brands.forbidden_claims (claims a brand\'s scripts must never make), read by generate-blueprint '
     + 'and the Product Library only. The editor never reads it.',
