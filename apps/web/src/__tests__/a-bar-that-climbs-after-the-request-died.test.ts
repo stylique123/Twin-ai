@@ -56,11 +56,14 @@ describe('the screen stops claiming progress once the request is gone', () => {
 
   it('says it is CHECKING — not building, and not that it failed', () => {
     expect(SRC).toMatch(/Checking whether your script finished/)
-    expect(SRC).toMatch(/Your script may already be finished/)
+    // Never a promise the server cannot keep (owner, 2026-09-28).
+    expect(SRC).not.toMatch(/land(s)? in your Library/)
+    expect(SRC).not.toMatch(/Leave anytime/)
+    expect(SRC).toMatch(/We're not sure if this finished\. Check your Library in a few minutes, or try again\./)
     // ⚠️ THE FAILURE SENTENCE MUST STILL WAIT FOR THE LOOP TO END. Announcing a
     // failure while a script is landing is the worst of the three outcomes: the
     // creator is charged, told it failed, and has no reason to go looking.
-    expect(SRC.indexOf('setRescuing(false)')).toBeLessThan(SRC.indexOf('setError(creatorFacingMessage(e))'))
+    expect(SRC.indexOf('setRescuing(false)')).toBeLessThan(SRC.indexOf('setError(BUILD_UNSURE)'))
   })
 
   it('hides the bar and the steps rather than freezing them on screen', () => {

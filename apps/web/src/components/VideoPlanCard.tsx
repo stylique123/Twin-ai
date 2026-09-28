@@ -2,8 +2,8 @@
 //
 // ⚠️ The earlier card listed eight truncated items (two of them the same cup
 // score, one a legal deadline), a vague angle and three gap lines. Now:
-//   · "What I'll use (N of M)", collapsed; open shows only facts that FIT this
-//     idea, "See all" shows the rest;
+//   · "Using N things from what you've told us", collapsed; open shows exactly
+//     what is sent, "See all" shows the rest (round 2: no raw fraction);
 //   · each item says where it came from, and legal/sensitive items, unconfirmed
 //     numbers and "first/only" claims start OFF (the parent seeds them into the
 //     excluded set); a struck item is never supplied to the writer;
@@ -11,7 +11,7 @@
 //     with no product attached.
 // The rules live in `planUse.ts` (shared) so they are tested, not guessed here.
 import { useMemo, useState } from 'react'
-import { buildVideoPlan, planUseItems, type VideoPlanInput } from '@twinai/shared'
+import { buildVideoPlan, planUseItems, PLAN_USE_MAX, type VideoPlanInput } from '@twinai/shared'
 import { cn } from '../lib/cn'
 
 export function VideoPlanCard({
@@ -34,7 +34,9 @@ export function VideoPlanCard({
   const [open, setOpen] = useState(false)
   const [all, setAll] = useState(false)
   const on = items.filter((i) => !excluded.has(i.id))
-  const shown = all ? items : items.filter((i) => i.fits)
+  // ⚖️ The list is what is IN (seeded once by the parent); "See all" adds the
+  // rest. Nothing here re-measures what fits, so nothing changes without a tap.
+  const shown = all ? items : on
   const productGap = needsProduct && plan.gaps.some((g) => g.basis === 'readyFacts')
 
   return (
@@ -42,24 +44,25 @@ export function VideoPlanCard({
       {items.length > 0 && (
         <div>
           <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-center justify-between text-left">
-            <span className="text-sm text-cream">{open ? '▾' : '▸'} What I'll use ({on.length} of {items.length})</span>
-            {open && items.some((i) => !i.fits) && (
+            <span className="text-sm text-cream">{open ? '▾' : '▸'} {on.length === 0 ? "Not using anything you've told us" : `Using ${on.length} ${on.length === 1 ? 'thing' : 'things'} from what you've told us`}</span>
+            {open && items.length > on.length && (
               <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); setAll(!all) }}
-                className="text-xs text-stone underline underline-offset-2">{all ? 'Only what fits' : 'See all'}</span>
+                className="text-xs text-stone underline underline-offset-2">{all ? "Only what I'm using" : 'See all'}</span>
             )}
           </button>
           {open && (
             <ul className="mt-2 space-y-1.5">
-              {shown.length === 0 && <li className="text-xs text-stone">Nothing on file fits this idea closely. Tap "See all" to choose.</li>}
+              {shown.length === 0 && <li className="text-xs text-stone">Nothing on file fits this idea closely. Tap "See all" to add something.</li>}
               {shown.map((i) => {
                 const off = excluded.has(i.id)
+                const full = off && on.length >= PLAN_USE_MAX
                 return (
                   <li key={i.id}>
-                    <button type="button" onClick={() => onToggle(i.id)} aria-pressed={!off}
-                      className={cn('w-full rounded-lg border px-2.5 py-1.5 text-left text-[13px] leading-snug transition-colors',
+                    <button type="button" onClick={() => { if (!full) onToggle(i.id) }} aria-pressed={!off} disabled={full}
+                      className={cn('w-full whitespace-normal break-words rounded-lg border px-2.5 py-1.5 text-left text-[13px] leading-snug transition-colors',
                         off ? 'border-white/5 text-stone' : 'border-white/12 text-cream hover:border-white/25')}>
                       <span className={cn(off && 'line-through')}>{i.text}</span>
-                      <span className="mt-0.5 block text-[11px] text-stone">{i.reason} · {off ? 'left out, tap to use' : 'in, tap to leave out'}</span>
+                      <span className="mt-0.5 block text-[11px] text-stone">{i.reason} · {full ? `left out, ${PLAN_USE_MAX} is the most I use` : off ? 'left out, tap to use' : 'in, tap to leave out'}</span>
                     </button>
                   </li>
                 )

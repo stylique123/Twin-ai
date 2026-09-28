@@ -111,7 +111,8 @@ describe('a creator never reads the library\'s own words', () => {
   })
 
   it('the screen no longer prints e.message straight to the creator', () => {
-    expect(CODE).toMatch(/setError\(creatorFacingMessage\(e\)\)/)
+    expect(CODE).toMatch(/setError\(BUILD_UNSURE\)/)
+    expect(CODE).not.toMatch(/setError\(e\.message\)/)
     expect(CODE).not.toMatch(/setError\(e instanceof Error \? e\.message/)
   })
 })

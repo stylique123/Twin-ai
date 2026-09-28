@@ -32,6 +32,7 @@ export const IDEA_Q_SYSTEM = [
   'Return AT MOST ONE question: the single missing fact the script would otherwise have to invent. Return none when the paragraph already has a concrete moment, fact or answer to build on — say so in "enough".',
   'Every question must point at her own words: put the exact phrase from her paragraph it is about in "quote" (copied character for character, 2-8 words).',
   'Ask for a MOMENT, a FACT or WHAT SHE DOES ("Think of one batch where you noticed it: what was different in the cup?"). Never ask for a feeling, a goal, an audience, a call to action or a hashtag.',
+  'Match her tone: if she sounds neutral or proud, do not frame the question around a mess, mistake, problem or failure unless she named one. "You just figure it out step by step" asks for one step she figured out, not for something that went wrong.',
   'Never ask something the paragraph already answers. Never suggest an answer. Plain words, under 20 words, one question each.',
   'purpose: pick the ONE reason the video exists from: personal_brand (her story), educate (teaching something), conversations (answering a question people ask), authority (showing how she does it), entertain (fun to watch), sell (promoting something she sells). Pick sell ONLY if she says she wants people to buy, order, book or try something she sells. confidence 0-1 (under 0.5 when the paragraph is too thin to tell). signal: the phrase that told you.',
 ].join('\n')
@@ -86,7 +87,10 @@ export function cleanIdeaRead(raw: unknown, paragraph: string): IdeaRead {
   // ⚖️ SELL AND LEADS NEED HER OWN WORDS BEHIND THEM: a guessed commercial
   // purpose would grant a pitch nobody asked for.
   const commercial = p?.value === 'sell'
-  const purpose = p && confidence >= 0.5 && (!commercial || signal)
+  // Round 2 (Part 4): the signal must itself be a buying word, not any phrase —
+  // "coffee roastery" is not "buy my coffee".
+  const BUY = /\b(buy|order|shop|book|try|purchase|pre-?order|sale|discount|link in bio|available|launch)/i
+  const purpose = p && confidence >= 0.5 && (!commercial || (signal && BUY.test(signal)))
     ? { value: p.value, label: p.label, confidence, signal } : null
   return { questions: r.enough === true ? [] : questions, purpose }
 }

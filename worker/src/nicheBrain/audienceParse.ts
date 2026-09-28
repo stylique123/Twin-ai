@@ -320,3 +320,19 @@ export function betterVersion(before: AudienceResult, after: AudienceResult): bo
   const best = (x: AudienceResult) => Math.max(0, ...x.hooks.map((h) => h.stopped))
   return watchedToEnd(after.viewers) > watchedToEnd(before.viewers) && best(after) >= best(before)
 }
+
+/**
+ * HOOKS BEST-FIRST (round 2, Part 5, protected by a regression test). Ordered
+ * by how many viewers stopped; a hook that stopped nobody is dropped when three
+ * others did better; at most six.
+ */
+export function orderHooksBestFirst(hooks: ReadonlyArray<{ hook: string; stopped: number }>): string[] {
+  const ranked = [...hooks].sort((a, b) => b.stopped - a.stopped)
+  const keep = ranked.filter((h) => h.stopped > 0).length >= 3 ? ranked.filter((h) => h.stopped > 0) : ranked
+  return keep.map((h) => h.hook).slice(0, 6)
+}
+
+/** The script's default hook after the rewrite step: the best one, unless she picked her own. */
+export function defaultHookAfterTest(ordered: readonly string[], creatorPick: string | null): string | null {
+  return creatorPick ?? ordered[0] ?? null
+}
