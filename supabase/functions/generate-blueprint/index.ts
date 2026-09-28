@@ -6252,7 +6252,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string; mentioned_product_id?: string; door?: string }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string; mentioned_product_id?: string; door?: string; exclude_knowledge_ids?: string[] }
   try {
     body = await req.json()
   } catch {
@@ -8637,7 +8637,9 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // ⚠️ A STORY IS NEVER ATTACHED TO A PRODUCT IT IS NOT ABOUT, AND A STORY
     // TOLD IN TWO OF HER LAST FIVE SCRIPTS RESTS. See `storyRotation.ts`.
     const storyGate = gateStories(
-      kRows.filter((k) => k.basis !== 'inferred' && k.kind !== 'covered'),
+      // ⚖️ WHAT SHE LEFT OUT ON THE PLAN SCREEN IS NEVER SUPPLIED (owner, 2026-09-28).
+      kRows.filter((k) => k.basis !== 'inferred' && k.kind !== 'covered'
+        && !(Array.isArray(body.exclude_knowledge_ids) && body.exclude_knowledge_ids.includes(String((k as { id?: unknown }).id ?? '')))),
       {
         productText: ownedEntity
           ? [entityAbout?.name ?? '', entityAbout?.offer ?? '', entityAbout?.creator_summary ?? '']

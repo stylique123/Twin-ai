@@ -2,84 +2,117 @@
 //
 // ⚠️ THE THIRD LINE IS WHY THIS SCREEN EXISTS. "The angle" and "What I'll use"
 // build confidence; "What I don't have" is where a fabricated claim gets caught
-// while it is still free to fix. A creator who reads "no numbers from you"
-// before spending either adds one or picks a different angle. The same sentence
-// after the spend is a refund.
+// while it is still free to fix.
 //
-// ⚖️ ONE SCREEN, NEVER TWO, AND IT NEVER BLOCKS. There is no second step and no
-// gate: "Write it" is the primary action and it is always available. A gap is
-// information, not a wall — a creator may look straight at one and generate
-// anyway, and often should.
-import { buildVideoPlan, type VideoPlanInput } from '@twinai/shared'
+// ⚠️ OWNER, 2026-09-28: "32 things you've said before" was too vague — she
+// could not see or remove anything, and that is where an unwanted story or
+// number slips in. The stories and numbers Twin may draw on are now listed one
+// by one, each removable; sensitive ones (health, legal, family, hardship) are
+// never listed because the writer withholds them unless she raises them. The
+// angle shows Twin's reading of the purpose, not her own sentence back. The
+// "Don't show this again" opt-out is gone: this is the only place she learns
+// something is missing, so the screen is skipped only when nothing is.
+//
+// ⚖️ ONE SCREEN, AND IT NEVER BLOCKS. "Write it" is always available.
+import { Link } from 'react-router-dom'
+import { buildVideoPlan, SENSITIVE, type VideoPlanInput } from '@twinai/shared'
 import { cn } from '../lib/cn'
 
+/** A story or number Twin may use, with its row id so she can leave it out. */
+export interface PlanPick { id: string; kind: string; text: string }
+
+const PICK_KINDS = new Set(['experience', 'story', 'claim', 'number', 'example', 'result'])
+
+/** The stories and numbers worth showing: substance, never sensitive, at most 8. */
+export function planPicks(knowledge: readonly { id?: string; kind?: string; text?: string }[] | null | undefined): PlanPick[] {
+  const out: PlanPick[] = []
+  const seen = new Set<string>()
+  for (const k of knowledge ?? []) {
+    const id = String(k?.id ?? ''), kind = String(k?.kind ?? ''), text = String(k?.text ?? '').trim()
+    if (!id || !text || !PICK_KINDS.has(kind) || SENSITIVE.test(text) || seen.has(text.toLowerCase())) continue
+    seen.add(text.toLowerCase())
+    out.push({ id, kind, text: text.slice(0, 140) })
+    if (out.length >= 8) break
+  }
+  return out
+}
+
 export function VideoPlanCard({
-  input, onWrite, onSkipAlways, busy = false,
+  input, purposeLabel, picks, excluded, onToggle, onWrite, busy = false,
 }: {
   input: VideoPlanInput
+  /** Twin's reading of why the video exists (Idea Mode), shown instead of her own sentence. */
+  purposeLabel?: string | null
+  picks: readonly PlanPick[]
+  excluded: ReadonlySet<string>
+  onToggle: (id: string) => void
   onWrite: () => void
-  /** "Don't show me this again" — a preference, honoured immediately. */
-  onSkipAlways: () => void
   busy?: boolean
 }) {
   const plan = buildVideoPlan(input)
+  const angle = purposeLabel ? `I read this as ${purposeLabel}. Change it on the questions screen if not.` : plan.angle
 
   return (
-    <div className="rounded-card border border-white/10 bg-white/[0.03] p-4">
+    <div className="rounded-card border border-white/10 bg-white/[0.03] p-4" data-testid="video-plan">
       <p className="text-xs uppercase tracking-wide text-stone">Before I write this</p>
 
-      {/* ⚖️ THE ANGLE IS SHOWN ONLY WHEN THERE IS ONE. A heading over an empty
-          line would read as Twin having understood nothing, when in fact the
-          creator simply did not narrow it — which is allowed. */}
-      {plan.angle ? (
+      {angle ? (
         <div className="mt-3">
           <p className="text-xs text-stone">The angle</p>
-          <p className="mt-0.5 text-sm text-cream">{plan.angle}</p>
+          <p className="mt-0.5 text-sm text-cream">{angle}</p>
         </div>
       ) : null}
 
-      {plan.willUse.length > 0 ? (
+      {picks.length > 0 ? (
         <div className="mt-3">
-          <p className="text-xs text-stone">What I'll use</p>
-          <p className="mt-0.5 text-sm text-cream">{plan.willUse.join(' · ')}</p>
+          <p className="text-xs text-stone">What I may use from you <span className="text-stone/60">— tap one to leave it out</span></p>
+          <ul className="mt-1 space-y-1.5">
+            {picks.map((p) => {
+              const out = excluded.has(p.id)
+              return (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    onClick={() => onToggle(p.id)}
+                    aria-pressed={!out}
+                    className={cn(
+                      'w-full rounded-lg border px-2.5 py-1.5 text-left text-[13px] leading-snug transition-colors',
+                      out ? 'border-white/5 text-stone line-through' : 'border-white/12 text-cream hover:border-white/25',
+                    )}
+                  >
+                    {p.text}
+                    <span className="ml-1 text-[11px] text-stone">{out ? '· left out' : '· ×'}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
         </div>
       ) : null}
 
-      {/* ⚠️ NEVER STYLED AS AN ERROR. These are facts about the store, not
-          faults of the creator, and red would make an honest screen feel like a
-          telling-off — which is how a useful warning gets dismissed unread. */}
       {plan.gaps.length > 0 ? (
         <div className="mt-3">
           <p className="text-xs text-stone">What I don't have</p>
           <ul className="mt-0.5 space-y-1">
             {plan.gaps.map((g) => (
-              <li key={g.basis} className="text-sm leading-relaxed text-cream/90">{g.line}</li>
+              <li key={g.basis} className="text-sm leading-relaxed text-cream/90">
+                {g.basis === 'readyFacts'
+                  ? <>No confirmed facts about your product. <Link to="/products" className="underline underline-offset-2">Add a product</Link>, or continue without one.</>
+                  : g.line}
+              </li>
             ))}
           </ul>
         </div>
       ) : null}
 
-      <div className="mt-4 flex items-center gap-3">
+      <div className="mt-4">
         <button
           type="button"
           onClick={onWrite}
           disabled={busy}
-          className={cn(
-            'rounded-full bg-cream px-4 py-2 text-sm font-medium text-ink',
-            busy && 'opacity-60',
-          )}
+          className={cn('rounded-full bg-cream px-4 py-2 text-sm font-medium text-ink', busy && 'opacity-60')}
         >
           Write it
-        </button>
-        {/* ⚖️ THE OPT-OUT IS ON THE SCREEN ITSELF, not buried in settings. A
-            creator who finds this a tax must be able to end it where they meet
-            it, in one tap, or it becomes a thing to click past forever. */}
-        <button
-          type="button"
-          onClick={onSkipAlways}
-          className="text-xs text-stone underline underline-offset-2 hover:text-cream"
-        >
-          Don't show this again
         </button>
       </div>
     </div>

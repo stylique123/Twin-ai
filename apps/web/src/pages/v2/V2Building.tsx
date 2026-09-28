@@ -14,6 +14,8 @@ import { assessReadiness, isCommercialField } from '../../lib/api'
 import { judgeFit, warningForPickedVideo, recordTalkingHeadChoice } from '../../lib/api'
 import type { FitWarning, FitReason } from '../../lib/api'
 import { TalkingHeadWarning } from '../../components/TalkingHeadWarning'
+import { planPicks } from '../../components/VideoPlanCard'
+import { buildVideoPlan } from '@twinai/shared'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@twinai/shared'
 import { readProfileAnswers } from '../../lib/profileAnswersRead'
@@ -541,13 +543,9 @@ function markPlanShown(key: string): void {
 // preference is the right home once anyone actually uses this; storing it there
 // today would be a write on the paid path for a setting nobody has expressed.
 // Recorded so the follow-up is a decision rather than a discovery.
-const PLAN_SKIP_KEY = 'twin.plan.skip'
-function planSkipped(): boolean {
-  try { return localStorage.getItem(PLAN_SKIP_KEY) === '1' } catch { return false }
-}
-function skipPlanAlways(): void {
-  try { localStorage.setItem(PLAN_SKIP_KEY, '1') } catch { /* storage off — asked again next time */ }
-}
+// ⚠️ RETIRED (owner, 2026-09-28): "Don't show this again" hid the only place
+// she learns something is missing. The screen is now skipped only when there
+// is nothing to show and nothing missing; an old stored preference is ignored.
 
 // ⚠️ HOW MANY QUESTIONS MAY SHARE ONE CARD. Reported with a screenshot: three
 // chip rows and three free-text boxes, twenty-five options, in one scroll. The
@@ -637,6 +635,10 @@ export default function V2Building() {
   // time). Drives a slow crawl so the bar never freezes at 12% and reads as stuck.
   const [ingesting, setIngesting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // ⚠️ NO ENDLESS SPINNER. Time since this attempt began: "taking longer" at
+  // 90s, and a visible failure with Retry at 5 minutes. A finished script still
+  // lands in the Library, and only a finished script is ever charged.
+  const [slow, setSlow] = useState(false)
   // A reference we measured and will not build from. Distinct from `error`: this
   // is a decision about the INPUT, taken before any credit is spent, so the copy
   // says what to do next rather than apologising for a failure.
@@ -699,6 +701,9 @@ export default function V2Building() {
   // an outage would tell a creator "I have nothing from you" about a store that
   // is full.
   const [plan, setPlan] = useState<VideoPlanInput | null>(null)
+  // Stories/numbers she tapped to leave out of THIS script; sent to the writer.
+  const [excludedKnowledge, setExcludedKnowledge] = useState<Set<string>>(new Set())
+  const ideaPurposeLabel = useRef<string | null>(null)
   // She said she has no concrete detail for the objective's question.
   const [noDetail, setNoDetail] = useState(false)
   const [askQuestions, setAskQuestions] = useState<AskItem[] | null>(
@@ -820,6 +825,16 @@ export default function V2Building() {
     }, 90)
     return () => clearInterval(id)
   }, [active, ingesting, error, rescuing])
+
+  useEffect(() => {
+    setSlow(false)
+    if (plan || askQuestions || error) return
+    const t1 = setTimeout(() => setSlow(true), 90_000)
+    const t2 = setTimeout(() => {
+      setError('This is taking far longer than it should, so Twin stopped waiting. If the script finishes it will still land in your Library, and you are only ever charged for a finished script. Try again below.')
+    }, 300_000)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [retryNonce, plan, askQuestions, error])
 
   useEffect(() => {
     // No input (e.g. refresh) → go back to Create.
@@ -1300,6 +1315,7 @@ export default function V2Building() {
               .filter((q) => !(answersRef.current[q.field] ?? '').trim())
             ideaQuestionText.current = Object.fromEntries((ideaRead?.questions ?? []).map((q, i) => [`${FOLLOWUP_PREFIX}idea_q${i}`, q.question]))
             const purposeQuestion: AskItem[] = []
+            ideaPurposeLabel.current = ideaRead?.purpose?.label ?? null
             if (ideaRead?.purpose && !(answersRef.current.video_goal ?? '').trim()) {
               answer('video_goal', ideaRead.purpose.value)
               purposeQuestion.push({
@@ -1353,10 +1369,13 @@ export default function V2Building() {
             // reclaimed tab must not re-ask), or the knowledge read FAILED —
             // because a plan assembled from an outage would tell a creator
             // "I have nothing from you" about a store that is full.
-            if (alive && !planSkipped() && !planShown(key)) {
+            if (alive && !planShown(key)) {
               const items = await loadKnowledgeForPlan()
               if (!alive) return
-              if (items) {
+              const facts = libraryFacts(libraryProducts, str(vBrief.offer))
+              const nothingToSay = items !== null && planPicks(items).length === 0
+                && buildVideoPlan({ angle: null, knowledge: items, readyFacts: facts }).gaps.length === 0
+              if (items && !nothingToSay) {
                 markPlanShown(key)
                 setPlan({
                   // ⚖️ THE SAME EXPRESSION THE READINESS CHECK CALLS "angle"
@@ -1366,7 +1385,7 @@ export default function V2Building() {
                   knowledge: items,
                   // ⚖️ AND THE SAME `libraryFacts` THE SERVER MIRRORS. This is
                   // what makes "no confirmed facts" true of the actual script.
-                  readyFacts: libraryFacts(libraryProducts, str(vBrief.offer)),
+                  readyFacts: facts,
                   // ⚠️ `canShowProduct` IS DELIBERATELY NOT PASSED. The
                   // capability is not on `pre_script_brief` — it is written and
                   // read elsewhere — and passing a key that does not exist
@@ -1697,6 +1716,7 @@ export default function V2Building() {
           // Same intent → same key → the server returns the build it already
           // made instead of charging for it twice (0119).
           idempotency_key: key,
+          ...(excludedKnowledge.size > 0 ? { exclude_knowledge_ids: [...excludedKnowledge] } : {}),
           ...(transcript_id ? { transcript_id } : {}),
           // ⚖️ ONLY WHEN THEY ANSWERED. An absent field means "not asked or not
           // answered" and leaves the server's stopgap exactly as it was;
@@ -2650,19 +2670,21 @@ export default function V2Building() {
         {plan ? (
           <VideoPlanCard
             input={plan}
+            purposeLabel={ideaPurposeLabel.current}
+            picks={planPicks(plan.knowledge as never)}
+            excluded={excludedKnowledge}
+            onToggle={(id) => setExcludedKnowledge((prev) => {
+              const next = new Set(prev)
+              if (next.has(id)) next.delete(id); else next.add(id)
+              return next
+            })}
             busy={false}
             onWrite={() => {
-              // ⚖️ CLEARING THE PLAN IS WHAT RESUMES THE BUILD. `markPlanShown`
-              // already fired, so the retry runs straight past this block to
-              // the ingest and the spend — no second pause, no second read.
-              setPlan(null)
-              setRetryNonce((n) => n + 1)
-            }}
-            onSkipAlways={() => {
-              // ⚖️ HONOURED IMMEDIATELY, NOT NEXT TIME. A preference that took
-              // effect on the following build would look broken on the one
-              // where it was expressed.
-              skipPlanAlways()
+              // ⚠️ STUCK AT 12% (owner, 2026-09-28): the build effect returns
+              // early while `started` is set, and only the question card reset
+              // it — so "Write it" re-ran an effect that did nothing, and the
+              // script request was never sent. Reset it here too.
+              started.current = false
               setPlan(null)
               setRetryNonce((n) => n + 1)
             }}
@@ -2825,6 +2847,9 @@ export default function V2Building() {
                 // answered.
                 rememberAnswers(buildKey(state), answersRef.current)
                 rememberAsk(buildKey(state), null)
+                // ⚖️ ONE INTERSTITIAL, NOT TWO: having answered the question card,
+                // she does not get a second "Before I write this" screen.
+                markPlanShown(buildKey(state))
                 setAskQuestions(null)
                 started.current = false
                 setError(null)
@@ -2953,7 +2978,15 @@ export default function V2Building() {
                 <button onClick={() => nav('/v2', { replace: true })} className="btn-ghost mt-3 w-full">Try a different reference</button>
               </>
             ) : (
-              <button onClick={() => nav('/v2', { replace: true })} className="btn-gradient mt-6 w-full">Try a different reference</button>
+              <>
+                {/* ⚖️ SAME BUILD KEY, SO A RETRY CANNOT CHARGE TWICE: the server
+                    returns the build it already made for this key (0119). */}
+                <button
+                  onClick={() => { started.current = false; setError(null); setActive(0); setPct(6); setRetryNonce((n) => n + 1) }}
+                  className="btn-gradient mt-6 w-full"
+                >Try again</button>
+                <button onClick={() => nav('/v2', { replace: true })} className="btn-ghost mt-3 w-full">Start over</button>
+              </>
             )}
           </div>
         ) : (
@@ -3052,7 +3085,9 @@ export default function V2Building() {
                 screen, rather than being announced at 94% on a build the
                 creator has already paid for. */}
             <p className="mt-6 rounded-card border border-white/8 bg-white/[0.02] px-4 py-3 text-center text-xs leading-relaxed text-stone">
-              Usually 30–60 seconds. Leave anytime — we keep building and it lands in your Library.
+              {slow
+                ? 'Taking longer than usual. You can leave and it will land in your Library.'
+                : 'Usually 30–60 seconds. Leave anytime — we keep building and it lands in your Library.'}
             </p>
             <button onClick={() => { cancelled.current = true; nav('/v2', { replace: true }) }} className="mt-3 block w-full text-center text-sm text-stone transition-colors hover:text-cream">
               Cancel
