@@ -164,11 +164,18 @@ const int = (v: unknown, lo: number, hi: number, dflt: number) =>
   typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi ? v : dflt
 
 /** Model output is untrusted: clamp every field and recount every number. */
+/** ⚠️ COFFEE REPORT 1.5: the prompt numbers lines and hooks from 0, so the
+ *  model's own words said "line 2" for what the page shows as Line 3. Words
+ *  are shifted to the 1-based numbers she sees; index fields stay 0-based. */
+export function oneBased(t: string | null): string | null {
+  return t == null ? t : t.replace(/\b(line|hook|beat|scene)\s+(\d{1,2})\b/gi, (_, w: string, n: string) => `${w} ${Number(n) + 1}`)
+}
+
 export function normalizeAudience(raw: unknown, s: ScriptForTest): AudienceResult | null {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const viewers: Viewer[] = (Array.isArray(r.viewers) ? r.viewers : []).slice(0, PANEL_SIZE).flatMap((v) => {
     const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
-    const who = txt(o.who, 40), quote = txt(o.quote, 160)
+    const who = txt(o.who, 40), quote = oneBased(txt(o.quote, 160))
     if (!who || !quote) return []
     return [{
       who, quote,
@@ -194,7 +201,7 @@ export function normalizeAudience(raw: unknown, s: ScriptForTest): AudienceResul
   const fixes: Fix[] = (Array.isArray(r.fixes) ? r.fixes : []).slice(0, 3).flatMap((f) => {
     const o = (f && typeof f === 'object' ? f : {}) as Record<string, unknown>
     const issue = (ISSUES as readonly string[]).includes(o.issue as string) ? (o.issue as Issue) : null
-    const fix = txt(o.fix, 220)
+    const fix = oneBased(txt(o.fix, 220))
     if (!issue || !fix) return []
     const beat = int(o.beat, -1, s.lines.length - 1, -1)
     // How many viewers back this fix up: those who left at that line, or asked a question for question-type issues.
@@ -204,7 +211,7 @@ export function normalizeAudience(raw: unknown, s: ScriptForTest): AudienceResul
     return [{ issue, fix, beat, count }]
   })
 
-  return { viewers, hooks, best_hook, fixes, summary: txt(r.summary, 300) }
+  return { viewers, hooks, best_hook, fixes, summary: oneBased(txt(r.summary, 300)) }
 }
 
 // ── MAKE THE HOOK BETTER, THEN SHOW IT (owner: the panel must change the

@@ -67,3 +67,11 @@ describe('scriptFromBlueprint', () => {
     expect(s.shots).toEqual([null, 'Close-up · tight'])
   })
 })
+
+import { oneBased } from './audienceParse'
+describe('viewer notes use the numbers she sees (1.5)', () => {
+  it('shifts line/hook numbers in words to 1-based', () => {
+    expect(oneBased('Line 2 is slow; use Hook 0 instead')).toBe('Line 3 is slow; use Hook 1 instead')
+    expect(oneBased(null)).toBeNull()
+  })
+})

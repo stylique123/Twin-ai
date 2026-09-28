@@ -50,7 +50,7 @@ export const OBJECTIVE_QUESTION_POOLS: Readonly<Record<VideoGoal, readonly Poole
   ]),
   // Explain what it does — the misunderstanding, approached differently.
   educate: Object.freeze([
-    first('educate', 'misunderstood'),
+    first('educate', 'notice_first'),
     q('educate.first_time', 'What do people usually get wrong the first time they use it?',
       'What do people usually get wrong the first time they work with you?'),
     // Owner rejected 'who is it wrong for' (asks her to name a weakness) — 2026-09-24.

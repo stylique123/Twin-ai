@@ -18,7 +18,7 @@ import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@twinai/shared'
 import { readProfileAnswers } from '../../lib/profileAnswersRead'
 import { storeTypedMaterial } from '../../lib/creatorAnswers'
-import { namedAlternatives, BUSINESS_OBJECTIVES, readIdeaParagraph, IDEA_PURPOSES, type IdeaRead } from '@twinai/shared'
+import { namedAlternatives, BUSINESS_OBJECTIVES, BUSINESS_OBJECTIVE_QUESTIONS, readIdeaParagraph, IDEA_PURPOSES, type IdeaRead } from '@twinai/shared'
 import { productCtaOnRecord, brandCtaOnRecord } from '@twinai/shared'
 import { readCreatorCtas } from '../../lib/creatorCtasRead'
 import {
@@ -1308,8 +1308,15 @@ export default function V2Building() {
                 options: IDEA_PURPOSES.map((p) => ({ value: p.value, label: p.label })),
               } as AskItem)
             }
+            // ⚠️ COFFEE REPORT 3.3: the whole-business row had no question box at
+            // all, so nothing was ever asked. Its wording follows the objective.
+            const businessAsk: AskItem[] = isProductSubject && chosenBrand
+              && !missing.some((q) => q.field === 'claims') && !(answersRef.current.claims ?? '').trim()
+              ? [{ field: 'claims', question: 'What should this video say about your business?' } as AskItem]
+              : []
             const ask: AskItem[] = [
               ...unanswered.filter((q) => !(goalIsDisplayed && q.field === 'video_goal')),
+              ...businessAsk,
               ...purposeQuestion,
               ...ideaQuestions,
               ...focusQuestion,
@@ -2138,7 +2145,13 @@ export default function V2Building() {
     ? promotedObjectiveQuestion(askAnswers.video_goal ?? null,
       (pickedProduct(products, liveProductId) as { relationship?: string | null } | null)?.relationship ?? null)
     : null
-  const liveClaimsQuestion = promotedQuestion
+  const liveIsBusiness = String(liveProductId ?? '').startsWith(BRAND_CHOICE_PREFIX)
+  const businessQuestion = isProductSubject && liveIsBusiness
+    ? BUSINESS_OBJECTIVE_QUESTIONS[askAnswers.video_goal ?? ''] ?? null
+    : null
+  const liveClaimsQuestion = businessQuestion
+    ? businessQuestion
+    : promotedQuestion
     ? promotedQuestion
     : pooledQuestion
     ? pooledWording(pooledQuestion, liveOfferForm)

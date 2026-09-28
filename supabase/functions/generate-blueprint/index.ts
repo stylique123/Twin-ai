@@ -7512,7 +7512,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // that happens to spell `educate` must not select a product question.
   const READY_OBJECTIVE_QUESTIONS: Record<string, string> = {
     sell: 'What is new about it, or why now?',
-    educate: 'What do people misunderstand about how it works?',
+    educate: 'What does someone notice first when they use it, and how is it made?',
     leads: 'What is the smallest first step someone can take?',
     conversations: 'What is the question you keep getting, and what do you tell them?',
     followers: 'What do people outside your world get wrong about what you do?',
