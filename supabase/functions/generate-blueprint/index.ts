@@ -26,6 +26,7 @@ import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_shared/storyRotation.ts'
+import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead } from '../_shared/ideaQuestions.ts'
 import {
   repairScriptIntegrity, tagStorySources, shouldExtendScript, buildExtensionPrompt, acceptExtension,
   type IntegrityBeat,
@@ -6123,6 +6124,41 @@ async function callModel(apiKey: string, system: string, prompt: string, schema:
 }
 // -------------------------------------------------------------------------
 
+// ── IDEA MODE: QUESTIONS FROM HER PARAGRAPH (coffee report 2.1, 2.2) ────────
+// A light mode on this function, answered before any credit, rate-limit or
+// build work: one short model call, 8s budget, and ANY failure returns no
+// questions so the build goes ahead (fail open).
+async function ideaQuestionsMode(apiKey: string, paragraph: string): Promise<Response> {
+  const text = paragraph.trim().slice(0, 2000)
+  if (text.length < 12) return json({ questions: [], purpose: null })
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 8_000)
+  try {
+    const res = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent',
+      {
+        method: 'POST', signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: IDEA_Q_SYSTEM }] },
+          contents: [{ role: 'user', parts: [{ text: `HER PARAGRAPH:\n<<<UNTRUSTED_DATA idea\n${text}\nEND_UNTRUSTED_DATA>>>` }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 600, responseMimeType: 'application/json', responseSchema: IDEA_Q_SCHEMA },
+        }),
+      },
+    )
+    if (!res.ok) return json({ questions: [], purpose: null })
+    const out = await res.json()
+    const raw = out?.candidates?.[0]?.content?.parts?.[0]?.text
+    const read = cleanIdeaRead(typeof raw === 'string' ? JSON.parse(raw) : null, text)
+    console.log(JSON.stringify({ event: 'idea_questions', asked: read.questions.length, purpose: read.purpose?.value ?? null }))
+    return json(read)
+  } catch {
+    return json({ questions: [], purpose: null })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
@@ -6145,6 +6181,16 @@ Deno.serve(async (req: Request) => {
     data: { user },
   } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)
+
+  // Idea Mode questions: no credit, no build, its own light rate limit.
+  const peek = await req.clone().json().catch(() => null) as { mode?: unknown; paragraph?: unknown } | null
+  if (peek?.mode === 'idea_questions') {
+    const { data: ok } = await createClient(supabaseUrl, serviceKey).rpc('check_rate_limit', {
+      p_user: user.id, p_action: 'idea_questions', p_max: 20, p_window_secs: 60,
+    })
+    if (ok === false) return json({ questions: [], purpose: null })
+    return ideaQuestionsMode(apiKey, typeof peek.paragraph === 'string' ? peek.paragraph : '')
+  }
 
   // Team seats: if this user is a member of a workspace, they create IN that
   // workspace — writing in the OWNER's brand voice and spending the OWNER's

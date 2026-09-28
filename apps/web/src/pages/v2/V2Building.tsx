@@ -18,14 +18,14 @@ import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@twinai/shared'
 import { readProfileAnswers } from '../../lib/profileAnswersRead'
 import { storeTypedMaterial } from '../../lib/creatorAnswers'
-import { namedAlternatives } from '@twinai/shared'
+import { namedAlternatives, readIdeaParagraph, IDEA_PURPOSES, type IdeaRead } from '@twinai/shared'
 import { productCtaOnRecord, brandCtaOnRecord } from '@twinai/shared'
 import { readCreatorCtas } from '../../lib/creatorCtasRead'
 import {
   VIDEO_GOALS, CONTENT_FOCUS, VIEWER_OUTCOMES, REFERENCE_USE,
   // ⚖️ THE WRITER'S OWN TARGET, shown to the creator before the money moves.
   targetSeconds, spokenTime,
-  INTENT_QUESTIONS, intentQuestionsFor, choiceFollowUp, followUpLines, FOLLOWUP_PREFIX, IDEA_QUESTIONS, ideaLines, ideaCardLines, REQUIRED_FOLLOW_UPS, NOTHING_SPECIFIC_SUFFIX, WHY_ASK_WHAT_HAPPENED, type IntentQuestion, type VideoGoal, focusForGoal,
+  INTENT_QUESTIONS, intentQuestionsFor, choiceFollowUp, followUpLines, FOLLOWUP_PREFIX, ideaLines, ideaCardLines, REQUIRED_FOLLOW_UPS, NOTHING_SPECIFIC_SUFFIX, WHY_ASK_WHAT_HAPPENED, type IntentQuestion, type VideoGoal, focusForGoal,
   mustAskWhichProduct, promotedObjectiveQuestion, PRODUCT_CHOICE_FIELD, NO_PRODUCT_CHOICE, NO_PRODUCT_EXPLANATION, BRAND_CHOICE_PREFIX,
   selectProduct,
   productChoiceConstraint,
@@ -257,6 +257,25 @@ type AskItem = (ReadinessQuestion | ChipQuestion) & {
    *  rendered with the decisions, never under "About what you sell". */
   idea?: boolean
 }
+// One read per build key: a reclaimed tab or a re-render must not re-ask the model.
+const IDEA_READS = new Map<string, Promise<IdeaRead>>()
+function readIdeaOnce(key: string, paragraph: string): Promise<IdeaRead> {
+  const hit = IDEA_READS.get(key)
+  if (hit) return hit
+  const p = readIdeaParagraph(paragraph)
+  IDEA_READS.set(key, p)
+  return p
+}
+/** Her answers to the paragraph questions, as lines for her note (her own words). */
+function ideaReadLines(answers: Readonly<Record<string, string | undefined>>, questions: Readonly<Record<string, string>>): string {
+  const out: string[] = []
+  for (const [field, q] of Object.entries(questions)) {
+    const a = (answers[field] ?? '').trim().slice(0, 600)
+    if (a) out.push(`${q}\nMy answer: ${a}`)
+  }
+  return out.length ? `${out.join('\n\n')}\n\n` : ''
+}
+
 const isChip = (q: AskItem): q is ChipQuestion =>
   Array.isArray((q as ChipQuestion).options)
 
@@ -732,6 +751,8 @@ export default function V2Building() {
    *  ⚖️ SO THE SAVE IS THE FUNCTION, NOT A LINE INSIDE EACH HANDLER. A new
    *  control cannot forget to persist, because setting an answer is what
    *  persisting IS. */
+  // The questions read from her paragraph, by field, so her answers reach the note with them.
+  const ideaQuestionText = useRef<Record<string, string>>({})
   const answer = (field: string, value: string): void => setAskAnswers((a) => {
     const next = { ...a, [field]: value }
     rememberAnswers(buildKey(state), next)
@@ -1255,14 +1276,31 @@ export default function V2Building() {
                   ],
                 } as AskItem]
               : []
-            // Idea mode (no reference, not a product): ask about the content.
-            const ideaQuestions: AskItem[] = !(state.reference_url || '').trim() && !isProductSubject && !state.idea_ready
-              ? IDEA_QUESTIONS
-                .filter((q) => !(answersRef.current[FOLLOWUP_PREFIX + q.field] ?? '').trim())
-                .map((q) => ({ field: FOLLOWUP_PREFIX + q.field, question: q.question, idea: true } as AskItem))
-              : []
+            // Idea mode (no reference, not a product): ask about HER paragraph.
+            // ⚠️ COFFEE REPORT 2.1: two fixed questions appeared unchanged on four
+            // different ideas. Now one small call reads the paragraph and returns
+            // 0-3 questions that each quote her words — none when it is rich
+            // enough — and its reading of why the video exists, shown once as
+            // a pre-selected line she can change (2.2). Fails open.
+            const isIdea = !(state.reference_url || '').trim() && !isProductSubject && !state.idea_ready
+            const ideaRead = isIdea ? await readIdeaOnce(key, state.reference_note || '') : null
+            if (!alive) return
+            const ideaQuestions: AskItem[] = (ideaRead?.questions ?? [])
+              .map((q, i) => ({ field: `${FOLLOWUP_PREFIX}idea_q${i}`, question: q.question, idea: true } as AskItem))
+              .filter((q) => !(answersRef.current[q.field] ?? '').trim())
+            ideaQuestionText.current = Object.fromEntries((ideaRead?.questions ?? []).map((q, i) => [`${FOLLOWUP_PREFIX}idea_q${i}`, q.question]))
+            const purposeQuestion: AskItem[] = []
+            if (ideaRead?.purpose && !(answersRef.current.video_goal ?? '').trim()) {
+              answer('video_goal', ideaRead.purpose.value)
+              purposeQuestion.push({
+                field: 'video_goal',
+                question: `I read this as ${ideaRead.purpose.label}${ideaRead.purpose.signal ? ` ("${ideaRead.purpose.signal}")` : ''}. Right? Tap another if not.`,
+                options: IDEA_PURPOSES.map((p) => ({ value: p.value, label: p.label })),
+              } as AskItem)
+            }
             const ask: AskItem[] = [
               ...unanswered.filter((q) => !(goalIsDisplayed && q.field === 'video_goal')),
+              ...purposeQuestion,
               ...ideaQuestions,
               ...focusQuestion,
               ...productQuestion,
@@ -1611,7 +1649,7 @@ export default function V2Building() {
           // answer arrives as a line ABOVE everything she wrote, and the writer
           // reads the same field it always has. No new request field, and
           // nothing persisted to a profile: this is a fact about THIS video.
-          reference_note: ideaFocusLine + ideaLines(answersRef.current) + followUpLines(answersRef.current, { isProductSubject }) + (state.reference_note || ''),
+          reference_note: ideaFocusLine + ideaReadLines(answersRef.current, ideaQuestionText.current) + ideaLines(answersRef.current) + followUpLines(answersRef.current, { isProductSubject }) + (state.reference_note || ''),
           fidelity: state.fidelity ?? 'balanced',
           tone: state.tone,
           target_seconds: state.target_seconds,

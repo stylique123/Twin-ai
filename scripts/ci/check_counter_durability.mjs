@@ -658,6 +658,7 @@ const EVENTS = {
   placeholder_beats_asked: { kind: 'incident', why: 'Beats sent back to the creator as questions.' },
   ask_beats_bounded: { kind: 'incident', why: 'Asks beyond the per-script cap, or fed only by skipped optional fields, written around or omitted (items 30/31).' },
   ask_beats_dropped: { kind: 'incident', why: 'Beats with nothing on file dropped instead of rendering a question inside the script (coffee report 2.4).' },
+  idea_questions: { kind: 'incident', why: 'Idea Mode questions read from her paragraph (0-3) and the inferred purpose (coffee report 2.1/2.2).' },
   blueprint_links_stripped: { kind: 'incident', why: 'A destination the creator never vouched for, removed.' },
   // ⚖️ A COUNTER RATHER THAN AN INCIDENT, because one long sentence in one
   // script is not a defect worth waking anybody for — the RATE is the finding.
