@@ -63,7 +63,7 @@ describe('the screen stops claiming progress once the request is gone', () => {
     // ⚠️ THE FAILURE SENTENCE MUST STILL WAIT FOR THE LOOP TO END. Announcing a
     // failure while a script is landing is the worst of the three outcomes: the
     // creator is charged, told it failed, and has no reason to go looking.
-    expect(SRC.indexOf('setRescuing(false)')).toBeLessThan(SRC.indexOf('setError(BUILD_UNSURE)'))
+    expect(SRC.indexOf('setRescuing(false)')).toBeLessThan(SRC.indexOf('setError(said === GENERIC_BUILD_FAILURE ? BUILD_UNSURE : said)'))
   })
 
   it('hides the bar and the steps rather than freezing them on screen', () => {

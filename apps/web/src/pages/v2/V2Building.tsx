@@ -7,7 +7,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
 import { NameTheReference } from '../../components/NameTheReference'
-import { concreteness, CONCRETE_HINT } from '@twinai/shared'
+import { creatorFacingMessage, GENERIC_BUILD_FAILURE, concreteness, CONCRETE_HINT } from '@twinai/shared'
 
 /** The only honest sentence after a lost answer: the build is not a durable job. */
 const BUILD_UNSURE = "We're not sure if this finished. Check your Library in a few minutes, or try again."
@@ -1975,7 +1975,9 @@ export default function V2Building() {
         // ⚠️ NO PROMISE WE CANNOT KEEP (owner, 2026-09-28). The build is one
         // synchronous edge call, not a durable job, so after a lost answer we
         // genuinely do not know. Say that; never promise the Library.
-        setError(BUILD_UNSURE)
+        // A sentence the server wrote for her still shows; anything else is unknown.
+        const said = creatorFacingMessage(e)
+        setError(said === GENERIC_BUILD_FAILURE ? BUILD_UNSURE : said)
       }
     })()
 

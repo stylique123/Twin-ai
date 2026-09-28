@@ -5,7 +5,10 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { planUseItems, defaultExcluded } from '../planUse'
-import { purposeShape, PURPOSE_SHAPE_DIRECTIVE } from '../purposeShape'
+import { PURPOSE_SHAPE_BY_GOAL, PURPOSE_SHAPE_DIRECTIVE } from '../purposeShape'
+
+// With a product in play the purpose picks a shape; with none there is nothing to arrange.
+const purposeShape = (goal: string, hasProduct: boolean) => (hasProduct ? PURPOSE_SHAPE_BY_GOAL[goal] ?? null : null)
 import { cleanIdeaRead, IDEA_Q_SYSTEM } from '../ideaQuestions'
 
 const EDGE = readFileSync(resolve(__dirname, '../../../../../supabase/functions/generate-blueprint/index.ts'), 'utf8')
