@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { listBrandVoices, nicheBucket } from '@twinai/shared'
 import { supabase } from '../lib/supabase'
+import { LearnedFromYou } from '../components/LearnedFromYou'
 
 interface Note {
   id: string; kind: string; title: string; body: string | null; sub_niche: string | null; sources?: unknown
@@ -187,6 +188,7 @@ export default function WhatTwinKnows({ view = 'you' }: { view?: 'you' | 'niche'
       {/* ⚠️ TWO KINDS OF KNOWLEDGE, NOW VISIBLY APART. Everything in "About
           you" is read from her own posts and answers; "Around you" is other
           creators and the calendar — ideas, never facts about her. */}
+      <LearnedFromYou />
       {topics.length > 0 && (
         <section className="mt-8" data-testid="topic-map">
           <h2 className="font-display text-2xl tracking-tight">What you talk about</h2>

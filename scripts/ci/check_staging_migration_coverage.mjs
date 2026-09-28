@@ -72,6 +72,9 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0250_twin_learns_from_her':
+    'Adds creator_lessons (what Twin learned from her ratings, test viewers and hook picks) and lessons_at markers; '
+    + 'written by the worker learner, read by generate-blueprint and What Twin knows. The editor never reads it.',
   '0249_audience_improved':
     'Adds audience_tests.improved (what the test viewers changed before the creator saw the script); '
     + 'written by the worker and read by the Result page only. The editor never reads it.',

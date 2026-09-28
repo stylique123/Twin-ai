@@ -130,6 +130,9 @@ const MODELS = [
       // is that it goes down the SAME path a creator does. A generation the
       // product treats differently proves less about the product.
       'is_heartbeat',
+      // The lesson learner's marker (0250): her hook pick on this script has
+      // been turned into a lesson. Worker bookkeeping, read only by the learner.
+      'hook_lesson_at',
       // Billing bookkeeping for one creation. The client shows a BALANCE, read
       // from the profile; a per-row charge is an accounting detail, and a UI
       // that summed these would disagree with the ledger the moment a refund

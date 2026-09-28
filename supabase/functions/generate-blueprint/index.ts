@@ -26,6 +26,7 @@ import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_shared/storyRotation.ts'
+import { lessonsPromptBlock, orderLessons, brokenLessons } from '../_shared/creatorLessons.ts'
 import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead } from '../_shared/ideaQuestions.ts'
 import {
   repairScriptIntegrity, tagStorySources, shouldExtendScript, buildExtensionPrompt, acceptExtension,
@@ -6739,6 +6740,14 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     .order('created_at', { ascending: false })
     .limit(20))
   const askedRows = askedRead.rows
+  // ⚖️ WHAT SHE HAS TAUGHT TWIN (0250): her ratings, test viewers and hook
+  // picks, learned by the worker. Fail-open: a failed read writes as before.
+  const lessonRows: Array<{ id: string; kind: string; text: string; phrase: string | null; weight: number }> = await admin
+    .from('creator_lessons').select('id, kind, text, phrase, weight')
+    .eq('owner_id', ownerId).eq('active', true).limit(80)
+    .then((r) => (Array.isArray(r.data) ? r.data : []), () => [])
+  const lessonsInPrompt = orderLessons(lessonRows)
+  const lessonsBlock = lessonsPromptBlock(lessonsInPrompt)
   // ── A READY VOICE WITH NO KNOWLEDGE REPAIRS ITSELF ──────────────────────
   //
   // ⚠️ MEASURED: a brand voice sat at `ready` with ZERO knowledge rows and no
@@ -9999,7 +10008,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
 - Audience: ${audienceResolved}${prov('audience')}${audienceLevelLine}
 - Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${draftedBlock}${shapeSection}
+- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}
 - Goal: ${goal}${objectiveContract ? `\n- ${objectiveContract}` : ''}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
@@ -13774,6 +13783,17 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       await refundOnce('blueprint_refund_quality')
     }
 
+    // ⚖️ CHECKED AGAINST WHAT SHE TAUGHT: a "never write" phrase still in the
+    // script is recorded on the blueprint and logged, never silently shipped.
+    const lessonsBroken = brokenLessons(JSON.stringify((blueprint as { script?: unknown })?.script ?? ''), lessonsInPrompt)
+    if (lessonsBroken.length) {
+      console.warn(JSON.stringify({ event: 'lessons_broken', count: lessonsBroken.length }))
+      ;(blueprint as Record<string, unknown>).lessons_broken = lessonsBroken
+    }
+    if (lessonsInPrompt.length) {
+      void admin.rpc('lessons_used', { p_ids: lessonsInPrompt.map((l) => l.id) }).then(() => {}, () => {})
+      console.log(JSON.stringify({ event: 'lessons_supplied', count: lessonsInPrompt.length }))
+    }
     const { data: gen, error: insErr } = await admin
       .from('generations')
       .insert({
