@@ -18,7 +18,7 @@ import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@twinai/shared'
 import { readProfileAnswers } from '../../lib/profileAnswersRead'
 import { storeTypedMaterial } from '../../lib/creatorAnswers'
-import { namedAlternatives, readIdeaParagraph, IDEA_PURPOSES, type IdeaRead } from '@twinai/shared'
+import { namedAlternatives, BUSINESS_OBJECTIVES, readIdeaParagraph, IDEA_PURPOSES, type IdeaRead } from '@twinai/shared'
 import { productCtaOnRecord, brandCtaOnRecord } from '@twinai/shared'
 import { readCreatorCtas } from '../../lib/creatorCtasRead'
 import {
@@ -2340,7 +2340,9 @@ export default function V2Building() {
                 // options row, and the sub-options row it can reveal.
                 <>
                 <div className="mt-2.5 flex flex-wrap gap-2">
-                  {q.options.map((o) => {
+                  {(q.field === 'video_goal' && isProductSubject
+                    && (askAnswers[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? '').startsWith(BRAND_CHOICE_PREFIX)
+                    ? BUSINESS_OBJECTIVES : q.options).map((o) => {
                     // A grouped option is chosen when ANY of its children is.
                     const kids = o.options ?? []
                     const picked = askAnswers[q.field] ?? ''

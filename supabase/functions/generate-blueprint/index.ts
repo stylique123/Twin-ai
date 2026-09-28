@@ -6124,6 +6124,16 @@ async function callModel(apiKey: string, system: string, prompt: string, schema:
 }
 // -------------------------------------------------------------------------
 
+// What each product objective must contain, and how it closes. A required beat
+// with no fact on file is DROPPED, never filled from an unrelated stored story.
+const OBJECTIVE_CONTRACT_INLINE: Record<string, string> = {
+  sell: 'OBJECTIVE CONTRACT — LAUNCH / ANNOUNCE: the video must say what is new or why now, whether it is available and how much or how long (only if stated), and where to get it. Close on where to get it. A business with nothing new to announce gets no invented origin story.',
+  educate: 'OBJECTIVE CONTRACT — EXPLAIN WHAT IT ACTUALLY DOES: the video must say what it is, what you get (sizes, price, what is included, from the facts on file) and how it is made or works. No storytime replaces the explanation. Close on how to get it or try it.',
+  leads: 'OBJECTIVE CONTRACT — GET PEOPLE TO TRY IT: the video must name the smallest way to try it and invite the viewer to take that step. No unrelated stored story (a move, a hardship) carries this video. Close on that first step.',
+  conversations: 'OBJECTIVE CONTRACT — ANSWER WHAT PEOPLE KEEP ASKING: state the real question, then her answer, plainly, before the close. Never tease it and never replace it with a plan or a poll.',
+  personal_brand: 'OBJECTIVE CONTRACT — SAY WHY I MADE IT: what was going on when she started, and one specific moment, only from her own words. If none is given, keep it short and general rather than invent one.',
+}
+
 // ── IDEA MODE: QUESTIONS FROM HER PARAGRAPH (coffee report 2.1, 2.2) ────────
 // A light mode on this function, answered before any credit, rate-limit or
 // build work: one short model call, 8s budget, and ANY failure returns no
@@ -8143,6 +8153,13 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // never hold a value, and that "adding a fourth channel on top of a dead
     // third would have been the bug". `brief.goal` was deleted; this slots into
     // the gap it left rather than stacking on top of it.
+    // ⚠️ THE OBJECTIVE DID NOT SHAPE THE SCRIPT (coffee report 1.2): "Explain
+    // what it actually does" produced a mishap storytime that never said what
+    // was in the bag; "Get people to try it" produced a relocation story. On a
+    // product or business video the objective now names the beats it needs and
+    // the close, and says what to do when a beat has no fact.
+    const subjectPicked = (body.mentioned_product_id ?? '').trim() !== '' || (body.selected_product_id ?? '').trim() !== ''
+    const objectiveContract = subjectPicked ? OBJECTIVE_CONTRACT_INLINE[String(body.goal ?? '').trim()] ?? '' : ''
     const goal = intent.goalDirective
       ?? standingGoalDirectiveInline(briefListInline(briefRaw, 'contentGoals'))
       ?? (vp?.goal ?? dna.goal ?? 'turn attention into trust')
@@ -9936,7 +9953,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
 - Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
 - Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${draftedBlock}${shapeSection}
-- Goal: ${goal}
+- Goal: ${goal}${objectiveContract ? `\n- ${objectiveContract}` : ''}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
 - Pacing: ${vp.pacing ?? 'fast'}
