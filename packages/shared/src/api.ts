@@ -1,3 +1,4 @@
+import type { IdeaRead } from './script/ideaQuestions'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { planFor } from './brand'
 import {
@@ -508,6 +509,21 @@ export const OUT_OF_REMIXES_CODE = 'OUT_OF_REMIXES'
  * polling for a script that is not coming.
  */
 export const GENERATION_FAILED_CODE = 'GENERATION_FAILED'
+
+/** Idea Mode: 0-3 questions read from her paragraph, and why the video exists
+ *  (coffee report 2.1/2.2). Fails open: any error or a slow answer (8s) gives
+ *  no questions, and the build goes ahead. */
+export async function readIdeaParagraph(paragraph: string): Promise<IdeaRead> {
+  const none: IdeaRead = { questions: [], purpose: null }
+  try {
+    const call = supabase.functions.invoke('generate-blueprint', { body: { mode: 'idea_questions', paragraph } })
+    const timeout = new Promise<null>((r) => setTimeout(() => r(null), 9_000))
+    const res = await Promise.race([call, timeout])
+    if (!res || res.error || !res.data) return none
+    const d = res.data as Partial<IdeaRead>
+    return { questions: Array.isArray(d.questions) ? d.questions : [], purpose: d.purpose ?? null }
+  } catch { return none }
+}
 
 export async function generateBlueprint(input: GenerateInput): Promise<Generation> {
   // Calls the Supabase Edge Function `generate-blueprint`, which runs the

@@ -26,6 +26,7 @@ import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_shared/storyRotation.ts'
+import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead } from '../_shared/ideaQuestions.ts'
 import {
   repairScriptIntegrity, tagStorySources, shouldExtendScript, buildExtensionPrompt, acceptExtension,
   type IntegrityBeat,
@@ -6123,6 +6124,51 @@ async function callModel(apiKey: string, system: string, prompt: string, schema:
 }
 // -------------------------------------------------------------------------
 
+// What each product objective must contain, and how it closes. A required beat
+// with no fact on file is DROPPED, never filled from an unrelated stored story.
+const OBJECTIVE_CONTRACT_INLINE: Record<string, string> = {
+  sell: 'OBJECTIVE CONTRACT — LAUNCH / ANNOUNCE: the video must say what is new or why now, whether it is available and how much or how long (only if stated), and where to get it. Close on where to get it. A business with nothing new to announce gets no invented origin story.',
+  educate: 'OBJECTIVE CONTRACT — EXPLAIN WHAT IT ACTUALLY DOES: the video must say what it is, what you get (sizes, price, what is included, from the facts on file) and how it is made or works. No storytime replaces the explanation. Close on how to get it or try it.',
+  leads: 'OBJECTIVE CONTRACT — GET PEOPLE TO TRY IT: the video must name the smallest way to try it and invite the viewer to take that step. No unrelated stored story (a move, a hardship) carries this video. Close on that first step.',
+  conversations: 'OBJECTIVE CONTRACT — ANSWER WHAT PEOPLE KEEP ASKING: state the real question, then her answer, plainly, before the close. Never tease it and never replace it with a plan or a poll.',
+  personal_brand: 'OBJECTIVE CONTRACT — SAY WHY I MADE IT: what was going on when she started, and one specific moment, only from her own words. If none is given, keep it short and general rather than invent one.',
+}
+
+// ── IDEA MODE: QUESTIONS FROM HER PARAGRAPH (coffee report 2.1, 2.2) ────────
+// A light mode on this function, answered before any credit, rate-limit or
+// build work: one short model call, 8s budget, and ANY failure returns no
+// questions so the build goes ahead (fail open).
+async function ideaQuestionsMode(apiKey: string, paragraph: string): Promise<Response> {
+  const text = paragraph.trim().slice(0, 2000)
+  if (text.length < 12) return json({ questions: [], purpose: null })
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 8_000)
+  try {
+    const res = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent',
+      {
+        method: 'POST', signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: IDEA_Q_SYSTEM }] },
+          contents: [{ role: 'user', parts: [{ text: `HER PARAGRAPH:\n<<<UNTRUSTED_DATA idea\n${text}\nEND_UNTRUSTED_DATA>>>` }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 600, responseMimeType: 'application/json', responseSchema: IDEA_Q_SCHEMA },
+        }),
+      },
+    )
+    if (!res.ok) return json({ questions: [], purpose: null })
+    const out = await res.json()
+    const raw = out?.candidates?.[0]?.content?.parts?.[0]?.text
+    const read = cleanIdeaRead(typeof raw === 'string' ? JSON.parse(raw) : null, text)
+    console.log(JSON.stringify({ event: 'idea_questions', asked: read.questions.length, purpose: read.purpose?.value ?? null }))
+    return json(read)
+  } catch {
+    return json({ questions: [], purpose: null })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
@@ -6145,6 +6191,16 @@ Deno.serve(async (req: Request) => {
     data: { user },
   } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)
+
+  // Idea Mode questions: no credit, no build, its own light rate limit.
+  const peek = await req.clone().json().catch(() => null) as { mode?: unknown; paragraph?: unknown } | null
+  if (peek?.mode === 'idea_questions') {
+    const { data: ok } = await createClient(supabaseUrl, serviceKey).rpc('check_rate_limit', {
+      p_user: user.id, p_action: 'idea_questions', p_max: 20, p_window_secs: 60,
+    })
+    if (ok === false) return json({ questions: [], purpose: null })
+    return ideaQuestionsMode(apiKey, typeof peek.paragraph === 'string' ? peek.paragraph : '')
+  }
 
   // Team seats: if this user is a member of a workspace, they create IN that
   // workspace — writing in the OWNER's brand voice and spending the OWNER's
@@ -8097,6 +8153,13 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // never hold a value, and that "adding a fourth channel on top of a dead
     // third would have been the bug". `brief.goal` was deleted; this slots into
     // the gap it left rather than stacking on top of it.
+    // ⚠️ THE OBJECTIVE DID NOT SHAPE THE SCRIPT (coffee report 1.2): "Explain
+    // what it actually does" produced a mishap storytime that never said what
+    // was in the bag; "Get people to try it" produced a relocation story. On a
+    // product or business video the objective now names the beats it needs and
+    // the close, and says what to do when a beat has no fact.
+    const subjectPicked = (body.mentioned_product_id ?? '').trim() !== '' || (body.selected_product_id ?? '').trim() !== ''
+    const objectiveContract = subjectPicked ? OBJECTIVE_CONTRACT_INLINE[String(body.goal ?? '').trim()] ?? '' : ''
     const goal = intent.goalDirective
       ?? standingGoalDirectiveInline(briefListInline(briefRaw, 'contentGoals'))
       ?? (vp?.goal ?? dna.goal ?? 'turn attention into trust')
@@ -9890,7 +9953,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
 - Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
 - Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${draftedBlock}${shapeSection}
-- Goal: ${goal}
+- Goal: ${goal}${objectiveContract ? `\n- ${objectiveContract}` : ''}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
 - Pacing: ${vp.pacing ?? 'fast'}

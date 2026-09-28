@@ -1005,6 +1005,22 @@ export const PRODUCT_OBJECTIVES: readonly IntentOption[] = Object.freeze([
 ])
 
 /**
+ * THE OBJECTIVES FOR A WHOLE BUSINESS (owner, coffee report 3.2).
+ *
+ * ⚠️ "Launch it" was offered for a whole business, which has nothing to launch,
+ * and the script invented an origin story to fill it. A business gets the
+ * objectives a business can actually do; "Announce something" keeps the sell
+ * value but its question asks WHAT first. Same `VideoGoal` values, so nothing
+ * downstream learns a new word.
+ */
+export const BUSINESS_OBJECTIVES: readonly IntentOption[] = Object.freeze([
+  { value: 'personal_brand', label: 'Say why I started it', hint: 'What was going on when you began' },
+  { value: 'conversations', label: 'Answer what people keep asking', hint: 'The question, and your answer' },
+  { value: 'educate', label: 'The part people get wrong', hint: 'A misunderstanding about what you do' },
+  { value: 'sell', label: 'Announce something', hint: 'Tell Twin what first' },
+])
+
+/**
  * THE LABEL SHOWN FOR A CHOSEN GOAL, IN THE VOCABULARY IT WAS CHOSEN IN.
  *
  * ⚠️ A PRODUCT BUILD PICKS FROM `PRODUCT_OBJECTIVES` BUT THE "THIS VIDEO IS FOR"
@@ -1013,9 +1029,9 @@ export const PRODUCT_OBJECTIVES: readonly IntentOption[] = Object.freeze([
  * a different sentence, and the creator reads it as Twin having changed her
  * answer. Every surface displaying a chosen goal reads this, never the table.
  */
-export function goalDisplayLabel(goal: VideoGoal, opts: { isProductSubject?: boolean } = {}): string {
+export function goalDisplayLabel(goal: VideoGoal, opts: { isProductSubject?: boolean; isBusiness?: boolean } = {}): string {
   if (opts.isProductSubject) {
-    const objective = PRODUCT_OBJECTIVES.find((o) => o.value === goal)
+    const objective = (opts.isBusiness ? BUSINESS_OBJECTIVES : PRODUCT_OBJECTIVES).find((o) => o.value === goal)
     if (objective) return objective.label
   }
   return CANONICAL_GOAL_LABELS[goal]
