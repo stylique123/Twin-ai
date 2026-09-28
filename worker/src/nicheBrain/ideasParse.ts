@@ -25,6 +25,7 @@ export const IDEAS_SYSTEM = [
   'mix modes (educate / entertain / teach / inspire / sell), never repeat an already-written premise,',
   'MODES: teach = a HOW-TO, the viewer does it step by step; educate = an EXPLAINER, why or how something works, not steps;',
   'entertain = story or humour first; inspire = behind the scenes or the journey; sell = a direct pitch.',
+  'TITLE — one plain sentence under 12 words saying what the video is, in her words, no colons or jargon ("Why your grocery-store coffee tastes flat").',
   'Give each idea a HOOK: the first spoken line, in her voice.',
   'and give a one-sentence WHY grounded in the evidence you were given (name it: "your best post…", "rising in your lane…", "the World Cup…").',
   'Only tie a product in when it fits naturally; use product_id from the list given, or null.',

@@ -266,6 +266,8 @@ import type { VideoGoal, ContentFocus, ViewerOutcome, ReferenceUse } from './vid
 import type { EntryDoor } from './entryDoor'
 
 export interface GenerateInput {
+  /** Stories/numbers she left out on the plan screen, never used in this script. */
+  exclude_knowledge_ids?: string[]
   /** Answers to a prior READINESS_INCOMPLETE refusal, keyed by field. Sending
    *  them retries the same build; the creator-stable ones are persisted so the
    *  question is never asked twice, while goal/angle/cta stay per-video. */

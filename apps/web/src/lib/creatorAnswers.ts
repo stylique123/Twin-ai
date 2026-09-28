@@ -435,7 +435,7 @@ export async function loadExtractedKnowledge(
  * outage. The caller shows no plan at all on null.
  */
 export async function loadKnowledgeForPlan(): Promise<
-  Array<{ kind: string; text: string; source: string | null }> | null
+  Array<{ id: string; kind: string; text: string; source: string | null }> | null
 > {
   try {
     const { data: auth } = await supabase.auth.getUser()
@@ -444,12 +444,12 @@ export async function loadKnowledgeForPlan(): Promise<
 
     const [top, asked] = await Promise.all([
       supabase.from('creator_knowledge')
-        .select('kind, text, source')
+        .select('id, kind, text, source')
         .eq('owner_id', ownerId)
         .order('times_seen', { ascending: false })
         .limit(40),
       supabase.from('creator_knowledge')
-        .select('kind, text, source')
+        .select('id, kind, text, source')
         .eq('owner_id', ownerId)
         .eq('source', 'asked')
         .order('created_at', { ascending: false })
@@ -462,6 +462,7 @@ export async function loadKnowledgeForPlan(): Promise<
       return null
     }
     const rows = [...(top.data ?? []), ...(asked.data ?? [])].map((r) => ({
+      id: String((r as { id?: unknown }).id ?? ''),
       kind: String((r as { kind?: unknown }).kind ?? ''),
       text: String((r as { text?: unknown }).text ?? ''),
       source: ((r as { source?: unknown }).source ?? null) as string | null,

@@ -115,7 +115,7 @@ export interface StoryGateResult<T> {
 }
 
 /** Private matters that never reach a script unless she raises them there. */
-export const SENSITIVE = /\b(postpartum|post-partum|depress\w*|anxiety|panic attacks?|mental health|therap(y|ist)|miscarr\w*|pregnan\w*|infertil\w*|cancer|diagnos\w*|illness|surgery|hospital\w*|disorder|addict\w*|rehab|suicid\w*|divorc\w*|custody|funeral|passed away|died|death|grief|abus\w*|police|arrest\w*|lawsuit|sued|lawyer|attorney|code enforcement|evict\w*|shut (us|me|it) down|fined|citation|violation|illegal\w*|bankrupt\w*|debt|broke\b|foreclos\w*|laid off|fired)\b/i
+export const SENSITIVE = /\b(postpartum|post-partum|depress\w*|anxiety|panic attacks?|mental health|therap(y|ist)|miscarr\w*|pregnan\w*|infertil\w*|cancer|diagnos\w*|illness|surgery|hospital\w*|disorder|addict\w*|rehab|suicid\w*|divorc\w*|custody|funeral|passed away|died|death|grief|abus\w*|police|arrest\w*|lawsuit|sued|lawyer|attorney|code enforcement|evict\w*|shut (us|me|it) down|fined|citation|violation|illegal\w*|bankrupt\w*|foreclos\w*|laid off)\b/i
 
 /** The ids supplied in the creator's single most recent generation. */
 export function lastSupplied(rows: readonly LedgerRow[] | null | undefined): Set<string> {

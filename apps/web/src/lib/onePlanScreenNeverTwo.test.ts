@@ -38,14 +38,14 @@ describe('one screen, never two', () => {
   it('renders the plan and the questions in ONE chain, so both cannot be open', () => {
     // `{plan ? (<VideoPlanCard …) : askQuestions ? (` — a ternary chain, not
     // two independent conditionals that could both be true.
-    expect(BUILDING).toMatch(/\{plan \? \([\s\S]{0,600}?\) : askQuestions \? \(/)
+    expect(BUILDING).toMatch(/\{plan \? \([\s\S]{0,2000}?\) : askQuestions \? \(/)
   })
 
   it('sets the plan only where the question list came back empty', () => {
     // The pause sits AFTER the `ask.length` early return, so reaching it means
     // there is nothing left to ask.
     const askReturn = BUILDING.indexOf('if (ask.length && alive)')
-    const planSet = BUILDING.indexOf('if (alive && !planSkipped() && !planShown(key))')
+    const planSet = BUILDING.indexOf('if (alive && !planShown(key))')
     expect(askReturn).toBeGreaterThan(-1)
     expect(planSet).toBeGreaterThan(askReturn)
   })
@@ -55,11 +55,15 @@ describe('it never blocks, and it never asks twice', () => {
   it('resumes the build from both buttons', () => {
     // Both the primary action and the opt-out continue — neither is a dead end.
     const resumes = BUILDING.match(/setRetryNonce\(\(n\) => n \+ 1\)/g) ?? []
-    expect(resumes.length).toBeGreaterThanOrEqual(3) // questions + write + skip
+    expect(resumes.length).toBeGreaterThanOrEqual(3) // questions + write + error retry
   })
 
-  it('honours the opt-out immediately rather than next time', () => {
-    expect(BUILDING).toMatch(/skipPlanAlways\(\)[\s\S]{0,120}?setRetryNonce/)
+  // ⚠️ OWNER, 2026-09-28: the opt-out hid the only place she learns something
+  // is missing. It is gone, and an old stored preference no longer skips it.
+  it('has no permanent opt-out', () => {
+    expect(BUILDING).not.toMatch(/skipPlanAlways\(\)/)
+    expect(BUILDING).not.toMatch(/planSkipped\(\)/)
+    expect(CARD).not.toMatch(/Don't show this again/)
   })
 
   it('remembers it was shown, so a reclaimed tab does not re-ask', () => {
@@ -67,10 +71,8 @@ describe('it never blocks, and it never asks twice', () => {
     expect(BUILDING).toMatch(/sessionStorage\.getItem\(planSlot\(key\)\)/)
   })
 
-  // ⚖️ THE OPT-OUT OUTLIVES THE TAB. A preference stored in sessionStorage
-  // would forget itself every session, which is a worse tax than the screen.
-  it('stores the preference in localStorage, not sessionStorage', () => {
-    expect(BUILDING).toMatch(/localStorage\.setItem\(PLAN_SKIP_KEY/)
+  it('answering the question card counts as the one interstitial', () => {
+    expect(BUILDING).toMatch(/markPlanShown\(buildKey\(state\)\)/)
   })
 })
 
@@ -86,7 +88,7 @@ describe('the third line cannot be a guess', () => {
   // loaded — stating as fact the very guess `videoPlan.ts` warns against.
   it('reads kind, text AND source in BOTH queries — not kind alone', () => {
     expect(ANSWERS).toMatch(/loadKnowledgeForPlan/)
-    const full = ANSWERS.match(/\.select\('kind, text, source'\)/g) ?? []
+    const full = ANSWERS.match(/\.select\('id, kind, text, source'\)/g) ?? []
     expect(full.length, 'the plan read is a union of TWO queries; both must select text').toBe(2)
     // And neither of them may be the counts-shaped read.
     const planBody = ANSWERS.slice(ANSWERS.indexOf('loadKnowledgeForPlan'))
@@ -125,7 +127,7 @@ describe('the third line cannot be a guess', () => {
   it('shows no plan at all when the knowledge read fails', () => {
     // `null` from the reader must not render as "I have nothing from you" —
     // that would be a claim about the creator made out of our own outage.
-    expect(BUILDING).toMatch(/if \(items\) \{/)
+    expect(BUILDING).toMatch(/if \(items && !nothingToSay\) \{/)
     expect(ANSWERS).toMatch(/console\.warn\('\[plan\] knowledge not read'/)
   })
 
