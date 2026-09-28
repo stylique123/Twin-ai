@@ -2,19 +2,22 @@
 // list that names what the AI is doing (never a naked spinner), with a skeleton
 // of the Plan screen behind it. Runs the real build, then auto-advances to the
 // Plan screen the instant the timeline is ready. See PRODUCT_VISION §13.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
 import { NameTheReference } from '../../components/NameTheReference'
-import { creatorFacingMessage, concreteness, CONCRETE_HINT } from '@twinai/shared'
+import { creatorFacingMessage, GENERIC_BUILD_FAILURE, concreteness, CONCRETE_HINT } from '@twinai/shared'
+
+/** The only honest sentence after a lost answer: the build is not a durable job. */
+const BUILD_UNSURE = "We're not sure if this finished. Check your Library in a few minutes, or try again."
 import { loadProductEntities, loadBrands, type Brand } from '../../lib/api'
 import type { ProductEntityRecord } from '../../lib/api'
 import { assessReadiness, isCommercialField } from '../../lib/api'
 import { judgeFit, warningForPickedVideo, recordTalkingHeadChoice } from '../../lib/api'
 import type { FitWarning, FitReason } from '../../lib/api'
 import { TalkingHeadWarning } from '../../components/TalkingHeadWarning'
-import { buildVideoPlan, planUseItems } from '@twinai/shared'
+import { buildVideoPlan, planUseItems, defaultExcluded } from '@twinai/shared'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@twinai/shared'
 import { readProfileAnswers } from '../../lib/profileAnswersRead'
@@ -801,6 +804,9 @@ export default function V2Building() {
   // paragraph names one), '' = none, else a product id. Rides as a MENTION,
   // so it can never be treated as the video's claimed subject.
   const [ideaProduct, setIdeaProduct] = useState<string | null>(null)
+  // Round 2 (2.1/2.2): the product line is a guess with "Change", like purpose.
+  const [ideaProductOpen, setIdeaProductOpen] = useState(false)
+  const [ideaBrands, setIdeaBrands] = useState<{ id: string; name: string }[]>([])
   // ⚖️ THE OBJECTIVE'S QUESTION IS ITS OWN STEP. It used to render on the same
   // card as the objective chips, so the question changed under her finger as
   // she tapped. Now: choose the objective, then answer its question (with Back).
@@ -855,7 +861,7 @@ export default function V2Building() {
     if (plan || askQuestions || error) return
     const t1 = setTimeout(() => setSlow(true), 90_000)
     const t2 = setTimeout(() => {
-      setError('This is taking far longer than it should, so Twin stopped waiting. If the script finishes it will still land in your Library, and you are only ever charged for a finished script. Try again below.')
+      setError("This is taking far longer than it should, so Twin stopped waiting. " + BUILD_UNSURE + " You are only charged for a finished script.")
     }, 300_000)
     return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [retryNonce, plan, askQuestions, error])
@@ -1699,7 +1705,11 @@ export default function V2Building() {
         const mentionedProductId = decided.kind === 'mention' ? decided.productId : ''
         // The idea card's product rides as a mention too — only when nothing
         // was chosen as the subject, so it can never compete with one.
-        const ideaMentionId = decided.kind !== 'chosen' && decided.kind !== 'auto' ? (ideaProduct ?? state.idea_product_id ?? '') : ''
+        const ideaPick = decided.kind !== 'chosen' && decided.kind !== 'auto' ? (ideaProduct ?? state.idea_product_id ?? '') : ''
+        // ⚖️ THE WHOLE BUSINESS (round 2, 2.2) is a subject, not a mention: it
+        // rides `selected_product_id` as `brand:<id>`, exactly as Product Mode's.
+        const ideaBrandPick = ideaPick.startsWith(BRAND_CHOICE_PREFIX) ? ideaPick : ''
+        const ideaMentionId = ideaBrandPick ? '' : ideaPick
         for (const [k, v] of Object.entries(answersRef.current)) {
           if (k === PRODUCT_CHOICE_FIELD) continue
           // Follow-up answers ride her note (below), never the brief.
@@ -1760,11 +1770,12 @@ export default function V2Building() {
           // made instead of charging for it twice (0119).
           idempotency_key: key,
           ...(excludedKnowledge.size > 0 ? { exclude_knowledge_ids: [...excludedKnowledge] } : {}),
+          ...(usedKnowledgeIds ? { use_knowledge_ids: usedKnowledgeIds } : {}),
           ...(transcript_id ? { transcript_id } : {}),
           // ⚖️ ONLY WHEN THEY ANSWERED. An absent field means "not asked or not
           // answered" and leaves the server's stopgap exactly as it was;
           // sending '' would be a claim that they chose nothing.
-          ...(chosenProductId ? { selected_product_id: chosenProductId } : {}),
+          ...(chosenProductId ? { selected_product_id: chosenProductId } : ideaBrandPick ? { selected_product_id: ideaBrandPick } : {}),
         })
         // ── KEEP WHAT THEY TYPED, NOT JUST SPEND IT ───────────────────────
         //
@@ -1961,7 +1972,12 @@ export default function V2Building() {
         // creator gets a sentence written for them.
         console.warn('[build] failed', e)
         setRescuing(false)
-        setError(creatorFacingMessage(e))
+        // ⚠️ NO PROMISE WE CANNOT KEEP (owner, 2026-09-28). The build is one
+        // synchronous edge call, not a durable job, so after a lost answer we
+        // genuinely do not know. Say that; never promise the Library.
+        // A sentence the server wrote for her still shows; anything else is unknown.
+        const said = creatorFacingMessage(e)
+        setError(said === GENERIC_BUILD_FAILURE ? BUILD_UNSURE : said)
       }
     })()
 
@@ -2131,6 +2147,7 @@ export default function V2Building() {
   useEffect(() => {
     if (!askQuestions?.some((q) => q.field === 'offer' || q.purpose) || products !== null) return
     let alive = true
+    void loadBrands().then((bs) => { if (alive) setIdeaBrands(bs.filter((x) => x.confirmed).map((x) => ({ id: x.id, name: x.name }))) }).catch(() => {})
     loadProductEntities()
       .then((rows) => { if (alive) setProducts(rows) })
       // ⚖️ A FAILED READ FALLS BACK TO TYPING RATHER THAN BLOCKING THE ANSWER.
@@ -2152,17 +2169,35 @@ export default function V2Building() {
       const ws = name.split(/[^a-z0-9]+/).filter((w) => w.length > 3 && !GENERIC.has(w))
       return ws.length >= 1 && ws.every((w) => para.includes(w))
     })
-    if (hit) setIdeaProduct(hit.id)
-  }, [products, askQuestions, ideaProduct, state.reference_note])
+    if (hit) { setIdeaProduct(hit.id); return }
+    // Her business named outright → the whole business, still one tap to undo.
+    const brand = ideaBrands.find((b) => b.name.trim().length > 2 && para.includes(b.name.toLowerCase().trim()))
+    if (brand) setIdeaProduct(`${BRAND_CHOICE_PREFIX}${brand.id}`)
+  }, [products, ideaBrands, askQuestions, ideaProduct, state.reference_note])
   // Legal/sensitive items, unconfirmed numbers and "first/only" claims start OFF.
-  const seededFor = useRef<object | null>(null)
+  // ⚠️ "15 of 31" BECAME "14" WITH NO ACTION (owner, 2026-09-28): this seeded
+  // again every time the plan object was rebuilt, and the card re-measured "fits"
+  // against answers as she typed. Now it seeds ONCE per set of items, measured
+  // against her paragraph only, and what is left on is sent as the exact list
+  // the writer gets (`use_knowledge_ids`). Only her taps change it after that.
+  const seededFor = useRef<string | null>(null)
   useEffect(() => {
     const src = askPlan ?? plan
-    if (!src || seededFor.current === src) return
-    seededFor.current = src
-    const off = planUseItems(src.knowledge as never, state.reference_note || '').filter((i) => i.defaultOff).map((i) => i.id)
-    if (off.length) setExcludedKnowledge((prev) => new Set([...prev, ...off]))
+    if (!src) return
+    const items = planUseItems(src.knowledge as never, state.reference_note || '')
+    const sig = items.map((i) => i.id).join('|')
+    if (seededFor.current === sig) return
+    seededFor.current = sig
+    setExcludedKnowledge(new Set(defaultExcluded(items)))
   }, [askPlan, plan, state.reference_note])
+  // The exact list the plan card shows as "in". Null when no card was shown,
+  // so the server keeps choosing for itself.
+  const usedKnowledgeIds = useMemo(() => {
+    const src = askPlan ?? plan
+    if (!src) return null
+    return planUseItems(src.knowledge as never, state.reference_note || '')
+      .filter((i) => !excludedKnowledge.has(i.id)).map((i) => i.id)
+  }, [askPlan, plan, state.reference_note, excludedKnowledge])
 
   // ⚖️ WHICH POOLED QUESTIONS SHE HAS ANSWERED, loaded only on a product build
   // that is asking the claims question. A failed read is [] — pool order.
@@ -2914,28 +2949,47 @@ export default function V2Building() {
               )}
             </div>
             {askQuestions.some((q) => q.purpose) && !liveCommercial && (
-              <div className="mt-5 flex items-center justify-between gap-2 border-t border-white/8 pt-4" data-testid="idea-product-row">
-                <span className="text-sm text-cream">
-                  <span className="text-stone">Product:</span>{' '}
-                  {(products ?? []).find((p) => p.id === ideaProduct)?.name ?? 'None'}
-                </span>
-                <span className="flex items-center gap-3">
-                  {(products?.length ?? 0) > 0 && (
-                    <select value={ideaProduct ?? ''} onChange={(e) => setIdeaProduct(e.target.value)}
-                      className="rounded-lg border border-white/12 bg-ink2 px-2 py-1 text-[12px] text-sand" aria-label="Product">
-                      <option value="">None</option>
-                      {(products ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  )}
-                  <button type="button" onClick={openAddProduct} className="text-[12px] text-stone underline underline-offset-2 hover:text-cream">+ Add one</button>
-                </span>
+              <div className="mt-5 border-t border-white/8 pt-4" data-testid="idea-product-row">
+                {/* ⚖️ ROUND 2 (2.1/2.2): A GUESS WITH "Change", LIKE THE PURPOSE LINE.
+                    The paragraph pre-selects a product it names; the choices —
+                    the whole business, one product, or none — appear only on
+                    Change, never as an open dropdown by default. */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-cream">
+                    <span className="text-stone">Product:</span>{' '}
+                    {ideaProduct?.startsWith(BRAND_CHOICE_PREFIX)
+                      ? `${ideaBrands.find((b) => `${BRAND_CHOICE_PREFIX}${b.id}` === ideaProduct)?.name ?? 'Your business'} (the whole business)`
+                      : (products ?? []).find((p) => p.id === ideaProduct)?.name ?? 'None'}
+                  </span>
+                  <button type="button" onClick={() => setIdeaProductOpen(!ideaProductOpen)}
+                    className="text-[12px] text-stone underline underline-offset-2 hover:text-cream">
+                    {ideaProductOpen ? 'Done' : 'Change'}
+                  </button>
+                </div>
+                {ideaProductOpen && (
+                  <div className="mt-2 flex flex-wrap gap-1.5" data-testid="idea-product-choices">
+                    {[
+                      { v: '', label: 'None' },
+                      ...ideaBrands.map((b) => ({ v: `${BRAND_CHOICE_PREFIX}${b.id}`, label: `${b.name} (the whole business)` })),
+                      ...(products ?? []).map((p) => ({ v: p.id, label: String(p.name ?? '') })),
+                    ].map((o) => (
+                      <button key={o.v || 'none'} type="button"
+                        onClick={() => { setIdeaProduct(o.v); setIdeaProductOpen(false) }}
+                        className={cn('rounded-full border px-2.5 py-1 text-[12px]',
+                          (ideaProduct ?? '') === o.v ? 'border-cream text-cream' : 'border-white/12 text-sand hover:border-white/25')}>
+                        {o.label}
+                      </button>
+                    ))}
+                    <button type="button" onClick={openAddProduct} className="rounded-full px-2.5 py-1 text-[12px] text-stone underline underline-offset-2 hover:text-cream">+ Add one</button>
+                  </div>
+                )}
               </div>
             )}
             {askPlan && (
               <div className="mt-4 border-t border-white/8 pt-4">
                 <VideoPlanCard
                   input={askPlan}
-                  about={[state.reference_note || '', ...Object.values(askAnswers)].join(' ')}
+                  about={state.reference_note || ''}
                   needsProduct={liveCommercial}
                   onAddProduct={openAddProduct}
                   excluded={excludedKnowledge}
@@ -3152,7 +3206,7 @@ export default function V2Building() {
                   exists — so the honest sentence is that we are looking, not
                   that it failed and not that it is still writing. */}
               {rescuing
-                ? 'The connection dropped. Your script may already be finished — we are asking the server before saying anything else.'
+                ? 'We lost touch with the server. Checking whether your script finished — one moment.'
                 : echo}
             </p>
 
@@ -3219,8 +3273,8 @@ export default function V2Building() {
                 creator has already paid for. */}
             <p className="mt-6 rounded-card border border-white/8 bg-white/[0.02] px-4 py-3 text-center text-xs leading-relaxed text-stone">
               {slow
-                ? 'Taking longer than usual. You can leave and it will land in your Library.'
-                : 'Usually 30–60 seconds. Leave anytime — we keep building and it lands in your Library.'}
+                ? 'Taking longer than usual. Please keep this page open.'
+                : 'Usually 30–60 seconds. Please keep this page open.'}
             </p>
             <button onClick={() => { cancelled.current = true; nav('/v2', { replace: true }) }} className="mt-3 block w-full text-center text-sm text-stone transition-colors hover:text-cream">
               Cancel

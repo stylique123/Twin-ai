@@ -77,3 +77,21 @@ export function planUseItems(
   }
   return out
 }
+
+/** The most items the writer is handed; the server caps `use_knowledge_ids` the same. */
+export const PLAN_USE_MAX = 10
+
+/**
+ * What starts OFF, decided once: flagged items, items that do not fit her
+ * paragraph, and anything past the first PLAN_USE_MAX that would be on.
+ * Everything else starts on, and that list is exactly what is sent.
+ */
+export function defaultExcluded(items: readonly PlanUseItem[]): string[] {
+  let on = 0
+  const off: string[] = []
+  for (const i of items) {
+    if (i.defaultOff || !i.fits || on >= PLAN_USE_MAX) off.push(i.id)
+    else on++
+  }
+  return off
+}

@@ -134,7 +134,7 @@ describe('the card asks, and the answer reaches the writer', () => {
   })
 
   it('the answer is sent, and only when they answered', () => {
-    expect(BUILD).toMatch(/\.\.\.\(chosenProductId \? \{ selected_product_id: chosenProductId \} : \{\}\)/)
+    expect(BUILD).toMatch(/\.\.\.\(chosenProductId \? \{ selected_product_id: chosenProductId \} :/)
     // It must not leak into the two buckets that persist or drive intent.
     expect(BUILD).toMatch(/if \(k === PRODUCT_CHOICE_FIELD\) continue/)
   })

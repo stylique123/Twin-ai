@@ -111,7 +111,8 @@ describe('a creator never reads the library\'s own words', () => {
   })
 
   it('the screen no longer prints e.message straight to the creator', () => {
-    expect(CODE).toMatch(/setError\(creatorFacingMessage\(e\)\)/)
+    expect(CODE).toMatch(/creatorFacingMessage\(e\)[\s\S]{0,80}setError\(said === GENERIC_BUILD_FAILURE \? BUILD_UNSURE : said\)/)
+    expect(CODE).not.toMatch(/setError\(e\.message\)/)
     expect(CODE).not.toMatch(/setError\(e instanceof Error \? e\.message/)
   })
 })

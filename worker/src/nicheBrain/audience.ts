@@ -20,6 +20,7 @@ import {
   HOOK_TARGET, HOOK_ROUNDS, HOOK_REWRITE_SYSTEM, HOOK_REWRITE_SCHEMA, hookRewritePrompt, cleanNewHooks,
   SCRIPT_TARGET, SCRIPT_ROUNDS, SCRIPT_REWRITE_SYSTEM, SCRIPT_REWRITE_SCHEMA, scriptRewritePrompt,
   applyLineRewrites, betterVersion, watchedToEnd,
+  orderHooksBestFirst, defaultHookAfterTest,
 } from './audienceParse.js'
 
 type Log = (level: string, msg: string, extra?: Record<string, unknown>) => void
@@ -147,9 +148,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
     // by how many viewers stopped, a hook that stopped nobody is dropped when
     // three others did better, and the default hook is the starred one unless
     // she picked one herself.
-    const ranked = [...r.hooks].sort((a, b) => b.stopped - a.stopped)
-    const keep = ranked.filter((h) => h.stopped > 0).length >= 3 ? ranked.filter((h) => h.stopped > 0) : ranked
-    const ordered = keep.map((h) => h.hook).slice(0, 6)
+    const ordered = orderHooksBestFirst(r.hooks)
     const bp = (g.blueprint && typeof g.blueprint === 'object' ? g.blueprint : {}) as Record<string, unknown>
     const oldOrder = Array.isArray(bp.hook_options) ? (bp.hook_options as unknown[]).join('\u0000') : ''
     const reordered = ordered.length > 0 && ordered.join('\u0000') !== oldOrder
@@ -178,8 +177,9 @@ export async function runAudienceTests(log: Log): Promise<void> {
     if (ordered[0]) {
       const { data: cur } = await db.from('generations').select('selected_hook, hook_choice').eq('id', g.id).maybeSingle()
       const picked = (cur?.hook_choice as { source?: string } | null)?.source === 'creator'
-      if (!picked && cur?.selected_hook !== ordered[0]) {
-        await db.from('generations').update({ selected_hook: ordered[0], hook_choice: { source: 'default', index: 0 } }).eq('id', g.id)
+      const want = defaultHookAfterTest(ordered, picked ? String(cur?.selected_hook ?? '') : null)
+      if (!picked && cur?.selected_hook !== want) {
+        await db.from('generations').update({ selected_hook: want, hook_choice: { source: 'default', index: 0 } }).eq('id', g.id)
       }
     }
     await stamp({

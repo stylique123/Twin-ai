@@ -5714,6 +5714,8 @@ SCRIPT & HOOK INTEGRATION:
   * NEVER WRITE A PROGRESS CHECK. "Still with me?", "You are halfway there", "Ready for the last two?", "If you are still watching" — these ask the viewer to notice how long they have been watching, which is the opposite of retention, and they consume a beat to say nothing. Real creators do not say them.
 - Front-load the payoff promise, keep delivering, and place ONE clear CTA near the end that fits the goal: prefer a save ("save this so you can do it later") or a comment-bait question over a generic "follow for more".
 
+- NO INVENTED COLOUR (round 2, Part 6). Never add a timeframe, count, age, distance or sensory description she did not give ("for twenty years", "burnt, overly acidic stuff"). Use her own words for how something tasted, looked or felt; if she gave none, say it plainly without adjectives.
+
 SHOT LIST & ASSET SPECIFICATION:
 - shot_list: specify all shots required to construct the final edit (talking heads and the cover/thumbnail frame).
 - shot_type: specify either 'talking_head' (camera on creator speaking) or 'cover_frame' (the thumbnail image/first frame). There is no third option: Twin does not plan overlay or cutaway footage, so never invent a shot the creator has no way to supply.
@@ -6134,6 +6136,25 @@ const OBJECTIVE_CONTRACT_INLINE: Record<string, string> = {
   personal_brand: 'OBJECTIVE CONTRACT — SAY WHY I MADE IT: what was going on when she started, and one specific moment, only from her own words. If none is given, keep it short and general rather than invent one.',
 }
 
+// ⚖️ THE GUESSED PURPOSE DECIDES WHICH THREAD LEADS (round 2, Part 3). Mirrors
+// packages/shared/src/script/purposeShape.ts; a parity test holds them equal.
+const PURPOSE_SHAPE_BY_GOAL_INLINE: Record<string, 'story_led' | 'product_led' | 'equal'> = {
+  personal_brand: 'story_led',
+  inspire: 'story_led',
+  conversations: 'story_led',
+  sell: 'product_led',
+  leads: 'product_led',
+  educate: 'product_led',
+  authority: 'equal',
+  entertain: 'equal',
+  community: 'equal',
+}
+const PURPOSE_SHAPE_INLINE: Record<'story_led' | 'product_led' | 'equal', string> = {
+  story_led: 'SHAPE — STORY LEADS, PRODUCT SUPPORTS: open on her personal thread; the product appears only as evidence or payoff ("this is what came out of all that"); close by inviting the viewer to relate to the story, not to buy.',
+  product_led: 'SHAPE — PRODUCT LEADS, STORY SUPPORTS: open on the product; her personal material explains why it is good or earns the trust to talk about it; close product-forward.',
+  equal: 'SHAPE — EQUAL, SLICE OF LIFE: no hard pitch either way; an honest look at her day that happens to include the product; close on connection, not a sale.',
+}
+
 // ── IDEA MODE: QUESTIONS FROM HER PARAGRAPH (coffee report 2.1, 2.2) ────────
 // A light mode on this function, answered before any credit, rate-limit or
 // build work: one short model call, 8s budget, and ANY failure returns no
@@ -6252,7 +6273,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string; mentioned_product_id?: string; door?: string; exclude_knowledge_ids?: string[] }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string; mentioned_product_id?: string; door?: string; exclude_knowledge_ids?: string[]; use_knowledge_ids?: string[] }
   try {
     body = await req.json()
   } catch {
@@ -8749,7 +8770,18 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // leaving the floor untouched would reserve substance twice and starve the
     // slots the video's own subject needs.
     const askedSubstance = askedHold.reserved.filter((k) => SUBSTANCE_KINDS.has(k.kind)).length
-    const speakable = [
+    // ⚖️ WHAT THE PLAN CARD SHOWED IS WHAT THE WRITER GETS (owner, 2026-09-28).
+    // "15 of 31" became "14" with no action, and the card never matched the
+    // server's own top-ten anyway. When the screen sends the exact list she saw
+    // switched on, that list IS the supply: no re-ranking, no silent swaps.
+    const useIds = Array.isArray(body.use_knowledge_ids)
+      ? body.use_knowledge_ids.map((x) => String(x)).slice(0, 10)
+      : null
+    const chosenRows = useIds
+      ? useIds.map((id) => kRows.find((k) => String((k as { id?: unknown }).id ?? '') === id))
+        .filter((k): k is (typeof kRows)[number] => !!k && k.basis !== 'inferred')
+      : null
+    const speakable = chosenRows ?? [
       ...askedHold.reserved,
       ...selectSpeakable(
         askedHold.pool,
@@ -9502,6 +9534,12 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
             ? ` AND IT IS A PAID RELATIONSHIP, so the script must say so plainly and early, in its own words, before the halfway point.`
             : '')
       }
+    }
+    // ⚖️ ROUND 2, PART 3: with a product in play, the purpose picks the shape.
+    {
+      const shapeKey = (ownedEntity || mentionLine) && typeof videoGoal === 'string'
+        ? PURPOSE_SHAPE_BY_GOAL_INLINE[videoGoal] : undefined
+      if (shapeKey) mentionLine += `\n- ${PURPOSE_SHAPE_INLINE[shapeKey]}`
     }
     const showLine = !ownedEntity || !sceneGuidance
       ? ''
