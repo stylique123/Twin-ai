@@ -33,6 +33,7 @@ import { transformSync } from 'esbuild'
 import {
   objectiveQuestion, offerFormOf, OBJECTIVE_QUESTIONS, PRODUCT_CHOICE_FIELD,
   nextObjectiveQuestion, answeredForProduct, pooledWording, promotedObjectiveQuestion,
+  BRAND_CHOICE_PREFIX, BUSINESS_OBJECTIVE_QUESTIONS,
 } from '@twinai/shared'
 import { assessReadiness } from '@twinai/shared'
 
@@ -118,9 +119,11 @@ describe('the card re-derives the claims wording from the live objective', () =>
     return new Function(
       'objectiveQuestion', 'offerFormOf', 'pickedProduct', 'PRODUCT_CHOICE_FIELD',
       'nextObjectiveQuestion', 'answeredForProduct', 'pooledWording', 'promotedObjectiveQuestion',
+      'BRAND_CHOICE_PREFIX', 'BUSINESS_OBJECTIVE_QUESTIONS',
       `${js}; return __live`,
     )(objectiveQuestion, offerFormOf, pickedProduct, PRODUCT_CHOICE_FIELD,
-      nextObjectiveQuestion, answeredForProduct, pooledWording, promotedObjectiveQuestion) as Fn
+      nextObjectiveQuestion, answeredForProduct, pooledWording, promotedObjectiveQuestion,
+      BRAND_CHOICE_PREFIX, BUSINESS_OBJECTIVE_QUESTIONS) as Fn
   }
 
   /** The card's own `pickedProduct`, lifted the same way. */

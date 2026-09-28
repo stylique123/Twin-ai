@@ -1020,6 +1020,16 @@ export const BUSINESS_OBJECTIVES: readonly IntentOption[] = Object.freeze([
   { value: 'sell', label: 'Announce something', hint: 'Tell Twin what first' },
 ])
 
+/** ⚠️ COFFEE REPORT 3.3: the business row asked nothing for two objectives,
+ *  so the writer filled the gap from a stored story. One question per
+ *  business objective, each asking for what only she can supply. */
+export const BUSINESS_OBJECTIVE_QUESTIONS: Readonly<Record<string, string>> = Object.freeze({
+  personal_brand: 'What were you doing before you started, and what made you begin?',
+  conversations: 'What is the question you keep getting, and what do you tell them?',
+  educate: 'What do people get wrong about what you do, and what is the truth?',
+  sell: 'What are you announcing, and when or where can people get it?',
+})
+
 /**
  * THE LABEL SHOWN FOR A CHOSEN GOAL, IN THE VOCABULARY IT WAS CHOSEN IN.
  *

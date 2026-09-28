@@ -158,7 +158,9 @@ const POSITION_GOAL = (index: number, total: number, section?: unknown): string 
   if (typeof section === 'string' && REHOOK_SECTION.test(section)) {
     return 'Reset attention for anyone who started drifting.'
   }
-  return MIDDLE_GOALS[(index - 1) % MIDDLE_GOALS.length]!
+  // ⚠️ COFFEE REPORT 1.5: wrapping by position gave beat 6 of 7 "Give the first
+  // real reason to stay". Past the fourth middle beat the job is the late one.
+  return MIDDLE_GOALS[Math.min(index - 1, MIDDLE_GOALS.length - 1)]!
 }
 
 // ⚠️ ITEM 39: THE SAME STOCK SENTENCE UNDER STRUCTURALLY DIFFERENT BEATS. A

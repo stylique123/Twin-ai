@@ -64,6 +64,9 @@ const REHOOK = /re-?hook|second hook|reset/i
 
 const CTA = /\bcta\b|call to action|close|ending|outro/i
 
+/** A line that actually asks the viewer to do something. */
+const ASKS_FOR_ACTION = /\b(comment|follow|order|shop|buy|link|dm|message|visit|grab|try|save|book|tap|click|sign up|subscribe|join|get yours|pick up|head to|check out|send me|tell me|drop)\b/i
+
 /**
  * Derive the "Why it works" claims from the FINAL `script` array — the one the
  * teleprompter renders, after every post-generation repair has already run.
@@ -126,7 +129,9 @@ export function syncWhyItWorksToScript(
   // 5. THE CLOSE, WHEN IT ASKS FOR ONE THING AND IS SHORT ENOUGH TO HEAR.
   const last = spoken[spoken.length - 1]
   const lastWords = words(last.line)
-  if (spoken.length > 1 && CTA.test(last.section) && lastWords.length <= 25) {
+  // ⚠️ COFFEE REPORT 1.5: this fired over a closing QUESTION with no ask. The
+  // claim is "one action", so the line must actually ask for one.
+  if (spoken.length > 1 && CTA.test(last.section) && lastWords.length <= 25 && ASKS_FOR_ACTION.test(last.line)) {
     claims.push(
       `You end on one action in ${lastWords.length} words, so nobody has to work out what to do next.`,
     )

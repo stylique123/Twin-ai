@@ -138,8 +138,12 @@ export const OBJECTIVE_QUESTIONS: Readonly<Partial<Record<VideoGoal, ObjectiveQu
   }),
   educate: Object.freeze({
     // A service does not "work" the way an object does; it is done.
-    whenPerformed: 'What do people misunderstand about how you actually do it?',
-    question: 'What do people misunderstand about how it works?',
+    // ⚠️ COFFEE REPORT 3.4: "Explain what it actually does" asked the
+    // misconception question, which belongs to "The part people get wrong", and
+    // "how it works" reads oddly for coffee beans. It asks what an explanation
+    // needs: what someone notices first, and how it is made.
+    whenPerformed: 'What does someone notice first when you do it for them, and how do you do it?',
+    question: 'What does someone notice first when they use it, and how is it made?',
     because: 'An explainer needs the misunderstanding, not the feature list. '
       + 'The misunderstanding becomes the hook and a spec list becomes a myth-bust.',
   }),

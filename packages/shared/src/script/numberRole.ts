@@ -31,7 +31,7 @@
  *  "5 mistakes" and a bare "5" both read as a possible item count; "5 months"
  *  does not. This is the asymmetry the count contract needs: it must never
  *  mistake a duration for a promise, and it may still ask about a bare number. */
-export type NumberRole = 'enumeration' | 'duration' | 'money' | 'percentage' | 'multiple'
+export type NumberRole = 'enumeration' | 'duration' | 'money' | 'percentage' | 'multiple' | 'comparison'
 
 export interface NumberMention {
   /** The value, as a number. Word forms are resolved to digits. */
@@ -64,6 +64,10 @@ const DURATION = /^\s*-?\s*(?:second|sec|minute|min|hour|hr|day|week|month|year)
 const PERCENT = /^\s*%|^\s*percent\b/i
 const MULTIPLE = /^\s*(?:x\b|×|times\b|fold\b)/i
 const MONEY_BEFORE = /[$£€]\s*$/
+/** ⚠️ COFFEE REPORT 1.5: "Two identical roasts" is a comparison of two things,
+ *  not a promise of a list of two. Refusing to call it a count is the safe
+ *  direction for this module. */
+const COMPARISON = /^\s*(?:(?:seemingly|nearly|almost|totally|completely)\s+)?(?:identical|different|same|similar|matching|opposite)\b/i
 const MONEY_AFTER = /^\s*(?:dollars?|pounds?|euros?|bucks?|k\b|\/\s*(?:mo|month|yr|year))/i
 
 function roleFor(before: string, after: string): NumberRole {
@@ -74,6 +78,7 @@ function roleFor(before: string, after: string): NumberRole {
   if (PERCENT.test(after)) return 'percentage'
   if (DURATION.test(after)) return 'duration'
   if (MULTIPLE.test(after)) return 'multiple'
+  if (COMPARISON.test(after)) return 'comparison'
   return 'enumeration'
 }
 
