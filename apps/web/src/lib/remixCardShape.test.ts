@@ -40,7 +40,7 @@ describe('one renderer, two columns', () => {
     // step `commercial` also excludes `claims` when the split applies.
     expect(SRC).toMatch(/const decisions = onAnswerStep \? \[\] : visibleAsk\.filter\(isChip\)/)
     // Menu redesign: Idea mode's content questions render with the decisions, never as commercial.
-    expect(SRC).toMatch(/: visibleAsk\.filter\(\(q\) => !isChip\(q\) && !q\.idea && !\(splitObjectiveStep && q\.field === 'claims'\)\)/)
+    expect(SRC).toMatch(/: visibleAsk\.filter\(\(q\) => !isChip\(q\) && !q\.idea && !\(objectiveInline && q\.field === 'claims'\)\)/)
   })
 })
 

@@ -43,10 +43,29 @@ const NUMBER_CLAIM = /^your hook names a number/i
 export function honestWhyItWorks(
   claims: readonly unknown[] | null | undefined,
   countPromiseBroken?: boolean,
+  shownHook?: string | null,
 ): string[] {
-  const kept = (Array.isArray(claims) ? claims : [])
+  let kept = (Array.isArray(claims) ? claims : [])
     .map((c) => (typeof c === 'string' ? c.trim() : ''))
     .filter((c) => c !== '')
-  if (countPromiseBroken !== true) return kept
-  return kept.filter((c) => !NUMBER_CLAIM.test(c))
+  if (countPromiseBroken === true) kept = kept.filter((c) => !NUMBER_CLAIM.test(c))
+  // ⚠️ COFFEE REPORT 1.5: "Your hook names a number" sat over an opening line
+  // with no number. The claims were written about the script's first line; the
+  // creator is shown (and films) the hook she picked. Hook claims are checked
+  // against THAT hook: kept when true, recomputed when a count, dropped when not.
+  const hook = typeof shownHook === 'string' ? shownHook.trim() : ''
+  if (hook === '') return kept
+  const words = hook.split(/\s+/).filter(Boolean).length
+  return kept.flatMap((c) => {
+    if (NUMBER_CLAIM.test(c)) return HOOK_NUMBER.test(hook) ? [c] : []
+    if (QUESTION_CLAIM.test(c)) return hook.endsWith('?') ? [c] : []
+    if (LENGTH_CLAIM.test(c)) {
+      return words <= 12 ? [`Your opening line is ${words} words. It lands before anyone decides to scroll past.`] : []
+    }
+    return [c]
+  })
 }
+
+const HOOK_NUMBER = /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\b/i
+const QUESTION_CLAIM = /^you open on a question/i
+const LENGTH_CLAIM = /^your opening line is \d+ words/i
