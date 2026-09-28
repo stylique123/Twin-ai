@@ -38,7 +38,7 @@ import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedT
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import { DidYouFilmIt } from '../components/DidYouFilmIt'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { cameFromAReference, spokenLineIsAnAsk, notBilledNotice, shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime,
+import { cameFromAReference, spokenLineIsAnAsk, notBilledNotice, shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime, readBeatPlan,
   // ⚠️ MERGED INTO THE EXISTING BLOCK, NOT ADDED AS A SECOND ONE. Six wiring
   // tests match the FIRST `@twinai/shared` import in this file to prove a card
   // reads a shared helper; a new import above them answered for all six at
@@ -855,6 +855,18 @@ export default function Result() {
     runtimeCompare.referenceSec !== null
       ? `The reference runs about ${spokenTime(runtimeCompare.referenceSec)}.`
       : null
+  // ⚠️ COFFEE REPORT 1.6: a script planned for 90s ran 52s with no word why.
+  // When the spoken length falls well short of the writer's own plan, say so,
+  // and why: a shorter true script beats a padded one.
+  const plannedSec = (() => {
+    const plan = readBeatPlan((raw as { beat_plan?: unknown }).beat_plan, Array.isArray(raw.script) ? raw.script.length : 0)
+    const total = (plan ?? []).reduce((n, p) => n + (p.targetSec ?? 0), 0)
+    return total > 0 ? total : null
+  })()
+  const spokenNow = measureScriptLength(updatedScript).spokenSec
+  const shortfallLine = plannedSec !== null && spokenNow > 0 && spokenNow < plannedSec * 0.75
+    ? `This runs about ${spokenTime(spokenNow)}, shorter than the ${spokenTime(plannedSec)} planned, because there was not enough on file to fill it truthfully. Add detail in your idea or product and remake it for a longer video.`
+    : null
   const ceilingWarningLine = runtimeCompare.exceedsCeiling
     ? `That is longer than a short-form video normally runs (over ${spokenTime(runtimeCompare.ceilingSec)}) — worth trimming before you record.`
     : null
@@ -1440,6 +1452,7 @@ export default function Result() {
               {ceilingWarningLine && <p className="text-xs text-amber">{ceilingWarningLine}</p>}
               {noStoryLine && <p className="text-xs text-sand" data-testid="no-story-line">{noStoryLine}</p>}
               {droppedLine && <p className="text-xs text-sand" data-testid="dropped-beats-line">{droppedLine}</p>}
+              {shortfallLine && <p className="text-xs text-sand" data-testid="shortfall-line">{shortfallLine}</p>}
               {unsourcedLine && <p className="text-xs text-amber" data-testid="unsourced-figures">{unsourcedLine}</p>}
               {/* WHAT A PERSON FORWARDING THIS SCRIPT NEEDS TO KNOW ABOUT IT.
                   The agency's report: "I need to know which product each script
@@ -1844,6 +1857,7 @@ export default function Result() {
               {ceilingWarningLine && <p className="text-xs text-amber">{ceilingWarningLine}</p>}
               {noStoryLine && <p className="text-xs text-sand" data-testid="no-story-line">{noStoryLine}</p>}
               {droppedLine && <p className="text-xs text-sand" data-testid="dropped-beats-line">{droppedLine}</p>}
+              {shortfallLine && <p className="text-xs text-sand" data-testid="shortfall-line">{shortfallLine}</p>}
               {unsourcedLine && <p className="text-xs text-amber" data-testid="unsourced-figures">{unsourcedLine}</p>}
                 
                 <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
