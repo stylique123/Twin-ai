@@ -14,8 +14,7 @@ import { assessReadiness, isCommercialField } from '../../lib/api'
 import { judgeFit, warningForPickedVideo, recordTalkingHeadChoice } from '../../lib/api'
 import type { FitWarning, FitReason } from '../../lib/api'
 import { TalkingHeadWarning } from '../../components/TalkingHeadWarning'
-import { planPicks } from '../../components/VideoPlanCard'
-import { buildVideoPlan } from '@twinai/shared'
+import { buildVideoPlan, planUseItems } from '@twinai/shared'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@twinai/shared'
 import { readProfileAnswers } from '../../lib/profileAnswersRead'
@@ -258,9 +257,19 @@ type AskItem = (ReadinessQuestion | ChipQuestion) & {
   /** Idea mode's two content questions (owner's menu redesign). Optional text,
    *  rendered with the decisions, never under "About what you sell". */
   idea?: boolean
+  /** Idea Mode's purpose: a caption with [Change], not a chip row (owner, 2026-09-28). */
+  purpose?: boolean
+  purposeGuessed?: boolean
 }
 // One read per build key: a reclaimed tab or a re-render must not re-ask the model.
 const IDEA_READS = new Map<string, Promise<IdeaRead>>()
+/** Whether she tapped a purpose herself on this build (kept across a reclaimed tab). */
+function rememberedPick(key: string): boolean {
+  try { return sessionStorage.getItem(`twin.purpose.${key}`) === '1' } catch { return false }
+}
+function rememberPick(key: string): void {
+  try { sessionStorage.setItem(`twin.purpose.${key}`, '1') } catch { /* fine */ }
+}
 function readIdeaOnce(key: string, paragraph: string): Promise<IdeaRead> {
   const hit = IDEA_READS.get(key)
   if (hit) return hit
@@ -778,6 +787,20 @@ export default function V2Building() {
   // point: the standing goal is shown, not asked, and the eight chips exist for
   // the exception rather than the rule.
   const [changingGoal, setChangingGoal] = useState(false)
+  const [changingPurpose, setChangingPurpose] = useState(false)
+  // ⚠️ ADDING A PRODUCT MUST NOT LOSE HER PLACE (owner, 2026-09-28). The link
+  // navigated away and the draft was gone. It opens the library in a NEW TAB;
+  // when she comes back to this tab the list re-reads, so the new product can
+  // be picked here with her paragraph, answers and choices intact.
+  const openAddProduct = () => {
+    window.open('/products?add=1', '_blank', 'noopener')
+    const reload = () => { window.removeEventListener('focus', reload); setProducts(null) }
+    window.addEventListener('focus', reload)
+  }
+  // The product this idea is about: null = untouched (auto-picked if her
+  // paragraph names one), '' = none, else a product id. Rides as a MENTION,
+  // so it can never be treated as the video's claimed subject.
+  const [ideaProduct, setIdeaProduct] = useState<string | null>(null)
   // ⚖️ THE OBJECTIVE'S QUESTION IS ITS OWN STEP. It used to render on the same
   // card as the objective chips, so the question changed under her finger as
   // she tapped. Now: choose the objective, then answer its question (with Back).
@@ -1311,18 +1334,27 @@ export default function V2Building() {
             const isIdea = !(state.reference_url || '').trim() && !isProductSubject && !state.idea_ready
             const ideaRead = isIdea ? await readIdeaOnce(key, state.reference_note || '') : null
             if (!alive) return
-            const ideaQuestions: AskItem[] = (ideaRead?.questions ?? [])
+            // ⚠️ OWNER, 2026-09-28: the purpose is decided SILENTLY and shown as a
+            // caption with [Change] — no row of chips, no per-chip questions. At
+            // most ONE question: the missing fact, or (paragraph too thin to
+            // tell) what the video is for.
+            const guess = ideaRead?.purpose ?? null
+            const ideaQuestions: AskItem[] = isIdea && !guess ? [] : (ideaRead?.questions ?? []).slice(0, 1)
               .map((q, i) => ({ field: `${FOLLOWUP_PREFIX}idea_q${i}`, question: q.question, idea: true } as AskItem))
               .filter((q) => !(answersRef.current[q.field] ?? '').trim())
-            ideaQuestionText.current = Object.fromEntries((ideaRead?.questions ?? []).map((q, i) => [`${FOLLOWUP_PREFIX}idea_q${i}`, q.question]))
+            ideaQuestionText.current = Object.fromEntries((ideaRead?.questions ?? []).slice(0, 1).map((q, i) => [`${FOLLOWUP_PREFIX}idea_q${i}`, q.question]))
             const purposeQuestion: AskItem[] = []
-            ideaPurposeLabel.current = ideaRead?.purpose?.label ?? null
-            if (ideaRead?.purpose && !(answersRef.current.video_goal ?? '').trim()) {
-              answer('video_goal', ideaRead.purpose.value)
+            ideaPurposeLabel.current = guess?.label ?? null
+            if (isIdea) {
+              // The paragraph outranks the standing onboarding goal for THIS video;
+              // an earlier pick she made on this card (a reclaimed tab) is kept.
+              if (guess && !rememberedPick(key)) answer('video_goal', guess.value)
               purposeQuestion.push({
                 field: 'video_goal',
-                question: `I read this as ${ideaRead.purpose.label}${ideaRead.purpose.signal ? ` ("${ideaRead.purpose.signal}")` : ''}. Right? Tap another if not.`,
+                question: guess ? 'Reading this as' : 'What is this video for?',
                 options: IDEA_PURPOSES.map((p) => ({ value: p.value, label: p.label })),
+                purpose: true,
+                purposeGuessed: !!guess,
               } as AskItem)
             }
             // ⚠️ COFFEE REPORT 3.3: the whole-business row had no question box at
@@ -1384,7 +1416,7 @@ export default function V2Building() {
               const items = await loadKnowledgeForPlan()
               if (!alive) return
               const facts = libraryFacts(libraryProducts, str(vBrief.offer))
-              const nothingToSay = items !== null && planPicks(items).length === 0
+              const nothingToSay = items !== null && planUseItems(items as never, state.reference_note || '').length === 0
                 && buildVideoPlan({ angle: null, knowledge: items, readyFacts: facts }).gaps.length === 0
               if (items && !nothingToSay) {
                 markPlanShown(key)
@@ -1667,7 +1699,7 @@ export default function V2Building() {
         const mentionedProductId = decided.kind === 'mention' ? decided.productId : ''
         // The idea card's product rides as a mention too — only when nothing
         // was chosen as the subject, so it can never compete with one.
-        const ideaMentionId = decided.kind !== 'chosen' && decided.kind !== 'auto' ? (state.idea_product_id ?? '') : ''
+        const ideaMentionId = decided.kind !== 'chosen' && decided.kind !== 'auto' ? (ideaProduct ?? state.idea_product_id ?? '') : ''
         for (const [k, v] of Object.entries(answersRef.current)) {
           if (k === PRODUCT_CHOICE_FIELD) continue
           // Follow-up answers ride her note (below), never the brief.
@@ -2075,7 +2107,7 @@ export default function V2Building() {
   // it never claims to "watch" something it can't read.
   const willRead = !!state.reference_url && isSupportedRef(state.reference_url)
   const stepLabel = (i: number, base: string) =>
-    i !== 0 ? base : willRead ? 'Watching your reference' : state.reference_url ? 'Using your reference as a guide' : 'Working from your idea'
+    i !== 0 ? base : willRead ? 'Watching your reference' : state.reference_url ? 'Using your reference as a guide' : 'Reading your idea (a short screen follows)'
   // A voice-not-ready failure has a specific fix (set up your brand voice), not just
   // "try a different reference".
   const isVoiceIssue = /voice/i.test(error ?? '')
@@ -2097,7 +2129,7 @@ export default function V2Building() {
   // questions, the build just runs — the library is never read, because a fetch
   // nobody's answer depends on is a fetch that can only slow a build down.
   useEffect(() => {
-    if (!askQuestions?.some((q) => q.field === 'offer') || products !== null) return
+    if (!askQuestions?.some((q) => q.field === 'offer' || q.purpose) || products !== null) return
     let alive = true
     loadProductEntities()
       .then((rows) => { if (alive) setProducts(rows) })
@@ -2106,6 +2138,31 @@ export default function V2Building() {
       .catch(() => { if (alive) setProducts([]) })
     return () => { alive = false }
   }, [askQuestions, products])
+
+  // ⚖️ A PRODUCT HER PARAGRAPH NAMES IS PRE-SELECTED, shown and removable —
+  // never attached silently ("my signature blend" → Signature Blend Beans).
+  useEffect(() => {
+    if (ideaProduct !== null || !products?.length || !askQuestions?.some((q) => q.purpose)) return
+    const para = (state.reference_note || '').toLowerCase()
+    const GENERIC = new Set(['beans', 'coffee', 'the', 'and', 'with', 'limited', 'release'])
+    const hit = products.find((p) => {
+      const name = String(p.name ?? '').toLowerCase().trim()
+      if (!name) return false
+      if (para.includes(name)) return true
+      const ws = name.split(/[^a-z0-9]+/).filter((w) => w.length > 3 && !GENERIC.has(w))
+      return ws.length >= 1 && ws.every((w) => para.includes(w))
+    })
+    if (hit) setIdeaProduct(hit.id)
+  }, [products, askQuestions, ideaProduct, state.reference_note])
+  // Legal/sensitive items, unconfirmed numbers and "first/only" claims start OFF.
+  const seededFor = useRef<object | null>(null)
+  useEffect(() => {
+    const src = askPlan ?? plan
+    if (!src || seededFor.current === src) return
+    seededFor.current = src
+    const off = planUseItems(src.knowledge as never, state.reference_note || '').filter((i) => i.defaultOff).map((i) => i.id)
+    if (off.length) setExcludedKnowledge((prev) => new Set([...prev, ...off]))
+  }, [askPlan, plan, state.reference_note])
 
   // ⚖️ WHICH POOLED QUESTIONS SHE HAS ANSWERED, loaded only on a product build
   // that is asking the claims question. A failed read is [] — pool order.
@@ -2293,7 +2350,37 @@ export default function V2Building() {
       </div>
     )
   }
-  const renderAsk = (q: AskItem) => (
+  const renderPurpose = (q: AskItem) => {
+    const value = askAnswers.video_goal ?? ''
+    const label = IDEA_PURPOSES.find((p) => p.value === value)?.label
+    const showChips = changingPurpose || !q.purposeGuessed || !label
+    return (
+      <div key="purpose" className="block" data-testid="idea-purpose">
+        {!showChips ? (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm text-cream"><span className="text-stone">Reading this as:</span> {label}</span>
+            <button type="button" onClick={() => setChangingPurpose(true)}
+              className="text-[12px] text-stone underline underline-offset-2 hover:text-cream">Change</button>
+          </div>
+        ) : (
+          <>
+            <span className="text-sm leading-relaxed text-cream">{q.purposeGuessed ? 'What is this video for?' : q.question}</span>
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {IDEA_PURPOSES.map((p) => (
+                <button key={p.value} type="button" aria-pressed={value === p.value}
+                  onClick={() => { answer('video_goal', p.value); rememberPick(buildKey(state)); setChangingPurpose(false) }}
+                  className={cn('rounded-full border px-3 py-1.5 text-[13px] transition-colors',
+                    value === p.value ? 'border-coral/50 bg-coral/[0.08] text-cream' : 'border-white/12 text-sand hover:border-white/25')}
+                >{p.label}</button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
+  const renderAsk = (q: AskItem) => q.purpose ? renderPurpose(q) : renderAskInner(q)
+  const renderAskInner = (q: AskItem) => (
             <div key={q.field} className="block">
               <span className="text-sm leading-relaxed text-cream">
                 {q.field === 'claims' ? (liveClaimsQuestion ?? q.question) : q.question}
@@ -2681,8 +2768,9 @@ export default function V2Building() {
         {plan ? (
           <VideoPlanCard
             input={plan}
-            purposeLabel={ideaPurposeLabel.current}
-            picks={planPicks(plan.knowledge as never)}
+            about={state.reference_note || ''}
+            needsProduct={asOneOf(VIDEO_GOALS, answersRef.current.video_goal) === 'sell'}
+            onAddProduct={openAddProduct}
             excluded={excludedKnowledge}
             onToggle={(id) => setExcludedKnowledge((prev) => {
               const next = new Set(prev)
@@ -2708,7 +2796,7 @@ export default function V2Building() {
           <div className="glass gradient-border p-7">
             <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft"><LogoMark size={22} /></span>
             <h2 className="mt-4 text-center font-display text-2xl">
-              {isProductSubject && askQuestions.some(isChip) ? 'What is this video for?' : 'A couple of quick things'}
+              {isProductSubject && askQuestions.some(isChip) ? 'What is this video for?' : 'Before I write this'}
             </h2>
             <p className="mt-2 text-center text-sm leading-relaxed text-stone">
               {askQuestions.some(isChip)
@@ -2825,11 +2913,31 @@ export default function V2Building() {
                 </div>
               )}
             </div>
+            {askQuestions.some((q) => q.purpose) && !liveCommercial && (
+              <div className="mt-5 flex items-center justify-between gap-2 border-t border-white/8 pt-4" data-testid="idea-product-row">
+                <span className="text-sm text-cream">
+                  <span className="text-stone">Product:</span>{' '}
+                  {(products ?? []).find((p) => p.id === ideaProduct)?.name ?? 'None'}
+                </span>
+                <span className="flex items-center gap-3">
+                  {(products?.length ?? 0) > 0 && (
+                    <select value={ideaProduct ?? ''} onChange={(e) => setIdeaProduct(e.target.value)}
+                      className="rounded-lg border border-white/12 bg-ink2 px-2 py-1 text-[12px] text-sand" aria-label="Product">
+                      <option value="">None</option>
+                      {(products ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  )}
+                  <button type="button" onClick={openAddProduct} className="text-[12px] text-stone underline underline-offset-2 hover:text-cream">+ Add one</button>
+                </span>
+              </div>
+            )}
             {askPlan && (
-              <div className="mt-6">
+              <div className="mt-4 border-t border-white/8 pt-4">
                 <VideoPlanCard
                   input={askPlan}
-                  picks={planPicks(askPlan.knowledge as never)}
+                  about={[state.reference_note || '', ...Object.values(askAnswers)].join(' ')}
+                  needsProduct={liveCommercial}
+                  onAddProduct={openAddProduct}
                   excluded={excludedKnowledge}
                   onToggle={(id) => setExcludedKnowledge((prev) => {
                     const next = new Set(prev)
@@ -2884,7 +2992,7 @@ export default function V2Building() {
               }}
               className="btn-gradient mt-6 w-full disabled:opacity-40"
             >
-              {splitObjectiveStep && askStep === 'choose' ? 'Next' : 'Create my version'}
+              {splitObjectiveStep && askStep === 'choose' ? 'Next' : 'Write it'}
             </button>
             {onAnswerStep && (
               <button type="button" onClick={() => setAskStep('choose')} className="btn-ghost mt-3 w-full">Back</button>

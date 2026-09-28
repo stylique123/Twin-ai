@@ -18,24 +18,22 @@
 // Deno copy is GENERATED (scripts/ci/generate_shared_pilot_core.mjs); no imports.
 
 export const IDEA_PURPOSES = [
-  { value: 'educate', label: 'teaching people something' },
-  { value: 'conversations', label: 'answering what people ask you' },
-  { value: 'authority', label: 'showing what you know from doing it' },
-  { value: 'personal_brand', label: 'your story, or why you do this' },
+  { value: 'personal_brand', label: 'your story' },
+  { value: 'educate', label: 'teaching something' },
+  { value: 'conversations', label: 'answering a question' },
+  { value: 'authority', label: 'showing how you do it' },
   { value: 'entertain', label: 'something fun to watch' },
-  { value: 'followers', label: 'reaching new people' },
-  { value: 'leads', label: 'getting people to try or ask about what you sell' },
-  { value: 'sell', label: 'selling something specific' },
+  { value: 'sell', label: 'promoting something you sell' },
 ] as const
 export type IdeaPurpose = (typeof IDEA_PURPOSES)[number]['value']
 
 export const IDEA_Q_SYSTEM = [
   'A creator typed a short paragraph about a video she wants to make. Decide what is MISSING for a script that uses only her words and facts, and why the video exists.',
-  'Return 0 to 3 questions. Return NONE when the paragraph already has a concrete moment, fact or answer to build on — say so in "enough".',
+  'Return AT MOST ONE question: the single missing fact the script would otherwise have to invent. Return none when the paragraph already has a concrete moment, fact or answer to build on — say so in "enough".',
   'Every question must point at her own words: put the exact phrase from her paragraph it is about in "quote" (copied character for character, 2-8 words).',
   'Ask for a MOMENT, a FACT or WHAT SHE DOES ("Think of one batch where you noticed it: what was different in the cup?"). Never ask for a feeling, a goal, an audience, a call to action or a hashtag.',
   'Never ask something the paragraph already answers. Never suggest an answer. Plain words, under 20 words, one question each.',
-  `purpose: pick the ONE reason the video exists from: ${'educate, conversations, authority, personal_brand, entertain, followers, leads, sell'}. Pick sell or leads ONLY if she says she wants people to buy, order, book or try something she sells. confidence 0-1. signal: the phrase that told you.`,
+  'purpose: pick the ONE reason the video exists from: personal_brand (her story), educate (teaching something), conversations (answering a question people ask), authority (showing how she does it), entertain (fun to watch), sell (promoting something she sells). Pick sell ONLY if she says she wants people to buy, order, book or try something she sells. confidence 0-1 (under 0.5 when the paragraph is too thin to tell). signal: the phrase that told you.',
 ].join('\n')
 
 export const IDEA_Q_SCHEMA = {
@@ -80,14 +78,14 @@ export function cleanIdeaRead(raw: unknown, paragraph: string): IdeaRead {
     if (GENERIC.test(question) || seen.has(norm(question))) continue
     seen.add(norm(question))
     questions.push({ quote: quote.slice(0, 80), question })
-    if (questions.length >= 3) break
+    if (questions.length >= 1) break
   }
   const p = IDEA_PURPOSES.find((x) => x.value === r.purpose)
   const confidence = typeof r.confidence === 'number' && Number.isFinite(r.confidence) ? Math.max(0, Math.min(1, r.confidence)) : 0
   const signal = typeof r.signal === 'string' && para.includes(norm(r.signal)) && norm(r.signal) !== '' ? r.signal.trim().slice(0, 80) : null
   // ⚖️ SELL AND LEADS NEED HER OWN WORDS BEHIND THEM: a guessed commercial
   // purpose would grant a pitch nobody asked for.
-  const commercial = p?.value === 'sell' || p?.value === 'leads'
+  const commercial = p?.value === 'sell'
   const purpose = p && confidence >= 0.5 && (!commercial || signal)
     ? { value: p.value, label: p.label, confidence, signal } : null
   return { questions: r.enough === true ? [] : questions, purpose }
