@@ -94,6 +94,6 @@ describe('a standing content goal may not answer the product objective', () => {
     // that is actually being asked.
     const at = BUILD.indexOf('const standingGoal = defaultVideoGoalFromContentGoals')
     const block = BUILD.slice(at, BUILD.indexOf('const goalIsDisplayed', at))
-    expect(block).toMatch(/answer\('video_goal', standingGoal\)/)
+    expect(block).toMatch(/answer\('video_goal', standingGoal(, true)?\)/)
   })
 })

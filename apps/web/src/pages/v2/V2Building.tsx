@@ -290,8 +290,18 @@ const IDEA_READS = new Map<string, Promise<IdeaRead>>()
 function rememberedPick(key: string): boolean {
   try { return sessionStorage.getItem(`twin.purpose.${key}`) === '1' } catch { return false }
 }
-function rememberPick(key: string): void {
-  try { sessionStorage.setItem(`twin.purpose.${key}`, '1') } catch { /* fine */ }
+function rememberPick(key: string, paragraph?: string, value?: string): void {
+  try {
+    sessionStorage.setItem(`twin.purpose.${key}`, '1')
+    // ⚠️ AUDIT 2026-09-29 #12: the pick was keyed to one click's build key, so
+    // the SAME idea sent again forgot it and the guess won. Also kept by the
+    // paragraph itself, so re-sending that idea keeps what she chose.
+    if (paragraph?.trim() && value) sessionStorage.setItem(`twin.purposeFor.${paragraph.trim().toLowerCase().slice(0, 300)}`, value)
+  } catch { /* fine */ }
+}
+/** What she picked the last time she sent this exact idea, if she did. */
+function pickedFor(paragraph: string): string | null {
+  try { return paragraph.trim() ? sessionStorage.getItem(`twin.purposeFor.${paragraph.trim().toLowerCase().slice(0, 300)}`) : null } catch { return null }
 }
 function readIdeaOnce(key: string, paragraph: string): Promise<IdeaRead> {
   const hit = IDEA_READS.get(key)
@@ -661,6 +671,8 @@ export default function V2Building() {
   // longer happening. Progress is a claim about what is being done; once the
   // request is gone the only honest claim is that we are checking.
   const [rescuing, setRescuing] = useState(false)
+  const rescuingRef = useRef(false)
+  rescuingRef.current = rescuing
   // The server's sentence when she has none left. Null while she has some.
   const [outOfRemixes, setOutOfRemixes] = useState<string | null>(null)
   // True while the reference is being scraped/transcribed (step 0 is held the whole
@@ -801,12 +813,14 @@ export default function V2Building() {
    *  persisting IS. */
   // The questions read from her paragraph, by field, so her answers reach the note with them.
   const ideaQuestionText = useRef<Record<string, string>>({})
-  const answer = (field: string, value: string): void => setAskAnswers((a) => {
+  // `auto`: Twin filled it (standing goal, the paragraph's guess), not her tap.
+  // Only her own change of objective drops the old objective's answers.
+  const answer = (field: string, value: string, auto = false): void => setAskAnswers((a) => {
     // ⚠️ ROUND 4, 3.9: "Say why I made it" arrived pre-filled with her "Explain
     // what it does" answer — answers are saved per build, and the objective is
     // an answer, so switching it kept the old objective's text. A changed
     // objective drops the answers that belonged to the old one.
-    const switched = field === 'video_goal' && (a.video_goal ?? '') !== '' && a.video_goal !== value
+    const switched = !auto && field === 'video_goal' && (a.video_goal ?? '') !== '' && a.video_goal !== value
     const kept = switched
       ? Object.fromEntries(Object.entries(a).filter(([k]) => INTENT_FIELDS.has(k) || k === PRODUCT_CHOICE_FIELD))
       : a
@@ -890,6 +904,10 @@ export default function V2Building() {
     if (plan || askQuestions || error) return
     const t1 = setTimeout(() => setSlow(true), 90_000)
     const t2 = setTimeout(() => {
+      // ⚠️ AUDIT 2026-09-29 #17: this clock and the rescue poll were independent,
+      // so "Twin stopped waiting" could appear while the rescue was still
+      // finding a finished script. While the rescue runs, it owns the outcome.
+      if (rescuingRef.current) return
       setError("This is taking far longer than it should, so Twin stopped waiting. " + BUILD_UNSURE + " You are only charged for a finished script.")
     }, 300_000)
     return () => { clearTimeout(t1); clearTimeout(t2) }
@@ -1243,12 +1261,12 @@ export default function V2Building() {
               && !isProductSubject
               && !(answersRef.current.video_goal ?? '').trim()
               && !(askAnswers.video_goal ?? '').trim()) {
-              answer('video_goal', state.goal)
+              answer('video_goal', state.goal, true)
             } else if (standingGoal
               && !isProductSubject
               && !(answersRef.current.video_goal ?? '').trim()
               && !(askAnswers.video_goal ?? '').trim()) {
-              answer('video_goal', standingGoal)
+              answer('video_goal', standingGoal, true)
             }
             // ⚠️ NOT READ BACK OUT OF `answersRef`, AND THAT WAS THE BUG WAITING
             // TO HAPPEN. `answer` writes React state; `answersRef` is only
@@ -1383,7 +1401,9 @@ export default function V2Building() {
             if (isIdea) {
               // The paragraph outranks the standing onboarding goal for THIS video;
               // an earlier pick she made on this card (a reclaimed tab) is kept.
-              if (guess && !rememberedPick(key)) answer('video_goal', guess.value)
+              const hers = pickedFor(state.reference_note || '')
+              if (hers && !rememberedPick(key)) answer('video_goal', hers, true)
+              else if (guess && !rememberedPick(key)) answer('video_goal', guess.value, true)
               purposeQuestion.push({
                 field: 'video_goal',
                 question: guess ? 'Reading this as' : 'What is this video for?',
@@ -2474,7 +2494,7 @@ export default function V2Building() {
             <div className="mt-2.5 flex flex-wrap gap-2">
               {IDEA_PURPOSES.map((p) => (
                 <button key={p.value} type="button" aria-pressed={value === p.value}
-                  onClick={() => { answer('video_goal', p.value); rememberPick(buildKey(state)); setChangingPurpose(false) }}
+                  onClick={() => { answer('video_goal', p.value); rememberPick(buildKey(state), state.reference_note || '', p.value); setChangingPurpose(false) }}
                   className={cn('rounded-full border px-3 py-1.5 text-[13px] transition-colors',
                     value === p.value ? 'border-coral/50 bg-coral/[0.08] text-cream' : 'border-white/12 text-sand hover:border-white/25')}
                 >{p.label}</button>

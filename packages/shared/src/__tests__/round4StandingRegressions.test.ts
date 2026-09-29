@@ -58,7 +58,7 @@ describe('2.6: structural claims are not proof', () => {
 
 describe('3.9: each objective keeps its own answers', () => {
   it('switching the objective drops the old objective\'s answers', () => {
-    expect(PAGE).toMatch(/const switched = field === 'video_goal'/)
+    expect(PAGE).toMatch(/const switched = !auto && field === 'video_goal'/)
   })
 })
 
