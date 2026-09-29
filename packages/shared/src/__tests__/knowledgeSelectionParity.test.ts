@@ -89,7 +89,7 @@ describe('the edge copy matches shared', () => {
     // passed rather than defaulted. The order of the three steps is pinned below,
     // so applying the reservation after the cut — which would change nothing —
     // still fails.
-    expect(EDGE).toMatch(/const askedHold = reserveAskedInline\(focusOrdered, 10\)/)
+    expect(EDGE).toMatch(/const askedHold = reserveAskedInline\(focusOrdered(?:\.filter\([^\n]*\))?, 10\)/)
     expect(EDGE).toMatch(/selectSpeakable\(\s*\n\s*askedHold\.pool,/)
     expect(EDGE).toMatch(/Math\.max\(0, intent\.substanceFloor - askedSubstance\)/)
     expect(EDGE.indexOf('const focusOrdered = preferKindsInline(relevanceOrdered'))

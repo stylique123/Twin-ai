@@ -131,8 +131,8 @@ export interface ObjectiveQuestion {
 export const OBJECTIVE_QUESTIONS: Readonly<Partial<Record<VideoGoal, ObjectiveQuestion>>> = Object.freeze({
   sell: Object.freeze({
     // "it" is an object. A coach has no it.
-    whenPerformed: 'What is new about how you work, or why now?',
-    question: 'What is new about it, or why now?',
+    whenPerformed: 'Is anything different about how you work right now (a new offer, price or format), or is it the same as before?',
+    question: 'Is anything different about this batch or restock (a new size, price, roast or origin), or is it back exactly as before?',
     because: 'Nothing in Product DNA can supply urgency. Without it a launch is '
       + 'an explainer with a CTA on the end.',
   }),

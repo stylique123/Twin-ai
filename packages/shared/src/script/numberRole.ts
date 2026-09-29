@@ -68,7 +68,11 @@ const MONEY_BEFORE = /[$£€]\s*$/
  *  not a promise of a list of two. Refusing to call it a count is the safe
  *  direction for this module. */
 const COMPARISON = /^\s*(?:(?:seemingly|nearly|almost|totally|completely)\s+)?(?:identical|different|same|similar|matching|opposite)\b/i
-const MONEY_AFTER = /^\s*(?:dollars?|pounds?|euros?|bucks?|k\b|\/\s*(?:mo|month|yr|year))/i
+const MONEY_AFTER = /^\s*(?:(?:hundred|thousand|million|billion|grand)[\s-]*)?(?:dollars?|pounds?|euros?|bucks?|k\b|\/\s*(?:mo|month|yr|year))/i
+/** ⚠️ ROUND 3, 2.4: "a ten thousand dollar machine" was read as a promised list
+ *  of ten. A number followed by a magnitude word is a quantity, never a count
+ *  anyone tracks; it is recorded as a comparison, which refuses the count. */
+const MAGNITUDE = /^\s*(?:hundred|thousand|million|billion|grand)\b/i
 
 function roleFor(before: string, after: string): NumberRole {
   // ⚠️ MONEY IS CHECKED ON BOTH SIDES. "$29" carries its marker in front and
@@ -78,7 +82,7 @@ function roleFor(before: string, after: string): NumberRole {
   if (PERCENT.test(after)) return 'percentage'
   if (DURATION.test(after)) return 'duration'
   if (MULTIPLE.test(after)) return 'multiple'
-  if (COMPARISON.test(after)) return 'comparison'
+  if (COMPARISON.test(after) || MAGNITUDE.test(after)) return 'comparison'
   return 'enumeration'
 }
 
