@@ -158,6 +158,26 @@ interface BuildState {
 // derive a key from the INPUT and park it in sessionStorage, which makes a
 // remount converge without making a deliberate rebuild impossible: sessionStorage
 // dies with the tab, and V2Create mints a fresh key on the next real click.
+/** ⚠️ ROUND 4, 3.7(c): A BUILD THAT "VANISHED" AT ~10% AND RETURNED HER TO THE
+ *  START. The build's input lived only in router state, which a page reload
+ *  (a phone discarding a background tab, a network hiccup) drops — and the
+ *  no-input guard below then sent her back to Create with no message, as if
+ *  nothing had been submitted. The input is now kept for this tab and restored,
+ *  so a reload resumes the same build (same key, so never a second charge). */
+const LAST_BUILD_SLOT = 'twinai.lastBuild'
+function durableBuildState(raw: unknown): BuildState {
+  const s = (raw || {}) as BuildState
+  try {
+    if (s.reference_url || s.reference_note) {
+      sessionStorage.setItem(LAST_BUILD_SLOT, JSON.stringify(s))
+      return s
+    }
+    const saved = sessionStorage.getItem(LAST_BUILD_SLOT)
+    if (saved) return JSON.parse(saved) as BuildState
+  } catch { /* storage off: behave as before */ }
+  return s
+}
+
 function buildKey(state: BuildState): string {
   if (state.idempotency_key) return state.idempotency_key
   const sig = JSON.stringify([
@@ -620,7 +640,7 @@ export default function V2Building() {
     })()
     return () => { alive = false }
   }, [profile?.id])
-  const state = (loc.state || {}) as BuildState
+  const state = durableBuildState(loc.state)
   // ⚠️ THE DOOR SHE CHOSE, OR A PRODUCT SHE TAPPED — BOTH ARE STATED FACTS,
   // NEITHER IS INFERRED. `readEntryDoor` will not return 'product' from text, so
   // an absent door means "she did not say" and the generic sheets are the honest
@@ -720,7 +740,7 @@ export default function V2Building() {
   // She said she has no concrete detail for the objective's question.
   const [noDetail, setNoDetail] = useState(false)
   const [askQuestions, setAskQuestions] = useState<AskItem[] | null>(
-    () => recallAsk(buildKey((loc.state || {}) as BuildState)))
+    () => recallAsk(buildKey(durableBuildState(loc.state))))
   // ⚖️ WHAT KIND OF VIDEO FIRST, THEN WHICH ONE. Reported 2026-09-22: one long
   // list of brands, products and promoted items was confusing. Three plain
   // choices come first; the list underneath only shows items of that kind.
@@ -738,7 +758,7 @@ export default function V2Building() {
     return { kinds, active }
   }
   const [askAnswers, setAskAnswers] = useState<Record<string, string>>(
-    () => recallAnswers(buildKey((loc.state || {}) as BuildState)))
+    () => recallAnswers(buildKey(durableBuildState(loc.state))))
   // Answers survive the retry so a second refusal never re-asks what was typed.
   // ⚖️ SEEDED FROM THE SAME SLOT. The ref is what the build actually sends, so
   // restoring only the visible form would show the creator their answers and
@@ -751,10 +771,10 @@ export default function V2Building() {
     // ⚖️ THE REMEMBERED ANSWER WINS. A creator who arrived from a product card
     // and then changed their mind in the picker must not have the card's
     // choice reinstated by a remount.
-    ...((loc.state as BuildState | null)?.selected_product_id
-      ? { [PRODUCT_CHOICE_FIELD]: String((loc.state as BuildState).selected_product_id) }
+    ...(durableBuildState(loc.state).selected_product_id
+      ? { [PRODUCT_CHOICE_FIELD]: String(durableBuildState(loc.state).selected_product_id) }
       : {}),
-    ...recallAnswers(buildKey((loc.state || {}) as BuildState)),
+    ...recallAnswers(buildKey(durableBuildState(loc.state))),
   })
   /** The name of the product this build was about, when we know it.
    *
@@ -782,7 +802,16 @@ export default function V2Building() {
   // The questions read from her paragraph, by field, so her answers reach the note with them.
   const ideaQuestionText = useRef<Record<string, string>>({})
   const answer = (field: string, value: string): void => setAskAnswers((a) => {
-    const next = { ...a, [field]: value }
+    // ⚠️ ROUND 4, 3.9: "Say why I made it" arrived pre-filled with her "Explain
+    // what it does" answer — answers are saved per build, and the objective is
+    // an answer, so switching it kept the old objective's text. A changed
+    // objective drops the answers that belonged to the old one.
+    const switched = field === 'video_goal' && (a.video_goal ?? '') !== '' && a.video_goal !== value
+    const kept = switched
+      ? Object.fromEntries(Object.entries(a).filter(([k]) => INTENT_FIELDS.has(k) || k === PRODUCT_CHOICE_FIELD))
+      : a
+    if (switched) for (const k of Object.keys(a)) if (!(k in kept)) delete answersRef.current[k]
+    const next = { ...kept, [field]: value }
     rememberAnswers(buildKey(state), next)
     return next
   })
@@ -2195,8 +2224,24 @@ export default function V2Building() {
   // ⚠️ ROUND 3, 2.9: a product she had picked was later reported as "No product
   // attached" — the gap line read the load-time library, not her pick. Any pick
   // (the question card, the build state, or the idea product line) counts.
-  const productPicked = [answersRef.current[PRODUCT_CHOICE_FIELD], state.selected_product_id, ideaProduct]
-    .some((v) => typeof v === 'string' && v.trim() !== '' && v !== NO_PRODUCT_CHOICE)
+  const pickedSubjectId = [answersRef.current[PRODUCT_CHOICE_FIELD], state.selected_product_id, ideaProduct]
+    .find((v): v is string => typeof v === 'string' && v.trim() !== '' && v !== NO_PRODUCT_CHOICE) ?? null
+  const productPicked = pickedSubjectId !== null
+  // ⚠️ ROUND 4, 3.1: TWO PRODUCT QUESTIONS LOOKED LIKE ONE THAT KEPT CHANGING —
+  // "which is this video about" (business / product / none) and the "what you
+  // sell" list with its readiness notes. The subject she picked is now named at
+  // the top of the screen, and once picked the second question is not asked:
+  // her pick is its answer.
+  const pickedSubjectName = pickedSubjectId === null ? null
+    : pickedSubjectId.startsWith(BRAND_CHOICE_PREFIX)
+      ? `${ideaBrands.find((b) => `${BRAND_CHOICE_PREFIX}${b.id}` === pickedSubjectId)?.name ?? 'Your business'} (the whole business)`
+      : (products ?? []).find((p) => p.id === pickedSubjectId)?.name ?? null
+  useEffect(() => {
+    if (!pickedSubjectName || !askQuestions?.some((q) => q.field === 'offer')) return
+    if ((askAnswers.offer ?? '').trim()) return
+    answer('offer', pickedSubjectName.replace(/ \(the whole business\)$/, ''))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickedSubjectName, askQuestions])
   const usedKnowledgeIds = useMemo(() => {
     const src = askPlan ?? plan
     if (!src) return null
@@ -2324,7 +2369,7 @@ export default function V2Building() {
   const ideaAsk = onAnswerStep ? [] : visibleAsk.filter((q) => q.idea)
   const commercial = onAnswerStep
     ? visibleAsk.filter((q) => q.field === 'claims')
-    : visibleAsk.filter((q) => !isChip(q) && !q.idea && !(objectiveInline && q.field === 'claims'))
+    : visibleAsk.filter((q) => !isChip(q) && !q.idea && !(objectiveInline && q.field === 'claims') && !(pickedSubjectName && q.field === 'offer'))
   const hasTwoBlocks = decisions.length > 0 && commercial.length > 0
   // ⚖️ MENU REDESIGN PART 4: the objective's answer must be concrete, or she
   // says plainly she has none — never a vague line the writer would pad out.
@@ -2838,6 +2883,11 @@ export default function V2Building() {
             <h2 className="mt-4 text-center font-display text-2xl">
               {isProductSubject && askQuestions.some(isChip) ? 'What is this video for?' : 'Before I write this'}
             </h2>
+            {(isProductSubject || pickedSubjectName) && (
+              <p className="mt-1 text-center text-xs text-stone" data-testid="subject-line">
+                About: <span className="text-cream">{pickedSubjectName ?? 'no product or business'}</span>
+              </p>
+            )}
             <p className="mt-2 text-center text-sm leading-relaxed text-stone">
               {askQuestions.some(isChip)
                 // ⚖️ THE CARD IS NO LONGER ONLY A REFUSAL. Three of these are
@@ -3277,11 +3327,13 @@ export default function V2Building() {
                 screen, rather than being announced at 94% on a build the
                 creator has already paid for. */}
             <p className="mt-6 rounded-card border border-white/8 bg-white/[0.02] px-4 py-3 text-center text-xs leading-relaxed text-stone">
+              {/* ROUND 4, 3.8: the wait is about WRITING, never the video's length,
+                  and past 90 seconds she gets the honest state and a place to look. */}
               {slow
-                ? 'Taking longer than usual. Please keep this page open.'
-                : 'Usually 30–60 seconds. Please keep this page open.'}
+                ? <>Writing is taking longer than usual (over 90 seconds). Keep this page open; if it has not finished in a few minutes, check your <a href="/history" className="underline underline-offset-2 hover:text-cream">Library</a> before trying again.</>
+                : 'Writing your script usually takes 30–60 seconds. Please keep this page open.'}
             </p>
-            <button onClick={() => { cancelled.current = true; nav('/v2', { replace: true }) }} className="mt-3 block w-full text-center text-sm text-stone transition-colors hover:text-cream">
+            <button onClick={() => { cancelled.current = true; try { sessionStorage.removeItem(LAST_BUILD_SLOT) } catch { /* fine */ } nav('/v2', { replace: true }) }} className="mt-3 block w-full text-center text-sm text-stone transition-colors hover:text-cream">
               Cancel
             </button>
           </div>

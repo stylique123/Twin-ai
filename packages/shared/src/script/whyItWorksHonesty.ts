@@ -86,7 +86,7 @@ export interface TestOutcome {
   flagged: string | null
 }
 
-const STRUCTURAL = /\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve) words?\b|\bopening line is\b/i
+const STRUCTURAL = /\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve) words?\b|\bopening line is\b|\bsecond hook\b|\bre-?hook\b|\bpartway through\b|\bhalfway\b/i
 
 export function whyItWorksFromTest(claims: readonly string[], test: TestOutcome | null): string[] {
   if (!test || test.n <= 0) return [...claims]
