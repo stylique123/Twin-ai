@@ -193,7 +193,11 @@ jobs:
           fi
           # Named explicitly. A bare `supabase functions deploy` deploys every
           # directory, which is how ci-bootstrap reached production.
-          supabase functions deploy $PROD_FUNCTIONS --project-ref jmdecibuytznsonrasxw
+          # ⚠️ --use-api bundles on Supabase's side. Without it the CLI pulls the
+          # edge-runtime Docker image from a public registry, and a rate-limited
+          # pull ("toomanyrequests") failed the #1041 deploy twice before any
+          # function was touched (2026-09-29).
+          supabase functions deploy $PROD_FUNCTIONS --project-ref jmdecibuytznsonrasxw --use-api
 
       # ⚠️⚠️ THE DEPLOY TOOL REPORTING SUCCESS IS NOT EVIDENCE THE FUNCTION WORKS.
       #
