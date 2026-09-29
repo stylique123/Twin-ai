@@ -139,7 +139,7 @@ describe('the reservation is wired, not merely written', () => {
   const code = EDGE.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')
 
   it('the selection calls it and prepends what it held', () => {
-    expect(code).toMatch(/const askedHold = reserveAskedInline\(focusOrdered, 10\)/)
+    expect(code).toMatch(/const askedHold = reserveAskedInline\(focusOrdered(?:\.filter\([^\n]*\))?, 10\)/)
     expect(code).toMatch(/\.\.\.askedHold\.reserved,/)
     expect(code).toMatch(/selectSpeakable\(\s*\n?\s*askedHold\.pool,/)
   })

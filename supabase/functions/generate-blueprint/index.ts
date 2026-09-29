@@ -5715,6 +5715,8 @@ SCRIPT & HOOK INTEGRATION:
   * NEVER WRITE A PROGRESS CHECK. "Still with me?", "You are halfway there", "Ready for the last two?", "If you are still watching" — these ask the viewer to notice how long they have been watching, which is the opposite of retention, and they consume a beat to say nothing. Real creators do not say them.
 - Front-load the payoff promise, keep delivering, and place ONE clear CTA near the end that fits the goal: prefer a save ("save this so you can do it later") or a comment-bait question over a generic "follow for more".
 
+- NO BORROWED IDENTITY (round 3, 2.3). Speak in first person ONLY about work she has told Twin she does herself: her own answers, her products, her confirmed business. A subject she makes videos ABOUT is not something she runs: if she gives advice about coffee carts, she speaks as someone who advises ("most new cart owners…"), never as an operator ("when I'm pulling shots on my cart"). Never give her a role, job, side business, location or setup she has not confirmed, and never let a shot-list heading imply one.
+- ADVICE STAYS AT HER LEVEL (round 3, 2.5). In advice content, never add equipment specs, tank sizes, setup times, regulations, permit rules, dimensions, vehicles or step counts she did not give. If her advice is general, the script is general.
 - NO INVENTED COLOUR (round 2, Part 6). Never add a timeframe, count, age, distance or sensory description she did not give ("for twenty years", "burnt, overly acidic stuff"). Use her own words for how something tasted, looked or felt; if she gave none, say it plainly without adjectives.
 
 SHOT LIST & ASSET SPECIFICATION:
@@ -6130,7 +6132,7 @@ async function callModel(apiKey: string, system: string, prompt: string, schema:
 // What each product objective must contain, and how it closes. A required beat
 // with no fact on file is DROPPED, never filled from an unrelated stored story.
 const OBJECTIVE_CONTRACT_INLINE: Record<string, string> = {
-  sell: 'OBJECTIVE CONTRACT — LAUNCH / ANNOUNCE: the video must say what is new or why now, whether it is available and how much or how long (only if stated), and where to get it. Close on where to get it. A business with nothing new to announce gets no invented origin story.',
+  sell: 'OBJECTIVE CONTRACT — LAUNCH / ANNOUNCE: the video must say what is new or why now, whether it is available and how much or how long (only if stated), and where to get it. Close on where to get it, naming the confirmed sizes, prices or formats from her product facts when they exist ("12oz or 5lb, whole bean or ground, link in bio"), never a bare "link in bio" when those are on file. A business with nothing new to announce gets no invented origin story.',
   educate: 'OBJECTIVE CONTRACT — EXPLAIN WHAT IT ACTUALLY DOES: the video must say what it is, what you get (sizes, price, what is included, from the facts on file) and how it is made or works. No storytime replaces the explanation. Close on how to get it or try it.',
   leads: 'OBJECTIVE CONTRACT — GET PEOPLE TO TRY IT: the video must name the smallest way to try it and invite the viewer to take that step. No unrelated stored story (a move, a hardship) carries this video. Close on that first step.',
   conversations: 'OBJECTIVE CONTRACT — ANSWER WHAT PEOPLE KEEP ASKING: state the real question, then her answer, plainly, before the close. Never tease it and never replace it with a plan or a poll.',
@@ -7541,7 +7543,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // request's goal only when this build has a product subject; a generic goal
   // that happens to spell `educate` must not select a product question.
   const READY_OBJECTIVE_QUESTIONS: Record<string, string> = {
-    sell: 'What is new about it, or why now?',
+    sell: 'Is anything different about this batch or restock (a new size, price, roast or origin), or is it back exactly as before?',
     educate: 'What does someone notice first when they use it, and how is it made?',
     leads: 'What is the smallest first step someone can take?',
     conversations: 'What is the question you keep getting, and what do you tell them?',
@@ -8666,10 +8668,19 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         .filter((w) => w.length > 3))
     // ⚠️ A STORY IS NEVER ATTACHED TO A PRODUCT IT IS NOT ABOUT, AND A STORY
     // TOLD IN TWO OF HER LAST FIVE SCRIPTS RESTS. See `storyRotation.ts`.
+    // Her own idea, no reference video: the case where stored numbers leaked (round 3, 2.1).
+    const ideaOnly = !reference_url && reference_note.trim() !== ''
     const storyGate = gateStories(
       // ⚖️ WHAT SHE LEFT OUT ON THE PLAN SCREEN IS NEVER SUPPLIED (owner, 2026-09-28).
       kRows.filter((k) => k.basis !== 'inferred' && k.kind !== 'covered'
-        && !(Array.isArray(body.exclude_knowledge_ids) && body.exclude_knowledge_ids.includes(String((k as { id?: unknown }).id ?? '')))),
+        && !(Array.isArray(body.exclude_knowledge_ids) && body.exclude_knowledge_ids.includes(String((k as { id?: unknown }).id ?? '')))
+        // ⚠️ ROUND 3, 2.1: a full, real origin answer still came back with "cup scores
+        // above 80" from a caption. From her own idea, a number she never typed or
+        // confirmed is not supplied unless she left it switched on in the plan.
+        && !(ideaOnly && /\d/.test(String(k.text ?? ''))
+          && !['asked', 'reply', 'typed', 'onboarding', 'manual'].includes(String((k as { source?: unknown }).source ?? ''))
+          && !(k as { creator_confirmed_at?: unknown }).creator_confirmed_at
+          && !(Array.isArray(body.use_knowledge_ids) && body.use_knowledge_ids.includes(String((k as { id?: unknown }).id ?? ''))))),
       {
         productText: ownedEntity
           ? [entityAbout?.name ?? '', entityAbout?.offer ?? '', entityAbout?.creator_summary ?? '']
@@ -8773,7 +8784,13 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // lexical overlap with the video's topic, which is the one axis it is worst
     // at. `reserveAskedInline` holds up to four of the ten; the rest of her
     // answers stay in the pool rather than being removed from the running.
-    const askedHold = reserveAskedInline(focusOrdered, 10)
+    // ⚠️ ROUND 3, 2.1: an answer she typed for a DIFFERENT idea ("running a roastery
+    // is messy") was reserved a slot and bled into this one. A reserved answer must
+    // share at least two of this idea's own words; the rest compete on relevance.
+    const onTopic = (k: { text?: unknown }) => String(k.text ?? '').toLowerCase().split(/[^a-z0-9]+/)
+      .filter((w, i, a) => w.length > 3 && aboutTerms.has(w) && a.indexOf(w) === i).length >= 2
+    const askedHold = reserveAskedInline(focusOrdered.filter((k) => !wasAskedInline(k) || onTopic(k)), 10)
+    askedHold.pool.push(...focusOrdered.filter((k) => wasAskedInline(k) && !onTopic(k)))
     // ⚖️ THE FLOOR COMES DOWN BY WHAT THE RESERVATION ALREADY SATISFIES. A
     // reserved answer that IS substance already counts toward the guarantee;
     // leaving the floor untouched would reserve substance twice and starve the
@@ -8872,7 +8889,13 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
             k as { kind?: unknown; source?: unknown; text?: unknown; creator_confirmed_at?: unknown },
             confirmedProductNames,
           ) ? UNCONFIRMED_PRODUCT_MARK : ''
-          const mark = (vouched ? ' [she confirmed this herself]' : '') + misconception + inferredProduct
+          // ⚠️ ROUND 3, 2.3: "operating a coffee cart business" read from her captions
+          // became a first-person operator script. A topic the scan inferred is
+          // what she TALKS ABOUT; only her own answers or confirmation make it hers.
+          const src = String((k as { source?: unknown }).source ?? '')
+          const subjectOnly = k.kind === 'topic' && !vouched && !['asked', 'reply', 'typed', 'onboarding', 'manual'].includes(src)
+            ? ' [a subject she makes videos about — never say she personally runs or does it]' : ''
+          const mark = (vouched ? ' [she confirmed this herself]' : '') + misconception + inferredProduct + subjectOnly
           return `  * (${k.kind}) ${tag}${k.text}${mark}${ev ? `\n      HER WORDS: "${ev}"` : ''}`
         }).join('\n'))
     }

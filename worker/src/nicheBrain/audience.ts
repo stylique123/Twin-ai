@@ -6,6 +6,7 @@
 // is improved only when a rewrite tests better on the same viewers.
 
 import { db } from '../db.js'
+import { syncShotListSpokenText } from '../generated/shotListSync.js'
 import { geminiJson, geminiEmbed } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
 import { noteKey } from './librarian.js'
@@ -164,13 +165,13 @@ export async function runAudienceTests(log: Log): Promise<void> {
           const at = s.at?.[c.line]
           if (at === undefined || !script[at]) continue
           script[at] = { ...script[at], line: c.after }
-          if (shots) {
-            const k = shots.findIndex((x) => typeof x?.spoken_text === 'string' && x.spoken_text.trim() === c.before)
-            if (k >= 0) shots[k] = { ...shots[k], spoken_text: c.after }
-          }
         }
         next.script = script
-        if (shots) next.shot_list = shots
+        // ⚠️ ROUND 3, 2.2: the old exact-text patch missed any shot whose line had
+        // drifted, so the two documents could say the same wrong thing two ways.
+        // The shot list is re-derived from the script, position by position —
+        // the same rule the writer applies (shotListSync).
+        if (shots) next.shot_list = syncShotListSpokenText(shots, script).shots
       }
       await db.from('generations').update({ blueprint: next }).eq('id', g.id)
     }

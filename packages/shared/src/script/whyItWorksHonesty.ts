@@ -69,3 +69,34 @@ export function honestWhyItWorks(
 const HOOK_NUMBER = /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\b/i
 const QUESTION_CLAIM = /^you open on a question/i
 const LENGTH_CLAIM = /^your opening line is \d+ words/i
+
+// ── ROUND 3, 2.7: FROM THE REAL TEST, NOT A TEMPLATE ─────────────────────────
+// "It lands before anyone decides to scroll past" was shown on a script whose
+// best hook stopped 4 of 10 viewers, and "your opening line is 10 words" was
+// offered as proof of quality. When the viewers have scored the script, the
+// panel leads with what they did; when the score is low it says so and shows
+// what they flagged, instead of reciting structure as praise.
+export const STRONG_HOOK_SCORE = 6
+
+export interface TestOutcome {
+  /** The best hook's stops out of `n`. */
+  best: number
+  n: number
+  /** What the viewers flagged most, in their words, if anything. */
+  flagged: string | null
+}
+
+const STRUCTURAL = /\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve) words?\b|\bopening line is\b/i
+
+export function whyItWorksFromTest(claims: readonly string[], test: TestOutcome | null): string[] {
+  if (!test || test.n <= 0) return [...claims]
+  const score = Math.round((test.best / test.n) * 10)
+  const head = `Tested on ${test.n} viewers: the best hook stopped ${test.best} of ${test.n}.`
+  if (score < STRONG_HOOK_SCORE) {
+    return [
+      `${head} That is not strong yet, so the claims below would be guesses.`,
+      ...(test.flagged ? [`What they flagged most: ${test.flagged}`] : []),
+    ]
+  }
+  return [head, ...claims.filter((c) => !STRUCTURAL.test(c))]
+}

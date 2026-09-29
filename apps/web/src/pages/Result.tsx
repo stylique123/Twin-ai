@@ -30,7 +30,7 @@ import { CreativeTransfer } from '../components/CreativeTransfer'
 import { isWhollyPlaceholder } from '../lib/api'
 import { UnfilledContainers } from '../components/UnfilledContainers'
 import { CountPromise } from '../components/CountPromise'
-import { blueprintCountIssues, honestWhyItWorks } from '../lib/api'
+import { blueprintCountIssues, honestWhyItWorks, whyItWorksFromTest, type TestOutcome } from '../lib/api'
 import { DeclaredClips } from '../components/DeclaredClips'
 import { CoverButton } from '../components/CoverDialog'
 import { SchedulePostDialog } from '../components/SchedulePostDialog'
@@ -912,6 +912,14 @@ export default function Result() {
   const testedHooks = audience.test?.status === 'done' ? audience.test.hooks.map((h) => h.hook) : []
   const hookList = [...b.hook_options, ...testedHooks.filter((h) => !b.hook_options.includes(h))]
   const verdict = hookVerdicts(hookList, audience.test)
+  // ⚠️ ROUND 3, 2.7: "Why it works" leads with what her test viewers actually did.
+  const tested: TestOutcome | null = verdict && audience.test
+    ? {
+        best: Math.max(0, ...audience.test.hooks.map((h) => h.stopped)),
+        n: verdict.n,
+        flagged: [...audience.test.fixes].sort((x, y) => y.count - x.count)[0]?.fix ?? audience.test.summary ?? null,
+      }
+    : null
   if (verdict) hookList.sort((x, y) => (verdict.stopped.get(y) ?? -1) - (verdict.stopped.get(x) ?? -1))
   // Before the viewers have scored them, still never more than four to choose from.
   if (!verdict && hookList.length > HOOKS_SHOWN) hookList.length = HOOKS_SHOWN
@@ -1660,7 +1668,7 @@ export default function Result() {
                       <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Why it works</h3>
                     </div>
                     <ul className="space-y-3">
-                      {honestWhyItWorks(b.reference_read.why_it_works, countPromiseBroken, chosenHook).map((w, i) => (
+                      {whyItWorksFromTest(honestWhyItWorks(b.reference_read.why_it_works, countPromiseBroken, chosenHook), tested).map((w, i) => (
                         <li key={i} className="flex gap-2.5 text-xs text-sand leading-relaxed">
                           <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal" /> {w}
                         </li>
@@ -1998,7 +2006,7 @@ export default function Result() {
                   <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Why it works</h3>
                 </div>
                 <ul className="space-y-2.5">
-                  {honestWhyItWorks(b.reference_read.why_it_works, countPromiseBroken, chosenHook).map((w, i) => (
+                  {whyItWorksFromTest(honestWhyItWorks(b.reference_read.why_it_works, countPromiseBroken, chosenHook), tested).map((w, i) => (
                     <li key={i} className="flex gap-2 text-xs text-sand leading-relaxed">
                       <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-teal" /> {w}
                     </li>

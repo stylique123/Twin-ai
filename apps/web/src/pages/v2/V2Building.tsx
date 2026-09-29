@@ -2192,6 +2192,11 @@ export default function V2Building() {
   }, [askPlan, plan, state.reference_note])
   // The exact list the plan card shows as "in". Null when no card was shown,
   // so the server keeps choosing for itself.
+  // ⚠️ ROUND 3, 2.9: a product she had picked was later reported as "No product
+  // attached" — the gap line read the load-time library, not her pick. Any pick
+  // (the question card, the build state, or the idea product line) counts.
+  const productPicked = [answersRef.current[PRODUCT_CHOICE_FIELD], state.selected_product_id, ideaProduct]
+    .some((v) => typeof v === 'string' && v.trim() !== '' && v !== NO_PRODUCT_CHOICE)
   const usedKnowledgeIds = useMemo(() => {
     const src = askPlan ?? plan
     if (!src) return null
@@ -2804,7 +2809,7 @@ export default function V2Building() {
           <VideoPlanCard
             input={plan}
             about={state.reference_note || ''}
-            needsProduct={asOneOf(VIDEO_GOALS, answersRef.current.video_goal) === 'sell'}
+            needsProduct={asOneOf(VIDEO_GOALS, answersRef.current.video_goal) === 'sell' && !productPicked}
             onAddProduct={openAddProduct}
             excluded={excludedKnowledge}
             onToggle={(id) => setExcludedKnowledge((prev) => {
@@ -2990,7 +2995,7 @@ export default function V2Building() {
                 <VideoPlanCard
                   input={askPlan}
                   about={state.reference_note || ''}
-                  needsProduct={liveCommercial}
+                  needsProduct={liveCommercial && !productPicked}
                   onAddProduct={openAddProduct}
                   excluded={excludedKnowledge}
                   onToggle={(id) => setExcludedKnowledge((prev) => {

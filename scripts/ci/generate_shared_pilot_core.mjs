@@ -149,6 +149,9 @@ const SOURCES = [
   ['packages/shared/src/corpus/captionShape.ts', 'worker/src/generated/captionShape.ts'],
   // What Twin has learned from her: one rule set for the worker (learner) and the edge (writer).
   ['packages/shared/src/script/creatorLessons.ts', 'worker/src/generated/creatorLessons.ts'],
+  // The shot list is re-derived from the script after the viewers' line rewrite too (round 3, 2.2).
+  ['packages/shared/src/script/silentBeat.ts', 'worker/src/generated/silentBeat.ts'],
+  ['packages/shared/src/script/shotListSync.ts', 'worker/src/generated/shotListSync.ts'],
   ['packages/shared/src/script/creatorLessons.ts', 'supabase/functions/_shared/creatorLessons.ts'],
   ['packages/shared/src/postQuestions.ts', 'worker/src/generated/postQuestions.ts'],
 ]
