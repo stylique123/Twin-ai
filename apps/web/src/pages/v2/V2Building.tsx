@@ -1799,7 +1799,7 @@ export default function V2Building() {
           // made instead of charging for it twice (0119).
           idempotency_key: key,
           ...(excludedKnowledge.size > 0 ? { exclude_knowledge_ids: [...excludedKnowledge] } : {}),
-          ...(usedKnowledgeIds ? { use_knowledge_ids: usedKnowledgeIds } : {}),
+          ...((ids) => (ids ? { use_knowledge_ids: ids } : {}))(usedKnowledgeIds ?? idsAtWrite.current),
           ...(transcript_id ? { transcript_id } : {}),
           // ⚖️ ONLY WHEN THEY ANSWERED. An absent field means "not asked or not
           // answered" and leaves the server's stopgap exactly as it was;
@@ -2249,6 +2249,10 @@ export default function V2Building() {
     answer('offer', pickedSubjectName.replace(/ \(the whole business\)$/, ''))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickedSubjectName, askQuestions])
+  // ⚠️ AUDIT 2026-09-29 #2: "Write it" clears the plan in the same batch that
+  // starts the build, so the list she saw was null when the request read it and
+  // the server chose for itself. The list is captured at the tap.
+  const idsAtWrite = useRef<string[] | null>(null)
   const usedKnowledgeIds = useMemo(() => {
     const src = askPlan ?? plan
     if (!src) return null
@@ -2876,6 +2880,7 @@ export default function V2Building() {
               // it — so "Write it" re-ran an effect that did nothing, and the
               // script request was never sent. Reset it here too.
               started.current = false
+              idsAtWrite.current = usedKnowledgeIds
               setPlan(null)
               setRetryNonce((n) => n + 1)
             }}

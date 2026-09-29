@@ -155,6 +155,8 @@ const SOURCES = [
   // The shot list is re-derived from the script after the viewers' line rewrite too (round 3, 2.2).
   ['packages/shared/src/script/silentBeat.ts', 'worker/src/generated/silentBeat.ts'],
   ['packages/shared/src/script/shotListSync.ts', 'worker/src/generated/shotListSync.ts'],
+  ['packages/shared/src/script/storyRotation.ts', 'worker/src/generated/storyRotation.ts'],
+  ['packages/shared/src/script/privacyGuard.ts', 'worker/src/generated/privacyGuard.ts'],
   ['packages/shared/src/script/creatorLessons.ts', 'supabase/functions/_shared/creatorLessons.ts'],
   ['packages/shared/src/postQuestions.ts', 'worker/src/generated/postQuestions.ts'],
 ]
