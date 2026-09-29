@@ -782,7 +782,16 @@ export default function V2Building() {
   // The questions read from her paragraph, by field, so her answers reach the note with them.
   const ideaQuestionText = useRef<Record<string, string>>({})
   const answer = (field: string, value: string): void => setAskAnswers((a) => {
-    const next = { ...a, [field]: value }
+    // ⚠️ ROUND 4, 3.9: "Say why I made it" arrived pre-filled with her "Explain
+    // what it does" answer — answers are saved per build, and the objective is
+    // an answer, so switching it kept the old objective's text. A changed
+    // objective drops the answers that belonged to the old one.
+    const switched = field === 'video_goal' && (a.video_goal ?? '') !== '' && a.video_goal !== value
+    const kept = switched
+      ? Object.fromEntries(Object.entries(a).filter(([k]) => INTENT_FIELDS.has(k) || k === PRODUCT_CHOICE_FIELD))
+      : a
+    if (switched) for (const k of Object.keys(a)) if (!(k in kept)) delete answersRef.current[k]
+    const next = { ...kept, [field]: value }
     rememberAnswers(buildKey(state), next)
     return next
   })
@@ -3277,9 +3286,11 @@ export default function V2Building() {
                 screen, rather than being announced at 94% on a build the
                 creator has already paid for. */}
             <p className="mt-6 rounded-card border border-white/8 bg-white/[0.02] px-4 py-3 text-center text-xs leading-relaxed text-stone">
+              {/* ROUND 4, 3.8: the wait is about WRITING, never the video's length,
+                  and past 90 seconds she gets the honest state and a place to look. */}
               {slow
-                ? 'Taking longer than usual. Please keep this page open.'
-                : 'Usually 30–60 seconds. Please keep this page open.'}
+                ? <>Writing is taking longer than usual (over 90 seconds). Keep this page open; if it has not finished in a few minutes, check your <a href="/history" className="underline underline-offset-2 hover:text-cream">Library</a> before trying again.</>
+                : 'Writing your script usually takes 30–60 seconds. Please keep this page open.'}
             </p>
             <button onClick={() => { cancelled.current = true; nav('/v2', { replace: true }) }} className="mt-3 block w-full text-center text-sm text-stone transition-colors hover:text-cream">
               Cancel

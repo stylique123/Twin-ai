@@ -25,7 +25,7 @@ import { askForBeat, askIsUsable, scaffoldWithoutAnswer, boundAskBeats, productA
 import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
-import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_shared/storyRotation.ts'
+import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS, SENSITIVE } from '../_shared/storyRotation.ts'
 import { lessonsPromptBlock, orderLessons, brokenLessons } from '../_shared/creatorLessons.ts'
 import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead } from '../_shared/ideaQuestions.ts'
 import {
@@ -5716,6 +5716,7 @@ SCRIPT & HOOK INTEGRATION:
 - Front-load the payoff promise, keep delivering, and place ONE clear CTA near the end that fits the goal: prefer a save ("save this so you can do it later") or a comment-bait question over a generic "follow for more".
 
 - NO BORROWED IDENTITY (round 3, 2.3). Speak in first person ONLY about work she has told Twin she does herself: her own answers, her products, her confirmed business. A subject she makes videos ABOUT is not something she runs: if she gives advice about coffee carts, she speaks as someone who advises ("most new cart owners…"), never as an operator ("when I'm pulling shots on my cart"). Never give her a role, job, side business, location or setup she has not confirmed, and never let a shot-list heading imply one.
+- NO INVENTED TECHNIQUE (round 4, 2.2). When she states a principle without figures ("calibrate for humidity and bean age"), the script stays at that level: never add gram doses, grind settings, temperatures, ratios, times or "how to tell it worked" signs she did not give. A precise-sounding method she never stated is invention.
 - ADVICE STAYS AT HER LEVEL (round 3, 2.5). In advice content, never add equipment specs, tank sizes, setup times, regulations, permit rules, dimensions, vehicles or step counts she did not give. If her advice is general, the script is general.
 - NO INVENTED COLOUR (round 2, Part 6). Never add a timeframe, count, age, distance or sensory description she did not give ("for twenty years", "burnt, overly acidic stuff"). Use her own words for how something tasted, looked or felt; if she gave none, say it plainly without adjectives.
 
@@ -6156,6 +6157,20 @@ const PURPOSE_SHAPE_INLINE: Record<'story_led' | 'product_led' | 'equal', string
   story_led: 'SHAPE — STORY LEADS, PRODUCT SUPPORTS: open on her personal thread; the product appears only as evidence or payoff ("this is what came out of all that"); close by inviting the viewer to relate to the story, not to buy.',
   product_led: 'SHAPE — PRODUCT LEADS, STORY SUPPORTS: open on the product; her personal material explains why it is good or earns the trust to talk about it; close product-forward.',
   equal: 'SHAPE — EQUAL, SLICE OF LIFE: no hard pitch either way; an honest look at her day that happens to include the product; close on connection, not a sale.',
+}
+
+/** Private/legal material out of any JSON value: list items dropped, text fields
+ *  cut sentence by sentence. Round 4, 1.1 (the voice profile channel). */
+function scrubSensitiveInline(v: unknown): unknown {
+  if (typeof v === 'string') {
+    if (!SENSITIVE.test(v)) return v
+    return v.split(/(?<=[.!?])\s+/).filter((x) => !SENSITIVE.test(x)).join(' ')
+  }
+  if (Array.isArray(v)) return v.filter((x) => !(typeof x === 'string' && SENSITIVE.test(x))).map(scrubSensitiveInline)
+  if (v && typeof v === 'object') {
+    return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, scrubSensitiveInline(x)]))
+  }
+  return v
 }
 
 // ── IDEA MODE: QUESTIONS FROM HER PARAGRAPH (coffee report 2.1, 2.2) ────────
@@ -7190,7 +7205,13 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   }
 
   const dna = profile?.dna ?? {}
-  const vp = voice?.profile ?? null
+  // ⚠️ ROUND 4, 1.1: HER VOICE PROFILE CARRIED THE PRIVATE MATERIAL TOO. Its
+  // hook samples and formats were read from her videos, including "I just got
+  // off the phone with the Police Department code enforcement" — and it reached
+  // every script whatever she excluded. Anything sensitive (the same SENSITIVE
+  // rule the plan screen uses) is removed before the writer sees the profile:
+  // a list entry is dropped, a sentence in a text field is cut.
+  const vp = scrubSensitiveInline(voice?.profile ?? null) as (typeof voice)['profile'] | null
   // §8a.1's BRIEF — what the creator TYPED, as opposed to what the scan read.
   //
   // Read here rather than through @twinai/shared because Deno cannot import the
@@ -12752,11 +12773,23 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       const bpAny = templated.bp as { script?: unknown; beat_plan?: unknown }
       if (Array.isArray(bpAny.script)) {
         const originalLen = bpAny.script.length
+        // ⚠️⚠️ ROUND 4, 1.1/1.2 — THE LEAK. This used to be EVERY stored row
+        // (`knowledgeRows`), and the length-extension pass below writes from it:
+        // on 2026-09-29 three thin scripts were "extended" with facts she had
+        // tapped out and private ones (police visits, cup scores, two-pound
+        // batches, another idea's "messy" line) — the plan screen's exclusions
+        // never reached this pass. It is now ONLY what the writer was given: the
+        // supplied items, her words for this video, and the product/brand facts.
+        // The integrity pass checks against the same set, so a stored number
+        // that was not supplied is removed rather than counted as grounded.
         const knownText = [
           JSON.stringify(ownedEntity ?? {}),
           JSON.stringify(confirmedBrand ?? {}),
-          ...(knowledgeRows ?? []).map((k) => `${String(k.text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`),
+          ...(speakable ?? []).map((k) => `${String(k.text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`),
           ...productFactsForCheck,
+          reference_note,
+          ...Object.values(brief ?? {}).filter((v): v is string => typeof v === 'string'),
+          ...Object.values(answers ?? {}).filter((v): v is string => typeof v === 'string'),
         ].join('\n')
         // ⚠️ ITEMS 34/36: TAG EACH BEAT WITH THE STORED STORY IT TELLS. The
         // writer never says which supplied item a beat rests on, so two beats

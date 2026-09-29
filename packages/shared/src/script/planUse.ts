@@ -36,7 +36,7 @@ const STOP = new Set(['about', 'their', 'there', 'which', 'would', 'could', 'sho
 
 function words(t: string): Set<string> {
   const out = new Set<string>()
-  for (const w of t.toLowerCase().split(/[^a-z0-9]+/)) if (w.length > 4 && !STOP.has(w)) out.add(w.slice(0, 6))
+  for (const w of t.toLowerCase().split(/[^a-z0-9]+/)) if (w.length > 4 && !STOP.has(w)) out.add(w.slice(0, 5))
   return out
 }
 function overlap(a: Set<string>, b: Set<string>): number {
@@ -50,7 +50,15 @@ export function planUseItems(
   knowledge: readonly { id?: unknown; kind?: unknown; text?: unknown; source?: unknown; creator_confirmed_at?: unknown }[] | null | undefined,
   about: string,
 ): PlanUseItem[] {
-  const aboutWords = words(about)
+  // ⚠️ ROUND 4, 3.3/3.4: "roasting" stemmed to "roasti" and never met "roast",
+  // so her own origin story did not "fit" an idea about why she started roasting,
+  // while a sticker-company line fit on the niche's commonest word. Stems are now
+  // five letters, and a word shared by most of her store is too common to count.
+  const allRows = (knowledge ?? []).map((k) => words(String(k?.text ?? '')))
+  const df = new Map<string, number>()
+  for (const w of allRows) for (const x of w) df.set(x, (df.get(x) ?? 0) + 1)
+  const common = (x: string) => allRows.length >= 8 && (df.get(x) ?? 0) / allRows.length > 0.35
+  const aboutWords = new Set([...words(about)].filter((x) => !common(x)))
   const out: PlanUseItem[] = []
   const seen: Array<Set<string>> = []
   // Her own words first, so a duplicate keeps the version she wrote.

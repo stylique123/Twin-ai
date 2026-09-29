@@ -6,7 +6,7 @@
 // until she presses the usual button.
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { IDEA_MODE_LABEL } from '@twinai/shared'
+import { IDEA_MODE_LABEL, SENSITIVE } from '@twinai/shared'
 
 export interface IdeaRow {
   id: string
@@ -41,7 +41,12 @@ export function IdeasForYou({ onPick }: { onPick: (idea: IdeaRow) => void }) {
           .order('batch_day', { ascending: false })
           .order('created_at', { ascending: true })
           .limit(4)
-        if (alive && Array.isArray(data)) setIdeas(data as IdeaRow[])
+        // ⚠️ ROUND 4, 3.10: "Ventilation Nightmare" surfaced her code-enforcement
+        // and police material as a suggestion, with no opt-in. A card touching
+        // private or legal matters is never offered; the same rule as the plan.
+        if (alive && Array.isArray(data)) {
+          setIdeas((data as IdeaRow[]).filter((i) => !SENSITIVE.test([i.title, i.premise, i.why, i.hook].map((x) => String(x ?? '')).join(' '))))
+        }
       } catch { /* no ideas is a normal state */ }
     })()
     return () => { alive = false }
