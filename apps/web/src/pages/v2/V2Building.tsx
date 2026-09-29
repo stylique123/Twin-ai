@@ -17,7 +17,7 @@ import { assessReadiness, isCommercialField } from '../../lib/api'
 import { judgeFit, warningForPickedVideo, recordTalkingHeadChoice } from '../../lib/api'
 import type { FitWarning, FitReason } from '../../lib/api'
 import { TalkingHeadWarning } from '../../components/TalkingHeadWarning'
-import { buildVideoPlan, planUseItems, defaultExcluded } from '@twinai/shared'
+import { buildVideoPlan, planUseItems, defaultExcluded, twinIds } from '@twinai/shared'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@twinai/shared'
 import { readProfileAnswers } from '../../lib/profileAnswersRead'
@@ -57,7 +57,7 @@ import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
 import { VideoPlanCard } from '../../components/VideoPlanCard'
 import type { VideoPlanInput } from '@twinai/shared'
-import { loadKnowledgeForPlan, loadObjectiveAnswers } from '../../lib/creatorAnswers'
+import { loadKnowledgeForPlan, loadObjectiveAnswers, rememberLeftOut } from '../../lib/creatorAnswers'
 import { LogoMark } from '../../components/Logo'
 import { buildRecordingScript } from '../../lib/api'
 import { saveRecordingScript } from '../../lib/api'
@@ -2279,6 +2279,20 @@ export default function V2Building() {
   // starts the build, so the list she saw was null when the request read it and
   // the server chose for itself. The list is captured at the tap.
   const idsAtWrite = useRef<string[] | null>(null)
+  // ⚖️ ONE TOGGLE FOR BOTH CARDS. Her tap takes the fact AND its near-duplicate
+  // twins out (the card shows one of a pair), and is saved to her rows at once
+  // so the writer's view honours it even if the request does not.
+  const toggleLeftOut = (id: string): void => {
+    const src = askPlan ?? plan
+    const ids = twinIds((src?.knowledge ?? []) as never, id)
+    const leaving = !excludedKnowledge.has(id)
+    setExcludedKnowledge((prev) => {
+      const next = new Set(prev)
+      for (const x of ids) if (leaving) next.add(x); else next.delete(x)
+      return next
+    })
+    void rememberLeftOut(ids, leaving)
+  }
   // ⚖️ AUDIT #3 (0253): only what SHE tapped off is remembered for later videos;
   // what starts off by default (private, unconfirmed numbers, off-topic) is not.
   const herExclusionsAtWrite = useRef<string[] | null>(null)
@@ -2903,11 +2917,7 @@ export default function V2Building() {
             needsProduct={asOneOf(VIDEO_GOALS, answersRef.current.video_goal) === 'sell' && !productPicked}
             onAddProduct={openAddProduct}
             excluded={excludedKnowledge}
-            onToggle={(id) => setExcludedKnowledge((prev) => {
-              const next = new Set(prev)
-              if (next.has(id)) next.delete(id); else next.add(id)
-              return next
-            })}
+            onToggle={toggleLeftOut}
             busy={false}
             onWrite={() => {
               // ⚠️ STUCK AT 12% (owner, 2026-09-28): the build effect returns
@@ -3096,11 +3106,7 @@ export default function V2Building() {
                   needsProduct={liveCommercial && !productPicked}
                   onAddProduct={openAddProduct}
                   excluded={excludedKnowledge}
-                  onToggle={(id) => setExcludedKnowledge((prev) => {
-                    const next = new Set(prev)
-                    if (next.has(id)) next.delete(id); else next.add(id)
-                    return next
-                  })}
+                  onToggle={toggleLeftOut}
                 />
               </div>
             )}

@@ -108,3 +108,18 @@ export function defaultExcluded(items: readonly PlanUseItem[]): string[] {
   }
   return off
 }
+
+/**
+ * The stored rows that say the same thing as `id` (audit 2026-09-29, the Brazil
+ * case): the plan card shows one of a near-duplicate pair, so tapping it off
+ * must take its twin out too, or the twin is still written from.
+ */
+export function twinIds(
+  knowledge: readonly { id?: unknown; text?: unknown }[] | null | undefined,
+  id: string,
+): string[] {
+  const rows = (knowledge ?? []).map((k) => ({ id: String(k?.id ?? ''), w: words(String(k?.text ?? '')) }))
+  const me = rows.find((r) => r.id === id)
+  if (!me) return [id]
+  return [id, ...rows.filter((r) => r.id && r.id !== id && overlap(me.w, r.w) >= 0.6).map((r) => r.id)]
+}
