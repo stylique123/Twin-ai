@@ -23,6 +23,8 @@ export interface PlanUseItem {
   /** Starts left out; she can turn it on. */
   defaultOff: boolean
   sensitive: boolean
+  /** She left it out of an earlier video (0253); stays off until she turns it on. */
+  leftOut: boolean
   reason: string
 }
 
@@ -47,7 +49,7 @@ function overlap(a: Set<string>, b: Set<string>): number {
 }
 
 export function planUseItems(
-  knowledge: readonly { id?: unknown; kind?: unknown; text?: unknown; source?: unknown; creator_confirmed_at?: unknown }[] | null | undefined,
+  knowledge: readonly { id?: unknown; kind?: unknown; text?: unknown; source?: unknown; creator_confirmed_at?: unknown; creator_excluded_at?: unknown }[] | null | undefined,
   about: string,
 ): PlanUseItem[] {
   // ⚠️ ROUND 4, 3.3/3.4: "roasting" stemmed to "roasti" and never met "roast",
@@ -73,13 +75,16 @@ export function planUseItems(
     const mine = MINE_SOURCES.has(String(k?.source ?? '')) || !!k?.creator_confirmed_at
     const sensitive = SENSITIVE.test(text) || LEGALISH.test(text)
     const risky = !mine && (HAS_NUMBER.test(text) || STRONG_CLAIM.test(text))
+    const leftOut = !!k?.creator_excluded_at
     out.push({
       id, text, kind, mine,
       fits: overlap(aboutWords, w) > 0 || [...w].some((x) => aboutWords.has(x)),
-      defaultOff: sensitive || risky,
+      defaultOff: sensitive || risky || leftOut,
       sensitive,
+      leftOut,
       reason: sensitive
         ? 'Private or legal, so it stays out unless you turn it on'
+        : leftOut ? 'You left this out before, so it stays out unless you turn it on'
         : mine ? 'You wrote this' : 'From your videos, not confirmed',
     })
   }

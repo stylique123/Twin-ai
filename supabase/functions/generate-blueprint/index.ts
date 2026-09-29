@@ -6286,7 +6286,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string; mentioned_product_id?: string; door?: string; exclude_knowledge_ids?: string[]; use_knowledge_ids?: string[] }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string; mentioned_product_id?: string; door?: string; exclude_knowledge_ids?: string[]; use_knowledge_ids?: string[]; excluded_by_her_ids?: string[] }
   try {
     body = await req.json()
   } catch {
@@ -6725,6 +6725,19 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // asking.
   const scopeToVoice = <T extends { eq: (c: string, v: string) => T }>(q: T): T =>
     voice?.id ? q.eq('voice_id', voice.id) : q
+  // ⚖️ WHAT SHE LEFT OUT STAYS OUT (audit #3, 0253). A fact she tapped off is
+  // remembered on the row, so the next video does not bring it back; a fact
+  // she switched on for this video is un-remembered. Before the reads, so the
+  // view already reflects it. A failure costs only the memory, never the build.
+  const uuidList = (v: unknown) => (Array.isArray(v) ? v : []).map(String).filter((x) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 60)
+  const herOff = uuidList(body.excluded_by_her_ids)
+  const herOn = uuidList(body.use_knowledge_ids)
+  await Promise.all([
+    herOff.length ? admin.from('creator_knowledge').update({ creator_excluded_at: new Date().toISOString() })
+      .eq('owner_id', ownerId).in('id', herOff).is('creator_excluded_at', null) : null,
+    herOn.length ? admin.from('creator_knowledge').update({ creator_excluded_at: null })
+      .eq('owner_id', ownerId).in('id', herOn).not('creator_excluded_at', 'is', null) : null,
+  ].map((q) => (q ? Promise.resolve(q).then(() => {}, () => {}) : null)))
   // ⚖️ FACT-SCOPING (0252): the writer reads the view that holds no private
   // row. A private fact reaches a script only when she switched it on for this
   // video (the opt-in read below), never by default.
@@ -6769,7 +6782,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // switch on, and the facts she tapped out on the plan screen.
   const guardExcludedTexts: string[] = await admin.from('creator_knowledge').select('id, text, evidence, sensitive')
     .eq('owner_id', ownerId)
-    .or(`sensitive.eq.true,id.in.(${(Array.isArray(body.exclude_knowledge_ids) ? body.exclude_knowledge_ids : []).map(String).filter((x) => /^[0-9a-f-]{36}$/i.test(x)).join(',') || '00000000-0000-0000-0000-000000000000'})`)
+    .or(`sensitive.eq.true,creator_excluded_at.not.is.null,id.in.(${(Array.isArray(body.exclude_knowledge_ids) ? body.exclude_knowledge_ids : []).map(String).filter((x) => /^[0-9a-f-]{36}$/i.test(x)).join(',') || '00000000-0000-0000-0000-000000000000'})`)
     .limit(200)
     .then((r) => (Array.isArray(r.data) ? r.data : [])
       .filter((k) => !(Array.isArray(body.use_knowledge_ids) && body.use_knowledge_ids.map(String).includes(String(k.id))))
