@@ -67,3 +67,27 @@ describe('3.10: suggestion cards never offer private or legal material', () => {
     expect(IDEAS).toMatch(/SENSITIVE\.test\(/)
   })
 })
+
+import { itemCounts } from '../script/numberRole'
+describe('2.5: a hyphenated measurement is not a promised list', () => {
+  it('"two-pound batches" promises nothing; "two mistakes" still counts', () => {
+    expect(itemCounts('the chaotic reality of roasting two-pound specialty coffee batches')).toEqual([])
+    expect(itemCounts('a 5-minute routine')).toEqual([])
+    expect(itemCounts('two mistakes new roasters make')).toEqual([2])
+  })
+})
+
+describe('3.7(c): a reload never silently drops the build', () => {
+  it('the build input is kept for the tab and restored', () => {
+    expect(PAGE).toMatch(/function durableBuildState\(raw: unknown\): BuildState/)
+    expect(PAGE).toMatch(/const state = durableBuildState\(loc\.state\)/)
+    expect(PAGE).not.toMatch(/\(loc\.state \|\| \{\}\) as BuildState/)
+  })
+})
+
+describe('3.1: one named subject, one product question', () => {
+  it('the picked subject is shown and the second product question is not asked', () => {
+    expect(PAGE).toMatch(/data-testid="subject-line"/)
+    expect(PAGE).toMatch(/!\(pickedSubjectName && q\.field === 'offer'\)/)
+  })
+})

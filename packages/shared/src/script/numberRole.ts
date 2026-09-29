@@ -82,7 +82,10 @@ function roleFor(before: string, after: string): NumberRole {
   if (PERCENT.test(after)) return 'percentage'
   if (DURATION.test(after)) return 'duration'
   if (MULTIPLE.test(after)) return 'multiple'
-  if (COMPARISON.test(after) || MAGNITUDE.test(after)) return 'comparison'
+  // ⚠️ ROUND 4, 2.5: "two-pound batches" was read as a promised list of two.
+  // A number hyphenated to a word ("two-pound", "5-minute", "12-ounce") is a
+  // measurement describing the noun, never a count anyone tracks.
+  if (COMPARISON.test(after) || MAGNITUDE.test(after) || /^-[a-z]/i.test(after)) return 'comparison'
   return 'enumeration'
 }
 

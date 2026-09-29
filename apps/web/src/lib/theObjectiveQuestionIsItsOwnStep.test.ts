@@ -20,7 +20,7 @@ function loadSplit() {
   const end = SRC.indexOf('  const hasTwoBlocks = ', start)
   expect(start).toBeGreaterThan(-1)
   expect(end).toBeGreaterThan(start)
-  const js = transformSync(`function __split(isProductSubject, pooledQuestion, visibleAsk, askStep, setAskStep, isChip) {
+  const js = transformSync(`function __split(isProductSubject, pooledQuestion, visibleAsk, askStep, setAskStep, isChip, pickedSubjectName = null) {
     ${SRC.slice(start, end)}
     return { objectiveInline, onAnswerStep, decisions, commercial }
   }`, { loader: 'ts', format: 'cjs' }).code

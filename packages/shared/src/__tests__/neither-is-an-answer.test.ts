@@ -159,12 +159,12 @@ describe('a product card starts a video about that product', () => {
   })
 
   it('the build screen seeds the answer but lets a later change win', () => {
-    expect(CARD).toMatch(/\[PRODUCT_CHOICE_FIELD\]: String\(\(loc\.state as BuildState\)\.selected_product_id\)/)
+    expect(CARD).toMatch(/\[PRODUCT_CHOICE_FIELD\]: String\(durableBuildState\(loc\.state\)\.selected_product_id\)/)
     // ⚖️ ORDER IS THE ASSERTION. `recallAnswers` spreads AFTER the seed, so a
     // creator who arrived from a card and then changed their mind in the picker
     // does not have the card's choice reinstated by a remount.
     const seed = CARD.indexOf('[PRODUCT_CHOICE_FIELD]: String(')
-    const recall = CARD.indexOf('...recallAnswers(buildKey((loc.state || {}) as BuildState))')
+    const recall = CARD.indexOf('...recallAnswers(buildKey(durableBuildState(loc.state)))')
     expect(seed).toBeGreaterThan(-1)
     expect(recall).toBeGreaterThan(seed)
   })
