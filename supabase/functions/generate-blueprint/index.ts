@@ -27,6 +27,7 @@ import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_shared/storyRotation.ts'
 import { scrubPrivate, isPrivate, guardScript, statedQuantities } from '../_shared/privacyGuard.ts'
+import { traceLines, type LineSourceInput } from '../_shared/lineSources.ts'
 import { lessonsPromptBlock, orderLessons, brokenLessons } from '../_shared/creatorLessons.ts'
 import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead } from '../_shared/ideaQuestions.ts'
 import {
@@ -13895,6 +13896,33 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         }
       }
     } catch { /* the guard never fails a generation */ }
+
+    // ⚖️ WHERE EACH LINE CAME FROM (fact-scoping part 3): every spoken sentence
+    // traced to the fact, her words, the product or the brand it rests on, so
+    // "I never told it that" has an answer on the page. Never fails a build.
+    try {
+      const bp = blueprint as { script?: unknown; line_sources?: unknown }
+      if (Array.isArray(bp.script)) {
+        const clip = (t: string) => (t.length > 70 ? `${t.slice(0, 67)}…` : t)
+        const sources: LineSourceInput[] = [
+          ...(speakable ?? []).map((k) => ({
+            kind: 'fact' as const, id: String((k as { id?: unknown }).id ?? ''), label: clip(String(k.text ?? '')),
+            text: `${String(k.text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`,
+          })),
+          { kind: 'her_words', label: 'Your idea for this video', text: reference_note },
+          ...Object.values(answers ?? {}).filter((v): v is string => typeof v === 'string' && v.trim().length > 3)
+            .map((v) => ({ kind: 'her_words' as const, label: `Your answer: ${clip(v)}`, text: v })),
+          { kind: 'product', label: String((ownedEntity as { name?: unknown } | null)?.name ?? 'The product'), text: [JSON.stringify(ownedEntity ?? ''), ...productFactsForCheck].join(' ') },
+          { kind: 'brand', label: 'Your brand', text: JSON.stringify(confirmedBrand ?? '') },
+        ]
+        const traced = traceLines(bp.script as Array<{ line?: unknown }>, sources)
+        bp.line_sources = traced
+        console.log(JSON.stringify({
+          event: 'line_sources_traced', sentences: traced.length,
+          unsourced: traced.filter((t) => t.from.length === 0).length,
+        }))
+      }
+    } catch { /* tracing never fails a generation */ }
 
     // ⚖️ CHECKED AGAINST WHAT SHE TAUGHT: a "never write" phrase still in the
     // script is recorded on the blueprint and logged, never silently shipped.

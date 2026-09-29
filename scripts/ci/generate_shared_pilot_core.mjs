@@ -128,6 +128,7 @@ const SOURCES = [
   ['packages/shared/src/script/storyRotation.ts', 'supabase/functions/_shared/storyRotation.ts'],
   // The privacy guard: one rule for every door into the writer, and the final check.
   ['packages/shared/src/script/privacyGuard.ts', 'supabase/functions/_shared/privacyGuard.ts'],
+  ['packages/shared/src/script/lineSources.ts', 'supabase/functions/_shared/lineSources.ts'],
   ['packages/shared/src/script/ideaQuestions.ts', 'supabase/functions/_shared/ideaQuestions.ts'],
   ['packages/shared/src/script/scriptIntegrity.ts', 'supabase/functions/_shared/scriptIntegrity.ts'],
   // Goal fidelity: rebuttal framing, promotion gating, CTA-per-goal, shot-list
