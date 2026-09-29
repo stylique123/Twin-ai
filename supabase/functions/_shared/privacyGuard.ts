@@ -1,0 +1,128 @@
+// GENERATED FROM packages/shared/src/script/privacyGuard.ts — DO NOT EDIT.
+// Run: node scripts/ci/generate_shared_pilot_core.mjs
+// Edit the source instead. CI regenerates this file and fails on a diff.
+// @ts-nocheck
+// THE PRIVACY GUARD — one rule for every door (fact-scoping architecture, 2026-09-29).
+//
+// ⚠️ WHY THIS EXISTS. Private and tapped-out facts reached scripts three times,
+// each through a door the previous fix did not know about: the length-extension
+// pass (all 60 stored rows), the voice profile, and — still open before this —
+// signature phrases from her transcripts, her past scripts' hooks and premises,
+// and quoted hook lessons. Every fix had filtered ONE reader. This module is the
+// single rule all readers and the final check share:
+//
+//   · `PRIVATE` — what counts as private (the same list the plan screen uses to
+//     switch facts off, and the database uses to flag rows: parity-tested);
+//   · `scrubPrivate` — strip private sentences from any value before a writer
+//     sees it (profile, phrases, catalogue, lessons);
+//   · `guardScript` — THE LAST LINE: after writing, remove any sentence that
+//     carries a private term or a tapped-out fact's wording that nothing she
+//     allowed contains. Deterministic, no model, so it cannot be talked round.
+//
+// ⚖️ HER CONSENT WINS. A private term she typed for this video, or a fact she
+// switched back on, is in `allowedText` and is never removed.
+
+import { SENSITIVE } from './storyRotation.ts'
+
+/** What counts as private. One source: the shared SENSITIVE list. */
+export const PRIVATE: RegExp = SENSITIVE
+
+export function isPrivate(text: string | null | undefined): boolean {
+  return PRIVATE.test(String(text ?? ''))
+}
+
+/**
+ * The same rule as a Postgres regex (ARE), for the database flag. Word
+ * boundaries become \m / \M; everything else in the source is ARE-compatible.
+ */
+export function privateSqlPattern(): string {
+  return PRIVATE.source.replace(/^\\b/, '\\m').replace(/\\b$/, '\\M')
+}
+
+const SENTENCES = /(?<=[.!?])\s+/
+
+/** Private sentences out of any JSON value: list items dropped, text cut by sentence. */
+export function scrubPrivate<T>(v: T): T {
+  const walk = (x: unknown): unknown => {
+    if (typeof x === 'string') {
+      if (!isPrivate(x)) return x
+      return x.split(SENTENCES).filter((s) => !isPrivate(s)).join(' ')
+    }
+    if (Array.isArray(x)) return x.filter((i) => !(typeof i === 'string' && isPrivate(i))).map(walk)
+    if (x && typeof x === 'object') {
+      return Object.fromEntries(Object.entries(x as Record<string, unknown>).map(([k, i]) => [k, walk(i)]))
+    }
+    return x
+  }
+  return walk(v) as T
+}
+
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
+const STOP = new Set(['the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'my', 'i', 'it', 'is', 'was', 'for', 'with', 'that', 'this', 'at', 'her', 'she', 'you', 'your', 'from', 'by', 'be', 'are'])
+
+/** Distinctive 3-word runs of a text (stop words dropped), for matching a fact's wording. */
+function runs(text: string, n = 3): Set<string> {
+  const w = norm(text).split(' ').filter((x) => x && !STOP.has(x))
+  const out = new Set<string>()
+  for (let i = 0; i + n <= w.length; i++) out.add(w.slice(i, i + n).join(' '))
+  return out
+}
+
+const UNITS = /^(?:-|\s)*(?:pounds?|lbs?|oz|ounces?|grams?|g|kg|batch(?:es)?|bags?|minutes?|hours?|days?|weeks?|months?|years?|%|percent|points?|scores?|cups?)\b/i
+const SMALL: Record<string, number> = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 }
+const TENS: Record<string, number> = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 }
+
+/** Numbers a text states as quantities: >= 10, or tied to a unit ("two-pound"). Words and digits alike. */
+export function statedQuantities(text: string): Set<number> {
+  const out = new Set<number>()
+  const re = /(\d[\d,]*(?:\.\d+)?)|\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[\s-]+(one|two|three|four|five|six|seven|eight|nine))?\b|\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\b/gi
+  for (const m of text.matchAll(re)) {
+    const v = m[1] !== undefined ? Number(m[1].replace(/,/g, ''))
+      : m[2] !== undefined ? TENS[m[2].toLowerCase()] + (m[3] ? SMALL[m[3].toLowerCase()] : 0)
+        : SMALL[String(m[4]).toLowerCase()]
+    if (!Number.isFinite(v)) continue
+    const after = text.slice((m.index ?? 0) + m[0].length)
+    if (v >= 10 || UNITS.test(after)) out.add(v)
+  }
+  return out
+}
+
+export interface GuardBeat { line?: unknown; [k: string]: unknown }
+export interface GuardRemoval { beat: number; reason: 'private' | 'excluded'; sentence: string }
+
+/**
+ * The final check. `allowedText` is everything she allowed for this video (the
+ * supplied facts, her words, the product and brand facts). `excludedTexts` are
+ * the facts she tapped out and the private ones she did not switch on.
+ */
+export function guardScript<T extends GuardBeat>(
+  beats: readonly T[],
+  opts: { allowedText: string; excludedTexts: readonly string[] },
+): { beats: T[]; removed: GuardRemoval[] } {
+  const allowedNorm = ` ${norm(opts.allowedText)} `
+  const allowedRuns = runs(opts.allowedText)
+  const banned = new Set<string>()
+  for (const t of opts.excludedTexts) for (const r of runs(t)) if (!allowedRuns.has(r)) banned.add(r)
+  const allowedQty = statedQuantities(opts.allowedText)
+  const bannedQty = new Set<number>()
+  for (const t of opts.excludedTexts) for (const q of statedQuantities(t)) if (!allowedQty.has(q)) bannedQty.add(q)
+  const privateAllowed = (s: string) => {
+    const m = s.match(new RegExp(PRIVATE.source, 'gi')) ?? []
+    return m.length > 0 && m.every((w) => allowedNorm.includes(` ${norm(w)} `))
+  }
+  const removed: GuardRemoval[] = []
+  const out = beats.map((b, i) => {
+    const line = typeof b.line === 'string' ? b.line : ''
+    if (!line) return b
+    const kept: string[] = []
+    for (const s of line.split(SENTENCES)) {
+      if (isPrivate(s) && !privateAllowed(s)) { removed.push({ beat: i, reason: 'private', sentence: s }); continue }
+      const hit = [...runs(s)].some((r) => banned.has(r)) || [...statedQuantities(s)].some((q) => bannedQty.has(q))
+      if (hit) { removed.push({ beat: i, reason: 'excluded', sentence: s }); continue }
+      kept.push(s)
+    }
+    const next = kept.join(' ').trim()
+    return next === line ? b : { ...b, line: next }
+  })
+  return { beats: out, removed }
+}

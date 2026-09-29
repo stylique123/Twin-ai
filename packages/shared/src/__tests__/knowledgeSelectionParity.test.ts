@@ -178,7 +178,7 @@ describe('the edge prefers spoken material by the same rule', () => {
     // claim — BOTH reads must go through `readKnowledge` — and it is unchanged
     // at 2; only the expression inside the arrow gained a wrapper.
     const reads = EDGE.match(/readKnowledge\(\(cols\) => (?:scopeToVoice\()?admin/g) ?? []
-    expect(reads.length, 'both knowledge reads must go through the helper').toBe(2)
+    expect(reads.length, 'all knowledge reads must go through the helper').toBe(3) // ranked, asked, and her private opt-ins (0252)
   })
 
   it('partitions the reservation, and does not sort it', () => {

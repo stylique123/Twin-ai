@@ -27,7 +27,7 @@ const BLUEPRINT = readFileSync(
 
 describe('the blueprint compiler reads one creator, not one account holder', () => {
   it('scopes the ranked knowledge read to the voice', () => {
-    expect(BLUEPRINT).toMatch(/scopeToVoice\(admin[\s\S]{0,200}?\.from\('creator_knowledge'\)/)
+    expect(BLUEPRINT).toMatch(/scopeToVoice\(admin[\s\S]{0,200}?\.from\('creator_knowledge_writable'\)/)
   })
 
   it('scopes the asked read too — an answer belongs to the voice it was typed for', () => {

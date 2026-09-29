@@ -138,7 +138,7 @@ describe('the tag actually reaches the prompt', () => {
     // claim — BOTH reads must go through `readKnowledge` — and it is unchanged
     // at 2; only the expression inside the arrow gained a wrapper.
     const reads = CODE.match(/readKnowledge\(\(cols\) => (?:scopeToVoice\()?admin/g) ?? []
-    expect(reads.length).toBe(2)
+    expect(reads.length).toBe(3) // ranked, asked, and her private opt-ins (0252)
     // And the fallback list is the one that keeps the column, not a narrower one.
     expect(CODE).toMatch(/build\(KNOWLEDGE_COLS_BASE\)/)
   })

@@ -25,7 +25,8 @@ import { askForBeat, askIsUsable, scaffoldWithoutAnswer, boundAskBeats, productA
 import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
-import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS, SENSITIVE } from '../_shared/storyRotation.ts'
+import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_shared/storyRotation.ts'
+import { scrubPrivate, isPrivate, guardScript, statedQuantities } from '../_shared/privacyGuard.ts'
 import { lessonsPromptBlock, orderLessons, brokenLessons } from '../_shared/creatorLessons.ts'
 import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead } from '../_shared/ideaQuestions.ts'
 import {
@@ -6159,18 +6160,11 @@ const PURPOSE_SHAPE_INLINE: Record<'story_led' | 'product_led' | 'equal', string
   equal: 'SHAPE — EQUAL, SLICE OF LIFE: no hard pitch either way; an honest look at her day that happens to include the product; close on connection, not a sale.',
 }
 
-/** Private/legal material out of any JSON value: list items dropped, text fields
- *  cut sentence by sentence. Round 4, 1.1 (the voice profile channel). */
-function scrubSensitiveInline(v: unknown): unknown {
-  if (typeof v === 'string') {
-    if (!SENSITIVE.test(v)) return v
-    return v.split(/(?<=[.!?])\s+/).filter((x) => !SENSITIVE.test(x)).join(' ')
-  }
-  if (Array.isArray(v)) return v.filter((x) => !(typeof x === 'string' && SENSITIVE.test(x))).map(scrubSensitiveInline)
-  if (v && typeof v === 'object') {
-    return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, scrubSensitiveInline(x)]))
-  }
-  return v
+/** A past script's premise or hook, safe to show the writer again. */
+function cleanCatalogueText(v: unknown): string | null {
+  if (typeof v !== 'string' || v.trim() === '') return null
+  const t = scrubPrivate(v).trim()
+  return t === '' || statedQuantities(t).size > 0 ? null : t
 }
 
 // ── IDEA MODE: QUESTIONS FROM HER PARAGRAPH (coffee report 2.1, 2.2) ────────
@@ -6730,8 +6724,11 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // asking.
   const scopeToVoice = <T extends { eq: (c: string, v: string) => T }>(q: T): T =>
     voice?.id ? q.eq('voice_id', voice.id) : q
+  // ⚖️ FACT-SCOPING (0252): the writer reads the view that holds no private
+  // row. A private fact reaches a script only when she switched it on for this
+  // video (the opt-in read below), never by default.
   const rankedRead = await readKnowledge((cols) => scopeToVoice(admin
-    .from('creator_knowledge')
+    .from('creator_knowledge_writable')
     .select(cols)
     .eq('owner_id', ownerId))
     .order('times_seen', { ascending: false })
@@ -6750,20 +6747,41 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // scarce thing by name and leaves the ranking alone.
   // Same scoping, same reason: an answer this creator typed for THIS voice.
   const askedRead = await readKnowledge((cols) => scopeToVoice(admin
-    .from('creator_knowledge')
+    .from('creator_knowledge_writable')
     .select(cols)
     .eq('owner_id', ownerId)
     .eq('source', 'asked'))
     .order('created_at', { ascending: false })
     .limit(20))
   const askedRows = askedRead.rows
+  // Her consent wins: a private fact she switched on for this video is read
+  // from the table by id, and only those ids.
+  const optInIds = (Array.isArray(body.use_knowledge_ids) ? body.use_knowledge_ids.map(String) : [])
+    .filter((id) => !rankedRows.some((r) => String(r.id) === id) && !askedRows.some((r) => String(r.id) === id))
+    .slice(0, 10)
+  if (optInIds.length) {
+    const optIn = await readKnowledge((cols) => admin.from('creator_knowledge').select(cols)
+      .eq('owner_id', ownerId).in('id', optInIds))
+    askedRows.push(...optIn.rows)
+  }
+  // What the final guard must never let through: private rows she did not
+  // switch on, and the facts she tapped out on the plan screen.
+  const guardExcludedTexts: string[] = await admin.from('creator_knowledge').select('id, text, evidence, sensitive')
+    .eq('owner_id', ownerId)
+    .or(`sensitive.eq.true,id.in.(${(Array.isArray(body.exclude_knowledge_ids) ? body.exclude_knowledge_ids : []).map(String).filter((x) => /^[0-9a-f-]{36}$/i.test(x)).join(',') || '00000000-0000-0000-0000-000000000000'})`)
+    .limit(200)
+    .then((r) => (Array.isArray(r.data) ? r.data : [])
+      .filter((k) => !(Array.isArray(body.use_knowledge_ids) && body.use_knowledge_ids.map(String).includes(String(k.id))))
+      .map((k) => `${String(k.text ?? '')}. ${String(k.evidence ?? '')}`), () => [])
   // ⚖️ WHAT SHE HAS TAUGHT TWIN (0250): her ratings, test viewers and hook
   // picks, learned by the worker. Fail-open: a failed read writes as before.
   const lessonRows: Array<{ id: string; kind: string; text: string; phrase: string | null; weight: number }> = await admin
     .from('creator_lessons').select('id, kind, text, phrase, weight')
     .eq('owner_id', ownerId).eq('active', true).limit(80)
     .then((r) => (Array.isArray(r.data) ? r.data : []), () => [])
-  const lessonsInPrompt = orderLessons(lessonRows)
+  // ⚖️ FACT-SCOPING: a lesson quoting private material (a generated hook about
+  // the move, say) is a door like any other; the same rule closes it.
+  const lessonsInPrompt = orderLessons(lessonRows.filter((l) => !isPrivate(l.text)))
   const lessonsBlock = lessonsPromptBlock(lessonsInPrompt)
   // ── A READY VOICE WITH NO KNOWLEDGE REPAIRS ITSELF ──────────────────────
   //
@@ -7211,7 +7229,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // every script whatever she excluded. Anything sensitive (the same SENSITIVE
   // rule the plan screen uses) is removed before the writer sees the profile:
   // a list entry is dropped, a sentence in a text field is cut.
-  const vp = scrubSensitiveInline(voice?.profile ?? null) as (typeof voice)['profile'] | null
+  const vp = scrubPrivate(voice?.profile ?? null) as (typeof voice)['profile'] | null
   // §8a.1's BRIEF — what the creator TYPED, as opposed to what the scan read.
   //
   // Read here rather than through @twinai/shared because Deno cannot import the
@@ -8445,13 +8463,17 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         const bp = (r?.blueprint ?? {}) as Record<string, any>
         return {
           formatLabel: bp?.reference_read?.format_label ?? null,
-          premise: bp?.concept?.premise ?? null,
+          // ⚠️ FACT-SCOPING: THIS IS GENERATED TEXT COMING BACK AS INPUT. A leaked
+          // "two-pound batches" hook re-entered every later prompt as "her
+          // catalogue". Private sentences are cut, and a line stating a quantity
+          // is dropped: a number must come from her facts, never from an old script.
+          premise: cleanCatalogueText(bp?.concept?.premise),
           // ⚠️ NO FALLBACK TO `hook_options[0]`. That substituted an option we
           // OFFERED for a hook the creator never stored, and printed it under a
           // heading that calls these facts about their catalogue. A row with no
           // stored hook contributes its format and premise and says nothing
           // about how it opened, because nothing is known about how it opened.
-          hook: r?.selected_hook ?? null,
+          hook: cleanCatalogueText(r?.selected_hook),
           hookChoice: r?.hook_choice ?? null,
         }
       }))
@@ -8532,7 +8554,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       // bare strings below (this needs the `id` per row; the style card never
       // did). A failed read degrades this the same way it degrades styleRules.
       signaturePhrasesLine = renderSignaturePhrasesInline(
-        extractSignaturePhrasesInline((ownSpeech ?? []).map((r) => ({ id: String(r?.id ?? ''), text: String(r?.text ?? '') }))))
+        extractSignaturePhrasesInline((ownSpeech ?? []).map((r) => ({ id: String(r?.id ?? ''), text: scrubPrivate(String(r?.text ?? '')) }))))
       // ⚠️ THE SAME CORPUS THE SIGNATURE PHRASES USE, AND FOR THE SAME REASON:
       // `subject = 'own'` only. Counting a CTA against a reference creator's
       // transcript would report a stranger's habit as this creator's.
@@ -8545,7 +8567,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         unverifiable: liveCtaEvidence.filter((e) => e.observed_verbatim_in === null).length,
         found: liveCtaEvidence.filter((e) => (e.observed_verbatim_in ?? 0) > 0).length,
       }
-      const compiledStyle = compileStyleInline([...(ownSpeech ?? []).map((r) => String(r?.text ?? '')), ...askedSpeech])
+      const compiledStyle = compileStyleInline([...(ownSpeech ?? []).map((r) => scrubPrivate(String(r?.text ?? ''))), ...askedSpeech])
       styleRules = renderStyleRulesInline(compiledStyle)
       // ⚠️ VOICE CAUSE 1(c) — never both cards; renderPartialStyleRulesInline
       // itself refuses once `compiledStyle.reportable` is true.
@@ -13838,6 +13860,41 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       }))
       await refundOnce('blueprint_refund_quality')
     }
+
+    // ⚖️ THE LAST LINE (fact-scoping, 2026-09-29): after every pass, a sentence
+    // carrying a private term or a tapped-out fact's wording that nothing she
+    // allowed contains is removed. Deterministic; it cannot be talked round.
+    try {
+      const allowedText = [
+        JSON.stringify(ownedEntity ?? {}),
+        JSON.stringify(confirmedBrand ?? {}),
+        ...(speakable ?? []).map((k) => `${String(k.text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`),
+        ...productFactsForCheck,
+        reference_note,
+        ...Object.values(brief ?? {}).filter((v): v is string => typeof v === 'string'),
+        ...Object.values(answers ?? {}).filter((v): v is string => typeof v === 'string'),
+      ].join('\n')
+      const bp = blueprint as { script?: unknown; shot_list?: unknown; dropped_beats?: unknown; guardrail_report?: unknown }
+      if (Array.isArray(bp.script)) {
+        const guarded = guardScript(bp.script as Array<{ line?: unknown }>, { allowedText, excludedTexts: guardExcludedTexts })
+        if (guarded.removed.length) {
+          const emptied = guarded.beats.filter((b) => typeof b.line === 'string' && !b.line.trim())
+          bp.script = guarded.beats.filter((b) => !(typeof b.line === 'string' && !b.line.trim()))
+          if (emptied.length) bp.dropped_beats = [...(Array.isArray(bp.dropped_beats) ? bp.dropped_beats : []), ...emptied]
+          bp.guardrail_report = guarded.removed
+          if (Array.isArray(bp.shot_list)) {
+            bp.shot_list = syncShotListSpokenText(bp.shot_list as Array<{ spoken_text?: unknown }>, bp.script as Array<{ line?: unknown }>).shots
+          }
+          console.warn(JSON.stringify({
+            event: 'script_guard_removed',
+            removed: guarded.removed.length,
+            private: guarded.removed.filter((r) => r.reason === 'private').length,
+            excluded: guarded.removed.filter((r) => r.reason === 'excluded').length,
+            emptied: emptied.length,
+          }))
+        }
+      }
+    } catch { /* the guard never fails a generation */ }
 
     // ⚖️ CHECKED AGAINST WHAT SHE TAUGHT: a "never write" phrase still in the
     // script is recorded on the blueprint and logged, never silently shipped.
