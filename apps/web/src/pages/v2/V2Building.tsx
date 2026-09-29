@@ -779,6 +779,11 @@ export default function V2Building() {
   // main seeds the ref from a product card's `selected_product_id`; this branch
   // added `chosenProductName` for the refusal screen. They touch different
   // things and are simply kept together.
+  // ⚖️ AUDIT 2026-09-29 #15: ONE READ OF "WHICH PRODUCT DID SHE PICK". The same
+  // expression was repeated at seven sites; one of them drifting is how the
+  // picked product was later reported as "No product attached".
+  const productChoice = (from: Record<string, string>): string | null =>
+    from[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null
   const answersRef = useRef<Record<string, string>>({
     // ⚖️ THE REMEMBERED ANSWER WINS. A creator who arrived from a product card
     // and then changed their mind in the picker must not have the card's
@@ -1081,12 +1086,12 @@ export default function V2Building() {
             // hand the entire time; nothing that needed it could see it.
             const chosen = pickedProduct(
               libraryProducts,
-              answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null)
+              productChoice(answersRef.current))
             // ⚖️ THE WHOLE BRAND AS THE SUBJECT. Picked as `brand:<id>` in the same
             // "Which one is this video about?" question. A brand is hers by
             // definition, so its relationship is OWN_PRODUCT, and her own
             // description of it is what the video may say about it.
-            const pickedId = answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? ''
+            const pickedId = (productChoice(answersRef.current) ?? '')
             const chosenBrand = pickedId.startsWith(BRAND_CHOICE_PREFIX)
               ? libraryBrands.find((b) => `${BRAND_CHOICE_PREFIX}${b.id}` === pickedId) ?? null
               : null
@@ -1327,7 +1332,7 @@ export default function V2Building() {
                 // ⚖️ THE DOOR'S CHOICE COUNTS AS AN ANSWER. Without this the
                 // screen re-asks "which one is this video about?" straight
                 // after the creator picked one to get here.
-                chosenId: answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null,
+                chosenId: productChoice(answersRef.current),
                 mayUseAProduct: true,
               })
                 ? [{
@@ -1723,7 +1728,7 @@ export default function V2Building() {
         // ⚖️ BOTH SOURCES, IN PRECEDENCE ORDER. An answer given ON this screen
         // outranks the one carried into it: if the picker did render and they
         // chose again, the later choice is the one they made last.
-        const seeded = (answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? '').trim()
+        const seeded = (productChoice(answersRef.current) ?? '').trim()
         const decided = selectProduct({
           ownedProductIds: seeded === '' ? [] : [seeded],
           chosenId: seeded,
@@ -2346,7 +2351,7 @@ export default function V2Building() {
   // ⚖️ AND NULL FALLS BACK TO WHAT THE SERVER ALREADY CHOSE. An objective with
   // no question of its own, or a non-product build, keeps `q.question`
   // untouched — this only ever replaces a generic sentence with a specific one.
-  const liveProductId = askAnswers[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null
+  const liveProductId = productChoice(askAnswers)
   const liveOfferForm = offerFormOf(pickedProduct(products, liveProductId)?.type ?? null)
   // ⚖️ ROTATION: the next pooled question she has NOT answered for this product
   // (then the least recently answered). Null when the objective has no pool.
@@ -2374,7 +2379,7 @@ export default function V2Building() {
       askAnswers.video_goal ?? null,
       offerFormOf(pickedProduct(
         products,
-        askAnswers[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null,
+        productChoice(askAnswers),
       )?.type ?? null),
     )
     : null
@@ -2621,7 +2626,7 @@ export default function V2Building() {
                 <>
                 <div className="mt-2.5 flex flex-wrap gap-2">
                   {(q.field === 'video_goal' && isProductSubject
-                    && (askAnswers[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? '').startsWith(BRAND_CHOICE_PREFIX)
+                    && (productChoice(askAnswers) ?? '').startsWith(BRAND_CHOICE_PREFIX)
                     ? BUSINESS_OBJECTIVES : q.options).map((o) => {
                     // A grouped option is chosen when ANY of its children is.
                     const kids = o.options ?? []

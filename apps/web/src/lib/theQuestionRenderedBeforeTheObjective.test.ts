@@ -107,6 +107,7 @@ describe('the card re-derives the claims wording from the live objective', () =>
     const js = transformSync(`function __live(__a) {
       const { isProductSubject, askAnswers, products, selectedProductId } = __a
       const state = { selected_product_id: selectedProductId }
+      const productChoice = (from) => from[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null
       // Nothing answered yet: rotation yields each pool's first question,
       // which is the objective's original wording.
       const objectiveAnswers = []

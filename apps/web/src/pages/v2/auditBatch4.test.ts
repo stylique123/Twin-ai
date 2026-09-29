@@ -25,3 +25,10 @@ describe('#17 one clock decides "Twin stopped waiting"', () => {
     expect(B.slice(at, at + 600)).toMatch(/if \(rescuingRef\.current\) return/)
   })
 })
+
+describe('#15 one read of the picked product', () => {
+  it('every site reads the pick through productChoice', () => {
+    expect(B.match(/PRODUCT_CHOICE_FIELD\] \?\? state\.selected_product_id/g) ?? []).toHaveLength(1)
+    expect((B.match(/productChoice\(/g) ?? []).length).toBeGreaterThanOrEqual(7)
+  })
+})

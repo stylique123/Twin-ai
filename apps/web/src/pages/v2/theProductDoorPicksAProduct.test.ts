@@ -66,8 +66,9 @@ describe('the product door picks a product', () => {
     // ⚖️ BOTH READERS. The send must carry it, AND the "which one?" question
     // must count it as answered — otherwise the creator picks a product and is
     // immediately asked which product.
-    expect(BUILDING).toContain('chosenId: answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null')
-    expect(BUILDING).toContain("(answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? '').trim()")
+    expect(BUILDING).toContain('chosenId: productChoice(answersRef.current)')
+    expect(BUILDING).toContain('from[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null')
+    expect(BUILDING).toContain("(productChoice(answersRef.current) ?? '').trim()")
   })
 
   it('an unread library is never rendered as an empty one', () => {

@@ -9995,20 +9995,20 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // ⚠️ AUDIT 2026-09-29 #5: A STANCE SHE NEVER TOOK, SPOKEN AS HERS. The
     // caption model is told to fill pov/enemy even when her posts say nothing,
     // and those guesses were written as her beliefs. A guessed stance now
-    // carries the same label the business facts do. (The NONE STORED fallback
-    // is a measured, deliberate choice — see theWriterWasToldToInventHerEnemy
-    // — and is left for the owner to decide.)
+    // carries the same label the business facts do, and with none stored the
+    // writer takes no stance for her (owner decision, 2026-09-29: a flatter
+    // script beats one that claims a belief she never stated).
     const provOf = (k: string) => ((vp as { _provenance?: Record<string, unknown> } | null)?._provenance ?? {})[k]
     const povLine = povAnswers.length
       ? fromAnswers(povAnswers)
       : povList.length
         ? `${povList.join(' | ')}${guessedMark(provOf('pov'))}`
-        : 'NONE STORED. Infer 1-2 stances this creator would plausibly hold from their niche, tone and vocabulary, and carry them through the script. Stay on-brand; do not fabricate specific facts or numbers.'
+        : 'NONE STORED. Do not invent a belief or opinion for this creator; make the point from what she supplied, without claiming a stance she has not taken.'
     const enemyLine = enemyAnswers.length
       ? fromAnswers(enemyAnswers)
       : vp?.enemy
         ? `${vp.enemy}${guessedMark(provOf('enemy'))}`
-        : 'NONE STORED. Infer the conventional wisdom, bad habit or villain this creator would push against, from their niche and tone.'
+        : 'NONE STORED. Do not invent something she pushes against; contrast only with what her own material or the reference says.'
     // FENCING UNTRUSTED TEXT.
     //
     // Four sources reach this prompt and NONE is authored by us: the creator

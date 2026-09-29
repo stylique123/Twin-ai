@@ -23,7 +23,7 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..
 const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
 const code = EDGE.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')
 
-describe('her own answer outranks the synthesis, and both outrank invention', () => {
+describe('her own answer outranks the synthesis, and nothing is invented', () => {
   it('reads the answers by question id', () => {
     expect(code).toMatch(/const povAnswers = answersTo\('others_disagree'\)/)
     expect(code).toMatch(/const enemyAnswers = answersTo\('pushes_back_against'\)/)
@@ -48,12 +48,15 @@ describe('her own answer outranks the synthesis, and both outrank invention', ()
     expect(enemy.indexOf('vp?.enemy')).toBeLessThan(enemy.indexOf('NONE STORED'))
   })
 
-  // ⚖️ NOT DELETED. A thin-scan creator with no stance at all is the state the
-  // write-time enrichment note measured and rejected, so the fallback stays —
-  // just no longer first in line.
-  it('the invention fallback still exists, as the last resort', () => {
-    expect(code).toMatch(/NONE STORED\. Infer the conventional wisdom/)
-    expect(code).toMatch(/NONE STORED\. Infer 1-2 stances/)
+  // ⚖️ OWNER DECISION, 2026-09-29 (audit #5): THE INVENTION FALLBACK IS GONE.
+  // It was kept because a thin-scan creator then had no stance at all; the
+  // owner chose that flatter script over one that claims a belief she never
+  // stated. With nothing stored, the writer is told to take no stance for her.
+  it('with nothing stored, the writer invents no stance', () => {
+    expect(code).not.toMatch(/NONE STORED\. Infer the conventional wisdom/)
+    expect(code).not.toMatch(/NONE STORED\. Infer 1-2 stances/)
+    expect(code).toMatch(/NONE STORED\. Do not invent a belief or opinion/)
+    expect(code).toMatch(/NONE STORED\. Do not invent something she pushes against/)
   })
 
   // ⚠️ AN `inferred` ROW IS OUR GUESS ABOUT A PERSON AND MAY NEVER BE SPOKEN —
