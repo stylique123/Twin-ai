@@ -714,6 +714,7 @@ const EVENTS = {
   product_claim_escalated: { kind: 'incident', why: 'A product claim raised past what evidence supports.' },
   lessons_rating_failed: { kind: 'incident', why: 'The learner could not read a rating note into lessons; lessons_at stays null so the next sweep retries (0250).' },
   lessons_learned: { kind: 'counter_ephemeral', why: 'Lessons filed by one learner pass; the durable record is the creator_lessons rows themselves (0250).' },
+  audience_rewrite_refused: { kind: 'counter_ephemeral', why: 'Test-viewer hook/line rewrites refused because they added a private term, a private fact or a number the checked script did not have (audit 2026-09-29 #1); the kept script is the proof.' },
   lessons_broken: { kind: 'incident', why: 'A script still contains a "never write" phrase she taught Twin in a rating (0250); recorded on the blueprint as lessons_broken.' },
   script_guard_removed: { kind: 'incident', why: 'The final privacy guard removed sentences carrying a private term or a tapped-out fact from a finished script (0252); recorded on the blueprint as guardrail_report.' },
   line_sources_traced: { kind: 'counter_ephemeral', why: 'Each finished script records which fact, her words, product or brand every spoken sentence rests on (line_sources) in the blueprint itself; unsourced counts sentences resting on nothing she gave.' },

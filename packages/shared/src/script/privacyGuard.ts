@@ -122,3 +122,20 @@ export function guardScript<T extends GuardBeat>(
   })
   return { beats: out, removed }
 }
+
+/**
+ * A later rewrite of an already-checked script (the test-viewer panel, #1 of the
+ * 2026-09-29 audit) may only say what the checked script and its facts already
+ * say. False when the new text brings in a private term, a private fact's
+ * wording, or any quantity the allowed text does not state.
+ */
+export function rewriteIsSafe(
+  text: string,
+  opts: { allowedText: string; excludedTexts: readonly string[] },
+): boolean {
+  if (!text.trim()) return true
+  const { removed } = guardScript([{ line: text }], opts)
+  if (removed.length) return false
+  const allowedQty = statedQuantities(opts.allowedText)
+  return [...statedQuantities(text)].every((q) => allowedQty.has(q))
+}

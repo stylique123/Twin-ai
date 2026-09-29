@@ -1,7 +1,6 @@
 // GENERATED FROM packages/shared/src/script/privacyGuard.ts — DO NOT EDIT.
 // Run: node scripts/ci/generate_shared_pilot_core.mjs
 // Edit the source instead. CI regenerates this file and fails on a diff.
-// @ts-nocheck
 // THE PRIVACY GUARD — one rule for every door (fact-scoping architecture, 2026-09-29).
 //
 // ⚠️ WHY THIS EXISTS. Private and tapped-out facts reached scripts three times,
@@ -22,7 +21,7 @@
 // ⚖️ HER CONSENT WINS. A private term she typed for this video, or a fact she
 // switched back on, is in `allowedText` and is never removed.
 
-import { SENSITIVE } from './storyRotation.ts'
+import { SENSITIVE } from './storyRotation.js'
 
 /** What counts as private. One source: the shared SENSITIVE list. */
 export const PRIVATE: RegExp = SENSITIVE

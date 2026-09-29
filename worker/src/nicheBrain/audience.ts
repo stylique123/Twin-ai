@@ -7,6 +7,7 @@
 
 import { db } from '../db.js'
 import { syncShotListSpokenText } from '../generated/shotListSync.js'
+import { rewriteIsSafe } from '../generated/privacyGuard.js'
 import { geminiJson, geminiEmbed } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
 import { noteKey } from './librarian.js'
@@ -103,6 +104,16 @@ export async function runAudienceTests(log: Log): Promise<void> {
         : null,
     ])
     const panel = (Array.isArray(panelRow?.personas) ? panelRow.personas : []) as Persona[]
+    // ⚠️ AUDIT 2026-09-29 #1: THE PANEL REWRITES A SCRIPT THAT ALREADY PASSED
+    // THE PRIVACY GUARD, and wrote straight back. A new hook or line may now
+    // only say what the checked script and its product already say: no private
+    // term, no private fact's wording, no quantity that was not there.
+    const privateFacts: string[] = await db.from('creator_knowledge').select('text, evidence')
+      .eq('owner_id', g.user_id).eq('sensitive', true).limit(200)
+      .then((r) => (r.data ?? []).map((k: { text?: string | null; evidence?: string | null }) => `${k.text ?? ''}. ${k.evidence ?? ''}`), () => [])
+    const allowedText = [...s.hooks, ...s.lines, product ?? ''].join('\n')
+    const safe = (t: string) => rewriteIsSafe(t, { allowedText, excludedTexts: privateFacts })
+    let refused = 0
     const objections = (Array.isArray(notes) ? notes : [])
       // Only her own questions or her exact sub-niche's: other accounts' objections are not her viewers'.
       .filter((n: { kind: string; is_hers?: boolean; sub_niche?: string | null }) => n.kind === 'objection'
@@ -121,7 +132,9 @@ export async function runAudienceTests(log: Log): Promise<void> {
     const scoreOf = (x: NonNullable<typeof r>) => Math.round((Math.max(0, ...x.hooks.map((h) => h.stopped)) / Math.max(1, x.viewers.length)) * 10)
     while (rounds < HOOK_ROUNDS && scoreOf(r) < HOOK_TARGET) {
       rounds += 1
-      const fresh = cleanNewHooks(await geminiJson(HOOK_REWRITE_SYSTEM, hookRewritePrompt(tested, r.hooks, r.viewers), HOOK_REWRITE_SCHEMA, 30_000, 0, model), tested.hooks)
+      const drafted = cleanNewHooks(await geminiJson(HOOK_REWRITE_SYSTEM, hookRewritePrompt(tested, r.hooks, r.viewers), HOOK_REWRITE_SCHEMA, 30_000, 0, model), tested.hooks)
+      const fresh = drafted.filter(safe)
+      refused += drafted.length - fresh.length
       if (fresh.length === 0) break
       const next = { ...tested, hooks: [...tested.hooks, ...fresh] }
       const again = normalizeAudience(await geminiJson(AUDIENCE_SYSTEM, audiencePrompt(next, { dna, product, objections, lessons, panel }), AUDIENCE_SCHEMA, 45_000, 0, model), next)
@@ -134,7 +147,14 @@ export async function runAudienceTests(log: Log): Promise<void> {
     const changedLines = new Set<number>()
     while (lineRounds < SCRIPT_ROUNDS && watchedToEnd(r.viewers) < SCRIPT_TARGET) {
       lineRounds += 1
-      const edit = applyLineRewrites(tested.lines, await geminiJson(SCRIPT_REWRITE_SYSTEM, scriptRewritePrompt(tested, r), SCRIPT_REWRITE_SCHEMA, 30_000, 0, model))
+      const drafted = applyLineRewrites(tested.lines, await geminiJson(SCRIPT_REWRITE_SYSTEM, scriptRewritePrompt(tested, r), SCRIPT_REWRITE_SCHEMA, 30_000, 0, model))
+      if (!drafted) break
+      const unsafe = drafted.changed.filter((i) => !safe(drafted.lines[i]))
+      refused += unsafe.length
+      const edit = unsafe.length === drafted.changed.length ? null : {
+        lines: drafted.lines.map((l, i) => (unsafe.includes(i) ? tested.lines[i] : l)),
+        changed: drafted.changed.filter((i) => !unsafe.includes(i)),
+      }
       if (!edit) break
       const next = { ...tested, lines: edit.lines }
       const again = normalizeAudience(await geminiJson(AUDIENCE_SYSTEM, audiencePrompt(next, { dna, product, objections, lessons, panel }), AUDIENCE_SCHEMA, 45_000, 0, model), next)
@@ -142,6 +162,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
       edit.changed.forEach((i) => changedLines.add(i))
       tested = next; r = again
     }
+    if (refused) log('warn', 'audience_rewrite_refused', { event: 'audience_rewrite_refused', generation_id: g.id, refused })
     const lineChanges = [...changedLines].sort((a, b) => a - b).map((i) => ({ line: i, before: s.lines[i], after: tested.lines[i] }))
     // ⚠️ THE SCRIPT'S HOOK WAS NOT THE AUDIENCE'S BEST HOOK (7 of 9 coffee
     // runs): the list said "recommended" over option 1 and the script was built
