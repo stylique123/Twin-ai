@@ -42,7 +42,7 @@ import {
 } from '../_shared/knowledgeResolver.ts'
 import { claimStrength, type ClaimStrength } from '../_shared/claimStrength.ts'
 import { projectBrandTruth, validateBrandTruthSnapshot } from '../_shared/brandTruth.ts'
-import { businessFactLines, businessFactProvenanceCounts } from '../_shared/brandTruthPrompt.ts'
+import { businessFactLines, businessFactProvenanceCounts, guessedMark } from '../_shared/brandTruthPrompt.ts'
 import { lexicalFloor } from '../_shared/repetition.ts'
 import { shouldAsk, readVerdict } from '../_shared/advisoryRead.ts'
 import { findPhraseOverlaps, MIN_OVERLAP_CONTENT_WORDS } from '../_shared/phraseOverlap.ts'
@@ -5719,6 +5719,7 @@ SCRIPT & HOOK INTEGRATION:
 
 - NO BORROWED IDENTITY (round 3, 2.3). Speak in first person ONLY about work she has told Twin she does herself: her own answers, her products, her confirmed business. A subject she makes videos ABOUT is not something she runs: if she gives advice about coffee carts, she speaks as someone who advises ("most new cart owners…"), never as an operator ("when I'm pulling shots on my cart"). Never give her a role, job, side business, location or setup she has not confirmed, and never let a shot-list heading imply one.
 - NO INVENTED TECHNIQUE (round 4, 2.2). When she states a principle without figures ("calibrate for humidity and bean age"), the script stays at that level: never add gram doses, grind settings, temperatures, ratios, times or "how to tell it worked" signs she did not give. A precise-sounding method she never stated is invention.
+- NO INVENTED BUSINESS (audit 2026-09-29 #5). Never say she runs, owns, operates or works at a business, shop, cart, stall, studio or location, or sells to or through anyone, unless her words for this video, the chosen product or her brand says so. A line marked "Twin guessed this" is background for tone, never a fact to speak.
 - ADVICE STAYS AT HER LEVEL (round 3, 2.5). In advice content, never add equipment specs, tank sizes, setup times, regulations, permit rules, dimensions, vehicles or step counts she did not give. If her advice is general, the script is general.
 - NO INVENTED COLOUR (round 2, Part 6). Never add a timeframe, count, age, distance or sensory description she did not give ("for twenty years", "burnt, overly acidic stuff"). Use her own words for how something tasted, looked or felt; if she gave none, say it plainly without adjectives.
 
@@ -9991,15 +9992,22 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       as.map((a) => (a.evidence ? `${a.text} (her words: "${a.evidence}")` : a.text)).join(' | ')
     const povAnswers = answersTo('others_disagree')
     const enemyAnswers = answersTo('pushes_back_against')
+    // ⚠️ AUDIT 2026-09-29 #5: A STANCE SHE NEVER TOOK, SPOKEN AS HERS. The
+    // caption model is told to fill pov/enemy even when her posts say nothing,
+    // and those guesses were written as her beliefs. A guessed stance now
+    // carries the same label the business facts do. (The NONE STORED fallback
+    // is a measured, deliberate choice — see theWriterWasToldToInventHerEnemy
+    // — and is left for the owner to decide.)
+    const provOf = (k: string) => ((vp as { _provenance?: Record<string, unknown> } | null)?._provenance ?? {})[k]
     const povLine = povAnswers.length
       ? fromAnswers(povAnswers)
       : povList.length
-        ? povList.join(' | ')
+        ? `${povList.join(' | ')}${guessedMark(provOf('pov'))}`
         : 'NONE STORED. Infer 1-2 stances this creator would plausibly hold from their niche, tone and vocabulary, and carry them through the script. Stay on-brand; do not fabricate specific facts or numbers.'
     const enemyLine = enemyAnswers.length
       ? fromAnswers(enemyAnswers)
       : vp?.enemy
-        ? vp.enemy
+        ? `${vp.enemy}${guessedMark(provOf('enemy'))}`
         : 'NONE STORED. Infer the conventional wisdom, bad habit or villain this creator would push against, from their niche and tone.'
     // FENCING UNTRUSTED TEXT.
     //

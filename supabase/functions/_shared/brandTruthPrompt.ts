@@ -90,7 +90,16 @@ export interface FactLine {
  * should ever have to parse. It also reads better to the model.
  */
 const STATED_SUFFIX = ' [they told us this]'
-const GUESSED_SUFFIX = ' [Twin guessed this from their public posts -- do not state it as a fact about them]'
+export const GUESSED_SUFFIX = ' [Twin guessed this from their public posts -- do not state it as a fact about them]'
+
+/**
+ * The same label for any voice-profile field (audit 2026-09-29 #5): a stance
+ * or "enemy" the caption model inferred is a guess unless she said it out loud
+ * (observed_audio) or confirmed it. No provenance recorded = guessed.
+ */
+export function guessedMark(provenance: unknown): string {
+  return provenance === 'observed_audio' || provenance === 'user_confirmed' ? '' : GUESSED_SUFFIX
+}
 
 /**
  * ⚠️ AUTHORITY, NOT PRESENCE, DECIDES. `authoritative` is the field the
